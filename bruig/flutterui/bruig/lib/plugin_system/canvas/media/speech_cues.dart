@@ -1,9 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:bruig/plugin_system/canvas/media/mix/vocoder.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_engines.dart'
     show upsample2x;
-import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -12,8 +10,7 @@ import 'package:flutter/services.dart' show rootBundle;
 // are not words. A breath, a laugh, a sigh and a cough are recordings -- a
 // woman's and a man's, each CC0 from Freesound, listed in
 // assets/canvas/cues/SOURCES.md -- put between the words as they are. A
-// whisper is the voice itself, laid onto hiss by the Vocoder: each band of
-// it as loud as the voice's, none of it voiced.
+// whisper is the voice said softly: see softly.
 
 final Map<String, Future<Float32List?>> _loaded = {};
 
@@ -68,34 +65,11 @@ Float32List? readWav16(ByteData b) {
   return null;
 }
 
-/// _whisper is the Vocoder as a whisper: hiss carrying the voice, its
-/// bands up to 12kHz so the hiss says the s and t sounds too. None of the
-/// voice's own sound comes through -- its highs are still pitched -- and
-/// the bands follow it no faster than 25ms, slower than a pitch's period,
-/// which they would otherwise beat at.
-const _whisper = MixDevice(DeviceKind.vocoder, values: {
-  "carrier": 0,
-  "bands": 28,
-  "high": 12000,
-  "unvoiced": 0,
-  "attack": 25,
-  "release": 50,
-});
-
-/// whispered is [voice], at the mix rate, whispered -- and quieter, by
-/// a little, as a whisper is.
-Float32List whispered(Float32List voice) {
-  var v = Vocoder(_whisper);
-  var out = Float32List.fromList(voice);
-  var other = Float32List(512);
-  for (var at = 0; at < out.length; at += 512) {
-    var n = math.min(512, out.length - at);
-    var block = Float32List.sublistView(out, at, at + n);
-    other.setRange(0, n, block);
-    v.process(block, other, n);
-  }
-  for (var i = 0; i < out.length; i++) {
-    out[i] *= 0.75;
-  }
-  return out;
-}
+/// softly is [voice] said softly: [by] as loud. Neither engine can
+/// whisper, and a whisper made of their voices afterwards -- hiss through
+/// the voice's shape -- was heard as a vocoder (Ken, 2026-10-31), so a
+/// whisper is a voice said low: the expressive voices told to speak so as
+/// well, our own only quieter. The Vocoder is in the effects, for a
+/// whisper of that kind.
+Float32List softly(Float32List voice, {required double by}) =>
+    Float32List.fromList([for (var v in voice) v * by]);

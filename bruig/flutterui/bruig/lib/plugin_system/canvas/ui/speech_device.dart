@@ -31,6 +31,7 @@ const _problemInk = Color(0xFFFF8A80);
 const _cueIcons = {
   SpeechCue.pause: Icons.pause,
   SpeechCue.breath: Icons.air,
+  SpeechCue.exhale: Icons.blur_on,
   SpeechCue.laugh: Icons.sentiment_very_satisfied,
   SpeechCue.sigh: Icons.sentiment_dissatisfied,
   SpeechCue.cough: Icons.sick_outlined,
@@ -61,6 +62,26 @@ class _Kit {
       fontWeight: FontWeight.w500,
       color: colour ?? s.text);
 
+  /// cued is [script]'s words with its cues -- "[laugh]", "[pause 0.5]" --
+  /// shown as tags among them, not as the brackets they are written in.
+  TextSpan cued(String script) {
+    var spans = <InlineSpan>[];
+    var at = 0;
+    for (var m in RegExp(r"\[([a-z]+)(?:\s+[0-9.]+)?\]").allMatches(script)) {
+      if (m.start > at) {
+        spans.add(TextSpan(text: script.substring(at, m.start)));
+      }
+      spans.add(TextSpan(
+          text:
+              " ${m[1]}${m[0]!.contains(" ") ? " ${m[0]!.split(" ").last.replaceAll("]", "")}s" : ""} ",
+          style: text(10.5, colour: s.solo)
+              .copyWith(backgroundColor: s.solo.withValues(alpha: 0.16))));
+      at = m.end;
+    }
+    if (at < script.length) spans.add(TextSpan(text: script.substring(at)));
+    return TextSpan(children: spans);
+  }
+
   /// label names a part of the device.
   Widget label(String t) => Text(t,
       maxLines: 1,
@@ -79,12 +100,12 @@ class _Kit {
       borderRadius: BorderRadius.circular(5),
       border: Border.all(color: border ?? s.edge));
 
-  InputDecoration field(String hint) => InputDecoration(
+  InputDecoration field(String hint, {int lines = 4}) => InputDecoration(
         isDense: true,
         filled: true,
         fillColor: s.inset,
         hintText: hint,
-        hintMaxLines: 4,
+        hintMaxLines: lines,
         hintStyle: text(11, colour: s.muted.withValues(alpha: 0.7)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
         enabledBorder: OutlineInputBorder(
@@ -761,9 +782,10 @@ class _SpeechDeviceState extends State<SpeechDevice> {
           textAlignVertical: TextAlignVertical.top,
           style: k.text(12.5, height: 1.5),
           decoration: k.field(
-              "What is to be said, a line to each sentence. A direction "
-              "goes first, in [brackets]: [warm], [sad]… and cues anywhere: "
-              "[pause 0.5], [laugh]."),
+              "What is to be said. Each line is a section, spoken in one go: "
+              "start a new line only where it is said another way. A "
+              "direction goes first, in [brackets] -- [warm], [sad] -- and "
+              "cues anywhere: [pause 0.5], [laugh]."),
           onChanged: (v) {
             _asText ??= true;
             c.beginInteraction();
@@ -771,22 +793,9 @@ class _SpeechDeviceState extends State<SpeechDevice> {
           },
         ),
       ),
-      const SizedBox(height: 5),
-      // One row, scrolled sideways where it is too long for the column.
-      SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(children: [
-          for (var cue in engine.cues)
-            Tooltip(
-              message: "Put in ${cue.token}",
-              child: k.chip(cue.label, false, () => _cue(spec, cue),
-                  key: ValueKey("speechCue-${cue.name}"), icon: _cueIcons[cue]),
-            ),
-        ]),
-      ),
     ]);
 
-    // ---- The script, line by line
+    // ---- The script, in sections
     String lineState(SpeechLine l) {
       switch (c.speechLineState(widget.channel, l)) {
         case "speaking":
@@ -851,10 +860,10 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(l.text,
-                            maxLines: 1,
+                        Text.rich(k.cued(l.text),
+                            maxLines: 3,
                             overflow: TextOverflow.ellipsis,
-                            style: k.text(12.5)),
+                            style: k.text(12.5, height: 1.35)),
                         const SizedBox(height: 3),
                         Row(children: [
                           if (direction.isNotEmpty) ...[
@@ -896,13 +905,109 @@ class _SpeechDeviceState extends State<SpeechDevice> {
 
     var scriptLines = lines.isEmpty
         ? Center(
-            child: Text("No lines yet: Edit as text, and write the script.",
+            child: Text("No sections yet: Edit as text, and write the script.",
                 style: k.text(11, colour: s.muted)))
         : ListView(
             key: const ValueKey("speechLines"),
             padding: EdgeInsets.zero,
             children: [for (var (i, l) in lines.indexed) lineCard(i, l)],
           );
+
+    // One palette, under the script: how the section the cursor is in is
+    // said, and the cues, put where the cursor is -- in the text, or at
+    // the end of the section picked. They were two, the directions beside
+    // the lines and the cues under the text, and asked for the same things
+    // in two places (Ken, 2026-10-31).
+    Widget palette() {
+      var l = line;
+      var editable = l != null && !reading;
+      var said = l == null
+          ? SpeechDirection.plain
+          : l.own.isNotEmpty
+              ? null
+              : l.direction;
+      return Container(
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+        decoration: k.box(s.inset),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            SizedBox(
+                width: 78,
+                child: k.label(l == null ? "Said" : "Section ${_line + 1}")),
+            SizedBox(
+              width: 150,
+              child: k.dropdown<SpeechDirection?>(
+                key: const ValueKey("speechSaid"),
+                value: said,
+                items: [
+                  // Those the engine can say -- and the section's own, as
+                  // it was set, though another engine is picked now.
+                  for (var d in SpeechDirection.values)
+                    if (engine.directs(d) || d == said) (d, d.label),
+                  if (said == null) (null, "In your own words"),
+                ],
+                onChanged: (d) {
+                  if (d == null || !editable) return;
+                  _changeLine(spec, _line, l.copyWith(direction: d, own: ""));
+                },
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: SizedBox(
+                height: 26,
+                child: TextField(
+                  key: const ValueKey("speechOwn"),
+                  controller: _own,
+                  focusNode: _ownFocus,
+                  readOnly: !editable,
+                  style: k.text(11.5),
+                  decoration: k.field(
+                      local ? "Own words: Expressive" : "Or own words",
+                      lines: 1),
+                  onSubmitted: (_) => _keepOwn(),
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 5),
+          Row(children: [
+            SizedBox(width: 78, child: k.label("Add here")),
+            Expanded(
+              // One row, scrolled sideways where it is too long for it.
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  for (var cue in engine.cues)
+                    Tooltip(
+                      message: asText
+                          ? "Put in ${cue.token} at the cursor"
+                          : "Put in ${cue.token} at the end of the section",
+                      child: k.chip(
+                          cue.label,
+                          false,
+                          reading
+                              ? null
+                              : asText
+                                  ? () => _cue(spec, cue)
+                                  : editable
+                                      ? () => _changeLine(
+                                          spec,
+                                          _line,
+                                          l.copyWith(
+                                              text: "${l.text} ${cue.token}"))
+                                      : null,
+                          key: ValueKey("speechCue-${cue.name}"),
+                          icon: _cueIcons[cue]),
+                    ),
+                ]),
+              ),
+            ),
+          ]),
+        ]),
+      );
+    }
 
     // Where the script comes from: typed here, or a Writing document.
     var fromItems = <(String, String)>[
@@ -913,11 +1018,11 @@ class _SpeechDeviceState extends State<SpeechDevice> {
     var scriptColumn =
         Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
-        Expanded(child: k.label(asText ? "Script" : "Lines")),
+        Expanded(child: k.label(asText ? "Script" : "Sections")),
         // Narrowed, rather than overflowing, where the column is narrow.
         Flexible(
           flex: 2,
-          child: k.button(asText ? "Show as lines" : "Edit as text", () {
+          child: k.button(asText ? "Show as sections" : "Edit as text", () {
             _scriptFocus.unfocus();
             setState(() => _asText = !asText);
           }, key: const ValueKey("speechAsText"), small: true),
@@ -952,13 +1057,14 @@ class _SpeechDeviceState extends State<SpeechDevice> {
       ]),
       const SizedBox(height: 6),
       Expanded(child: asText ? scriptText : scriptLines),
+      const SizedBox(height: 6),
+      palette(),
     ]);
 
     // ---- The line picked, and Speak all
     Widget linePanel() {
       var l = line;
       var ready = !cantSpeak && !busy;
-      var editable = l != null && !reading;
       // The slot picked: as clicked, or the one its take is chosen in.
       var sel = (_slot ?? (l == null || l.chosen < 0 ? 0 : l.chosen))
           .clamp(0, SpeechLine.speechSlots - 1);
@@ -967,14 +1073,14 @@ class _SpeechDeviceState extends State<SpeechDevice> {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Expanded(
           child: l == null
-              ? Text("Pick a line to direct it.",
-                  style: k.text(11, colour: s.muted))
+              ? Text("Pick a section.", style: k.text(11, colour: s.muted))
               : SingleChildScrollView(
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Row(children: [
-                          Expanded(child: k.label("Line ${_line + 1} · takes")),
+                          Expanded(
+                              child: k.label("Section ${_line + 1} · takes")),
                           for (var t = 0; t < SpeechLine.speechSlots; t++)
                             Padding(
                               padding: const EdgeInsets.only(left: 4),
@@ -1060,42 +1166,6 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                                     "is said now"),
                           ]),
                         ],
-                        const SizedBox(height: 8),
-                        k.label("How it is said"),
-                        const SizedBox(height: 4),
-                        Wrap(spacing: 4, runSpacing: 4, children: [
-                          // Those the engine cannot say greyed, and why.
-                          for (var d in SpeechDirection.values)
-                            Tooltip(
-                              message: engine.directs(d)
-                                  ? ""
-                                  : "Not on Built in: pick Expressive",
-                              child: k.chip(
-                                  d.label,
-                                  l.own.isEmpty && l.direction == d,
-                                  editable && engine.directs(d)
-                                      ? () => _changeLine(spec, _line,
-                                          l.copyWith(direction: d, own: ""))
-                                      : null,
-                                  key: ValueKey("speechDirection-${d.name}")),
-                            ),
-                        ]),
-                        const SizedBox(height: 6),
-                        SizedBox(
-                          height: 28,
-                          child: TextField(
-                            key: const ValueKey("speechOwn"),
-                            controller: _own,
-                            focusNode: _ownFocus,
-                            readOnly: reading,
-                            style: k.text(11.5),
-                            decoration: k.field(local
-                                ? "Or your own words, for the other engines"
-                                : "Or your own words: “tired, end of a "
-                                    "long day”"),
-                            onSubmitted: (_) => _keepOwn(),
-                          ),
-                        ),
                         const SizedBox(height: 6),
                         Row(children: [
                           Expanded(
@@ -1107,7 +1177,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                                     : null,
                                 key: const ValueKey("speechJoin"),
                                 icon: Icons.call_merge,
-                                tip: "Join with the next line: said as one"),
+                                tip: "Join with the next section: one take"),
                           ),
                           const SizedBox(width: 4),
                           Expanded(
@@ -1122,8 +1192,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                                     : null,
                                 key: const ValueKey("speechSplit"),
                                 icon: Icons.content_cut,
-                                tip: "Split at the comma or stop nearest "
-                                    "its middle"),
+                                tip: "Two sections, cut at the sentence's end "
+                                    "nearest its middle"),
                           ),
                           const SizedBox(width: 4),
                           Expanded(
@@ -1140,8 +1210,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                                 tip: l.freeSlot < 0
                                     ? "All three slots are in use: pick one, "
                                         "and Replace it"
-                                    : "Speak it again into a free slot, the "
-                                        "takes it has kept to compare"),
+                                    : "Speak the section again into a free "
+                                        "slot, its takes kept to compare"),
                           ),
                         ]),
                       ]),
@@ -1150,38 +1220,59 @@ class _SpeechDeviceState extends State<SpeechDevice> {
         const SizedBox(height: 6),
         SizedBox(
           height: 32,
-          child: FilledButton.icon(
-            key: const ValueKey("speechSpeak"),
-            style: FilledButton.styleFrom(
-              backgroundColor: s.meterLow,
-              foregroundColor: const Color(0xFF0D2416),
-              disabledBackgroundColor: s.raised,
-              disabledForegroundColor: s.muted,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(5)),
-            ),
-            // Every line spoken, there is nothing for it to do: Another
-            // take, or a new direction, speaks a line again.
-            onPressed: busy || cantSpeak || allSpoken ? null : _speakAll,
-            icon: busy
-                ? SizedBox.square(
-                    dimension: 12,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: s.muted))
-                : const Icon(Icons.record_voice_over, size: 16),
-            label: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                  busy
-                      ? "Speaking…"
-                      : allSpoken
-                          ? "All spoken"
-                          : "Speak all",
-                  style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w700)),
-            ),
-          ),
+          // While it speaks, Stop: a voice that takes too long, or does not
+          // look like finishing, is let go.
+          child: queue != null
+              ? FilledButton.icon(
+                  key: const ValueKey("speechStop"),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: s.arm,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(5)),
+                  ),
+                  onPressed: () => c.stopSpeaking(widget.channel),
+                  icon: const Icon(Icons.stop, size: 16),
+                  label: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text("Stop",
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w700)),
+                  ),
+                )
+              : FilledButton.icon(
+                  key: const ValueKey("speechSpeak"),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: s.meterLow,
+                    foregroundColor: const Color(0xFF0D2416),
+                    disabledBackgroundColor: s.raised,
+                    disabledForegroundColor: s.muted,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(5)),
+                  ),
+                  // Every line spoken, there is nothing for it to do: Another
+                  // take, or a new direction, speaks a line again.
+                  onPressed: busy || cantSpeak || allSpoken ? null : _speakAll,
+                  icon: busy
+                      ? SizedBox.square(
+                          dimension: 12,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: s.muted))
+                      : const Icon(Icons.record_voice_over, size: 16),
+                  label: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                        busy
+                            ? "Joining…"
+                            : allSpoken
+                                ? "All spoken"
+                                : "Speak all",
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w700)),
+                  ),
+                ),
         ),
         // Only while it works: how far, and that it is in the background.
         if (busy) ...[
@@ -1197,9 +1288,10 @@ class _SpeechDeviceState extends State<SpeechDevice> {
           const SizedBox(height: 3),
           Text(
               queue != null
-                  ? "${queue.length} ${queue.length == 1 ? "line" : "lines"} "
-                      "to speak · keep working meanwhile"
-                  : "Joining the lines into the clip…",
+                  ? "${queue.length} "
+                      "${queue.length == 1 ? "section" : "sections"} to speak · "
+                      "keep working meanwhile"
+                  : "Joining the sections into the clip…",
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: k.text(10, colour: s.muted)),
@@ -1273,14 +1365,24 @@ class _SpeechDeviceState extends State<SpeechDevice> {
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           k.label("Feel"),
           const SizedBox(height: 4),
-          Wrap(spacing: 4, runSpacing: 4, children: [
-            for (var p in SpeechPreset.values)
-              k.chip(p.label, spec.preset == p.name,
-                  () => _set(spec.withPreset(p)),
-                  key: ValueKey("speechPreset-${p.name}")),
-            k.chip("Custom", spec.preset == "custom", null,
-                key: const ValueKey("speechPreset-custom")),
-          ]),
+          // A dropdown, not a row of chips: the sliders under it have the
+          // room (Ken, 2026-10-31). Custom is only shown, as the sliders
+          // were moved to it, not picked.
+          k.dropdown<String>(
+            key: const ValueKey("speechPreset"),
+            value: SpeechPreset.values.any((p) => p.name == spec.preset)
+                ? spec.preset
+                : "custom",
+            items: [
+              for (var p in SpeechPreset.values) (p.name, p.label),
+              ("custom", "Custom"),
+            ],
+            onChanged: (v) {
+              for (var p in SpeechPreset.values) {
+                if (p.name == v) _set(spec.withPreset(p));
+              }
+            },
+          ),
           if (!needsVoices) ...[
             const SizedBox(height: 6),
             Align(
@@ -1385,7 +1487,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
         child: k.button(
             onTimeline
                 ? "Update the timeline clip"
-                : "Add all lines to timeline",
+                : "Add all sections to timeline",
             spoken == 0 || busy
                 ? null
                 : () => _run(() => c.joinSpeech(widget.channel)),
@@ -1435,7 +1537,9 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                                     : s.edge),
                       ),
                       alignment: Alignment.centerLeft,
-                      child: Text("${i + 1}  ${l.text}",
+                      child: Text(
+                          "${i + 1}  "
+                          "${l.text.replaceAll(RegExp(r"\s*\[[^\]]*\]"), "")}",
                           maxLines: 1,
                           overflow: TextOverflow.clip,
                           softWrap: false,
@@ -1457,7 +1561,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
           _problem ??
               (clipTake != null
                   ? "On the timeline: ${clipTake.length.toStringAsFixed(1)} s"
-                  : "$spoken of ${lines.length} lines with a take"),
+                  : "$spoken of ${lines.length} sections with a take"),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: k.text(10.5, colour: _problem != null ? _problemInk : s.muted),

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ffi' show Abi;
 import 'dart:io';
 import 'dart:isolate';
@@ -269,11 +270,11 @@ String spokenText(SpeechLine line) => [
 // The program loads its model for each run -- nine seconds of a short line's
 // twenty -- and has no way to be given lines one after another but its
 // server, which listens on every network. So the lines sharing a direction
-// are spoken in one run, written with the program's own markup: each line,
-// and each cue in it, kept apart by a pause. A pause it renders as exact
-// silence, which speech never is: the take is cut at those, and the cues --
-// our recordings, a whisper, a pause of the length asked for -- put back in
-// their places.
+// are spoken in one run -- those said softly in a second -- written with the
+// program's own markup: each stretch kept apart by a pause. A pause it
+// renders as exact silence, which speech never is: the take is cut at
+// those, and the cues -- our recordings, a pause of the length asked for --
+// put into the voice's own pauses.
 
 /// QwenGap is what is between two stretches of speech in a run: the lines'
 /// ends, and the cues.
@@ -303,125 +304,452 @@ class QwenJoin extends QwenGap {
   const QwenJoin();
 }
 
-/// QwenSpoken is one stretch of speech in a run: what it says, whether it
-/// is whispered, and which of its words are a laugh -- written into the
-/// words, not timed as one.
+/// QwenSpoken is one stretch of speech in a run -- a section, or the part
+/// of one on either side of a whisper's edge: what it says, whether it is
+/// whispered, which of its words are a cue written into them -- a laugh, a
+/// cough -- not timed as a word, and its beats: the cues that are not
+/// words, each after so many of its words, put where the voice paused for
+/// them -- see qwenPlaceBeats.
 class QwenSpoken {
   final String text;
   final bool whisper;
-  final Set<int> laughs;
-  const QwenSpoken(this.text, {this.whisper = false, this.laughs = const {}});
+  final Set<int> cues;
+  final List<(int, QwenGap)> beats;
+  const QwenSpoken(this.text,
+      {this.whisper = false, this.cues = const {}, this.beats = const []});
 
-  /// words are its words, timed across [seconds], the laughs left out.
-  List<TimedWord> words(double seconds) {
-    var all = estimateWords(SpokenText(text).words, 0, seconds);
-    return [
-      for (var (i, w) in all.indexed)
-        if (!laughs.contains(i)) w
-    ];
-  }
+  /// words are its words, timed across [seconds], the cues left out.
+  List<TimedWord> words(double seconds) =>
+      spoken(estimateWords(SpokenText(text).words, 0, seconds));
+
+  /// spoken is [all] -- its words and the cues written in them, timed --
+  /// with the cues left out.
+  List<TimedWord> spoken(List<TimedWord> all) => [
+        for (var (i, w) in all.indexed)
+          if (!cues.contains(i)) w
+      ];
 }
 
-/// qwenLaugh is a laugh as the expressive voices are given it: written into
-/// the words, so they laugh into them -- a laugh of their own, put before
-/// or after, stopped dead where the words began (Ken, 2026-10-31).
-const qwenLaugh = "Haha,";
+/// qwenWritten are the cues the expressive voices are given written into
+/// the words, so they do them in the same breath: after the words before
+/// them -- "the way, haha." -- or, with none, before the words after. A
+/// laugh of their own, put before the words, stopped dead where they began,
+/// and our recording sounded laid on (Ken, 2026-10-31). A cough is as good
+/// so; a sigh and a breath, written so, sounded strange.
+/// Each is said two ways: within a sentence, and as one of its own after
+/// a sentence's end.
+const qwenWritten = {
+  SpeechCue.laugh: ("haha", "Haha!"),
+  SpeechCue.cough: ("ahem", "Ahem."),
+};
 
 /// QwenScript is a run's text, and what it is to be cut into: its stretches
-/// of speech in order and the gaps round them, each a list, as several can
-/// fall together.
+/// of speech in order and the gaps round them, each a list.
 class QwenScript {
-  final String text;
   final List<QwenSpoken> spoken;
 
   /// gaps are those before each stretch, and after the last: one more than
-  /// [spoken]. An empty one is no gap, and no pause in [text].
+  /// [spoken]. An empty one is no gap.
   final List<List<QwenGap>> gaps;
-  const QwenScript(this.text, this.spoken, this.gaps);
+  const QwenScript(this.spoken, this.gaps);
 
-  /// markers is how many pauses [text] has, which the take must be cut at.
-  int get markers => gaps.where((g) => g.isNotEmpty).length;
+  /// runs are its stretches as the program is given them: those said
+  /// aloud in one run, those said softly -- a whisper -- in another, each
+  /// run's direction being one. Its stretches are kept apart by a pause,
+  /// which the take is cut at.
+  List<({bool soft, String text, List<int> stretches})> get runs => [
+        for (var soft in [false, true])
+          if ([
+            for (var (k, s) in spoken.indexed)
+              if (s.whisper == soft) k
+          ]
+              case var these when these.isNotEmpty)
+            (
+              soft: soft,
+              text: these
+                  .map((k) => spoken[k].text)
+                  .join(" [pause:${qwenMark}s] "),
+              stretches: these,
+            ),
+      ];
 }
 
-/// qwenMarkLine and qwenMarkCue are the pauses written for a line's end
-/// and a cue: told apart by nothing but their order, they need only be
-/// longer than any silence speech has.
-const qwenMarkLine = 1.2;
-const qwenMarkCue = 0.6;
+/// qwenMark is the pause written between two stretches of a run: longer
+/// than any silence speech has, it renders as exact silence, which speech
+/// never is.
+const qwenMark = 0.6;
 
-/// qwenScript is [lines] as one run's markup. The cues the expressive
+/// qwenSoftly is [direction] said softly, for a whisper. The program
+/// cannot whisper -- asked to, it speaks low -- and a whisper made of its
+/// voice afterwards, hiss through its shape, was heard as a vocoder (Ken,
+/// 2026-10-31): a voice as near a real one as can be, said low.
+String qwenSoftly(String direction) {
+  var soft = SpeechDirection.whisper.say;
+  return direction.isEmpty || direction == soft ? soft : "$direction $soft";
+}
+
+/// qwenSoftLevel is how loud a stretch said softly is kept: the voice asked
+/// to speaks low but hardly less loud, 2dB at most.
+const qwenSoftLevel = 0.7;
+
+final _leadingMarks = RegExp(r"^[.,!?;:…]+");
+
+/// qwenScript is [lines] -- sections -- as one run's markup, each section
+/// one stretch, spoken in one go: cut, at every cue, the voice started
+/// again at each, and was heard to (Ken, 2026-10-31). So the cues are
+/// written into it. A laugh and a cough are words -- see qwenWritten. A
+/// breath, a sigh and a pause are a beat, "...", which the voice pauses at:
+/// our recording, or a pause the length asked for, is put into that pause
+/// afterwards -- see qwenTimed. A "..." alone, the breath the voice takes
+/// itself there, was not heard (Ken, 2026-10-31). Only a whisper's
+/// edge cuts a section, its words whispered after. The cues the expressive
 /// voices cannot do mid-line -- stressing a word, a slower stretch -- are
-/// left out: the line's direction says those. A laugh -- the cue, or a line
-/// said laughing -- is written into the words: see qwenLaugh.
+/// left out: the section's direction says those.
 QwenScript qwenScript(List<SpeechLine> lines) {
   var spoken = <QwenSpoken>[];
   var gaps = <List<QwenGap>>[[]];
   for (var (i, line) in lines.indexed) {
     if (i > 0) gaps.last.add(const QwenLineEnd());
+    var words = <String>[];
+    var cues = <int>{};
+    var beats = <(int, QwenGap)>[];
     bool? whisper;
-    // A laugh waiting for the words after it, and whether the last stretch
-    // is this line's, with nothing between it and here: a laugh there is
-    // written into it.
-    var laughNext =
-        line.own.isEmpty && line.direction == SpeechDirection.laughing;
-    var open = false;
-    // A laugh after the last words: written after them.
-    void laughAfter(int k) {
-      var was = spoken[k];
-      spoken[k] = QwenSpoken("${was.text} ${qwenLaugh.replaceAll(",", "!")}",
-          whisper: was.whisper,
-          laughs: {...was.laughs, SpokenText(was.text).words.length});
+    // A cue with no words before it: written before the words after it.
+    String? before =
+        line.own.isEmpty && line.direction == SpeechDirection.laughing
+            ? "Haha,"
+            : null;
+    // A cue just written within a sentence: a comma after it, before the
+    // words go on.
+    var cueOpen = false;
+    void close() {
+      if (words.isEmpty) return;
+      spoken.add(QwenSpoken(words.join(" "),
+          whisper: whisper ?? false, cues: {...cues}, beats: [...beats]));
+      gaps.add([]);
+      words.clear();
+      cues.clear();
+      beats.clear();
+    }
+
+    // A beat after the words so far: "..." on the last of them.
+    void beat() {
+      if (words.isEmpty) return;
+      words.last = "${words.last.replaceAll(RegExp(r"[,;:]$"), "")}...";
     }
 
     for (var p in parseScript(line.text)) {
       switch (p) {
         case SpokenText t:
-          // A whisper starting or ending mid-speech is cut there, to be
-          // whispered after.
-          if (whisper != null && whisper != t.whisper && gaps.last.isEmpty) {
+          if (whisper != null && whisper != t.whisper && words.isNotEmpty) {
+            // A whisper starting or ending: cut there, to be whispered
+            // after.
+            close();
             gaps.last.add(const QwenJoin());
           }
           whisper = t.whisper;
           // The program's own markup is not the reader's to write.
           var text =
               t.text.replaceAll("|", ",").replaceAll(RegExp(r"[\[\]]"), "");
-          if (laughNext && open && gaps.last.isEmpty) {
-            // Laughed between words: one stretch, the laugh in it.
-            var was = spoken.last;
-            var at = SpokenText(was.text).words.length;
-            spoken.last = QwenSpoken("${was.text} $qwenLaugh $text",
-                whisper: was.whisper, laughs: {...was.laughs, at});
-          } else {
-            spoken.add(QwenSpoken(laughNext ? "$qwenLaugh $text" : text,
-                whisper: t.whisper, laughs: {if (laughNext) 0}));
-            gaps.add([]);
+          // A stop or comma written after a cue is the words' before it.
+          if (_leadingMarks.firstMatch(text) case var m?) {
+            if (words.isNotEmpty) {
+              words.last = "${words.last.replaceAll(RegExp(r"[,;:]$"), "")}"
+                  "${m[0]}";
+            }
+            text = text.substring(m.end).trim();
+            cueOpen = false;
           }
-          laughNext = false;
-          open = true;
+          for (var w in SpokenText(text).words) {
+            if (before != null) {
+              cues.add(words.length);
+              words.add(before);
+              before = null;
+            }
+            if (cueOpen) words.last = "${words.last},";
+            cueOpen = false;
+            words.add(w);
+          }
         case SpokenPause s:
-          gaps.last.add(QwenPause(s.seconds));
-          open = false;
-        case SpokenSound s when s.cue == SpeechCue.laugh:
-          laughNext = true;
+          beats.add((words.length, QwenPause(s.seconds)));
+          beat();
+        case SpokenSound s when qwenWritten.containsKey(s.cue):
+          var (within, own) = qwenWritten[s.cue]!;
+          if (words.isEmpty) {
+            before = "${within[0].toUpperCase()}${within.substring(1)},";
+          } else if (RegExp(r"[.!?]$").hasMatch(words.last)) {
+            // After a sentence: a sentence of its own -- "Hi. Haha!"
+            cues.add(words.length);
+            words.add(own);
+          } else {
+            // Within one, after the words before it: "the way, haha".
+            if (!RegExp(r"[,;:…]$").hasMatch(words.last)) {
+              words.last = "${words.last},";
+            }
+            cues.add(words.length);
+            words.add(within);
+            cueOpen = true;
+          }
         case SpokenSound s:
-          gaps.last.add(QwenSound(s.cue));
-          open = false;
+          beats.add((words.length, QwenSound(s.cue)));
+          beat();
       }
     }
-    // A laugh after the last words: after them, in the same breath.
-    if (laughNext && open && spoken.isNotEmpty && gaps.last.isEmpty) {
-      laughAfter(spoken.length - 1);
+    close();
+  }
+  return QwenScript(spoken, gaps);
+}
+
+/// qwenPauses is where the voice paused in [sound], at the mix rate: from
+/// and to where it speaks, and each pause between, in seconds. A pause is
+/// 60ms or more 20dB under its loud part -- the voice's own pauses are not
+/// silent, but a breath's noise or a room's, and how loud that is goes
+/// with how loud it speaks.
+({double from, double to, List<(double, double)> pauses}) qwenPauses(
+    Float32List sound) {
+  var db = _levels(sound);
+  var heard = [
+    for (var d in db)
+      if (d > -60) d
+  ]..sort();
+  if (heard.isEmpty) return (from: 0, to: 0, pauses: const []);
+  var under = heard[(heard.length * 0.9).floor()] - 20;
+  var first = db.indexWhere((d) => d >= under);
+  var last = db.lastIndexWhere((d) => d >= under);
+  var pauses = <(double, double)>[];
+  var start = -1, end = -1;
+  for (var f = first; f <= last + 1; f++) {
+    if (f <= last && db[f] < under) {
+      if (start < 0) start = f;
+      end = f + 1;
+    } else if (start >= 0 && (f > last || f - end >= 2)) {
+      // A blip of 20ms or less within it is the pause still.
+      if (end - start >= 6) pauses.add((start * 0.01, end * 0.01));
+      start = -1;
     }
   }
-  var text = StringBuffer();
-  for (var (k, gap) in gaps.indexed) {
-    if (gap.isNotEmpty) {
-      var mark = gap.any((g) => g is QwenLineEnd) ? qwenMarkLine : qwenMarkCue;
-      text.write(" [pause:${mark}s] ");
-    }
-    if (k < spoken.length) text.write(spoken[k].text);
+  return (from: first * 0.01, to: (last + 1) * 0.01, pauses: pauses);
+}
+
+/// _levels is [sound]'s loudness, in dB, each 10ms of it at the mix rate.
+List<double> _levels(Float32List sound) => [
+      for (var at = 0; at + 480 <= sound.length; at += 480)
+        () {
+          var sum = 0.0;
+          for (var i = at; i < at + 480; i++) {
+            sum += sound[i] * sound[i];
+          }
+          return 10 * math.log(sum / 480 + 1e-14) / math.ln10;
+        }(),
+    ];
+
+/// qwenTimed is [words] -- a stretch's, as it was given them -- timed
+/// across [sound], at the mix rate, and the pause after each the voice
+/// paused after. The program says nothing of where its words are, and
+/// spread by their lengths alone they drift: by half a second, ten words
+/// on, the voice's pauses -- the longest at "...", a sentence's end -- not
+/// being words. So its pauses are found, and matched in order to the
+/// stops, commas and beats written: the words between spread by their
+/// lengths across the time spoken, which no pause is in.
+({List<TimedWord> words, Map<int, (double, double)> after}) qwenTimed(
+    Float32List sound, List<String> words) {
+  var (:from, :to, :pauses) = qwenPauses(sound);
+  if (words.isEmpty || to <= from) return (words: const [], after: const {});
+  // The time spoken, and where in it each pause is.
+  var at = <double>[];
+  var spoken = 0.0, last = from;
+  for (var (a, b) in pauses) {
+    spoken += a - last;
+    at.add(spoken);
+    last = b;
   }
-  return QwenScript(text.toString().trim(), spoken, gaps);
+  spoken += to - last;
+  // A word as long as its letters; a stop, a comma and a beat where the
+  // voice should pause -- a beat most of all.
+  var weights = [
+    for (var w in words)
+      w.replaceAll(RegExp(r"[^\p{L}\p{N}]", unicode: true), "").length + 1.0
+  ];
+  var total = weights.reduce((a, b) => a + b);
+  var ends = <double>[];
+  var sum = 0.0;
+  for (var w in weights) {
+    sum += w;
+    ends.add(spoken * sum / total);
+  }
+  var stops = <(int, double)>[
+    for (var (i, w) in words.indexed)
+      if (i < words.length - 1 && RegExp(r"[,.;:!?…]$").hasMatch(w))
+        (
+          i,
+          w.endsWith("...") || w.endsWith("…")
+              ? 4.0
+              : RegExp(r"[.!?]$").hasMatch(w)
+                  ? 2.0
+                  : 0.7
+        ),
+  ];
+  // Matched in order, the cheapest way: a stop far from its pause costs,
+  // as does a stop the voice did not pause at, by how much it should
+  // have, and a pause nothing written is at, by its length.
+  var n = stops.length, m = pauses.length;
+  var cost = List.generate(n + 1, (_) => List.filled(m + 1, double.infinity));
+  var back = List.generate(n + 1, (_) => List.filled(m + 1, 0));
+  cost[0][0] = 0;
+  for (var i = 0; i <= n; i++) {
+    for (var j = 0; j <= m; j++) {
+      var c = cost[i][j];
+      if (c == double.infinity) continue;
+      void step(int i2, int j2, double by, int how) {
+        if (c + by < cost[i2][j2]) {
+          cost[i2][j2] = c + by;
+          back[i2][j2] = how;
+        }
+      }
+
+      if (i < n) step(i + 1, j, stops[i].$2, 1);
+      if (j < m) step(i, j + 1, (pauses[j].$2 - pauses[j].$1) / 0.15, 2);
+      if (i < n && j < m) {
+        var d = (ends[stops[i].$1] - at[j]) / 0.6;
+        step(i + 1, j + 1, d * d, 3);
+      }
+    }
+  }
+  var matched = <int, int>{}; // a word, the pause after it
+  for (var i = n, j = m; i > 0 || j > 0;) {
+    switch (back[i][j]) {
+      case 1:
+        i--;
+      case 2:
+        j--;
+      default:
+        matched[stops[--i].$1] = --j;
+    }
+  }
+  // The real time a moment of the time spoken is: after each pause before
+  // it -- and the one at it, for a word starting there.
+  double real(double t, {required bool starting}) {
+    var r = from + t;
+    for (var (k, p) in at.indexed) {
+      if (p < t - 1e-9 || (starting && (p - t).abs() <= 1e-9)) {
+        r += pauses[k].$2 - pauses[k].$1;
+      }
+    }
+    return r;
+  }
+
+  // The words between two pauses matched spread across the time spoken
+  // between them.
+  var timed = <TimedWord>[];
+  var first = 0;
+  var since = 0.0;
+  for (var i = 0; i < words.length; i++) {
+    var k = matched[i];
+    if (k == null && i < words.length - 1) continue;
+    var until = k == null ? spoken : at[k];
+    var share = 0.0;
+    for (var w = first; w <= i; w++) {
+      share += weights[w];
+    }
+    var t = since;
+    for (var w = first; w <= i; w++) {
+      var d = (until - since) * weights[w] / share;
+      timed.add((
+        text: words[w],
+        start: real(t, starting: true),
+        end: real(t + d, starting: false)
+      ));
+      t += d;
+    }
+    first = i + 1;
+    since = until;
+  }
+  return (
+    words: timed,
+    after: {for (var e in matched.entries) e.key: pauses[e.value]},
+  );
+}
+
+/// qwenDip is the quietest moment of [sound], at the mix rate, within
+/// [within] seconds of [at]: where a beat goes that the voice did not
+/// pause for, between two words rather than in one.
+double qwenDip(Float32List sound, double at, {double within = 0.4}) {
+  var db = _levels(sound);
+  if (db.length < 3) return at.clamp(0, sound.length / 48000);
+  var lo = ((at - within) * 100).floor().clamp(1, db.length - 2);
+  var hi = ((at + within) * 100).ceil().clamp(1, db.length - 2);
+  var best = lo, quietest = double.infinity;
+  for (var f = lo; f <= hi; f++) {
+    var level = db[f - 1] + db[f] + db[f + 1];
+    if (level < quietest) {
+      quietest = level;
+      best = f;
+    }
+  }
+  return (best + 0.5) * 0.01;
+}
+
+/// _readApart is the samples of the WAV [bytes], read away from the
+/// screen's thread -- by a function of its own, so that nothing but the
+/// bytes is sent there: a closure in _say would take the running program
+/// with it, which cannot be sent.
+Future<Float32List?> _readApart(Uint8List bytes) =>
+    Isolate.run(() => readWav16(ByteData.sublistView(bytes)));
+
+/// QwenBeat is a beat put into a stretch: [sound] in at [at] seconds -- and
+/// for a pause, the voice's own pause around it, [hush], from and to, made
+/// silent too, so the whole gap is silence.
+typedef QwenBeat = ({double at, Float32List sound, (double, double)? hush});
+
+/// qwenPlaceBeats puts [beats] into [sound], at the mix rate, the voice
+/// faded out and in again across 10ms either side, so no click is heard
+/// where it was not quite silent. Answers the sound, and where each went
+/// in and for how long, for the words after to be moved on by.
+(Float32List, List<(double, double)>) qwenPlaceBeats(
+    Float32List sound, List<QwenBeat> beats) {
+  const fade = 480;
+  var voice = Float32List.fromList(sound);
+  for (var b in beats) {
+    if (b.hush case (var from, var to)) {
+      var a = (from * 48000).round().clamp(0, voice.length);
+      var z = (to * 48000).round().clamp(a, voice.length);
+      // Faded within the pause itself, where there is nothing to click.
+      var edge = math.min(fade, (z - a) ~/ 4);
+      for (var i = a; i < z; i++) {
+        voice[i] *= edge == 0
+            ? 0
+            : i - a < edge
+                ? 1 - (i - a) / edge
+                : z - 1 - i < edge
+                    ? 1 - (z - 1 - i) / edge
+                    : 0;
+      }
+    }
+  }
+  var placed = [
+    for (var b in beats)
+      ((b.at * 48000).round().clamp(0, voice.length), b.sound)
+  ]..sort((a, b) => a.$1.compareTo(b.$1));
+  var out = <double>[];
+  var moved = <(double, double)>[];
+  var from = 0;
+  for (var (at, insert) in placed) {
+    var part = voice.sublist(from, at);
+    for (var i = 0; i < fade && i < part.length; i++) {
+      part[part.length - 1 - i] *= i / fade;
+      if (from > 0) part[i] *= i / fade;
+    }
+    out.addAll(part);
+    out.addAll(insert);
+    moved.add((at / 48000, insert.length / 48000));
+    from = at;
+  }
+  var rest = voice.sublist(from);
+  for (var i = 0; i < fade && i < rest.length && from > 0; i++) {
+    rest[i] *= i / fade;
+  }
+  out.addAll(rest);
+  return (Float32List.fromList(out), moved);
 }
 
 /// qwenCut cuts [pcm] -- a run's take, at 24kHz -- at its exact silences of
@@ -431,6 +759,8 @@ QwenScript qwenScript(List<SpeechLine> lines) {
 ({List<Float32List> sounds, bool leading, bool trailing})? qwenCut(
     Float32List pcm, int markers,
     {double least = 0.35}) {
+  // Asked for none, a silence of the voice's own is not one to cut at.
+  if (markers == 0) return (sounds: [pcm], leading: false, trailing: false);
   var need = (least * 24000).round();
   var runs = <(int, int)>[];
   var start = -1;
@@ -565,34 +895,44 @@ class QwenSpeech extends SpeechEngine {
     return dir;
   }
 
-  /// _run speaks [lines], all said the same way, in one run: a take of each,
-  /// its cues in place. A run that cannot be cut as it was written is done
-  /// again a line at a time.
+  /// _run speaks [lines], all said the same way: a take of each, its cues
+  /// in place. Its stretches said aloud are one run, those said softly --
+  /// a whisper -- another, a run's direction being one; a run that cannot
+  /// be cut as it was written is done again a line at a time.
   Future<List<SpokenAudio>> _run(
       String dir, SpeechSpec spec, List<SpeechLine> lines, int seed) async {
     var script = qwenScript(lines);
-    var pcm = await _say(dir, spec, qwenDirection(lines.first, spec.expression),
-        script.text, seed,
-        compose: script.markers > 0);
-    var cut = qwenCut(pcm, script.markers);
-    var expected = script.spoken.length;
-    if (cut == null || cut.sounds.length != expected) {
-      if (lines.length > 1) {
+    var direction = qwenDirection(lines.first, spec.expression);
+    var pieces = List<Float32List?>.filled(script.spoken.length, null);
+    for (var run in script.runs) {
+      stopper.check();
+      var pcm = await _say(dir, spec,
+          run.soft ? qwenSoftly(direction) : direction, run.text, seed,
+          compose: run.stretches.length > 1);
+      var cut = qwenCut(pcm, run.stretches.length - 1);
+      if (cut != null && cut.sounds.length == run.stretches.length) {
+        for (var (i, k) in run.stretches.indexed) {
+          pieces[k] = cut.sounds[i];
+        }
+      } else if (lines.length > 1) {
         debugPrint("qwen_tts: a run of ${lines.length} lines did not cut "
             "as written; one at a time");
         return [
           for (var l in lines) ...await _run(dir, spec, [l], seed)
         ];
+      } else {
+        // One line's stretches, not to be told apart: each by itself.
+        for (var k in run.stretches) {
+          stopper.check();
+          pieces[k] = await _say(
+              dir,
+              spec,
+              run.soft ? qwenSoftly(direction) : direction,
+              script.spoken[k].text,
+              seed,
+              compose: false);
+        }
       }
-      // One line, its cues not to be found: its words as they came.
-      var whole = upsample2x(qwenTrimmed(pcm));
-      return [
-        SpokenAudio(
-            whole,
-            Float32List.fromList(whole),
-            estimateWords(SpokenText(spokenText(lines.single)).words, 0,
-                whole.length / 48000))
-      ];
     }
     var man =
         qwenVoices.where((v) => v.id == spec.voice).firstOrNull?.gender == "m";
@@ -611,8 +951,8 @@ class QwenSpeech extends SpeechEngine {
             var sound = await cueRecording(s.cue, man: man);
             if (sound == null) break;
             takes.last.add((sound, Float32List.fromList(sound), const []));
-            // A breath leads straight into the words; a laugh, a sigh or a
-            // cough has a moment after it.
+            // A breath in leads straight into the words; a laugh, a sigh or
+            // a cough has a moment after it.
             if (s.cue != SpeechCue.breath) takes.last.add(silence(0.12));
         }
       }
@@ -620,39 +960,110 @@ class QwenSpeech extends SpeechEngine {
 
     for (var (k, said) in script.spoken.indexed) {
       await gap(script.gaps[k]);
-      var piece = cut.sounds[k];
+      var piece = pieces[k]!;
       var sound = await Isolate.run(() => upsample2x(qwenTrimmed(piece)));
-      if (said.whisper) sound = whispered(sound);
-      takes.last.add((
-        sound,
-        Float32List.fromList(sound),
-        said.words(sound.length / 48000)
-      ));
+      // Said softly, it is quieter too: the voice, asked to, speaks low
+      // but hardly less loud.
+      if (said.whisper) sound = softly(sound, by: qwenSoftLevel);
+      // Timed, and its beats placed, by the voice's own pauses.
+      var timed = qwenTimed(sound, SpokenText(said.text).words);
+      var beats = <QwenBeat>[];
+      for (var (after, gap) in said.beats) {
+        var i = math.min(after, timed.words.length) - 1;
+        var paused = i < 0 ? null : timed.after[i];
+        var (a, b) = paused ??
+            (i < 0
+                ? (0.0, 0.0)
+                : () {
+                    var dip = qwenDip(sound, timed.words[i].end);
+                    return (dip, dip);
+                  }());
+        switch (gap) {
+          case QwenPause p:
+            // The gap all silence, the voice's own pause with it, as long
+            // as asked -- or as long as the voice's own, where longer.
+            beats.add((
+              at: (a + b) / 2,
+              sound: silence(math.max(0.0, p.seconds - (b - a))).$1,
+              hush: paused,
+            ));
+          case QwenSound s:
+            var cue = await cueRecording(s.cue, man: man);
+            if (cue == null) break;
+            beats.add(switch (s.cue) {
+              // A breath in leads into the words after it; one out
+              // follows those before; a sigh has a moment either side.
+              SpeechCue.breath => (
+                  at: math.max(a, b - 0.04),
+                  sound: cue,
+                  hush: null
+                ),
+              SpeechCue.exhale => (
+                  at: math.min(b, a + 0.03),
+                  sound: cue,
+                  hush: null
+                ),
+              _ => (
+                  at: (a + b) / 2,
+                  sound: Float32List.fromList([...cue, ...silence(0.1).$1]),
+                  hush: null,
+                ),
+            });
+          default:
+        }
+      }
+      var words = said.spoken(timed.words);
+      if (beats.isNotEmpty) {
+        var (placed, moved) = qwenPlaceBeats(sound, beats);
+        sound = placed;
+        words = [
+          for (var w in words)
+            () {
+              var by = 0.0;
+              for (var (at, len) in moved) {
+                if (w.start >= at - 0.02) by += len;
+              }
+              return (text: w.text, start: w.start + by, end: w.end + by);
+            }(),
+        ];
+      }
+      takes.last.add((sound, Float32List.fromList(sound), words));
     }
     await gap(script.gaps.last);
     return [for (var pieces in takes) assembleTake(pieces)];
   }
 
   /// _say runs the program on [text], said as [direction]: its take at
-  /// 24kHz, as it wrote it.
+  /// 24kHz, as it wrote it. Stop ends the program.
   Future<Float32List> _say(
       String dir, SpeechSpec spec, String direction, String text, int seed,
       {required bool compose}) async {
+    stopper.check();
     var scratch = await Directory.systemTemp.createTemp("canvas-qwen");
     try {
       var out = path.join(scratch.path, "line.wav");
-      var run = await Process.run(
+      var program = await Process.start(
           path.join(dir, qwenProgram),
           qwenArguments(dir, spec, direction, text, out,
               seed: seed, compose: compose));
+      var forget = stopper.whenStopped(() => program.kill());
+      var errors = StringBuffer();
+      program.stdout.drain<void>();
+      var said = program.stderr
+          .transform(const SystemEncoding().decoder)
+          .forEach(errors.write);
+      var code = await program.exitCode;
+      forget();
+      stopper.check();
+      await said;
       var file = File(out);
-      if (run.exitCode != 0 || !await file.exists()) {
-        debugPrint("qwen_tts failed (${run.exitCode}): ${run.stderr}");
+      if (code != 0 || !await file.exists()) {
+        debugPrint("qwen_tts failed ($code): $errors");
         throw const SpeechException("The expressive voice could not speak "
             "the line: try again.");
       }
       var bytes = await file.readAsBytes();
-      var pcm = await Isolate.run(() => readWav16(ByteData.sublistView(bytes)));
+      var pcm = await _readApart(bytes);
       if (pcm == null) {
         throw const SpeechException(
             "The expressive voice sent back nothing to play.");

@@ -15,8 +15,9 @@ import 'package:bruig/plugin_system/canvas/model/text_document.dart'
 // and an export treat it as any other sound.
 //
 // The script is plain text with cues in square brackets, put in from the
-// device's cue buttons: [pause 0.5] for half a second's silence, [breath],
-// [laugh], [sigh] and [cough] for those sounds, [whisper] and [slow] for
+// device's cue buttons: [pause 0.5] for half a second's silence, [breath]
+// and [exhale] for a breath in and out, [laugh], [sigh] and [cough] for
+// those sounds, [whisper] and [slow] for
 // the sentence after them, and [stress] for the word after it. Each engine
 // offers only the cues it can really do -- see SpeechEngineKind.cues.
 
@@ -236,10 +237,12 @@ class SpeechLine {
 
 final _lineHead = RegExp(r"^\s*\[(say:[^\]]*|[a-z]+)\]\s*");
 
-/// scriptLines is [script] as lines: one for each line of the text, and
-/// each of those cut at its sentences' ends -- but for one that is a line
-/// already in [was], kept whole, as joined. A line whose words and
-/// direction are as one in [was] keeps its takes.
+/// scriptLines is [script] as its sections: one for each line of the text,
+/// spoken as one take -- in one go, so in one voice, start to finish; a
+/// voice made to start again at every sentence sounded like a different
+/// take each time (Ken, 2026-10-31). A new section is a new line of the
+/// text, for a change in how it is said. One whose words are as in [was]
+/// keeps its takes.
 List<SpeechLine> scriptLines(String script, [List<SpeechLine> was = const []]) {
   var out = <SpeechLine>[];
   var unused = [...was];
@@ -280,37 +283,29 @@ List<SpeechLine> scriptLines(String script, [List<SpeechLine> was = const []]) {
     return SpeechLine(text, direction: direction, own: own);
   }
 
+  // A line of cues alone, with no words, goes with the words after it --
+  // or before it, at the end: a section has words to say.
+  var pieces = <String>[];
+  var held = "";
   for (var paragraph in script.split("\n")) {
     var p = paragraph.trim();
     if (p.isEmpty) continue;
-    if (was.any((l) => l.written == p)) {
-      out.add(line(p));
+    if (p.replaceAll(RegExp(r"\[[^\]]*\]"), "").trim().isEmpty) {
+      held = "$held $p";
       continue;
     }
-    // Cut after a sentence's end -- the direction stays with the first. A
-    // piece of cues alone, with no words, stays with the words after it,
-    // or before it at the end: a line has words to say.
-    var pieces = <String>[];
-    var held = "";
-    for (var piece in p.split(RegExp(r"(?<=[.!?…])\s+(?=\S)"))) {
-      if (piece.trim().isEmpty) continue;
-      if (piece.replaceAll(RegExp(r"\[[^\]]*\]"), "").trim().isEmpty) {
-        held = "$held $piece";
-        continue;
-      }
-      pieces.add("$held $piece".trim());
-      held = "";
+    pieces.add("$held $p".trim());
+    held = "";
+  }
+  if (held.trim().isNotEmpty) {
+    if (pieces.isEmpty) {
+      pieces.add(held.trim());
+    } else {
+      pieces.last = "${pieces.last} ${held.trim()}";
     }
-    if (held.trim().isNotEmpty) {
-      if (pieces.isEmpty) {
-        pieces.add(held.trim());
-      } else {
-        pieces.last = "${pieces.last} ${held.trim()}";
-      }
-    }
-    for (var piece in pieces) {
-      out.add(line(piece));
-    }
+  }
+  for (var piece in pieces) {
+    out.add(line(piece));
   }
   return [
     for (var l in out)
@@ -321,7 +316,8 @@ List<SpeechLine> scriptLines(String script, [List<SpeechLine> was = const []]) {
 /// SpeechCue is one of the script's cues: see the note at the top.
 enum SpeechCue {
   pause("Pause"),
-  breath("Breath"),
+  breath("Breath in"),
+  exhale("Breath out"),
   laugh("Laugh"),
   sigh("Sigh"),
   cough("Cough"),
@@ -338,7 +334,11 @@ enum SpeechCue {
   /// sound is whether the cue is a sound of its own -- a breath, a laugh --
   /// rather than a way of saying the words around it.
   bool get sound =>
-      this == breath || this == laugh || this == sigh || this == cough;
+      this == breath ||
+      this == exhale ||
+      this == laugh ||
+      this == sigh ||
+      this == cough;
 }
 
 /// SpeechPiece is a stretch of the script: words, said a way, or a cue

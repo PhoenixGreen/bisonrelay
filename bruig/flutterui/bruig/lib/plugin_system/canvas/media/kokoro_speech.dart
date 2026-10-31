@@ -230,6 +230,10 @@ class KokoroDownload extends PinnedDownload {
 /// sighs and coughs are recordings of a woman's or a man's, as the voice
 /// is, and its whisper the voice laid onto hiss -- see speech_cues.dart. It
 /// cannot stress a word: that cue is left out rather than faked.
+/// kokoroSoftLevel is how loud a whisper is kept: Kokoro cannot be told to
+/// speak low, so it is only quieter.
+const kokoroSoftLevel = 0.55;
+
 class KokoroSpeech extends SpeechEngine {
   /// library is where sherpa-onnx's own library is, for tests; in the app
   /// it is already loaded, and this is null.
@@ -332,7 +336,7 @@ class KokoroSpeech extends SpeechEngine {
           out.add(silence(s.seconds));
         case SpokenText t:
           var sound = spoken[k++];
-          if (t.whisper) sound = whispered(sound);
+          if (t.whisper) sound = softly(sound, by: kokoroSoftLevel);
           out.add((
             sound,
             Float32List.fromList(sound),

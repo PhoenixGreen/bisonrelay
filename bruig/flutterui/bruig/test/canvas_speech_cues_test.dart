@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/media/kokoro_speech.dart'
+    show kokoroSoftLevel;
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_cues.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
@@ -71,23 +73,20 @@ void main() {
     expect(readWav16(ByteData(8)), isNull);
   });
 
-  test("a whisper keeps the voice's shape but not its pitch", () {
-    // A voiced vowel: a saw at 140 Hz, through a resonance or two.
+  test("a whisper is the voice said softly: quieter, its pitch kept", () {
+    // A voiced vowel: a saw at 140 Hz. Made hiss, it was heard as a
+    // vocoder (Ken, 2026-10-31).
     var n = 48000;
     var voice = Float32List(n);
     for (var i = 0; i < n; i++) {
       var t = i / 48000;
       voice[i] = 0.3 * (2 * ((t * 140) % 1) - 1);
     }
-    var window =
-        (Float32List x) => Float32List.fromList(x.sublist(24000, 26048));
-    expect(detectPitch(window(voice))!.clarity, greaterThan(0.8));
-    var hushed = whispered(voice);
-    var heard = detectPitch(window(hushed));
-    expect(heard == null || heard.clarity < 0.5, isTrue,
-        reason: "no pitch left: ${heard?.hz} at ${heard?.clarity}");
-    expect(rms(hushed, 4800), lessThan(rms(voice, 4800)));
-    expect(rms(hushed, 4800), greaterThan(rms(voice, 4800) * 0.1),
-        reason: "quieter, not gone");
+    Float32List window(Float32List x) =>
+        Float32List.fromList(x.sublist(24000, 26048));
+    var soft = softly(voice, by: kokoroSoftLevel);
+    expect(detectPitch(window(soft))!.hz,
+        closeTo(detectPitch(window(voice))!.hz, 1));
+    expect(rms(soft, 4800), closeTo(rms(voice, 4800) * kokoroSoftLevel, 1e-3));
   });
 }

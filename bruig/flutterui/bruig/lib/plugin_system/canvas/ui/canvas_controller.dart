@@ -9167,6 +9167,20 @@ class CanvasController extends ChangeNotifier {
   /// first waiting, or every one, where it speaks them together.
   final Map<String, Set<String>> _speakingNow = {};
 
+  /// _speechStops is Stop, for each channel speaking now.
+  final Map<String, SpeechStop> _speechStops = {};
+
+  /// stopSpeaking stops what [channel] is speaking, and lets go of the
+  /// sections waiting: the program speaking is ended, and nothing it was
+  /// part way through is kept. The takes already made stay.
+  void stopSpeaking(String channel) {
+    var stop = _speechStops[channel];
+    if (stop == null) return;
+    speechQueue[channel]?.clear();
+    stop.stop();
+    notifyListeners();
+  }
+
   /// _lineSpeech is [channel]'s device with its lines set out -- those of
   /// its script, where it has none yet.
   SpeechSpec? _lineSpeech(String channel) {
@@ -9219,6 +9233,7 @@ class CanvasController extends ChangeNotifier {
         });
         if (queue.isEmpty) break;
         var engine = speechEngineFor(now);
+        var stop = engine.stopper = _speechStops[channel] = SpeechStop();
         // Every line waiting, at once, where the engine does better so;
         // else the first.
         var keys = engine.batches ? [...queue] : [queue.first];
@@ -9233,6 +9248,7 @@ class CanvasController extends ChangeNotifier {
                     seed: 1 + _seeds.nextInt(1 << 30))
               ];
         if (_disposed) return null;
+        if (stop.stopped) break;
         for (var (i, key) in keys.indexed) {
           if (!await _keepLineTake(channel, key, audios[i])) {
             problem = "The take could not be kept.";
@@ -9245,11 +9261,13 @@ class CanvasController extends ChangeNotifier {
         if (problem != null) break;
       }
     } on SpeechException catch (e) {
-      problem = e.message;
+      // Stopped, it is as asked: nothing to say.
+      if (!(_speechStops[channel]?.stopped ?? false)) problem = e.message;
     } catch (e) {
       debugPrint("Unable to speak a line: $e");
       problem = "The voice could not speak: $e";
     } finally {
+      _speechStops.remove(channel);
       speechQueue.remove(channel);
       _speechInto.remove(channel);
       _speakingNow.remove(channel);
@@ -9482,13 +9500,16 @@ class CanvasController extends ChangeNotifier {
     ]);
   }
 
-  /// speechSplitAt is where line [text] is split: at the comma or stop
-  /// nearest its middle, or null for none.
+  /// speechSplitAt is where section [text] is split: at the sentence's
+  /// end nearest its middle -- or, one sentence, the comma -- or null for
+  /// none.
   static int? speechSplitAt(String text) {
     var body = text.isEmpty ? text : text.substring(0, text.length - 1);
-    var marks = [
-      for (var m in RegExp(r"[,.;:!?…]\s").allMatches(body)) m.start + 1
-    ];
+    List<int> at(String marks) => [
+          for (var m in RegExp("[$marks]\\s").allMatches(body)) m.start + 1
+        ];
+    var marks = at(".!?…");
+    if (marks.isEmpty) marks = at(",;:");
     if (marks.isEmpty) return null;
     var middle = text.length / 2;
     return marks.reduce(

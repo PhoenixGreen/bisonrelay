@@ -46,7 +46,52 @@ class SpeechException implements Exception {
   String toString() => message;
 }
 
+/// SpeechStopped is a take not spoken because Stop was pressed.
+class SpeechStopped extends SpeechException {
+  const SpeechStopped() : super("Stopped.");
+}
+
+/// SpeechStop is Stop, for the engine speaking: whether it was pressed, and
+/// what is to be done when it is -- a program running to be ended.
+class SpeechStop {
+  bool _stopped = false;
+  final _then = <void Function()>{};
+
+  bool get stopped => _stopped;
+
+  void stop() {
+    if (_stopped) return;
+    _stopped = true;
+    for (var f in [..._then]) {
+      f();
+    }
+    _then.clear();
+  }
+
+  /// whenStopped does [f] when Stop is pressed -- now, if it was -- and
+  /// answers how to forget it, once it is no longer needed.
+  void Function() whenStopped(void Function() f) {
+    if (_stopped) {
+      f();
+      return () {};
+    }
+    _then.add(f);
+    return () => _then.remove(f);
+  }
+
+  /// check throws SpeechStopped once Stop is pressed: between one run and
+  /// the next.
+  void check() {
+    if (_stopped) throw const SpeechStopped();
+  }
+}
+
 abstract class SpeechEngine {
+  /// stopper is Stop, for what this engine is speaking now: an engine
+  /// that runs a program ends it, and one that cannot be stopped part way
+  /// stops between its takes. Set by whoever asks it to speak.
+  SpeechStop stopper = SpeechStop();
+
   Future<List<SpeechVoice>> voices();
   Future<SpokenAudio> speak(SpeechSpec spec);
 

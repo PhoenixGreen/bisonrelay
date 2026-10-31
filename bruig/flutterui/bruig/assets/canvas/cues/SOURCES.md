@@ -1,7 +1,7 @@
 # Speech cue sounds
 
 The breaths, laughs, sighs and coughs our own voices make for the Speech
-device's [breath], [laugh], [sigh] and [cough] cues. Each is a recording
+device's [breath], [exhale], [laugh], [sigh] and [cough] cues. Each is a recording
 from Freesound released under CC0 1.0 (public domain:
 https://creativecommons.org/publicdomain/zero/1.0/), so none needs credit;
 the sources are listed so anyone can check them.
@@ -19,3 +19,9 @@ brought to a level beside speech, and written as 24 kHz mono 16-bit WAV.
 | man-laugh.wav    | https://freesound.org/people/egomassive/sounds/536811/       |
 | man-sigh.wav     | https://freesound.org/people/Ashtalon/sounds/275055/         |
 | man-cough.wav    | https://freesound.org/people/aldenroth2/sounds/272029/       |
+
+The breaths out, man-exhale.wav and woman-exhale.wav, are made from the
+breaths in above: played backwards (the man's without its first 0.16 s,
+a lip sound), their hiss let down by two low passes at 2.2 kHz, faded in
+over 60 ms and out over 250 ms, and brought 8 dB under the breath in, so
+they are heard as a quiet breath out rather than a heavy one.

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -56,6 +57,17 @@ class StubSpeech extends SpeechEngine {
       for (var (i, w) in words.indexed)
         (text: w, start: i * 0.25, end: i * 0.25 + 0.2),
     ]);
+  }
+}
+
+/// _Held is an engine that does not finish until it is stopped.
+class _Held extends StubSpeech {
+  @override
+  Future<SpokenAudio> speak(SpeechSpec spec) async {
+    while (!stopper.stopped) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    throw const SpeechStopped();
   }
 }
 
@@ -254,7 +266,7 @@ void main() {
       var kokoro = KokoroSpeech();
       expect(kokoro.batches, isTrue);
       var lines = scriptLines(
-          "Good evening. [whisper] It is a secret. [laughing] We won!");
+          "Good evening.\n[whisper] It is a secret.\n[laughing] We won!");
       var takes =
           await kokoro.speakLines(const SpeechSpec(voice: "bf_emma"), lines);
       expect(takes, hasLength(3));
@@ -467,8 +479,8 @@ esac
         () async {
       var c = make();
       addTearDown(c.dispose);
-      c.setSpeech(
-          "a", const SpeechSpec(script: "Hello world. [laughing] Good night."));
+      c.setSpeech("a",
+          const SpeechSpec(script: "Hello world.\n[laughing] Good night."));
       c.frame = 50;
       var before = c.document.elements.length;
       expect(await c.speakLines("a"), isNull);
@@ -515,7 +527,7 @@ esac
         "Replace speaks into the one picked; Remove empties it", () async {
       var c = make();
       addTearDown(c.dispose);
-      c.setSpeech("a", const SpeechSpec(script: "One. Two."));
+      c.setSpeech("a", const SpeechSpec(script: "One.\nTwo."));
       await c.speakLines("a");
       for (var i = 0; i < 2; i++) {
         var line = c.speechOf("a")!.lines.first;
@@ -677,7 +689,7 @@ esac
       CanvasController.speechEngineFor = (spec) => batch;
       var c = make();
       addTearDown(c.dispose);
-      c.setSpeech("a", const SpeechSpec(script: "One. Two. Three."));
+      c.setSpeech("a", const SpeechSpec(script: "One.\nTwo.\nThree."));
       expect(await c.speakLines("a"), isNull);
       expect(
           batch.batched,
@@ -698,23 +710,28 @@ esac
     test("lines joined and split by hand, the script written from them", () {
       var c = make();
       addTearDown(c.dispose);
-      c.setSpeech(
-          "a", const SpeechSpec(script: "[warm] Hello there, my friend. Bye."));
+      c.setSpeech("a",
+          const SpeechSpec(script: "[warm] Hello there, my friend.\nBye."));
       c.joinSpeechLine("a", 0);
       var spec = c.speechOf("a")!;
       expect(spec.lines.single.text, "Hello there, my friend. Bye.");
       expect(spec.lines.single.direction, SpeechDirection.warm);
       expect(spec.script, "[warm] Hello there, my friend. Bye.");
-      // Typed again, a line joined by hand is kept whole.
+      // Typed again, a section joined by hand is kept whole.
       var typed = spec.withScript(spec.script);
       expect(typed.lines, hasLength(1));
       c.splitSpeechLine("a", 0);
       spec = c.speechOf("a")!;
-      expect(spec.lines.map((l) => l.text), ["Hello there,", "my friend. Bye."],
-          reason: "at the mark nearest its middle");
+      expect(spec.lines.map((l) => l.text), ["Hello there, my friend.", "Bye."],
+          reason: "at a sentence's end, before a comma");
       expect(spec.lines.map((l) => l.direction),
           [SpeechDirection.warm, SpeechDirection.warm]);
-      expect(spec.script, "[warm] Hello there,\n[warm] my friend. Bye.");
+      expect(spec.script, "[warm] Hello there, my friend.\n[warm] Bye.");
+      // One sentence: at the comma nearest its middle.
+      c.setSpeech("a", const SpeechSpec(script: "Hello there, my friend"));
+      c.splitSpeechLine("a", 0);
+      expect(c.speechOf("a")!.lines.map((l) => l.text),
+          ["Hello there,", "my friend"]);
     });
 
     testWidgets("added from the effects, spoken, and seen on the strip",
@@ -788,7 +805,8 @@ esac
           reason: "the line's take, in its first slot");
       expect(c.speechOf("a")!.takes, isEmpty,
           reason: "nothing on the timeline until it is added");
-      expect(find.textContaining("1 of 1 lines with a take"), findsOneWidget);
+      expect(
+          find.textContaining("1 of 1 sections with a take"), findsOneWidget);
       // On the channel's strip, its slot.
       expect(
           find.descendant(
@@ -797,6 +815,63 @@ esac
           findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+    });
+
+    testWidgets("Stop lets go of a voice that takes too long", (tester) async {
+      var held = _Held();
+      CanvasController.speechEngineFor = (_) => held;
+      var c = make();
+      c.openEffects("a");
+      c.setSpeech("a",
+          const SpeechSpec(voice: "v1", script: "Hello there.\nGood night."));
+      tester.view.physicalSize = const Size(1600, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: ListenableBuilder(
+                    listenable: c,
+                    builder: (context, _) => Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              CanvasMixer.effects(
+                                  controller: c,
+                                  height: 380,
+                                  onResize: (_) {},
+                                  onClose: () {}),
+                            ])))),
+      ));
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.byKey(const ValueKey("speechStop")), findsNothing,
+          reason: "nothing to stop");
+      String? problem = "not done";
+      unawaited(c.speakLines("a").then((p) => problem = p));
+      await tester.pump();
+      // While it speaks, Speak all is Stop.
+      expect(find.byKey(const ValueKey("speechSpeak")), findsNothing);
+      await tester.ensureVisible(find.byKey(const ValueKey("speechStop")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("speechStop")));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(held.stopper.stopped, isTrue, reason: "the engine told");
+      expect(problem, isNull, reason: "stopped as asked: nothing to say");
+      expect(c.speechQueue["a"], isNull, reason: "the sections waiting too");
+      expect(c.speechOf("a")!.lines.every((l) => l.take == null), isTrue,
+          reason: "nothing part made kept");
+      expect(find.byKey(const ValueKey("speechSpeak")), findsOneWidget);
+      expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       c.dispose();
     });
