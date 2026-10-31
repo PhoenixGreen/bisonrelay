@@ -50,8 +50,24 @@ class CanvasExport {
   final int width;
   final int height;
 
+  /// cover is a picture to show before it is opened -- a game's first
+  /// frame -- and params anything else its embed carries. See
+  /// game_publish.dart.
+  final Uint8List? cover;
+  final Map<String, String> params;
+
   const CanvasExport(this.data, this.mime,
-      {required this.width, required this.height});
+      {required this.width,
+      required this.height,
+      this.cover,
+      this.params = const {}});
+
+  /// embedExtras are [cover] and [params] as an embed's own, each led by a
+  /// comma, for after its data.
+  String get embedExtras => [
+        if (cover case var c?) ",cover=${base64Encode(c)}",
+        for (var MapEntry(:key, :value) in params.entries) ",$key=$value",
+      ].join();
 
   int get bytes => data.length;
 }

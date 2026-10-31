@@ -90,6 +90,40 @@ void main() {
     expect(cued.facingAt(30), SpriteFacing.right);
   });
 
+  // Ken: a pack's figure run left walked backwards -- its frames are all
+  // the front's, drawn walking right.
+  test("front frames alone are mirrored facing left, and not facing right",
+      () {
+    var e = _sprite().copyWith(
+        sheet: "x",
+        sheetW: 64,
+        sheetH: 32,
+        columns: 4,
+        rows: 2,
+        directions: true,
+        actions: const [
+          SpriteAction("Walk", frames: {SpriteFacing.front: [1, 2]}),
+          SpriteAction("Jump", frames: {SpriteFacing.front: [6]}),
+        ],
+        action: "Walk");
+    expect(e.copyWith(facing: SpriteFacing.left).sheetFrameAt(0, 12),
+        (1, true));
+    expect(e.copyWith(facing: SpriteFacing.right).sheetFrameAt(0, 12),
+        (1, false));
+    expect(
+        e
+            .copyWith(facing: SpriteFacing.left, action: "Jump")
+            .sheetFrameAt(0, 12),
+        (6, true),
+        reason: "in the air too");
+    expect(
+        e
+            .copyWith(facing: SpriteFacing.left, mirrorSides: false)
+            .sheetFrameAt(0, 12),
+        (1, false),
+        reason: "not where its sides are not to be mirrored");
+  });
+
   test("saved and read back, and made new from the Elements panel", () {
     var e = _sprite().copyWith(
         sheet: "x",

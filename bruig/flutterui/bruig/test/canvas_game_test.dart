@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:bruig/models/snackbar.dart';
@@ -16,11 +17,16 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/game_ready.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/game_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -1178,6 +1184,13 @@ void main() {
     await tester.pumpAndSettle();
     // Nothing picked: the game's own settings.
     expect(find.text("A game · 1 scene · 1 player"), findsOneWidget);
+    // The controls said in a line, and changed with Change.
+    expect(find.text("Arrows or WASD move · Space jumps · E acts"),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey("control-1-jump")), findsNothing);
+    await tester.ensureVisible(find.byKey(const ValueKey("controlsChange")));
+    await tester.tap(find.byKey(const ValueKey("controlsChange")));
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("control-1-jump")), findsOneWidget);
     // Each player's controls, one at a time.
     await tester.tap(find.byKey(const ValueKey("controlsPlayer-2")));
@@ -1198,6 +1211,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("playAs-platformer")));
     await tester.pumpAndSettle();
     expect(c.document.elementById("hero")!.base.play.as, PlayAs.platformer);
+    expect(
+        PlayFeel.of(c.document.elementById("hero")!.base.play), PlayFeel.normal,
+        reason: "a jump that reaches three tiles up, not the old default");
     expect(find.byKey(const ValueKey("playJump")), findsOneWidget);
     expect(c.canUndo, isTrue);
     await tester.tap(find.byKey(const ValueKey("playPlayer")));
@@ -1509,5 +1525,363 @@ void main() {
     expect(find.byKey(const ValueKey("elementSection-play")), findsNothing,
         reason: "it is in the Game panel now");
     expect(tester.takeException(), isNull);
+  });
+
+  // The Game panel as the board has it (GamePanel2, approved 2026-10-31).
+  group("the polished Game panel", () {
+    Future<void> panel(WidgetTester tester, CanvasController c,
+        {double scale = 1}) async {
+      tester.view.physicalSize = const Size(400, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(
+              create: (c) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!),
+            home: Scaffold(
+                body: SizedBox(
+                    width: 300,
+                    height: 2400,
+                    child: CanvasGamePanel(controller: c)))),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> tap(WidgetTester tester, String key) async {
+      await tester.ensureVisible(find.byKey(ValueKey(key)));
+      await tester.tap(find.byKey(ValueKey(key)));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("Ready to play: what is lacking, each added in a press",
+        (tester) async {
+      var c = CanvasController(page.copyWith(game: true));
+      addTearDown(c.dispose);
+      await panel(tester, c);
+      expect(find.byKey(const ValueKey("gameSection-start")), findsOneWidget,
+          reason: "nothing played yet: start from something");
+      expect(find.byKey(const ValueKey("gameCheck-player-lacking")),
+          findsOneWidget);
+
+      await tap(tester, "gameFix-player");
+      var player = c.document.elements.single;
+      expect(player.base.play.as, PlayAs.platformer);
+      expect(PlayFeel.of(player.base.play), PlayFeel.normal);
+      expect(
+          find.byKey(const ValueKey("gameCheck-player-done")), findsOneWidget);
+      expect(find.byKey(const ValueKey("gameSection-start")), findsNothing);
+      // A platformer, so: something to stand on.
+      await tap(tester, "gameFix-ground");
+      expect(
+          find.byKey(const ValueKey("gameCheck-ground-done")), findsOneWidget);
+      await tap(tester, "gameFix-goal");
+      expect(
+          c.document.elements
+              .where((e) => e.base.play.touched.does == GameDoes.stop),
+          hasLength(1),
+          reason: "the only scene: the flag ends the game");
+      await tap(tester, "gameFix-danger");
+      expect(c.document.counts.single.name, "Lives");
+      // Lives kept, and nothing showing them yet.
+      expect(
+          find.byKey(const ValueKey("gameCheck-hud-lacking")), findsOneWidget);
+      await tap(tester, "gameFix-hud");
+      var shown = c.document.elements.whereType<CounterElement>().single;
+      expect((shown.source, shown.gameCount),
+          (CounterSource.game, c.document.counts.single.id));
+      expect(find.text("all set"), findsOneWidget);
+      // Each a step of its own.
+      c.undo();
+      expect(c.document.elements.whereType<CounterElement>(), isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the HUD goes on the master, over every scene", (tester) async {
+      var c = CanvasController(CanvasDocument(
+          game: true,
+          masterOn: true,
+          master: const CanvasScene(id: "m"),
+          counts: const [
+            GameCount("coins", "Coins")
+          ],
+          scenes: [
+            CanvasScene(id: "one", elements: [
+              box("hero", 100, 100, 40, 60, as: PlayAs.platformer),
+            ]),
+          ]));
+      addTearDown(c.dispose);
+      await panel(tester, c);
+      await tap(tester, "gameFix-hud");
+      expect(c.document.master!.elements.single, isA<CounterElement>());
+      expect(c.document.masterOver, isTrue);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("Start from a platformer: a game made, every part wired",
+        (tester) async {
+      // Kenney's pack not fetched -- fetching is off, and the library is a
+      // folder of the test's own -- so plain shapes.
+      var root = await tester
+          .runAsync(() => Directory.systemTemp.createTemp("game-start"));
+      CanvasStorage.rootOverride = root!.path;
+      addTearDown(() => CanvasStorage.rootOverride = null);
+      var c = CanvasController(page.copyWith(game: true));
+      addTearDown(c.dispose);
+      await panel(tester, c);
+      await tester.ensureVisible(find.byKey(const ValueKey("gameStartMake")));
+      await tester.tap(find.byKey(const ValueKey("gameStartMake")));
+      for (var i = 0; i < 20 && c.document.elements.isEmpty; i++) {
+        await tester
+            .runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      var doc = c.document;
+      var as = [for (var e in doc.elements) e.base.play.as];
+      expect(as, contains(PlayAs.platformer));
+      expect(as.where((a) => a == PlayAs.pickup).length, greaterThan(3));
+      expect(as, contains(PlayAs.hazard));
+      expect([for (var k in doc.counts) k.name], ["Coins", "Lives"]);
+      var said = Provider.of<SnackBarModel>(
+              tester.element(find.byType(CanvasGamePanel)),
+              listen: false)
+          .snackBars;
+      expect(said.last.msg, contains("plain shapes"));
+      // Nothing left to add.
+      expect(gameChecks(c).where((k) => !k.done), isEmpty);
+      // The ledge is in reach of the jump it was made with.
+      var player = doc.elements.firstWhere((e) => e.base.play.as.moves);
+      var ledge = doc.elements.firstWhere((e) => e.name == "Ledge");
+      expect(player.bounds.bottom - ledge.bounds.top,
+          lessThan(player.base.play.jump));
+      await tester.runAsync(() => root.delete(recursive: true));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("a player's Feel, its jump drawn, and who plays it",
+        (tester) async {
+      var c = CanvasController(page.copyWith(game: true, elements: [
+        box("hero", 100, 100, 40, 60,
+            play: const PlaySpec(
+                as: PlayAs.platformer, speed: 330, jump: 220, gravity: 2400)),
+      ]));
+      addTearDown(c.dispose);
+      c.selectOnly("hero");
+      await panel(tester, c);
+      expect(find.byKey(const ValueKey("playArc")), findsOneWidget);
+      expect(find.textContaining("Jumps 3.4 tiles high"), findsOneWidget);
+      await tap(tester, "playFeel");
+      await tester.tap(find.text("Floaty").last);
+      await tester.pumpAndSettle();
+      var spec = c.document.elementById("hero")!.base.play;
+      expect((spec.speed, spec.jump, spec.gravity), (280.0, 240.0, 1400.0));
+      expect(find.textContaining("Jumps 3.8 tiles high"), findsOneWidget);
+      // Custom is offered only when it is what it is.
+      await tap(tester, "playFeel");
+      expect(find.text("Custom"), findsNothing);
+      await tester.tap(find.text("Floaty").last);
+      await tester.pumpAndSettle();
+      expect(find.text("Player 1 · Arrows or WASD move · Space jumps · E acts"),
+          findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("Pressed, and a sprite touched where it is drawn or all over",
+        (tester) async {
+      var c = CanvasController(page.copyWith(game: true, elements: [
+        box("lever", 100, 100, 20, 60),
+        SpriteElement(
+            const ElementBase(
+                id: "coin",
+                width: 64,
+                height: 64,
+                play: PlaySpec(as: PlayAs.pickup)),
+            sheetW: 64,
+            sheetH: 64,
+            drawn: const Rect.fromLTRB(0.25, 0.25, 0.75, 0.75)),
+      ]));
+      addTearDown(c.dispose);
+      c.selectOnly("lever");
+      await panel(tester, c);
+      await tap(tester, "playAs-pressed");
+      var spec = c.document.elementById("lever")!.base.play;
+      expect((spec.as, spec.pressedBy, spec.reach), (PlayAs.none, "act", 48.0));
+      expect(
+          find.byWidgetPredicate((w) =>
+              w is CanvasHint && w.message.startsWith("Pressed: it stays")),
+          findsOneWidget);
+
+      c.selectOnly("coin");
+      await tester.pumpAndSettle();
+      var coin = c.document.elementById("coin")!;
+      expect(gameTouchArea(coin, coin.bounds),
+          const Rect.fromLTRB(16, 16, 48, 48));
+      await tap(tester, "touchWhole");
+      coin = c.document.elementById("coin")!;
+      expect(coin.base.play.touchWhole, isTrue);
+      expect(gameTouchArea(coin, coin.bounds), coin.bounds);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("game sounds picked from the slots, and a scene's start",
+        (tester) async {
+      var c = CanvasController(page.copyWith(
+          game: true,
+          session: const SessionGrid().put(
+              "fx",
+              0,
+              const SessionClip(
+                  id: "c1",
+                  name: "Coin",
+                  sound: MediaSource(assetId: "x", name: "coin.wav"))),
+          elements: [
+            const AudioElement(ElementBase(id: "fxs", name: "Coin sound"),
+                clip: MediaClip(
+                    playlist: [MediaSource(assetId: "x", name: "coin.wav")],
+                    timed: true,
+                    channel: "fx",
+                    channelName: "Effects")),
+            box("hero", 100, 100, 40, 60, as: PlayAs.platformer),
+            box("coin", 300, 100, 20, 20,
+                play: const PlaySpec(
+                    as: PlayAs.pickup,
+                    touched: GameEffect(does: GameDoes.add, count: "coins"))),
+          ]));
+      addTearDown(c.dispose);
+      await panel(tester, c);
+      await tap(tester, "sceneSound-fx");
+      await tester.tap(find.text("Plays Coin").last);
+      await tester.pumpAndSettle();
+      expect(c.document.scene.gameSounds, {"fx": "slot:c1"});
+      await tap(tester, "sceneSound-fx");
+      await tester.tap(find.text("Stops").last);
+      await tester.pumpAndSettle();
+      expect(c.document.scene.gameSounds, {"fx": "stop"});
+
+      c.selectOnly("coin");
+      await tester.pumpAndSettle();
+      await tap(tester, "playSound");
+      expect(find.text("Stop Effects"), findsWidgets);
+      expect(find.text("On the canvas · Coin sound"), findsWidgets,
+          reason: "the sounds on the canvas still offered");
+      await tester.tap(find.text("Effects · Coin").last);
+      await tester.pumpAndSettle();
+      expect(c.document.elementById("coin")!.base.play.sound, "slot:c1");
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the polished panel fits at every text size", (tester) async {
+      for (var scale in [1.0, 1.25, 1.5]) {
+        for (var pick in [null, "hero"]) {
+          var c = CanvasController(page.copyWith(game: true, counts: const [
+            GameCount("coins", "Coins")
+          ], elements: [
+            if (pick != null)
+              box("hero", 100, 100, 40, 60, as: PlayAs.platformer),
+          ]));
+          if (pick != null) c.selectOnly(pick);
+          await panel(tester, c, scale: scale);
+          expect(tester.takeException(), isNull,
+              reason: "${pick ?? "nothing"} picked at ${scale}x");
+          await tester.pumpWidget(const SizedBox());
+          c.dispose();
+        }
+      }
+    });
+  });
+
+  group("game sounds", () {
+    test("written as a game keeps them, and read back", () {
+      expect(gameSoundOf(""), isNull);
+      expect(gameSoundOf("coin"), isA<GameSoundElement>());
+      expect((gameSoundOf(gameSoundSlot("c1")) as GameSoundSlot).clip, "c1");
+      expect((gameSoundOf(gameSoundStop("ch")) as GameSoundStop).channel, "ch");
+      const scene = CanvasScene(id: "s", gameSounds: {"music": "stop"});
+      expect(
+          CanvasScene.fromJson(scene.toJson()).gameSounds, {"music": "stop"});
+      const e = GameEffect(does: GameDoes.next, sound: "slot:win");
+      expect(GameEffect.fromJson(e.toJson()), e);
+      const p = PlaySpec(pressedBy: "act", pressSound: "stop:music");
+      expect(PlaySpec.fromJson(p.toJson()).pressSound, "stop:music");
+    });
+
+    test("a count reaching its number plays what its rule says", () {
+      var doc = page.copyWith(game: true, counts: const [
+        GameCount("gems", "Gems",
+            reach: 1, then: GameEffect(does: GameDoes.stop, sound: "slot:win")),
+      ], elements: [
+        box("hero", 100, 100, 40, 60, as: PlayAs.platformer),
+        box("gem", 110, 110, 20, 20,
+            play: const PlaySpec(
+                as: PlayAs.pickup,
+                sound: "coin",
+                touched: GameEffect(does: GameDoes.add, count: "gems"))),
+      ]);
+      var run = GameRun();
+      run.step(doc, 0, 1 / 60);
+      expect([for (var e in run.events) e.sound], contains("coin"));
+      expect([for (var e in run.events) e.sound], contains("slot:win"));
+      run.dispose();
+    });
+  });
+
+  // Ken, playing Sky Isles: run left, the figure walked backwards; in the
+  // air it should look it.
+  test("a sprite played turns the way it goes, and jumps in the air", () {
+    var doc = page.copyWith(game: true, elements: [
+      const SpriteElement(
+          ElementBase(
+              id: "hero",
+              x: 300,
+              y: 600,
+              width: 60,
+              height: 80,
+              play: PlaySpec(as: PlayAs.platformer)),
+          sheet: "x",
+          sheetW: 64,
+          sheetH: 32,
+          columns: 4,
+          rows: 2,
+          actions: [
+            SpriteAction("Idle", frames: {
+              SpriteFacing.front: [0]
+            }),
+            SpriteAction("Walk", frames: {
+              SpriteFacing.front: [1, 2]
+            }),
+            SpriteAction("Jump", frames: {
+              SpriteFacing.front: [6]
+            }),
+          ],
+          action: "Idle"),
+    ]);
+    var run = GameRun();
+    SpriteElement hero() => run.view(doc).elements.single as SpriteElement;
+    run.input.keys.add(key(LogicalKeyboardKey.arrowLeft));
+    for (var i = 0; i < 20; i++) {
+      run.step(doc, 0, 1 / 60);
+    }
+    expect(hero().action, "Walk");
+    expect(hero().sheetFrameAt(0, 30)!.$2, isTrue, reason: "mirrored, left");
+    run.input.keys
+      ..clear()
+      ..add(key(LogicalKeyboardKey.arrowRight))
+      ..add(key(LogicalKeyboardKey.space));
+    run.step(doc, 0, 1 / 60);
+    for (var i = 0; i < 4; i++) {
+      run.step(doc, 0, 1 / 60);
+    }
+    expect(hero().action, "Jump");
+    expect(hero().sheetFrameAt(0, 30), (6, false), reason: "right, unmirrored");
+    run.dispose();
   });
 }

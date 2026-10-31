@@ -103,7 +103,13 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
-import 'package:bruig/plugin_system/canvas/model/play.dart' show ControlAction;
+import 'package:bruig/plugin_system/canvas/model/play.dart' show
+        ControlAction,
+        GameSoundElement,
+        GameSoundSlot,
+        GameSoundStop,
+        gameSoundOf,
+        gameSoundStop;
 import 'package:gamepads/gamepads.dart' show Gamepads, NormalizedGamepadEvent;
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart'
     show newInstrument;
@@ -6255,7 +6261,9 @@ class CanvasController extends ChangeNotifier {
     // editor follows it -- the scene showing changes as it reaches each one,
     // so the panel, the timeline and the canvas all say the same thing about
     // where the playback has got to.
-    if (_playAll && _document.hasScenes) {
+    // Not while a game plays: the game says which scene is showing, and
+    // the run of every scene passed its flags by -- a title's Stop, a loop.
+    if (_playAll && _document.hasScenes && !gaming) {
       if (_document.playFrames <= 1) return;
       _previewEnd = _document.playFrames - 1;
       // From the playhead, wherever it has been put: the run's frame under
@@ -6344,7 +6352,8 @@ class CanvasController extends ChangeNotifier {
     }
     if (_playback != null) {
       _followSound(now - _clockFrames);
-      if (_clipChannels.isNotEmpty || _clipRecord != null) {
+      // A game's slots are stepped by the game: see stepGame.
+      if (!gaming && (_clipChannels.isNotEmpty || _clipRecord != null)) {
         _sessionStep(_sessionNow);
       }
     }
@@ -6428,7 +6437,9 @@ class CanvasController extends ChangeNotifier {
     if (_practice != null) _endPractice();
     // Stopped, the slots stop with it -- and a recording is kept: what was
     // played is in the part, and what the slots played on the timeline.
-    _haltClips();
+    // Not a game's: its sounds go on through a Stop on its timeline -- the
+    // title waiting for a jump -- and stop when the game does.
+    if (!gaming) _haltClips();
     if (_recording) {
       _recording = false;
       _keepTake();
@@ -7614,9 +7625,22 @@ class CanvasController extends ChangeNotifier {
   /// _sessionNow is where the session's clock is: the playhead, in seconds.
   /// The session keeps time with the timeline, so a clip launched on a bar
   /// is on the timeline's bar.
-  double get _sessionNow => _sessionOnly
-      ? _sessionSeconds
-      : (_frame + betweenFrames) / math.max(1, _document.frameRate);
+  double get _sessionNow => gaming
+      ? _gameClock
+      : _sessionOnly
+          ? _sessionSeconds
+          : (_frame + betweenFrames) / math.max(1, _document.frameRate);
+
+  /// _gameClock is a game's slots' own clock: seconds since it started. Not
+  /// the playhead's, which a Loop back on its timeline sends back -- taking
+  /// every slot playing back with it, and stopping them.
+  double get _gameClock =>
+      (gameClockForTest?.call() ?? _gameClockWatch.elapsedMicroseconds) / 1e6;
+  final Stopwatch _gameClockWatch = Stopwatch();
+
+  /// gameClockForTest stands in for [_gameClock], in microseconds.
+  @visibleForTesting
+  int Function()? gameClockForTest;
 
   /// sessionOnly is whether only the clip slots are playing: launched with
   /// the transport stopped, they run on a clock of their own -- the
@@ -7683,8 +7707,9 @@ class CanvasController extends ChangeNotifier {
 
   /// _launchTime is when a launch now is heard: the next boundary, playing;
   /// at once, from a bar, when it starts the transport.
-  double _launchTime([Quantise? quantise]) =>
-      playing ? _nextLaunch(_sessionNow, quantise) : _sessionStart();
+  double _launchTime([Quantise? quantise]) => playing || gaming
+      ? _nextLaunch(_sessionNow, quantise)
+      : _sessionStart();
 
   /// clipState is how slot [row] of [channel] is doing, for the mixer.
   ClipState clipState(String channel, int row) {
@@ -7841,10 +7866,11 @@ class CanvasController extends ChangeNotifier {
 
   /// launchClip plays slot [row] of [channel] from the next launch time --
   /// see launchQuantise -- in place of whatever the channel was playing.
-  void launchClip(String channel, int row, {double level = 1}) {
+  void launchClip(String channel, int row,
+      {double level = 1, Quantise? quantise}) {
     var clip = session.at(channel, row);
     if (clip == null) return;
-    var at = _launchTime(clip.quantise);
+    var at = _launchTime(quantise ?? clip.quantise);
     unawaited(_startClip(channel, row, clip, at, level: level));
   }
 
@@ -7870,10 +7896,11 @@ class CanvasController extends ChangeNotifier {
 
   /// stopChannelClips stops what [channel] plays from its slots, at the
   /// next launch time.
-  void stopChannelClips(String channel) {
+  void stopChannelClips(String channel, {bool now = false}) {
     _repeats.remove(channel);
     if (!clipPlaying(channel)) return;
-    _stopChannelAt(channel, playing ? _nextLaunch(_sessionNow) : _sessionNow);
+    _stopChannelAt(channel,
+        playing && !now ? _nextLaunch(_sessionNow) : _sessionNow);
     notifyListeners();
   }
 
@@ -8576,6 +8603,16 @@ class CanvasController extends ChangeNotifier {
   Timer? _gameTimer;
   final Stopwatch _gameWatch = Stopwatch();
 
+  /// gameTabOpen is whether the Game tab is showing: the stage draws what a
+  /// game touches while it is -- see gameTouchArea.
+  bool get gameTabOpen => _gameTabOpen;
+  bool _gameTabOpen = false;
+  set gameTabOpen(bool on) {
+    if (on == _gameTabOpen) return;
+    _gameTabOpen = on;
+    notifyListeners();
+  }
+
   /// gaming is whether the canvas is being played as a game: what is set to
   /// be played answers the keys and the controllers, and the view follows
   /// the player. See canvas_game.dart.
@@ -8611,6 +8648,9 @@ class CanvasController extends ChangeNotifier {
       frame = 0;
       var run = GameRun();
       _game = run;
+      _gameClockWatch
+        ..reset()
+        ..start();
       unawaited(run.listen());
       HardwareKeyboard.instance.addHandler(_gameKey);
       _gameWatch
@@ -8624,13 +8664,22 @@ class CanvasController extends ChangeNotifier {
         stepGame(math.min(dt, 0.05));
       });
       if (!playing) play();
+      // And the sounds the scene it starts on asks for -- after Play, which
+      // stops slots playing on their own.
+      _gameSceneSounds();
     } else {
+      // The game's slots stop with it, not on the next bar -- while it is
+      // still a game, on its own clock, before the playhead's is theirs
+      // again.
+      _haltClips();
+      _gameClockWatch.stop();
       HardwareKeyboard.instance.removeHandler(_gameKey);
       _gameTimer?.cancel();
       _gameTimer = null;
       _game?.dispose();
       _game = null;
       _gameView = null;
+      _gamePaused = false;
       if (playing) pause();
       if (_sceneBeforeGame case var at? when at != _document.at) {
         goToScene(at);
@@ -8640,21 +8689,42 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// gamePaused is whether a game being played is held: the bodies still,
+  /// the timeline stopped, until it is let go again.
+  bool get gamePaused => _gamePaused;
+  bool _gamePaused = false;
+  set gamePaused(bool on) {
+    if (!gaming || on == _gamePaused) return;
+    _gamePaused = on;
+    if (on) {
+      if (playing) pause();
+    } else {
+      // From now, not from when it was held: no leap forward on letting go.
+      _gameWatch
+        ..reset()
+        ..start();
+      play();
+    }
+    notifyListeners();
+  }
+
   /// stepGame moves the game on by [dt] seconds.
   void stepGame(double dt) {
     var run = _game;
     if (run == null) return;
+    // Its slots, on its own clock -- held or not, stopped on its timeline
+    // or not.
+    if (_clipChannels.isNotEmpty) {
+      _sessionStep(_sessionNow);
+      _applyMix();
+    }
+    if (_gamePaused) return;
     run.step(_document, _frame, dt);
     // What the game asked for: a sound, another scene, the end.
     var asked = [...run.events];
     run.events.clear();
     for (var event in asked) {
-      if (event.sound case var id?) {
-        if (_audioById(id) case var sound?) {
-          audio.stop(id);
-          unawaited(audio.play(sound));
-        }
-      }
+      if (event.sound case var ref?) gameSound(ref);
       // Another scene: a chosen one, the next -- the game over after the
       // last -- or, started again, the game's first.
       if (event.scene case var id?) _gameScene(run, id);
@@ -8667,6 +8737,7 @@ class CanvasController extends ChangeNotifier {
         goToScene(next);
         frame = 0;
         run.newScene();
+        _gameSceneSounds();
       }
       if (event.restart && _document.gameStart.isNotEmpty) {
         _gameScene(run, _document.gameStart);
@@ -8749,6 +8820,39 @@ class CanvasController extends ChangeNotifier {
     // From its beginning, not the frame it was left on while it was made.
     frame = 0;
     run.newScene();
+    _gameSceneSounds();
+  }
+
+  /// gameSound plays what a game asks for by [ref] -- see gameSoundOf: a
+  /// sound on the canvas, from its start; a mixer slot, at once unless its
+  /// own Launch waits for a beat or a bar; or a channel's slots stopped, at
+  /// once.
+  void gameSound(String ref) {
+    switch (gameSoundOf(ref)) {
+      case GameSoundElement(:var id):
+        if (_audioById(id) case var sound?) {
+          audio.stop(id);
+          unawaited(audio.play(sound));
+        }
+      case GameSoundSlot(:var clip):
+        if (session.find(clip) case (var channel, var row)) {
+          var c = session.at(channel, row)!;
+          launchClip(channel, row, quantise: c.quantise ?? Quantise.off);
+        }
+      case GameSoundStop(:var channel):
+        stopChannelClips(channel, now: true);
+      case null:
+        break;
+    }
+  }
+
+  /// _gameSceneSounds is what each channel does as a game comes to the
+  /// scene showing: see CanvasScene.gameSounds.
+  void _gameSceneSounds() {
+    for (var MapEntry(key: channel, value: does)
+        in _document.scene.gameSounds.entries) {
+      gameSound(does == "stop" ? gameSoundStop(channel) : does);
+    }
   }
 
   /// _gamePress is [id] pressed by an action while the game plays: what a
@@ -8758,6 +8862,9 @@ class CanvasController extends ChangeNotifier {
   void _gamePress(GameRun run, String id) {
     var e = _document.elementById(id);
     if (e == null) return;
+    if (e.base.play.pressSound case var ref when ref.isNotEmpty) {
+      gameSound(ref);
+    }
     var action = e is ButtonElement ? e.action : e.base.play.press;
     switch (action.kind) {
       case ButtonActionKind.toggleElement:
@@ -10431,6 +10538,10 @@ class CanvasController extends ChangeNotifier {
   List<TimedLane> get timedLanes {
     var document = _document;
     var here = {for (var e in document.elements) e.id};
+    // The master's, from any scene: its channels are every scene's -- a
+    // game's sounds on it are changed while the game is played on another
+    // (Ken). A change is written back to the master: see _replacedAnywhere.
+    var master = {...?document.master?.elements.map((e) => e.id)};
     var backdrop = {for (var e in document.drawnBackground.media) e.id};
     var onMaster = document.editingMaster;
     var fromMaster = onMaster || document.sharedBackdrop;
@@ -10451,7 +10562,10 @@ class CanvasController extends ChangeNotifier {
           // A transition's sound belongs to its transition, and is changed
           // there.
           editable: !e.id.startsWith(transitionSoundPrefix) &&
-              (allChannels || here.contains(e.id) || backdrop.contains(e.id)),
+              (allChannels ||
+                  here.contains(e.id) ||
+                  master.contains(e.id) ||
+                  backdrop.contains(e.id)),
           scene: sceneOf(e),
         ),
     ];
@@ -10522,10 +10636,11 @@ class CanvasController extends ChangeNotifier {
         if (e is VideoElement && !e.isLink && !e.clip.timed && !e.clip.isEmpty)
           e,
     ];
+    var master = {...?document.master?.elements.map((e) => e.id)};
     return [
       for (var e in pressed)
         TimedLane(e,
-            editable: here.contains(e.id),
+            editable: here.contains(e.id) || master.contains(e.id),
             scene: onMaster || !here.contains(e.id) ? -1 : document.at),
     ];
   }
@@ -13929,8 +14044,9 @@ class TimedLane {
   /// that follows the run.
   final int offset;
 
-  /// editable is false for a clip on the master seen from a page: it is
-  /// changed on the master, where it lives.
+  /// editable is whether it can be changed from here: a transition's sound
+  /// is changed on its transition. The master's can be, from any scene, and
+  /// are written back to it.
   final bool editable;
 
   /// scene is which canvas the clip is on: -1 for the master, and otherwise

@@ -74,7 +74,9 @@ import 'package:bruig/plugin_system/canvas/render/character/character_outline.da
     show vectorPathsOf;
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart'
     show vectorLinePath, vectorShapePath;
+import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -843,6 +845,16 @@ class CanvasStageState extends State<CanvasStage>
     var page = document.size.size * _scale;
     var wide = page.width * spill * (_spreadShown ? 2 : 1) + _stageMargin * 2;
     var tall = page.height * spill + _stageMargin * 2;
+    // Zoomed, room to move it about in: as far as its edges reach the
+    // window's, and half a window past them. With the timeline and the
+    // mixer open over the stage, the canvas sat behind them, and the only
+    // way to see its bottom was to zoom out further than it needed to be --
+    // and then to lift it clear of them (Ken). At the whole canvas it stays
+    // where it is put, in the middle.
+    if ((controller.zoom - 1).abs() > 0.001) {
+      wide = math.max(wide, visible.width * 2 - wide) + visible.width;
+      tall = math.max(tall, visible.height * 2 - tall) + visible.height;
+    }
     return Size(math.max(visible.width, wide), math.max(visible.height, tall));
   }
 
@@ -6529,6 +6541,9 @@ class CanvasStageState extends State<CanvasStage>
   /// Space plays and stops. It used to hold the view for panning, which the
   /// pan tool now does visibly and discoverably -- see CanvasTool.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    // A game playing has the keys: Space jumps, the arrows run -- they do
+    // not play the timeline or walk its frames (Ken). See gameKey.
+    if (controller.gaming) return KeyEventResult.handled;
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
@@ -6983,6 +6998,7 @@ class CanvasStageState extends State<CanvasStage>
                         snapped: _snappedTo,
                         showHandles: _selectionHasOwnGeometry,
                         selectionRotation: _rotationOfSelection,
+                        touchAreas: _touchAreas(),
                         selectionSkew: _skewOfSelection,
                         handleFor: _handlePosition,
                         flowGrips: _flowGrips(),
@@ -7090,6 +7106,20 @@ class CanvasStageState extends State<CanvasStage>
           return Focus(focusNode: _focus, onKeyEvent: _onKey, child: painter);
         },
       );
+
+  /// _touchAreas are what a game touches of each element played, while the
+  /// Game tab is open and the game is not being played.
+  List<Rect> _touchAreas() {
+    if (!controller.gameTabOpen || controller.gaming || !document.game) {
+      return const [];
+    }
+    var frame = controller.frame;
+    return [
+      for (var e in document.elements)
+        if (e.visible && e.base.play.as != PlayAs.none)
+          gameTouchArea(e, e.boundsAt(frame)),
+    ];
+  }
 
   /// _cellEditorFor is the overlay for a cell being typed into.
   ///

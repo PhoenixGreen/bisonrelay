@@ -61,6 +61,14 @@ class PlaySpec {
   final bool stays;
   final bool sendsBack;
 
+  /// touchWhole is whether all of its box is touched, rather than only the
+  /// part of a sprite drawn in -- see SpriteElement.touchIn.
+  final bool touchWhole;
+
+  /// pressSound is what is heard when it is pressed: a sound, a slot, or a
+  /// channel stopped -- see gameSoundOf.
+  final String pressSound;
+
   /// pressedBy is the action that presses it, by id -- "" none -- from
   /// anywhere, or with [reach] set, only with a player within that many
   /// canvas units of it; and press what that does, as a button's press
@@ -80,6 +88,8 @@ class PlaySpec {
     this.sound = "",
     this.stays = false,
     this.sendsBack = true,
+    this.touchWhole = false,
+    this.pressSound = "",
     this.pressedBy = "",
     this.reach = 0,
     this.press = const ButtonAction(kind: ButtonActionKind.toggleElement),
@@ -100,6 +110,8 @@ class PlaySpec {
           String? sound,
           bool? stays,
           bool? sendsBack,
+          bool? touchWhole,
+          String? pressSound,
           String? pressedBy,
           double? reach,
           ButtonAction? press}) =>
@@ -114,6 +126,8 @@ class PlaySpec {
         sound: sound ?? this.sound,
         stays: stays ?? this.stays,
         sendsBack: sendsBack ?? this.sendsBack,
+        touchWhole: touchWhole ?? this.touchWhole,
+        pressSound: pressSound ?? this.pressSound,
         pressedBy: pressedBy ?? this.pressedBy,
         reach: (reach ?? this.reach).clamp(0.0, 100000.0),
         press: press ?? this.press,
@@ -130,10 +144,12 @@ class PlaySpec {
         if (sound.isNotEmpty) "sound": sound,
         if (stays) "stays": true,
         if (!sendsBack) "sendsBack": false,
+        if (touchWhole) "touchWhole": true,
         if (pressedBy.isNotEmpty) ...{
           "pressedBy": pressedBy,
           if (reach != 0) "reach": reach,
           "press": press.toJson(),
+          if (pressSound.isNotEmpty) "pressSound": pressSound,
         },
       };
 
@@ -150,6 +166,9 @@ class PlaySpec {
       sound: json["sound"] is String ? json["sound"] as String : "",
       stays: json["stays"] == true,
       sendsBack: json["sendsBack"] != false,
+      touchWhole: json["touchWhole"] == true,
+      pressSound:
+          json["pressSound"] is String ? json["pressSound"] as String : "",
       pressedBy: json["pressedBy"] is String ? json["pressedBy"] as String : "",
       reach: jsonDouble(json["reach"], 0),
       press: json["press"] is Map<String, dynamic>
@@ -171,6 +190,8 @@ class PlaySpec {
       other.sound == sound &&
       other.stays == stays &&
       other.sendsBack == sendsBack &&
+      other.touchWhole == touchWhole &&
+      other.pressSound == pressSound &&
       other.pressedBy == pressedBy &&
       other.reach == reach &&
       other.press.kind == press.kind &&
@@ -190,10 +211,69 @@ class PlaySpec {
       sound,
       stays,
       sendsBack,
+      touchWhole,
+      pressSound,
       pressedBy,
       reach,
       press.kind,
       press.elementId);
+}
+
+/// GameSound is what a game's sound choice is: a sound on the canvas, by
+/// element id; a mixer slot played, by its clip's id; or a channel's slots
+/// stopped, by the channel's key.
+sealed class GameSound {
+  const GameSound();
+}
+
+class GameSoundElement extends GameSound {
+  final String id;
+  const GameSoundElement(this.id);
+}
+
+class GameSoundSlot extends GameSound {
+  final String clip;
+  const GameSoundSlot(this.clip);
+}
+
+class GameSoundStop extends GameSound {
+  final String channel;
+  const GameSoundStop(this.channel);
+}
+
+/// gameSoundSlot and gameSoundStop write a slot and a stop as a game keeps
+/// them; gameSoundOf reads one back -- null for none.
+String gameSoundSlot(String clip) => "slot:$clip";
+String gameSoundStop(String channel) => "stop:$channel";
+GameSound? gameSoundOf(String ref) {
+  if (ref.isEmpty) return null;
+  if (ref.startsWith("slot:")) return GameSoundSlot(ref.substring(5));
+  if (ref.startsWith("stop:")) return GameSoundStop(ref.substring(5));
+  return GameSoundElement(ref);
+}
+
+/// PlayFeel is how a platformer moves, said in a word: its speed, jump and
+/// gravity together. Custom is any other three.
+enum PlayFeel {
+  floaty("Floaty", 280, 240, 1400),
+  normal("Normal", 330, 220, 2400),
+  snappy("Snappy", 380, 200, 3400),
+  custom("Custom", 0, 0, 0);
+
+  final String label;
+  final double speed;
+  final double jump;
+  final double gravity;
+  const PlayFeel(this.label, this.speed, this.jump, this.gravity);
+
+  /// of is the feel [spec] moves with.
+  static PlayFeel of(PlaySpec spec) => values.firstWhere(
+      (f) =>
+          f != custom &&
+          f.speed == spec.speed &&
+          f.jump == spec.jump &&
+          f.gravity == spec.gravity,
+      orElse: () => custom);
 }
 
 /// GameDoes is something that happens in a game: a count added to or taken
@@ -237,25 +317,32 @@ class GameEffect {
   final String scene;
   final String element;
 
+  /// sound is what is heard as it happens: a sound, a slot, or a channel
+  /// stopped -- see gameSoundOf.
+  final String sound;
+
   const GameEffect(
       {this.does = GameDoes.nothing,
       this.count = "",
       this.amount = 1,
       this.scene = "",
-      this.element = ""});
+      this.element = "",
+      this.sound = ""});
 
   GameEffect copyWith(
           {GameDoes? does,
           String? count,
           int? amount,
           String? scene,
-          String? element}) =>
+          String? element,
+          String? sound}) =>
       GameEffect(
           does: does ?? this.does,
           count: count ?? this.count,
           amount: (amount ?? this.amount).clamp(1, 1000000),
           scene: scene ?? this.scene,
-          element: element ?? this.element);
+          element: element ?? this.element,
+          sound: sound ?? this.sound);
 
   Map<String, dynamic> toJson() => {
         "does": does.name,
@@ -263,6 +350,7 @@ class GameEffect {
         if (amount != 1) "amount": amount,
         if (scene.isNotEmpty) "scene": scene,
         if (element.isNotEmpty) "element": element,
+        if (sound.isNotEmpty) "sound": sound,
       };
 
   factory GameEffect.fromJson(Object? json) {
@@ -274,7 +362,8 @@ class GameEffect {
             ? (json["amount"] as num).toInt().clamp(1, 1000000)
             : 1,
         scene: json["scene"] is String ? json["scene"] as String : "",
-        element: json["element"] is String ? json["element"] as String : "");
+        element: json["element"] is String ? json["element"] as String : "",
+        sound: json["sound"] is String ? json["sound"] as String : "");
   }
 
   @override
@@ -284,10 +373,11 @@ class GameEffect {
       other.count == count &&
       other.amount == amount &&
       other.scene == scene &&
-      other.element == element;
+      other.element == element &&
+      other.sound == sound;
 
   @override
-  int get hashCode => Object.hash(does, count, amount, scene, element);
+  int get hashCode => Object.hash(does, count, amount, scene, element, sound);
 }
 
 /// GameCount is a number the game keeps -- coins, lives, keys -- from

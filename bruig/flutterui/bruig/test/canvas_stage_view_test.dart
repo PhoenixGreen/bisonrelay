@@ -165,13 +165,14 @@ void main() {
     var stage = await pump(tester, controller);
     controller.zoom = 3;
     await tester.pumpAndSettle();
-    // Scrolled to the top left by hand.
+    // Scrolled towards the top left by hand -- to a corner of the page, not
+    // the room past it, which a zoom in carries out of reach.
     var bars = tester
         .widgetList<SingleChildScrollView>(find.byType(SingleChildScrollView))
         .map((v) => v.controller!)
         .toList();
     for (var b in bars) {
-      b.jumpTo(0);
+      b.jumpTo(b.position.maxScrollExtent * 0.3);
     }
     await tester.pumpAndSettle();
     var middle = Offset(viewport.width / 2, viewport.height / 2);
@@ -203,10 +204,10 @@ void main() {
     expect(find.byType(Scrollbar), findsNWidgets(2));
   });
 
-  testWidgets("a zoomed canvas scrolls no further than its edges",
+  testWidgets("a zoomed canvas scrolls half a window past its edges, no more",
       (tester) async {
-    // The view is bounded by exactly how far the page sticks out of the
-    // window, so the page always fills it.
+    // Past its edge, so it can be lifted clear of the panels open over the
+    // stage (Ken) -- and no further, so it cannot be lost.
     var controller = CanvasController(const CanvasDocument());
     addTearDown(controller.dispose);
     var stage = await pump(tester, controller);
@@ -215,12 +216,9 @@ void main() {
     controller.pan = const Offset2(99999, -99999);
     await tester.pumpAndSettle();
 
-    // As far as the margin round the page, and no further.
     var content = stage.contentRect;
-    expect(content.left, lessThanOrEqualTo(24.5));
-    expect(content.top, lessThanOrEqualTo(24.5));
-    expect(content.right, greaterThanOrEqualTo(viewport.width - 24.5));
-    expect(content.bottom, greaterThanOrEqualTo(viewport.height - 24.5));
+    expect(content.left, closeTo(24 + viewport.width / 2, 2));
+    expect(content.bottom, closeTo(viewport.height / 2 - 24, 2));
   });
 
   testWidgets("at zoom 1 there is nothing to pan", (tester) async {
@@ -248,6 +246,33 @@ void main() {
         find.descendant(
             of: find.byType(CanvasStage), matching: find.byType(ClipRect)),
         findsWidgets);
+  });
+
+  testWidgets("zoomed out, the canvas can be moved about", (tester) async {
+    // With the timeline and the mixer open, the bottom of a small canvas sat
+    // behind them; moving it up is better than zooming out further (Ken).
+    var controller = CanvasController(const CanvasDocument());
+    addTearDown(controller.dispose);
+    var stage = await pump(tester, controller);
+
+    controller.zoom = 0.4;
+    await tester.pumpAndSettle();
+    var middle = stage.contentRect.center;
+    expect(middle.dx, closeTo(viewport.width / 2, 1), reason: "starts centred");
+    expect(middle.dy, closeTo(viewport.height / 2, 1));
+
+    controller.tool = CanvasTool.pan;
+    await tester.dragFrom(middle, const Offset(-60, -80));
+    await tester.pumpAndSettle();
+    expect(stage.contentRect.center.dx, closeTo(middle.dx - 60, 2));
+    expect(stage.contentRect.center.dy, closeTo(middle.dy - 80, 2));
+
+    // As far as half a window past the window's edges, and no further.
+    controller.pan = const Offset2(99999, -99999);
+    await tester.pumpAndSettle();
+    expect(stage.contentRect.top, closeTo(-viewport.height / 2 + 24, 30),
+        reason: "lifted clear of what is open over the stage");
+    expect(stage.contentRect.right, closeTo(viewport.width * 1.5 - 24, 30));
   });
 
   testWidgets("zooming out never leaves the canvas off-centre", (tester) async {

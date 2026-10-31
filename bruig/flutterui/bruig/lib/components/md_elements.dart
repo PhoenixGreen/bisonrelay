@@ -160,10 +160,16 @@ class BareLinkSyntax extends md.InlineSyntax {
 class EmbedInlineSyntax extends md.InlineSyntax {
   final String dbRoot;
 
+  /// embedTags are the embed types an extension draws, and the tag each is
+  /// given for its builder -- see MarkdownExtension.embedType. Kept by the
+  /// model, and filled as extensions come and go.
+  final Map<String, String> embedTags;
+
   /// This is a primitive example pattern
   EmbedInlineSyntax(
     this.dbRoot, {
     String pattern = r'--embed\[(.*?)\]--',
+    this.embedTags = const {},
   }) : super(pattern);
 
   @override
@@ -271,10 +277,20 @@ class EmbedInlineSyntax extends md.InlineSyntax {
           tag = "audio";
           break;
         default:
-          return true;
+          // One an extension draws, or nothing.
+          var drawn = embedTags[parms["type"]];
+          if (drawn == null) return true;
+          tag = drawn;
       }
     }
     md.Element el = md.Element.text(tag, data);
+    // An extension's embed has every parameter it was written with but its
+    // data, which is the element's text.
+    if (embedTags.containsValue(tag)) {
+      for (var MapEntry(:key, :value) in parms.entries) {
+        if (key != "data") el.attributes[key] = value;
+      }
+    }
 
     if (download != "") {
       el.attributes["fid"] = download;
@@ -500,8 +516,12 @@ class MarkdownAreaModel extends ChangeNotifier {
   // kept so the next one can remove exactly those again.
   List<MarkdownExtension> _pluginExtensions = const [];
 
+  // _embedTags are the extensions' embed types, and their tags: see
+  // MarkdownExtension.embedType.
+  final Map<String, String> _embedTags = {};
+
   MarkdownAreaModel(String dbroot) {
-    inlineSyntaxes.add(EmbedInlineSyntax(dbroot));
+    inlineSyntaxes.add(EmbedInlineSyntax(dbroot, embedTags: _embedTags));
   }
 
   /// setPluginExtensions replaces the markdown renderers contributed from
@@ -521,10 +541,12 @@ class MarkdownAreaModel extends ChangeNotifier {
       builders.remove(e.tag);
       if (e.inlineSyntax != null) inlineSyntaxes.remove(e.inlineSyntax);
     }
+    _embedTags.clear();
     _pluginExtensions = extensions;
     for (var e in extensions) {
       builders[e.tag] = e.builder;
       if (e.inlineSyntax != null) inlineSyntaxes.add(e.inlineSyntax!);
+      if (e.embedType case var type?) _embedTags[type] = e.tag;
     }
     notifyListeners();
   }
@@ -638,11 +660,18 @@ class MarkdownExtension {
   /// half-width card.
   final RegExp? standalone;
 
+  /// embedType is an embed type -- the type= of an --embed[...]-- -- that
+  /// [builder] draws, given [tag]: one the app has no drawing of its own
+  /// for, such as a game published from Canvas. Its element's text is the
+  /// embed's data, and its attributes every other parameter.
+  final String? embedType;
+
   const MarkdownExtension({
     required this.tag,
     required this.builder,
     this.inlineSyntax,
     this.standalone,
+    this.embedType,
   });
 }
 

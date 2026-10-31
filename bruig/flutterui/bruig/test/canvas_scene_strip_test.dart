@@ -363,10 +363,16 @@ void main() {
       var onMaster = c.document.master!.elements.single as AudioElement;
       expect(onMaster.clip.at, 180, reason: "past any one scene's end");
 
+      // One scene at a time too (Ken, 2026-10-31): the master's channels
+      // are changed from any scene -- a game's, while it is played on one.
       c.playAll = false;
-      expect(c.timedLanes.firstWhere((l) => l.element.id == "music").editable,
-          isFalse,
-          reason: "one scene at a time, the master's is changed there");
+      music = c.timedLanes.firstWhere((l) => l.element.id == "music");
+      expect(music.editable, isTrue);
+      expect(music.offset, c.document.startOfScene(1),
+          reason: "on the run's timeline, seen from the scene");
+      c.setTimedClip(music.element, music.clip.copyWith(at: 120));
+      onMaster = c.document.master!.elements.single as AudioElement;
+      expect(onMaster.clip.at, 120, reason: "written to the master");
     });
 
     test("another scene's clip is cut on that scene", () {

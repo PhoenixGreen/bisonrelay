@@ -17,7 +17,8 @@ import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
     show dragPointers;
 import 'package:bruig/plugin_system/canvas/ui/piano_roll.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
-import 'package:flutter/gestures.dart' show DragStartBehavior;
+import 'package:flutter/gestures.dart'
+    show DragStartBehavior, PointerScrollEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
@@ -740,6 +741,21 @@ class _ClipEditorState extends State<ClipEditor> {
     return "$bar.$beat.$sixteenth";
   }
 
+  /// _secondsAt and _beatsAt turn a place in [clip], in beats, into how far
+  /// into its sound that is, in seconds, and back: by its warp map, warped;
+  /// at the song's tempo -- faster with its pitch -- not.
+  double _secondsAt(SessionClip clip, double beats) {
+    var spb = math.max(0.001, c.document.audio.secondsPerBeat);
+    var speed = math.pow(2, (clip.pitch + clip.cents / 100) / 12).toDouble();
+    return clip.warp ? clip.warpMap.sourceAt(beats) : beats * spb * speed;
+  }
+
+  double _beatsAt(SessionClip clip, double seconds) {
+    var spb = math.max(0.001, c.document.audio.secondsPerBeat);
+    var speed = math.pow(2, (clip.pitch + clip.cents / 100) / 12).toDouble();
+    return clip.warp ? clip.warpMap.beatAt(seconds) : seconds / speed / spb;
+  }
+
   List<Widget> _clipColumn(MixerLook look, SessionClip clip) {
     var bpb = c.document.audio.beatsPerBar;
     // A place typed, as Ableton's are: "3", "3.2" or "3.2.3" -- bar, beat,
@@ -771,15 +787,36 @@ class _ClipEditorState extends State<ClipEditor> {
           "Start",
           Row(children: [
             Expanded(
+              // A sixteenth a step, and said in seconds too: a sound's
+              // start is set by ear, to the moment it begins (Ken). Typed,
+              // a place or a time -- "0.18s", "180ms".
               child: _stepper(
                   look,
                   "clipStart",
-                  _place(clip.start),
+                  "${_place(clip.start)} · "
+                      "${_secondsAt(clip, clip.start).toStringAsFixed(2)}s",
                   clip.start <= 0
                       ? null
-                      : () => c.editClip((x) => x.copyWith(start: x.start - 1)),
-                  () => c.editClip((x) => x.copyWith(start: x.start + 1)),
-                  typed: typed((x, b) => x.copyWith(start: b))),
+                      : () => c.editClip((x) =>
+                          x.copyWith(start: math.max(0.0, x.start - 0.25))),
+                  () => c.editClip((x) => x.copyWith(start: x.start + 0.25)),
+                  typed: (text) {
+                var t = text.trim().toLowerCase();
+                var ms = RegExp(r"^([0-9.]+)\s*ms$").firstMatch(t);
+                var sec = RegExp(r"^([0-9.]+)\s*s$").firstMatch(t);
+                var seconds = ms != null
+                    ? (double.tryParse(ms.group(1)!) ?? -1) / 1000
+                    : sec != null
+                        ? double.tryParse(sec.group(1)!) ?? -1
+                        : null;
+                if (seconds != null) {
+                  if (seconds >= 0) {
+                    c.editClip((x) => x.copyWith(start: _beatsAt(x, seconds)));
+                  }
+                  return;
+                }
+                typed((x, b) => x.copyWith(start: b))(text);
+              }),
             ),
             const SizedBox(width: 4),
             _pill(look, "Set", false, set((b) => clip.copyWith(start: b)),
@@ -1198,6 +1235,39 @@ class _SampleViewState extends State<_SampleView>
   int _marker = 0;
   double _dragFrom = 0, _valueFrom = 0;
 
+  /// _zoom is how far in the sound is drawn -- one, all of it in view --
+  /// and _scroll the beat at the view's left edge (Ken: to set a start
+  /// finer than a beat, a sound has to be seen closer than a bar).
+  double _zoom = 1;
+  double _scroll = 0;
+  static const double _maxZoom = 256;
+
+  /// _step is what a drag snaps to, at [beatW] pixels a beat: the finest
+  /// grid -- a beat, a half, down to a 1/256 -- still eight pixels wide.
+  /// Alt held, nothing: where it is let go.
+  static double _step(double beatW) {
+    if (HardwareKeyboard.instance.isAltPressed) return 0;
+    var step = 1.0;
+    while (step > 1 / 256 && step / 2 * beatW >= 8) {
+      step /= 2;
+    }
+    return step;
+  }
+
+  static double _snap(double v, double step) =>
+      step <= 0 ? v : (v / step).roundToDouble() * step;
+
+  /// _zoomAbout zooms by [factor], keeping the beat under [x] where it is.
+  void _zoomAbout(double factor, double x, double fit) {
+    var was = fit * _zoom;
+    var under = x / was + _scroll;
+    var next = (_zoom * factor).clamp(1.0, _maxZoom);
+    setState(() {
+      _zoom = next;
+      _scroll = under - x / (fit * next);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1256,8 +1326,15 @@ class _SampleViewState extends State<_SampleView>
               clip.start + 1,
             ].reduce(math.max) +
             bpb;
-        var beatW = size.maxWidth / beats;
-        double beatAt(double x) => x / beatW;
+        var fit = size.maxWidth / beats;
+        var beatW = fit * _zoom;
+        // Kept in reach: never past the end, never before the start.
+        var shown = size.maxWidth / beatW;
+        var scroll =
+            _scroll.clamp(0.0, math.max(0.0, beats - shown)).toDouble();
+        double beatAt(double x) => x / beatW + scroll;
+        double xOf(double beat) => (beat - scroll) * beatW;
+        var step = _step(beatW);
         var markers = clip.warp ? clip.markers : const <WarpMarker>[];
         var top = _rulerH + (clip.warp ? _markersH : 0);
         return GestureDetector(
@@ -1274,7 +1351,7 @@ class _SampleViewState extends State<_SampleView>
                   null) {
                 return;
               }
-              var beat = _onEnvelope((beatAt(p.dx) * 4).roundToDouble() / 4);
+              var beat = _onEnvelope(_snap(beatAt(p.dx), math.min(step, 0.25)));
               var value = _valueAt(p.dy, top, size.maxHeight);
               c.editClip(
                   (x) => x.withCurve(env, [...x.curveOf(env), (beat, value)]));
@@ -1282,7 +1359,9 @@ class _SampleViewState extends State<_SampleView>
             }
             if (!clip.warp || p.dy < _rulerH || p.dy > top) return;
             var beat = beatAt(p.dx);
-            if (_markerNear(markers, beatW, p.dx) != null) return;
+            if (_markerNear(markers, beatW, p.dx + scroll * beatW) != null) {
+              return;
+            }
             var seconds = secondOf(beat).clamp(0.0, length);
             for (var h in heard?.hits ?? const <double>[]) {
               if ((beatOf(h) - beat).abs() * beatW <= 6) seconds = h;
@@ -1302,14 +1381,16 @@ class _SampleViewState extends State<_SampleView>
                   (x) => x.withCurve(env, [...x.curveOf(env)]..removeAt(i)));
               return;
             }
-            var i = _markerNear(markers, beatW, d.localPosition.dx);
+            var i = _markerNear(
+                markers, beatW, d.localPosition.dx + scroll * beatW);
             if (i == null || d.localPosition.dy > top) return;
             c.editClip((x) => x.copyWith(markers: [...x.markers]..removeAt(i)));
           },
           onPanStart: (d) {
             var p = d.localPosition;
             if (widget.envelope case var env? when p.dy > top) {
-              var i = _pointNear(clip, env, beatW, top, size.maxHeight, p);
+              var i = _pointNear(clip, env, beatW, top, size.maxHeight,
+                  p + Offset(scroll * beatW, 0));
               if (i == null) return;
               _dragging = _Handle.point;
               _marker = i;
@@ -1319,15 +1400,15 @@ class _SampleViewState extends State<_SampleView>
             if (p.dy > top + 12) return;
             var x = p.dx;
             if (clip.warp && p.dy >= _rulerH && p.dy <= top) {
-              var i = _markerNear(markers, beatW, x);
+              var i = _markerNear(markers, beatW, x + scroll * beatW);
               if (i == null) return;
               _dragging = _Handle.marker;
               _marker = i;
               _valueFrom = markers[i].beat;
             } else {
-              var startX = clip.start * beatW;
-              var endX = clip.loopEnd(bpb) * beatW;
-              var loopX = clip.loopStart * beatW;
+              var startX = xOf(clip.start);
+              var endX = xOf(clip.loopEnd(bpb));
+              var loopX = xOf(clip.loopStart);
               if ((x - startX).abs() <= 10) {
                 _dragging = _Handle.start;
                 _valueFrom = clip.start;
@@ -1347,24 +1428,25 @@ class _SampleViewState extends State<_SampleView>
           onPanUpdate: (d) {
             var handle = _dragging;
             if (handle == null) return;
-            // To the beat -- a marker to the sixteenth.
-            var moved = beatAt(d.localPosition.dx - _dragFrom);
+            // To the finest grid that is still a few pixels wide -- the
+            // closer in, the finer -- or, Alt held, to nothing.
+            var moved = (d.localPosition.dx - _dragFrom) / beatW;
             switch (handle) {
               case _Handle.start:
-                var v = (_valueFrom + moved).roundToDouble();
+                var v = math.max(0.0, _snap(_valueFrom + moved, step));
                 c.editClip((x) => x.copyWith(start: v), transient: true);
               case _Handle.loop:
-                var v = (_valueFrom + moved).roundToDouble();
+                var v = math.max(0.0, _snap(_valueFrom + moved, step));
                 c.editClip((x) => x.copyWith(loopStart: v), transient: true);
               case _Handle.length:
-                var b =
-                    math.max(1.0, (_valueFrom * bpb + moved).roundToDouble());
+                var least = step > 0 ? step : 1 / 64;
+                var b = math.max(least, _snap(_valueFrom * bpb + moved, step));
                 c.editClip((x) => x.copyWith(bars: b / bpb), transient: true);
               case _Handle.point:
                 var env = widget.envelope;
                 if (env == null) return;
                 var beat = _onEnvelope(
-                    (beatAt(d.localPosition.dx) * 4).roundToDouble() / 4);
+                    _snap(beatAt(d.localPosition.dx), math.min(step, 0.25)));
                 var value = _valueAt(d.localPosition.dy, top, size.maxHeight);
                 c.editClip((x) {
                   var points = [...x.curveOf(env)];
@@ -1377,7 +1459,7 @@ class _SampleViewState extends State<_SampleView>
                   return x.withCurve(env, points);
                 }, transient: true);
               case _Handle.marker:
-                var v = ((_valueFrom + moved) * 4).roundToDouble() / 4;
+                var v = _snap(_valueFrom + moved, math.min(step, 0.25));
                 c.editClip((x) {
                   var next = [...x.markers];
                   if (_marker >= next.length) return x;
@@ -1391,45 +1473,139 @@ class _SampleViewState extends State<_SampleView>
             _dragging = null;
             c.endInteraction();
           },
-          child: CustomPaint(
-            key: const ValueKey("clipSample"),
-            size: Size(size.maxWidth, size.maxHeight),
-            painter: _SamplePainter(
-              peaks: heard?.peaks,
-              fileSeconds: fileSeconds,
-              playStart: playStart,
-              playLength: length,
-              secondOf: secondOf,
-              hits: [
-                for (var h in heard?.hits ?? const <double>[])
-                  if (h >= playStart && h < playEnd) beatOf(h - playStart)
-              ],
-              markers: [for (var m in markers) m.beat],
-              beatsPerBar: bpb,
-              beatW: beatW,
-              beats: beats,
-              soundBeats: soundBeats,
-              start: clip.start,
-              loopStart: clip.loopStart,
-              loopEnd: clip.loopEnd(bpb),
-              loop: clip.loop,
-              gain: math.pow(10, clip.gain / 20).toDouble(),
-              playhead: _playhead,
-              studio: look.studio,
-              rulerH: _rulerH,
-              top: top,
-              envelope: widget.envelope == null
-                  ? null
-                  : clip.curveOf(widget.envelope!),
-              envelopeRest: widget.envelopeRest,
-              envelopeLength: widget.envelopeLength,
-              key: clip.warpSignature(spb),
-            ),
+          child: Listener(
+            // Two fingers along, or a wheel: across the sound. Pinched, or
+            // with Cmd or Ctrl held: closer in or further out, about the
+            // pointer.
+            onPointerSignal: (e) {
+              if (e is! PointerScrollEvent) return;
+              var keys = HardwareKeyboard.instance;
+              if (keys.isMetaPressed || keys.isControlPressed) {
+                _zoomAbout(e.scrollDelta.dy > 0 ? 1 / 1.15 : 1.15,
+                    e.localPosition.dx, fit);
+                return;
+              }
+              var by =
+                  e.scrollDelta.dx != 0 ? e.scrollDelta.dx : e.scrollDelta.dy;
+              setState(() => _scroll = scroll + by / beatW);
+            },
+            onPointerPanZoomUpdate: (e) {
+              if ((e.scale - 1).abs() > 0.001) {
+                var to = (_pinchFrom * e.scale).clamp(1.0, _maxZoom);
+                _zoomAbout(to / _zoom, e.localPosition.dx, fit);
+              } else {
+                setState(() => _scroll = scroll - e.panDelta.dx / beatW);
+              }
+            },
+            onPointerPanZoomStart: (_) => _pinchFrom = _zoom,
+            child: Stack(children: [
+              CustomPaint(
+                key: const ValueKey("clipSample"),
+                size: Size(size.maxWidth, size.maxHeight),
+                painter: _SamplePainter(
+                  scroll: scroll,
+                  step: step,
+                  peaks: heard?.peaks,
+                  fileSeconds: fileSeconds,
+                  playStart: playStart,
+                  playLength: length,
+                  secondOf: secondOf,
+                  hits: [
+                    for (var h in heard?.hits ?? const <double>[])
+                      if (h >= playStart && h < playEnd) beatOf(h - playStart)
+                  ],
+                  markers: [for (var m in markers) m.beat],
+                  beatsPerBar: bpb,
+                  beatW: beatW,
+                  beats: beats,
+                  soundBeats: soundBeats,
+                  start: clip.start,
+                  loopStart: clip.loopStart,
+                  loopEnd: clip.loopEnd(bpb),
+                  loop: clip.loop,
+                  gain: math.pow(10, clip.gain / 20).toDouble(),
+                  playhead: _playhead,
+                  studio: look.studio,
+                  rulerH: _rulerH,
+                  top: top,
+                  envelope: widget.envelope == null
+                      ? null
+                      : clip.curveOf(widget.envelope!),
+                  envelopeRest: widget.envelopeRest,
+                  envelopeLength: widget.envelopeLength,
+                  key: clip.warpSignature(spb),
+                ),
+              ),
+              // Closer in, further out, and all of it -- on the ruler's
+              // right.
+              Positioned(
+                right: 4,
+                top: 3,
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  _zoomButton(
+                      look,
+                      "clipZoomOut",
+                      Icons.remove,
+                      _zoom <= 1
+                          ? null
+                          : () => _zoomAbout(1 / 2, size.maxWidth / 2, fit)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text("${_zoom.round()}×",
+                        key: const ValueKey("clipZoom"),
+                        style:
+                            TextStyle(fontSize: 10, color: look.studio.muted)),
+                  ),
+                  _zoomButton(
+                      look,
+                      "clipZoomIn",
+                      Icons.add,
+                      _zoom >= _maxZoom
+                          ? null
+                          : () => _zoomAbout(2, size.maxWidth / 2, fit)),
+                  const SizedBox(width: 2),
+                  _zoomButton(
+                      look,
+                      "clipZoomFit",
+                      Icons.fit_screen_outlined,
+                      _zoom <= 1
+                          ? null
+                          : () => setState(() {
+                                _zoom = 1;
+                                _scroll = 0;
+                              })),
+                ]),
+              ),
+            ]),
           ),
         );
       }),
     );
   }
+
+  /// _pinchFrom is the zoom a pinch started from.
+  double _pinchFrom = 1;
+
+  Widget _zoomButton(
+          MixerLook look, String key, IconData icon, VoidCallback? onTap) =>
+      InkWell(
+        key: ValueKey(key),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(3),
+        child: Container(
+          width: 18,
+          height: 18,
+          decoration: BoxDecoration(
+              color: look.studio.panel,
+              border: Border.all(color: look.studio.edge),
+              borderRadius: BorderRadius.circular(3)),
+          child: Icon(icon,
+              size: 12,
+              color: onTap == null
+                  ? look.studio.muted.withValues(alpha: 0.4)
+                  : look.studio.text),
+        ),
+      );
 
   /// _valueAt is an envelope's value at height [y] in the sound, between
   /// [top] and [bottom]: one at the top, nought at the bottom.
@@ -1464,6 +1640,9 @@ class _SampleViewState extends State<_SampleView>
 }
 
 class _SamplePainter extends CustomPainter {
+  /// scroll is the beat at the left edge, zoomed in; step the grid a drag
+  /// snaps to, drawn where it is finer than a beat -- nought for none.
+  final double scroll, step;
   final Float32List? peaks;
   final double fileSeconds, playStart, playLength;
   final double Function(double beat) secondOf;
@@ -1489,6 +1668,8 @@ class _SamplePainter extends CustomPainter {
   final String key;
 
   _SamplePainter({
+    this.scroll = 0,
+    this.step = 1,
     required this.peaks,
     required this.fileSeconds,
     required this.playStart,
@@ -1521,6 +1702,22 @@ class _SamplePainter extends CustomPainter {
     canvas.drawRect(Offset.zero & size, Paint()..color = studio.inset);
     canvas.drawRect(
         Rect.fromLTWH(0, 0, size.width, top), Paint()..color = studio.panel);
+    // Zoomed in: the whole of it drawn along, and the view moved over it.
+    var left = scroll * beatW;
+    canvas.clipRect(Offset.zero & size);
+    canvas.translate(-left, 0);
+    size = Size(math.max(size.width, beats * beatW), size.height);
+    // The grid a drag snaps to, finer than a beat, faint.
+    if (step > 0 && step < 1) {
+      var fine = Paint()..color = studio.edge.withValues(alpha: 0.18);
+      var from = (scroll / step).floor();
+      var to = ((left + size.width) / beatW / step).ceil();
+      for (var k = from; k <= to; k++) {
+        var x = k * step * beatW;
+        if (x < left - 1 || x > left + size.width) continue;
+        canvas.drawLine(Offset(x, rulerH - 2), Offset(x, h), fine);
+      }
+    }
     // What it does not play, darker: before its start, past its end.
     var dim = Paint()..color = Colors.black.withValues(alpha: 0.28);
     var first = (loop ? math.min(start, loopStart) : start) * beatW;
@@ -1574,7 +1771,12 @@ class _SamplePainter extends CustomPainter {
       var wave = Paint()
         ..color = studio.text.withValues(alpha: 0.75)
         ..strokeWidth = 1;
-      for (var x = 0.0; x < math.min(size.width, soundBeats * beatW); x += 1) {
+      // Only what is in view, a pixel at a time: zoomed in far, the whole of
+      // it is many windows wide.
+      var shownTo = left + size.width;
+      for (var x = left.floorToDouble();
+          x < math.min(shownTo, soundBeats * beatW);
+          x += 1) {
         var from = playStart + secondOf(x / beatW);
         var to = playStart + secondOf((x + 1) / beatW);
         if (from >= playStart + playLength) break;

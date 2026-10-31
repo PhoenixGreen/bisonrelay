@@ -245,6 +245,9 @@ class _CountCardState extends State<_CountCard> {
                   ...gameEffectControls(controller, c.then,
                       (next) => now(c.copyWith(then: next)), commit,
                       key: "count-then-$i", label: "Then"),
+                  gameSoundDropdown(
+                      controller, c.then, (next) => now(c.copyWith(then: next)),
+                      key: "count-then-$i"),
                 ],
                 CanvasTextButton(
                   key: ValueKey("count-remove-$i"),

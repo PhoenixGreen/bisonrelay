@@ -7,10 +7,14 @@ import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_core.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -732,6 +736,123 @@ void main() {
         expect(clip.notes.map((n) => n.start), [0, 2]);
         expect(clip.bars, 1);
       });
+    });
+
+    // Ken: a game's sounds in the mixer's slots, played by what happens --
+    // effects at once, the scene's music as it starts -- and stopped.
+    // Ken, playing Sky Isles: the title's Stop never held, a Loop back
+    // stopped like a Stop, and the music stopped with either. A game's
+    // slots keep their own clock, and its flags are obeyed in a run of
+    // every scene too.
+    test("a game's flags hold and loop, and its slots play on through them",
+        () async {
+      var hero = ShapeElement(const ElementBase(
+          id: "hero",
+          x: 100,
+          y: 600,
+          width: 40,
+          height: 60,
+          play: PlaySpec(as: PlayAs.platformer)));
+      var c = CanvasController(
+          CanvasDocument(
+              frameRate: 30,
+              audio: const AudioSettings(tempo: 120),
+              game: true,
+              scenes: [
+                CanvasScene(id: "one", frames: 60, actions: const [
+                  TimelineAction(
+                      frame: 10,
+                      kind: TimelineActionKind.stop,
+                      waitsFor: "jump"),
+                  TimelineAction(
+                      frame: 59, kind: TimelineActionKind.loop, target: 20),
+                ], elements: [
+                  sound("music"),
+                  hero
+                ]),
+                const CanvasScene(id: "two"),
+              ]),
+          audioEngine: engine);
+      addTearDown(c.dispose);
+      c.clipFromSound("music", 0, c.soundsOf("music").single);
+      var clip = c.session.at("music", 0)!;
+      var d = c.document;
+      c.apply(d.withScene(
+          0, d.scene.copyWith(gameSounds: {"music": gameSoundSlot(clip.id)})));
+      c.clockForTest = () => micros;
+      c.gameClockForTest = () => micros;
+      c.playAll = true;
+      c.gaming = true;
+      addTearDown(() => c.gaming = false);
+      void run(double seconds) {
+        var to = micros + (seconds * 1e6).round();
+        while (micros < to) {
+          micros += 33333;
+          c.tickClockForTest();
+          c.stepGame(1 / 30);
+        }
+      }
+
+      run(1);
+      expect((c.frame, c.playing, c.waitingFor), (10, false, "jump"),
+          reason: "the title holds, waiting for a jump");
+      await settle();
+      run(0.1);
+      expect(c.clipState("music", 0), ClipState.playing,
+          reason: "the music goes on under the title");
+      c.waitKey(const KeyDownEvent(
+          physicalKey: PhysicalKeyboardKey.space,
+          logicalKey: LogicalKeyboardKey.space,
+          timeStamp: Duration.zero));
+      expect(c.playing, isTrue);
+      run(2);
+      expect(c.document.at, 0, reason: "looped, not on to the next scene");
+      expect(c.frame, inInclusiveRange(20, 59));
+      expect(c.playing, isTrue, reason: "a Loop back is not a Stop");
+      expect(c.clipState("music", 0), ClipState.playing,
+          reason: "nor does it stop the slots");
+    });
+
+    test("a game plays its slots: as a scene starts, at once, and stops them",
+        () async {
+      var hero = ShapeElement(const ElementBase(
+          id: "hero",
+          x: 100,
+          y: 600,
+          width: 40,
+          height: 60,
+          play: PlaySpec(as: PlayAs.platformer)));
+      var c = CanvasController(
+          CanvasDocument(
+              frames: 600,
+              frameRate: 120,
+              audio: const AudioSettings(tempo: 120),
+              game: true,
+              elements: [sound("fx"), hero]),
+          audioEngine: engine);
+      addTearDown(c.dispose);
+      c.clockForTest = () => micros;
+      c.clipFromSound("fx", 0, c.soundsOf("fx").single);
+      var clip = c.session.at("fx", 0)!;
+      expect(clip.quantise, isNull, reason: "the song's: a bar");
+      var d = c.document;
+      c.apply(d.withScene(
+          0, d.scene.copyWith(gameSounds: {"fx": gameSoundSlot(clip.id)})));
+      at(c, 0.7); // part way through a bar
+      c.gaming = true;
+      addTearDown(() => c.gaming = false);
+      expect(c.clipState("fx", 0), anyOf(ClipState.queued, ClipState.playing));
+      await settle();
+      expect(engine.launches, hasLength(1));
+      expect(engine.launches.single.$2, closeTo(0, 0.05),
+          reason: "in a game, at once -- not on the next bar");
+      c.gameSound(gameSoundStop("fx"));
+      c.tickClockForTest();
+      expect(
+          c.clipState("fx", 0), anyOf(ClipState.stopping, ClipState.stopped));
+      c.gaming = false;
+      expect(c.clipState("fx", 0), ClipState.stopped,
+          reason: "the game's slots stop with it");
     });
   });
 

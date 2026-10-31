@@ -148,6 +148,10 @@ class StagePainter extends CustomPainter {
   final Rect? selectionBounds;
   final double selectionRotation;
 
+  /// touchAreas are what a game touches of each element played, on the
+  /// canvas, drawn while the Game tab is open -- see gameTouchArea.
+  final List<Rect> touchAreas;
+
   /// selectionSkew is the single selected element's slant, in degrees,
   /// across and down -- see ElementBase.skewX.
   final Offset selectionSkew;
@@ -480,6 +484,7 @@ class StagePainter extends CustomPainter {
     required this.selection,
     required this.selectionBounds,
     required this.selectionRotation,
+    this.touchAreas = const [],
     this.selectionSkew = Offset.zero,
     required this.handleFor,
     required this.marquee,
@@ -923,11 +928,27 @@ class StagePainter extends CustomPainter {
     }
   }
 
+  /// _paintTouchAreas draws what a game touches of each element, a thin
+  /// blue line, as the Game panel says it is.
+  void _paintTouchAreas(Canvas canvas) {
+    if (touchAreas.isEmpty) return;
+    var line = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..color = const Color(0xCC5AA9FF);
+    for (var r in touchAreas) {
+      canvas.drawRect(
+          Rect.fromPoints(r.topLeft * scale + origin, r.bottomRight * scale + origin),
+          line);
+    }
+  }
+
   void _paintSelection(Canvas canvas) {
     if (!showHelpers) return;
 
     _paintKeptBoxes(canvas);
     _paintFlowLines(canvas);
+    _paintTouchAreas(canvas);
 
     _paintChartLabels(canvas);
     _paintTableColumns(canvas);
@@ -1919,6 +1940,7 @@ class StagePainter extends CustomPainter {
   @override
   bool shouldRepaint(StagePainter old) =>
       old.drafting != drafting ||
+      !listEquals(old.touchAreas, touchAreas) ||
       old.guides != guides ||
       !identical(old.snapped, snapped) ||
       !identical(old.framing, framing) ||

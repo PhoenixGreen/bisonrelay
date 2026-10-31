@@ -48,13 +48,19 @@ class SpriteAction {
 
   /// framesFor is the frames played facing [f], and whether they are drawn
   /// flipped: a side with none of its own is the other side mirrored, and
-  /// a way with none at all is the front.
+  /// a way with none at all is the front -- mirrored, facing left, as a
+  /// pack's figure walks to the right in its frames. Without it, a player
+  /// run left walked backwards (Ken).
   (List<int>, bool) framesFor(SpriteFacing f, {bool mirrorSides = true}) {
     var own = frames[f];
     if (own != null && own.isNotEmpty) return (own, false);
     if (mirrorSides && (f == SpriteFacing.left || f == SpriteFacing.right)) {
       var other = frames[f == SpriteFacing.left ? SpriteFacing.right : SpriteFacing.left];
       if (other != null && other.isNotEmpty) return (other, true);
+      var front = frames[SpriteFacing.front];
+      if (f == SpriteFacing.left && front != null && front.isNotEmpty) {
+        return (front, true);
+      }
     }
     for (var g in SpriteFacing.values) {
       var any = frames[g];

@@ -17,6 +17,9 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/canvas_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -8191,6 +8194,67 @@ void main() {
       expect(find.text("Add a channel"), findsOneWidget);
       expect(find.byKey(const ValueKey("addChannel")), findsOneWidget);
       expect(c.document.elements, isEmpty);
+    });
+
+    // Ken: a channel for the sample slots alone, its timeline unused --
+    // greyed, and saying so -- and the master's channels changed from any
+    // scene, as a game is played on one.
+    testWidgets("a channel of slots alone is greyed: Sample slots in use",
+        (tester) async {
+      var c = CanvasController(CanvasDocument(
+          masterOn: true,
+          master: const CanvasScene(id: "m", elements: [
+            AudioElement(ElementBase(id: "fx", name: "Effects", visible: false),
+                clip: MediaClip(
+                    timed: true, channel: "fx", channelName: "Effects"),
+                controls: []),
+          ]),
+          session: const SessionGrid().put(
+              "fx",
+              0,
+              const SessionClip(
+                  id: "coin",
+                  name: "Coin",
+                  sound: MediaSource(assetId: "x", name: "coin.wav"))),
+          scenes: const [CanvasScene(id: "one", frames: 100)]));
+      addTearDown(c.dispose);
+      await pump(tester, host(c));
+      await tester.drag(
+          find.byKey(const ValueKey("timelineGrip")), const Offset(0, -160));
+      await tester.pumpAndSettle();
+      expect(c.document.editingMaster, isFalse);
+      var channel = c.timelineChannels.single;
+      expect(channel.editable, isTrue,
+          reason: "the master's channel, from a scene");
+      var lane = find.byKey(const ValueKey("lane-fx"));
+      expect(lane, findsOneWidget);
+      expect(
+          find.descendant(
+              of: lane,
+              matching: find.byWidgetPredicate((w) =>
+                  w is CustomPaint &&
+                  "${w.foregroundPainter.runtimeType}" ==
+                      "_InteractiveLanePainter")),
+          findsOneWidget);
+
+      // A sound put on its timeline: in use again.
+      var e = c.document.master!.elements.single as AudioElement;
+      c.setTimedClip(
+          e,
+          e.clip.copyWith(
+              playlist: const [MediaSource(assetId: "x", name: "coin.wav")]));
+      await tester.pumpAndSettle();
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("lane-fx")),
+              matching: find.byWidgetPredicate((w) =>
+                  w is CustomPaint &&
+                  "${w.foregroundPainter.runtimeType}" ==
+                      "_InteractiveLanePainter")),
+          findsNothing);
+      expect((c.document.master!.elements.single as AudioElement).clip.playlist,
+          hasLength(1),
+          reason: "written to the master, from the scene");
     });
 
     testWidgets("the top edge drags the timeline open and shut",

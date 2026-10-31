@@ -468,6 +468,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
     if (_panel == CanvasPanel.game && !_controller.document.game) {
       _panel = CanvasPanel.design;
     }
+    // Told after the first frame: notified during initState, a listener's
+    // setState would land mid-build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _controller.gameTabOpen = _panel == CanvasPanel.game;
+    });
     // Returning to a page that was left on Design counts as having used it:
     // the reader chose that tab, even if it was last time.
     _designUsed = _panel == CanvasPanel.design;
@@ -645,6 +650,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       // Built from here on, and kept built. See _seen.
       _seen.add(panel);
     });
+    _controller.gameTabOpen = panel == CanvasPanel.game;
     Provider.of<CanvasPreferences>(context, listen: false).panel = panel.index;
   }
 

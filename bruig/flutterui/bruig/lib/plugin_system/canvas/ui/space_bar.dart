@@ -44,6 +44,9 @@ class _CanvasSpaceBarState extends State<CanvasSpaceBar> {
   }
 
   KeyEventResult _key(FocusNode node, KeyEvent event) {
+    // A game playing has the keys: Space jumps, it does not play the
+    // timeline (Ken). See CanvasController.gameKey.
+    if (widget.controller.gaming) return KeyEventResult.handled;
     if (_typing()) return KeyEventResult.ignored;
     var keys = HardwareKeyboard.instance;
     var command = keys.isControlPressed || keys.isMetaPressed;

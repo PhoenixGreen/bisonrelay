@@ -19,6 +19,8 @@ import 'package:bruig/plugin_system/canvas/ui/space_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
+import 'package:bruig/plugin_system/canvas/model/play.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -513,6 +515,42 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.space);
       await tester.pump();
       expect(c.playing, isFalse);
+    });
+
+    // Ken: a game playing, Space jumps -- it started and stopped the
+    // timeline too.
+    testWidgets("a game playing has Space: the timeline plays on",
+        (tester) async {
+      var c = CanvasController(
+          const CanvasDocument(frames: 100, game: true, elements: [
+            ShapeElement(ElementBase(
+                id: "hero",
+                width: 40,
+                height: 60,
+                play: PlaySpec(as: PlayAs.platformer))),
+          ]),
+          audioEngine: FakeEngine(const {}));
+      addTearDown(c.dispose);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: CanvasSpaceBar(
+            controller: c,
+            child: TextButton(
+                key: const ValueKey("button"),
+                onPressed: () {},
+                child: const Text("A button")),
+          ),
+        ),
+      ));
+      Focus.of(tester.element(find.text("A button"))).requestFocus();
+      await tester.pump();
+      c.gaming = true;
+      expect(c.playing, isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      expect(c.playing, isTrue, reason: "a jump, not a pause");
+      c.gaming = false;
+      await tester.pump();
     });
 
     // The chat beside the canvas is outside it. With its box focused, a

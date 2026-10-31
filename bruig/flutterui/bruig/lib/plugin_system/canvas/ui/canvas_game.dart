@@ -465,15 +465,13 @@ class GameRun extends ChangeNotifier {
       ..addAll(now);
   }
 
-  /// _touchOf is what of [box] -- [e]'s, where it is now -- is touched: a
-  /// sprite's drawn part, not the nothing round it; all of anything else.
-  Rect _touchOf(CanvasElement e, Rect box) =>
-      e is SpriteElement ? e.touchIn(box) : box;
+  Rect _touchOf(CanvasElement e, Rect box) => gameTouchArea(e, box);
 
   /// _do does [effect]: and where a count it changes reaches its number,
   /// what that count then does -- once, as it gets there.
   void _do(CanvasDocument doc, GameEffect effect, [int depth = 0]) {
     if (depth > 8) return;
+    if (effect.sound.isNotEmpty) events.add(GameEvent(sound: effect.sound));
     switch (effect.does) {
       case GameDoes.nothing:
         break;
@@ -623,9 +621,13 @@ class GameRun extends ChangeNotifier {
         : moving
             ? named(["walk", "run", "move"])
             : named(["idle", "stand"]);
+    // Turned the way it goes, whether or not it was drawn with a way to
+    // face: a pack's figure, its frames all walking right, faces left by
+    // being mirrored (Ken: run left, it walked backwards).
     return s.copyWith(
         action: action ?? s.action,
         cues: const [],
+        directions: true,
         facing: body.facing < 0 ? SpriteFacing.left : SpriteFacing.right);
   }
 
@@ -737,6 +739,12 @@ class GameEvent {
       this.press,
       this.stop = false});
 }
+
+/// gameTouchArea is what of [box] -- [e]'s, where it is now -- a game
+/// touches: a sprite's drawn part, not the nothing round it, unless it is
+/// set to be touched all over; all of anything else.
+Rect gameTouchArea(CanvasElement e, Rect box) =>
+    e is SpriteElement && !e.base.play.touchWhole ? e.touchIn(box) : box;
 
 /// tileGround is [map]'s solid layers' tiles on [frame] as boxes on the
 /// canvas -- those inside the map's box, which is all it shows -- each run

@@ -736,6 +736,11 @@ class CanvasScene {
   /// level.
   final bool masterOff;
 
+  /// gameSounds are what each mixer channel does as a game comes to this
+  /// scene, by channel key: "stop" stops it, "slot:<clip id>" plays that
+  /// slot; a channel not here keeps playing. See CanvasController.gameSound.
+  final Map<String, String> gameSounds;
+
   /// cover marks this canvas as the outside of a document rather than one of
   /// its leaves -- see PageCover.
   ///
@@ -770,6 +775,7 @@ class CanvasScene {
     this.background,
     this.backgroundOff = false,
     this.masterOff = false,
+    this.gameSounds = const {},
     this.transition,
     this.cover = PageCover.none,
     this.camera,
@@ -806,6 +812,7 @@ class CanvasScene {
     bool clearBackground = false,
     bool? backgroundOff,
     bool? masterOff,
+    Map<String, String>? gameSounds,
     SceneTransition? transition,
     bool clearTransition = false,
     PageCover? cover,
@@ -822,6 +829,7 @@ class CanvasScene {
         background: clearBackground ? null : (background ?? this.background),
         backgroundOff: backgroundOff ?? this.backgroundOff,
         masterOff: masterOff ?? this.masterOff,
+        gameSounds: gameSounds ?? this.gameSounds,
         transition: clearTransition ? null : (transition ?? this.transition),
         cover: cover ?? this.cover,
         camera: clearCamera ? null : (camera ?? this.camera),
@@ -841,6 +849,7 @@ class CanvasScene {
         if (background != null) "background": background!.toJson(),
         if (backgroundOff) "backgroundOff": true,
         if (masterOff) "masterOff": true,
+        if (gameSounds.isNotEmpty) "gameSounds": gameSounds,
         if (transition != null) "transition": transition!.toJson(),
         if (cover.isCover) "cover": cover.name,
         if (camera != null) "camera": camera!.toJson(),
@@ -873,6 +882,11 @@ class CanvasScene {
           : null,
       backgroundOff: jsonBool(json["backgroundOff"], false),
       masterOff: jsonBool(json["masterOff"], false),
+      gameSounds: {
+        if (json["gameSounds"] case Map raw)
+          for (var MapEntry(:key, :value) in raw.entries)
+            if (key is String && value is String) key: value,
+      },
       transition: json["transition"] is Map<String, dynamic>
           ? SceneTransition.fromJson(json["transition"] as Map<String, dynamic>)
           : null,

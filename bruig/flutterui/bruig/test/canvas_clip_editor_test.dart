@@ -20,7 +20,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart'
-    show PointerDeviceKind, kSecondaryMouseButton;
+    show PointerDeviceKind, kSecondaryMouseButton, PointerScrollEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -726,11 +726,12 @@ void main() {
       expect(find.byKey(const ValueKey("audioColumn")), findsOneWidget);
       expect(find.byKey(const ValueKey("clipSample")), findsOneWidget);
       expect(find.byKey(const ValueKey("clipEditorName")), findsOneWidget);
-      // Start a beat on, then the loop's position.
+      // Start a sixteenth on -- said in seconds too -- then the loop's
+      // position.
       await tester.tap(find.byKey(const ValueKey("clipStart-up")));
       await tester.pump();
-      expect(c.session.at("a", 0)!.start, 1);
-      expect(find.text("1.2.1"), findsOneWidget);
+      expect(c.session.at("a", 0)!.start, 0.25);
+      expect(find.textContaining("1.1.2 · 0.1"), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey("clipLoopStart-up")));
       await tester.pump();
       expect(c.session.at("a", 0)!.loopStart, 1);
@@ -782,6 +783,55 @@ void main() {
       await tester.pump();
       expect(c.session.at("a", 0)!.start, 3);
       expect(c.session.at("a", 0)!.loopStart, 0, reason: "the loop stays");
+      await done(tester, c);
+    });
+
+    // Ken: zoomed in on the sound, a start set finer than a beat -- the
+    // silence at the front of a coin's sound cut away.
+    testWidgets("zoomed in, the start is dragged finer; a time typed",
+        (tester) async {
+      var c = await show(tester);
+      c.openClipEditor("a", 0);
+      await tester.pump();
+      await idle(tester);
+      var ruler = tester.getRect(find.byKey(const ValueKey("clipSample")));
+      var fitW = ruler.width / 20;
+      expect(find.text("1×"), findsOneWidget);
+      for (var i = 0; i < 3; i++) {
+        await tester.tap(find.byKey(const ValueKey("clipZoomIn")));
+        await tester.pump();
+      }
+      expect(find.text("8×"), findsOneWidget);
+      // Zoomed about the middle: back to the start, to find the flag.
+      await tester.sendEventToBinding(PointerScrollEvent(
+          position: ruler.center, scrollDelta: const Offset(-100000, 0)));
+      await tester.pump();
+      var beatW = fitW * 8;
+      var flag = ruler.topLeft + const Offset(2, 14);
+      var g = await tester.startGesture(flag);
+      // A sixteenth and a bit: to the grid -- an eighth of a beat at this
+      // zoom, then finer.
+      await g.moveBy(Offset(beatW * 0.3, 0));
+      await g.moveBy(Offset(0.2, 0));
+      await g.up();
+      await tester.pump();
+      var start = c.session.at("a", 0)!.start;
+      expect(start, greaterThan(0));
+      expect(start, lessThan(1), reason: "not a whole beat");
+      expect((start * 64).roundToDouble(), start * 64,
+          reason: "on a grid, finer than a sixteenth");
+      // All of it again.
+      await tester.tap(find.byKey(const ValueKey("clipZoomFit")));
+      await tester.pump();
+      expect(find.text("1×"), findsOneWidget);
+      // A time typed: at 120 a minute, a beat is half a second.
+      await tester.tap(find.byKey(const ValueKey("clipStart")));
+      await tester.pump();
+      await tester.enterText(find.byKey(const ValueKey("typedPlace")), "180ms");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect(c.session.at("a", 0)!.start, closeTo(0.36, 1e-9));
+      expect(tester.takeException(), isNull);
       await done(tester, c);
     });
 

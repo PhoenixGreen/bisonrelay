@@ -2389,6 +2389,9 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   /// arrows are claimed for the same reason: unclaimed, Flutter spends them on
   /// directional focus traversal between the buttons.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    // A game playing has the keys: Space jumps, the arrows run -- they do
+    // not play the timeline or walk its frames (Ken). See gameKey.
+    if (controller.gaming) return KeyEventResult.handled;
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }

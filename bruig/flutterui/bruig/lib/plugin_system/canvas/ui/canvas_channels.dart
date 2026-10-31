@@ -876,8 +876,16 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     controller.selectedChannel = key;
   }
 
+  /// _slotsOnly is whether [channel] plays from its sample slots and has
+  /// nothing on the timeline: its lane greyed, saying so (Ken) -- still a
+  /// lane a sound can be dropped on.
+  bool _slotsOnly(TimelineChannel channel) =>
+      (controller.session.slots[channel.key]?.any((c) => c != null) ?? false) &&
+      channel.lanes.every((l) => l.clip.isEmpty || !l.clip.timed);
+
   Widget _lane(TimelineChannel channel, ThemeNotifier theme) {
     if (channel.interactive) return _interactiveLane(channel, theme);
+    var slotsOnly = _slotsOnly(channel);
     var height = _heightOf(channel.key);
     var tall = height >= _waveformFrom;
     // A sound's shape from its file, and a video's from the soundtrack that
@@ -941,7 +949,16 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                 _hover(channel, e.localPosition, box.maxWidth, box.maxHeight),
             child: CustomPaint(
               size: Size(box.maxWidth, box.maxHeight),
+              foregroundPainter: slotsOnly
+                  ? _InteractiveLanePainter(
+                      label: "Sample slots in use",
+                      colors: theme.colors,
+                      chosen: controller.selectedChannels.contains(channel.key),
+                      frame: controller.frame,
+                      view: _view)
+                  : null,
               painter: _LanePainter(
+                onMaster: controller.document.editingMaster,
                 channel: channel,
                 spans: [for (var lane in channel.lanes) _span(lane)],
                 view: _view,
@@ -980,11 +997,13 @@ class _CanvasChannelsState extends State<CanvasChannels> {
         child: CustomPaint(
           size: Size.infinite,
           painter: _InteractiveLanePainter(
-            label: channel.lanes.length > 1
-                ? "${channel.lanes.length} sounds that play when pressed"
-                : channel.video
-                    ? "A video that plays when pressed on the canvas"
-                    : "Plays when pressed on the canvas",
+            label: _slotsOnly(channel)
+                ? "Sample slots in use"
+                : channel.lanes.length > 1
+                    ? "${channel.lanes.length} sounds that play when pressed"
+                    : channel.video
+                        ? "A video that plays when pressed on the canvas"
+                        : "Plays when pressed on the canvas",
             colors: theme.colors,
             chosen: controller.selectedChannels.contains(channel.key),
             frame: controller.frame,
@@ -1174,7 +1193,12 @@ class _LanePainter extends CustomPainter {
   final int? sceneFrom;
   final int? sceneTo;
 
+  /// onMaster is whether the master is being edited: seen from a scene, a
+  /// clip of the master's says so.
+  final bool onMaster;
+
   _LanePainter({
+    required this.onMaster,
     required this.sceneFrom,
     required this.sceneTo,
     required this.channel,
@@ -1397,8 +1421,11 @@ class _LanePainter extends CustomPainter {
     // for any of it.
     var room = to - math.max(from, 0) - 12;
     if (room >= 24) {
-      var name =
-          lane.editable ? lane.element.name : "${lane.element.name} (master)";
+      // Said where it lives, seen from a scene: changed from here, it is
+      // the master's that changes.
+      var name = lane.scene < 0 && !onMaster
+          ? "${lane.element.name} (master)"
+          : lane.element.name;
       var text = TextPainter(
         text: TextSpan(
             text: name,
