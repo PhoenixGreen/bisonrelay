@@ -61,7 +61,11 @@ const double mixerDefaultHeight = 320;
 /// as a row -- for the screen to stop a drag at. Short of their room, the
 /// clips and the devices scroll; the mixer is never swapped for another
 /// view of it.
-double mixerLeastHeight(CanvasController controller) {
+///
+/// [bare] is the mixer at its smallest -- see mixerSmallest -- which drops
+/// the columns' heads; by default, whether it is.
+double mixerLeastHeight(CanvasController controller, {bool? bare}) {
+  bare ??= controller.mixerSmallest;
   var bands = 0.0;
   var showing = 0;
   for (var s in MixerSection.values) {
@@ -82,13 +86,23 @@ double mixerLeastHeight(CanvasController controller) {
     bands += switch (s) {
       MixerSection.clips => _clipsLeast,
       MixerSection.devices => _slotH,
-      MixerSection.mixer => state == BandState.shown ? _mixerMinH : _miniMixerH,
+      MixerSection.mixer => state == BandState.shown
+          ? _mixerMinH
+          : bare
+              ? _bareMixerH
+              : _miniMixerH,
       MixerSection.sends => sends,
     };
   }
   // The room along the top edge, the strips' bottom margin and a column's
   // edge and border, its head and the gaps over each band.
-  return _edgeRoom + 10 + 14 + 2 + _headH + _bandGap * showing + bands;
+  return _edgeRoom +
+      10 +
+      14 +
+      2 +
+      (bare ? 0 : _headH) +
+      _bandGap * showing +
+      bands;
 }
 
 /// _edgeRoom is the room kept along a panel's top edge, which is dragged to
@@ -509,9 +523,12 @@ class _CanvasMixerState extends State<CanvasMixer>
       padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
       child: LayoutBuilder(builder: (context, box) {
         // Inside a column's padding and its edge.
+        // At its smallest: no heads, and no rail of bands.
+        var bare =
+            !widget.embedded && !widget.effects && controller.mixerSmallest;
         var bands = _Bands.fit(
             box.maxHeight - 14, states, devicesWanted, devicesCap,
-            sendsH: sendsH);
+            sendsH: sendsH, bare: bare);
         return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(
             child: lanes.isEmpty && widget.embedded
@@ -598,7 +615,7 @@ class _CanvasMixerState extends State<CanvasMixer>
             selected: controller.selectedChannel == _master,
             onSelect: () => controller.pickStrip(_master),
           ),
-          if (!widget.embedded) ...[
+          if (!widget.embedded && !bare) ...[
             const SizedBox(width: 6),
             _SectionRail(
               states: states,
@@ -1372,15 +1389,12 @@ class _FaderPainter extends CustomPainter {
             ..strokeWidth = 1
             ..color = unity ? colors.muted : colors.edge);
       if (!labels) continue;
-      var label = TextPainter(
-        text: TextSpan(
-            text: m > 0 ? "+${m.round()}" : "${m.round()}".replaceAll("-", "−"),
-            style: TextStyle(
-                fontSize: small ? 6 : 7,
-                height: 1,
-                color: unity ? colors.text : colors.muted)),
-        textDirection: TextDirection.ltr,
-      )..layout();
+      var label = paintedLabel(
+          m > 0 ? "+${m.round()}" : "${m.round()}".replaceAll("-", "−"),
+          TextStyle(
+              fontSize: small ? 6 : 7,
+              height: 1,
+              color: unity ? colors.text : colors.muted));
       if (size.height > (small ? 70 : 90)) {
         label.paint(
             canvas,
@@ -2163,15 +2177,10 @@ class _BigRoomPainter extends CustomPainter {
         Rect.fromCenter(center: c, width: 2 * rx * k, height: 2 * ry * k);
 
     void label(String text, Offset centre, Color colour, double fontSize) {
-      var p = TextPainter(
-        text: TextSpan(
-            text: text,
-            style: TextStyle(
-                fontSize: fontSize,
-                fontWeight: FontWeight.w600,
-                color: colour)),
-        textDirection: TextDirection.ltr,
-      )..layout();
+      var p = paintedLabel(
+          text,
+          TextStyle(
+              fontSize: fontSize, fontWeight: FontWeight.w600, color: colour));
       p.paint(canvas, centre - Offset(p.width / 2, p.height / 2));
     }
 
@@ -2189,15 +2198,12 @@ class _BigRoomPainter extends CustomPainter {
       canvas.drawLine(c, at(deg.toDouble(), 1), guide);
     }
     // In the corner, clear of the centre speaker under it.
-    var front = TextPainter(
-      text: TextSpan(
-          text: "▲ FRONT",
-          style: TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w600,
-              color: studio.displayLine.withValues(alpha: 0.7))),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    var front = paintedLabel(
+        "▲ FRONT",
+        TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w600,
+            color: studio.displayLine.withValues(alpha: 0.7)));
     front.paint(canvas, const Offset(8, 6));
 
     // The speakers, each lit by how much of the channel it carries.

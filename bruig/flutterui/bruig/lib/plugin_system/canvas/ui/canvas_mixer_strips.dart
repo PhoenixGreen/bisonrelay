@@ -81,8 +81,12 @@ class _Bands {
   /// miniMixer whether it shows minimised, [_miniMixerH] high.
   final bool mixer;
   final bool miniMixer;
+
+  /// bare is the mixer at its smallest: no column has its head -- its name
+  /// and the arrow that narrows it.
+  final bool bare;
   const _Bands(this.clips, this.devices, this.mixer,
-      {this.miniMixer = false, this.sends});
+      {this.miniMixer = false, this.sends, this.bare = false});
 
   /// _Bands.fit shares [inner], a column's height inside its frame, among
   /// the bands as [states] says. A minimised band has its least -- a clip
@@ -98,7 +102,7 @@ class _Bands {
   /// the devices may have all they want.
   factory _Bands.fit(double inner, Map<MixerSection, BandState> states,
       double devicesWanted, double devicesCap,
-      {double sendsH = 0}) {
+      {double sendsH = 0, bool bare = false}) {
     bool whole(MixerSection s) => states[s] == BandState.shown;
     bool mini(MixerSection s) => states[s] == BandState.minimised;
     var clips = whole(MixerSection.clips);
@@ -113,7 +117,7 @@ class _Bands {
             states[s] != BandState.hidden &&
             (s != MixerSection.sends || sends != null))
         .length;
-    var avail = math.max(0.0, inner - _headH - _bandGap * showing);
+    var avail = math.max(0.0, inner - (bare ? 0 : _headH) - _bandGap * showing);
     double? c, d;
     var fixed = sends ?? 0.0;
     if (mini(MixerSection.clips)) {
@@ -124,7 +128,7 @@ class _Bands {
       d = _slotH;
       fixed += d;
     }
-    if (mini(MixerSection.mixer)) fixed += _miniMixerH;
+    if (mini(MixerSection.mixer)) fixed += bare ? _bareMixerH : _miniMixerH;
     var free = math.max(0.0, avail - fixed);
     var want =
         clips && mixer ? math.min(devicesWanted, devicesCap) : devicesWanted;
@@ -140,7 +144,7 @@ class _Bands {
         d = free;
       }
       return _Bands(c, d, false,
-          miniMixer: mini(MixerSection.mixer), sends: sends);
+          miniMixer: mini(MixerSection.mixer), sends: sends, bare: bare);
     }
     var wanted = (clips ? clipsWanted : 0) + (devices ? want : 0);
     var forMixer = free - wanted;
@@ -168,13 +172,16 @@ class _Bands {
     } else if (clips) {
       c = rest;
     }
-    return _Bands(c, d, true, sends: sends);
+    return _Bands(c, d, true, sends: sends, bare: bare);
   }
 }
 
 /// _miniMixerH is the mixer band minimised: a row of its buttons over a
 /// meter on its side, which is the fader too.
 const double _miniMixerH = 34;
+
+/// _bareMixerH is it at the mixer's smallest: the meter alone.
+const double _bareMixerH = 12;
 
 /// _StripFrame is a column: its frame, its head, and its bands at the
 /// heights every column shares.
@@ -243,22 +250,25 @@ class _StripFrame extends StatelessWidget {
               color: selected ? colors.primary : const Color(0x00000000),
               width: 2)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        SizedBox(
-          height: _headH,
-          child: Row(children: [
-            Expanded(child: ClipRect(child: head)),
-            if (onNarrow case var toggle?)
-              Tooltip(
-                message: narrow ? "Make it wide" : "Make it narrow",
-                child: InkWell(
-                  key: narrowKey,
-                  onTap: toggle,
-                  child: Icon(narrow ? Icons.chevron_right : Icons.chevron_left,
-                      size: 12, color: studio.muted),
+        if (!bands.bare)
+          SizedBox(
+            height: _headH,
+            child: Row(children: [
+              Expanded(child: ClipRect(child: head)),
+              if (onNarrow case var toggle?)
+                Tooltip(
+                  message: narrow ? "Make it wide" : "Make it narrow",
+                  child: InkWell(
+                    key: narrowKey,
+                    onTap: toggle,
+                    child: Icon(
+                        narrow ? Icons.chevron_right : Icons.chevron_left,
+                        size: 12,
+                        color: studio.muted),
+                  ),
                 ),
-              ),
-          ]),
-        ),
+            ]),
+          ),
         if (bands.clips case var h?) ...[
           const SizedBox(height: _bandGap),
           SizedBox(height: h, child: clips()),
@@ -281,7 +291,9 @@ class _StripFrame extends StatelessWidget {
         if (bands.miniMixer) ...[
           const Spacer(),
           const SizedBox(height: _bandGap),
-          SizedBox(height: _miniMixerH, child: miniMixer()),
+          SizedBox(
+              height: bands.bare ? _bareMixerH : _miniMixerH,
+              child: miniMixer()),
         ],
       ]),
     );
@@ -726,6 +738,7 @@ class _ChannelStrip extends StatelessWidget {
         onCommit: onCommit,
       ),
       miniMixer: () => _miniMixerBand(theme,
+          bare: bands.bare,
           buttons: [
             _onToggle(theme, "$number", mix.mute,
                 () => onChanged(mix.copyWith(mute: !mix.mute)),
@@ -988,6 +1001,7 @@ class _ReturnStrip extends StatelessWidget {
             key: const ValueKey("returnComp")),
       ])),
       miniMixer: () => _miniMixerBand(theme,
+          bare: bands.bare,
           buttons: [
             _onToggle(theme, letter, mix.mute,
                 () => set(mix.copyWith(mute: !mix.mute)),
@@ -1162,6 +1176,7 @@ class _MasterStrip extends StatelessWidget {
               key: const ValueKey("loudnessSlot")),
         ])),
         miniMixer: () => _miniMixerBand(theme,
+            bare: bands.bare,
             buttons: const [],
             db: mix.gainDb,
             level: level,
@@ -2088,8 +2103,10 @@ class _SceneSlotState extends State<_SceneSlot> {
 
 /// _miniMixerBand is a column's mixer band minimised: its buttons in a row,
 /// over its meter on its side -- which is its fader too, dragged sideways.
+/// [bare], at the mixer's smallest, the meter alone.
 Widget _miniMixerBand(
   MixerLook theme, {
+  bool bare = false,
   required List<Widget?> buttons,
   required double db,
   required (double, double) level,
@@ -2097,49 +2114,58 @@ Widget _miniMixerBand(
   required _MixWrite<double> onDb,
   required VoidCallback onCommit,
 }) =>
-    Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SizedBox(
-        height: _buttonH,
-        // Each side shrunk to fit a narrow column, rather than running out
-        // of it.
-        child: Row(children: [
-          Flexible(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                for (var b in buttons)
-                  if (b != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 3),
-                      child:
-                          SizedBox(width: _buttonW, height: _buttonH, child: b),
-                    ),
-              ]),
-            ),
-          ),
-          const SizedBox(width: 2),
-          Flexible(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerRight,
-              child: Text(dbText(db),
-                  style: TextStyle(fontSize: 9, color: theme.colors.onSurface)),
-            ),
-          ),
-        ]),
-      ),
-      const SizedBox(height: 4),
-      Expanded(
-        child: _MiniFader(
+    bare
+        ? _MiniFader(
             db: db,
             level: level,
             peak: peak,
             theme: theme,
             onChanged: onDb,
-            onCommit: onCommit),
-      ),
-    ]);
+            onCommit: onCommit)
+        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            SizedBox(
+              height: _buttonH,
+              // Each side shrunk to fit a narrow column, rather than running out
+              // of it.
+              child: Row(children: [
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      for (var b in buttons)
+                        if (b != null)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 3),
+                            child: SizedBox(
+                                width: _buttonW, height: _buttonH, child: b),
+                          ),
+                    ]),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Text(dbText(db),
+                        style: TextStyle(
+                            fontSize: 9, color: theme.colors.onSurface)),
+                  ),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 4),
+            Expanded(
+              child: _MiniFader(
+                  db: db,
+                  level: level,
+                  peak: peak,
+                  theme: theme,
+                  onChanged: onDb,
+                  onCommit: onCommit),
+            ),
+          ]);
 
 /// _MiniFader is a meter on its side with the fader's place marked on it:
 /// dragged sideways it sets the level, double-clicked it is nought.

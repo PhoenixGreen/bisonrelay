@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/media/kokoro_speech.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_engines.dart';
+import 'package:bruig/plugin_system/canvas/media/qwen_speech.dart';
+import 'package:bruig/plugin_system/canvas/media/speech_finish.dart';
 import 'package:bruig/plugin_system/canvas/media/warp.dart';
 import 'package:bruig/plugin_system/canvas/media/vocaliser.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_file.dart';
@@ -20,6 +22,7 @@ import 'package:bruig/plugin_system/canvas/media/mix/decode.dart'
     show ffmpegDecode, readWholeAway;
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart' show mixRate;
 import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
@@ -9134,59 +9137,361 @@ class CanvasController extends ChangeNotifier {
   /// speechEngineFor is the engine a spec speaks with -- our own voices,
   /// or ElevenLabs with [cloudKey]. Tests put a stand-in here.
   static SpeechEngine Function(SpeechSpec spec, String cloudKey)
-      speechEngineFor = (spec, key) => spec.engine == SpeechEngineKind.cloud
-          ? CloudSpeech(key)
-          : KokoroSpeech();
+      speechEngineFor = (spec, key) => switch (spec.engine) {
+            SpeechEngineKind.cloud => CloudSpeech(key),
+            SpeechEngineKind.expressive => QwenSpeech(),
+            SpeechEngineKind.local => KokoroSpeech(),
+          };
 
-  /// speaking is the channels speaking now, so their Speak shows it.
-  final Set<String> speaking = {};
+  /// speechQueue is each channel's lines waiting to be spoken, by their
+  /// lineKey: the first is being spoken now.
+  final Map<String, List<String>> speechQueue = {};
 
-  /// speak speaks [channel]'s script into a new take: a clip on the
-  /// channel from the playhead, its words timed and kept with the take.
-  /// One change to undo. Answers why not, where it could not.
-  Future<String?> speak(String channel, {String cloudKey = ""}) async {
+  /// speechLineKey is what a line is known by while it waits: its words
+  /// and how it is said, which a join, a split or an edit change.
+  static String speechLineKey(SpeechLine l) =>
+      "${l.direction.name}|${l.own}|${l.text}";
+
+  /// speechLineState is "speaking" or "waiting" for a line in the queue,
+  /// or null.
+  String? speechLineState(String channel, SpeechLine line) {
+    var queue = speechQueue[channel];
+    if (queue == null) return null;
+    var key = speechLineKey(line);
+    if (queue.firstOrNull == key) return "speaking";
+    return queue.contains(key) ? "waiting" : null;
+  }
+
+  /// speechTakesMost is how many takes a line keeps.
+  static const speechTakesMost = 3;
+
+  /// _lineSpeech is [channel]'s device with its lines set out -- those of
+  /// its script, where it has none yet.
+  SpeechSpec? _lineSpeech(String channel) {
     var spec = speechOf(channel);
-    if (spec == null || !speaking.add(channel)) return null;
+    if (spec == null || spec.lines.isNotEmpty) return spec;
+    var lines = spec.shownLines;
+    if (lines.isEmpty) return spec;
+    spec = spec.copyWith(lines: lines);
+    setSpeech(channel, spec, transient: true);
+    return spec;
+  }
+
+  /// speakLines speaks [lines] of [channel] -- by default, every line not
+  /// spoken yet -- one at a time in the background, each as a new take of
+  /// its line, chosen; then joins the chosen takes into the channel's clip.
+  /// Lines asked for while it runs join the queue. Answers why not, where
+  /// it could not.
+  Future<String?> speakLines(String channel,
+      {List<SpeechLine>? lines, String cloudKey = ""}) async {
+    var spec = _lineSpeech(channel);
+    if (spec == null) return null;
+    var wanted = lines ?? [for (var l in spec.lines) if (l.takes.isEmpty) l];
+    var queue = speechQueue[channel];
+    var running = queue != null;
+    queue ??= speechQueue[channel] = [];
+    for (var l in wanted) {
+      var key = speechLineKey(l);
+      if (!queue.contains(key)) queue.add(key);
+    }
+    notifyListeners();
+    if (running) return null;
+    String? problem;
+    var spoke = false;
+    try {
+      while (queue.isNotEmpty && !_disposed) {
+        var key = queue.first;
+        var now = speechOf(channel);
+        var line = now?.lines.where((l) => speechLineKey(l) == key).firstOrNull;
+        if (now == null || line == null) {
+          queue.removeAt(0);
+          continue;
+        }
+        // Another seed each time: a take replacing one is not the same.
+        var audio = await speechEngineFor(now, cloudKey)
+            .speakLine(now, line, seed: 1 + _seeds.nextInt(1 << 30));
+        if (_disposed) return null;
+        var id = await _keepSpeech(audio, "line");
+        if (id == null) {
+          problem = "The take could not be kept.";
+          break;
+        }
+        // Where the line is now: it may have moved while it was spoken.
+        var after = speechOf(channel);
+        if (after != null) {
+          var take = SpeechTake(id, audio.seconds, audio.words,
+              exact: audio.exact);
+          var at = after.lines.indexWhere((l) => speechLineKey(l) == key);
+          if (at >= 0) {
+            var l = withTake(after.lines[at], take);
+            setSpeech(
+                channel,
+                after.copyWith(lines: [
+                  for (var (i, x) in after.lines.indexed) i == at ? l : x,
+                ]),
+                transient: true);
+            spoke = true;
+            // In the Audio library too, to use elsewhere.
+            await speechLibrary(
+                id,
+                "${after.voiceName.isEmpty ? "Speech" : after.voiceName} · "
+                "line ${at + 1} · take ${String.fromCharCode(65 + l.chosen)} · "
+                "${_firstWords(l.text)}",
+                audio.seconds);
+          }
+        }
+        queue.remove(key);
+        notifyListeners();
+      }
+    } on SpeechException catch (e) {
+      problem = e.message;
+    } catch (e) {
+      debugPrint("Unable to speak a line: $e");
+      problem = "The voice could not speak: $e";
+    } finally {
+      speechQueue.remove(channel);
+      if (!_disposed) notifyListeners();
+    }
+    if (spoke && !_disposed) problem ??= await joinSpeech(channel);
+    return problem;
+  }
+
+  /// anotherTake speaks [line] of [channel] again, as a new take: with
+  /// three already, in place of the oldest not chosen -- see withTake.
+  Future<String?> anotherTake(String channel, SpeechLine line,
+          {String cloudKey = ""}) =>
+      speakLines(channel, lines: [line], cloudKey: cloudKey);
+
+  /// withTake is [line] with [take] added and chosen. A line keeps three:
+  /// with three already, the oldest of those not chosen makes room.
+  static SpeechLine withTake(SpeechLine line, SpeechTake take) {
+    var takes = [...line.takes];
+    if (takes.length >= speechTakesMost) {
+      var drop = line.chosen == 0 ? 1 : 0;
+      takes.removeAt(drop);
+    }
+    takes.add(take);
+    return line.copyWith(takes: takes, chosen: takes.length - 1);
+  }
+
+  final _seeds = math.Random();
+
+  static String _firstWords(String text) {
+    var words = text.split(RegExp(r"\s+"));
+    return words.length <= 6 ? text : "${words.take(6).join(" ")}…";
+  }
+
+  /// speechLibrary lists a spoken take in the Audio library as [name], and
+  /// speechUnlist takes one off the list, its file kept: stand-ins for
+  /// tests.
+  @visibleForTesting
+  static Future<void> Function(String id, String name, double seconds)
+      speechLibrary = (id, name, seconds) => CanvasLibrary.add(LibraryAsset(
+          id: id,
+          kind: AssetKind.audio,
+          name: name,
+          added: DateTime.now(),
+          length: seconds));
+  @visibleForTesting
+  static Future<void> Function(String id) speechUnlist =
+      (id) => CanvasLibrary.unlist(id);
+
+  /// chooseTake makes take [take] of line [index] the one in the clip.
+  Future<String?> chooseTake(String channel, int index, int take) async {
+    var spec = speechOf(channel);
+    if (spec == null || index < 0 || index >= spec.lines.length) return null;
+    var line = spec.lines[index];
+    if (take < 0 || take >= line.takes.length || take == line.chosen) {
+      return null;
+    }
+    setSpeech(
+        channel,
+        spec.copyWith(lines: [
+          for (var (i, l) in spec.lines.indexed)
+            i == index ? l.copyWith(chosen: take) : l
+        ]),
+        transient: true);
+    return joinSpeech(channel);
+  }
+
+  /// setSpeechLines changes [channel]'s lines -- a direction, own words, a
+  /// join or a split -- the script written from them.
+  void setSpeechLines(String channel, List<SpeechLine> lines) {
+    var spec = speechOf(channel);
+    if (spec == null) return;
+    setSpeech(channel, spec.withLines(lines));
+  }
+
+  /// joinSpeechLine makes line [index] and the next one line, to be spoken
+  /// as one: its direction the first's, its takes none yet.
+  void joinSpeechLine(String channel, int index) {
+    var lines = _lineSpeech(channel)?.lines;
+    if (lines == null || index < 0 || index + 1 >= lines.length) return;
+    var a = lines[index], b = lines[index + 1];
+    setSpeechLines(channel, [
+      ...lines.take(index),
+      SpeechLine("${a.text} ${b.text}", direction: a.direction, own: a.own),
+      ...lines.skip(index + 2),
+    ]);
+  }
+
+  /// speechSplitAt is where line [text] is split: at the comma or stop
+  /// nearest its middle, or null for none.
+  static int? speechSplitAt(String text) {
+    var body = text.isEmpty ? text : text.substring(0, text.length - 1);
+    var marks = [
+      for (var m in RegExp(r"[,.;:!?…]\s").allMatches(body)) m.start + 1
+    ];
+    if (marks.isEmpty) return null;
+    var middle = text.length / 2;
+    return marks.reduce(
+        (a, b) => (b - middle).abs() < (a - middle).abs() ? b : a);
+  }
+
+  /// splitSpeechLine cuts line [index] in two at speechSplitAt, each with
+  /// its direction and no takes yet.
+  void splitSpeechLine(String channel, int index) {
+    var lines = _lineSpeech(channel)?.lines;
+    if (lines == null || index < 0 || index >= lines.length) return;
+    var l = lines[index];
+    var at = speechSplitAt(l.text);
+    if (at == null) return;
+    setSpeechLines(channel, [
+      ...lines.take(index),
+      SpeechLine(l.text.substring(0, at).trim(),
+          direction: l.direction, own: l.own),
+      SpeechLine(l.text.substring(at).trim(),
+          direction: l.direction, own: l.own),
+      ...lines.skip(index + 1),
+    ]);
+  }
+
+  /// _keepSpeech writes [audio] to a file and keeps it in the library,
+  /// answering its id.
+  Future<String?> _keepSpeech(SpokenAudio audio, String name) =>
+      _keepWav(wav16(audio.l, audio.r), name);
+
+  Future<String?> _keepWav(Uint8List wav, String name) async {
+    var dir = await Directory.systemTemp.createTemp("canvas-take");
+    try {
+      var file = File(path.join(dir.path, "$name.wav"));
+      await file.writeAsBytes(wav, flush: true);
+      return await speechStore(file.path);
+    } finally {
+      await dir.delete(recursive: true).catchError((_) => dir);
+    }
+  }
+
+  /// _joinAway joins [sounds] -- the takes [takes] chosen, a pause between
+  /// each two -- gives them the finish, and makes the WAV, in an isolate of
+  /// its own.
+  static Future<
+      ({Uint8List wav, double seconds, List<TimedWord> words, bool exact})>
+      _joinAway(List<Float32List> sounds, List<SpeechTake> takes, double speed,
+          {required double room, required bool boost}) {
+    var words = [for (var t in takes) t.words];
+    var exact = [for (var t in takes) t.exact];
+    return Isolate.run(() {
+      var joined = finished(
+          joinLines([
+            for (var (i, s) in sounds.indexed)
+              SpokenAudio(s, s, words[i], exact: exact[i]),
+          ], speed),
+          room: room,
+          boost: boost);
+      return (
+        wav: wav16(joined.l, joined.r),
+        seconds: joined.seconds,
+        words: joined.words,
+        exact: joined.exact,
+      );
+    });
+  }
+
+  /// joining is the channels whose lines are being joined into the clip.
+  final Set<String> joining = {};
+
+  /// joinSpeech joins [channel]'s chosen takes, a pause between each two,
+  /// gives them the finish -- the room and the speaker boost -- and puts
+  /// them in the channel's clip: the clip it made before, its sound
+  /// changed, or a new one at the playhead. One change to undo.
+  Future<String?> joinSpeech(String channel) async {
+    var spec = speechOf(channel);
+    if (spec == null || !joining.add(channel)) return null;
     notifyListeners();
     try {
-      var take = await speechEngineFor(spec, cloudKey).speak(spec);
-      if (_disposed) return null;
-      var dir = await Directory.systemTemp.createTemp("canvas-take");
-      String? id;
-      try {
-        var file = File(path.join(dir.path, "speech.wav"));
-        await file.writeAsBytes(wav16(take.l, take.r), flush: true);
-        id = await speechStore(file.path);
-      } finally {
-        await dir.delete(recursive: true).catchError((_) => dir);
+      var takes = [
+        for (var l in spec.lines)
+          if (l.take case var t?) t
+      ];
+      if (takes.isEmpty) return null;
+      var sounds = <Float32List>[];
+      for (var t in takes) {
+        var sound = await takeAudio(t.assetId);
+        if (sound == null) return "A take's file could not be read.";
+        sounds.add(sound);
       }
-      if (id == null || _disposed) return "The take could not be kept.";
+      // Joined and finished in an isolate of its own: on the app's, the
+      // finish held everything up for seconds on a long script.
+      var joined = await _joinAway(sounds, takes, spec.speed,
+          room: spec.room, boost: spec.boost);
+      if (_disposed) return null;
+      var id = await _keepWav(joined.wav, "speech");
+      if (id == null || _disposed) return "The clip could not be kept.";
       var lane = timelineChannels.where((c) => c.key == channel).firstOrNull;
       var now = lane?.mix.speech;
       if (lane == null || now == null) return null;
-      var number = now.takes.length + 1;
-      var kept = now.copyWith(takes: [
-        ...now.takes,
-        SpeechTake(id, take.seconds, take.words, exact: take.exact),
-      ]);
+      var old = _document.elements
+          .whereType<AudioElement>()
+          .where((e) => e.id == now.clip)
+          .firstOrNull;
+      var oldId = old?.clip.playlist.firstOrNull?.assetId;
+      var take =
+          SpeechTake(id, joined.seconds, joined.words, exact: joined.exact);
       beginInteraction();
-      var mix = lane.mix.copyWith(speech: kept);
-      setChannelMix(lane, mix, transient: true);
-      addElement(channelClip(_document, _frame,
-          source: MediaSource(
-              assetId: id, name: "Speech take $number", length: take.seconds),
-          channel: channel,
-          channelName: lane.name,
-          mix: mix));
+      var kept = now.copyWith(takes: [
+        for (var t in now.takes)
+          if (t.assetId != oldId) t,
+        take,
+      ]);
+      var source = MediaSource(
+          assetId: id, name: "Speech", length: joined.seconds);
+      if (old != null) {
+        setChannelMix(lane, lane.mix.copyWith(speech: kept), transient: true);
+        var e = _document.elements
+            .whereType<AudioElement>()
+            .where((e) => e.id == old.id)
+            .first;
+        replaceElement(e.copyWith(
+            clip: e.clip.copyWith(playlist: [
+          source.copyWith(name: e.clip.playlist.firstOrNull?.name),
+          ...e.clip.playlist.skip(1),
+        ])));
+      } else {
+        var clip = channelClip(_document, _frame,
+            source: source,
+            channel: channel,
+            channelName: lane.name,
+            mix: lane.mix);
+        kept = kept.copyWith(clip: clip.id);
+        var mix = lane.mix.copyWith(speech: kept);
+        setChannelMix(lane, mix, transient: true);
+        addElement(clip.copyWith(clip: clip.clip.copyWith(mix: mix)));
+      }
       endInteraction();
+      // The clip in the Audio library: this one in place of the last.
+      if (oldId != null && oldId != id) await speechUnlist(oldId);
+      await speechLibrary(
+          id,
+          "Speech · ${now.voiceName.isEmpty ? "voice" : now.voiceName} · "
+          "${_firstWords(now.lines.map((l) => l.text).join(" "))}",
+          joined.seconds);
       return null;
-    } on SpeechException catch (e) {
-      return e.message;
     } catch (e) {
-      debugPrint("Unable to speak: $e");
-      return "The voice could not speak: $e";
+      debugPrint("Unable to join the lines: $e");
+      return "The lines could not be joined: $e";
     } finally {
-      speaking.remove(channel);
+      joining.remove(channel);
       if (!_disposed) notifyListeners();
     }
   }
@@ -9309,7 +9614,7 @@ class CanvasController extends ChangeNotifier {
   static Future<Float32List?> Function(String assetId) takeAudio = (id) async {
     var file = await CanvasMedia.existingPath(MediaKind.audio, id);
     if (file == null) return null;
-    var sound = decodeFile(file);
+    var sound = await readWholeAway(file);
     if (sound == null) return null;
     var (l, r) = sound;
     return Float32List.fromList(
@@ -10213,8 +10518,8 @@ class CanvasController extends ChangeNotifier {
   }
 
   /// laneHeights is how tall each channel has been dragged, by channel. The
-  /// reader's, for this session: how much room a waveform is given is not
-  /// something the document says.
+  /// reader's, not the document's: kept for each canvas by the screen -- see
+  /// canvasView.
   final Map<String, double> laneHeights = {};
 
   /// setLaneHeight changes one channel's height.
@@ -10224,13 +10529,29 @@ class CanvasController extends ChangeNotifier {
   }
 
   /// mixerOpen is whether the mixer is shown, under the canvas. The
-  /// reader's, for this session.
+  /// reader's, kept by the screen -- see panelState.
   bool get mixerOpen => _mixerOpen;
   bool _mixerOpen = false;
   set mixerOpen(bool open) {
     if (open == _mixerOpen) return;
     _mixerOpen = open;
-    if (!open) _mixerMinimised = false;
+    if (!open) {
+      _mixerMinimised = false;
+      _mixerSmallest = false;
+    }
+    notifyListeners();
+  }
+
+  /// mixerSmallest is the mixer smaller still than minimised: its strips
+  /// without their names, and without the rail of bands down its right --
+  /// only what each channel is doing. Dragged down past its least, or the
+  /// Mixer button's step after minimised.
+  bool get mixerSmallest => _mixerOpen && _mixerSmallest;
+  bool _mixerSmallest = false;
+  set mixerSmallest(bool on) {
+    if (on == _mixerSmallest) return;
+    _mixerSmallest = on;
+    if (on) _mixerOpen = true;
     notifyListeners();
   }
 
@@ -10247,17 +10568,117 @@ class CanvasController extends ChangeNotifier {
   }
 
   /// cycleMixer is the timeline's Mixer button: shown, then minimised, then
-  /// hidden, then shown again.
+  /// smallest, then hidden, then shown again.
   void cycleMixer() {
     if (!_mixerOpen) {
       _mixerOpen = true;
       _mixerMinimised = false;
-    } else if (!_mixerMinimised) {
-      _mixerMinimised = true;
-    } else {
+      _mixerSmallest = false;
+    } else if (_mixerSmallest) {
       _mixerOpen = false;
       _mixerMinimised = false;
+      _mixerSmallest = false;
+    } else if (_mixerMinimised) {
+      _mixerSmallest = true;
+    } else {
+      _mixerMinimised = true;
     }
+    notifyListeners();
+  }
+
+  // ---- Kept between visits
+
+  /// panelState is how the panels under the canvas were left, whatever
+  /// canvas is open -- the mixer open, minimised or smallest, the effects
+  /// open, the devices folded, the channels' size and the strip column's
+  /// width -- for the screen to keep. See restorePanels.
+  Map<String, dynamic> get panelState => {
+        "mixer": !_mixerOpen
+            ? "hidden"
+            : _mixerSmallest
+                ? "smallest"
+                : _mixerMinimised
+                    ? "minimised"
+                    : "shown",
+        "effects": _effectsOpen,
+        "folded": [...foldedDevices]..sort(),
+        "laneSize": _laneSize,
+        "header": _headerWidth,
+      };
+
+  /// restorePanels puts the panels back as [state] -- from panelState --
+  /// says, without telling anyone: the screen does it as it opens.
+  void restorePanels(Map<String, dynamic> state) {
+    switch (state["mixer"]) {
+      case "shown":
+        _mixerOpen = true;
+      case "minimised":
+        _mixerOpen = _mixerMinimised = true;
+      case "smallest":
+        _mixerOpen = _mixerMinimised = _mixerSmallest = true;
+    }
+    if (state["effects"] == true) _effectsOpen = true;
+    if (state["folded"] case List folded) {
+      foldedDevices
+        ..clear()
+        ..addAll(folded.whereType<String>());
+    }
+    if (state["laneSize"] case int size when size >= 0 && size < 3) {
+      _laneSize = size;
+    }
+    if (state["header"] case num width) {
+      _headerWidth =
+          width.toDouble().clamp(timelineHeaderMin, timelineHeaderMax);
+    }
+  }
+
+  /// timelineView is the stretch the timeline is zoomed to -- null for all
+  /// of it -- as the timeline last drew it; timelineViewSet counts the
+  /// times it was put back from outside, for the timeline to take up.
+  TimelineView? timelineView;
+  int timelineViewSet = 0;
+
+  /// canvasView is how this canvas was being looked at -- its channels'
+  /// heights, its narrow strips, the timeline's zoom and the effects'
+  /// channel -- for the screen to keep with its name. See restoreCanvasView.
+  Map<String, dynamic> get canvasView => {
+        if (laneHeights.isNotEmpty)
+          "lanes": {
+            for (var e in laneHeights.entries)
+              e.key: double.parse(e.value.toStringAsFixed(1))
+          },
+        if (_narrowStrips.isNotEmpty) "narrow": [..._narrowStrips]..sort(),
+        if (timelineView case var v?)
+          "view": [
+            double.parse(v.first.toStringAsFixed(2)),
+            double.parse(v.span.toStringAsFixed(2))
+          ],
+        if (_effectsOf case var e?) "effectsOf": e,
+      };
+
+  /// restoreCanvasView looks at this canvas as [state] -- from canvasView
+  /// -- says: nothing for one never looked at.
+  void restoreCanvasView(Map<String, dynamic> state) {
+    laneHeights.clear();
+    if (state["lanes"] case Map lanes) {
+      for (var e in lanes.entries) {
+        if (e.key is String && e.value is num) {
+          laneHeights[e.key as String] = (e.value as num).toDouble();
+        }
+      }
+    }
+    _narrowStrips
+      ..clear()
+      ..addAll([
+        if (state["narrow"] case List narrow) ...narrow.whereType<String>()
+      ]);
+    timelineView = switch (state["view"]) {
+      [num first, num span] when span > 0 =>
+        TimelineView(first.toDouble(), span.toDouble()),
+      _ => null,
+    };
+    timelineViewSet++;
+    if (state["effectsOf"] case String e) _effectsOf = e;
     notifyListeners();
   }
 

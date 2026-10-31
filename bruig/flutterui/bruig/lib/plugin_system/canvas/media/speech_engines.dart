@@ -52,6 +52,23 @@ class SpeechException implements Exception {
 abstract class SpeechEngine {
   Future<List<SpeechVoice>> voices();
   Future<SpokenAudio> speak(SpeechSpec spec);
+
+  /// speakLine speaks one of the device's lines as directed -- by default
+  /// as a script of its own, its direction the nearest cue the engine has.
+  /// Another [seed] is another take, where the engine can vary.
+  Future<SpokenAudio> speakLine(SpeechSpec spec, SpeechLine line,
+          {int seed = 1}) =>
+      speak(spec.copyWith(
+          script: "${line.direction.kokoro} ${line.text}".trim(),
+          lines: const []));
+}
+
+/// speechRunsOn is whether a line of [words] words, said at [speed], that
+/// came out [seconds] long ran on or stopped short: far longer or shorter
+/// than its words should take, at about two and a half a second.
+bool speechRunsOn(double seconds, int words, double speed) {
+  var expected = words * 0.4 / speed.clamp(0.5, 2.0);
+  return seconds > expected * 2.2 + 1.5 || seconds < expected * 0.35;
 }
 
 /// decodeFile reads [file] whole through the mix engine's decoder.
@@ -113,7 +130,7 @@ Future<(int, String)> _fetch(
 /// CloudSpeech is ElevenLabs, with the reader's own API key: the script is
 /// sent there to be spoken, and comes back with each character's time, so
 /// its words are timed exactly.
-class CloudSpeech implements SpeechEngine {
+class CloudSpeech extends SpeechEngine {
   final String apiKey;
   final Fetch fetch;
   CloudSpeech(this.apiKey, {Fetch? fetch}) : fetch = fetch ?? _fetch;
@@ -163,6 +180,27 @@ class CloudSpeech implements SpeechEngine {
     var text = elevenLabsText(parseScript(spec.script));
     if (text.trim().isEmpty)
       throw const SpeechException("The script is empty.");
+    return _say(spec, text);
+  }
+
+  /// speakLine gives ElevenLabs the line's direction as one of its own
+  /// tags, in words -- "[warmly]", "[nervous]" -- which it follows.
+  @override
+  Future<SpokenAudio> speakLine(SpeechSpec spec, SpeechLine line,
+      {int seed = 1}) async {
+    _needKey();
+    if (spec.voice.isEmpty) throw const SpeechException("Pick a voice first.");
+    var text = elevenLabsText(parseScript(line.text));
+    if (text.trim().isEmpty) {
+      throw const SpeechException("The line has no words.");
+    }
+    var tag = line.own.isNotEmpty
+        ? "[${line.own.replaceAll(RegExp(r"[\[\]]"), "")}]"
+        : elevenLabsDirection(line.direction);
+    return _say(spec, tag.isEmpty ? text : "$tag $text");
+  }
+
+  Future<SpokenAudio> _say(SpeechSpec spec, String text) async {
     var (status, body) = await fetch(
         "POST",
         _base.resolve(
@@ -196,6 +234,20 @@ class CloudSpeech implements SpeechEngine {
         _ => "ElevenLabs could not speak it ($status).",
       };
 }
+
+/// elevenLabsDirection is [d] as ElevenLabs' own tag, or "" for none.
+String elevenLabsDirection(SpeechDirection d) => switch (d) {
+      SpeechDirection.plain => "",
+      SpeechDirection.warm => "[warmly]",
+      SpeechDirection.laughing => "[laughing]",
+      SpeechDirection.whisper => "[whispers]",
+      SpeechDirection.sigh => "[sighs]",
+      SpeechDirection.overjoyed => "[excited]",
+      SpeechDirection.sad => "[sad]",
+      SpeechDirection.angry => "[angry]",
+      SpeechDirection.nervous => "[nervous]",
+      SpeechDirection.slower => "[slowly]",
+    };
 
 /// elevenLabsText is the script as ElevenLabs reads it: its own tags for
 /// the cues it can do -- laughs, sighs, whispers -- a stressed word in

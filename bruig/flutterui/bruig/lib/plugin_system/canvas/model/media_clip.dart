@@ -4,7 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonBool, jsonDouble, jsonInt, jsonSpec, jsonString;
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart'
-    show SpeechTake;
+    show SpeechLine, SpeechTake;
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 export 'package:bruig/plugin_system/canvas/model/surround.dart'
     show SoundPlacement, PlaceBy;
@@ -254,6 +254,10 @@ class MediaClip {
         // where its clip has been taken off the timeline.
         for (var t in mix.speech?.takes ?? const <SpeechTake>[])
           if (t.assetId.isNotEmpty) t.assetId,
+        // And each line's takes, which the clip is joined from again.
+        for (var l in mix.speech?.lines ?? const <SpeechLine>[])
+          for (var t in l.takes)
+            if (t.assetId.isNotEmpty) t.assetId,
       };
 
   /// posterIds is the stills a video's files carry, which are pictures and

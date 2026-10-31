@@ -77,8 +77,7 @@ Future<bool> refreshTextDocuments(CanvasController controller) async {
     var (text, _) = readDocument(raw);
     var script = text.trim();
     if (script == spec.script) continue;
-    controller.setSpeech(lane.key, spec.copyWith(script: script),
-        transient: true);
+    controller.setSpeech(lane.key, spec.withScript(script), transient: true);
     changed = true;
   }
   return changed;

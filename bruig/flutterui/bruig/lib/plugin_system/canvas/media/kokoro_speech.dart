@@ -5,11 +5,11 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/media/espeak.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_cues.dart';
+import 'package:bruig/plugin_system/canvas/media/speech_downloads.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_engines.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_text.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
@@ -198,155 +198,39 @@ bool needsEspeak(String voice) => _tongueOf(voice).espeak != null;
 Future<String> Function() kokoroDir = () async =>
     path.join(await CanvasStorage.libraryDir(), "voices", "kokoro-v1_0");
 
+/// _pinned are the files as the shared downloader takes them.
+List<PinnedFile> get _pinned => [
+      for (var f in _files)
+        (
+          url: "$kokoroBase${f.name}",
+          path: f.name,
+          bytes: f.bytes,
+          sha256: f.sha256,
+          executable: false,
+        ),
+    ];
+
 /// kokoroReady is whether every file is there, at its size.
-Future<bool> kokoroReady() async {
-  var dir = await kokoroDir();
-  for (var f in _files) {
-    var file = File(path.join(dir, f.name));
-    if (!await file.exists() || await file.length() != f.bytes) return false;
-  }
-  return true;
-}
+Future<bool> kokoroReady() async => pinnedReady(await kokoroDir(), _pinned);
 
 /// downloadKokoro fetches the files not yet there, telling [progress] how
 /// much has arrived, nought to one. Answers why not, or null once all are
 /// there. [stop] is asked between pieces, to give up.
 Future<String?> downloadKokoro(
-    {void Function(double share)? progress, bool Function()? stop}) async {
-  var dir = await kokoroDir();
-  await Directory(dir).create(recursive: true);
-  var client = HttpClient();
-  var done = 0;
-  try {
-    var total = kokoroBytes;
-    for (var f in _files) {
-      var target = File(path.join(dir, f.name));
-      await target.parent.create(recursive: true);
-      if (await target.exists() && await target.length() == f.bytes) {
-        done += f.bytes;
-        progress?.call(done / total);
-        continue;
-      }
-      var partial = File("${target.path}.part");
-      var url = Uri.parse("$kokoroBase${f.name}");
-      var response = await (await client.getUrl(url)).close();
-      if (response.statusCode != 200) {
-        return "The voices could not be downloaded "
-            "(${response.statusCode}).";
-      }
-      var sink = partial.openWrite();
-      var hashed = AccumulatorSink<Digest>();
-      var hash = sha256.startChunkedConversion(hashed);
-      var got = 0;
-      try {
-        await for (var chunk in response) {
-          if (stop?.call() ?? false) {
-            await sink.close();
-            await partial.delete();
-            return "The download was stopped.";
-          }
-          sink.add(chunk);
-          hash.add(chunk);
-          got += chunk.length;
-          progress?.call(math.min(1.0, (done + got) / total));
-        }
-      } finally {
-        await sink.close();
-      }
-      hash.close();
-      if (got != f.bytes || hashed.events.single.toString() != f.sha256) {
-        if (await partial.exists()) await partial.delete();
-        return "The voices arrived damaged: try again.";
-      }
-      await partial.rename(target.path);
-      done += f.bytes;
-      progress?.call(done / total);
-    }
-    return null;
-  } catch (exception) {
-    debugPrint("Unable to download the voices: $exception");
-    return "The voices could not be downloaded: is the computer online?";
-  } finally {
-    client.close(force: true);
-  }
-}
+        {void Function(double share)? progress, bool Function()? stop}) async =>
+    downloadPinned(await kokoroDir(), _pinned, progress: progress, stop: stop);
 
-/// KokoroDownload is the voices' download, one for every Speech device:
-/// whether they are here, how far a download has got, and why it stopped.
-class KokoroDownload extends ChangeNotifier {
+/// KokoroDownload is the voices' download, one for every Speech device.
+class KokoroDownload extends PinnedDownload {
   static final instance = KokoroDownload();
-
-  /// ready is whether the voices are here: null until it has been looked.
-  bool? ready;
-
-  /// share is how much has arrived, nought to one, while it is downloading.
-  double? share;
-  String? problem;
-  bool _stop = false;
-
-  bool get downloading => share != null;
-
-  /// check looks whether the voices are here, once. Where it cannot look,
-  /// they are not.
-  Future<void> check() async {
-    if (ready != null) return;
-    try {
-      ready = await kokoroReady();
-    } catch (exception) {
-      debugPrint("Unable to look for the voices: $exception");
-      ready = false;
-    }
-    notifyListeners();
-  }
-
-  Future<void> start() async {
-    if (downloading) return;
-    _stop = false;
-    problem = null;
-    share = 0;
-    notifyListeners();
-    problem = await downloadKokoro(
-        progress: (v) {
-          share = v;
-          notifyListeners();
-        },
-        stop: () => _stop);
-    share = null;
-    ready = await kokoroReady();
-    notifyListeners();
-  }
-
-  void stop() => _stop = true;
-
-  /// missingBytes is how much is still to be downloaded: all of it, the
-  /// first time; less, where an earlier download had fewer voices.
-  Future<int> missingBytes() async {
-    var dir = await kokoroDir();
-    var out = 0;
-    for (var f in _files) {
-      var file = File(path.join(dir, f.name));
-      if (!await file.exists() || await file.length() != f.bytes) {
-        out += f.bytes;
-      }
-    }
-    return out;
-  }
-}
-
-/// AccumulatorSink keeps what a chunked conversion makes.
-class AccumulatorSink<T> implements Sink<T> {
-  final events = <T>[];
-  @override
-  void add(T event) => events.add(event);
-  @override
-  void close() {}
+  KokoroDownload() : super(() => kokoroDir(), () => _pinned);
 }
 
 /// KokoroSpeech speaks with Kokoro, on this computer. Its breaths, laughs,
 /// sighs and coughs are recordings of a woman's or a man's, as the voice
 /// is, and its whisper the voice laid onto hiss -- see speech_cues.dart. It
 /// cannot stress a word: that cue is left out rather than faked.
-class KokoroSpeech implements SpeechEngine {
+class KokoroSpeech extends SpeechEngine {
   /// library is where sherpa-onnx's own library is, for tests; in the app
   /// it is already loaded, and this is null.
   static String? library;
@@ -404,8 +288,12 @@ class KokoroSpeech implements SpeechEngine {
           (p.words.join(" "), spec.speed * (p.slow ? 0.8 : 1))
     ];
     var lib = library;
-    var spoken = await Isolate.run(
-        () => _say(dir, lib, speaker, tongue, jobs, espeak: espeak));
+    // Brought to the mix's rate there too: on the app's isolate, a long
+    // script held it up.
+    var spoken = await Isolate.run(() => [
+          for (var s in _say(dir, lib, speaker, tongue, jobs, espeak: espeak))
+            upsample2x(s)
+        ]);
     var out = <(Float32List, Float32List, List<TimedWord>)>[];
     var k = 0;
     for (var p in pieces) {
@@ -413,7 +301,7 @@ class KokoroSpeech implements SpeechEngine {
         case SpokenPause s:
           out.add(silence(s.seconds));
         case SpokenText t:
-          var sound = upsample2x(spoken[k++]);
+          var sound = spoken[k++];
           if (t.whisper) sound = whispered(sound);
           out.add((
             sound,

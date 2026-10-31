@@ -20,11 +20,13 @@ import 'package:bruig/plugin_system/canvas/model/text_document.dart'
 // the sentence after them, and [stress] for the word after it. Each engine
 // offers only the cues it can really do -- see SpeechEngineKind.cues.
 
-/// SpeechEngineKind is what speaks: our own voices (Kokoro, on this
-/// computer), or ElevenLabs in the cloud -- off until switched on with the
-/// reader's own key, since the script leaves the computer to be spoken.
+/// SpeechEngineKind is what speaks: our own voices on this computer --
+/// Kokoro, quick, or the expressive voices (Qwen3-TTS), which take a
+/// direction for each line -- or ElevenLabs in the cloud, off until switched
+/// on with the reader's own key, since the script leaves the computer.
 enum SpeechEngineKind {
   local("Built in"),
+  expressive("Expressive"),
   cloud("ElevenLabs");
 
   final String label;
@@ -41,20 +43,229 @@ enum SpeechEngineKind {
       : SpeechCue.values;
 }
 
-/// SpeechCue is one of the script's cues: see the note at the top.
-enum SpeechCue {
-  pause("Pause", "⏸"),
-  breath("Breath", "〰"),
-  laugh("Laugh", "😄"),
-  sigh("Sigh", "😮‍💨"),
-  cough("Cough", "🤧"),
-  whisper("Whisper", "🤫"),
-  stress("Stress", "❗"),
-  slow("Slower", "🐢");
+/// SpeechDirection is how a line is said, chosen for it in the device: to
+/// the expressive voices, a direction in plain words; to Kokoro, the
+/// nearest of its own cues, where it has one.
+enum SpeechDirection {
+  plain("As written", ""),
+  warm("Warm", "Warm and friendly, with a hint of excitement held back."),
+  laughing("Laughing as you speak",
+      "Laughing with genuine delight as you speak, the laughter spilling into the words."),
+  whisper("Whisper",
+      "Whisper this very softly, breathy, almost no voice, as if someone might overhear."),
+  sigh("Sigh first",
+      "Begin with a long, weary sigh, then speak resignedly, as if bracing yourself."),
+  overjoyed("Overjoyed",
+      "Bursting with joy and disbelief, almost breathless with happiness."),
+  sad("Sad", "Quietly sad, close to tears."),
+  angry("Angry", "Angry, clipped and forceful."),
+  nervous("Nervous", "Nervous and hesitant, almost apologetic."),
+  slower("Slower", "Slowly and deliberately, weighing every word.");
 
   final String label;
-  final String icon;
-  const SpeechCue(this.label, this.icon);
+
+  /// say is the direction as the expressive voices are given it.
+  final String say;
+  const SpeechDirection(this.label, this.say);
+
+  /// token is the direction as it is written at the start of its line.
+  String get token => "[$name]";
+
+  /// kokoro is the nearest of Kokoro's cues, written before the line, or
+  /// "" where it has none.
+  String get kokoro => switch (this) {
+        laughing => "[laugh]",
+        whisper => "[whisper]",
+        sigh => "[sigh]",
+        slower => "[slow]",
+        _ => "",
+      };
+}
+
+/// SpeechPreset is a starting point for a voice's feel: its speed, how
+/// steady and how expressive it is, how much room and whether the speaker
+/// boost is on. Moving any of them makes the device "custom".
+enum SpeechPreset {
+  natural("Natural", 1.0, 0.5, 0.5, 0, true),
+  narrator("Audiobook narrator", 0.97, 0.7, 0.4, 0, true),
+  chat("Conversational", 1.03, 0.35, 0.6, 0.1, false),
+  drama("Dramatic", 0.99, 0.25, 0.85, 0.15, true),
+  calm("Calm & close", 0.95, 0.65, 0.3, 0, false);
+
+  final String label;
+  final double speed, steadiness, expression, room;
+  final bool boost;
+  const SpeechPreset(this.label, this.speed, this.steadiness, this.expression,
+      this.room, this.boost);
+}
+
+/// SpeechLine is one line of the script, as the device speaks it: its
+/// words, how it is said -- a direction, or the reader's own words for one
+/// -- and the takes spoken of it, one of them chosen for the clip.
+class SpeechLine {
+  final String text;
+  final SpeechDirection direction;
+
+  /// own is a direction in the reader's own words, over [direction]; ""
+  /// for none.
+  final String own;
+  final List<SpeechTake> takes;
+
+  /// chosen is the take in the clip, by its place, or -1 for none yet.
+  final int chosen;
+
+  const SpeechLine(this.text,
+      {this.direction = SpeechDirection.plain,
+      this.own = "",
+      this.takes = const [],
+      this.chosen = -1});
+
+  /// say is the direction as the expressive voices are given it.
+  String get say => own.isNotEmpty ? own : direction.say;
+
+  SpeechTake? get take =>
+      chosen >= 0 && chosen < takes.length ? takes[chosen] : null;
+
+  /// written is the line as the script shows it: its direction first.
+  String get written => [
+        if (own.isNotEmpty)
+          "[say: ${own.replaceAll("]", "")}]"
+        else if (direction != SpeechDirection.plain)
+          direction.token,
+        text,
+      ].join(" ");
+
+  SpeechLine copyWith(
+          {String? text,
+          SpeechDirection? direction,
+          String? own,
+          List<SpeechTake>? takes,
+          int? chosen}) =>
+      SpeechLine(text ?? this.text,
+          direction: direction ?? this.direction,
+          own: own ?? this.own,
+          takes: takes ?? this.takes,
+          chosen: chosen ?? this.chosen);
+
+  Map<String, dynamic> toJson() => {
+        "text": text,
+        if (direction != SpeechDirection.plain) "direction": direction.name,
+        if (own.isNotEmpty) "own": own,
+        if (takes.isNotEmpty) "takes": [for (var t in takes) t.toJson()],
+        if (chosen >= 0) "chosen": chosen,
+      };
+
+  static SpeechLine? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    var text = jsonString(json["text"], "");
+    if (text.isEmpty) return null;
+    var takes = [
+      if (json["takes"] case List list)
+        for (var t in list)
+          if (SpeechTake.fromJson(t) case var take?) take,
+    ];
+    var chosen = json["chosen"] is int ? json["chosen"] as int : -1;
+    return SpeechLine(text,
+        direction: SpeechDirection.values
+                .where((d) => d.name == json["direction"])
+                .firstOrNull ??
+            SpeechDirection.plain,
+        own: jsonString(json["own"], ""),
+        takes: takes,
+        chosen: chosen < takes.length ? chosen : takes.length - 1);
+  }
+}
+
+final _lineHead = RegExp(r"^\s*\[(say:[^\]]*|[a-z]+)\]\s*");
+
+/// scriptLines is [script] as lines: one for each line of the text, and
+/// each of those cut at its sentences' ends -- but for one that is a line
+/// already in [was], kept whole, as joined. A line whose words and
+/// direction are as one in [was] keeps its takes.
+List<SpeechLine> scriptLines(String script, [List<SpeechLine> was = const []]) {
+  var out = <SpeechLine>[];
+  var unused = [...was];
+  SpeechLine line(String piece) {
+    var direction = SpeechDirection.plain;
+    var own = "";
+    var text = piece.trim();
+    // Its direction, at its start: one of ours, or the reader's own words.
+    var head = _lineHead.firstMatch(text);
+    if (head != null) {
+      var token = head[1]!;
+      if (token.startsWith("say:")) {
+        own = token.substring(4).trim();
+        text = text.substring(head.end);
+      } else if (SpeechDirection.values
+              .where((d) => d.name == token)
+              .firstOrNull
+          case var d?) {
+        direction = d;
+        text = text.substring(head.end);
+      }
+    }
+    var kept = unused
+        .where(
+            (l) => l.text == text && l.direction == direction && l.own == own)
+        .firstOrNull;
+    if (kept != null) {
+      unused.remove(kept);
+      return kept;
+    }
+    return SpeechLine(text, direction: direction, own: own);
+  }
+
+  for (var paragraph in script.split("\n")) {
+    var p = paragraph.trim();
+    if (p.isEmpty) continue;
+    if (was.any((l) => l.written == p)) {
+      out.add(line(p));
+      continue;
+    }
+    // Cut after a sentence's end -- the direction stays with the first. A
+    // piece of cues alone, with no words, stays with the words after it,
+    // or before it at the end: a line has words to say.
+    var pieces = <String>[];
+    var held = "";
+    for (var piece in p.split(RegExp(r"(?<=[.!?…])\s+(?=\S)"))) {
+      if (piece.trim().isEmpty) continue;
+      if (piece.replaceAll(RegExp(r"\[[^\]]*\]"), "").trim().isEmpty) {
+        held = "$held $piece";
+        continue;
+      }
+      pieces.add("$held $piece".trim());
+      held = "";
+    }
+    if (held.trim().isNotEmpty) {
+      if (pieces.isEmpty) {
+        pieces.add(held.trim());
+      } else {
+        pieces.last = "${pieces.last} ${held.trim()}";
+      }
+    }
+    for (var piece in pieces) {
+      out.add(line(piece));
+    }
+  }
+  return [
+    for (var l in out)
+      if (l.text.trim().isNotEmpty) l
+  ];
+}
+
+/// SpeechCue is one of the script's cues: see the note at the top.
+enum SpeechCue {
+  pause("Pause"),
+  breath("Breath"),
+  laugh("Laugh"),
+  sigh("Sigh"),
+  cough("Cough"),
+  whisper("Whisper"),
+  stress("Stress"),
+  slow("Slower");
+
+  final String label;
+  const SpeechCue(this.label);
 
   /// token is the cue as it is written in the script.
   String get token => this == pause ? "[pause 0.5]" : "[$name]";
@@ -99,10 +310,14 @@ class SpokenSound extends SpeechPiece {
 
 final _token = RegExp(r"\[([a-z]+)(?:\s+([0-9.]+))?\]");
 
+/// _ownDirection is a direction in the reader's own words: never spoken.
+final _ownDirection = RegExp(r"\[say:[^\]]*\]");
+
 /// parseScript is [script] as the pieces it is spoken in. A [whisper] or a
 /// [slow] holds to the end of its sentence; a [stress] to the next word; a
 /// token it does not know is left out.
 List<SpeechPiece> parseScript(String script) {
+  script = script.replaceAll(_ownDirection, " ");
   var out = <SpeechPiece>[];
   var whisper = false, slow = false, stressNext = false;
   var words = <String>[];
@@ -233,6 +448,25 @@ class SpeechSpec {
   /// takes are what has been spoken, the latest last.
   final List<SpeechTake> takes;
 
+  /// lines are the script line by line, each with its direction and its
+  /// takes -- see scriptLines -- kept in step with [script].
+  final List<SpeechLine> lines;
+
+  /// language is what the expressive voices speak: each keeps its own
+  /// accent in it. "" for English.
+  final String language;
+
+  /// room is how much room is heard round the voice, nought (close and
+  /// dry, where a voice starts) to one; boost is the speaker boost -- gentle compression and an
+  /// even level -- and preset the feel it was set from, or "custom". All
+  /// ours, after the voice: see speech_finish.dart.
+  final double room;
+  final bool boost;
+  final String preset;
+
+  /// clip is the element the joined lines play in, or "" for none yet.
+  final String clip;
+
   /// document is the Writing Tools document the script is read from --
   /// kept up to date as it is edited, see text_documents.dart -- or none.
   /// Its wasText is the script typed before, given back when it is let go.
@@ -248,6 +482,12 @@ class SpeechSpec {
     this.steadiness = 0.45,
     this.takes = const [],
     this.document = const TextDocumentRef(),
+    this.lines = const [],
+    this.language = "",
+    this.room = 0,
+    this.boost = true,
+    this.preset = "natural",
+    this.clip = "",
   });
 
   SpeechSpec copyWith({
@@ -260,8 +500,20 @@ class SpeechSpec {
     double? steadiness,
     List<SpeechTake>? takes,
     TextDocumentRef? document,
+    List<SpeechLine>? lines,
+    String? language,
+    double? room,
+    bool? boost,
+    String? preset,
+    String? clip,
   }) =>
       SpeechSpec(
+        lines: lines ?? this.lines,
+        language: language ?? this.language,
+        room: (room ?? this.room).clamp(0.0, 1.0),
+        boost: boost ?? this.boost,
+        preset: preset ?? this.preset,
+        clip: clip ?? this.clip,
         engine: engine ?? this.engine,
         voice: voice ?? this.voice,
         voiceName: voiceName ?? this.voiceName,
@@ -283,7 +535,36 @@ class SpeechSpec {
         "steadiness": steadiness,
         if (takes.isNotEmpty) "takes": [for (var t in takes) t.toJson()],
         if (document.on) "document": document.toJson(),
+        if (lines.isNotEmpty) "lines": [for (var l in lines) l.toJson()],
+        if (language.isNotEmpty) "language": language,
+        "room": room,
+        if (!boost) "boost": false,
+        if (preset != "natural") "preset": preset,
+        if (clip.isNotEmpty) "clip": clip,
       };
+
+  /// withPreset is the device with [p]'s feel.
+  SpeechSpec withPreset(SpeechPreset p) => copyWith(
+      speed: p.speed,
+      steadiness: p.steadiness,
+      expression: p.expression,
+      room: p.room,
+      boost: p.boost,
+      preset: p.name);
+
+  /// withScript is the device with [script] typed -- its lines cut again,
+  /// those unchanged keeping their takes.
+  SpeechSpec withScript(String script) =>
+      copyWith(script: script, lines: scriptLines(script, lines));
+
+  /// withLines is the device with [lines] -- the script written from them.
+  SpeechSpec withLines(List<SpeechLine> lines) => copyWith(
+      lines: lines, script: [for (var l in lines) l.written].join("\n"));
+
+  /// shownLines are the lines as the device lists them: its own, or the
+  /// script's, cut, where it has none yet.
+  List<SpeechLine> get shownLines =>
+      lines.isNotEmpty || script.trim().isEmpty ? lines : scriptLines(script);
 
   static SpeechSpec fromJson(Object? json) {
     if (json is! Map<String, dynamic>) return const SpeechSpec();
@@ -305,6 +586,16 @@ class SpeechSpec {
       document: json["document"] is Map<String, dynamic>
           ? TextDocumentRef.fromJson(json["document"] as Map<String, dynamic>)
           : null,
+      lines: [
+        if (json["lines"] case List list)
+          for (var l in list)
+            if (SpeechLine.fromJson(l) case var line?) line,
+      ],
+      language: jsonString(json["language"], ""),
+      room: jsonDouble(json["room"], 0),
+      boost: json["boost"] != false,
+      preset: jsonString(json["preset"], "natural"),
+      clip: jsonString(json["clip"], ""),
     );
   }
 }

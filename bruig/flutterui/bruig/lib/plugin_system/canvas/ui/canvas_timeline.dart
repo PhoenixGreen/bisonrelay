@@ -454,6 +454,10 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   TimelineView? _view;
   TimelineView _viewNow = const TimelineView(0, 1);
 
+  /// _viewSetSeen is the last view put back from outside that this has
+  /// taken up -- see CanvasController.timelineView.
+  int _viewSetSeen = -1;
+
   /// _setView zooms or scrolls. All of it is stored as null, so a timeline
   /// made longer afterwards is still shown whole.
   void _setView(TimelineView next) {
@@ -931,6 +935,11 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     // up with the playhead while it plays, a page at a time.
     // To the end of the longest clip, where one runs on past the scene --
     // and along every scene while Play runs them all.
+    // A view put back -- the canvas opened as it was left -- taken up.
+    if (controller.timelineViewSet != _viewSetSeen) {
+      _viewSetSeen = controller.timelineViewSet;
+      _view = controller.timelineView;
+    }
     if (_runs != _ranRun) {
       _ranRun = _runs;
       _view = null;
@@ -953,6 +962,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     }
     _lastHead = head;
     _viewNow = view;
+    // Kept, for the next visit: see CanvasController.canvasView.
+    controller.timelineView = _view;
 
     return Focus(
       focusNode: _focus,
@@ -1884,16 +1895,22 @@ class CanvasTimelineState extends State<CanvasTimeline> {
         width: null,
         tooltip: !controller.mixerOpen
             ? "Mixer: level, panning and effects for each channel, and the "
-                "master. Pressed again it is minimised, then hidden."
-            : controller.mixerMinimised
-                ? "Mixer minimised to its meters. Press to hide it."
-                : "Mixer shown. Press to minimise it to its meters.",
+                "master. Pressed again it is minimised, then smaller still, "
+                "then hidden."
+            : controller.mixerSmallest
+                ? "Mixer at its smallest: the meters alone. Press to hide it."
+                : controller.mixerMinimised
+                    ? "Mixer minimised. Press for its smallest: no names, no "
+                        "rail."
+                    : "Mixer shown. Press to minimise it to its meters.",
         on: controller.mixerOpen,
         onPressed: controller.cycleMixer,
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(controller.mixerMinimised
-              ? Icons.horizontal_rule
-              : Icons.equalizer),
+          Icon(controller.mixerSmallest
+              ? Icons.minimize
+              : controller.mixerMinimised
+                  ? Icons.horizontal_rule
+                  : Icons.equalizer),
           const SizedBox(width: 5),
           const Text("Mixer", style: TextStyle(fontWeight: FontWeight.w500)),
         ]),

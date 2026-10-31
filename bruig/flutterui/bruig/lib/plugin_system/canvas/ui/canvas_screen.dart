@@ -177,19 +177,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// session's: a mixer somebody made tall stays tall while they work.
   double _mixerHeight = mixerDefaultHeight;
 
-  /// _resizeMixer is the mixer's grip dragged to [h]. Minimised, a drag up
-  /// opens it out again from its shortest, under the pointer.
-  void _resizeMixer(double h, double most) => setState(() {
-        var least = _mixerLeast;
-        if (_controller.mixerMinimised) {
-          if (h <= least + 2) return;
-          _controller.mixerMinimised = false;
-        }
-        _mixerHeight = h.clamp(least, math.max(least, most)).toDouble();
-        Provider.of<CanvasPreferences>(context, listen: false).mixerHeight =
-            _mixerHeight;
-      });
-
   /// _mixerLeast is how short the mixer goes with its bands as they are --
   /// see mixerLeastHeight -- at the text's size: the mixer is zoomed with
   /// it. Minimised from the timeline, it is that.
@@ -201,23 +188,23 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// as it was dragged, never under its least.
   double get _mixerShown {
     var least = _mixerLeast;
-    return _controller.mixerMinimised ? least : math.max(least, _mixerHeight);
+    return _mixerFixed ? least : math.max(least, _mixerHeight);
   }
+
+  /// _mixerFixed is the mixer minimised or smallest: at its least, giving
+  /// and taking no room.
+  bool get _mixerFixed =>
+      _controller.mixerMinimised || _controller.mixerSmallest;
 
   /// _stack is the panels under the canvas, top to bottom, sized as one --
   /// see panel_heights.dart: each as it was set, its least, and whether it
-  /// is fixed -- a bar, or the mixer minimised. The mixer and the effects
-  /// are in it over the canvas; with the canvas put away they fill its
-  /// place, and only the timeline is.
+  /// is fixed -- a bar, or the mixer minimised. The same stack with the
+  /// canvas put away: the panels look and size as they do over it, the top
+  /// one filling up to the settings bar -- see _stackShown.
   List<(_Stacked, double, double, bool)> get _stack => [
-        if (_shown && _controller.mixerOpen)
-          (
-            _Stacked.mixer,
-            _mixerShown,
-            _mixerLeast,
-            _controller.mixerMinimised
-          ),
-        if (_shown && _controller.effectsOpen)
+        if (_controller.mixerOpen)
+          (_Stacked.mixer, _mixerShown, _mixerLeast, _mixerFixed),
+        if (_controller.effectsOpen)
           (_Stacked.effects, _effectsHeight, effectsMinHeight, false),
         if (_shown && _keyframesOpen && !_controller.playing)
           (_Stacked.keyframes, keyframeBarHeight, keyframeBarHeight, true),
@@ -237,14 +224,24 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// where nothing covers it, or the least of the mixer and effects that
   /// fill its place, with it put away.
   double get _stackRoom {
-    var room = _pageSeen - _topSeen;
-    if (!_shown) {
-      var away = (_controller.mixerOpen ? _mixerLeast : 0.0) +
-          (_controller.effectsOpen ? effectsMinHeight : 0.0);
-      return room - (away > 0 ? away : canvasLeast);
-    }
+    var room = math.max(0.0, _pageSeen - _topSeen);
+    // Put away, there is no canvas to keep in view.
+    if (!_shown) return room;
     var covered = _controller.mixerOpen || _controller.effectsOpen;
-    return room - (covered ? 0 : canvasLeast);
+    return math.max(0.0, room - (covered ? 0 : canvasLeast));
+  }
+
+  /// _fillIndex is the panel that fills the room with the canvas put away:
+  /// the topmost mixer or effects that can grow. None with the canvas
+  /// shown, or with nothing that can.
+  int? _fillIndex(List<(_Stacked, double, double, bool)> stack) {
+    if (_shown) return null;
+    for (var (k, p) in stack.indexed) {
+      if ((p.$1 == _Stacked.mixer || p.$1 == _Stacked.effects) && !p.$4) {
+        return k;
+      }
+    }
+    return null;
   }
 
   /// _stackShown is each stacked panel's height on screen: as set, where
@@ -256,9 +253,15 @@ class _CanvasScreenState extends State<CanvasScreen> {
     var set = [for (var p in stack) p.$2];
     if (_pageSeen <= 0) return {for (var p in stack) p.$1: p.$2};
     var t = stack.indexWhere((p) => p.$1 == _Stacked.timeline);
-    var out = fitPanels(set, [for (var p in stack) p.$3], _stackRoom,
+    var room = _stackRoom;
+    var out = fitPanels(set, [for (var p in stack) p.$3], room,
         collapsible: t < 0 ? null : t, collapsed: timelineCollapsedHeight);
-    return {for (var (k, p) in stack.indexed) p.$1: out[k]};
+    // The canvas put away: the top panel takes the rest, up to the bar.
+    if (_fillIndex(stack) case var f?) {
+      var total = out.fold(0.0, (a, b) => a + b);
+      if (total < room) out[f] += room - total;
+    }
+    return {for (var (k, p) in stack.indexed) p.$1: math.max(0.0, out[k])};
   }
 
   /// _resizeStacked is [which]'s top edge dragged so it would be [h] tall:
@@ -266,12 +269,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// the settings bar -- and, the stack filling the room, giving what it
   /// gives up to the one over it, so the top stays where it is.
   void _resizeStacked(_Stacked which, double h) => setState(() {
-        if (which == _Stacked.mixer && _controller.mixerMinimised) {
-          // Minimised, a drag up opens it out again from its shortest.
-          if (h <= _mixerLeast + 2) return;
-          _controller.mixerMinimised = false;
-          _mixerHeight = _mixerLeast;
-        }
+        if (which == _Stacked.mixer && !_mixerPulled(h)) return;
         var shown = _stackShown;
         var stack = _stack;
         var i = stack.indexWhere((p) => p.$1 == which);
@@ -305,9 +303,14 @@ class _CanvasScreenState extends State<CanvasScreen> {
           return;
         }
         var prefs = Provider.of<CanvasPreferences>(context, listen: false);
+        var fill = _fillIndex(stack);
         for (var (k, p) in stack.indexed) {
           switch (p.$1) {
-            case _Stacked.mixer when !_controller.mixerMinimised:
+            // The one filling the room, the canvas put away, is that tall
+            // only for as long: what it was set to is kept.
+            case _ when k == fill:
+              break;
+            case _Stacked.mixer when !_mixerFixed:
               _mixerHeight = out[k];
               prefs.mixerHeight = out[k];
             case _Stacked.effects:
@@ -321,8 +324,98 @@ class _CanvasScreenState extends State<CanvasScreen> {
         }
       });
 
+  /// _pull is how far the mixer's edge has been dragged past where it
+  /// stops -- down at its least, or up at its smallest -- so a drag has to
+  /// mean it before the mixer changes size step.
+  double _pull = 0;
+
+  /// _mixerPulled steps the mixer between its sizes as its edge is dragged
+  /// to [h]: down past its least to its smallest -- no names, no rail --
+  /// and up again; minimised, up out to its least. Whether the drag goes on
+  /// to size it.
+  bool _mixerPulled(double h) {
+    var scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
+    var least = mixerLeastHeight(_controller, bare: false) * scale;
+    if (_controller.mixerSmallest) {
+      var smallest = mixerLeastHeight(_controller, bare: true) * scale;
+      _pull = h > smallest ? _pull + (h - smallest) : 0;
+      if (_pull < 16) return false;
+      _pull = 0;
+      _controller.mixerSmallest = false;
+      _controller.mixerMinimised = true;
+      return false;
+    }
+    if (h < least) {
+      _pull += least - h;
+      if (_pull < 24) return _controller.mixerMinimised ? false : true;
+      _pull = 0;
+      _controller.mixerMinimised = true;
+      _controller.mixerSmallest = true;
+      return false;
+    }
+    _pull = 0;
+    if (_controller.mixerMinimised) {
+      // Minimised, a drag up opens it out again from its least.
+      if (h <= least + 2) return false;
+      _controller.mixerMinimised = false;
+      _mixerHeight = least;
+    }
+    return true;
+  }
+
   /// _effectsHeight is the effects panel's, which sits over the mixer.
   double _effectsHeight = effectsDefaultHeight;
+
+  /// _viewKey is the canvas whose view -- see CanvasController.canvasView --
+  /// is being kept, by its folder and name; null for one never saved.
+  String? _viewKey;
+  bool _viewKeyKnown = false;
+  Timer? _keepTimer;
+
+  String? get _canvasKey => _controller.name == null
+      ? null
+      : "${_controller.folder ?? ""}/${_controller.name}";
+
+  /// _keepPanels keeps how the panels were left -- see panelState and
+  /// canvasView -- a moment after they change: not on every change, which
+  /// while playing is every frame. Another canvas opened, its own view is
+  /// put back, the last one's kept first.
+  void _keepPanels() {
+    var key = _canvasKey;
+    if (!_viewKeyKnown || key != _viewKey) {
+      if (_viewKeyKnown) _savePanels();
+      _viewKeyKnown = true;
+      _viewKey = key;
+      // As it was left -- or, one never looked at, as it starts: not the
+      // last canvas's channels and zoom. After this change has been told:
+      // putting it back tells again.
+      var view = key == null ? null : _prefs.canvasView(key);
+      scheduleMicrotask(() {
+        if (mounted && _canvasKey == key) {
+          _controller.restoreCanvasView(view ?? const {});
+        }
+      });
+      return;
+    }
+    _keepTimer ??= Timer(const Duration(milliseconds: 800), () {
+      _keepTimer = null;
+      _savePanels();
+    });
+  }
+
+  void _savePanels() {
+    _keepTimer?.cancel();
+    _keepTimer = null;
+    _prefs.panels = _controller.panelState;
+    if (_viewKey case var key?) {
+      _prefs.setCanvasView(key, _controller.canvasView);
+    }
+  }
+
+  /// _prefs is the preferences, taken once: they are kept as the page is
+  /// left, when looking them up is no longer allowed.
+  late final CanvasPreferences _prefs =
+      Provider.of<CanvasPreferences>(context, listen: false);
 
   /// _pushScale lays a Push's pads out in the played channel's scale.
   void _pushScale() {
@@ -405,6 +498,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _controller.restoreMixer(prefs.mixerBands, prefs.returnsShown);
     if (prefs.mixerHeight > 0) _mixerHeight = prefs.mixerHeight;
     if (prefs.effectsHeight > 0) _effectsHeight = prefs.effectsHeight;
+    // And the rest of how the panels were left, on the first visit of the
+    // session -- after it, the controller already holds it.
+    if (!_controller.opened) _controller.restorePanels(prefs.panels);
     if (!_controller.opened) _reopenLast(prefs);
     _controller.markOpened();
     _controller.addListener(_onSelectionChanged);
@@ -412,6 +508,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _controller.addListener(_followGame);
     _controller.addListener(_keepShown);
     _controller.addListener(_pushScale);
+    _controller.addListener(_keepPanels);
+    _keepPanels();
     // A text element can take its words from the Writing library, and the
     // library is edited somewhere else entirely -- so while this page is open
     // the documents behind those elements are read every few seconds. A
@@ -509,6 +607,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _controller.removeListener(_followGame);
     _controller.removeListener(_keepShown);
     _controller.removeListener(_pushScale);
+    _controller.removeListener(_keepPanels);
+    _keepTimer?.cancel();
+    _savePanels();
     // The canvas's sounds stop when the canvas is left. The session goes on
     // -- see below -- but music from a page nobody is looking at, carrying on
     // under a chat, is a sound with no off switch on screen.
@@ -807,68 +908,33 @@ class _CanvasScreenState extends State<CanvasScreen> {
     }
   }
 
-  /// _canvasAway is what is in the canvas's room while it is put away: the
-  /// effects over the mixer, filling it between them -- or, with neither
-  /// open, a word on where they are and the way back.
+  /// _canvasAway is what is in the canvas's room while it is put away:
+  /// behind the panels, which fill it as they do over the canvas -- or, with
+  /// neither the mixer nor the effects open, a word on where they are and
+  /// the way back.
   Widget _canvasAway(ThemeNotifier theme) => ColoredBox(
         key: const ValueKey("canvasAway"),
         color: theme.colors.surface,
-        child: LayoutBuilder(builder: (context, box) {
-          var room = box.maxHeight;
-          var mixer = _controller.mixerOpen, effects = _controller.effectsOpen;
-          if (!mixer && !effects) {
-            return Center(
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text(_noCanvas ? "A piece of sound" : "The canvas is hidden",
-                    style: TextStyle(color: theme.colors.onSurfaceVariant)),
-                const SizedBox(height: 4),
-                Text("Open the mixer or the effects from the timeline.",
-                    style: TextStyle(
-                        fontSize: 12, color: theme.colors.onSurfaceVariant)),
-                const SizedBox(height: 8),
-                if (!_noCanvas)
-                  TextButton.icon(
-                    key: const ValueKey("showCanvas"),
-                    onPressed: () => setState(() => _canvasShown = true),
-                    icon: const Icon(Icons.visibility_outlined, size: 16),
-                    label: const Text("Show the canvas"),
-                  ),
-              ]),
-            );
-          }
-          // The mixer over the effects: it keeps the height it was given,
-          // and the effects take the rest. Alone, either has all of it.
-          var least = _mixerLeast;
-          var most = math.max(least, room - effectsMinHeight);
-          var mixerHeight = !mixer
-              ? 0.0
-              : _controller.mixerMinimised
-                  ? least
-                  : effects
-                      ? _mixerHeight.clamp(least, most).toDouble()
-                      : room;
-          return Column(children: [
-            if (mixer)
-              CanvasMixer(
-                controller: _controller,
-                // Its top is the page's: the line between it and the effects
-                // is the effects' grip.
-                resizable: false,
-                height: mixerHeight,
-                onResize: (h) => _resizeMixer(h, most),
-                onClose: () => _controller.mixerOpen = false,
+        child: _controller.mixerOpen || _controller.effectsOpen
+            ? const SizedBox.expand()
+            : Center(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text(_noCanvas ? "A piece of sound" : "The canvas is hidden",
+                      style: TextStyle(color: theme.colors.onSurfaceVariant)),
+                  const SizedBox(height: 4),
+                  Text("Open the mixer or the effects from the timeline.",
+                      style: TextStyle(
+                          fontSize: 12, color: theme.colors.onSurfaceVariant)),
+                  const SizedBox(height: 8),
+                  if (!_noCanvas)
+                    TextButton.icon(
+                      key: const ValueKey("showCanvas"),
+                      onPressed: () => setState(() => _canvasShown = true),
+                      icon: const Icon(Icons.visibility_outlined, size: 16),
+                      label: const Text("Show the canvas"),
+                    ),
+                ]),
               ),
-            if (effects)
-              CanvasMixer.effects(
-                controller: _controller,
-                height: room - mixerHeight,
-                // Its grip moves the line between them: the mixer over it
-                // is what changes.
-                onResize: (h) => _resizeMixer(room - h, most),
-                onClose: () => _controller.effectsOpen = false,
-              ),
-          ]);
-        }),
       );
 
   Widget _content(ThemeNotifier theme) => ListenableBuilder(
@@ -1046,9 +1112,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
                     // effects at the bottom -- so a strip and the chain it
                     // opens read top to bottom. Each is resized by the grip
                     // along its own top.
-                    if (_shown && _controller.effectsOpen)
+                    if (_controller.effectsOpen)
                       Positioned(
-                        bottom: _keyframesOpen && !_controller.playing
+                        bottom: _shown && _keyframesOpen && !_controller.playing
                             ? keyframeBarHeight
                             : 0,
                         left: 0,
@@ -1060,14 +1126,15 @@ class _CanvasScreenState extends State<CanvasScreen> {
                           onClose: () => _controller.effectsOpen = false,
                         ),
                       ),
-                    if (_shown && _controller.mixerOpen)
+                    if (_controller.mixerOpen)
                       Positioned(
-                        bottom: (_keyframesOpen && !_controller.playing
-                                ? keyframeBarHeight
-                                : 0) +
-                            (_controller.effectsOpen
-                                ? shown[_Stacked.effects] ?? _effectsHeight
-                                : 0),
+                        bottom:
+                            (_shown && _keyframesOpen && !_controller.playing
+                                    ? keyframeBarHeight
+                                    : 0) +
+                                (_controller.effectsOpen
+                                    ? shown[_Stacked.effects] ?? _effectsHeight
+                                    : 0),
                         left: 0,
                         right: 0,
                         child: CanvasMixer(

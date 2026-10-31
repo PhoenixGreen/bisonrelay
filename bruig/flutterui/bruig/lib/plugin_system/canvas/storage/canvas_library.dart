@@ -378,6 +378,19 @@ class CanvasLibrary {
     changes.value++;
   }
 
+  /// unlist takes the asset [id] off the library's list, its files kept:
+  /// for one replaced by another that a canvas, or its undo, may still use.
+  /// A tidy deletes them once nothing does.
+  static Future<void> unlist(String id) async {
+    await _serial(() async {
+      var all = [...await _read()];
+      var before = all.length;
+      all.removeWhere((a) => a.id == id);
+      if (all.length != before) await _write(all);
+    });
+    changes.value++;
+  }
+
   /// remove takes the asset [id] out of the library, and deletes its files
   /// where no other asset shares them. Anything still using it is left
   /// pointing at nothing, which is what the sidebar warns about first -- see

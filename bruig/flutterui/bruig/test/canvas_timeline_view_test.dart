@@ -152,15 +152,19 @@ void main() {
       expect(c.mixerOpen, isTrue);
       expect(c.mixerMinimised, isFalse);
       expect(c.effectsOpen, isFalse, reason: "two panels, two buttons");
-      // Ken: shown, then minimised to its meters, then hidden.
+      // Ken: shown, then minimised, then smallest -- the meters alone --
+      // then hidden.
       await tester.tap(mixer);
       await tester.pump();
       expect(c.mixerOpen, isTrue);
-      expect(c.mixerMinimised, isTrue);
+      expect((c.mixerMinimised, c.mixerSmallest), (true, false));
+      await tester.tap(mixer);
+      await tester.pump();
+      expect((c.mixerMinimised, c.mixerSmallest), (true, true));
       await tester.tap(mixer);
       await tester.pump();
       expect(c.mixerOpen, isFalse);
-      expect(c.mixerMinimised, isFalse);
+      expect((c.mixerMinimised, c.mixerSmallest), (false, false));
 
       // The selected channel's chain, in the effects panel, the mixer left
       // as it was.

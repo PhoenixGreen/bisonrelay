@@ -938,6 +938,22 @@ class _BandIcon extends CustomPainter {
   bool shouldRepaint(_BandIcon old) => old.ink != ink || old.slot != slot;
 }
 
+/// paintedLabel is [text] in [style], laid out: kept, as the meters and
+/// graphs paint the same few labels on every frame they move, and laying
+/// them out again each time was much of what those frames cost.
+TextPainter paintedLabel(String text, TextStyle style) {
+  var key = (text, style);
+  var kept = _labels[key];
+  if (kept != null) return kept;
+  if (_labels.length > 400) _labels.clear();
+  return _labels[key] = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr)
+    ..layout();
+}
+
+final _labels = <(String, TextStyle), TextPainter>{};
+
 class _EqGraph extends CustomPainter {
   final Eq eq;
   final EqSlot? picked;
@@ -961,11 +977,7 @@ class _EqGraph extends CustomPainter {
   ];
 
   void _text(Canvas canvas, String s, Offset at, {bool right = false}) {
-    var tp = TextPainter(
-        text: TextSpan(
-            text: s, style: const TextStyle(fontSize: 9, color: _eqDim)),
-        textDirection: TextDirection.ltr)
-      ..layout();
+    var tp = paintedLabel(s, const TextStyle(fontSize: 9, color: _eqDim));
     tp.paint(canvas, right ? at - Offset(tp.width, 0) : at);
   }
 
@@ -1575,21 +1587,13 @@ class _VuNeedle extends CustomPainter {
           Paint()
             ..strokeWidth = 1.2
             ..color = _silverInk);
-      var tp = TextPainter(
-          text: TextSpan(
-              text: "$db",
-              style: const TextStyle(fontSize: 10, color: _silverInk)),
-          textDirection: TextDirection.ltr)
-        ..layout();
+      var tp =
+          paintedLabel("$db", const TextStyle(fontSize: 10, color: _silverInk));
       tp.paint(canvas,
           pivot + dir * (radius + 16) - Offset(tp.width / 2, tp.height / 2));
     }
-    var tp = TextPainter(
-        text: const TextSpan(
-            text: "GAIN REDUCTION  dB",
-            style: TextStyle(fontSize: 9, letterSpacing: 1, color: _silverDim)),
-        textDirection: TextDirection.ltr)
-      ..layout();
+    var tp = paintedLabel("GAIN REDUCTION  dB",
+        const TextStyle(fontSize: 9, letterSpacing: 1, color: _silverDim));
     tp.paint(canvas, Offset(w / 2 - tp.width / 2, pivot.dy - radius * 0.45));
     var a = angle(reduction);
     canvas.drawLine(
@@ -1881,11 +1885,7 @@ class _MeterScale extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (var db in const [0, -6, -12, -18, -24, -36, -48, -60]) {
       var y = 2 + (-db / 60) * (size.height - 4);
-      var tp = TextPainter(
-          text: TextSpan(
-              text: "$db", style: const TextStyle(fontSize: 9, color: _eqDim)),
-          textDirection: TextDirection.ltr)
-        ..layout();
+      var tp = paintedLabel("$db", const TextStyle(fontSize: 9, color: _eqDim));
       tp.paint(canvas, Offset(size.width - tp.width, y - tp.height / 2));
     }
   }
@@ -2459,6 +2459,9 @@ class AddDeviceSlot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var look = MixerLook.of(context);
+    // Shut nearly flat, as the effects are opened or shut: too short for
+    // its title, it is only its place.
+    if (height < 48) return SizedBox(width: 124, height: height);
     return Container(
       width: 124,
       height: height,

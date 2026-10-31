@@ -47,6 +47,8 @@ class CanvasPreferences extends ChangeNotifier {
   static const _returnsShownKey = "canvasReturnsShown";
   static const _mixerHeightKey = "canvasMixerHeight";
   static const _effectsHeightKey = "canvasEffectsHeight";
+  static const _panelsKey = "canvasPanels";
+  static const _canvasViewsKey = "canvasViews";
 
   /// enabled is whether the Canvas section exists.
   bool get enabled => _enabled;
@@ -235,6 +237,40 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_effectsHeightKey, value.toStringAsFixed(1));
   }
 
+  /// panels is how the panels under the canvas were left, whatever canvas
+  /// is open -- see CanvasController.panelState. Empty for as they start.
+  Map<String, dynamic> get panels => _panels;
+  Map<String, dynamic> _panels = const {};
+  set panels(Map<String, dynamic> value) {
+    var json = jsonEncode(value);
+    if (json == jsonEncode(_panels)) return;
+    _panels = Map.unmodifiable(value);
+    StorageManager.saveString(_panelsKey, json);
+  }
+
+  /// canvasView is how the canvas saved as [key] -- "folder/name" -- was
+  /// last looked at: its channels' heights, its narrow strips, the
+  /// timeline's zoom. See CanvasController.canvasView.
+  Map<String, dynamic>? canvasView(String key) => _canvasViews[key];
+  Map<String, Map<String, dynamic>> _canvasViews = {};
+
+  /// _viewsKept is how many canvases' views are kept: the latest looked at.
+  static const _viewsKept = 40;
+
+  void setCanvasView(String key, Map<String, dynamic> view) {
+    var json = jsonEncode(view);
+    if (_canvasViews[key] != null && jsonEncode(_canvasViews[key]) == json) {
+      return;
+    }
+    // The latest last, the oldest dropped past the few kept.
+    _canvasViews.remove(key);
+    _canvasViews[key] = view;
+    while (_canvasViews.length > _viewsKept) {
+      _canvasViews.remove(_canvasViews.keys.first);
+    }
+    StorageManager.saveString(_canvasViewsKey, jsonEncode(_canvasViews));
+  }
+
   /// drawBarWidth is how wide a sketched character's bar over the canvas
   /// was dragged to, or nought for its usual width -- see
   /// character_draw_bar.dart. One width, whatever tool is in hand.
@@ -372,6 +408,24 @@ class CanvasPreferences extends ChangeNotifier {
     _effectsHeight =
         double.tryParse(await StorageManager.readString(_effectsHeightKey)) ??
             0;
+    try {
+      var saved = jsonDecode(await StorageManager.readString(_panelsKey));
+      if (saved is Map<String, dynamic>) _panels = Map.unmodifiable(saved);
+    } catch (_) {
+      // Nothing kept yet.
+    }
+    try {
+      var saved = jsonDecode(await StorageManager.readString(_canvasViewsKey));
+      if (saved is Map<String, dynamic>) {
+        _canvasViews = {
+          for (var e in saved.entries)
+            if (e.value is Map<String, dynamic>)
+              e.key: e.value as Map<String, dynamic>,
+        };
+      }
+    } catch (_) {
+      // Nothing kept yet.
+    }
     useMixEngine =
         await StorageManager.readBool(_mixEngineKey, defaultVal: true);
     _studioLook =

@@ -154,10 +154,14 @@ void main() {
   test("a spoken take is saved with the canvas, and its sound kept", () async {
     var engineWas = CanvasController.speechEngineFor;
     var storeWas = CanvasController.speechStore;
+    var audioWas = CanvasController.takeAudio;
     addTearDown(() {
       CanvasController.speechEngineFor = engineWas;
       CanvasController.speechStore = storeWas;
+      CanvasController.takeAudio = audioWas;
     });
+    // The lines' takes read back as the mix engine would, without it.
+    CanvasController.takeAudio = (id) async => Float32List(48000);
     CanvasController.speechEngineFor = (spec, key) => _Quiet();
     // Kept as the app keeps it: in the media store.
     CanvasController.speechStore =
@@ -174,8 +178,16 @@ void main() {
     addTearDown(c.dispose);
     expect(await c.saveAs("", "Talk"), isTrue);
     c.setSpeech("a", const SpeechSpec(script: "Hello there"));
-    expect(await c.speak("a"), isNull);
+    expect(await c.speakLines("a"), isNull);
     var take = c.speechOf("a")!.takes.single.assetId;
+    var lineTake = c.speechOf("a")!.lines.single.takes.single.assetId;
+    // Both listed in the Audio library, by what they say.
+    var audio = {
+      for (var a in await CanvasLibrary.list(kind: AssetKind.audio))
+        a.id: a.name
+    };
+    expect(audio[take], startsWith("Speech · "));
+    expect(audio[lineTake], contains("line 1 · take A"));
     // Its clip taken off the timeline: the take kept for the Vocaliser.
     var takeClip = c.document.elements
         .whereType<AudioElement>()
@@ -183,6 +195,8 @@ void main() {
     expect(await c.save(), isTrue);
     await CanvasLibrary.tidy(open: {});
     expect(await exists(take), isTrue);
+    expect(await exists(lineTake), isTrue,
+        reason: "the line's take, which the clip is joined from again");
     expect(takeClip, isNotNull);
     var back = (await CanvasStorage.load("", "Talk"))!;
     var clips = back.elements
@@ -279,7 +293,7 @@ void main() {
   });
 }
 
-class _Quiet implements SpeechEngine {
+class _Quiet extends SpeechEngine {
   @override
   Future<List<SpeechVoice>> voices() async => const [];
   @override
