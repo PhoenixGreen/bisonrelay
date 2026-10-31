@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/media/espeak.dart';
 import 'package:bruig/plugin_system/canvas/media/kokoro_speech.dart';
+import 'package:bruig/plugin_system/canvas/media/qwen_speech.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart' show mixRate;
 import 'package:bruig/plugin_system/canvas/media/speech_cues.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_engines.dart';
@@ -98,7 +99,7 @@ void main() {
 
     test("a spec and its takes are kept", () {
       var spec = const SpeechSpec(
-          engine: SpeechEngineKind.cloud,
+          engine: SpeechEngineKind.expressive,
           voice: "v1",
           voiceName: "Bella",
           script: "Hi [laugh]",
@@ -109,7 +110,7 @@ void main() {
           ]);
       var mix = ChannelMix(speech: spec);
       var back = ChannelMix.fromJson(mix.toJson()).speech!;
-      expect(back.engine, SpeechEngineKind.cloud);
+      expect(back.engine, SpeechEngineKind.expressive);
       expect(back.voiceName, "Bella");
       expect(back.speed, 1.2);
       expect(back.takes.single.words.single.text, "Hi");
@@ -143,11 +144,17 @@ void main() {
         for (var c in SpeechCue.values)
           if (c != SpeechCue.stress) c
       ]);
-      expect(SpeechEngineKind.cloud.cues, SpeechCue.values);
+      // The expressive voices: no stress, nor a slower stretch mid-line.
+      expect(SpeechEngineKind.expressive.cues,
+          isNot(anyOf(contains(SpeechCue.stress), contains(SpeechCue.slow))));
       // A spec from before: the computer's voices are gone, and it opens
-      // on our own.
+      // on our own; ElevenLabs too, its voice with it.
       expect(SpeechSpec.fromJson({"engine": "system", "pitch": 3}).engine,
           SpeechEngineKind.local);
+      var gone = SpeechSpec.fromJson(
+          {"engine": "cloud", "voice": "21m00", "voiceName": "Rachel"});
+      expect((gone.engine, gone.voice, gone.voiceName),
+          (SpeechEngineKind.local, "", ""));
     });
   });
 
@@ -395,73 +402,15 @@ esac
     }, timeout: const Timeout(Duration(minutes: 2)));
   });
 
-  group("ElevenLabs", () {
-    test("is sent the script with its own tags, and its timing read back",
-        () async {
-      late Uri asked;
-      late Map<String, String> headers;
-      late Map<String, dynamic> sent;
-      // Two samples of 24kHz PCM; "Hi you" timed a character at a time.
-      var pcm = Uint8List(4)
-        ..buffer.asByteData().setInt16(0, 16384, Endian.little)
-        ..buffer.asByteData().setInt16(2, -16384, Endian.little);
-      var engine = CloudSpeech("KEY", fetch: (method, url, h, body) async {
-        asked = url;
-        headers = h;
-        sent = jsonDecode(body!) as Map<String, dynamic>;
-        return (
-          200,
-          jsonEncode({
-            "audio_base64": base64Encode(pcm),
-            "alignment": {
-              "characters": [..."[laughs] Hi you".split("")],
-              "character_start_times_seconds": [
-                for (var i = 0; i < 16; i++) i * 0.1
-              ],
-              "character_end_times_seconds": [
-                for (var i = 0; i < 16; i++) i * 0.1 + 0.1
-              ],
-            },
-          })
-        );
-      });
-      var take = await engine.speak(const SpeechSpec(
-          engine: SpeechEngineKind.cloud,
-          voice: "abc",
-          script: "[laugh] Hi [stress] you [pause 2]",
-          expression: 0.3));
-      expect(asked.path, "/v1/text-to-speech/abc/with-timestamps");
-      expect(headers["xi-api-key"], "KEY");
-      expect(sent["text"], "[laughs] Hi YOU [long pause]");
-      expect(sent["voice_settings"]["style"], 0.3);
-      expect(take.exact, isTrue);
-      expect(take.words.map((w) => w.text), ["Hi", "you"],
-          reason: "its tags left out");
-      expect(take.words.first.start, closeTo(0.9, 1e-9));
-      expect(take.l.length, 4, reason: "24kHz brought up to 48kHz");
-      expect(take.l[1], closeTo(0, 1e-6), reason: "halfway between the two");
-    });
-
-    test("without a key, or with a wrong one, it says so", () async {
-      expect(
-          () =>
-              CloudSpeech("").speak(const SpeechSpec(voice: "v", script: "x")),
-          throwsA(isA<SpeechException>()));
-      var engine = CloudSpeech("BAD", fetch: (m, u, h, b) async => (401, "{}"));
-      expect(
-          () => engine.speak(const SpeechSpec(voice: "v", script: "x")),
-          throwsA(isA<SpeechException>()
-              .having((e) => e.message, "message", contains("API key"))));
-    });
-  });
-
   group("on a channel", () {
     late StubSpeech stub;
-    late SpeechEngine Function(SpeechSpec, String) engineWas;
+    late SpeechEngine Function(SpeechSpec) engineWas;
     late Future<String?> Function(String) storeWas;
     late Future<Float32List?> Function(String) audioWas;
     late Future<void> Function(String, String, double) libraryWas;
     late Future<void> Function(String) unlistWas;
+    late Future<String?> Function(Uint8List) takeStoreWas;
+    late Future<String?> Function(String) takePathWas;
     // What the Audio library was given, and had taken off its list.
     var listed = <String, String>{};
     var unlisted = <String>[];
@@ -473,7 +422,7 @@ esac
       engineWas = CanvasController.speechEngineFor;
       storeWas = CanvasController.speechStore;
       audioWas = CanvasController.takeAudio;
-      CanvasController.speechEngineFor = (spec, key) => stub;
+      CanvasController.speechEngineFor = (spec) => stub;
       var kept = 0;
       CanvasController.speechStore = (file) async => "take${++kept}.wav";
       CanvasController.takeAudio =
@@ -485,6 +434,11 @@ esac
       CanvasController.speechLibrary =
           (id, name, seconds) async => listed[id] = name;
       CanvasController.speechUnlist = (id) async => unlisted.add(id);
+      takeStoreWas = CanvasController.speechTakeStore;
+      takePathWas = CanvasController.takePath;
+      var lines = 0;
+      CanvasController.speechTakeStore = (wav) async => "line${++lines}.wav";
+      CanvasController.takePath = (id) async => "/kept/$id";
     });
 
     tearDown(() {
@@ -494,6 +448,8 @@ esac
       CanvasController.takeAudio = audioWas;
       CanvasController.speechLibrary = libraryWas;
       CanvasController.speechUnlist = unlistWas;
+      CanvasController.speechTakeStore = takeStoreWas;
+      CanvasController.takePath = takePathWas;
     });
 
     CanvasController make() => CanvasController(
@@ -506,8 +462,9 @@ esac
         audioEngine: FakeEngine({"t": 2}));
 
     test(
-        "Speak all speaks each line and joins them into a clip at the "
-        "playhead, one undo", () async {
+        "Speak all fills a slot of each line -- nothing on the timeline, "
+        "nothing in the library -- and Add all lines joins them, one undo",
+        () async {
       var c = make();
       addTearDown(c.dispose);
       c.setSpeech(
@@ -519,8 +476,15 @@ esac
           ["Hello world.", "[laugh] Good night."],
           reason: "a line at a time, its direction Kokoro's nearest cue");
       var spec = c.speechOf("a")!;
-      expect(
-          spec.lines.map((l) => (l.takes.length, l.chosen)), [(1, 0), (1, 0)]);
+      expect(spec.lines.map((l) => (l.slot(0)?.assetId, l.chosen)),
+          [("line1.wav", 0), ("line2.wav", 0)]);
+      expect(spec.lines.first.slot(0)!.saved, isFalse);
+      expect(c.document.elements, hasLength(before),
+          reason: "only by asking is anything put on the timeline");
+      expect(listed, isEmpty, reason: "nor in the Audio library");
+      // Add all lines: each line's picked take, joined.
+      expect(await c.joinSpeech("a"), isNull);
+      spec = c.speechOf("a")!;
       var added = c.document.elements.last as AudioElement;
       expect(c.document.elements, hasLength(before + 1));
       expect(added.clip.channel, "a");
@@ -534,80 +498,116 @@ esac
           reason: "the second line after the first and a pause");
       expect(added.clip.mix.speech!.takes, hasLength(1),
           reason: "the new clip carries the channel's strip, take and all");
-      expect(added.clip.mediaIds, containsAll(["take1.wav", "take2.wav"]),
-          reason: "the lines' takes are kept with the clip");
-      // Each take, and the clip, in the Audio library.
-      expect(listed, {
-        "take1.wav": "Speech · line 1 · take A · Hello world.",
-        "take2.wav": "Speech · line 2 · take A · Good night.",
-        joined.assetId: "Speech · voice · Hello world. Good night.",
-      });
+      expect(added.clip.mediaIds, containsAll(["line1.wav", "line2.wav"]),
+          reason: "the lines' takes are kept with the canvas");
+      expect(
+          listed, {joined.assetId: "Speech · voice · Hello world. Good night."},
+          reason: "the clip in the library; the lines' takes not");
       c.undo();
       expect(c.document.elements, hasLength(before));
       expect(c.speechOf("a")!.takes, isEmpty);
+      expect(c.speechOf("a")!.lines.first.slot(0), isNotNull,
+          reason: "the slots stay: only the reader empties one");
     });
 
-    test("another take, chosen, changes the clip's sound; three kept",
-        () async {
+    test(
+        "slots: another take fills the next free one; full, it asks; "
+        "Replace speaks into the one picked; Remove empties it", () async {
       var c = make();
       addTearDown(c.dispose);
       c.setSpeech("a", const SpeechSpec(script: "One. Two."));
       await c.speakLines("a");
-      var clip = c.speechOf("a")!.clip;
-      var count = c.document.elements.length;
-      String sound() =>
-          (c.document.elements.firstWhere((e) => e.id == clip) as AudioElement)
-              .clip
-              .playlist
-              .single
-              .assetId;
-      var first = sound();
       for (var i = 0; i < 2; i++) {
         var line = c.speechOf("a")!.lines.first;
         expect(await c.anotherTake("a", line), isNull);
       }
-      var spec = c.speechOf("a")!;
-      expect((spec.lines.first.takes.length, spec.lines.first.chosen), (3, 2));
-      expect(c.document.elements, hasLength(count),
-          reason: "the same clip, its sound changed");
-      expect(sound(), spec.takes.single.assetId,
-          reason: "only the clip's own joined take is kept");
-      expect(unlisted, contains(first),
-          reason: "the clip it replaced taken off the library's list");
-      var before = sound();
-      expect(await c.chooseTake("a", 0, 0), isNull);
-      expect(c.speechOf("a")!.lines.first.chosen, 0);
-      expect(sound(), isNot(before));
-      c.undo();
-      expect(sound(), before, reason: "choosing is one undo");
-      // A fourth take: the oldest not chosen makes room for it.
-      expect(await c.chooseTake("a", 0, 0), isNull);
-      var had = [for (var t in c.speechOf("a")!.lines.first.takes) t.assetId];
-      expect(await c.anotherTake("a", c.speechOf("a")!.lines.first), isNull);
       var line = c.speechOf("a")!.lines.first;
-      expect(line.takes.map((t) => t.assetId).take(2), [had[0], had[2]]);
-      expect(line.takes.last.assetId, isNot(isIn(had)));
-      expect(line.chosen, 2, reason: "the new take, chosen");
+      expect([for (var i = 0; i < 3; i++) line.slot(i)?.assetId],
+          ["line1.wav", "line3.wav", "line4.wav"]);
+      expect(line.chosen, 2, reason: "the new take, picked");
+      expect(await c.anotherTake("a", line), contains("All three slots"),
+          reason: "a take is only replaced by the reader");
+      expect(stub.spoken, hasLength(4));
+      // Replace B.
+      expect(await c.replaceTake("a", 0, 1), isNull);
+      line = c.speechOf("a")!.lines.first;
+      expect([for (var i = 0; i < 3; i++) line.slot(i)?.assetId],
+          ["line1.wav", "line5.wav", "line4.wav"]);
+      expect(line.chosen, 1);
+      // Picked: no change to the timeline.
+      var count = c.document.elements.length;
+      c.chooseTake("a", 0, 0);
+      expect(c.speechOf("a")!.lines.first.chosen, 0);
+      expect(c.document.elements, hasLength(count));
+      // Removed: one undo.
+      c.removeTake("a", 0, 2);
+      expect(c.speechOf("a")!.lines.first.slot(2), isNull);
+      c.undo();
+      expect(c.speechOf("a")!.lines.first.slot(2)?.assetId, "line4.wav");
+      // A slot free again, Another take fills it -- the one picked, where
+      // it is free.
+      c.removeTake("a", 0, 1);
+      expect(await c.anotherTake("a", c.speechOf("a")!.lines.first, slot: 1),
+          isNull);
+      expect(c.speechOf("a")!.lines.first.slot(1)?.assetId, "line6.wav");
     });
 
-    test("a fourth take keeps the one chosen, wherever it is", () {
-      SpeechLine line(int chosen) => SpeechLine("x",
-          takes: const [
-            SpeechTake("a", 1, []),
-            SpeechTake("b", 1, []),
-            SpeechTake("c", 1, []),
-          ],
-          chosen: chosen);
-      const d = SpeechTake("d", 1, []);
-      for (var (chosen, kept) in [
-        (0, ["a", "c", "d"]),
-        (1, ["b", "c", "d"]),
-        (2, ["b", "c", "d"]),
-      ]) {
-        var after = CanvasController.withTake(line(chosen), d);
-        expect(after.takes.map((t) => t.assetId), kept, reason: "$chosen");
-        expect(after.chosen, 2);
-      }
+    test(
+        "a slot's take saved, or put on the timeline: then, and only then, "
+        "in the Audio library", () async {
+      var c = make();
+      addTearDown(c.dispose);
+      c.setSpeech("a", const SpeechSpec(voiceName: "Emma", script: "One."));
+      await c.speakLines("a");
+      var (saved, problem) = await c.saveTake("a", 0, 0);
+      expect(problem, isNull);
+      expect(saved!.saved, isTrue);
+      expect(listed, {saved.assetId: "Emma · line 1 · take A · One."});
+      expect(c.speechOf("a")!.lines.single.slot(0)!.assetId, saved.assetId);
+      // On the timeline: a clip of its own at the playhead, kept with the
+      // device for lip sync -- saved once, not again.
+      c.frame = 20;
+      var before = c.document.elements.length;
+      expect(await c.addTake("a", 0, 0), isNull);
+      var clip = c.document.elements.last as AudioElement;
+      expect(c.document.elements, hasLength(before + 1));
+      expect((clip.clip.at, clip.clip.playlist.single.assetId),
+          (20, saved.assetId));
+      expect(c.speechOf("a")!.takes.map((t) => t.assetId), [saved.assetId]);
+      expect(listed, hasLength(1));
+      c.undo();
+      expect(c.document.elements, hasLength(before));
+      // Emptied, the library keeps its copy.
+      c.removeTake("a", 0, 0);
+      expect(c.speechOf("a")!.lines.single.slot(0), isNull);
+      expect(listed, hasLength(1));
+    });
+
+    test("slots kept in their places, through saving and opening", () {
+      const a = SpeechTake("a.wav", 1, []);
+      const c = SpeechTake("c.wav", 1, [], saved: true);
+      var line = const SpeechLine("x").withSlot(0, a).withSlot(2, c);
+      expect([for (var i = 0; i < 3; i++) line.slot(i)?.assetId],
+          ["a.wav", null, "c.wav"]);
+      expect((line.chosen, line.freeSlot), (2, 1));
+      // Emptying the one picked picks another in use.
+      expect(line.withSlot(2, null).chosen, 0);
+      var back = SpeechLine.fromJson(line.toJson())!;
+      expect([for (var i = 0; i < 3; i++) back.slot(i)?.assetId],
+          ["a.wav", null, "c.wav"]);
+      expect((back.chosen, back.slot(2)!.saved), (2, true));
+      // From before there were slots: its takes, A on.
+      var old = SpeechLine.fromJson({
+        "text": "x",
+        "takes": [a.toJson(), c.toJson()],
+        "chosen": 1
+      })!;
+      expect([for (var i = 0; i < 3; i++) old.slot(i)?.assetId],
+          ["a.wav", "c.wav", null]);
+      expect(old.chosen, 1);
+      // Said another way, its words the same: its slots stay.
+      var typed = scriptLines("[sad] x", [line]);
+      expect(typed.single.slot(0)?.assetId, "a.wav");
     });
 
     group("heard on its own", () {
@@ -674,7 +674,7 @@ esac
     test("an engine that speaks lines together is given them together",
         () async {
       var batch = BatchSpeech();
-      CanvasController.speechEngineFor = (spec, key) => batch;
+      CanvasController.speechEngineFor = (spec) => batch;
       var c = make();
       addTearDown(c.dispose);
       c.setSpeech("a", const SpeechSpec(script: "One. Two. Three."));
@@ -689,7 +689,7 @@ esac
       expect([for (var l in spec.lines) l.takes.length], [1, 1, 1]);
       expect({for (var l in spec.lines) l.take!.assetId}, hasLength(3),
           reason: "a take of each, kept apart");
-      expect(spec.takes, hasLength(1), reason: "joined once, into the clip");
+      expect(spec.takes, isEmpty, reason: "nothing on the timeline unasked");
       // Another take of one line: that line alone.
       expect(await c.anotherTake("a", spec.lines[1]), isNull);
       expect(batch.batched.last, ["Two."]);
@@ -784,8 +784,11 @@ esac
         await tester.pump();
       }
       expect(stub.spoken.single.voice, "v2");
-      expect(c.speechOf("a")!.takes, hasLength(1));
-      expect(find.textContaining("Clip: 1 of 1 lines"), findsOneWidget);
+      expect(c.speechOf("a")!.lines.single.slot(0), isNotNull,
+          reason: "the line's take, in its first slot");
+      expect(c.speechOf("a")!.takes, isEmpty,
+          reason: "nothing on the timeline until it is added");
+      expect(find.textContaining("1 of 1 lines with a take"), findsOneWidget);
       // On the channel's strip, its slot.
       expect(
           find.descendant(
@@ -908,15 +911,15 @@ esac
       tester.view.physicalSize = const Size(1200, 400);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      // Our own voices downloaded and not, and ElevenLabs.
-      for (var (cloud, here) in [(false, true), (false, false), (true, true)]) {
+      // Our own voices downloaded and not, and the expressive voices.
+      for (var (engine, here) in [
+        (SpeechEngineKind.local, true),
+        (SpeechEngineKind.local, false),
+        (SpeechEngineKind.expressive, true),
+      ]) {
         KokoroDownload.instance.ready = here;
-        c.setSpeech(
-            "a",
-            SpeechSpec(
-                script: "Hello",
-                engine:
-                    cloud ? SpeechEngineKind.cloud : SpeechEngineKind.local));
+        QwenDownload.instance.ready = here;
+        c.setSpeech("a", SpeechSpec(script: "Hello", engine: engine));
         c.setVocaliser("a", const VocaliserSpec());
         for (var scale in [1.0, 1.15, 1.25, 1.5]) {
           await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
@@ -950,9 +953,9 @@ esac
           ));
           await tester.pump();
           expect(tester.takeException(), isNull,
-              reason: "cloud $cloud, voices here $here, at ${scale}x");
+              reason: "$engine, voices here $here, at ${scale}x");
           expect(find.byKey(const ValueKey("speechDownload")),
-              !cloud && !here ? findsOneWidget : findsNothing);
+              here ? findsNothing : findsOneWidget);
           for (var button in ["speechSpeak", "vocaliserSing"]) {
             var rect = tester.getRect(find.byKey(ValueKey(button)));
             expect(rect.bottom, lessThanOrEqualTo(260),

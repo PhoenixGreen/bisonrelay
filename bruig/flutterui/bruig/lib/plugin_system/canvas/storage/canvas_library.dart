@@ -458,10 +458,26 @@ class CanvasLibrary {
           await CanvasMedia.sweep(MediaKind.audio, keep) +
           await CanvasMedia.sweep(MediaKind.video, keep) +
           await CanvasMedia.sweep(MediaKind.vector, keep) +
-          await CanvasMedia.sweep(MediaKind.model, keep);
+          await CanvasMedia.sweep(MediaKind.model, keep) +
+          await _sweepSpeechTakes(keep);
     } catch (_) {
       return 0;
     }
+  }
+
+  /// _sweepSpeechTakes deletes the Speech device's takes no canvas has any
+  /// more -- removed, replaced, or a canvas deleted -- see
+  /// CanvasStorage.speechTakesDir.
+  static Future<int> _sweepSpeechTakes(Set<String> keep) async {
+    var gone = 0;
+    var dir = Directory(await CanvasStorage.speechTakesDir());
+    await for (var f in dir.list()) {
+      if (f is File && !keep.contains(path.basename(f.path))) {
+        await f.delete();
+        gone++;
+      }
+    }
+    return gone;
   }
 
   /// _documents is every saved canvas, with the folder and name it is under.

@@ -162,7 +162,7 @@ void main() {
     });
     // The lines' takes read back as the mix engine would, without it.
     CanvasController.takeAudio = (id) async => Float32List(48000);
-    CanvasController.speechEngineFor = (spec, key) => _Quiet();
+    CanvasController.speechEngineFor = (spec) => _Quiet();
     // Kept as the app keeps it: in the media store.
     CanvasController.speechStore =
         (file) => CanvasMedia.saveFile(MediaKind.audio, file);
@@ -179,15 +179,20 @@ void main() {
     expect(await c.saveAs("", "Talk"), isTrue);
     c.setSpeech("a", const SpeechSpec(script: "Hello there"));
     expect(await c.speakLines("a"), isNull);
+    // Added to the timeline, the lines joined.
+    expect(await c.joinSpeech("a"), isNull);
     var take = c.speechOf("a")!.takes.single.assetId;
     var lineTake = c.speechOf("a")!.lines.single.takes.single.assetId;
-    // Both listed in the Audio library, by what they say.
+    // The clip in the Audio library; the line's take kept apart, until it
+    // is saved.
     var audio = {
       for (var a in await CanvasLibrary.list(kind: AssetKind.audio))
         a.id: a.name
     };
     expect(audio[take], startsWith("Speech · "));
-    expect(audio[lineTake], contains("line 1 · take A"));
+    expect(audio.containsKey(lineTake), isFalse);
+    var kept = File(path.join(await CanvasStorage.speechTakesDir(), lineTake));
+    expect(kept.existsSync(), isTrue);
     // Its clip taken off the timeline: the take kept for the Vocaliser.
     var takeClip = c.document.elements
         .whereType<AudioElement>()
@@ -195,8 +200,8 @@ void main() {
     expect(await c.save(), isTrue);
     await CanvasLibrary.tidy(open: {});
     expect(await exists(take), isTrue);
-    expect(await exists(lineTake), isTrue,
-        reason: "the line's take, which the clip is joined from again");
+    expect(kept.existsSync(), isTrue,
+        reason: "the line's take, the canvas still has it");
     expect(takeClip, isNotNull);
     var back = (await CanvasStorage.load("", "Talk"))!;
     var clips = back.elements
@@ -206,6 +211,15 @@ void main() {
     var speech = clips.single.clip.mix.speech;
     expect(speech?.script, "Hello there");
     expect(speech?.takes.single.assetId, take);
+    expect(speech?.lines.single.slot(0)?.assetId, lineTake,
+        reason: "its slots kept with the canvas, through a restart");
+    // Removed by the reader, and the canvas saved: the take's file goes.
+    c.removeTake("a", 0, 0);
+    expect(await c.save(), isTrue);
+    await CanvasLibrary.tidy(open: {});
+    expect(kept.existsSync(), isFalse,
+        reason: "no canvas has it, and it was never saved");
+    expect(await exists(take), isTrue, reason: "the clip's sound stays");
   });
 
   test("an empty channel made in the mixer keeps its slots and its Speech",

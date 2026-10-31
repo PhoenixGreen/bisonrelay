@@ -95,15 +95,18 @@ void main() {
       const take = SpeechTake("t1", 1, []);
       var spec = const SpeechSpec(script: "One. Two.").withScript("One. Two.");
       spec = spec.copyWith(lines: [
-        spec.lines[0].copyWith(takes: [take], chosen: 0),
+        spec.lines[0].copyWith(slots: [take], chosen: 0),
         spec.lines[1],
       ]);
       var typed = spec.withScript("One. Two and three.");
       expect(typed.lines.first.takes.single.assetId, "t1");
       expect(typed.lines.first.chosen, 0);
       expect(typed.lines.last.takes, isEmpty);
-      // A new direction is a new line: spoken again.
-      expect(spec.withScript("[sad] One. Two.").lines.first.takes, isEmpty);
+      // Said another way, its words the same: its takes stay, only the
+      // reader empties a slot.
+      var sad = spec.withScript("[sad] One. Two.").lines.first;
+      expect((sad.direction, sad.takes.single.assetId),
+          (SpeechDirection.sad, "t1"));
     });
 
     test("a direction in the reader's own words is never spoken", () {
@@ -124,7 +127,7 @@ void main() {
         clip: "e1",
       ).withScript("[nervous] Hi.");
       spec = spec.copyWith(lines: [
-        spec.lines.single.copyWith(takes: [
+        spec.lines.single.copyWith(slots: [
           const SpeechTake("a", 1.5, [(text: "Hi.", start: 0, end: 0.4)]),
           const SpeechTake("b", 1.2, []),
         ], chosen: 1),
@@ -458,10 +461,10 @@ cp "${dir.path}/line.wav" "\$out"
   });
 
   group("the device", () {
-    late SpeechEngine Function(SpeechSpec, String) engineWas;
+    late SpeechEngine Function(SpeechSpec) engineWas;
     setUp(() {
       engineWas = CanvasController.speechEngineFor;
-      CanvasController.speechEngineFor = (spec, key) => _Voices();
+      CanvasController.speechEngineFor = (spec) => _Voices();
       KokoroDownload.instance.ready = true;
     });
     tearDown(() {
@@ -577,7 +580,8 @@ cp "${dir.path}/line.wav" "\$out"
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets("heard before it is picked: our own voices, and each take",
+    testWidgets(
+        "A, B and C always there; a slot in use, its actions; free, none",
         (tester) async {
       var c = make();
       addTearDown(c.dispose);
@@ -590,7 +594,7 @@ cp "${dir.path}/line.wav" "\$out"
         c.setSpeech(
             "a",
             spec.copyWith(engine: engine, lines: [
-              spec.lines.first.copyWith(takes: const [
+              spec.lines.first.copyWith(slots: const [
                 SpeechTake("x.wav", 1, []),
                 SpeechTake("y.wav", 1, []),
               ], chosen: 1),
@@ -601,22 +605,37 @@ cp "${dir.path}/line.wav" "\$out"
           await tester.pump();
           var why = "$engine at ${scale}x";
           expect(tester.takeException(), isNull, reason: why);
-          var cloud = engine == SpeechEngineKind.cloud;
-          expect(find.byKey(const ValueKey("speechPreview-v1")),
-              cloud ? findsNothing : findsOneWidget,
-              reason: "a preview from ElevenLabs costs: $why");
-          expect(find.byKey(const ValueKey("speechHearFeel")),
-              cloud ? findsNothing : findsOneWidget,
+          // Heard before it is picked.
+          expect(find.byKey(const ValueKey("speechPreview-v1")), findsOneWidget,
               reason: why);
-          // The first line, picked: its two takes, each to hear.
-          expect(find.byKey(const ValueKey("speechHear-0")), findsOneWidget,
+          expect(find.byKey(const ValueKey("speechHearFeel")), findsOneWidget,
               reason: why);
-          expect(find.byKey(const ValueKey("speechHear-1")), findsOneWidget,
-              reason: why);
-          expect(find.byKey(const ValueKey("speechHear-2")), findsNothing,
-              reason: why);
+          // Every line's three, in use or not.
+          for (var t = 0; t < 3; t++) {
+            expect(find.byKey(ValueKey("speechTake-1-$t")), findsOneWidget,
+                reason: why);
+            expect(find.byKey(ValueKey("speechSlot-$t")), findsOneWidget,
+                reason: why);
+          }
+          // The first line picked, its slot B: in use, so its actions.
+          for (var action in [
+            "speechHear",
+            "speechSave",
+            "speechAddTake",
+            "speechRemoveTake",
+            "speechReplace"
+          ]) {
+            expect(find.byKey(ValueKey(action)), findsOneWidget,
+                reason: "$action, $why");
+          }
         }
       }
+      // Slot C picked: free, so none of them.
+      await tester.tap(find.byKey(const ValueKey("speechSlot-2")));
+      await tester.pump();
+      expect(find.byKey(const ValueKey("speechSave")), findsNothing);
+      expect(find.byKey(const ValueKey("speechReplace")), findsNothing);
+      expect(find.textContaining("Slot C is free"), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
 
@@ -631,7 +650,6 @@ cp "${dir.path}/line.wav" "\$out"
         (SpeechEngineKind.local, true),
         (SpeechEngineKind.expressive, false),
         (SpeechEngineKind.expressive, true),
-        (SpeechEngineKind.cloud, true),
       ]) {
         QwenDownload.instance.ready = here;
         c.setSpeech(
@@ -658,9 +676,7 @@ cp "${dir.path}/line.wav" "\$out"
                   .onPressed,
               engine == SpeechEngineKind.expressive && !expressiveHere
                   ? isNull
-                  : engine == SpeechEngineKind.cloud
-                      ? isNull // no key
-                      : isNotNull,
+                  : isNotNull,
               reason: why);
         }
       }

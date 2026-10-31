@@ -20,14 +20,13 @@ import 'package:bruig/plugin_system/canvas/model/text_document.dart'
 // the sentence after them, and [stress] for the word after it. Each engine
 // offers only the cues it can really do -- see SpeechEngineKind.cues.
 
-/// SpeechEngineKind is what speaks: our own voices on this computer --
+/// SpeechEngineKind is what speaks: our own voices, on this computer --
 /// Kokoro, quick, or the expressive voices (Qwen3-TTS), which take a
-/// direction for each line -- or ElevenLabs in the cloud, off until switched
-/// on with the reader's own key, since the script leaves the computer.
+/// direction for each line. ElevenLabs, in the cloud, was the third, and is
+/// gone: a device saved with it opens on Built in.
 enum SpeechEngineKind {
   local("Built in"),
-  expressive("Expressive"),
-  cloud("ElevenLabs");
+  expressive("Expressive");
 
   final String label;
   const SpeechEngineKind(this.label);
@@ -47,7 +46,6 @@ enum SpeechEngineKind {
             for (var c in SpeechCue.values)
               if (c != SpeechCue.stress && c != SpeechCue.slow) c
           ],
-        cloud => SpeechCue.values,
       };
 
   /// directs is whether this engine can say a line as [d] says: Kokoro
@@ -125,22 +123,60 @@ class SpeechLine {
   /// own is a direction in the reader's own words, over [direction]; ""
   /// for none.
   final String own;
-  final List<SpeechTake> takes;
 
-  /// chosen is the take in the clip, by its place, or -1 for none yet.
+  /// slots are the line's takes, A to C, each in its own place: null for
+  /// one not in use. A take stays in its slot until the reader removes it
+  /// or speaks the line again into it.
+  final List<SpeechTake?> slots;
+
+  /// chosen is the slot picked -- the one "Add all lines" puts on the
+  /// timeline -- or -1 for none.
   final int chosen;
 
   const SpeechLine(this.text,
       {this.direction = SpeechDirection.plain,
       this.own = "",
-      this.takes = const [],
+      this.slots = const [],
       this.chosen = -1});
+
+  /// speechSlots is how many takes a line keeps.
+  static const speechSlots = 3;
+
+  /// slot is the take in slot [i], or null for one not in use.
+  SpeechTake? slot(int i) => i >= 0 && i < slots.length ? slots[i] : null;
+
+  /// takes are those in use, A to C.
+  List<SpeechTake> get takes => [
+        for (var t in slots)
+          if (t != null) t
+      ];
+
+  /// freeSlot is the first slot not in use, or -1 for all three in use.
+  int get freeSlot {
+    for (var i = 0; i < speechSlots; i++) {
+      if (slot(i) == null) return i;
+    }
+    return -1;
+  }
 
   /// say is the direction as the expressive voices are given it.
   String get say => own.isNotEmpty ? own : direction.say;
 
-  SpeechTake? get take =>
-      chosen >= 0 && chosen < takes.length ? takes[chosen] : null;
+  /// take is the slot picked's take, or null.
+  SpeechTake? get take => slot(chosen);
+
+  /// withSlot is the line with [take] in slot [i] -- null to empty it --
+  /// and, a take put there, that slot picked.
+  SpeechLine withSlot(int i, SpeechTake? take) {
+    var next = [for (var k = 0; k < speechSlots; k++) slot(k)];
+    next[i] = take;
+    var pick = take != null
+        ? i
+        : chosen == i
+            ? next.indexWhere((t) => t != null)
+            : chosen;
+    return copyWith(slots: next, chosen: pick);
+  }
 
   /// written is the line as the script shows it: its direction first.
   String get written => [
@@ -155,19 +191,20 @@ class SpeechLine {
           {String? text,
           SpeechDirection? direction,
           String? own,
-          List<SpeechTake>? takes,
+          List<SpeechTake?>? slots,
           int? chosen}) =>
       SpeechLine(text ?? this.text,
           direction: direction ?? this.direction,
           own: own ?? this.own,
-          takes: takes ?? this.takes,
+          slots: slots ?? this.slots,
           chosen: chosen ?? this.chosen);
 
   Map<String, dynamic> toJson() => {
         "text": text,
         if (direction != SpeechDirection.plain) "direction": direction.name,
         if (own.isNotEmpty) "own": own,
-        if (takes.isNotEmpty) "takes": [for (var t in takes) t.toJson()],
+        if (takes.isNotEmpty)
+          "slots": [for (var i = 0; i < speechSlots; i++) slot(i)?.toJson()],
         if (chosen >= 0) "chosen": chosen,
       };
 
@@ -175,10 +212,13 @@ class SpeechLine {
     if (json is! Map<String, dynamic>) return null;
     var text = jsonString(json["text"], "");
     if (text.isEmpty) return null;
-    var takes = [
-      if (json["takes"] case List list)
-        for (var t in list)
-          if (SpeechTake.fromJson(t) case var take?) take,
+    // Slots in their places; or, from before there were slots, the takes
+    // in order, A on.
+    var slots = <SpeechTake?>[
+      if (json["slots"] case List list)
+        for (var t in list.take(speechSlots)) SpeechTake.fromJson(t)
+      else if (json["takes"] case List list)
+        for (var t in list.take(speechSlots)) SpeechTake.fromJson(t),
     ];
     var chosen = json["chosen"] is int ? json["chosen"] as int : -1;
     return SpeechLine(text,
@@ -187,8 +227,10 @@ class SpeechLine {
                 .firstOrNull ??
             SpeechDirection.plain,
         own: jsonString(json["own"], ""),
-        takes: takes,
-        chosen: chosen < takes.length ? chosen : takes.length - 1);
+        slots: slots,
+        chosen: chosen >= 0 && chosen < slots.length && slots[chosen] != null
+            ? chosen
+            : slots.indexWhere((t) => t != null));
   }
 }
 
@@ -227,6 +269,13 @@ List<SpeechLine> scriptLines(String script, [List<SpeechLine> was = const []]) {
     if (kept != null) {
       unused.remove(kept);
       return kept;
+    }
+    // Said another way now, its words the same: its takes stay -- only the
+    // reader empties a slot.
+    var same = unused.where((l) => l.text == text).firstOrNull;
+    if (same != null) {
+      unused.remove(same);
+      return same.copyWith(direction: direction, own: own);
     }
     return SpeechLine(text, direction: direction, own: own);
   }
@@ -407,12 +456,23 @@ class SpeechTake {
   /// exact is whether the words' times are the engine's own, or heard by
   /// whisper, rather than estimated.
   final bool exact;
-  const SpeechTake(this.assetId, this.length, this.words, {this.exact = false});
+
+  /// saved is whether it is in the Audio library -- saved, or put on the
+  /// timeline. A line's take is not, until then: it is kept apart, with
+  /// the canvas that has it -- see CanvasController.speechTakeStore.
+  final bool saved;
+  const SpeechTake(this.assetId, this.length, this.words,
+      {this.exact = false, this.saved = false});
+
+  SpeechTake copyWith({String? assetId, bool? saved}) =>
+      SpeechTake(assetId ?? this.assetId, length, words,
+          exact: exact, saved: saved ?? this.saved);
 
   Map<String, dynamic> toJson() => {
         "asset": assetId,
         "length": length,
         if (exact) "exact": true,
+        if (saved) "saved": true,
         "words": [
           for (var w in words)
             [
@@ -441,6 +501,7 @@ class SpeechTake {
               ),
       ],
       exact: json["exact"] == true,
+      saved: json["saved"] == true,
     );
   }
 }
@@ -456,7 +517,7 @@ class SpeechSpec {
 
   /// speed is how fast, one as the voice speaks; expression how much the
   /// voice moves, and steadiness how alike each take is -- both nought to
-  /// one, and ElevenLabs' alone.
+  /// one, and the expressive voices' alone.
   final double speed;
   final double expression;
   final double steadiness;
@@ -584,12 +645,14 @@ class SpeechSpec {
 
   static SpeechSpec fromJson(Object? json) {
     if (json is! Map<String, dynamic>) return const SpeechSpec();
+    // One of ElevenLabs' voices is none of ours.
+    var gone = json["engine"] == "cloud";
     return const SpeechSpec().copyWith(
       engine: SpeechEngineKind.values
           .where((e) => e.name == json["engine"])
           .firstOrNull,
-      voice: jsonString(json["voice"], ""),
-      voiceName: jsonString(json["voiceName"], ""),
+      voice: gone ? "" : jsonString(json["voice"], ""),
+      voiceName: gone ? "" : jsonString(json["voiceName"], ""),
       script: jsonString(json["script"], ""),
       speed: jsonDouble(json["speed"], 1),
       expression: jsonDouble(json["expression"], 0.6),

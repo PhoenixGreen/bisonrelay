@@ -32,6 +32,9 @@ class CanvasPreferences extends ChangeNotifier {
   static const _fitKey = "canvasFit";
   static const _timelineKey = "canvasTimeline";
   static const _filesFolderKey = "canvasFilesFolder";
+
+  /// _elevenLabsKeyKey is where an ElevenLabs API key was kept, to be
+  /// deleted: see load.
   static const _elevenLabsKeyKey = "canvasElevenLabsKey";
   static const _publishKey = "canvasPublish";
   static const _timelineHeightKey = "canvasTimelineHeight";
@@ -142,19 +145,6 @@ class CanvasPreferences extends ChangeNotifier {
     if (_timeline == value) return;
     _timeline = value;
     StorageManager.saveBool(_timelineKey, value);
-    notifyListeners();
-  }
-
-  /// elevenLabsKey is the reader's own ElevenLabs API key, for the Speech
-  /// device's cloud engine -- empty until it is pasted in. Nothing is sent
-  /// to ElevenLabs without it, and nothing at all until Speak is pressed.
-  String get elevenLabsKey => _elevenLabsKey;
-  String _elevenLabsKey = "";
-  set elevenLabsKey(String value) {
-    var v = value.trim();
-    if (_elevenLabsKey == v) return;
-    _elevenLabsKey = v;
-    StorageManager.saveString(_elevenLabsKeyKey, v);
     notifyListeners();
   }
 
@@ -387,7 +377,11 @@ class CanvasPreferences extends ChangeNotifier {
     _fit = await StorageManager.readString(_fitKey);
     _timeline = await StorageManager.readBool(_timelineKey, defaultVal: false);
     _filesFolder = await StorageManager.readString(_filesFolderKey);
-    _elevenLabsKey = await StorageManager.readString(_elevenLabsKeyKey);
+    // The Speech device spoke with ElevenLabs once, with the reader's own
+    // API key kept here: the engine is gone, and the key with it.
+    if (await StorageManager.exists(_elevenLabsKeyKey)) {
+      await StorageManager.deleteData(_elevenLabsKeyKey);
+    }
     _keyframesShown =
         await StorageManager.readBool(_keyframesShownKey, defaultVal: true);
     _scenesShown =

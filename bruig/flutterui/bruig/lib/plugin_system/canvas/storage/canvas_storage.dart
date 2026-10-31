@@ -151,6 +151,16 @@ class CanvasStorage {
     return dir;
   }
 
+  /// speechTakesDir is where a Speech device's takes are kept until they are
+  /// saved or put on the timeline: beside the library, not in it -- the
+  /// Audio library is only what the reader keeps. A tidy deletes those no
+  /// canvas has any more: see CanvasLibrary.tidy.
+  static Future<String> speechTakesDir() async {
+    var dir = path.join(await libraryDir(), ".speech-takes");
+    await Directory(dir).create(recursive: true);
+    return dir;
+  }
+
   /// sanitizeName reduces what the user typed to something safe as a single
   /// path segment, or returns null if nothing usable is left.
   ///

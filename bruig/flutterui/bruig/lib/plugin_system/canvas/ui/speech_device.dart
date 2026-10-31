@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/media/kokoro_speech.dart';
 import 'package:bruig/plugin_system/canvas/media/qwen_speech.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_downloads.dart';
@@ -16,7 +15,6 @@ import 'package:bruig/plugin_system/canvas/model/text_document.dart'
 import 'package:bruig/plugin_system/canvas/ui/document_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 // speech_device.dart is the Speech device in a channel's chain: the engine
 // and the voice; the script, line by line, each with how it is said and its
@@ -180,14 +178,31 @@ class _Kit {
     );
   }
 
-  /// take is one of a line's takes, by its letter: lit when it is the one
-  /// in the clip.
-  Widget take(String letter, bool on, VoidCallback? onTap, {Key? key}) =>
+  /// take is one of a line's slots, by its letter: lit when its take is
+  /// the one chosen, greyed while [empty], ringed blue while [picked] in
+  /// the line panel, turning while [working] -- being spoken into.
+  Widget take(String letter, bool on, VoidCallback? onTap,
+          {Key? key,
+          bool empty = false,
+          bool picked = false,
+          bool working = false}) =>
       Material(
-        color: on ? s.on : s.inset,
+        color: on
+            ? s.on
+            : empty
+                ? Colors.transparent
+                : s.inset,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(4),
-            side: BorderSide(color: on ? s.on : s.edge)),
+            side: BorderSide(
+                color: picked
+                    ? s.solo
+                    : on
+                        ? s.on
+                        : empty
+                            ? s.edge.withValues(alpha: 0.5)
+                            : s.edge,
+                width: picked ? 2 : 1)),
         child: InkWell(
           key: key,
           borderRadius: BorderRadius.circular(4),
@@ -196,9 +211,19 @@ class _Kit {
             width: 24,
             height: 22,
             child: Center(
-              child: Text(letter,
-                  style: text(11,
-                      weight: FontWeight.w700, colour: on ? s.onOn : s.text)),
+              child: working
+                  ? SizedBox.square(
+                      dimension: 10,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 1.5, color: s.on))
+                  : Text(letter,
+                      style: text(11,
+                          weight: FontWeight.w700,
+                          colour: on
+                              ? s.onOn
+                              : empty
+                                  ? s.muted.withValues(alpha: 0.6)
+                                  : s.text)),
             ),
           ),
         ),
@@ -269,12 +294,11 @@ class _SpeechDeviceState extends State<SpeechDevice> {
   CanvasController get c => widget.controller;
   final TextEditingController _script = TextEditingController();
   final FocusNode _scriptFocus = FocusNode();
-  final TextEditingController _key = TextEditingController();
   final TextEditingController _own = TextEditingController();
   final FocusNode _ownFocus = FocusNode();
 
-  /// _voices are the engine's voices, asked for once for each engine (and
-  /// key), and _voicesFor what they were asked for.
+  /// _voices are the engine's voices, asked for once for each engine, and
+  /// _voicesFor which it was.
   Future<List<SpeechVoice>>? _voices;
   String _voicesFor = "";
   String _filter = "";
@@ -293,8 +317,10 @@ class _SpeechDeviceState extends State<SpeechDevice> {
   /// written yet.
   bool? _asText;
 
-  /// _line is the line picked in the list.
+  /// _line is the line picked in the list, and _slot its slot picked --
+  /// A to C, in use or not -- null for the one its take is chosen in.
   int _line = 0;
+  int? _slot;
 
   @override
   void initState() {
@@ -322,42 +348,29 @@ class _SpeechDeviceState extends State<SpeechDevice> {
     QwenDownload.instance.removeListener(_changed);
     _script.dispose();
     _scriptFocus.dispose();
-    _key.dispose();
     _own.dispose();
     _ownFocus.dispose();
     super.dispose();
-  }
-
-  /// _cloudKey is the reader's ElevenLabs key, where the preferences are
-  /// to hand: a test may put the device up without them.
-  String get _cloudKey {
-    try {
-      return context.read<CanvasPreferences>().elevenLabsKey;
-    } catch (_) {
-      return "";
-    }
   }
 
   void _set(SpeechSpec spec, {bool transient = false}) =>
       c.setSpeech(widget.channel, spec, transient: transient);
 
   Future<List<SpeechVoice>> _voicesOf(SpeechSpec spec) {
-    var asked = "${spec.engine.name}:${_cloudKey.isNotEmpty}";
+    var asked = spec.engine.name;
     if (_voices == null || asked != _voicesFor) {
       _voicesFor = asked;
-      _voices = CanvasController.speechEngineFor(spec, _cloudKey)
+      _voices = CanvasController.speechEngineFor(spec)
           .voices()
           .catchError((Object e) => <SpeechVoice>[]);
     }
     return _voices!;
   }
 
-  /// _download is the engine's download: our two sets of voices each have
-  /// one; ElevenLabs none.
-  PinnedDownload? _downloadOf(SpeechEngineKind engine) => switch (engine) {
+  /// _downloadOf is the engine's voices' download.
+  PinnedDownload _downloadOf(SpeechEngineKind engine) => switch (engine) {
         SpeechEngineKind.local => KokoroDownload.instance,
         SpeechEngineKind.expressive => QwenDownload.instance,
-        SpeechEngineKind.cloud => null,
       };
 
   /// _cue puts [cue] into the script where the text cursor is.
@@ -381,16 +394,16 @@ class _SpeechDeviceState extends State<SpeechDevice> {
     if (mounted) setState(() => _problem = problem);
   }
 
-  void _speakAll() =>
-      _run(() => c.speakLines(widget.channel, cloudKey: _cloudKey));
+  void _speakAll() => _run(() => c.speakLines(widget.channel));
 
   /// _lines are the device's lines, set out from its script where it has
   /// none of its own yet.
   List<SpeechLine> _linesOf(SpeechSpec spec) => spec.shownLines;
 
   /// _changeLine changes line [index] -- its direction, or its own words --
-  /// and, where it has been spoken, speaks it again that way: a new take,
-  /// the others kept to compare -- see CanvasController.withTake.
+  /// and, where it has been spoken and has a slot free, speaks it again
+  /// that way into it, the takes it has kept to compare. With every slot in
+  /// use, nothing is spoken: the reader picks a slot to replace.
   void _changeLine(SpeechSpec spec, int index, SpeechLine changed) {
     var lines = [..._linesOf(spec)];
     if (index >= lines.length) return;
@@ -398,10 +411,17 @@ class _SpeechDeviceState extends State<SpeechDevice> {
     lines[index] = changed;
     c.setSpeechLines(widget.channel, lines);
     if (was.takes.isNotEmpty &&
+        changed.freeSlot >= 0 &&
         (was.direction != changed.direction || was.own != changed.own)) {
-      _run(() => c.anotherTake(widget.channel, changed, cloudKey: _cloudKey));
+      _run(() => c.anotherTake(widget.channel, changed));
     }
   }
+
+  /// _pickLine picks line [i]: another line, its slot picked afresh.
+  void _pickLine(int i) => setState(() {
+        if (_line != i) _slot = null;
+        _line = i;
+      });
 
   /// _keepOwn keeps the own words typed for the line picked.
   void _keepOwn() {
@@ -528,21 +548,18 @@ class _SpeechDeviceState extends State<SpeechDevice> {
     var k = _Kit(look.studio, look.colors);
     var s = look.studio;
     var engine = spec.engine;
-    var cloud = engine == SpeechEngineKind.cloud;
     var expressive = engine == SpeechEngineKind.expressive;
     var local = engine == SpeechEngineKind.local;
-    var needsKey = cloud && _cloudKey.isEmpty;
     var download = _downloadOf(engine);
     // The expressive voices are built for some computers only.
     var unmade = expressive && !qwenSupported;
     // Our own voices, until they are downloaded: the download in place of
     // the list, and nothing to speak with.
-    var needsVoices = unmade || (download != null && download.ready != true);
+    var needsVoices = unmade || download.ready != true;
     var picked = spec.voice.isEmpty
         ? switch (engine) {
             SpeechEngineKind.local => kokoroVoices.first.id,
             SpeechEngineKind.expressive => qwenVoices.first.id,
-            SpeechEngineKind.cloud => "",
           }
         : spec.voice;
     var lines = _linesOf(spec);
@@ -556,14 +573,9 @@ class _SpeechDeviceState extends State<SpeechDevice> {
     var joining = c.joining.contains(widget.channel);
     var busy = queue != null || joining;
     var spoken = lines.where((l) => l.take != null).length;
-    var cantSpeak = needsKey || needsVoices || lines.isEmpty;
-    var allSpoken = lines.isNotEmpty && spoken == lines.length;
+    var cantSpeak = needsVoices || lines.isEmpty;
+    var allSpoken = lines.isNotEmpty && lines.every((l) => l.takes.isNotEmpty);
     var reading = spec.document.on;
-
-    // The finish changed: the clip joined again, nothing spoken again.
-    void refinish() {
-      if (spoken > 0 && !busy) _run(() => c.joinSpeech(widget.channel));
-    }
 
     // A voice heard saying a line, in the device's feel: playing, it
     // stops; being spoken for it, it says so.
@@ -578,8 +590,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
           borderRadius: BorderRadius.circular(12),
           onTap: needsVoices || (c.speechPreviewing != null && !speaking)
               ? null
-              : () => _run(() =>
-                  c.previewVoice(widget.channel, voice, cloudKey: _cloudKey)),
+              : () => _run(() => c.previewVoice(widget.channel, voice)),
           child: SizedBox.square(
             dimension: 24,
             child: Center(
@@ -616,47 +627,6 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                 (_accent.isEmpty || v.about.startsWith("$_accent ")))
               v
         ];
-        // ElevenLabs, said first, scrolled with the voices: what leaves
-        // the computer, and the key.
-        var notice = <Widget>[
-          if (cloud) ...[
-            Container(
-              padding: const EdgeInsets.all(7),
-              decoration: k.box(s.on.withValues(alpha: 0.10),
-                  border: s.on.withValues(alpha: 0.4)),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                        "In the cloud: each line is sent to ElevenLabs to be "
-                        "spoken, on your own account.",
-                        style: k.text(10, colour: s.text)),
-                    if (needsKey) ...[
-                      const SizedBox(height: 5),
-                      SizedBox(
-                        height: 26,
-                        child: TextField(
-                          key: const ValueKey("speechKey"),
-                          controller: _key,
-                          obscureText: true,
-                          style: k.text(11),
-                          decoration: k.field("Your API key"),
-                          onSubmitted: (v) {
-                            try {
-                              context.read<CanvasPreferences>().elevenLabsKey =
-                                  v;
-                            } catch (_) {}
-                            setState(() {});
-                          },
-                        ),
-                      ),
-                    ],
-                  ]),
-            ),
-            const SizedBox(height: 6),
-          ],
-        ];
-
         Widget list() {
           if (unmade) {
             return Text(
@@ -665,19 +635,16 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                 key: const ValueKey("speechUnmade"),
                 style: k.text(10.5, colour: s.muted));
           }
-          if (needsVoices) return _downloadPanel(download!, engine, k);
+          if (needsVoices) return _downloadPanel(download, engine, k);
           var waiting = snap.connectionState != ConnectionState.done
               ? "Finding voices…"
               : shown.isEmpty
-                  ? needsKey
-                      ? "Your key, to list its voices."
-                      : "No voices found."
+                  ? "No voices found."
                   : null;
           return ListView(
             key: const ValueKey("speechVoices"),
             padding: EdgeInsets.zero,
             children: [
-              ...notice,
               if (waiting != null)
                 Text(waiting, style: k.text(11, colour: s.muted)),
               for (var v in shown)
@@ -718,7 +685,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                           ),
                           // Heard before it is picked: our own voices only,
                           // as a preview from ElevenLabs costs the reader.
-                          if (!cloud) previewButton(v.id),
+                          previewButton(v.id),
                         ]),
                       ),
                     ),
@@ -832,6 +799,26 @@ class _SpeechDeviceState extends State<SpeechDevice> {
       return "${t.length.toStringAsFixed(1)} s";
     }
 
+    // A slot, A to C: picked, its take is the one "Add all lines" uses,
+    // and its actions are in the line panel. Not in use, greyed; being
+    // spoken into, turning.
+    Widget slotButton(int i, SpeechLine l, int t, {Key? key}) {
+      var take = l.slot(t);
+      var picked = i == _line && (_slot ?? l.chosen) == t;
+      return k.take(
+          String.fromCharCode(65 + t),
+          take != null && t == l.chosen,
+          () => setState(() {
+                _line = i;
+                _slot = t;
+                if (take != null) c.chooseTake(widget.channel, i, t);
+              }),
+          key: key,
+          empty: take == null,
+          picked: picked,
+          working: c.speechReplacing(widget.channel, l) == t);
+    }
+
     Widget lineCard(int i, SpeechLine l) {
       var on = i == _line;
       var state = c.speechLineState(widget.channel, l);
@@ -851,7 +838,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
           child: InkWell(
             key: ValueKey("speechLine-$i"),
             borderRadius: BorderRadius.circular(5),
-            onTap: () => setState(() => _line = i),
+            onTap: () => _pickLine(i),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(8, 5, 6, 5),
               child: Row(children: [
@@ -893,18 +880,12 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                         ]),
                       ]),
                 ),
-                // The takes, A to C: the one chosen is in the clip.
-                for (var (t, _) in l.takes.indexed)
+                // The slots, A to C, always: greyed while not in use.
+                for (var t = 0; t < SpeechLine.speechSlots; t++)
                   Padding(
                     padding: const EdgeInsets.only(left: 4),
-                    child: k.take(
-                        String.fromCharCode(65 + t),
-                        t == l.chosen,
-                        busy
-                            ? null
-                            : () =>
-                                _run(() => c.chooseTake(widget.channel, i, t)),
-                        key: ValueKey("speechTake-$i-$t")),
+                    child:
+                        slotButton(i, l, t, key: ValueKey("speechTake-$i-$t")),
                   ),
               ]),
             ),
@@ -976,10 +957,13 @@ class _SpeechDeviceState extends State<SpeechDevice> {
     // ---- The line picked, and Speak all
     Widget linePanel() {
       var l = line;
-      var full =
-          l != null && l.takes.length >= CanvasController.speechTakesMost;
       var ready = !cantSpeak && !busy;
       var editable = l != null && !reading;
+      // The slot picked: as clicked, or the one its take is chosen in.
+      var sel = (_slot ?? (l == null || l.chosen < 0 ? 0 : l.chosen))
+          .clamp(0, SpeechLine.speechSlots - 1);
+      var selTake = l?.slot(sel);
+      var letter = String.fromCharCode(65 + sel);
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Expanded(
           child: l == null
@@ -990,23 +974,94 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Row(children: [
-                          Expanded(
-                              child: k
-                                  .label("Line ${_line + 1} · how it is said")),
-                          // Each take heard on its own, to choose between.
-                          for (var (t, take) in l.takes.indexed)
+                          Expanded(child: k.label("Line ${_line + 1} · takes")),
+                          for (var t = 0; t < SpeechLine.speechSlots; t++)
                             Padding(
-                              padding: const EdgeInsets.only(left: 3),
-                              child: k.chip(
-                                  String.fromCharCode(65 + t),
-                                  c.speechHeard == take.assetId,
-                                  () => _run(() => c.hearTake(take.assetId)),
-                                  key: ValueKey("speechHear-$t"),
-                                  icon: c.speechHeard == take.assetId
-                                      ? Icons.stop
-                                      : Icons.play_arrow),
+                              padding: const EdgeInsets.only(left: 4),
+                              child: slotButton(_line, l, t,
+                                  key: ValueKey("speechSlot-$t")),
                             ),
                         ]),
+                        const SizedBox(height: 4),
+                        // The slot picked: what can be done with its take --
+                        // nothing, where it has none.
+                        if (selTake == null)
+                          Text(
+                              "Slot $letter is free: Another take, or Speak "
+                              "all, speaks into it.",
+                              style: k.text(10, colour: s.muted))
+                        else ...[
+                          Row(children: [
+                            Expanded(
+                              child: Text(
+                                  "Take $letter · "
+                                  "${selTake.length.toStringAsFixed(1)} s"
+                                  "${selTake.saved ? " · in Audio" : ""}",
+                                  style: k.text(10.5, colour: s.text)),
+                            ),
+                            k.button(
+                                c.speechHeard == selTake.assetId
+                                    ? "Stop"
+                                    : "Hear",
+                                () => _run(() => c.hearTake(selTake.assetId)),
+                                key: const ValueKey("speechHear"),
+                                icon: c.speechHeard == selTake.assetId
+                                    ? Icons.stop
+                                    : Icons.play_arrow,
+                                small: true),
+                          ]),
+                          const SizedBox(height: 4),
+                          Wrap(spacing: 4, runSpacing: 4, children: [
+                            k.button(
+                                selTake.saved ? "Saved" : "Save",
+                                selTake.saved || busy
+                                    ? null
+                                    : () => _run(() async => (await c.saveTake(
+                                            widget.channel, _line, sel))
+                                        .$2),
+                                key: const ValueKey("speechSave"),
+                                icon: Icons.save_alt,
+                                small: true,
+                                tip: "Keep it in the Audio library"),
+                            k.button(
+                                "Add to timeline",
+                                busy
+                                    ? null
+                                    : () => _run(() =>
+                                        c.addTake(widget.channel, _line, sel)),
+                                key: const ValueKey("speechAddTake"),
+                                icon: Icons.playlist_add,
+                                small: true,
+                                tip: "A clip of this take at the playhead, "
+                                    "and in the Audio library"),
+                            k.button(
+                                "Remove",
+                                busy
+                                    ? null
+                                    : () => c.removeTake(
+                                        widget.channel, _line, sel),
+                                key: const ValueKey("speechRemoveTake"),
+                                icon: Icons.delete_outline,
+                                small: true,
+                                tip: selTake.saved
+                                    ? "Empty the slot: the Audio library "
+                                        "keeps its copy"
+                                    : "Empty the slot: the take is gone"),
+                            k.button(
+                                "Replace",
+                                ready
+                                    ? () => _run(() => c.replaceTake(
+                                        widget.channel, _line, sel))
+                                    : null,
+                                key: const ValueKey("speechReplace"),
+                                icon: Icons.autorenew,
+                                small: true,
+                                tip: "Speak it again into this slot, as it "
+                                    "is said now"),
+                          ]),
+                        ],
+                        const SizedBox(height: 8),
+                        k.label("How it is said"),
                         const SizedBox(height: 4),
                         Wrap(spacing: 4, runSpacing: 4, children: [
                           // Those the engine cannot say greyed, and why.
@@ -1075,18 +1130,18 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                             flex: 2,
                             child: k.button(
                                 "Another take",
-                                ready
+                                ready && l.freeSlot >= 0
                                     ? () => _run(() => c.anotherTake(
                                         widget.channel, l,
-                                        cloudKey: _cloudKey))
+                                        slot: sel))
                                     : null,
                                 key: const ValueKey("speechAnother"),
                                 icon: Icons.refresh,
-                                tip: full
-                                    ? "Speak it again: three takes are kept, "
-                                        "so the oldest not chosen makes room"
-                                    : "Speak it again, the takes it has "
-                                        "kept to compare"),
+                                tip: l.freeSlot < 0
+                                    ? "All three slots are in use: pick one, "
+                                        "and Replace it"
+                                    : "Speak it again into a free slot, the "
+                                        "takes it has kept to compare"),
                           ),
                         ]),
                       ]),
@@ -1198,7 +1253,6 @@ class _SpeechDeviceState extends State<SpeechDevice> {
     var (lowSpeed, highSpeed) = switch (engine) {
       SpeechEngineKind.local => (0.5, 2.0),
       SpeechEngineKind.expressive => (0.7, 1.3),
-      SpeechEngineKind.cloud => (0.7, 1.2),
     };
     var feelColumn = SliderTheme(
       data: SliderThemeData(
@@ -1221,14 +1275,13 @@ class _SpeechDeviceState extends State<SpeechDevice> {
           const SizedBox(height: 4),
           Wrap(spacing: 4, runSpacing: 4, children: [
             for (var p in SpeechPreset.values)
-              k.chip(p.label, spec.preset == p.name, () {
-                _set(spec.withPreset(p));
-                refinish();
-              }, key: ValueKey("speechPreset-${p.name}")),
+              k.chip(p.label, spec.preset == p.name,
+                  () => _set(spec.withPreset(p)),
+                  key: ValueKey("speechPreset-${p.name}")),
             k.chip("Custom", spec.preset == "custom", null,
                 key: const ValueKey("speechPreset-custom")),
           ]),
-          if (!cloud && !needsVoices) ...[
+          if (!needsVoices) ...[
             const SizedBox(height: 6),
             Align(
               alignment: Alignment.centerLeft,
@@ -1240,8 +1293,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                           : "Hear this feel",
                   c.speechPreviewing != null
                       ? null
-                      : () => _run(() => c.previewVoice(widget.channel, picked,
-                          cloudKey: _cloudKey)),
+                      : () =>
+                          _run(() => c.previewVoice(widget.channel, picked)),
                   key: const ValueKey("speechHearFeel"),
                   icon: c.speechHeard == "voice:$picked"
                       ? Icons.stop
@@ -1262,10 +1315,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
               highSpeed,
               (v) => _set(spec.copyWith(speed: v, preset: "custom"),
                   transient: true),
-              key: const ValueKey("speechSpeed"),
-              // The pauses between the lines follow it at once; the lines
-              // themselves, spoken again.
-              onEnd: refinish),
+              key: const ValueKey("speechSpeed")),
           slider(
               "Stability",
               "${(spec.steadiness * 100).round()}%",
@@ -1290,15 +1340,15 @@ class _SpeechDeviceState extends State<SpeechDevice> {
           k.section("Finish · the sound, after"),
           const SizedBox(height: 4),
           slider(
-              "Room",
-              spec.room < 0.05 ? "dry" : "${(spec.room * 100).round()}%",
-              spec.room,
-              0,
-              1,
-              (v) => _set(spec.copyWith(room: v, preset: "custom"),
-                  transient: true),
-              key: const ValueKey("speechRoom"),
-              onEnd: refinish),
+            "Room",
+            spec.room < 0.05 ? "dry" : "${(spec.room * 100).round()}%",
+            spec.room,
+            0,
+            1,
+            (v) =>
+                _set(spec.copyWith(room: v, preset: "custom"), transient: true),
+            key: const ValueKey("speechRoom"),
+          ),
           Row(children: [
             Expanded(child: Text("Speaker boost", style: k.text(11.5))),
             SizedBox(
@@ -1315,7 +1365,6 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                       WidgetStatePropertyAll(spec.boost ? s.on : s.edge),
                   onChanged: (v) {
                     _set(spec.copyWith(boost: v, preset: "custom"));
-                    refinish();
                   },
                 ),
               ),
@@ -1325,22 +1374,27 @@ class _SpeechDeviceState extends State<SpeechDevice> {
       ),
     );
 
-    // ---- The clip: the takes chosen, joined
-    var clipTake = spec.clip.isEmpty ? null : spec.takes.lastOrNull;
+    // ---- The lines, each its slot picked: put on the timeline only when
+    // asked -- joined into the channel's clip, or that clip made again.
+    var onTimeline = spec.clip.isNotEmpty &&
+        c.document.elements.any((e) => e.id == spec.clip);
+    var clipTake = onTimeline ? spec.takes.lastOrNull : null;
     var clipStrip = Row(children: [
       SizedBox(
         width: 190,
-        child: Text(
-          key: const ValueKey("speechStatus"),
-          _problem ??
-              (clipTake != null
-                  ? "Clip: $spoken of ${lines.length} lines joined, "
-                      "${clipTake.length.toStringAsFixed(1)} s"
-                  : "The clip: the takes chosen, joined"),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: k.text(10.5, colour: _problem != null ? _problemInk : s.muted),
-        ),
+        child: k.button(
+            onTimeline
+                ? "Update the timeline clip"
+                : "Add all lines to timeline",
+            spoken == 0 || busy
+                ? null
+                : () => _run(() => c.joinSpeech(widget.channel)),
+            key: const ValueKey("speechAddAll"),
+            icon: Icons.playlist_add_check,
+            small: true,
+            tip: "Each line's picked take, joined with its pauses and the "
+                "feel's room and boost, in one clip -- a line with none is "
+                "left out"),
       ),
       const SizedBox(width: 8),
       Expanded(
@@ -1363,7 +1417,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                 SizedBox(
                   width: math.max(0, long(l) * per),
                   child: GestureDetector(
-                    onTap: () => setState(() => _line = i),
+                    onTap: () => _pickLine(i),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       decoration: BoxDecoration(
@@ -1393,6 +1447,20 @@ class _SpeechDeviceState extends State<SpeechDevice> {
               ],
             ]);
           }),
+        ),
+      ),
+      const SizedBox(width: 8),
+      SizedBox(
+        width: 170,
+        child: Text(
+          key: const ValueKey("speechStatus"),
+          _problem ??
+              (clipTake != null
+                  ? "On the timeline: ${clipTake.length.toStringAsFixed(1)} s"
+                  : "$spoken of ${lines.length} lines with a take"),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: k.text(10.5, colour: _problem != null ? _problemInk : s.muted),
         ),
       ),
     ]);

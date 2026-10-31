@@ -29,6 +29,8 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:math' as math;
 import 'dart:io' show Directory, File;
 import 'dart:isolate' show Isolate;
+
+import 'package:crypto/crypto.dart' show sha256;
 import 'dart:ui' as ui;
 import 'dart:ui' show Color, Offset, Rect, Size;
 
@@ -9134,11 +9136,10 @@ class CanvasController extends ChangeNotifier {
         transient: transient);
   }
 
-  /// speechEngineFor is the engine a spec speaks with -- our own voices,
-  /// or ElevenLabs with [cloudKey]. Tests put a stand-in here.
-  static SpeechEngine Function(SpeechSpec spec, String cloudKey)
-      speechEngineFor = (spec, key) => switch (spec.engine) {
-            SpeechEngineKind.cloud => CloudSpeech(key),
+  /// speechEngineFor is the engine a spec speaks with: Kokoro, or the
+  /// expressive voices. Tests put a stand-in here.
+  static SpeechEngine Function(SpeechSpec spec) speechEngineFor =
+      (spec) => switch (spec.engine) {
             SpeechEngineKind.expressive => QwenSpeech(),
             SpeechEngineKind.local => KokoroSpeech(),
           };
@@ -9166,9 +9167,6 @@ class CanvasController extends ChangeNotifier {
   /// first waiting, or every one, where it speaks them together.
   final Map<String, Set<String>> _speakingNow = {};
 
-  /// speechTakesMost is how many takes a line keeps.
-  static const speechTakesMost = 3;
-
   /// _lineSpeech is [channel]'s device with its lines set out -- those of
   /// its script, where it has none yet.
   SpeechSpec? _lineSpeech(String channel) {
@@ -9181,13 +9179,18 @@ class CanvasController extends ChangeNotifier {
     return spec;
   }
 
-  /// speakLines speaks [lines] of [channel] -- by default, every line not
-  /// spoken yet -- one at a time in the background, each as a new take of
-  /// its line, chosen; then joins the chosen takes into the channel's clip.
-  /// Lines asked for while it runs join the queue. Answers why not, where
-  /// it could not.
-  Future<String?> speakLines(String channel,
-      {List<SpeechLine>? lines, String cloudKey = ""}) async {
+  /// _speechInto is the slot each waiting line is to be spoken into, by
+  /// channel and line -- a slot being replaced -- where it is not the
+  /// line's first free one.
+  final Map<String, Map<String, int>> _speechInto = {};
+
+  /// speakLines speaks [lines] of [channel] -- by default, every line with
+  /// no take yet -- in the background, each into a slot of its own: the
+  /// one it is to replace, or else its first free one. Nothing is put on
+  /// the timeline, nor in the Audio library: see saveTake, addTake and
+  /// joinSpeech. Lines asked for while it runs join the queue. Answers why
+  /// not, where it could not.
+  Future<String?> speakLines(String channel, {List<SpeechLine>? lines}) async {
     var spec = _lineSpeech(channel);
     if (spec == null) return null;
     var wanted = lines ?? [for (var l in spec.lines) if (l.takes.isEmpty) l];
@@ -9201,24 +9204,25 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
     if (running) return null;
     String? problem;
-    var spoke = false;
     try {
       while (queue.isNotEmpty && !_disposed) {
         var now = speechOf(channel);
         if (now == null) break;
-        String? keyOf(String k) =>
-            now.lines.any((l) => speechLineKey(l) == k) ? k : null;
-        // Lines edited away while they waited are not spoken.
-        queue.removeWhere((k) => keyOf(k) == null);
+        SpeechLine? lineOf(String k) =>
+            now.lines.where((l) => speechLineKey(l) == k).firstOrNull;
+        // Lines edited away while they waited are not spoken, nor those
+        // with no slot to go into.
+        var into = _speechInto[channel] ?? const {};
+        queue.removeWhere((k) {
+          var l = lineOf(k);
+          return l == null || (into[k] == null && l.freeSlot < 0);
+        });
         if (queue.isEmpty) break;
-        var engine = speechEngineFor(now, cloudKey);
+        var engine = speechEngineFor(now);
         // Every line waiting, at once, where the engine does better so;
         // else the first.
         var keys = engine.batches ? [...queue] : [queue.first];
-        var lines = [
-          for (var k in keys)
-            now.lines.firstWhere((l) => speechLineKey(l) == k)
-        ];
+        var lines = [for (var k in keys) lineOf(k)!];
         _speakingNow[channel] = {...keys};
         notifyListeners();
         var audios = engine.batches
@@ -9234,8 +9238,8 @@ class CanvasController extends ChangeNotifier {
             problem = "The take could not be kept.";
             break;
           }
-          spoke = true;
           queue.remove(key);
+          _speechInto[channel]?.remove(key);
           notifyListeners();
         }
         if (problem != null) break;
@@ -9247,59 +9251,71 @@ class CanvasController extends ChangeNotifier {
       problem = "The voice could not speak: $e";
     } finally {
       speechQueue.remove(channel);
+      _speechInto.remove(channel);
       _speakingNow.remove(channel);
       if (!_disposed) notifyListeners();
     }
-    if (spoke && !_disposed) problem ??= await joinSpeech(channel);
     return problem;
   }
 
-  /// _keepLineTake keeps [audio] as a new take of [channel]'s line [key],
-  /// chosen, and lists it in the Audio library. Whether it could be kept;
-  /// a line edited away meanwhile is let go.
+  /// _keepLineTake keeps [audio] as a take of [channel]'s line [key], in
+  /// the slot it was to replace or its first free one, picked. Kept apart
+  /// from the library -- see speechTakeStore. Whether it could be kept; a
+  /// line edited away meanwhile is let go.
   Future<bool> _keepLineTake(
       String channel, String key, SpokenAudio audio) async {
-    var id = await _keepSpeech(audio, "line");
+    var id = await speechTakeStore(wav16(audio.l, audio.r));
     if (id == null) return false;
     // Where the line is now: it may have moved while it was spoken.
     var after = speechOf(channel);
     if (after == null) return true;
     var at = after.lines.indexWhere((l) => speechLineKey(l) == key);
     if (at < 0) return true;
-    var l = withTake(after.lines[at],
-        SpeechTake(id, audio.seconds, audio.words, exact: audio.exact));
+    var line = after.lines[at];
+    var slot = _speechInto[channel]?[key] ?? line.freeSlot;
+    if (slot < 0) return true;
+    var l = line.withSlot(
+        slot, SpeechTake(id, audio.seconds, audio.words, exact: audio.exact));
     setSpeech(
         channel,
         after.copyWith(lines: [
           for (var (i, x) in after.lines.indexed) i == at ? l : x,
         ]),
         transient: true);
-    // In the Audio library too, to use elsewhere.
-    await speechLibrary(
-        id,
-        "${after.voiceName.isEmpty ? "Speech" : after.voiceName} · "
-        "line ${at + 1} · take ${String.fromCharCode(65 + l.chosen)} · "
-        "${_firstWords(l.text)}",
-        audio.seconds);
     return true;
   }
 
-  /// anotherTake speaks [line] of [channel] again, as a new take: with
-  /// three already, in place of the oldest not chosen -- see withTake.
-  Future<String?> anotherTake(String channel, SpeechLine line,
-          {String cloudKey = ""}) =>
-      speakLines(channel, lines: [line], cloudKey: cloudKey);
-
-  /// withTake is [line] with [take] added and chosen. A line keeps three:
-  /// with three already, the oldest of those not chosen makes room.
-  static SpeechLine withTake(SpeechLine line, SpeechTake take) {
-    var takes = [...line.takes];
-    if (takes.length >= speechTakesMost) {
-      var drop = line.chosen == 0 ? 1 : 0;
-      takes.removeAt(drop);
+  /// anotherTake speaks [line] of [channel] again into slot [slot] -- one
+  /// not in use -- or its first free one. With all three in use, it says
+  /// so: a take is only replaced by the reader, with replaceTake.
+  Future<String?> anotherTake(String channel, SpeechLine line, {int? slot}) {
+    var into = slot != null && line.slot(slot) == null ? slot : line.freeSlot;
+    if (into < 0) {
+      return Future.value(
+          "All three slots are in use: pick one, and Replace it.");
     }
-    takes.add(take);
-    return line.copyWith(takes: takes, chosen: takes.length - 1);
+    (_speechInto[channel] ??= {})[speechLineKey(line)] = into;
+    return speakLines(channel, lines: [line]);
+  }
+
+  /// replaceTake speaks line [index] of [channel] again into slot [slot],
+  /// in place of the take there.
+  Future<String?> replaceTake(String channel, int index, int slot) {
+    var spec = _lineSpeech(channel);
+    if (spec == null || index < 0 || index >= spec.lines.length) {
+      return Future.value(null);
+    }
+    var line = spec.lines[index];
+    (_speechInto[channel] ??= {})[speechLineKey(line)] = slot;
+    return speakLines(channel, lines: [line]);
+  }
+
+  /// speechReplacing is the slot line [line] of [channel] is being spoken
+  /// into, while it waits or is spoken -- or null.
+  int? speechReplacing(String channel, SpeechLine line) {
+    var key = speechLineKey(line);
+    if (!(speechQueue[channel]?.contains(key) ?? false)) return null;
+    return _speechInto[channel]?[key] ?? line.freeSlot;
   }
 
   final _seeds = math.Random();
@@ -9324,22 +9340,125 @@ class CanvasController extends ChangeNotifier {
   static Future<void> Function(String id) speechUnlist =
       (id) => CanvasLibrary.unlist(id);
 
-  /// chooseTake makes take [take] of line [index] the one in the clip.
-  Future<String?> chooseTake(String channel, int index, int take) async {
+  /// speechTakeStore keeps a line's take -- [wav]'s bytes -- apart from the
+  /// library, with the canvases that have it, answering its id: in the
+  /// Audio library only once it is saved or put on the timeline, and
+  /// deleted by a tidy once no canvas has it. A stand-in for tests.
+  @visibleForTesting
+  static Future<String?> Function(Uint8List wav) speechTakeStore =
+      (wav) async {
+    try {
+      var id = "${sha256.convert(wav).toString().substring(0, 16)}.wav";
+      var file = File(path.join(await CanvasStorage.speechTakesDir(), id));
+      if (!await file.exists()) await file.writeAsBytes(wav, flush: true);
+      return id;
+    } catch (e) {
+      debugPrint("Unable to keep a take: $e");
+      return null;
+    }
+  };
+
+  /// _slotTake is line [index]'s slot [slot] on [channel], with the device
+  /// and the line -- or null for none there.
+  (SpeechSpec, SpeechLine, SpeechTake)? _slotTake(
+      String channel, int index, int slot) {
     var spec = speechOf(channel);
     if (spec == null || index < 0 || index >= spec.lines.length) return null;
     var line = spec.lines[index];
-    if (take < 0 || take >= line.takes.length || take == line.chosen) {
-      return null;
-    }
+    var take = line.slot(slot);
+    return take == null ? null : (spec, line, take);
+  }
+
+  void _setSlot(String channel, int index, int slot, SpeechTake? take,
+      {bool transient = true}) {
+    var spec = speechOf(channel);
+    if (spec == null || index >= spec.lines.length) return;
     setSpeech(
         channel,
         spec.copyWith(lines: [
           for (var (i, l) in spec.lines.indexed)
-            i == index ? l.copyWith(chosen: take) : l
+            i == index ? l.withSlot(slot, take) : l
+        ]),
+        transient: transient);
+  }
+
+  /// chooseTake picks slot [slot] of line [index]: the take "Add all
+  /// lines" puts on the timeline.
+  void chooseTake(String channel, int index, int slot) {
+    var spec = speechOf(channel);
+    if (spec == null || index < 0 || index >= spec.lines.length) return;
+    var line = spec.lines[index];
+    if (line.slot(slot) == null || line.chosen == slot) return;
+    setSpeech(
+        channel,
+        spec.copyWith(lines: [
+          for (var (i, l) in spec.lines.indexed)
+            i == index ? l.copyWith(chosen: slot) : l
         ]),
         transient: true);
-    return joinSpeech(channel);
+  }
+
+  /// removeTake empties slot [slot] of line [index]: one change to undo.
+  /// Its file goes at the next tidy, once nothing has it -- unless it was
+  /// saved, when the library keeps it.
+  void removeTake(String channel, int index, int slot) {
+    if (_slotTake(channel, index, slot) == null) return;
+    beginInteraction();
+    _setSlot(channel, index, slot, null, transient: false);
+    endInteraction();
+  }
+
+  /// saveTake puts slot [slot]'s take of line [index] in the Audio library,
+  /// answering it saved -- or why not.
+  Future<(SpeechTake?, String?)> saveTake(
+      String channel, int index, int slot) async {
+    var found = _slotTake(channel, index, slot);
+    if (found == null) return (null, null);
+    var (spec, line, take) = found;
+    if (take.saved) return (take, null);
+    var file = await takePath(take.assetId);
+    if (file == null) return (null, "The take's file could not be found.");
+    var id = await speechStore(file);
+    if (id == null || _disposed) return (null, "The take could not be saved.");
+    await speechLibrary(
+        id,
+        "${spec.voiceName.isEmpty ? "Speech" : spec.voiceName} · line "
+        "${index + 1} · take ${String.fromCharCode(65 + slot)} · "
+        "${_firstWords(line.text)}",
+        take.length);
+    var saved = take.copyWith(assetId: id, saved: true);
+    _setSlot(channel, index, slot, saved);
+    return (saved, null);
+  }
+
+  /// addTake puts slot [slot]'s take of line [index] on the timeline, in a
+  /// clip of its own at the playhead -- saved to the Audio library first,
+  /// and kept with the device so a character's lips follow it. One change
+  /// to undo.
+  Future<String?> addTake(String channel, int index, int slot) async {
+    var (take, problem) = await saveTake(channel, index, slot);
+    if (take == null) return problem;
+    var lane = timelineChannels.where((c) => c.key == channel).firstOrNull;
+    var spec = lane?.mix.speech;
+    if (lane == null || spec == null || _disposed) return null;
+    beginInteraction();
+    var mix = lane.mix.copyWith(
+        speech: spec.copyWith(takes: [
+      for (var t in spec.takes)
+        if (t.assetId != take.assetId) t,
+      take,
+    ]));
+    setChannelMix(lane, mix, transient: true);
+    addElement(channelClip(_document, _frame,
+        source: MediaSource(
+            assetId: take.assetId,
+            name: "Line ${index + 1} · take ${String.fromCharCode(65 + slot)}",
+            length: take.length),
+        channel: channel,
+        channelName: lane.name,
+        mix: mix));
+    endInteraction();
+    return null;
   }
 
   /// setSpeechLines changes [channel]'s lines -- a direction, own words, a
@@ -9394,11 +9513,6 @@ class CanvasController extends ChangeNotifier {
     ]);
   }
 
-  /// _keepSpeech writes [audio] to a file and keeps it in the library,
-  /// answering its id.
-  Future<String?> _keepSpeech(SpokenAudio audio, String name) =>
-      _keepWav(wav16(audio.l, audio.r), name);
-
   Future<String?> _keepWav(Uint8List wav, String name) async {
     var dir = await Directory.systemTemp.createTemp("canvas-take");
     try {
@@ -9439,10 +9553,12 @@ class CanvasController extends ChangeNotifier {
   /// joining is the channels whose lines are being joined into the clip.
   final Set<String> joining = {};
 
-  /// joinSpeech joins [channel]'s chosen takes, a pause between each two,
-  /// gives them the finish -- the room and the speaker boost -- and puts
-  /// them in the channel's clip: the clip it made before, its sound
-  /// changed, or a new one at the playhead. One change to undo.
+  /// joinSpeech is "Add all lines to the timeline": [channel]'s lines,
+  /// each its slot picked, a pause between each two, given the finish --
+  /// the room and the speaker boost -- in the channel's clip: the one it
+  /// made before, its sound changed, or a new one at the playhead. Saved
+  /// to the Audio library; nothing goes on the timeline but by this, or a
+  /// slot's own addTake. One change to undo.
   Future<String?> joinSpeech(String channel) async {
     var spec = speechOf(channel);
     if (spec == null || !joining.add(channel)) return null;
@@ -9538,8 +9654,14 @@ class CanvasController extends ChangeNotifier {
 
   /// takePath is where a stored take's file is: a stand-in for tests.
   @visibleForTesting
-  static Future<String?> Function(String assetId) takePath =
-      (id) => CanvasMedia.existingPath(MediaKind.audio, id);
+  static Future<String?> Function(String assetId) takePath = (id) async {
+    // Saved, in the Audio library; else kept apart -- see speechTakeStore.
+    if (await CanvasMedia.existingPath(MediaKind.audio, id) case var p?) {
+      return p;
+    }
+    var kept = path.join(await CanvasStorage.speechTakesDir(), id);
+    return await File(kept).exists() ? kept : null;
+  };
 
   /// hearTake plays take [assetId] on its own -- or, playing, stops it.
   /// Answers why not, where it could not.
@@ -9596,8 +9718,7 @@ class CanvasController extends ChangeNotifier {
   /// previewVoice speaks speechSample in [voice] -- channel [channel]'s
   /// device's engine, language and feel, its finish too -- and plays it; or,
   /// playing, stops it. Not kept: nothing is added to the library.
-  Future<String?> previewVoice(String channel, String voice,
-      {String cloudKey = ""}) async {
+  Future<String?> previewVoice(String channel, String voice) async {
     var what = "voice:$voice";
     if (_speechHeard == what) {
       stopHearing();
@@ -9621,7 +9742,7 @@ class CanvasController extends ChangeNotifier {
       speechPreviewing = voice;
       notifyListeners();
       try {
-        var said = await speechEngineFor(spec, cloudKey)
+        var said = await speechEngineFor(spec)
             .speakLine(spec, const SpeechLine(speechSample));
         var finished = await _joinAway([said.l], [
           SpeechTake("", said.seconds, said.words, exact: said.exact)
@@ -9761,7 +9882,7 @@ class CanvasController extends ChangeNotifier {
   /// takeAudio reads a take's file as one side at the mix rate: a
   /// stand-in for tests.
   static Future<Float32List?> Function(String assetId) takeAudio = (id) async {
-    var file = await CanvasMedia.existingPath(MediaKind.audio, id);
+    var file = await takePath(id);
     if (file == null) return null;
     var sound = await readWholeAway(file);
     if (sound == null) return null;
