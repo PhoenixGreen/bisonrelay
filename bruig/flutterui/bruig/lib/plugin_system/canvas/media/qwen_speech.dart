@@ -303,12 +303,36 @@ class QwenJoin extends QwenGap {
   const QwenJoin();
 }
 
+/// QwenSpoken is one stretch of speech in a run: what it says, whether it
+/// is whispered, and which of its words are a laugh -- written into the
+/// words, not timed as one.
+class QwenSpoken {
+  final String text;
+  final bool whisper;
+  final Set<int> laughs;
+  const QwenSpoken(this.text, {this.whisper = false, this.laughs = const {}});
+
+  /// words are its words, timed across [seconds], the laughs left out.
+  List<TimedWord> words(double seconds) {
+    var all = estimateWords(SpokenText(text).words, 0, seconds);
+    return [
+      for (var (i, w) in all.indexed)
+        if (!laughs.contains(i)) w
+    ];
+  }
+}
+
+/// qwenLaugh is a laugh as the expressive voices are given it: written into
+/// the words, so they laugh into them -- a laugh of their own, put before
+/// or after, stopped dead where the words began (Ken, 2026-10-31).
+const qwenLaugh = "Haha,";
+
 /// QwenScript is a run's text, and what it is to be cut into: its stretches
-/// of speech in order -- each its words and whether whispered -- and the
-/// gaps round them, each a list, as several can fall together.
+/// of speech in order and the gaps round them, each a list, as several can
+/// fall together.
 class QwenScript {
   final String text;
-  final List<(String, bool)> spoken;
+  final List<QwenSpoken> spoken;
 
   /// gaps are those before each stretch, and after the last: one more than
   /// [spoken]. An empty one is no gap, and no pause in [text].
@@ -327,13 +351,28 @@ const qwenMarkCue = 0.6;
 
 /// qwenScript is [lines] as one run's markup. The cues the expressive
 /// voices cannot do mid-line -- stressing a word, a slower stretch -- are
-/// left out: the line's direction says those.
+/// left out: the line's direction says those. A laugh -- the cue, or a line
+/// said laughing -- is written into the words: see qwenLaugh.
 QwenScript qwenScript(List<SpeechLine> lines) {
-  var spoken = <(String, bool)>[];
+  var spoken = <QwenSpoken>[];
   var gaps = <List<QwenGap>>[[]];
   for (var (i, line) in lines.indexed) {
     if (i > 0) gaps.last.add(const QwenLineEnd());
     bool? whisper;
+    // A laugh waiting for the words after it, and whether the last stretch
+    // is this line's, with nothing between it and here: a laugh there is
+    // written into it.
+    var laughNext =
+        line.own.isEmpty && line.direction == SpeechDirection.laughing;
+    var open = false;
+    // A laugh after the last words: written after them.
+    void laughAfter(int k) {
+      var was = spoken[k];
+      spoken[k] = QwenSpoken("${was.text} ${qwenLaugh.replaceAll(",", "!")}",
+          whisper: was.whisper,
+          laughs: {...was.laughs, SpokenText(was.text).words.length});
+    }
+
     for (var p in parseScript(line.text)) {
       switch (p) {
         case SpokenText t:
@@ -344,16 +383,34 @@ QwenScript qwenScript(List<SpeechLine> lines) {
           }
           whisper = t.whisper;
           // The program's own markup is not the reader's to write.
-          spoken.add((
-            t.text.replaceAll("|", ",").replaceAll(RegExp(r"[\[\]]"), ""),
-            t.whisper
-          ));
-          gaps.add([]);
+          var text =
+              t.text.replaceAll("|", ",").replaceAll(RegExp(r"[\[\]]"), "");
+          if (laughNext && open && gaps.last.isEmpty) {
+            // Laughed between words: one stretch, the laugh in it.
+            var was = spoken.last;
+            var at = SpokenText(was.text).words.length;
+            spoken.last = QwenSpoken("${was.text} $qwenLaugh $text",
+                whisper: was.whisper, laughs: {...was.laughs, at});
+          } else {
+            spoken.add(QwenSpoken(laughNext ? "$qwenLaugh $text" : text,
+                whisper: t.whisper, laughs: {if (laughNext) 0}));
+            gaps.add([]);
+          }
+          laughNext = false;
+          open = true;
         case SpokenPause s:
           gaps.last.add(QwenPause(s.seconds));
+          open = false;
+        case SpokenSound s when s.cue == SpeechCue.laugh:
+          laughNext = true;
         case SpokenSound s:
           gaps.last.add(QwenSound(s.cue));
+          open = false;
       }
+    }
+    // A laugh after the last words: after them, in the same breath.
+    if (laughNext && open && spoken.isNotEmpty && gaps.last.isEmpty) {
+      laughAfter(spoken.length - 1);
     }
   }
   var text = StringBuffer();
@@ -362,7 +419,7 @@ QwenScript qwenScript(List<SpeechLine> lines) {
       var mark = gap.any((g) => g is QwenLineEnd) ? qwenMarkLine : qwenMarkCue;
       text.write(" [pause:${mark}s] ");
     }
-    if (k < spoken.length) text.write(spoken[k].$1);
+    if (k < spoken.length) text.write(spoken[k].text);
   }
   return QwenScript(text.toString().trim(), spoken, gaps);
 }
@@ -561,15 +618,15 @@ class QwenSpeech extends SpeechEngine {
       }
     }
 
-    for (var (k, (words, whisper)) in script.spoken.indexed) {
+    for (var (k, said) in script.spoken.indexed) {
       await gap(script.gaps[k]);
       var piece = cut.sounds[k];
       var sound = await Isolate.run(() => upsample2x(qwenTrimmed(piece)));
-      if (whisper) sound = whispered(sound);
+      if (said.whisper) sound = whispered(sound);
       takes.last.add((
         sound,
         Float32List.fromList(sound),
-        estimateWords(SpokenText(words).words, 0, sound.length / 48000)
+        said.words(sound.length / 48000)
       ));
     }
     await gap(script.gaps.last);

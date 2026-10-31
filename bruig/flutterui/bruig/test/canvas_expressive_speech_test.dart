@@ -235,22 +235,41 @@ void main() {
       var script = qwenScript(scriptLines(
           "Hi. [laugh]\n[cough] So [pause 0.2] we [whisper] go now."));
       expect(script.text,
-          "Hi. [pause:1.2s] So [pause:0.6s] we [pause:0.6s] go now.");
-      expect(script.spoken, [
-        ("Hi.", false),
+          "Hi. Haha! [pause:1.2s] So [pause:0.6s] we [pause:0.6s] go now.");
+      expect(script.spoken.map((s) => (s.text, s.whisper)), [
+        ("Hi. Haha!", false),
         ("So", false),
         ("we", false),
         ("go now.", true),
       ]);
       expect(script.markers, 3);
       expect(script.gaps.first, isEmpty);
-      expect(script.gaps[1].map((g) => g.runtimeType),
-          [QwenSound, QwenLineEnd, QwenSound],
-          reason: "the laugh ends the first line, the cough starts the next");
+      expect(script.gaps[1].map((g) => g.runtimeType), [QwenLineEnd, QwenSound],
+          reason: "the cough starts the next line");
+      expect(script.spoken.first.text, "Hi. Haha!",
+          reason: "the laugh after the words, written after them");
       expect(script.gaps[3].single, isA<QwenJoin>(),
           reason: "the whisper starts there");
       // The program's own markup is not the reader's to write.
       expect(qwenScript(scriptLines("A | B")).text, "A , B");
+    });
+
+    test("a laugh is written into the words, and not timed as one", () {
+      // Ken heard a laugh of the model's own, put before the words, stop
+      // dead where they began; written into them, it laughs into them.
+      var said = qwenScript(scriptLines("[laughing] We won."));
+      expect(said.text, "Haha, We won.");
+      expect(said.markers, 0, reason: "one stretch: nothing to cut");
+      expect(said.spoken.single.words(2).map((w) => w.text), ["We", "won."]);
+      // The cue mid-line: between the words, in one stretch.
+      var mid = qwenScript(scriptLines("Well [laugh] all right."));
+      expect(mid.text, "Well Haha, all right.");
+      expect(mid.spoken.single.words(2).map((w) => w.text),
+          ["Well", "all", "right."]);
+      // Said in the reader's own words, the direction is theirs.
+      expect(
+          qwenScript([const SpeechLine("Fine.", own: "laughing a bit")]).text,
+          "Fine.");
     });
 
     test("a take cut at its exact silences, and only those", () {
