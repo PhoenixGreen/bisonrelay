@@ -167,6 +167,29 @@ void main() {
       expect(c.document.elements, hasLength(before));
     });
 
+    test("nothing on the timeline: the sections' takes, one after another",
+        () async {
+      var c = make(take: false);
+      addTearDown(c.dispose);
+      expect(c.singsWhat("a"), isNull);
+      SpeechTake take(String id) => SpeechTake(id, 1, const [
+            (text: "la", start: 0.1, end: 0.4),
+            (text: "la", start: 0.5, end: 0.9),
+          ]);
+      var spec = c.speechOf("a")!;
+      c.setSpeech(
+          "a",
+          spec.copyWith(lines: [
+            const SpeechLine("la la").withSlot(0, take("one.wav")),
+            const SpeechLine("no take"),
+            const SpeechLine("la la").withSlot(1, take("two.wav")),
+          ]));
+      expect(c.singsWhat("a"), contains("2 of them: 4 words"));
+      expect(await c.sing("a"), isNull);
+      var added = c.document.elements.last as AudioElement;
+      expect(added.clip.playlist.single.name, "Sung take 1");
+    });
+
     test("with nothing spoken, or nothing to sing to, it says so", () async {
       var c = make(take: false);
       addTearDown(c.dispose);

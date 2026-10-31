@@ -442,6 +442,12 @@ List<SpeechPiece> parseScript(String script) {
   return out;
 }
 
+/// speechBreaths is [script] with a breath in between its sentences -- after
+/// each stop with more words to come, where no cue is already -- as a voice
+/// told to be vivid takes them: see SpeechSpec.expression.
+String speechBreaths(String script) => script.replaceAllMapped(
+    RegExp(r"([.!?]+)(\s+)(?=[^\s\[])"), (m) => "${m[1]} [breath]${m[2]}");
+
 /// TimedWord is one word of a take and when it is said, in seconds from the
 /// take's start.
 typedef TimedWord = ({String text, double start, double end});

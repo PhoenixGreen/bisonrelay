@@ -105,6 +105,31 @@ void main() {
     expect(e.drawingFor(-45, 0).$2, isFalse);
   });
 
+  test("a mirrored panel rubbed out is left blank; put back, it mirrors again", () {
+    var rig = CharacterRig.of(dna, rest.withTurn(45), _box);
+    var drawn = shapesOnParts([_dot(Offset.lerp(rig.elbowL, rig.wristL, 0.5)!)], rig);
+    var e = CharacterElement(const ElementBase(id: "c", width: 160, height: 340), dna: dna)
+        .withDrawing(45, 0, drawn)
+        .withDrawing(-45, 0, drawn);
+    // Every shape rubbed out of the other side: blank, not the mirror.
+    e = e.withDrawing(-45, 0, CharacterDrawing.empty);
+    var (blank, mirrored) = e.drawingFor(-45, 0);
+    expect(mirrored, isFalse);
+    expect(blank.isEmpty, isTrue);
+    var key = panelKey(-45, 0);
+    expect(keptBlankAtKey(e.drawings, key), isTrue);
+    // Kept so, saved and read back.
+    var back = CharacterElement.fromJson(e.toJson(), e.base);
+    expect(back.drawingFor(-45, 0).$2, isFalse);
+    expect(back.drawingFor(-45, 0).$1.isEmpty, isTrue);
+    // Put back: the mirror again.
+    e = e.withoutDrawingAt(key);
+    expect(e.drawingFor(-45, 0).$2, isTrue);
+    // The side it mirrors rubbed out: nothing to mirror, so nothing kept.
+    e = e.withDrawing(45, 0, CharacterDrawing.empty);
+    expect(e.drawings, isEmpty);
+  });
+
   test("kept when the character is moved, sized or turned", () {
     var rig = CharacterRig.of(dna, rest, _box);
     var e = CharacterElement(const ElementBase(id: "c", width: 160, height: 340), dna: dna)

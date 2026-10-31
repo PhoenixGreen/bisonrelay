@@ -281,7 +281,8 @@ class ViewsStripState extends State<ViewsStrip> {
     var views = panelOptions(e, adding: false);
     var key = e.viewKey(e.poseAtFrame(frame));
     var (own, mirrored) = e.drawingAt(key);
-    var edited = (!mirrored && !own.isEmpty) ||
+    // Drawn on -- or left blank where it would mirror the other side.
+    var edited = (!mirrored && (!own.isEmpty || keptBlankAtKey(e.drawings, key))) ||
         e.dna.wardrobe.any((g) => !g.drawingAt(key).$2 && !g.drawingAt(key).$1.isEmpty);
     var toAdd = [for (var v in CharacterView.all) if (!e.views.contains(v)) v];
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

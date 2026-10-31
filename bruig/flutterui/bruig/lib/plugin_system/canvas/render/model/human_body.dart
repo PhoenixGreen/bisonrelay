@@ -508,7 +508,7 @@ List<WearMesh> wearFor(CharacterDna dna, Map<String, WearMesh> wear,
   put(dna.browModel.isNotEmpty && wear.containsKey(dna.browModel)
       ? dna.browModel
       : (female ? "brow1" : "brow2"));
-  var shoe = dna.worn.where((g) => g.kind.shape == GarmentShape.shoes).lastOrNull;
+  var shoe = dna.wornIn3D.where((g) => g.kind.shape == GarmentShape.shoes).lastOrNull;
   if (shoe != null) {
     // Heels, sandals and slippers have no shoe of their own here: the feet
     // are coloured as they are, rather than in a trainer and socks.
@@ -1009,7 +1009,7 @@ Gltf buildHuman(HumanPack pack, CharacterDna dna,
   var ankle = heads["foot.L"] ?? const [0.0, 0.0, 0.0];
   var knee = heads["lowerleg01.L"] ?? const [0.0, 1.0, 0.0];
   var sockLine = ankle[1] + (knee[1] - ankle[1]) * 0.12;
-  var sock = dna.worn
+  var sock = dna.wornIn3D
           .where((g) => g.kind == GarmentKind.socks || g.kind == GarmentKind.tights)
           .lastOrNull
           ?.color ??
@@ -1066,7 +1066,7 @@ Gltf buildHuman(HumanPack pack, CharacterDna dna,
     var colour = switch (w.item.kind) {
       WearKind.hair => dna.hair,
       WearKind.eyebrows => Color.lerp(dna.hair, const Color(0xFF000000), 0.25)!,
-      WearKind.shoes => dna.worn
+      WearKind.shoes => dna.wornIn3D
           .lastWhere((g) => g.kind.shape == GarmentShape.shoes)
           .color,
       WearKind.teeth => const Color(0xFFF2EEE4),

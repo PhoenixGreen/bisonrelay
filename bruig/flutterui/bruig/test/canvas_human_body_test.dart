@@ -407,6 +407,9 @@ void main() {
       expect(short.open, isTrue);
       expect(low(long), lessThan(low(short)));
       expect(shells(const []).pieces, isEmpty);
+      // Only what is drawn by hand: no shell made for it.
+      expect(shells(const [Garment(GarmentKind.skirt, color: c, drawnOnly: true)]).pieces,
+          isEmpty);
     });
 
     test("a top under a coat stops inside it, rather than showing through", () {

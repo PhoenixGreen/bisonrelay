@@ -429,7 +429,7 @@ class BodyColours {
         thigh = dna.skin,
         shin = dna.skin,
         foot = dna.skin {
-    for (var g in dna.worn) {
+    for (var g in dna.wornIn3D) {
       var c = g.color;
       switch (g.kind.shape) {
         case GarmentShape.torso:

@@ -911,6 +911,11 @@ class CharacterDna {
       ? wardrobe
       : [for (var g in wardrobe) if (g.kind.slot != GarmentSlot.base) g];
 
+  /// wornIn3D is what a body in 3D wears: not a garment that is only what
+  /// is drawn by hand -- drawn on a sketch's panels, which a body in 3D has
+  /// none of -- which showed as the shell made for its kind (Ken's gap).
+  List<Garment> get wornIn3D => [for (var g in worn) if (!g.drawnOnly) g];
+
   CharacterDna copyWith({
     double? headsTall,
     double? build,
@@ -1300,6 +1305,11 @@ class CharacterElement extends CanvasElement {
 
   CharacterElement withDrawingAt(String key, CharacterDrawing drawing) =>
       copyWith(drawings: withDrawingAtKey(drawings, key, drawing));
+
+  /// withoutDrawingAt is this with the view [key]'s own drawing gone, blank
+  /// or not: the other side's mirrored again, or the view as it is made.
+  CharacterElement withoutDrawingAt(String key) =>
+      copyWith(drawings: withoutDrawingAtKey(drawings, key));
 
   /// views is the views a sketch is drawn from -- see character_views.dart
   /// -- front, side and back to start, and others as they are added.

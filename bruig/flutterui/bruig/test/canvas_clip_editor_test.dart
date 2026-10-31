@@ -2,6 +2,9 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/media/warp.dart';
+import 'package:bruig/plugin_system/canvas/ui/clip_editor.dart';
+
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -60,6 +63,34 @@ Uint8List wav(int frames) {
 
 void main() {
   group("the clip", () {
+    test("a place typed: bar, beat and sixteenth, from one", () {
+      expect(beatsOfPlace("1", 4), 0);
+      expect(beatsOfPlace("3.2", 4), 9);
+      expect(beatsOfPlace(" 2.1.3 ", 4), 4.5);
+      expect(beatsOfPlace("2.4", 3), isNull, reason: "a bar of three");
+      for (var bad in ["", "0.1", "1.1.5", "a.b", "1.2.3.4"]) {
+        expect(beatsOfPlace(bad, 4), isNull, reason: bad);
+      }
+    });
+
+    test("Fade: in from its start and its loop's, out to its loop's end", () {
+      var l = Float32List.fromList(List.filled(48000, 1.0));
+      var r = Float32List.fromList(List.filled(48000, 1.0));
+      declick(l, r, ins: [0, 0.5], outs: [0.75]);
+      var n = (declickSeconds * 48000).round();
+      expect(l[0], 0);
+      expect(l[n ~/ 2], closeTo(0.5, 0.02));
+      expect(l[n + 10], 1);
+      expect(l[24000], 0, reason: "the loop's start");
+      expect(l[36000 - 1], 0, reason: "the loop's end");
+      expect(l[36000], 1, reason: "past it, as it was");
+      expect(r[24000], 0);
+      expect(
+          SessionClip.fromJson(const SessionClip(id: "c", fade: true).toJson())!
+              .fade,
+          isTrue);
+    });
+
     test("its editor's settings are saved and read back", () {
       const clip = SessionClip(
         id: "c",
@@ -751,6 +782,42 @@ void main() {
       await tester.pump();
       expect(c.session.at("a", 0)!.start, 3);
       expect(c.session.at("a", 0)!.loopStart, 0, reason: "the loop stays");
+      await done(tester, c);
+    });
+
+    testWidgets("places typed, as Ableton's are; Fade switched on",
+        (tester) async {
+      var c = await show(tester);
+      c.openClipEditor("a", 0);
+      await tester.pump();
+      await idle(tester);
+      Future<void> type(String key, String text) async {
+        await tester.tap(find.byKey(ValueKey(key)));
+        await tester.pump();
+        await tester.enterText(find.byKey(const ValueKey("typedPlace")), text);
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pump();
+      }
+
+      await type("clipStart", "2.3");
+      expect(c.session.at("a", 0)!.start, 6, reason: "bar 2, beat 3");
+      await type("clipLoopStart", "1.2.3");
+      expect(c.session.at("a", 0)!.loopStart, 1.5);
+      await type("clipEnds", "4");
+      expect(c.session.at("a", 0)!.bars, (12 - 1.5) / 4,
+          reason: "the loop as long as ending there makes it");
+      await type("clipStart", "nonsense");
+      expect(c.session.at("a", 0)!.start, 6, reason: "left as it was");
+      expect(c.session.at("a", 0)!.fade, isFalse);
+      await tester.tap(find.byKey(const ValueKey("clipFade")));
+      await tester.pump();
+      var clip = c.session.at("a", 0)!;
+      expect(clip.fade, isTrue);
+      expect(clip.needsRender, isTrue, reason: "faded in its render");
+      expect(clip.warpSignature(0.5),
+          isNot(clip.copyWith(start: 2).warpSignature(0.5)),
+          reason: "made again where it starts somewhere else");
+      expect(tester.takeException(), isNull);
       await done(tester, c);
     });
 

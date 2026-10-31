@@ -407,7 +407,9 @@ String? baseKeyOf(String key) {
 }
 
 /// withPanelDrawing is [drawings] with [drawing] on the panel turned [turn]
-/// and tilted [tilt]; an empty one takes the panel's own away.
+/// and tilted [tilt]. An empty one takes the panel's own away -- unless the
+/// panel opposite has a drawing, which it would then mirror: there it is
+/// kept, blank, as it was left. withoutDrawingAtKey puts the mirror back.
 Map<String, CharacterDrawing> withPanelDrawing(Map<String, CharacterDrawing> drawings,
         double turn, double tilt, CharacterDrawing drawing) =>
     withDrawingAtKey(drawings, panelKey(turn, tilt), drawing);
@@ -415,13 +417,29 @@ Map<String, CharacterDrawing> withPanelDrawing(Map<String, CharacterDrawing> dra
 Map<String, CharacterDrawing> withDrawingAtKey(
     Map<String, CharacterDrawing> drawings, String key, CharacterDrawing drawing) {
   var next = {...drawings};
-  if (drawing.isEmpty) {
+  // Every shape rubbed out of a panel that mirrors the other side: left
+  // blank, as it was made -- not the other side's again (Ken's gap).
+  var other = oppositeKey(key);
+  var mirrors = other != null && drawings[other]?.isEmpty == false;
+  if (drawing.isEmpty && !mirrors) {
     next.remove(key);
   } else {
     next[key] = drawing;
   }
   return next;
 }
+
+/// withoutDrawingAtKey is [drawings] with the view [key]'s own drawing
+/// taken away, blank or not: drawn again as the other side's mirror, or as
+/// it is made.
+Map<String, CharacterDrawing> withoutDrawingAtKey(Map<String, CharacterDrawing> drawings, String key) =>
+    {...drawings}..remove(key);
+
+/// keptBlankAtKey is whether the view [key] is left blank on purpose: a
+/// drawing of its own with nothing in it, where it would mirror the other
+/// side's.
+bool keptBlankAtKey(Map<String, CharacterDrawing> drawings, String key) =>
+    drawings[key]?.isEmpty == true;
 
 /// LayerKeys is a layer of a panel shaped by a slider through drawings:
 /// its shapes as drawn at each of the slider's values kept -- keyforms, as

@@ -59,6 +59,37 @@ const double _rate = 48000;
   return (ol, or);
 }
 
+/// declickSeconds is how long a clip's Fade fades: long enough that a cut
+/// part way through a wave does not click, short enough not to be heard as
+/// a fade.
+const double declickSeconds = 0.004;
+
+/// declick fades [l] and [r] in from each of [ins] and out to each of
+/// [outs], in seconds -- a clip's start and its loop's, and its loop's end
+/// -- in place.
+void declick(Float32List l, Float32List r,
+    {List<double> ins = const [], List<double> outs = const []}) {
+  var n = (declickSeconds * 48000).round();
+  for (var t in ins) {
+    var at = (t * 48000).round();
+    for (var k = 0; k < n; k++) {
+      var i = at + k;
+      if (i < 0 || i >= l.length) continue;
+      l[i] *= k / n;
+      r[i] *= k / n;
+    }
+  }
+  for (var t in outs) {
+    var at = (t * 48000).round();
+    for (var k = 0; k < n; k++) {
+      var i = at - 1 - k;
+      if (i < 0 || i >= l.length) continue;
+      l[i] *= k / n;
+      r[i] *= k / n;
+    }
+  }
+}
+
 /// _envelop applies [envelopes] to [l] and [r] -- the clip's sound from its
 /// first beat, at [secondsPerBeat] -- in place: its gain, squared so half
 /// way is well down (twelve decibels), and its pan as a balance.

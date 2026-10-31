@@ -380,6 +380,10 @@ class QwenScript {
 /// never is.
 const qwenMark = 0.6;
 
+/// qwenBreathing is the expression past which the voice breathes between
+/// sentences: the vivid third, where it is told to be.
+const qwenBreathing = 0.66;
+
 /// qwenSoftly is [direction] said softly, for a whisper. The program
 /// cannot whisper -- asked to, it speaks low -- and a whisper made of its
 /// voice afterwards, hiss through its shape, was heard as a vocoder (Ken,
@@ -436,6 +440,8 @@ QwenScript qwenScript(List<SpeechLine> lines) {
     // A beat after the words so far: "..." on the last of them.
     void beat() {
       if (words.isEmpty) return;
+      // A sentence's end is a pause already: as it is.
+      if (RegExp(r"[.!?…]$").hasMatch(words.last)) return;
       words.last = "${words.last.replaceAll(RegExp(r"[,;:]$"), "")}...";
     }
 
@@ -713,7 +719,14 @@ class QwenSpeech extends SpeechEngine {
   /// be cut as it was written is done again a line at a time.
   Future<List<SpokenAudio>> _run(
       String dir, SpeechSpec spec, List<SpeechLine> lines, int seed) async {
-    var script = qwenScript(lines);
+    // Told to be vivid, it breathes between its sentences, as a voice
+    // given the room does.
+    var script = qwenScript([
+      for (var l in lines)
+        spec.expression > qwenBreathing
+            ? l.copyWith(text: speechBreaths(l.text))
+            : l,
+    ]);
     var direction = qwenDirection(lines.first, spec.expression);
     var pieces = List<Float32List?>.filled(script.spoken.length, null);
     for (var run in script.runs) {

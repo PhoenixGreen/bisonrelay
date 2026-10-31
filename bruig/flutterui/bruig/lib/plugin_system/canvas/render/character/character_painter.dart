@@ -236,13 +236,21 @@ void paintCharacterFigure(
   // The shapes drawn by one drawing of the figure -- all of them, or, a
   // layer soloed, the rest's or its own: a layer standing in for its own
   // drawing as the figure reaches it, the rest over it all after.
-  (void Function(Canvas, String, int), void Function(Canvas)) shapesOf({bool? soloed}) {
+  //
+  // What is worn on the body -- not the arms, the hands or the head -- is
+  // drawn before the arms in front of it: a drawn top painted over arms
+  // held across it.
+  (void Function(Canvas, String, int), void Function(Canvas), void Function(Canvas)) shapesOf(
+      {bool? soloed}) {
     var waiting = <String, List<(int, (double, CharacterDrawing, int))>>{};
     var over = <(double, CharacterDrawing, int)>[];
+    var under = <(double, CharacterDrawing, int)>[];
     for (var (o, d, i, layer) in onPanel) {
       if (soloed != null && (layer == layers.solo) != soloed) continue;
       if (layer != null && standing.contains(layer)) {
         (waiting[layer] ??= []).add((0, (o, d, i)));
+      } else if ((layer?.startsWith("worn:") ?? false) && _underArms(d.parts[i])) {
+        under.add((o, d, i));
       } else {
         over.add((o, d, i));
       }
@@ -281,7 +289,8 @@ void paintCharacterFigure(
             for (var (_, x) in list.skip(done[l] ?? 0)) x,
         ],
         shapeRoom);
-    return (at, rest);
+    void underArms(Canvas onto) => paintPanelShapes(onto, rig, under, shapeRoom);
+    return (at, rest, underArms);
   }
 
   void drawOn(Canvas onto) {
@@ -296,8 +305,9 @@ void paintCharacterFigure(
     // as flat colour -- a view for working on it, not the finished look.
     if (layers.solo != null) {
       void pass(_Pass p) {
-        var (at, rest) = shapesOf(soloed: p == _Pass.solo);
+        var (at, rest, under) = shapesOf(soloed: p == _Pass.solo);
         _Drawing(onto, rig, dna, face, life,
+                underNearArms: under,
                 bare: bare,
                 look: look,
                 images: images,
@@ -330,8 +340,9 @@ void paintCharacterFigure(
             reach: unit * 0.09,
           ),
           (flat, buffers) {
-            var (at, rest) = shapesOf();
+            var (at, rest, under) = shapesOf();
             _Drawing(flat, rig, dna, face, life,
+                    underNearArms: under,
                     bare: bare,
                     look: look,
                     images: images,
@@ -362,8 +373,9 @@ void paintCharacterFigure(
                 ]));
       if (lit) return;
     }
-    var (at, rest) = shapesOf();
+    var (at, rest, under) = shapesOf();
     _Drawing(onto, rig, dna, face, life,
+            underNearArms: under,
             bare: bare,
             look: look,
             images: images,
@@ -957,9 +969,14 @@ class _Drawing {
       this.layers = LayerView.all,
       this.pass = _Pass.all,
       this.standing = const {},
-      this.standIn})
+      this.standIn,
+      this.underNearArms})
       : _real = canvas,
-        _base = standIn == null ? null : canvas.getTransform();
+        _base = standIn == null && underNearArms == null ? null : canvas.getTransform();
+
+  /// underNearArms draws what is worn on the body, drawn by hand, before
+  /// the arms in front of it: onto the canvas as the figure is placed on it.
+  final void Function(Canvas canvas)? underNearArms;
 
   /// standing is the layers taken apart on the panel, whose shapes stand
   /// in for their own drawing there; standIn draws them where the figure
@@ -1478,6 +1495,13 @@ class _Drawing {
     }
     if (_shows(CharacterRegion.torso)) _neckwear();
     if (head) _inBody(BodyLayer.hairFront, _frontHair);
+    // A top drawn by hand under the arms held in front of it.
+    if (underNearArms case var drawUnder?) {
+      _real.save();
+      _carryTo(_base!, _real);
+      drawUnder(_real);
+      _real.restore();
+    }
     _arms(far: false, near: near);
     if (bodyFacing < -0.2) {
       _capes();
@@ -5515,6 +5539,18 @@ class _Drawing {
     if (face.mouth == MouthShape.rest) {
       _restMouth();
     } else {
+      // Where the panel's face puts the corners, the shape follows: moved
+      // to between them, as wide as they are apart, tilted as one is
+      // higher -- the corners bent the resting mouth alone (Ken's gap).
+      var cr = faceRig[FacePoint.cornerR], cl = faceRig[FacePoint.cornerL];
+      if (!cr.isRest || !cl.isRest) {
+        var half = u * 0.1;
+        var a = across == 0 ? 1.0 : across;
+        var left = -half + cr.dx * u / a, right = half + cl.dx * u / a;
+        canvas.translate((left + right) / 2, (cr.dy + cl.dy) / 2 * u);
+        canvas.skew(0, (cl.dy - cr.dy) * u / math.max(1e-6, right - left));
+        canvas.scale(math.max(0.2, (right - left) / (2 * half)), 1);
+      }
       // The shapes are drawn about 22 units across; a mouth is about a
       // fifth of a head.
       var k = u * 0.0095 * (1 + 0.25 * face[FaceControl.wide]);
@@ -5706,3 +5742,17 @@ List<CapturedShape> captureFigure(CharacterRig rig, CharacterDna dna,
       .draw();
   return c.shapes;
 }
+
+/// _underArms is whether a shape drawn on [part] is worn under the arms in
+/// front of it: on the body or the legs, not on an arm, a hand or the head.
+bool _underArms(CharacterPart part) => switch (part) {
+      CharacterPart.head ||
+      CharacterPart.upperArmL ||
+      CharacterPart.foreArmL ||
+      CharacterPart.handL ||
+      CharacterPart.upperArmR ||
+      CharacterPart.foreArmR ||
+      CharacterPart.handR =>
+        false,
+      _ => true,
+    };

@@ -82,6 +82,23 @@ void main() {
         lessThan(0.01));
   });
 
+  test("the corners move a talking mouth too, not the resting one alone",
+      () async {
+    var talking = _sketch().copyWith(face: const CharacterFace({}, MouthShape.open));
+    var raised = talking.withFaceRig(
+        0,
+        0,
+        FaceRig.none
+            .withPoint(FacePoint.cornerL, const FaceAdjust(dx: 0.05, dy: -0.06))
+            .withPoint(FacePoint.cornerR, const FaceAdjust(dx: -0.05, dy: -0.06)));
+    var a = await _pixels(talking), b = await _pixels(raised);
+    var changed = 0;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) changed++;
+    }
+    expect(changed, greaterThan(200), reason: "the open mouth moved");
+  });
+
   test("the ring sizes a feature and the knob turns it", () {
     var e = _sketch();
     var view = FaceRigView.of(e, 0);

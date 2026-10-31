@@ -402,6 +402,9 @@ class Garment {
   Garment withDrawingAt(String key, CharacterDrawing drawing) =>
       copyWith(drawings: withDrawingAtKey(drawings, key, drawing));
 
+  Garment withoutDrawingAt(String key) =>
+      copyWith(drawings: withoutDrawingAtKey(drawings, key));
+
   Garment withDrawing(double turn, double tilt, CharacterDrawing drawing) =>
       copyWith(drawings: withPanelDrawing(drawings, turn, tilt, drawing));
 

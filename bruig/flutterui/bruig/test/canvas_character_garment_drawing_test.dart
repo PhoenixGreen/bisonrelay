@@ -128,6 +128,40 @@ void main() {
         isNot(await _pixels(_sketch(wardrobe: bare))));
   });
 
+  test("a top drawn by hand is worn under an arm held across it", () async {
+    var e = _sketch();
+    var top = e.dna.wardrobe.indexWhere((g) => g.kind.slot == GarmentSlot.top);
+    expect(top, greaterThanOrEqualTo(0), reason: "the cast member wears a top");
+    // The right forearm brought across the chest, in front of it.
+    var posed = e.copyWith(pose: e.pose.withAngle(CharacterBone.foreArmR, 100));
+    var (rig, _, _) = drawnRig(posed, 0, 24);
+    var arm = Offset.lerp(rig.elbowR, rig.wristR, 0.5)!;
+    // A patch drawn on the chest, under where the forearm crosses.
+    var patch = VectorShape(
+      paths: [
+        VectorPath([
+          for (var (dx, dy) in [(-30.0, -30.0), (30.0, -30.0), (30.0, 30.0), (-30.0, 30.0)])
+            VectorNode(arm.dx + dx, arm.dy + dy),
+        ], closed: true),
+      ],
+      fill: const Color(0xFF20C040),
+    );
+    var drawn = shapesOnParts([patch], rig, among: e.dna.wardrobe[top].kind.covers);
+    expect(drawn.parts.single, CharacterPart.torso);
+    var wardrobe = [...e.dna.wardrobe];
+    wardrobe[top] = wardrobe[top].withDrawing(0, 0, drawn);
+    var worn = posed.copyWith(dna: posed.dna.copyWith(wardrobe: wardrobe));
+    var px = await _pixels(worn);
+    // The rig is the character's own; the page has it where it is put.
+    var onPage = arm + Offset(e.x, e.y);
+    var i = (onPage.dy.round() * 400 + onPage.dx.round()) * 4;
+    var green = px[i] == 0x20 && px[i + 1] == 0xC0 && px[i + 2] == 0x40;
+    expect(green, isFalse, reason: "the forearm over the patch, not under it");
+    // Under the arm, on the chest, the patch shows.
+    var j = ((onPage.dy + 24).round() * 400 + onPage.dx.round()) * 4;
+    expect((px[j], px[j + 1], px[j + 2]), (0x20, 0xC0, 0x40));
+  });
+
   group("the wardrobe", () {
     Widget host(CanvasController c) => MultiProvider(
           providers: [

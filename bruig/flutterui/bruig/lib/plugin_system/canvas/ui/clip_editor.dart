@@ -19,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/ui/piano_roll.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 
 // clip_editor.dart is the clip editor -- Ableton's clip view: a clip in a
@@ -516,21 +517,27 @@ class _ClipEditorState extends State<ClipEditor> {
 
   /// _stepper is a value with a step down and a step up either side.
   Widget _stepper(MixerLook look, String key, String value, VoidCallback? down,
-          VoidCallback? up) =>
-      Row(children: [
-        _step(look, "$key-down", Icons.remove, down),
-        Expanded(
-          child: Text(value,
-              key: ValueKey(key),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: _small(look).copyWith(fontFeatures: const [
-                FontFeature.tabularFigures(),
-              ])),
-        ),
-        _step(look, "$key-up", Icons.add, up),
-      ]);
+      VoidCallback? up,
+      {ValueChanged<String>? typed}) {
+    var style = _small(look).copyWith(fontFeatures: const [
+      FontFeature.tabularFigures(),
+    ]);
+    return Row(children: [
+      _step(look, "$key-down", Icons.remove, down),
+      Expanded(
+        child: typed == null
+            ? Text(value,
+                key: ValueKey(key),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: style)
+            : _TypedPlace(
+                key: ValueKey(key), value: value, style: style, onTyped: typed),
+      ),
+      _step(look, "$key-up", Icons.add, up),
+    ]);
+  }
 
   Widget _step(
           MixerLook look, String key, IconData icon, VoidCallback? onTap) =>
@@ -735,6 +742,14 @@ class _ClipEditorState extends State<ClipEditor> {
 
   List<Widget> _clipColumn(MixerLook look, SessionClip clip) {
     var bpb = c.document.audio.beatsPerBar;
+    // A place typed, as Ableton's are: "3", "3.2" or "3.2.3" -- bar, beat,
+    // sixteenth. One that is not a place is left as it was.
+    ValueChanged<String> typed(
+            SessionClip Function(SessionClip x, double beats) change) =>
+        (text) {
+          if (beatsOfPlace(text, bpb) case var b?)
+            c.editClip((x) => change(x, b));
+        };
     var playhead = c.clipPlayhead;
     var bars = clip.bars;
     var lengths = {
@@ -763,7 +778,8 @@ class _ClipEditorState extends State<ClipEditor> {
                   clip.start <= 0
                       ? null
                       : () => c.editClip((x) => x.copyWith(start: x.start - 1)),
-                  () => c.editClip((x) => x.copyWith(start: x.start + 1))),
+                  () => c.editClip((x) => x.copyWith(start: x.start + 1)),
+                  typed: typed((x, b) => x.copyWith(start: b))),
             ),
             const SizedBox(width: 4),
             _pill(look, "Set", false, set((b) => clip.copyWith(start: b)),
@@ -793,8 +809,9 @@ class _ClipEditorState extends State<ClipEditor> {
                       ? null
                       : () => c.editClip(
                           (x) => x.copyWith(loopStart: x.loopStart - 1)),
-                  () => c
-                      .editClip((x) => x.copyWith(loopStart: x.loopStart + 1))),
+                  () =>
+                      c.editClip((x) => x.copyWith(loopStart: x.loopStart + 1)),
+                  typed: typed((x, b) => x.copyWith(loopStart: b))),
             ),
             const SizedBox(width: 4),
             _pill(look, "Set", false, set((b) => clip.copyWith(loopStart: b)),
@@ -810,7 +827,18 @@ class _ClipEditorState extends State<ClipEditor> {
               bars,
               [for (var b in lengths) (barsText(b), b)],
               (v) => c.editClip((x) => x.copyWith(bars: v)))),
-      _row(look, "Ends", Text(_place(clip.loopEnd(bpb)), style: _small(look))),
+      // Its end typed: the loop as long as that makes it.
+      _row(
+          look,
+          "Ends",
+          _TypedPlace(
+              key: const ValueKey("clipEnds"),
+              value: _place(clip.loopEnd(bpb)),
+              style: _small(look),
+              align: TextAlign.left,
+              onTyped: typed((x, b) => b > x.loopStart
+                  ? x.copyWith(bars: (b - x.loopStart) / bpb)
+                  : x))),
       _row(
           look,
           "Colour",
@@ -1030,6 +1058,11 @@ class _ClipEditorState extends State<ClipEditor> {
             key: const ValueKey("clipReverse"),
             tip: "Backwards: a reversed copy of its sound is kept in the "
                 "library, beside the original"),
+        _pill(look, "Fade", clip.fade,
+            () => c.editClip((x) => x.copyWith(fade: !x.fade)),
+            key: const ValueKey("clipFade"),
+            tip: "A few milliseconds' fade in at its start and its loop's, "
+                "and out at its loop's end: no click where it is cut"),
         _pill(look, "Crop", false, _busy ? null : () => _run(c.cropClip),
             key: const ValueKey("clipCrop"),
             tip: "Keep only what it plays, as a new sound, so the rest "
@@ -1653,4 +1686,110 @@ class _SamplePainter extends CustomPainter {
       old.envelopeLength != envelopeLength ||
       old.envelopeRest != envelopeRest ||
       old.studio != studio;
+}
+
+/// beatsOfPlace is a place typed as Ableton's are -- "bar.beat.sixteenth",
+/// "bar.beat" or "bar", each counted from one -- in beats from the start, at
+/// [beatsPerBar]; null for what is not one.
+double? beatsOfPlace(String text, int beatsPerBar) {
+  var parts = text.trim().split(RegExp(r"[.:\s]+"));
+  if (parts.isEmpty || parts.length > 3 || parts.first.isEmpty) return null;
+  var n = [for (var p in parts) int.tryParse(p)];
+  if (n.contains(null)) return null;
+  var (bar, beat, sixteenth) =
+      (n[0]!, n.length > 1 ? n[1]! : 1, n.length > 2 ? n[2]! : 1);
+  if (bar < 1 ||
+      beat < 1 ||
+      beat > beatsPerBar ||
+      sixteenth < 1 ||
+      sixteenth > 4) {
+    return null;
+  }
+  return (bar - 1) * beatsPerBar + (beat - 1) + (sixteenth - 1) / 4;
+}
+
+/// _TypedPlace is a place shown as bar.beat.sixteenth, typed into once
+/// clicked: Return sets it, Escape or clicking away leaves it.
+class _TypedPlace extends StatefulWidget {
+  final String value;
+  final TextStyle style;
+  final TextAlign align;
+  final ValueChanged<String> onTyped;
+  const _TypedPlace(
+      {required this.value,
+      required this.style,
+      required this.onTyped,
+      this.align = TextAlign.center,
+      super.key});
+
+  @override
+  State<_TypedPlace> createState() => _TypedPlaceState();
+}
+
+class _TypedPlaceState extends State<_TypedPlace> {
+  bool _typing = false;
+  late final _text = TextEditingController();
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // Clicked away: left as it was.
+    _focus.addListener(() {
+      if (!_focus.hasFocus && _typing) setState(() => _typing = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_typing) {
+      return MouseRegion(
+        cursor: SystemMouseCursors.text,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            _text.text = widget.value;
+            _text.selection =
+                TextSelection(baseOffset: 0, extentOffset: widget.value.length);
+            setState(() => _typing = true);
+            WidgetsBinding.instance
+                .addPostFrameCallback((_) => _focus.requestFocus());
+          },
+          child: Text(widget.value,
+              textAlign: widget.align,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: widget.style),
+        ),
+      );
+    }
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () =>
+            setState(() => _typing = false),
+      },
+      child: TextField(
+        key: const ValueKey("typedPlace"),
+        controller: _text,
+        focusNode: _focus,
+        textAlign: widget.align,
+        style: widget.style,
+        decoration: const InputDecoration(
+            isDense: true,
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.zero),
+        onSubmitted: (v) {
+          widget.onTyped(v);
+          setState(() => _typing = false);
+        },
+      ),
+    );
+  }
 }

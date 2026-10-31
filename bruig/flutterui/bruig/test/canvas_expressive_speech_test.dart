@@ -281,6 +281,17 @@ void main() {
               "own pauses");
     });
 
+    test("vivid, it breathes between its sentences", () {
+      expect(speechBreaths("Hi there. How are you? Fine! [laugh] Good."),
+          "Hi there. [breath] How are you? [breath] Fine! [laugh] Good.",
+          reason: "not where a cue is already, nor after the last");
+      var said = qwenScript(scriptLines(speechBreaths("One. Two.")));
+      expect(said.runs.single.text, "One. Two.",
+          reason: "a sentence's end is a pause already");
+      expect((said.spoken.single.beats.single.$2 as QwenSound).cue,
+          SpeechCue.breath);
+    });
+
     test("a cough is written into the words too; a sigh and a breath not",
         () async {
       TestWidgetsFlutterBinding.ensureInitialized();

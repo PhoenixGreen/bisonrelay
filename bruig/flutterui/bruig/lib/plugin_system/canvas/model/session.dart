@@ -199,6 +199,11 @@ class SessionClip {
   /// gain is how much louder or quieter it is played, in decibels.
   final double gain;
 
+  /// fade is whether its sound fades in at its start and its loop's, and
+  /// out at its loop's end, a few milliseconds each: no click where a
+  /// sound is cut part way through a wave, as Ableton's Fade.
+  final bool fade;
+
   /// reversedOf is the sound it played before it was reversed -- its own
   /// file, kept, so Reverse undone gives it back.
   final MediaSource? reversedOf;
@@ -317,6 +322,7 @@ class SessionClip {
   bool get needsRender =>
       !midi &&
       (warp ||
+          fade ||
           pitch != 0 ||
           cents != 0 ||
           envelopes.values.any((e) => e.isNotEmpty));
@@ -336,7 +342,10 @@ class SessionClip {
         for (var e in envelopes.entries)
           if (e.value.isNotEmpty)
             "${e.key.name}=${e.value.map((p) => "${p.$1},${p.$2}").join(";")}",
-        if (warp || envelopes.values.any((e) => e.isNotEmpty)) secondsPerBeat,
+        if (warp || fade || envelopes.values.any((e) => e.isNotEmpty))
+          secondsPerBeat,
+        // Faded where it starts and goes round: made again as they move.
+        if (fade) "fade=$start,$loopStart,$bars,$loop",
       ].join(":");
 
   /// rendered is what [sound] was played from, for a MIDI clip: its
@@ -358,6 +367,7 @@ class SessionClip {
     this.start = 0,
     this.loopStart = 0,
     this.gain = 0,
+    this.fade = false,
     this.reversedOf,
     this.quantise,
     this.legato = false,
@@ -394,6 +404,7 @@ class SessionClip {
     double? start,
     double? loopStart,
     double? gain,
+    bool? fade,
     MediaSource? reversedOf,
     bool clearReversed = false,
     Quantise? quantise,
@@ -429,6 +440,7 @@ class SessionClip {
         start: math.max(0, start ?? this.start),
         loopStart: math.max(0, loopStart ?? this.loopStart),
         gain: (gain ?? this.gain).clamp(-70.0, 24.0),
+        fade: fade ?? this.fade,
         reversedOf: clearReversed ? null : reversedOf ?? this.reversedOf,
         quantise: clearQuantise ? null : quantise ?? this.quantise,
         legato: legato ?? this.legato,
@@ -490,6 +502,7 @@ class SessionClip {
         if (reversedOf case var r?) "reversedOf": r.toJson(),
         if (quantise case var q?) "quantise": q.name,
         if (legato) "legato": true,
+        if (fade) "fade": true,
         if (velocity != 0) "velocity": velocity,
         if (follow != FollowAction.none) "follow": follow.name,
         if (followBars case var f?) "followBars": f,
@@ -549,6 +562,7 @@ class SessionClip {
       quantise:
           Quantise.values.where((q) => q.name == json["quantise"]).firstOrNull,
       legato: jsonBool(json["legato"], false),
+      fade: jsonBool(json["fade"], false),
       velocity: jsonDouble(json["velocity"], 0).clamp(0.0, 1.0),
       follow: FollowAction.values
               .where((f) => f.name == json["follow"])

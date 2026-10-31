@@ -1447,7 +1447,9 @@ class _SpeechDeviceState extends State<SpeechDevice> {
               can: !local),
           slider(
               "Expression",
-              "${(spec.expression * 100).round()}%",
+              // Vivid, the expressive voices breathe between sentences.
+              "${(spec.expression * 100).round()}%"
+                  "${engine == SpeechEngineKind.expressive && spec.expression > qwenBreathing ? " · breaths" : ""}",
               spec.expression,
               0,
               1,
@@ -1778,7 +1780,7 @@ class _VocaliserDeviceState extends State<VocaliserDevice> {
     var melody = tunes.any((t) => t.$1 == spec.melody)
         ? spec.melody
         : tunes.firstOrNull?.$1;
-    var take = c.speechOf(widget.channel)?.takes.lastOrNull;
+    var sings = c.singsWhat(widget.channel);
     var busy = c.singing.contains(widget.channel);
 
     Widget slider(String label, String reading, double value, double max,
@@ -1842,11 +1844,9 @@ class _VocaliserDeviceState extends State<VocaliserDevice> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                        take == null
-                            ? "Sings this channel's latest Speech take: speak one "
-                                "first."
-                            : "Sings Take ${c.speechOf(widget.channel)!.takes.length}: "
-                                "${take.words.length} words.",
+                        sings ??
+                            "Sings this channel's Speech: speak a take "
+                                "first.",
                         style: small(skin.dim)),
                     const SizedBox(height: 10),
                     Text("To the notes of", style: small(skin.dim)),
@@ -1887,7 +1887,7 @@ class _VocaliserDeviceState extends State<VocaliserDevice> {
           const SizedBox(height: 4),
           FilledButton.icon(
             key: const ValueKey("vocaliserSing"),
-            onPressed: busy || take == null || melody == null ? null : _sing,
+            onPressed: busy || sings == null || melody == null ? null : _sing,
             icon: busy
                 ? const SizedBox.square(
                     dimension: 12,

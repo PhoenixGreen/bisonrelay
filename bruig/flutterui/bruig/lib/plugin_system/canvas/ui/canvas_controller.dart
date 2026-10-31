@@ -10115,15 +10115,61 @@ class CanvasController extends ChangeNotifier {
   /// singing is the channels singing now, so their Sing shows it.
   final Set<String> singing = {};
 
-  /// sing sings [channel]'s latest Speech take to its Vocaliser's melody --
-  /// a MIDI channel's notes -- into a new clip on the channel where the
-  /// melody starts. One change to undo. Answers why not, where it could
-  /// not.
+  /// singsWhat is what [channel]'s Vocaliser sings, in a line -- the latest
+  /// take on the timeline, else its sections' chosen takes, one after
+  /// another -- or null, with nothing spoken yet.
+  String? singsWhat(String channel) {
+    var spec = speechOf(channel);
+    if (spec == null) return null;
+    if (spec.takes.lastOrNull case var t?) {
+      return "Sings Take ${spec.takes.length}: ${t.words.length} words.";
+    }
+    var takes = [
+      for (var l in spec.lines)
+        if (l.take case var t?) t
+    ];
+    if (takes.isEmpty) return null;
+    var words = takes.fold(0, (n, t) => n + t.words.length);
+    return "Sings the sections' takes, ${takes.length} of them: "
+        "$words words.";
+  }
+
+  /// _singSource is what [channel] sings: the latest take on the timeline,
+  /// or its sections' chosen takes, shaped, a quarter of a second apart --
+  /// its sound and its words. Null with nothing to sing, or unreadable.
+  Future<(Float32List, List<TimedWord>)?> _singSource(String channel) async {
+    var spec = speechOf(channel);
+    if (spec == null) return null;
+    if (spec.takes.lastOrNull case var t?) {
+      var sound = await takeAudio(t.assetId);
+      return sound == null ? null : (sound, t.words);
+    }
+    var sound = <double>[];
+    var words = <TimedWord>[];
+    for (var (i, l) in spec.lines.indexed) {
+      if (l.take == null) continue;
+      var t = await shapedTake(channel, i, l.chosen);
+      if (t == null) continue;
+      var part = await takeAudio(t.assetId);
+      if (part == null) return null;
+      if (sound.isNotEmpty) sound.addAll(Float32List((0.25 * mixRate).round()));
+      var at = sound.length / mixRate;
+      for (var w in t.words) {
+        words.add((text: w.text, start: w.start + at, end: w.end + at));
+      }
+      sound.addAll(part);
+    }
+    return words.isEmpty ? null : (Float32List.fromList(sound), words);
+  }
+
+  /// sing sings [channel]'s Speech -- see singsWhat -- to its Vocaliser's
+  /// melody -- a MIDI channel's notes -- into a new clip on the channel
+  /// where the melody starts. One change to undo. Answers why not, where
+  /// it could not.
   Future<String?> sing(String channel) async {
     var spec = vocaliserOf(channel);
     if (spec == null) return null;
-    var take = speechOf(channel)?.takes.lastOrNull;
-    if (take == null) {
+    if (singsWhat(channel) == null) {
       return "Nothing to sing yet: speak a take with this channel's "
           "Speech device first.";
     }
@@ -10137,12 +10183,13 @@ class CanvasController extends ChangeNotifier {
     if (!singing.add(channel)) return null;
     notifyListeners();
     try {
-      var source = await takeAudio(take.assetId);
-      if (source == null) return "The take's file could not be read.";
+      var said = await _singSource(channel);
+      if (said == null) return "The take's file could not be read.";
+      var (source, words) = said;
       var rate = math.max(1, _document.frameRate);
       var partStart = tune.clip.at / rate;
       var melody = melodyOf(tune.instrument!.notes);
-      var sung = assignSyllables(syllablesOf(take.words), melody);
+      var sung = assignSyllables(syllablesOf(words), melody);
       if (sung.isEmpty) return "The take has no words to sing.";
       var settings =
           SingSettings(vibrato: spec.vibrato, glideSeconds: spec.glide);
@@ -11648,8 +11695,18 @@ class CanvasController extends ChangeNotifier {
       var map = clip.warpMap;
       var (warp, mode) = (clip.warp, clip.warpMode);
       var semitones = clip.pitch + clip.cents / 100;
-      var (wav, frames) = await _warpedWavAway(
-          l, r, from, to, warp, mode, map, spb, semitones, clip.envelopes);
+      // Faded where it is played from and round: as _startClip has them.
+      var loopAt = clip.loopStart * spb;
+      var fades = clip.fade
+          ? (
+              ins: [clip.start * spb, if (clip.loop) loopAt],
+              outs: [
+                loopAt + math.max(0.05, clip.bars * _barSeconds),
+              ],
+            )
+          : null;
+      var (wav, frames) = await _warpedWavAway(l, r, from, to, warp, mode,
+          map, spb, semitones, clip.envelopes, fades);
       var id = await partStore(wav);
       if (id == null || _disposed) return null;
       var warped = MediaSource(
@@ -14060,7 +14117,8 @@ Future<(Uint8List, int)> _warpedWavAway(
         WarpMap map,
         double secondsPerBeat,
         double semitones,
-        Map<ClipEnvelope, List<ControlPoint>> envelopes) =>
+        Map<ClipEnvelope, List<ControlPoint>> envelopes,
+        ({List<double> ins, List<double> outs})? fades) =>
     Isolate.run(() {
       var (wl, wr) = renderWarp(l, r,
           from: from,
@@ -14071,6 +14129,7 @@ Future<(Uint8List, int)> _warpedWavAway(
           secondsPerBeat: secondsPerBeat,
           semitones: semitones,
           envelopes: envelopes);
+      if (fades != null) declick(wl, wr, ins: fades.ins, outs: fades.outs);
       return (wav16(wl, wr), wl.length);
     });
 

@@ -734,15 +734,14 @@ CharacterElement putPanelBack(CharacterElement e, int frame, int frameRate,
   var key = drawnKey(e, frame, frameRate);
   if (_garmentOf(e, garment) case var g?) {
     var wardrobe = [...e.dna.wardrobe];
-    wardrobe[garment!] = g.withDrawingAt(key, CharacterDrawing.empty);
+    wardrobe[garment!] = g.withoutDrawingAt(key);
     return e.copyWith(dna: e.dna.copyWith(wardrobe: wardrobe));
   }
-  var next = e.withDrawingAt(key, CharacterDrawing.empty);
+  // Its own drawing gone, a blank one too: the other side mirrored again.
+  var next = e.withoutDrawingAt(key);
   var wardrobe = [
     for (var g in next.dna.wardrobe)
-      g.drawingAt(key).$1.replaces
-          ? g.withDrawingAt(key, CharacterDrawing.empty)
-          : g,
+      g.drawingAt(key).$1.replaces ? g.withoutDrawingAt(key) : g,
   ];
   return next.copyWith(dna: next.dna.copyWith(wardrobe: wardrobe));
 }

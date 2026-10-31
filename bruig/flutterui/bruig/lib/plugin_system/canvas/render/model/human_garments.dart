@@ -75,7 +75,7 @@ int _rank(Garment g) => switch (g.kind.slot) {
   required Map<String, List<double>> heads,
 }) {
   var worn = [
-    for (var g in dna.worn)
+    for (var g in dna.wornIn3D)
       if (g.kind.shape == GarmentShape.torso ||
           g.kind.shape == GarmentShape.legs ||
           g.kind.shape == GarmentShape.skirt ||
