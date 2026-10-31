@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/media/speech_finish.dart'
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
+import 'package:bruig/plugin_system/canvas/ui/phrasing_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart'
     show TextDocumentRef;
@@ -597,6 +598,20 @@ class _SpeechDeviceState extends State<SpeechDevice> {
     var cantSpeak = needsVoices || lines.isEmpty;
     var allSpoken = lines.isNotEmpty && lines.every((l) => l.takes.isNotEmpty);
     var reading = spec.document.on;
+    // Phrasing, in place of the sections, on the section and slot picked.
+    var phrasingOn = c.phrasing?.channel == widget.channel;
+    var pickedSlot =
+        (_slot ?? (line == null || line.chosen < 0 ? 0 : line.chosen))
+            .clamp(0, SpeechLine.speechSlots - 1);
+    if (phrasingOn &&
+        line != null &&
+        (c.phrasing!.line != _line || c.phrasing!.slot != pickedSlot)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && c.phrasing?.channel == widget.channel) {
+          c.openPhrasing(widget.channel, _line, pickedSlot);
+        }
+      });
+    }
 
     // A voice heard saying a line, in the device's feel: playing, it
     // stops; being spoken for it, it says so.
@@ -1166,17 +1181,6 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                                 small: true,
                                 tip: "Speak it again into this slot, as it "
                                     "is said now"),
-                            k.button(
-                                "Phrasing",
-                                busy
-                                    ? null
-                                    : () => c.openPhrasing(
-                                        widget.channel, _line, sel),
-                                key: const ValueKey("speechPhrasing"),
-                                icon: Icons.graphic_eq,
-                                small: true,
-                                tip: "Shape its words: each one's pitch, "
-                                    "length and loudness"),
                           ]),
                         ],
                         const SizedBox(height: 6),
@@ -1620,6 +1624,54 @@ class _SpeechDeviceState extends State<SpeechDevice> {
               ),
             ),
           ),
+        // Phrasing: the next step, after a voice has spoken -- the take's
+        // words shaped, in place of the sections.
+        Container(
+            key: const ValueKey("speechPhrasingRule"),
+            width: 1.5,
+            height: 18,
+            margin: const EdgeInsets.symmetric(horizontal: 7),
+            color: s.muted.withValues(alpha: 0.7)),
+        Tooltip(
+          message: phrasingOn
+              ? "Back to the sections"
+              : "Shape the picked take's words: each one's pitch, length "
+                  "and loudness",
+          child: Material(
+            color: phrasingOn ? s.on : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+            child: InkWell(
+              key: const ValueKey("speechPhrasing"),
+              borderRadius: BorderRadius.circular(4),
+              onTap: phrasingOn
+                  ? c.closePhrasing
+                  : line == null
+                      ? null
+                      : () => c.openPhrasing(widget.channel, _line, pickedSlot),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.graphic_eq,
+                      size: 13,
+                      color: phrasingOn
+                          ? s.onOn
+                          : line == null
+                              ? s.muted
+                              : s.text),
+                  const SizedBox(width: 4),
+                  Text("Phrasing",
+                      style: k.text(11,
+                          weight: FontWeight.w600,
+                          colour: phrasingOn
+                              ? s.onOn
+                              : line == null
+                                  ? s.muted
+                                  : s.text)),
+                ]),
+              ),
+            ),
+          ),
+        ),
         const SizedBox(width: 6),
         IconButton(
           key: const ValueKey("speechRemove"),
@@ -1647,13 +1699,21 @@ class _SpeechDeviceState extends State<SpeechDevice> {
           Expanded(
             child:
                 Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              SizedBox(width: 190, child: voiceColumn),
-              divider(),
-              Expanded(child: scriptColumn),
-              divider(),
-              SizedBox(width: 300, child: linePanel()),
-              divider(),
-              SizedBox(width: 200, child: feelColumn),
+              if (phrasingOn) ...[
+                Expanded(child: PhrasingLanes(controller: c)),
+                divider(),
+                SizedBox(width: 300, child: linePanel()),
+                divider(),
+                SizedBox(width: 200, child: PhrasingWordPanel(controller: c)),
+              ] else ...[
+                SizedBox(width: 190, child: voiceColumn),
+                divider(),
+                Expanded(child: scriptColumn),
+                divider(),
+                SizedBox(width: 300, child: linePanel()),
+                divider(),
+                SizedBox(width: 200, child: feelColumn),
+              ],
             ]),
           ),
           const SizedBox(height: 7),

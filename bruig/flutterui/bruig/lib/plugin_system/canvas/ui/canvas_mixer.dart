@@ -26,7 +26,6 @@ import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/clip_editor.dart';
-import 'package:bruig/plugin_system/canvas/ui/phrasing_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/speech_device.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
@@ -809,8 +808,6 @@ class _CanvasMixerState extends State<CanvasMixer>
       var rollHere = controller.pianoRollShown &&
           controller.pianoRoll?.row == null &&
           controller.pianoRoll?.channel == key;
-      var phrasingHere =
-          controller.phrasingShown && controller.phrasing?.channel == key;
       var chain = <Widget>[
         if (clipHere)
           KeyedSubtree(
@@ -841,23 +838,6 @@ class _CanvasMixerState extends State<CanvasMixer>
               onClose: controller.closeEditor,
               onResize: (w) => controller.editorWidth = w.clamp(420.0, most),
               child: ClipEditor(controller: controller, wide: wide, part: true),
-            ),
-          ),
-        if (phrasingHere)
-          KeyedSubtree(
-            key: _deviceKey("phrasing"),
-            child: EditorFrame(
-              id: "phrasing",
-              title: "Phrasing · section ${controller.phrasing!.line + 1} · "
-                  "take ${String.fromCharCode(65 + controller.phrasing!.slot)}"
-                  "${lane?.mix.speech?.voiceName.isNotEmpty == true ? " · ${lane!.mix.speech!.voiceName}" : ""}",
-              width: editorWidth,
-              height: h,
-              wide: wide,
-              onWide: controller.toggleEditorWide,
-              onClose: controller.closeEditor,
-              onResize: (w) => controller.editorWidth = w.clamp(420.0, most),
-              child: PhrasingEditor(controller: controller),
             ),
           ),
         // A return's own devices first -- its reverb, its delay -- then a

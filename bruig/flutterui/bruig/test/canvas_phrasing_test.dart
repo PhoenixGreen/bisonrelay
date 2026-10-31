@@ -12,7 +12,10 @@ import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/phrasing_editor.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -189,11 +192,14 @@ void main() {
   group("on a channel", () {
     late Future<Float32List?> Function(String) audioWas;
     late Future<String?> Function(Uint8List) storeWas;
+    late Future<String?> Function(String) pathWas;
+    late FakeEngine engine;
     var sounds = <String, Float32List>{};
 
     setUp(() {
       audioWas = CanvasController.takeAudio;
       storeWas = CanvasController.speechTakeStore;
+      pathWas = CanvasController.takePath;
       sounds = {"spoken.wav": _voice(_words, 2.4)};
       CanvasController.takeAudio = (id) async => sounds[id];
       var made = 0;
@@ -213,6 +219,7 @@ void main() {
     tearDown(() {
       CanvasController.takeAudio = audioWas;
       CanvasController.speechTakeStore = storeWas;
+      CanvasController.takePath = pathWas;
     });
 
     CanvasController make() {
@@ -223,7 +230,7 @@ void main() {
                     playlist: [MediaSource(assetId: "t", length: 2)],
                     timed: true)),
           ]),
-          audioEngine: FakeEngine({"t": 2}));
+          audioEngine: engine = FakeEngine({"t": 2, "spoken.wav": 2.4}));
       c.setSpeech(
           "a",
           SpeechSpec(voice: "v1", script: "one two three.", lines: [
@@ -237,7 +244,7 @@ void main() {
       var c = make();
       addTearDown(c.dispose);
       c.openPhrasing("a", 0, 0);
-      expect(c.phrasingShown, isTrue);
+      expect(c.phrasing, (channel: "a", line: 0, slot: 0));
       // Read in the background.
       for (var i = 0; i < 50 && c.readingOf(c.phrasingTake!) == null; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
@@ -264,14 +271,17 @@ void main() {
       c.resetPhrasing();
       expect(c.phrasingTake!.shaped, isFalse);
       expect((await c.shapedTake("a", 0, 0))!.assetId, "spoken.wav");
-      c.closeEditor();
-      expect(c.phrasingShown, isFalse);
+      c.closePhrasing();
+      expect(c.phrasing, isNull);
     });
 
     for (var scale in [1.0, 1.25, 1.5]) {
-      testWidgets("the panel: picked, dragged, set -- at ${scale}x text",
+      testWidgets(
+          "in the device: picked, dragged, zoomed, heard -- at ${scale}x",
           (tester) async {
         var c = make();
+        CanvasController.takePath = (id) async => "/kept/$id";
+        c.openEffects("a");
         tester.view.physicalSize = const Size(1600, 900);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
@@ -295,56 +305,128 @@ void main() {
                             children: [
                               CanvasMixer.effects(
                                   controller: c,
-                                  height: 340,
+                                  height: 380,
                                   onResize: (_) {},
                                   onClose: () {}),
                             ]))),
           )),
         ));
-        await tester.runAsync(() async => c.openPhrasing("a", 0, 0));
+        for (var i = 0; i < 20; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        // Phrasing, from the header: in place of the sections.
+        expect(find.byKey(const ValueKey("speechLine-0")), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey("speechPhrasing")));
+        await tester.pump();
+        expect(c.phrasing, (channel: "a", line: 0, slot: 0));
         for (var i = 0; i < 40 && c.readingOf(c.phrasingTake!) == null; i++) {
           await tester.runAsync(
               () => Future<void>.delayed(const Duration(milliseconds: 20)));
         }
-        for (var i = 0; i < 10; i++) {
+        for (var i = 0; i < 5; i++) {
           await tester.pump(const Duration(milliseconds: 100));
         }
-        expect(find.byKey(const ValueKey("device-phrasing")), findsOneWidget);
-        expect(find.textContaining("Phrasing · section 1 · take A"),
-            findsOneWidget);
+        expect(find.byKey(const ValueKey("speechLine-0")), findsNothing);
+        expect(find.byType(PhrasingLanes), findsOneWidget);
+        expect(find.byType(PhrasingWordPanel), findsOneWidget);
+        expect(find.byKey(const ValueKey("speechHear")), findsOneWidget,
+            reason: "the section's slots and Hear still in view");
         expect(tester.takeException(), isNull, reason: "nothing overflows");
+        Finder word(int i) => find.byKey(ValueKey("phrasingWord-$i"));
         // A word picked, then dragged up: its pitch, by the half semitone.
-        await tester.tap(find.byKey(const ValueKey("phrasingWord-1")));
+        await tester.tap(word(1));
         await tester.pump();
+        expect(c.phrasingPicked, {1});
+        await tester.drag(word(1), const Offset(0, -40));
+        await tester.pump();
+        var up = c.phrasingTake!.shapeOf(1).pitch;
+        expect(up, greaterThan(0));
+        expect((up * 2) % 1, 0, reason: "by the half semitone");
+        c.undo();
+        expect(c.phrasingTake!.shapeOf(1).pitch, 0, reason: "one undo");
+        // Shift-clicked, another word with it: dragged together.
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.tap(word(2));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.pump();
+        expect(c.phrasingPicked, {2, 1});
         expect(
             tester
                 .widget<Text>(find.byKey(const ValueKey("phrasingPicked")))
                 .data,
-            "“two”");
-        await tester.drag(
-            find.byKey(const ValueKey("phrasingWord-1")), const Offset(0, -60));
+            "2 words");
+        await tester.drag(word(1), const Offset(0, -40));
         await tester.pump();
-        var up = c.phrasingTake!.shapeOf(1).pitch;
-        expect(up, greaterThan(1));
-        expect((up * 2) % 1, 0, reason: "by the half semitone");
-        // One drag, one undo.
-        c.undo();
-        expect(c.phrasingTake!.shapeOf(1).pitch, 0);
-        // Its edge along: drawn out.
-        await tester.drag(
-            find.byKey(const ValueKey("phrasingEdge-1")), const Offset(40, 0));
-        await tester.pump();
-        expect(c.phrasingTake!.shapeOf(1).length, greaterThan(1));
-        // Stressed, and reset.
+        expect(
+            c.phrasingTake!.shapeOf(2).pitch, c.phrasingTake!.shapeOf(1).pitch);
+        expect(c.phrasingTake!.shapeOf(2).pitch, greaterThan(0));
+        expect(c.phrasingTake!.shapeOf(0).pitch, 0);
+        // Stressed together, and reset together.
         await tester
             .ensureVisible(find.byKey(const ValueKey("phrasingStress")));
         await tester.pump();
         await tester.tap(find.byKey(const ValueKey("phrasingStress")));
         await tester.pump();
         expect(c.phrasingTake!.shapeOf(1).loudness, 3);
+        expect(c.phrasingTake!.shapeOf(2).loudness, 3);
         await tester.tap(find.byKey(const ValueKey("phrasingResetWord")));
         await tester.pump();
-        expect(c.phrasingTake!.shapeOf(1).isPlain, isTrue);
+        expect(c.phrasingTake!.shaped, isFalse);
+        // A box dragged round the first two words picks them.
+        await tester.ensureVisible(word(0));
+        await tester.pump();
+        var a = tester.getTopLeft(word(0)) + const Offset(2, -6);
+        var b = tester.getBottomRight(word(1)) + const Offset(2, 2);
+        await tester.dragFrom(a, b - a, kind: PointerDeviceKind.mouse);
+        await tester.pump();
+        expect(c.phrasingPicked, {0, 1});
+        // Zoomed in on the time, a word is wider; on the pitch, further
+        // from a word a semitone off.
+        c.shapeWords({2: const WordShape(pitch: 3)});
+        await tester
+            .ensureVisible(find.byKey(const ValueKey("phrasingTimeIn")));
+        await tester.pump();
+        var wide = tester.getSize(word(1)).width;
+        double apart() =>
+            tester.getTopLeft(word(1)).dy - tester.getTopLeft(word(2)).dy;
+        var was = apart();
+        await tester.tap(find.byKey(const ValueKey("phrasingTimeIn")));
+        await tester.pump();
+        await tester.pump();
+        expect(tester.getSize(word(1)).width, greaterThan(wide * 1.3));
+        await tester.tap(find.byKey(const ValueKey("phrasingPitchIn")));
+        await tester.pump();
+        await tester.pump();
+        expect(apart(), greaterThan(was * 1.3));
+        await tester.tap(find.byKey(const ValueKey("phrasingFit")));
+        await tester.pump();
+        // The playhead put on the ruler, and heard from there.
+        var ruler = tester.getRect(find.byKey(const ValueKey("phrasingRuler")));
+        var x1 = tester.getCenter(word(1)).dx;
+        await tester.tapAt(Offset(x1, ruler.center.dy));
+        await tester.pump();
+        expect(
+            tester.getCenter(find.byKey(const ValueKey("phrasingPlayhead"))).dx,
+            closeTo(x1, 4));
+        await tester.runAsync(() async {
+          await c.hearSlot("a", 0, 0, spoken: true);
+          c.stopHearing();
+        });
+        await tester.tap(find.byKey(const ValueKey("phrasingHearSpoken")));
+        for (var i = 0; i < 5; i++) {
+          await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 10)));
+          await tester.pump();
+        }
+        var at = engine.voices.last.at;
+        expect(at, closeTo((_words[1].start + _words[1].end) / 2, 0.05),
+            reason: "from the playhead, the middle of the second word");
+        c.stopHearing();
+        // Back to the sections.
+        await tester.tap(find.byKey(const ValueKey("speechPhrasing")));
+        await tester.pump();
+        expect(c.phrasing, isNull);
+        expect(find.byKey(const ValueKey("speechLine-0")), findsOneWidget);
         expect(tester.takeException(), isNull);
         await tester.pump(const Duration(milliseconds: 500));
         await tester.pumpWidget(const SizedBox());
