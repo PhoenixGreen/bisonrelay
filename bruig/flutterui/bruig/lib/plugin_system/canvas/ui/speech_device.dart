@@ -565,6 +565,37 @@ class _SpeechDeviceState extends State<SpeechDevice> {
       if (spoken > 0 && !busy) _run(() => c.joinSpeech(widget.channel));
     }
 
+    // A voice heard saying a line, in the device's feel: playing, it
+    // stops; being spoken for it, it says so.
+    Widget previewButton(String voice) {
+      var heard = c.speechHeard == "voice:$voice";
+      var speaking = c.speechPreviewing == voice;
+      return Tooltip(
+        message:
+            heard ? "Stop" : "Hear it say a line, as this device's feel has it",
+        child: InkWell(
+          key: ValueKey("speechPreview-$voice"),
+          borderRadius: BorderRadius.circular(12),
+          onTap: needsVoices || (c.speechPreviewing != null && !speaking)
+              ? null
+              : () => _run(() =>
+                  c.previewVoice(widget.channel, voice, cloudKey: _cloudKey)),
+          child: SizedBox.square(
+            dimension: 24,
+            child: Center(
+              child: speaking
+                  ? SizedBox.square(
+                      dimension: 12,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: s.muted))
+                  : Icon(heard ? Icons.stop : Icons.play_arrow,
+                      size: 16, color: heard ? s.on : s.muted),
+            ),
+          ),
+        ),
+      );
+    }
+
     // ---- The voices
     var voiceColumn = FutureBuilder<List<SpeechVoice>>(
       future: _voicesOf(spec),
@@ -663,25 +694,32 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                       onTap: () =>
                           _set(spec.copyWith(voice: v.id, voiceName: v.name)),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 4),
-                        child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(v.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: k.text(12,
-                                      weight: FontWeight.w600,
-                                      colour: v.id == picked
-                                          ? s.text
-                                          : s.text.withValues(alpha: 0.9))),
-                              if (v.about.isNotEmpty)
-                                Text(v.about,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: k.text(10, colour: s.muted)),
-                            ]),
+                        padding: const EdgeInsets.only(
+                            left: 7, right: 2, top: 4, bottom: 4),
+                        child: Row(children: [
+                          Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(v.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: k.text(12,
+                                          weight: FontWeight.w600,
+                                          colour: v.id == picked
+                                              ? s.text
+                                              : s.text.withValues(alpha: 0.9))),
+                                  if (v.about.isNotEmpty)
+                                    Text(v.about,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: k.text(10, colour: s.muted)),
+                                ]),
+                          ),
+                          // Heard before it is picked: our own voices only,
+                          // as a preview from ElevenLabs costs the reader.
+                          if (!cloud) previewButton(v.id),
+                        ]),
                       ),
                     ),
                   ),
@@ -951,7 +989,24 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        k.label("Line ${_line + 1} · how it is said"),
+                        Row(children: [
+                          Expanded(
+                              child: k
+                                  .label("Line ${_line + 1} · how it is said")),
+                          // Each take heard on its own, to choose between.
+                          for (var (t, take) in l.takes.indexed)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 3),
+                              child: k.chip(
+                                  String.fromCharCode(65 + t),
+                                  c.speechHeard == take.assetId,
+                                  () => _run(() => c.hearTake(take.assetId)),
+                                  key: ValueKey("speechHear-$t"),
+                                  icon: c.speechHeard == take.assetId
+                                      ? Icons.stop
+                                      : Icons.play_arrow),
+                            ),
+                        ]),
                         const SizedBox(height: 4),
                         Wrap(spacing: 4, runSpacing: 4, children: [
                           for (var d in SpeechDirection.values)
@@ -1167,6 +1222,29 @@ class _SpeechDeviceState extends State<SpeechDevice> {
             k.chip("Custom", spec.preset == "custom", null,
                 key: const ValueKey("speechPreset-custom")),
           ]),
+          if (!cloud && !needsVoices) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: k.button(
+                  c.speechHeard == "voice:$picked"
+                      ? "Stop"
+                      : c.speechPreviewing == picked
+                          ? "Speaking…"
+                          : "Hear this feel",
+                  c.speechPreviewing != null
+                      ? null
+                      : () => _run(() => c.previewVoice(widget.channel, picked,
+                          cloudKey: _cloudKey)),
+                  key: const ValueKey("speechHearFeel"),
+                  icon: c.speechHeard == "voice:$picked"
+                      ? Icons.stop
+                      : Icons.play_arrow,
+                  small: true,
+                  tip: "The voice picked saying a line, as the sliders have "
+                      "it: move one, and hear it again"),
+            ),
+          ],
           const SizedBox(height: 8),
           k.section("Performance · how it is spoken"),
           const SizedBox(height: 4),

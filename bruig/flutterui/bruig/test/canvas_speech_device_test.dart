@@ -563,6 +563,67 @@ esac
       }
     });
 
+    group("heard on its own", () {
+      late Future<String?> Function(String) pathWas;
+      late FakeEngine engine;
+      setUp(() {
+        pathWas = CanvasController.takePath;
+        CanvasController.takePath = (id) async => "/takes/$id";
+      });
+      tearDown(() => CanvasController.takePath = pathWas);
+
+      CanvasController hearing() {
+        engine = FakeEngine({"t": 2, "take1.wav": 2, "voice-0.wav": 1.5});
+        return CanvasController(
+            CanvasDocument(frames: 200, frameRate: 25, elements: [
+              AudioElement(const ElementBase(id: "a", name: "Narrator"),
+                  clip: const MediaClip(
+                      playlist: [MediaSource(assetId: "t", length: 2)],
+                      timed: true)),
+            ]),
+            audioEngine: engine);
+      }
+
+      test("a take, played and stopped, outside the mix", () async {
+        var c = hearing();
+        addTearDown(c.dispose);
+        expect(await c.hearTake("take1.wav"), isNull);
+        expect(c.speechHeard, "take1.wav");
+        var voice = engine.last;
+        expect(voice.alive, isTrue);
+        expect(engine.onChannel[voice], isNull,
+            reason: "not through a channel");
+        // Pressed again, it stops.
+        expect(await c.hearTake("take1.wav"), isNull);
+        expect(c.speechHeard, isNull);
+        expect(voice.alive, isFalse);
+        expect(await c.hearTake("gone.wav"), contains("could not be played"));
+      });
+
+      test("a voice previewed in the device's feel, spoken once", () async {
+        var c = hearing();
+        addTearDown(c.dispose);
+        c.setSpeech("a", const SpeechSpec(voice: "v2", room: 0.4));
+        expect(await c.previewVoice("a", "v1"), isNull);
+        expect(stub.spoken.single.voice, "v1", reason: "the voice asked for");
+        expect(stub.spoken.single.script, CanvasController.speechSample);
+        expect(c.speechHeard, "voice:v1");
+        expect(c.speechOf("a")!.voice, "v2", reason: "not picked by hearing");
+        expect(listed, isEmpty, reason: "nothing kept in the library");
+        // Again: stopped; and again: heard, not spoken again.
+        await c.previewVoice("a", "v1");
+        expect(c.speechHeard, isNull);
+        await c.previewVoice("a", "v1");
+        expect(c.speechHeard, "voice:v1");
+        expect(stub.spoken, hasLength(1));
+        // Another feel is another preview.
+        c.setSpeech("a", c.speechOf("a")!.copyWith(room: 0));
+        c.stopHearing();
+        await c.previewVoice("a", "v1");
+        expect(stub.spoken, hasLength(2));
+      });
+    });
+
     test("lines joined and split by hand, the script written from them", () {
       var c = make();
       addTearDown(c.dispose);

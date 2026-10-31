@@ -9496,6 +9496,127 @@ class CanvasController extends ChangeNotifier {
     }
   }
 
+  // ---- Hearing a take, or a voice, on its own
+
+  /// speechHeard is what is being heard on its own, outside the mix: a
+  /// take's asset id, or "voice:" and the voice previewed -- null for
+  /// nothing. speechPreviewing is the voice being spoken for its preview.
+  String? get speechHeard => _speechHeard;
+  String? _speechHeard;
+  String? speechPreviewing;
+  AudioTrack? _heardTrack;
+  AudioVoice? _heardVoice;
+  Timer? _heardWatch;
+
+  /// takePath is where a stored take's file is: a stand-in for tests.
+  @visibleForTesting
+  static Future<String?> Function(String assetId) takePath =
+      (id) => CanvasMedia.existingPath(MediaKind.audio, id);
+
+  /// hearTake plays take [assetId] on its own -- or, playing, stops it.
+  /// Answers why not, where it could not.
+  Future<String?> hearTake(String assetId) async {
+    if (_speechHeard == assetId) {
+      stopHearing();
+      return null;
+    }
+    var file = await takePath(assetId);
+    if (file == null) return "The take's file could not be found.";
+    return _hear(file, assetId);
+  }
+
+  Future<String?> _hear(String file, String what) async {
+    stopHearing();
+    var engine = audio.engine;
+    if (!await engine.start()) return "There is no sound to play it on.";
+    var track = await engine.open(file);
+    if (track == null || _disposed) return "It could not be played.";
+    _heardTrack = track;
+    _heardVoice = engine.play(track, volume: 1);
+    _speechHeard = what;
+    _heardWatch = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      var v = _heardVoice;
+      if (v == null || !engine.alive(v)) stopHearing();
+    });
+    notifyListeners();
+    return null;
+  }
+
+  /// stopHearing stops what is being heard on its own.
+  void stopHearing() {
+    _heardWatch?.cancel();
+    _heardWatch = null;
+    var voice = _heardVoice, track = _heardTrack;
+    _heardVoice = null;
+    _heardTrack = null;
+    if (voice != null) audio.engine.stop(voice);
+    if (track != null) audio.engine.close(track);
+    if (_speechHeard != null) {
+      _speechHeard = null;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  /// speechSample is what a voice says for its preview.
+  static const speechSample = "Good evening, everyone. I have some news for you.";
+
+  /// _previews are the voices previewed, by everything that changes how they
+  /// sound, each its file: heard again at once.
+  final Map<String, String> _previews = {};
+  Directory? _previewDir;
+
+  /// previewVoice speaks speechSample in [voice] -- channel [channel]'s
+  /// device's engine, language and feel, its finish too -- and plays it; or,
+  /// playing, stops it. Not kept: nothing is added to the library.
+  Future<String?> previewVoice(String channel, String voice,
+      {String cloudKey = ""}) async {
+    var what = "voice:$voice";
+    if (_speechHeard == what) {
+      stopHearing();
+      return null;
+    }
+    var now = speechOf(channel);
+    if (now == null || speechPreviewing != null) return null;
+    var spec = now.copyWith(voice: voice);
+    var key = [
+      spec.engine.name,
+      voice,
+      spec.language,
+      spec.speed.toStringAsFixed(2),
+      spec.steadiness.toStringAsFixed(2),
+      spec.expression.toStringAsFixed(2),
+      spec.room.toStringAsFixed(2),
+      spec.boost,
+    ].join("|");
+    var file = _previews[key];
+    if (file == null || !await File(file).exists()) {
+      speechPreviewing = voice;
+      notifyListeners();
+      try {
+        var said = await speechEngineFor(spec, cloudKey)
+            .speakLine(spec, const SpeechLine(speechSample));
+        var finished = await _joinAway([said.l], [
+          SpeechTake("", said.seconds, said.words, exact: said.exact)
+        ], spec.speed, room: spec.room, boost: spec.boost);
+        if (_disposed) return null;
+        _previewDir ??= await Directory.systemTemp.createTemp("canvas-voices");
+        file = path.join(_previewDir!.path, "voice-${_previews.length}.wav");
+        await File(file).writeAsBytes(finished.wav, flush: true);
+        _previews[key] = file;
+      } on SpeechException catch (e) {
+        return e.message;
+      } catch (e) {
+        debugPrint("Unable to preview a voice: $e");
+        return "The voice could not speak: $e";
+      } finally {
+        speechPreviewing = null;
+        if (!_disposed) notifyListeners();
+      }
+    }
+    if (_disposed) return null;
+    return _hear(file, what);
+  }
+
   // ---- MIDI files from the library
 
   /// midiNotesOf reads stored MIDI file [assetId]'s notes, in seconds -- or
@@ -13310,6 +13431,8 @@ class CanvasController extends ChangeNotifier {
   @override
   void dispose() {
     _endWait();
+    _heardWatch?.cancel();
+    _previewDir?.delete(recursive: true).catchError((_) => _previewDir!);
     _disposed = true;
     _partTimer?.cancel();
     _warpTimer?.cancel();

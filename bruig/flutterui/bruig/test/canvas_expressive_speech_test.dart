@@ -458,6 +458,49 @@ cp "${dir.path}/line.wav" "\$out"
       await tester.pumpWidget(const SizedBox());
     });
 
+    testWidgets("heard before it is picked: our own voices, and each take",
+        (tester) async {
+      var c = make();
+      addTearDown(c.dispose);
+      tester.view.physicalSize = const Size(1000, 400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      QwenDownload.instance.ready = true;
+      var spec = const SpeechSpec(script: "One. Two.").withScript("One. Two.");
+      for (var engine in SpeechEngineKind.values) {
+        c.setSpeech(
+            "a",
+            spec.copyWith(engine: engine, lines: [
+              spec.lines.first.copyWith(takes: const [
+                SpeechTake("x.wav", 1, []),
+                SpeechTake("y.wav", 1, []),
+              ], chosen: 1),
+              spec.lines.last,
+            ]));
+        for (var scale in [1.0, 1.5]) {
+          await show(tester, c, scale: scale);
+          await tester.pump();
+          var why = "$engine at ${scale}x";
+          expect(tester.takeException(), isNull, reason: why);
+          var cloud = engine == SpeechEngineKind.cloud;
+          expect(find.byKey(const ValueKey("speechPreview-v1")),
+              cloud ? findsNothing : findsOneWidget,
+              reason: "a preview from ElevenLabs costs: $why");
+          expect(find.byKey(const ValueKey("speechHearFeel")),
+              cloud ? findsNothing : findsOneWidget,
+              reason: why);
+          // The first line, picked: its two takes, each to hear.
+          expect(find.byKey(const ValueKey("speechHear-0")), findsOneWidget,
+              reason: why);
+          expect(find.byKey(const ValueKey("speechHear-1")), findsOneWidget,
+              reason: why);
+          expect(find.byKey(const ValueKey("speechHear-2")), findsNothing,
+              reason: why);
+        }
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets("every engine, every text size: nothing overflows",
         (tester) async {
       var c = make();
