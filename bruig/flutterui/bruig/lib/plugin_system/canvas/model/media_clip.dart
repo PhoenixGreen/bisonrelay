@@ -252,12 +252,11 @@ class MediaClip {
         ],
         // Its channel's Speech takes: the Vocaliser sings the latest, even
         // where its clip has been taken off the timeline.
-        for (var t in mix.speech?.takes ?? const <SpeechTake>[])
-          if (t.assetId.isNotEmpty) t.assetId,
-        // And each line's takes, which the clip is joined from again.
+        for (var t in mix.speech?.takes ?? const <SpeechTake>[]) ...t.ids,
+        // And each line's takes, which the clip is joined from again -- the
+        // take as spoken with each shaped one, which it is made from.
         for (var l in mix.speech?.lines ?? const <SpeechLine>[])
-          for (var t in l.takes)
-            if (t.assetId.isNotEmpty) t.assetId,
+          for (var t in l.takes) ...t.ids,
       };
 
   /// posterIds is the stills a video's files carry, which are pictures and

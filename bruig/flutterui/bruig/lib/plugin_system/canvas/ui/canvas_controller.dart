@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/automation.dart';
 import 'package:bruig/plugin_system/canvas/model/session.dart';
+import 'package:bruig/plugin_system/canvas/media/phrasing.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/media/kokoro_speech.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_engines.dart';
@@ -9426,10 +9427,161 @@ class CanvasController extends ChangeNotifier {
     endInteraction();
   }
 
+  // ---- Phrasing: a take's words shaped after it is spoken
+
+  /// phrasing is the take the Phrasing panel is open on: a channel's
+  /// section, and its slot.
+  ({String channel, int line, int slot})? get phrasing => _phrasing;
+  ({String channel, int line, int slot})? _phrasing;
+  bool _phrasingShown = false;
+
+  /// phrasingShown is whether the Phrasing panel shows in the effects
+  /// strip, as the clip editor does: on a take that is still there.
+  bool get phrasingShown => _phrasingShown && phrasingTake != null;
+
+  /// phrasingTake is the take the Phrasing panel is open on, as it is now.
+  SpeechTake? get phrasingTake {
+    var p = _phrasing;
+    return p == null ? null : _slotTake(p.channel, p.line, p.slot)?.$3;
+  }
+
+  /// openPhrasing opens the Phrasing panel on slot [slot] of [channel]'s
+  /// section [line], in the effects strip, and reads the take as spoken.
+  void openPhrasing(String channel, int line, int slot) {
+    if (_slotTake(channel, line, slot) == null) return;
+    _phrasing = (channel: channel, line: line, slot: slot);
+    _effectsOf = channel;
+    _effectsOpen = true;
+    _clipEditorShown = false;
+    _pianoRollShown = false;
+    _phrasingShown = true;
+    _effectsFocus = "phrasing";
+    _effectsFocusCount++;
+    notifyListeners();
+    unawaited(_readSpoken(phrasingTake!.asSpoken));
+  }
+
+  /// readingOf is what was heard of [take] as spoken -- its pitch, each
+  /// word's loudness -- or null until it has been read.
+  TakeReading? readingOf(SpeechTake take) => _readings[take.asSpoken.assetId];
+  final Map<String, TakeReading> _readings = {};
+
+  /// _readSpoken reads [spoken] -- a take as the voice spoke it -- once:
+  /// its sound, or null where its file could not be.
+  Future<Float32List?> _readSpoken(SpeechTake spoken) async {
+    var pcm = await takeAudio(spoken.assetId);
+    if (pcm == null || _disposed) return pcm;
+    if (!_readings.containsKey(spoken.assetId)) {
+      var words = spoken.words;
+      _readings[spoken.assetId] = await Isolate.run(() => readTake(pcm, words));
+      if (!_disposed) notifyListeners();
+    }
+    return pcm;
+  }
+
+  /// shapeWord shapes word [word] of the take the Phrasing panel is open
+  /// on -- [transient], part of a drag that ends with one change to undo.
+  /// Its sound is made again a moment after the last change.
+  void shapeWord(int word, WordShape shape, {bool transient = false}) {
+    var p = _phrasing;
+    var take = phrasingTake;
+    if (p == null || take == null) return;
+    var shapes = [
+      for (var i = 0; i < take.asSpoken.words.length; i++) take.shapeOf(i)
+    ];
+    if (word < 0 || word >= shapes.length) return;
+    shapes[word] = shape;
+    _setSlot(p.channel, p.line, p.slot, take.withShapes(shapes),
+        transient: transient);
+    if (!transient) _shapeSoon();
+  }
+
+  /// resetPhrasing puts every word of the take back as it was spoken: one
+  /// change to undo.
+  void resetPhrasing() {
+    var p = _phrasing;
+    var take = phrasingTake;
+    if (p == null || take == null || !take.shaped) return;
+    _setSlot(p.channel, p.line, p.slot, take.withShapes(const []),
+        transient: false);
+    _shapeSoon();
+  }
+
+  Timer? _shapeTimer;
+
+  /// _shapeSoon makes the open take's sound again, a moment after the last
+  /// change: ready to hear by the time it is asked for.
+  void _shapeSoon() {
+    _shapeTimer?.cancel();
+    _shapeTimer = Timer(const Duration(milliseconds: 300), () {
+      var p = _phrasing;
+      if (p != null) unawaited(shapedTake(p.channel, p.line, p.slot));
+    });
+  }
+
+  final Map<String, Future<SpeechTake?>> _shaping = {};
+
+  /// shapedTake is slot [slot]'s take of [channel]'s section [index], its
+  /// sound made from its shapes first where it is not yet -- what is
+  /// heard, saved, put on the timeline or joined.
+  Future<SpeechTake?> shapedTake(String channel, int index, int slot) async {
+    var key = "$channel/$index/$slot";
+    for (var running = _shaping[key];
+        running != null;
+        running = _shaping[key]) {
+      await running;
+    }
+    var take = _slotTake(channel, index, slot)?.$3;
+    if (take == null || !take.needsShaping) return take;
+    var job = _shapeTake(channel, index, slot, take);
+    _shaping[key] = job;
+    try {
+      return await job;
+    } finally {
+      _shaping.remove(key);
+    }
+  }
+
+  Future<SpeechTake?> _shapeTake(
+      String channel, int index, int slot, SpeechTake take) async {
+    var spoken = take.asSpoken;
+    SpeechTake? made;
+    if (!take.shaped) {
+      made = spoken;
+    } else {
+      var pcm = await _readSpoken(spoken);
+      var reading = _readings[spoken.assetId];
+      if (pcm == null || reading == null || _disposed) return take;
+      var words = spoken.words, shapes = take.shapes;
+      var shaped =
+          await Isolate.run(() => shapeTake(pcm, words, shapes, reading));
+      var id = await speechTakeStore(wav16(shaped.sound, shaped.sound));
+      if (id == null || _disposed) return take;
+      made = take.madeAs(id, shaped.sound.length / mixRate, shaped.words);
+    }
+    // Shaped again meanwhile: that is made next.
+    var now = _slotTake(channel, index, slot)?.$3;
+    if (now == null || now.shapesKey != take.shapesKey) return now;
+    _setSlot(channel, index, slot, made);
+    return made;
+  }
+
+  /// hearSlot plays slot [slot]'s take of [channel]'s section [index] --
+  /// shaped, or, [spoken], as the voice spoke it -- or, playing, stops it.
+  Future<String?> hearSlot(String channel, int index, int slot,
+      {bool spoken = false}) async {
+    var take = spoken
+        ? _slotTake(channel, index, slot)?.$3.asSpoken
+        : await shapedTake(channel, index, slot);
+    if (take == null) return null;
+    return hearTake(take.assetId);
+  }
+
   /// saveTake puts slot [slot]'s take of line [index] in the Audio library,
   /// answering it saved -- or why not.
   Future<(SpeechTake?, String?)> saveTake(
       String channel, int index, int slot) async {
+    await shapedTake(channel, index, slot);
     var found = _slotTake(channel, index, slot);
     if (found == null) return (null, null);
     var (spec, line, take) = found;
@@ -9585,6 +9737,12 @@ class CanvasController extends ChangeNotifier {
     if (spec == null || !joining.add(channel)) return null;
     notifyListeners();
     try {
+      // Each take as it is shaped.
+      for (var (i, l) in spec.lines.indexed) {
+        if (l.take != null) await shapedTake(channel, i, l.chosen);
+      }
+      spec = speechOf(channel);
+      if (spec == null) return null;
       var takes = [
         for (var l in spec.lines)
           if (l.take case var t?) t
@@ -11033,7 +11191,11 @@ class CanvasController extends ChangeNotifier {
   void toggleEditorWide() {
     _editorWide = !_editorWide;
     _editorWidth = null;
-    _effectsFocus = _clipEditorShown ? "clip" : "roll";
+    _effectsFocus = _phrasingShown
+        ? "phrasing"
+        : _clipEditorShown
+            ? "clip"
+            : "roll";
     _effectsFocusCount++;
     notifyListeners();
   }
@@ -11052,6 +11214,7 @@ class CanvasController extends ChangeNotifier {
   void closeEditor() {
     _clipEditorShown = false;
     _pianoRollShown = false;
+    _phrasingShown = false;
     notifyListeners();
   }
 
@@ -11098,6 +11261,7 @@ class CanvasController extends ChangeNotifier {
     _effectsOf = channel;
     _effectsOpen = true;
     _pianoRollShown = false;
+    _phrasingShown = false;
     _clipEditorShown = true;
     // First in the strip: scrolled to.
     _effectsFocus = "clip";
@@ -11564,6 +11728,7 @@ class CanvasController extends ChangeNotifier {
     _effectsOpen = true;
     _pianoRollShown = true;
     _clipEditorShown = false;
+    _phrasingShown = false;
     _effectsFocus = "roll";
     _effectsFocusCount++;
     rollSelected.clear();

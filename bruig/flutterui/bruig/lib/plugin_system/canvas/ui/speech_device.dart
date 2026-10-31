@@ -40,13 +40,13 @@ const _cueIcons = {
   SpeechCue.slow: Icons.slow_motion_video,
 };
 
-/// _Kit is what the Speech device is drawn with: the studio palette's
+/// SpeechKit is what the Speech device is drawn with: the studio palette's
 /// text, boxes, buttons, chips and dropdowns, each the same everywhere in
 /// it.
-class _Kit {
+class SpeechKit {
   final StudioColors s;
   final ColorScheme scheme;
-  const _Kit(this.s, this.scheme);
+  const SpeechKit(this.s, this.scheme);
 
   TextStyle text(double size,
           {FontWeight? weight, Color? colour, double? height}) =>
@@ -459,7 +459,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
   /// voices are here: how big they are, and the button to fetch them -- or
   /// how far they have got.
   Widget _downloadPanel(
-      PinnedDownload voices, SpeechEngineKind engine, _Kit k) {
+      PinnedDownload voices, SpeechEngineKind engine, SpeechKit k) {
     var expressive = engine == SpeechEngineKind.expressive;
     var whole = expressive ? qwenBytes : kokoroBytes;
     return SingleChildScrollView(
@@ -566,7 +566,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
     }
     var look = MixerLook.of(context);
     var skin = DeviceSkin.themed(look.colors);
-    var k = _Kit(look.studio, look.colors);
+    var k = SpeechKit(look.studio, look.colors);
     var s = look.studio;
     var engine = spec.engine;
     var expressive = engine == SpeechEngineKind.expressive;
@@ -1102,6 +1102,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                               child: Text(
                                   "Take $letter · "
                                   "${selTake.length.toStringAsFixed(1)} s"
+                                  "${selTake.shaped ? " · shaped" : ""}"
                                   "${selTake.saved ? " · in Audio" : ""}",
                                   style: k.text(10.5, colour: s.text)),
                             ),
@@ -1109,7 +1110,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                                 c.speechHeard == selTake.assetId
                                     ? "Stop"
                                     : "Hear",
-                                () => _run(() => c.hearTake(selTake.assetId)),
+                                () => _run(() =>
+                                    c.hearSlot(widget.channel, _line, sel)),
                                 key: const ValueKey("speechHear"),
                                 icon: c.speechHeard == selTake.assetId
                                     ? Icons.stop
@@ -1164,6 +1166,17 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                                 small: true,
                                 tip: "Speak it again into this slot, as it "
                                     "is said now"),
+                            k.button(
+                                "Phrasing",
+                                busy
+                                    ? null
+                                    : () => c.openPhrasing(
+                                        widget.channel, _line, sel),
+                                key: const ValueKey("speechPhrasing"),
+                                icon: Icons.graphic_eq,
+                                small: true,
+                                tip: "Shape its words: each one's pitch, "
+                                    "length and loudness"),
                           ]),
                         ],
                         const SizedBox(height: 6),

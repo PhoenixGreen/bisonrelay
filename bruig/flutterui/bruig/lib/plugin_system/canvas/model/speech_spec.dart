@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
@@ -453,6 +454,15 @@ class SpeechTake {
   final double length;
   final List<TimedWord> words;
 
+  /// spoken is the take as the voice spoke it, where it has been shaped
+  /// since -- see Phrasing -- and [shapes] each of its words' shapes, by
+  /// their place in spoken's words. Its own sound is spoken's shaped, as
+  /// [shapedAs] -- the shapes it was made with -- says; they differ for a
+  /// moment after a word is moved, until it is made again.
+  final SpeechTake? spoken;
+  final List<WordShape> shapes;
+  final String shapedAs;
+
   /// exact is whether the words' times are the engine's own, or heard by
   /// whisper, rather than estimated.
   final bool exact;
@@ -462,17 +472,73 @@ class SpeechTake {
   /// the canvas that has it -- see CanvasController.speechTakeStore.
   final bool saved;
   const SpeechTake(this.assetId, this.length, this.words,
-      {this.exact = false, this.saved = false});
+      {this.exact = false,
+      this.saved = false,
+      this.spoken,
+      this.shapes = const [],
+      this.shapedAs = ""});
 
   SpeechTake copyWith({String? assetId, bool? saved}) =>
       SpeechTake(assetId ?? this.assetId, length, words,
-          exact: exact, saved: saved ?? this.saved);
+          exact: exact,
+          saved: saved ?? this.saved,
+          spoken: spoken,
+          shapes: shapes,
+          shapedAs: shapedAs);
+
+  /// asSpoken is the take as the voice spoke it: itself, never shaped.
+  SpeechTake get asSpoken => spoken ?? this;
+
+  /// shapeOf is word [i]'s shape: plain, where it has none.
+  WordShape shapeOf(int i) =>
+      i >= 0 && i < shapes.length ? shapes[i] : WordShape.plain;
+
+  /// shaped is whether any of its words is.
+  bool get shaped => shapes.any((s) => !s.isPlain);
+
+  /// shapesKey is its shapes as [shapedAs] holds them.
+  String get shapesKey => shaped ? jsonEncode(shapes) : "";
+
+  /// needsShaping is whether its sound is not as its shapes say.
+  bool get needsShaping => shapesKey != shapedAs;
+
+  /// withShapes is it with [next] as its words' shapes, its sound as it was
+  /// until it is made again.
+  SpeechTake withShapes(List<WordShape> next) {
+    var from = asSpoken;
+    return SpeechTake(assetId, length, words,
+        exact: exact,
+        saved: saved,
+        spoken: from,
+        shapes: [
+          for (var i = 0; i < from.words.length; i++)
+            i < next.length ? next[i] : WordShape.plain
+        ],
+        shapedAs: shapedAs);
+  }
+
+  /// madeAs is it with its sound made from its shapes: [id], [length] long,
+  /// its words where [words] say -- or, with none shaped, as spoken.
+  SpeechTake madeAs(String id, double length, List<TimedWord> words) {
+    if (!shaped) return asSpoken;
+    return SpeechTake(id, length, words,
+        exact: exact, spoken: spoken, shapes: shapes, shapedAs: shapesKey);
+  }
+
+  /// ids are the stored sounds it needs: its own, and the take as spoken.
+  Set<String> get ids => {
+        if (assetId.isNotEmpty) assetId,
+        ...?spoken?.ids,
+      };
 
   Map<String, dynamic> toJson() => {
         "asset": assetId,
         "length": length,
         if (exact) "exact": true,
         if (saved) "saved": true,
+        if (spoken case var s?) "spoken": s.toJson(),
+        if (shaped) "shapes": [for (var w in shapes) w.toJson()],
+        if (shapedAs.isNotEmpty) "shapedAs": shapedAs,
         "words": [
           for (var w in words)
             [
@@ -502,8 +568,90 @@ class SpeechTake {
       ],
       exact: json["exact"] == true,
       saved: json["saved"] == true,
+      spoken: SpeechTake.fromJson(json["spoken"]),
+      shapes: [
+        if (json["shapes"] case List list)
+          for (var w in list) WordShape.fromJson(w),
+      ],
+      shapedAs: jsonString(json["shapedAs"], ""),
     );
   }
+}
+
+/// WordShape is how one word of a take is shaped after it was spoken --
+/// see phrasing.dart: moved in [pitch], in semitones; its rise and fall
+/// made more or less of, [inflection] times what it was; drawn out or
+/// hurried, [length] times as long; a [pause] after it, in seconds; and
+/// louder or quieter by [loudness] dB.
+class WordShape {
+  final double pitch, inflection, length, pause, loudness;
+  const WordShape(
+      {this.pitch = 0,
+      this.inflection = 1,
+      this.length = 1,
+      this.pause = 0,
+      this.loudness = 0});
+
+  static const plain = WordShape();
+
+  bool get isPlain =>
+      pitch == 0 &&
+      inflection == 1 &&
+      length == 1 &&
+      pause == 0 &&
+      loudness == 0;
+
+  /// copyWith is it changed, each kept within what still sounds like the
+  /// voice: six semitones either way, 0.7 to 1.4 times as long.
+  WordShape copyWith(
+          {double? pitch,
+          double? inflection,
+          double? length,
+          double? pause,
+          double? loudness}) =>
+      WordShape(
+        pitch: (pitch ?? this.pitch).clamp(-6.0, 6.0),
+        inflection: (inflection ?? this.inflection).clamp(0.0, 2.0),
+        length: (length ?? this.length).clamp(0.7, 1.4),
+        pause: (pause ?? this.pause).clamp(0.0, 0.8),
+        loudness: (loudness ?? this.loudness).clamp(-12.0, 6.0),
+      );
+
+  /// stressed is it stressed: a little higher, longer, louder, and more
+  /// rise and fall.
+  WordShape get stressed => copyWith(
+      pitch: pitch + 1.5,
+      length: length + 0.1,
+      loudness: loudness + 3,
+      inflection: inflection + 0.2);
+
+  List<double> toJson() => [
+        for (var v in [pitch, inflection, length, pause, loudness])
+          (v * 1000).round() / 1000
+      ];
+
+  static WordShape fromJson(Object? json) {
+    if (json is! List || json.length < 5) return plain;
+    double at(int i) => json[i] is num ? (json[i] as num).toDouble() : 0;
+    return const WordShape().copyWith(
+        pitch: at(0),
+        inflection: at(1),
+        length: at(2),
+        pause: at(3),
+        loudness: at(4));
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is WordShape &&
+      other.pitch == pitch &&
+      other.inflection == inflection &&
+      other.length == length &&
+      other.pause == pause &&
+      other.loudness == loudness;
+
+  @override
+  int get hashCode => Object.hash(pitch, inflection, length, pause, loudness);
 }
 
 /// SpeechSpec is the Speech device on a channel.
