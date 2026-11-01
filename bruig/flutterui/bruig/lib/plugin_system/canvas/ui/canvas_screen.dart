@@ -471,7 +471,13 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // Told after the first frame: notified during initState, a listener's
     // setState would land mid-build.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _controller.gameTabOpen = _panel == CanvasPanel.game;
+      if (!mounted) return;
+      _controller.gameTabOpen = _panel == CanvasPanel.game;
+      // A canvas opened from Files: put in the library, and opened here.
+      if (prefs.pendingOpen case (var folder, var name)) {
+        prefs.pendingOpen = null;
+        _open(folder, name);
+      }
     });
     // Returning to a page that was left on Design counts as having used it:
     // the reader chose that tab, even if it was last time.

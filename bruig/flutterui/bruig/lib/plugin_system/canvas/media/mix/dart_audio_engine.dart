@@ -182,9 +182,17 @@ class DartAudioEngine implements AudioEngine {
   double _load = 0;
   final Stopwatch _work = Stopwatch();
 
+  /// held is whether the mix is held still: nothing rendered, so every
+  /// voice -- a slot, a sound on the canvas, the music -- waits where it
+  /// is, its stops with it, until let go. A game paused (Ken: its sound
+  /// went on).
+  bool get held => _held;
+  bool _held = false;
+  set held(bool on) => _held = on;
+
   void _fill() {
     var stream = _stream;
-    if (stream == null) return;
+    if (stream == null || _held) return;
     if (core.voices.isEmpty) {
       if (_quiet > mixRate) return;
     } else {

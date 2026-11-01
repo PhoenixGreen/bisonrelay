@@ -78,7 +78,7 @@ export 'package:bruig/plugin_system/canvas/ui/game_embed.dart'
     show canvasMarkdownExtensions;
 // A canvas file played where Files previews one: see canvas_file_player.dart.
 export 'package:bruig/plugin_system/canvas/ui/canvas_file_player.dart'
-    show CanvasFilePlayer;
+    show CanvasFilePlayer, openCanvasFile;
 // The editing session and the empty document, so main() can provide one that
 // outlives the page. Nothing else outside this directory should need either.
 export 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart'

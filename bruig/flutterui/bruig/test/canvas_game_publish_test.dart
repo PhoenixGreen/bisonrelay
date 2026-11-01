@@ -181,4 +181,46 @@ void main() {
     expect(given, 1, reason: "the coin taken");
     expect(tester.takeException(), isNull);
   });
+
+  // Ken: Play again left the Game over up; the bar wanted its key hints to
+  // be pressed, not a Leave button beside them.
+  testWidgets("over, Play again plays again; the key hints are pressed",
+      (tester) async {
+    var doc = CanvasDocument(game: true, elements: [
+      _box("hero", 100, 600, 40, 60,
+          play: const PlaySpec(as: PlayAs.platformer)),
+      _box("flag", 100, 600, 40, 60,
+          play: const PlaySpec(
+              as: PlayAs.pickup, touched: GameEffect(does: GameDoes.stop))),
+    ]);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(home: GamePlayer(document: doc)),
+    ));
+    for (var i = 0; i < 5; i++) {
+      await tester
+          .runAsync(() => Future.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(find.text("Game over"), findsOneWidget, reason: "the flag ends it");
+    await tester.tap(find.text("Play again"));
+    await tester.pump();
+    expect(find.text("Game over"), findsNothing);
+    // The hints, pressed: pause, then go on.
+    expect(find.byKey(const ValueKey("gamePlayerLeave")), findsOneWidget);
+    expect(find.byType(OutlinedButton), findsNothing,
+        reason: "no Leave button");
+    await tester.tap(find.byKey(const ValueKey("gamePlayerPause")));
+    await tester.pump();
+    expect(find.text("Paused"), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("gamePlayerPause")));
+    await tester.pump();
+    expect(find.text("Paused"), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    expect(tester.takeException(), isNull);
+  });
 }

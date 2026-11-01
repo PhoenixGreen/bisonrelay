@@ -240,12 +240,19 @@ class _GamePlayerState extends State<GamePlayer> {
   bool _ended = false;
   int _reached = 0;
 
+  /// _starting is set while the game is being started: on its way it
+  /// moves the playhead, and is not a game yet -- which, followed, read as
+  /// a game over, and Play again put the Game over straight back (Ken).
+  bool _starting = false;
+
   String? get _firstCount =>
       widget.document.counts.isEmpty ? null : widget.document.counts.first.id;
 
   @override
   void initState() {
     super.initState();
+    // Escape leaves the player, not just the game: see _onKey.
+    _c.escStopsGame = false;
     _c.addListener(_follow);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -257,7 +264,12 @@ class _GamePlayerState extends State<GamePlayer> {
   void _start() {
     _ended = false;
     _started = true;
-    _c.gaming = true;
+    _starting = true;
+    try {
+      _c.gaming = true;
+    } finally {
+      _starting = false;
+    }
   }
 
   /// _follow keeps the best reached, and notices the game ending by itself:
@@ -268,7 +280,7 @@ class _GamePlayerState extends State<GamePlayer> {
     if (id != null && run != null) {
       _reached = math.max(_reached, run.countOf(_c.document, id));
     }
-    if (_started && !_c.gaming && !_ended && mounted) {
+    if (_started && !_starting && !_c.gaming && !_ended && mounted) {
       setState(() => _ended = true);
     }
   }
@@ -309,6 +321,26 @@ class _GamePlayerState extends State<GamePlayer> {
     }
     return KeyEventResult.ignored;
   }
+
+  /// _hint is one of the bar's key hints, pressed as its key is.
+  Widget _hint(String key, String text, VoidCallback onTap) => InkWell(
+        key: ValueKey(key),
+        onTap: () {
+          onTap();
+          // The keys go on to the game, not to the hint pressed.
+          _focus.requestFocus();
+        },
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          child: Text(text,
+              style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFFE6E7EA),
+                  decoration: TextDecoration.underline,
+                  decorationColor: Color(0x66E6E7EA))),
+        ),
+      );
 
   @override
   void dispose() {
@@ -388,25 +420,23 @@ class _GamePlayerState extends State<GamePlayer> {
             height: 34,
             color: const Color(0xFF16171B),
             padding: const EdgeInsets.symmetric(horizontal: 12),
+            // What the keys do, each pressed as its key is (Ken: no Leave
+            // button beside them).
             child: Row(children: [
-              const Flexible(
-                child: Text("Esc to leave · P to pause · R to start again",
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: bar),
-              ),
+              _hint("gamePlayerLeave", "Esc to leave", _leave),
+              const Text(" · ", style: bar),
+              _hint("gamePlayerPause", "P to pause", () {
+                if (_c.gaming) _c.gamePaused = !_c.gamePaused;
+              }),
+              const Text(" · ", style: bar),
+              _hint("gamePlayerAgain", "R to start again", _again),
               const Spacer(),
-              if (widget.canOpen) ...[
+              if (widget.canOpen)
                 TextButton(
                   key: const ValueKey("gamePlayerOpen"),
                   onPressed: _open,
                   child: const Text("Open in Canvas", style: bar),
                 ),
-                const SizedBox(width: 6),
-              ],
-              OutlinedButton(
-                key: const ValueKey("gamePlayerLeave"),
-                onPressed: _leave,
-                child: const Text("Leave", style: bar),
-              ),
             ]),
           ),
         ]),

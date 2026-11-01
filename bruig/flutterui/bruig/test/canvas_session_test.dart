@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/dart_audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_core.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
@@ -811,6 +812,46 @@ void main() {
       expect(c.playing, isTrue, reason: "a Loop back is not a Stop");
       expect(c.clipState("music", 0), ClipState.playing,
           reason: "nor does it stop the slots");
+    });
+
+    // Ken: ending a game, a hit was sometimes heard once more after it.
+    test("a slot opening as the game ends is never heard", () async {
+      var c = CanvasController(
+          CanvasDocument(
+              frames: 600,
+              frameRate: 120,
+              audio: const AudioSettings(tempo: 120),
+              game: true,
+              elements: [sound("fx")]),
+          audioEngine: engine);
+      addTearDown(c.dispose);
+      c.clipFromSound("fx", 0, c.soundsOf("fx").single);
+      var clip = c.session.at("fx", 0)!;
+      c.clockForTest = () => micros;
+      c.gameClockForTest = () => micros;
+      c.gaming = true;
+      c.gameSound(gameSoundSlot(clip.id));
+      // Ended before its file has opened.
+      c.gaming = false;
+      await settle();
+      expect(engine.launches, isEmpty);
+      expect(c.clipState("fx", 0), ClipState.stopped);
+    });
+
+    // Ken: paused, a game's sound went on.
+    test("a game paused holds the mix, and lets it go", () {
+      var mix = DartAudioEngine();
+      var c = CanvasController(const CanvasDocument(game: true, frames: 60),
+          audioEngine: mix);
+      addTearDown(c.dispose);
+      c.gaming = true;
+      c.gamePaused = true;
+      expect(mix.held, isTrue);
+      c.gamePaused = false;
+      expect(mix.held, isFalse);
+      c.gamePaused = true;
+      c.gaming = false;
+      expect(mix.held, isFalse, reason: "the engine is everyone's");
     });
 
     test("a game plays its slots: as a scene starts, at once, and stops them",

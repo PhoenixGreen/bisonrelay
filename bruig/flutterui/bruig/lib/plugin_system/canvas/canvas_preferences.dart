@@ -461,6 +461,11 @@ class CanvasPreferences extends ChangeNotifier {
     // rebuild the navigation and the whole page for a tab click.
   }
 
+  /// pendingOpen is a canvas to open the next time the Canvas page shows --
+  /// one opened from Files, put in the library and the page gone to. Not
+  /// kept between runs: it is a request, made and met in a moment.
+  (String folder, String name)? pendingOpen;
+
   /// remember records which canvas is open, so it can be reopened next time.
   void remember(String folder, String name) {
     if (_lastFolder == folder && _lastName == name) return;

@@ -8007,7 +8007,10 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
     // Still the channel's -- about to play, or by now playing: a launch on
     // a bar already reached is moved on to it before its file is open.
-    bool still() => ch.next == play || ch.now == play;
+    bool still() =>
+        !_disposed &&
+        identical(_clipChannels[channel], ch) &&
+        (ch.next == play || ch.now == play);
     var sound =
         clip.midi ? await _clipSound(channel, clip) : await _playedSound(clip);
     play.sound = sound;
@@ -8226,6 +8229,11 @@ class CanvasController extends ChangeNotifier {
         _endPlay(ch.channel, cur, ch.stopAt ?? now);
         if (cur.voice case var v?) audio.engine.stopSoftly(v, 0.02);
       }
+      // Forgotten, so a launch still opening its file -- a hit just
+      // before the game ended -- finds it is not wanted, and is not heard
+      // after the end (Ken).
+      ch.next = null;
+      ch.now = null;
     }
     _clipChannels.clear();
     if (_clipRecord case var rec?) {
@@ -8673,7 +8681,15 @@ class CanvasController extends ChangeNotifier {
       // still a game, on its own clock, before the playhead's is theirs
       // again.
       _haltClips();
+      for (var id in _gameSounded) {
+        audio.stop(id);
+      }
+      _gameSounded.clear();
       _gameClockWatch.stop();
+      // Held by a pause, let go: the engine is everyone's.
+      if (_gamePaused) {
+        if (audio.engine case DartAudioEngine e) e.held = false;
+      }
       HardwareKeyboard.instance.removeHandler(_gameKey);
       _gameTimer?.cancel();
       _gameTimer = null;
@@ -8697,9 +8713,14 @@ class CanvasController extends ChangeNotifier {
   set gamePaused(bool on) {
     if (!gaming || on == _gamePaused) return;
     _gamePaused = on;
+    // Its sound held with it -- every voice where it is -- and its slots'
+    // clock, so they go on from there.
+    if (audio.engine case DartAudioEngine e) e.held = on;
     if (on) {
+      _gameClockWatch.stop();
       if (playing) pause();
     } else {
+      _gameClockWatch.start();
       // From now, not from when it was held: no leap forward on letting go.
       _gameWatch
         ..reset()
@@ -8833,6 +8854,7 @@ class CanvasController extends ChangeNotifier {
       case GameSoundElement(:var id):
         if (_audioById(id) case var sound?) {
           audio.stop(id);
+          _gameSounded.add(id);
           unawaited(audio.play(sound));
         }
       case GameSoundSlot(:var clip):
@@ -8846,6 +8868,10 @@ class CanvasController extends ChangeNotifier {
         break;
     }
   }
+
+  /// _gameSounded are the sounds on the canvas a game has played, stopped
+  /// when it ends -- one still opening its file would be heard after.
+  final Set<String> _gameSounded = {};
 
   /// _gameSceneSounds is what each channel does as a game comes to the
   /// scene showing: see CanvasScene.gameSounds.
@@ -8884,12 +8910,19 @@ class CanvasController extends ChangeNotifier {
   /// Escape stops the game.
   bool _gameKey(KeyEvent event) => gameKey(event);
 
+  /// escStopsGame is whether Escape ends the game -- as it does in the
+  /// editor -- or is left to whatever holds the game: a published game's
+  /// player, where Escape leaves.
+  bool escStopsGame = true;
+
   @visibleForTesting
   bool gameKey(KeyEvent event) {
     var run = _game;
     if (run == null) return false;
     var id = event.logicalKey.keyId;
-    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+    if (escStopsGame &&
+        event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.escape) {
       gaming = false;
       return true;
     }

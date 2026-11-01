@@ -15,6 +15,7 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/models/downloads.dart';
 import 'package:bruig/screens/chats.dart';
 import 'package:bruig/util.dart';
+import 'package:bruig/plugin_system/canvas/canvas.dart' show openCanvasFile;
 import 'package:flutter/material.dart';
 import 'package:golib_plugin/util.dart';
 import 'package:open_filex/open_filex.dart';
@@ -109,6 +110,11 @@ class _FileDownloadWState extends State<_FileDownloadW> {
   }
 
   void openFile() {
+    // A canvas is opened in Canvas: nothing else can open one.
+    if (fileKindOf(fd.diskPath) == FileKind.canvas) {
+      openCanvasFile(context, fd.diskPath);
+      return;
+    }
     OpenFilex.open(fd.diskPath);
   }
 

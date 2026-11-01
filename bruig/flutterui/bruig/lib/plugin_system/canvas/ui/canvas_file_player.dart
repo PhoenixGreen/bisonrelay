@@ -1,14 +1,20 @@
 import 'dart:io';
 
+import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart';
 import 'package:bruig/plugin_system/canvas/ui/game_embed.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as path;
+import 'package:provider/provider.dart';
 
 // canvas_file_player.dart is a canvas file -- a .bcanvas, sent, shared or
 // downloaded -- played where Files previews a PDF or a video (Ken): its
@@ -16,6 +22,43 @@ import 'package:flutter/material.dart';
 // a game, its first frame and Play, played as a game in a post is. Its
 // pictures and sounds are stored as they are when one is opened from Files
 // into the library, for it to be drawn and heard by.
+
+/// openCanvasFile opens the canvas in the file at [filePath] in the Canvas
+/// page: put in the library -- its pictures and sounds stored, filed under
+/// its own name, or its file's -- and the page gone to, where it opens. A
+/// .bcanvas has no other program to open it (Ken: Open on a shared game did
+/// nothing).
+Future<void> openCanvasFile(BuildContext context, String filePath) async {
+  var snackbar = SnackBarModel.of(context, listen: false);
+  var prefs = Provider.of<CanvasPreferences>(context, listen: false);
+  var nav = Navigator.of(context);
+  if (!prefs.enabled) {
+    snackbar.error("Turn Canvas on in Settings to open a canvas.");
+    return;
+  }
+  try {
+    var bundle = await unpackCanvas(await File(filePath).readAsBytes());
+    if (bundle == null) {
+      snackbar.error("That file is not a canvas.");
+      return;
+    }
+    await storeBundlePictures(bundle);
+    var wanted = CanvasStorage.sanitizeName(bundle.document.title) ??
+        CanvasStorage.sanitizeName(path.basenameWithoutExtension(filePath)) ??
+        "Canvas";
+    var name = await CanvasStorage.uniqueName("", wanted);
+    var ok = await CanvasStorage.save(
+        "", name, bundle.document.copyWith(title: name));
+    if (!ok) {
+      snackbar.error("Unable to put it in your Canvas.");
+      return;
+    }
+    prefs.pendingOpen = ("", name);
+    nav.pushReplacementNamed(CanvasScreen.routeName);
+  } catch (exception) {
+    snackbar.error("Unable to open it: $exception");
+  }
+}
 
 /// CanvasFilePlayer plays the canvas in [file].
 class CanvasFilePlayer extends StatefulWidget {

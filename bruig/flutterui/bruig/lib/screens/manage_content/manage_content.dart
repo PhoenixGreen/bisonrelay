@@ -20,8 +20,8 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/components/tooltips.dart';
 import 'package:bruig/screens/manage_content/file_preview.dart';
+import 'package:bruig/plugin_system/canvas/canvas.dart' show openCanvasFile;
 import 'package:flutter/material.dart';
-import 'package:bruig/config.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:file_picker/file_picker.dart';
@@ -209,7 +209,12 @@ class _SharedContentFileState extends State<SharedContentFile> {
               onPressed: () => widget.onPreview!(diskPath),
               child: const Text("Preview")),
         TextButton(
-          onPressed: canOpen ? () => OpenFilex.open(diskPath) : null,
+          // A canvas is opened in Canvas: nothing else can open one.
+          onPressed: !canOpen
+              ? null
+              : fileKindOf(diskPath) == FileKind.canvas
+                  ? () => openCanvasFile(context, diskPath)
+                  : () => OpenFilex.open(diskPath),
           child: Text("Open",
               style: TextStyle(
                   color: canOpen ? null : Theme.of(context).disabledColor)),
@@ -324,25 +329,6 @@ class _SharedContentState extends State<SharedContent> {
           sortLabels: _sharedSortLabels,
           onSort: (s) => setState(() => sort = s),
           summary: fileCountSummary(files.length, humanReadableSize(totalSize)),
-        ),
-        // The folder what Canvas publishes here is written to, beside
-        // downloads: opened, to see and keep up to date what is offered.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              key: const ValueKey("openSharedFolder"),
-              icon: const Icon(Icons.folder_open_outlined, size: 16),
-              label: const Text("Open the shared folder"),
-              onPressed: () async {
-                var dir = Directory(
-                    path.join(await defaultAppDataDir(), sharedFilesDirName));
-                await dir.create(recursive: true);
-                await OpenFilex.open(dir.path);
-              },
-            ),
-          ),
         ),
         Expanded(
           child: ListView.builder(

@@ -6,6 +6,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart';
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_file_player.dart';
 import 'package:bruig/screens/manage_content/file_preview.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -136,5 +139,50 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       expect(tester.takeException(), isNull);
     });
+  });
+
+  // Ken: Open on a shared game did nothing -- a .bcanvas has no program of
+  // its own to open it.
+  testWidgets("Open puts a canvas in the library and goes to Canvas",
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    var root = (await tester
+        .runAsync(() => Directory.systemTemp.createTemp("canvas-open")))!;
+    CanvasStorage.rootOverride = root.path;
+    addTearDown(() async {
+      CanvasStorage.rootOverride = null;
+      await tester.runAsync(() => root.delete(recursive: true));
+    });
+    var file = File(path.join(root.path, "Sky Isles.bcanvas"));
+    await tester.runAsync(() => file.writeAsString(
+        const CanvasDocument(title: "Sky Isles", game: true).encode()));
+    var prefs = CanvasPreferences()..enabled = true;
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>.value(value: prefs),
+      ],
+      child: MaterialApp(
+        routes: {CanvasScreen.routeName: (_) => const Text("the Canvas page")},
+        home: Builder(
+            builder: (context) => TextButton(
+                onPressed: () => openCanvasFile(context, file.path),
+                child: const Text("Open"))),
+      ),
+    ));
+    await tester.tap(find.text("Open"));
+    for (var i = 0; i < 20 && prefs.pendingOpen == null; i++) {
+      await tester
+          .runAsync(() => Future.delayed(const Duration(milliseconds: 10)));
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(prefs.pendingOpen, ("", "Sky Isles"));
+    expect(find.text("the Canvas page"), findsOneWidget);
+    var saved =
+        await tester.runAsync(() => CanvasStorage.load("", "Sky Isles"));
+    expect(saved?.game, isTrue);
   });
 }
