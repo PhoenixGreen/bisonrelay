@@ -148,6 +148,16 @@ class SpriteElement extends CanvasElement {
   /// facing is the way it faces, until a cue turns it.
   final SpriteFacing facing;
 
+  /// faceTravel turns it to face the way it goes on the timeline -- a slime
+  /// patrolling a ledge -- left or right as it moves, and held while it
+  /// stands still (Ken: patrols walked backwards one way).
+  final bool faceTravel;
+
+  /// drawnLeft is whether its frames, where it has only the front's, are
+  /// drawn facing left -- Kenney's enemies are -- rather than right, as a
+  /// pack's figures walk: what is mirrored to face the other way.
+  final bool drawnLeft;
+
   /// directions is whether its animations have frames for each way it can
   /// face -- a figure's -- or one run each, whichever way: a flame's.
   final bool directions;
@@ -188,6 +198,8 @@ class SpriteElement extends CanvasElement {
     this.pixelArt = true,
     this.mirrorSides = true,
     this.facing = SpriteFacing.front,
+    this.faceTravel = false,
+    this.drawnLeft = false,
     this.directions = false,
     this.glow = false,
     this.tint,
@@ -222,6 +234,8 @@ class SpriteElement extends CanvasElement {
       pixelArt: pixelArt,
       mirrorSides: mirrorSides,
       facing: facing,
+      faceTravel: faceTravel,
+      drawnLeft: drawnLeft,
       directions: directions,
       glow: glow,
       tint: tint,
@@ -264,12 +278,37 @@ class SpriteElement extends CanvasElement {
   /// facingAt is the way it faces on [frame]: the last cue's that turns it,
   /// or its own.
   SpriteFacing facingAt(int frame) {
+    if (faceTravel) {
+      if (_travelFacing(frame) case var f?) return f;
+    }
     if (!directions) return SpriteFacing.front;
     var f = facing;
     for (var c in cues) {
       if (c.frame <= frame && c.facing != null) f = c.facing!;
     }
     return f;
+  }
+
+  /// _travelFacing is the way it goes across on the timeline at [frame]:
+  /// the last move before it, held while it stands -- or, still from the
+  /// start, its first move after -- or null where it never moves across.
+  SpriteFacing? _travelFacing(int frame) {
+    var track = base.track;
+    if (track == null || track.isEmpty) return null;
+    SpriteFacing? way(int a, int b) {
+      var dx = track.at(b).dx - track.at(a).dx;
+      if (dx.abs() < 0.01) return null;
+      return dx < 0 ? SpriteFacing.left : SpriteFacing.right;
+    }
+
+    for (var f = frame; f > frame - 600 && f > 0; f--) {
+      if (way(f - 1, f) case var w?) return w;
+    }
+    var last = track.keys.last.frame;
+    for (var f = math.max(0, frame); f < last; f++) {
+      if (way(f, f + 1) case var w?) return w;
+    }
+    return null;
   }
 
   /// sheetFrameAt is the sheet's frame drawn on [frame] of a canvas played at
@@ -279,6 +318,14 @@ class SpriteElement extends CanvasElement {
     var a = actionAt(frame);
     if (a == null) return frameCount > 0 ? (0, false) : null;
     var (list, flip) = a.framesFor(facing, mirrorSides: mirrorSides);
+    // Only the front's frames, drawn facing left: mirrored to face right,
+    // not left.
+    if (drawnLeft &&
+        (facing == SpriteFacing.left || facing == SpriteFacing.right) &&
+        (a.frames[SpriteFacing.left]?.isEmpty ?? true) &&
+        (a.frames[SpriteFacing.right]?.isEmpty ?? true)) {
+      flip = !flip;
+    }
     if (list.isEmpty) return null;
     // Counted from the cue it began on.
     var start = 0;
@@ -307,6 +354,8 @@ class SpriteElement extends CanvasElement {
     bool? pixelArt,
     bool? mirrorSides,
     SpriteFacing? facing,
+    bool? faceTravel,
+    bool? drawnLeft,
     bool? directions,
     bool? glow,
     Color? tint,
@@ -332,6 +381,8 @@ class SpriteElement extends CanvasElement {
         pixelArt: pixelArt ?? this.pixelArt,
         mirrorSides: mirrorSides ?? this.mirrorSides,
         facing: facing ?? this.facing,
+        faceTravel: faceTravel ?? this.faceTravel,
+        drawnLeft: drawnLeft ?? this.drawnLeft,
         directions: directions ?? this.directions,
         glow: glow ?? this.glow,
         tint: noTint ? null : (tint ?? this.tint),
@@ -390,6 +441,8 @@ class SpriteElement extends CanvasElement {
         if (!mirrorSides) "mirrorSides": false,
         if (facing != SpriteFacing.front) "facing": facing.name,
         if (directions) "directions": true,
+        if (faceTravel) "faceTravel": true,
+        if (drawnLeft) "drawnLeft": true,
         if (glow) "glow": true,
         if (tint != null) "tint": colorToJson(tint!),
         if (built != null) "built": built,
@@ -441,6 +494,8 @@ class SpriteElement extends CanvasElement {
       mirrorSides: jsonBool(json["mirrorSides"], true),
       facing: facingOf(json["facing"]) ?? SpriteFacing.front,
       directions: jsonBool(json["directions"], false),
+      faceTravel: jsonBool(json["faceTravel"], false),
+      drawnLeft: jsonBool(json["drawnLeft"], false),
       glow: jsonBool(json["glow"], false),
       tint: json["tint"] is num ? colorFromJson(json["tint"]) : null,
       built: json["built"] is Map<String, dynamic> ? json["built"] as Map<String, dynamic> : null,

@@ -826,13 +826,45 @@ class CanvasStageState extends State<CanvasStage>
           : Rect.fromLTWH(
               page.left - page.width, page.top, page.width * 2, page.height);
     }
-    if (!controller.showOverspill) return page;
-    return Rect.fromCenter(
-      center: page.center,
-      width: page.width * (1 + _overspillFraction * 2),
-      height: page.height * (1 + _overspillFraction * 2),
-    );
+    var shown = !controller.showOverspill
+        ? page
+        : Rect.fromCenter(
+            center: page.center,
+            width: page.width * (1 + _overspillFraction * 2),
+            height: page.height * (1 + _overspillFraction * 2),
+          );
+    // A game's level, as far as it reaches: drawn, grabbable and scrolled
+    // along while it is not being played.
+    if (_level case var level?) {
+      shown = shown.expandToInclude(
+          Rect.fromPoints(_toStage(level.topLeft), _toStage(level.bottomRight)));
+    }
+    return shown;
   }
+
+  /// _level is how far a game's scene reaches, in the document's units --
+  /// a level wider or taller than the screen -- or null for one that fits
+  /// on the page, for anything but a game, and while it is played, when
+  /// the view is the game's. Ken: a level scrolled in play could not be
+  /// scrolled along to be edited.
+  Rect? get _level {
+    if (!document.game || controller.gaming || document.editingMaster) {
+      return null;
+    }
+    var page = Offset.zero & document.size.size;
+    var reach = page;
+    var frame = controller.frame;
+    for (var e in document.elements) {
+      // Sounds are kept off the canvas, and a backdrop fills the page.
+      if (e is AudioElement || e is BackgroundElement) continue;
+      reach = reach.expandToInclude(e.boundsAt(frame));
+    }
+    return reach == page ? null : reach;
+  }
+
+  /// levelShown is whether a game's level reaching past the page is being
+  /// shown round it, for the painter to mark the page out within it.
+  bool get levelShown => _level != null;
 
   /// _contentSize is how much room the canvas and its margins need.
   ///
@@ -845,6 +877,15 @@ class CanvasStageState extends State<CanvasStage>
     var page = document.size.size * _scale;
     var wide = page.width * spill * (_spreadShown ? 2 : 1) + _stageMargin * 2;
     var tall = page.height * spill + _stageMargin * 2;
+    // A game's level, all of it in reach: the page stays in the middle, so
+    // as much room each side as it reaches past the page on its far side.
+    if (_level case var level?) {
+      var doc = document.size.size;
+      var across = math.max(-level.left, level.right - doc.width) * _scale;
+      var down = math.max(-level.top, level.bottom - doc.height) * _scale;
+      wide = math.max(wide, page.width + across * 2 + _stageMargin * 2);
+      tall = math.max(tall, page.height + down * 2 + _stageMargin * 2);
+    }
     // Zoomed, room to move it about in: as far as its edges reach the
     // window's, and half a window past them. With the timeline and the
     // mixer open over the stage, the canvas sat behind them, and the only
@@ -6845,6 +6886,7 @@ class CanvasStageState extends State<CanvasStage>
                         backgrounds: _backgrounds,
                         page: _pageRect,
                         view: _viewRect,
+                        levelShown: levelShown,
                         facing: _facingPage,
                         facingFrame: _facingPage == null
                             ? 0

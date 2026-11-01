@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:archive/archive.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
@@ -93,6 +94,7 @@ List<GameCheck> gameChecks(CanvasController c) {
         _ => "moves the view",
       };
   var countName = {for (var k in doc.counts) k.id: k.name};
+  var jumps = loopJumps(doc);
   return [
     GameCheck("player", "A player",
         done: players.isNotEmpty,
@@ -134,6 +136,17 @@ List<GameCheck> gameChecks(CanvasController c) {
                 : "Nothing can go wrong yet",
         fix: "Add lives",
         make: addLives),
+    GameCheck("loops", "Smooth round the loop",
+        done: jumps.isEmpty,
+        says: jumps.isEmpty
+            ? "Nothing jumps as the timeline loops"
+            : "${_and([
+                    for (var j in jumps.take(3)) _nameOf(j.element),
+                  ])}${jumps.length > 3 ? " and ${jumps.length - 3} more" : ""}"
+                " ${jumps.length == 1 ? "jumps" : "jump"} as the timeline "
+                "loops",
+        fix: "Close the loops",
+        make: (c) => closeLoops(c, loopJumps(c.document))),
     if (doc.counts.isNotEmpty)
       GameCheck("hud", "The counts on screen",
           done: unshown.isEmpty,
@@ -148,6 +161,68 @@ List<GameCheck> gameChecks(CanvasController c) {
                   if (countName.containsKey(k.id)) k
               ])),
   ];
+}
+
+/// LoopJump is an element that jumps as its scene's timeline loops: on
+/// [scene], where the playhead goes from [from] back to [to], it is not
+/// where it was.
+typedef LoopJump = ({int scene, CanvasElement element, int from, int to});
+
+/// loopJumps are the elements in [doc] that jump each time their scene's
+/// timeline loops -- a patrol that does not end where it began (Ken, Sky
+/// Isles) -- from a Loop back to its target, or from the end to the start.
+List<LoopJump> loopJumps(CanvasDocument doc) {
+  var out = <LoopJump>[];
+  for (var (i, scene) in doc.allScenes.indexed) {
+    var loop = scene.actions
+        .where((a) =>
+            a.kind == TimelineActionKind.loop &&
+            a.repeats == 0 &&
+            a.frame > a.target)
+        .firstOrNull;
+    var (from, to) =
+        loop != null ? (loop.frame, loop.target) : (scene.frames - 1, 0);
+    if (from <= to) continue;
+    for (var e in scene.elements) {
+      var track = e.track;
+      if (track == null || !track.posesAnything) continue;
+      var a = track.at(from), b = track.at(to);
+      if ((a.dx - b.dx).abs() > 1 ||
+          (a.dy - b.dy).abs() > 1 ||
+          (a.scale - b.scale).abs() > 0.01 ||
+          (a.rotate - b.rotate).abs() > 0.5 ||
+          (a.opacity - b.opacity).abs() > 0.02) {
+        out.add((scene: i, element: e, from: from, to: to));
+      }
+    }
+  }
+  return out;
+}
+
+/// closeLoops gives each of [jumps] a keyframe where its timeline loops
+/// from, posed as it is where the loop goes to: round, it comes back where
+/// it was. One undo step.
+void closeLoops(CanvasController c, List<LoopJump> jumps) {
+  var doc = c.document;
+  for (var (i, scene) in doc.allScenes.indexed) {
+    var here = {
+      for (var j in jumps)
+        if (j.scene == i) j.element.id: j
+    };
+    if (here.isEmpty) continue;
+    doc = doc.withScene(
+        i,
+        scene.copyWith(elements: [
+          for (var e in scene.elements)
+            if (here[e.id] case var j? when e.track != null)
+              e.rebase(e.base.copyWith(
+                  track: e.track!
+                      .withKey(e.track!.at(j.to).copyWith(frame: j.from))))
+            else
+              e,
+        ]));
+  }
+  c.apply(doc);
 }
 
 String _and(List<String> names) => names.length <= 1

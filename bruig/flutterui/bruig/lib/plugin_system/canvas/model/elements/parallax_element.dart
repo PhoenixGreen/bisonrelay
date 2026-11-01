@@ -146,6 +146,11 @@ class ParallaxLayer {
   final double autoX;
   final double autoY;
 
+  /// loopDrift is whether that drift is evened out to go round with the
+  /// timeline: a whole number of its tiles each time the timeline loops,
+  /// so a cloud comes back where it was rather than jumping (Ken).
+  final bool loopDrift;
+
   /// offset moves it from where it would be, in design units.
   final Offset offset;
 
@@ -171,6 +176,7 @@ class ParallaxLayer {
     this.repeatY = false,
     this.autoX = 0,
     this.autoY = 0,
+    this.loopDrift = true,
     this.offset = Offset.zero,
     this.size = 1,
     this.anchor = LayerAnchor.bottom,
@@ -196,6 +202,7 @@ class ParallaxLayer {
     bool? repeatY,
     double? autoX,
     double? autoY,
+    bool? loopDrift,
     Offset? offset,
     double? size,
     LayerAnchor? anchor,
@@ -218,6 +225,7 @@ class ParallaxLayer {
         repeatY: repeatY ?? this.repeatY,
         autoX: autoX ?? this.autoX,
         autoY: autoY ?? this.autoY,
+        loopDrift: loopDrift ?? this.loopDrift,
         offset: offset ?? this.offset,
         size: (size ?? this.size).clamp(0.1, 8.0),
         anchor: anchor ?? this.anchor,
@@ -243,6 +251,7 @@ class ParallaxLayer {
       if (repeatY != d.repeatY) "repeatY": repeatY,
       if (autoX != 0) "autoX": autoX,
       if (autoY != 0) "autoY": autoY,
+      if (!loopDrift) "freeDrift": true,
       if (offset != Offset.zero) "offset": [offset.dx, offset.dy],
       if (size != 1) "size": size,
       "anchor": anchor.name,
@@ -272,6 +281,7 @@ class ParallaxLayer {
       repeatY: jsonBool(json["repeatY"], d.repeatY),
       autoX: jsonDouble(json["autoX"], 0),
       autoY: jsonDouble(json["autoY"], 0),
+      loopDrift: json["freeDrift"] != true,
       offset: off is List && off.length == 2 && off[0] is num && off[1] is num
           ? Offset((off[0] as num).toDouble(), (off[1] as num).toDouble())
           : Offset.zero,

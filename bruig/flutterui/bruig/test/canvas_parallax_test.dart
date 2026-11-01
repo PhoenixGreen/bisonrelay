@@ -191,6 +191,48 @@ void main() {
     });
   });
 
+  // Ken: the clouds jumped each time the timeline went back to its start.
+  group("drift round the loop", () {
+    test("evened out to whole tiles in the loop, never to none", () {
+      // 300 frames at 30 is ten seconds; a 1280 tile at 100 a second would
+      // be 1000 -- the nearest whole tile is one: 128 a second.
+      expect(loopedDrift(100, 1280, 300, 30), closeTo(128, 1e-9));
+      expect(loopedDrift(-300, 1280, 300, 30), closeTo(-256, 1e-9));
+      expect(loopedDrift(5, 1280, 300, 30), closeTo(128, 1e-9),
+          reason: "slow, but still drifting");
+      expect(loopedDrift(0, 1280, 300, 30), 0);
+    });
+
+    test("the loop is from a Loop back's target, or the whole timeline", () {
+      expect(parallaxLoopFrames(const CanvasDocument(frames: 300)), 300);
+      expect(
+          parallaxLoopFrames(const CanvasDocument(frames: 300, actions: [
+            TimelineAction(frame: 10, kind: TimelineActionKind.stop),
+            TimelineAction(
+                frame: 299, kind: TimelineActionKind.loop, target: 60),
+          ])),
+          239);
+    });
+
+    test("where it loops from, it is where it loops to", () {
+      const layer = ParallaxLayer(kind: SceneryKind.clouds, autoX: 90);
+      const camera = ParallaxCamera();
+      var tile = 1280.0;
+      var speed = loopedDrift(layer.autoX, tile, 239, 30);
+      var at = layer.copyWith(autoX: speed);
+      var from = layerShift(at, camera, 299 / 30).dx;
+      var to = layerShift(at, camera, 60 / 30).dx;
+      var tiles = (from - to) / tile;
+      expect(tiles, closeTo(tiles.roundToDouble(), 1e-9));
+      // And kept, or let go.
+      expect(ParallaxLayer.fromJson(layer.toJson()).loopDrift, isTrue);
+      expect(
+          ParallaxLayer.fromJson(layer.copyWith(loopDrift: false).toJson())
+              .loopDrift,
+          isFalse);
+    });
+  });
+
   group("its camera", () {
     test("is keyed on the canvas background, and pans across in one press",
         () {

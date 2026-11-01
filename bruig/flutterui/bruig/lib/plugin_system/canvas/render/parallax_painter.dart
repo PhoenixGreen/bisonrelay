@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
@@ -18,9 +20,11 @@ import 'package:flutter/painting.dart';
 // placed in a tile and drawn again a tile along -- one that leans over the
 // edge is completed by the next tile's copy of itself.
 
-/// paintParallax draws [p] as it is on [frame], filling [box].
+/// paintParallax draws [p] as it is on [frame], filling [box]. [loopFrames]
+/// is how many frames the timeline goes round in -- see parallaxLoopFrames
+/// -- for its layers' drift to go round with it.
 void paintParallax(ui.Canvas canvas, Rect box, ParallaxElement p, int frame,
-    {double frameRate = 30, CanvasImageSource? images}) {
+    {double frameRate = 30, CanvasImageSource? images, int? loopFrames}) {
   if (box.isEmpty) return;
   var camera = p.cameraAt(frame);
   var time = frame / (frameRate <= 0 ? 1 : frameRate);
@@ -28,9 +32,38 @@ void paintParallax(ui.Canvas canvas, Rect box, ParallaxElement p, int frame,
   canvas.clipRect(box);
   for (var layer in p.layers) {
     if (!layer.visible || layer.opacity <= 0.002) continue;
-    _paintLayer(canvas, box, layer, camera, time, frameRate, images);
+    _paintLayer(
+        canvas, box, layer, camera, time, frameRate, images, loopFrames);
   }
   canvas.restore();
+}
+
+/// parallaxLoopFrames is how many frames [doc]'s timeline goes round in:
+/// from a Loop back's target to the frame it loops from, or -- with none --
+/// the whole of it, played round from its end to its start.
+int parallaxLoopFrames(CanvasDocument doc) {
+  for (var a in doc.actions) {
+    if (a.kind == TimelineActionKind.loop &&
+        a.repeats == 0 &&
+        a.frame > a.target) {
+      return a.frame - a.target;
+    }
+  }
+  return math.max(1, doc.frames);
+}
+
+/// loopedDrift is [speed] -- a drift, in design units a second -- evened out
+/// to a whole number of [tile]s in [loopFrames] at [frameRate]: the nearest,
+/// and never none where it drifts at all.
+double loopedDrift(
+    double speed, double tile, int loopFrames, double frameRate) {
+  if (speed == 0 || tile <= 0 || loopFrames <= 0 || frameRate <= 0) {
+    return speed;
+  }
+  var seconds = loopFrames / frameRate;
+  var k = (speed * seconds / tile).round();
+  if (k == 0) k = speed > 0 ? 1 : -1;
+  return k * tile / seconds;
 }
 
 /// layerShift is how far [layer] has moved from where it starts: the camera
@@ -64,13 +97,25 @@ void _paintLayer(
     ParallaxCamera camera,
     double time,
     double frameRate,
-    CanvasImageSource? images) {
+    CanvasImageSource? images,
+    int? loopFrames) {
   var picture = layer.kind == SceneryKind.picture && layer.assetId.isNotEmpty
       ? images?.resolve(layer.assetId, const BackgroundRemoval())
       : null;
   if (layer.kind == SceneryKind.picture && picture == null) return;
   var tile = tileSize(layer, box, picture);
   if (tile.width < 1 || tile.height < 1) return;
+  // Round with the timeline: a whole number of tiles each time it loops,
+  // where it repeats that way.
+  if (layer.loopDrift && loopFrames != null) {
+    layer = layer.copyWith(
+        autoX: layer.repeatX
+            ? loopedDrift(layer.autoX, tile.width, loopFrames, frameRate)
+            : null,
+        autoY: layer.repeatY
+            ? loopedDrift(layer.autoY, tile.height, loopFrames, frameRate)
+            : null);
+  }
   var shift = layerShift(layer, camera, time);
   var zoom = layerZoom(layer, camera);
 

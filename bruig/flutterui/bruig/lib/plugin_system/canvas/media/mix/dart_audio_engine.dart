@@ -96,8 +96,11 @@ bool useMixEngine = true;
 class DartAudioEngine implements AudioEngine {
   SoLoud get _soloud => SoLoud.instance;
 
-  /// lead is how far ahead of the speakers the render keeps.
-  static const double lead = 0.08;
+  /// lead is how far ahead of the speakers the render keeps: enough for
+  /// the pump to miss a few turns without the sound running dry, and no
+  /// more -- every millisecond of it is a millisecond late for a sound
+  /// played at a press, a coin picked up in a game.
+  static const double lead = 0.05;
 
   /// block is how much is rendered at a time.
   static const int block = 512;
@@ -120,7 +123,9 @@ class DartAudioEngine implements AudioEngine {
     if (_soloud.isInitialized && _stream != null) return Future.value(true);
     return _starting ??= () async {
       try {
-        if (!_soloud.isInitialized) await _soloud.init();
+        if (!_soloud.isInitialized) {
+          await _soloud.init(bufferSize: soloudBufferFrames);
+        }
         _open();
         _pump = Timer.periodic(const Duration(milliseconds: 5), (_) => _fill());
         return true;

@@ -143,6 +143,16 @@ class CanvasStorage {
     return live;
   }
 
+  /// sharedDir is `<appDataDir>/shared`, beside the library and downloads:
+  /// where a canvas published to Files > Shared is written, and written
+  /// over when it is published again. Created on first use.
+  static Future<String> sharedDir() async {
+    var root = rootOverride ?? await defaultAppDataDir();
+    var dir = path.join(root, sharedFilesDirName);
+    await Directory(dir).create(recursive: true);
+    return dir;
+  }
+
   /// libraryDir is `<appDataDir>/Canvas`, created on first use.
   static Future<String> libraryDir() async {
     var root = rootOverride ?? await defaultAppDataDir();

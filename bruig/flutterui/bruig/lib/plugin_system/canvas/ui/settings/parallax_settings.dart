@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -461,6 +462,29 @@ class _ParallaxSettingsState extends State<ParallaxSettings> {
                   now(layer.copyWith(assetId: id));
                 },
               ),
+              // From what the library already has: its pictures, or its
+              // drawings -- drawn as a picture, as a drawing anywhere is
+              // (Ken).
+              CanvasIconButton(
+                key: const ValueKey("parallaxFromPictures"),
+                icon: Icons.photo_library_outlined,
+                tooltip: "Use a picture from the Pictures folder",
+                onPressed: () async {
+                  var id = await showRecentPictures(context);
+                  if (id == null) return;
+                  now(layer.copyWith(assetId: id));
+                },
+              ),
+              CanvasIconButton(
+                key: const ValueKey("parallaxFromVectors"),
+                icon: Icons.gesture,
+                tooltip: "Use a drawing from the Vectors folder",
+                onPressed: () async {
+                  var id = await showRecentPictures(context, drawings: true);
+                  if (id == null) return;
+                  now(layer.copyWith(assetId: id));
+                },
+              ),
             ]),
       if (kind == SceneryKind.pattern)
         CanvasControlGroup(label: "Pattern", children: [
@@ -480,7 +504,10 @@ class _ParallaxSettingsState extends State<ParallaxSettings> {
               "put, like a sky; 100% keeps up with the camera, like the "
               "ground it travels over; more than 100% passes in front. "
               "Drift moves it by itself, in units a second -- clouds "
-              "crossing the sky.",
+              "crossing the sky -- evened out, while it loops with the "
+              "timeline, to go round a whole number of times each time "
+              "the timeline loops, so a cloud comes back where it was "
+              "instead of jumping.",
           children: [
             stepper("scrollX", "Across", layer.scrollX * 100, -400, 400, 5,
                 (v) => layer.copyWith(scrollX: v / 100),
@@ -494,6 +521,13 @@ class _ParallaxSettingsState extends State<ParallaxSettings> {
             stepper("autoY", "Drift down", layer.autoY, -2000, 2000, 5,
                 (v) => layer.copyWith(autoY: v),
                 reset: 0),
+            if (layer.autoX != 0 || layer.autoY != 0)
+              CanvasToggle(
+                key: const ValueKey("parallaxLoopDrift"),
+                label: "Drift loops with the timeline",
+                value: layer.loopDrift,
+                onChanged: (v) => now(layer.copyWith(loopDrift: v)),
+              ),
           ]),
       CanvasControlGroup(
           label: "Placing",

@@ -728,6 +728,22 @@ class AnimationsEditorState extends State<AnimationsEditor> {
             value: e.mirrorSides,
             onChanged: (v) => _now(e.copyWith(mirrorSides: v)),
           ),
+        // Turned the way it goes on the timeline -- a patrol -- and which
+        // way its frames face, for what is mirrored (Ken).
+        CanvasToggle(
+          key: const ValueKey("spriteFaceTravel"),
+          label: "Turns to face where it goes",
+          value: e.faceTravel,
+          onChanged: (v) => _now(e.copyWith(faceTravel: v)),
+        ),
+        CanvasDropdown<bool>(
+          key: const ValueKey("spriteDrawnLeft"),
+          label: "Drawn facing",
+          value: e.drawnLeft,
+          width: 110,
+          options: const [(false, "Right"), (true, "Left")],
+          onChanged: (v) => _now(e.copyWith(drawnLeft: v)),
+        ),
       ],
     ]);
   }

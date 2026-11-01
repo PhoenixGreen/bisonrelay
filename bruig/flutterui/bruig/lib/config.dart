@@ -60,6 +60,12 @@ String displayPath(String p) {
   return "~${path.separator}${p.substring(prefix.length)}";
 }
 
+/// sharedFilesDirName is the folder, beside downloads and Canvas in the
+/// app's data folder, that what is published to Files > Shared is written
+/// to -- and written over when it is published again -- so the copy being
+/// offered can be found, previewed and kept up to date.
+const String sharedFilesDirName = "shared";
+
 Future<String> defaultAppDataDir() async {
   if (Platform.isLinux) {
     final home = Platform.environment["HOME"];

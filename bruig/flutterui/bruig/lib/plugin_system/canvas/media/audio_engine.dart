@@ -305,6 +305,13 @@ final void Function(int busId, bool enable)? _busMetering = () {
   }
 }();
 
+/// soloudBufferFrames is the sound card's period, in frames, SoLoud is
+/// started with -- by whichever engine starts it first. SoLoud's own 2048,
+/// three periods deep, is some 140 ms between a sound asked for and heard:
+/// a coin picked up was heard a beat late (Ken). 512 is a twelfth of a
+/// second all told, and still steady.
+const int soloudBufferFrames = 512;
+
 /// SoLoudAudioEngine plays through flutter_soloud.
 class SoLoudAudioEngine implements AudioEngine {
   SoLoud get _soloud => SoLoud.instance;
@@ -340,7 +347,7 @@ class SoLoudAudioEngine implements AudioEngine {
     if (_soloud.isInitialized) return Future.value(true);
     return _starting ??= () async {
       try {
-        await _soloud.init();
+        await _soloud.init(bufferSize: soloudBufferFrames);
         return true;
       } catch (exception) {
         debugPrint("Canvas audio could not start: $exception");

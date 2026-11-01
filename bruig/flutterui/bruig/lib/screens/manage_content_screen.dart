@@ -59,7 +59,7 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
       case 0:
         return const ManageContent(0);
       case 1:
-        return const ManageContent(1);
+        return ManageContent(1, previewing: previewing, onPreviewing: nav.open);
       case 2:
         return Consumer2<DownloadsModel, ClientModel>(
             builder: (context, downloads, client, child) => DownloadsScreen(
@@ -103,11 +103,13 @@ class _ManageContentScreenState extends State<ManageContentScreen> {
     return ListenableBuilder(
       listenable: nav,
       builder: (context, _) {
-        // Downloads and Purchases both read a file in place; the other two
-        // tabs have nothing to preview. Only Downloads was allowed one, so
-        // pressing Read on a purchase set the path and drew the list again.
+        // Shared, Downloads and Purchases each read a file in place; Add has
+        // nothing to preview. A tab left out set the path and drew its list
+        // again -- Read on a purchase, and Preview on a shared file (Ken).
         var previewing =
-            nav.tab == 2 || nav.tab == purchasesTabIndex ? nav.path : null;
+            nav.tab == 1 || nav.tab == 2 || nav.tab == purchasesTabIndex
+                ? nav.path
+                : null;
         return SecondarySideMenuLayout(
           storageKey: "manageContent",
           items: manageContentBarItems(onItemChanged, nav.tab),

@@ -1884,4 +1884,51 @@ void main() {
     expect(hero().sheetFrameAt(0, 30), (6, false), reason: "right, unmirrored");
     run.dispose();
   });
+
+  // Ken, Sky Isles: patrols jumped each time the timeline looped.
+  test("what jumps as its timeline loops is found, and closed", () {
+    var patrol = ShapeElement(ElementBase(
+        id: "fly",
+        name: "Fly",
+        x: 100,
+        y: 100,
+        width: 40,
+        height: 40,
+        track: ElementTrack(const [
+          Keyframe(frame: 0),
+          Keyframe(frame: 90, dx: 320),
+        ])));
+    var smooth = ShapeElement(ElementBase(
+        id: "slime",
+        x: 300,
+        y: 100,
+        width: 40,
+        height: 40,
+        track: ElementTrack(const [
+          Keyframe(frame: 0),
+          Keyframe(frame: 60, dx: 200),
+          Keyframe(frame: 119),
+        ])));
+    var c = CanvasController(CanvasDocument(game: true, scenes: [
+      CanvasScene(id: "one", frames: 120, actions: const [
+        TimelineAction(frame: 119, kind: TimelineActionKind.loop),
+      ], elements: [
+        patrol,
+        smooth
+      ]),
+    ]));
+    addTearDown(c.dispose);
+    var jumps = loopJumps(c.document);
+    expect([for (var j in jumps) j.element.id], ["fly"]);
+    var check = gameChecks(c).firstWhere((k) => k.id == "loops");
+    expect(check.done, isFalse);
+    expect(check.says, "Fly jumps as the timeline loops");
+    check.make(c);
+    expect(loopJumps(c.document), isEmpty);
+    var fly = c.document.elementById("fly")!;
+    expect(fly.track!.at(119).dx, fly.track!.at(0).dx,
+        reason: "back where it began, where the timeline loops from");
+    c.undo();
+    expect(loopJumps(c.document), hasLength(1), reason: "one undo step");
+  });
 }

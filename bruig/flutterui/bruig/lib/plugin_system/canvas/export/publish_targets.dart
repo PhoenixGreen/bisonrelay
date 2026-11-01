@@ -37,15 +37,15 @@ import 'package:path/path.dart' as path;
 /// is writing makes both lists worse.
 const String publishedFolderName = "Canvas";
 
-/// sharedDirName is where the files offered to contacts are written, inside
-/// the canvas library.
-///
-/// Written to a file of our own rather than shared straight out of the library
-/// directory, because sharing a file publishes whatever is at that path from
-/// then on -- and the library's .bcanvas is a document the reader goes on
-/// editing. A separate rendered copy is what makes "published" a moment rather
-/// than a live feed of unfinished work.
-const String sharedDirName = "published";
+// The files offered to contacts are written to a file of their own --
+// CanvasStorage.sharedDir, the "shared" folder beside downloads and the
+// library -- rather than shared straight out of the library directory,
+// because sharing a file publishes whatever is at that path from then on, and
+// the library's .bcanvas is a document the reader goes on editing. A separate
+// rendered copy is what makes "published" a moment rather than a live feed of
+// unfinished work. (It was a "published" folder inside the library, out of
+// sight; Ken wanted it found beside the downloads, to preview and to keep up
+// to date. A canvas shared from there before is moved on its next publish.)
 
 /// extensionFor is the file extension a mime type gets.
 String extensionFor(String mime) => switch (mime) {
@@ -242,8 +242,7 @@ Future<PublishRecord?> shareInFiles(
   if (clean == null) return null;
 
   try {
-    var dir = path.join(await CanvasStorage.libraryDir(), sharedDirName);
-    await Directory(dir).create(recursive: true);
+    var dir = await CanvasStorage.sharedDir();
     var file = path.join(dir, "$clean${extensionFor(export.mime)}");
 
     // An existing share of the same canvas is withdrawn before the new file is

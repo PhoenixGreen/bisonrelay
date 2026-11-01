@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
@@ -273,6 +274,50 @@ void main() {
     expect(stage.contentRect.top, closeTo(-viewport.height / 2 + 24, 30),
         reason: "lifted clear of what is open over the stage");
     expect(stage.contentRect.right, closeTo(viewport.width * 1.5 - 24, 30));
+  });
+
+  // Ken: a game's level, scrolled along in play, could not be scrolled
+  // along to be edited.
+  testWidgets("a game's level past the page is scrolled along and edited",
+      (tester) async {
+    var controller = CanvasController(CanvasDocument(game: true, elements: [
+      ShapeElement(const ElementBase(
+          id: "hero",
+          x: 100,
+          y: 600,
+          width: 40,
+          height: 60,
+          play: PlaySpec(as: PlayAs.platformer))),
+      ShapeElement(const ElementBase(
+          id: "far", x: 3000, y: 500, width: 200, height: 60)),
+    ]));
+    addTearDown(controller.dispose);
+    var stage = await pump(tester, controller);
+    var page = stage.pageRect;
+    expect(page.center.dx, closeTo(viewport.width / 2, 1),
+        reason: "the page where it always is");
+    var across =
+        tester.widgetList<SingleChildScrollView>(find.byType(SingleChildScrollView))
+            .map((v) => v.controller!)
+            .firstWhere((s) => s.position.axis == Axis.horizontal);
+    expect(across.position.maxScrollExtent, greaterThan(0),
+        reason: "room to go along the level, at the whole canvas");
+    // Along to the far platform, and picked there.
+    across.jumpTo(across.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+    var scale = stage.pageRect.width / controller.document.size.width;
+    var far = stage.pageRect.topLeft + const Offset(3100, 530) * scale;
+    expect(far.dx, inInclusiveRange(0, viewport.width));
+    await tester.tapAt(far);
+    await tester.pumpAndSettle();
+    expect(controller.selection, {"far"});
+
+    // In play, the view is the game's: nothing past the page to scroll to.
+    controller.gaming = true;
+    await tester.pump();
+    expect(!across.hasClients || across.position.maxScrollExtent == 0, isTrue);
+    controller.gaming = false;
+    await tester.pump(const Duration(milliseconds: 50));
   });
 
   testWidgets("zooming out never leaves the canvas off-centre", (tester) async {

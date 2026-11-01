@@ -19,7 +19,9 @@ import 'package:bruig/components/usersearch/user_search_panel.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/components/tooltips.dart';
+import 'package:bruig/screens/manage_content/file_preview.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/config.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:file_picker/file_picker.dart';
@@ -41,9 +43,13 @@ class SharedContentFile extends StatefulWidget {
   // onTap is only set when the screen was opened to pick a file for
   // something else (see ManageContentScreenArgs).
   final VoidCallback? onTap;
+
+  /// onPreview opens the file in the preview beside the list, as Downloads
+  /// does -- null where there is nowhere to show it.
+  final ValueChanged<String>? onPreview;
   const SharedContentFile(
       this.file, this.removeContentCB, this.client, this.onTap,
-      {super.key});
+      {this.onPreview, super.key});
 
   @override
   State<SharedContentFile> createState() => _SharedContentFileState();
@@ -193,6 +199,15 @@ class _SharedContentFileState extends State<SharedContentFile> {
           tooltip: "Copy link",
           onPressed: () => copyLink(context),
         ),
+        // As Downloads has it: only for the kinds the app can show -- a
+        // picture, a PDF, a video, a canvas played (Ken).
+        if (canOpen &&
+            widget.onPreview != null &&
+            fileKindOf(diskPath) != FileKind.other)
+          TextButton(
+              key: ValueKey("sharedPreview-${file.sf.fid}"),
+              onPressed: () => widget.onPreview!(diskPath),
+              child: const Text("Preview")),
         TextButton(
           onPressed: canOpen ? () => OpenFilex.open(diskPath) : null,
           child: Text("Open",
@@ -257,9 +272,14 @@ class SharedContent extends StatefulWidget {
   final RemoveContentCB removeContent;
   final ClientModel client;
   final FileSelectedCB? fileSelectedCB;
+
+  /// previewing/onPreviewing are which file is open in the preview, owned by
+  /// the screen around this one -- see DownloadsScreen.
+  final String? previewing;
+  final ValueChanged<String?>? onPreviewing;
   const SharedContent(
       this.client, this.files, this.removeContent, this.fileSelectedCB,
-      {super.key});
+      {this.previewing, this.onPreviewing, super.key});
 
   @override
   State<SharedContent> createState() => _SharedContentState();
@@ -271,6 +291,12 @@ class _SharedContentState extends State<SharedContent> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.previewing case var preview?) {
+      return FilePreview(
+          filePath: preview,
+          nav: widget.client.ui.manageContentNav,
+          onClose: () => widget.onPreviewing?.call(null));
+    }
     var needle = filter.trim().toLowerCase();
     var files = widget.files.where((f) {
       if (needle == "") return true;
@@ -299,6 +325,25 @@ class _SharedContentState extends State<SharedContent> {
           onSort: (s) => setState(() => sort = s),
           summary: fileCountSummary(files.length, humanReadableSize(totalSize)),
         ),
+        // The folder what Canvas publishes here is written to, beside
+        // downloads: opened, to see and keep up to date what is offered.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const ValueKey("openSharedFolder"),
+              icon: const Icon(Icons.folder_open_outlined, size: 16),
+              label: const Text("Open the shared folder"),
+              onPressed: () async {
+                var dir = Directory(
+                    path.join(await defaultAppDataDir(), sharedFilesDirName));
+                await dir.create(recursive: true);
+                await OpenFilex.open(dir.path);
+              },
+            ),
+          ),
+        ),
         Expanded(
           child: ListView.builder(
             // The same gutters every content-area page uses; the top comes
@@ -316,7 +361,8 @@ class _SharedContentState extends State<SharedContent> {
                       widget.client,
                       widget.fileSelectedCB != null
                           ? () => widget.fileSelectedCB!(files[index].sf)
-                          : null));
+                          : null,
+                      onPreview: widget.onPreviewing));
             },
           ),
         ),
@@ -643,7 +689,13 @@ class ManageContentScreenArgs {
 class ManageContent extends StatefulWidget {
   static String routeName = "/manageContent";
   final int view;
-  const ManageContent(this.view, {super.key});
+
+  /// previewing/onPreviewing are the Shared page's preview, owned by the
+  /// screen around it.
+  final String? previewing;
+  final ValueChanged<String?>? onPreviewing;
+  const ManageContent(this.view,
+      {this.previewing, this.onPreviewing, super.key});
 
   @override
   State<ManageContent> createState() => _ManageContentState();
@@ -698,7 +750,9 @@ class _ManageContentState extends State<ManageContent> {
         // No padding here: each page below owns its own gutters, so that
         // they match each other and the rest of the content area.
         builder: (context, client, child) => widget.view == 1
-            ? SharedContent(client, files, removeContent, fileSelCB)
+            ? SharedContent(client, files, removeContent, fileSelCB,
+                previewing: widget.previewing,
+                onPreviewing: widget.onPreviewing)
             : AddContentPanel(addContent));
   }
 }

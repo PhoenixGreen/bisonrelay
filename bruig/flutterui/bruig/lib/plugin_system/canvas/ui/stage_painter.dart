@@ -204,6 +204,11 @@ class StagePainter extends CustomPainter {
   /// waiting off the left of the canvas can be seen and taken hold of.
   final Rect view;
 
+  /// levelShown is whether [view] is a game's level reaching past the page:
+  /// the sheet's shadow under the page alone, and the page marked out --
+  /// the screen the game starts on.
+  final bool levelShown;
+
   /// facing is the page drawn beside the one being edited, by index, or null
   /// where it stands alone. See CanvasStage._facingPage.
   ///
@@ -416,6 +421,7 @@ class StagePainter extends CustomPainter {
     this.drafting = false,
     this.backgrounds,
     required this.page,
+    this.levelShown = false,
     required this.view,
     this.facing,
     this.facingFrame = 0,
@@ -529,7 +535,8 @@ class StagePainter extends CustomPainter {
         canvas.drawRect(leftLeaf.shift(Offset(page.width, 6)), shadow);
       }
     } else {
-      canvas.drawRect(view.shift(const Offset(0, 6)), shadow);
+      canvas.drawRect(
+          (levelShown ? page : view).shift(const Offset(0, 6)), shadow);
     }
 
     // Everything the document contributes goes inside the frame, at whatever
@@ -663,6 +670,15 @@ class StagePainter extends CustomPainter {
     }
     canvas.restore();
 
+    // The screen the game starts on, within the level round it.
+    if (levelShown) {
+      canvas.drawRect(
+          page,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = const Color(0x99FFFFFF));
+    }
     _paintGuides(canvas);
     _paintFraming(canvas);
     _paintSelection(canvas);
@@ -1940,6 +1956,7 @@ class StagePainter extends CustomPainter {
   @override
   bool shouldRepaint(StagePainter old) =>
       old.drafting != drafting ||
+      old.levelShown != levelShown ||
       !listEquals(old.touchAreas, touchAreas) ||
       old.guides != guides ||
       !identical(old.snapped, snapped) ||

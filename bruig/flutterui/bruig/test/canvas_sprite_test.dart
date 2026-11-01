@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
@@ -122,6 +123,38 @@ void main() {
             .sheetFrameAt(0, 12),
         (1, false),
         reason: "not where its sides are not to be mirrored");
+  });
+
+  // Ken: patrols walked backwards one way -- and Kenney's enemies are drawn
+  // facing left.
+  test("a sprite turns to face where it goes on the timeline", () {
+    var e = _sprite().copyWith(
+        sheet: "x",
+        sheetW: 64,
+        sheetH: 32,
+        columns: 4,
+        rows: 2,
+        faceTravel: true,
+        actions: const [
+          SpriteAction("Walk", frames: {SpriteFacing.front: [1, 2]}),
+        ],
+        action: "Walk");
+    e = e.rebase(e.base.copyWith(
+        track: ElementTrack(const [
+      Keyframe(frame: 0),
+      Keyframe(frame: 60, dx: 300),
+      Keyframe(frame: 90, dx: 300),
+      Keyframe(frame: 150),
+    ]))) as SpriteElement;
+    expect(e.sheetFrameAt(30, 30)!.$2, isFalse, reason: "going right");
+    expect(e.sheetFrameAt(75, 30)!.$2, isFalse, reason: "stood, still right");
+    expect(e.sheetFrameAt(120, 30)!.$2, isTrue, reason: "going left, mirrored");
+    var left = e.copyWith(drawnLeft: true);
+    expect(left.sheetFrameAt(30, 30)!.$2, isTrue,
+        reason: "drawn facing left: mirrored to go right");
+    expect(left.sheetFrameAt(120, 30)!.$2, isFalse);
+    var back = elementFromJson(left.toJson()) as SpriteElement;
+    expect((back.faceTravel, back.drawnLeft), (true, true));
   });
 
   test("saved and read back, and made new from the Elements panel", () {

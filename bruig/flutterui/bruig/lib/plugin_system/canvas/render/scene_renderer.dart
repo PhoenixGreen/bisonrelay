@@ -499,7 +499,9 @@ void _paintDocumentBackground(
     paintStage(canvas, rect, bg.stageOn(rect), (time * frameRate).round());
   } else if (bg.isParallax) {
     paintParallax(canvas, rect, bg.parallaxOn(rect), (time * frameRate).round(),
-        frameRate: frameRate, images: images);
+        frameRate: frameRate,
+        images: images,
+        loopFrames: parallaxLoopFrames(doc));
   } else if (!covered) {
     _paintPattern(canvas, rect, bg, time, images, backgrounds, frameRate);
   }
@@ -954,7 +956,9 @@ void paintElement(
             bounds,
             e.mask,
             () => _paintBackgroundElement(canvas, bounds, e, time,
-                frameRate.toDouble(), images, backgrounds));
+                frameRate.toDouble(), images, backgrounds,
+                loopFrames:
+                    document == null ? null : parallaxLoopFrames(document)));
       case PathElement e:
         arriving(canvas, bounds, e.animation, pose,
             () => _paintPath(canvas, bounds, e, editing));
@@ -3057,7 +3061,8 @@ void _paintBackgroundElement(
     double time,
     double frameRate,
     CanvasImageSource? images,
-    ProceduralCache? backgrounds) {
+    ProceduralCache? backgrounds,
+    {int? loopFrames}) {
   if (e.cornerRadius > 0) {
     canvas.save();
     canvas.clipRRect(
@@ -3069,7 +3074,7 @@ void _paintBackgroundElement(
       paintStage(canvas, bounds, e.staged, frame);
     } else {
       paintParallax(canvas, bounds, e.parallaxed, frame,
-          frameRate: frameRate, images: images);
+          frameRate: frameRate, images: images, loopFrames: loopFrames);
     }
     if (e.cornerRadius > 0) canvas.restore();
     return;

@@ -8021,8 +8021,9 @@ class CanvasController extends ChangeNotifier {
     var into = 0.0;
     if (delay < 0) {
       // Late -- the file took a while to open: started where it would have
-      // got to, so it is still in time.
-      into = -delay;
+      // got to, so it is still in time. Not a game's sound played once --
+      // a coin's chime -- which is heard whole, its start not cut off.
+      into = gaming && !clip.loop ? 0 : -delay;
       delay = 0;
     }
     for (var was in {replaced, ch.now}) {
