@@ -159,7 +159,7 @@ LoadedModel? dollHumanModel(CharacterDna dna, double feminine) {
       : dna;
   return HumanBody.instance.modelFor(
       person.copyWith(wardrobe: const [], hairStyle: HairStyle.bald),
-      drawnFace: true,
+      plainFace: true,
       gender: 1 - feminine);
 }
 

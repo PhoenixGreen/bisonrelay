@@ -6894,7 +6894,7 @@ class CanvasStageState extends State<CanvasStage>
                         facingOnLeft: _facingOnLeft,
                         facingShown: _spreadShown,
                         // Played as a game: the canvas as the game has it.
-                        document: controller.gameView ?? document,
+                        document: controller.gameView ?? controller.spoken(document),
                         frame: controller.frame,
                         previewAt: controller.previewAt,
                         previewing: controller.previewing,

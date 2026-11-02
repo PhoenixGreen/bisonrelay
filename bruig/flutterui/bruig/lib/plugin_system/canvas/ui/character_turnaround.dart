@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
+    show BackgroundRemoval;
 import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart'
     show turnedToView;
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -127,7 +129,7 @@ const Color _ink = Color(0xFF6E9BFF);
 /// the screen; [scale] is screen pixels to a page unit.
 void paintTurnaround(Canvas canvas, Turnaround sheet, Offset Function(Offset) at,
     double scale, Offset origin,
-    {bool onion = false}) {
+    {bool onion = false, CanvasImageSource? images}) {
   var e = sheet.character;
   var frame = Paint()
     ..style = PaintingStyle.stroke
@@ -157,6 +159,14 @@ void paintTurnaround(Canvas canvas, Turnaround sheet, Offset Function(Offset) at
     paintElement(canvas, sheet.shownAs(key, e.bounds), sheet.frame);
     canvas.restore();
   }
+  // The reference, over each view, as a light table shows it: see
+  // character_reference.dart.
+  if (images != null) {
+    for (var p in sheet.panels) {
+      _paintReference(canvas, sheet, p.key, p.rect, images, at);
+    }
+    _paintReference(canvas, sheet, sheet.current, e.bounds, images, at);
+  }
   // The lines across, the left end named.
   var left = own.left - 70, right = at(Offset(sheet.right, 0)).dx + 12;
   var line = Paint()
@@ -169,6 +179,35 @@ void paintTurnaround(Canvas canvas, Turnaround sheet, Offset Function(Offset) at
     }
     _label(canvas, g.label, Offset(left, y - 7), align: TextAlign.left, small: true);
   }
+}
+
+/// _paintReference lays the reference's cut for view [key] over [box]: its
+/// skull on the top of the head's line and its feet on the ground's, in the
+/// middle of the box, as strongly as the reference says -- mirrored, for a
+/// side drawn facing the other way.
+void _paintReference(Canvas canvas, Turnaround sheet, String key, Rect box,
+    CanvasImageSource images, Offset Function(Offset) at) {
+  var ref = sheet.character.reference;
+  if (ref == null || !ref.shown || ref.strength <= 0.01) return;
+  var head = sheet.guides.firstWhere((g) => g.label == "Top of head").y;
+  var ground = sheet.guides.firstWhere((g) => g.label == "Ground").y;
+  var laid = ref.laidOver(key, box, head, ground);
+  if (laid == null) return;
+  var (:cut, laid: dst, :mirrored) = laid;
+  var picture = images.resolve(ref.laid, const BackgroundRemoval());
+  if (picture == null) return;
+  var screen = Rect.fromPoints(at(dst.topLeft), at(dst.bottomRight));
+  var paint = Paint()
+    ..filterQuality = FilterQuality.medium
+    ..color = Color.fromRGBO(255, 255, 255, ref.strength);
+  canvas.save();
+  if (mirrored) {
+    canvas.translate(screen.center.dx, 0);
+    canvas.scale(-1, 1);
+    canvas.translate(-screen.center.dx, 0);
+  }
+  canvas.drawImageRect(picture, cut, screen, paint);
+  canvas.restore();
 }
 
 void _label(Canvas canvas, String text, Offset at,

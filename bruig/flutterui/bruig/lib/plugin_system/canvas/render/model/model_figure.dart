@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_gltf.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/human_targets.dart' show humanUnitsOf;
 import 'package:bruig/plugin_system/canvas/model/elements/model_math.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/render/model/mesh_painter.dart';
@@ -202,17 +203,22 @@ class LoadedModel {
   /// feet on the bottom of [box] and as tall as the box -- in pixels from
   /// the middle of the box's bottom, which is returned with them.
   /// [lift] is how far it is off the ground, in pixels: a jump.
+  ///
+  /// With [weightsOf], every piece hung from a skeleton is coloured by how
+  /// much [weightsOf] moves each point of it -- the skin's weights as a
+  /// heat map, cold for none to hot for all -- in place of its own colour.
   (ui.Offset, List<MeshPiece>) pieces(
       CharacterRig rig, CharacterFace face, ui.Rect box,
-      {double lift = 0}) {
+      {double lift = 0, HumanBone? weightsOf}) {
     // Kept by the size it is drawn at, not where: a figure dragged across
     // the page is the same pieces, stood somewhere else.
-    var key = _keyOf(rig, face, box, lift);
+    var key = "${_keyOf(rig, face, box, lift)}|${weightsOf?.name}";
     if (_drawn.remove(key) case var kept?) {
       _drawn[key] = kept;
       return (box.bottomCenter, kept.$2);
     }
-    var made = CanvasPerf.time("character3dPose", () => _pieces(rig, face, box, lift));
+    var made = CanvasPerf.time(
+        "character3dPose", () => _pieces(rig, face, box, lift, weightsOf));
     _drawn[key] = made;
     if (_drawn.length > 12) _drawn.remove(_drawn.keys.first);
     return made;
@@ -295,8 +301,9 @@ class LoadedModel {
   }
 
   /// _pieces is [pieces], worked out.
-  (ui.Offset, List<MeshPiece>) _pieces(
-      CharacterRig rig, CharacterFace face, ui.Rect box, double lift) {
+  (ui.Offset, List<MeshPiece>) _pieces(CharacterRig rig, CharacterFace face,
+      ui.Rect box, double lift, HumanBone? weightsOf) {
+    var weighed = weightsOf == null ? null : _segmentOf(gltf, weightsOf);
     var turns = _pose(rig, face);
     var world = _worldWith(turns);
     var weights = _expressionWeights(face);
@@ -331,6 +338,18 @@ class LoadedModel {
         var image = mat?.image != null && mat!.image! < images.length
             ? images[mat.image!]
             : null;
+        var heat = weighed == null ? null : _heat(gltf, node, prim, weighed);
+        if (heat != null) {
+          out.add(MeshPiece(
+            points: points,
+            normals: normals,
+            colors: heat,
+            indices: prim.indices,
+            color: const ui.Color(0xFFFFFFFF),
+            doubleSided: mat?.doubleSided ?? false,
+          ));
+          continue;
+        }
         out.add(MeshPiece(
           points: points,
           normals: normals,
@@ -341,6 +360,7 @@ class LoadedModel {
           image: image,
           doubleSided: mat?.doubleSided ?? false,
           cutOut: mat?.cutOut ?? false,
+          depth: mat?.whole ?? false ? _wholeDepth(points, mat!.front) : null,
           toon: switch (mat?.mtoon) {
             MToon t => MeshToon(
                 shade: ui.Color.from(
@@ -364,39 +384,6 @@ class LoadedModel {
   /// boneAt is where [bone] is when posed as [rig] and [face] say, in the
   /// model's own units, facing the reader, before the body's turn -- or
   /// null when the model has no such bone.
-  /// faceFrame is where the head is on the page, posed: its eyes, the
-  /// bottom of the skull, the middle of the head and the mouth if it marks
-  /// one, each x and y on the
-  /// page and how near the reader, in pixels -- for a face drawn on it.
-  /// Null for a model without eyes to find.
-  ({
-    List<double> eyeL,
-    List<double> eyeR,
-    List<double> base,
-    List<double> top,
-    List<double>? mouth
-  })?
-      faceFrame(CharacterRig rig, CharacterFace face, ui.Rect box, {double lift = 0}) {
-    var h = gltf.humanoid;
-    var l = h[HumanBone.leftEye], r = h[HumanBone.rightEye];
-    var head = h[HumanBone.head], neck = h[HumanBone.neck];
-    if (l == null || r == null || head == null || neck == null) return null;
-    var world = _worldWith(_pose(rig, face));
-    var b = world[head].translation, n = world[neck].translation;
-    // The middle of the head is as far above the skull's base as the neck
-    // is long -- as joints has it.
-    var t = [for (var k = 0; k < 3; k++) b[k] + (b[k] - n[k])];
-    List<double> page(List<double> p) => _onPage(p, rig, box, lift);
-    var m = gltf.nodes.indexWhere((n) => n.name == mouthLandmark);
-    return (
-      eyeL: page(world[l].translation),
-      eyeR: page(world[r].translation),
-      base: page(b),
-      top: page(t),
-      mouth: m < 0 ? null : page(world[m].translation),
-    );
-  }
-
   List<double>? boneAt(CharacterRig rig, CharacterFace face, HumanBone bone) {
     var n = gltf.humanoid[bone];
     if (n == null) return null;
@@ -621,7 +608,13 @@ class LoadedModel {
       out[i] = w;
     }
     if (out.isEmpty) return out;
-    for (var e in expressionsOf(face).entries) {
+    // A sculpted body moves its face unit by unit; a model brought in, by
+    // the VRM expressions it names.
+    var units = gltf.expressions.containsKey("unit:mouth-open");
+    var named = units
+        ? {for (var e in humanUnitsOf(face).entries) "unit:${e.key}": e.value}
+        : expressionsOf(face);
+    for (var e in named.entries) {
       for (var bind in gltf.expressions[e.key] ?? const <ExpressionBind>[]) {
         var w = out[bind.mesh];
         if (w == null || bind.target >= w.length) continue;
@@ -711,6 +704,21 @@ List<double> _mul3(List<double> a, List<double> b) => [
           a[r * 3] * b[c] + a[r * 3 + 1] * b[3 + c] + a[r * 3 + 2] * b[6 + c],
     ];
 
+/// _wholeDepth is how near the reader [points] are as one piece: their
+/// middle -- teeth, behind the lips -- or with [front] their nearest -- an
+/// iris, in front of the eyeball round it and behind a lid shut over it.
+double _wholeDepth(Float32List points, bool front) {
+  var most = double.negativeInfinity, sum = 0.0;
+  var n = points.length ~/ 3;
+  for (var i = 0; i < n; i++) {
+    var z = points[i * 3 + 2];
+    sum += z;
+    if (z > most) most = z;
+  }
+  if (n == 0) return 0;
+  return front ? most : sum / n;
+}
+
 /// expressionsOf is the VRM expressions -- happy, blink, aa and the rest --
 /// that make [face], and how far each.
 Map<String, double> expressionsOf(CharacterFace face) {
@@ -765,6 +773,63 @@ Iterable<(int, Float32List)> _skinned(
       yield (n, _skinPrimitive(gltf, world, n, node, prim, weights[mi]).$1);
     }
   }
+}
+
+/// _segmentOf is the nodes [bone] is made of: its own, and those under it
+/// down to the next bone with a name -- a twist bone, a bone the rig adds
+/// between -- whose skin moves with it. MakeHuman's upper arm is three.
+Set<int>? _segmentOf(Gltf gltf, HumanBone bone) {
+  var top = gltf.humanoid[bone];
+  if (top == null) return null;
+  var named = gltf.humanoid.values.toSet();
+  var out = <int>{};
+  void walk(int n) {
+    out.add(n);
+    for (var c in gltf.nodes[n].children) {
+      if (c < gltf.nodes.length && !named.contains(c)) walk(c);
+    }
+  }
+
+  walk(top);
+  return out;
+}
+
+/// _heat is how much [prim]'s points are moved by the bones at the nodes
+/// [bone], as colours, four to a point: deep blue for nothing, through
+/// green and yellow, to red for all of it. Null for a piece not hung from
+/// bones.
+Float32List? _heat(Gltf gltf, GltfNode node, GltfPrimitive prim, Set<int> bone) {
+  var joints = prim.joints, weights = prim.weights;
+  var skin = node.skin;
+  if (joints == null || weights == null || skin == null || skin >= gltf.skins.length) {
+    return null;
+  }
+  var nodes = gltf.skins[skin].joints;
+  var ours = {
+    for (var (j, n) in nodes.indexed)
+      if (bone.contains(n)) j,
+  };
+  var count = prim.vertexCount;
+  var out = Float32List(count * 4);
+  const ramp = [
+    [0.12, 0.2, 0.62],
+    [0.1, 0.7, 0.45],
+    [0.95, 0.85, 0.2],
+    [0.9, 0.2, 0.15],
+  ];
+  for (var i = 0; i < count; i++) {
+    var w = 0.0;
+    for (var k = 0; k < 4; k++) {
+      if (ours.contains(joints[i * 4 + k])) w += weights[i * 4 + k];
+    }
+    var x = w.clamp(0.0, 1.0) * (ramp.length - 1);
+    var a = x.floor().clamp(0, ramp.length - 2), t = x - a;
+    for (var c = 0; c < 3; c++) {
+      out[i * 4 + c] = ramp[a][c] + (ramp[a + 1][c] - ramp[a][c]) * t;
+    }
+    out[i * 4 + 3] = 1;
+  }
+  return out;
 }
 
 /// _skinPrimitive is [prim]'s points and normals as it stands: its face

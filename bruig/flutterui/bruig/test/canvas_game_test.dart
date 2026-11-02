@@ -980,6 +980,43 @@ void main() {
       expect(landed.pose.turn, 90, reason: "still facing the way it went");
     });
 
+    test("plays the character's own motions, at its own stride", () {
+      var g = GameRun();
+      var mine = hero(PlayAs.platformer).copyWith(
+          feel: const MotionFeel(stride: 1),
+          gameMotions: const GameMotions()
+              .withMotion(GameMove.standing, MotionKind.wave)
+              .withMotion(GameMove.walking, MotionKind.dance)
+              .withMotion(GameMove.falling, MotionKind.clap));
+      var doc = page.copyWith(elements: [mine]);
+      run(g, doc, 1.5);
+      expect(seen(g, doc, 10).motions.single.kind, MotionKind.wave);
+      run(g, doc, 0.5, keys: {key(LogicalKeyboardKey.arrowRight)});
+      expect(seen(g, doc, 10).motions.single.kind, MotionKind.dance);
+      // Walking again: the stride carries it further, so the steps are slower.
+      var walk = mine.copyWith(gameMotions: const GameMotions());
+      g = GameRun();
+      doc = page.copyWith(elements: [walk]);
+      run(g, doc, 1);
+      run(g, doc, 0.5, keys: {key(LogicalKeyboardKey.arrowRight)});
+      expect(seen(g, doc, 10).motions.single.speed,
+          closeTo(160 / (0.6 * 1.6 * 300), 0.01));
+      // Going up a jump, then coming down: the second is its own.
+      g = GameRun();
+      doc = page.copyWith(elements: [mine]);
+      run(g, doc, 1);
+      run(g, doc, 0.05, keys: {key(LogicalKeyboardKey.space)});
+      expect(seen(g, doc, 10).motions.single.kind, MotionKind.jump,
+          reason: "going up");
+      var kinds = <MotionKind>{};
+      for (var i = 0; i < 60; i++) {
+        run(g, doc, 1 / 60);
+        if (seen(g, doc, 10).motions.singleOrNull?.kind case var k?)
+          kinds.add(k);
+      }
+      expect(kinds, contains(MotionKind.clap), reason: "coming down");
+    });
+
     test("fast, it runs", () {
       var g = GameRun();
       var doc = page.copyWith(elements: [hero(PlayAs.platformer, speed: 500)]);

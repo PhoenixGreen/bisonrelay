@@ -28,6 +28,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_studio.dart'
+    show StudioWorkspace;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -239,6 +241,30 @@ void main() {
     });
   });
 
+  group("skin weights as a heat map", () {
+    late LoadedModel model;
+    setUpAll(() async => model = await loadModel(humanoidGlb()));
+
+    test("a bone's skin hot, the rest cold; its own colours otherwise", () {
+      var dna = characterCast.first.dna;
+      const box = Rect.fromLTWH(0, 0, 160, 340);
+      var rig = CharacterRig.of(dna, CharacterElement.restPose, box);
+      var (_, plain) = model.pieces(rig, CharacterFace.rest, box);
+      expect(plain.every((p) => p.colors == null), isTrue);
+      var (_, heat) = model.pieces(rig, CharacterFace.rest, box, weightsOf: HumanBone.leftUpperArm);
+      var colours = heat.firstWhere((p) => p.colors != null).colors!;
+      var hot = 0, cold = 0;
+      for (var i = 0; i < colours.length; i += 4) {
+        if (colours[i] > 0.8 && colours[i + 2] < 0.3) hot++;
+        if (colours[i + 2] > 0.5 && colours[i] < 0.2) cold++;
+      }
+      expect(hot, greaterThan(0), reason: "the upper arm's box");
+      expect(cold, greaterThan(hot), reason: "everything else");
+      var (_, again) = model.pieces(rig, CharacterFace.rest, box);
+      expect(again.every((p) => p.colors == null), isTrue, reason: "kept apart from the heat map");
+    });
+  });
+
   group("pins on a model", () {
     late LoadedModel model;
     setUpAll(() async => model = await loadModel(humanoidGlb()));
@@ -387,7 +413,9 @@ void main() {
               dna: characterCast.first.dna,
               body: const CharacterBody(kind: BodyKind.model, modelId: "m"))));
       addTearDown(c.dispose);
-      c.selectOnly("c");
+      // Its design is made in the Character Studio.
+      c.openStudio("c");
+      c.studioWorkspace = StudioWorkspace.rig;
       tester.view.physicalSize = const Size(900, 3000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -434,7 +462,9 @@ void main() {
               const ElementBase(id: "c", x: 200, y: 50, width: 160, height: 340),
               dna: characterCast.first.dna)));
       addTearDown(c.dispose);
-      c.selectOnly("c");
+      // Its design is made in the Character Studio.
+      c.openStudio("c");
+      c.studioWorkspace = StudioWorkspace.rig;
       tester.view.physicalSize = const Size(900, 3000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);

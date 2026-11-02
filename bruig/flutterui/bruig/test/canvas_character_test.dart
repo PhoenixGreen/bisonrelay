@@ -33,6 +33,8 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/render/character/painted_light.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_studio.dart'
+    show StudioWorkspace;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1164,7 +1166,9 @@ ${rows.join("\n")}
       var c = CanvasController(
           CanvasDocument(frames: 24).addElement(juno()));
       addTearDown(c.dispose);
-      c.selectOnly("c");
+      // Its design is made in the Character Studio.
+      c.openStudio("c");
+      c.studioWorkspace = StudioWorkspace.rig;
       tester.view.physicalSize = const Size(900, 3000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);

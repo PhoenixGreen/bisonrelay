@@ -259,7 +259,7 @@ class HumanBody extends ChangeNotifier {
   /// modelFor is [dna] made of the body, ready to pose -- or null while the
   /// body is not here, or for a character it cannot make: an animal.
   LoadedModel? modelFor(CharacterDna dna,
-      {bool drawnFace = false,
+      {bool plainFace = false,
       String? preferHair,
       double limbs = 1,
       bool gloves = false,
@@ -275,12 +275,12 @@ class HumanBody extends ChangeNotifier {
     if (!dna.kind.person) return null;
     var wearing = [
       for (var w in wearFor(dna, _wear, prefer: preferHair))
-        if (!drawnFace ||
+        if (!plainFace ||
             (w.item.kind != WearKind.eyebrows && w.item.kind != WearKind.teeth))
           w,
     ];
     var key = jsonEncode([
-      drawnFace,
+      plainFace,
       limbs,
       gloves,
       gender,
@@ -298,7 +298,7 @@ class HumanBody extends ChangeNotifier {
       [for (var g in dna.worn) g.toJson()],
     ]);
     if (_made.remove(key) case var kept?) {
-      _lastOf[(dna.kind, drawnFace)] = key;
+      _lastOf[(dna.kind, plainFace)] = key;
       return _made[key] = kept;
     }
     var images = [for (var w in wearing) _masks[w.item.id]];
@@ -306,26 +306,26 @@ class HumanBody extends ChangeNotifier {
     // stands in while the new one is made away from the screen: making
     // one takes a fifth of a second, too long to hold up every frame.
     CanvasPerf.count("bodyBuild");
-    var standIn = _made[_lastOf[(dna.kind, drawnFace)]];
+    var standIn = _made[_lastOf[(dna.kind, plainFace)]];
     if (standIn != null && !buildNow && !_inForeground) {
-      _buildAway(key, pack, dna, wearing, drawnFace, images, limbs, gloves, gender);
+      _buildAway(key, pack, dna, wearing, plainFace, images, limbs, gloves, gender);
       stoodIn++;
       return standIn;
     }
-    return _keep(key, dna, drawnFace,
+    return _keep(key, dna, plainFace,
         LoadedModel.of(
             buildHuman(pack, dna,
                 wearing: wearing,
-                drawnFace: drawnFace,
+                plainFace: plainFace,
                 limbs: limbs,
                 gloves: gloves,
                 gender: gender),
             images));
   }
 
-  LoadedModel _keep(String key, CharacterDna dna, bool drawnFace, LoadedModel model) {
+  LoadedModel _keep(String key, CharacterDna dna, bool plainFace, LoadedModel model) {
     _made[key] = model;
-    _lastOf[(dna.kind, drawnFace)] = key;
+    _lastOf[(dna.kind, plainFace)] = key;
     if (_made.length > 6) _made.remove(_made.keys.first);
     return model;
   }
@@ -355,20 +355,20 @@ class HumanBody extends ChangeNotifier {
   _Builder? _builder;
 
   void _buildAway(String key, HumanPack pack, CharacterDna dna,
-      List<WearMesh> wearing, bool drawnFace, List<ui.Image?> images,
+      List<WearMesh> wearing, bool plainFace, List<ui.Image?> images,
       double limbs, bool gloves, double? gender) {
     if (_away == key) return;
     if (_away != null) {
-      _next = (key, dna, wearing, drawnFace, images, limbs, gloves, gender);
+      _next = (key, dna, wearing, plainFace, images, limbs, gloves, gender);
       return;
     }
     _away = key;
     () async {
       try {
         var builder = _builder ??= await _Builder.start(pack);
-        var gltf = await builder.build(dna, wearing, drawnFace, limbs, gloves, gender);
+        var gltf = await builder.build(dna, wearing, plainFace, limbs, gloves, gender);
         if (identical(_pack, pack)) {
-          _keep(key, dna, drawnFace, LoadedModel.of(gltf, images));
+          _keep(key, dna, plainFace, LoadedModel.of(gltf, images));
         }
       } catch (e) {
         debugPrint("Unable to make the body: $e");
@@ -417,11 +417,11 @@ class _Builder {
     return _Builder(to, from);
   }
 
-  Future<Gltf> build(CharacterDna dna, List<WearMesh> wearing, bool drawnFace,
+  Future<Gltf> build(CharacterDna dna, List<WearMesh> wearing, bool plainFace,
       double limbs, bool gloves, double? gender) {
     var id = _ids++;
     var c = _waiting[id] = Completer<Gltf>();
-    _to.send((id, dna, wearing, drawnFace, limbs, gloves, gender));
+    _to.send((id, dna, wearing, plainFace, limbs, gloves, gender));
     return c.future;
   }
 
@@ -435,14 +435,14 @@ class _Builder {
         reply = m;
         continue;
       }
-      var (id, dna, wearing, drawnFace, limbs, gloves, gender) =
+      var (id, dna, wearing, plainFace, limbs, gloves, gender) =
           m as (int, CharacterDna, List<WearMesh>, bool, double, bool, double?);
       try {
         reply?.send((
           id,
           buildHuman(pack, dna,
               wearing: wearing,
-              drawnFace: drawnFace,
+              plainFace: plainFace,
               limbs: limbs,
               gloves: gloves,
               gender: gender),
@@ -529,14 +529,14 @@ List<WearMesh> wearFor(CharacterDna dna, Map<String, WearMesh> wear,
 /// [wearing] -- whose pictures, where they are cut out, are the images in
 /// the same order.
 ///
-/// With [drawnFace], a style's face is to be drawn on it: its eyes are left
-/// as skin and its lashes and brows off, so they are not drawn twice.
+/// With [plainFace], it has no face: eyes left as skin, lids and lips shut,
+/// no lashes, brows or teeth, nothing moving -- the posing doll's.
 ///
 /// [limbs] is how thick its arms and legs are against the usual, as a
 /// style draws them; [gloves] puts white cartoon gloves on its hands.
 Gltf buildHuman(HumanPack pack, CharacterDna dna,
     {List<WearMesh> wearing = const [],
-    bool drawnFace = false,
+    bool plainFace = false,
     double limbs = 1,
     bool gloves = false,
     double? gender}) {
@@ -652,9 +652,9 @@ Gltf buildHuman(HumanPack pack, CharacterDna dna,
           const [1, 1, 1]),
   ];
 
-  // A drawn face's eyes and mouth are drawn: the lids under them shut, and
-  // the lips smoothed into the face, so there are not two of each.
-  if (drawnFace) {
+  // A plain face -- the doll's -- has its lids shut and its lips smoothed
+  // into the face.
+  if (plainFace) {
     for (var side in ["left", "right"]) {
       if (pack.targets["expression/units/caucasian/eye-$side-closure"]
           case (var idx, var d)) {
@@ -788,15 +788,18 @@ Gltf buildHuman(HumanPack pack, CharacterDna dna,
   // The pieces, each its own vertices.
   var primitives = <GltfPrimitive>[];
   var materials = <GltfMaterial>[];
-  var expressionNames = expressionTargets.keys.toList();
+  var expressionNames = [for (var u in humanFaceUnits) "unit:$u"];
   for (var e in pack.groups.entries) {
     var isHair = e.key == "helper-hair";
-    var isEye = e.key.startsWith("helper-l-eye") || e.key.startsWith("helper-r-eye");
+    // "helper-l-eyelashes" starts as an eye's name does: a lash is not an
+    // eye.
     var isLash = e.key.contains("eyelashes");
+    var isEye = !isLash &&
+        (e.key.startsWith("helper-l-eye") || e.key.startsWith("helper-r-eye"));
     // MakeHuman's hair helper is a guide for fitting long hair, not hair:
     // the hair is grown from the scalp instead, below.
     if (isHair) continue;
-    if (drawnFace && isLash) continue;
+    if (plainFace && isLash) continue;
     var corners = e.value;
     if ((hidden.isNotEmpty || shells.hides.isNotEmpty) && e.key == "body") {
       var kept = <int>[];
@@ -870,18 +873,11 @@ Gltf buildHuman(HumanPack pack, CharacterDna dna,
         weights[i * 4 + k] = total == 0 ? 0 : ws[k].$2 / total;
       }
       Color c;
-      if (isEye && drawnFace) {
+      if (isEye && plainFace) {
         c = colours.skin;
       } else if (isEye) {
-        var front = (pos[v * 3 + 2] - centre[2]) / (radius == 0 ? 1 : radius);
-        c = front > 0.975
-            ? const Color(0xFF15100C)
-            : front > 0.86
-                ? Color.lerp(dna.eyes, const Color(0xFFFFFFFF), 0.12)!
-                : front > 0.82
-                    ? Color.lerp(dna.eyes, const Color(0xFF000000), 0.4)!
-                    : const Color(0xFFF4F1EC);
-      } else if (isHair) {
+        // The white: the iris is a piece of its own, over it -- see _iris.
+        c = const Color(0xFFF2EEE8);      } else if (isHair) {
         c = dna.hair;
       } else if (isLash) {
         c = const Color(0xFF1B1512);
@@ -905,7 +901,7 @@ Gltf buildHuman(HumanPack pack, CharacterDna dna,
           bl += bc.b * w;
         }
         c = Color.from(alpha: 1, red: r, green: g, blue: bl);
-        if (brow[v] && !wearsBrows && !drawnFace) c = Color.lerp(c, dna.hair, 0.55)!;
+        if (brow[v] && !wearsBrows && !plainFace) c = Color.lerp(c, dna.hair, 0.55)!;
       }
       col[i * 4] = c.r;
       col[i * 4 + 1] = c.g;
@@ -917,18 +913,16 @@ Gltf buildHuman(HumanPack pack, CharacterDna dna,
     if (e.key == "body") {
       for (var name in expressionNames) {
         var t = Float32List(m * 3);
-        // A drawn face speaks and blinks with its drawn mouth and eyes.
-        if (drawnFace && _drawnMoves.contains(name)) {
+        // A plain face does not move.
+        if (plainFace) {
           targets.add(t);
           continue;
         }
-        for (var (unit, w) in expressionTargets[name]!) {
-          var tg = pack.targets["expression/units/caucasian/$unit"];
-          if (tg == null) continue;
-          var (idx, d) = tg;
+        var unit = name.substring("unit:".length);
+        if (pack.targets[unitTarget(unit)] case (var idx, var d)) {
           var moved = <int, (double, double, double)>{};
           for (var k = 0; k < idx.length; k++) {
-            var g = idx[k] < grow.length ? grow[idx[k]] * w : w;
+            var g = idx[k] < grow.length ? grow[idx[k]] : 1.0;
             moved[idx[k]] = (d[k * 3] / 2000 * g, d[k * 3 + 1] / 2000 * g,
                 d[k * 3 + 2] / 2000 * g);
           }
@@ -946,6 +940,13 @@ Gltf buildHuman(HumanPack pack, CharacterDna dna,
     materials.add(GltfMaterial(const [1, 1, 1, 1], null, isHair || isLash, false, false));
     primitives.add(GltfPrimitive(p, nm, uv, joints, weights, col, indices,
         materials.length - 1, targets));
+    if (isEye && !plainFace && m > 0) {
+      materials.add(GltfMaterial(const [1, 1, 1, 1], null, false, false, false,
+          whole: true, front: true));
+      primitives.add(_iris(centre, radius, dna.eyes,
+          Uint16List.fromList(joints.sublist(0, 4)),
+          Float32List.fromList(weights.sublist(0, 4)), materials.length - 1));
+    }
   }
 
   // Hair: the scalp's triangles again, a little off it, in the hair's
@@ -1105,7 +1106,7 @@ Gltf buildHuman(HumanPack pack, CharacterDna dna,
     materials.add(GltfMaterial(const [1, 1, 1, 1], cutOut ? wi : null,
         w.item.kind == WearKind.hair || w.item.kind == WearKind.eyebrows,
         false, cutOut,
-        cutOut: cutOut));
+        cutOut: cutOut, whole: w.item.kind == WearKind.teeth));
     primitives.add(GltfPrimitive(p, nm, uv, joints, weights, col,
         Uint32List.fromList(tris), materials.length - 1, const []));
   }
@@ -1123,19 +1124,6 @@ Gltf buildHuman(HumanPack pack, CharacterDna dna,
     primitives.add(GltfPrimitive(shell.positions, shell.normals, Float32List(m * 2),
         shell.joints, shell.weights, col, shell.triangles, materials.length - 1,
         const []));
-  }
-
-  // Where the mouth is, for a face drawn on the head: a point riding on
-  // the head, at the top of the lower lip -- the middle of what moves
-  // most as the mouth opens.
-  if (index["head"] case var head?) {
-    if (_mouthAt(pack, pos, eyeL, eyeR) case var m?) {
-      var h = heads["head"]!;
-      nodes[head].children.add(nodes.length);
-      nodes.add(GltfNode(mouthLandmark, [], [m[0] - h[0], m[1] - h[1], m[2] - h[2]],
-          Quat.identity, const [1, 1, 1], null, null, null)
-        ..parent = head);
-    }
   }
 
   // The body first, so its face shapes are the mesh's.
@@ -1166,6 +1154,82 @@ Gltf buildHuman(HumanPack pack, CharacterDna dna,
   );
 }
 
+
+/// _iris is an eye's iris, pupil and catch-light: a disc of rings laid on
+/// the front of the eyeball at [centre], [radius] round, in [colour] --
+/// lighter towards the pupil, a darker ring at its edge -- skinned as the
+/// eye is, by [joints] and [weights], so it turns as the eye looks about.
+/// Its own piece, not the eyeball's colours: an eyeball has too few points
+/// to hold a round iris.
+GltfPrimitive _iris(List<double> centre, double radius, Color colour,
+    Uint16List joints, Float32List weights, int material) {
+  const segments = 28;
+  var irisR = radius * 0.5;
+  var pos = <double>[], nrm = <double>[], col = <double>[], tri = <int>[];
+  int at(double x, double y, double lift, Color c) {
+    var r2 = radius * radius - x * x - y * y;
+    var z = math.sqrt(math.max(0.0, r2)) + radius * lift;
+    var px = centre[0] + x, py = centre[1] + y, pz = centre[2] + z;
+    pos.addAll([px, py, pz]);
+    var l = math.sqrt(x * x + y * y + z * z);
+    nrm.addAll(l == 0 ? [0, 0, 1] : [x / l, y / l, z / l]);
+    col.addAll([c.r, c.g, c.b, 1]);
+    return pos.length ~/ 3 - 1;
+  }
+
+  // Rings out from the middle: the pupil, the iris lighter near it and
+  // darker out to a dark rim.
+  var pupil = const Color(0xFF0E0B0A);
+  var rings = <(double, Color)>[
+    (0.36, pupil),
+    (0.42, Color.lerp(colour, const Color(0xFFFFFFFF), 0.28)!),
+    (0.78, colour),
+    (0.92, Color.lerp(colour, const Color(0xFF000000), 0.35)!),
+    (1.0, Color.lerp(colour, const Color(0xFF000000), 0.7)!),
+  ];
+  var middle = at(0, 0, 0.012, pupil);
+  var last = <int>[];
+  for (var (k, (f, c)) in rings.indexed) {
+    var ring = [
+      for (var s = 0; s < segments; s++)
+        at(irisR * f * math.cos(2 * math.pi * s / segments),
+            irisR * f * math.sin(2 * math.pi * s / segments), 0.012, c),
+    ];
+    for (var s = 0; s < segments; s++) {
+      var a = ring[s], b = ring[(s + 1) % segments];
+      if (k == 0) {
+        tri.addAll([middle, a, b]);
+      } else {
+        var pa = last[s], pb = last[(s + 1) % segments];
+        tri.addAll([pa, a, b, pa, b, pb]);
+      }
+    }
+    last = ring;
+  }
+  // The catch-light: up and to one side, as a key light puts it.
+  const light = Color(0xFFFFFFFF);
+  var cx = irisR * 0.32, cy = irisR * 0.34, cr = irisR * 0.16;
+  var glint = at(cx, cy, 0.02, light);
+  var round = [
+    for (var s = 0; s < 12; s++)
+      at(cx + cr * math.cos(2 * math.pi * s / 12),
+          cy + cr * math.sin(2 * math.pi * s / 12), 0.02, light),
+  ];
+  for (var s = 0; s < 12; s++) {
+    tri.addAll([glint, round[s], round[(s + 1) % 12]]);
+  }
+  var n = pos.length ~/ 3;
+  var j = Uint16List(n * 4), w = Float32List(n * 4);
+  for (var i = 0; i < n; i++) {
+    for (var k = 0; k < 4; k++) {
+      j[i * 4 + k] = joints[k];
+      w[i * 4 + k] = weights[k];
+    }
+  }
+  return GltfPrimitive(Float32List.fromList(pos), Float32List.fromList(nrm),
+      Float32List(n * 2), j, w, Float32List.fromList(col),
+      Uint32List.fromList(tri), material, const []);
+}
 
 /// _mouthAt is the top of the lower lip on the body at [pos], found by
 /// what opening the mouth moves: the highest of the vertices down the
@@ -1202,8 +1266,6 @@ List<double>? _mouthAt(
   return best;
 }
 
-/// _drawnMoves is the face's movements a drawn face makes itself.
-const Set<String> _drawnMoves = {"blink", "aa", "ih", "ou", "ee", "oh"};
 
 /// _smoothLips smooths [pos] round the mouth at [mouth] -- an oval as wide
 /// as the eyes are far apart, [gap] -- most in the middle.

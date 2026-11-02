@@ -12,6 +12,10 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
@@ -894,6 +898,49 @@ void main() {
       c.gaming = false;
       expect(c.clipState("fx", 0), ClipState.stopped,
           reason: "the game's slots stop with it");
+    });
+
+    // Ken's narrators: a character that speaks for a channel speaks what a
+    // slot plays on it.
+    test("a character speaking for a channel moves its mouth by the take",
+        () async {
+      var voice = sound("a");
+      voice = voice.copyWith(
+          clip: voice.clip.copyWith(
+              mix: ChannelMix(
+                  speech: SpeechSpec(takes: [
+        SpeechTake(id, 8, const [
+          (text: "hello", start: 0.5, end: 1.0),
+          (text: "boom", start: 1.6, end: 2.2),
+        ]),
+      ]))));
+      var ada = CharacterElement(
+          const ElementBase(id: "ada", name: "Ada", visible: false),
+          speaksFor: "a");
+      var c = make([voice, ada]);
+      addTearDown(c.dispose);
+      c.clockForTest = () => micros;
+      c.clipFromSound("a", 0, c.soundsOf("a").single);
+      expect(identical(c.spoken(c.document), c.document), isTrue,
+          reason: "nothing heard yet");
+      c.pressClip("a", 0);
+      await settle();
+      CharacterElement said() =>
+          c.spoken(c.document).elementById("ada") as CharacterElement;
+      at(c, 0.2);
+      expect(said().face.mouth, MouthShape.rest, reason: "before the word");
+      expect(said().visible, isTrue, reason: "shown while it is heard");
+      expect(said().motions.single.kind, MotionKind.talk);
+      at(c, 0.75);
+      expect(said().face.mouth, isNot(MouthShape.rest), reason: "saying hello");
+      at(c, 1.3);
+      expect(said().face.mouth, MouthShape.rest, reason: "between the words");
+      at(c, 1.8);
+      expect(said().face.mouth, isNot(MouthShape.rest));
+      c.stopChannelClips("a", now: true);
+      at(c, 1.9);
+      expect(said().visible, isFalse, reason: "hidden again once it stops");
+      c.pause();
     });
   });
 

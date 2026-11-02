@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/character_assets.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/stock_panel.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -70,6 +71,20 @@ class CanvasAssetsPanel extends StatelessWidget {
                     controller: controller,
                     kind: kind),
               ),
+            StackPanel(
+              id: "characters",
+              label: "Characters",
+              icon: Icons.person_outline,
+              hint: "The characters made in the Character Studio. Click one "
+                  "to place a copy in the middle of the canvas: change it in "
+                  "the Studio and every copy follows.",
+              // Shut until wanted, as Models are: the panels it would
+              // squeeze are the ones most canvases use.
+              startsOpen: false,
+              body: CharacterAssetSection(
+                  key: const ValueKey("assets-characters"),
+                  controller: controller),
+            ),
             StackPanel(
               id: "stock",
               label: "Stock",

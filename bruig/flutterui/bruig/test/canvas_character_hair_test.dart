@@ -21,6 +21,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Image;
+import 'package:bruig/plugin_system/canvas/ui/character_studio.dart'
+    show StudioWorkspace;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -135,7 +137,9 @@ void main() {
       HairStrokesEditor.stroke = 0;
       var c = CanvasController(CanvasDocument(frames: 24).addElement(_sketch()));
       addTearDown(c.dispose);
-      c.selectOnly("c");
+      // Its design is made in the Character Studio.
+      c.openStudio("c");
+      c.studioWorkspace = StudioWorkspace.rig;
       c.pickCharacterLayer(BodyLayer.hairFront.name);
       tester.view.physicalSize = const Size(900, 14000);
       tester.view.devicePixelRatio = 1;

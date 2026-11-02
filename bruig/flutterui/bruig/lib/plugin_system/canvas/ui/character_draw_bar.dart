@@ -85,6 +85,9 @@ class CharacterDrawBar extends StatelessWidget {
                   onPressed: press);
 
           var zoom = controller.characterZoom;
+          // In the Character Studio, which way round it is seen is its view
+          // pills'.
+          var studio = controller.studioCharacter != null;
           var row = Row(mainAxisSize: MainAxisSize.min, children: [
             // What is being drawn on, when it is something it wears.
             if (onLayer != null)
@@ -106,6 +109,7 @@ class CharacterDrawBar extends StatelessWidget {
                 ),
               ),
             // Going round it, panel to panel: the globe, a size down.
+            if (!studio) ...[
             SizedBox(
               width: 40,
               height: 40,
@@ -146,6 +150,7 @@ class CharacterDrawBar extends StatelessWidget {
                 controller.endInteraction();
               },
             ),
+            ],
             CanvasDropdown<CharacterZoom?>(
               key: const ValueKey("characterDrawZoom"),
               label: "Zoom",
@@ -163,6 +168,7 @@ class CharacterDrawBar extends StatelessWidget {
             ),
             // Every view at once, laid out beside it, and the one next round
             // faintly over it.
+            if (!studio)
             toggle(
                 "characterDrawTurnaround",
                 Icons.view_week_outlined,

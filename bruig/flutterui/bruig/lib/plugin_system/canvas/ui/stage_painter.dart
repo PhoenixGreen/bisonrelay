@@ -981,6 +981,7 @@ class StagePainter extends CustomPainter {
     // The turnaround's views beside it, under everything that edits it.
     if (turnaround case var sheet?) {
       paintTurnaround(canvas, sheet, (doc) => doc * scale + origin, scale, origin,
+          images: images,
           onion: onionSkin);
     }
     // The puppet to draw over, under the pins that pose it.

@@ -8,7 +8,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_gltf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/human_targets.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/human_wear.dart';
-import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
 import 'package:bruig/plugin_system/canvas/render/model/human_garments.dart';
@@ -259,9 +258,10 @@ void main() {
           HumanBone.rightFoot, HumanBone.neck]) {
         expect(g.humanoid.containsKey(b), isTrue, reason: "$b");
       }
-      expect(g.expressions.keys, containsAll(["happy", "aa", "blink"]));
-      var aa = g.meshes.first.targetNames.indexOf("aa");
-      expect(g.meshes.first.primitives.first.targets[aa].any((d) => d != 0), isTrue);
+      expect(g.expressions.keys,
+          containsAll(["unit:mouth-corner-puller", "unit:mouth-open", "unit:eye-left-closure"]));
+      var open = g.meshes.first.targetNames.indexOf("unit:mouth-open");
+      expect(g.meshes.first.primitives.first.targets[open].any((d) => d != 0), isTrue);
     });
 
     test("is posed by the rig: arms made in a T hang at its sides", () async {
@@ -478,60 +478,37 @@ void main() {
     });
   });
 
-  group("a style's face on the sculpted head", () {
-    test("marks the mouth, and leaves speaking and blinking to the drawing", () {
+  group("the face, all geometry", () {
+    test("every unit is a shape of its own; a plain face does not move", () {
       var dna = CharacterType.woman.dna;
-      var drawn = buildHuman(_pack, dna, drawnFace: true);
       var real = buildHuman(_pack, dna);
-      var mouth = drawn.nodes.indexWhere((n) => n.name == mouthLandmark);
-      expect(mouth, greaterThanOrEqualTo(0));
-      expect(drawn.nodes[mouth].parent, drawn.nodes.indexWhere((n) => n.name == "head"));
-      // At the lip: the head's joint here, which opening the mouth moves.
-      var at = drawn.world()[mouth].translation;
-      expect(at[1], closeTo(15.5, 0.6));
-      var aa = drawn.meshes.first.targetNames.indexOf("aa");
-      expect(drawn.meshes.first.primitives.first.targets[aa].every((d) => d == 0), isTrue);
-      expect(real.meshes.first.primitives.first.targets[aa].any((d) => d != 0), isTrue);
-      var happy = drawn.meshes.first.targetNames.indexOf("happy");
-      expect(happy, greaterThanOrEqualTo(0), reason: "the cheeks still move");
-    });
-
-    test("is found on the posed head: eyes, skull and mouth on the page", () {
-      var model = LoadedModel.of(buildHuman(_pack, CharacterType.man.dna, drawnFace: true), const []);
-      var rig = CharacterRig.of(CharacterType.man.dna, CharacterElement.restPose,
-          const Rect.fromLTWH(0, 0, 200, 400));
-      var f = model.faceFrame(rig, CharacterFace.rest, const Rect.fromLTWH(0, 0, 200, 400))!;
-      expect(f.mouth, isNotNull);
-      expect(f.top[1], lessThan(f.base[1]), reason: "up the page");
-      expect(f.mouth![1], greaterThan(f.eyeL[1]), reason: "below the eyes");
-      expect((f.eyeL[0] - f.eyeR[0]).abs(), greaterThan(1));
-      var turned = CharacterRig.of(CharacterType.man.dna,
-          CharacterElement.restPose.withTurn(60), const Rect.fromLTWH(0, 0, 200, 400));
-      var g = model.faceFrame(turned, CharacterFace.rest, const Rect.fromLTWH(0, 0, 200, 400))!;
-      expect((g.eyeL[0] - g.eyeR[0]).abs(), lessThan((f.eyeL[0] - f.eyeR[0]).abs()),
-          reason: "the eyes closer together on the page, turned");
-    });
-
-    test("is drawn in every style but the painterly", () async {
-      HumanBody.instance.useForTest(_pack);
-      Future<List<int>> draw(CharacterStyle style, {double turn = 0}) async {
-        var rec = PictureRecorder();
-        paintCharacterFigure(Canvas(rec), const Rect.fromLTWH(20, 20, 160, 360),
-            CharacterType.woman.dna, CharacterElement.restPose.withTurn(turn),
-            style: style, body: const CharacterBody(kind: BodyKind.mannequin));
-        var img = await rec.endRecording().toImage(200, 400);
-        return (await img.toByteData())!.buffer.asUint8List();
+      var names = real.meshes.first.targetNames;
+      expect(names, [for (var u in humanFaceUnits) "unit:$u"]);
+      var open = names.indexOf("unit:mouth-open");
+      expect(real.meshes.first.primitives.first.targets[open].any((d) => d != 0), isTrue);
+      expect(real.expressions["unit:mouth-open"], isNotNull, reason: "bound by name");
+      var plain = buildHuman(_pack, dna, plainFace: true);
+      for (var t in plain.meshes.first.primitives.first.targets) {
+        expect(t.every((d) => d == 0), isTrue, reason: "the doll's face is still");
       }
+    });
 
-      var real = await draw(CharacterStyle.painterly);
-      for (var style in [CharacterStyle.anime, CharacterStyle.featureCartoon]) {
-        var drawn = await draw(style);
-        var changed = 0;
-        // The head: the top fifth of the figure.
-        for (var i = 0; i < 200 * 90 * 4; i++) {
-          if (drawn[i] != real[i]) changed++;
+    test("controls and mouths are mixed from the units", () {
+      var blink = humanUnitsOf(const CharacterFace({FaceControl.eyesOpen: 0}));
+      expect(blink["eye-left-closure"], 1);
+      expect(blink["eye-right-closure"], 1);
+      expect(humanUnitsOf(const CharacterFace({FaceControl.smile: 0.8}))["mouth-corner-puller"], 0.8);
+      expect(humanUnitsOf(const CharacterFace({FaceControl.smile: -0.6}))["mouth-depression"], 0.6);
+      expect(humanUnitsOf(const CharacterFace({FaceControl.jaw: 0.5}))["mouth-open"], 0.5);
+      expect(humanUnitsOf(const CharacterFace({}, MouthShape.closed))["mouth-compression"], greaterThan(0.5),
+          reason: "M, B, P: lips pressed");
+      expect(humanUnitsOf(const CharacterFace({}, MouthShape.pucker))["mouth-pursing"], 1);
+      expect(humanUnitsOf(const CharacterFace({}, MouthShape.wide))["mouth-open"], greaterThan(0.8));
+      // Every unit named is one the body has.
+      for (var shape in MouthShape.values) {
+        for (var u in humanUnitsOf(CharacterFace({FaceControl.browRaise: 0.5, FaceControl.squint: 0.4}, shape)).keys) {
+          expect(humanFaceUnits, contains(u));
         }
-        expect(changed, greaterThan(200), reason: "\$style's eyes and mouth");
       }
     });
   });

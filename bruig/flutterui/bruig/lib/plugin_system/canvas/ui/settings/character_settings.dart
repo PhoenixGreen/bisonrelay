@@ -6,7 +6,6 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_bvh.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion_files.dart';
-import 'package:bruig/plugin_system/canvas/ui/body_capture.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_gltf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -35,10 +34,6 @@ import 'package:bruig/plugin_system/canvas/storage/human_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/human_wear_assets.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/human_wear.dart';
 import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
-import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
-import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
-import 'package:provider/provider.dart';
 
 // character_settings.dart is a Character element's settings.
 //
@@ -72,9 +67,50 @@ List<Widget> characterSettings(
   var animated = controller.document.isAnimated;
   var keyed = controller.hasCharacterPoseKey(e);
   var face = e.faceAtFrame(controller.frame);
+  // The ready-made feelings, then those made for it in the Studio.
+  var feelings = [
+    ...expressionPresets,
+    for (var x in e.expressions) ExpressionPreset(x.name, x.face),
+  ];
   void faceNow(CharacterFace next) => now(controller.characterFaced(e, next));
+  // What the character is -- its type, style, drawing, body and clothes --
+  // is made in the Character Studio, and is the same in every scene it is
+  // in; a scene's own settings are where it stands and how it performs.
+  // Ken's decision, 2026-11-01. The Studio shows these sections itself.
+  var design = controller.studioCharacter != null;
 
   return [
+    // The way into the Character Studio: the character made a step at a
+    // time, from a reference -- see character_studio.dart.
+    if (controller.studioCharacter == null)
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: SizedBox(
+          width: double.infinity,
+          child: CanvasTextButton(
+            key: const ValueKey("openCharacterStudio"),
+            label: "Edit in the Character Studio",
+            icon: Icons.face_retouching_natural,
+            primary: true,
+            onPressed: () => controller.openStudio(e.id),
+          ),
+        ),
+      ),
+    // What it wears in this scene: one of its own outfits -- the one thing
+    // about how it looks a scene may change. See CharacterElement.outfit.
+    if (controller.studioCharacter == null && e.outfits.isNotEmpty)
+      CanvasDropdown<String>(
+        key: const ValueKey("characterWearing"),
+        label: "Wearing",
+        value: e.outfits.any((o) => o.name == e.outfit) ? e.outfit : "",
+        width: 200,
+        options: [
+          ("", "As designed"),
+          for (var o in e.outfits) (o.name, o.name),
+        ],
+        onChanged: (v) => now(e.copyWith(outfit: v)),
+      ),
+    if (design)
     section(e, "character",
         icon: Icons.person_outline,
         title: "Type",
@@ -231,6 +267,7 @@ List<Widget> characterSettings(
               },
             ),
         ]),
+    if (design)
     section(e, "style",
         icon: Icons.brush_outlined,
         title: "Style",
@@ -382,15 +419,15 @@ List<Widget> characterSettings(
               ]),
         ]),
     // The puppet to pose and draw over, while it is out.
-    if (!e.body.inThreeD && controller.showPuppet)
+    if (design && !e.body.inThreeD && controller.showPuppet)
       characterPuppetSection(context, controller, e, write, begin, commit),
     // Drawn on by hand, panel by panel: a sketch's, not a body in 3D.
     // A sketch as a stack of layers, each shaped where it is picked.
-    if (!e.body.inThreeD)
+    if (design && !e.body.inThreeD)
       characterLayersSection(context, controller, e, write, begin, commit),
     // A sketch's appearance and clothes are its layers' -- see
     // character_layers_settings.dart. A body in 3D has them here.
-    if (e.body.inThreeD) ...[
+    if (design && e.body.inThreeD) ...[
       section(e, "appearance",
         icon: Icons.face_retouching_natural_outlined,
         title: "Appearance",
@@ -569,7 +606,7 @@ List<Widget> characterSettings(
         icon: Icons.mood,
         title: "Face",
         summary: [
-          _feelingName(face),
+          _feelingName(face, feelings),
           if (face.mouth != MouthShape.rest) "mouth ${face.mouth.letter}",
         ].join(" · "),
         children: [
@@ -580,15 +617,17 @@ List<Widget> characterSettings(
             columns: 4,
             previewHeight: 56,
             tiles: [
-              for (var (i, x) in expressionPresets.indexed)
+              for (var (i, x) in feelings.indexed)
                 CanvasTile(i, x.name,
                     drawnFrom: drawn,
                     paint: (canvas, size) =>
                         _faceTile(canvas, size, dna, x.face, style)),
             ],
-            selected: (i) => _sameFeeling(expressionPresets[i].face, face),
-            keyOf: (i) => "characterFeeling-${expressionPresets[i].name}",
-            onPick: (i) => faceNow(face.feeling(expressionPresets[i].face)),
+            selected: (i) => _sameFeeling(feelings[i].face, face),
+            keyOf: (i) => i < expressionPresets.length
+                ? "characterFeeling-${feelings[i].name}"
+                : "characterOwnFeeling-${feelings[i].name}",
+            onPick: (i) => faceNow(face.feeling(feelings[i].face)),
           ),
           _MixGroup(face: face, onMix: (mixed) => faceNow(mixed)),
           CanvasTiles<MouthShape>(
@@ -663,10 +702,42 @@ List<Widget> characterSettings(
             ? "No mouths yet"
             : "${e.mouthKeys.length} mouths",
         children: [
+          if (speakingChannels(controller) case var channels
+              when channels.isNotEmpty || e.speaksFor.isNotEmpty) ...[
+            CanvasDropdown<String>(
+              key: const ValueKey("characterSpeaksFor"),
+              label: "Speaks for",
+              value: e.speaksFor,
+              width: 200,
+              options: [
+                ("", "No channel"),
+                ...channels,
+                if (e.speaksFor.isNotEmpty &&
+                    !channels.any((c) => c.$1 == e.speaksFor))
+                  (e.speaksFor, "A channel since removed"),
+              ],
+              onChanged: (v) => now(e.copyWith(speaksFor: v)),
+            ),
+            const CanvasHint(
+                "A slot played on that channel -- a narrator's line -- moves "
+                "the mouth by its sounds, shows the character while it is "
+                "heard, and sets it talking with its hands."),
+            const CanvasLineBreak(),
+          ],
           _LipSyncGroup(controller: controller, character: e),
         ]),
     animationPanelSection(controller, e, e.animation,
         (a) => write(e.copyWith(animation: a)), begin, commit),
+  ];
+}
+
+/// speakingChannels are the channels a character can speak for: those with
+/// clips in their slots, by key and name.
+List<(String, String)> speakingChannels(CanvasController c) {
+  var names = {for (var ch in c.timelineChannels) ch.key: ch.name};
+  return [
+    for (var MapEntry(:key, value: slots) in c.session.slots.entries)
+      if (slots.any((s) => s != null)) (key, names[key] ?? key),
   ];
 }
 
@@ -842,9 +913,9 @@ double _shown(FaceControl c, double v) => _degrees(c) ? v : v * 100;
 
 double _stored(FaceControl c, double v) => _degrees(c) ? v : v / 100;
 
-/// _feelingName is the feeling [face] is, or "Own expression".
-String _feelingName(CharacterFace face) {
-  for (var x in expressionPresets) {
+/// _feelingName is the one of [feelings] [face] is, or "Own expression".
+String _feelingName(CharacterFace face, List<ExpressionPreset> feelings) {
+  for (var x in feelings) {
     if (_sameFeeling(x.face, face)) return x.name;
   }
   return "Own expression";
@@ -984,52 +1055,6 @@ class _LipSyncGroupState extends State<_LipSyncGroup> {
     return all;
   }
 
-  /// _record starts the microphone, or -- recording -- stops it and puts
-  /// what it heard on the timeline from where the recording began, on a
-  /// channel of its own, as the voice to lip sync to.
-  Future<void> _record() async {
-    if (LiveCapture.recording.value == CaptureKind.microphone) {
-      String said;
-      try {
-        var file = await LiveCapture.stop();
-        if (file == null || !mounted) {
-          said = "Nothing was recorded.";
-        } else {
-          var source = await addCanvasAudio(context, controller, file);
-          if (source == null || !mounted) {
-            said = "The recording could not be kept.";
-          } else {
-            var clip = channelClip(controller.document, _recordFrom,
-                source: source,
-                channel: controller.newChannelId(),
-                channelName: "Voice");
-            controller.addElement(clip);
-            _voice = clip.id;
-            said = "Recorded, from frame ${_recordFrom + 1}. Lip sync to it "
-                "below.";
-          }
-          try {
-            await File(file).delete();
-          } catch (_) {}
-        }
-      } catch (error) {
-        said = "$error";
-      }
-      if (mounted) setState(() => _said = said);
-      return;
-    }
-    try {
-      _recordFrom = controller.frame;
-      await LiveCapture.start(CaptureKind.microphone);
-      if (mounted) setState(() => _said = "Recording. Press Stop when done.");
-    } catch (error) {
-      if (mounted) setState(() => _said = "$error");
-    }
-  }
-
-  /// _recordFrom is the frame a voice-over being recorded starts on.
-  int _recordFrom = 0;
-
   Future<void> _sync(AudioElement voice) async {
     setState(() {
       _busy = true;
@@ -1064,25 +1089,6 @@ class _LipSyncGroupState extends State<_LipSyncGroup> {
             "Either way the mouths are blocks on the "
             "Mouth lane of the timeline, to move or change by hand.",
         children: [
-          if (LiveCapture.available &&
-              context.watch<CanvasPreferences>().allowCapture)
-            ValueListenableBuilder<CaptureKind?>(
-              valueListenable: LiveCapture.recording,
-              builder: (context, now, _) => CanvasTextButton(
-                key: const ValueKey("characterRecordVoice"),
-                icon: now == CaptureKind.microphone
-                    ? Icons.stop_circle_outlined
-                    : Icons.mic_none_outlined,
-                label: now == CaptureKind.microphone
-                    ? "Stop, and use it"
-                    : "Record a voice-over",
-                primary: now == CaptureKind.microphone,
-                onPressed: now != null && now != CaptureKind.microphone
-                    ? null
-                    : _record,
-              ),
-            ),
-          if (LiveCapture.available) captureSwitch(context),
           const CanvasLineBreak(),
           if (voice == null)
             const CanvasStatus("Add a voice-over first: a timed Audio element, "
@@ -1717,20 +1723,8 @@ class ModelImportGroupState extends State<ModelImportGroup> {
   }
 }
 
-/// captureSwitch lets the canvas use the camera and the microphone -- off
-/// until it is switched on. One switch for both, wherever either is used.
-Widget captureSwitch(BuildContext context) {
-  var prefs = context.watch<CanvasPreferences>();
-  return CanvasToggle(
-    key: const ValueKey("canvasAllowCapture"),
-    label: "Allow the camera and microphone",
-    value: prefs.allowCapture,
-    onChanged: (v) => prefs.allowCapture = v,
-  );
-}
-
 /// _ImportGroup lays motion from a file -- BVH, Mixamo's FBX, a glTF's
-/// own animation -- or from a video on the character.
+/// own animation -- on the character.
 class _ImportGroup extends StatefulWidget {
   final CanvasController controller;
   final CharacterElement character;
@@ -1744,7 +1738,6 @@ class _ImportGroupState extends State<_ImportGroup> {
   bool _faceReader = true;
   String _said = "";
   bool _busy = false;
-  bool _video = BodyCapture.known ?? false;
 
   /// _file and _motions are a file holding several motions, waiting for
   /// one to be picked; _motion is the one picked.
@@ -1752,14 +1745,6 @@ class _ImportGroupState extends State<_ImportGroup> {
   Uint8List? _bytes;
   List<String> _motions = const [];
   int _motion = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    BodyCapture.available().then((v) {
-      if (mounted && v != _video) setState(() => _video = v);
-    });
-  }
 
   Future<void> _pick() async {
     var picked = await FilePicker.platform.pickFiles(
@@ -1770,82 +1755,6 @@ class _ImportGroupState extends State<_ImportGroup> {
     var file = picked?.files.singleOrNull?.path;
     if (file == null) return;
     await importFrom(file);
-  }
-
-  Future<void> _pickVideo() async {
-    var picked = await FilePicker.platform.pickFiles(
-      type: FileType.video,
-      withData: false,
-    );
-    var file = picked?.files.singleOrNull?.path;
-    if (file == null) return;
-    setState(() {
-      _busy = true;
-      _said = "Finding the person in the video, frame by frame…";
-    });
-    String said;
-    try {
-      var rate = widget.controller.document.frameRate <= 0
-          ? 12
-          : widget.controller.document.frameRate;
-      var motion = await BodyCapture.fromVideo(file, rate.toDouble());
-      said = _lay(motion, "the video");
-    } on MotionError catch (error) {
-      said = "$error";
-    }
-    if (mounted) {
-      setState(() {
-        _busy = false;
-        _said = said;
-      });
-    }
-  }
-
-  /// _record starts the camera, or -- recording -- stops it and reads the
-  /// movement off what it saw.
-  Future<void> _record() async {
-    if (LiveCapture.recording.value == CaptureKind.camera) {
-      setState(() {
-        _busy = true;
-        _said = "Finding you in the recording, frame by frame…";
-      });
-      String said;
-      try {
-        var file = await LiveCapture.stop();
-        if (file == null) {
-          said = "Nothing was recorded.";
-        } else {
-          var rate = widget.controller.document.frameRate <= 0
-              ? 12
-              : widget.controller.document.frameRate;
-          var motion = await BodyCapture.fromVideo(file, rate.toDouble());
-          said = _lay(motion, "the camera");
-          try {
-            await File(file).delete();
-          } catch (_) {}
-        }
-      } on MotionError catch (error) {
-        said = "$error";
-      } catch (error) {
-        said = "$error";
-      }
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _said = said;
-        });
-      }
-      return;
-    }
-    try {
-      await LiveCapture.start(CaptureKind.camera);
-      if (mounted) {
-        setState(() => _said = "Recording. Step back so all of you is "
-            "seen, move, then press Stop.");
-      }
-    } catch (error) {
-      if (mounted) setState(() => _said = "$error");
-    }
   }
 
   /// importFrom reads the motion file at [file] and lays it on the
@@ -1915,9 +1824,7 @@ class _ImportGroupState extends State<_ImportGroup> {
               "being looked at: a BVH file (the CMU library, most capture "
               "tools), an FBX from Mixamo, or the animation in a .glb, "
               ".gltf or .vrm. Any skeleton with the usual joints works; "
-              "the character's own proportions are kept. On macOS 14 and "
-              "later, a video of someone moving can be read for their "
-              "motion too -- on this computer, with nothing uploaded.",
+              "the character's own proportions are kept.",
           children: [
             CanvasTextButton(
               key: const ValueKey("characterImportBvh"),
@@ -1925,32 +1832,6 @@ class _ImportGroupState extends State<_ImportGroup> {
               label: "Import motion…",
               onPressed: _busy ? null : _pick,
             ),
-            if (_video)
-              CanvasTextButton(
-                key: const ValueKey("characterImportVideo"),
-                icon: Icons.accessibility_new_outlined,
-                label: "From a video…",
-                onPressed: _busy ? null : _pickVideo,
-              ),
-            if (_video &&
-                LiveCapture.available &&
-                context.watch<CanvasPreferences>().allowCapture)
-              ValueListenableBuilder<CaptureKind?>(
-                valueListenable: LiveCapture.recording,
-                builder: (context, now, _) => CanvasTextButton(
-                  key: const ValueKey("characterRecordCamera"),
-                  icon: now == CaptureKind.camera
-                      ? Icons.stop_circle_outlined
-                      : Icons.videocam_outlined,
-                  label: now == CaptureKind.camera
-                      ? "Stop, and use it"
-                      : "Record with the camera",
-                  primary: now == CaptureKind.camera,
-                  onPressed: _busy || (now != null && now != CaptureKind.camera)
-                      ? null
-                      : _record,
-                ),
-              ),
             if (_motions.length > 1 && _file != null) ...[
               CanvasDropdown<int>(
                 key: const ValueKey("characterImportWhich"),
@@ -1975,7 +1856,6 @@ class _ImportGroupState extends State<_ImportGroup> {
               value: _faceReader,
               onChanged: (v) => setState(() => _faceReader = v),
             ),
-            if (LiveCapture.available) captureSwitch(context),
             if (_said.isNotEmpty) ...[
               const CanvasLineBreak(),
               CanvasStatus(_said, key: const ValueKey("characterImportSaid")),

@@ -35,7 +35,10 @@ class HumanAssets {
 
   /// _version is the pack's own format: a pack of another is fetched
   /// again.
-  static const int _version = 1;
+  ///
+  /// 2: every one of the face's expression units, for a face that is all
+  /// geometry -- 1 held the few a drawn face left to the body.
+  static const int _version = 2;
 
   static Future<String> dir({bool create = false}) async {
     var d = path.join(await CanvasStorage.libraryDir(), "Human");
@@ -141,7 +144,7 @@ Uint8List _pack(String root) {
   }
 
   b.add(ascii.encode("MHPK"));
-  u32(1);
+  u32(HumanAssets._version);
 
   // The mesh.
   var verts = <double>[], uvs = <double>[];

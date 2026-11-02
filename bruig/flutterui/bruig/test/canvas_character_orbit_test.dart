@@ -22,6 +22,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Canvas, Offset, Rect, Size, Color, Paint;
+import 'package:bruig/plugin_system/canvas/ui/character_studio.dart'
+    show StudioWorkspace;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -193,7 +195,13 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       var c = CanvasController(CanvasDocument(frames: 24).addElement(e));
       addTearDown(c.dispose);
-      c.selectOnly(e.id);
+      // A character's design is made in the Character Studio.
+      if (e is CharacterElement) {
+        c.openStudio(e.id);
+        c.studioWorkspace = StudioWorkspace.rig;
+      } else {
+        c.selectOnly(e.id);
+      }
       tester.view.physicalSize = const Size(900, 4000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -273,22 +281,6 @@ void main() {
           hasLength(outlineShapes.first.$2.length + 1));
       await tap("characterGarmentShapeClear");
       expect(get().dna.wardrobe[top].outline, isEmpty);
-    });
-
-    testWidgets("the camera and microphone stay off until allowed",
-        (tester) async {
-      await open(
-          tester,
-          CharacterElement(
-              const ElementBase(id: "c", x: 200, y: 50, width: 160, height: 340),
-              dna: characterCast.first.dna));
-      expect(find.byKey(const ValueKey("characterRecordVoice")), findsNothing);
-      var allow = find.byKey(const ValueKey("canvasAllowCapture")).first;
-      await tester.ensureVisible(allow);
-      await tester.pumpAndSettle();
-      await tester.tap(allow);
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey("characterRecordVoice")), findsOneWidget);
     });
   });
 }

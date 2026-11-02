@@ -15,6 +15,9 @@ import 'package:bruig/plugin_system/canvas/render/character/character_hair_shape
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_outline.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_gltf.dart'
+    show HumanBone;
+import 'package:bruig/plugin_system/canvas/render/character/character_physics.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
 import 'package:bruig/plugin_system/canvas/render/character/painted_light.dart';
 import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
@@ -38,6 +41,11 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 /// edited, set by the editor -- as vectorSoloOf is for a drawing's layers.
 /// Null draws every layer.
 String? Function(CharacterElement e)? characterSoloOf;
+
+/// characterWeightsOf is the bone whose skin weights a sculpted
+/// [CharacterElement] shows as a heat map while it is edited, or null -- see
+/// ModelFigure.pieces. Set by the Character Studio's Rig.
+HumanBone? Function(CharacterElement e)? characterWeightsOf;
 
 /// characterDollOf is where the guide figure is drawn for [CharacterElement]
 /// while it is edited, set by the editor -- see character_doll.dart. Null
@@ -64,7 +72,8 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
     CanvasImageSource? images}) {
   // What is drawn on it carried onto it as it is made now -- see
   // character_live.dart -- so its sliders go on shaping layers drawn on.
-  e = liveCharacter(e, frame, frameRate);
+  // In the outfit this scene puts it in -- see CharacterElement.outfit.
+  e = liveCharacter(e.dressed, frame, frameRate);
   // A style on twos holds each drawing for two frames, as stop motion does.
   frame = e.style.frameOf(frame);
   var life = lifeAt(e, frame, frameRate);
@@ -92,6 +101,8 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
   }
   // A sketch from the nearest of the views it has.
   if (!e.body.inThreeD) pose = e.inView(pose);
+  // The hair following through as the head moves.
+  var sway = e.body.inThreeD ? HairSway.none : hairSwayAt(e, frame, frameRate, box);
   var light = staged == null ? null : lightFilter(staged.light);
   if (light != null) {
     canvas.saveLayer(box.inflate(box.height), Paint()..colorFilter = light);
@@ -120,7 +131,9 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
           ? characterDollOf?.call(e) ?? DollGuide.none
           : DollGuide.none,
       dollLook: characterDollLook,
-      puppet: e.puppet);
+      puppet: e.puppet,
+      hairSway: sway,
+      weightsOf: editing && e.body.inThreeD ? characterWeightsOf?.call(e) : null);
   if (light != null) canvas.restore();
 }
 
@@ -171,7 +184,9 @@ void paintCharacterFigure(
     String? viewKey,
     DollGuide doll = DollGuide.none,
     DollLook dollLook = const DollLook(),
-    PuppetForm? puppet}) {
+    PuppetForm? puppet,
+    HairSway hairSway = HairSway.none,
+    HumanBone? weightsOf}) {
   if (box.height <= 0) return;
   // bodyStyle is the style a sculpted body is made for, in place of this
   // one -- for a preview of a style drawn on the body already made, rather
@@ -180,10 +195,23 @@ void paintCharacterFigure(
   // Its keyed layers as their keyforms make them at the sliders' values.
   if (drawing != null && drawing.keyed.isNotEmpty) {
     var look = dna.look;
+    // A bend shape follows the joint as it is posed now, moving or not.
     drawing = keyedAt(drawing, (name) => switch (Look.fromName(name)) {
           var l? => look[l],
-          null => 0,
+          null => switch (bendOf(name)) {
+              var b? => pose[b],
+              null => 0,
+            },
         });
+  }
+  // Its face's charts as the face is now: the mouth it is saying, the eyes
+  // shut in a blink.
+  if (drawing != null && drawing.charts.isNotEmpty) {
+    drawing = chartedAt(
+        drawing,
+        (k) => k == ChartKind.eyes && life.blink > 0.5
+            ? "closed"
+            : chartKeyOf(k, face));
   }
   dna = style.dnaOf(dna);
   // A sketch is drawn in panels -- see CharacterPose.inPanel -- so however
@@ -277,7 +305,8 @@ void paintCharacterFigure(
         to++;
       }
       done[layer] = to;
-      paintPanelShapes(onto, rig, [for (var (_, x) in list.sublist(from, to)) x], shapeRoom);
+      paintPanelShapes(onto, rig, [for (var (_, x) in list.sublist(from, to)) x], shapeRoom,
+          hairSway: hairSway);
     }
 
     void rest(Canvas onto) => paintPanelShapes(
@@ -288,7 +317,8 @@ void paintCharacterFigure(
           for (var MapEntry(key: l, value: list) in waiting.entries)
             for (var (_, x) in list.skip(done[l] ?? 0)) x,
         ],
-        shapeRoom);
+        shapeRoom,
+        hairSway: hairSway);
     void underArms(Canvas onto) => paintPanelShapes(onto, rig, under, shapeRoom);
     return (at, rest, underArms);
   }
@@ -296,7 +326,11 @@ void paintCharacterFigure(
   void drawOn(Canvas onto) {
     if (body.inThreeD) {
       _paintInThreeD(onto, rig, dna, pose, face, life, body, box, images,
-          style: style, look: look, modelDna: bodyDna, bodyStyle: bodyStyle);
+          style: style,
+          look: look,
+          modelDna: bodyDna,
+          bodyStyle: bodyStyle,
+          weightsOf: weightsOf);
       return;
     }
     // Painted light: drawn as flat colour and lit -- or, before its shader
@@ -308,6 +342,7 @@ void paintCharacterFigure(
         var (at, rest, under) = shapesOf(soloed: p == _Pass.solo);
         _Drawing(onto, rig, dna, face, life,
                 underNearArms: under,
+                hairSway: hairSway,
                 bare: bare,
                 look: look,
                 images: images,
@@ -343,6 +378,7 @@ void paintCharacterFigure(
             var (at, rest, under) = shapesOf();
             _Drawing(flat, rig, dna, face, life,
                     underNearArms: under,
+                    hairSway: hairSway,
                     bare: bare,
                     look: look,
                     images: images,
@@ -376,6 +412,7 @@ void paintCharacterFigure(
     var (at, rest, under) = shapesOf();
     _Drawing(onto, rig, dna, face, life,
             underNearArms: under,
+            hairSway: hairSway,
             bare: bare,
             look: look,
             images: images,
@@ -504,8 +541,8 @@ void _paintInThreeD(Canvas canvas, CharacterRig rig, CharacterDna dna,
     {CharacterStyle style = CharacterStyle.featureCartoon,
     _Look look = const _Look(),
     CharacterDna? modelDna,
-    CharacterStyle? bodyStyle}) {
-  var drawnFace = body.kind == BodyKind.mannequin && style != CharacterStyle.painterly;
+    CharacterStyle? bodyStyle,
+    HumanBone? weightsOf}) {
   // Blinking and glancing about, as the drawn face does.
   face = face.withControls({
     if (life.blink > 0)
@@ -524,7 +561,6 @@ void _paintInThreeD(Canvas canvas, CharacterRig rig, CharacterDna dna,
         }
       : body.kind == BodyKind.mannequin
           ? HumanBody.instance.modelFor(modelDna ?? dna,
-              drawnFace: drawnFace,
               preferHair: _styleHair(bodyStyle ?? style, modelDna ?? dna),
               limbs: _Look.of(bodyStyle ?? style).limbs,
               gloves: _Look.of(bodyStyle ?? style).gloves)
@@ -535,17 +571,16 @@ void _paintInThreeD(Canvas canvas, CharacterRig rig, CharacterDna dna,
   if (body.kind == BodyKind.mannequin) {
     var (ink, shading) = _styleInk(look, box);
     if (model != null) {
-      var (origin, pieces) =
-          model.pieces(rig, face, box, lift: pose.lift * rig.unit);
+      var (origin, pieces) = model.pieces(rig, face, box,
+          lift: pose.lift * rig.unit, weightsOf: weightsOf);
+      // The weights' heat map, lit but not inked: its colours are the point.
+      if (weightsOf != null) {
+        paintMeshes(canvas, origin, pieces, shading: ModelShading.soft);
+        return;
+      }
       if (!paintMeshesInked(canvas, origin, pieces, ink, shading: shading)) {
         paintMeshes(canvas, origin, pieces,
             shading: shading, outline: ink.outline, outlineColor: ink.ink);
-      }
-      if (drawnFace && dna.kind.person) {
-        if (model.faceFrame(rig, face, box, lift: pose.lift * rig.unit) case var f?) {
-          _Drawing(canvas, rig, dna, face, life, look: look).faceOn(
-              f.eyeL, f.eyeR, f.base, f.top, f.mouth);
-        }
       }
       return;
     }
@@ -570,12 +605,6 @@ void _paintInThreeD(Canvas canvas, CharacterRig rig, CharacterDna dna,
           shading: body.shading,
           outline: math.max(outline, own),
           outlineColor: own > outline ? model.outlineColour : const Color(0xFF1A1A1A));
-    }
-    if (drawnFace && dna.kind.person) {
-      if (model.faceFrame(rig, face, box, lift: pose.lift * rig.unit) case var f?) {
-        _Drawing(canvas, rig, dna, face, life, look: look).faceOn(
-            f.eyeL, f.eyeR, f.base, f.top, f.mouth);
-      }
     }
     return;
   }
@@ -970,9 +999,14 @@ class _Drawing {
       this.pass = _Pass.all,
       this.standing = const {},
       this.standIn,
-      this.underNearArms})
+      this.underNearArms,
+      this.hairSway = HairSway.none})
       : _real = canvas,
         _base = standIn == null && underNearArms == null ? null : canvas.getTransform();
+
+  /// hairSway is how far the hair hangs out of true as it follows the head
+  /// -- see hairSwayAt.
+  final HairSway hairSway;
 
   /// underNearArms draws what is worn on the body, drawn by hand, before
   /// the arms in front of it: onto the canvas as the figure is placed on it.
@@ -1120,9 +1154,7 @@ class _Drawing {
   /// top of the eye, however tall the style draws it.
   double get _browRise => math.max(u * 0.16,
       u * (0.06 + 0.105 * _eyeKit.$2 * (1 + 0.3 * _a(Look.eyeSize))));
-  Offset _mouthPlace(double w) =>
-      _mouthAt ??
-      Offset(
+  Offset _mouthPlace(double w) => Offset(
           _across(0, w * 0.88) +
               (math.sin(yaw) > 0 ? -1.0 : 1.0) * w * 0.1 * _faceForward,
           u * 0.3 + _nodShift - _a(Look.mouthHeight) * u * 0.05);
@@ -1216,85 +1248,6 @@ class _Drawing {
     if (colour == dna.hair || colour == dna.hair2) return PaintedMaterial.hair;
     if (colour == dna.eyes) return PaintedMaterial.flat;
     return PaintedMaterial.cloth;
-  }
-
-  /// _onModel is the turn of a 3D head the face is being drawn on -- see
-  /// faceOn -- whose own pose already nods it. Null for a drawn head.
-  double? _onModel;
-
-  /// _eyesAt and _mouthAt are where a 3D head's eyes and mouth are, across
-  /// the face drawn on it -- see faceOn -- in place of where a ball would
-  /// put them: the far eye on a turned head stays on its face.
-  Map<double, double>? _eyesAt;
-  Offset? _mouthAt;
-
-  /// faceOn draws the face alone on a head in 3D, where the eyes [eyeL]
-  /// and [eyeR], the bottom of the skull [base] and the middle of the head
-  /// [top] are on the page (x, y and nearness, in pixels): the same
-  /// features as on a drawn head, on a ball as big as the eyes are far
-  /// apart, turned, tipped and nodded as that head is -- its eyes and its
-  /// [mouth], where that is known, put where the head's are.
-  void faceOn(List<double> eyeL, List<double> eyeR, List<double> base,
-      List<double> top, List<double>? mouth) {
-    List<double> minus(List<double> a, List<double> b) =>
-        [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-    double len(List<double> a) => math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
-    var across = minus(eyeL, eyeR);
-    var gap = len(across);
-    // Up the face: from the mouth to the eyes, square to the line between
-    // them, where the mouth is known -- the head's bone leans forward of
-    // the face -- and up the head otherwise.
-    var mid3 = [for (var c = 0; c < 3; c++) (eyeL[c] + eyeR[c]) / 2];
-    var up = mouth == null ? minus(top, base) : minus(mid3, mouth);
-    if (gap < 1e-6) return;
-    var along = (up[0] * across[0] + up[1] * across[1] + up[2] * across[2]) / (gap * gap);
-    up = [for (var c = 0; c < 3; c++) up[c] - across[c] * along];
-    var ul = len(up);
-    if (ul < 1e-6) return;
-    up = [for (var c in up) c / ul];
-    // Which way the face looks: square to the eyes and the head's length.
-    var f = [
-      up[1] * across[2] - up[2] * across[1],
-      up[2] * across[0] - up[0] * across[2],
-      up[0] * across[1] - up[1] * across[0],
-    ];
-    var fl = len(f);
-    if (fl < 1e-6) return;
-    f = [for (var c in f) c / fl];
-    _onModel = math.atan2(-f[0], f[2]);
-    if (facing < -0.15) return;
-    // How the head leans on the page, and how far it nods away.
-    var roll = math.atan2(up[0], -up[1]);
-    var nod = math.sqrt(up[0] * up[0] + up[1] * up[1]).clamp(0.25, 1.0);
-    // The drawn head's ball, as big as puts its eyes where these are.
-    var w = rig.headRadii.width;
-    var phi = 0.42 * (1 + 0.22 * _a(Look.eyeSpacing));
-    var ball = gap / (2 * math.sin(phi));
-    var k = ball / w;
-    // The drawn eyes' middle, where the model's is.
-    var eyeY = u * 0.06 - _a(Look.eyeHeight) * u * 0.06;
-    var mid = Offset(-w * math.sin(yaw) * math.cos(phi), eyeY);
-    var cr = math.cos(roll), sr = math.sin(roll);
-    var placed = Offset(mid.dx * k, mid.dy * k * nod);
-    var turned = Offset(placed.dx * cr - placed.dy * sr, placed.dx * sr + placed.dy * cr);
-    var centre = Offset((eyeL[0] + eyeR[0]) / 2, (eyeL[1] + eyeR[1]) / 2) - turned;
-    // Where the eyes and the mouth are on the face, back in the drawn
-    // head's own measure: the face keeps its proportions, and its mouth
-    // goes where the head's is.
-    Offset local(List<double> p) {
-      var d = Offset(p[0], p[1]) - centre;
-      return Offset((d.dx * cr + d.dy * sr) / k, (-d.dx * sr + d.dy * cr) / (k * nod));
-    }
-
-    var l = local(eyeL).dx, r = local(eyeR).dx;
-    _eyesAt = {-1.0: math.min(l, r), 1.0: math.max(l, r)};
-    if (mouth != null) _mouthAt = local(mouth);
-    canvas.save();
-    canvas.translate(centre.dx, centre.dy);
-    canvas.rotate(roll);
-    canvas.scale(k, k * nod);
-    _face(w, onModel: true);
-    canvas.restore();
   }
 
   double get u => rig.unit;
@@ -1457,10 +1410,11 @@ class _Drawing {
     // Hair made of strokes: those growing on the far side of the head,
     // behind it and the body.
     if (head && _hairRig != null) {
-      _inBody(BodyLayer.hairBack, () => _inHead(() => _hairStrokes(front: false)));
+      _inBody(BodyLayer.hairBack,
+          () => _inHead(() => _swaying(1, () => _hairStrokes(front: false))));
     }
     if (head && _hairRig == null && _hangingHair && facing >= -0.3) {
-      _inBody(BodyLayer.hairBack, () => _inHead(_backHair));
+      _inBody(BodyLayer.hairBack, () => _inHead(() => _swaying(1, _backHair)));
     }
     // A cape hangs behind the body, until the body turns away from the
     // reader and it is the thing in front.
@@ -1494,7 +1448,7 @@ class _Drawing {
       _inBody(BodyLayer.torso, _torso);
     }
     if (_shows(CharacterRegion.torso)) _neckwear();
-    if (head) _inBody(BodyLayer.hairFront, _frontHair);
+    if (head) _inBody(BodyLayer.hairFront, () => _swaying(0.6, _frontHair, onPage: true));
     // A top drawn by hand under the arms held in front of it.
     if (underNearArms case var drawUnder?) {
       _real.save();
@@ -3409,9 +3363,26 @@ class _Drawing {
     canvas.restore();
   }
 
+  /// _swaying draws [what] -- hair -- leant by [share] of hairSway, about
+  /// the brow: the ends the furthest out, what frames the face barely. In
+  /// the head's own space, or [onPage].
+  void _swaying(double share, void Function() what, {bool onPage = false}) {
+    var s = hairSway.share(share);
+    if (s.isNone) return what();
+    var top = rig.headRadii.height * (hairPivot * 2 - 1);
+    if (onPage) top = rig.headCentre.dy + top * rig.headScale;
+    canvas.save();
+    canvas.translate(0, top);
+    canvas.transform(Float64List.fromList(
+        [1, 0, 0, 0, s.across, 1 + s.stretch, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]));
+    canvas.translate(0, -top);
+    what();
+    canvas.restore();
+  }
+
   /// yaw is how far the head is turned from the reader, in radians:
   /// towards the page's left as it grows.
-  double get yaw => _onModel ?? (face[FaceControl.turn] + rig.yaw) * math.pi / 180;
+  double get yaw => (face[FaceControl.turn] + rig.yaw) * math.pi / 180;
 
   /// facing is how much of the face is towards the reader: 1 straight on,
   /// 0 side on, below 0 turned away.
@@ -3433,9 +3404,8 @@ class _Drawing {
   double _toward(double phi) => math.cos(phi - yaw);
 
   /// _nodShift is how far down the face's features move as the head nods.
-  double get _nodShift => _onModel != null
-      ? 0
-      : rig.headRadii.height * 0.35 * math.sin(face[FaceControl.nod] * math.pi / 180);
+  double get _nodShift =>
+      rig.headRadii.height * 0.35 * math.sin(face[FaceControl.nod] * math.pi / 180);
 
   /// _hangingHair is whether the hair is long enough to hang behind the
   /// head: long hair, or any hair grown out past the chin.
@@ -3961,11 +3931,11 @@ class _Drawing {
       _glasses(w);
     }
     if (_hairRig == null && _hangingHair && facing < -0.3) {
-      _inBody(BodyLayer.hairBack, _backHair);
+      _inBody(BodyLayer.hairBack, () => _swaying(1, _backHair));
     }
     // Hair made of strokes: those growing on the near side, over the face.
     if (_hairRig != null) {
-      _inBody(BodyLayer.hairFront, () => _hairStrokes(front: true));
+      _inBody(BodyLayer.hairFront, () => _swaying(0.4, () => _hairStrokes(front: true)));
     }
     _hats(w, h);
   }
@@ -4386,7 +4356,7 @@ class _Drawing {
     _fill(tip, dna.skin);
   }
 
-  void _face(double w, {bool onModel = false}) {
+  void _face(double w) {
     var dy = _nodShift;
     var eyeY = u * 0.06 + dy - _a(Look.eyeHeight) * u * 0.06;
     var lid = Paint()
@@ -4408,7 +4378,7 @@ class _Drawing {
       var phi = side * 0.42 * (1 + 0.22 * _a(Look.eyeSpacing));
       var toward = _toward(phi);
       if (toward < 0.12) continue;
-      var c = Offset(_eyesAt?[side] ?? _eyeAcross(phi, w), eyeY);
+      var c = Offset(_eyeAcross(phi, w), eyeY);
       if (side == 0 && !cyclops) c = c + Offset(0, -u * 0.14);
       var size = 1 + 0.3 * _a(Look.eyeSize);
       var shape = _a(Look.eyeShape);
@@ -4480,11 +4450,6 @@ class _Drawing {
           }
         }
       }
-    }
-    // On a head in 3D, its own nose, skin and beard are already there.
-    if (onModel) {
-      _inBody(BodyLayer.mouth, () => _mouth(w));
-      return;
     }
     if (!dna.species.animal) _skinMarks(w);
     if (dna.species.animal) {

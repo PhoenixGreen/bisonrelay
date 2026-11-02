@@ -80,10 +80,6 @@ const Map<HumanBone, List<String>> _boneNames = {
 
 /// GltfNode is one node of the scene: a place, maybe a mesh hung on it,
 /// and its children.
-/// mouthLandmark names a node marking where the mouth is -- with no skin
-/// on it, riding on the head -- for a face drawn over the model. The
-/// sculpted body has one; see buildHuman.
-const String mouthLandmark = "face.mouth";
 
 class GltfNode {
   final String name;
@@ -163,13 +159,22 @@ class GltfMaterial {
   /// cutOut is a picture used only for where it is solid -- a hair card --
   /// its colour coming from the vertices.
   final bool cutOut;
+
+  /// whole is whether it is drawn whole, at one depth, among the
+  /// triangles round it -- an iris on an eye, teeth in a mouth: many small
+  /// triangles that would each sort in front of a lid's or a lip's few big
+  /// ones, and show through them. Drawn as near as its middle; with
+  /// [front], as near as its nearest point -- an iris, which must be in
+  /// front of the eyeball it lies on.
+  final bool whole;
+  final bool front;
   const GltfMaterial(
       this.color, this.image, this.doubleSided, this.toon, this.transparent,
-      {this.mtoon, this.cutOut = false});
+      {this.mtoon, this.cutOut = false, this.whole = false, this.front = false});
 
   GltfMaterial withImage(int? image) => GltfMaterial(
       color, image, doubleSided, toon, transparent,
-      mtoon: mtoon, cutOut: cutOut);
+      mtoon: mtoon, cutOut: cutOut, whole: whole, front: front);
 
   GltfMaterial withMToon(MToon m) => GltfMaterial(
       color, image, doubleSided, true, transparent,

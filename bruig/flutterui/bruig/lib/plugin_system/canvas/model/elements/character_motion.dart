@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_moves.dart';
 
 // character_motion.dart is the motions a character can be given -- walking,
 // waving, jumping -- and how a clip of one is laid over its pose.
@@ -82,16 +83,24 @@ enum MotionKind {
 typedef MotionMove = ({CharacterPose pose, Map<FaceControl, double> face});
 
 /// motionAt is [kind] [t] seconds in, at speed 1, mirrored left for right
-/// with [mirror].
-MotionMove motionAt(MotionKind kind, double t, {bool mirror = false}) {
-  var move = _motion(kind, kind.loops ? t : t.clamp(0.0, kind.seconds));
+/// with [mirror], walked or run as [feel] tunes it to the character.
+MotionMove motionAt(MotionKind kind, double t,
+    {bool mirror = false, MotionFeel feel = MotionFeel.asMade}) {
+  var move = _motion(kind, kind.loops ? t : t.clamp(0.0, kind.seconds), feel);
   return mirror ? _mirrored(move) : move;
 }
 
 const _none = <FaceControl, double>{};
 
-MotionMove _motion(MotionKind kind, double t) {
+MotionMove _motion(MotionKind kind, double t, MotionFeel feel) {
   var p = 2 * math.pi * t / kind.seconds;
+  // A walk and a run as tuned: each share a half as made, so twice it at
+  // most -- the stride a little less, or a long one does the splits.
+  var stride = feel.strideScale;
+  var bounce = 2 * feel.bounce;
+  var swing = 2 * feel.armSwing;
+  var push = 2 * feel.pushOff;
+  var lean = (feel.lean - 0.5) * 24;
   double s(double x) => math.sin(x);
   double c(double x) => math.cos(x);
   double fwd(double x) => math.max(0.0, x);
@@ -104,33 +113,39 @@ MotionMove _motion(MotionKind kind, double t) {
     case MotionKind.walk:
       return (
         pose: CharacterPose(arms, {
-          CharacterBone.spine: 4,
-          CharacterBone.thighL: 24 * s(p),
-          CharacterBone.thighR: -24 * s(p),
+          CharacterBone.spine: 4 + lean,
+          CharacterBone.thighL: 24 * stride * s(p),
+          CharacterBone.thighR: -24 * stride * s(p),
           // A knee bends while its leg comes through, and is straight when
           // the foot is planted.
-          CharacterBone.shinL: -8 - 34 * fwd(c(p)),
-          CharacterBone.shinR: -8 - 34 * fwd(-c(p)),
-          CharacterBone.upperArmL: -20 * s(p),
-          CharacterBone.upperArmR: 20 * s(p),
-          CharacterBone.foreArmL: 12 + 10 * fwd(-s(p)),
-          CharacterBone.foreArmR: 12 + 10 * fwd(s(p)),
-        }, 0, 0.035 * (1 - c(2 * p)) / 2),
+          CharacterBone.shinL: -8 - 34 * stride * fwd(c(p)),
+          CharacterBone.shinR: -8 - 34 * stride * fwd(-c(p)),
+          // The foot behind pushes off: toes down as it leaves the ground,
+          // then level again as it comes through.
+          CharacterBone.ankleL: 32 * push * fwd(-s(p + 0.7)),
+          CharacterBone.ankleR: 32 * push * fwd(s(p + 0.7)),
+          CharacterBone.upperArmL: -20 * swing * s(p),
+          CharacterBone.upperArmR: 20 * swing * s(p),
+          CharacterBone.foreArmL: 12 + 10 * swing * fwd(-s(p)),
+          CharacterBone.foreArmR: 12 + 10 * swing * fwd(s(p)),
+        }, 0, 0.035 * bounce * (1 - c(2 * p)) / 2),
         face: _none,
       );
     case MotionKind.run:
       return (
         pose: CharacterPose(arms, {
-          CharacterBone.spine: 12,
-          CharacterBone.thighL: 40 * s(p),
-          CharacterBone.thighR: -40 * s(p),
-          CharacterBone.shinL: -20 - 70 * fwd(c(p)),
-          CharacterBone.shinR: -20 - 70 * fwd(-c(p)),
-          CharacterBone.upperArmL: -40 * s(p),
-          CharacterBone.upperArmR: 40 * s(p),
+          CharacterBone.spine: 12 + lean,
+          CharacterBone.thighL: 40 * stride * s(p),
+          CharacterBone.thighR: -40 * stride * s(p),
+          CharacterBone.shinL: -20 - 70 * stride * fwd(c(p)),
+          CharacterBone.shinR: -20 - 70 * stride * fwd(-c(p)),
+          CharacterBone.ankleL: 45 * push * fwd(-s(p + 0.7)),
+          CharacterBone.ankleR: 45 * push * fwd(s(p + 0.7)),
+          CharacterBone.upperArmL: -40 * swing * s(p),
+          CharacterBone.upperArmR: 40 * swing * s(p),
           CharacterBone.foreArmL: 75,
           CharacterBone.foreArmR: 75,
-        }, 0, 0.14 * s(2 * p).abs()),
+        }, 0, 0.14 * bounce * s(2 * p).abs()),
         face: _none,
       );
     case MotionKind.jump:
@@ -386,9 +401,10 @@ class MotionClip {
   }
 
   /// moveAt is the motion at [frame], at [frameRate].
-  MotionMove moveAt(int frame, int frameRate) => motionAt(
-      kind, (frame - start) / math.max(1, frameRate) * speed,
-      mirror: mirror);
+  MotionMove moveAt(int frame, int frameRate,
+          [MotionFeel feel = MotionFeel.asMade]) =>
+      motionAt(kind, (frame - start) / math.max(1, frameRate) * speed,
+          mirror: mirror, feel: feel);
 
   MotionClip copyWith({
     MotionKind? kind,
@@ -444,16 +460,18 @@ class MotionClip {
 }
 
 /// withMotions is [pose] and [face] with every clip of [clips] laid over
-/// them at [frame], in order: whole body, then upper body, then added.
+/// them at [frame], in order: whole body, then upper body, then added --
+/// walked and run as [feel] tunes them.
 (CharacterPose, CharacterFace) withMotions(CharacterPose pose,
-    CharacterFace face, List<MotionClip> clips, int frame, int frameRate) {
+    CharacterFace face, List<MotionClip> clips, int frame, int frameRate,
+    {MotionFeel feel = MotionFeel.asMade}) {
   if (clips.isEmpty) return (pose, face);
   for (var layer in MotionLayer.values) {
     for (var clip in clips) {
       if (clip.layer != layer) continue;
       var w = clip.weightAt(frame);
       if (w <= 0) continue;
-      var move = clip.moveAt(frame, frameRate);
+      var move = clip.moveAt(frame, frameRate, feel);
       pose = switch (layer) {
         // The body's own turn is where it is facing, which a walk does not
         // change.

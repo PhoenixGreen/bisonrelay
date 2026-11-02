@@ -23,6 +23,8 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Image;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_studio.dart'
+    show StudioWorkspace;
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_character_drawing_test.dart is what is drawn by hand on a
@@ -271,7 +273,9 @@ void main() {
           const ElementBase(id: "c", x: 100, y: 40, width: 160, height: 340),
           dna: dna)));
       addTearDown(c.dispose);
-      c.selectOnly("c");
+      // Its design is made in the Character Studio.
+      c.openStudio("c");
+      c.studioWorkspace = StudioWorkspace.rig;
       tester.view.physicalSize = const Size(1200, 4000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);

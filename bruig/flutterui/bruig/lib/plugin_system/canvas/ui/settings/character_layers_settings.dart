@@ -71,7 +71,8 @@ List<AppearanceGroup> appearanceOf(BodyLayer l, {bool person = true}) => switch 
     };
 
 Widget characterLayersSection(BuildContext context, CanvasController controller,
-    CharacterElement e, SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+    CharacterElement e, SettingsWrite write, VoidCallback begin, VoidCallback commit,
+    {bool tools = true}) {
   var rows = layerRows(e);
   var hidden = e.layerView().hidden;
   var picked = controller.pickedCharacterLayer;
@@ -145,7 +146,9 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
               : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           // Drawing on it: the drawing tools first, where the layer is --
           // not in another panel to go back and forth to.
-          if (drawingKey == pickedRow.key)
+          // In the Character Studio, they are above everything instead:
+          // see character_studio.dart.
+          if (tools && drawingKey == pickedRow.key)
             ...vectorSettings(context, controller, drawingTarget(controller, e),
                 write, begin, commit,
                 toolsOnly: true),
@@ -647,37 +650,56 @@ Widget _onThisView(CanvasController controller, CharacterElement e, LayerRow row
 }
 
 /// _keyforms is the picked layer -- taken apart on this view -- shaped by a
-/// slider through drawings kept at its values: which slider, the keyforms,
-/// and keeping another where the slider is now. See LayerKeys.
+/// slider or a joint through drawings kept at its values: which shapes it,
+/// the keyforms, and keeping another where it is now. See LayerKeys; a
+/// joint's are its bend shapes.
 Widget _keyforms(CanvasController controller, CharacterElement e, LayerRow row, BodyLayer body) {
   var keys = keysOf(e, row.key, controller.frame, controller.document.frameRate);
   var looks = [
     for (var g in appearanceOf(body, person: e.dna.kind.person)) ...Look.inGroup(g),
   ];
-  var look = keys == null ? null : Look.fromName(keys.look);
-  var value = look == null ? 0.0 : e.dna.look[look];
+  var joints = bendJoints(row.key);
+  var driver = keys?.look;
+  var bone = driver == null ? null : bendOf(driver);
+  var value = driver == null ? 0.0 : e.lookValue(driver);
   var onKey = keys != null && keys.keyAt(value) >= 0;
-  String pc(double v) => "${(v * 100).round()}%";
+  // A slider's value as a share, a joint's as its angle.
+  String pc(double v) => bone != null ? "${v.round()}°" : "${(v * 100).round()}%";
   return CanvasControlGroup(
       key: const ValueKey("characterLayerKeys"),
-      label: "Keyforms",
-      help: "Shape this layer by one of its sliders through your own drawings: "
-          "keep a keyform at a value, move the slider, keep another, and draw "
-          "each as it should look. In between, the drawings blend point by "
-          "point; past the first or last, they hold. With the slider on a "
-          "keyform, drawing on the layer changes it; anywhere else, drawing "
-          "keeps a new one there.",
+      label: "Keyforms and bend shapes",
+      help: "Shape this layer by one of its sliders, or by a joint, through "
+          "your own drawings: keep a keyform at a value, move the slider or "
+          "bend the joint, keep another, and draw each as it should look -- "
+          "an elbow bent drawn as a bent elbow, not a straight arm turned. "
+          "In between, the drawings blend point by point; past the first or "
+          "last, they hold. On a keyform, drawing on the layer changes it; "
+          "anywhere else, drawing keeps a new one there.",
       children: [
-        CanvasDropdown<Look?>(
+        CanvasDropdown<String?>(
           key: const ValueKey("characterLayerKeyLook"),
           label: "Shaped by",
-          value: look,
+          value: driver,
           options: [
-            (null, "No slider"),
-            for (var l in looks) (l, l.label),
+            (null, "Nothing"),
+            for (var l in looks) (l.name, l.label),
+            for (var (b, name) in joints) (bendDriver(b), "Bend: $name"),
           ],
-          onChanged: (l) => controller.keyCharacterLayer(e.id, row.key, l?.name),
+          onChanged: (to) => controller.keyCharacterLayer(e.id, row.key, to),
         ),
+        if (bone != null)
+          CanvasSlider(
+            key: const ValueKey("characterLayerKeyBend"),
+            label: "Bent",
+            value: value.clamp(-160.0, 160.0),
+            min: -160,
+            max: 160,
+            onChanged: (v) {
+              controller.beginInteraction();
+              controller.goToKeyform(e.id, driver!, v.roundToDouble());
+            },
+            onCommit: controller.endInteraction,
+          ),
         if (keys != null) ...[
           for (var (v, _) in keys.keys) ...[
             const CanvasLineBreak(),

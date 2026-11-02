@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:bruig/config.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:flutter/foundation.dart';
+import 'package:bruig/plugin_system/canvas/storage/character_library.dart';
 import 'package:path/path.dart' as path;
 
 // canvas_storage.dart is the whole filesystem side of the canvas library:
@@ -122,6 +123,9 @@ class CanvasStorage {
         if (document != null) live.addAll(document.assetIds);
       }
     }
+    // And the library's characters': a reference sheet no canvas shows is
+    // still the character's.
+    live.addAll(await CharacterLibrary.assetIds());
     return live;
   }
 
@@ -140,6 +144,7 @@ class CanvasStorage {
         if (document != null) live.addAll(document.mediaIds);
       }
     }
+    live.addAll(await CharacterLibrary.mediaIds());
     return live;
   }
 
@@ -245,7 +250,8 @@ class CanvasStorage {
         if (base == canvasPicturesFolder ||
             base == canvasAudioFolder ||
             base == canvasVideoFolder ||
-            base == canvasVectorFolder) {
+            base == canvasVectorFolder ||
+            base == canvasCharacterFolder) {
           continue;
         }
 

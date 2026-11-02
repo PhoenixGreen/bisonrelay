@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/render/character/character_life.dart'
 import 'package:bruig/plugin_system/canvas/render/character/character_live.dart' show carried;
 import 'package:bruig/plugin_system/canvas/render/character/character_outline.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_physics.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 
@@ -213,19 +214,37 @@ CharacterDrawing shapesOnParts(List<VectorShape> shapes, CharacterRig rig,
   return CharacterDrawing(shapes: local, parts: parts, hidden: hidden);
 }
 
+/// hairLayers are the layers the hair is drawn on, which follow through
+/// when the head moves.
+final Set<String> hairLayers = {
+  BodyLayer.hairBack.name,
+  BodyLayer.hairBase.name,
+  BodyLayer.hairFront.name,
+};
+
 /// paintPanelShapes draws the shapes [onPanel] names -- each a place in the
 /// panel's order, a drawing and which of its shapes -- lowest first, each
 /// where [rig] has its part, as a drawing element draws its shapes.
+///
+/// [hairSway] is how far the hair hangs out of true as it follows the
+/// head -- see hairSwayAt: shapes on the hair's layers leant by it, more
+/// the further below the top of the head they are.
 void paintPanelShapes(Canvas canvas, CharacterRig rig,
-    List<(double, CharacterDrawing, int)> onPanel, Rect room) {
+    List<(double, CharacterDrawing, int)> onPanel, Rect room,
+    {HairSway hairSway = HairSway.none}) {
   if (onPanel.isEmpty) return;
   var frames = partFrames(rig);
   var sorted = [...onPanel]..sort((a, b) => a.$1.compareTo(b.$1));
+  var top = rig.headCentre.dy +
+      rig.headRadii.height * rig.headScale * (hairPivot * 2 - 1);
   var shapes = <VectorShape>[
     for (var (_, d, i) in sorted)
       if (frames[d.parts[i]] case var f?)
         mapShape(d.shapes[i], (a, b) {
           var p = f.toPage(a, b);
+          if (!hairSway.isNone && hairLayers.contains(d.layerOf(i))) {
+            p = hairSway.at(p, top);
+          }
           return (p.dx, p.dy);
         }, f.scale),
   ];
@@ -287,8 +306,10 @@ VectorElement drawingProxy(CharacterElement e, int frame, int frameRate,
     {int? garment, String? layer}) {
   var (rig, turn, tilt) = drawnRig(e, frame, frameRate);
   var key = drawnKey(e, frame, frameRate);
+  // Its face's charts at the face's state here: the mouth being drawn is
+  // the one it is saying.
   var (drawing, _) = _garmentOf(e, garment)?.drawingAt(key) ??
-      e.drawingShownAt(key);
+      e.drawingShownAt(key, face: e.faceAtFrame(frame));
   if (layer != null) drawing = _only(drawing, layer).$1;
   return VectorElement(
     // Where the character is, and moved as it is moved.
@@ -337,7 +358,8 @@ CharacterElement drawnFromProxy(
   var g = _garmentOf(e, garment);
   // A mirrored panel's drawing is laid out mirrored, parts and all: what is
   // drawn on it is kept as it is shown, and is its own from then on.
-  var (whole, _) = g?.drawingAt(key) ?? e.drawingShownAt(key);
+  var face = e.faceAtFrame(frame);
+  var (whole, _) = g?.drawingAt(key) ?? e.drawingShownAt(key, face: face);
   var (old, mine) = layer == null
       ? (whole, [for (var i = 0; i < whole.shapes.length; i++) i])
       : _only(whole, layer);
@@ -400,10 +422,155 @@ CharacterElement drawnFromProxy(
     order: [for (var i in others) whole.orderOf(i, base), for (var o in order) o!],
     layers: [for (var i in others) whole.layerOf(i), ...layers],
   );
-  if (g == null) return e.withDrawingAt(key, _keptAsKeyed(e, drawing, layer));
+  if (g == null) {
+    return e.withDrawingAt(
+        key, _keptAsCharted(e, key, _keptAsKeyed(e, drawing, layer), layer, face));
+  }
   var wardrobe = [...e.dna.wardrobe];
   wardrobe[garment!] = g.withDrawingAt(key, drawing);
   return e.copyWith(dna: e.dna.copyWith(wardrobe: wardrobe));
+}
+
+/// _keptAsCharted is [drawing] -- [layer] edited as the face is now -- with
+/// that layer's shapes kept as its chart's drawing for the face's state, and
+/// its own shapes as they were: drawing a chart's mouth draws that mouth,
+/// not the one drawn for every state not drawn yet.
+CharacterDrawing _keptAsCharted(CharacterElement e, String key,
+    CharacterDrawing drawing, String? layer, CharacterFace face) {
+  if (layer == null) return drawing;
+  var chart = drawing.charts[layer];
+  if (chart == null) return drawing;
+  var state = chartKeyOf(chart.kind, face);
+  var (mine, _) = _only(drawing, layer);
+  var (stored, _) = e.drawingAt(key);
+  var (own, _) = _only(stored, layer);
+  return withLayerShapes(drawing, layer, own)
+      .copyWith(charts: {...drawing.charts, layer: chart.withDrawing(state, mine)});
+}
+
+/// withLayerShapes is [d] with [layer]'s shapes those of [shapes] in place
+/// of its own.
+CharacterDrawing withLayerShapes(
+    CharacterDrawing d, String layer, CharacterDrawing shapes) {
+  var keep = [
+    for (var i = 0; i < d.shapes.length; i++)
+      if (d.layerOf(i) != layer) i,
+  ];
+  return d.copyWith(
+    shapes: [for (var i in keep) d.shapes[i], ...shapes.shapes],
+    parts: [for (var i in keep) d.parts[i], ...shapes.parts],
+    order: [
+      for (var i in keep) d.orderOf(i, 2e6),
+      for (var i = 0; i < shapes.shapes.length; i++) shapes.orderOf(i, 2e6),
+    ],
+    layers: [
+      for (var i in keep) d.layerOf(i),
+      for (var _ in shapes.shapes) layer,
+    ],
+  );
+}
+
+/// chartLayer is [e] with [layer] -- taken apart on the panel seen on
+/// [frame] -- given a chart of [kind]: drawn once for each state the face
+/// is in, its own shapes drawn for a state not drawn yet.
+CharacterElement chartLayer(
+    CharacterElement e, String layer, ChartKind kind, int frame, int frameRate) {
+  var key = drawnKey(e, frame, frameRate);
+  var (d, _) = e.drawingAt(key);
+  if (d.charts.containsKey(layer)) return e;
+  return e.withDrawingAt(key, d.copyWith(charts: {...d.charts, layer: LayerChart(kind)}));
+}
+
+/// startingFace is [e] with a chart for each of [kinds] on the panel seen on
+/// [frame], every state of it drawn: the layer as the character makes it
+/// with the face in that state, taken apart -- a starting drawing for each,
+/// to draw over, rather than the one drawing for every state. A state drawn
+/// already is kept as it is. The face itself as it was.
+CharacterElement startingFace(
+    CharacterElement e, int frame, int frameRate,
+    {List<ChartKind> kinds = ChartKind.values}) {
+  var key = drawnKey(e, frame, frameRate);
+  var face = e.faceAtFrame(frame);
+  var made = e;
+  for (var kind in kinds) {
+    var had = chartOf(e, kind.layer, frame, frameRate);
+    var chart = had ?? LayerChart(kind);
+    for (var (state, _) in kind.keys) {
+      if (chart.drawings.containsKey(state)) continue;
+      var at = takeApartLayer(
+          e.copyWith(face: faceForChart(face, kind, state)),
+          kind.layer, frame, frameRate);
+      var (mine, _) = _only(at.drawingAt(key).$1, kind.layer);
+      chart = chart.withDrawing(state, mine);
+    }
+    // Taken apart already, its shapes are kept; else as the face is now.
+    if (had == null) made = takeApartLayer(made, kind.layer, frame, frameRate);
+    var (d, _) = made.drawingAt(key);
+    made = made.withDrawingAt(key, d.copyWith(charts: {...d.charts, kind.layer: chart}));
+  }
+  return made;
+}
+
+/// chartOf is [layer]'s chart on the panel seen on [frame], or null.
+LayerChart? chartOf(CharacterElement e, String layer, int frame, int frameRate) {
+  var key = drawnKey(e, frame, frameRate);
+  return e.drawingAt(key).$1.charts[layer];
+}
+
+/// faceForChart is [face] set to show state [state] of [kind]'s chart:
+/// the mouth of a lip-sync sound, or an expression's; eyes as open as the
+/// state is; brows as it sets them.
+CharacterFace faceForChart(CharacterFace face, ChartKind kind, String state) {
+  var c = {...face.controls};
+  var mouth = face.mouth;
+  switch (kind) {
+    case ChartKind.mouth:
+      mouth = MouthShape.rest;
+      c.remove(FaceControl.smile);
+      c.remove(FaceControl.jaw);
+      switch (state) {
+        case "smile":
+          c[FaceControl.smile] = 0.7;
+        case "grin":
+          c[FaceControl.smile] = 0.7;
+          c[FaceControl.jaw] = 0.5;
+        case "frown":
+          c[FaceControl.smile] = -0.7;
+        case "gasp":
+          c[FaceControl.jaw] = 0.8;
+        case "rest":
+          break;
+        default:
+          mouth = MouthShape.fromName(state);
+      }
+    case ChartKind.eyes:
+      c.remove(FaceControl.squint);
+      c[FaceControl.eyesOpen] = switch (state) {
+        "closed" => 0,
+        "half" => 0.45,
+        "wide" => 1.3,
+        _ => 1,
+      };
+      if (state == "happy") {
+        c[FaceControl.squint] = 0.8;
+        c[FaceControl.smile] = 0.6;
+      }
+    case ChartKind.brows:
+      c.remove(FaceControl.browRaise);
+      c.remove(FaceControl.browSqueeze);
+      c.remove(FaceControl.browWorry);
+      switch (state) {
+        case "up":
+          c[FaceControl.browRaise] = 0.7;
+        case "down":
+          c[FaceControl.browRaise] = -0.7;
+        case "cross":
+          c[FaceControl.browSqueeze] = 0.8;
+        case "worried":
+          c[FaceControl.browWorry] = 0.8;
+      }
+  }
+  return CharacterFace(c, mouth);
 }
 
 /// _keptAsKeyed is [drawing] -- edited where the sliders are now -- with

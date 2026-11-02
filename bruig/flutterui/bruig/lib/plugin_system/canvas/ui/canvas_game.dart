@@ -631,19 +631,22 @@ class GameRun extends ChangeNotifier {
         facing: body.facing < 0 ? SpriteFacing.left : SpriteFacing.right);
   }
 
-  /// _motionOf sets the motion [c] moves with, as [body] goes: a jump in
-  /// the air; on the ground a walk, or a run when it goes faster than its
-  /// own height a second; none, still -- and when it began, if it changed.
+  /// _motionOf sets the motion [c] moves with, as [body] goes -- the one
+  /// the character has for it, see GameMotions: going up or coming down in
+  /// the air; on the ground walking, or running when it goes faster than
+  /// its own height a second; none, still -- and when it began, if it
+  /// changed.
   void _motionOf(CharacterElement c, GameBody body) {
     var topDown = c.base.play.as == PlayAs.topDown;
     var pace = topDown ? body.velocity.distance : body.velocity.dx.abs();
     var airborne = !topDown && !body.onGround && body.velocity.dy.abs() > 1;
+    var moves = c.gameMotions;
     var kind = airborne
-        ? MotionKind.jump
+        ? moves[body.velocity.dy < 0 ? GameMove.jumping : GameMove.falling]
         : pace > 1
             ? (pace > math.max(1.0, c.height)
-                ? MotionKind.run
-                : MotionKind.walk)
+                ? moves[GameMove.running]
+                : moves[GameMove.walking])
             : null;
     if (kind != body.motion) {
       body.motion = kind;
@@ -676,12 +679,13 @@ class GameRun extends ChangeNotifier {
     var rate = math.max(1, frameRate);
     var start = frame - ((clock - body.since) * rate).round();
     var clips = kind == null
-        // Standing: breathing, not frozen.
+        // Standing: breathing, not frozen -- or as it stands, see
+        // GameMotions.
         ? [
             MotionClip(
                 id: "game",
-                kind: MotionKind.idle,
-                layer: MotionLayer.added,
+                kind: c.gameMotions[GameMove.standing],
+                layer: c.gameMotions[GameMove.standing].layer,
                 start: start,
                 length: 1 << 30,
                 blend: 0),
@@ -696,8 +700,8 @@ class GameRun extends ChangeNotifier {
               blend: 0,
               // Feet keeping up with the ground: its pace over the motion's
               // own.
-              speed: kind.travels > 0
-                  ? (pace / (kind.travels * height)).clamp(0.5, 2.5)
+              speed: c.feel.travels(kind) > 0
+                  ? (pace / (c.feel.travels(kind) * height)).clamp(0.5, 2.5)
                   : 1,
             ),
           ];

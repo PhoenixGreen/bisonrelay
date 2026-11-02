@@ -1,5 +1,7 @@
 import 'dart:ui' show Offset;
 
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart'
+    show CharacterBone;
 import 'package:bruig/plugin_system/canvas/model/elements/character_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 
@@ -166,6 +168,12 @@ class CharacterDrawing {
   /// on shaping a layer drawn on. See character_live.dart.
   final Map<String, CharacterDrawing> bases;
 
+  /// charts is the face's layers drawn once for each state they are seen
+  /// in -- each mouth of the lip sync, eyes shut, brows cross -- by layer:
+  /// the drawing for the state the face is in swapped in for the layer's
+  /// own. See LayerChart.
+  final Map<String, LayerChart> charts;
+
   const CharacterDrawing(
       {this.shapes = const [],
       this.parts = const [],
@@ -175,7 +183,8 @@ class CharacterDrawing {
       this.layers = const [],
       this.hiddenLayers = const {},
       this.keyed = const {},
-      this.bases = const {}});
+      this.bases = const {},
+      this.charts = const {}});
 
   /// layerOf is the layer shape [i] is drawn as, or null.
   String? layerOf(int i) => i < layers.length ? layers[i] : null;
@@ -188,7 +197,12 @@ class CharacterDrawing {
   static const CharacterDrawing empty = CharacterDrawing();
 
   bool get isEmpty =>
-      shapes.isEmpty && hidden.isEmpty && !replaces && hiddenLayers.isEmpty && keyed.isEmpty;
+      shapes.isEmpty &&
+      hidden.isEmpty &&
+      !replaces &&
+      hiddenLayers.isEmpty &&
+      keyed.isEmpty &&
+      charts.isEmpty;
 
   CharacterDrawing copyWith(
           {List<VectorShape>? shapes,
@@ -199,7 +213,8 @@ class CharacterDrawing {
           List<String?>? layers,
           Set<String>? hiddenLayers,
           Map<String, LayerKeys>? keyed,
-          Map<String, CharacterDrawing>? bases}) =>
+          Map<String, CharacterDrawing>? bases,
+          Map<String, LayerChart>? charts}) =>
       CharacterDrawing(
           shapes: shapes ?? this.shapes,
           parts: parts ?? this.parts,
@@ -209,7 +224,8 @@ class CharacterDrawing {
           layers: layers ?? this.layers,
           hiddenLayers: hiddenLayers ?? this.hiddenLayers,
           keyed: keyed ?? this.keyed,
-          bases: bases ?? this.bases);
+          bases: bases ?? this.bases,
+          charts: charts ?? this.charts);
 
   /// mirrored is this drawing seen from the other side: each shape flipped
   /// across its bone and put on the part opposite.
@@ -223,6 +239,7 @@ class CharacterDrawing {
         hiddenLayers: {for (var l in hiddenLayers) _mirroredLayer(l)},
         keyed: {for (var e in keyed.entries) _mirroredLayer(e.key): e.value.mirrored},
         bases: {for (var e in bases.entries) _mirroredLayer(e.key): e.value.mirrored},
+        charts: {for (var e in charts.entries) _mirroredLayer(e.key): e.value.mirrored},
       );
 
   static String _mirroredLayer(String l) =>
@@ -240,6 +257,8 @@ class CharacterDrawing {
           "keyed": {for (var e in keyed.entries) e.key: e.value.toJson()},
         if (bases.isNotEmpty)
           "bases": {for (var e in bases.entries) e.key: e.value.toJson()},
+        if (charts.isNotEmpty)
+          "charts": {for (var e in charts.entries) e.key: e.value.toJson()},
       };
 
   factory CharacterDrawing.fromJson(Map<String, dynamic> json) {
@@ -263,6 +282,11 @@ class CharacterDrawing {
       for (var l in json["layers"] as List? ?? const []) l is String ? l : null,
     ];
     return CharacterDrawing(
+      charts: {
+        if (json["charts"] case Map raw)
+          for (var e in raw.entries)
+            if (LayerChart.fromJson(e.value) case var c?) "${e.key}": c,
+      },
       bases: {
         if (json["bases"] case Map raw)
           for (var e in raw.entries)
@@ -441,6 +465,132 @@ Map<String, CharacterDrawing> withoutDrawingAtKey(Map<String, CharacterDrawing> 
 bool keptBlankAtKey(Map<String, CharacterDrawing> drawings, String key) =>
     drawings[key]?.isEmpty == true;
 
+/// ChartKind is which of the face's charts a layer has: the drawings of it
+/// for each state it is seen in, as a character sheet's eye, brow and
+/// mouth charts are -- and as Moho's switch layers and Character Animator's
+/// tagged mouths swap them in.
+enum ChartKind {
+  eyes("Eyes", "eyes", [
+    ("open", "Open"),
+    ("half", "Half"),
+    ("closed", "Closed"),
+    ("happy", "Happy"),
+    ("wide", "Wide"),
+  ]),
+  brows("Brows", "brows", [
+    ("rest", "Rest"),
+    ("up", "Up"),
+    ("down", "Down"),
+    ("cross", "Cross"),
+    ("worried", "Worried"),
+  ]),
+  mouth("Mouths", "mouth", [
+    ("rest", "Rest"),
+    ("closed", "M B P"),
+    ("teeth", "K S T EE"),
+    ("open", "EH AE"),
+    ("wide", "AA I"),
+    ("round", "AO ER"),
+    ("pucker", "OO W"),
+    ("lip", "F V"),
+    ("tongue", "L"),
+    ("smile", "Smile"),
+    ("grin", "Grin"),
+    ("frown", "Frown"),
+    ("gasp", "Gasp"),
+  ]);
+
+  final String label;
+
+  /// layer is the body layer it is a chart of.
+  final String layer;
+
+  /// keys are its states, each kept under its key and named.
+  final List<(String, String)> keys;
+  const ChartKind(this.label, this.layer, this.keys);
+
+  static ChartKind? ofLayer(String? layer) {
+    for (var k in values) {
+      if (k.layer == layer) return k;
+    }
+    return null;
+  }
+
+  static ChartKind? fromName(String? name) {
+    for (var k in values) {
+      if (k.name == name) return k;
+    }
+    return null;
+  }
+}
+
+/// LayerChart is a layer of a panel drawn once for each state of a chart:
+/// the drawing for the state the face is in is drawn in place of the
+/// layer's own, which is drawn for a state not drawn yet.
+class LayerChart {
+  final ChartKind kind;
+  final Map<String, CharacterDrawing> drawings;
+  const LayerChart(this.kind, [this.drawings = const {}]);
+
+  LayerChart withDrawing(String key, CharacterDrawing d) =>
+      LayerChart(kind, {...drawings, key: d});
+
+  LayerChart without(String key) =>
+      LayerChart(kind, {...drawings}..remove(key));
+
+  LayerChart get mirrored => LayerChart(
+      kind, {for (var e in drawings.entries) e.key: e.value.mirrored});
+
+  Map<String, dynamic> toJson() => {
+        "kind": kind.name,
+        "drawings": {for (var e in drawings.entries) e.key: e.value.toJson()},
+      };
+
+  static LayerChart? fromJson(Object? json) {
+    if (json is! Map) return null;
+    var kind = ChartKind.fromName(json["kind"] as String?);
+    if (kind == null) return null;
+    return LayerChart(kind, {
+      if (json["drawings"] case Map raw)
+        for (var e in raw.entries)
+          if (e.value is Map<String, dynamic>)
+            "${e.key}": CharacterDrawing.fromJson(e.value as Map<String, dynamic>),
+    });
+  }
+}
+
+/// chartedAt is [d] with each charted layer's shapes the drawing for the
+/// state [keyOf] says its chart is in -- where that state is drawn; the
+/// layer's own shapes where it is not.
+CharacterDrawing chartedAt(CharacterDrawing d, String Function(ChartKind kind) keyOf) {
+  if (d.charts.isEmpty) return d;
+  var swapped = <String, CharacterDrawing>{};
+  for (var MapEntry(key: layer, value: chart) in d.charts.entries) {
+    if (chart.drawings[keyOf(chart.kind)] case var drawn?) swapped[layer] = drawn;
+  }
+  if (swapped.isEmpty) return d;
+  var shapes = <VectorShape>[];
+  var parts = <CharacterPart>[];
+  var order = <double>[];
+  var layers = <String?>[];
+  for (var i = 0; i < d.shapes.length; i++) {
+    if (swapped.containsKey(d.layerOf(i))) continue;
+    shapes.add(d.shapes[i]);
+    parts.add(d.parts[i]);
+    order.add(d.orderOf(i, 2e6));
+    layers.add(d.layerOf(i));
+  }
+  for (var MapEntry(key: layer, value: at) in swapped.entries) {
+    for (var i = 0; i < at.shapes.length; i++) {
+      shapes.add(at.shapes[i]);
+      parts.add(at.parts[i]);
+      order.add(at.orderOf(i, 2e6));
+      layers.add(layer);
+    }
+  }
+  return d.copyWith(shapes: shapes, parts: parts, order: order, layers: layers);
+}
+
 /// LayerKeys is a layer of a panel shaped by a slider through drawings:
 /// its shapes as drawn at each of the slider's values kept -- keyforms, as
 /// Live2D calls them -- blended between, point by point, at any value in
@@ -448,8 +598,50 @@ bool keptBlankAtKey(Map<String, CharacterDrawing> drawings, String key) =>
 ///
 /// Every keyform starts as a copy of the shapes at the value it is made at,
 /// so they have the same shapes and the same points, and blend.
+/// A layer's keyforms follow a slider -- a Look, by its name -- or a joint:
+/// a bend shape, its drawings kept at the joint's angles, so an elbow bent
+/// is drawn as bent elbows are, not a straight one turned. Spine's and
+/// Live2D's deform keys on a bone's angle. bendDriver is the name a joint
+/// drives by, and bendOf the joint a name is, or null for a slider.
+const String _bendPrefix = "bend:";
+
+String bendDriver(CharacterBone bone) => "$_bendPrefix${bone.name}";
+
+CharacterBone? bendOf(String driver) => driver.startsWith(_bendPrefix)
+    ? CharacterBone.fromName(driver.substring(_bendPrefix.length))
+    : null;
+
+/// bendJoints are the joints that bend body layer [layer], each with what
+/// it is called as a joint.
+List<(CharacterBone, String)> bendJoints(String layer) {
+  const arms = {
+    "L": [(CharacterBone.upperArmL, "Left shoulder"), (CharacterBone.foreArmL, "Left elbow"), (CharacterBone.wristL, "Left wrist")],
+    "R": [(CharacterBone.upperArmR, "Right shoulder"), (CharacterBone.foreArmR, "Right elbow"), (CharacterBone.wristR, "Right wrist")],
+  };
+  const legs = {
+    "L": [(CharacterBone.thighL, "Left hip"), (CharacterBone.shinL, "Left knee"), (CharacterBone.ankleL, "Left ankle")],
+    "R": [(CharacterBone.thighR, "Right hip"), (CharacterBone.shinR, "Right knee"), (CharacterBone.ankleR, "Right ankle")],
+  };
+  const body = [(CharacterBone.spine, "Waist"), (CharacterBone.hips, "Hip tilt")];
+  const neck = [(CharacterBone.head, "Neck")];
+  return switch (BodyLayer.fromName(layer)) {
+    BodyLayer.armL => arms["L"]!,
+    BodyLayer.armR => arms["R"]!,
+    BodyLayer.handL => [arms["L"]![2]],
+    BodyLayer.handR => [arms["R"]![2]],
+    BodyLayer.legL => legs["L"]!,
+    BodyLayer.legR => legs["R"]!,
+    BodyLayer.footL => [legs["L"]![2], (CharacterBone.toesL, "Left toes")],
+    BodyLayer.footR => [legs["R"]![2], (CharacterBone.toesR, "Right toes")],
+    BodyLayer.torso => [...body, arms["L"]![0], arms["R"]![0], legs["L"]![0], legs["R"]![0]],
+    BodyLayer.neck || BodyLayer.head => neck,
+    _ => const [],
+  };
+}
+
 class LayerKeys {
-  /// look is the slider, by its Look name.
+  /// look is what shapes it: a slider by its Look name, or a joint -- see
+  /// bendDriver.
   final String look;
 
   /// keys is each value kept and the layer's shapes there, lowest first --
@@ -510,7 +702,16 @@ class LayerKeys {
   LayerKeys without(double value) =>
       LayerKeys(look, [for (var k in keys) if ((k.$1 - value).abs() >= 0.005) k]);
 
-  LayerKeys get mirrored => LayerKeys(look, [for (var (v, d) in keys) (v, d.mirrored)]);
+  /// mirrored is this for the other side: the drawings mirrored, and -- shaped
+  /// by a joint -- by the other side's, which bends the other way.
+  LayerKeys get mirrored {
+    var bone = bendOf(look);
+    if (bone == null) return LayerKeys(look, [for (var (v, d) in keys) (v, d.mirrored)]);
+    var sign = bone.mirrors ? -1.0 : 1.0;
+    return LayerKeys(bendDriver(bone.partner), [
+      for (var (v, d) in keys) (v * sign, d.mirrored),
+    ]..sort((a, b) => a.$1.compareTo(b.$1)));
+  }
 
   Map<String, dynamic> toJson() => {
         "look": look,
@@ -566,7 +767,8 @@ CharacterDrawing blendDrawings(CharacterDrawing a, CharacterDrawing b, double t)
 }
 
 /// keyedAt is [d] with each keyed layer's shapes as its keyforms make them
-/// at the slider's value -- [valueOf] a Look's value by its name.
+/// at the slider's value -- [valueOf] a Look's value, or a joint's angle,
+/// by its name.
 CharacterDrawing keyedAt(CharacterDrawing d, double Function(String look) valueOf) {
   if (d.keyed.isEmpty) return d;
   var shapes = <VectorShape>[];

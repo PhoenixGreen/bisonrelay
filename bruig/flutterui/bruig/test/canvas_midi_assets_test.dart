@@ -121,7 +121,7 @@ void main() {
   });
 
   Future<CanvasController> showBoth(WidgetTester tester) async {
-    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.physicalSize = const Size(1600, 980);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     var c = make();

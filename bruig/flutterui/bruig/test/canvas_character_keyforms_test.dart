@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ui' show Canvas, PictureRecorder;
 
 import 'package:bruig/models/snackbar.dart';
@@ -6,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -15,6 +17,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Image;
+import 'package:bruig/plugin_system/canvas/ui/character_studio.dart'
+    show StudioWorkspace;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -132,6 +136,64 @@ void main() {
     expect(k.keys.map((k) => k.$1), [0, 0.6]);
   });
 
+  group("bend shapes", () {
+    var arm = BodyLayer.armL.name;
+    var elbow = CharacterBone.foreArmL;
+
+    test("a layer shaped by a joint: its drawings blend as the joint bends", () async {
+      var e = takeApartLayer(_sketch(), arm, 0, 24);
+      e = keyLayer(e, arm, bendDriver(elbow), 0, 24);
+      var k = keysOf(e, arm, 0, 24)!;
+      expect(k.look, "bend:foreArmL");
+      var rest = _sketch().pose[elbow];
+      expect(k.keys.single.$1, rest, reason: "kept where the elbow is now");
+      // Bent to 90 and kept: that one drawn fatter.
+      e = e.copyWith(pose: e.pose.withAngle(elbow, 90));
+      expect(e.lookValue(bendDriver(elbow)), 90);
+      e = withKeyform(e, arm, 0, 24);
+      k = keysOf(e, arm, 0, 24)!;
+      expect(k.keys.map((k) => k.$1), [rest, 90]);
+      var bent = k.keys.last.$2;
+      var fat = bent.copyWith(shapes: [
+        for (var s in bent.shapes) mapShape(s, (x, y) => (x * 1.5, y), 1)
+      ]);
+      var (d, _) = e.drawingFor(0, 0);
+      e = e.withDrawing(0, 0, d.copyWith(keyed: {arm: k.withKey(90, fat)}));
+      Future<List<int>> at(double a) => _pixels(e.copyWith(pose: e.pose.withAngle(elbow, a)));
+      var straight = await at(rest), half = await at(45), full = await at(90);
+      expect(half, isNot(straight));
+      expect(half, isNot(full));
+      // A motion bends it too: the painter reads the joint as it moves.
+      var moving = e.copyWith(pose: e.pose.withAngle(elbow, rest), motions: [
+        const MotionClip(id: "w", kind: MotionKind.clap, layer: MotionLayer.upper, start: 0, length: 24, blend: 0),
+      ]);
+      var (posed, _) = moving.performanceAt(6, 24);
+      expect(posed[elbow], isNot(rest), reason: "a clap bends the elbow");
+    });
+
+    test("mirrored to the other side: the other joint, bending the other way", () {
+      var k = const LayerKeys("bend:foreArmL")
+          .withKey(10, _one(_square(0)))
+          .withKey(90, _one(_square(20)));
+      var m = k.mirrored;
+      expect(m.look, "bend:foreArmR");
+      expect(m.keys.map((k) => k.$1), [-90, -10]);
+      expect(jsonEncode(m.at(-90).toJson()), jsonEncode(k.keys.last.$2.mirrored.toJson()),
+          reason: "the most bent, mirrored");
+      // A toe curl is the same either side.
+      expect(const LayerKeys("bend:toesL").withKey(30, _one(_square(0))).mirrored.keys.single.$1, 30);
+      var back = LayerKeys.fromJson(k.toJson())!;
+      expect(back.look, k.look);
+    });
+
+    test("the joints a layer offers", () {
+      expect(bendJoints("armL").map((j) => j.$2), ["Left shoulder", "Left elbow", "Left wrist"]);
+      expect(bendJoints("legR").map((j) => j.$1), contains(CharacterBone.shinR));
+      expect(bendJoints("torso").map((j) => j.$2), contains("Waist"));
+      expect(bendJoints("eyes"), isEmpty);
+    });
+  });
+
   group("the keyforms card", () {
     setUpAll(() => CanvasSection.openAll = true);
     tearDownAll(() => CanvasSection.openAll = false);
@@ -140,7 +202,9 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       var c = CanvasController(CanvasDocument(frames: 24).addElement(_sketch()));
       addTearDown(c.dispose);
-      c.selectOnly("c");
+      // Its design is made in the Character Studio.
+      c.openStudio("c");
+      c.studioWorkspace = StudioWorkspace.rig;
       c.takeApartCharacterLayer("c", eyes);
       c.pickCharacterLayer(eyes);
       tester.view.physicalSize = const Size(900, 14000);
@@ -157,8 +221,8 @@ void main() {
       ));
       await tester.pumpAndSettle();
       CharacterElement get() => c.document.elementById("c") as CharacterElement;
-      tester.widget<CanvasDropdown<Look?>>(find.byKey(const ValueKey("characterLayerKeyLook")))
-          .onChanged(size);
+      tester.widget<CanvasDropdown<String?>>(find.byKey(const ValueKey("characterLayerKeyLook")))
+          .onChanged(size.name);
       await tester.pumpAndSettle();
       expect(keysOf(get(), eyes, 0, 24)?.look, size.name);
       expect(find.text("Size ◆ keyed"), findsOneWidget);
@@ -182,6 +246,54 @@ void main() {
       await tap("characterLayerKeyOff-80%");
       await tester.pumpAndSettle();
       expect(keysOf(get(), eyes, 0, 24)!.keys.length, 1);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("a layer bent by a joint: picked, bent, kept in degrees", (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var arm = BodyLayer.armL.name;
+      var c = CanvasController(CanvasDocument(frames: 24).addElement(_sketch()));
+      addTearDown(c.dispose);
+      // Its design is made in the Character Studio.
+      c.openStudio("c");
+      c.studioWorkspace = StudioWorkspace.rig;
+      c.takeApartCharacterLayer("c", arm);
+      c.pickCharacterLayer(arm);
+      tester.view.physicalSize = const Size(900, 14000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(create: (c) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(body: SizedBox(width: 420, child: CanvasDesignPanel(controller: c)))),
+      ));
+      await tester.pumpAndSettle();
+      CharacterElement get() => c.document.elementById("c") as CharacterElement;
+      var pick = tester.widget<CanvasDropdown<String?>>(find.byKey(const ValueKey("characterLayerKeyLook")));
+      expect(pick.options.map((o) => o.$2), contains("Bend: Left elbow"));
+      pick.onChanged("bend:foreArmL");
+      await tester.pumpAndSettle();
+      expect(keysOf(get(), arm, 0, 24)?.look, "bend:foreArmL");
+      expect(find.byKey(const ValueKey("characterLayerKey--4°")), findsOneWidget,
+          reason: "kept where the elbow is at rest");
+      var bend = tester.widget<CanvasSlider>(find.byKey(const ValueKey("characterLayerKeyBend")));
+      bend.onChanged(72.4);
+      bend.onCommit?.call();
+      await tester.pumpAndSettle();
+      expect(get().pose[CharacterBone.foreArmL], 72);
+      var add = find.byKey(const ValueKey("characterLayerKeyAdd"));
+      await tester.ensureVisible(add);
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(keysOf(get(), arm, 0, 24)!.keys.map((k) => k.$1), [-4, 72]);
+      await tester.ensureVisible(find.byKey(const ValueKey("characterLayerKey--4°")));
+      await tester.tap(find.byKey(const ValueKey("characterLayerKey--4°")));
+      await tester.pumpAndSettle();
+      expect(get().pose[CharacterBone.foreArmL], -4, reason: "a keyform's button bends the joint to it");
       expect(tester.takeException(), isNull);
     });
   });

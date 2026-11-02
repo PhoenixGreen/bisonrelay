@@ -29,6 +29,7 @@ import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/space_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -805,7 +806,37 @@ class _CanvasScreenState extends State<CanvasScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ValueListenableBuilder<String?>(
+      valueListenable: _controller.studioOpen,
+      builder: (context, studio, _) =>
+          studio == null ? _canvasPage(context) : _studioPage(context));
+
+  /// _studioPage is the Character Studio, given the whole page: no sidebar,
+  /// no timeline, nothing but the character -- see character_studio.dart.
+  Widget _studioPage(BuildContext context) {
+    var client = Provider.of<ClientModel>(context);
+    var theme = ThemeNotifier.of(context);
+    return ScreenWithChatSideMenu(
+        client,
+        CanvasSpaceBar(
+            controller: _controller,
+            child: contentAreaFrame(
+                theme,
+                CharacterStudioScreen(
+                  controller: _controller,
+                  stage: CanvasStage(
+                    key: _stageKey,
+                    controller: _controller,
+                    onButtonLink: _openLink,
+                  ),
+                  overStage: [
+                    CharacterDrawBar(controller: _controller),
+                    VectorToolHint(controller: _controller),
+                  ],
+                ))));
+  }
+
+  Widget _canvasPage(BuildContext context) {
     var client = Provider.of<ClientModel>(context);
     var theme = ThemeNotifier.of(context);
 
@@ -1099,9 +1130,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                               ImageToolHint(controller: _controller),
-                              // A sketched character's: going round it, its
-                              // panels, the zoom and the drawing tools.
-                              CharacterDrawBar(controller: _controller),
+                              // A character is drawn in the Character
+                              // Studio, which has its own bar.
                               VectorToolHint(controller: _controller),
                             ])),
                       ),

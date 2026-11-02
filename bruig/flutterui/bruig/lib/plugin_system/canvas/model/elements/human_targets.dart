@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 
 // human_targets.dart is how a character's Appearance and type become the
@@ -104,29 +106,111 @@ const Map<Look, List<TargetPair>> lookTargets = {
   Look.age: [(null, "head/head-age-incr")],
 };
 
-/// Expression units: the face's own movements, as targets, by the VRM
-/// names the model drawing knows -- see expressionsOf.
-const Map<String, List<(String, double)>> expressionTargets = {
-  "happy": [("mouth-corner-puller", 1), ("mouth-elevation", 0.2)],
-  "sad": [
-    ("mouth-depression", 0.8),
-    ("eyebrows-left-inner-up", 0.7),
-    ("eyebrows-right-inner-up", 0.7),
-  ],
-  "angry": [("eyebrows-left-down", 1), ("eyebrows-right-down", 1)],
-  "surprised": [
-    ("eyebrows-left-up", 1),
-    ("eyebrows-right-up", 1),
-    ("eye-left-opened-up", 0.6),
-    ("eye-right-opened-up", 0.6),
-  ],
-  "blink": [("eye-left-closure", 1), ("eye-right-closure", 1)],
-  "aa": [("mouth-open", 1)],
-  "ih": [("mouth-retraction", 0.8), ("mouth-open", 0.2)],
-  "ou": [("mouth-pursing", 0.8), ("mouth-protusion", 0.5)],
-  "ee": [("mouth-upward-retraction", 0.7), ("mouth-open", 0.25)],
-  "oh": [("mouth-open", 0.6), ("mouth-pursing", 0.5)],
-};
+/// humanFaceUnits are the face's own movements, as MakeHuman sculpted
+/// them: each a shape of the head -- a lid shut, a brow raised, a lip
+/// pulled -- kept whole on the body as a target of its own, and mixed by
+/// humanUnitsOf into every face control and every mouth lip sync uses.
+/// The face is the body's geometry; nothing is drawn on it.
+const List<String> humanFaceUnits = [
+  "eye-left-closure", "eye-right-closure",
+  "eye-left-opened-up", "eye-right-opened-up",
+  "eye-left-slit", "eye-right-slit",
+  "eyebrows-left-down", "eyebrows-right-down",
+  "eyebrows-left-up", "eyebrows-right-up",
+  "eyebrows-left-inner-up", "eyebrows-right-inner-up",
+  "eyebrows-left-extern-up", "eyebrows-right-extern-up",
+  "mouth-compression", "mouth-corner-puller", "mouth-depression",
+  "mouth-depression-retraction", "mouth-elevation", "mouth-eversion",
+  "mouth-open", "mouth-parling", "mouth-part-later", "mouth-protusion",
+  "mouth-pursing", "mouth-retraction", "mouth-upward-retraction",
+  "nose-compression", "nose-depression",
+  "nose-left-dilatation", "nose-right-dilatation",
+  "nose-left-elevation", "nose-right-elevation",
+  "neck-platysma",
+];
+
+/// unitTarget is the expression named [unit]'s target, by its path in
+/// MakeHuman's data/targets.
+String unitTarget(String unit) => "expression/units/caucasian/$unit";
+
+/// humanUnitsOf is how far each of the face's units is moved for [face],
+/// by name: its controls -- eyes, brows, smile, jaw -- and, while it
+/// speaks, the mouth for the sound it is making, sculpted from the lips'
+/// own units as an animator would key them.
+Map<String, double> humanUnitsOf(CharacterFace face) {
+  var out = <String, double>{};
+  void put(String unit, double w) {
+    if (w <= 0.001) return;
+    out[unit] = ((out[unit] ?? 0) + w).clamp(0.0, 1.0);
+  }
+
+  void both(String unit, double w) {
+    put(unit.replaceFirst("X-", "left-"), w);
+    put(unit.replaceFirst("X-", "right-"), w);
+  }
+
+  // The eyes: shut by a blink or a smile's squint, wide when surprised.
+  var open = face[FaceControl.eyesOpen];
+  var squint = face[FaceControl.squint];
+  var smile = face[FaceControl.smile];
+  both("eye-X-closure", (1 - open).clamp(0.0, 1.0));
+  both("eye-X-opened-up", ((open - 1) * 2).clamp(0.0, 1.0));
+  both("eye-X-slit", squint + math.max(0.0, smile) * 0.25);
+  // The brows.
+  var raise = face[FaceControl.browRaise];
+  both("eyebrows-X-up", raise);
+  both("eyebrows-X-down", -raise + face[FaceControl.browSqueeze]);
+  both("eyebrows-X-inner-up", face[FaceControl.browWorry]);
+  put("nose-compression", face[FaceControl.browSqueeze] * 0.4);
+  // The smile, or its frown; the cheeks and nose lift with a smile.
+  put("mouth-corner-puller", smile);
+  put("mouth-elevation", smile * 0.25);
+  both("nose-X-elevation", smile * 0.2);
+  put("mouth-depression", -smile);
+  put("mouth-depression-retraction", -smile * 0.3);
+  switch (face.mouth) {
+    case MouthShape.rest:
+      put("mouth-open", face[FaceControl.jaw]);
+      var wide = face[FaceControl.wide];
+      put("mouth-retraction", wide * 0.7);
+      put("mouth-pursing", -wide * 0.8);
+      put("mouth-protusion", -wide * 0.4);
+    case MouthShape.closed:
+      // M, B, P: the lips pressed together.
+      put("mouth-compression", 0.8);
+    case MouthShape.teeth:
+      // K, S, T, EE: teeth together, lips drawn back.
+      put("mouth-retraction", 0.6);
+      put("mouth-upward-retraction", 0.35);
+      put("mouth-open", 0.12);
+    case MouthShape.open:
+      // EH, AE.
+      put("mouth-open", 0.45);
+      put("mouth-retraction", 0.3);
+    case MouthShape.wide:
+      // AA, I: the jaw well down.
+      put("mouth-open", 0.9);
+      put("mouth-retraction", 0.15);
+    case MouthShape.round:
+      // AO, ER.
+      put("mouth-open", 0.5);
+      put("mouth-pursing", 0.45);
+    case MouthShape.pucker:
+      // OO, W: the lips pushed forward and round.
+      put("mouth-pursing", 1);
+      put("mouth-protusion", 0.6);
+    case MouthShape.lip:
+      // F, V: the lower lip tucked under the top teeth.
+      put("mouth-depression-retraction", 0.5);
+      put("mouth-eversion", 0.4);
+      put("mouth-open", 0.1);
+    case MouthShape.tongue:
+      // L: open, the tongue behind the teeth.
+      put("mouth-open", 0.45);
+      put("mouth-upward-retraction", 0.2);
+  }
+  return out;
+}
 
 const List<String> _genders = ["female", "male"];
 const List<String> _ages = ["baby", "child", "young", "old"];
@@ -167,10 +251,8 @@ List<String> humanTargetFiles() {
       if (high != null) side(high);
     }
   }
-  for (var units in expressionTargets.values) {
-    for (var (unit, _) in units) {
-      out.add("expression/units/caucasian/$unit");
-    }
+  for (var unit in humanFaceUnits) {
+    out.add(unitTarget(unit));
   }
   for (var g in _genders) {
     for (var a in _ages) {

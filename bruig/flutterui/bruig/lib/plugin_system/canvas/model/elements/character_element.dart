@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_reference.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_appearance.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
@@ -13,6 +14,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_views.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_puppet.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_moves.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_physics.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 
@@ -22,6 +25,8 @@ export 'package:bruig/plugin_system/canvas/model/elements/character_face_rig.dar
 export 'package:bruig/plugin_system/canvas/model/elements/character_hair.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_hands.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_layers.dart';
+export 'package:bruig/plugin_system/canvas/model/elements/character_moves.dart';
+export 'package:bruig/plugin_system/canvas/model/elements/character_physics.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_views.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
@@ -416,6 +421,37 @@ enum MouthShape {
 }
 
 /// faceChannelPrefix starts the name of every face keyframe channel.
+/// chartKeyOf is the state [kind]'s chart is in for [face]: the mouth of
+/// its lip sync where it is speaking, else the mouth its expression makes;
+/// the eyes as open as they are; the brows as they are set.
+String chartKeyOf(ChartKind kind, CharacterFace face) {
+  double v(FaceControl c) => face[c];
+  switch (kind) {
+    case ChartKind.mouth:
+      if (face.mouth != MouthShape.rest) return face.mouth.name;
+      var smile = v(FaceControl.smile), jaw = v(FaceControl.jaw);
+      if (jaw > 0.55 && smile < 0.3) return "gasp";
+      if (smile > 0.4) return jaw > 0.3 ? "grin" : "smile";
+      if (smile < -0.4) return "frown";
+      return "rest";
+    case ChartKind.eyes:
+      var open = v(FaceControl.eyesOpen);
+      if (v(FaceControl.squint) > 0.5 && v(FaceControl.smile) > 0.3) {
+        return "happy";
+      }
+      if (open < 0.25) return "closed";
+      if (open < 0.6) return "half";
+      if (open > 1.15) return "wide";
+      return "open";
+    case ChartKind.brows:
+      if (v(FaceControl.browSqueeze) > 0.4) return "cross";
+      if (v(FaceControl.browWorry) > 0.4) return "worried";
+      if (v(FaceControl.browRaise) > 0.4) return "up";
+      if (v(FaceControl.browRaise) < -0.4) return "down";
+      return "rest";
+  }
+}
+
 const String faceChannelPrefix = "face.";
 
 /// faceChannel is the keyframe channel [control] is pinned on.
@@ -507,6 +543,23 @@ class CharacterFace {
         if (FaceControl.fromName("${e.key}") case var c? when e.value is num)
           c: (e.value as num).toDouble().clamp(c.min, c.max).toDouble(),
     }, MouthShape.fromName(json["mouth"] as String?));
+  }
+}
+
+/// SavedExpression is a feeling made in the Character Studio's Face
+/// workspace: a mix of the face controls kept under a name, beside the
+/// ready-made ones. Part of the character's design.
+class SavedExpression {
+  final String name;
+  final CharacterFace face;
+  const SavedExpression(this.name, this.face);
+
+  Map<String, dynamic> toJson() => {"name": name, "face": face.toJson()};
+
+  static SavedExpression? fromJson(Object? json) {
+    if (json is! Map || json["name"] is! String) return null;
+    return SavedExpression(
+        json["name"] as String, CharacterFace.fromJson(json["face"]));
   }
 }
 
@@ -1284,7 +1337,10 @@ class CharacterElement extends CanvasElement {
   /// lookValue is the value of the Appearance slider named [look].
   double lookValue(String look) => switch (Look.fromName(look)) {
         var l? => dna.look[l],
-        null => 0,
+        null => switch (bendOf(look)) {
+            var b? => pose[b],
+            null => 0,
+          },
       };
 
   /// drawingShown is the panel's drawing as it is drawn: its keyed layers
@@ -1293,9 +1349,12 @@ class CharacterElement extends CanvasElement {
   (CharacterDrawing, bool) drawingShown(double turn, double tilt) =>
       drawingShownAt(panelKey(turn, tilt));
 
-  (CharacterDrawing, bool) drawingShownAt(String key) {
+  (CharacterDrawing, bool) drawingShownAt(String key, {CharacterFace? face}) {
     var (d, mirrored) = drawingAt(key);
-    return (keyedAt(d, lookValue), mirrored);
+    d = keyedAt(d, lookValue);
+    // The face's charts at the state it is in, where it is known.
+    if (face != null) d = chartedAt(d, (k) => chartKeyOf(k, face));
+    return (d, mirrored);
   }
 
   /// withDrawing is this with [drawing] on the panel turned [turn] and
@@ -1350,6 +1409,40 @@ class CharacterElement extends CanvasElement {
   /// character_layers.dart -- by BodyLayer name. A garment's is its own:
   /// Garment.hidden.
   final Set<String> hiddenLayers;
+
+  /// reference is the model sheet it is drawn from in the Character
+  /// Studio, cut into its views, or null; palette its own colours, named.
+  /// See character_reference.dart.
+  final CharacterReference? reference;
+  final List<Swatch> palette;
+
+  /// speaksFor is the mixer channel it speaks for, by key, or "": a slot
+  /// played on that channel -- a narrator's line -- moves its mouth by the
+  /// take's sounds, shows it while it is heard, and sets it talking with
+  /// its hands. See CanvasController.spoken.
+  final String speaksFor;
+
+  /// characterId is the library character this is a placed copy of, or ""
+  /// for one kept only here: see character_asset.dart. Its design is that
+  /// character's, written back by the Studio to every copy.
+  final String characterId;
+
+  /// outfits are its own outfits, named -- part of its design; outfit the
+  /// one it wears in this scene, by name, or "" for the clothes it was
+  /// designed in. See [dressed].
+  final List<CharacterOutfit> outfits;
+  final String outfit;
+
+  /// physics is how its hair follows its movement. See character_physics.dart.
+  final HairPhysics physics;
+
+  /// expressions is the feelings made for it, by name. See SavedExpression.
+  final List<SavedExpression> expressions;
+
+  /// feel is its walk and run tuned to it, and gameMotions what a game
+  /// plays for each thing it does. See character_moves.dart.
+  final MotionFeel feel;
+  final GameMotions gameMotions;
 
   /// layerView is what of the sketch is drawn: every layer not hidden,
   /// and with [solo], that one alone, the rest faint behind it.
@@ -1419,7 +1512,29 @@ class CharacterElement extends CanvasElement {
     this.faceRigs = const {},
     this.hiddenLayers = const {},
     this.views = CharacterView.start,
+    this.reference,
+    this.palette = const [],
+    this.speaksFor = "",
+    this.characterId = "",
+    this.outfits = const [],
+    this.outfit = "",
+    this.physics = const HairPhysics(),
+    this.expressions = const [],
+    this.feel = MotionFeel.asMade,
+    this.gameMotions = const GameMotions(),
   });
+
+  /// dressed is this character in the outfit it wears here: its design's
+  /// clothes swapped for the outfit's, or itself.
+  CharacterElement get dressed {
+    if (outfit.isEmpty) return this;
+    for (var o in outfits) {
+      if (o.name == outfit) {
+        return copyWith(dna: dna.copyWith(wardrobe: o.wardrobe));
+      }
+    }
+    return this;
+  }
 
   /// restPose is a new character's stance: arms a little away from the body
   /// and feet a little apart, which reads as standing rather than as a
@@ -1435,6 +1550,16 @@ class CharacterElement extends CanvasElement {
 
   @override
   ElementKind get kind => ElementKind.character;
+
+  // Its reference sheet is a stored picture, kept while it is used.
+  @override
+  Set<String> get assetIds => {
+        ...super.assetIds,
+        if (reference case var r?) ...{
+          r.assetId,
+          if (r.cutout.isNotEmpty) r.cutout,
+        },
+      };
 
   /// The model a modelled body is made from is a stored file, kept for as
   /// long as a character uses it.
@@ -1474,7 +1599,8 @@ class CharacterElement extends CanvasElement {
   /// is drawn: its pose and face, with its motion clips laid over them.
   (CharacterPose, CharacterFace) performanceAt(int frame, int frameRate) =>
       withMotions(poseAtFrame(frame), faceAtFrame(frame), motions, frame,
-          frameRate);
+          frameRate,
+          feel: feel);
 
   /// posedOnTimeline is whether any bone or any part of the face is keyed,
   /// which is what makes a change of pose or face a keyframe rather than a
@@ -1531,7 +1657,17 @@ class CharacterElement extends CanvasElement {
       drawings: drawings,
       faceRigs: faceRigs,
       hiddenLayers: hiddenLayers,
-      views: views);
+      views: views,
+      reference: reference,
+      palette: palette,
+      speaksFor: speaksFor,
+      characterId: characterId,
+      outfits: outfits,
+      outfit: outfit,
+      physics: physics,
+      expressions: expressions,
+      feel: feel,
+      gameMotions: gameMotions);
 
   CharacterElement copyWith({
     CharacterDna? dna,
@@ -1553,6 +1689,17 @@ class CharacterElement extends CanvasElement {
     Map<String, FaceRig>? faceRigs,
     Set<String>? hiddenLayers,
     List<CharacterView>? views,
+    CharacterReference? reference,
+    bool noReference = false,
+    List<Swatch>? palette,
+    String? speaksFor,
+    String? characterId,
+    List<CharacterOutfit>? outfits,
+    String? outfit,
+    HairPhysics? physics,
+    List<SavedExpression>? expressions,
+    MotionFeel? feel,
+    GameMotions? gameMotions,
   }) =>
       CharacterElement(base,
           dna: dna ?? this.dna,
@@ -1571,7 +1718,17 @@ class CharacterElement extends CanvasElement {
           drawings: drawings ?? this.drawings,
           faceRigs: faceRigs ?? this.faceRigs,
           hiddenLayers: hiddenLayers ?? this.hiddenLayers,
-          views: views ?? this.views);
+          views: views ?? this.views,
+          reference: noReference ? null : (reference ?? this.reference),
+          palette: palette ?? this.palette,
+          speaksFor: speaksFor ?? this.speaksFor,
+          characterId: characterId ?? this.characterId,
+          outfits: outfits ?? this.outfits,
+          outfit: outfit ?? this.outfit,
+          physics: physics ?? this.physics,
+          expressions: expressions ?? this.expressions,
+          feel: feel ?? this.feel,
+          gameMotions: gameMotions ?? this.gameMotions);
 
   @override
   Map<String, dynamic> props() => {
@@ -1594,6 +1751,17 @@ class CharacterElement extends CanvasElement {
           "faceRigs": {for (var e in faceRigs.entries) e.key: e.value.toJson()},
         if (hiddenLayers.isNotEmpty) "hiddenLayers": hiddenLayers.toList()..sort(),
         "views": [for (var v in views) v.toJson()],
+        if (reference != null) "reference": reference!.toJson(),
+        if (palette.isNotEmpty) "palette": [for (var s in palette) s.toJson()],
+        if (speaksFor.isNotEmpty) "speaksFor": speaksFor,
+        if (characterId.isNotEmpty) "character": characterId,
+        if (outfits.isNotEmpty) "outfits": [for (var o in outfits) o.toJson()],
+        if (outfit.isNotEmpty) "outfit": outfit,
+        if (!physics.isDefault) "physics": physics.toJson(),
+        if (expressions.isNotEmpty)
+          "expressions": [for (var x in expressions) x.toJson()],
+        if (!feel.isDefault) "feel": feel.toJson(),
+        if (!gameMotions.isDefault) "gameMotions": gameMotions.toJson(),
       };
 
   factory CharacterElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -1639,7 +1807,28 @@ class CharacterElement extends CanvasElement {
             if (json["hiddenLayers"] case List raw)
               for (var l in raw)
                 if (BodyLayer.fromName(l as String?) case var layer?) layer.name,
-          }));
+          },
+          reference: CharacterReference.fromJson(json["reference"]),
+          palette: [
+            if (json["palette"] case List raw)
+              for (var s in raw)
+                if (Swatch.fromJson(s) case var swatch?) swatch,
+          ],
+          speaksFor: json["speaksFor"] is String ? json["speaksFor"] as String : "",
+          characterId: json["character"] is String ? json["character"] as String : "",
+          outfits: [
+            if (json["outfits"] case List raw)
+              for (var o in raw)
+                if (CharacterOutfit.fromJson(o) case var outfit?) outfit,
+          ],
+          outfit: json["outfit"] is String ? json["outfit"] as String : "",
+          physics: HairPhysics.fromJson(json["physics"]),
+          expressions: [
+            for (var x in json["expressions"] as List? ?? const [])
+              if (SavedExpression.fromJson(x) case var made?) made,
+          ],
+          feel: MotionFeel.fromJson(json["feel"]),
+          gameMotions: GameMotions.fromJson(json["gameMotions"])));
 
   /// _withViews is [e] with the views [json] keeps -- or, for a character
   /// saved before it had them, front, side and back and every panel drawn

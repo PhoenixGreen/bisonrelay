@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Image;
+import 'package:bruig/plugin_system/canvas/ui/character_studio.dart'
+    show StudioView, StudioWorkspace;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -52,7 +54,9 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     var c = CanvasController(CanvasDocument(frames: 24).addElement(e));
     addTearDown(c.dispose);
-    c.selectOnly("c");
+    // Its design is made in the Character Studio.
+    c.openStudio("c");
+    c.studioWorkspace = StudioWorkspace.rig;
     tester.view.physicalSize = const Size(1000, 9000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -78,6 +82,8 @@ void main() {
   testWidgets("a feature picked on the canvas opens its part; its sliders set this panel",
       (tester) async {
     var c = await open(tester, _sketch(turn: 45));
+    // The Studio opens on the front: the three-quarter view picked.
+    c.studioView = StudioView.threeQuarter;
     c.editFace = true;
     c.pickFacePoint(FacePoint.browL);
     await tester.pumpAndSettle();

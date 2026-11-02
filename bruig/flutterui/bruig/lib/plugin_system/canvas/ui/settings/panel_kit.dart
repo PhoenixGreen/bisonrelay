@@ -1809,6 +1809,13 @@ class CanvasToolTiles<T> extends StatelessWidget {
 /// with the one chosen brought into view -- so a kind chosen at the far end
 /// of the line, a picture's Drift, is seen on coming back to the panel
 /// rather than found by scrolling.
+/// _labelRoom is what a tile in a strip needs under its picture: its
+/// border and padding and a line of its name at the reader's text size --
+/// at a larger one, the name ran out of the bottom of a strip sized for
+/// the smallest.
+double _labelRoom(BuildContext context) =>
+    math.max(30.0, 16 + MediaQuery.textScalerOf(context).scale(9.5) * 1.35);
+
 class _ScrollingTiles<T> extends StatefulWidget {
   final CanvasTiles<T> tiles;
   const _ScrollingTiles({required this.tiles, super.key});
@@ -1864,7 +1871,7 @@ class _ScrollingTilesState<T> extends State<_ScrollingTiles<T>> {
               });
             }
             return SizedBox(
-              height: t.previewHeight + 30,
+              height: t.previewHeight + _labelRoom(context),
               // Every tile built, not only those in view: a handful, and a
               // tile scrolled out of view is still one to reach.
               child: SingleChildScrollView(
@@ -2017,7 +2024,7 @@ class _FoldingTilesState<T> extends State<_FoldingTiles<T>> {
         });
       }
       return SizedBox(
-        height: t.previewHeight + 30,
+        height: t.previewHeight + _labelRoom(context),
         child: SingleChildScrollView(
           key: ValueKey("tilesStrip-${t.foldAs}"),
           controller: _strip,

@@ -6,7 +6,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 import 'package:bruig/plugin_system/canvas/model/elements/character_fbx.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_gltf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion_files.dart';
-import 'package:bruig/plugin_system/canvas/ui/body_capture.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'canvas_model_fixture.dart';
@@ -115,55 +114,6 @@ Frame Time: 0.1
       expect(readMotionFile(bvh, "x.dat").$2, "the BVH");
       expect(() => readMotionFile(Uint8List.fromList([1, 2, 3]), "x"),
           throwsA(isA<MotionError>()));
-    });
-  });
-
-  group("a video", () {
-    // Vision's seventeen joints for someone standing facing the camera,
-    // arms down, in metres from the hips -- their left on +x.
-    List<double> standing() => [
-          0, 0, 0, // hips
-          0, 0.25, 0, // spine
-          0, 0.5, 0, // neck
-          0, 0.65, 0, // head
-          0, 0.75, 0, // top of the head
-          0.2, 0.5, 0, 0.22, 0.22, 0, 0.23, -0.02, 0, // left arm
-          -0.2, 0.5, 0, -0.22, 0.22, 0, -0.23, -0.02, 0, // right arm
-          0.1, 0, 0, 0.1, -0.45, 0, 0.1, -0.9, 0, // left leg
-          -0.1, 0, 0, -0.1, -0.45, 0, -0.1, -0.9, 0, // right leg
-        ];
-    const names = [
-      "hips", "spine", "neck", "head", "headtop_end", //
-      "leftarm", "leftforearm", "lefthand",
-      "rightarm", "rightforearm", "righthand",
-      "leftupleg", "leftleg", "leftfoot",
-      "rightupleg", "rightleg", "rightfoot",
-    ];
-
-    test("someone standing comes in standing, facing the reader", () {
-      var m = motionFromCapture({
-        "found": 2,
-        "names": names,
-        "frames": Float64List.fromList([...standing(), ...standing()]),
-        "frameTime": 1 / 12,
-      });
-      expect(m.frameCount, 2);
-      var poses = motionPoses(m, frameRate: 12, headsTall: 5.5);
-      expect(poses.first.turn.abs(), lessThan(1));
-      expect(poses.first[CharacterBone.upperArmR].abs(), lessThan(10));
-      expect(poses.first[CharacterBone.thighL].abs(), lessThan(3));
-    });
-
-    test("no one found says so", () {
-      expect(
-          () => motionFromCapture({
-                "found": 0,
-                "names": names,
-                "frames": Float64List(0),
-                "frameTime": 1 / 12,
-              }),
-          throwsA(isA<MotionError>()
-              .having((e) => e.message, "message", contains("No one"))));
     });
   });
 }

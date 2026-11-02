@@ -15,6 +15,8 @@ import 'package:bruig/plugin_system/canvas/ui/character_draw_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Image;
+import 'package:bruig/plugin_system/canvas/ui/character_studio.dart'
+    show StudioWorkspace;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -175,7 +177,9 @@ void main() {
       addTearDown(() => CanvasSection.openAll = false);
       var c = CanvasController(CanvasDocument(frames: 24).addElement(_sketch()));
       addTearDown(c.dispose);
-      c.selectOnly("c");
+      // Its design is made in the Character Studio.
+      c.openStudio("c");
+      c.studioWorkspace = StudioWorkspace.rig;
       tester.view.physicalSize = const Size(900, 14000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);

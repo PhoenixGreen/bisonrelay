@@ -19,6 +19,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Image;
+import 'package:bruig/plugin_system/canvas/ui/character_studio.dart'
+    show StudioWorkspace;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -180,7 +182,9 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       var c = CanvasController(CanvasDocument(frames: 24).addElement(e));
       addTearDown(c.dispose);
-      c.selectOnly(e.id);
+      // Its design is made in the Character Studio.
+      c.openStudio(e.id);
+      c.studioWorkspace = StudioWorkspace.rig;
       tester.view.physicalSize = const Size(900, 6000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -244,7 +248,9 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       var c = CanvasController(CanvasDocument(frames: 24).addElement(_empty()));
       addTearDown(c.dispose);
-      c.selectOnly("c");
+      // Its design is made in the Character Studio.
+      c.openStudio("c");
+      c.studioWorkspace = StudioWorkspace.rig;
       c.showPuppet = true;
       c.puppet3D = true;
       tester.view.physicalSize = const Size(900, 7000);
@@ -318,7 +324,9 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       var c = CanvasController(CanvasDocument(frames: 24).addElement(_empty()));
       addTearDown(c.dispose);
-      c.selectOnly("c");
+      // Its design is made in the Character Studio.
+      c.openStudio("c");
+      c.studioWorkspace = StudioWorkspace.rig;
       c.showPuppet = true;
       c.puppet3D = true;
       tester.view.physicalSize = const Size(900, 9000);

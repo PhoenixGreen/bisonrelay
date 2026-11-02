@@ -590,6 +590,30 @@ int newSeed(int index, GarmentKind kind) =>
     ((index + 1) * 7919 + kind.index * 104729) & 0x7FFFFFFF;
 
 /// Costume is a whole outfit, ready to put on.
+/// CharacterOutfit is one of a character's own outfits, named: everything
+/// it wears, as a set -- its pyjamas, its winter coat. Kept with its design;
+/// a scene picks which it wears (see CharacterElement.outfit), and nothing
+/// else about it.
+class CharacterOutfit {
+  final String name;
+  final List<Garment> wardrobe;
+  const CharacterOutfit(this.name, this.wardrobe);
+
+  Map<String, dynamic> toJson() => {
+        "name": name,
+        "wardrobe": [for (var g in wardrobe) g.toJson()],
+      };
+
+  static CharacterOutfit? fromJson(Object? json) {
+    if (json is! Map || json["name"] is! String) return null;
+    return CharacterOutfit(json["name"] as String, [
+      if (json["wardrobe"] case List raw)
+        for (var g in raw)
+          if (Garment.fromJson(g) case var garment?) garment,
+    ]);
+  }
+}
+
 class Costume {
   final String name;
   final List<Garment> wardrobe;
