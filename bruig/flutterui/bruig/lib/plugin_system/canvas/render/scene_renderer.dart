@@ -707,6 +707,59 @@ void paintElement(
     }
   }
 
+  // Anything else standing on a stage is where the stage's camera sees it:
+  // a 3D character drawn through the camera, and everything else drawn as
+  // it is on the page and set into the stage, a flat in perspective. Both
+  // lit by the stage.
+  var spot = element.base.spot;
+  if (spot != null && document != null && canStand(element)) {
+    var at = stagedIn(document, element, frame);
+    if (at == null) {
+      // Its stage is there, but the camera cannot see it: behind the lens.
+      if (stageNamed(spot.stage, document.elements,
+              backdrop: document.drawnBackground, page: document.size.rect) !=
+          null) {
+        return;
+      }
+    } else {
+      var light = lightFilter(at.stage.light);
+      var flat = element is! Character3dElement;
+      var layered = light != null || (!flat && alpha < 0.999);
+      if (layered) {
+        canvas.saveLayer(
+            null,
+            Paint()
+              ..colorFilter = light
+              ..color = const Color(0xFFFFFFFF)
+                  .withValues(alpha: flat ? 1.0 : alpha));
+      }
+      if (element is Character3dElement) {
+        paintCharacter3d(canvas, at.box, element, frame,
+            frameRate: frameRate, editing: editing, images: images, staged: at);
+      } else {
+        canvas.save();
+        canvas.transform(at.matrix!);
+        paintElement(canvas, element.withBase(clearSpot: true), frame,
+            frameRate: frameRate,
+            images: images,
+            hovered: hovered,
+            editing: editing,
+            skipTextItem: skipTextItem,
+            document: document,
+            counterValue: counterValue,
+            counterPressed: counterPressed,
+            counterRunning: counterRunning,
+            audioState: audioState,
+            videoShow: videoShow,
+            poseOutside: poseOutside,
+            backgrounds: backgrounds);
+        canvas.restore();
+      }
+      if (layered) canvas.restore();
+      return;
+    }
+  }
+
   // A page number that sits on the outside edge of the leaf. Mirrored about
   // the middle of the page rather than nudged by a figure somebody types, so
   // that the two sides of a spread match however it is placed -- and so that
@@ -1351,6 +1404,10 @@ Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame) {
     var at = stagingIn(doc, element, frame);
     if (at != null) return at.box;
   }
+  // And anything else standing on one.
+  if (element.base.spot != null && doc != null) {
+    if (stagedIn(doc, element, frame) case var at?) return at.box;
+  }
   if (element is TextElement) {
     var curve = _curveFor(element, doc, frame);
     if (curve != null) {
@@ -1414,7 +1471,11 @@ bool hasOwnGeometry(CanvasElement element, CanvasDocument? doc, int frame) =>
     !(element is CharacterElement &&
         element.onStage != null &&
         doc != null &&
-        stagingIn(doc, element, frame) != null);
+        stagingIn(doc, element, frame) != null) &&
+    // Nor is anything else's standing on one: its size is in metres.
+    !(element.base.spot != null &&
+        doc != null &&
+        stagedIn(doc, element, frame) != null);
 
 /// curveOfElement is [element]'s own line as a polyline in document space, or
 /// null when it has none.

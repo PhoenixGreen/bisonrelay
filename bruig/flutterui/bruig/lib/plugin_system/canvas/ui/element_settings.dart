@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 import 'package:bruig/plugin_system/canvas/ui/settings/character3d_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/stage_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/stage_spot_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
@@ -229,6 +230,9 @@ List<Widget> elementSettings(
             tileMapSettings(context, controller, e, write, begin, commit),
           _ => const <Widget>[],
         },
+        // Where it stands on a 3D stage, for anything that can.
+        ...stageSpotSettings(
+            context, controller, element, write, begin, commit),
         presetsPanelSection(context, controller, element, extra: [
           // A text's named styles, under the designs kept of its kind: the
           // other way its look is kept to use again.

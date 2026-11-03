@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.da
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_character.dart';
 import 'package:flutter/painting.dart';
 
@@ -26,10 +27,14 @@ abstract interface class CanvasCharacterSource {
   bool get noCharacters3d;
 }
 
-/// paintCharacter3d draws [e] into [box] at [frame].
+/// paintCharacter3d draws [e] into [box] at [frame]: or, [staged] on a 3D
+/// stage, where the stage's camera sees it, [box] being where that is.
 void paintCharacter3d(
     ui.Canvas canvas, Rect box, Character3dElement e, int frame,
-    {int frameRate = 12, CanvasImageSource? images, bool editing = false}) {
+    {int frameRate = 12,
+    CanvasImageSource? images,
+    bool editing = false,
+    Staged? staged}) {
   final source =
       images is CanvasCharacterSource ? images as CanvasCharacterSource : null;
   final scene = source?.resolveCharacter3d(e);
@@ -52,6 +57,25 @@ void paintCharacter3d(
   scene
     ..expression = e.expression
     ..performance = e.performance;
+  if (staged != null) {
+    // The whole stage is drawn through, so the character lands where its
+    // camera puts it.
+    final view = staged.view, stage = view.box;
+    final most = 4096 / math.max(stage.width, stage.height);
+    scene.paintOnStage(canvas, stage,
+        eye: view.eye,
+        target: view.target,
+        fovY: view.fovY,
+        x: staged.spot.x,
+        z: staged.spot.z,
+        lift: staged.spot.lift,
+        facing: staged.spot.facing,
+        shadows: staged.stage.light.shadows,
+        frame: frame,
+        frameRate: frameRate,
+        pixelRatio: (scale * screen).clamp(0.25, math.max(0.25, most)));
+    return;
+  }
   scene.paint(canvas, box,
       frame: frame,
       frameRate: frameRate,

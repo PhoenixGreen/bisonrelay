@@ -459,16 +459,8 @@ class CharacterScene extends ChangeNotifier {
         tilt: tilt,
         zoom: zoom,
         aspect: box.width / box.height);
-    final last = _frame;
-    final dt = last == null || frame <= last
-        ? 0.0
-        : ((frame - last) / math.max(1, frameRate)).clamp(0.0, 0.25);
-    _frame = frame;
-    // The motion where the frame has it, so an export plays it the same
-    // every time.
-    final t = frame / math.max(1, frameRate);
-    _sceneTime = t;
-    _motionTime = t * _move.speed;
+    final dt = _advance(frame, frameRate);
+    final t = _sceneTime!;
     // Carried across the picture by its walks, turned the way it goes: the
     // camera moved and turned the other way, so the framing stays put.
     final p = performance;
@@ -497,6 +489,72 @@ class CharacterScene extends ChangeNotifier {
     tick(dt, camera, lookAt: camera.position, pixelRatio: pixelRatio);
     scene.update(dt);
     _shadow(canvas, box, camera, p?.shadow ?? "Soft");
+    scene.render(camera, canvas, viewport: box, pixelRatio: pixelRatio);
+  }
+
+  /// _advance moves it on to [frame] of a canvas playing [frameRate] frames
+  /// a second, and is how far that is, in seconds: nought for the frame it
+  /// is already at.
+  double _advance(int frame, int frameRate) {
+    final last = _frame;
+    final dt = last == null || frame <= last
+        ? 0.0
+        : ((frame - last) / math.max(1, frameRate)).clamp(0.0, 0.25);
+    _frame = frame;
+    // The motion where the frame has it, so an export plays it the same
+    // every time.
+    final t = frame / math.max(1, frameRate);
+    _sceneTime = t;
+    _motionTime = t * _move.speed;
+    return dt;
+  }
+
+  final PerspectiveCamera _stageCamera =
+      PerspectiveCamera(fovNear: 0.05, fovFar: 300);
+
+  /// paintOnStage draws the character standing on a 3D stage drawn in
+  /// [box], at [frame] of a canvas playing [frameRate] frames a second: on
+  /// the spot [x], [z] metres across its floor and [lift] off it, turned
+  /// [facing] degrees, seen by the stage's camera from [eye] looking at
+  /// [target], [fovY] radians top to bottom -- all in the stage's own
+  /// metres (render/stage/stage_camera.dart). Its walks carry it across
+  /// the floor. [shadows] is whether the stage's light throws any.
+  void paintOnStage(ui.Canvas canvas, ui.Rect box,
+      {required (double, double, double) eye,
+      required (double, double, double) target,
+      required double fovY,
+      double x = 0,
+      double z = 0,
+      double lift = 0,
+      double facing = 0,
+      bool shadows = true,
+      required int frame,
+      int frameRate = 12,
+      double pixelRatio = 1}) {
+    if (box.width < 1 || box.height < 1) return;
+    final dt = _advance(frame, frameRate);
+    final p = performance;
+    final go = p != null && p.clips.any((c) => c.dir != 0)
+        ? p.travelAt(_sceneTime!, _paceOf)
+        : (x: 0.0, turn: 0.0);
+    // The stage's metres in the scene's: across mirrored, since the scene
+    // sees its own left where the stage sees its right.
+    vm.Vector3 toScene((double, double, double) v) =>
+        vm.Vector3(-v.$1, v.$2, v.$3);
+    // The camera brought round into the character's own place, rather than
+    // the character moved and turned in front of it: the same picture, and
+    // the body's own placing left alone.
+    final at = toScene((x + go.x, lift, z));
+    final turn = (facing + go.turn * 90) * math.pi / 180;
+    final into = vm.Matrix4.rotationY(turn - math.pi);
+    vm.Vector3 mine(vm.Vector3 w) => into.transformed3(w - at);
+    final camera = _stageCamera
+      ..fovRadiansY = fovY
+      ..position = mine(toScene(eye))
+      ..target = mine(toScene(target));
+    tick(dt, camera, lookAt: camera.position, pixelRatio: pixelRatio);
+    scene.update(dt);
+    _shadow(canvas, box, camera, shadows ? (p?.shadow ?? "Soft") : "None");
     scene.render(camera, canvas, viewport: box, pixelRatio: pixelRatio);
   }
 

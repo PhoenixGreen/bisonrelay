@@ -1264,6 +1264,12 @@ class CanvasStageState extends State<CanvasStage>
         return at.box.contains(point);
       }
     }
+    // And anything else on one: inside the four corners it is seen at.
+    if (e.base.spot != null) {
+      if (stagedIn(document, e, controller.frame) case var at?) {
+        return (Path()..addPolygon(at.quad, true)).contains(point);
+      }
+    }
     // A curve is caught by its stroke, not by its box.
     //
     // A bowed line or a path with its handles pulled out bulges *outside* its

@@ -60,6 +60,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
+import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
@@ -1708,6 +1709,37 @@ class CanvasController extends ChangeNotifier {
         if (spot == null) return element;
         return element.copyWith(
             onStage: element.onStage!.copyWith(x: spot.dx, z: spot.dy));
+      }
+    }
+    // Anything else on a stage is moved across its floor -- or up and
+    // along its back wall -- to under where it has been dragged to.
+    if (element.base.spot case var spot?) {
+      var at = stagedIn(_document, element, _frame);
+      if (at != null) {
+        var by = topLeft - at.box.topLeft;
+        var view = at.view;
+        switch (spot.stand) {
+          case SpotStand.wall:
+            var was = view.toWall(at.box.bottomCenter, -at.stage.size + 0.01);
+            var now = view.toWall(at.box.bottomCenter + by,
+                -at.stage.size + 0.01);
+            if (was == null || now == null) return element;
+            return element.withBase(
+                spot: spot.copyWith(
+                    x: spot.x + now.dx - was.dx,
+                    lift: spot.lift + now.dy - was.dy));
+          default:
+            // The point on the floor under the pointer moves as the pointer
+            // does: the element keeps its place under the hand that holds it.
+            var held = spot.stand == SpotStand.floor
+                ? at.box.center
+                : (at.quad[2] + at.quad[3]) / 2;
+            var was = view.toFloor(held), now = view.toFloor(held + by);
+            if (was == null || now == null) return element;
+            return element.withBase(
+                spot: spot.copyWith(
+                    x: spot.x + now.dx - was.dx, z: spot.z + now.dy - was.dy));
+        }
       }
     }
     if (!posesRatherThanMoves(element)) {

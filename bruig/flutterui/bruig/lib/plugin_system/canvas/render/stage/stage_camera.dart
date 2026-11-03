@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -66,6 +67,67 @@ class StageView {
   /// nearest is how close in front of the camera a point can be and still
   /// be drawn: anything nearer is behind the lens.
   static const double nearest = 0.1;
+
+  /// eye and target are where the camera stands and what it looks at, in
+  /// metres on the stage; fovY is how much it sees top to bottom, in
+  /// radians. For a 3D scene to be seen exactly as the stage is.
+  (double, double, double) get eye => (_eye.x, _eye.y, _eye.z);
+  (double, double, double) get target => (_target.x, _target.y, _target.z);
+  double get fovY => 2 * math.atan(box.height / 2 / _focal);
+
+  /// right is the camera's right, across the stage: what a flat turned to
+  /// face the camera lies along.
+  (double, double, double) get right => (_right.x, _right.y, _right.z);
+
+  /// perspective is the matrix that lays [rect], a box on the page, onto
+  /// the stage with its top-left corner at [topLeft], its top-right at
+  /// [topRight] and its bottom-left at [bottomLeft] -- metres on the stage
+  /// -- and shows it as the camera sees it: for Canvas.transform, so an
+  /// element is drawn as it is on the page and set into the stage. Null
+  /// where any corner is behind the lens.
+  Float64List? perspective(Rect rect, (double, double, double) topLeft,
+      (double, double, double) topRight, (double, double, double) bottomLeft) {
+    _P p((double, double, double) v) => _P(v.$1, v.$2, v.$3);
+    var o = p(topLeft) - _eye;
+    var du = (p(topRight) - p(topLeft)) * (1 / rect.width);
+    var dv = (p(bottomLeft) - p(topLeft)) * (1 / rect.height);
+    var far = o + (p(topRight) - p(topLeft)) + (p(bottomLeft) - p(topLeft));
+    for (var c in [o, o + du * rect.width, o + dv * rect.height, far]) {
+      if (c.dot(_forward) <= nearest) return null;
+    }
+    // A point (u, v) of the page is o + du·(u − left) + dv·(v − top) from
+    // the eye, so each of its distances along the camera's axes is linear
+    // in u and v: (a, b, c) with a·u + b·v + c.
+    (double, double, double) along(_P axis) {
+      var a = du.dot(axis), b = dv.dot(axis);
+      return (a, b, o.dot(axis) - a * rect.left - b * rect.top);
+    }
+
+    var (fa, fb, fc) = along(_forward);
+    var (ra, rb, rc) = along(_right);
+    var (ua, ub, uc) = along(_up);
+    var cx = box.center.dx, cy = box.center.dy, f = _focal;
+    // Rows: x·w, y·w, z, w -- with w the depth -- column by column.
+    return Float64List.fromList([
+      cx * fa + f * ra, cy * fa - f * ua, 0, fa, //
+      cx * fb + f * rb, cy * fb - f * ub, 0, fb, //
+      0, 0, 1, 0, //
+      cx * fc + f * rc, cy * fc - f * uc, 0, fc,
+    ]);
+  }
+
+  /// toWall is the point on the upright plane [z] metres along -- the back
+  /// wall -- seen at [page], as metres across and up, or null where it is
+  /// not seen.
+  Offset? toWall(Offset page, double z) {
+    var p = page - box.center;
+    var ray = (_forward + _right * (p.dx / _focal) - _up * (p.dy / _focal));
+    if (ray.z.abs() < 1e-6) return null;
+    var t = (z - _eye.z) / ray.z;
+    if (t <= 0) return null;
+    var hit = _eye + ray * t;
+    return Offset(hit.x, hit.y);
+  }
 
   /// see is where [x], [y], [z] -- metres on the stage -- is seen.
   StagePoint see(double x, double y, double z) {

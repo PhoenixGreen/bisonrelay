@@ -1,12 +1,17 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
+import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_camera.dart';
 
 // stage_painter.dart draws a 3D stage -- its sky, its floor and what the
@@ -238,7 +243,119 @@ Staging? staging(
       tilt);
 }
 
-/// inStageOrder is [elements] in the order they are drawn: each character
+/// canStand is whether [e] can stand on a stage: anything drawn, but for
+/// what is a stage, or behind everything, or a sound -- and the old drawn
+/// characters, which stand on one their own way.
+bool canStand(CanvasElement e) =>
+    e is! BackgroundElement &&
+    e is! StageElement &&
+    e is! ParallaxElement &&
+    e is! AudioElement &&
+    e is! CharacterElement;
+
+/// Staged is an element standing on a stage, as the camera sees it: the
+/// four corners of where it is on the page and the box round them, how far
+/// from the camera, and the stage and its view.
+class Staged {
+  final StageSpot spot;
+  final StageElement stage;
+  final StageView view;
+
+  /// quad is its corners on the page: top-left, top-right, bottom-right,
+  /// bottom-left; box is round them.
+  final List<Offset> quad;
+  final Rect box;
+  final double depth;
+
+  /// matrix lays the element's own box onto the stage, for a flat: see
+  /// StageView.perspective. Null for a 3D character, drawn by its own
+  /// scene through [view].
+  final Float64List? matrix;
+
+  const Staged(this.spot, this.stage, this.view, this.quad, this.box,
+      this.depth, this.matrix);
+}
+
+/// stagedIn is [staged] in [doc], against the background behind the canvas
+/// being shown.
+Staged? stagedIn(CanvasDocument doc, CanvasElement e, int frame) =>
+    staged(e, doc.elements, frame,
+        backdrop: doc.drawnBackground, page: doc.size.rect);
+
+/// staged is where [e] stands on its stage among [elements] on [frame], or
+/// null where it is on the page, its stage is not there, or the camera
+/// cannot see it whole.
+Staged? staged(CanvasElement e, Iterable<CanvasElement> elements, int frame,
+    {CanvasBackground? backdrop, Rect? page}) {
+  var spot = e.spotAt(frame);
+  if (spot == null || !canStand(e)) return null;
+  var stage = stageNamed(spot.stage, elements, backdrop: backdrop, page: page);
+  if (stage == null) return null;
+  var view = stageView(stage, frame);
+  var turn = spot.facing * math.pi / 180;
+  if (e is Character3dElement) {
+    // A body about as tall as a person, and as wide as one with its arms
+    // out a little, standing on the spot: what is picked and outlined.
+    var feet = view.see(spot.x, spot.lift, spot.z);
+    if (feet.depth <= StageView.nearest) return null;
+    var corners = <Offset>[];
+    for (var (dx, dy, dz) in const [
+      (-0.4, 0.0, -0.25), (0.4, 0.0, -0.25), (0.4, 0.0, 0.25),
+      (-0.4, 0.0, 0.25), (-0.4, 1.75, -0.25), (0.4, 1.75, -0.25),
+      (0.4, 1.75, 0.25), (-0.4, 1.75, 0.25),
+    ]) {
+      var x = dx * math.cos(turn) + dz * math.sin(turn);
+      var z = -dx * math.sin(turn) + dz * math.cos(turn);
+      var p = view.see(spot.x + x, spot.lift + dy, spot.z + z);
+      if (p.depth <= StageView.nearest) return null;
+      corners.add(p.page);
+    }
+    var box = _around(corners);
+    return Staged(spot, stage, view,
+        [box.topLeft, box.topRight, box.bottomRight, box.bottomLeft], box,
+        feet.depth, null);
+  }
+  // A flat: its own box, as tall as the spot says and as wide as its shape,
+  // stood up, turned to the camera, laid down or hung on the wall.
+  var rect = Rect.fromLTWH(e.x, e.y, e.width, e.height);
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  var tall = spot.height, wide = tall * rect.width / rect.height;
+  var (ax, ay, az) = switch (spot.stand) {
+    SpotStand.camera => view.right,
+    SpotStand.wall => (1.0, 0.0, 0.0),
+    _ => (math.cos(turn), 0.0, -math.sin(turn)),
+  };
+  // Its foot in the middle of its bottom edge, and which way is up it.
+  var (fx, fy, fz) = spot.stand == SpotStand.wall
+      ? (spot.x, spot.lift, -stage.size + 0.01)
+      : (spot.x, spot.lift + (spot.stand == SpotStand.floor ? 0.005 : 0), spot.z);
+  var (upx, upy, upz) = spot.stand == SpotStand.floor
+      ? (-math.sin(turn), 0.0, -math.cos(turn))
+      : (0.0, 1.0, 0.0);
+  (double, double, double) at(double across, double up) => (
+        fx + ax * across + upx * up,
+        fy + ay * across + upy * up,
+        fz + az * across + upz * up
+      );
+  var tl = at(-wide / 2, tall), tr = at(wide / 2, tall);
+  var br = at(wide / 2, 0), bl = at(-wide / 2, 0);
+  var seen = [for (var c in [tl, tr, br, bl]) view.see(c.$1, c.$2, c.$3)];
+  if (seen.any((p) => p.depth <= StageView.nearest)) return null;
+  var matrix = view.perspective(rect, tl, tr, bl);
+  if (matrix == null) return null;
+  var middle = view.see(fx + upx * tall / 2, fy + upy * tall / 2,
+      fz + upz * tall / 2);
+  var quad = [for (var p in seen) p.page];
+  return Staged(spot, stage, view, quad, _around(quad), middle.depth, matrix);
+}
+
+Rect _around(List<Offset> points) => Rect.fromLTRB(
+    points.map((p) => p.dx).reduce(math.min),
+    points.map((p) => p.dy).reduce(math.min),
+    points.map((p) => p.dx).reduce(math.max),
+    points.map((p) => p.dy).reduce(math.max));
+
+/// inStageOrder is [elements] in the order they are drawn: each element
 /// standing on a stage taken out of its place and drawn just after its
 /// stage, the furthest from the camera first, so the nearer stand in front
 /// whatever order they were added in and however the camera moves.
@@ -247,24 +364,29 @@ Staging? staging(
 /// is behind everything.
 List<CanvasElement> inStageOrder(List<CanvasElement> elements, int frame,
     {CanvasBackground? backdrop, Rect? page}) {
-  var staged = <String, List<(double, CharacterElement)>>{};
+  var onStages = <String, List<(double, CanvasElement)>>{};
   for (var e in elements) {
-    if (e is! CharacterElement || e.onStage == null) continue;
-    var at = staging(e, elements, frame, backdrop: backdrop, page: page);
-    if (at == null) continue;
-    (staged[e.onStage!.stage] ??= []).add((at.depth, e));
+    if (e is CharacterElement && e.onStage != null) {
+      var at = staging(e, elements, frame, backdrop: backdrop, page: page);
+      if (at == null) continue;
+      (onStages[e.onStage!.stage] ??= []).add((at.depth, e));
+    } else if (e.base.spot != null) {
+      var at = staged(e, elements, frame, backdrop: backdrop, page: page);
+      if (at == null) continue;
+      (onStages[at.spot.stage] ??= []).add((at.depth, e));
+    }
   }
-  if (staged.isEmpty) return elements;
-  var moved = {for (var list in staged.values) for (var (_, e) in list) e.id};
+  if (onStages.isEmpty) return elements;
+  var moved = {for (var list in onStages.values) for (var (_, e) in list) e.id};
   var out = <CanvasElement>[];
-  if (staged[backgroundStageId] case var list?) {
+  if (onStages[backgroundStageId] case var list?) {
     list.sort((a, b) => b.$1.compareTo(a.$1));
     out.addAll([for (var (_, c) in list) c]);
   }
   for (var e in elements) {
     if (moved.contains(e.id)) continue;
     out.add(e);
-    if (staged[e.id] case var list?) {
+    if (onStages[e.id] case var list?) {
       list.sort((a, b) => b.$1.compareTo(a.$1));
       out.addAll([for (var (_, c) in list) c]);
     }

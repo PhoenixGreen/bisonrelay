@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
 
 // canvas_element.dart is what everything on a canvas has in common, and
 // nothing else.
@@ -248,6 +249,10 @@ class ElementBase {
   /// play is what it does when the canvas is played as a game. See play.dart.
   final PlaySpec play;
 
+  /// spot is where it stands on a 3D stage, or null for on the page. See
+  /// stage_spot.dart.
+  final StageSpot? spot;
+
   const ElementBase({
     required this.id,
     this.name = "",
@@ -274,6 +279,7 @@ class ElementBase {
     this.cue = "",
     this.link = "",
     this.play = const PlaySpec(),
+    this.spot,
   });
 
   ElementBase copyWith({
@@ -304,9 +310,12 @@ class ElementBase {
     String? cue,
     String? link,
     PlaySpec? play,
+    StageSpot? spot,
+    bool clearSpot = false,
   }) =>
       ElementBase(
         play: play ?? this.play,
+        spot: clearSpot ? null : (spot ?? this.spot),
         id: id ?? this.id,
         name: name ?? this.name,
         x: x ?? this.x,
@@ -364,6 +373,7 @@ class ElementBase {
       cue: _s(json["cue"], ""),
       link: _s(json["link"], ""),
       play: PlaySpec.fromJson(json["play"]),
+      spot: StageSpot.fromJson(json["spot"]),
       layouts: {
         if (json["layouts"] is Map)
           for (var e in (json["layouts"] as Map).entries)
@@ -405,6 +415,7 @@ class ElementBase {
         if (cue.isNotEmpty) "cue": cue,
         if (link.isNotEmpty) "link": link,
         if (!play.isNone) "play": play.toJson(),
+        if (spot != null) "spot": spot!.toJson(),
         if (layouts.isNotEmpty)
           "layouts": {
             for (var e in layouts.entries) e.key: e.value.toJson(),
@@ -653,6 +664,10 @@ abstract class CanvasElement {
   /// rests. See canvas_animation.dart.
   Keyframe poseAt(int frame) => base.track?.at(frame) ?? Keyframe.rest;
 
+  /// spotAt is where it stands on a stage on [frame], its own spot with
+  /// whatever its track keys over it; null for on the page.
+  StageSpot? spotAt(int frame) => base.spot?.over(poseAt(frame));
+
   /// boundsAt is where the element actually *is* on [frame].
   ///
   /// Everything that puts something on screen beside an element has to use
@@ -823,8 +838,12 @@ abstract class CanvasElement {
     bool clearShared = false,
     String? cue,
     String? link,
+    StageSpot? spot,
+    bool clearSpot = false,
   }) =>
       rebase(base.copyWith(
+        spot: spot,
+        clearSpot: clearSpot,
         name: name,
         x: x,
         y: y,
