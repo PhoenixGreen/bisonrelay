@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_face.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_look.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_move.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
@@ -16,6 +17,7 @@ import 'package:bruig/plugin_system/canvas/storage/vroid_assets.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_decal_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_face_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_look_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_move_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_outfit_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_shape_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_touchup_panel.dart';
@@ -102,9 +104,11 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
   TouchBrush _brush = const TouchBrush();
   String _part = startPartId;
 
-  /// _step is the step open: the Character base, or the Face. Move and
-  /// Test are still to come.
+  /// _step is the step open: the Character base, the Face or Move. Test
+  /// is still to come.
   int _step = 0;
+  CharacterMove _move = const CharacterMove();
+  String _movePart = moveParts.first.$1;
   CharacterFace _face = const CharacterFace();
   String _facePart = faceParts.first.$1;
 
@@ -190,6 +194,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
         sculpt: _sculpt,
         paint: _paint,
         face: _face,
+        move: _move,
         updated: DateTime.now(),
       );
 
@@ -205,7 +210,8 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
       _decals.isEmpty &&
       _sculpt.isEmpty &&
       _paint.isEmpty &&
-      _face == const CharacterFace();
+      _face == const CharacterFace() &&
+      _move == const CharacterMove();
 
   /// _done keeps the character in the library, and goes back to the canvas.
   Future<void> _done() async {
@@ -240,6 +246,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
     _sculpt = d?.sculpt ?? const [];
     _paint = d?.paint ?? const [];
     _face = d?.face ?? const CharacterFace();
+    _move = d?.move ?? const CharacterMove();
     _own = const {};
   }
 
@@ -321,35 +328,46 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
             Container(
               width: 220,
               color: colors.surfaceContainerLow,
-              child: _step == 1
-                  ? CharacterFaceList(
-                      face: _face,
-                      selected: _facePart,
-                      onSelect: (id) => setState(() => _facePart = id),
-                      onReset: (f) => setState(() => _face = f))
-                  : CharacterShapeList(
-                      shape: _shape,
-                      outfit: _outfit,
-                      styled: _look != characterLooks[_lookName],
-                      decorated: _decals.isNotEmpty,
-                      touched: _sculpt.isNotEmpty || _paint.isNotEmpty,
-                      selected: _part,
-                      onSelect: _pick,
-                      onReset: _resetPart),
+              child: _step == 2
+                  ? CharacterMoveList(
+                      move: _move,
+                      selected: _movePart,
+                      onSelect: (id) => setState(() => _movePart = id),
+                      onReset: (m) => setState(() => _move = m))
+                  : _step == 1
+                      ? CharacterFaceList(
+                          face: _face,
+                          selected: _facePart,
+                          onSelect: (id) => setState(() => _facePart = id),
+                          onReset: (f) => setState(() => _face = f))
+                      : CharacterShapeList(
+                          shape: _shape,
+                          outfit: _outfit,
+                          styled: _look != characterLooks[_lookName],
+                          decorated: _decals.isNotEmpty,
+                          touched: _sculpt.isNotEmpty || _paint.isNotEmpty,
+                          selected: _part,
+                          onSelect: _pick,
+                          onReset: _resetPart),
             ),
             Expanded(child: _stageArea(ready)),
             Container(
               width: 330,
               color: colors.surfaceContainerLow,
-              child: _step == 1
-                  ? CharacterFaceControls(
-                      key: ValueKey("faceControls-$_facePart"),
-                      part: _facePart,
-                      face: _face,
-                      onChanged: (f) => setState(() => _face = f),
-                      onSay: (text) => setState(
-                          () => _line = (text: text, n: (_line?.n ?? 0) + 1)))
-                  : _panel(),
+              child: _step == 2
+                  ? CharacterMoveControls(
+                      part: _movePart,
+                      move: _move,
+                      onChanged: (m) => setState(() => _move = m))
+                  : _step == 1
+                      ? CharacterFaceControls(
+                          key: ValueKey("faceControls-$_facePart"),
+                          part: _facePart,
+                          face: _face,
+                          onChanged: (f) => setState(() => _face = f),
+                          onSay: (text) => setState(() =>
+                              _line = (text: text, n: (_line?.n ?? 0) + 1)))
+                      : _panel(),
             ),
           ]),
         ),
@@ -397,11 +415,16 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
             sculpt: _sculpt,
             paint: _paint,
             face: _face,
+            move: _move,
             line: _line,
             brush: _step == 0 && _part == touchUpPartId ? _brush : null,
             onSculpt: (s) => setState(() => _sculpt = s),
             onPaint: (s) => setState(() => _paint = s),
-            frame: _step == 1 ? ShapeFrame.head : _frame,
+            frame: switch (_step) {
+              1 => ShapeFrame.head,
+              2 => _movePart == "feet" ? ShapeFrame.feet : ShapeFrame.body,
+              _ => _frame,
+            },
             view: _view,
             onView: (v) => setState(() => _view = v),
             onLoaded: (own) => setState(() => _own = own),
@@ -560,8 +583,8 @@ class _TopBar extends StatelessWidget {
                   key: ValueKey("studioStep-$i"),
                   label: "${i + 1}   $s",
                   selected: i == step,
-                  tooltip: i < 2 ? "" : "Still to come",
-                  onTap: i < 2 ? () => onStep(i) : null,
+                  tooltip: i < 3 ? "" : "Still to come",
+                  onTap: i < 3 ? () => onStep(i) : null,
                 ),
                 const SizedBox(width: 6),
               ],
@@ -667,6 +690,9 @@ class _Stage extends StatefulWidget {
   /// face is the face's expression; line the line it was last asked to say.
   final CharacterFace face;
   final ({String text, int n})? line;
+
+  /// move is how it stands.
+  final CharacterMove move;
   final ShapeFrame frame;
   final StudioView? view;
   final ValueChanged<StudioView?> onView;
@@ -683,6 +709,7 @@ class _Stage extends StatefulWidget {
       required this.onSculpt,
       required this.onPaint,
       this.face = const CharacterFace(),
+      this.move = const CharacterMove(),
       this.line,
       required this.frame,
       required this.view,
@@ -893,7 +920,8 @@ class _StageState extends State<_Stage> {
       decals: widget.decals,
       sculpt: widget.sculpt,
       paint: widget.paint,
-      face: widget.face);
+      face: widget.face,
+      move: widget.move);
 
   @override
   void initState() {

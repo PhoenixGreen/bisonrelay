@@ -203,6 +203,46 @@ class ShapedAvatar {
       ];
 
   // ---------------------------------------------------------------------
+  // The body at rest, for posing (vrm_pose.dart).
+
+  /// bodyAtRest is points on the body at rest, as it is shaped: the skin
+  /// of its torso, neck and thighs, and the made clothes over them (with
+  /// [cloth] true), every [step]th of each.
+  Iterable<({double x, double y, double z, bool cloth})> bodyAtRest(
+      {int step = 3}) sync* {
+    final w = wardrobe;
+    if (w == null) return;
+    final skinGroup = rig.groups.where((g) => g.vertices == w.skin).firstOrNull;
+    final pos =
+        (skinGroup == null ? null : _shapedAt[skinGroup]) ?? w.skin.positions;
+    final keep = {
+      for (final p in w.body.primitives)
+        if (p.vertices == w.skin && p.part == VrmPart.skin) ...p.used
+    };
+    var k = 0;
+    for (final i in keep) {
+      if (k++ % step != 0 || i >= w.group.length) continue;
+      final g = w.groupAt(i);
+      if (g != BodyGroup.torso && g != BodyGroup.neck && g != BodyGroup.legU) {
+        continue;
+      }
+      yield (x: pos[i * 3], y: pos[i * 3 + 1], z: pos[i * 3 + 2], cloth: false);
+    }
+    for (final MapEntry(key: slot, value: worn) in _worn.entries) {
+      if (slot != WearSlot.top &&
+          slot != WearSlot.bottom &&
+          slot != WearSlot.underwear) {
+        continue;
+      }
+      final p = _shapedAt[worn.group] ?? worn.group.vertices.positions;
+      for (var j = 0; j < worn.group.used.length; j += step) {
+        final i = worn.group.used[j];
+        yield (x: p[i * 3], y: p[i * 3 + 1], z: p[i * 3 + 2], cloth: true);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------
   // The face's expression (character_face.dart).
 
   /// _faceUnits are the nodes with the face's shapes, each with where its
@@ -461,7 +501,12 @@ class ShapedAvatar {
     _uploaded[g] = shaped == null ? '' : key;
   }
 
+  /// restVersion counts the changes to the body's shape and what it
+  /// wears: a pose measured at rest is measured again when it moves on.
+  int restVersion = 0;
+
   void _upload(ShapeGroup g, Float32List packed) {
+    restVersion++;
     _packed[g] = packed;
     final geos = _geometry[g] ?? const [];
     for (var k = 0; k < geos.length; k++) {
@@ -1301,6 +1346,7 @@ class ShapedAvatar {
   }
 
   void _unwear(_Worn w) {
+    restVersion++;
     w.node.parent?.remove(w.node);
     _geometry.remove(w.group);
     _uploaded.remove(w.group);

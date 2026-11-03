@@ -8,11 +8,13 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_face.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_look.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_move.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_look.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_mesh.dart';
+import 'package:bruig/plugin_system/canvas/render/vrm/vrm_pose.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_scene.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_shape.dart';
 import 'package:bruig/plugin_system/canvas/storage/vroid_assets.dart';
@@ -95,7 +97,8 @@ class CharacterScene extends ChangeNotifier {
       decals: d.decals,
       sculpt: d.sculpt,
       paint: d.paint,
-      face: d.face);
+      face: d.face,
+      move: d.move);
 
   /// show draws this: what changed is changed, the rest left as it is.
   void show({
@@ -107,6 +110,7 @@ class CharacterScene extends ChangeNotifier {
     List<SculptStroke> sculpt = const [],
     List<PaintStroke> paint = const [],
     CharacterFace face = const CharacterFace(),
+    CharacterMove move = const CharacterMove(),
   }) {
     final hairChanged =
         _body == null || shape.hair(body) != _shape.hair(_body!);
@@ -123,6 +127,7 @@ class CharacterScene extends ChangeNotifier {
     _sculpt = sculpt;
     _paint = paint;
     _face = face;
+    _move = move;
     if (bodyChanged) {
       _load(body);
       return;
@@ -306,15 +311,16 @@ class CharacterScene extends ChangeNotifier {
       }
       v.lookAt.target = at;
     }
-    v.humanoid.setNormalizedRotation(VrmHumanBone.head,
-        vm.Quaternion.axisAngle(vm.Vector3(0, 0, 1), _tiltNow * 0.45));
     v.autoBlink.enabled = _face.blinks && !_noBlink;
     if (!v.autoBlink.enabled) v.expressions.setValue('blink', 0);
-    // Standing at ease rather than in the T it was made in.
-    v.humanoid.setNormalizedRotation(VrmHumanBone.leftUpperArm,
-        vm.Quaternion.axisAngle(vm.Vector3(0, 0, 1), -1.2));
-    v.humanoid.setNormalizedRotation(VrmHumanBone.rightUpperArm,
-        vm.Quaternion.axisAngle(vm.Vector3(0, 0, 1), 1.2));
+    // Stood as its Move settings say, rather than in the T it was made in;
+    // the face's tilt of the head over the stance's.
+    if (!identical(_poser?.avatar, a)) _poser = VrmPoser(a);
+    _poser!.pose(_move, dt);
+    final head = v.humanoid.normalizedRotation(VrmHumanBone.head) ??
+        vm.Quaternion.identity();
+    v.humanoid.setNormalizedRotation(VrmHumanBone.head,
+        head * vm.Quaternion.axisAngle(vm.Vector3(0, 0, 1), _tiltNow * 0.45));
     a.update(dt, camera: camera);
     a.wear(_unitsNow);
     if ((_mixNow.blush - _blushed).abs() > 0.02) {
@@ -487,6 +493,10 @@ class CharacterScene extends ChangeNotifier {
 
   CharacterFace _face = const CharacterFace();
   String? _expression;
+
+  // How it stands (character_move.dart), posed by vrm_pose.dart.
+  CharacterMove _move = const CharacterMove();
+  VrmPoser? _poser;
 
   /// expression is the expression worn, by name, in place of the face's
   /// own: a scene's choice for a character on the canvas. Null for its own.

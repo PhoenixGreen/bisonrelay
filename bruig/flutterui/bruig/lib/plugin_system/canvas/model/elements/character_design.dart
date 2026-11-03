@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_face.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_look.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_move.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
@@ -32,6 +33,9 @@ class CharacterDesign {
 
   /// face is its expression, and what its face does by itself.
   final CharacterFace face;
+
+  /// move is how it stands.
+  final CharacterMove move;
   final DateTime updated;
 
   const CharacterDesign({
@@ -46,6 +50,7 @@ class CharacterDesign {
     this.sculpt = const [],
     this.paint = const [],
     this.face = const CharacterFace(),
+    this.move = const CharacterMove(),
     required this.updated,
   });
 
@@ -73,6 +78,7 @@ class CharacterDesign {
         if (sculpt.isNotEmpty) "sculpt": [for (final s in sculpt) s.toJson()],
         if (paint.isNotEmpty) "paint": [for (final s in paint) s.toJson()],
         if (face != const CharacterFace()) "face": face.toJson(),
+        if (move != const CharacterMove()) "move": move.toJson(),
         "updated": updated.toIso8601String(),
       };
 
@@ -113,6 +119,7 @@ class CharacterDesign {
           if (PaintStroke.fromJson(s) case final x?) x
       ],
       face: CharacterFace.fromJson(j["face"]),
+      move: CharacterMove.fromJson(j["move"]),
       updated: DateTime.tryParse("${j["updated"]}") ??
           DateTime.fromMillisecondsSinceEpoch(0),
     );

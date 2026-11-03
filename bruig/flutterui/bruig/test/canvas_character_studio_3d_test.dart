@@ -254,9 +254,9 @@ void main() {
     CharacterDesign? kept;
     await _show(tester, gpu: false, onDone: (d) => kept = d);
     expect(find.byKey(const ValueKey('facePart-expressions')), findsNothing);
-    final move =
-        tester.widget<StudioPill>(find.byKey(const ValueKey('studioStep-2')));
-    expect(move.onTap, isNull, reason: 'Move is still to come');
+    final test =
+        tester.widget<StudioPill>(find.byKey(const ValueKey('studioStep-3')));
+    expect(test.onTap, isNull, reason: 'Test is still to come');
     // A part changed is put back by its mark.
     await tester.tap(find.byKey(const ValueKey('shapePart-eyes')));
     await tester.pumpAndSettle();
@@ -280,6 +280,21 @@ void main() {
     }
     expect(kept?.face.name, 'Sad');
     expect(kept?.face.mix, faceExpressions['Sad']);
+    // The Move step: its own parts, and a stance kept with the character.
+    await tester.tap(find.byKey(const ValueKey('studioStep-2')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('movePart-stance')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('studioPill-move-stance-Hero')));
+    await tester.pumpAndSettle();
+    kept = null;
+    await tester.tap(find.byKey(const ValueKey('studioDone')));
+    for (var k = 0; k < 100 && kept == null; k++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+    expect(kept?.move.stance, 'Hero');
+    expect(kept?.face.name, 'Sad', reason: 'the face kept as well');
     // And back to the Character base.
     await tester.tap(find.byKey(const ValueKey('studioStep-0')));
     await tester.pumpAndSettle();

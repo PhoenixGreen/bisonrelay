@@ -1,0 +1,839 @@
+import 'dart:math' as math;
+
+import 'package:bruig/plugin_system/canvas/model/elements/character_move.dart';
+import 'package:bruig/plugin_system/canvas/render/vrm/vrm_scene.dart';
+import 'package:flutter_vrm/flutter_vrm.dart';
+import 'package:vector_math/vector_math.dart' as vm;
+
+// vrm_pose.dart stands a new 3D character as its Move settings say
+// (character_move.dart): the hips, spine and head turned; the legs solved
+// to feet planted where the stance puts them; each hand shaped, the thumb
+// closed round a fist; and the arms solved to where the stance has the
+// hands -- worked out from where this body's shoulders, hips and head are,
+// so a stance fits however long its arms and legs are, and kept outside
+// the body. Ported from the Studio's approved prototype. All in the
+// model's own space: up is +y, it faces +z, and its left is +x.
+
+typedef _V = vm.Vector3;
+typedef _Q = vm.Quaternion;
+
+_V _v(double x, double y, double z) => _V(x, y, z);
+
+/// _euler is a turn by [x], then [y], then [z] about the axes, as the
+/// prototype's three.js Euler of order XYZ.
+_Q _euler(double x, double y, double z) =>
+    _Q.axisAngle(_v(1, 0, 0), x) *
+    _Q.axisAngle(_v(0, 1, 0), y) *
+    _Q.axisAngle(_v(0, 0, 1), z);
+
+double _clamp(double v, double lo, double hi) => v.clamp(lo, hi).toDouble();
+
+/// _HandShape is a hand: each finger's three joints curled toward the
+/// palm, how far apart they spread, the thumb's curl and its turn across
+/// the palm, and which fingers a closed thumb lies over.
+class _HandShape {
+  final List<double> f;
+  final double spread;
+  final List<double> thumb;
+  final List<double>? opp;
+  final Map<String, List<double>> finger;
+  final List<String> wrap;
+  const _HandShape(
+      {required this.f,
+      this.spread = 0,
+      required this.thumb,
+      this.opp,
+      this.finger = const {},
+      this.wrap = const []});
+}
+
+const _fistF = [1.5, 1.65, 1.05], _fistThumb = [0.6, 0.75, 0.8];
+const _fistOpp = [0.45, 0.0, 0.0];
+const Map<String, _HandShape> _hands = {
+  "relaxed": _HandShape(
+      f: [0.38, 0.55, 0.32],
+      spread: 0.03,
+      thumb: [0.25, 0.2, 0.25],
+      finger: {
+        "Index": [0.22, 0.38, 0.22],
+        "Ring": [0.45, 0.62, 0.36],
+        "Little": [0.52, 0.68, 0.4],
+      }),
+  "open": _HandShape(f: [0, 0.02, 0], spread: 0.12, thumb: [-0.1, 0, 0]),
+  "fist": _HandShape(
+      f: _fistF,
+      thumb: _fistThumb,
+      opp: _fistOpp,
+      wrap: ["Middle", "Middle", "Ring"]),
+  "point": _HandShape(f: _fistF, thumb: _fistThumb, opp: _fistOpp, finger: {
+    "Index": [0, 0.02, 0]
+  }, wrap: [
+    "Middle",
+    "Ring"
+  ]),
+  "peace": _HandShape(
+      f: _fistF,
+      thumb: _fistThumb,
+      opp: _fistOpp,
+      spread: 0.22,
+      finger: {
+        "Index": [0, 0.02, 0],
+        "Middle": [0, 0.02, 0]
+      },
+      wrap: [
+        "Ring",
+        "Little"
+      ]),
+  "thumbsup": _HandShape(f: _fistF, thumb: [-0.2, -0.05, 0], opp: [0, 0, 0]),
+  "loose": _HandShape(
+      f: [0.85, 1.1, 0.7],
+      spread: 0.02,
+      thumb: [0.45, 0.4, 0.4],
+      opp: [0.3, 0, 0]),
+};
+
+/// _Landmarks are where the body's parts are now, for placing the hands:
+/// [s] is 1 for the left, -1 for the right.
+class _Landmarks {
+  final double u, arm;
+  final Map<int, _V> shoulder, hip, knee;
+  final _V chest, head, navel, chin;
+  _Landmarks(this.u, this.arm, this.shoulder, this.hip, this.knee, this.chest,
+      this.head, this.navel)
+      : chin = head + _v(0, -0.07, 0.07) * u;
+  _V v(double x, double y, double z) => _v(x * u, y * u, z * u);
+}
+
+typedef _Place = _V Function(_Landmarks l, int s);
+
+/// _Stance is one of [moveStances]: body turns, feet apart, and where the
+/// hands go.
+class _Stance {
+  final List<double>? spine, head;
+  final double feet, hipShift, hipRoll, knees, crouch, shoulders;
+  final Map<String, double> footFwd;
+  final _Place? hand;
+  final Map<String, _Place> hands;
+  final Map<String, String> handShape;
+  final List<double> Function(int s)? pole;
+
+  /// palm is the way the left palm faces -- the right's mirrored -- or by
+  /// hand, as [palms] has it.
+  final List<double>? palm;
+  final Map<String, List<double>> palms;
+  const _Stance(
+      {this.spine,
+      this.head,
+      this.feet = 0,
+      this.hipShift = 0,
+      this.hipRoll = 0,
+      this.knees = 0,
+      this.crouch = 0,
+      this.shoulders = 0,
+      this.footFwd = const {},
+      this.hand,
+      this.hands = const {},
+      this.handShape = const {},
+      this.pole,
+      this.palm,
+      this.palms = const {}});
+
+  List<double> palmOf(String k, int s) {
+    final p = palm;
+    if (p != null) return [s * p[0], p[1], p[2]];
+    return palms[k] ?? [-s.toDouble(), 0, 0];
+  }
+}
+
+final Map<String, _Stance> _stances = {
+  "Relaxed": const _Stance(),
+  "Confident":
+      const _Stance(spine: [-0.06, 0, 0], head: [-0.06, 0, 0], feet: 0.06),
+  "Hands on hips": _Stance(
+      feet: 0.05,
+      hand: (l, s) => l.hip[s]! + l.v(s * 0.075, 0.07, 0),
+      pole: (s) => [s * 1.0, 0.1, -0.7],
+      spine: const [-0.04, 0, 0]),
+  "Arms crossed": _Stance(
+      hand: (l, s) => l.chest + l.v(-s * 0.06, -0.11, 0.14),
+      pole: (s) => [s * 0.9, -0.7, -0.1],
+      spine: const [-0.05, 0, 0],
+      head: const [-0.04, 0, 0],
+      palm: const [0, 0.3, -1]),
+  "Thinking": _Stance(
+      hands: {
+        "R": (l, s) => l.chin + l.v(0, -0.035, 0.06),
+        "L": (l, s) => l.navel + l.v(-0.06, 0.02, 0.12),
+      },
+      handShape: const {"R": "fist"},
+      pole: (s) => [s * 0.6, -1, 0.1],
+      head: const [0.12, 0.1, 0.12],
+      palms: const {
+        "R": [0, 0.6, -1],
+        "L": [0, 1, 0]
+      }),
+  "Wave": _Stance(
+      hands: {"R": (l, s) => l.shoulder[-1]! + l.v(-0.17, 0.3, 0.06)},
+      handShape: const {"R": "open"},
+      pole: (s) => [s * 1.0, -0.8, 0.2],
+      head: const [0, 0, 0.1],
+      palms: const {
+        "R": [0, 0, 1]
+      }),
+  "Pointing": _Stance(
+      hands: {"R": (l, s) => l.shoulder[-1]! + l.v(-0.06, 0.04, l.arm * 0.92)},
+      handShape: const {"R": "point"},
+      pole: (s) => [s * 0.5, -1, 0],
+      spine: const [0, 0.12, 0],
+      palms: const {
+        "R": [0, -1, 0]
+      }),
+  "Peace": _Stance(
+      hands: {"R": (l, s) => l.head + l.v(-0.13, -0.03, 0.12)},
+      handShape: const {"R": "peace"},
+      pole: (s) => [s * 1.0, -0.8, 0],
+      head: const [0, 0, 0.18],
+      palms: const {
+        "R": [0, 0, 1]
+      }),
+  "Cheer": _Stance(
+      hand: (l, s) => l.shoulder[s]! + l.v(s * 0.13, l.arm * 0.88, 0.06),
+      handShape: const {"L": "fist", "R": "fist"},
+      pole: (s) => [s * 1.0, 0, -0.4],
+      spine: const [-0.08, 0, 0],
+      head: const [-0.15, 0, 0],
+      palm: const [0, 0, 1]),
+  "Hands behind": _Stance(
+      hand: (l, s) => l.hip[s]! + l.v(-s * 0.035, -0.01, -0.13),
+      pole: (s) => [s * 1.0, -0.3, -0.4],
+      spine: const [-0.06, 0, 0],
+      palm: const [0, 0, -1]),
+  "Shy": _Stance(
+      hand: (l, s) => l.navel + l.v(s * 0.02, -0.16, 0.14),
+      pole: (s) => [s * 1.0, -0.4, -0.5],
+      head: const [0.2, 0.15, 0.18],
+      feet: -0.02,
+      knees: 0.06),
+  "Shrug": _Stance(
+      hand: (l, s) => l.shoulder[s]! + l.v(s * 0.2, -0.27, 0.17),
+      handShape: const {"L": "open", "R": "open"},
+      pole: (s) => [s * 0.3, -1, -0.2],
+      head: const [0, 0, 0.16],
+      shoulders: 0.12,
+      palm: const [0, 1, 0]),
+  "Hero": _Stance(
+      feet: 0.14,
+      hand: (l, s) => l.hip[s]! + l.v(s * 0.075, 0.07, 0),
+      handShape: const {"L": "fist", "R": "fist"},
+      pole: (s) => [s * 1.0, 0.1, -0.7],
+      spine: const [-0.1, 0, 0],
+      head: const [-0.1, 0, 0]),
+  "Weight on one leg": const _Stance(
+      hipShift: 0.035,
+      hipRoll: 0.07,
+      spine: [0, 0, -0.06],
+      footFwd: {"R": 0.08},
+      knees: 0.08,
+      head: [0, 0, 0.06]),
+  "Crouch": _Stance(
+      crouch: 0.16,
+      feet: 0.08,
+      hand: (l, s) => l.knee[s]! + l.v(s * 0.01, 0.06, 0.07),
+      pole: (s) => [s * 1.0, 0, -0.3],
+      spine: const [0.35, 0, 0],
+      head: const [-0.25, 0, 0],
+      palm: const [0, -1, 0]),
+  "Fighting guard": _Stance(
+      feet: 0.1,
+      footFwd: const {"L": 0.12, "R": -0.06},
+      crouch: 0.05,
+      hand: (l, s) => l.chin + l.v(s * 0.09, -0.05, 0.17 + (s > 0 ? 0.06 : 0)),
+      handShape: const {"L": "fist", "R": "fist"},
+      pole: (s) => [s * 1.0, -1, -0.2],
+      spine: const [0.08, -0.25, 0],
+      head: const [0.05, 0.2, 0],
+      palm: const [-1, 0, -0.4]),
+};
+
+/// _Rest is the body at rest: where its feet stand, how big it is, its
+/// limbs' lengths, and its torso's shape slice by slice -- clothes and all
+/// -- for keeping hands, elbows and forearms outside it.
+class _Rest {
+  final _V fL, fR, hips;
+  final double u, ua, fa, arm, foot;
+
+  /// slices are, below the spine (0) and above it (1), each two
+  /// centimetres up from the hips or the chest: the least and most x and z.
+  final List<Map<int, List<double>>> slices;
+  _Rest(this.fL, this.fR, this.hips, this.u, this.ua, this.fa, this.arm,
+      this.foot, this.slices);
+}
+
+/// VrmPoser poses one avatar.
+class VrmPoser {
+  final ShapedAvatar avatar;
+  VrmPoser(this.avatar);
+
+  VrmHumanoidRig get _h => avatar.avatar.humanoid;
+
+  _Rest? _rest;
+  int _restVersion = -1;
+
+  /// What each eased value was last frame.
+  final Map<String, Object> _eased = {};
+
+  _V _p(VrmHumanBone b) => _h.modelPosition(b) ?? _V.zero();
+
+  bool _has(VrmHumanBone b) => _h.node(b) != null;
+
+  void _sync() => _h.apply();
+
+  /// _acc is how far [b] is turned from rest, in the model's space.
+  _Q _acc(VrmHumanBone b) {
+    final m = _h.normalizedModelRotation(b);
+    return m == null ? _Q.identity() : _Q.fromRotation(m);
+  }
+
+  /// _parentAcc is how far [b]'s parent is turned: [b]'s own, less its own.
+  _Q _parentAcc(VrmHumanBone b) =>
+      _acc(b) * (_h.normalizedRotation(b) ?? _Q.identity()).inverted();
+
+  /// _turnBy turns [b] further by [r], a turn in the model's space.
+  void _turnBy(VrmHumanBone b, _Q r) {
+    final np = _parentAcc(b);
+    final n = _h.normalizedRotation(b) ?? _Q.identity();
+    _h.setNormalizedRotation(b, (np.inverted() * r * np * n)..normalize());
+  }
+
+  /// _turnTo turns [b] to [want], a turn from rest in the model's space.
+  void _turnTo(VrmHumanBone b, _Q want) {
+    final np = _parentAcc(b);
+    _h.setNormalizedRotation(b, (np.inverted() * want)..normalize());
+  }
+
+  static _Q _between(_V from, _V to) {
+    final a = from.normalized(), b = to.normalized();
+    final d = a.dot(b);
+    if (d > 0.999999) return _Q.identity();
+    if (d < -0.999999) {
+      var axis = _v(1, 0, 0).cross(a);
+      if (axis.length2 < 1e-6) axis = _v(0, 1, 0).cross(a);
+      return _Q.axisAngle(axis.normalized(), math.pi);
+    }
+    return _Q.axisAngle(a.cross(b).normalized(), math.acos(d.clamp(-1.0, 1.0)));
+  }
+
+  // Eased values: each moves toward what it is set to by [a] of the way.
+  double _e1(String k, double v, double a) {
+    final was = _eased[k];
+    final next = was is double ? was + (v - was) * a : v;
+    _eased[k] = next;
+    return next;
+  }
+
+  _V _ev(String k, _V v, double a) {
+    final was = _eased[k];
+    final next = was is _V ? was + (v - was) * a : v.clone();
+    _eased[k] = next;
+    return next.clone();
+  }
+
+  List<double> _el(String k, List<double> v, double a) {
+    final was = _eased[k];
+    final next = was is List<double>
+        ? [for (var i = 0; i < v.length; i++) was[i] + (v[i] - was[i]) * a]
+        : List<double>.of(v);
+    _eased[k] = next;
+    return next;
+  }
+
+  /// _measure measures the body at rest.
+  _Rest _measure() {
+    _h.resetPose();
+    _sync();
+    final fL = _p(VrmHumanBone.leftFoot), fR = _p(VrmHumanBone.rightFoot);
+    final hd = _p(VrmHumanBone.head), hips = _p(VrmHumanBone.hips);
+    final ua = _p(VrmHumanBone.leftUpperArm),
+        la = _p(VrmHumanBone.leftLowerArm),
+        ha = _p(VrmHumanBone.leftHand);
+    final toe = _has(VrmHumanBone.leftToes)
+        ? _p(VrmHumanBone.leftToes)
+        : fL + _v(0, -0.06, 0.1);
+    final u = (hd.y - fL.y) / 1.08;
+    final spineY = _p(VrmHumanBone.spine).y;
+    final frames = [
+      hips,
+      _p(_has(VrmHumanBone.upperChest)
+          ? VrmHumanBone.upperChest
+          : VrmHumanBone.chest),
+    ];
+    final slices = [<int, List<double>>{}, <int, List<double>>{}];
+    final cloth = [<int, List<double>>{}, <int, List<double>>{}];
+    for (final p in avatar.bodyAtRest()) {
+      final k = p.y < spineY ? 0 : 1;
+      final lx = p.x - frames[k].x,
+          ly = p.y - frames[k].y,
+          lz = p.z - frames[k].z;
+      final into = p.cloth ? cloth[k] : slices[k];
+      final key = (ly / 0.02).round();
+      final r = into[key];
+      if (r == null) {
+        into[key] = [lx, lx, lz, lz];
+      } else {
+        r[0] = math.min(r[0], lx);
+        r[1] = math.max(r[1], lx);
+        r[2] = math.min(r[2], lz);
+        r[3] = math.max(r[3], lz);
+      }
+    }
+    // Cloth reaches a third of the way from the body to its own edge.
+    for (final k in const [0, 1]) {
+      for (final MapEntry(key: key, value: c) in cloth[k].entries) {
+        final b = slices[k][key] ??
+            [
+              (c[0] + c[1]) / 2,
+              (c[0] + c[1]) / 2,
+              (c[2] + c[3]) / 2,
+              (c[2] + c[3]) / 2
+            ];
+        double soft(double x, double y) => x + (y - x) * 0.3;
+        slices[k][key] = [
+          math.min(b[0], soft(b[0], c[0])),
+          math.max(b[1], soft(b[1], c[1])),
+          math.min(b[2], soft(b[2], c[2])),
+          math.max(b[3], soft(b[3], c[3])),
+        ];
+      }
+    }
+    return _Rest(
+        fL,
+        fR,
+        hips,
+        u,
+        ua.distanceTo(la),
+        la.distanceTo(ha),
+        ua.distanceTo(la) + la.distanceTo(ha),
+        fL.distanceTo(toe) + 0.03 * u,
+        slices);
+  }
+
+  /// _outOfBody is [p] moved out of the body to its surface, and [margin]
+  /// past it; null where it is not inside.
+  _V? _outOfBody(_V p, double margin) {
+    final r = _rest!;
+    final k = p.y < _p(VrmHumanBone.spine).y ? 0 : 1;
+    final bone = k == 0
+        ? VrmHumanBone.hips
+        : _has(VrmHumanBone.upperChest)
+            ? VrmHumanBone.upperChest
+            : VrmHumanBone.chest;
+    final at = _p(bone), turn = _acc(bone);
+    final loc = turn.inverted().rotated(p - at);
+    final key = (loc.y / 0.02).round();
+    List<double>? box;
+    for (final kk in [key - 1, key, key + 1]) {
+      final x = r.slices[k][kk];
+      if (x == null) continue;
+      box = box == null
+          ? List.of(x)
+          : [
+              math.min(box[0], x[0]),
+              math.max(box[1], x[1]),
+              math.min(box[2], x[2]),
+              math.max(box[3], x[3])
+            ];
+    }
+    if (box == null) return null;
+    final cx = (box[0] + box[1]) / 2, cz = (box[2] + box[3]) / 2;
+    final rx = (box[1] - box[0]) / 2 + margin,
+        rz = (box[3] - box[2]) / 2 + margin;
+    final dx = loc.x - cx, dz = loc.z - cz;
+    final q = (dx / rx) * (dx / rx) + (dz / rz) * (dz / rz);
+    if (q >= 1) return null;
+    final f = 1 / math.sqrt(math.max(q, 1e-4));
+    loc
+      ..x = cx + dx * f
+      ..z = cz + dz * f;
+    return turn.rotated(loc) + at;
+  }
+
+  /// _solveLimb turns two bones -- upper arm and forearm, thigh and shin --
+  /// so that [end] reaches [target], the middle joint bending toward
+  /// [pole] and never further than a real joint bends. An elbow that would
+  /// go into the body bends away from it; a palm is turned to face [palm],
+  /// mostly in the forearm, a little at the wrist.
+  void _solveLimb(VrmHumanBone upper, VrmHumanBone lower, VrmHumanBone end,
+      _V target, List<double> pole,
+      {double minBend = 0.45,
+      int side = 1,
+      List<double>? palm,
+      _V? Function(_V)? avoid,
+      double? ease,
+      VrmHumanBone? hand}) {
+    if (!_has(upper) || !_has(lower) || !_has(end)) return;
+    final s0 = _p(upper), e0 = _p(lower), w0 = _p(end);
+    final a = s0.distanceTo(e0), b = e0.distanceTo(w0);
+    if (a < 1e-6 || b < 1e-6) return;
+    final dMin = math.sqrt(a * a + b * b - 2 * a * b * math.cos(minBend));
+    final toT = target - s0;
+    final d = _clamp(toT.length, dMin, a + b - 1e-4);
+    final u = toT.length2 < 1e-12 ? _v(0, -1, 0) : toT.normalized();
+    _V elbowFor(List<double> pl) {
+      var p = _v(pl[0], pl[1], pl[2]).normalized();
+      // A pole along the reach gives no bend: lean on a sideways one.
+      if (p.dot(u).abs() > 0.97) {
+        p = _v(0, 0, 1).cross(u).length2 > 1e-4
+            ? _v(-u.z, 0, u.x).normalized()
+            : _v(1, 0, 0);
+      }
+      final v = (p - u * p.dot(u)).normalized();
+      final cosA = _clamp((a * a + d * d - b * b) / (2 * a * d), -1, 1);
+      return s0 + u * (a * cosA) + v * (a * math.sqrt(1 - cosA * cosA));
+    }
+
+    var e = elbowFor(pole);
+    final out = avoid?.call(e);
+    if (out != null) {
+      final push = (out - e).normalized();
+      e = elbowFor([
+        pole[0] * 0.3 + push.x,
+        pole[1] * 0.3 + push.y,
+        pole[2] * 0.3 + push.z
+      ]);
+    }
+    // The middle joint's direction eases, so a pose crossing a hard case
+    // swings the elbow round rather than flipping it.
+    if (ease != null) {
+      final dir = _ev("mid-${upper.name}", (e - s0).normalized(), ease)
+        ..normalize();
+      e = s0 + dir * a;
+    }
+    _turnBy(upper, _between(e0 - s0, e - s0));
+    _sync();
+    final e1 = _p(lower), w1 = _p(end);
+    _turnBy(lower, _between(w1 - e1, s0 + u * d - e1));
+    _sync();
+    if (palm == null || hand == null) return;
+    final k = side > 0 ? "left" : "right";
+    final index = VrmHumanBone.values.byName("${k}IndexProximal"),
+        little = VrmHumanBone.values.byName("${k}LittleProximal");
+    if (!_has(index) || !_has(little)) return;
+    void twist(VrmHumanBone node, double share) {
+      final w = _p(end), axis = (w - _p(lower)).normalized();
+      final i = _p(index), l = _p(little);
+      var n = (i - w).cross(l - i);
+      if (side > 0) n = -n;
+      _V flat(_V x) => (x - axis * x.dot(axis)).normalized();
+      final p0 = flat(n), p1 = flat(_v(palm[0], palm[1], palm[2]));
+      var raw = math.atan2(axis.dot(p0.cross(p1)), p0.dot(p1));
+      // Keep turning the way it was going: no jump from +180 to -180.
+      final key = "tw-${upper.name}-$share", prev = _eased[key];
+      if (prev is double) {
+        while (raw - prev > math.pi) {
+          raw -= 2 * math.pi;
+        }
+        while (prev - raw > math.pi) {
+          raw += 2 * math.pi;
+        }
+      }
+      raw = _clamp(raw, -1.9, 1.9);
+      final ang = (ease != null ? _e1(key, raw, ease) : raw) * share;
+      _turnBy(node, _Q.axisAngle(axis, ang));
+      _sync();
+    }
+
+    twist(lower, 0.7);
+    twist(hand, 1);
+  }
+
+  VrmHumanBone? _bone(String name) =>
+      VrmHumanBone.values.where((b) => b.name == name).firstOrNull;
+
+  /// _fingers shapes hand [side] ("left" or "right") as [shape], [amt] of
+  /// the way closed.
+  void _fingers(String side, String shape, double amt) {
+    final sh = _hands[shape] ?? _hands["relaxed"]!;
+    final s = side == "left" ? 1.0 : -1.0;
+    for (final (fi, f) in const ["Index", "Middle", "Ring", "Little"].indexed) {
+      final c = sh.finger[f] ?? sh.f;
+      final spread = sh.spread * (fi - 1.2);
+      for (final (ji, j)
+          in const ["Proximal", "Intermediate", "Distal"].indexed) {
+        final b = _bone("$side$f$j");
+        if (b == null || !_has(b)) continue;
+        _h.setNormalizedRotation(
+            b, _euler(0, ji == 0 ? -s * spread : 0, s * c[ji] * amt));
+      }
+    }
+    // The thumb: turned under the palm about the hand's length, then each
+    // joint curled about the axis across its own bend.
+    final t = sh.thumb, opp = sh.opp ?? [0.25 * t[0], 0, 0];
+    final flex = _v(1, 0, -s).normalized(), along = _v(1, 0, 0);
+    for (final (ji, j) in const ["Metacarpal", "Proximal", "Distal"].indexed) {
+      final b = _bone("${side}Thumb$j");
+      if (b == null || !_has(b)) continue;
+      _h.setNormalizedRotation(
+          b, _Q.axisAngle(along, -opp[ji]) * _Q.axisAngle(flex, -t[ji] * amt));
+    }
+  }
+
+  /// _wrapThumb lays a closed hand's thumb across the curled fingers: its
+  /// tip brought, a joint at a time, onto the outside of their middle
+  /// joints -- worked out on this hand's own bones.
+  void _wrapThumb(String side, String shape, double amt) {
+    final sh = _hands[shape];
+    if (sh == null || sh.wrap.isEmpty || amt < 0.05) return;
+    final hand = _bone("${side}Hand"),
+        i1 = _bone("${side}IndexProximal"),
+        l1 = _bone("${side}LittleProximal");
+    final fingers = [
+      for (final f in sh.wrap)
+        if (_bone("$side${f}Intermediate") case final b? when _has(b)) b
+    ];
+    final t = [
+      for (final j in const ["Metacarpal", "Proximal", "Distal"])
+        _bone("${side}Thumb$j")
+    ];
+    if (hand == null ||
+        i1 == null ||
+        l1 == null ||
+        !_has(hand) ||
+        !_has(i1) ||
+        !_has(l1) ||
+        fingers.length < 2 ||
+        t.any((b) => b == null || !_has(b))) {
+      return;
+    }
+    _sync();
+    final w = _p(hand);
+    var n = (_p(i1) - w).cross(_p(l1) - _p(i1));
+    if (side == "left") n = -n;
+    n.normalize();
+    final reach = _p(i1).distanceTo(_p(l1)) * 0.4;
+    final mid = _V.zero();
+    for (final b in fingers) {
+      mid.add(_p(b));
+    }
+    final target = mid / fingers.length.toDouble() + n * reach;
+    _V tip() {
+      final a = _p(t[1]!), b = _p(t[2]!);
+      return b + (b - a) * 0.85;
+    }
+
+    final order = [t[2]!, t[1]!, t[0]!];
+    for (var pass = 0; pass < 6; pass++) {
+      for (final b in order) {
+        final j = _p(b);
+        final full = _between(tip() - j, target - j);
+        // As far as the hand is closed.
+        final r = _nlerp(_Q.identity(), full, math.min(1, amt));
+        _turnBy(b, r);
+        _sync();
+      }
+    }
+  }
+
+  static _Q _nlerp(_Q a, _Q b, double t) {
+    final dot = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+    final s = dot < 0 ? -1.0 : 1.0;
+    return _Q(a.x + (b.x * s - a.x) * t, a.y + (b.y * s - a.y) * t,
+        a.z + (b.z * s - a.z) * t, a.w + (b.w * s - a.w) * t)
+      ..normalize();
+  }
+
+  /// pose stands the avatar as [m] says, [dt] seconds on from the last
+  /// pose: what changed eases there, as a body moves; at nought it is
+  /// there at once.
+  void pose(CharacterMove m, double dt) {
+    if (_rest == null || _restVersion != avatar.restVersion) {
+      _restVersion = avatar.restVersion;
+      _rest = _measure();
+    }
+    final r = _rest!, u = r.u;
+    final a = dt <= 0 ? 1.0 : 1 - math.exp(-dt / 0.16);
+    final st = _stances[m.stance] ?? _stances["Relaxed"]!;
+    double bd(String k) => m.bodyOf(k);
+    _h.resetPose();
+
+    // The body: hips, spine and head, each kept within what a body can do.
+    final crouch = st.crouch + 0.3 * bd("crouch");
+    final hipRaw = _v(
+        _clamp((st.hipShift + 0.05 * bd("shift")) * u, -0.15 * u, 0.15 * u),
+        _clamp(-crouch * u, -0.42 * u, 0.04 * u),
+        0);
+    final hipOff = _ev("hip", hipRaw, a);
+    _h.setHipsPosition(r.hips + hipOff);
+    final hr = _el(
+        "hipRot",
+        [
+          0,
+          _clamp(0.2 * bd("twist"), -0.5, 0.5),
+          _clamp(st.hipRoll + 0.1 * bd("shift"), -0.25, 0.25)
+        ],
+        a);
+    _h.setNormalizedRotation(VrmHumanBone.hips, _euler(hr[0], hr[1], hr[2]));
+    final sp = st.spine ?? const [0.0, 0.0, 0.0],
+        hd = st.head ?? const [0.0, 0.0, 0.0];
+    final spine = _el(
+        "spine",
+        [
+          _clamp(sp[0] + 0.35 * bd("lean"), -0.45, 1.0),
+          _clamp(sp[1] + 0.4 * bd("twist"), -0.7, 0.7),
+          _clamp(sp[2] + 0.25 * bd("side"), -0.4, 0.4)
+        ],
+        a);
+    for (final (b, k) in const [
+      (VrmHumanBone.spine, 0.5),
+      (VrmHumanBone.chest, 0.3),
+      (VrmHumanBone.upperChest, 0.2)
+    ]) {
+      if (_has(b)) {
+        _h.setNormalizedRotation(
+            b, _euler(spine[0] * k, spine[1] * k, spine[2] * k));
+      }
+    }
+    final hh = _el(
+        "head",
+        [
+          _clamp(hd[0] + 0.4 * bd("headNod"), -0.6, 0.75),
+          _clamp(hd[1] + 0.6 * bd("headTurn"), -1.1, 1.1),
+          _clamp(hd[2] + 0.3 * bd("headTilt"), -0.45, 0.45)
+        ],
+        a);
+    _h.setNormalizedRotation(
+        VrmHumanBone.neck, _euler(hh[0] * 0.4, hh[1] * 0.4, hh[2] * 0.4));
+    _h.setNormalizedRotation(
+        VrmHumanBone.head, _euler(hh[0] * 0.6, hh[1] * 0.6, hh[2] * 0.6));
+    final sh = _e1("shoulders", st.shoulders, a);
+    if (sh != 0) {
+      _h.setNormalizedRotation(VrmHumanBone.leftShoulder, _euler(0, 0, -sh));
+      _h.setNormalizedRotation(VrmHumanBone.rightShoulder, _euler(0, 0, sh));
+    }
+    _sync();
+
+    // Where things are now, for placing the hands.
+    final l = _Landmarks(
+      u,
+      r.arm / u,
+      {1: _p(VrmHumanBone.leftUpperArm), -1: _p(VrmHumanBone.rightUpperArm)},
+      {1: _p(VrmHumanBone.leftUpperLeg), -1: _p(VrmHumanBone.rightUpperLeg)},
+      {1: _p(VrmHumanBone.leftLowerLeg), -1: _p(VrmHumanBone.rightLowerLeg)},
+      _p(_has(VrmHumanBone.upperChest)
+          ? VrmHumanBone.upperChest
+          : VrmHumanBone.chest),
+      _p(VrmHumanBone.head),
+      _p(VrmHumanBone.spine),
+    );
+
+    // Legs: feet planted where the stance puts them, knees forward; each
+    // ankle turns, and a raised heel lifts onto the ball of the foot.
+    final footAt = <String, _V>{};
+    for (final s in const [1, -1]) {
+      final k = s > 0 ? "L" : "R";
+      final rest = s > 0 ? r.fL : r.fR;
+      final heel = _clamp(m.footOf(k, "heel"), 0, 1) * 0.9;
+      final base = _v(
+          rest.x + s * st.feet * u, rest.y, rest.z + (st.footFwd[k] ?? 0) * u);
+      final tgt = base +
+          _v(0, r.foot * math.sin(heel), -r.foot * (1 - math.cos(heel)) * 0.5);
+      tgt.y = math.max(rest.y, tgt.y);
+      footAt[k] = _ev("foot$k", tgt, a);
+    }
+    // Feet never cross: each keeps to its own side.
+    final gap = 0.06 * u;
+    if (footAt["L"]!.x - footAt["R"]!.x < gap) {
+      final mid = (footAt["L"]!.x + footAt["R"]!.x) / 2;
+      footAt["L"]!.x = mid + gap / 2;
+      footAt["R"]!.x = mid - gap / 2;
+    }
+    for (final s in const [1, -1]) {
+      final k = s > 0 ? "L" : "R";
+      _solveLimb(
+          s > 0 ? VrmHumanBone.leftUpperLeg : VrmHumanBone.rightUpperLeg,
+          s > 0 ? VrmHumanBone.leftLowerLeg : VrmHumanBone.rightLowerLeg,
+          s > 0 ? VrmHumanBone.leftFoot : VrmHumanBone.rightFoot,
+          footAt[k]!,
+          [s * 0.1 - s * st.knees * 3, 0, 1],
+          minBend: 0.55,
+          ease: math.max(a, 0.5));
+      final heel = _clamp(m.footOf(k, "heel"), 0, 1) * 0.9;
+      final pitch = _e1("pitch$k", 0.6 * m.footOf(k, "flex") + heel, a),
+          roll = _e1("roll$k", 0.35 * m.footOf(k, "roll"), a);
+      final foot = s > 0 ? VrmHumanBone.leftFoot : VrmHumanBone.rightFoot;
+      if (_has(foot)) {
+        _turnTo(foot, _euler(_clamp(pitch, -0.6, 1.2), hr[1] * 0.5, s * roll));
+      }
+      final toes = _e1("toes$k", -heel * 0.9 + 0.5 * m.footOf(k, "toes"), a);
+      final tb = s > 0 ? VrmHumanBone.leftToes : VrmHumanBone.rightToes;
+      if (_has(tb)) {
+        _h.setNormalizedRotation(tb, _euler(_clamp(toes, -1, 0.6), 0, 0));
+      }
+    }
+    _sync();
+
+    // Hands: each shaped as asked, or as the stance has it.
+    for (final (side, k) in const [("left", "L"), ("right", "R")]) {
+      final asked = k == "L" ? m.handL : m.handR;
+      final shape = asked != "relaxed" ? asked : st.handShape[k] ?? "relaxed";
+      if (_eased["shape$k"] != shape) {
+        _eased["shape$k"] = shape;
+        if (_eased.containsKey("curl$k")) _eased["curl$k"] = 0.2;
+      }
+      final curl = _e1("curl$k", 1, a);
+      _fingers(side, shape, curl);
+      _wrapThumb(side, shape, curl);
+    }
+
+    // Arms: each hand where the stance puts it, or hanging at the side --
+    // never inside the body, nor reaching behind it to the other side.
+    final margin = 0.035 * u;
+    for (final s in const [1, -1]) {
+      final k = s > 0 ? "L" : "R";
+      final place = st.hands[k] ?? st.hand;
+      final hang = l.shoulder[s]! + l.v(s * 0.06, -l.arm * 0.93, 0.03);
+      var tgt = place == null ? hang : place(l, s);
+      if (tgt.z < l.chest.z - 0.04 * u && s * (tgt.x - l.chest.x) < 0.03 * u) {
+        tgt.x = l.chest.x + s * 0.03 * u;
+      }
+      final inside = _outOfBody(tgt, margin);
+      if (inside != null) {
+        _V? front;
+        for (var dz = 0.01; dz <= 0.2; dz += 0.01) {
+          final p = tgt + _v(0, 0, dz * u);
+          if (_outOfBody(p, margin) == null) {
+            front = p;
+            break;
+          }
+        }
+        tgt = front != null &&
+                (front.x - l.shoulder[s]!.x).abs() <
+                    (inside.x - l.shoulder[s]!.x).abs()
+            ? front
+            : inside;
+      }
+      // The forearm too: its middle kept out of the body.
+      final mid = l.shoulder[s]! + (tgt - l.shoulder[s]!) * 0.62;
+      final midOut = _outOfBody(mid, 0.03 * u);
+      if (midOut != null) tgt = tgt + (midOut - mid);
+      final tE = _ev("hand$k", tgt, a);
+      final pole = _ev("pole$k", () {
+        final p = st.pole?.call(s) ?? [s * 0.35, -0.2, -1.0];
+        return _v(p[0], p[1], p[2]);
+      }(), a);
+      final pl = st.palmOf(k, s);
+      final palm = _ev("palm$k", _v(pl[0], pl[1], pl[2]), a);
+      _solveLimb(
+          s > 0 ? VrmHumanBone.leftUpperArm : VrmHumanBone.rightUpperArm,
+          s > 0 ? VrmHumanBone.leftLowerArm : VrmHumanBone.rightLowerArm,
+          s > 0 ? VrmHumanBone.leftHand : VrmHumanBone.rightHand,
+          tE,
+          [pole.x, pole.y, pole.z],
+          minBend: 0.5,
+          side: s,
+          palm: [palm.x, palm.y, palm.z],
+          avoid: (e) => _outOfBody(e, 0.03 * u),
+          ease: a,
+          hand: s > 0 ? VrmHumanBone.leftHand : VrmHumanBone.rightHand);
+    }
+  }
+}
