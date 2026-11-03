@@ -203,6 +203,80 @@ class ShapedAvatar {
       ];
 
   // ---------------------------------------------------------------------
+  // Physics: how the hair and clothes swing.
+
+  /// _springs swings the hair and clothes in place of the avatar's own, with
+  /// their settings changed; null for them as made.
+  VrmSpringBoneSystem? _springs;
+  String _physicsKey = "1.0|1.0|1.0|0.0";
+
+  /// physics swings the hair [hair] times as loose as made and the clothes
+  /// [clothes] times, as heavy as [weight] times, in a wind of [wind]
+  /// (nought to one) blowing across. flutter_vrm reads the swing settings
+  /// once, so a change makes the swing again: from rest, its chains put
+  /// back first.
+  void physics(
+      {double hair = 1,
+      double clothes = 1,
+      double weight = 1,
+      double wind = 0}) {
+    final key = "$hair|$clothes|$weight|$wind";
+    if (key == _physicsKey) return;
+    _physicsKey = key;
+    (_springs ?? avatar.springBones).reset();
+    final def = avatar.document.springBone;
+    if (def == null ||
+        (hair == 1 && clothes == 1 && weight == 1 && wind == 0)) {
+      _springs = null;
+      avatar.springBones
+        ..enabled = true
+        ..reset();
+      return;
+    }
+    VrmSpringJoint scaled(VrmSpringJoint j) {
+      final name = j.node < avatar.gltfNodes.length
+          ? avatar.gltfNodes[j.node]?.name ?? ""
+          : "";
+      if (name.contains("Bust")) return j;
+      final swing = name.contains("Hair") ? hair : clothes;
+      final g = j.gravityDir * (j.gravityPower * weight) +
+          vm.Vector3(0, -1, 0) * (0.45 * math.max(0, weight - 1)) +
+          // A steady breeze: the settings are read once, so it cannot gust.
+          vm.Vector3(wind * 0.22, 0.02 * wind, wind * 0.06);
+      return VrmSpringJoint(
+        node: j.node,
+        hitRadius: j.hitRadius,
+        stiffness: j.stiffness / math.max(0.25, swing),
+        gravityPower: g.length,
+        gravityDir: g.length2 > 1e-8 ? g.normalized() : j.gravityDir,
+        dragForce: math.min(
+            0.95,
+            j.dragForce * (0.4 + 0.6 * weight) +
+                0.08 * math.max(0, weight - 1)),
+      );
+    }
+
+    avatar.springBones.enabled = false;
+    _springs = VrmSpringBoneSystem(
+      VrmSpringBoneDefinition(
+        colliders: def.colliders,
+        colliderGroups: def.colliderGroups,
+        springs: [
+          for (final sp in def.springs)
+            VrmSpring(
+              name: sp.name,
+              joints: [for (final j in sp.joints) scaled(j)],
+              colliderGroups: sp.colliderGroups,
+              center: sp.center,
+            ),
+        ],
+      ),
+      avatar.gltfNodes,
+      avatar.modelRoot,
+    );
+  }
+
+  // ---------------------------------------------------------------------
   // The body at rest, for posing (vrm_pose.dart).
 
   /// bodyAtRest is points on the body at rest, as it is shaped: the skin
@@ -523,6 +597,7 @@ class ShapedAvatar {
   /// avatar is lit.
   void update(double dt, {Camera? camera}) {
     avatar.update(dt, camera: camera);
+    _springs?.update(dt);
     final l = avatar.mtoonLighting;
     // Decals and paint as well, lit as the skin is.
     for (final w in [..._worn.values, ..._decals.values, ..._paints.values]) {

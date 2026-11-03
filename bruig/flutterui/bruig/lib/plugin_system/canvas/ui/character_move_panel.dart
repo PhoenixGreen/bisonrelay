@@ -37,6 +37,22 @@ const List<(String id, String name, String group, String says)> moveParts = [
     "The body turned by hand, over the stance: leaning, twisting, bending, "
         "the head turned, crouched, the weight on one side."
   ),
+  (
+    "motion",
+    "Motions",
+    "Motion",
+    "Made as they play, from the stance and this body, so they never come "
+        "out the wrong size. A motion takes over the parts of the body it "
+        "moves; the rest keeps the stance."
+  ),
+  ("walk", "The walk", "Motion", "How this character walks and runs."),
+  (
+    "physics",
+    "Physics",
+    "Motion",
+    "How the hair and clothes swing: the model's own swing, looser or "
+        "stiffer, heavier or lighter, in a breeze."
+  ),
 ];
 
 /// movePartChanged is whether part [id] of [m] is not as made.
@@ -45,6 +61,9 @@ bool movePartChanged(CharacterMove m, String id) => switch (id) {
       "hands" => m.handL != "relaxed" || m.handR != "relaxed",
       "feet" => m.footL.isNotEmpty || m.footR.isNotEmpty,
       "body" => m.body.isNotEmpty,
+      "motion" => m.motion != "Idle" || m.speed != 1 || !m.playing,
+      "walk" => m.walk.isNotEmpty,
+      "physics" => m.physics.isNotEmpty,
       _ => false,
     };
 
@@ -54,6 +73,9 @@ CharacterMove resetMovePart(CharacterMove m, String id) => switch (id) {
       "hands" => m.copyWith(handL: "relaxed", handR: "relaxed"),
       "feet" => m.copyWith(footL: const {}, footR: const {}),
       "body" => m.copyWith(body: const {}),
+      "motion" => m.copyWith(motion: "Idle", speed: 1, playing: true),
+      "walk" => m.copyWith(walk: const {}),
+      "physics" => m.copyWith(physics: const {}),
       _ => m,
     };
 
@@ -164,6 +186,61 @@ class CharacterMoveControls extends StatelessWidget {
                   (v) => onChanged(m.withFoot(k, f, v))),
             const SizedBox(height: 8),
           ],
+        ],
+      "motion" => <Widget>[
+          StudioPills<String>(
+            key: const ValueKey("move-motion"),
+            id: "move-motion",
+            label: "Plays",
+            value: m.motion,
+            options: [for (final x in moveMotions) (x, x)],
+            onChanged: (x) => onChanged(m.copyWith(motion: x, playing: true)),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: StudioPill(
+              key: const ValueKey("movePlay"),
+              label: m.playing ? "Pause" : "Play",
+              filled: !m.playing,
+              onTap: () => onChanged(m.copyWith(playing: !m.playing)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          StudioSlider(
+            key: const ValueKey("move-speed"),
+            label: "Speed",
+            value: m.speed,
+            min: 0.25,
+            max: 2,
+            rest: 1,
+            format: (v) => "${v.toStringAsFixed(2)}x",
+            onChanged: (v) => onChanged(m.copyWith(speed: v)),
+          ),
+        ],
+      "walk" => <Widget>[
+          for (final (k, name) in moveWalk)
+            StudioSlider(
+              key: ValueKey("move-walk-$k"),
+              label: name,
+              value: m.walkOf(k),
+              min: 0,
+              max: 1,
+              rest: moveWalkDefaults[k]!,
+              onChanged: (v) => onChanged(m.withWalk(k, v)),
+            ),
+        ],
+      "physics" => <Widget>[
+          for (final (k, name, hi) in movePhysics)
+            StudioSlider(
+              key: ValueKey("move-physics-$k"),
+              label: name,
+              value: m.physicsOf(k),
+              min: 0,
+              max: hi,
+              rest: movePhysicsDefaults[k]!,
+              onChanged: (v) => onChanged(m.withPhysics(k, v)),
+            ),
         ],
       _ => <Widget>[
           for (final (b, name) in moveBody)

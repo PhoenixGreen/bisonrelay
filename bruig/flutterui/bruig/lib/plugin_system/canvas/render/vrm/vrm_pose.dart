@@ -255,6 +255,180 @@ final Map<String, _Stance> _stances = {
       palm: const [-1, 0, -0.4]),
 };
 
+/// _Motion is one frame of a motion: what it adds to the stance, in metres
+/// and radians -- the hips' move and turn, the spine and head, each foot
+/// ([forward, up, heel-up pitch, toes bend, on the ground]), each hand --
+/// and where it takes the hands instead of the stance.
+class _Motion {
+  double dy = 0, dx = 0, yaw = 0, roll = 0, root = 0;
+  List<double> spine = [0, 0, 0], head = [0, 0, 0];
+  Map<String, List<double>> foot = {
+    "L": [0, 0, 0],
+    "R": [0, 0, 0]
+  };
+  Map<String, List<double>> hand = {};
+  Map<String, _Place> handAt = {};
+  Map<String, String> handShape = {};
+  Map<String, List<double>> palm = {};
+  Map<String, List<double> Function(int s)> pole = {};
+  Map<String, double>? armSwing;
+  bool run = false;
+  double? bend, clap, bow;
+}
+
+double _smooth(double x) {
+  final t = x.clamp(0.0, 1.0);
+  return t * t * (3 - 2 * t);
+}
+
+/// _motionAt is motion [name] [t] seconds in, walked as [walk] says, for a
+/// body of size [u]. Walk and run step properly: the foot on the ground
+/// slides back steadily for most of the step, then swings forward, lifted.
+_Motion _motionAt(String name, double t, Map<String, double> walk, double u) {
+  final o = _Motion();
+  double w(String k) => walk[k] ?? moveWalkDefaults[k]!;
+  const tau = math.pi * 2;
+  switch (name) {
+    case "Idle":
+      o.spine[0] = 0.015 * math.sin(t * 1.6);
+      o.dx = 0.006 * u * math.sin(t * 0.5);
+      o.head[1] = 0.05 * math.sin(t * 0.37);
+      o.roll = 0.015 * math.sin(t * 0.5);
+    case "Walk" || "Run":
+      final run = name == "Run";
+      final cad = (run ? 1.4 : 0.85) * (0.7 + 0.6 * w("pace")),
+          sf = run ? 0.38 : 0.6;
+      final stride = (run ? 0.42 : 0.26) * u * (0.5 + w("stride")),
+          lift = (run ? 0.18 : 0.07) * u * (0.6 + 0.8 * w("stride"));
+      final legZ = <String, double>{};
+      for (final (k, off) in const [("L", 0.0), ("R", 0.5)]) {
+        final p = (t * cad + off) % 1;
+        final strike = run ? -0.12 : -0.34,
+            flatAt = run ? 0.08 : 0.14,
+            riseAt = run ? 0.42 : 0.6,
+            toeOff = (run ? 0.85 : 0.62) + 0.35 * w("push");
+        double z, y, pitch, toes, planted;
+        if (p < sf) {
+          final q = p / sf;
+          z = stride * (0.5 - q);
+          y = 0;
+          planted = 1;
+          pitch = q < flatAt
+              ? strike * (1 - _smooth(q / flatAt))
+              : q > riseAt
+                  ? toeOff * _smooth((q - riseAt) / (1 - riseAt))
+                  : 0;
+          toes = pitch > 0 ? -pitch * 0.95 : 0;
+        } else {
+          final q = (p - sf) / (1 - sf);
+          z = stride * (-0.5 + _smooth(q));
+          y = lift * math.sin(math.pi * math.min(1, q * 1.08));
+          planted = 0;
+          pitch = q < 0.45
+              ? toeOff + (-0.15 - toeOff) * _smooth(q / 0.45)
+              : -0.15 + (strike + 0.15) * _smooth((q - 0.45) / 0.55);
+          toes = 0.12 * math.sin(math.pi * q);
+        }
+        o.foot[k] = [z, y, pitch, toes, planted];
+        legZ[k] = z;
+      }
+      // Each arm swings against its own leg, in an arc from the shoulder;
+      // the hips turn with the legs and the chest against them.
+      o.armSwing = {
+        "L": legZ["L"]! / (stride / 2),
+        "R": legZ["R"]! / (stride / 2)
+      };
+      o.run = run;
+      if (run) o.handShape = {"L": "loose", "R": "loose"};
+      final pL = (t * cad) % 1;
+      o.dy = (run ? -0.035 : -0.02) *
+              u *
+              (0.3 + 1.4 * w("bounce")) *
+              (0.5 + 0.5 * math.cos(tau * 2 * pL)) +
+          (run ? 0.03 * u : 0.008 * u);
+      o.dx = 0.018 * u * w("sway") * math.sin(tau * pL);
+      o.roll = 0.05 * w("sway") * math.sin(tau * pL);
+      o.yaw = -1.6 * (legZ["L"]! - legZ["R"]!) / u * 0.12;
+      o.spine = [(run ? 0.2 : 0.04) * (0.3 + 1.4 * w("lean")), -0.6 * o.yaw, 0];
+      o.head = [-0.4 * o.spine[0], 0.4 * o.yaw, 0];
+      o.bend = run ? 1.4 : 0.25;
+    case "Jump":
+      final c = (t * 0.8) % 1;
+      double bump(double x, double a, double b) => x <= a || x >= b
+          ? 0
+          : math.pow(math.sin((x - a) / (b - a) * math.pi), 2).toDouble();
+      final crouch = bump(c, 0, 0.3),
+          air = bump(c, 0.22, 0.62),
+          land = bump(c, 0.55, 0.85);
+      o.dy = (-0.12 * crouch - 0.08 * land) * u;
+      o.root = 0.28 * u * air;
+      o.spine[0] = 0.25 * (crouch + land) - 0.08 * air;
+      for (final k in const ["L", "R"]) {
+        o.hand[k] = [
+          0,
+          (0.4 * air - 0.05 * crouch) * u,
+          (-0.1 * crouch + 0.08 * air) * u
+        ];
+        o.foot[k] = [0, 0, 0.4 * air];
+      }
+    case "Wave":
+      o.handAt = {"R": (l, s) => l.shoulder[s]! + l.v(s * 0.17, 0.3, 0.06)};
+      o.handShape = {"R": "open"};
+      o.palm = {
+        "R": [0, 0, 1]
+      };
+      o.pole = {
+        "R": (s) => [s * 1.0, -0.8, 0.2]
+      };
+      o.hand["R"] = [0.07 * u * math.sin(t * 8), 0, 0];
+      o.head[2] = 0.08 * math.sin(t * 1.5);
+    case "Nod":
+      o.head[0] = 0.18 * math.max(0, math.sin(t * 5));
+    case "Shake head":
+      o.head[1] = 0.3 * math.sin(t * 6);
+    case "Clap":
+      o.clap = 0.5 + 0.5 * math.cos(t * 9);
+      o.handShape = {"L": "open", "R": "open"};
+    case "Bow":
+      final c = _smooth(math.sin(t * 1.2) * 1.2);
+      o.spine[0] = 0.85 * c;
+      o.head[0] = 0.25 * c;
+      o.bow = c;
+    case "Dance":
+      final ph = t * tau * 1.1;
+      o.dy = -0.03 * u * math.sin(ph).abs();
+      o.dx = 0.03 * u * math.sin(ph / 2);
+      o.roll = 0.08 * math.sin(ph / 2);
+      o.yaw = 0.15 * math.sin(ph / 4);
+      o.hand["L"] = [0, 0.25 * u * math.max(0, math.sin(ph / 2)), 0.08 * u];
+      o.hand["R"] = [0, 0.25 * u * math.max(0, -math.sin(ph / 2)), 0.08 * u];
+      o.head = [0.06 * math.sin(ph), 0, 0.1 * math.sin(ph / 2)];
+    case "Look around":
+      o.head[1] = 0.6 * math.sin(t * 0.7);
+      o.head[0] = 0.1 * math.sin(t * 0.45);
+      o.spine[1] = 0.15 * math.sin(t * 0.7);
+  }
+  return o;
+}
+
+/// _motionParts are what each motion takes over from the stance; the rest
+/// of the body keeps the stance.
+const Map<String, Set<String>> _motionParts = {
+  "Walk": {"legs", "spine", "head", "arms"},
+  "Run": {"legs", "spine", "head", "arms"},
+  "Jump": {"legs", "spine", "head", "arms"},
+  "Dance": {"legs", "spine", "head", "arms"},
+  "Bow": {"legs", "spine", "head", "arms"},
+  "Clap": {"arms"},
+  "Wave": {"armR", "head"},
+  "Nod": {"head"},
+  "Shake head": {"head"},
+  "Look around": {"head", "spine"},
+};
+
+bool _ownsArm(Set<String> own, String k) =>
+    own.contains("arms") || own.contains("arm$k");
+
 /// _Rest is the body at rest: where its feet stand, how big it is, its
 /// limbs' lengths, and its torso's shape slice by slice -- clothes and all
 /// -- for keeping hands, elbows and forearms outside it.
@@ -278,6 +452,13 @@ class VrmPoser {
 
   _Rest? _rest;
   int _restVersion = -1;
+
+  /// _restWorld is where the body's bones are at rest, in the scene: for
+  /// framing it, steady while it jumps or crouches.
+  final Map<VrmHumanBone, _V> _restWorld = {};
+
+  /// restWorld is where [b] is at rest, in the scene, once measured.
+  _V? restWorld(VrmHumanBone b) => _restWorld[b]?.clone();
 
   /// What each eased value was last frame.
   final Map<String, Object> _eased = {};
@@ -360,6 +541,11 @@ class VrmPoser {
         ? _p(VrmHumanBone.leftToes)
         : fL + _v(0, -0.06, 0.1);
     final u = (hd.y - fL.y) / 1.08;
+    _restWorld.clear();
+    for (final b in _h.bones) {
+      final n = _h.node(b);
+      if (n != null) _restWorld[b] = n.globalTransform.getTranslation();
+    }
     final spineY = _p(VrmHumanBone.spine).y;
     final frames = [
       hips,
@@ -642,24 +828,41 @@ class VrmPoser {
   }
 
   /// pose stands the avatar as [m] says, [dt] seconds on from the last
-  /// pose: what changed eases there, as a body moves; at nought it is
-  /// there at once.
-  void pose(CharacterMove m, double dt) {
+  /// pose -- what changed eases there, as a body moves; at nought it is
+  /// there at once -- and its motion [t] seconds in.
+  void pose(CharacterMove m, double dt, {double t = 0}) {
     if (_rest == null || _restVersion != avatar.restVersion) {
       _restVersion = avatar.restVersion;
       _rest = _measure();
     }
     final r = _rest!, u = r.u;
     final a = dt <= 0 ? 1.0 : 1 - math.exp(-dt / 0.16);
-    final st = _stances[m.stance] ?? _stances["Relaxed"]!;
+    final st0 = _stances[m.stance] ?? _stances["Relaxed"]!;
+    final mo = _motionAt(m.motion, t, m.walk, u);
+    final own = _motionParts[m.motion] ?? const <String>{};
+    // The stance, with what the motion takes over let go.
+    final legs = own.contains("legs");
+    final st = _Stance(
+      spine: own.contains("spine") ? null : st0.spine,
+      head: own.contains("head") ? null : st0.head,
+      feet: legs ? 0 : st0.feet,
+      hipShift: legs ? 0 : st0.hipShift,
+      hipRoll: legs ? 0 : st0.hipRoll,
+      knees: legs ? 0 : st0.knees,
+      crouch: legs ? 0 : st0.crouch,
+      shoulders: _ownsArm(own, "L") || _ownsArm(own, "R") ? 0 : st0.shoulders,
+      footFwd: legs ? const {} : st0.footFwd,
+      handShape: st0.handShape,
+    );
     double bd(String k) => m.bodyOf(k);
     _h.resetPose();
 
     // The body: hips, spine and head, each kept within what a body can do.
     final crouch = st.crouch + 0.3 * bd("crouch");
     final hipRaw = _v(
-        _clamp((st.hipShift + 0.05 * bd("shift")) * u, -0.15 * u, 0.15 * u),
-        _clamp(-crouch * u, -0.42 * u, 0.04 * u),
+        _clamp((st.hipShift + 0.05 * bd("shift")) * u + mo.dx, -0.15 * u,
+            0.15 * u),
+        _clamp(-crouch * u + mo.dy, -0.42 * u, 0.04 * u) + mo.root,
         0);
     final hipOff = _ev("hip", hipRaw, a);
     _h.setHipsPosition(r.hips + hipOff);
@@ -667,8 +870,8 @@ class VrmPoser {
         "hipRot",
         [
           0,
-          _clamp(0.2 * bd("twist"), -0.5, 0.5),
-          _clamp(st.hipRoll + 0.1 * bd("shift"), -0.25, 0.25)
+          _clamp(mo.yaw + 0.2 * bd("twist"), -0.5, 0.5),
+          _clamp(st.hipRoll + mo.roll + 0.1 * bd("shift"), -0.25, 0.25)
         ],
         a);
     _h.setNormalizedRotation(VrmHumanBone.hips, _euler(hr[0], hr[1], hr[2]));
@@ -677,9 +880,9 @@ class VrmPoser {
     final spine = _el(
         "spine",
         [
-          _clamp(sp[0] + 0.35 * bd("lean"), -0.45, 1.0),
-          _clamp(sp[1] + 0.4 * bd("twist"), -0.7, 0.7),
-          _clamp(sp[2] + 0.25 * bd("side"), -0.4, 0.4)
+          _clamp(sp[0] + mo.spine[0] + 0.35 * bd("lean"), -0.45, 1.0),
+          _clamp(sp[1] + mo.spine[1] + 0.4 * bd("twist"), -0.7, 0.7),
+          _clamp(sp[2] + mo.spine[2] + 0.25 * bd("side"), -0.4, 0.4)
         ],
         a);
     for (final (b, k) in const [
@@ -695,9 +898,9 @@ class VrmPoser {
     final hh = _el(
         "head",
         [
-          _clamp(hd[0] + 0.4 * bd("headNod"), -0.6, 0.75),
-          _clamp(hd[1] + 0.6 * bd("headTurn"), -1.1, 1.1),
-          _clamp(hd[2] + 0.3 * bd("headTilt"), -0.45, 0.45)
+          _clamp(hd[0] + mo.head[0] + 0.4 * bd("headNod"), -0.6, 0.75),
+          _clamp(hd[1] + mo.head[1] + 0.6 * bd("headTurn"), -1.1, 1.1),
+          _clamp(hd[2] + mo.head[2] + 0.3 * bd("headTilt"), -0.45, 0.45)
         ],
         a);
     _h.setNormalizedRotation(
@@ -732,12 +935,22 @@ class VrmPoser {
       final k = s > 0 ? "L" : "R";
       final rest = s > 0 ? r.fL : r.fR;
       final heel = _clamp(m.footOf(k, "heel"), 0, 1) * 0.9;
+      final f = mo.foot[k]!;
       final base = _v(
           rest.x + s * st.feet * u, rest.y, rest.z + (st.footFwd[k] ?? 0) * u);
+      // A foot on the ground rolls: back on the heel, up on the ball.
+      final p = f[2], planted = f.length > 4 ? f[4] : 0.0;
+      final rollUp = planted *
+              (p > 0
+                  ? r.foot * math.sin(p) * 0.92
+                  : 0.28 * r.foot * math.sin(-p)),
+          rollBack = planted * (p > 0 ? r.foot * (1 - math.cos(p)) * 0.5 : 0);
       final tgt = base +
-          _v(0, r.foot * math.sin(heel), -r.foot * (1 - math.cos(heel)) * 0.5);
-      tgt.y = math.max(rest.y, tgt.y);
-      footAt[k] = _ev("foot$k", tgt, a);
+          _v(0, f[1] + mo.root + r.foot * math.sin(heel) + rollUp,
+              f[0] - r.foot * (1 - math.cos(heel)) * 0.5 - rollBack);
+      tgt.y = math.max(rest.y + mo.root * 0.9, tgt.y);
+      footAt[k] =
+          _ev("foot$k", tgt, f[0] != 0 || f[1] != 0 ? math.max(a, 0.6) : a);
     }
     // Feet never cross: each keeps to its own side.
     final gap = 0.06 * u;
@@ -757,13 +970,18 @@ class VrmPoser {
           minBend: 0.55,
           ease: math.max(a, 0.5));
       final heel = _clamp(m.footOf(k, "heel"), 0, 1) * 0.9;
-      final pitch = _e1("pitch$k", 0.6 * m.footOf(k, "flex") + heel, a),
+      final f = mo.foot[k]!;
+      final pitch = _e1("pitch$k", f[2] + 0.6 * m.footOf(k, "flex") + heel,
+              f.length > 4 ? math.max(a, 0.6) : a),
           roll = _e1("roll$k", 0.35 * m.footOf(k, "roll"), a);
       final foot = s > 0 ? VrmHumanBone.leftFoot : VrmHumanBone.rightFoot;
       if (_has(foot)) {
         _turnTo(foot, _euler(_clamp(pitch, -0.6, 1.2), hr[1] * 0.5, s * roll));
       }
-      final toes = _e1("toes$k", -heel * 0.9 + 0.5 * m.footOf(k, "toes"), a);
+      final toes = _e1(
+          "toes$k",
+          -heel * 0.9 + 0.5 * m.footOf(k, "toes") + (f.length > 3 ? f[3] : 0),
+          math.max(a, 0.6));
       final tb = s > 0 ? VrmHumanBone.leftToes : VrmHumanBone.rightToes;
       if (_has(tb)) {
         _h.setNormalizedRotation(tb, _euler(_clamp(toes, -1, 0.6), 0, 0));
@@ -774,7 +992,11 @@ class VrmPoser {
     // Hands: each shaped as asked, or as the stance has it.
     for (final (side, k) in const [("left", "L"), ("right", "R")]) {
       final asked = k == "L" ? m.handL : m.handR;
-      final shape = asked != "relaxed" ? asked : st.handShape[k] ?? "relaxed";
+      final shape = asked != "relaxed"
+          ? asked
+          : _ownsArm(own, k)
+              ? mo.handShape[k] ?? "relaxed"
+              : st.handShape[k] ?? "relaxed";
       if (_eased["shape$k"] != shape) {
         _eased["shape$k"] = shape;
         if (_eased.containsKey("curl$k")) _eased["curl$k"] = 0.2;
@@ -789,9 +1011,45 @@ class VrmPoser {
     final margin = 0.035 * u;
     for (final s in const [1, -1]) {
       final k = s > 0 ? "L" : "R";
-      final place = st.hands[k] ?? st.hand;
+      final place = st0.hands[k] ?? st0.hand, mine = _ownsArm(own, k);
       final hang = l.shoulder[s]! + l.v(s * 0.06, -l.arm * 0.93, 0.03);
-      var tgt = place == null ? hang : place(l, s);
+      var base = place == null ? hang : place(l, s);
+      if (mine) {
+        // Where the motion has the hand, in place of the stance.
+        var mb = mo.handAt[k]?.call(l, s) ?? hang;
+        final swing = mo.armSwing;
+        if (swing != null) {
+          // The upper arm swings from the shoulder; the elbow bends more as
+          // it comes forward walking, and holds near a right angle running.
+          final sw = swing[k] ?? 0,
+              amp = (mo.run ? 0.8 : 0.42) *
+                  (0.3 + 1.4 * (m.walk["swing"] ?? moveWalkDefaults["swing"]!));
+          final th = sw * amp,
+              e = mo.run ? 1.5 + 0.25 * sw : 0.18 + 0.4 * math.max(0, sw);
+          final d1 = _v(s * 0.12, -math.cos(th), math.sin(th)).normalized();
+          final d2 = _v(-s * (mo.run ? 0.3 : 0.04), -math.cos(th + e),
+                  math.sin(th + e))
+              .normalized();
+          mb = l.shoulder[s]! + d1 * r.ua + d2 * r.fa;
+        }
+        final bend = mo.bend;
+        if (bend != null && !mo.handAt.containsKey(k) && swing == null) {
+          mb = l.shoulder[s]! +
+              l.v(s * 0.07, -l.arm * (1 - 0.18 * bend), 0.04 + 0.12 * bend);
+        }
+        final clap = mo.clap;
+        if (clap != null) {
+          mb = l.chest + l.v(s * (0.02 + 0.12 * clap), -0.08, 0.24);
+        }
+        final bow = mo.bow;
+        if (bow != null) {
+          mb = mb + (l.knee[s]! + l.v(s * 0.05, 0.12, 0.06) - mb) * (bow * 0.6);
+        }
+        base = mb;
+      }
+      final hv =
+          mine ? mo.hand[k] ?? const [0.0, 0.0, 0.0] : const [0.0, 0.0, 0.0];
+      var tgt = base + _v(hv[0], hv[1], hv[2]);
       if (tgt.z < l.chest.z - 0.04 * u && s * (tgt.x - l.chest.x) < 0.03 * u) {
         tgt.x = l.chest.x + s * 0.03 * u;
       }
@@ -817,10 +1075,11 @@ class VrmPoser {
       if (midOut != null) tgt = tgt + (midOut - mid);
       final tE = _ev("hand$k", tgt, a);
       final pole = _ev("pole$k", () {
-        final p = st.pole?.call(s) ?? [s * 0.35, -0.2, -1.0];
+        final def = [s * 0.35, -0.2, -1.0];
+        final p = mine ? mo.pole[k]?.call(s) ?? def : st0.pole?.call(s) ?? def;
         return _v(p[0], p[1], p[2]);
       }(), a);
-      final pl = st.palmOf(k, s);
+      final pl = mine ? mo.palm[k] ?? [-s.toDouble(), 0, 0] : st0.palmOf(k, s);
       final palm = _ev("palm$k", _v(pl[0], pl[1], pl[2]), a);
       _solveLimb(
           s > 0 ? VrmHumanBone.leftUpperArm : VrmHumanBone.rightUpperArm,

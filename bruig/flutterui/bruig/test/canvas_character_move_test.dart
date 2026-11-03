@@ -22,7 +22,12 @@ void main() {
         handR: 'point',
         body: {'twist': 0.4, 'headNod': -0.2},
         footL: {'flex': -1, 'heel': 0.5},
-        footR: {'toes': 0.3});
+        footR: {'toes': 0.3},
+        motion: 'Run',
+        speed: 1.5,
+        playing: false,
+        walk: {'stride': 0.9},
+        physics: {'hair': 1.8, 'wind': 0.4});
     final d = CharacterDesign(
         id: 'c', name: '', body: 'Vivi', move: m, updated: DateTime(2026));
     expect(
@@ -47,6 +52,23 @@ void main() {
     expect(m.body, {'twist': 1.0});
     expect(const CharacterMove().withBody('lean', 0.3).withBody('lean', 0).body,
         isEmpty);
+    final odd = CharacterMove.fromJson({
+      'motion': 'Moonwalk',
+      'speed': 9,
+      'walk': {'pace': 3, 'stride': 0.5},
+      'physics': {'hair': 5, 'wind': -1},
+    });
+    expect((odd.motion, odd.speed), ('Idle', 2.0));
+    expect(odd.walk, {'pace': 1.0}, reason: 'as made is not kept');
+    expect(odd.physics, {'hair': 2.0, 'wind': 0.0});
+    expect(odd.walkOf('stride'), 0.5);
+    expect(
+        const CharacterMove()
+            .withPhysics('hair', 1.4)
+            .withPhysics('hair', 1)
+            .physics,
+        isEmpty,
+        reason: 'back to as made');
   });
 
   group('the panel', () {
@@ -121,6 +143,36 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('studioPartReset')));
       await tester.pumpAndSettle();
       expect(m.body, isEmpty);
+
+      // A motion, paused and slowed; the walk; the physics.
+      await tester.tap(find.byKey(const ValueKey('movePart-motion')));
+      await tester.pumpAndSettle();
+      await tester
+          .tap(find.byKey(const ValueKey('studioPill-move-motion-Dance')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('movePlay')));
+      await tester.pumpAndSettle();
+      expect((m.motion, m.playing), ('Dance', false));
+      tester
+          .widget<StudioSlider>(find.byKey(const ValueKey('move-speed')))
+          .onChanged(0.5);
+      await tester.pumpAndSettle();
+      expect(m.speed, 0.5);
+      await tester.tap(find.byKey(const ValueKey('movePart-walk')));
+      await tester.pumpAndSettle();
+      tester
+          .widget<StudioSlider>(find.byKey(const ValueKey('move-walk-bounce')))
+          .onChanged(0.9);
+      await tester.tap(find.byKey(const ValueKey('movePart-physics')));
+      await tester.pumpAndSettle();
+      tester
+          .widget<StudioSlider>(find.byKey(const ValueKey('move-physics-wind')))
+          .onChanged(0.6);
+      await tester.pumpAndSettle();
+      expect((m.walkOf('bounce'), m.physicsOf('wind')), (0.9, 0.6));
+      await tester.tap(find.byKey(const ValueKey('moveChanged-motion')));
+      await tester.pumpAndSettle();
+      expect((m.motion, m.playing, m.speed), ('Idle', true, 1.0));
 
       // Put back by the marks in the list.
       await tester.tap(find.byKey(const ValueKey('moveChanged-feet')));

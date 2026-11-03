@@ -56,7 +56,59 @@ const List<(String, String)> moveFoot = [
   ("toes", "Toes"),
 ];
 
-/// CharacterMove is how the character stands. Immutable.
+/// moveMotions are the motions, by name: made as they play, from the
+/// stance and this body, so they never come out the wrong size.
+const List<String> moveMotions = [
+  "Still",
+  "Idle",
+  "Walk",
+  "Run",
+  "Jump",
+  "Wave",
+  "Nod",
+  "Shake head",
+  "Clap",
+  "Bow",
+  "Dance",
+  "Look around",
+];
+
+/// moveWalk are how it walks and runs, nought to one, with their names.
+const List<(String, String)> moveWalk = [
+  ("pace", "Pace"),
+  ("stride", "Stride"),
+  ("bounce", "Bounce"),
+  ("swing", "Arm swing"),
+  ("push", "Push-off"),
+  ("lean", "Lean"),
+  ("sway", "Hip sway"),
+];
+const Map<String, double> moveWalkDefaults = {
+  "pace": 0.5,
+  "stride": 0.5,
+  "bounce": 0.5,
+  "swing": 0.5,
+  "push": 0.5,
+  "lean": 0.3,
+  "sway": 0.4,
+};
+
+/// movePhysics are how the hair and clothes swing, with their names and
+/// ranges: as made at one, wind at nought.
+const List<(String, String, double)> movePhysics = [
+  ("hair", "Hair swing", 2),
+  ("clothes", "Clothes swing", 2),
+  ("gravity", "Weight", 2),
+  ("wind", "Wind", 1),
+];
+const Map<String, double> movePhysicsDefaults = {
+  "hair": 1,
+  "clothes": 1,
+  "gravity": 1,
+  "wind": 0,
+};
+
+/// CharacterMove is how the character stands and moves. Immutable.
 class CharacterMove {
   final String stance;
 
@@ -69,6 +121,15 @@ class CharacterMove {
   /// footL and footR are each foot's [moveFoot] changed from nought.
   final Map<String, double> footL, footR;
 
+  /// motion is the motion it plays, at [speed] times as fast, while
+  /// [playing].
+  final String motion;
+  final double speed;
+  final bool playing;
+
+  /// walk and physics are each of [moveWalk] and [movePhysics] changed.
+  final Map<String, double> walk, physics;
+
   const CharacterMove({
     this.stance = "Relaxed",
     this.handL = "relaxed",
@@ -76,9 +137,16 @@ class CharacterMove {
     this.body = const {},
     this.footL = const {},
     this.footR = const {},
+    this.motion = "Idle",
+    this.speed = 1,
+    this.playing = true,
+    this.walk = const {},
+    this.physics = const {},
   });
 
   double bodyOf(String k) => body[k] ?? 0;
+  double walkOf(String k) => walk[k] ?? moveWalkDefaults[k] ?? 0.5;
+  double physicsOf(String k) => physics[k] ?? movePhysicsDefaults[k] ?? 1;
   double footOf(String side, String k) => (side == "L" ? footL : footR)[k] ?? 0;
 
   CharacterMove copyWith(
@@ -87,14 +155,31 @@ class CharacterMove {
           String? handR,
           Map<String, double>? body,
           Map<String, double>? footL,
-          Map<String, double>? footR}) =>
+          Map<String, double>? footR,
+          String? motion,
+          double? speed,
+          bool? playing,
+          Map<String, double>? walk,
+          Map<String, double>? physics}) =>
       CharacterMove(
           stance: stance ?? this.stance,
           handL: handL ?? this.handL,
           handR: handR ?? this.handR,
           body: body ?? this.body,
           footL: footL ?? this.footL,
-          footR: footR ?? this.footR);
+          footR: footR ?? this.footR,
+          motion: motion ?? this.motion,
+          speed: speed ?? this.speed,
+          playing: playing ?? this.playing,
+          walk: walk ?? this.walk,
+          physics: physics ?? this.physics);
+
+  CharacterMove withWalk(String k, double v) => copyWith(
+      walk: {...walk, k: v}..removeWhere((k, x) => x == moveWalkDefaults[k]));
+
+  CharacterMove withPhysics(String k, double v) => copyWith(
+      physics: {...physics, k: v}
+        ..removeWhere((k, x) => x == movePhysicsDefaults[k]));
 
   CharacterMove withBody(String k, double v) =>
       copyWith(body: {...body, k: v}..removeWhere((_, x) => x == 0));
@@ -110,6 +195,11 @@ class CharacterMove {
         if (body.isNotEmpty) "body": body,
         if (footL.isNotEmpty) "footL": footL,
         if (footR.isNotEmpty) "footR": footR,
+        if (motion != "Idle") "motion": motion,
+        if (speed != 1) "speed": speed,
+        if (!playing) "playing": false,
+        if (walk.isNotEmpty) "walk": walk,
+        if (physics.isNotEmpty) "physics": physics,
       };
 
   static CharacterMove fromJson(Object? json) {
@@ -124,7 +214,15 @@ class CharacterMove {
         };
     String hand(Object? v) =>
         handShapes.any((h) => h.$1 == v) ? v as String : "relaxed";
-    final stance = json["stance"];
+    final stance = json["stance"], motion = json["motion"];
+    Map<String, double> ranged(Object? m, Map<String, double> defaults,
+            double Function(String) hi) =>
+        {
+          if (m is Map)
+            for (final k in defaults.keys)
+              if (m[k] is num && (m[k] as num).isFinite && m[k] != defaults[k])
+                k: (m[k] as num).toDouble().clamp(0.0, hi(k))
+        };
     return CharacterMove(
       stance: moveStances.contains(stance) ? stance as String : "Relaxed",
       handL: hand(json["handL"]),
@@ -132,6 +230,14 @@ class CharacterMove {
       body: nums(json["body"], moveBody, -1),
       footL: nums(json["footL"], moveFoot, -1),
       footR: nums(json["footR"], moveFoot, -1),
+      motion: moveMotions.contains(motion) ? motion as String : "Idle",
+      speed: json["speed"] is num && (json["speed"] as num).isFinite
+          ? (json["speed"] as num).toDouble().clamp(0.25, 2.0)
+          : 1,
+      playing: json["playing"] != false,
+      walk: ranged(json["walk"], moveWalkDefaults, (_) => 1),
+      physics: ranged(json["physics"], movePhysicsDefaults,
+          (k) => movePhysics.firstWhere((p) => p.$1 == k).$3),
     );
   }
 
@@ -146,7 +252,12 @@ class CharacterMove {
       other.handR == handR &&
       _same(other.body, body) &&
       _same(other.footL, footL) &&
-      _same(other.footR, footR);
+      _same(other.footR, footR) &&
+      other.motion == motion &&
+      other.speed == speed &&
+      other.playing == playing &&
+      _same(other.walk, walk) &&
+      _same(other.physics, physics);
 
   @override
   int get hashCode => Object.hash(

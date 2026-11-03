@@ -951,7 +951,8 @@ class _StageState extends State<_Stage> {
   /// _framing is where the camera looks and from how far, for the open
   /// part.
   (vm.Vector3, double, double) _framing(ShapedAvatar? a) {
-    vm.Vector3? at(VrmHumanBone b) => a?.avatar.humanoid.worldPosition(b);
+    vm.Vector3? at(VrmHumanBone b) =>
+        _character.restAt(b) ?? a?.avatar.humanoid.worldPosition(b);
     final head = at(VrmHumanBone.head) ?? vm.Vector3(0, 1.4, 0);
     final tall = head.y;
     switch (widget.frame) {

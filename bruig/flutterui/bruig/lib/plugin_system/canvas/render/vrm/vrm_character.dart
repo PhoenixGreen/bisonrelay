@@ -316,7 +316,24 @@ class CharacterScene extends ChangeNotifier {
     // Stood as its Move settings say, rather than in the T it was made in;
     // the face's tilt of the head over the stance's.
     if (!identical(_poser?.avatar, a)) _poser = VrmPoser(a);
-    _poser!.pose(_move, dt);
+    // The motion's time: on the canvas, the frame's; in the Studio, as it
+    // plays.
+    final mt =
+        _motionTime ?? (_moveClock += _move.playing ? dt * _move.speed : 0);
+    _poser!.pose(_move, dt, t: mt);
+    final physics = (
+      hair: _move.physicsOf("hair"),
+      clothes: _move.physicsOf("clothes"),
+      weight: _move.physicsOf("gravity"),
+      wind: _move.physicsOf("wind"),
+    );
+    for (final x in [a, ..._donors.values]) {
+      x.physics(
+          hair: physics.hair,
+          clothes: physics.clothes,
+          weight: physics.weight,
+          wind: physics.wind);
+    }
     final head = v.humanoid.normalizedRotation(VrmHumanBone.head) ??
         vm.Quaternion.identity();
     v.humanoid.setNormalizedRotation(VrmHumanBone.head,
@@ -378,7 +395,7 @@ class CharacterScene extends ChangeNotifier {
       double zoom = 1,
       double aspect = 0.5}) {
     final h = _avatar?.avatar.humanoid;
-    vm.Vector3? at(VrmHumanBone b) => h?.worldPosition(b);
+    vm.Vector3? at(VrmHumanBone b) => restAt(b) ?? h?.worldPosition(b);
     final head = at(VrmHumanBone.head) ?? vm.Vector3(0, 1.4, 0);
     // The top of the hair, over the head bone by about three times the
     // neck's length.
@@ -447,6 +464,9 @@ class CharacterScene extends ChangeNotifier {
         ? 0.0
         : ((frame - last) / math.max(1, frameRate)).clamp(0.0, 0.25);
     _frame = frame;
+    // The motion where the frame has it, so an export plays it the same
+    // every time.
+    _motionTime = frame / math.max(1, frameRate) * _move.speed;
     tick(dt, camera, lookAt: camera.position, pixelRatio: pixelRatio);
     scene.update(dt);
     scene.render(camera, canvas, viewport: box, pixelRatio: pixelRatio);
@@ -497,6 +517,8 @@ class CharacterScene extends ChangeNotifier {
   // How it stands (character_move.dart), posed by vrm_pose.dart.
   CharacterMove _move = const CharacterMove();
   VrmPoser? _poser;
+  double _moveClock = 0;
+  double? _motionTime;
 
   /// expression is the expression worn, by name, in place of the face's
   /// own: a scene's choice for a character on the canvas. Null for its own.
@@ -592,6 +614,11 @@ class CharacterScene extends ChangeNotifier {
               points: [SculptPoint(at.x, at.y, at.z, n.x, n.y, n.z)]),
     ]);
   }
+
+  /// restAt is where bone [b] is with the body at rest, in the scene: what
+  /// it is framed by, so the camera stays put as it jumps or crouches.
+  vm.Vector3? restAt(VrmHumanBone b) =>
+      identical(_poser?.avatar, _avatar) ? _poser?.restWorld(b) : null;
 
   /// pick is where a ray from [from] going [dir] first meets the
   /// character: see ShapedAvatar.pick.
