@@ -223,7 +223,12 @@ class VrmMeshNode {
   final VrmRegion region;
   final List<VrmPrimitive> primitives;
   final List<String> jointNames;
-  VrmMeshNode(this.name, this.primitives, this.jointNames)
+
+  /// targetNames are its morph targets' names, from the file: flutter_scene
+  /// keeps their numbers only.
+  final List<String> targetNames;
+  VrmMeshNode(this.name, this.primitives, this.jointNames,
+      {this.targetNames = const []})
       : region = vrmRegionOf(name);
 }
 
@@ -415,7 +420,12 @@ class VrmMeshData {
           indices32: accessors[ia]['componentType'] == 5125,
         ));
       }
-      out.add(VrmMeshNode((n['name'] ?? '') as String, prims, joints));
+      final mesh = meshes[n['mesh'] as int];
+      final names = ((mesh['extras'] as Map?)?['targetNames'] ??
+          (((mesh['primitives'] as List).firstOrNull as Map?)?['extras']
+              as Map?)?['targetNames']) as List?;
+      out.add(VrmMeshNode((n['name'] ?? '') as String, prims, joints,
+          targetNames: [for (final x in names ?? const []) '$x']));
     }
 
     final parentOf = <int, int>{};

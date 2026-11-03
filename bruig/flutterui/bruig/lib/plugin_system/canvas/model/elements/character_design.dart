@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_face.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_look.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
@@ -24,6 +25,13 @@ class CharacterDesign {
 
   /// sculpt is the body shaped by hand, stroke by stroke.
   final List<SculptStroke> sculpt;
+
+  /// paint is what is painted on the skin and the clothes, stroke by
+  /// stroke.
+  final List<PaintStroke> paint;
+
+  /// face is its expression, and what its face does by itself.
+  final CharacterFace face;
   final DateTime updated;
 
   const CharacterDesign({
@@ -36,6 +44,8 @@ class CharacterDesign {
     this.look = const CharacterLook(),
     this.decals = const [],
     this.sculpt = const [],
+    this.paint = const [],
+    this.face = const CharacterFace(),
     required this.updated,
   });
 
@@ -61,6 +71,8 @@ class CharacterDesign {
         "look": look.toJson(),
         "decals": [for (final d in decals) d.toJson()],
         if (sculpt.isNotEmpty) "sculpt": [for (final s in sculpt) s.toJson()],
+        if (paint.isNotEmpty) "paint": [for (final s in paint) s.toJson()],
+        if (face != const CharacterFace()) "face": face.toJson(),
         "updated": updated.toIso8601String(),
       };
 
@@ -96,6 +108,11 @@ class CharacterDesign {
         for (final s in (j["sculpt"] is List ? j["sculpt"] as List : const []))
           if (SculptStroke.fromJson(s) case final x?) x
       ],
+      paint: [
+        for (final s in (j["paint"] is List ? j["paint"] as List : const []))
+          if (PaintStroke.fromJson(s) case final x?) x
+      ],
+      face: CharacterFace.fromJson(j["face"]),
       updated: DateTime.tryParse("${j["updated"]}") ??
           DateTime.fromMillisecondsSinceEpoch(0),
     );

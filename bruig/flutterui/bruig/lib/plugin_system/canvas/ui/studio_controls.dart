@@ -315,3 +315,108 @@ class StudioPanelHead extends StatelessWidget {
     ]);
   }
 }
+
+/// StudioPartHeading heads a group in a Studio step's list of parts.
+class StudioPartHeading extends StatelessWidget {
+  final String text;
+
+  /// first is whether it is the list's first, nearer the top.
+  final bool first;
+  const StudioPartHeading(this.text, {this.first = false, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ThemeNotifier.of(context).colors;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, first ? 14 : 20, 16, 6),
+      child: Text(text.toUpperCase(),
+          style: TextStyle(
+              fontSize: 10.5,
+              letterSpacing: 0.9,
+              fontWeight: FontWeight.w700,
+              color: colors.onSurfaceVariant)),
+    );
+  }
+}
+
+/// StudioPartRow is one part in a Studio step's list: its name, marked
+/// once it is changed, picked to open its settings. The mark puts the part
+/// back as it was, clicked.
+class StudioPartRow extends StatelessWidget {
+  final String id, name;
+  final bool changed, selected;
+  final VoidCallback onTap;
+
+  /// onReset puts the part back; null for a mark that only marks.
+  final VoidCallback? onReset;
+
+  /// keyPrefix names its keys: "<keyPrefix>-<id>", and the mark
+  /// "<keyPrefix minus Part>Changed-<id>".
+  final String keyPrefix;
+  const StudioPartRow(
+      {required this.id,
+      required this.name,
+      required this.changed,
+      required this.selected,
+      required this.onTap,
+      this.onReset,
+      this.keyPrefix = "shapePart",
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ThemeNotifier.of(context).colors;
+    final on = selected;
+    final mark = "${keyPrefix.replaceAll("Part", "")}Changed-$id";
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
+      child: Material(
+        color: on ? colors.primary.withValues(alpha: 0.14) : Colors.transparent,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(7),
+            side: BorderSide(
+                color: on ? colors.primary : Colors.transparent, width: 1.2)),
+        child: InkWell(
+          key: ValueKey("$keyPrefix-$id"),
+          borderRadius: BorderRadius.circular(7),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            child: Row(children: [
+              Expanded(
+                child: Text(name,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w500,
+                        color: colors.onSurface)),
+              ),
+              if (changed)
+                Tooltip(
+                  message: onReset == null ? "" : "Put it back",
+                  child: InkWell(
+                    key: ValueKey(mark),
+                    customBorder: const CircleBorder(),
+                    onTap: onReset,
+                    // A dot to see, a finger's width to click.
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: Center(
+                        child: Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                              color: colors.primary, shape: BoxShape.circle),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}

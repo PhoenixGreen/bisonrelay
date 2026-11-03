@@ -48,6 +48,24 @@ List<Widget> character3dSettings(
                   onPressed: () => controller.openStudio3d(element: e.id),
                 ),
               ]),
+          CanvasControlGroup(
+              label: "Expression",
+              help: "The expression it wears in this scene: the one it was "
+                  "made with, or any of its face's -- the ones to start from "
+                  "and the ones kept in the Studio.",
+              children: [
+                CanvasDropdown<String>(
+                  key: const ValueKey("character3dExpression"),
+                  label: "Wears",
+                  width: 200,
+                  value: e.expression ?? "",
+                  options: [
+                    ("", "As made (${e.design.face.name})"),
+                    for (var n in e.design.face.expressions.keys) (n, n),
+                  ],
+                  onChanged: (v) => now(e.wearing(v.isEmpty ? null : v)),
+                ),
+              ]),
         ]),
     section(e, "view",
         icon: Icons.videocam_outlined,

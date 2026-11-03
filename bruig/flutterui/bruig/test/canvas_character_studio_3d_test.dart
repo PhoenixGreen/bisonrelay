@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_face.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_look.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
@@ -168,7 +169,14 @@ void main() {
   testWidgets('at every text size, the page fits', (tester) async {
     for (final scale in const [0.65, 0.85, 1.0, 1.15, 1.25, 1.5]) {
       await _show(tester, gpu: false, scale: scale);
-      for (final part in ['start', 'muscles', 'wear-top', 'style', 'decals', 'touchup']) {
+      for (final part in [
+        'start',
+        'muscles',
+        'wear-top',
+        'style',
+        'decals',
+        'touchup'
+      ]) {
         final tree = find.descendant(
             of: find.byType(CharacterShapeList),
             matching: find.byType(Scrollable));
@@ -239,6 +247,43 @@ void main() {
             .text,
         'Jess');
     expect(find.byKey(const ValueKey('shapeChanged-eyes')), findsOneWidget);
+  });
+
+  testWidgets('the Face step opens its own parts, and its face is kept',
+      (tester) async {
+    CharacterDesign? kept;
+    await _show(tester, gpu: false, onDone: (d) => kept = d);
+    expect(find.byKey(const ValueKey('facePart-expressions')), findsNothing);
+    final move =
+        tester.widget<StudioPill>(find.byKey(const ValueKey('studioStep-2')));
+    expect(move.onTap, isNull, reason: 'Move is still to come');
+    // A part changed is put back by its mark.
+    await tester.tap(find.byKey(const ValueKey('shapePart-eyes')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('studioPill-shapes.eyes-Big')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('shapeChanged-eyes')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('shapeChanged-eyes')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('shapeChanged-eyes')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('studioStep-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('facePart-expressions')), findsOneWidget);
+    expect(find.byKey(const ValueKey('shapePart-eyes')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('studioPill-face-expr-Sad')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('studioDone')));
+    for (var k = 0; k < 100 && kept == null; k++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+    expect(kept?.face.name, 'Sad');
+    expect(kept?.face.mix, faceExpressions['Sad']);
+    // And back to the Character base.
+    await tester.tap(find.byKey(const ValueKey('studioStep-0')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('shapePart-eyes')), findsOneWidget);
   });
 
   test('a character is kept and read back the same', () {

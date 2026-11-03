@@ -1,7 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 // character_shape_panel.dart is the Character base step of the new
@@ -29,6 +28,9 @@ class CharacterShapeList extends StatelessWidget {
   final bool styled, decorated, touched;
   final String selected;
   final ValueChanged<String> onSelect;
+
+  /// onReset puts part [id] back as it was made: its mark, clicked.
+  final ValueChanged<String>? onReset;
   const CharacterShapeList(
       {required this.shape,
       this.outfit = CharacterOutfit.asDesigned,
@@ -37,61 +39,21 @@ class CharacterShapeList extends StatelessWidget {
       this.touched = false,
       required this.selected,
       required this.onSelect,
+      this.onReset,
       super.key});
 
   @override
   Widget build(BuildContext context) {
-    final colors = ThemeNotifier.of(context).colors;
     final rows = <Widget>[];
-    void heading(String text) => rows.add(Padding(
-          padding: EdgeInsets.fromLTRB(16, rows.isEmpty ? 14 : 20, 16, 6),
-          child: Text(text.toUpperCase(),
-              style: TextStyle(
-                  fontSize: 10.5,
-                  letterSpacing: 0.9,
-                  fontWeight: FontWeight.w700,
-                  color: colors.onSurfaceVariant)),
-        ));
-    void row(String id, String name, bool changed) {
-      final on = id == selected;
-      rows.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
-        child: Material(
-          color:
-              on ? colors.primary.withValues(alpha: 0.14) : Colors.transparent,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(7),
-              side: BorderSide(
-                  color: on ? colors.primary : Colors.transparent, width: 1.2)),
-          child: InkWell(
-            key: ValueKey("shapePart-$id"),
-            borderRadius: BorderRadius.circular(7),
-            onTap: () => onSelect(id),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              child: Row(children: [
-                Expanded(
-                  child: Text(name,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w500,
-                          color: colors.onSurface)),
-                ),
-                if (changed)
-                  Container(
-                    key: ValueKey("shapeChanged-$id"),
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                        color: colors.primary, shape: BoxShape.circle),
-                  ),
-              ]),
-            ),
-          ),
-        ),
-      ));
-    }
+    void heading(String text) =>
+        rows.add(StudioPartHeading(text, first: rows.isEmpty));
+    void row(String id, String name, bool changed) => rows.add(StudioPartRow(
+        id: id,
+        name: name,
+        changed: changed,
+        selected: id == selected,
+        onTap: () => onSelect(id),
+        onReset: onReset == null ? null : () => onReset!(id)));
 
     String? group;
     for (final p in characterShapeParts) {

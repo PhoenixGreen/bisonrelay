@@ -37,6 +37,10 @@ class Character3dElement extends CanvasElement {
   /// zoom is how much closer than the framing, 0.5 to 3.
   final double zoom;
 
+  /// expression is the expression it wears in this scene, by name -- one
+  /// of its face's -- or null for the one it was designed with.
+  final String? expression;
+
   final ElementAnimation animation;
 
   const Character3dElement(
@@ -46,6 +50,7 @@ class Character3dElement extends CanvasElement {
     this.turn = 0,
     this.tilt = 0,
     this.zoom = 1,
+    this.expression,
     this.animation = const ElementAnimation(),
   });
 
@@ -67,6 +72,18 @@ class Character3dElement extends CanvasElement {
       turn: turn,
       tilt: tilt,
       zoom: zoom,
+      expression: expression,
+      animation: animation);
+
+  /// wearing is this with expression [name] in this scene, or with null the
+  /// one it was designed with.
+  Character3dElement wearing(String? name) => Character3dElement(base,
+      design: design,
+      framing: framing,
+      turn: turn,
+      tilt: tilt,
+      zoom: zoom,
+      expression: name,
       animation: animation);
 
   Character3dElement copyWith({
@@ -83,6 +100,7 @@ class Character3dElement extends CanvasElement {
           turn: turn ?? this.turn,
           tilt: tilt ?? this.tilt,
           zoom: zoom ?? this.zoom,
+          expression: expression,
           animation: animation ?? this.animation);
 
   @override
@@ -92,6 +110,7 @@ class Character3dElement extends CanvasElement {
         if (turn != 0) "turn": turn,
         if (tilt != 0) "tilt": tilt,
         if (zoom != 1) "zoom": zoom,
+        if (expression != null) "expression": expression,
         "animation": animation.toJson(),
       };
 
@@ -107,6 +126,9 @@ class Character3dElement extends CanvasElement {
           turn: jsonDouble(json["turn"], 0).clamp(-1.0, 1.0),
           tilt: jsonDouble(json["tilt"], 0).clamp(-0.5, 1.0),
           zoom: jsonDouble(json["zoom"], 1).clamp(0.5, 3.0),
+          expression: json["expression"] is String
+              ? json["expression"] as String
+              : null,
           animation: jsonSpec(json["animation"], ElementAnimation.fromJson,
               const ElementAnimation()));
 }

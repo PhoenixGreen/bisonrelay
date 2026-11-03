@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_mesh.dart';
+import 'package:bruig/plugin_system/canvas/render/vrm/vrm_paint.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_shape.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_shape_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_touchup_panel.dart';
@@ -24,13 +25,16 @@ import 'package:provider/provider.dart';
 /// -z behind it, as the two sides of something thin are.
 VrmMeshData _sheet() {
   const n = 21;
-  final pos = <double>[], nrm = <double>[], idx = <int>[];
-  for (final (z, nz) in const [(0.0, 1.0), (-0.01, -1.0)]) {
+  final pos = <double>[], nrm = <double>[], idx = <int>[], uv = <double>[];
+  for (final (z, nz, u0) in const [(0.0, 1.0, 0.0), (-0.01, -1.0, 0.5)]) {
     final base = pos.length ~/ 3;
     for (var j = 0; j < n; j++) {
       for (var i = 0; i < n; i++) {
         pos.addAll([-0.1 + i * 0.01, 1.0 + j * 0.01, z]);
         nrm.addAll([0, 0, nz]);
+        // The front laid out on the left half of a picture, the back on
+        // the right, each a half-picture square from the top down.
+        uv.addAll([u0 + i / (n - 1) * 0.5, 1 - j / (n - 1)]);
       }
     }
     for (var j = 0; j + 1 < n; j++) {
@@ -46,7 +50,7 @@ VrmMeshData _sheet() {
     vertices: VrmVertices(
         positions: Float32List.fromList(pos),
         normals: Float32List.fromList(nrm),
-        uv0: Float32List(count * 2),
+        uv0: Float32List.fromList(uv),
         uv1: Float32List(count * 2),
         colors: Float32List(count * 4)..fillRange(0, count * 4, 1),
         tangents: Float32List(count * 4),
@@ -203,7 +207,7 @@ void main() {
 
     testWidgets('the brush, taking back a stroke, and clearing them',
         (tester) async {
-      var brush = const SculptBrush();
+      var brush = const TouchBrush();
       var strokes = [_stroke(SculptTool.raise), _stroke(SculptTool.lower)];
       await show(
           tester,
@@ -214,8 +218,8 @@ void main() {
                   onBrush: (b) => set(() => brush = b),
                   onStrokes: (s) => set(() => strokes = s))));
       expect(find.text('2 strokes.'), findsOneWidget);
-      await tester
-          .tap(find.byKey(const ValueKey('studioPill-sculpt-tool-SculptTool.flatten')));
+      await tester.tap(find
+          .byKey(const ValueKey('studioPill-sculpt-tool-SculptTool.flatten')));
       await tester.pumpAndSettle();
       expect(brush.tool, SculptTool.flatten);
       tester
@@ -267,7 +271,7 @@ void main() {
                 body: SizedBox(
                     width: 330,
                     child: CharacterTouchUpControls(
-                        brush: const SculptBrush(),
+                        brush: const TouchBrush(),
                         strokes: [_stroke(SculptTool.raise)],
                         onBrush: (_) {},
                         onStrokes: (_) {})),
@@ -278,6 +282,171 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: '${scale}x');
       }
+    });
+  });
+
+  group('paint', () {
+    final vs = g.vertices;
+    PaintLayer? layer(List<PaintStroke> strokes,
+            {bool cells = false, int size = 256}) =>
+        paintLayer(
+            positions: vs.positions,
+            normals: vs.normals,
+            uv: vs.uv0,
+            triangles: g.triangles,
+            strokes: strokes,
+            size: size,
+            cells: cells);
+    PaintStroke stroke(
+            {List<(double, double)> at = const [(0, 1.1)],
+            PaintTool tool = PaintTool.paint,
+            double opacity = 1,
+            double softness = 0,
+            bool mirror = false}) =>
+        PaintStroke(
+            on: 'skin',
+            tool: tool,
+            colour: 0xff0000,
+            radius: 0.02,
+            opacity: opacity,
+            softness: softness,
+            mirror: mirror,
+            points: [for (final (x, y) in at) SculptPoint(x, y, 0, 0, 0, 1)]);
+    // The pixel of a 256 picture where the front is at ([x], [y]).
+    List<int> px(PaintLayer l, double x, double y) {
+      final u = (x + 0.1) / 0.2 * 0.5, v = 1 - (y - 1.0) / 0.2;
+      final i = ((v * l.size).floor().clamp(0, l.size - 1) * l.size +
+              (u * l.size).floor().clamp(0, l.size - 1)) *
+          4;
+      return l.rgba.sublist(i, i + 4);
+    }
+
+    test('lies where the stroke passed, in its colour, to its edge', () {
+      final l = layer([stroke()])!;
+      expect(px(l, 0, 1.1), [255, 0, 0, 255]);
+      expect(px(l, 0.015, 1.1)[3], 255, reason: 'inside the brush');
+      expect(px(l, 0.04, 1.1)[3], 0, reason: 'past it');
+      // Not on the back: the right half of the picture is clear.
+      for (var i = 0; i < l.size * l.size; i++) {
+        if (i % l.size >= l.size / 2 + 2) expect(l.rgba[i * 4 + 3], 0);
+      }
+      expect(l.triangles.length, lessThan(g.triangles.length ~/ 4),
+          reason: 'only the triangles painted');
+    });
+
+    test('a soft brush fades from the middle', () {
+      final l = layer([stroke(softness: 1)])!;
+      expect(px(l, 0, 1.1)[3], greaterThan(px(l, 0.01, 1.1)[3]));
+      expect(px(l, 0.01, 1.1)[3], greaterThan(0));
+    });
+
+    test('a stroke over itself is no thicker than its opacity', () {
+      final l = layer([
+        stroke(opacity: 0.5, at: [for (var k = 0; k < 8; k++) (0.001 * k, 1.1)])
+      ])!;
+      expect(px(l, 0.003, 1.1)[3], closeTo(128, 2));
+    });
+
+    test('mirrored, on both sides; rubbed out, gone', () {
+      final both = layer([
+        stroke(at: [(0.05, 1.1)], mirror: true)
+      ])!;
+      expect(px(both, -0.05, 1.1)[3], 255);
+      final rubbed = layer([
+        stroke(),
+        stroke(tool: PaintTool.rubOut),
+      ])!;
+      expect(px(rubbed, 0, 1.1)[3], 0);
+      expect(
+          layer([
+            stroke(at: [(0.5, 1.1)])
+          ]),
+          isNull,
+          reason: 'off it');
+    });
+
+    test('laid out in cells of its own, each triangle its own corners', () {
+      final l = layer([stroke()], cells: true)!;
+      final src = l.source!, uv = l.uv!;
+      expect(l.triangles.length, src.length);
+      expect(uv.length, src.length * 2);
+      expect(uv.every((v) => v >= 0 && v <= 1), isTrue);
+      expect(l.rgba.where((v) => v == 255).length, greaterThan(100),
+          reason: 'painted');
+      // Each corner is one of the surface's vertices near the stroke.
+      for (final o in src) {
+        final x = vs.positions[o * 3], y = vs.positions[o * 3 + 1];
+        expect((x * x + (y - 1.1) * (y - 1.1)), lessThan(0.04 * 0.04));
+      }
+    });
+
+    test('kept with the character, and what is not a stroke passed over', () {
+      final d = CharacterDesign(
+          id: 'c',
+          name: '',
+          body: 'Vivi',
+          paint: [stroke(mirror: true, softness: 0.3)],
+          updated: DateTime(2026));
+      final back =
+          CharacterDesign.fromJson(jsonDecode(jsonEncode(d.toJson())))!;
+      final p = back.paint.single;
+      expect((p.on, p.colour, p.radius, p.softness, p.mirror, p.points.length),
+          ('skin', 0xff0000, 0.02, 0.3, true, 1));
+      expect(
+          PaintStroke.fromJson({
+            'radius': 0.1,
+            'points': [0, 0, 0, 0, 0, 1]
+          }),
+          isNull,
+          reason: 'on nothing');
+    });
+
+    testWidgets('the panel paints: its colours, opacity, softness',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      var brush = const TouchBrush();
+      var painted = [stroke(), stroke()];
+      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
+        create: (_) => ThemeNotifier(doLoad: false),
+        child: MaterialApp(
+            home: Scaffold(
+                body: SizedBox(
+                    width: 330,
+                    child: StatefulBuilder(
+                        builder: (context, set) => CharacterTouchUpControls(
+                            brush: brush,
+                            strokes: const [],
+                            paint: painted,
+                            onBrush: (b) => set(() => brush = b),
+                            onStrokes: (_) {},
+                            onPaint: (p) => set(() => painted = p)))))),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('paint-opacity')), findsNothing);
+      await tester.tap(
+          find.byKey(const ValueKey('studioPill-touch-mode-TouchMode.paint')));
+      await tester.pumpAndSettle();
+      expect(brush.mode, TouchMode.paint);
+      expect(brush.size, lessThanOrEqualTo(0.02), reason: 'a finer brush');
+      expect(find.text('2 strokes.'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('paint-colour-e88aa8')));
+      await tester.pumpAndSettle();
+      expect(brush.colour, 0xe88aa8);
+      tester
+          .widget<StudioSlider>(find.byKey(const ValueKey('paint-softness')))
+          .onChanged(0.8);
+      await tester.pumpAndSettle();
+      expect(brush.softness, 0.8);
+      await tester.tap(
+          find.byKey(const ValueKey('studioPill-paint-tool-PaintTool.rubOut')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('paint-colour-e88aa8')), findsNothing,
+          reason: 'rubbing out has no colour');
+      await tester.tap(find.byKey(const ValueKey('sculptUndo')));
+      await tester.pumpAndSettle();
+      expect(painted, hasLength(1));
     });
   });
 }

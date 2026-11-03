@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_face.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_look.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
@@ -63,6 +64,7 @@ class CharacterScene extends ChangeNotifier {
   CharacterLook _look = const CharacterLook();
   List<CharacterDecal> _decals = const [];
   List<SculptStroke> _sculpt = const [];
+  List<PaintStroke> _paint = const [];
 
   ShapedAvatar? _avatar;
   String? _loading;
@@ -91,7 +93,9 @@ class CharacterScene extends ChangeNotifier {
       outfit: d.outfit,
       look: d.look,
       decals: d.decals,
-      sculpt: d.sculpt);
+      sculpt: d.sculpt,
+      paint: d.paint,
+      face: d.face);
 
   /// show draws this: what changed is changed, the rest left as it is.
   void show({
@@ -101,19 +105,24 @@ class CharacterScene extends ChangeNotifier {
     required CharacterLook look,
     required List<CharacterDecal> decals,
     List<SculptStroke> sculpt = const [],
+    List<PaintStroke> paint = const [],
+    CharacterFace face = const CharacterFace(),
   }) {
     final hairChanged =
         _body == null || shape.hair(body) != _shape.hair(_body!);
     final bodyChanged = body != _body,
         outfitChanged = outfit != _outfit,
         lookChanged = look != _look,
-        decalsChanged = !listEquals(decals, _decals);
+        decalsChanged = !listEquals(decals, _decals),
+        paintChanged = !listEquals(paint, _paint);
     _body = body;
     _shape = shape;
     _outfit = outfit;
     _look = look;
     _decals = decals;
     _sculpt = sculpt;
+    _paint = paint;
+    _face = face;
     if (bodyChanged) {
       _load(body);
       return;
@@ -121,6 +130,7 @@ class CharacterScene extends ChangeNotifier {
     if (outfitChanged) _dress();
     if (lookChanged) _restyle();
     if (decalsChanged) _avatar?.decorate(decals, loadDecal);
+    if (paintChanged) _repaint();
     if (hairChanged) _hair();
   }
 
@@ -224,6 +234,8 @@ class CharacterScene extends ChangeNotifier {
       _restyle();
       _hair();
       next.decorate(_decals, loadDecal);
+      _blushed = -1;
+      _repaint();
       _changed();
       await _dress();
     } catch (e) {
@@ -278,13 +290,37 @@ class CharacterScene extends ChangeNotifier {
       ..apply(_shape);
     final v = a.avatar;
     v.mtoonLighting.fromScene(scene);
-    if (lookAt != null) v.lookAt.target = lookAt;
+    _clock += dt;
+    _moveFace(dt);
+    if (lookAt != null) {
+      // Where the face's eyes are set to look, as the viewer sees it.
+      var at = lookAt;
+      if (camera is PerspectiveCamera) {
+        final f = camera.target - camera.position;
+        final far = f.length;
+        f.normalize();
+        // forward × up is the screen's left in flutter_scene's view.
+        final left = f.cross(vm.Vector3(0, 1, 0)).normalized();
+        final up = left.cross(f).normalized();
+        at = lookAt + (left * -_gazeX + up * _gazeY) * far * 0.6;
+      }
+      v.lookAt.target = at;
+    }
+    v.humanoid.setNormalizedRotation(VrmHumanBone.head,
+        vm.Quaternion.axisAngle(vm.Vector3(0, 0, 1), _tiltNow * 0.45));
+    v.autoBlink.enabled = _face.blinks && !_noBlink;
+    if (!v.autoBlink.enabled) v.expressions.setValue('blink', 0);
     // Standing at ease rather than in the T it was made in.
     v.humanoid.setNormalizedRotation(VrmHumanBone.leftUpperArm,
         vm.Quaternion.axisAngle(vm.Vector3(0, 0, 1), -1.2));
     v.humanoid.setNormalizedRotation(VrmHumanBone.rightUpperArm,
         vm.Quaternion.axisAngle(vm.Vector3(0, 0, 1), 1.2));
     a.update(dt, camera: camera);
+    a.wear(_unitsNow);
+    if ((_mixNow.blush - _blushed).abs() > 0.02) {
+      _blushed = _mixNow.blush;
+      _repaint();
+    }
     // The colours picked, and the years' grey; hair from others takes the
     // colour of the hair it is mixed with, unless one is picked.
     final colours = <VrmPart, int>{
@@ -446,10 +482,110 @@ class CharacterScene extends ChangeNotifier {
     }
   }
 
+  // ---------------------------------------------------------------------
+  // The face (character_face.dart).
+
+  CharacterFace _face = const CharacterFace();
+  String? _expression;
+
+  /// expression is the expression worn, by name, in place of the face's
+  /// own: a scene's choice for a character on the canvas. Null for its own.
+  set expression(String? name) => _expression = name;
+
+  /// noBlink stops the face blinking by itself, whatever it is set to: for
+  /// a picture of it.
+  set noBlink(bool v) => _noBlink = v;
+  bool _noBlink = false;
+
+  SpokenLine? _line;
+  double _lineAt = 0, _clock = 0;
+
+  /// say has the mouth say [text], over the expression it wears.
+  void say(String text) {
+    _line = text.trim().isEmpty ? null : SpokenLine.of(text);
+    _lineAt = _clock;
+  }
+
+  /// saying is whether a line is being said.
+  bool get saying => _line != null;
+
+  FaceMix get _mixNow => _face.wearing(_expression);
+
+  // The face as it is now, eased toward what it is set to.
+  Map<String, double> _unitsNow = const {};
+  double _gazeX = 0, _gazeY = 0, _tiltNow = 0;
+  bool _faceSettled = false;
+  double _glanceX = 0, _glanceY = 0, _glanceNext = 0;
+  final math.Random _random = math.Random(7);
+
+  void _moveFace(double dt) {
+    final mix = _mixNow;
+    final want = Map<String, double>.of(mix.w);
+    final line = _line;
+    if (line != null) {
+      final mouth = line.mouthAt(_clock - _lineAt);
+      if (mouth == null) {
+        _line = null;
+        _changed();
+      } else {
+        // The line's shapes over the mouth's, the rest of it eased off.
+        for (final k in want.keys.toList()) {
+          if (k.startsWith('MTH_')) want[k] = want[k]! * 0.5;
+        }
+        for (final e in mouth.entries) {
+          want[e.key] = math.max(want[e.key] ?? 0, e.value);
+        }
+      }
+    }
+    if (_face.glances && _clock >= _glanceNext) {
+      _glanceX = (_random.nextDouble() - 0.5) * 0.9;
+      _glanceY = (_random.nextDouble() - 0.5) * 0.5;
+      _glanceNext = _clock + 1.5 + _random.nextDouble() * 2.5;
+    }
+    if (!_face.glances) _glanceX = _glanceY = 0;
+    final k = !_faceSettled
+        ? 1.0
+        : line != null
+            ? (1 - math.exp(-dt * 30))
+            : (1 - math.exp(-dt * 10));
+    _faceSettled = true;
+    final next = <String, double>{};
+    for (final key in {...want.keys, ..._unitsNow.keys}) {
+      final v = (_unitsNow[key] ?? 0) +
+          ((want[key] ?? 0) - (_unitsNow[key] ?? 0)) * k;
+      if (v > 0.002) next[key] = v;
+    }
+    _unitsNow = next;
+    _gazeX += (mix.gazeX + _glanceX - _gazeX) * k;
+    _gazeY += (mix.gazeY + _glanceY - _gazeY) * k;
+    _tiltNow += (mix.tilt - _tiltNow) * k;
+  }
+
+  double _blushed = 0;
+
+  /// _repaint paints what is painted on the character, and the blush.
+  void _repaint() {
+    final a = _avatar;
+    if (a == null) return;
+    final b = _mixNow.blush;
+    _blushed = b;
+    a.paint([
+      ..._paint,
+      if (b > 0.01)
+        for (final (at, n, r) in a.blushAt)
+          PaintStroke(
+              on: "skin",
+              colour: 0xf06a7a,
+              radius: r,
+              opacity: (b * 0.8).clamp(0.0, 1.0),
+              softness: 1,
+              points: [SculptPoint(at.x, at.y, at.z, n.x, n.y, n.z)]),
+    ]);
+  }
+
   /// pick is where a ray from [from] going [dir] first meets the
   /// character: see ShapedAvatar.pick.
-  ({vm.Vector3 at, vm.Vector3 normal, double distance})? pick(
-          vm.Vector3 from, vm.Vector3 dir) =>
+  CharacterHit? pick(vm.Vector3 from, vm.Vector3 dir) =>
       _avatar?.pick(from, dir);
 
   void _changed() {
