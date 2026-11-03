@@ -106,8 +106,11 @@ DecalFrame? decalFrame(VrmWardrobe w, CharacterDecal d, DecalSurface s) {
 /// for a surface not numbered as the skin is.
 bool _inArea(VrmWardrobe w, DecalSurface s, DecalArea area, int i) {
   if (!s.likeSkin || i >= w.group.length) return true;
-  final g = w.groupAt(i);
+  var g = w.groupAt(i);
   final x = s.vertices.positions[i * 3];
+  // The body's own clothes are in the skin's mesh but not grouped as it is:
+  // their part of the body is the bone they follow most.
+  if (g == BodyGroup.other) g = _groupOfBone(w, s, i);
   final arm = g == BodyGroup.armU ||
       g == BodyGroup.armF ||
       g == BodyGroup.hand ||
@@ -131,7 +134,9 @@ GarmentMesh? makeDecal(VrmWardrobe w, CharacterDecal d, DecalSurface s) {
   if (fr == null) return null;
   final vs = s.vertices, pos = vs.positions, nrm = vs.normals;
   final n = vs.count, half = fr.size / 2 * 1.15, depth = fr.size * 0.75 + 0.02;
-  final keep = Uint8List(n);
+  // keep is a vertex in the decal's square; may, one a triangle reaching
+  // into it may bring along: facing it, on its part of the body, and near.
+  final keep = Uint8List(n), may = Uint8List(n);
   final uv = Float32List(n * 2);
   for (var i = 0; i < n; i++) {
     final v =
@@ -139,19 +144,27 @@ GarmentMesh? makeDecal(VrmWardrobe w, CharacterDecal d, DecalSurface s) {
     final x = v.dot(fr.side), y = v.dot(fr.up), z = v.dot(fr.normal);
     uv[i * 2] = x / fr.size + 0.5;
     uv[i * 2 + 1] = 0.5 - y / fr.size;
-    if (x.abs() > half || y.abs() > half || z.abs() > depth) continue;
+    if (x.abs() > half * 2 || y.abs() > half * 2 || z.abs() > depth) continue;
     // Only what faces the decal: not the far side of an arm.
     final facing = nrm[i * 3] * fr.normal.x +
         nrm[i * 3 + 1] * fr.normal.y +
         nrm[i * 3 + 2] * fr.normal.z;
     if (facing < 0.05) continue;
     if (!_inArea(w, s, d.area, i)) continue;
-    keep[i] = 1;
+    may[i] = 1;
+    if (x.abs() <= half && y.abs() <= half) keep[i] = 1;
   }
   final tris = <int>[];
   final t = s.triangles;
   for (var k = 0; k + 2 < t.length; k += 3) {
-    if (keep[t[k]] == 1 && keep[t[k + 1]] == 1 && keep[t[k + 2]] == 1) {
+    // Any triangle reaching into the square, not only those wholly in it:
+    // where the surface curves away, a triangle with a corner outside left
+    // a gap in the picture. What lies past the picture is clear.
+    final a = t[k], b = t[k + 1], c = t[k + 2];
+    if ((keep[a] == 1 || keep[b] == 1 || keep[c] == 1) &&
+        may[a] == 1 &&
+        may[b] == 1 &&
+        may[c] == 1) {
       tris.addAll([t[k], t[k + 1], t[k + 2]]);
     }
   }
@@ -221,4 +234,31 @@ GarmentMesh? makeDecal(VrmWardrobe w, CharacterDecal d, DecalSurface s) {
     }
   }
   return (out, pw, ph);
+}
+
+/// _groupOfBone is the part of the body vertex [i] of [s] follows most, by
+/// its bone's name.
+BodyGroup _groupOfBone(VrmWardrobe w, DecalSurface s, int i) {
+  final vs = s.vertices;
+  if (!vs.skinned || i >= vs.domBone.length) return BodyGroup.torso;
+  final names = w.body.jointNames, b = vs.domBone[i];
+  final name = b >= 0 && b < names.length ? names[b] : "";
+  if (name.contains("Hand") ||
+      name.contains("Thumb") ||
+      name.contains("Index") ||
+      name.contains("Middle") ||
+      name.contains("Ring") ||
+      name.contains("Little")) {
+    return BodyGroup.hand;
+  }
+  if (name.contains("LowerArm")) return BodyGroup.armF;
+  if (name.contains("UpperArm") || name.contains("Shoulder")) {
+    return BodyGroup.armU;
+  }
+  if (name.contains("Foot") || name.contains("Toe")) return BodyGroup.foot;
+  if (name.contains("LowerLeg")) return BodyGroup.legL;
+  if (name.contains("UpperLeg")) return BodyGroup.legU;
+  if (name.contains("Neck")) return BodyGroup.neck;
+  if (name.contains("Head")) return BodyGroup.head;
+  return BodyGroup.torso;
 }

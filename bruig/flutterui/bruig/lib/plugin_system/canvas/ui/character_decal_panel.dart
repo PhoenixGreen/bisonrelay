@@ -97,36 +97,48 @@ class CharacterDecalControls extends StatelessWidget {
                       style: TextStyle(
                           fontSize: 12, color: colors.onSurfaceVariant));
                 }
-                return Wrap(spacing: 6, runSpacing: 6, children: [
-                  for (final a in all)
-                    Tooltip(
-                      message: a.name,
-                      child: InkWell(
-                        key: ValueKey("decalAdd-${a.id}"),
-                        borderRadius: BorderRadius.circular(6),
-                        onTap: () {
-                          final n = CharacterDecal(
-                            id: "${DateTime.now().microsecondsSinceEpoch}",
-                            source:
-                                "${a.kind == AssetKind.vector ? "vector" : "picture"}:${a.id}",
-                            name: a.name,
-                          );
-                          onChanged([...decals, n], n.id);
-                        },
-                        child: Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            color: colors.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: colors.outlineVariant),
+                // Six and a half rows at most, scrolled: a long library
+                // would push the decal's own settings off the panel.
+                return ConstrainedBox(
+                  key: const ValueKey("decalLibrary"),
+                  constraints: const BoxConstraints(maxHeight: 6.5 * 58),
+                  child: Scrollbar(
+                    child: SingleChildScrollView(
+                      primary: false,
+                      child: Wrap(spacing: 6, runSpacing: 6, children: [
+                        for (final a in all)
+                          Tooltip(
+                            message: a.name,
+                            child: InkWell(
+                              key: ValueKey("decalAdd-${a.id}"),
+                              borderRadius: BorderRadius.circular(6),
+                              onTap: () {
+                                final n = CharacterDecal(
+                                  id: "${DateTime.now().microsecondsSinceEpoch}",
+                                  source:
+                                      "${a.kind == AssetKind.vector ? "vector" : "picture"}:${a.id}",
+                                  name: a.name,
+                                );
+                                onChanged([...decals, n], n.id);
+                              },
+                              child: Container(
+                                width: 52,
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  color: colors.surfaceContainerHigh,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border:
+                                      Border.all(color: colors.outlineVariant),
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: AssetThumb(id: a.id),
+                              ),
+                            ),
                           ),
-                          clipBehavior: Clip.antiAlias,
-                          child: AssetThumb(id: a.id),
-                        ),
-                      ),
+                      ]),
                     ),
-                ]);
+                  ),
+                );
               },
             ),
           ),

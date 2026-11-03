@@ -1068,9 +1068,10 @@ class ShapedAvatar {
     }
     // Decals on clothes go with the clothes.
     final load = _decalLoad;
-    if (load != null) await _decorate(_decalWant, load);
+    // Through their guards, so two runs never lay the same one twice.
+    if (load != null) await decorate(_decalWant, load);
     // And paint on clothes.
-    if (_paintWant.isNotEmpty || _paints.isNotEmpty) await _paint(_paintWant);
+    if (_paintWant.isNotEmpty || _paints.isNotEmpty) await paint(_paintWant);
   }
 
   // ---------------------------------------------------------------------
@@ -1167,7 +1168,7 @@ class ShapedAvatar {
           joints: w.body.jointNames,
           vertices: w.skin,
           triangles: t,
-          lift: 0.0009,
+          lift: _clothLift,
           cells: false,
           key: "own",
         ));
@@ -1259,10 +1260,13 @@ class ShapedAvatar {
       final tex = Texture2D.fromPixels(layer.rgba, layer.size, layer.size,
           sampling: const TextureSampling(
               addressMode: gpu.SamplerAddressMode.clampToEdge));
-      final material = await _overlayMaterial(tex);
+      // Paint goes over decals, and both over the surface they lie on.
+      final material = await _overlayMaterial(tex, layer: 2);
       final worn = _meshNode('paint-${t.id}', key, mesh, material, null, t.node,
           joints: t.joints);
       (t.node.parent ?? parent).add(worn.node);
+      final was = _paints[t.id];
+      if (was != null) _unwear(was);
       _paints[t.id] = worn;
       _styleWorn(worn);
       final region = worn.group.node.region;
@@ -1272,8 +1276,11 @@ class ShapedAvatar {
   }
 
   /// _overlayMaterial is a material that lays [tex] over the skin, as the
-  /// skin is drawn, where it is not clear.
-  Future<PreprocessedMaterial> _overlayMaterial(Texture2D tex) async {
+  /// skin is drawn, where it is not clear, at depth layer [layer]: drawn
+  /// over the surface it lies on at any distance and round any curve,
+  /// which lifting it off the surface alone did not hold.
+  Future<PreprocessedMaterial> _overlayMaterial(Texture2D tex,
+      {required int layer}) async {
     final material = await loadFmatMaterial('assets/materials/mtoon_blend.fmat',
         package: 'flutter_vrm');
     final skin = _skinMaterials().firstOrNull;
@@ -1289,6 +1296,11 @@ class ShapedAvatar {
       ..setVec3('parametric_rim_color_factor', vm.Vector3.zero())
       ..setVec3('matcap_factor', vm.Vector3.zero())
       ..setVec3('emissive_factor', vm.Vector3.zero());
+    material.depthLayer = layer;
+    // Both faces: VRoid's clothes wind their triangles either way, which is
+    // why their own material is drawn from both sides; a decal or paint
+    // cut from them, drawn from one, lost the triangles that faced in.
+    material.doubleSided = true;
     return material;
   }
 
@@ -1359,7 +1371,7 @@ class ShapedAvatar {
       ];
       if (tris.isEmpty) return null;
       return (
-        DecalSurface(w.skin, Uint32List.fromList(tris), lift: 0.0009),
+        DecalSurface(w.skin, Uint32List.fromList(tris), lift: _clothLift),
         "own"
       );
     }
@@ -1367,6 +1379,14 @@ class ShapedAvatar {
   }
 
   Uint32List? _skinTris;
+
+  /// _clothLift is how far over the body's own clothes -- VRoid's, in its
+  /// mesh -- a decal or paint lies. Something of them is drawn a few
+  /// millimetres out from their own surface -- not the outline, nor the
+  /// winding, nor the vertices, which all match -- and hid a decal lying
+  /// nearer than that in patches; at 8 mm it is whole, seen in the check
+  /// app. Made clothes do not need it. Why is still to be found.
+  static const double _clothLift = 0.008;
 
   Future<void> _decorate(List<CharacterDecal> decals,
       Future<(Uint8List, int, int)?> Function(String source) load) async {
@@ -1395,24 +1415,12 @@ class ShapedAvatar {
             sampling: const TextureSampling(
                 addressMode: gpu.SamplerAddressMode.clampToEdge));
       }
-      final material = await loadFmatMaterial(
-          'assets/materials/mtoon_blend.fmat',
-          package: 'flutter_vrm');
-      final skin = _skinMaterials().firstOrNull;
-      if (skin != null) material.parameters.copyStateFrom(skin.$1.parameters);
-      material.parameters
-        ..setTexture('base_color_texture', tex.gpuTexture,
-            sampler: tex.sampledSampler)
-        ..setTexture('shade_multiply_texture', tex.gpuTexture,
-            sampler: tex.sampledSampler)
-        ..setVec4('base_color_factor', vm.Vector4(1, 1, 1, 1))
-        ..setInt('alpha_mode', 2)
-        ..setFloat('normal_scale', 0)
-        ..setVec3('parametric_rim_color_factor', vm.Vector3.zero())
-        ..setVec3('matcap_factor', vm.Vector3.zero())
-        ..setVec3('emissive_factor', vm.Vector3.zero());
+      final material = await _overlayMaterial(tex, layer: 1);
       final worn = _meshNode('decal-${d.id}', key, mesh, material, null, body);
       parent.add(worn.node);
+      // One laid meanwhile is taken off: never two of it, one lost.
+      final was = _decals[d.id];
+      if (was != null) _unwear(was);
       _decals[d.id] = worn;
       _styleWorn(worn);
       final ds = _deformers(VrmRegion.body, shape);

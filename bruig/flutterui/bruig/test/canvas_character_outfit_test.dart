@@ -607,8 +607,10 @@ void main() {
       for (final i in used) {
         expect(wardrobe.skin.normals[i * 3 + 2], greaterThan(0),
             reason: 'facing front');
-        expect(m.vertices.uv0[i * 2], inInclusiveRange(-0.1, 1.1));
-        expect(m.vertices.uv0[i * 2 + 1], inInclusiveRange(-0.1, 1.1));
+        // A triangle reaching into the square brings corners past it, where
+        // the picture is clear; never far past.
+        expect(m.vertices.uv0[i * 2], inInclusiveRange(-1.2, 2.2));
+        expect(m.vertices.uv0[i * 2 + 1], inInclusiveRange(-1.2, 2.2));
       }
       // Lifted off the skin a hair, along its normal.
       final i = used.first;
@@ -697,6 +699,54 @@ void main() {
       })!;
       expect(
           (junk.area, junk.size, junk.mode), (DecalArea.torso, 0.5, 'print'));
+    });
+
+    testWidgets('a long library is kept to a few rows, scrolled',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
+        create: (_) => ThemeNotifier(doLoad: false),
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 330,
+              child: CharacterDecalControls(
+                decals: const [
+                  CharacterDecal(id: 'a', source: 'picture:p0.png')
+                ],
+                open: 'a',
+                outfit: CharacterOutfit.asDesigned,
+                library: () async => [
+                  for (var i = 0; i < 80; i++)
+                    LibraryAsset(
+                        id: 'p$i.png',
+                        kind: AssetKind.picture,
+                        name: 'Picture $i',
+                        added: DateTime(2026)),
+                ],
+                onChanged: (_, __) {},
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      final box = tester.getSize(find.byKey(const ValueKey('decalLibrary')));
+      expect(box.height, lessThanOrEqualTo(6.5 * 58));
+      // The decal's own settings are there under it, not pushed away.
+      expect(
+          find.byKey(const ValueKey('decal-on')).hitTestable(), findsOneWidget);
+      // And the last picture is reached by scrolling the list.
+      await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('decalAdd-p79.png')), 100,
+          scrollable: find
+              .descendant(
+                  of: find.byKey(const ValueKey('decalLibrary')),
+                  matching: find.byType(Scrollable))
+              .first);
+      expect(find.byKey(const ValueKey('decalAdd-p79.png')), findsOneWidget);
     });
 
     testWidgets('a picture from the library is added, placed and taken off',

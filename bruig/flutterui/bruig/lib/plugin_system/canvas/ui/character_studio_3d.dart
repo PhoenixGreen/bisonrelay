@@ -416,6 +416,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
             paint: _paint,
             face: _face,
             move: _move,
+            onMove: _step == 2 ? (m) => setState(() => _move = m) : null,
             line: _line,
             brush: _step == 0 && _part == touchUpPartId ? _brush : null,
             onSculpt: (s) => setState(() => _sculpt = s),
@@ -691,8 +692,10 @@ class _Stage extends StatefulWidget {
   final CharacterFace face;
   final ({String text, int n})? line;
 
-  /// move is how it stands.
+  /// move is how it stands; with [onMove], its dots are on the stage to
+  /// drag -- the hands, feet and hips moved, the head turned.
   final CharacterMove move;
+  final ValueChanged<CharacterMove>? onMove;
   final ShapeFrame frame;
   final StudioView? view;
   final ValueChanged<StudioView?> onView;
@@ -710,6 +713,7 @@ class _Stage extends StatefulWidget {
       required this.onPaint,
       this.face = const CharacterFace(),
       this.move = const CharacterMove(),
+      this.onMove,
       this.line,
       required this.frame,
       required this.view,
@@ -780,18 +784,115 @@ class _StageState extends State<_Stage> {
 
   /// _hitAt is where on the body point [p] of the stage is, if on it.
   CharacterHit? _hitAt(Offset p) {
+    final ray = _rayAt(p);
+    return ray == null ? null : _character.pick(ray.$1, ray.$2);
+  }
+
+  /// _view is the camera's frame: which way it looks, the screen's left and
+  /// up, how wide it sees, and the stage's size. forward × up is the
+  /// screen's left in flutter_scene's view, as a stroke aimed at one arm
+  /// landing on the other showed.
+  ({vm.Vector3 f, vm.Vector3 left, vm.Vector3 up, double t, Size size})?
+      _view() {
     final box = context.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize || box.size.isEmpty) return null;
-    final size = box.size;
-    final forward = (_camera.target - _camera.position).normalized();
-    final left = forward.cross(vm.Vector3(0, 1, 0)).normalized();
-    final up = left.cross(forward).normalized();
-    final t = math.tan(_camera.fovRadiansY / 2);
-    final x = (2 * p.dx / size.width - 1) * t * size.width / size.height,
-        y = (1 - 2 * p.dy / size.height) * t;
-    // forward × up is the screen's left in flutter_scene's view, as a
-    // stroke aimed at one arm landing on the other showed.
-    return _character.pick(_camera.position, forward - left * x + up * y);
+    final f = (_camera.target - _camera.position).normalized();
+    final left = f.cross(vm.Vector3(0, 1, 0)).normalized();
+    return (
+      f: f,
+      left: left,
+      up: left.cross(f).normalized(),
+      t: math.tan(_camera.fovRadiansY / 2),
+      size: box.size,
+    );
+  }
+
+  /// _rayAt is the ray from the camera through [p] on the stage.
+  (vm.Vector3, vm.Vector3)? _rayAt(Offset p) {
+    final v = _view();
+    if (v == null) return null;
+    final x =
+            (2 * p.dx / v.size.width - 1) * v.t * v.size.width / v.size.height,
+        y = (1 - 2 * p.dy / v.size.height) * v.t;
+    return (_camera.position, v.f - v.left * x + v.up * y);
+  }
+
+  /// _onStage is where [p], a point in the scene, is on the stage: the
+  /// other way from [_rayAt].
+  Offset? _onStage(vm.Vector3 p) {
+    final v = _view();
+    if (v == null) return null;
+    final d = p - _camera.position, z = d.dot(v.f);
+    if (z <= 1e-4) return null;
+    final x = -d.dot(v.left) / (z * v.t * v.size.width / v.size.height),
+        y = d.dot(v.up) / (z * v.t);
+    return Offset((x + 1) / 2 * v.size.width, (1 - y) / 2 * v.size.height);
+  }
+
+  // ---------------------------------------------------------------------
+  // The Move step's dots, dragged to move the hands, feet and hips, and to
+  // turn the head.
+
+  /// _dots are where they are on the stage, each frame.
+  final ValueNotifier<Map<String, Offset>> _dots = ValueNotifier(const {});
+  String? _dragging;
+  vm.Vector3? _dragFrom;
+  CharacterMove? _moveAtStart;
+
+  void _placeDots() {
+    if (widget.onMove == null) {
+      if (_dots.value.isNotEmpty) _dots.value = const {};
+      return;
+    }
+    _dots.value = {
+      for (final e in _character.dotsAt().entries)
+        if (_onStage(e.value) case final o?) e.key: o,
+    };
+  }
+
+  void _dotFrom(String k, Offset global) {
+    final at = _character.dotsAt()[k];
+    if (at == null) return;
+    _dragging = k;
+    _dragFrom = at;
+    _moveAtStart = widget.move;
+  }
+
+  /// _dotTo carries the dot being dragged to [global] on the screen: on a
+  /// plane facing the camera through where it started. The hands, feet and
+  /// hips move by as much, in the body's own space -- and the pose keeps
+  /// them where a body can be. The head turns toward it instead.
+  void _dotTo(Offset global) {
+    final k = _dragging, from = _dragFrom, m0 = _moveAtStart;
+    final onMove = widget.onMove;
+    final box = context.findRenderObject() as RenderBox?;
+    if (k == null ||
+        from == null ||
+        m0 == null ||
+        onMove == null ||
+        box == null) {
+      return;
+    }
+    final ray = _rayAt(box.globalToLocal(global));
+    final v = _view();
+    if (ray == null || v == null) return;
+    final denom = ray.$2.dot(v.f);
+    if (denom.abs() < 1e-6) return;
+    final hit = ray.$1 + ray.$2 * ((from - ray.$1).dot(v.f) / denom);
+    final a = _character.toBody(from), b = _character.toBody(hit);
+    if (a == null || b == null) return;
+    final d = b - a;
+    if (k == "head") {
+      // Toward its left (+x) turns it left; down nods it.
+      onMove(m0
+          .withBody(
+              "headTurn", (m0.bodyOf("headTurn") + d.x / 0.15).clamp(-1.0, 1.0))
+          .withBody(
+              "headNod", (m0.bodyOf("headNod") - d.y / 0.15).clamp(-1.0, 1.0)));
+      return;
+    }
+    final o = m0.offsetOf(k);
+    onMove(m0.withOffset(k, [o[0] + d.x, o[1] + d.y, o[2] + d.z]));
   }
 
   /// _showRing puts the brush ring where [p] is on the body, or takes it
@@ -943,6 +1044,7 @@ class _StageState extends State<_Stage> {
 
   @override
   void dispose() {
+    _dots.dispose();
     _character.removeListener(_changed);
     _character.dispose();
     super.dispose();
@@ -1016,6 +1118,7 @@ class _StageState extends State<_Stage> {
       ..target = at;
     _character.tick(dt, _camera,
         lookAt: eye, pixelRatio: MediaQuery.devicePixelRatioOf(context));
+    _placeDots();
   }
 
   @override
@@ -1083,6 +1186,46 @@ class _StageState extends State<_Stage> {
           ),
         ),
       ),
+      if (widget.onMove != null)
+        Positioned.fill(
+          child: ValueListenableBuilder<Map<String, Offset>>(
+            valueListenable: _dots,
+            builder: (context, dots, _) => Stack(children: [
+              for (final MapEntry(key: k, value: at) in dots.entries)
+                Positioned(
+                  left: at.dx - 9,
+                  top: at.dy - 9,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.grab,
+                    child: GestureDetector(
+                      key: ValueKey("moveDot-$k"),
+                      behavior: HitTestBehavior.opaque,
+                      onPanStart: (d) => _dotFrom(k, d.globalPosition),
+                      onPanUpdate: (d) => _dotTo(d.globalPosition),
+                      onPanEnd: (_) => _dragging = null,
+                      child: Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: k == "hips"
+                              ? colors.primary
+                              : k == "head"
+                                  // Not tertiary: a panel fill, lost on one.
+                                  ? const Color(0xff3aa66b)
+                                  : colors.secondary,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: const [
+                            BoxShadow(blurRadius: 4, color: Color(0x59000000))
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ),
       if (_ring case final r? when widget.brush != null)
         Positioned(
           left: r.at.dx - r.radius,

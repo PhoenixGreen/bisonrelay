@@ -615,6 +615,33 @@ class CharacterScene extends ChangeNotifier {
     ]);
   }
 
+  /// dotsAt are where the Move step's dots are, in the scene: on each hand
+  /// and foot, the hips, and over the head.
+  Map<String, vm.Vector3> dotsAt() {
+    final h = _avatar?.avatar.humanoid;
+    if (h == null) return const {};
+    vm.Vector3? at(VrmHumanBone b) => h.worldPosition(b);
+    final head = at(VrmHumanBone.head), foot = at(VrmHumanBone.leftFoot);
+    return {
+      if (at(VrmHumanBone.leftHand) case final p?) "handL": p,
+      if (at(VrmHumanBone.rightHand) case final p?) "handR": p,
+      if (foot != null) "footL": foot,
+      if (at(VrmHumanBone.rightFoot) case final p?) "footR": p,
+      if (at(VrmHumanBone.hips) case final p?) "hips": p,
+      if (head != null)
+        "head": head +
+            vm.Vector3(0, foot == null ? 0.3 : (head.y - foot.y) * 0.24, 0),
+    };
+  }
+
+  /// toBody is [world], a point in the scene, in the body's own space --
+  /// the space a dragged dot's offset is kept in.
+  vm.Vector3? toBody(vm.Vector3 world) {
+    final root = _avatar?.avatar.modelRoot;
+    if (root == null) return null;
+    return vm.Matrix4.inverted(root.globalTransform).transformed3(world);
+  }
+
   /// restAt is where bone [b] is with the body at rest, in the scene: what
   /// it is framed by, so the camera stays put as it jumps or crouches.
   vm.Vector3? restAt(VrmHumanBone b) =>

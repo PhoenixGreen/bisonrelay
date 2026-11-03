@@ -736,7 +736,10 @@ class VrmPoser {
       VrmHumanBone.values.where((b) => b.name == name).firstOrNull;
 
   /// _fingers shapes hand [side] ("left" or "right") as [shape], [amt] of
-  /// the way closed.
+  /// the way closed. In the model's space the left hand's fingers lie
+  /// along +x, palm down, so curling toward the palm is a turn of -angle
+  /// about z (and +angle for the right): the prototype's +side*angle was
+  /// for three-vrm's rig, and here bent the fingers back.
   void _fingers(String side, String shape, double amt) {
     final sh = _hands[shape] ?? _hands["relaxed"]!;
     final s = side == "left" ? 1.0 : -1.0;
@@ -748,7 +751,7 @@ class VrmPoser {
         final b = _bone("$side$f$j");
         if (b == null || !_has(b)) continue;
         _h.setNormalizedRotation(
-            b, _euler(0, ji == 0 ? -s * spread : 0, s * c[ji] * amt));
+            b, _euler(0, ji == 0 ? -s * spread : 0, -s * c[ji] * amt));
       }
     }
     // The thumb: turned under the palm about the hand's length, then each
@@ -859,11 +862,18 @@ class VrmPoser {
 
     // The body: hips, spine and head, each kept within what a body can do.
     final crouch = st.crouch + 0.3 * bd("crouch");
+    // Dragged by hand, the hips go no further than a body bends.
+    _V off(String k) {
+      final o = m.offsetOf(k);
+      return _v(o[0], o[1], o[2]);
+    }
+
+    final hd0 = off("hips");
     final hipRaw = _v(
-        _clamp((st.hipShift + 0.05 * bd("shift")) * u + mo.dx, -0.15 * u,
-            0.15 * u),
-        _clamp(-crouch * u + mo.dy, -0.42 * u, 0.04 * u) + mo.root,
-        0);
+        _clamp((st.hipShift + 0.05 * bd("shift")) * u + mo.dx + hd0.x,
+            -0.15 * u, 0.15 * u),
+        _clamp(-crouch * u + mo.dy + hd0.y, -0.42 * u, 0.04 * u) + mo.root,
+        _clamp(hd0.z, -0.15 * u, 0.15 * u));
     final hipOff = _ev("hip", hipRaw, a);
     _h.setHipsPosition(r.hips + hipOff);
     final hr = _el(
@@ -948,6 +958,14 @@ class VrmPoser {
       final tgt = base +
           _v(0, f[1] + mo.root + r.foot * math.sin(heel) + rollUp,
               f[0] - r.foot * (1 - math.cos(heel)) * 0.5 - rollBack);
+      // Dragged by hand: on or over the floor, never so high the thigh goes
+      // into the body, and within a stride of where it stands.
+      tgt.add(off("foot$k"));
+      final hipsY = r.hips.y + hipOff.y;
+      tgt
+        ..y = math.min(tgt.y, hipsY - 0.25 * u)
+        ..z = _clamp(tgt.z, rest.z - 0.6 * u, rest.z + 0.6 * u)
+        ..x = _clamp(tgt.x, rest.x - 0.4 * u, rest.x + 0.4 * u);
       tgt.y = math.max(rest.y + mo.root * 0.9, tgt.y);
       footAt[k] =
           _ev("foot$k", tgt, f[0] != 0 || f[1] != 0 ? math.max(a, 0.6) : a);
@@ -1049,7 +1067,8 @@ class VrmPoser {
       }
       final hv =
           mine ? mo.hand[k] ?? const [0.0, 0.0, 0.0] : const [0.0, 0.0, 0.0];
-      var tgt = base + _v(hv[0], hv[1], hv[2]);
+      // Dragged by hand as well: then kept out of the body as any hand is.
+      var tgt = base + _v(hv[0], hv[1], hv[2]) + off("hand$k");
       if (tgt.z < l.chest.z - 0.04 * u && s * (tgt.x - l.chest.x) < 0.03 * u) {
         tgt.x = l.chest.x + s * 0.03 * u;
       }

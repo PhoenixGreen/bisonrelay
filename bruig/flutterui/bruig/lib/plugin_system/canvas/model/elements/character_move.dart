@@ -108,6 +108,17 @@ const Map<String, double> movePhysicsDefaults = {
   "wind": 0,
 };
 
+/// moveDots are the dots dragged on the character in the Move step: the
+/// hands, feet and hips move, the head turns.
+const List<String> moveDots = [
+  "handL",
+  "handR",
+  "footL",
+  "footR",
+  "hips",
+  "head"
+];
+
 /// CharacterMove is how the character stands and moves. Immutable.
 class CharacterMove {
   final String stance;
@@ -130,6 +141,11 @@ class CharacterMove {
   /// walk and physics are each of [moveWalk] and [movePhysics] changed.
   final Map<String, double> walk, physics;
 
+  /// offsets are where the hands, feet and hips have been dragged to, from
+  /// where the stance puts them: [x, y, z] in metres, in the body's own
+  /// space (up is +y, it faces +z, its left is +x), by [moveDots] name.
+  final Map<String, List<double>> offsets;
+
   const CharacterMove({
     this.stance = "Relaxed",
     this.handL = "relaxed",
@@ -142,6 +158,7 @@ class CharacterMove {
     this.playing = true,
     this.walk = const {},
     this.physics = const {},
+    this.offsets = const {},
   });
 
   double bodyOf(String k) => body[k] ?? 0;
@@ -160,7 +177,8 @@ class CharacterMove {
           double? speed,
           bool? playing,
           Map<String, double>? walk,
-          Map<String, double>? physics}) =>
+          Map<String, double>? physics,
+          Map<String, List<double>>? offsets}) =>
       CharacterMove(
           stance: stance ?? this.stance,
           handL: handL ?? this.handL,
@@ -172,7 +190,16 @@ class CharacterMove {
           speed: speed ?? this.speed,
           playing: playing ?? this.playing,
           walk: walk ?? this.walk,
-          physics: physics ?? this.physics);
+          physics: physics ?? this.physics,
+          offsets: offsets ?? this.offsets);
+
+  /// offsetOf is dot [k]'s offset, nought where it has none.
+  List<double> offsetOf(String k) => offsets[k] ?? const [0.0, 0.0, 0.0];
+
+  /// withOffset is this with dot [k] dragged to [o].
+  CharacterMove withOffset(String k, List<double> o) => copyWith(
+      offsets: {...offsets, k: o}
+        ..removeWhere((_, v) => v.every((x) => x.abs() < 1e-6)));
 
   CharacterMove withWalk(String k, double v) => copyWith(
       walk: {...walk, k: v}..removeWhere((k, x) => x == moveWalkDefaults[k]));
@@ -200,6 +227,7 @@ class CharacterMove {
         if (!playing) "playing": false,
         if (walk.isNotEmpty) "walk": walk,
         if (physics.isNotEmpty) "physics": physics,
+        if (offsets.isNotEmpty) "offsets": offsets,
       };
 
   static CharacterMove fromJson(Object? json) {
@@ -238,6 +266,13 @@ class CharacterMove {
       walk: ranged(json["walk"], moveWalkDefaults, (_) => 1),
       physics: ranged(json["physics"], movePhysicsDefaults,
           (k) => movePhysics.firstWhere((p) => p.$1 == k).$3),
+      offsets: {
+        if (json["offsets"] case final Map o)
+          for (final k in moveDots)
+            if (o[k] case final List v
+                when v.length == 3 && v.every((x) => x is num && x.isFinite))
+              k: [for (final x in v) (x as num).toDouble().clamp(-1.0, 1.0)]
+      },
     );
   }
 
@@ -257,7 +292,12 @@ class CharacterMove {
       other.speed == speed &&
       other.playing == playing &&
       _same(other.walk, walk) &&
-      _same(other.physics, physics);
+      _same(other.physics, physics) &&
+      other.offsets.length == offsets.length &&
+      offsets.entries.every((e) =>
+          other.offsets[e.key] != null &&
+          List.generate(3, (i) => other.offsets[e.key]![i] == e.value[i])
+              .every((x) => x));
 
   @override
   int get hashCode => Object.hash(

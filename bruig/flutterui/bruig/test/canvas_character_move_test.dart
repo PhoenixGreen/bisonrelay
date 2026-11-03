@@ -27,7 +27,11 @@ void main() {
         speed: 1.5,
         playing: false,
         walk: {'stride': 0.9},
-        physics: {'hair': 1.8, 'wind': 0.4});
+        physics: {'hair': 1.8, 'wind': 0.4},
+        offsets: {
+          'handL': [0.1, -0.05, 0.2],
+          'hips': [0, -0.1, 0]
+        });
     final d = CharacterDesign(
         id: 'c', name: '', body: 'Vivi', move: m, updated: DateTime(2026));
     expect(
@@ -62,6 +66,18 @@ void main() {
     expect(odd.walk, {'pace': 1.0}, reason: 'as made is not kept');
     expect(odd.physics, {'hair': 2.0, 'wind': 0.0});
     expect(odd.walkOf('stride'), 0.5);
+    final dragged = CharacterMove.fromJson({
+      'offsets': {
+        'handL': [0.1, 0.2, 9],
+        'elbow': [1, 1, 1],
+        'footR': [1, 'up', 0],
+      }
+    });
+    expect(dragged.offsets.keys, ['handL'], reason: 'only the dots, whole');
+    expect(dragged.offsetOf('handL'), [0.1, 0.2, 1.0]);
+    expect(dragged.offsetOf('footL'), [0.0, 0.0, 0.0]);
+    expect(dragged.withOffset('handL', [0, 0, 0]).offsets, isEmpty,
+        reason: 'dragged back is not kept');
     expect(
         const CharacterMove()
             .withPhysics('hair', 1.4)
@@ -112,10 +128,15 @@ void main() {
                             move: m,
                             onChanged: (n) => set(() => m = n))),
                   ])));
+      m = m.withOffset('hips', [0, -0.1, 0]);
+      await tester.tap(find.byKey(const ValueKey('movePart-stance')));
+      await tester.pumpAndSettle();
       await tester
           .tap(find.byKey(const ValueKey('studioPill-move-stance-Wave')));
       await tester.pumpAndSettle();
       expect(m.stance, 'Wave');
+      expect(m.offsets, isEmpty,
+          reason: 'a new stance puts the hands and feet where it has them');
       expect(find.byKey(const ValueKey('moveChanged-stance')), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('movePart-hands')));
@@ -133,8 +154,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(m.footOf('L', 'heel'), 0.7);
 
+      // Dragged dots, put back by the panel; and a new stance starts clean.
+      m = m.withOffset('handR', [0.1, 0.1, 0.1]);
       await tester.tap(find.byKey(const ValueKey('movePart-body')));
       await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('moveChanged-body')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('moveOffsetsReset')));
+      await tester.pumpAndSettle();
+      expect(m.offsets, isEmpty);
+      expect(find.byKey(const ValueKey('moveOffsetsReset')), findsNothing);
+      m = m.withOffset('footL', [0, 0.1, 0]);
       tester
           .widget<StudioSlider>(find.byKey(const ValueKey('move-body-lean')))
           .onChanged(-0.4);

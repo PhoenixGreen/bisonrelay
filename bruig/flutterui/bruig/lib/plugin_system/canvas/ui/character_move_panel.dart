@@ -32,10 +32,11 @@ const List<(String id, String name, String group, String says)> moveParts = [
   ),
   (
     "body",
-    "Body",
+    "By hand",
     "Pose",
-    "The body turned by hand, over the stance: leaning, twisting, bending, "
-        "the head turned, crouched, the weight on one side."
+    "Drag the dots on the character: the hands, the feet and the hips move, "
+        "the head turns -- kept where a body can be. Or turn the body here: "
+        "leaning, twisting, bending, crouched, the weight on one side."
   ),
   (
     "motion",
@@ -60,7 +61,7 @@ bool movePartChanged(CharacterMove m, String id) => switch (id) {
       "stance" => m.stance != "Relaxed",
       "hands" => m.handL != "relaxed" || m.handR != "relaxed",
       "feet" => m.footL.isNotEmpty || m.footR.isNotEmpty,
-      "body" => m.body.isNotEmpty,
+      "body" => m.body.isNotEmpty || m.offsets.isNotEmpty,
       "motion" => m.motion != "Idle" || m.speed != 1 || !m.playing,
       "walk" => m.walk.isNotEmpty,
       "physics" => m.physics.isNotEmpty,
@@ -72,7 +73,7 @@ CharacterMove resetMovePart(CharacterMove m, String id) => switch (id) {
       "stance" => m.copyWith(stance: "Relaxed"),
       "hands" => m.copyWith(handL: "relaxed", handR: "relaxed"),
       "feet" => m.copyWith(footL: const {}, footR: const {}),
-      "body" => m.copyWith(body: const {}),
+      "body" => m.copyWith(body: const {}, offsets: const {}),
       "motion" => m.copyWith(motion: "Idle", speed: 1, playing: true),
       "walk" => m.copyWith(walk: const {}),
       "physics" => m.copyWith(physics: const {}),
@@ -153,7 +154,9 @@ class CharacterMoveControls extends StatelessWidget {
             label: "Stands",
             value: m.stance,
             options: [for (final s in moveStances) (s, s)],
-            onChanged: (s) => onChanged(m.copyWith(stance: s)),
+            // A new stance starts with the hands and feet where it puts them.
+            onChanged: (s) =>
+                onChanged(m.copyWith(stance: s, offsets: const {})),
           ),
         ],
       "hands" => <Widget>[
@@ -243,6 +246,17 @@ class CharacterMoveControls extends StatelessWidget {
             ),
         ],
       _ => <Widget>[
+          if (m.offsets.isNotEmpty) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: StudioPill(
+                key: const ValueKey("moveOffsetsReset"),
+                label: "Put hands and feet back",
+                onTap: () => onChanged(m.copyWith(offsets: const {})),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           for (final (b, name) in moveBody)
             slider("move-body-$b", name, m.bodyOf(b), -1,
                 (v) => onChanged(m.withBody(b, v))),
