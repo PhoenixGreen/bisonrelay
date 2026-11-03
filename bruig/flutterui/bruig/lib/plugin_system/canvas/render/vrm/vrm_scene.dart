@@ -280,9 +280,10 @@ class ShapedAvatar {
   // The body at rest, for posing (vrm_pose.dart).
 
   /// bodyAtRest is points on the body at rest, as it is shaped: the skin
-  /// of its torso, neck and thighs, and the made clothes over them (with
-  /// [cloth] true), every [step]th of each.
-  Iterable<({double x, double y, double z, bool cloth})> bodyAtRest(
+  /// of its torso, neck and thighs, and the clothes over them -- its own and
+  /// made ones -- every [step]th of each. [cloth] marks the clothes, and
+  /// [loose] those that hang away from the body, as a skirt does.
+  Iterable<({double x, double y, double z, bool cloth, bool loose})> bodyAtRest(
       {int step = 3}) sync* {
     final w = wardrobe;
     if (w == null) return;
@@ -300,7 +301,35 @@ class ShapedAvatar {
       if (g != BodyGroup.torso && g != BodyGroup.neck && g != BodyGroup.legU) {
         continue;
       }
-      yield (x: pos[i * 3], y: pos[i * 3 + 1], z: pos[i * 3 + 2], cloth: false);
+      yield (
+        x: pos[i * 3],
+        y: pos[i * 3 + 1],
+        z: pos[i * 3 + 2],
+        cloth: false,
+        loose: false
+      );
+    }
+    // The body's own clothes, where they are worn: in its mesh, so missed
+    // before, and arms went through them.
+    final o = _dressed ?? CharacterOutfit.asDesigned;
+    for (final p in w.body.primitives) {
+      if (p.vertices != w.skin) continue;
+      final slot = switch (p.part) {
+        VrmPart.top => WearSlot.top,
+        VrmPart.bottom => WearSlot.bottom,
+        _ => null,
+      };
+      if (slot == null || o[slot].source != WearSource.own) continue;
+      for (var j = 0; j < p.used.length; j += step) {
+        final i = p.used[j];
+        yield (
+          x: pos[i * 3],
+          y: pos[i * 3 + 1],
+          z: pos[i * 3 + 2],
+          cloth: true,
+          loose: slot == WearSlot.bottom
+        );
+      }
     }
     for (final MapEntry(key: slot, value: worn) in _worn.entries) {
       if (slot != WearSlot.top &&
@@ -311,7 +340,13 @@ class ShapedAvatar {
       final p = _shapedAt[worn.group] ?? worn.group.vertices.positions;
       for (var j = 0; j < worn.group.used.length; j += step) {
         final i = worn.group.used[j];
-        yield (x: p[i * 3], y: p[i * 3 + 1], z: p[i * 3 + 2], cloth: true);
+        yield (
+          x: p[i * 3],
+          y: p[i * 3 + 1],
+          z: p[i * 3 + 2],
+          cloth: true,
+          loose: slot == WearSlot.bottom
+        );
       }
     }
   }

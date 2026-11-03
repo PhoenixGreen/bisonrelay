@@ -109,6 +109,10 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
   int _step = 0;
   CharacterMove _move = const CharacterMove();
   String _movePart = moveParts.first.$1;
+
+  /// _playing is whether the motion plays on the stage: the top bar's
+  /// Play and Stop. Not kept with the character.
+  bool _playing = true;
   CharacterFace _face = const CharacterFace();
   String _facePart = faceParts.first.$1;
 
@@ -320,6 +324,8 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
           }),
           step: _step,
           onStep: (i) => setState(() => _step = i),
+          playing: _playing,
+          onPlay: () => setState(() => _playing = !_playing),
           onDone: _done,
         ),
         Divider(height: 1, thickness: 1, color: colors.outlineVariant),
@@ -416,6 +422,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
             paint: _paint,
             face: _face,
             move: _move,
+            playing: _playing,
             onMove: _step == 2 ? (m) => setState(() => _move = m) : null,
             line: _line,
             brush: _step == 0 && _part == touchUpPartId ? _brush : null,
@@ -540,11 +547,18 @@ class _TopBar extends StatelessWidget {
   /// step is the step open, and onStep opens another.
   final int step;
   final ValueChanged<int> onStep;
+
+  /// playing is whether the motion plays, and onPlay plays or stops it:
+  /// here, for every step.
+  final bool playing;
+  final VoidCallback onPlay;
   const _TopBar(
       {required this.name,
       required this.title,
       required this.step,
       required this.onStep,
+      required this.playing,
+      required this.onPlay,
       required this.onStartAgain,
       required this.onDone});
 
@@ -592,6 +606,15 @@ class _TopBar extends StatelessWidget {
             ]),
           ),
         ),
+        StudioPill(
+          key: const ValueKey("studioPlay"),
+          label: playing ? "Stop" : "Play",
+          tooltip: playing
+              ? "Stop the motion: it stands in its stance"
+              : "Play the motion",
+          onTap: onPlay,
+        ),
+        const SizedBox(width: 8),
         StudioPill(
           key: const ValueKey("studioStartAgain"),
           label: "Start again",
@@ -693,8 +716,10 @@ class _Stage extends StatefulWidget {
   final ({String text, int n})? line;
 
   /// move is how it stands; with [onMove], its dots are on the stage to
-  /// drag -- the hands, feet and hips moved, the head turned.
+  /// drag -- the hands, feet and hips moved, the head turned. [playing] is
+  /// whether its motion plays.
   final CharacterMove move;
+  final bool playing;
   final ValueChanged<CharacterMove>? onMove;
   final ShapeFrame frame;
   final StudioView? view;
@@ -713,6 +738,7 @@ class _Stage extends StatefulWidget {
       required this.onPaint,
       this.face = const CharacterFace(),
       this.move = const CharacterMove(),
+      this.playing = true,
       this.onMove,
       this.line,
       required this.frame,
@@ -1013,7 +1039,7 @@ class _StageState extends State<_Stage> {
     setState(() {});
   }
 
-  void _show() => _character.show(
+  void _show() => (_character..playing = widget.playing).show(
       body: widget.id,
       shape: widget.shape,
       outfit: widget.outfit,

@@ -318,9 +318,9 @@ class CharacterScene extends ChangeNotifier {
     if (!identical(_poser?.avatar, a)) _poser = VrmPoser(a);
     // The motion's time: on the canvas, the frame's; in the Studio, as it
     // plays.
-    final mt =
-        _motionTime ?? (_moveClock += _move.playing ? dt * _move.speed : 0);
-    _poser!.pose(_move, dt, t: mt);
+    final mt = _motionTime ?? (_moveClock += playing ? dt * _move.speed : 0);
+    // Stopped, it stands in its stance: no motion holding any of it.
+    _poser!.pose(playing ? _move : _move.copyWith(motion: "Still"), dt, t: mt);
     final physics = (
       hair: _move.physicsOf("hair"),
       clothes: _move.physicsOf("clothes"),
@@ -517,6 +517,10 @@ class CharacterScene extends ChangeNotifier {
   // How it stands (character_move.dart), posed by vrm_pose.dart.
   CharacterMove _move = const CharacterMove();
   VrmPoser? _poser;
+
+  /// playing is whether its motion plays: the Studio's Play and Stop. On
+  /// the canvas it always does.
+  bool playing = true;
   double _moveClock = 0;
   double? _motionTime;
 

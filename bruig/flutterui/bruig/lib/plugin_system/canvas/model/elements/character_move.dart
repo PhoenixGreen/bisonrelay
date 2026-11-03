@@ -132,11 +132,9 @@ class CharacterMove {
   /// footL and footR are each foot's [moveFoot] changed from nought.
   final Map<String, double> footL, footR;
 
-  /// motion is the motion it plays, at [speed] times as fast, while
-  /// [playing].
+  /// motion is the motion it plays, at [speed] times as fast.
   final String motion;
   final double speed;
-  final bool playing;
 
   /// walk and physics are each of [moveWalk] and [movePhysics] changed.
   final Map<String, double> walk, physics;
@@ -155,7 +153,6 @@ class CharacterMove {
     this.footR = const {},
     this.motion = "Idle",
     this.speed = 1,
-    this.playing = true,
     this.walk = const {},
     this.physics = const {},
     this.offsets = const {},
@@ -175,7 +172,6 @@ class CharacterMove {
           Map<String, double>? footR,
           String? motion,
           double? speed,
-          bool? playing,
           Map<String, double>? walk,
           Map<String, double>? physics,
           Map<String, List<double>>? offsets}) =>
@@ -188,7 +184,6 @@ class CharacterMove {
           footR: footR ?? this.footR,
           motion: motion ?? this.motion,
           speed: speed ?? this.speed,
-          playing: playing ?? this.playing,
           walk: walk ?? this.walk,
           physics: physics ?? this.physics,
           offsets: offsets ?? this.offsets);
@@ -224,7 +219,6 @@ class CharacterMove {
         if (footR.isNotEmpty) "footR": footR,
         if (motion != "Idle") "motion": motion,
         if (speed != 1) "speed": speed,
-        if (!playing) "playing": false,
         if (walk.isNotEmpty) "walk": walk,
         if (physics.isNotEmpty) "physics": physics,
         if (offsets.isNotEmpty) "offsets": offsets,
@@ -262,7 +256,6 @@ class CharacterMove {
       speed: json["speed"] is num && (json["speed"] as num).isFinite
           ? (json["speed"] as num).toDouble().clamp(0.25, 2.0)
           : 1,
-      playing: json["playing"] != false,
       walk: ranged(json["walk"], moveWalkDefaults, (_) => 1),
       physics: ranged(json["physics"], movePhysicsDefaults,
           (k) => movePhysics.firstWhere((p) => p.$1 == k).$3),
@@ -290,7 +283,6 @@ class CharacterMove {
       _same(other.footR, footR) &&
       other.motion == motion &&
       other.speed == speed &&
-      other.playing == playing &&
       _same(other.walk, walk) &&
       _same(other.physics, physics) &&
       other.offsets.length == offsets.length &&

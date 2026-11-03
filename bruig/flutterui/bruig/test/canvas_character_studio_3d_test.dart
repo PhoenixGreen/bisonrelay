@@ -280,6 +280,11 @@ void main() {
     }
     expect(kept?.face.name, 'Sad');
     expect(kept?.face.mix, faceExpressions['Sad']);
+    // Play and Stop, in the top bar for every step.
+    expect(find.text('Stop'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('studioPlay')));
+    await tester.pumpAndSettle();
+    expect(find.text('Play'), findsOneWidget);
     // The Move step: its own parts, and a stance kept with the character.
     await tester.tap(find.byKey(const ValueKey('studioStep-2')));
     await tester.pumpAndSettle();

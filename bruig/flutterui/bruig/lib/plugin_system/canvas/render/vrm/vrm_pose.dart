@@ -560,7 +560,9 @@ class VrmPoser {
       final lx = p.x - frames[k].x,
           ly = p.y - frames[k].y,
           lz = p.z - frames[k].z;
-      final into = p.cloth ? cloth[k] : slices[k];
+      // Close-fitting clothes count as the body; a skirt's flare a third
+      // of the way out, or the legs could not move under it.
+      final into = p.loose ? cloth[k] : slices[k];
       final key = (ly / 0.02).round();
       final r = into[key];
       if (r == null) {
@@ -572,7 +574,7 @@ class VrmPoser {
         r[3] = math.max(r[3], lz);
       }
     }
-    // Cloth reaches a third of the way from the body to its own edge.
+    // Loose cloth reaches a third of the way from the body to its edge.
     for (final k in const [0, 1]) {
       for (final MapEntry(key: key, value: c) in cloth[k].entries) {
         final b = slices[k][key] ??
@@ -641,6 +643,30 @@ class VrmPoser {
       ..x = cx + dx * f
       ..z = cz + dz * f;
     return turn.rotated(loc) + at;
+  }
+
+  /// _outOfArm is [p] moved out of arm [side]'s upper arm and forearm to
+  /// [r] from them, where it is nearer.
+  _V _outOfArm(int side, _V p, double r) {
+    final upper =
+            side > 0 ? VrmHumanBone.leftUpperArm : VrmHumanBone.rightUpperArm,
+        lower =
+            side > 0 ? VrmHumanBone.leftLowerArm : VrmHumanBone.rightLowerArm,
+        hand = side > 0 ? VrmHumanBone.leftHand : VrmHumanBone.rightHand;
+    if (!_has(upper) || !_has(lower) || !_has(hand)) return p;
+    var out = p;
+    final s0 = _p(upper), e0 = _p(lower), h0 = _p(hand);
+    for (final (a, b) in [(s0, e0), (e0, h0)]) {
+      final ab = b - a;
+      final t = ab.length2 < 1e-12
+          ? 0.0
+          : ((out - a).dot(ab) / ab.length2).clamp(0.0, 1.0);
+      final c = a + ab * t, d = out - c;
+      if (d.length >= r) continue;
+      final dir = d.length2 < 1e-10 ? _v(0, 0, 1) : d.normalized();
+      out = c + dir * r;
+    }
+    return out;
   }
 
   /// _solveLimb turns two bones -- upper arm and forearm, thigh and shin --
@@ -1010,10 +1036,13 @@ class VrmPoser {
     // Hands: each shaped as asked, or as the stance has it.
     for (final (side, k) in const [("left", "L"), ("right", "R")]) {
       final asked = k == "L" ? m.handL : m.handR;
-      final shape = asked != "relaxed"
-          ? asked
-          : _ownsArm(own, k)
-              ? mo.handShape[k] ?? "relaxed"
+      // A motion moving this arm shapes its hand as it moves -- a thumb
+      // held up through a walk looked wrong; otherwise as asked, or as the
+      // stance has it.
+      final shape = _ownsArm(own, k)
+          ? mo.handShape[k] ?? "relaxed"
+          : asked != "relaxed"
+              ? asked
               : st.handShape[k] ?? "relaxed";
       if (_eased["shape$k"] != shape) {
         _eased["shape$k"] = shape;
@@ -1026,7 +1055,7 @@ class VrmPoser {
 
     // Arms: each hand where the stance puts it, or hanging at the side --
     // never inside the body, nor reaching behind it to the other side.
-    final margin = 0.035 * u;
+    final margin = 0.045 * u;
     for (final s in const [1, -1]) {
       final k = s > 0 ? "L" : "R";
       final place = st0.hands[k] ?? st0.hand, mine = _ownsArm(own, k);
@@ -1072,6 +1101,9 @@ class VrmPoser {
       if (tgt.z < l.chest.z - 0.04 * u && s * (tgt.x - l.chest.x) < 0.03 * u) {
         tgt.x = l.chest.x + s * 0.03 * u;
       }
+      // Not through the other arm: the hand kept out of its upper arm and
+      // forearm, as they are now.
+      tgt = _outOfArm(-s, tgt, 0.05 * u);
       final inside = _outOfBody(tgt, margin);
       if (inside != null) {
         _V? front;
@@ -1090,7 +1122,7 @@ class VrmPoser {
       }
       // The forearm too: its middle kept out of the body.
       final mid = l.shoulder[s]! + (tgt - l.shoulder[s]!) * 0.62;
-      final midOut = _outOfBody(mid, 0.03 * u);
+      final midOut = _outOfBody(mid, 0.04 * u);
       if (midOut != null) tgt = tgt + (midOut - mid);
       final tE = _ev("hand$k", tgt, a);
       final pole = _ev("pole$k", () {
