@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/automation.dart';
 import 'package:bruig/plugin_system/canvas/model/session.dart';
@@ -23,10 +22,7 @@ import 'package:bruig/plugin_system/canvas/media/mix/dart_audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart'
     show ffmpegDecode, readWholeAway;
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart' show mixRate;
-import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
-import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:math' as math;
 import 'dart:io' show Directory, File;
@@ -53,30 +49,15 @@ import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart'
-    show posePresets;
-import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart';
+import 'package:bruig/plugin_system/canvas/model/lip_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
 import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
-import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
 import 'package:bruig/plugin_system/canvas/ui/sprite_painting.dart';
 import 'package:bruig/plugin_system/canvas/ui/tile_painting.dart';
 import 'package:bruig/plugin_system/canvas/render/tile_map_painter.dart' show tileMapEditingOf;
 import 'package:bruig/plugin_system/canvas/render/sprite_painter.dart' show spritePaintingOf;
-import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart'
-    show characterDollLook, characterDollOf, characterSoloOf, characterWeightsOf;
-import 'package:bruig/plugin_system/canvas/model/elements/character_gltf.dart'
-    show HumanBone;
-import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/character_drawing_settings.dart'
-    show panelOptions, showPanel;
-import 'package:bruig/plugin_system/canvas/render/character/character_live.dart'
-    show rebasedCharacter;
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
@@ -111,8 +92,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_studio.dart'
-    show StudioFacePart, StudioView, StudioWorkspace;
 import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart' show
         ControlAction,
@@ -153,12 +132,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/background_element.dar
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
-import 'package:bruig/plugin_system/canvas/storage/character_library.dart';
-import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart' show ProceduralSpec;
-import 'package:bruig/plugin_system/canvas/model/elements/character_asset.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart'
-    show CharacterOutfit, Garment;
-import 'package:bruig/plugin_system/canvas/model/elements/character_palettes.dart' show generatedDna;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart'
     show HardwareKeyboard, KeyDownEvent, KeyEvent, KeyRepeatEvent, KeyUpEvent, LogicalKeyboardKey;
@@ -531,7 +504,6 @@ class CanvasController extends ChangeNotifier {
       _vectorEditing = null;
       _resetVectorEditing();
     }
-    _keepDrawingProxy();
     // And a picture's layers, by the same rule.
     var picture = _imageEditing;
     if (picture != null &&
@@ -1057,7 +1029,6 @@ class CanvasController extends ChangeNotifier {
       _redo.clear();
     }
 
-    next = _drawnOnCharacter(next);
     _document = next;
     _dirty = true;
     scheduleAutosave();
@@ -1225,8 +1196,6 @@ class CanvasController extends ChangeNotifier {
   }
 
   void deleteSelected() {
-    // A rig's point or a face's feature picked goes before anything else.
-    if (deleteRigPoint() || putFacePointBack() || deleteHairStroke()) return;
     // While a drawing is being edited, Delete takes out the points picked,
     // or the shape picked -- and with neither, nothing: never the drawing.
     if (editingVector != null) {
@@ -1698,21 +1667,8 @@ class CanvasController extends ChangeNotifier {
   /// into the keyframe -- a slow drag and a fast one would end up in different
   /// places.
   CanvasElement movedTo(CanvasElement element, Offset topLeft) {
-    // A character standing on a stage is moved across its floor: to the
-    // spot under where its feet have been dragged to.
-    if (element is CharacterElement && element.onStage != null) {
-      var at = stagingIn(_document, element, _frame);
-      var stage = stageOf(element.onStage!.stage);
-      if (at != null && stage != null) {
-        var feet = topLeft + Offset(at.box.width / 2, at.box.height);
-        var spot = stageView(stage, _frame).toFloor(feet);
-        if (spot == null) return element;
-        return element.copyWith(
-            onStage: element.onStage!.copyWith(x: spot.dx, z: spot.dy));
-      }
-    }
-    // Anything else on a stage is moved across its floor -- or up and
-    // along its back wall -- to under where it has been dragged to.
+    // Something on a stage is moved across its floor -- or up and along its
+    // back wall -- to under where it has been dragged to.
     if (element.base.spot case var spot?) {
       var at = stagedIn(_document, element, _frame);
       if (at != null) {
@@ -1731,10 +1687,7 @@ class CanvasController extends ChangeNotifier {
           default:
             // The point on the floor under the pointer moves as the pointer
             // does: the element keeps its place under the hand that holds it.
-            var held = spot.stand == SpotStand.floor
-                ? at.box.center
-                : (at.quad[2] + at.quad[3]) / 2;
-            var was = view.toFloor(held), now = view.toFloor(held + by);
+            var was = view.toFloor(at.foot), now = view.toFloor(at.foot + by);
             if (was == null || now == null) return element;
             return element.withBase(
                 spot: spot.copyWith(
@@ -1956,68 +1909,13 @@ class CanvasController extends ChangeNotifier {
     replaceElement(withoutHalfAnimations(element, next));
   }
 
-  /// setCharacterPose stands [e] in [pose]: its stance, until any part of
-  /// its performance has been keyed, and from then on this frame's
-  /// keyframe -- the same rule a drag follows, where moving an element is a
-  /// move until it has been animated and a pose after. See
-  /// CharacterElement.posedOnTimeline.
-  void setCharacterPose(CharacterElement e, CharacterPose pose,
-          {bool transient = false}) =>
-      replaceElement(characterPosed(e, pose), transient: transient);
-
-  /// characterPosed is [e] stood in [pose] as setCharacterPose would stand
-  /// it, without applying it -- for the settings panel, which writes its
-  /// own changes.
-  CharacterElement characterPosed(CharacterElement e, CharacterPose pose) =>
-      e.posedOnTimeline
-          ? e.withBase(track: _pinnedAt(e.track!, _frame, pose.channels))
-              as CharacterElement
-          : e.copyWith(pose: pose);
-
-  /// characterFaced is [e] with its face set to [face], by the same rule
-  /// as characterPosed.
-  CharacterElement characterFaced(CharacterElement e, CharacterFace face) =>
-      e.posedOnTimeline
-          ? e.withBase(track: _pinnedAt(e.track!, _frame, face.channels))
-              as CharacterElement
-          : e.copyWith(face: face);
-
-  /// keyCharacterPose keys the character as it is on this frame, pose and
-  /// face, which is how a character starts to move: how it stands is keyed
-  /// at the start as well the first time, so the pose is arrived at rather
-  /// than held from the first frame.
-  void keyCharacterPose(CharacterElement e,
-      [CharacterPose? pose, CharacterFace? face]) {
-    var track = e.track ?? ElementTrack.empty;
-    if (!e.posedOnTimeline && _frame != 0) {
-      track = _pinnedAt(track, 0, {...e.pose.channels, ...e.face.channels});
-    }
-    replaceElement(e.withBase(
-        track: _pinnedAt(track, _frame, {
-      ...(pose ?? e.poseAtFrame(_frame)).channels,
-      ...(face ?? e.faceAtFrame(_frame)).channels,
-    })));
-  }
-
-  /// characterMouthed is [e] with its mouth set to [shape] here: a mouth
-  /// key on this frame once it has any -- lip synced or posed -- and its
-  /// stance otherwise.
-  CharacterElement characterMouthed(CharacterElement e, MouthShape shape) {
-    if (e.mouthKeys.isEmpty && !e.posedOnTimeline) {
-      return e.copyWith(face: e.face.withMouth(shape));
-    }
-    return e.withBase(
-        track: _pinnedAt(e.track ?? ElementTrack.empty, _frame,
-            {mouthChannel: shape.index.toDouble()})) as CharacterElement;
-  }
-
   /// lipSync gives [e] the mouths for what is said on [voice]: from the
   /// words, heard first if they have not been, or with [words] off from the
   /// loudness alone. Mouths it laid before over the same stretch are
   /// replaced; the rest of the character's keys are left as they are. One
   /// undo step. Says what stopped it, or how many mouths it laid.
   Future<({String? problem, int mouths})> lipSync(
-      CharacterElement e, AudioElement voice,
+      CanvasElement e, AudioElement voice,
       {bool words = true, LipSyncFeel feel = const LipSyncFeel()}) async {
     var source = voice.clip.playlist.firstOrNull;
     if (source == null) {
@@ -2081,15 +1979,18 @@ class CanvasController extends ChangeNotifier {
 
     // Read again: the character may have been changed while listening.
     var now = _document.elementById(e.id);
-    if (now is! CharacterElement) return (problem: null, mouths: 0);
-    var local = [
-      for (var k in keys)
-        if (k.frame - mine >= 0) (frame: k.frame - mine, shape: k.shape),
-    ];
-    replaceElement(now.withMouths(local,
-        from: math.max(0, voiceAt - mine - feel.lead - 1),
-        to: voiceEnd - mine + 1));
-    return (problem: null, mouths: local.length);
+    if (now is Character3dElement) {
+      // A 3D character's mouths are in seconds of its own scene.
+      var local = [
+        for (var k in keys)
+          if (k.frame - mine >= 0) (t: (k.frame - mine) / rate, shape: k.shape),
+      ];
+      replaceElement(now.performing(now.performance.withMouths(local,
+          from: math.max(0, voiceAt - mine - feel.lead - 1) / rate,
+          to: (voiceEnd - mine + 1) / rate)));
+      return (problem: null, mouths: local.length);
+    }
+    return (problem: null, mouths: 0);
   }
 
   /// _takeWords are the words of [voice] where it is a Speech device's take
@@ -2114,57 +2015,12 @@ class CanvasController extends ChangeNotifier {
     ];
   }
 
-  /// clearLipSync takes every mouth off [e]'s track.
-  void clearLipSync(CharacterElement e) =>
-      replaceElement(e.withMouths(const []));
-
-  /// recordPins is whether dragging a character's pins while the scene
-  /// plays records the movement: a pose keyed on each frame the drag passes
-  /// through. Off, a drag poses the character where the playhead is.
-  bool get recordPins => _recordPins;
-  bool _recordPins = false;
-  set recordPins(bool on) {
-    if (_recordPins == on) return;
-    _recordPins = on;
-    notifyListeners();
-  }
-
-  /// recordCharacterPose keys [pose] on this frame as part of a recording:
-  /// the stance keyed at the start the first time, as keyCharacterPose does,
-  /// and only the bones -- the face is left to its own keys.
-  void recordCharacterPose(CharacterElement e, CharacterPose pose,
-      {bool transient = false}) {
-    var track = e.track ?? ElementTrack.empty;
-    if (!e.posedOnTimeline && _frame != 0) {
-      track = _pinnedAt(track, 0, e.pose.channels);
-    }
-    replaceElement(e.withBase(track: _pinnedAt(track, _frame, pose.channels)),
-        transient: transient);
-  }
-
-  /// importMotion lays [poses] on [e] as keyframes, one a frame from this
-  /// one -- motion capture, read from a BVH file. With [faceReader] the
-  /// whole of it is turned so that it starts facing the reader, whichever
-  /// way the capture was facing. One undo step. Says how many frames it
-  /// laid, which is fewer than it was given where the canvas ends first.
-  int importMotion(CharacterElement e, List<CharacterPose> poses,
-      {bool faceReader = true}) {
-    if (poses.isEmpty) return 0;
-    var by = faceReader ? -poses.first.turn : 0.0;
-    var track = e.track ?? ElementTrack.empty;
-    if (!e.posedOnTimeline && _frame != 0) {
-      track = _pinnedAt(track, 0, e.pose.channels);
-    }
-    var laid = 0;
-    for (var (i, p) in poses.indexed) {
-      var f = _frame + i;
-      if (f >= _document.frames) break;
-      track = _pinnedAt(track, f, p.withTurn(p.turn + by).channels);
-      laid++;
-    }
-    replaceElement(e.withBase(track: track));
-    return laid;
-  }
+  /// clearLipSync takes every mouth off [e]: an old character's track, or
+  /// a 3D character's scene.
+  void clearLipSync(CanvasElement e) => replaceElement(switch (e) {
+        Character3dElement c => c.performing(c.performance.withMouths(const [])),
+        _ => e,
+      });
 
   /// stageFilmed is [stage] with its camera set to [camera]: its own setting
   /// until the camera has been keyed, and from then on this frame's key --
@@ -2301,102 +2157,6 @@ class CanvasController extends ChangeNotifier {
         if (!v.key.startsWith("cam.")) v.key: v.value,
     });
     putBackdrop(stage.withBase(
-        track: without.isRest && without.frame != 0
-            ? track.withoutFrame(_frame)
-            : track.withKey(without)));
-  }
-
-  /// addMotion lays a clip of [kind] on [e] from this frame: a looping
-  /// motion for two of its cycles or two seconds, whichever is longer, and
-  /// one that plays once for its own length. Says which clip it made.
-  MotionClip addMotion(CharacterElement e, MotionKind kind) {
-    var rate = math.max(1, _document.frameRate);
-    var seconds = kind.loops ? math.max(2.0, kind.seconds * 2) : kind.seconds;
-    var clip = MotionClip(
-        id: newElementId(),
-        kind: kind,
-        layer: kind.layer,
-        start: _frame,
-        length: math.max(2, (seconds * rate).round()));
-    replaceElement(e.copyWith(motions: [...e.motions, clip]));
-    return clip;
-  }
-
-  /// setMotion writes [clip] back over the clip of [e] with its id.
-  void setMotion(CharacterElement e, MotionClip clip,
-          {bool transient = false}) =>
-      replaceElement(
-          e.copyWith(motions: [
-            for (var m in e.motions) m.id == clip.id ? clip : m,
-          ]),
-          transient: transient);
-
-  void removeMotion(CharacterElement e, String id) =>
-      replaceElement(e.copyWith(motions: [
-        for (var m in e.motions)
-          if (m.id != id) m,
-      ]));
-
-  /// walkAcross walks or runs [e] across the page for [seconds] from this
-  /// frame, the way [direction] says -- -1 to the left, 1 to the right:
-  /// it turns to face the way it is going, goes the distance its legs would
-  /// take it, and turns back to the reader at the end. One undo step.
-  void walkAcross(
-      CharacterElement e, MotionKind kind, int direction, double seconds) {
-    var rate = math.max(1, _document.frameRate);
-    var frames = math.max(4, (seconds * rate).round());
-    var start = _frame, end = _frame + frames;
-    var turnFrames = math.min(4, frames ~/ 4);
-    var clip = MotionClip(
-        id: newElementId(),
-        kind: kind,
-        layer: MotionLayer.body,
-        start: start,
-        length: frames);
-    var distance = e.feel.travels(kind) * e.height * seconds * direction;
-    var facing = direction < 0 ? 90.0 : -90.0;
-    var turnBack = e.poseAtFrame(start).turn;
-
-    var track = e.track ?? ElementTrack.empty;
-    // Where it is: from here, to the distance away. A key that is already
-    // there keeps whatever else it says.
-    var from = track.keyAt(start) ?? track.restingAt(start);
-    var to = track.keyAt(end) ?? track.restingAt(end);
-    track = track
-        .withKey(from)
-        .withKey(to.copyWith(dx: from.dx + distance, dy: from.dy));
-    // Which way it faces: round to the side over the first few frames and
-    // back to the reader over the last few.
-    var posed = e.withBase(track: track) as CharacterElement;
-    if (!posed.posedOnTimeline) {
-      var stance = {...e.pose.channels, ...e.face.channels}
-        ..remove(mouthChannel);
-      track = _pinnedAt(track, start, stance);
-    }
-    track = _pinnedAt(track, start, {turnChannel: turnBack});
-    track = _pinnedAt(track, start + turnFrames, {turnChannel: facing});
-    track = _pinnedAt(track, end - turnFrames, {turnChannel: facing});
-    track = _pinnedAt(track, end, {turnChannel: turnBack});
-    replaceElement((e.withBase(track: track) as CharacterElement)
-        .copyWith(motions: [...e.motions, clip]));
-  }
-
-  /// hasCharacterPoseKey is whether this frame has a pose or a face keyed
-  /// on it.
-  bool hasCharacterPoseKey(CharacterElement e) =>
-      e.track?.keyAt(_frame)?.values.keys.any(posingChannel) ?? false;
-
-  /// clearCharacterPoseKey takes the pose and the face off this frame's
-  /// keyframe, and the keyframe with it when that was all it held.
-  void clearCharacterPoseKey(CharacterElement e) {
-    var track = e.track;
-    var at = track?.keyAt(_frame);
-    if (track == null || at == null) return;
-    var without = at.copyWith(values: {
-      for (var v in at.values.entries)
-        if (!posingChannel(v.key)) v.key: v.value,
-    });
-    replaceElement(e.withBase(
         track: without.isRest && without.frame != 0
             ? track.withoutFrame(_frame)
             : track.withKey(without)));
@@ -4062,44 +3822,6 @@ class CanvasController extends ChangeNotifier {
     replaceElement(withoutTints(e));
   }
 
-  // ---- drawing on a character ---------------------------------------------
-
-  /// drawingOn is the character being drawn on, by id, or null. It is drawn
-  /// on with the drawing tools, through a drawing laid over it that they
-  /// edit as they edit any -- see drawingProxy -- and what is drawn on that
-  /// goes into the panel the character is seen from as it is drawn.
-  String? get drawingOn => switch (_vectorEditing) {
-        var id? => drawnCharacterOf(id),
-        null => null,
-      };
-
-  /// showPuppet lays the puppet over a sketched character to draw over --
-  /// see character_guide.dart. For this run of the app: what it changes is
-  /// the character's, and stays when it is put away.
-  bool get showPuppet => _showPuppet;
-  bool _showPuppet = false;
-  set showPuppet(bool on) {
-    if (_showPuppet == on) return;
-    _showPuppet = on;
-    _syncDoll();
-    notifyListeners();
-  }
-
-  /// puppet3D is whether the puppet is the doll in 3D -- see
-  /// character_doll.dart -- to pose and draw over, rather than the guide
-  /// drawn flat with its handles. For this run of the app.
-  bool get puppet3D => _puppet3D;
-  bool _puppet3D = false;
-  set puppet3D(bool on) {
-    if (_puppet3D == on) return;
-    _puppet3D = on;
-    _syncDoll();
-    notifyListeners();
-  }
-
-  /// dollShown is whether the doll is out.
-  bool get dollShown => _showPuppet && _puppet3D;
-
   /// spritePaint is the Sprite element being painted frame by frame on the
   /// canvas, when one is -- see sprite_painting.dart -- and paintSprite
   /// starts painting one, or with null stops.
@@ -4131,199 +3853,8 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// dollJoint is the doll's joint picked to turn, with its rings round
-  /// it on the canvas -- see character_doll_pose.dart. For this run of
-  /// the app.
-  DollJoint? get dollJoint => dollShown ? _dollJoint : null;
-  DollJoint? _dollJoint;
-  set dollJoint(DollJoint? j) {
-    if (_dollJoint == j) return;
-    _dollJoint = j;
-    notifyListeners();
-  }
-
-  /// dollLens is how strongly the doll is seen in perspective -- nought
-  /// for flat, one for a camera close up -- and dollLines whether its
-  /// guide lines are drawn. For this run of the app.
-  double get dollLens => _dollLook.lens;
-  DollLook get dollLook => _dollLook;
-  bool get dollLines => _dollLook.lines;
-  DollLook _dollLook = const DollLook();
-  set dollLens(double lens) => dollLook = _dollLook.copyWith(lens: lens);
-  set dollLines(bool on) => dollLook = _dollLook.copyWith(lines: on);
-
-  /// dollLook is everything about how the doll is shown -- see DollLook.
-  set dollLook(DollLook look) {
-    if (look.lens == _dollLook.lens &&
-        look.lines == _dollLook.lines &&
-        look.place == _dollLook.place &&
-        look.opacity == _dollLook.opacity &&
-        look.kind == _dollLook.kind) {
-      return;
-    }
-    _dollLook = look;
-    _syncDoll();
-    notifyListeners();
-  }
-
-  void _syncDoll() {
-    if (dollShown) {
-      characterDollOf = _dollOf;
-      characterDollLook = _dollLook;
-    } else if (characterDollOf == _dollOf) {
-      characterDollOf = null;
-    }
-  }
-
-  /// _dollOf is where the doll is drawn for [e]: for the sketch being drawn
-  /// on or picked alone, under one drawn from nothing and faintly over any
-  /// other.
-  DollGuide _dollOf(CharacterElement e) {
-    var id = drawingOn ?? (_selection.length == 1 ? _selection.first : null);
-    if (!dollShown || e.id != id) return DollGuide.none;
-    return _dollLook.place ??
-        (e.dna.kind == CharacterType.empty ? DollGuide.under : DollGuide.over);
-  }
-
-  /// editRig shows a sketch's limbs point by point, to reshape on the
-  /// canvas -- see character_rig_editor.dart. For this run of the app.
-  bool get editRig => _editRig;
-  bool _editRig = false;
-  set editRig(bool on) {
-    if (_editRig == on) return;
-    _editRig = on;
-    _rigPick = null;
-    notifyListeners();
-  }
-
-  /// rigPick is the limb's point picked while the rig is edited: what
-  /// Delete takes away.
-  (CharacterLimb, RigPoint)? get rigPick =>
-      _rigPickOf != null && rigCharacter?.id == _rigPickOf ? _rigPick : null;
-  (CharacterLimb, RigPoint)? _rigPick;
-
-  /// _rigPickOf is whose point is picked: picking another character is not
-  /// picking its point at the same spot.
-  String? _rigPickOf;
-  void pickRigPoint(CharacterLimb? limb, [RigPoint? point]) {
-    _rigPick = limb == null || point == null ? null : (limb, point);
-    // Its limb's layer picked, for its settings beside it.
-    if (limb != null && point != null) _pickedCharacterLayer = limb.name;
-    _rigPickOf = _rigPick == null ? null : rigCharacter?.id;
-    notifyListeners();
-  }
-
-  /// mirrorEdits makes an edit to one side of a sketch -- a point of an arm
-  /// or a leg, an eye, a brow, a corner of the mouth -- the same, mirrored,
-  /// on the other. On until it is switched off, for this run of the app.
-  bool get mirrorEdits => _mirrorEdits;
-  bool _mirrorEdits = true;
-  set mirrorEdits(bool on) {
-    if (_mirrorEdits == on) return;
-    _mirrorEdits = on;
-    notifyListeners();
-  }
-
-  /// rigCharacter is the sketch whose rig is edited: the one drawn on, or
-  /// picked alone.
-  CharacterElement? get rigCharacter {
-    if (!_editRig) return null;
-    var id = drawingOn ?? (_selection.length == 1 ? _selection.first : null);
-    var e = id == null ? null : _document.elementById(id);
-    return e is CharacterElement && !e.body.inThreeD && e.visible ? e : null;
-  }
-
-  /// deleteRigPoint takes away the point picked -- or puts the joint
-  /// picked back as it was -- returning whether there was one.
-  bool deleteRigPoint() {
-    var pick = rigPick, e = rigCharacter;
-    if (pick == null || e == null) return false;
-    replaceElement(withoutRigPoint(e, pick.$1, pick.$2, mirror: _mirrorEdits));
-    _rigPick = null;
-    notifyListeners();
-    return true;
-  }
-
-  /// pickedCharacterLayer is the layer of a sketch picked in its Layers
-  /// -- see character_layers.dart -- whose settings are shown under them.
-  /// For this run of the app.
-  String? get pickedCharacterLayer => _pickedCharacterLayer;
-  String? _pickedCharacterLayer;
-  void pickCharacterLayer(String? layer) {
-    if (_pickedCharacterLayer == layer) return;
-    _pickedCharacterLayer = layer;
-    notifyListeners();
-  }
-
-  /// soloLayerOf is the layer of character [id] soloed -- drawn alone over
-  /// the rest, faint -- or null.
-  String? soloLayerOf(String id) => _layerSoloOf == id ? _layerSolo : null;
-  String? _layerSolo;
-  String? _layerSoloOf;
-
-  /// soloLayer solos [layer] of character [id], or -- with null, or the
-  /// layer already soloed -- stops.
-  void soloLayer(String id, String? layer) {
-    if (layer == null || (_layerSoloOf == id && _layerSolo == layer)) {
-      _layerSoloOf = null;
-      _layerSolo = null;
-    } else {
-      _layerSoloOf = id;
-      _layerSolo = layer;
-    }
-    characterSoloOf = _layerSoloOf == null ? null : (e) => e.id == _layerSoloOf ? _layerSolo : null;
-    notifyListeners();
-  }
-
-  /// editHair shows a sketch's hair strokes to shape on the canvas -- see
-  /// character_hair_editor.dart -- and hairPick is the stroke picked, by
-  /// index, for the character it was picked on. For this run of the app.
-  bool get editHair => _editHair;
-  bool _editHair = false;
-  set editHair(bool on) {
-    if (_editHair == on) return;
-    _editHair = on;
-    _hairPick = null;
-    notifyListeners();
-  }
-
-  /// showTurnaround is whether the sketch drawn on -- or picked alone --
-  /// has its other views laid out beside it on the canvas, with lines
-  /// across them at the heights a turn keeps: see character_turnaround.dart.
-  /// onionSkin is whether the view next round is shown faintly over it.
-  bool get showTurnaround => _showTurnaround;
-  bool _showTurnaround = false;
-  set showTurnaround(bool on) {
-    if (_showTurnaround == on) return;
-    _showTurnaround = on;
-    notifyListeners();
-  }
-
-  bool get onionSkin => _onionSkin;
-  bool _onionSkin = false;
-  set onionSkin(bool on) {
-    if (_onionSkin == on) return;
-    _onionSkin = on;
-    notifyListeners();
-  }
-
-  /// studioCharacter is the character open in the Character Studio, or
-  /// null: the page given over to it -- see character_studio.dart. Open,
-  /// the document is the Studio's own, holding the character alone; the
-  /// canvas waits in [_session] for it to be done.
-  String? get studioCharacter {
-    var id = _studio;
-    if (id == null) return null;
-    return _document.elementById(id) is CharacterElement ? id : null;
-  }
-
-  /// studioOpen is [studioCharacter], for the page to follow its opening
-  /// and closing without rebuilding on every change to the canvas.
-  final ValueNotifier<String?> studioOpen = ValueNotifier(null);
-
-  /// studio3dOpen is whether the new Character Studio has the page: the 3D
-  /// characters, as they are built (character_studio_3d.dart). It takes the
-  /// old Studio's place rather than opening over it.
+  /// studio3dOpen is whether the Character Studio has the page, in place of
+  /// the canvas (character_studio_3d.dart).
   final ValueNotifier<bool> studio3dOpen = ValueNotifier(false);
 
   /// studio3dElement is the 3D character the Studio was opened to change,
@@ -4338,11 +3869,9 @@ class CanvasController extends ChangeNotifier {
     return e is Character3dElement ? e.design : null;
   }
 
-  /// openStudio3d gives the page to the new Character Studio, closing the
-  /// old one first if it is open: to change [element], a 3D character on the
-  /// canvas, or to make a new character.
+  /// openStudio3d gives the page to the Character Studio: to change
+  /// [element], a 3D character on the canvas, or to make a new character.
   void openStudio3d({String? element}) {
-    if (_session != null) closeStudio();
     pause();
     studio3dElement = element;
     studio3dOpen.value = true;
@@ -4417,1001 +3946,11 @@ class CanvasController extends ChangeNotifier {
   /// placeCharacter3d puts library character [design] in the scene, at
   /// [center] or in the middle, picked: one step to undo.
   void placeCharacter3d(CharacterDesign design, {Offset? center}) {
-    if (_session != null) return;
     var made = newElement(ElementKind.character3d, _document, center: center)
         as Character3dElement;
     addElement(made
         .copyWith(design: design)
         .rebase(made.base.copyWith(name: design.name)));
-  }
-
-  String? _studio;
-  _StudioSession? _session;
-  StudioWorkspace _studioWorkspace = StudioWorkspace.start;
-
-  /// studioWorkspace is the workspace the Studio shows.
-  StudioWorkspace get studioWorkspace => _studioWorkspace;
-  set studioWorkspace(StudioWorkspace w) {
-    if (_studioWorkspace == w) return;
-    if (drawingOn != null && w != StudioWorkspace.draw && w != StudioWorkspace.face) {
-      stopDrawingOnCharacter();
-    }
-    var wasFace = _studioWorkspace == StudioWorkspace.face;
-    if (w != StudioWorkspace.test) studioDriving = false;
-    if (w != StudioWorkspace.rig) studioWeights = null;
-    _studioWorkspace = w;
-    _selection = _studioPicked(w);
-    // The face filling the stage on Face; the whole figure elsewhere.
-    if (w == StudioWorkspace.face) {
-      _studioFaceZoom();
-    } else if (wasFace) {
-      _zoom = 1;
-      _pan = const Offset2(0, 0);
-    }
-    notifyListeners();
-  }
-
-  void _studioFaceZoom() {
-    if (_studio case var id?) zoomToCharacter(id, CharacterZoom.head);
-  }
-
-  /// studioWeights is the bone whose skin weights the Studio's sculpted
-  /// character shows as a heat map, on Rig, or null: see
-  /// characterWeightsOf.
-  HumanBone? get studioWeights => _studioWeights;
-  HumanBone? _studioWeights;
-  set studioWeights(HumanBone? bone) {
-    if (_studioWeights == bone) return;
-    _studioWeights = bone;
-    var id = _studio;
-    characterWeightsOf = bone == null || id == null ? null : (e) => e.id == id ? bone : null;
-    notifyListeners();
-  }
-
-  /// studioFacePart is the part of the face the Face workspace works on.
-  StudioFacePart get studioFacePart => _studioFacePart;
-  StudioFacePart _studioFacePart = StudioFacePart.eyes;
-  set studioFacePart(StudioFacePart p) {
-    if (_studioFacePart == p) return;
-    _studioFacePart = p;
-    notifyListeners();
-  }
-
-  /// studioStartingFace charts the eyes, the brows and the mouth of the
-  /// Studio's sketch on the view seen, each state drawn as the character
-  /// makes it -- see startingFace -- to draw over. One step to undo.
-  void studioStartingFace() {
-    var e = _studio == null ? null : _document.elementById(_studio!);
-    if (e is! CharacterElement || e.body.inThreeD) return;
-    if (drawingOn != null) stopDrawingOnCharacter();
-    replaceElement(startingFace(e, _frame, math.max(1, _document.frameRate)));
-  }
-
-  /// studioSaveExpression keeps the Studio's character's face as it is now
-  /// -- its feeling, where its eyes look among it, not which way its head
-  /// turns -- as expression
-  /// [name], in place of one of that name. studioRemoveExpression takes one
-  /// away. Each one step to undo.
-  void studioSaveExpression(String name) {
-    var e = _studio == null ? null : _document.elementById(_studio!);
-    name = name.trim();
-    if (e is! CharacterElement || name.isEmpty) return;
-    var face = e.faceAtFrame(_frame);
-    var feeling = CharacterFace({
-      for (var MapEntry(:key, :value) in face.controls.entries)
-        if (key != FaceControl.turn && key != FaceControl.nod) key: value,
-    });
-    var kept = [for (var x in e.expressions) if (x.name != name) x];
-    replaceElement(e.copyWith(expressions: [...kept, SavedExpression(name, feeling)]));
-  }
-
-  void studioRemoveExpression(String name) {
-    var e = _studio == null ? null : _document.elementById(_studio!);
-    if (e is! CharacterElement) return;
-    replaceElement(e.copyWith(
-        expressions: [for (var x in e.expressions) if (x.name != name) x]));
-  }
-
-  /// studioSay has the Studio's character say [line], its mouth moving
-  /// through the shapes its words are spelt with -- about as fast as people
-  /// talk -- played once from the start. Tried, as studioTry is: not its
-  /// design, nor a step to undo. Nothing to say: back as it is.
-  void studioSay(String line) {
-    var s = _session;
-    if (s == null) return;
-    studioTry();
-    var e = _document.elementById(s.instance);
-    if (e is! CharacterElement) return;
-    var rate = math.max(1, _document.frameRate);
-    var words = line.split(RegExp(r"\s+")).where((w) => w.isNotEmpty).toList();
-    if (words.isEmpty) return;
-    var spoken = <SpokenWord>[];
-    var at = (rate * 0.2).round();
-    for (var w in words) {
-      var letters = w.replaceAll(RegExp(r"[^A-Za-z]"), "").length;
-      var length = math.max((rate * 0.16).round(), (letters * rate * 0.065).round());
-      spoken.add(SpokenWord(text: w, frame: at, end: at + length));
-      // A breath after a comma or a full stop, a beat between words.
-      at += length + (RegExp(r"[,.;:!?]$").hasMatch(w) ? (rate * 0.3).round() : (rate * 0.05).round());
-    }
-    var mouths = mouthsFromWords(spoken, frameRate: rate);
-    // Long enough to say it all.
-    var needed = at + rate;
-    if (needed > _document.frames) _document = _document.copyWith(frames: needed);
-    s.trying = "say";
-    replaceElement(e.withMouths(mouths), transient: true);
-    play();
-    notifyListeners();
-  }
-
-  /// _studioPicked is what is picked in the Studio on workspace [w]: the
-  /// character where its pins are the tool -- posing it -- and nothing
-  /// elsewhere, where a box and its handles round it are only in the way.
-  Set<String> _studioPicked(StudioWorkspace w) {
-    var id = _studio;
-    if (id == null) return const {};
-    return w == StudioWorkspace.rig || w == StudioWorkspace.motion ? {id} : const {};
-  }
-
-  /// studioView is which way round the Studio shows the character: one view
-  /// big, or all of them side by side.
-  StudioView get studioView => _studioView;
-  StudioView _studioView = StudioView.front;
-  set studioView(StudioView v) {
-    var id = _studio;
-    var e = id == null ? null : _document.elementById(id);
-    if (e is! CharacterElement) return;
-    _studioView = v;
-    _showTurnaround = v == StudioView.all;
-    var turned = e.copyWith(pose: e.pose.withTurn(v.turn));
-    _document = _document.withElement(_studioPlaced(turned, _document, v));
-    if (_studioWorkspace == StudioWorkspace.face) _studioFaceZoom();
-    notifyListeners();
-  }
-
-  /// studioDesignName is the library character the Studio is working on:
-  /// what it is called.
-  String get studioDesignName => _session?.name ?? "";
-
-  /// openStudio opens character [id] in the Character Studio: the canvas
-  /// put aside -- its undo history, what was picked, where the playhead
-  /// was -- and the Studio's own document in its place, the character
-  /// alone in it, big. A character not yet in the library is given its
-  /// place there: see character_asset.dart.
-  void openStudio(String id) {
-    if (_session != null) return;
-    var e = _document.elementById(id);
-    if (e is! CharacterElement) return;
-    if (drawingOn != null) stopDrawingOnCharacter();
-    pause();
-    var isNew = e.characterId.isEmpty;
-    var cid = isNew ? CharacterLibrary.newId() : e.characterId;
-    _session = _StudioSession(
-        canvas: _document,
-        undo: [..._undo],
-        redo: [..._redo],
-        selection: _selection,
-        frame: _frame,
-        zoom: _zoom,
-        pan: _pan,
-        turnaround: _showTurnaround,
-        instance: id,
-        characterId: cid,
-        name: e.name.isEmpty ? "Character" : e.name);
-    // The design alone: what the scene does with it -- its timeline, its
-    // motions, its face -- stays with the scene.
-    // Locked: its box is the Studio's to lay out, not a thing to drag.
-    var alone = e
-        .withBase(clearTrack: true)
-        .withBase(x: 0, y: 0, locked: true) as CharacterElement;
-    alone = alone.copyWith(
-        characterId: cid,
-        motions: const [],
-        face: CharacterFace.rest,
-        pose: alone.pose.withTurn(0));
-    var size = _document.size;
-    var studio = CanvasDocument(
-        title: "Studio",
-        size: size,
-        // A light grey, as a model sheet is drawn on: a dark outline reads
-        // on it, and so does a pale shirt.
-        background: const CanvasBackground(
-            spec: ProceduralSpec(background: Color(0xFFD9DBE2))),
-        frames: 96,
-        frameRate: _document.frameRate,
-        elements: [_studioPlaced(alone, CanvasDocument(size: size), StudioView.front)]);
-    _document = studio;
-    _undo.clear();
-    _redo.clear();
-    _selection = {id};
-    _frame = 0;
-    _zoom = 1;
-    _pan = const Offset2(0, 0);
-    _showTurnaround = false;
-    _studioView = StudioView.front;
-    _studio = id;
-    _studioWorkspace = isNew && e.reference == null
-        ? StudioWorkspace.start
-        : StudioWorkspace.body;
-    _selection = _studioPicked(_studioWorkspace);
-    studioOpen.value = id;
-    notifyListeners();
-  }
-
-  /// _studioPlaced is [e] stood in the Studio's page of [doc] as [view]
-  /// shows it: big and in the middle on its own, or at the left with the
-  /// other views beside it.
-  CharacterElement _studioPlaced(
-      CharacterElement e, CanvasDocument doc, StudioView view) {
-    var w = doc.size.width.toDouble(), h = doc.size.height.toDouble();
-    var aspect = e.height <= 0 ? 0.5 : e.width / e.height;
-    var tall = h * 0.84;
-    if (view == StudioView.all) {
-      // Each other view as wide again, with a gap: all of them on the page
-      // -- the turnaround's panels, as the stage lays them out.
-      var others = math.max(1, panelOptions(e, adding: false).length - 1);
-      tall = math.min(tall, w * 0.92 / (aspect * (1 + others * 1.18)));
-    }
-    var wide = tall * aspect;
-    var x = view == StudioView.all ? w * 0.04 : (w - wide) / 2;
-    return e.withBase(x: x, y: (h - tall) / 2, width: wide, height: tall)
-        as CharacterElement;
-  }
-
-  /// studioUseCharacter makes the character in the Studio the library's
-  /// [asset]: its design, its name, and every copy of it.
-  void studioUseCharacter(CharacterAsset asset) {
-    var s = _session;
-    var id = _studio;
-    var e = id == null ? null : _document.elementById(id);
-    if (s == null || e is! CharacterElement) return;
-    if (drawingOn != null) stopDrawingOnCharacter();
-    var made = withDesign(
-        e.copyWith(characterId: asset.id).withBase(name: asset.name) as CharacterElement,
-        asset.design);
-    s.characterId = asset.id;
-    s.name = asset.name;
-    beginInteraction();
-    replaceElement(_studioPlaced(made.copyWith(pose: made.pose.withTurn(_studioView.turn)), _document, _studioView));
-    endInteraction();
-  }
-
-  /// studioRegion is the part of the body the Body workspace shapes.
-  AppearanceGroup get studioRegion => _studioRegion;
-  AppearanceGroup _studioRegion = AppearanceGroup.body;
-  set studioRegion(AppearanceGroup g) {
-    if (_studioRegion == g) return;
-    _studioRegion = g;
-    notifyListeners();
-  }
-
-  /// studioGenerate makes the character in the Studio someone new, from
-  /// what goes together -- see generatedDna: one step to undo.
-  void studioGenerate([int? seed]) {
-    var id = _studio;
-    var e = id == null ? null : _document.elementById(id);
-    if (e is! CharacterElement) return;
-    beginInteraction();
-    replaceElement(e.copyWith(
-        dna: generatedDna(e.dna, seed ?? math.Random().nextInt(1 << 30))));
-    endInteraction();
-  }
-
-  /// studioOutfit is the outfit whose clothes the Studio is changing, by
-  /// name, or "" for the clothes it is designed in.
-  String get studioOutfit => _session?.outfit ?? "";
-
-  /// studioEditOutfit changes the clothes of outfit [name] -- "" for the
-  /// designed ones -- from now on: they are put on it in the Studio, and
-  /// what was being changed goes back where it belongs.
-  void studioEditOutfit(String name) {
-    var s = _session;
-    var e = s == null ? null : _document.elementById(s.instance);
-    if (s == null || e is! CharacterElement || name == s.outfit) return;
-    var outfits = [...e.outfits];
-    var wearing = e.dna.wardrobe;
-    if (s.outfit.isEmpty) {
-      s.designed = wearing;
-    } else {
-      var at = outfits.indexWhere((o) => o.name == s.outfit);
-      if (at >= 0) outfits[at] = CharacterOutfit(s.outfit, wearing);
-    }
-    List<Garment>? next;
-    if (name.isEmpty) {
-      next = s.designed;
-    } else {
-      next = outfits.where((o) => o.name == name).firstOrNull?.wardrobe;
-    }
-    if (next == null) return;
-    s.outfit = name;
-    replaceElement(
-        e.copyWith(outfits: outfits, dna: e.dna.copyWith(wardrobe: next)),
-        transient: true);
-    notifyListeners();
-  }
-
-  /// studioSaveOutfit keeps the clothes on now as a new outfit, and goes on
-  /// changing that one.
-  void studioSaveOutfit() {
-    var s = _session;
-    var e = s == null ? null : _document.elementById(s.instance);
-    if (s == null || e is! CharacterElement) return;
-    var n = e.outfits.length + 1;
-    var names = {for (var o in e.outfits) o.name};
-    while (names.contains("Outfit $n")) {
-      n++;
-    }
-    var name = "Outfit $n";
-    // The clothes being changed go back first, then the new one is them.
-    if (s.outfit.isEmpty) s.designed = e.dna.wardrobe;
-    var outfits = [
-      for (var o in e.outfits)
-        o.name == s.outfit ? CharacterOutfit(o.name, e.dna.wardrobe) : o,
-      CharacterOutfit(name, e.dna.wardrobe),
-    ];
-    s.outfit = name;
-    beginInteraction();
-    replaceElement(e.copyWith(outfits: outfits));
-    endInteraction();
-  }
-
-  /// studioRemoveOutfit takes outfit [name] away; the designed clothes on
-  /// again where it was being changed.
-  void studioRemoveOutfit(String name) {
-    var s = _session;
-    if (s == null || name.isEmpty) return;
-    if (s.outfit == name) studioEditOutfit("");
-    var e = _document.elementById(s.instance);
-    if (e is! CharacterElement) return;
-    beginInteraction();
-    replaceElement(e.copyWith(
-        outfits: [for (var o in e.outfits) if (o.name != name) o]));
-    endInteraction();
-  }
-
-  /// studioTrying is what the Studio's character is being tried in -- a
-  /// stance from posePresets or a MotionKind, by name -- or null: its own
-  /// pose, standing still.
-  String? get studioTrying => _session?.trying;
-
-  /// studioTry puts the Studio's character in stance [pose], or plays it
-  /// through [motion] round and round, to see how it bends, how its bend
-  /// shapes and its hair follow -- or, with neither, back as it is. Neither
-  /// is its design: a stance is keyed on its timeline, a motion laid on it,
-  /// and Done takes neither back to the canvas. Nor is either a step to
-  /// undo.
-  ///
-  /// [turntable] turns it round and round on the spot instead, to see it
-  /// from every side; [facing], with a motion, turns it that way first.
-  void studioTry(
-      {String? pose, MotionKind? motion, bool turntable = false, double? facing}) {
-    var s = _session;
-    if (s == null) return;
-    var e = _document.elementById(s.instance);
-    if (e is! CharacterElement) return;
-    if (playing) pause();
-    _frame = 0;
-    var still = (e.withBase(clearTrack: true) as CharacterElement)
-        .copyWith(motions: const []);
-    // Driven, it turned the way it went: back as the view shows it after.
-    if (facing == null && (s.trying?.startsWith("drive:") ?? false)) {
-      facing = _studioView.turn;
-    }
-    if (facing != null) still = still.copyWith(pose: still.pose.withTurn(facing));
-    var frames = math.max(1, _document.frames);
-    if (turntable) {
-      var from = still.pose.turn;
-      still = still.withBase(
-          track: ElementTrack([
-            Keyframe(frame: 0, values: {turnChannel: from}),
-            Keyframe(frame: frames, values: {turnChannel: from + 360}),
-          ])) as CharacterElement;
-    }
-    var stance = pose == null
-        ? null
-        : posePresets.where((p) => p.name == pose).firstOrNull;
-    if (stance != null) {
-      // The bones keyed, not the turn: it stays as the view shows it.
-      var bones = <String, double>{...stance.pose.channels}
-        ..remove(turnChannel)
-        ..remove(liftChannel)
-        ..remove(tiltChannel);
-      still = still.withBase(
-              track: ElementTrack([Keyframe(frame: 0, values: bones)]))
-          as CharacterElement;
-    }
-    if (motion != null) {
-      still = still.copyWith(motions: [
-        MotionClip(
-            id: "studioTry",
-            kind: motion,
-            layer: motion.layer,
-            start: 0,
-            length: frames,
-            blend: 0),
-      ]);
-    }
-    s.trying = turntable ? "turntable" : stance?.name ?? motion?.name;
-    // Round and round while it moves; the loop as it was otherwise.
-    var moving = motion != null || turntable;
-    if (moving) {
-      s.looped ??= (_looping, _loop);
-      _looping = true;
-      _loop = (0, frames);
-    } else if (s.looped case (var on, var range)?) {
-      _looping = on;
-      _loop = range;
-      s.looped = null;
-    }
-    replaceElement(still, transient: true);
-    if (moving) play();
-    notifyListeners();
-  }
-
-  /// studioDriving is whether the arrow keys drive the Studio's character,
-  /// on Test: see studioDrive. Off, it stands as it was.
-  bool get studioDriving => _session?.driving ?? false;
-  set studioDriving(bool on) {
-    var s = _session;
-    if (s == null || s.driving == on) return;
-    s.driving = on;
-    on ? studioDrive(GameMove.standing) : studioTry();
-    notifyListeners();
-  }
-
-  /// studioDrive moves the Studio's character as a game would, on the spot:
-  /// walking or running the way [facing] says -- a turn, as the views are
-  /// -- or jumping, or, with nothing, standing as its game has it stand.
-  /// See GameMotions; tried, as studioTry is.
-  void studioDrive(GameMove move, {double? facing}) {
-    var e = _studio == null ? null : _document.elementById(_studio!);
-    if (e is! CharacterElement) return;
-    studioTry(motion: e.gameMotions[move], facing: facing);
-    _session?.trying = "drive:${move.name}";
-    notifyListeners();
-  }
-
-  /// _designedNow is the Studio's character as it is designed: the outfit
-  /// being changed put back, the designed clothes on.
-  CharacterElement _designedNow(_StudioSession s, CharacterElement made) {
-    if (s.outfit.isEmpty || s.designed == null) return made;
-    return made.copyWith(
-        outfits: [
-          for (var o in made.outfits)
-            o.name == s.outfit ? CharacterOutfit(o.name, made.dna.wardrobe) : o,
-        ],
-        dna: made.dna.copyWith(wardrobe: s.designed));
-  }
-
-  /// placeCharacter puts a copy of the library's [asset] in the scene, at
-  /// [center] or in the middle, picked: one step to undo. Its id is new;
-  /// its design the library's.
-  void placeCharacter(CharacterAsset asset, {Offset? center}) {
-    if (_session != null) return;
-    var made = newElement(ElementKind.character, _document, center: center);
-    var placed = asset.element(made.base.copyWith(name: asset.name));
-    addElement(placed);
-  }
-
-  /// closeStudio is Done: the canvas back as it was put aside, with every
-  /// copy of the character made as the Studio left it -- one step to undo
-  /// -- and the library's character saved.
-  void closeStudio() {
-    var s = _session;
-    if (s == null) return;
-    if (drawingOn != null) stopDrawingOnCharacter();
-    if (s.trying != null) studioTry();
-    var made = _document.elementById(s.instance);
-    _document = s.canvas;
-    _undo
-      ..clear()
-      ..addAll(s.undo);
-    _redo
-      ..clear()
-      ..addAll(s.redo);
-    _selection = s.selection;
-    _frame = s.frame;
-    _zoom = s.zoom;
-    _pan = s.pan;
-    _showTurnaround = s.turnaround;
-    // The Studio's handles stay in the Studio: a scene has none.
-    studioWeights = null;
-    _showPuppet = false;
-    _editRig = false;
-    _editFace = false;
-    _session = null;
-    _studio = null;
-    studioOpen.value = null;
-    if (made is CharacterElement) {
-      made = _designedNow(s, made);
-      var design = designOf(made);
-      var before = _document;
-      var next = _withCharacterDesign(before, s.characterId, s.instance, design);
-      if (!identical(next, before)) {
-        _undo.add(before);
-        if (_undo.length > _maxUndo) _undo.removeAt(0);
-        _redo.clear();
-        _document = next;
-        _dirty = true;
-        scheduleAutosave();
-      }
-      unawaited(CharacterLibrary.save(CharacterAsset(s.characterId,
-          made.name.isEmpty ? s.name : made.name, design, DateTime.now())));
-    }
-    if (_document.elementById(s.instance) != null) _selection = {s.instance};
-    notifyListeners();
-  }
-
-  /// _withCharacterDesign is [doc] with every copy of library character
-  /// [characterId] -- and [instance], the one opened -- made as [design]:
-  /// in every scene, and on the master.
-  CanvasDocument _withCharacterDesign(CanvasDocument doc, String characterId,
-      String instance, Map<String, dynamic> design) {
-    var copies = <String, CharacterElement>{};
-    for (var e in [
-      ...doc.elements,
-      ...?doc.master?.elements,
-      for (var sc in doc.allScenes) ...sc.elements,
-    ]) {
-      if (e is CharacterElement &&
-          (e.characterId == characterId || e.id == instance)) {
-        copies[e.id] = e;
-      }
-    }
-    var want = jsonEncode(design);
-    for (var e in copies.values) {
-      if (e.characterId == characterId && jsonEncode(designOf(e)) == want) continue;
-      var next = withDesign(e.copyWith(characterId: characterId), design);
-      doc = _replacedAnywhere(doc, next) ?? doc;
-    }
-    return doc;
-  }
-
-  /// turnaroundCharacter is the sketch whose turnaround is shown, or null.
-  CharacterElement? get turnaroundCharacter {
-    if (!_showTurnaround) return null;
-    var id = drawingOn ??
-        studioCharacter ??
-        (_selection.length == 1 ? _selection.first : null);
-    var e = id == null ? null : _document.elementById(id);
-    return e is CharacterElement && !e.body.inThreeD && e.visible ? e : null;
-  }
-
-  /// copyCharacterLayerEdits does what was done to [layer] of sketch [id] on
-  /// the view it is seen from to it on the view [to] as well -- or on every
-  /// other view, with "*" -- as one step to undo. See copyLayerEdits.
-  void copyCharacterLayerEdits(String id, String layer, String to) {
-    var e = _document.elementById(id);
-    if (e is! CharacterElement) return;
-    var rate = math.max(1, _document.frameRate);
-    var from = drawnKey(e, _frame, rate);
-    var targets = to == "*"
-        ? [
-            for (var v in e.views) ...[
-              v.key,
-              if (oppositeKey(v.key) case var o?) o,
-            ],
-          ].where((k) => k != from).toList()
-        : [to];
-    var next = e;
-    for (var k in targets) {
-      next = copyLayerEdits(next, layer, from, k, _frame, rate);
-    }
-    beginInteraction();
-    replaceElement(next);
-    endInteraction();
-  }
-
-  /// mirrorCharacterLayer mirrors [layer] of sketch [id], on the view it is
-  /// seen from, onto the view turned the other way. See mirrorLayerEdits.
-  void mirrorCharacterLayer(String id, String layer) {
-    var e = _document.elementById(id);
-    if (e is! CharacterElement) return;
-    var from = drawnKey(e, _frame, math.max(1, _document.frameRate));
-    beginInteraction();
-    replaceElement(mirrorLayerEdits(e, layer, from));
-    endInteraction();
-  }
-
-  /// showCharacterView turns sketch [id] to the view [key] names -- see
-  /// showPanel -- as one step to undo; drawn on, it goes on being drawn on
-  /// there, the same layer or garment.
-  void showCharacterView(String id, String key) {
-    var e = _document.elementById(id);
-    if (e is! CharacterElement) return;
-    var drawing = drawingOn == id;
-    var garment = _drawingGarment, layer = _drawingLayer;
-    if (drawing) stopDrawingOnCharacter();
-    beginInteraction();
-    replaceElement(showPanel(this, _document.elementById(id) as CharacterElement, key));
-    endInteraction();
-    if (drawing) drawOnCharacter(id, garment: garment, layer: layer);
-    notifyListeners();
-  }
-
-  CharacterElement? get hairCharacter {
-    if (!_editHair) return null;
-    var id = drawingOn ?? (_selection.length == 1 ? _selection.first : null);
-    var e = id == null ? null : _document.elementById(id);
-    return e is CharacterElement && !e.body.inThreeD && e.visible && e.dna.hairRig != null
-        ? e
-        : null;
-  }
-
-  /// hairAddLocks is whether a press on the head while its hair is shaped
-  /// grows a new lock there -- dragged out to its tip -- over the hair
-  /// already there or not, rather than taking hold of what is under it;
-  /// hairLockWidth how wide a lock grown so is at its root, in head heights.
-  bool get hairAddLocks => _hairAddLocks;
-  bool _hairAddLocks = false;
-  set hairAddLocks(bool on) {
-    if (_hairAddLocks == on) return;
-    _hairAddLocks = on;
-    notifyListeners();
-  }
-
-  double get hairLockWidth => _hairLockWidth;
-  double _hairLockWidth = 0.26;
-  set hairLockWidth(double w) {
-    if (_hairLockWidth == w) return;
-    _hairLockWidth = w;
-    notifyListeners();
-  }
-
-  int? get hairPick =>
-      _hairPickOf != null && hairCharacter?.id == _hairPickOf ? _hairPick : null;
-  int? _hairPick;
-  String? _hairPickOf;
-  void pickHair(int? i) {
-    _hairPick = i;
-    _hairPickOf = i == null ? null : hairCharacter?.id;
-    if (i != null) _pickedCharacterLayer = BodyLayer.hairFront.name;
-    notifyListeners();
-  }
-
-  /// deleteHairStroke takes the stroke picked away, returning whether there
-  /// was one.
-  bool deleteHairStroke() {
-    var i = hairPick, e = hairCharacter;
-    var hair = e?.dna.hairRig;
-    if (i == null || e == null || hair == null || i >= hair.strokes.length) return false;
-    replaceElement(e.copyWith(dna: e.dna.copyWith(hairRig: hair.without(i))));
-    _hairPick = null;
-    notifyListeners();
-    return true;
-  }
-
-  /// editFace shows a sketch's face feature by feature, to set on the
-  /// panel it is seen from -- see character_face_rig_editor.dart. For this
-  /// run of the app.
-  bool get editFace => _editFace;
-  bool _editFace = false;
-  set editFace(bool on) {
-    if (_editFace == on) return;
-    _editFace = on;
-    _facePick = null;
-    notifyListeners();
-  }
-
-  /// faceCharacter is the sketch whose face is set: the one drawn on, or
-  /// picked alone.
-  CharacterElement? get faceCharacter {
-    if (!_editFace) return null;
-    var id = drawingOn ?? (_selection.length == 1 ? _selection.first : null);
-    var e = id == null ? null : _document.elementById(id);
-    return e is CharacterElement && !e.body.inThreeD && e.visible ? e : null;
-  }
-
-  /// facePick is the feature picked, while the face is set: what Delete
-  /// puts back. Picking another character is not picking its feature.
-  FacePoint? get facePick =>
-      _facePickOf != null && faceCharacter?.id == _facePickOf ? _facePick : null;
-  FacePoint? _facePick;
-  String? _facePickOf;
-  void pickFacePoint(FacePoint? p) {
-    _facePick = p;
-    _facePickOf = p == null ? null : faceCharacter?.id;
-    // Its layer picked, for its settings beside it.
-    if (p != null) {
-      _pickedCharacterLayer = switch (p) {
-        FacePoint.eyeL || FacePoint.eyeR => BodyLayer.eyes.name,
-        FacePoint.browL || FacePoint.browR => BodyLayer.brows.name,
-        FacePoint.nose => BodyLayer.nose.name,
-        _ => BodyLayer.mouth.name,
-      };
-    }
-    notifyListeners();
-  }
-
-  /// putFacePointBack puts the feature picked back as it was on the panel
-  /// seen, returning whether there was one.
-  bool putFacePointBack() {
-    var p = facePick, e = faceCharacter;
-    if (p == null || e == null) return false;
-    replaceElement(withFacePointBack(e, p, _frame, mirror: _mirrorEdits,
-        frameRate: math.max(1, _document.frameRate)));
-    _facePick = null;
-    notifyListeners();
-    return true;
-  }
-
-  /// puppetHandles is whether the puppet's handles and pins can be taken
-  /// hold of: always, but while drawing only with a select tool in hand,
-  /// so the pen and pencil draw across them.
-  bool get puppetHandles =>
-      drawingOn == null ||
-      _vectorTool == VectorTool.select ||
-      _vectorTool == VectorTool.selectShapes;
-
-  /// _proxyOver and _proxyFrame are the character, as it was, and the frame
-  /// the stand-in was laid out for: either changed -- a pose, a turn to
-  /// another panel, the playhead moved -- and it is laid out again.
-  CharacterElement? _proxyOver;
-  int _proxyFrame = -1;
-
-  /// drawingGarment is which of the character's wardrobe is being drawn
-  /// on, or null for the character itself.
-  int? get drawingGarment => drawingOn == null ? null : _drawingGarment;
-  int? _drawingGarment;
-
-  /// drawingLayer is the body layer being drawn on -- its shapes alone on
-  /// the drawing laid over the character -- or null for all of them.
-  String? get drawingLayer => drawingOn == null ? null : _drawingLayer;
-  String? _drawingLayer;
-
-  /// drawOnCharacter starts drawing on the sketched character [id], on the
-  /// panel it is seen from where the playhead is -- or, with [garment], on
-  /// that garment of its wardrobe: each shape on the part of the body it
-  /// covers under it.
-  ///
-  /// With [layer], a layer of the character: a garment's is that garment;
-  /// a body layer's shapes are drawn on alone, as that layer.
-  void drawOnCharacter(String id, {int? garment, String? layer}) {
-    var c = _document.elementById(id);
-    if (c is! CharacterElement || c.body.inThreeD) return;
-    if (layer != null) {
-      garment ??= garmentOfLayer(layer);
-      if (garment != null) layer = null;
-    }
-    if (garment != null && (garment < 0 || garment >= c.dna.wardrobe.length)) return;
-    if (drawingOn == id && _drawingGarment == garment && _drawingLayer == layer) return;
-    // From one to the other, the first put down.
-    if (drawingOn != null) {
-      selectOnly(drawingOn!);
-      _keepDrawingProxy();
-    }
-    stopVectorTyping();
-    _fitEditedVector();
-    _drawingGarment = garment;
-    _drawingLayer = layer;
-    // What is drawn on it taken as it is shown -- its edits carried onto
-    // the character as it is now -- for the tools to edit what is seen.
-    c = rebasedCharacter(c, _frame, math.max(1, _document.frameRate));
-    var proxy = drawingProxy(c, _frame, math.max(1, _document.frameRate),
-        garment: garment, layer: layer);
-    var next = _document.withElement(c).removeElement(proxy.id).addElement(proxy);
-    next = next.reorder(next.elements.length - 1, next.indexOf(id) + 1);
-    _vectorEditing = proxy.id;
-    _resetVectorEditing();
-    // Ready to pick: what is drawn there is the thing to work on first.
-    _vectorTool = VectorTool.select;
-    // The hair's base is one shape: picked, its points out, and the pencil
-    // in its colour, so what is drawn adds to it -- a bold lock, a lower
-    // hairline -- and the eraser takes from it.
-    if (layer == BodyLayer.hairBase.name && proxy.shapes?.length == 1) {
-      _vectorShape = 0;
-      if (proxy.shapes!.first.fill case var fill?) _vectorPencilColour = fill;
-    }
-    _selection = {proxy.id};
-    _backgroundSelected = false;
-    _proxyOver = c;
-    _proxyFrame = _frame;
-    // Not a change of its own to undo: only what is drawn is.
-    apply(next, transient: true);
-    notifyListeners();
-  }
-
-  /// chartCharacterLayer gives [kind]'s layer of sketch [id] a chart on the
-  /// view it is seen from -- taken apart there first -- to draw once for
-  /// each state the face is in. One step to undo. See LayerChart.
-  void chartCharacterLayer(String id, ChartKind kind) {
-    var e = _document.elementById(id);
-    if (e is! CharacterElement || e.body.inThreeD) return;
-    var rate = math.max(1, _document.frameRate);
-    beginInteraction();
-    if (!layerTakenApart(id, kind.layer)) takeApartCharacterLayer(id, kind.layer);
-    var now = _document.elementById(id);
-    if (now is CharacterElement) {
-      replaceElement(chartLayer(now, kind.layer, kind, _frame, rate));
-    }
-    endInteraction();
-  }
-
-  /// characterChart is [kind]'s chart on sketch [id] on the view it is seen
-  /// from, or null.
-  LayerChart? characterChart(String id, ChartKind kind) {
-    var e = _document.elementById(id);
-    if (e is! CharacterElement) return null;
-    return chartOf(e, kind.layer, _frame, math.max(1, _document.frameRate));
-  }
-
-  /// drawChartState draws state [state] of [kind]'s chart on sketch [id]:
-  /// the face set to it, and its layer drawn on -- what is drawn kept as
-  /// that state's drawing.
-  void drawChartState(String id, ChartKind kind, String state) {
-    var e = _document.elementById(id);
-    if (e is! CharacterElement || e.body.inThreeD) return;
-    if (drawingOn != null) stopDrawingOnCharacter();
-    e = _document.elementById(id) as CharacterElement;
-    beginInteraction();
-    replaceElement(characterFaced(
-        e, faceForChart(e.faceAtFrame(_frame), kind, state)));
-    endInteraction();
-    pickCharacterLayer(kind.layer);
-    drawOnCharacter(id, layer: kind.layer);
-  }
-
-  /// drawnTakenApart is whether what is drawn on -- the character, or the
-  /// garment of it -- is taken apart into shapes on the panel seen, to edit
-  /// point by point. See takeApartPanel.
-  bool get drawnTakenApart {
-    var id = drawingOn;
-    var c = id == null ? null : _document.elementById(id);
-    if (c is! CharacterElement) return false;
-    var key = drawnKey(c, _frame, math.max(1, _document.frameRate));
-    if (_drawingLayer case var layer?) return isLayerTakenApart(c, layer, key);
-    return isTakenApart(c, key, garment: _drawingGarment);
-  }
-
-  /// layerTakenApart is whether [layer] of character [id] is drawn by its
-  /// shapes on the panel seen where the playhead is.
-  bool layerTakenApart(String id, String layer) {
-    var c = _document.elementById(id);
-    if (c is! CharacterElement || c.body.inThreeD) return false;
-    return isLayerTakenApart(c, layer, drawnKey(c, _frame, math.max(1, _document.frameRate)));
-  }
-
-  /// takeApartCharacterLayer takes [layer] of character [id] apart on the
-  /// panel seen where the playhead is, alone -- see takeApartLayer -- and
-  /// putCharacterLayerBack draws it there as it is made again.
-  void takeApartCharacterLayer(String id, String layer) {
-    var c = _document.elementById(id);
-    if (c is! CharacterElement || c.body.inThreeD) return;
-    replaceElement(takeApartLayer(c, layer, _frame, math.max(1, _document.frameRate)));
-  }
-
-  /// keyCharacterLayer shapes [layer] of character [id] by slider [look]
-  /// through keyforms on the panel seen -- see LayerKeys -- or, with null,
-  /// stops. addKeyform keeps one at the slider's value now; removeKeyform
-  /// takes the one at [value] away; goToKeyform sets the slider to it.
-  void keyCharacterLayer(String id, String layer, String? look) {
-    var c = _document.elementById(id);
-    if (c is! CharacterElement) return;
-    var rate = math.max(1, _document.frameRate);
-    replaceElement(look == null
-        ? unkeyLayer(c, layer, _frame, rate)
-        : keyLayer(unkeyLayer(c, layer, _frame, rate), layer, look, _frame, rate));
-  }
-
-  void addKeyform(String id, String layer) {
-    var c = _document.elementById(id);
-    if (c is! CharacterElement) return;
-    replaceElement(withKeyform(c, layer, _frame, math.max(1, _document.frameRate)));
-  }
-
-  void removeKeyform(String id, String layer, double value) {
-    var c = _document.elementById(id);
-    if (c is! CharacterElement) return;
-    replaceElement(withoutKeyform(c, layer, value, _frame, math.max(1, _document.frameRate)));
-  }
-
-  void goToKeyform(String id, String look, double value) {
-    var c = _document.elementById(id);
-    if (c is! CharacterElement) return;
-    if (bendOf(look) case var b?) {
-      replaceElement(c.copyWith(pose: c.pose.withAngle(b, value)));
-      return;
-    }
-    var l = Look.fromName(look);
-    if (l == null) return;
-    replaceElement(c.copyWith(dna: c.dna.copyWith(look: c.dna.look.withValue(l, value))));
-  }
-
-  void putCharacterLayerBack(String id, String layer) {
-    var c = _document.elementById(id);
-    if (c is! CharacterElement) return;
-    replaceElement(putLayerBack(c, layer, _frame, math.max(1, _document.frameRate)));
-  }
-
-  /// takeApartCharacter takes the panel of character [id] seen where the
-  /// playhead is apart into shapes -- or, with [garment], that garment of
-  /// it -- for the drawing tools to edit point by point.
-  void takeApartCharacter(String id, {int? garment}) {
-    var c = _document.elementById(id);
-    if (c is! CharacterElement || c.body.inThreeD) return;
-    var rate = math.max(1, _document.frameRate);
-    // Drawing on one layer: that layer.
-    if (garment == null && drawingOn == id && _drawingLayer != null) {
-      replaceElement(takeApartLayer(c, _drawingLayer!, _frame, rate));
-      return;
-    }
-    replaceElement(garment == null
-        ? takeApartPanel(c, _frame, rate)
-        : takeApartGarment(c, garment, _frame, rate));
-  }
-
-  /// putCharacterBack draws the panel of character [id] seen where the
-  /// playhead is as it is made again -- or, with [garment], that garment.
-  void putCharacterBack(String id, {int? garment}) {
-    var c = _document.elementById(id);
-    if (c is! CharacterElement) return;
-    replaceElement(putPanelBack(c, _frame, math.max(1, _document.frameRate),
-        garment: garment));
-  }
-
-  /// stopDrawingOnCharacter puts the drawing tools down, the character
-  /// picked again.
-  void stopDrawingOnCharacter() {
-    var id = drawingOn;
-    if (id == null) return;
-    selectOnly(id);
-  }
-
-  /// _drawnOnCharacter is [next] with what was drawn on the stand-in since
-  /// the document before it taken into the character.
-  CanvasDocument _drawnOnCharacter(CanvasDocument next) {
-    var id = _vectorEditing;
-    var cid = id == null ? null : drawnCharacterOf(id);
-    if (id == null || cid == null) return next;
-    var proxy = next.elementById(id), before = _document.elementById(id);
-    var c = next.elementById(cid);
-    if (proxy is! VectorElement ||
-        before is! VectorElement ||
-        c is! CharacterElement) {
-      return next;
-    }
-    if (identical(proxy, before) || proxy.shapes == before.shapes) return next;
-    var drawn = drawnFromProxy(
-        c, proxy, _frame, math.max(1, _document.frameRate),
-        before: before, garment: _drawingGarment, layer: _drawingLayer);
-    _proxyOver = drawn;
-    _proxyFrame = _frame;
-    return next.withElement(drawn);
-  }
-
-  /// _keepDrawingProxy keeps the stand-in for the character being drawn on
-  /// laid over it as it is, and takes away any left with nothing being
-  /// drawn: a drawing put down, or an undo back to while it was.
-  void _keepDrawingProxy() {
-    var id = _vectorEditing;
-    var cid = id == null ? null : drawnCharacterOf(id);
-    if (cid == null) {
-      if (_document.elements.any((e) => isDrawingProxy(e.id))) {
-        _document = _document.copyWith(elements: [
-          for (var e in _document.elements)
-            if (!isDrawingProxy(e.id)) e
-        ]);
-      }
-      _proxyOver = null;
-      _drawingGarment = null;
-      _drawingLayer = null;
-      return;
-    }
-    var c = _document.elementById(cid);
-    if (c is! CharacterElement) return;
-    if (identical(c, _proxyOver) && _frame == _proxyFrame) return;
-    var at = _document.elementById(id!);
-    // A garment taken off while it was drawn on: nothing left to draw on.
-    if (_drawingGarment case var g? when g >= c.dna.wardrobe.length) {
-      _drawingGarment = null;
-    }
-    var proxy = drawingProxy(c, _frame, math.max(1, _document.frameRate),
-        garment: _drawingGarment, layer: _drawingLayer);
-    if (at is VectorElement) {
-      _document = _document.withElement(proxy);
-    }
-    _proxyOver = c;
-    _proxyFrame = _frame;
   }
 
   /// editingVector is the drawing being edited, where there is one and it has
@@ -5425,14 +3964,6 @@ class CanvasController extends ChangeNotifier {
   /// editVector starts editing the drawing [id], or stops with null.
   void editVector(String? id) {
     if (_vectorEditing == id) return;
-    // A character's drawing is laid over it to be edited -- see
-    // drawOnCharacter -- and put down, the character is picked again.
-    var drawn = id == null ? null : drawnCharacterOf(id);
-    if (drawn != null && _document.elementById(id!) == null) {
-      drawOnCharacter(drawn);
-      return;
-    }
-    var putDown = id == null ? drawingOn : null;
     stopVectorTyping();
     _fitEditedVector();
     _vectorEditing = id;
@@ -5441,9 +3972,6 @@ class CanvasController extends ChangeNotifier {
     // so the settings beside it are its own. See notifyListeners.
     if (id != null) {
       _selection = {id};
-      _backgroundSelected = false;
-    } else if (putDown != null && _document.elementById(putDown) != null) {
-      _selection = {putDown};
       _backgroundSelected = false;
     }
     notifyListeners();
@@ -5611,8 +4139,7 @@ class CanvasController extends ChangeNotifier {
   /// round all of it. See boxedToDrawing.
   void _fitEditedVector() {
     var e = editingVector;
-    // A character's stand-in is its box exactly, and is thrown away.
-    if (e == null || isDrawingProxy(e.id)) return;
+    if (e == null) return;
     var fitted = boxedToDrawing(e);
     if (identical(fitted, e)) return;
     apply(_document.withElement(fitted));
@@ -6800,7 +5327,6 @@ class CanvasController extends ChangeNotifier {
   // ------------------------------------------------------------------------
 
   set zoom(double value) {
-    _characterZoom = null;
     var next = value.clamp(minZoom, maxZoom);
     if (next == _zoom) return;
     // About the middle of what is looked at: the view scaled with the page,
@@ -6816,7 +5342,6 @@ class CanvasController extends ChangeNotifier {
   }
 
   void resetZoom() {
-    _characterZoom = null;
     _zoom = 1;
     _pan = const Offset2(0, 0);
     _notifyView();
@@ -6837,12 +5362,6 @@ class CanvasController extends ChangeNotifier {
 
   void zoomBy(double factor) => zoom = _zoom * factor;
 
-  /// characterZoom is the stretch of a character's body last zoomed onto
-  /// -- what the bar's zoom steps on from -- until the view is zoomed some
-  /// other way.
-  CharacterZoom? get characterZoom => _characterZoom;
-  CharacterZoom? _characterZoom;
-
   /// zoomToRect zooms onto [r], a stretch of the canvas, in its middle and
   /// filling most of the view.
   void zoomToRect(Rect r) {
@@ -6854,40 +5373,6 @@ class CanvasController extends ChangeNotifier {
     _pan = Offset2(scale * (size.width / 2 - r.center.dx),
         scale * (size.height / 2 - r.center.dy));
     _notifyView();
-  }
-
-  /// zoomToCharacter zooms onto the stretch of character [id]'s body that
-  /// [zoom] names, as it is where the playhead is.
-  void zoomToCharacter(String id, CharacterZoom zoom) {
-    var c = _document.elementById(id);
-    if (c is! CharacterElement) return;
-    _characterZoom = zoom;
-    var (rig, _, _) = drawnRig(c, _frame, math.max(1, _document.frameRate));
-    var pose = c.poseAt(_frame);
-    var box = c.bounds.shift(Offset(pose.dx, pose.dy));
-    var local = zoomRect(rig, zoom).shift(box.topLeft);
-    // Turned with the character, about its middle.
-    var turn = c.rotationAt(_frame) * math.pi / 180;
-    var cs = math.cos(turn), sn = math.sin(turn);
-    Offset turned(Offset p) {
-      var d = p - box.center;
-      return box.center + Offset(d.dx * cs - d.dy * sn, d.dx * sn + d.dy * cs);
-    }
-
-    var corners = [
-      for (var p in [
-        local.topLeft,
-        local.topRight,
-        local.bottomLeft,
-        local.bottomRight
-      ])
-        turned(p)
-    ];
-    var r = Rect.fromPoints(corners[0], corners[0]);
-    for (var p in corners.skip(1)) {
-      r = r.expandToInclude(Rect.fromPoints(p, p));
-    }
-    zoomToRect(r);
   }
 
   set pan(Offset2 value) {
@@ -9625,16 +8110,17 @@ class CanvasController extends ChangeNotifier {
   }
 
   /// spoken is [doc] with each character that speaks for a channel -- see
-  /// CharacterElement.speaksFor -- speaking while a slot is heard on it:
-  /// its mouth the take's at the moment it has got to, shown, and talking
-  /// with its hands. [doc] itself where nobody is speaking.
+  /// CharacterPerformance.speaksFor -- speaking while a slot is heard on
+  /// it: its mouth the take's at the moment it has got to, and shown. [doc]
+  /// itself where nobody is speaking.
   CanvasDocument spoken(CanvasDocument doc) {
     if (_clipChannels.isEmpty) return doc;
     var changed = false;
     List<CanvasElement> speaking(List<CanvasElement> elements) => [
           for (var e in elements)
-            if (e is CharacterElement && e.speaksFor.isNotEmpty)
-              (_speakingAs(e) ?? e)
+            if (e is Character3dElement &&
+                e.performance.speaksFor.isNotEmpty)
+              (_speaking3dAs(e) ?? e)
             else
               e,
         ];
@@ -9654,10 +8140,24 @@ class CanvasController extends ChangeNotifier {
     return out;
   }
 
-  /// _speakingAs is [e] speaking what its channel's slot says now, or null
-  /// where nothing is heard on it.
-  CharacterElement? _speakingAs(CharacterElement e) {
-    var ch = _clipChannels[e.speaksFor];
+  /// _speaking3dAs is 3D character [e] saying what its channel's slot says
+  /// now, and shown while it does -- or null where nothing is heard on it.
+  Character3dElement? _speaking3dAs(Character3dElement e) {
+    var mouth = _heardMouth(e.performance.speaksFor);
+    if (mouth == null) return null;
+    // Held from long before whatever frame of its scene is drawn: it is
+    // the mouth now, wherever its scene has got to.
+    var spoke = e.performing(
+        e.performance.copyWith(mouths: [(t: -1e6, shape: mouth)]));
+    return e.visible
+        ? spoke
+        : spoke.withBase(visible: true) as Character3dElement;
+  }
+
+  /// _heardMouth is the mouth channel [key]'s slot says now, or null where
+  /// nothing is heard on it.
+  MouthShape? _heardMouth(String key) {
+    var ch = _clipChannels[key];
     var play = ch?.now;
     if (ch == null || play == null || play.sound == null) return null;
     var now = _sessionNow;
@@ -9666,29 +8166,13 @@ class CanvasController extends ChangeNotifier {
     if (ch.stopAt case var stop? when now >= stop) return null;
     var rate = math.max(1, _document.frameRate);
     var sound = play.sound!;
-    var mouths = _slotMouths(play.clipId, sound, rate);
     var heard = ((sound.start + play.into(t)) * rate).floor();
     var mouth = MouthShape.rest;
-    for (var k in mouths ?? const <MouthKey>[]) {
+    for (var k in _slotMouths(play.clipId, sound, rate) ?? const <MouthKey>[]) {
       if (k.frame > heard) break;
       mouth = k.shape;
     }
-    var began = _frame - (t * rate).round();
-    var talking = MotionClip(
-        id: "speaking",
-        kind: MotionKind.talk,
-        layer: MotionLayer.upper,
-        start: began,
-        length: math.max(1, (play.length * rate).ceil()),
-        strength: 0.8);
-    var spoke = e.withMouths(const []).copyWith(
-        face: e.face.withMouth(mouth),
-        motions: [
-          for (var m in e.motions)
-            if (m.layer != MotionLayer.upper) m,
-          talking,
-        ]);
-    return e.visible ? spoke : spoke.withBase(visible: true) as CharacterElement;
+    return mouth;
   }
 
   /// _slotMouths are the mouths of the slot [clipId] playing [sound], by
@@ -14123,7 +12607,6 @@ class CanvasController extends ChangeNotifier {
         ButtonElement e => e.animation,
         AudioElement e => e.animation,
         VideoElement e => e.animation,
-        CharacterElement e => e.animation,
         Character3dElement e => e.animation,
         _ => const ElementAnimation(),
       };
@@ -14154,7 +12637,6 @@ class CanvasController extends ChangeNotifier {
       element is ButtonElement ||
       element is AudioElement ||
       element is VideoElement ||
-      element is CharacterElement ||
       element is Character3dElement;
 
   static CanvasElement _withElementAnimation(
@@ -14170,7 +12652,6 @@ class CanvasController extends ChangeNotifier {
         ButtonElement e => e.copyWith(animation: animation),
         AudioElement e => e.copyWith(animation: animation),
         VideoElement e => e.copyWith(animation: animation),
-        CharacterElement e => e.copyWith(animation: animation),
         Character3dElement e => e.copyWith(animation: animation),
         _ => element,
       };
@@ -14703,12 +13184,6 @@ class CanvasController extends ChangeNotifier {
 
   /// load replaces the whole session with a document from disk.
   void load(CanvasDocument document, {String? folder, String? name}) {
-    // Another canvas opened from the Studio: the one put aside saved with
-    // the Studio's work in it first.
-    if (_session != null) {
-      closeStudio();
-      if (this.name != null && _dirty) unawaited(save());
-    }
     pause();
     stopAudio();
     // The empty channels "Add audio" used to leave: a sound with nothing in
@@ -14845,15 +13320,6 @@ class CanvasController extends ChangeNotifier {
   /// mirror lines with it -- but a document closed mid-edit must not come
   /// back with a box that cuts through the drawing. See _fitEditedVector.
   CanvasDocument get _toSave {
-    // In the Character Studio: the canvas put aside, with the character as
-    // the Studio has it -- leaving mid-way loses nothing.
-    if (_session case var s?) {
-      var made = (_beforePreview ?? _document).elementById(s.instance);
-      return made is CharacterElement
-          ? _withCharacterDesign(
-              s.canvas, s.characterId, s.instance, designOf(_designedNow(s, made)))
-          : s.canvas;
-    }
     // Never a look that is only being tried. See tryElement.
     var document = _beforePreview ?? _document;
     var e = editingVector;
@@ -14917,7 +13383,6 @@ class CanvasController extends ChangeNotifier {
     }
     if (sheetMarksOf == _sheetMarks) sheetMarksOf = null;
     if (vectorSoloOf == _soloOf) vectorSoloOf = null;
-    if (characterDollOf == _dollOf) characterDollOf = null;
     if (_spritePaint != null) {
       _spritePaint!.dispose();
       _spritePaint = null;
@@ -15212,50 +13677,6 @@ List<(double, double, double)> clipPieces(SessionClip clip, double seconds,
 
 /// _ClipChannel is a channel's slots at play: what it plays now, what it is
 /// to play next, and when it stops.
-/// _StudioSession is the canvas put aside while the Character Studio is
-/// open: as it was, to come back to -- see openStudio.
-class _StudioSession {
-  final CanvasDocument canvas;
-  final List<CanvasDocument> undo, redo;
-  final Set<String> selection;
-  final int frame;
-  final double zoom;
-  final Offset2 pan;
-  final bool turnaround;
-
-  /// instance is the placed copy opened; characterId and name the library
-  /// character it is made as.
-  final String instance;
-  String characterId;
-  String name;
-
-  /// outfit is the outfit whose clothes are on in the Studio, being
-  /// changed, or ""; designed the designed clothes, kept aside meanwhile.
-  String outfit = "";
-  List<Garment>? designed;
-
-  /// trying is what the character is being tried in -- see studioTry --
-  /// and looped how the playback looped before a motion was tried.
-  String? trying;
-  (bool, (int, int)?)? looped;
-
-  /// driving is whether the arrow keys drive the character -- see
-  /// CanvasController.studioDriving.
-  bool driving = false;
-  _StudioSession(
-      {required this.canvas,
-      required this.undo,
-      required this.redo,
-      required this.selection,
-      required this.frame,
-      required this.zoom,
-      required this.pan,
-      required this.turnaround,
-      required this.instance,
-      required this.characterId,
-      required this.name});
-}
-
 class _ClipChannel {
   final String channel;
   _ClipPlay? now, next;

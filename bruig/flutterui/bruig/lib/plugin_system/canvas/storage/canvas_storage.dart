@@ -4,7 +4,6 @@ import 'package:bruig/config.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:flutter/foundation.dart';
 import 'package:bruig/plugin_system/canvas/storage/character_designs.dart';
-import 'package:bruig/plugin_system/canvas/storage/character_library.dart';
 import 'package:path/path.dart' as path;
 
 // canvas_storage.dart is the whole filesystem side of the canvas library:
@@ -45,15 +44,18 @@ const canvasVideoFolder = "Videos";
 /// picture is not. See VectorElement.
 const canvasVectorFolder = "Vectors";
 
-/// canvasModelFolder is where 3D characters live: .glb, .vrm and .gltf
-/// files. See CharacterElement.model.
+/// canvasModelFolder, canvasCharacterFolder and canvasHumanFolder are where
+/// the old characters kept their imported 3D models, their library and their
+/// sculpted body. Nothing is kept there now, but a library that has them is
+/// not to show them as folders of canvases.
 const canvasModelFolder = "Models";
+const canvasCharacterFolder = "Characters";
+const canvasHumanFolder = "Human";
 
 /// The folders things are downloaded to, the first time they are wanted:
-/// the sculpted body (human_assets.dart), the voices speech is made with
-/// (kokoro_speech.dart, qwen_speech.dart), the instruments' sound bank
-/// (part_render.dart) and the VRoid characters (vroid_assets.dart).
-const canvasHumanFolder = "Human";
+/// the voices speech is made with (kokoro_speech.dart, qwen_speech.dart),
+/// the instruments' sound bank (part_render.dart) and the VRoid characters
+/// (vroid_assets.dart).
 const canvasVoicesFolder = "voices";
 const canvasSoundBankFolder = "soundbanks";
 const canvasVroidFolder = "VRoid";
@@ -120,6 +122,13 @@ class CanvasEntry {
   });
 }
 
+/// inTestsUnaimed is whether this is a test that has not said where its
+/// library is: the real one is not looked in -- what is downloaded on this
+/// machine is no test's business.
+bool get inTestsUnaimed =>
+    Platform.environment.containsKey("FLUTTER_TEST") &&
+    !CanvasStorage.overridden;
+
 /// CanvasStorage reads and writes the library.
 class CanvasStorage {
   /// rootOverride replaces the app data directory, for tests.
@@ -156,10 +165,7 @@ class CanvasStorage {
         if (document != null) live.addAll(document.assetIds);
       }
     }
-    // And the library's characters': a reference sheet no canvas shows is
-    // still the character's.
-    live.addAll(await CharacterLibrary.assetIds());
-    // And the new 3D characters' decals.
+    // And the 3D characters' decals.
     live.addAll(await CharacterDesigns.pictureIds());
     return live;
   }
@@ -179,7 +185,6 @@ class CanvasStorage {
         if (document != null) live.addAll(document.mediaIds);
       }
     }
-    live.addAll(await CharacterLibrary.mediaIds());
     live.addAll(await CharacterDesigns.vectorIds());
     return live;
   }

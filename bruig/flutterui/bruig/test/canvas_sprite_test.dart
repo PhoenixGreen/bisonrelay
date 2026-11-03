@@ -6,6 +6,8 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -14,9 +16,6 @@ import 'package:bruig/plugin_system/canvas/render/sprite_pixels.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/sprite_painting.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/sprite_export.dart';
-import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -424,28 +423,19 @@ void main() {
       expect((await codec.getNextFrame()).duration, const Duration(milliseconds: 200));
     });
 
-    test("made from a character: its frames from the playhead, turned each way", () async {
-      var who = CharacterElement(const ElementBase(id: "c", x: 0, y: 0, width: 100, height: 200),
-          dna: CharacterType.boy.dna, pose: posePresets[1].pose);
-      var made = (await spriteFromCharacter(_sprite(), who, from: 0, count: 3, directions: true, cell: 64))!;
-      expect((made.columns, made.rows, made.frameCount), (3, 4, 12));
-      expect(made.directions, isTrue);
-      expect(made.actions.single.frames[SpriteFacing.back], [6, 7, 8]);
-      // Something drawn in each row.
-      var p = await SpritePixels.of((await (await ui.instantiateImageCodec(
-              await File((await CanvasAssets.pathOf(made.sheet))!).readAsBytes()))
-          .getNextFrame())
-          .image);
-      for (var r = 0; r < 4; r++) {
-        var cell = made.frameRect(r * 3);
-        var any = false;
-        for (var y = cell.top.toInt(); y < cell.bottom && !any; y += 2) {
-          for (var x = cell.left.toInt(); x < cell.right && !any; x += 2) {
-            if (p!.at(x, y).a > 0) any = true;
-          }
-        }
-        expect(any, isTrue, reason: "row $r drawn");
-      }
+    test("made from a 3D character: a row each way, each frame on its own",
+        () async {
+      var who = Character3dElement(
+          const ElementBase(
+              id: "c3", name: "Jess", x: 0, y: 0, width: 100, height: 200),
+          design: CharacterDesign(
+              id: "d", name: "Jess", body: "Vivi", updated: DateTime(2026)));
+      var made = (await spriteFromCharacter(_sprite(), who,
+          from: 0, count: 2, directions: true, cell: 64))!;
+      expect((made.columns, made.rows, made.frameCount), (2, 4, 8));
+      expect(made.sheetName, "Jess");
+      expect(made.frameRect(0).size, const ui.Size(32, 64),
+          reason: "its own box, no room round it");
     });
   });
 }

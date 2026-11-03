@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:bruig/plugin_system/canvas/model/elements/character_gltf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vrm_convert.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
@@ -396,10 +395,6 @@ void main() {
           [-0.1, 0, -0.05]);
     });
 
-    test('the app reads the result as VRM 1.0', () {
-      final g = parseGltf(convertVrm0(_vrm0()));
-      expect(g.meshes, isNotEmpty);
-    });
   });
 
   test('kept for its hair, only the hair keeps its pictures', () {

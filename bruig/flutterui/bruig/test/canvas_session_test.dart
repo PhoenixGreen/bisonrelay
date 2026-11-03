@@ -11,9 +11,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
+import 'package:bruig/plugin_system/canvas/model/lip_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
@@ -902,7 +904,7 @@ void main() {
 
     // Ken's narrators: a character that speaks for a channel speaks what a
     // slot plays on it.
-    test("a character speaking for a channel moves its mouth by the take",
+    test("a 3D character speaking for a channel moves its mouth by the take",
         () async {
       var voice = sound("a");
       voice = voice.copyWith(
@@ -914,9 +916,11 @@ void main() {
           (text: "boom", start: 1.6, end: 2.2),
         ]),
       ]))));
-      var ada = CharacterElement(
+      var ada = Character3dElement(
           const ElementBase(id: "ada", name: "Ada", visible: false),
-          speaksFor: "a");
+          design: CharacterDesign(
+              id: "d", name: "Ada", body: "Vivi", updated: DateTime(2026)),
+          performance: const CharacterPerformance(speaksFor: "a"));
       var c = make([voice, ada]);
       addTearDown(c.dispose);
       c.clockForTest = () => micros;
@@ -925,18 +929,18 @@ void main() {
           reason: "nothing heard yet");
       c.pressClip("a", 0);
       await settle();
-      CharacterElement said() =>
-          c.spoken(c.document).elementById("ada") as CharacterElement;
+      Character3dElement said() =>
+          c.spoken(c.document).elementById("ada") as Character3dElement;
+      MouthShape? mouth() => said().performance.mouthAt(0);
       at(c, 0.2);
-      expect(said().face.mouth, MouthShape.rest, reason: "before the word");
+      expect(mouth(), MouthShape.rest, reason: "before the word");
       expect(said().visible, isTrue, reason: "shown while it is heard");
-      expect(said().motions.single.kind, MotionKind.talk);
       at(c, 0.75);
-      expect(said().face.mouth, isNot(MouthShape.rest), reason: "saying hello");
+      expect(mouth(), isNot(MouthShape.rest), reason: "saying hello");
+      // Whatever frame of its scene is drawn.
+      expect(said().performance.mouthAt(30), mouth());
       at(c, 1.3);
-      expect(said().face.mouth, MouthShape.rest, reason: "between the words");
-      at(c, 1.8);
-      expect(said().face.mouth, isNot(MouthShape.rest));
+      expect(mouth(), MouthShape.rest, reason: "between the words");
       c.stopChannelClips("a", now: true);
       at(c, 1.9);
       expect(said().visible, isFalse, reason: "hidden again once it stops");

@@ -1,4 +1,3 @@
-import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -63,8 +62,6 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
     // Tiles keep their pictures while a control is dragged -- see
     // TileSnapshot.holding.
     TileSnapshot.holding = () => widget.controller.interacting;
-    TileSnapshot.stoodIn = () => HumanBody.instance.stoodIn;
-    TileSnapshot.arrived = HumanBody.instance;
     readSettingsLayout();
     _makeBodies();
   }

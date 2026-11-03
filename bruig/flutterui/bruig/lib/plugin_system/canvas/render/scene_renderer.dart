@@ -13,10 +13,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/background_element.dar
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/character3d_painter.dart';
-import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
-import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/parallax_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
@@ -152,14 +149,7 @@ Future<void> drawWhenLoaded(
   if (images == null) return;
   for (var round = 0; round < 3; round++) {
     var recorder = ui.PictureRecorder();
-    // Sculpted bodies made there and then, not stood in for while they are
-    // made: kept, the draw that follows finds them made.
-    HumanBody.instance.buildNow = true;
-    try {
-      paint(ui.Canvas(recorder));
-    } finally {
-      HumanBody.instance.buildNow = false;
-    }
+    paint(ui.Canvas(recorder));
     recorder.endRecording().dispose();
     if (!images.loading) return;
     // Bounded: a picture that never arrives is drawn as missing rather than
@@ -498,7 +488,8 @@ void _paintDocumentBackground(
   if (bg.isStage) {
     // The stage in the pattern's place: a set, through its camera, that
     // the characters standing on it are drawn in front of.
-    paintStage(canvas, rect, bg.stageOn(rect), (time * frameRate).round());
+    paintStage(canvas, rect, bg.stageOn(rect), (time * frameRate).round(),
+        images: images);
   } else if (bg.isParallax) {
     paintParallax(canvas, rect, bg.parallaxOn(rect), (time * frameRate).round(),
         frameRate: frameRate,
@@ -600,7 +591,6 @@ bool leavesByItself(CanvasElement element) => switch (element) {
       CounterElement e => e.animation.closes,
       ButtonElement e => e.animation.closes,
       VideoElement e => e.animation.closes,
-      CharacterElement e => e.animation.closes,
       Character3dElement e => e.animation.closes,
       _ => true,
     };
@@ -688,27 +678,8 @@ void paintElement(
 
   var bounds = element.bounds;
 
-  // A character standing on a stage is where the stage's camera sees it,
-  // not where its own box is: placed, sized and turned by the camera, and
-  // lit by the stage.
-  if (element is CharacterElement &&
-      element.onStage != null &&
-      document != null) {
-    var at = stagingIn(document, element, frame);
-    if (at != null) {
-      if (alpha < 0.999) {
-        canvas.saveLayer(null,
-            Paint()..color = const Color(0xFFFFFFFF).withValues(alpha: alpha));
-      }
-      paintCharacter(canvas, at.box, element, frame,
-          frameRate: frameRate, editing: editing, staged: at, images: images);
-      if (alpha < 0.999) canvas.restore();
-      return;
-    }
-  }
-
-  // Anything else standing on a stage is where the stage's camera sees it:
-  // a 3D character drawn through the camera, and everything else drawn as
+  // Something standing on a stage is where the stage's camera sees it: a
+  // 3D character drawn through the camera, and everything else drawn as
   // it is on the page and set into the stage, a flat in perspective. Both
   // lit by the stage.
   var spot = element.base.spot;
@@ -1021,7 +992,7 @@ void paintElement(
       case TeamElement e:
         paintTeam(canvas, bounds, e, frame, document: document, images: images);
       case StageElement e:
-        paintStage(canvas, bounds, e, frame);
+        paintStage(canvas, bounds, e, frame, images: images);
       case SpriteElement e:
         paintSprite(canvas, bounds, e, frame,
             frameRate: frameRate, images: images, editing: editing);
@@ -1048,14 +1019,6 @@ void paintElement(
                           document: document)
                     );
                   });
-      case CharacterElement e:
-        arriving(
-            canvas,
-            bounds,
-            e.animation,
-            pose,
-            () => paintCharacter(canvas, bounds, e, frame,
-                frameRate: frameRate, editing: editing, images: images));
       case Character3dElement e:
         arriving(
             canvas,
@@ -1399,12 +1362,7 @@ LineElement _bowed(LineElement e, Keyframe pose) {
 /// this, because a box drawn somewhere other than the thing it belongs to is
 /// worse than no box: it invites dragging empty space.
 Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame) {
-  // Where the stage's camera puts a character standing on it.
-  if (element is CharacterElement && element.onStage != null && doc != null) {
-    var at = stagingIn(doc, element, frame);
-    if (at != null) return at.box;
-  }
-  // And anything else standing on one.
+  // Where the stage's camera puts something standing on it.
   if (element.base.spot != null && doc != null) {
     if (stagedIn(doc, element, frame) case var at?) return at.box;
   }
@@ -1466,13 +1424,8 @@ Rect? _boundsOfPoints(List<Offset>? points) {
 /// that appear to do nothing.
 bool hasOwnGeometry(CanvasElement element, CanvasDocument? doc, int frame) =>
     !(element is TextElement && _curveFor(element, doc, frame) != null) &&
-    // A character on a stage is sized and turned by the camera: its height
-    // is in metres, in its settings.
-    !(element is CharacterElement &&
-        element.onStage != null &&
-        doc != null &&
-        stagingIn(doc, element, frame) != null) &&
-    // Nor is anything else's standing on one: its size is in metres.
+    // Nor is something's standing on a stage: it is sized and turned by
+    // the camera, its height in metres in its settings.
     !(element.base.spot != null &&
         doc != null &&
         stagedIn(doc, element, frame) != null);
@@ -3143,7 +3096,7 @@ void _paintBackgroundElement(
   if (e.isStage || e.isParallax) {
     var frame = (time * frameRate).round();
     if (e.isStage) {
-      paintStage(canvas, bounds, e.staged, frame);
+      paintStage(canvas, bounds, e.staged, frame, images: images);
     } else {
       paintParallax(canvas, bounds, e.parallaxed, frame,
           frameRate: frameRate, images: images, loopFrames: loopFrames);
@@ -3415,7 +3368,6 @@ ElementAnimation? _animationOf(CanvasElement element) => switch (element) {
       ButtonElement e => e.animation,
       AudioElement e => e.animation,
       VideoElement e => e.animation,
-      CharacterElement e => e.animation,
       Character3dElement e => e.animation,
       _ => null,
     };

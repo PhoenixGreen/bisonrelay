@@ -4,8 +4,6 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
-import 'package:bruig/plugin_system/canvas/storage/human_assets.dart'
-    show inTestsUnaimed;
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 

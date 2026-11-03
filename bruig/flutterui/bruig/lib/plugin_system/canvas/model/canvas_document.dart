@@ -24,7 +24,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/background_element.dar
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
@@ -1506,11 +1505,7 @@ class CanvasDocument {
       "frameRate": frameRate,
       if (actions.isNotEmpty)
         "actions": actions.map((a) => a.toJson()).toList(),
-      // A stand-in for drawing on a character is the editor's, never saved.
-      "elements": [
-        for (var e in elements)
-          if (!isDrawingProxy(e.id)) e.toJson()
-      ],
+      "elements": [for (var e in elements) e.toJson()],
       if (targets.isNotEmpty) "targets": targets,
       if (cues.isNotEmpty) "cues": [for (var c in cues) c.toJson()],
       if (words.isNotEmpty) "words": [for (var w in words) w.toJson()],
@@ -1590,7 +1585,8 @@ class CanvasDocument {
     var elements = raw is List
         ? [
             for (var e in raw)
-              if (e is Map<String, dynamic>) elementFromJson(e),
+              if (e is Map<String, dynamic> && !noLongerMade(e))
+                elementFromJson(e),
           ]
         : const <CanvasElement>[];
     var actions = acts is List
@@ -1727,6 +1723,11 @@ CanvasElement _withoutLinksTo(CanvasElement e, String id) {
   return next;
 }
 
+/// noLongerMade is whether saved element [json] is of a kind no longer made,
+/// and left out when it is read: the old drawn characters, which the 3D
+/// characters replaced.
+bool noLongerMade(Map<String, dynamic> json) => json["kind"] == "character";
+
 /// elementFromJson turns one saved element back into the right subclass.
 ///
 /// An unknown kind becomes a plain rectangle rather than being dropped. A
@@ -1783,8 +1784,6 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return VideoElement.fromJson(json, base);
     case ElementKind.vector:
       return VectorElement.fromJson(json, base);
-    case ElementKind.character:
-      return CharacterElement.fromJson(json, base);
     case ElementKind.character3d:
       return Character3dElement.fromJson(json, base);
     // A stage of its own, from before stages were a kind of background.

@@ -17,6 +17,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart'
     show elementCueGroup;
 import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/stage_spot_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/adjustment_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/effects_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_layer_settings.dart';
@@ -52,6 +53,10 @@ List<Widget> imagePanel(
   var sections = switch (picked.kind) {
     LayerKind.base || LayerKind.picture => [
         s.position(),
+        // Where the picture stands on a 3D stage -- the whole picture's,
+        // not a layer's.
+        if (picked.isBase)
+          ...stageSpotSettings(context, controller, e, write, begin, commit),
         s.mask(),
         s.retouch(),
         s.colour(),

@@ -12,9 +12,14 @@ import 'package:bruig/plugin_system/canvas/model/elements/background_element.dar
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/sound_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_camera.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -151,6 +156,19 @@ void main() {
     expect(foot.dy, closeTo(1, 1e-6));
   });
 
+  test("a line stands as long as its size, on a plane round its stroke", () {
+    final doc = const CanvasDocument().addElement(stage()).addElement(
+        const LineElement(
+            ElementBase(id: "l", x: 100, y: 300, width: 400, height: 0)));
+    final line =
+        doc.elementById("l")!.withBase(spot: const StageSpot("st", height: 2));
+    final at = stagedIn(doc.withElement(line), line, 0)!;
+    final view = StageView(page, const StageCamera());
+    // Two metres from end to end: its ends where the camera sees them.
+    near((at.quad[2] + at.quad[3]) / 2, view.see(0, 0, 0).page, 0.5);
+    expect(at.box.width, closeTo(view.scaleAt(at.depth) * 2, 3));
+  });
+
   test("behind the camera it is not drawn; off a stage, on the page", () {
     final doc = const CanvasDocument()
         .addElement(stage(camera: const StageCamera(distance: 2)))
@@ -160,8 +178,15 @@ void main() {
     expect(stagedIn(doc, doc.elementById("b")!, 0), isNull);
     expect(visualBoundsOf(doc.elementById("b")!, doc, 0),
         const Rect.fromLTWH(100, 50, 200, 400));
-    // Sounds and backgrounds stay off stages.
-    expect(canStand(AudioElement(const ElementBase(id: "s"))), isFalse);
+    // A speaker or an instrument on the canvas can stand on a stage, and a
+    // Background element showing a picture; a sound on the timeline, and a
+    // stage itself, cannot.
+    expect(canStand(AudioElement(const ElementBase(id: "s"))), isTrue);
+    expect(
+        canStand(AudioElement(const ElementBase(id: "t", visible: false),
+            clip: const MediaClip(timed: true))),
+        isFalse);
+    expect(canStand(const BackgroundElement(ElementBase(id: "b"))), isTrue);
     expect(canStand(stage()), isFalse);
   });
 
@@ -227,6 +252,28 @@ void main() {
     expect(await draw(const StageCamera(yaw: 60)), isNot(a));
   });
 
+  test("a sound following something on a stage is heard from where it is", () {
+    const place = SoundPlacement(by: PlaceBy.follow, follow: "who");
+    final sound = AudioElement(const ElementBase(id: "s"),
+        clip: MediaClip(
+            playlist: const [MediaSource(assetId: "t", length: 2)],
+            timed: true,
+            place: place));
+    Heard heard(double x, double z) {
+      final doc = const CanvasDocument()
+          .addElement(stage())
+          .addElement(body("who", spot: StageSpot("st", x: x, z: z)))
+          .addElement(sound);
+      return heardAt(doc, sound, place, 0)!;
+    }
+
+    expect(heard(0, 0).angle, closeTo(0, 0.5), reason: "straight ahead");
+    expect(heard(3, 0).angle, greaterThan(15), reason: "to the right");
+    expect(heard(-3, 0).angle, lessThan(-15), reason: "to the left");
+    expect(heard(0, -5).gain, lessThan(heard(0, 0).gain),
+        reason: "quieter further off");
+  });
+
   group("the panel", () {
     setUpAll(() => CanvasSection.openAll = true);
     tearDownAll(() => CanvasSection.openAll = false);
@@ -283,6 +330,22 @@ void main() {
       await tester.pumpAndSettle();
       expect(spot(), isNull);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("a picture has it too, among its sections", (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final c = CanvasController(const CanvasDocument()
+          .addElement(stage())
+          .addElement(ImageElement(
+              const ElementBase(id: "p", width: 200, height: 100))));
+      addTearDown(c.dispose);
+      c.selectOnly("p");
+      tester.view.physicalSize = const Size(900, 5000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(host(c));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("stageSpotOn")), findsOneWidget);
     });
 
     testWidgets("with no stage, nothing is offered", (tester) async {

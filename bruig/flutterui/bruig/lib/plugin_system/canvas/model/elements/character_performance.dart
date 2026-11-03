@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/lip_sync.dart';
+
 // character_performance.dart is what a new 3D character does in one scene
 // of the canvas: how it stands and leans, the motions it plays and when, the
 // walks that carry it across the page, its feeling and mouth, the line it
@@ -194,6 +196,10 @@ class PoseKey {
   int get hashCode => Object.hash(t, stance, lean, tilt, feeling);
 }
 
+/// MouthAt is one mouth of a lip sync, held from [t] seconds until the
+/// next.
+typedef MouthAt = ({double t, MouthShape shape});
+
 /// CharacterPerformance is what it does in a scene. Immutable.
 class CharacterPerformance {
   final String wearing;
@@ -220,6 +226,15 @@ class CharacterPerformance {
   final String line;
   final double lineAt;
 
+  /// mouths are its lip sync, from a voice-over: each mouth held until the
+  /// next (lip_sync.dart).
+  final List<MouthAt> mouths;
+
+  /// speaksFor is the mixer channel it speaks for, by key, or empty: a slot
+  /// played on it -- a narrator's line -- moves its mouth and shows it while
+  /// it is heard.
+  final String speaksFor;
+
   const CharacterPerformance({
     this.wearing = "As designed",
     this.stance,
@@ -237,6 +252,8 @@ class CharacterPerformance {
     this.shadow = "Soft",
     this.line = "",
     this.lineAt = 0,
+    this.mouths = const [],
+    this.speaksFor = "",
   });
 
   /// copyWith is this with what is given changed; [stance] and [feeling]
@@ -258,6 +275,8 @@ class CharacterPerformance {
     String? shadow,
     String? line,
     double? lineAt,
+    List<MouthAt>? mouths,
+    String? speaksFor,
   }) =>
       CharacterPerformance(
         wearing: wearing ?? this.wearing,
@@ -276,7 +295,37 @@ class CharacterPerformance {
         shadow: shadow ?? this.shadow,
         line: line ?? this.line,
         lineAt: lineAt ?? this.lineAt,
+        mouths: mouths ?? this.mouths,
+        speaksFor: speaksFor ?? this.speaksFor,
       );
+
+  /// mouthAt is the lip sync's mouth at [t] seconds, or null before its
+  /// first.
+  MouthShape? mouthAt(double t) {
+    MouthShape? out;
+    for (final m in mouths) {
+      if (m.t > t + 1e-6) break;
+      out = m.shape;
+    }
+    return out;
+  }
+
+  /// withMouths is this with [mouths] laid between [from] and [to] seconds
+  /// -- those already there kept outside it -- or, with neither, in place
+  /// of them all.
+  CharacterPerformance withMouths(List<MouthAt> mouths,
+      {double? from, double? to}) {
+    final kept = from == null && to == null
+        ? const <MouthAt>[]
+        : [
+            for (final m in this.mouths)
+              if (m.t < (from ?? double.negativeInfinity) ||
+                  m.t > (to ?? double.infinity))
+                m
+          ];
+    return copyWith(
+        mouths: [...kept, ...mouths]..sort((a, b) => a.t.compareTo(b.t)));
+  }
 
   /// keyAt is the key holding at [t], or null before the first.
   PoseKey? keyAt(double t) {
@@ -332,6 +381,11 @@ class CharacterPerformance {
         if (shadow != "Soft") "shadow": shadow,
         if (line.isNotEmpty) "line": line,
         if (lineAt != 0) "lineAt": lineAt,
+        if (mouths.isNotEmpty)
+          "mouths": [
+            for (final m in mouths) [m.t, m.shape.name]
+          ],
+        if (speaksFor.isNotEmpty) "speaksFor": speaksFor,
       };
 
   static CharacterPerformance fromJson(Object? j, {String? feeling}) {
@@ -365,6 +419,15 @@ class CharacterPerformance {
           : "Soft",
       line: j["line"] is String ? j["line"] as String : "",
       lineAt: _num(j["lineAt"], 0, 0, 3600),
+      mouths: [
+        for (final m in (j["mouths"] is List ? j["mouths"] as List : const []))
+          if (m is List && m.length == 2 && m[0] is num && m[1] is String)
+            (
+              t: _num(m[0], 0, -3600, 3600),
+              shape: MouthShape.fromName(m[1] as String)
+            )
+      ]..sort((a, b) => a.t.compareTo(b.t)),
+      speaksFor: j["speaksFor"] is String ? j["speaksFor"] as String : "",
     );
   }
 
@@ -390,7 +453,9 @@ class CharacterPerformance {
       other.glance == glance &&
       other.shadow == shadow &&
       other.line == line &&
-      other.lineAt == lineAt;
+      other.lineAt == lineAt &&
+      _sameList(other.mouths, mouths) &&
+      other.speaksFor == speaksFor;
 
   @override
   int get hashCode => Object.hash(
@@ -409,5 +474,7 @@ class CharacterPerformance {
       glance,
       shadow,
       line,
-      lineAt);
+      lineAt,
+      mouths.length,
+      speaksFor);
 }

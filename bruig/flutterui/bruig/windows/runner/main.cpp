@@ -23,6 +23,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
       GetCommandLineArguments();
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
+  // Flutter GPU (package:flutter_gpu), which the canvas draws its 3D
+  // characters and stages with, over Impeller -- on by default here.
+  project.set_enable_flutter_gpu(true);
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);

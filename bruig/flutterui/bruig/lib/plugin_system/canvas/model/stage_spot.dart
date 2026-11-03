@@ -39,8 +39,10 @@ class StageSpot {
   /// metres off the floor -- or up the wall, for one hung on it.
   final double x, z, lift;
 
-  /// height is how tall it stands, in metres; its width follows its own
-  /// box's shape. A 3D character is as tall as it was made, and ignores it.
+  /// height is how big it is, in metres: its box's longer side, the other
+  /// following the box's shape -- how tall a picture stands, how long a
+  /// line or a chart is. A 3D character is as tall as it was made, and
+  /// ignores it.
   final double height;
 
   /// facing is which way round it stands, in degrees, before the camera is

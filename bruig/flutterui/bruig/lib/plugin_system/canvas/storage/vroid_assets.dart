@@ -6,7 +6,6 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/model/elements/vrm_convert.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
-import 'package:bruig/plugin_system/canvas/storage/human_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
 import 'package:path/path.dart' as path;
 
@@ -18,8 +17,7 @@ import 'package:path/path.dart' as path;
 // here (vrm_convert.dart), and kept in the library.
 //
 // Fetched from GitHub at a pinned commit, and not at all through a proxy,
-// which a direct download cannot honour: the same rules as the sculpted
-// body (human_assets.dart).
+// which a direct download cannot honour (canvas_network.dart).
 
 /// VroidModel is one character to fetch: its name in the samples, and
 /// whether it is kept whole or only for its hair.

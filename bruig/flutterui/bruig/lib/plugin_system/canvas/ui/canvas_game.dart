@@ -5,8 +5,8 @@ import 'dart:ui' show Offset, Rect;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
@@ -145,9 +145,10 @@ class GameBody {
   /// has moved: a character turns to it.
   Offset heading = Offset.zero;
 
-  /// motion is the motion a character is moving with -- null, standing --
-  /// and since the game's clock when it began, so it runs on unbroken.
-  MotionKind? motion;
+  /// move3d is the motion a 3D character is moving with, by its name --
+  /// null, standing -- and since the game's clock when it began, so it runs
+  /// on unbroken.
+  String? move3d;
   double since = 0;
 }
 
@@ -293,7 +294,7 @@ class GameRun extends ChangeNotifier {
         body.heading = Offset(
             dx.toDouble(), spec.as == PlayAs.topDown ? dy.toDouble() : 0);
       }
-      if (e is CharacterElement) _motionOf(e, body);
+      if (e is Character3dElement) _move3dOf(e, body);
       if (spec.follow && spec.as != PlayAs.camera) {
         followed.add(box.center + body.at);
       }
@@ -557,8 +558,8 @@ class GameRun extends ChangeNotifier {
       if (body != null) base = base.copyWith(clearTrack: true);
       CanvasElement next = e.rebase(base);
       if (next is SpriteElement && body != null) next = _animated(next, body);
-      if (next is CharacterElement && body != null) {
-        next = _moving(next, body, doc.frameRate, frame);
+      if (next is Character3dElement && body != null) {
+        next = _moving3d(next, body, doc.frameRate, frame);
       }
       shifted.add(next);
     }
@@ -631,81 +632,64 @@ class GameRun extends ChangeNotifier {
         facing: body.facing < 0 ? SpriteFacing.left : SpriteFacing.right);
   }
 
-  /// _motionOf sets the motion [c] moves with, as [body] goes -- the one
-  /// the character has for it, see GameMotions: going up or coming down in
-  /// the air; on the ground walking, or running when it goes faster than
-  /// its own height a second; none, still -- and when it began, if it
-  /// changed.
-  void _motionOf(CharacterElement c, GameBody body) {
+  /// _move3dOf sets the motion 3D character [c] moves with, as [body] goes:
+  /// a jump in the air, going up or coming down; on the ground a walk, or
+  /// a run when it goes faster than its own height a second; none, still --
+  /// and when it began, if it changed.
+  void _move3dOf(Character3dElement c, GameBody body) {
     var topDown = c.base.play.as == PlayAs.topDown;
     var pace = topDown ? body.velocity.distance : body.velocity.dx.abs();
     var airborne = !topDown && !body.onGround && body.velocity.dy.abs() > 1;
-    var moves = c.gameMotions;
     var kind = airborne
-        ? moves[body.velocity.dy < 0 ? GameMove.jumping : GameMove.falling]
+        ? "Jump"
         : pace > 1
-            ? (pace > math.max(1.0, c.height)
-                ? moves[GameMove.running]
-                : moves[GameMove.walking])
+            ? (pace > math.max(1.0, c.height) ? "Run" : "Walk")
             : null;
-    if (kind != body.motion) {
-      body.motion = kind;
+    if (kind != body.move3d) {
+      body.move3d = kind;
       body.since = clock;
     }
   }
 
-  /// _moving is [c] moving as [body] is, with the motion _motionOf chose:
-  /// a stride at the pace it goes, or standing, swaying a little; turned
-  /// side on the way it walks, and in a game seen from above, its back to
-  /// the reader going up. Its own motions are the timeline's, and give way
-  /// to the game's.
-  CharacterElement _moving(
-      CharacterElement c, GameBody body, int frameRate, int frame) {
-    var kind = body.motion;
+  /// _moving3d is 3D character [c] moving as [body] is, with the motion
+  /// _move3dOf chose, its feet keeping up with the ground; turned side on
+  /// the way it goes, and in a game seen from above, its back to the
+  /// reader going up. Its scene's own motions give way to the game's;
+  /// standing, it does what it was made to.
+  Character3dElement _moving3d(
+      Character3dElement c, GameBody body, int frameRate, int frame) {
+    var h = body.heading;
+    // Its view's turn, in half turns: a quarter round puts its side to the
+    // reader, facing the way it goes.
+    var turn = h == Offset.zero
+        ? c.turn
+        : h.dy < 0 && h.dx == 0
+            ? 1.0
+            : h.dy > 0 && h.dx == 0
+                ? 0.0
+                : h.dx < 0
+                    ? 0.5
+                    : -0.5;
+    var kind = body.move3d;
+    var rate = math.max(1, frameRate);
+    var start = frame / rate - (clock - body.since);
     var pace = c.base.play.as == PlayAs.topDown
         ? body.velocity.distance
         : body.velocity.dx.abs();
     var height = math.max(1.0, c.height);
-    var h = body.heading;
-    var turn = h == Offset.zero
-        ? c.pose.turn
-        : h.dy < 0 && h.dx == 0
-            ? 180.0
-            : h.dy > 0 && h.dx == 0
-                ? 0.0
-                : h.dx < 0
-                    ? 90.0
-                    : -90.0;
-    var rate = math.max(1, frameRate);
-    var start = frame - ((clock - body.since) * rate).round();
-    var clips = kind == null
-        // Standing: breathing, not frozen -- or as it stands, see
-        // GameMotions.
-        ? [
-            MotionClip(
-                id: "game",
-                kind: c.gameMotions[GameMove.standing],
-                layer: c.gameMotions[GameMove.standing].layer,
-                start: start,
-                length: 1 << 30,
-                blend: 0),
-          ]
-        : [
-            MotionClip(
-              id: "game",
-              kind: kind,
-              layer: MotionLayer.body,
-              start: start,
-              length: 1 << 30,
-              blend: 0,
-              // Feet keeping up with the ground: its pace over the motion's
-              // own.
-              speed: c.feel.travels(kind) > 0
-                  ? (pace / (c.feel.travels(kind) * height)).clamp(0.5, 2.5)
-                  : 1,
-            ),
-          ];
-    return c.copyWith(pose: c.pose.withTurn(turn), motions: clips);
+    // A walk carries a body about 0.8 of its height a second, a run 1.9.
+    var stride = kind == "Run" ? 1.9 : 0.8;
+    var p = c.performance.copyWith(clips: [
+      if (kind != null)
+        MotionClip3d(
+            kind: kind,
+            start: start,
+            length: 3600,
+            speed: kind == "Jump"
+                ? 1
+                : (pace / (stride * height)).clamp(0.5, 2.5).toDouble()),
+    ]);
+    return c.performing(p).copyWith(turn: turn);
   }
 
   void reset() {

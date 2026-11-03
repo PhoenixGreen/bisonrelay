@@ -53,6 +53,9 @@ static void my_application_activate(GApplication* application) {
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
+  // Flutter GPU (package:flutter_gpu), which the canvas draws its 3D
+  // characters and stages with, over Impeller -- on by default here.
+  fl_dart_project_set_enable_flutter_gpu(project, TRUE);
 
   FlView* view = fl_view_new(project);
   gtk_widget_show(GTK_WIDGET(view));

@@ -2,6 +2,11 @@ import 'dart:convert';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/render/vrm/vrm_character.dart';
+import 'package:bruig/plugin_system/canvas/model/lip_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
@@ -166,6 +171,58 @@ void main() {
     c.undo();
     expect(
         (c.document.elements.single as Character3dElement).design.name, "Jess");
+  });
+
+  test("lip sync: each mouth held until the next, kept with the scene", () {
+    const p = CharacterPerformance(speaksFor: "narrator", mouths: [
+      (t: 1, shape: MouthShape.wide),
+      (t: 1.5, shape: MouthShape.closed),
+      (t: 2, shape: MouthShape.rest),
+    ]);
+    expect(p.mouthAt(0.5), isNull);
+    expect(p.mouthAt(1.2), MouthShape.wide);
+    expect(p.mouthAt(1.5), MouthShape.closed);
+    expect(p.mouthAt(9), MouthShape.rest);
+    final back =
+        CharacterPerformance.fromJson(jsonDecode(jsonEncode(p.toJson())));
+    expect(back, p);
+    // Laid again over a stretch, those outside it are kept.
+    final again =
+        p.withMouths(const [(t: 1.8, shape: MouthShape.round)], from: 1.4);
+    expect([for (final m in again.mouths) m.t], [1, 1.8]);
+    expect(p.withMouths(const []).mouths, isEmpty);
+    expect(visemesOf(MouthShape.wide), {"MTH_A": 0.9});
+    expect(visemesOf(MouthShape.closed), isEmpty, reason: "lips together");
+  });
+
+  test("the controller lip-syncs a 3D character from a voice's words",
+      () async {
+    final voice = AudioElement(const ElementBase(id: "v"),
+        clip: const MediaClip(
+            timed: true,
+            at: 12,
+            playlist: [MediaSource(assetId: "a1", length: 4)]));
+    final doc = CanvasDocument(frames: 120, words: const [
+      SpokenWord(text: "hello", frame: 20, end: 32, from: "voice:v"),
+      SpokenWord(text: "there", frame: 60, end: 70, from: "voice:other"),
+    ]).addElement(voice).addElement(_element());
+    final c = CanvasController(doc);
+    addTearDown(c.dispose);
+    Character3dElement get() =>
+        c.document.elementById("c") as Character3dElement;
+    final done = await c.lipSync(get(), voice);
+    expect(done.problem, isNull);
+    expect(done.mouths, greaterThan(2));
+    final mouths = get().performance.mouths;
+    final rate = c.document.frameRate;
+    expect(mouths.first.t, closeTo(19 / rate, 1e-9), reason: "seconds");
+    expect(mouths.every((m) => m.t < 60 / rate), isTrue,
+        reason: "only this voice's words");
+    c.undo();
+    expect(get().performance.mouths, isEmpty, reason: "one undo step");
+    await c.lipSync(get(), voice);
+    c.clearLipSync(get());
+    expect(get().performance.mouths, isEmpty);
   });
 
   Future<CanvasController> show(WidgetTester tester,

@@ -5,7 +5,8 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/export/gif_encoder.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -148,12 +149,15 @@ const Map<SpriteFacing, double> spriteFacings = {
   SpriteFacing.right: -90,
 };
 
-/// spriteFromCharacter is [e] made of [who] -- drawn [count] frames from
-/// [from], [step] frames of the canvas apart, each in a cell [cell] pixels
-/// tall -- and, with [directions], turned each way a sprite can face, a
-/// row each. Played as one animation at the canvas's own speed over the
-/// frames taken.
-Future<SpriteElement?> spriteFromCharacter(SpriteElement e, CharacterElement who,
+/// spriteFromCharacter is [e] made of [who], a character -- drawn [count]
+/// frames from [from], [step] frames of the canvas apart, each in a cell
+/// [cell] pixels tall -- and, with [directions], turned each way a sprite
+/// can face, a row each. Played as one animation at the canvas's own speed
+/// over the frames taken.
+///
+/// Each frame is drawn on its own, once all it needs has loaded: a 3D
+/// character's scene drawn twice into one picture shows only the last.
+Future<SpriteElement?> spriteFromCharacter(SpriteElement e, CanvasElement who,
     {required int from,
     int count = 8,
     int step = 1,
@@ -161,26 +165,41 @@ Future<SpriteElement?> spriteFromCharacter(SpriteElement e, CharacterElement who
     bool directions = false,
     int cell = 128,
     CanvasImageSource? images}) async {
-  // Room round the box for arms out and hair up: a figure is drawn past
-  // its box.
+  // Room round the box for arms out and hair up: a drawn figure is drawn
+  // past its box. A 3D one is drawn inside it.
   var b = who.bounds;
-  var room = Rect.fromLTRB(b.left - b.height * 0.16, b.top - b.height * 0.22, b.right + b.height * 0.16,
-      b.bottom + b.height * 0.04);
+  var room = who is Character3dElement
+      ? b
+      : Rect.fromLTRB(b.left - b.height * 0.16, b.top - b.height * 0.22, b.right + b.height * 0.16,
+          b.bottom + b.height * 0.04);
   var k = cell / room.height;
   var cw = (room.width * k).ceil(), ch = cell;
   var facings = directions ? spriteFacings.keys.toList() : [SpriteFacing.front];
   var rec = ui.PictureRecorder();
   var canvas = ui.Canvas(rec);
   for (var (row, f) in facings.indexed) {
-    var turned = directions ? who.copyWith(pose: who.pose.withTurn(spriteFacings[f]!)) : who;
+    var turned = !directions
+        ? who
+        : switch (who) {
+            // A quarter turn to its left, seen from a camera gone a quarter
+            // round to its right: half turns, as its view is set.
+            Character3dElement c => c.copyWith(turn: c.turn + spriteFacings[f]! / 180),
+            _ => who,
+          };
     for (var n = 0; n < count; n++) {
-      canvas.save();
-      canvas.translate(n * cw.toDouble(), row * ch.toDouble());
-      canvas.clipRect(ui.Rect.fromLTWH(0, 0, cw.toDouble(), ch.toDouble()));
-      canvas.scale(k);
-      canvas.translate(-room.left, -room.top);
-      paintElement(canvas, turned, from + n * step, frameRate: frameRate, images: images);
-      canvas.restore();
+      void draw(ui.Canvas cell) {
+        cell.clipRect(ui.Rect.fromLTWH(0, 0, cw.toDouble(), ch.toDouble()));
+        cell.scale(k);
+        cell.translate(-room.left, -room.top);
+        paintElement(cell, turned, from + n * step, frameRate: frameRate, images: images);
+      }
+
+      await drawWhenLoaded(images, draw);
+      var one = ui.PictureRecorder();
+      draw(ui.Canvas(one));
+      var frame = await one.endRecording().toImage(cw, ch);
+      canvas.drawImage(frame, ui.Offset(n * cw.toDouble(), row * ch.toDouble()), ui.Paint());
+      frame.dispose();
     }
   }
   var w = cw * count, h = ch * facings.length;
@@ -318,7 +337,7 @@ class CharacterSpriteMakerState extends State<CharacterSpriteMaker> {
   Future<void> make() async {
     var c = widget.controller;
     var who = c.document.elementById(_who ?? "");
-    if (who is! CharacterElement) return;
+    if (who is! Character3dElement) return;
     setState(() => _busy = true);
     var made = await spriteFromCharacter(widget.sprite, who,
         from: c.frame,
@@ -342,7 +361,7 @@ class CharacterSpriteMakerState extends State<CharacterSpriteMaker> {
   Widget build(BuildContext context) {
     var who = [
       for (var e in widget.controller.document.elements)
-        if (e is CharacterElement) e,
+        if (e is Character3dElement) e,
     ];
     if (who.isEmpty) return const SizedBox.shrink();
     var picked = who.any((w) => w.id == _who) ? _who! : who.first.id;

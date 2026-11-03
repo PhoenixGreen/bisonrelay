@@ -7,16 +7,14 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
-import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_camera.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
-import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
@@ -50,11 +48,19 @@ BackgroundElement stage(
 StageElement stageIn(CanvasController c) =>
     (c.document.elementById("st")! as BackgroundElement).staged;
 
-CharacterElement who(String id,
+Character3dElement who(String id,
         {double x = 0, double z = 0, double facing = 0, String on = "st"}) =>
-    CharacterElement(ElementBase(id: id, name: id, width: 200, height: 420),
-        dna: characterCast.first.dna,
-        onStage: on.isEmpty ? null : OnStage(on, x: x, z: z, facing: facing));
+    Character3dElement(
+        ElementBase(
+            id: id,
+            name: id,
+            width: 200,
+            height: 420,
+            spot: on.isEmpty
+                ? null
+                : StageSpot(on, x: x, z: z, facing: facing)),
+        design: CharacterDesign(
+            id: "d", name: id, body: "Vivi", updated: DateTime(2026)));
 
 void near(Offset a, Offset b, [double within = 0.01]) =>
     expect((a - b).distance, lessThan(within), reason: "$a is not $b");
@@ -126,7 +132,7 @@ void main() {
           reason: "the same stage, camera keys and all");
       expect(opened.staged.cameraAt(10).distance, closeTo(8, 1e-9));
       var els = [opened, who("a")];
-      expect(staging(els[1] as CharacterElement, els, 0), isNotNull,
+      expect(staged(els[1], els, 0), isNotNull,
           reason: "a character on it still stands on it");
     });
   });
@@ -134,19 +140,14 @@ void main() {
   group("standing on a stage", () {
     test("it stands where the camera sees its spot, sized by distance", () {
       var els = [stage(), who("near", z: 2), who("far", z: -3)];
-      var n = staging(els[1] as CharacterElement, els, 0)!;
-      var f = staging(els[2] as CharacterElement, els, 0)!;
+      var n = staged(els[1], els, 0)!;
+      var f = staged(els[2], els, 0)!;
       var view = StageView(page, const StageCamera());
-      near(n.box.bottomCenter, view.see(0, 0, 2).page);
+      near(n.foot, view.see(0, 0, 2).page);
       expect(f.box.height, lessThan(n.box.height));
       expect(inStageOrder(els, 0).map((e) => e.id), ["st", "far", "near"],
           reason: "the far one first, so the near one is in front");
-      expect(staging(who("lost", on: "gone"), els, 0), isNull);
-    });
-
-    test("the camera's swing turns it, with its own facing", () {
-      var els = [stage(camera: const StageCamera(yaw: 40)), who("a", facing: 10)];
-      expect(staging(els[1] as CharacterElement, els, 0)!.turn, 50);
+      expect(staged(who("lost", on: "gone"), els, 0), isNull);
     });
 
     test("a camera move is keyed and eased, the rule a pose follows", () {
@@ -170,38 +171,25 @@ void main() {
     test("dragged, it moves across the floor", () {
       var c = CanvasController(const CanvasDocument().addElement(stage()).addElement(who("a")));
       addTearDown(c.dispose);
-      var e = c.document.elementById("a")! as CharacterElement;
-      var box = staging(e, c.document.elements, 0)!.box;
-      var moved = c.movedTo(e, box.topLeft + const Offset(80, 30)) as CharacterElement;
-      expect(moved.onStage!.x, greaterThan(0), reason: "to the right");
-      expect(moved.onStage!.z, greaterThan(0), reason: "down the page is nearer");
-      var after = staging(moved, [c.document.elementById("st")!, moved], 0)!;
+      var e = c.document.elementById("a")!;
+      var box = staged(e, c.document.elements, 0)!.box;
+      var moved = c.movedTo(e, box.topLeft + const Offset(80, 30));
+      expect(moved.base.spot!.x, greaterThan(0), reason: "to the right");
+      expect(moved.base.spot!.z, greaterThan(0), reason: "down the page is nearer");
+      var after = staged(moved, [c.document.elementById("st")!, moved], 0)!;
       expect(c.document.elementById("st"), isA<BackgroundElement>());
-      near(after.box.bottomCenter, box.bottomCenter + const Offset(80, 30), 0.5);
+      var before = staged(e, c.document.elements, 0)!.foot;
+      near(after.foot, before + const Offset(80, 30), 0.5);
       expect(visualBoundsOf(moved, c.document.withElement(moved), 0), after.box);
       expect(hasOwnGeometry(moved, c.document.withElement(moved), 0), isFalse);
     });
 
-    test("its pins are where it is drawn, and land the hand there", () {
-      var doc = const CanvasDocument()
-          .addElement(stage(camera: const StageCamera(yaw: 30)))
-          .addElement(who("a", x: 1));
-      var e = doc.elementById("a")! as CharacterElement;
-      var at = CharacterPlacement.of(e, 0, document: doc);
-      var to = at.pin(CharacterPin.handR) + const Offset(-10, -40);
-      var posed = e.copyWith(pose: at.posedBy(CharacterPin.handR, to));
-      var again = CharacterPlacement.of(posed, 0, document: doc.withElement(posed));
-      near(again.pin(CharacterPin.handR), to, 1);
-      expect(posed.pose.turn, e.pose.turn, reason: "the camera's turn is not kept");
-    });
-
     test("a new character stands on the stage, a step from the last", () {
       var doc = const CanvasDocument().addElement(stage());
-      var first = newElement(ElementKind.character, doc) as CharacterElement;
-      expect(first.onStage?.stage, "st");
-      var second = newElement(ElementKind.character, doc.addElement(first))
-          as CharacterElement;
-      expect(second.onStage!.x, isNot(first.onStage!.x));
+      var first = newElement(ElementKind.character3d, doc);
+      expect(first.base.spot?.stage, "st");
+      var second = newElement(ElementKind.character3d, doc.addElement(first));
+      expect(second.base.spot!.x, isNot(first.base.spot!.x));
     });
 
     test("the camera changes the picture", () async {
@@ -216,35 +204,6 @@ void main() {
       var a = await draw(const StageCamera());
       expect(await draw(const StageCamera()), a);
       expect(await draw(const StageCamera(yaw: 60)), isNot(a));
-    });
-  });
-
-  group("on a flat page", () {
-    test("depth shrinks it going up the page, about its feet", () {
-      var e = who("a", on: "").copyWith(depth: 1).withBase(
-          track: ElementTrack(const [Keyframe(frame: 0, dy: -210)])) as CharacterElement;
-      var box = characterBox(e, 0, e.bounds);
-      // Half as tall as it is drawn at its own place, about its feet.
-      var still = characterBox(e.copyWith(depth: 0), 0, e.bounds);
-      expect(box.height, closeTo(still.height * 0.5, 1e-6));
-      expect(box.bottom, e.bounds.bottom);
-      // At its own place: the box, with room at the top for its hair.
-      var flat = who("b", on: "");
-      var drawn = characterBox(flat, 0, flat.bounds);
-      expect(drawn.bottom, flat.bounds.bottom);
-      expect(drawn.top, greaterThan(flat.bounds.top));
-      expect(drawn.top - flat.bounds.top, lessThan(flat.bounds.height * 0.1));
-    });
-
-    test("a shadow is drawn, or not", () async {
-      Future<List<int>> draw(CharacterShadow s) async {
-        var rec = PictureRecorder();
-        paintElement(Canvas(rec), who("a", on: "").copyWith(shadow: s), 0);
-        var img = await rec.endRecording().toImage(300, 460);
-        return (await img.toByteData())!.buffer.asUint8List();
-      }
-
-      expect(await draw(CharacterShadow.soft), isNot(await draw(CharacterShadow.none)));
     });
   });
 
@@ -299,34 +258,25 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("a character is put on a stage and moved on its floor",
-        (tester) async {
+    testWidgets("a stage's globe orbits its camera", (tester) async {
       SharedPreferences.setMockInitialValues({});
-      var c = CanvasController(const CanvasDocument()
-          .addElement(stage())
-          .addElement(who("a", on: "")));
+      var c = CanvasController(CanvasDocument(frames: 48).addElement(stage()));
       addTearDown(c.dispose);
-      c.selectOnly("a");
-      tester.view.physicalSize = const Size(900, 5000);
+      c.selectOnly("st");
+      tester.view.physicalSize = const Size(900, 3000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       await tester.pumpWidget(host(c));
       await tester.pumpAndSettle();
-      CharacterElement get() => c.document.elementById("a")! as CharacterElement;
-      var pick = find.byKey(const ValueKey("characterStage"));
-      await tester.ensureVisible(pick);
-      tester.widget<CanvasDropdown<String>>(pick).onChanged("st");
+      var pad = find.byKey(const ValueKey("stageOrbitPad"));
+      await tester.ensureVisible(pad);
       await tester.pumpAndSettle();
-      expect(get().onStage?.stage, "st");
-      await tap(tester, "characterStageX-more");
-      expect(get().onStage!.x, 0.5);
-      tester.widget<CanvasDropdown<String>>(pick).onChanged("");
+      await tester.drag(pad, const Offset(60, 20));
       await tester.pumpAndSettle();
-      expect(get().onStage, isNull);
-      await tap(tester, "characterDepth-more");
-      expect(get().depth, closeTo(0.1, 1e-9));
-      expect(tester.takeException(), isNull);
+      expect(stageIn(c).camera.yaw, greaterThan(10));
+      expect(stageIn(c).camera.pitch, greaterThan(const StageCamera().pitch));
     });
+
   });
 
   group("the canvas background as a stage", () {
@@ -345,11 +295,10 @@ void main() {
       var back = CanvasDocument.fromJson(doc.toJson());
       expect(back.background.isStage, isTrue);
       expect(back.background.toJson(), doc.background.toJson());
-      var near = back.elementById("near")! as CharacterElement;
-      var at = stagingIn(back, near, 0)!;
+      var near = back.elementById("near")!;
+      var at = stagedIn(back, near, 0)!;
       var view = StageView(page, const StageCamera(yaw: 20));
-      expect((at.box.bottomCenter - view.see(0, 0, 2).page).distance,
-          lessThan(0.01));
+      expect((at.foot - view.see(0, 0, 2).page).distance, lessThan(0.01));
       expect(
           inStageOrder(back.elements, 0,
                   backdrop: back.drawnBackground, page: back.size.rect)
@@ -364,8 +313,8 @@ void main() {
           background: doc.background.copyWith(backdrop: BackdropKind.flat));
       expect(flat.background.stage!.camera.lens, 85);
       var a = who("a", on: backgroundStageId);
-      expect(stagingIn(flat.addElement(a), a, 0), isNull);
-      expect(stagingIn(doc.addElement(a), a, 0), isNotNull);
+      expect(stagedIn(flat.addElement(a), a, 0), isNull);
+      expect(stagedIn(doc.addElement(a), a, 0), isNotNull);
     });
 
     test("its camera is keyed on the background, and a drag walks", () {
@@ -381,16 +330,15 @@ void main() {
           [0, 24]);
       expect(get().cameraAt(12).distance, closeTo(10, 1e-9));
       c.frame = 0;
-      var e = c.document.elementById("a")! as CharacterElement;
-      var box = stagingIn(c.document, e, 0)!.box;
-      var moved =
-          c.movedTo(e, box.topLeft + const Offset(60, 0)) as CharacterElement;
-      expect(moved.onStage!.x, greaterThan(0));
+      var e = c.document.elementById("a")!;
+      var box = stagedIn(c.document, e, 0)!.box;
+      var moved = c.movedTo(e, box.topLeft + const Offset(60, 0));
+      expect(moved.base.spot!.x, greaterThan(0));
     });
 
     test("a new character stands on it", () {
-      var first = newElement(ElementKind.character, staged()) as CharacterElement;
-      expect(first.onStage?.stage, backgroundStageId);
+      var first = newElement(ElementKind.character3d, staged());
+      expect(first.base.spot?.stage, backgroundStageId);
     });
 
     test("it is drawn in the pattern's place", () async {

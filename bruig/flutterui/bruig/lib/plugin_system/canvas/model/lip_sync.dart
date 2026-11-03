@@ -2,10 +2,9 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 
-// character_lipsync.dart is a voice-over turned into mouths: which shape,
-// from which frame.
+// lip_sync.dart is a voice-over turned into mouths: which shape, from which
+// frame. A 3D character's mouth takes them (character_performance.dart).
 //
 // Two ways, for two kinds of recording. With the words heard (whisper, the
 // same hearing the Cues use), each word is spelt into the shapes its sounds
@@ -19,6 +18,34 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 // the shape before the ear hears it), and a closed mouth for M, B and P
 // never dropped, because a "b" without the lips meeting is the one mistake
 // everybody sees.
+
+/// MouthShape is one of the mouths speech is drawn with: the six basic
+/// shapes and three extra that hand-drawn animation has used since the
+/// Hanna-Barbera studios, named by their usual letters. [rest] is no shape
+/// at all -- the mouth the face's own controls make, smiling or frowning.
+enum MouthShape {
+  rest("X", "Rest"),
+  closed("A", "M B P"),
+  teeth("B", "K S T EE"),
+  open("C", "EH AE"),
+  wide("D", "AA I"),
+  round("E", "AO ER"),
+  pucker("F", "OO W"),
+  lip("G", "F V"),
+  tongue("H", "L");
+
+  final String letter;
+  final String sounds;
+  const MouthShape(this.letter, this.sounds);
+
+  static MouthShape fromIndex(num? i) {
+    var n = i?.round() ?? 0;
+    return n >= 0 && n < values.length ? values[n] : rest;
+  }
+
+  static MouthShape fromName(String? name) =>
+      values.firstWhere((m) => m.name == name, orElse: () => rest);
+}
 
 /// MouthKey is one mouth, from [frame] until the next.
 typedef MouthKey = ({int frame, MouthShape shape});

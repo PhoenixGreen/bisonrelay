@@ -1,9 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
-import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
-import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_draw_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
@@ -29,7 +25,6 @@ import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_studio.dart';
 import 'package:bruig/plugin_system/canvas/ui/space_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -809,16 +804,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<bool>(
       valueListenable: _controller.studio3dOpen,
-      builder: (context, studio3d, _) => studio3d
-          ? _studio3dPage(context)
-          : ValueListenableBuilder<String?>(
-              valueListenable: _controller.studioOpen,
-              builder: (context, studio, _) => studio == null
-                  ? _canvasPage(context)
-                  : _studioPage(context)));
+      builder: (context, studio3d, _) =>
+          studio3d ? _studio3dPage(context) : _canvasPage(context));
 
-  /// _studio3dPage is the new Character Studio, given the whole page as the
-  /// old one is -- see character_studio_3d.dart.
+  /// _studio3dPage is the Character Studio, given the whole page in place of
+  /// the canvas -- see character_studio_3d.dart.
   Widget _studio3dPage(BuildContext context) {
     var client = Provider.of<ClientModel>(context);
     var theme = ThemeNotifier.of(context);
@@ -830,31 +820,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
                 design: _controller.studio3dDesign,
                 performance: _controller.studio3dPerformance,
                 onDone: _controller.closeStudio3d)));
-  }
-
-  /// _studioPage is the Character Studio, given the whole page: no sidebar,
-  /// no timeline, nothing but the character -- see character_studio.dart.
-  Widget _studioPage(BuildContext context) {
-    var client = Provider.of<ClientModel>(context);
-    var theme = ThemeNotifier.of(context);
-    return ScreenWithChatSideMenu(
-        client,
-        CanvasSpaceBar(
-            controller: _controller,
-            child: contentAreaFrame(
-                theme,
-                CharacterStudioScreen(
-                  controller: _controller,
-                  stage: CanvasStage(
-                    key: _stageKey,
-                    controller: _controller,
-                    onButtonLink: _openLink,
-                  ),
-                  overStage: [
-                    CharacterDrawBar(controller: _controller),
-                    VectorToolHint(controller: _controller),
-                  ],
-                ))));
   }
 
   Widget _canvasPage(BuildContext context) {
@@ -1091,30 +1056,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
                               var center = stage.toDocumentPoint(local);
                               var asset = await droppedAsset(details.data);
                               if (asset == null || !mounted) return;
-                              // A model let go on a character is that
-                              // character's body now, not a second character.
-                              if (asset.kind == AssetKind.model) {
-                                var doc = _controller.document;
-                                var on = doc.elements.reversed
-                                    .whereType<CharacterElement>()
-                                    .where((c) =>
-                                        !c.locked &&
-                                        visualBoundsOf(
-                                                c, doc, _controller.frame)
-                                            .contains(center))
-                                    .firstOrNull;
-                                if (on != null) {
-                                  _controller.beginInteraction();
-                                  _controller.replaceElement(on.copyWith(
-                                      body: on.body.copyWith(
-                                          kind: BodyKind.model,
-                                          modelId: asset.id,
-                                          modelName: asset.name)));
-                                  _controller.endInteraction();
-                                  _controller.selectOnly(on.id);
-                                  return;
-                                }
-                              }
                               _controller.addElement(elementForAsset(
                                 asset,
                                 _controller.document,

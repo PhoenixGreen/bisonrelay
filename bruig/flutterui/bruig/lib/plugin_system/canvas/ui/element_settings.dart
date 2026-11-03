@@ -5,9 +5,7 @@ import 'package:bruig/plugin_system/canvas/presets/parallax_looks.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/backdrop_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character3d_settings.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/character_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/stage_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/stage_spot_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -85,14 +83,6 @@ List<Widget> elementSettings(
   void commit() => controller.endInteraction();
   void begin() => controller.beginInteraction();
 
-  // A character being drawn on has its drawing picked, laid over it -- see
-  // CanvasController.drawOnCharacter -- and its own settings shown, the
-  // drawing's tools in its Drawing section.
-  if (drawnCharacterOf(element.id) case var id?) {
-    if (controller.document.elementById(id) case CharacterElement c)
-      element = c;
-  }
-
   // A sound on the timeline is not on the canvas: no place on it, no presets
   // for a speaker, no speaker. What it has is its files, how it plays, and
   // where on the timeline -- the same as a backdrop's sound.
@@ -155,9 +145,6 @@ List<Widget> elementSettings(
                     context, controller, element, write, begin, commit),
               if (element is VectorElement && element.hasDrawing)
                 vectorCropControls(controller, element, write, begin, commit),
-              // Going round a character, in its own box.
-              if (element is CharacterElement)
-                characterOrbitGroup(controller, element, write, begin, commit),
               // Where a text's words come from and how they sit in its box.
               if (element is TextElement)
                 textWordsCard(
@@ -218,8 +205,6 @@ List<Widget> elementSettings(
             teamSettings(context, controller, e, write, begin, commit),
           PathElement e =>
             pathSettings(context, controller, e, write, begin, commit),
-          CharacterElement e =>
-            characterSettings(context, controller, e, write, begin, commit),
           Character3dElement e =>
             character3dSettings(context, controller, e, write, begin, commit),
           StageElement e =>

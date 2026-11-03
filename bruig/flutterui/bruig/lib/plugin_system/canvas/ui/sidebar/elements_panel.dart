@@ -39,7 +39,6 @@ const List<ElementKind> _addable = [
   ElementKind.background,
   ElementKind.player,
   ElementKind.path,
-  ElementKind.character,
   ElementKind.sprite,
   ElementKind.tileMap,
   // No 3D stage: it is a kind of background now, chosen in a background's
@@ -61,7 +60,6 @@ IconData iconForKind(ElementKind kind) => switch (kind) {
       ElementKind.background => Icons.blur_on,
       ElementKind.player => Icons.person_pin_circle_outlined,
       ElementKind.path => Icons.gesture,
-      ElementKind.character => Icons.accessibility_new,
       ElementKind.character3d => Icons.view_in_ar_outlined,
       ElementKind.stage => Icons.view_in_ar_outlined,
       ElementKind.sprite => Icons.directions_run,

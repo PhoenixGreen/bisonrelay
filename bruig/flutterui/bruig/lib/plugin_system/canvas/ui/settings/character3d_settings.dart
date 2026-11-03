@@ -1,11 +1,14 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/lip_sync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_move.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
@@ -440,6 +443,43 @@ List<Widget> character3dSettings(
                 ),
               ]),
         ]),
+    section(e, "lipSync",
+        icon: Icons.record_voice_over_outlined,
+        title: "Lip sync",
+        summary: [
+          if (p.speaksFor.isNotEmpty) "speaks for a channel",
+          p.mouths.isEmpty ? "no mouths yet" : "${p.mouths.length} mouths",
+        ].join(", "),
+        changes:
+            (p.mouths.isNotEmpty ? 1 : 0) + (p.speaksFor.isNotEmpty ? 1 : 0),
+        onReset: p.mouths.isEmpty && p.speaksFor.isEmpty
+            ? null
+            : () => perf(p.withMouths(const []).copyWith(speaksFor: "")),
+        children: [
+          if (channelsToSpeakFor(controller) case var channels
+              when channels.isNotEmpty || p.speaksFor.isNotEmpty) ...[
+            CanvasDropdown<String>(
+              key: const ValueKey("character3dSpeaksFor"),
+              label: "Speaks for",
+              value: p.speaksFor,
+              width: 200,
+              options: [
+                ("", "No channel"),
+                ...channels,
+                if (p.speaksFor.isNotEmpty &&
+                    !channels.any((c) => c.$1 == p.speaksFor))
+                  (p.speaksFor, "A channel since removed"),
+              ],
+              onChanged: (v) => perf(p.copyWith(speaksFor: v)),
+            ),
+            const CanvasHint(
+                "A slot played on that channel -- a narrator's line -- moves "
+                "the mouth by its sounds, and shows the character while it "
+                "is heard."),
+            const CanvasLineBreak(),
+          ],
+          if (!inStudio) _LipSyncGroup(controller: controller, character: e),
+        ]),
     if (!inStudio)
       section(e, "view",
           icon: Icons.videocam_outlined,
@@ -533,4 +573,154 @@ List<Widget> character3dSettings(
                 ]),
           ]),
   ];
+}
+
+/// channelsToSpeakFor are the channels a character can speak for: those
+/// with clips in their slots, by key and name.
+List<(String, String)> channelsToSpeakFor(CanvasController c) {
+  var names = {for (var ch in c.timelineChannels) ch.key: ch.name};
+  return [
+    for (var MapEntry(:key, value: slots) in c.session.slots.entries)
+      if (slots.any((s) => s != null)) (key, names[key] ?? key),
+  ];
+}
+
+/// _LipSyncGroup lays a voice-over's mouths on a 3D character: by its
+/// words, heard or read from a Speech take, or by its loudness.
+class _LipSyncGroup extends StatefulWidget {
+  final CanvasController controller;
+  final Character3dElement character;
+  const _LipSyncGroup({required this.controller, required this.character});
+
+  @override
+  State<_LipSyncGroup> createState() => _LipSyncGroupState();
+}
+
+class _LipSyncGroupState extends State<_LipSyncGroup> {
+  CanvasController get controller => widget.controller;
+
+  /// _voice is the sound picked, by id; null is the longest.
+  String? _voice;
+  bool _words = true;
+  double _shortest = 2;
+  double _lead = 1;
+  bool _busy = false;
+  String _said = "";
+
+  /// _voices are the timed sounds a voice-over could be, longest first --
+  /// the voice is nearly always the longest thing on the timeline.
+  List<AudioElement> get _voices {
+    var d = controller.document;
+    var all = <AudioElement>[
+      for (var e in [
+        ...?d.master?.elements,
+        for (var s in d.allScenes) ...s.elements,
+      ])
+        if (e is AudioElement && e.clip.timed && !e.clip.isEmpty) e,
+    ];
+    all.sort((a, b) => b.clip.runLength.compareTo(a.clip.runLength));
+    return all;
+  }
+
+  Future<void> _sync(AudioElement voice) async {
+    setState(() {
+      _busy = true;
+      _said = "";
+    });
+    controller.beginInteraction();
+    var done = await controller.lipSync(widget.character, voice,
+        words: _words,
+        feel: LipSyncFeel(shortest: _shortest.round(), lead: _lead.round()));
+    controller.endInteraction();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _said = done.problem ??
+          (done.mouths == 0
+              ? "No speech was found in that recording."
+              : "${done.mouths} mouths laid down.");
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var voices = _voices;
+    var voice =
+        voices.where((v) => v.id == _voice).firstOrNull ?? voices.firstOrNull;
+    return CanvasControlGroup(
+        label: "From the voice-over",
+        help: "Hear the words uses the words heard for the Cues -- hearing "
+            "them first if they have not been -- and spells each into the "
+            "mouths it is said with. Sound only reads how loud the voice is "
+            "frame by frame: rougher, but it works in any language with "
+            "nothing installed. A take the Speech device spoke needs no "
+            "hearing: its words are read from it, each to the moment.",
+        children: [
+          const CanvasLineBreak(),
+          if (voice == null)
+            const CanvasStatus("Add a voice-over first: a timed Audio element, "
+                "or a sound on the timeline's channels.")
+          else ...[
+            CanvasDropdown<String>(
+              key: const ValueKey("character3dLipVoice"),
+              label: "Voice",
+              value: voice.id,
+              width: 200,
+              options: [for (var v in voices) (v.id, v.name)],
+              onChanged: (id) => setState(() => _voice = id),
+            ),
+            const CanvasLineBreak(),
+            CanvasToggle(
+              key: const ValueKey("character3dLipWords"),
+              label: "Hear the words",
+              value: _words,
+              onChanged: (v) => setState(() => _words = v),
+            ),
+            const CanvasLineBreak(),
+            CanvasStepper(
+              key: const ValueKey("character3dLipShortest"),
+              label: "Shortest mouth",
+              value: _shortest,
+              min: 1,
+              max: 6,
+              suffix: " fr",
+              defaultValue: 2,
+              onChanged: (v) => setState(() => _shortest = v),
+            ),
+            CanvasStepper(
+              key: const ValueKey("character3dLipLead"),
+              label: "Ahead of the voice",
+              value: _lead,
+              min: 0,
+              max: 4,
+              suffix: " fr",
+              defaultValue: 1,
+              onChanged: (v) => setState(() => _lead = v),
+            ),
+            const CanvasLineBreak(),
+            CanvasTextButton(
+              key: const ValueKey("character3dLipSync"),
+              icon: Icons.graphic_eq,
+              primary: true,
+              label: _busy ? "Listening…" : "Lip sync",
+              onPressed: _busy ? null : () => _sync(voice),
+            ),
+            if (widget.character.performance.mouths.isNotEmpty)
+              CanvasTextButton(
+                key: const ValueKey("character3dLipClear"),
+                icon: Icons.backspace_outlined,
+                label: "Clear mouths",
+                onPressed: () {
+                  controller.beginInteraction();
+                  controller.clearLipSync(widget.character);
+                  controller.endInteraction();
+                },
+              ),
+          ],
+          if (_said.isNotEmpty) ...[
+            const CanvasLineBreak(),
+            CanvasStatus(_said, key: const ValueKey("character3dLipSaid")),
+          ],
+        ]);
+  }
 }

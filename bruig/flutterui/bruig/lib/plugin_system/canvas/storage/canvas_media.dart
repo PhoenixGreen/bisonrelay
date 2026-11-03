@@ -29,8 +29,9 @@ enum MediaKind {
   /// vector is the drawings: .svg files, bounded as pictures are.
   vector(canvasVectorFolder, 20 * 1024 * 1024),
 
-  /// model is 3D characters: .glb (VRM is one inside) and self-contained
-  /// .gltf files.
+  /// model is the 3D models the old characters were made of: .glb and
+  /// .gltf files. Nothing is added to it now, and nothing in it is listed or
+  /// swept away -- what somebody imported stays theirs, where it was.
   model(canvasModelFolder, 256 * 1024 * 1024);
 
   final String folder;
@@ -249,8 +250,7 @@ class CanvasMedia {
       var drawn = {...live, ...await CanvasStorage.liveAssetIds()};
       return await sweep(MediaKind.audio, live) +
           await sweep(MediaKind.video, live) +
-          await sweep(MediaKind.vector, drawn) +
-          await sweep(MediaKind.model, live);
+          await sweep(MediaKind.vector, drawn);
     } catch (_) {
       return 0;
     }

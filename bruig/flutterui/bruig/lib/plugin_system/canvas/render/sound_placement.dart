@@ -1,6 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 
@@ -30,10 +30,16 @@ Heard? heardAt(
     case PlaceBy.follow:
       var other = doc.elementById(place.follow);
       if (other == null) return null;
-      if (other case CharacterElement(onStage: var on?)) {
-        // A character's sound is from its mouth, near the top of it.
-        return _onStage(
-            doc, on.stage, on.x, on.height * 0.9, on.z, place, frame);
+      if (other.spotAt(frame) case var spot? when canStand(other)) {
+        // Something on a stage is heard from where it stands: a 3D
+        // character from its mouth, a flat from its middle.
+        var y = other is Character3dElement
+            ? spot.lift + 1.5
+            : spot.lift + spot.height / 2;
+        if (_onStage(doc, spot.stage, spot.x, y, spot.z, place, frame)
+            case var heard?) {
+          return heard;
+        }
       }
       return _across(doc, other, place, frame);
   }

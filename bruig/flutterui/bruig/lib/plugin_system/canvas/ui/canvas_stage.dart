@@ -2,16 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:bruig/plugin_system/canvas/ui/character_hair_editor.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_turnaround.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/character_drawing_settings.dart'
-    show panelOptions;
-import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_guide.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
 import 'package:bruig/plugin_system/canvas/ui/orbit_pad.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
@@ -70,8 +60,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
-import 'package:bruig/plugin_system/canvas/render/character/character_outline.dart'
-    show vectorPathsOf;
+import 'package:bruig/plugin_system/canvas/render/vector_paths.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart'
     show vectorLinePath, vectorShapePath;
 import 'package:bruig/plugin_system/canvas/model/play.dart';
@@ -145,33 +134,6 @@ enum _DragMode {
 
   /// tilePaint is a Tile map being painted -- see tile_painting.dart.
   tilePaint,
-
-  /// dollJoint, dollRing and dollFinger are the doll's joint, a picked
-  /// joint's ring and a fingertip being dragged -- see
-  /// character_doll_pose.dart.
-  dollJoint,
-  dollRing,
-  dollFinger,
-
-  /// characterPin is one of a selected character's pins being dragged,
-  /// bending the arm or leg it is on the end of. See character_puppet.dart.
-  characterPin,
-
-  /// characterHair is a sketch's hair stroke being dragged: moved round the
-  /// scalp, drawn out, or made wider. See character_hair_editor.dart.
-  characterHair,
-
-  /// characterFace is one of a sketch's face features being dragged on the
-  /// panel seen. See character_face_rig_editor.dart.
-  characterFace,
-
-  /// characterRig is one of a sketch's rig points being dragged: moved,
-  /// thickened or turned. See character_rig_editor.dart.
-  characterRig,
-
-  /// characterGuide is one of the puppet's handles being dragged, changing
-  /// the character's proportions. See character_guide.dart.
-  characterGuide,
 
   /// stageOrbit is a 3D stage's camera being swung round it, by a drag with
   /// Option held anywhere on the stage.
@@ -558,39 +520,6 @@ class CanvasStageState extends State<CanvasStage>
   /// throughout, and what moves is one entry in its list.
   int _nodeIndex = -1;
 
-  /// _characterPin is the pin a [_DragMode.characterPin] drag has hold of.
-  CharacterPin _characterPin = CharacterPin.head;
-
-  /// _dollHeld, _dollRing and _dollFinger are what a doll drag has hold
-  /// of; _dollFrom where it started, and _dollPose the pose then.
-  DollJoint _dollHeld = DollJoint.waist;
-  DollRing _dollRing = DollRing.bend;
-  int _dollFinger = 0;
-  Offset _dollFrom = Offset.zero;
-  CharacterPose _dollPose = CharacterElement.restPose;
-
-  /// _guideHandle is the puppet handle a [_DragMode.characterGuide] drag
-  /// has hold of, [_guideFrom] where, and [_guideStart] the character as it
-  /// was: each step is worked out from there.
-  GuideHandle _guideHandle = GuideHandle.headSize;
-
-  /// _rigHold is the rig point a [_DragMode.characterRig] drag has hold of,
-  /// [_rigFrom] where, and [_rigStart] the character as it was.
-  RigHold? _rigHold;
-
-  /// _hairHold is the stroke a [_DragMode.characterHair] drag has hold of,
-  /// and _hairStart the character as it was.
-  HairHold? _hairHold;
-  CharacterElement? _hairStart;
-
-  /// _faceHold is the feature a [_DragMode.characterFace] drag has hold of;
-  /// the drag starts from [_rigFrom] and [_faceStart].
-  FaceHold? _faceHold;
-  CharacterElement? _faceStart;
-  Offset _rigFrom = Offset.zero;
-  CharacterElement? _rigStart;
-  Offset _guideFrom = Offset.zero;
-  CharacterElement? _guideStart;
   bool _nodeHandleOut = false;
 
   StageHandle? _handle;
@@ -1258,13 +1187,8 @@ class CanvasStageState extends State<CanvasStage>
     // A team on a pitch is wherever the pitch puts its players, not in its
     // own box -- and it is only the players that are it.
     if (e is TeamElement && e.linked) return _hitPlayer(e, point) != null;
-    // A character on a stage is wherever the camera puts it.
-    if (e is CharacterElement && e.onStage != null) {
-      if (stagingIn(document, e, controller.frame) case var at?) {
-        return at.box.contains(point);
-      }
-    }
-    // And anything else on one: inside the four corners it is seen at.
+    // Something on a stage is wherever the camera puts it: inside the four
+    // corners it is seen at.
     if (e.base.spot != null) {
       if (stagedIn(document, e, controller.frame) case var at?) {
         return (Path()..addPolygon(at.quad, true)).contains(point);
@@ -2025,129 +1949,6 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
-    // A panel of a sketch's turnaround: the character turned to that view.
-    if (controller.turnaroundCharacter case var who?) {
-      var sheet = Turnaround.of(who, controller.frame, document.frameRate,
-          panelOptions(who, adding: false));
-      if (sheet.panelAt(doc) case var panel?) {
-        controller.showCharacterView(who.id, panel.key);
-        _mode = _DragMode.none;
-        return;
-      }
-    }
-
-    // A sketch's hair strokes, while they are shaped: a handle of the one
-    // picked, a stroke, or -- on the bare scalp -- a new one grown there.
-    if (controller.hairCharacter case var who?
-        when !who.locked && controller.puppetHandles) {
-      var reach = (handleSize / 2 + handleHitSlop) / _scale;
-      var view = HairView.of(who, controller.frame,
-          frameRate: document.frameRate, document: document);
-      if (view != null) {
-        // Adding locks, every press grows one -- over the hair there or not.
-        var hold = controller.hairAddLocks
-            ? null
-            : view.under(doc, _scale, reach, picked: controller.hairPick);
-        if (hold == null) {
-          if (view.grownAt(doc,
-                  width:
-                      controller.hairAddLocks ? controller.hairLockWidth : null)
-              case var grown?) {
-            controller.beginInteraction();
-            var hair = view.hair;
-            who = who.copyWith(
-                dna: who.dna.copyWith(
-                    hairRig: HairRig(
-                        hair.name, [...hair.strokes, grown], hair.groups)));
-            controller.replaceElement(who, transient: true);
-            hold = HairHold(hair.strokes.length, HairGrab.tip);
-            _hairStart = who;
-            _hairHold = hold;
-            _rigFrom = doc;
-            controller.pickHair(hold.index);
-            _mode = _DragMode.characterHair;
-            return;
-          }
-        } else {
-          controller.beginInteraction();
-          _hairStart = who;
-          _hairHold = hold;
-          _rigFrom = doc;
-          controller.pickHair(hold.index);
-          _mode = _DragMode.characterHair;
-          return;
-        }
-      }
-    }
-
-    // A sketch's face, feature by feature, while it is set: the smallest
-    // handles, so first.
-    if (controller.faceCharacter case var who?
-        when !who.locked && controller.puppetHandles) {
-      var reach = (handleSize / 2 + handleHitSlop) / _scale;
-      var view = FaceRigView.of(who, controller.frame,
-          frameRate: document.frameRate, document: document);
-      if (view.under(doc, _scale, reach * 0.8) case var hold?) {
-        controller.beginInteraction();
-        _faceHold = hold;
-        _faceStart = who;
-        _rigFrom = doc;
-        controller.pickFacePoint(hold.point);
-        _mode = _DragMode.characterFace;
-        return;
-      }
-    }
-
-    // A sketch's rig points, while they are edited: before the puppet and
-    // the drawing. A line taken hold of has a point put on it there.
-    if (controller.rigCharacter case var who?
-        when !who.locked && controller.puppetHandles) {
-      var reach = (handleSize / 2 + handleHitSlop) / _scale;
-      var view = RigView.of(who, controller.frame,
-          frameRate: document.frameRate, document: document);
-      if (view.under(doc, _scale, reach) case var hold?) {
-        controller.beginInteraction();
-        if (hold.added) {
-          who = withRigPoint(who, hold.limb, hold.point,
-              mirror: controller.mirrorEdits);
-          controller.replaceElement(who, transient: true);
-          hold = RigHold(hold.limb, hold.point, RigGrab.centre);
-        }
-        _rigHold = hold;
-        _rigFrom = doc;
-        _rigStart = who;
-        controller.pickRigPoint(hold.limb, hold.point);
-        _mode = _DragMode.characterRig;
-        return;
-      }
-    }
-
-    // The puppet over a sketch -- its handles, then the pins -- before the
-    // drawing laid over it to draw on: they are what is aimed at. See
-    // character_guide.dart.
-    if (_guideCharacter() case var who?
-        when !who.locked && controller.puppetHandles) {
-      var reach = (handleSize / 2 + handleHitSlop) / _scale;
-      var placed = CharacterPlacement.of(who, controller.frame,
-          frameRate: document.frameRate, document: document);
-      if (guideUnder(placed, doc, reach) case var handle?) {
-        _guideHandle = handle;
-        _guideFrom = doc;
-        _guideStart = who;
-        _mode = _DragMode.characterGuide;
-        controller.beginInteraction();
-        return;
-      }
-      if (controller.drawingOn == who.id) {
-        if (placed.pinUnder(doc, reach) case var pin?) {
-          _characterPin = pin;
-          _mode = _DragMode.characterPin;
-          controller.beginInteraction();
-          return;
-        }
-      }
-    }
-
     // A sprite being painted takes a press on it before anything else: it
     // is a brush on its pixels, not a hand on the element.
     if (controller.spritePaint case var session?) {
@@ -2162,48 +1963,6 @@ class CanvasStageState extends State<CanvasStage>
       if (session.map case var e? when !e.locked && e.bounds.contains(doc)) {
         _mode = _DragMode.tilePaint;
         session.strokeStart(doc);
-        return;
-      }
-    }
-
-    // The doll's fingertips, the rings round its picked joint, and its
-    // joints -- over the drawing laid on it, and over its pins.
-    if (_dollCharacter() case var who?) {
-      var placed = CharacterPlacement.of(who, controller.frame,
-          frameRate: document.frameRate, document: document);
-      var reach = (handleSize / 2 + handleHitSlop) / _scale;
-      var picked = controller.dollJoint;
-      var start = who.poseAtFrame(controller.frame);
-      if (picked?.hand case var arm?) {
-        for (var (i, tip) in placed.fingerTips(arm).indexed) {
-          if ((tip - doc).distance <= reach * 0.8) {
-            _dollHeld = picked!;
-            _dollFinger = i;
-            _mode = _DragMode.dollFinger;
-            controller.beginInteraction();
-            return;
-          }
-        }
-      }
-      if (picked != null) {
-        if (dollRingUnder(placed.dollJoint(picked), dollRingRadius / _scale,
-                doc, handleHitSlop / _scale)
-            case var ring?) {
-          _dollHeld = picked;
-          _dollRing = ring;
-          _dollFrom = doc;
-          _dollPose = start;
-          _mode = _DragMode.dollRing;
-          controller.beginInteraction();
-          return;
-        }
-      }
-      if (placed.dollJointUnder(doc, reach) case var j?) {
-        controller.dollJoint = j;
-        _dollHeld = j;
-        _dollFrom = doc;
-        _mode = _DragMode.dollJoint;
-        controller.beginInteraction();
         return;
       }
     }
@@ -2247,24 +2006,6 @@ class CanvasStageState extends State<CanvasStage>
         _orbitFrom = s.cameraAt(controller.frame);
         _orbitAt = stage;
         _mode = _DragMode.stageOrbit;
-        controller.beginInteraction();
-        return;
-      }
-    }
-
-    // A selected character's pins, before the character itself: like a
-    // path's points, they are drawn on top and are what is being aimed at.
-    if (_selectedCharacter() case var who?
-        when !who.locked && !controller.editRig) {
-      var reach = (handleSize / 2 + handleHitSlop) / _scale;
-      var pin = CharacterPlacement.of(who, controller.frame,
-              frameRate: document.frameRate,
-              document: document,
-              models: controller.images)
-          .pinUnder(doc, reach);
-      if (pin != null) {
-        _characterPin = pin;
-        _mode = _DragMode.characterPin;
         controller.beginInteraction();
         return;
       }
@@ -2716,49 +2457,6 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   /// _selectedPath is the one selected element, when it is a path.
-  /// _selectedCharacter is the selected element when it is a character
-  /// and the only thing selected, whose pins are shown and can be dragged.
-  CharacterElement? _selectedCharacter() {
-    if (controller.selection.length != 1) return null;
-    var selected = controller.selected;
-    return selected is CharacterElement && selected.visible ? selected : null;
-  }
-
-  /// _posedCharacter is the character whose pins are being dragged: the one
-  /// selected, or the one being drawn on.
-  CharacterElement? _posedCharacter() {
-    if (_selectedCharacter() case var who?) return who;
-    var id = controller.drawingOn;
-    var e = id == null ? null : document.elementById(id);
-    return e is CharacterElement && e.visible ? e : null;
-  }
-
-  /// _garmentArea is the character a garment is drawn on, and the parts of
-  /// its body the garment covers.
-  (CharacterElement, Set<CharacterPart>)? _garmentArea() {
-    var g = controller.drawingGarment;
-    if (g == null) return null;
-    var who = _posedCharacter();
-    if (who == null || g >= who.dna.wardrobe.length) return null;
-    return (who, who.dna.wardrobe[g].kind.covers);
-  }
-
-  /// _dollCharacter is the sketch whose doll is out to pose, when it is.
-  CharacterElement? _dollCharacter() {
-    if (!controller.dollShown) return null;
-    var who = _posedCharacter();
-    return who != null && !who.body.inThreeD && !who.locked ? who : null;
-  }
-
-  /// _guideCharacter is the sketch the puppet is laid over, while it is
-  /// shown: the one being drawn on, or picked.
-  CharacterElement? _guideCharacter() {
-    // The doll in 3D in its place: drawn with the character.
-    if (!controller.showPuppet || controller.puppet3D) return null;
-    var who = _posedCharacter();
-    return who != null && !who.body.inThreeD ? who : null;
-  }
-
   PathElement? _selectedPath() {
     var selected = controller.selected;
     return selected is PathElement ? selected : null;
@@ -5634,81 +5332,11 @@ class CanvasStageState extends State<CanvasStage>
                       y: (from.y - d.dy).roundToDouble())),
               transient: true);
         }
-      case _DragMode.characterHair:
-        if ((_hairStart, _hairHold) case (var start?, var hold?)) {
-          var view = HairView.of(start, controller.frame,
-              frameRate: document.frameRate, document: document);
-          if (view != null) {
-            controller.replaceElement(view.dragged(hold, _rigFrom, doc),
-                transient: true);
-          }
-        }
-      case _DragMode.characterFace:
-        if ((_faceStart, _faceHold) case (var start?, var hold?)) {
-          controller.replaceElement(
-              faceDragged(start, hold, _rigFrom, doc, controller.frame, _scale,
-                  frameRate: document.frameRate,
-                  document: document,
-                  mirror: controller.mirrorEdits),
-              transient: true);
-        }
-      case _DragMode.characterRig:
-        if ((_rigStart, _rigHold) case (var start?, var hold?)) {
-          controller.replaceElement(
-              rigDragged(start, hold, _rigFrom, doc, controller.frame, _scale,
-                  frameRate: document.frameRate,
-                  document: document,
-                  mirror: controller.mirrorEdits),
-              transient: true);
-        }
-      case _DragMode.characterGuide:
-        if (_guideStart case var start?) {
-          controller.replaceElement(
-              guided(start, _guideHandle, _guideFrom, doc, controller.frame,
-                  frameRate: document.frameRate, document: document),
-              transient: true);
-        }
       case _DragMode.spritePaint:
         if (controller.spritePaint case var session?)
           unawaited(session.strokeTo(doc));
       case _DragMode.tilePaint:
         controller.tilePaint?.strokeTo(doc);
-      case _DragMode.dollJoint || _DragMode.dollRing || _DragMode.dollFinger:
-        if (_dollCharacter() case var who?) {
-          var placed = CharacterPlacement.of(who, controller.frame,
-              frameRate: document.frameRate, document: document);
-          CharacterPose? posed = switch (_mode) {
-            _DragMode.dollFinger =>
-              placed.curledTo(_dollHeld.hand!, _dollFinger, doc),
-            _DragMode.dollRing => _dollRing == DollRing.bend
-                ? placed.bentTo(_dollHeld, doc)
-                // Up the swing ring brings the bone towards the reader.
-                : placed.swungBy(_dollHeld, _dollPose,
-                    (_dollFrom.dy - doc.dy) * _scale * 0.7),
-            // A joint pressed is picked; dragged, it moves.
-            _ when (doc - _dollFrom).distance * _scale < 3 => null,
-            _ => placed.movedTo(_dollHeld, doc),
-          };
-          if (posed != null)
-            controller.setCharacterPose(who, posed, transient: true);
-        }
-      case _DragMode.characterPin:
-        if (_posedCharacter() case var who?) {
-          // Where it is seen -- on its stage, and on its model -- as the
-          // pin was taken hold of.
-          var posed = CharacterPlacement.of(who, controller.frame,
-                  frameRate: document.frameRate,
-                  document: document,
-                  models: controller.images)
-              .posedBy(_characterPin, doc);
-          // Recording, the drag is a performance: a key on every frame the
-          // playhead passes while the pin is held.
-          if (controller.playing && controller.recordPins) {
-            controller.recordCharacterPose(who, posed, transient: true);
-          } else {
-            controller.setCharacterPose(who, posed, transient: true);
-          }
-        }
       case _DragMode.vectorPoint:
         _applyVectorMove(doc);
       case _DragMode.vectorPoints:
@@ -6403,14 +6031,6 @@ class CanvasStageState extends State<CanvasStage>
         _mode == _DragMode.warpTurn ||
         _mode == _DragMode.rotate ||
         _mode == _DragMode.chartLabel ||
-        _mode == _DragMode.characterPin ||
-        _mode == _DragMode.dollJoint ||
-        _mode == _DragMode.dollRing ||
-        _mode == _DragMode.dollFinger ||
-        _mode == _DragMode.characterGuide ||
-        _mode == _DragMode.characterRig ||
-        _mode == _DragMode.characterFace ||
-        _mode == _DragMode.characterHair ||
         _mode == _DragMode.stageOrbit ||
         _mode == _DragMode.parallaxPan ||
         _mode == _DragMode.tableColumn ||
@@ -6930,44 +6550,12 @@ class CanvasStageState extends State<CanvasStage>
                                 document.size.rect)
                             : null,
                         selectedPath: _selectedPath(),
-                        // The pins, unless the rig's points are out.
-                        selectedCharacter: controller.editRig
-                            ? null
-                            : _selectedCharacter() ??
-                                (controller.puppetHandles
-                                    ? _guideCharacter()
-                                    : null),
-                        rigCharacter: controller.rigCharacter,
-                        faceCharacter: controller.faceCharacter,
-                        hairCharacter: controller.hairCharacter,
                         // Over a page that scrolls, the rulers are drawn in a
                         // layer that does not.
                         rulersApart: _viewport.width > _visible.width + 0.5 ||
                             _viewport.height > _visible.height + 0.5,
-                        turnaround: switch (controller.turnaroundCharacter) {
-                          var who? => Turnaround.of(
-                              who,
-                              controller.frame,
-                              document.frameRate,
-                              panelOptions(who, adding: false)),
-                          null => null,
-                        },
-                        onionSkin: controller.onionSkin,
-                        hairPicked: controller.hairPick,
-                        garmentArea: _garmentArea(),
-                        facePicked: controller.facePick,
-                        rigPicked: controller.rigPick,
-                        guideCharacter: _guideCharacter(),
-                        dollShown: controller.dollShown,
-                        dollLook: controller.dollLook,
-                        dollCharacter: _dollCharacter(),
-                        dollPicked: controller.dollJoint,
                         spritePaintTick: controller.spritePaint?.tick ?? -1,
                         tilePaintTick: controller.tilePaint?.tick ?? -1,
-                        guideHandles: controller.puppetHandles,
-                        guideHeld: _mode == _DragMode.characterGuide
-                            ? _guideHandle
-                            : null,
                         editingLayers: _layerBoxes(),
                         editingVector: switch (controller.editingVector) {
                           var v? => (

@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
+import 'package:bruig/plugin_system/canvas/model/lip_sync.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_look.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_mesh.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_pose.dart';
@@ -30,6 +31,20 @@ import 'package:vector_math/vector_math.dart' as vm;
 // colours, and its look with the finish over it. What is drawn is changed
 // with [CharacterScene.show]; each frame is moved on with [tick] and drawn
 // by whoever holds the scene -- a SceneView, or the canvas's painter.
+
+/// visemesOf is the face's mouth shapes for drawn mouth [m]: the nine an
+/// animator draws (lip_sync.dart) made of the five the VRoid face has.
+/// Shut and at rest, none -- the face's own mouth.
+Map<String, double> visemesOf(MouthShape m) => switch (m) {
+      MouthShape.rest || MouthShape.closed => const {},
+      MouthShape.teeth => const {"MTH_I": 0.55, "MTH_E": 0.2},
+      MouthShape.open => const {"MTH_E": 0.8},
+      MouthShape.wide => const {"MTH_A": 0.9},
+      MouthShape.round => const {"MTH_O": 0.8},
+      MouthShape.pucker => const {"MTH_U": 0.9},
+      MouthShape.lip => const {"MTH_I": 0.3, "MTH_U": 0.25},
+      MouthShape.tongue => const {"MTH_A": 0.45, "MTH_E": 0.3},
+    };
 
 /// DecalLoader reads a decal's picture: RGBA, its width and height.
 typedef DecalLoader = Future<(Uint8List, int, int)?> Function(String source);
@@ -799,6 +814,8 @@ class CharacterScene extends ChangeNotifier {
       }
       if (_spoken!.mouthAt(t - p.lineAt) case final m?) return m;
     }
+    // Its lip sync, from a voice-over or a narrator's channel.
+    if (p.mouthAt(t) case final m?) return visemesOf(m);
     return p.mouth == "rest" ? null : {"MTH_${p.mouth}": 0.85};
   }
 

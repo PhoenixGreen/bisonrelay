@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/render/sound_placement.dart';
@@ -39,7 +38,7 @@ Widget placementGroup(CanvasController controller, CanvasElement e,
       ? doc.elementById(place.follow)
       : null;
   var onStage = place.by == PlaceBy.stage ||
-      (followed is CharacterElement && followed.onStage != null);
+      (followed != null && stagedIn(doc, followed, controller.frame) != null);
   var across = place.by == PlaceBy.canvas ||
       (place.by == PlaceBy.follow && !onStage);
   var heard = heardAt(doc, e, place, controller.frame);

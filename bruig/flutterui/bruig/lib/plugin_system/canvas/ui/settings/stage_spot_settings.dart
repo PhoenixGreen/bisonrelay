@@ -115,8 +115,8 @@ List<Widget> stageSpotSettings(
                         "middle, and which way it faces: nought faces where "
                         "the camera starts. It is as tall as it was made."
                     : "Where it stands, in metres from the middle of the "
-                        "floor; how tall it is, its width following its "
-                        "box; and which way it faces.",
+                        "floor; how big it is -- its longer side, the other "
+                        "following its box; and which way it faces.",
                 children: [
                   CanvasSlider(
                     key: const ValueKey("stageSpotX"),
@@ -154,7 +154,7 @@ List<Widget> stageSpotSettings(
                   if (!body)
                     CanvasSlider(
                       key: const ValueKey("stageSpotHeight"),
-                      label: "Height",
+                      label: "Size",
                       value: spot.height.clamp(0.1, 10.0),
                       min: 0.1,
                       max: 10,

@@ -44,9 +44,6 @@ enum ElementKind {
   video("Video"),
   // A drawing -- an .svg -- edited point by point. See VectorElement.
   vector("Vector"),
-  // A person, an animal or a monster, drawn on a skeleton and posed. See
-  // CharacterElement.
-  character("Character"),
   // A character made in the new Character Studio, drawn in 3D. See
   // Character3dElement.
   character3d("3D character"),

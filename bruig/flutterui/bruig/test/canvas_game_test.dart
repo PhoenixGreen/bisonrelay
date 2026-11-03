@@ -5,11 +5,12 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
@@ -936,17 +937,22 @@ void main() {
     });
   });
 
-  group("a character", () {
-    CharacterElement hero(PlayAs as, {double speed = 160}) =>
-        CharacterElement(ElementBase(
-            id: "hero",
-            x: 100,
-            y: 100,
-            width: 100,
-            height: 300,
-            play: PlaySpec(as: as, speed: speed)));
-    CharacterElement seen(GameRun g, CanvasDocument doc, int frame) =>
-        g.view(doc, frame: frame).elementById("hero") as CharacterElement;
+  group("a 3D character", () {
+    Character3dElement hero(PlayAs as, {double speed = 160}) =>
+        Character3dElement(
+            ElementBase(
+                id: "hero",
+                x: 100,
+                y: 100,
+                width: 100,
+                height: 300,
+                play: PlaySpec(as: as, speed: speed)),
+            design: CharacterDesign(
+                id: "d", name: "Jess", body: "Vivi", updated: DateTime(2026)),
+            performance: const CharacterPerformance(
+                clips: [MotionClip3d(kind: "Wave", start: 0)]));
+    Character3dElement seen(GameRun g, CanvasDocument doc, int frame) =>
+        g.view(doc, frame: frame).elementById("hero") as Character3dElement;
     void run(GameRun g, CanvasDocument doc, double seconds,
         {Set<int> keys = const {}}) {
       g.input.keys
@@ -957,95 +963,50 @@ void main() {
       }
     }
 
-    test("stands swaying, walks side on the way it goes, and jumps", () {
+    test("stands as made, walks side on the way it goes, and jumps", () {
       var g = GameRun();
       var doc = page.copyWith(elements: [hero(PlayAs.platformer)]);
       run(g, doc, 1.5);
       var still = seen(g, doc, 10);
-      expect(still.motions.single.kind, MotionKind.idle);
-      expect(still.pose.turn, 0, reason: "as it was drawn, until it moves");
+      expect(still.performance.clips, isEmpty,
+          reason: "its scene's motions give way to the game's");
+      expect(still.turn, 0, reason: "as it was set, until it moves");
       run(g, doc, 0.5, keys: {key(LogicalKeyboardKey.arrowRight)});
       var walking = seen(g, doc, 10);
-      expect(walking.motions.single.kind, MotionKind.walk);
-      expect(walking.pose.turn, -90, reason: "side on, to the right");
-      // At its pace: 160 a second is a walk of 0.6 heights a second.
-      expect(walking.motions.single.speed, closeTo(160 / (0.6 * 300), 0.01));
+      expect(walking.performance.clips.single.kind, "Walk");
+      expect(walking.turn, -0.5, reason: "side on, to the right");
+      // At its pace: 160 a second is a walk of 0.8 heights a second.
+      expect(walking.performance.clips.single.speed,
+          closeTo(160 / (0.8 * 300), 0.01));
+      // Begun when it set off, half a second before the frame it is seen
+      // at, not at the start of the scene.
+      expect(walking.performance.clips.single.start,
+          closeTo(10 / doc.frameRate - 0.5, 0.05));
       run(g, doc, 0.5, keys: {key(LogicalKeyboardKey.arrowLeft)});
-      expect(seen(g, doc, 10).pose.turn, 90);
+      expect(seen(g, doc, 10).turn, 0.5);
       run(g, doc, 0.1, keys: {key(LogicalKeyboardKey.space)});
-      expect(seen(g, doc, 10).motions.single.kind, MotionKind.jump);
+      expect(seen(g, doc, 10).performance.clips.single.kind, "Jump");
       run(g, doc, 2);
       var landed = seen(g, doc, 10);
-      expect(landed.motions.single.kind, MotionKind.idle);
-      expect(landed.pose.turn, 90, reason: "still facing the way it went");
+      expect(landed.performance.clips, isEmpty);
+      expect(landed.turn, 0.5, reason: "still facing the way it went");
     });
 
-    test("plays the character's own motions, at its own stride", () {
+    test("runs when it goes faster than its own height a second", () {
       var g = GameRun();
-      var mine = hero(PlayAs.platformer).copyWith(
-          feel: const MotionFeel(stride: 1),
-          gameMotions: const GameMotions()
-              .withMotion(GameMove.standing, MotionKind.wave)
-              .withMotion(GameMove.walking, MotionKind.dance)
-              .withMotion(GameMove.falling, MotionKind.clap));
-      var doc = page.copyWith(elements: [mine]);
-      run(g, doc, 1.5);
-      expect(seen(g, doc, 10).motions.single.kind, MotionKind.wave);
-      run(g, doc, 0.5, keys: {key(LogicalKeyboardKey.arrowRight)});
-      expect(seen(g, doc, 10).motions.single.kind, MotionKind.dance);
-      // Walking again: the stride carries it further, so the steps are slower.
-      var walk = mine.copyWith(gameMotions: const GameMotions());
-      g = GameRun();
-      doc = page.copyWith(elements: [walk]);
+      var doc = page.copyWith(elements: [hero(PlayAs.platformer, speed: 400)]);
       run(g, doc, 1);
       run(g, doc, 0.5, keys: {key(LogicalKeyboardKey.arrowRight)});
-      expect(seen(g, doc, 10).motions.single.speed,
-          closeTo(160 / (0.6 * 1.6 * 300), 0.01));
-      // Going up a jump, then coming down: the second is its own.
-      g = GameRun();
-      doc = page.copyWith(elements: [mine]);
-      run(g, doc, 1);
-      run(g, doc, 0.05, keys: {key(LogicalKeyboardKey.space)});
-      expect(seen(g, doc, 10).motions.single.kind, MotionKind.jump,
-          reason: "going up");
-      var kinds = <MotionKind>{};
-      for (var i = 0; i < 60; i++) {
-        run(g, doc, 1 / 60);
-        if (seen(g, doc, 10).motions.singleOrNull?.kind case var k?)
-          kinds.add(k);
-      }
-      expect(kinds, contains(MotionKind.clap), reason: "coming down");
-    });
-
-    test("fast, it runs", () {
-      var g = GameRun();
-      var doc = page.copyWith(elements: [hero(PlayAs.platformer, speed: 500)]);
-      run(g, doc, 1);
-      run(g, doc, 0.3, keys: {key(LogicalKeyboardKey.arrowRight)});
-      expect(seen(g, doc, 0).motions.single.kind, MotionKind.run);
+      expect(seen(g, doc, 10).performance.clips.single.kind, "Run");
     });
 
     test("seen from above, its back to the reader going up", () {
       var g = GameRun();
       var doc = page.copyWith(elements: [hero(PlayAs.topDown)]);
       run(g, doc, 0.3, keys: {key(LogicalKeyboardKey.arrowUp)});
-      expect(seen(g, doc, 0).pose.turn, 180);
-      expect(seen(g, doc, 0).motions.single.kind, MotionKind.walk);
+      expect(seen(g, doc, 10).turn, 1);
       run(g, doc, 0.3, keys: {key(LogicalKeyboardKey.arrowDown)});
-      expect(seen(g, doc, 0).pose.turn, 0);
-    });
-
-    test("its stride runs on the game's clock, whatever the frame", () {
-      var g = GameRun();
-      var doc = page.copyWith(elements: [hero(PlayAs.platformer)]);
-      run(g, doc, 1);
-      run(g, doc, 0.5, keys: {key(LogicalKeyboardKey.arrowRight)});
-      // The scene looping back to frame 0 does not restart the stride.
-      for (var frame in [0, 37, 200]) {
-        var clip = seen(g, doc, frame).motions.single;
-        expect((frame - clip.start) / doc.frameRate, closeTo(0.5, 0.06),
-            reason: "half a second in, at frame $frame");
-      }
+      expect(seen(g, doc, 10).turn, 0);
     });
   });
 

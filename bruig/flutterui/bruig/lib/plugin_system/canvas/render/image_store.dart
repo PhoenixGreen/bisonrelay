@@ -5,11 +5,11 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/render/edge_cleaning.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
-import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
-import 'package:bruig/plugin_system/canvas/render/model/model_figure.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/stage/stage_scene.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/character3d_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_character.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_gpu.dart';
@@ -63,9 +63,9 @@ const int _thumbSide = 192;
 class CanvasImageStore extends ChangeNotifier
     implements
         CanvasImageSource,
-        CanvasModelSource,
         CleansEdges,
-        CanvasCharacterSource {
+        CanvasCharacterSource,
+        CanvasStageSource {
   /// _edges makes and keeps pictures with their edges cleaned -- see
   /// edge_cleaning.dart.
   late final EdgeCleaner _edges = EdgeCleaner(
@@ -234,45 +234,6 @@ class CanvasImageStore extends ChangeNotifier
 
   final Map<String, ImageSilhouette> _outlines = {};
 
-  /// _models is the 3D models read, by their stored file. Few and asked
-  /// for by every frame a modelled character is in, so kept until the
-  /// store goes.
-  final Map<String, LoadedModel> _models = {};
-
-  @override
-  LoadedModel? resolveModel(String mediaId) {
-    if (mediaId.isEmpty) return null;
-    if (_models[mediaId] case var m?) return m;
-    var key = "model:$mediaId";
-    if (!_pending.contains(key) && !_failed.contains(key)) {
-      _pending.add(key);
-      _loadModel(mediaId, key);
-    }
-    return null;
-  }
-
-  Future<void> _loadModel(String mediaId, String key) async {
-    try {
-      var bytes = await CanvasMedia.load(MediaKind.model, mediaId);
-      if (bytes == null) {
-        _failed.add(key);
-        return;
-      }
-      var model = await loadModel(Uint8List.fromList(bytes));
-      if (_disposed) {
-        model.dispose();
-        return;
-      }
-      _models[mediaId] = model;
-      notifyListeners();
-    } catch (exception) {
-      debugPrint("Unable to read the canvas model $mediaId: $exception");
-      _failed.add(key);
-    } finally {
-      _pending.remove(key);
-    }
-  }
-
   // The 3D characters: a scene for each element drawn, which is a body read,
   // shaped and dressed, and so kept until the store goes -- or until more
   // than [_mostCharacters] are kept, when the one drawn longest ago goes.
@@ -285,8 +246,19 @@ class CanvasImageStore extends ChangeNotifier
   @override
   bool get noCharacters3d => _gpu == false;
 
+  // 3D stages' sets, one scene each by the stage's id, kept as long as the
+  // store is.
+  final Map<String, StageScene> _stages = {};
+
   @override
-  CharacterScene? resolveCharacter3d(Character3dElement e) {
+  StageScene? resolveStage(StageElement stage) {
+    if (!_gpuKnown()) return null;
+    return _stages[stage.id] ??= StageScene();
+  }
+
+  /// _gpuKnown is whether 3D can be drawn here, finding out first if that
+  /// is not known yet -- and telling the listeners once it is.
+  bool _gpuKnown() {
     if (_gpu == null) {
       if (_pending.add("gpu")) {
         flutterGpuReady().then((ok) {
@@ -295,9 +267,14 @@ class CanvasImageStore extends ChangeNotifier
           if (!_disposed) notifyListeners();
         });
       }
-      return null;
+      return false;
     }
-    if (_gpu == false) return null;
+    return _gpu!;
+  }
+
+  @override
+  CharacterScene? resolveCharacter3d(Character3dElement e) {
+    if (!_gpuKnown()) return null;
     final worn = e.worn;
     var key = jsonEncode(worn.toJson()..remove("updated"));
     var held = _characters.remove(e.id);
@@ -515,29 +492,15 @@ class CanvasImageStore extends ChangeNotifier
     if (keys.isNotEmpty) notifyListeners();
   }
 
-  CanvasImageStore() {
-    HumanBody.instance.addListener(_onHuman);
-  }
-
-  /// _onHuman is the sculpted body arriving: everything made of it is drawn
-  /// again with it.
-  void _onHuman() {
-    if (!_disposed) notifyListeners();
-  }
-
   @override
   void dispose() {
-    HumanBody.instance.removeListener(_onHuman);
     _disposed = true;
     _edges.dispose();
-    for (var model in _models.values) {
-      model.dispose();
-    }
-    _models.clear();
     for (var (scene, _) in _characters.values) {
       scene.dispose();
     }
     _characters.clear();
+    _stages.clear();
     for (var vector in _vectors.values) {
       vector.picture.dispose();
     }

@@ -8,11 +8,13 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_camera.dart';
+import 'package:bruig/plugin_system/canvas/render/stage/stage_scene.dart';
 
 // stage_painter.dart draws a 3D stage -- its sky, its floor and what the
 // floor is made of, its back wall, its light -- and works out where the
@@ -25,103 +27,50 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_camera.dart';
 StageView stageView(StageElement stage, int frame) =>
     StageView(stage.bounds, stage.cameraAt(frame));
 
-/// paintStage draws [stage] as it is seen on [frame], filling [box].
-void paintStage(Canvas canvas, Rect box, StageElement stage, int frame) {
+/// paintStage draws [stage] as it is seen on [frame], filling [box]: its
+/// set drawn in 3D by [images] where it keeps stages (stage_scene.dart),
+/// and a sketch of it -- the sky, the floor and the wall, plain -- where 3D
+/// cannot be drawn, or not yet.
+void paintStage(Canvas canvas, Rect box, StageElement stage, int frame,
+    {CanvasImageSource? images}) {
+  var source = images is CanvasStageSource ? images as CanvasStageSource : null;
+  var scene = source?.resolveStage(stage);
+  if (scene != null) {
+    // As many pixels as the box covers, at the canvas's own scale.
+    var m = canvas.getTransform();
+    var scale = math.sqrt(m[0] * m[0] + m[1] * m[1]);
+    var most = 4096 / math.max(box.width, box.height);
+    scene.paint(canvas, box, stage, frame,
+        pixelRatio: scale.clamp(0.25, math.max(0.25, most)));
+  } else {
+    _sketch(canvas, box, stage, frame);
+  }
+  canvas.save();
+  canvas.clipRect(box);
+  _light(canvas, box, stage.light);
+  canvas.restore();
+}
+
+/// _sketch is [stage] where 3D cannot be drawn: its sky, its floor and its
+/// wall in their colours, through its camera, so what stands on it is where
+/// it will be.
+void _sketch(Canvas canvas, Rect box, StageElement stage, int frame) {
   var view = StageView(box, stage.cameraAt(frame));
   var s = stage.size;
   canvas.save();
   canvas.clipRect(box);
   canvas.drawRect(box, Paint()..color = stage.sky);
-
   if (stage.wall) {
-    // The back wall, standing at the far edge of the floor, three metres
-    // high; a skirting board where it meets the floor.
     var wall = view.polygon([(-s, 0, -s), (s, 0, -s), (s, 3, -s), (-s, 3, -s)]);
     if (wall.length >= 3) {
       canvas.drawPath(Path()..addPolygon(wall, true), Paint()..color = stage.wallColor);
     }
-    var skirt = view.polygon(
-        [(-s, 0, -s), (s, 0, -s), (s, 0.12, -s), (-s, 0.12, -s)]);
-    if (skirt.length >= 3) {
-      canvas.drawPath(Path()..addPolygon(skirt, true),
-          Paint()..color = Color.lerp(stage.wallColor, const Color(0xFF000000), 0.18)!);
-    }
   }
-
   var floor = view.polygon([(-s, 0, -s), (s, 0, -s), (s, 0, s), (-s, 0, s)]);
   if (floor.length >= 3) {
-    var floorPath = Path()..addPolygon(floor, true);
-    canvas.drawPath(floorPath, Paint()..color = stage.floor);
-    canvas.save();
-    canvas.clipPath(floorPath);
-    _pattern(canvas, view, stage);
-    canvas.restore();
+    canvas.drawPath(Path()..addPolygon(floor, true), Paint()..color = stage.floor);
   }
-
-  _light(canvas, box, stage.light);
   canvas.restore();
-}
-
-/// _line draws a line on the stage from [a] to [b], cut where it goes
-/// behind the camera.
-void _line(Canvas canvas, StageView view, (double, double, double) a,
-    (double, double, double) b, Paint paint) {
-  var seen = view.polygon([a, b]);
-  if (seen.length >= 2) canvas.drawLine(seen.first, seen.last, paint);
-}
-
-void _pattern(Canvas canvas, StageView view, StageElement stage) {
-  var s = stage.size;
-  var dark = Color.lerp(stage.floor, const Color(0xFF000000), 0.14)!;
-  var line = Paint()
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = math.max(0.6, view.box.height * 0.0015)
-    ..color = dark;
-  switch (stage.pattern) {
-    case FloorPattern.plain:
-      break;
-    case FloorPattern.grid:
-      for (var x = -s; x <= s + 1e-6; x += 1) {
-        _line(canvas, view, (x, 0, -s), (x, 0, s), line);
-      }
-      for (var z = -s; z <= s + 1e-6; z += 1) {
-        _line(canvas, view, (-s, 0, z), (s, 0, z), line);
-      }
-    case FloorPattern.tiles:
-      var tile = Paint()..color = dark;
-      for (var x = -s; x < s - 1e-6; x += 1) {
-        for (var z = -s; z < s - 1e-6; z += 1) {
-          if (((x + s) + (z + s)).round().isOdd) continue;
-          var q = view.polygon([(x, 0, z), (x + 1, 0, z), (x + 1, 0, z + 1), (x, 0, z + 1)]);
-          if (q.length >= 3) canvas.drawPath(Path()..addPolygon(q, true), tile);
-        }
-      }
-    case FloorPattern.boards:
-      // Boards running away from the camera's start, their ends staggered.
-      for (var x = -s; x <= s + 1e-6; x += 0.3) {
-        _line(canvas, view, (x, 0, -s), (x, 0, s), line);
-      }
-      var row = 0;
-      for (var x = -s; x < s; x += 0.3, row++) {
-        for (var z = -s + (row % 3) * 0.7; z < s; z += 2.1) {
-          _line(canvas, view, (x, 0, z), (x + 0.3, 0, z), line);
-        }
-      }
-    case FloorPattern.grass:
-      // Blades scattered by a fixed rule, so the same stage has the same
-      // grass in every frame and every export.
-      var blade = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeWidth = math.max(0.6, view.box.height * 0.002)
-        ..color = dark;
-      var count = (s * s * 40).round().clamp(50, 3000);
-      for (var k = 0; k < count; k++) {
-        var x = -s + 2 * s * _unit(k * 2);
-        var z = -s + 2 * s * _unit(k * 2 + 1);
-        _line(canvas, view, (x, 0, z), (x + 0.02, 0.08, z), blade);
-      }
-  }
 }
 
 void _light(Canvas canvas, Rect box, StageLight light) {
@@ -136,36 +85,6 @@ ColorFilter? lightFilter(StageLight light) => light.strength <= 0
     ? null
     : ColorFilter.mode(
         light.tint.withValues(alpha: light.strength), BlendMode.srcATop);
-
-double _unit(int n) {
-  var h = (n * 0x9E3779B1) & 0xFFFFFFFF;
-  h = ((h ^ (h >> 16)) * 0x85EBCA6B) & 0xFFFFFFFF;
-  h = ((h ^ (h >> 13)) * 0xC2B2AE35) & 0xFFFFFFFF;
-  return (h ^ (h >> 16)) / 0xFFFFFFFF;
-}
-
-/// Staging is a character standing on a stage, as it is seen: the box it is
-/// drawn in, how far from the camera, which way round, and its shadow.
-class Staging {
-  final Rect box;
-  final double depth;
-
-  /// turn is added to the character's own turn: the camera's swing, and
-  /// which way it faces on the floor.
-  final double turn;
-  final StageLight light;
-
-  /// shadow is its shadow on the floor, or null in a light with none.
-  final Path? shadow;
-
-  /// tilt is how far above it the camera looks down on it, in degrees:
-  /// added to the character's own tilt, so it is seen from where the
-  /// camera is.
-  final double tilt;
-
-  const Staging(this.box, this.depth, this.turn, this.light, this.shadow,
-      [this.tilt = 0]);
-}
 
 /// stageNamed is the stage called [id], as it is drawn: a Background
 /// element showing one, or the canvas's own background where [backdrop] is
@@ -198,60 +117,14 @@ List<(String, String)> stagesIn(Iterable<CanvasElement> elements,
           (el.id, el.name),
     ];
 
-/// stagingIn is [staging] in [doc], against the background behind the
-/// canvas being shown.
-Staging? stagingIn(CanvasDocument doc, CharacterElement e, int frame) =>
-    staging(e, doc.elements, frame,
-        backdrop: doc.drawnBackground, page: doc.size.rect);
-
-/// staging is [e] as it stands on its stage among [elements] on [frame], or
-/// null when it is not on one that is there -- or is behind the camera.
-Staging? staging(
-    CharacterElement e, Iterable<CanvasElement> elements, int frame,
-    {CanvasBackground? backdrop, Rect? page}) {
-  var on = e.onStage;
-  if (on == null) return null;
-  var stage = stageNamed(on.stage, elements, backdrop: backdrop, page: page);
-  if (stage == null) return null;
-  var view = stageView(stage, frame);
-  var feet = view.see(on.x, 0, on.z);
-  if (feet.depth <= StageView.nearest) return null;
-  var tall = view.scaleAt(feet.depth) * on.height;
-  var wide = tall * (e.height <= 0 ? 0.5 : e.width / e.height);
-  var box = Rect.fromLTWH(
-      feet.page.dx - wide / 2, feet.page.dy - tall, wide, tall);
-  Path? shadow;
-  if (stage.light.shadows && e.shadow != CharacterShadow.none) {
-    // An ellipse on the floor round the feet, pushed the way the light
-    // throws it.
-    var r = on.height * 0.22;
-    var off = on.height * stage.light.shadowSlant * 0.25;
-    var points = <Offset>[];
-    for (var k = 0; k < 20; k++) {
-      var a = k / 20 * 2 * math.pi;
-      var p = view.see(on.x + off + math.cos(a) * r * (1 + stage.light.shadowSlant.abs() * 0.4),
-          0, on.z + math.sin(a) * r * 0.7);
-      if (p.depth > StageView.nearest) points.add(p.page);
-    }
-    if (points.length >= 3) shadow = Path()..addPolygon(points, true);
-  }
-  // Seen from the camera's height: the angle down to the middle of the
-  // body.
-  var camera = stage.cameraAt(frame);
-  var tilt = view.lookingDown(on.x, on.height / 2, on.z).clamp(-85.0, 85.0);
-  return Staging(box, feet.depth, camera.yaw + on.facing, stage.light, shadow,
-      tilt);
-}
-
-/// canStand is whether [e] can stand on a stage: anything drawn, but for
-/// what is a stage, or behind everything, or a sound -- and the old drawn
-/// characters, which stand on one their own way.
+/// canStand is whether [e] can stand on a stage: anything on the canvas,
+/// but for a stage itself and scenery that is behind everything -- and a
+/// sound on the timeline, which is not on the canvas at all.
 bool canStand(CanvasElement e) =>
-    e is! BackgroundElement &&
     e is! StageElement &&
     e is! ParallaxElement &&
-    e is! AudioElement &&
-    e is! CharacterElement;
+    !(e is BackgroundElement && (e.isStage || e.isParallax)) &&
+    !isTimelineSound(e);
 
 /// Staged is an element standing on a stage, as the camera sees it: the
 /// four corners of where it is on the page and the box round them, how far
@@ -267,13 +140,17 @@ class Staged {
   final Rect box;
   final double depth;
 
+  /// foot is where its spot is seen: the point a drag holds it by -- the
+  /// middle of its bottom edge, standing; its middle, lying on the floor.
+  final Offset foot;
+
   /// matrix lays the element's own box onto the stage, for a flat: see
   /// StageView.perspective. Null for a 3D character, drawn by its own
   /// scene through [view].
   final Float64List? matrix;
 
   const Staged(this.spot, this.stage, this.view, this.quad, this.box,
-      this.depth, this.matrix);
+      this.depth, this.matrix, this.foot);
 }
 
 /// stagedIn is [staged] in [doc], against the background behind the canvas
@@ -294,32 +171,43 @@ Staged? staged(CanvasElement e, Iterable<CanvasElement> elements, int frame,
   var view = stageView(stage, frame);
   var turn = spot.facing * math.pi / 180;
   if (e is Character3dElement) {
-    // A body about as tall as a person, and as wide as one with its arms
-    // out a little, standing on the spot: what is picked and outlined.
+    // A card as big as a person with their arms out a little, standing on
+    // the spot turned to the camera: what is picked and outlined, its feet
+    // in the middle of its bottom edge.
+    var (rx, ry, rz) = view.right;
+    var corners = <StagePoint>[
+      for (var (across, up) in const [
+        (-0.45, 1.75),
+        (0.45, 1.75),
+        (0.45, 0.0),
+        (-0.45, 0.0)
+      ])
+        view.see(spot.x + rx * across, spot.lift + ry * across + up,
+            spot.z + rz * across)
+    ];
+    if (corners.any((p) => p.depth <= StageView.nearest)) return null;
+    var quad = [for (var p in corners) p.page];
     var feet = view.see(spot.x, spot.lift, spot.z);
-    if (feet.depth <= StageView.nearest) return null;
-    var corners = <Offset>[];
-    for (var (dx, dy, dz) in const [
-      (-0.4, 0.0, -0.25), (0.4, 0.0, -0.25), (0.4, 0.0, 0.25),
-      (-0.4, 0.0, 0.25), (-0.4, 1.75, -0.25), (0.4, 1.75, -0.25),
-      (0.4, 1.75, 0.25), (-0.4, 1.75, 0.25),
-    ]) {
-      var x = dx * math.cos(turn) + dz * math.sin(turn);
-      var z = -dx * math.sin(turn) + dz * math.cos(turn);
-      var p = view.see(spot.x + x, spot.lift + dy, spot.z + z);
-      if (p.depth <= StageView.nearest) return null;
-      corners.add(p.page);
-    }
-    var box = _around(corners);
-    return Staged(spot, stage, view,
-        [box.topLeft, box.topRight, box.bottomRight, box.bottomLeft], box,
-        feet.depth, null);
+    return Staged(
+        spot, stage, view, quad, _around(quad), feet.depth, null, feet.page);
   }
-  // A flat: its own box, as tall as the spot says and as wide as its shape,
-  // stood up, turned to the camera, laid down or hung on the wall.
+  // A flat: its own box, its longer side as long as the spot says, stood
+  // up, turned to the camera, laid down or hung on the wall. A straight
+  // line's box has no height, or no width: it is given some, round its
+  // stroke, for a plane to stand in.
   var rect = Rect.fromLTWH(e.x, e.y, e.width, e.height);
-  if (rect.width <= 0 || rect.height <= 0) return null;
-  var tall = spot.height, wide = tall * rect.width / rect.height;
+  var thin = e is LineElement ? math.max(e.strokeWidth * 4, 8.0) : 1.0;
+  if (rect.width < thin) {
+    rect = Rect.fromCenter(
+        center: rect.center, width: thin, height: rect.height);
+  }
+  if (rect.height < thin) {
+    rect = Rect.fromCenter(
+        center: rect.center, width: rect.width, height: thin);
+  }
+  var longest = math.max(rect.width, rect.height);
+  var tall = spot.height * rect.height / longest,
+      wide = spot.height * rect.width / longest;
   var (ax, ay, az) = switch (spot.stand) {
     SpotStand.camera => view.right,
     SpotStand.wall => (1.0, 0.0, 0.0),
@@ -346,7 +234,11 @@ Staged? staged(CanvasElement e, Iterable<CanvasElement> elements, int frame,
   var middle = view.see(fx + upx * tall / 2, fy + upy * tall / 2,
       fz + upz * tall / 2);
   var quad = [for (var p in seen) p.page];
-  return Staged(spot, stage, view, quad, _around(quad), middle.depth, matrix);
+  var foot = spot.stand == SpotStand.floor
+      ? middle.page
+      : view.see(fx, fy, fz).page;
+  return Staged(
+      spot, stage, view, quad, _around(quad), middle.depth, matrix, foot);
 }
 
 Rect _around(List<Offset> points) => Rect.fromLTRB(
@@ -366,15 +258,10 @@ List<CanvasElement> inStageOrder(List<CanvasElement> elements, int frame,
     {CanvasBackground? backdrop, Rect? page}) {
   var onStages = <String, List<(double, CanvasElement)>>{};
   for (var e in elements) {
-    if (e is CharacterElement && e.onStage != null) {
-      var at = staging(e, elements, frame, backdrop: backdrop, page: page);
-      if (at == null) continue;
-      (onStages[e.onStage!.stage] ??= []).add((at.depth, e));
-    } else if (e.base.spot != null) {
-      var at = staged(e, elements, frame, backdrop: backdrop, page: page);
-      if (at == null) continue;
-      (onStages[at.spot.stage] ??= []).add((at.depth, e));
-    }
+    if (e.base.spot == null) continue;
+    var at = staged(e, elements, frame, backdrop: backdrop, page: page);
+    if (at == null) continue;
+    (onStages[at.spot.stage] ??= []).add((at.depth, e));
   }
   if (onStages.isEmpty) return elements;
   var moved = {for (var list in onStages.values) for (var (_, e) in list) e.id};

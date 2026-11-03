@@ -10,15 +10,14 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -87,7 +86,6 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     ElementKind.path => Size(wide * 0.5, short * 0.4),
     // Standing, most of the page's height, about as wide as a person with
     // their arms a little out is for their height.
-    ElementKind.character => Size(short * 0.34, short * 0.7),
     ElementKind.character3d => Size(short * 0.34, short * 0.7),
     // The whole page: a stage is the set the scene is played on.
     ElementKind.stage => Size(wide, short),
@@ -366,36 +364,23 @@ CanvasElement newElement(
           backdrop: BackdropKind.parallax,
           parallax: parallaxLooks.first.scenery);
 
-    case ElementKind.character:
-      // The first of the cast, named for who they are rather than what they
-      // are: a scene with three characters in it is three names in the
-      // layer list, not "Character" three times.
-      var who = characterCast.first;
-      // Sculpted in 3D, cel-shaded and inked, to begin with: the body every
-      // style is drawn on -- a smooth mannequin until it is downloaded.
-      var character = CharacterElement(
-          base.copyWith(name: who.name, lockAspect: true),
-          dna: who.dna,
-          body: const CharacterBody(
-              kind: BodyKind.mannequin, shading: ModelShading.toon, outline: true));
+    // Placed from the library with its design; this is only the box -- see
+    // CanvasController.placeCharacter3d.
+    case ElementKind.character3d:
       // On the stage, where there is one: a scene with a set is played on
       // it. Each new one a step along from the last, not on top of it.
       var stage = stagesIn(document.elements,
               backdrop: document.drawnBackground)
           .firstOrNull
           ?.$1;
-      if (stage == null) return character;
-      var already = document.elements
-          .whereType<CharacterElement>()
-          .where((c) => c.onStage?.stage == stage)
-          .length;
+      var already = stage == null
+          ? 0
+          : document.elements.where((e) => e.base.spot?.stage == stage).length;
       var x = (already.isEven ? 1 : -1) * (already + 1) ~/ 2 * 1.2;
-      return character.copyWith(onStage: OnStage(stage, x: x.toDouble()));
-
-    // Placed from the library with its design; this is only the box -- see
-    // CanvasController.placeCharacter3d.
-    case ElementKind.character3d:
-      return Character3dElement(base.copyWith(lockAspect: true),
+      return Character3dElement(
+          base.copyWith(
+              lockAspect: true,
+              spot: stage == null ? null : StageSpot(stage, x: x.toDouble())),
           design: CharacterDesign(
               id: "", name: "", body: "Vivi", updated: DateTime(2026)));
   }

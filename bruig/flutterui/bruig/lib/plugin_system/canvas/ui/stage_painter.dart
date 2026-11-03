@@ -1,17 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:bruig/plugin_system/canvas/ui/character_hair_editor.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_turnaround.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_body_area.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
-import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
-import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_guide.dart';
-import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
 import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -31,7 +20,6 @@ import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
-import 'package:bruig/plugin_system/canvas/render/model/model_figure.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
@@ -86,10 +74,6 @@ class StageFraming {
   const StageFraming(this.image, this.src, this.dst, this.frame, this.rotation,
       {this.pivot, this.flipX = false, this.flipY = false});
 }
-
-/// dollRingRadius is how far round a picked joint of the doll its rings
-/// are, in the stage's own pixels.
-const double dollRingRadius = 46;
 
 /// StagePainter draws the document, the page edge, the handles and the
 /// marquee.
@@ -238,28 +222,6 @@ class StagePainter extends CustomPainter {
   /// handles are drawn in place of a selection box.
   final PathElement? selectedPath;
 
-  /// selectedCharacter is the selected element when it is a character,
-  /// whose skeleton and pins are drawn over it.
-  final CharacterElement? selectedCharacter;
-
-  /// guideCharacter is the sketch the puppet is laid over, when it is shown,
-  /// guideHandles whether its handles can be taken hold of, and guideHeld
-  /// the one being dragged. See character_guide.dart.
-  final CharacterElement? guideCharacter;
-
-  /// dollShown is whether the doll is drawn with the sketch picked -- see
-  /// character_doll.dart: the character painter draws it, and this says to
-  /// draw again when it comes and goes.
-  final bool dollShown;
-
-  /// dollLook is how it is shown, for the same.
-  final DollLook dollLook;
-
-  /// dollCharacter is the sketch whose doll's joints are shown to pose,
-  /// and dollPicked the joint picked, with its rings round it.
-  final CharacterElement? dollCharacter;
-  final DollJoint? dollPicked;
-
   /// spritePaintTick changes with each stroke on a sprite being painted:
   /// its pixels are not the document's until the pen lifts.
   final int spritePaintTick;
@@ -268,36 +230,10 @@ class StagePainter extends CustomPainter {
   /// stroke under way, the cell under the pointer.
   final int tilePaintTick;
 
-  /// rigCharacter is the sketch whose limbs are being reshaped point by
-  /// point, and rigPicked the point picked. See character_rig_editor.dart.
-  final CharacterElement? rigCharacter;
-  final (CharacterLimb, RigPoint)? rigPicked;
-
-  /// faceCharacter is the sketch whose face is being set feature by
-  /// feature, and facePicked the feature picked.
-  final CharacterElement? faceCharacter;
-  final FacePoint? facePicked;
-
-  /// hairCharacter is the sketch whose hair strokes are being shaped, and
-  /// hairPicked the stroke picked.
-  final CharacterElement? hairCharacter;
-  final int? hairPicked;
-
-  /// turnaround is the sheet of a sketch's views laid out beside it, when
-  /// it is shown, and onionSkin whether the view next round is shown faintly
-  /// over it. See character_turnaround.dart.
-  final Turnaround? turnaround;
-  final bool onionSkin;
-
   /// rulersApart leaves the rulers to a layer of their own over the page:
   /// see paintStageRulers.
   final bool rulersApart;
 
-  /// garmentArea is the character a garment is being drawn on and the
-  /// parts of its body the garment covers, washed over it.
-  final (CharacterElement, Set<CharacterPart>)? garmentArea;
-  final bool guideHandles;
-  final GuideHandle? guideHeld;
 
   /// editingVector is the drawing being edited point by point, the shape of
   /// it picked and the point picked -- drawn in place of a selection box.
@@ -438,26 +374,9 @@ class StagePainter extends CustomPainter {
     required this.guides,
     required this.snapped,
     required this.selectedPath,
-    this.selectedCharacter,
-    this.guideCharacter,
-    this.dollShown = false,
-    this.dollLook = const DollLook(),
-    this.dollCharacter,
-    this.dollPicked,
     this.spritePaintTick = -1,
     this.tilePaintTick = -1,
-    this.rigCharacter,
-    this.rigPicked,
-    this.faceCharacter,
-    this.facePicked,
-    this.hairCharacter,
-    this.turnaround,
-    this.onionSkin = false,
     this.rulersApart = false,
-    this.hairPicked,
-    this.garmentArea,
-    this.guideHandles = true,
-    this.guideHeld,
     this.editingVector,
     this.editingLayers,
     required this.chartLabels,
@@ -968,64 +887,6 @@ class StagePainter extends CustomPainter {
 
     _paintChartLabels(canvas);
     _paintTableColumns(canvas);
-    // Where a garment being drawn on is worn, under everything else.
-    if (garmentArea case (var who, var parts)) {
-      paintBodyArea(
-          canvas,
-          CharacterPlacement.of(who, frame,
-              frameRate: document.frameRate, document: document),
-          parts,
-          (doc) => doc * scale + origin,
-          scale);
-    }
-    // The turnaround's views beside it, under everything that edits it.
-    if (turnaround case var sheet?) {
-      paintTurnaround(canvas, sheet, (doc) => doc * scale + origin, scale, origin,
-          images: images,
-          onion: onionSkin);
-    }
-    // The puppet to draw over, under the pins that pose it.
-    if (guideCharacter case var who?) {
-      paintGuide(
-          canvas,
-          CharacterPlacement.of(who, frame,
-              frameRate: document.frameRate, document: document),
-          (doc) => doc * scale + origin,
-          handles: guideHandles,
-          held: guideHeld);
-    }
-    if (selectedCharacter case var who?) _paintPuppet(canvas, who);
-    // The doll's joints, over its pins: what turns it bone by bone.
-    if (dollCharacter case var who?) _paintDollJoints(canvas, who);
-    // The rig's points, over both.
-    if (rigCharacter case var who?) {
-      paintRig(
-          canvas,
-          RigView.of(who, frame,
-              frameRate: document.frameRate, document: document),
-          (doc) => doc * scale + origin,
-          scale,
-          picked: rigPicked);
-    }
-    // The hair's strokes.
-    if (hairCharacter case var who?) {
-      if (HairView.of(who, frame, frameRate: document.frameRate, document: document)
-          case var view?) {
-        paintHairEditor(canvas, view, (doc) => doc * scale + origin, scale,
-            picked: hairPicked);
-      }
-    }
-    // The face's features, over everything.
-    if (faceCharacter case var who?) {
-      paintFaceRig(
-          canvas,
-          FaceRigView.of(who, frame,
-              frameRate: document.frameRate, document: document),
-          (doc) => doc * scale + origin,
-          scale,
-          picked: facePicked);
-    }
-
     // A selected path shows its points and handles instead of a box: the box
     // round a curve is a rectangle nobody drew and cannot be usefully dragged,
     // where the points are the whole of what there is to edit.
@@ -1710,89 +1571,6 @@ class StagePainter extends CustomPainter {
     }
   }
 
-  /// _paintPuppet draws a character's skeleton faintly and its pins on top,
-  /// the same blue as a path's points: they are taken hold of the same way.
-  void _paintPuppet(Canvas canvas, CharacterElement who) {
-    Offset at(Offset doc) => doc * scale + origin;
-    var placed = CharacterPlacement.of(who, frame,
-        frameRate: document.frameRate,
-        document: document,
-        models: switch (images) {
-          CanvasModelSource m => m,
-          _ => null,
-        });
-    var bone = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round
-      ..color = const Color(0x993D7EFF);
-    for (var (a, b) in placed.bones) {
-      canvas.drawLine(at(a), at(b), bone);
-    }
-    var fill = Paint()..color = const Color(0xFF3D7EFF);
-    var knob = Paint()..color = const Color(0xFFFFFFFF);
-    for (var pin in placed.pins) {
-      var p = at(placed.pin(pin));
-      // The toes' and fingers' pins smaller, beside the ankles' and wrists'.
-      var r = pin.isTip ? 4.5 : 6.0;
-      canvas.drawCircle(p, r, knob);
-      canvas.drawCircle(
-          p,
-          r,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2
-            ..color = fill.color);
-      canvas.drawCircle(p, pin.isTip ? 1.8 : 2.5, fill);
-    }
-  }
-
-  /// _paintDollJoints draws a knob on each of [who]'s doll's joints and,
-  /// round the one picked, the rings that turn its bone -- and, on a
-  /// wrist, a knob on each fingertip. See character_doll_pose.dart.
-  void _paintDollJoints(Canvas canvas, CharacterElement who) {
-    Offset at(Offset doc) => doc * scale + origin;
-    var placed = CharacterPlacement.of(who, frame,
-        frameRate: document.frameRate, document: document);
-    var rig = placed.dollRig();
-    const ink = Color(0xFFE8742A);
-    void knob(Offset p, double r, {bool filled = false}) {
-      canvas.drawCircle(p, r, Paint()..color = filled ? ink : const Color(0xFFFFFFFF));
-      canvas.drawCircle(
-          p,
-          r,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.6
-            ..color = filled ? const Color(0xFFFFFFFF) : ink);
-    }
-
-    for (var j in DollJoint.values) {
-      if (j != dollPicked) knob(at(placed.dollJoint(j, rig)), 4.5);
-    }
-    var picked = dollPicked;
-    if (picked == null) return;
-    var c = at(placed.dollJoint(picked, rig));
-    var stroke = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-    // The bone it turns, out to its far end.
-    canvas.drawLine(c, at(placed.dollTip(picked, rig)),
-        stroke..color = const Color(0x99E8742A));
-    // Round it in the picture, to bend; upright, to swing towards the
-    // reader or away.
-    canvas.drawCircle(c, dollRingRadius, stroke..color = const Color(0xFF3D7EFF));
-    canvas.drawOval(
-        Rect.fromCenter(center: c, width: dollRingRadius * 0.9, height: dollRingRadius * 2),
-        stroke..color = ink);
-    knob(c, 5.5, filled: true);
-    if (picked.hand case var arm?) {
-      for (var tip in placed.fingerTips(arm, rig)) {
-        knob(at(tip), 3.8);
-      }
-    }
-  }
-
   /// _paintFraming shows the rest of the picture while it is being moved
   /// about inside its frame.
   ///
@@ -1984,27 +1762,9 @@ class StagePainter extends CustomPainter {
       old.showAllBounds != showAllBounds ||
       old.flowDrag != flowDrag ||
       !identical(old.selectedPath, selectedPath) ||
-      !identical(old.selectedCharacter, selectedCharacter) ||
-      !identical(old.guideCharacter, guideCharacter) ||
-      old.dollShown != dollShown ||
-      !identical(old.dollLook, dollLook) ||
-      !identical(old.dollCharacter, dollCharacter) ||
-      old.dollPicked != dollPicked ||
       old.spritePaintTick != spritePaintTick ||
       old.tilePaintTick != tilePaintTick ||
-      !identical(old.rigCharacter, rigCharacter) ||
-      old.rigPicked != rigPicked ||
-      !identical(old.faceCharacter, faceCharacter) ||
-      old.facePicked != facePicked ||
-      !identical(old.hairCharacter, hairCharacter) ||
-      !identical(old.turnaround?.character, turnaround?.character) ||
-      old.turnaround?.frame != turnaround?.frame ||
-      old.onionSkin != onionSkin ||
       old.rulersApart != rulersApart ||
-      old.hairPicked != hairPicked ||
-      old.garmentArea?.$1 != garmentArea?.$1 ||
-      old.guideHandles != guideHandles ||
-      old.guideHeld != guideHeld ||
       old.editingVector != editingVector ||
       old.editingLayers != editingLayers ||
       old.editingText != editingText ||
