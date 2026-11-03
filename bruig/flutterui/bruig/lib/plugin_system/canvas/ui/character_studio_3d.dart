@@ -1,11 +1,16 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
+
 import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_face.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_look.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_move.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/character3d_painter.dart';
@@ -14,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/render/vrm/vrm_gpu.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_scene.dart';
 import 'package:bruig/plugin_system/canvas/storage/character_designs.dart';
 import 'package:bruig/plugin_system/canvas/storage/vroid_assets.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_decal_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_face_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_look_panel.dart';
@@ -21,6 +27,7 @@ import 'package:bruig/plugin_system/canvas/ui/character_move_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_outfit_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_shape_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_touchup_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/character3d_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/foundation.dart';
@@ -39,7 +46,9 @@ import 'package:vector_math/vector_math.dart' as vm;
 //
 // The character is drawn in 3D with Flutter GPU, from one of the four VRoid
 // bodies (vroid_assets.dart), shaped (vrm_shape.dart) and dressed
-// (vrm_wear.dart). Only the first step is built so far.
+// (vrm_wear.dart). The Test step tries it in a scene, with the settings a
+// 3D character has on the canvas (character3d_settings.dart) and a timeline
+// to play them on.
 
 /// The bodies, by the names the page gives them.
 const Map<String, String> studioBodyNames = {
@@ -65,11 +74,18 @@ enum StudioView {
 /// CharacterStudio3D is the whole page.
 class CharacterStudio3D extends StatefulWidget {
   /// onDone goes back to the canvas, with the character as it was kept --
-  /// or null where there was nothing to keep.
-  final void Function(CharacterDesign? kept) onDone;
+  /// or null where there was nothing to keep -- and what the Test step left
+  /// [performance] as, where it was changed.
+  final void Function(CharacterDesign? kept, CharacterPerformance? performance)
+      onDone;
 
   /// design is the character to change, or null to make a new one.
   final CharacterDesign? design;
+
+  /// performance is what the character the Studio was opened for does in
+  /// its scene, for the Test step to try and change; null where it was
+  /// opened for none, and the Test step's changes are not kept.
+  final CharacterPerformance? performance;
 
   /// gpuReady stands in for whether this app can draw in 3D, for tests,
   /// which run without Flutter GPU; designs for the library's characters.
@@ -78,6 +94,7 @@ class CharacterStudio3D extends StatefulWidget {
   const CharacterStudio3D(
       {required this.onDone,
       this.design,
+      this.performance,
       this.gpuReady,
       this.designs,
       super.key});
@@ -104,8 +121,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
   TouchBrush _brush = const TouchBrush();
   String _part = startPartId;
 
-  /// _step is the step open: the Character base, the Face or Move. Test
-  /// is still to come.
+  /// _step is the step open: the Character base, the Face, Move or Test.
   int _step = 0;
   CharacterMove _move = const CharacterMove();
   String _movePart = moveParts.first.$1;
@@ -129,6 +145,8 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
   void initState() {
     super.initState();
     if (widget.design case final d?) _take(d);
+    _testAt.addListener(_testAtChanged);
+    _test.addListener(_testFrameChanged);
     _check();
   }
 
@@ -179,9 +197,67 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
   /// _stageKey is the stage, for a picture of the character to keep.
   final GlobalKey<_StageState> _stageKey = GlobalKey();
 
+  // The Test step: what it does in the scene tried, and when.
+
+  /// _perf is what it does in the scene being tried. _test holds the
+  /// playhead, as a canvas would, for the settings; _testAt is the time,
+  /// in seconds, as the stage plays it.
+  late CharacterPerformance _perf =
+      widget.performance ?? const CharacterPerformance();
+  static const int _testFps = 24;
+  final CanvasController _test = CanvasController(
+      CanvasDocument(frames: _testFps * 600, frameRate: _testFps));
+  final ValueNotifier<double> _testAt = ValueNotifier(0);
+  bool _testPlaying = false;
+
+  /// _testLength is how long the timeline is: ten seconds, or as long as
+  /// what is on it and a second more.
+  double get _testLength => [
+        10.0,
+        for (final c in _perf.clips) c.end + 1,
+        for (final k in _perf.keys) k.t + 1,
+        if (_perf.line.trim().isNotEmpty)
+          _perf.lineAt +
+              SpokenLine.of(_perf.line).total / SpokenLine.beatsPerSecond +
+              1,
+      ].reduce(math.max);
+
+  /// _tried is the character in the scene being tried, as the canvas would
+  /// have it: what the settings show and change.
+  Character3dElement _tried() => Character3dElement(
+      const ElementBase(id: "studioTest", width: 200, height: 400),
+      design: _design(),
+      performance: _perf);
+
+  void _playTest() => setState(() {
+        if (!_testPlaying && _testAt.value >= _testLength - 1e-3) {
+          _testAt.value = 0;
+        }
+        _testPlaying = !_testPlaying;
+      });
+
+  // The playhead, kept in step both ways: as the stage plays it, and as
+  // the settings move it.
+  void _testAtChanged() {
+    final f = (_testAt.value * _testFps).round();
+    if (_test.frame != f) _test.frame = f;
+  }
+
+  void _testFrameChanged() {
+    if ((_testAt.value * _testFps).round() != _test.frame) {
+      _testAt.value = _test.frame / _testFps;
+    }
+  }
+
   @override
   void dispose() {
     _title.dispose();
+    _testAt
+      ..removeListener(_testAtChanged)
+      ..dispose();
+    _test
+      ..removeListener(_testFrameChanged)
+      ..dispose();
     super.dispose();
   }
 
@@ -219,8 +295,13 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
 
   /// _done keeps the character in the library, and goes back to the canvas.
   Future<void> _done() async {
+    // The scene's settings, kept where they were changed for a character
+    // on the canvas.
+    final perf = widget.performance != null && _perf != widget.performance
+        ? _perf
+        : null;
     if (_untouched) {
-      widget.onDone(null);
+      widget.onDone(null, perf);
       return;
     }
     final d = _design();
@@ -228,7 +309,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
     final png = await _stageKey.currentState?._character.picture(168, 224);
     if (png != null) await CharacterDesigns.savePicture(d.id, png);
     await CharacterDesigns.save(d);
-    widget.onDone(d);
+    widget.onDone(d, perf);
   }
 
   /// _openDesign opens a saved character to change it, or with null starts a new
@@ -323,9 +404,14 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
             _openDecal = null;
           }),
           step: _step,
-          onStep: (i) => setState(() => _step = i),
-          playing: _playing,
-          onPlay: () => setState(() => _playing = !_playing),
+          onStep: (i) => setState(() {
+            _step = i;
+            _testPlaying = false;
+          }),
+          playing: _step == 3 ? _testPlaying : _playing,
+          onPlay: _step == 3
+              ? _playTest
+              : () => setState(() => _playing = !_playing),
           onDone: _done,
         ),
         Divider(height: 1, thickness: 1, color: colors.outlineVariant),
@@ -334,46 +420,74 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
             Container(
               width: 220,
               color: colors.surfaceContainerLow,
-              child: _step == 2
-                  ? CharacterMoveList(
-                      move: _move,
-                      selected: _movePart,
-                      onSelect: (id) => setState(() => _movePart = id),
-                      onReset: (m) => setState(() => _move = m))
-                  : _step == 1
-                      ? CharacterFaceList(
-                          face: _face,
-                          selected: _facePart,
-                          onSelect: (id) => setState(() => _facePart = id),
-                          onReset: (f) => setState(() => _face = f))
-                      : CharacterShapeList(
-                          shape: _shape,
-                          outfit: _outfit,
-                          styled: _look != characterLooks[_lookName],
-                          decorated: _decals.isNotEmpty,
-                          touched: _sculpt.isNotEmpty || _paint.isNotEmpty,
-                          selected: _part,
-                          onSelect: _pick,
-                          onReset: _resetPart),
+              child: _step == 3
+                  ? _TestNotes(kept: widget.performance != null)
+                  : _step == 2
+                      ? CharacterMoveList(
+                          move: _move,
+                          selected: _movePart,
+                          onSelect: (id) => setState(() => _movePart = id),
+                          onReset: (m) => setState(() => _move = m))
+                      : _step == 1
+                          ? CharacterFaceList(
+                              face: _face,
+                              selected: _facePart,
+                              onSelect: (id) => setState(() => _facePart = id),
+                              onReset: (f) => setState(() => _face = f))
+                          : CharacterShapeList(
+                              shape: _shape,
+                              outfit: _outfit,
+                              styled: _look != characterLooks[_lookName],
+                              decorated: _decals.isNotEmpty,
+                              touched: _sculpt.isNotEmpty || _paint.isNotEmpty,
+                              selected: _part,
+                              onSelect: _pick,
+                              onReset: _resetPart),
             ),
-            Expanded(child: _stageArea(ready)),
+            Expanded(
+                child: _step == 3
+                    ? Column(children: [
+                        Expanded(child: _stageArea(ready)),
+                        _TestTimeline(
+                          at: _testAt,
+                          length: _testLength,
+                          performance: _perf,
+                          onSeek: (t) => _testAt.value = t,
+                        ),
+                      ])
+                    : _stageArea(ready)),
             Container(
               width: 330,
               color: colors.surfaceContainerLow,
-              child: _step == 2
-                  ? CharacterMoveControls(
-                      part: _movePart,
-                      move: _move,
-                      onChanged: (m) => setState(() => _move = m))
-                  : _step == 1
-                      ? CharacterFaceControls(
-                          key: ValueKey("faceControls-$_facePart"),
-                          part: _facePart,
-                          face: _face,
-                          onChanged: (f) => setState(() => _face = f),
-                          onSay: (text) => setState(() =>
-                              _line = (text: text, n: (_line?.n ?? 0) + 1)))
-                      : _panel(),
+              child: _step == 3
+                  ? ListenableBuilder(
+                      listenable: _test,
+                      builder: (context, _) => ListView(
+                          key: const ValueKey("studioTestSettings"),
+                          padding: const EdgeInsets.only(bottom: 24),
+                          children: character3dSettings(
+                              context,
+                              _test,
+                              _tried(),
+                              (e) => setState(() => _perf =
+                                  (e as Character3dElement).performance),
+                              () {},
+                              () {},
+                              inStudio: true)))
+                  : _step == 2
+                      ? CharacterMoveControls(
+                          part: _movePart,
+                          move: _move,
+                          onChanged: (m) => setState(() => _move = m))
+                      : _step == 1
+                          ? CharacterFaceControls(
+                              key: ValueKey("faceControls-$_facePart"),
+                              part: _facePart,
+                              face: _face,
+                              onChanged: (f) => setState(() => _face = f),
+                              onSay: (text) => setState(() =>
+                                  _line = (text: text, n: (_line?.n ?? 0) + 1)))
+                          : _panel(),
             ),
           ]),
         ),
@@ -415,7 +529,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
             key: _stageKey,
             id: _id,
             shape: _shape,
-            outfit: _outfit,
+            outfit: _step == 3 ? _tried().worn.outfit : _outfit,
             look: _look,
             decals: _decals,
             sculpt: _sculpt,
@@ -423,6 +537,11 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
             face: _face,
             move: _move,
             playing: _playing,
+            performance: _step == 3 ? _perf : null,
+            clock: _step == 3 ? _testAt : null,
+            clockRuns: _step == 3 && _testPlaying,
+            clockEnd: _testLength,
+            onClockEnd: () => setState(() => _testPlaying = false),
             onMove: _step == 2 ? (m) => setState(() => _move = m) : null,
             line: _line,
             brush: _step == 0 && _part == touchUpPartId ? _brush : null,
@@ -431,6 +550,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
             frame: switch (_step) {
               1 => ShapeFrame.head,
               2 => _movePart == "feet" ? ShapeFrame.feet : ShapeFrame.body,
+              3 => ShapeFrame.body,
               _ => _frame,
             },
             view: _view,
@@ -598,8 +718,7 @@ class _TopBar extends StatelessWidget {
                   key: ValueKey("studioStep-$i"),
                   label: "${i + 1}   $s",
                   selected: i == step,
-                  tooltip: i < 3 ? "" : "Still to come",
-                  onTap: i < 3 ? () => onStep(i) : null,
+                  onTap: () => onStep(i),
                 ),
                 const SizedBox(width: 6),
               ],
@@ -609,9 +728,11 @@ class _TopBar extends StatelessWidget {
         StudioPill(
           key: const ValueKey("studioPlay"),
           label: playing ? "Stop" : "Play",
-          tooltip: playing
-              ? "Stop the motion: it stands in its stance"
-              : "Play the motion",
+          tooltip: step == 3
+              ? (playing ? "Stop the scene" : "Play the scene")
+              : playing
+                  ? "Stop the motion: it stands in its stance"
+                  : "Play the motion",
           onTap: onPlay,
         ),
         const SizedBox(width: 8),
@@ -721,6 +842,15 @@ class _Stage extends StatefulWidget {
   final CharacterMove move;
   final bool playing;
   final ValueChanged<CharacterMove>? onMove;
+
+  /// performance is what it does in a scene, played to [clock]'s time in
+  /// seconds -- the Test step's -- which runs on while [clockRuns], until
+  /// [clockEnd], then calls [onClockEnd]. Null for as designed.
+  final CharacterPerformance? performance;
+  final ValueNotifier<double>? clock;
+  final bool clockRuns;
+  final double clockEnd;
+  final VoidCallback? onClockEnd;
   final ShapeFrame frame;
   final StudioView? view;
   final ValueChanged<StudioView?> onView;
@@ -740,6 +870,11 @@ class _Stage extends StatefulWidget {
       this.move = const CharacterMove(),
       this.playing = true,
       this.onMove,
+      this.performance,
+      this.clock,
+      this.clockRuns = false,
+      this.clockEnd = 10,
+      this.onClockEnd,
       this.line,
       required this.frame,
       required this.view,
@@ -1134,11 +1269,37 @@ class _StageState extends State<_Stage> {
         _yaw += d * k;
       case null:
     }
-    final at = f + _pan;
-    final eye = at +
-        vm.Vector3(math.sin(_yaw) * math.cos(_pitch), math.sin(_pitch),
-                -math.cos(_yaw) * math.cos(_pitch)) *
+    // A scene being tried plays on to where the clock is.
+    final clock = widget.clock;
+    if (clock != null && widget.clockRuns) {
+      final t = clock.value + dt;
+      if (t >= widget.clockEnd) {
+        clock.value = widget.clockEnd;
+        widget.onClockEnd?.call();
+      } else {
+        clock.value = t;
+      }
+    }
+    _character
+      ..performance = clock == null ? null : widget.performance
+      ..sceneTime = clock?.value;
+    // Carried across by its walks and turned the way it goes: the view
+    // moved and turned the other way, as the canvas does it.
+    final go = _character.travel;
+    final yaw = _yaw - go.turn * math.pi / 2;
+    var at = f + _pan;
+    var eye = at +
+        vm.Vector3(math.sin(yaw) * math.cos(_pitch), math.sin(_pitch),
+                -math.cos(yaw) * math.cos(_pitch)) *
             _distance;
+    if (go.x != 0) {
+      final right = vm.Vector3(0, 1, 0)
+          .cross((at - eye).normalized())
+          .normalized()
+        ..scale(go.x);
+      at -= right;
+      eye -= right;
+    }
     _camera
       ..position = eye
       ..target = at;
@@ -1343,4 +1504,170 @@ class _StageState extends State<_Stage> {
       ),
     ]);
   }
+}
+
+/// _TestNotes is the Test step's side: what it is for, and whether what is
+/// tried is kept.
+class _TestNotes extends StatelessWidget {
+  /// kept is whether the Studio was opened for a character on the canvas,
+  /// whose scene Done keeps this in.
+  final bool kept;
+  const _TestNotes({required this.kept});
+
+  @override
+  Widget build(BuildContext context) =>
+      ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 24), children: [
+        StudioPanelHead(
+          key: const ValueKey("studioTestNotes"),
+          title: "Try it in a scene",
+          says: kept
+              ? "The settings it has in its scene on the canvas: how it "
+                  "stands, the motions it plays and when, its face and "
+                  "what it says. Play to see them; Done keeps them there."
+              : "The settings a character has in a scene on the canvas: "
+                  "how it stands, the motions it plays and when, its face "
+                  "and what it says. Play to see them. Nothing here is "
+                  "kept -- each character's scene is set on the canvas.",
+        ),
+      ]);
+}
+
+/// _TestTimeline is the Test step's timeline: the motions as bars, the
+/// keys as marks, and the playhead, dragged or clicked to move it.
+class _TestTimeline extends StatelessWidget {
+  final ValueNotifier<double> at;
+  final double length;
+  final CharacterPerformance performance;
+  final ValueChanged<double> onSeek;
+  const _TestTimeline(
+      {required this.at,
+      required this.length,
+      required this.performance,
+      required this.onSeek});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ThemeNotifier.of(context).colors;
+    return Container(
+      key: const ValueKey("studioTestTimeline"),
+      height: 64,
+      color: colors.surfaceContainerLow,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Row(children: [
+        ValueListenableBuilder<double>(
+          valueListenable: at,
+          builder: (context, t, _) => SizedBox(
+            width: 84,
+            child: Text(
+                "${t.toStringAsFixed(1)} / ${length.toStringAsFixed(0)} s",
+                key: const ValueKey("studioTestTime"),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: colors.onSurface)),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: LayoutBuilder(builder: (context, box) {
+            void seek(double x) =>
+                onSeek((x / box.maxWidth).clamp(0.0, 1.0) * length);
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (d) => seek(d.localPosition.dx),
+              onHorizontalDragUpdate: (d) => seek(d.localPosition.dx),
+              child: ValueListenableBuilder<double>(
+                valueListenable: at,
+                builder: (context, t, _) => CustomPaint(
+                  size: Size(box.maxWidth, box.maxHeight),
+                  painter: _TimelinePainter(
+                    performance: performance,
+                    length: length,
+                    at: t,
+                    clip: colors.primary,
+                    onClip: colors.onPrimary,
+                    key: colors.secondary,
+                    ink: colors.onSurfaceVariant,
+                    line: colors.outlineVariant,
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ]),
+    );
+  }
+}
+
+class _TimelinePainter extends CustomPainter {
+  final CharacterPerformance performance;
+  final double length, at;
+  final Color clip, onClip, key, ink, line;
+  _TimelinePainter(
+      {required this.performance,
+      required this.length,
+      required this.at,
+      required this.clip,
+      required this.onClip,
+      required this.key,
+      required this.ink,
+      required this.line});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    double x(double t) => t / length * size.width;
+    // A tick a second, and the track the motions lie on.
+    final tick = Paint()..color = line;
+    for (var s = 0; s <= length; s++) {
+      canvas.drawLine(Offset(x(s.toDouble()), size.height - 6),
+          Offset(x(s.toDouble()), size.height), tick);
+    }
+    const top = 18.0, high = 18.0;
+    for (final c in performance.clips) {
+      final r = RRect.fromRectAndRadius(
+          Rect.fromLTRB(
+              x(c.start), top, math.max(x(c.end), x(c.start) + 3), top + high),
+          const Radius.circular(4));
+      canvas.drawRRect(r, Paint()..color = clip.withValues(alpha: 0.85));
+      final tp = TextPainter(
+        text: TextSpan(
+            text: switch (c.dir) {
+              -1 => "\u2190 ${c.kind}",
+              1 => "${c.kind} \u2192",
+              _ => c.kind,
+            },
+            style: TextStyle(fontSize: 10, color: onClip)),
+        maxLines: 1,
+        ellipsis: "",
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: math.max(0, r.width - 8));
+      tp.paint(canvas, Offset(r.left + 4, top + (high - tp.height) / 2));
+    }
+    // The keys: a diamond at each, over the motions.
+    for (final k in performance.keys) {
+      final c = Offset(x(k.t), 8);
+      canvas.drawPath(
+          Path()
+            ..moveTo(c.dx, c.dy - 6)
+            ..lineTo(c.dx + 6, c.dy)
+            ..lineTo(c.dx, c.dy + 6)
+            ..lineTo(c.dx - 6, c.dy)
+            ..close(),
+          Paint()..color = key);
+    }
+    canvas.drawLine(
+        Offset(x(at), 0),
+        Offset(x(at), size.height),
+        Paint()
+          ..color = ink
+          ..strokeWidth = 2);
+  }
+
+  @override
+  bool shouldRepaint(_TimelinePainter old) =>
+      old.at != at ||
+      old.length != length ||
+      old.performance != performance ||
+      old.clip != clip ||
+      old.key != key;
 }

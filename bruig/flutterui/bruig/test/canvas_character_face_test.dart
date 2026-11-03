@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_face.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_face_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -270,7 +271,7 @@ void main() {
     final doc = CanvasDocument().addElement(Character3dElement(
         const ElementBase(id: 'c'),
         design: d,
-        expression: 'Mine'));
+        performance: const CharacterPerformance(feeling: 'Mine')));
     final back = CanvasDocument.fromJson(
         jsonDecode(jsonEncode(doc.toJson())) as Map<String, dynamic>);
     final e = back.elements.single as Character3dElement;

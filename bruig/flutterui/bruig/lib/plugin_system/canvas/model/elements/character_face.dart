@@ -74,6 +74,22 @@ class FaceMix {
           {double? blush, double? gazeX, double? gazeY, double? tilt}) =>
       _copy(blush: blush, gazeX: gazeX, gazeY: gazeY, tilt: tilt);
 
+  /// lerp is [a] moved [t] of the way to [b].
+  static FaceMix lerp(FaceMix a, FaceMix b, double t) {
+    if (t <= 0) return a;
+    double l(double x, double y) => x + (y - x) * t;
+    return FaceMix(
+      w: {
+        for (final k in {...a.w.keys, ...b.w.keys})
+          if (l(a.unit(k), b.unit(k)) case final v when v != 0) k: v
+      },
+      blush: l(a.blush, b.blush),
+      gazeX: l(a.gazeX, b.gazeX),
+      gazeY: l(a.gazeY, b.gazeY),
+      tilt: l(a.tilt, b.tilt),
+    );
+  }
+
   FaceMix _copy(
           {Map<String, double>? w,
           double? blush,

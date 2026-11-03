@@ -828,6 +828,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
             theme,
             CharacterStudio3D(
                 design: _controller.studio3dDesign,
+                performance: _controller.studio3dPerformance,
                 onDone: _controller.closeStudio3d)));
   }
 

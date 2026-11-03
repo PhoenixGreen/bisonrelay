@@ -183,7 +183,10 @@ void main() {
             listenable: c,
             builder: (context, _) =>
                 Column(children: elementSettings(context, c, now()))));
-    await tester.tap(find.byKey(const ValueKey('character3dFraming-head')));
+    final head = find.byKey(const ValueKey('character3dFraming-head'));
+    await tester.ensureVisible(head);
+    await tester.pumpAndSettle();
+    await tester.tap(head);
     await tester.pumpAndSettle();
     expect(now().framing, Character3dFraming.head);
     tester
@@ -191,6 +194,8 @@ void main() {
         .onChanged(0.5);
     await tester.pumpAndSettle();
     expect(now().turn, 0.5);
+    await tester.ensureVisible(find.byKey(const ValueKey('character3dEdit')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('character3dEdit')));
     await tester.pumpAndSettle();
     expect((c.studio3dOpen.value, c.studio3dElement), (true, "c"));

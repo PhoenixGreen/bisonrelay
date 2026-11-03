@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 
 // character3d_element.dart is a new 3D character on the canvas: one made in
@@ -37,9 +38,27 @@ class Character3dElement extends CanvasElement {
   /// zoom is how much closer than the framing, 0.5 to 3.
   final double zoom;
 
+  /// performance is what it does in this scene: how it stands, the
+  /// motions it plays, its feeling, the line it says (character_
+  /// performance.dart).
+  final CharacterPerformance performance;
+
   /// expression is the expression it wears in this scene, by name -- one
-  /// of its face's -- or null for the one it was designed with.
-  final String? expression;
+  /// of its face's -- or null for the one it was designed with: the
+  /// performance's feeling.
+  String? get expression => performance.feeling;
+
+  /// worn is the design in what the scene has it wear: one of the Studio's
+  /// quick changes, or as designed.
+  CharacterDesign get worn {
+    final o = design.outfit, male = design.body == "HairSample_Male";
+    return switch (performance.wearing) {
+      "Underwear only" => design.dressed(o.underwearOnly(male: male)),
+      "Swimwear" => design.dressed(o.swimwear(male: male)),
+      "Casual" => design.dressed(o.casual(male: male)),
+      _ => design,
+    };
+  }
 
   final ElementAnimation animation;
 
@@ -50,7 +69,7 @@ class Character3dElement extends CanvasElement {
     this.turn = 0,
     this.tilt = 0,
     this.zoom = 1,
-    this.expression,
+    this.performance = const CharacterPerformance(),
     this.animation = const ElementAnimation(),
   });
 
@@ -72,7 +91,7 @@ class Character3dElement extends CanvasElement {
       turn: turn,
       tilt: tilt,
       zoom: zoom,
-      expression: expression,
+      performance: performance,
       animation: animation);
 
   /// wearing is this with expression [name] in this scene, or with null the
@@ -83,8 +102,21 @@ class Character3dElement extends CanvasElement {
       turn: turn,
       tilt: tilt,
       zoom: zoom,
-      expression: name,
+      performance: CharacterPerformance.fromJson(
+          performance.toJson()..remove("feeling"),
+          feeling: name),
       animation: animation);
+
+  /// performing is this doing [p] in this scene.
+  Character3dElement performing(CharacterPerformance p) =>
+      Character3dElement(base,
+          design: design,
+          framing: framing,
+          turn: turn,
+          tilt: tilt,
+          zoom: zoom,
+          performance: p,
+          animation: animation);
 
   Character3dElement copyWith({
     CharacterDesign? design,
@@ -100,7 +132,7 @@ class Character3dElement extends CanvasElement {
           turn: turn ?? this.turn,
           tilt: tilt ?? this.tilt,
           zoom: zoom ?? this.zoom,
-          expression: expression,
+          performance: performance,
           animation: animation ?? this.animation);
 
   @override
@@ -110,7 +142,7 @@ class Character3dElement extends CanvasElement {
         if (turn != 0) "turn": turn,
         if (tilt != 0) "tilt": tilt,
         if (zoom != 1) "zoom": zoom,
-        if (expression != null) "expression": expression,
+        if (!performance.isEmpty) "performance": performance.toJson(),
         "animation": animation.toJson(),
       };
 
@@ -126,9 +158,11 @@ class Character3dElement extends CanvasElement {
           turn: jsonDouble(json["turn"], 0).clamp(-1.0, 1.0),
           tilt: jsonDouble(json["tilt"], 0).clamp(-0.5, 1.0),
           zoom: jsonDouble(json["zoom"], 1).clamp(0.5, 3.0),
-          expression: json["expression"] is String
-              ? json["expression"] as String
-              : null,
+          // An expression kept before performances is its feeling.
+          performance: CharacterPerformance.fromJson(json["performance"],
+              feeling: json["expression"] is String
+                  ? json["expression"] as String
+                  : null),
           animation: jsonSpec(json["animation"], ElementAnimation.fromJson,
               const ElementAnimation()));
 }

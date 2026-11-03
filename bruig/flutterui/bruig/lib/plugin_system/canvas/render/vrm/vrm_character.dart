@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_face.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_look.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_move.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_look.dart';
@@ -311,16 +312,15 @@ class CharacterScene extends ChangeNotifier {
       }
       v.lookAt.target = at;
     }
-    v.autoBlink.enabled = _face.blinks && !_noBlink;
+    v.autoBlink.enabled =
+        _face.blinks && !_noBlink && (performance?.blink ?? true);
     if (!v.autoBlink.enabled) v.expressions.setValue('blink', 0);
     // Stood as its Move settings say, rather than in the T it was made in;
     // the face's tilt of the head over the stance's.
     if (!identical(_poser?.avatar, a)) _poser = VrmPoser(a);
-    // The motion's time: on the canvas, the frame's; in the Studio, as it
-    // plays.
-    final mt = _motionTime ?? (_moveClock += playing ? dt * _move.speed : 0);
-    // Stopped, it stands in its stance: no motion holding any of it.
-    _poser!.pose(playing ? _move : _move.copyWith(motion: "Still"), dt, t: mt);
+    final (move, mt, strength, weight, mirror) = _moveNow(dt);
+    _poser!.pose(move, dt,
+        t: mt, strength: strength, weight: weight, mirror: mirror);
     final physics = (
       hair: _move.physicsOf("hair"),
       clothes: _move.physicsOf("clothes"),
@@ -466,10 +466,172 @@ class CharacterScene extends ChangeNotifier {
     _frame = frame;
     // The motion where the frame has it, so an export plays it the same
     // every time.
-    _motionTime = frame / math.max(1, frameRate) * _move.speed;
+    final t = frame / math.max(1, frameRate);
+    _sceneTime = t;
+    _motionTime = t * _move.speed;
+    // Carried across the picture by its walks, turned the way it goes: the
+    // camera moved and turned the other way, so the framing stays put.
+    final p = performance;
+    if (p != null && p.clips.any((c) => c.dir != 0)) {
+      final go = p.travelAt(t, _paceOf);
+      aim(camera,
+          framing: framing,
+          turn: turn - go.turn * 0.5,
+          tilt: tilt,
+          zoom: zoom,
+          aspect: box.width / box.height);
+      final f = camera.target - camera.position;
+      // As far as the box's edge and no further: a character is drawn
+      // only in its own box, so that is as far across as it can go.
+      final edge =
+          f.length * math.tan(camera.fovRadiansY / 2) * box.width / box.height -
+              _height * 0.3;
+      final x =
+          go.x.clamp(-math.max(0.0, edge), math.max(0.0, edge)).toDouble();
+      f.normalize();
+      final right = vm.Vector3(0, 1, 0).cross(f).normalized()..scale(x);
+      camera
+        ..position = camera.position - right
+        ..target = camera.target - right;
+    }
     tick(dt, camera, lookAt: camera.position, pixelRatio: pixelRatio);
     scene.update(dt);
+    _shadow(canvas, box, camera, p?.shadow ?? "Soft");
     scene.render(camera, canvas, viewport: box, pixelRatio: pixelRatio);
+  }
+
+  /// performance is what it does in the canvas's scene, played at the
+  /// frame [paint] draws: how it stands, its motions and walks, its face.
+  /// Null for as designed, as the Studio has it.
+  CharacterPerformance? performance;
+  double? _sceneTime;
+
+  /// sceneTime is where [performance] is played to, in seconds: set by
+  /// [paint] on the canvas, and by the Studio's Test step as it plays.
+  set sceneTime(double? t) => _sceneTime = t;
+
+  /// travel is how far the walks have carried it across, in metres, and
+  /// how far it is turned to face the way it goes, in quarter turns: for a
+  /// view that moves the other way, as [paint] does. Nought where there is
+  /// no performance.
+  ({double x, double turn}) get travel {
+    final p = performance, t = _sceneTime;
+    if (p == null || t == null) return (x: 0.0, turn: 0.0);
+    return p.travelAt(t, _paceOf);
+  }
+
+  /// _height is how tall it is, near enough: what its walks are paced by.
+  double get _height {
+    final head = restAt(VrmHumanBone.head) ??
+        _avatar?.avatar.humanoid.worldPosition(VrmHumanBone.head);
+    return head == null ? 1.6 : head.y * 1.08;
+  }
+
+  /// _paceOf is how many metres a second walk or run [c] carries it.
+  double _paceOf(MotionClip3d c) =>
+      _height *
+      (c.kind == "Run" ? 1.9 : 0.8) *
+      (0.7 + 0.6 * _move.walkOf("pace")) *
+      c.speed;
+
+  /// _moveNow is how it stands and moves now: the motion, its time, how
+  /// strongly and how much of it plays, and mirrored or not.
+  (CharacterMove, double, double, double, bool) _moveNow(double dt) {
+    final p = performance, t = _sceneTime;
+    if (p == null || t == null) {
+      // The motion's time: on the canvas, the frame's; in the Studio, as
+      // it plays.
+      final mt = _motionTime ?? (_moveClock += playing ? dt * _move.speed : 0);
+      // Stopped, it stands in its stance: no motion holding any of it.
+      return (
+        playing ? _move : _move.copyWith(motion: "Still"),
+        mt,
+        1,
+        1,
+        false
+      );
+    }
+    var m = _move;
+    final key = p.keyAt(t);
+    final stance = key?.stance ?? p.stance;
+    if (stance != null && stance != m.stance && moveStances.contains(stance)) {
+      // A scene's stance puts the hands and feet where it has them.
+      m = m.copyWith(stance: stance, offsets: const {});
+    }
+    final lean = key?.lean ?? p.lean, tilt = key?.tilt ?? p.tilt;
+    if (lean != 0) {
+      m = m.withBody("lean", (m.bodyOf("lean") + lean).clamp(-1.0, 1.0));
+    }
+    if (tilt != 0) {
+      m = m.withBody(
+          "headTilt", (m.bodyOf("headTilt") + tilt).clamp(-1.0, 1.0));
+    }
+    if (p.clipAt(t) case (final c, final w)) {
+      return (
+        m.copyWith(motion: c.kind),
+        (t - c.start) * c.speed,
+        c.strength,
+        w,
+        c.mirror
+      );
+    }
+    if (!p.breathe && m.motion == "Idle") m = m.copyWith(motion: "Still");
+    return (m, t * m.speed, 1, 1, false);
+  }
+
+  /// _shadow draws the shadow under it on the ground, as [camera] sees it
+  /// in [box]: smaller as it leaves the ground.
+  void _shadow(
+      ui.Canvas canvas, ui.Rect box, PerspectiveCamera camera, String kind) {
+    if (kind == "None") return;
+    final hips = _avatar?.avatar.humanoid.worldPosition(VrmHumanBone.hips);
+    if (hips == null) return;
+    final rest = restAt(VrmHumanBone.hips)?.y ?? hips.y;
+    final r = _height *
+        0.16 /
+        (1 + math.max(0.0, hips.y - rest) / math.max(0.1, _height) * 4);
+    final f = (camera.target - camera.position)..normalize();
+    final left = f.cross(vm.Vector3(0, 1, 0)).normalized();
+    final up = left.cross(f).normalized();
+    final k = 1 / math.tan(camera.fovRadiansY / 2),
+        aspect = box.width / box.height;
+    ui.Offset? seen(vm.Vector3 w) {
+      final d = w - camera.position, z = d.dot(f);
+      if (z < camera.fovNear) return null;
+      return ui.Offset(
+          box.center.dx - d.dot(left) / z * k / aspect * box.width / 2,
+          box.center.dy - d.dot(up) / z * k * box.height / 2);
+    }
+
+    final at = [
+      for (final (x, z) in const [
+        (1.0, 0.0),
+        (-1.0, 0.0),
+        (0.0, 1.0),
+        (0.0, -1.0)
+      ])
+        seen(vm.Vector3(hips.x + x * r, 0, hips.z + z * r * 0.8))
+    ];
+    if (at.any((o) => o == null)) return;
+    final pts = at.cast<ui.Offset>();
+    final oval = ui.Rect.fromLTRB(
+        pts.map((o) => o.dx).reduce(math.min),
+        pts.map((o) => o.dy).reduce(math.min),
+        pts.map((o) => o.dx).reduce(math.max),
+        pts.map((o) => o.dy).reduce(math.max));
+    if (oval.width < 1) return;
+    final soft = kind == "Soft";
+    canvas
+      ..save()
+      ..clipRect(box)
+      ..drawOval(
+          soft ? oval.inflate(oval.width * 0.08) : oval,
+          ui.Paint()
+            ..color = ui.Color.fromARGB(soft ? 70 : 95, 0, 0, 0)
+            ..maskFilter = soft
+                ? ui.MaskFilter.blur(ui.BlurStyle.normal, oval.width * 0.09)
+                : null)
+      ..restore();
   }
 
   /// picture is the character standing, [width] by [height] pixels, as a
@@ -545,7 +707,42 @@ class CharacterScene extends ChangeNotifier {
   /// saying is whether a line is being said.
   bool get saying => _line != null;
 
-  FaceMix get _mixNow => _face.wearing(_expression);
+  FaceMix get _mixNow {
+    final p = performance, t = _sceneTime;
+    if (p == null || t == null) return _face.wearing(_expression);
+    // A scene's feeling, part of the way to another.
+    final feeling = p.keyAt(t)?.feeling ?? p.feeling;
+    return FaceMix.lerp(
+        _face.wearing(feeling), _face.wearing(p.mixTo), p.mixAmount);
+  }
+
+  // The scene's line, as it is said.
+  SpokenLine? _spoken;
+  String _spokenText = "";
+
+  /// _mouthNow is the mouth's shapes now as a line has them, or as a scene
+  /// holds them; null for the face's own.
+  Map<String, double>? _mouthNow() {
+    final p = performance, t = _sceneTime;
+    if (p == null || t == null) {
+      final line = _line;
+      if (line == null) return null;
+      final mouth = line.mouthAt(_clock - _lineAt);
+      if (mouth == null) {
+        _line = null;
+        _changed();
+      }
+      return mouth;
+    }
+    if (p.line.trim().isNotEmpty) {
+      if (_spokenText != p.line) {
+        _spokenText = p.line;
+        _spoken = SpokenLine.of(p.line);
+      }
+      if (_spoken!.mouthAt(t - p.lineAt) case final m?) return m;
+    }
+    return p.mouth == "rest" ? null : {"MTH_${p.mouth}": 0.85};
+  }
 
   // The face as it is now, eased toward what it is set to.
   Map<String, double> _unitsNow = const {};
@@ -557,28 +754,23 @@ class CharacterScene extends ChangeNotifier {
   void _moveFace(double dt) {
     final mix = _mixNow;
     final want = Map<String, double>.of(mix.w);
-    final line = _line;
+    final line = _mouthNow();
     if (line != null) {
-      final mouth = line.mouthAt(_clock - _lineAt);
-      if (mouth == null) {
-        _line = null;
-        _changed();
-      } else {
-        // The line's shapes over the mouth's, the rest of it eased off.
-        for (final k in want.keys.toList()) {
-          if (k.startsWith('MTH_')) want[k] = want[k]! * 0.5;
-        }
-        for (final e in mouth.entries) {
-          want[e.key] = math.max(want[e.key] ?? 0, e.value);
-        }
+      // The line's shapes over the mouth's, the rest of it eased off.
+      for (final k in want.keys.toList()) {
+        if (k.startsWith('MTH_')) want[k] = want[k]! * 0.5;
+      }
+      for (final e in line.entries) {
+        want[e.key] = math.max(want[e.key] ?? 0, e.value);
       }
     }
-    if (_face.glances && _clock >= _glanceNext) {
+    final glances = _face.glances && (performance?.glance ?? true);
+    if (glances && _clock >= _glanceNext) {
       _glanceX = (_random.nextDouble() - 0.5) * 0.9;
       _glanceY = (_random.nextDouble() - 0.5) * 0.5;
       _glanceNext = _clock + 1.5 + _random.nextDouble() * 2.5;
     }
-    if (!_face.glances) _glanceX = _glanceY = 0;
+    if (!glances) _glanceX = _glanceY = 0;
     final k = !_faceSettled
         ? 1.0
         : line != null

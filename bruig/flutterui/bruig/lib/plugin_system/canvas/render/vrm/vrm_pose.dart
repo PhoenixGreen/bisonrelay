@@ -426,6 +426,53 @@ const Map<String, Set<String>> _motionParts = {
   "Look around": {"head", "spine"},
 };
 
+/// _scaled is [o] at [w] of its strength, mirrored left for right with
+/// [mirror].
+_Motion _scaled(_Motion o, double w, bool mirror) {
+  if (w == 1 && !mirror) return o;
+  List<double> k(List<double> v) => [for (final x in v) x * w];
+  o
+    ..dy *= w
+    ..dx *= w
+    ..yaw *= w
+    ..roll *= w
+    ..root *= w
+    ..spine = k(o.spine)
+    ..head = k(o.head)
+    ..foot = {
+      for (final e in o.foot.entries)
+        e.key: [for (final (i, x) in e.value.indexed) i == 4 ? x : x * w]
+    }
+    ..hand = {for (final e in o.hand.entries) e.key: k(e.value)};
+  if (o.bend != null) o.bend = o.bend! * w;
+  if (o.bow != null) o.bow = o.bow! * w;
+  if (o.armSwing != null) {
+    o.armSwing = {for (final e in o.armSwing!.entries) e.key: e.value * w};
+  }
+  if (o.clap != null && w < 0.35) o.clap = null;
+  if (mirror) {
+    Map<String, T> swap<T>(Map<String, T> m) =>
+        {for (final e in m.entries) e.key == "L" ? "R" : "L": e.value};
+    o
+      ..foot = swap(o.foot)
+      ..hand = {
+        for (final e in swap(o.hand).entries)
+          e.key: [-e.value[0], e.value[1], e.value[2]]
+      }
+      ..handAt = swap(o.handAt)
+      ..handShape = swap(o.handShape)
+      ..palm = swap(o.palm)
+      ..pole = swap(o.pole)
+      ..dx = -o.dx
+      ..yaw = -o.yaw
+      ..roll = -o.roll
+      ..spine = [o.spine[0], -o.spine[1], -o.spine[2]]
+      ..head = [o.head[0], -o.head[1], -o.head[2]];
+    if (o.armSwing != null) o.armSwing = swap(o.armSwing!);
+  }
+  return o;
+}
+
 bool _ownsArm(Set<String> own, String k) =>
     own.contains("arms") || own.contains("arm$k");
 
@@ -859,7 +906,15 @@ class VrmPoser {
   /// pose stands the avatar as [m] says, [dt] seconds on from the last
   /// pose -- what changed eases there, as a body moves; at nought it is
   /// there at once -- and its motion [t] seconds in.
-  void pose(CharacterMove m, double dt, {double t = 0}) {
+  ///
+  /// A scene's motion clip plays at [strength], mirrored left for right
+  /// with [mirror], taking over the parts it moves by [weight] -- nought to
+  /// one as it fades in and out, the stance holding the rest.
+  void pose(CharacterMove m, double dt,
+      {double t = 0,
+      double strength = 1,
+      double weight = 1,
+      bool mirror = false}) {
     if (_rest == null || _restVersion != avatar.restVersion) {
       _restVersion = avatar.restVersion;
       _rest = _measure();
@@ -867,20 +922,36 @@ class VrmPoser {
     final r = _rest!, u = r.u;
     final a = dt <= 0 ? 1.0 : 1 - math.exp(-dt / 0.16);
     final st0 = _stances[m.stance] ?? _stances["Relaxed"]!;
-    final mo = _motionAt(m.motion, t, m.walk, u);
-    final own = _motionParts[m.motion] ?? const <String>{};
-    // The stance, with what the motion takes over let go.
-    final legs = own.contains("legs");
+    final mo = _scaled(_motionAt(m.motion, t, m.walk, u),
+        strength * weight.clamp(0.0, 1.0), mirror);
+    var own = _motionParts[m.motion] ?? const <String>{};
+    if (mirror && (own.contains("armR") || own.contains("armL"))) {
+      own = {
+        for (final p in own)
+          p == "armR"
+              ? "armL"
+              : p == "armL"
+                  ? "armR"
+                  : p
+      };
+    }
+    // The stance, with what the motion takes over let go as far as it has.
+    final w = weight.clamp(0.0, 1.0), keep = 1 - w;
+    final legs = own.contains("legs") ? keep : 1.0;
+    List<double>? sc(List<double>? v, bool owned) =>
+        v == null || !owned ? v : [for (final x in v) x * keep];
     final st = _Stance(
-      spine: own.contains("spine") ? null : st0.spine,
-      head: own.contains("head") ? null : st0.head,
-      feet: legs ? 0 : st0.feet,
-      hipShift: legs ? 0 : st0.hipShift,
-      hipRoll: legs ? 0 : st0.hipRoll,
-      knees: legs ? 0 : st0.knees,
-      crouch: legs ? 0 : st0.crouch,
-      shoulders: _ownsArm(own, "L") || _ownsArm(own, "R") ? 0 : st0.shoulders,
-      footFwd: legs ? const {} : st0.footFwd,
+      spine: sc(st0.spine, own.contains("spine")),
+      head: sc(st0.head, own.contains("head")),
+      feet: st0.feet * legs,
+      hipShift: st0.hipShift * legs,
+      hipRoll: st0.hipRoll * legs,
+      knees: st0.knees * legs,
+      crouch: st0.crouch * legs,
+      shoulders: _ownsArm(own, "L") || _ownsArm(own, "R")
+          ? st0.shoulders * keep
+          : st0.shoulders,
+      footFwd: {for (final e in st0.footFwd.entries) e.key: e.value * legs},
       handShape: st0.handShape,
     );
     double bd(String k) => m.bodyOf(k);
@@ -1039,7 +1110,7 @@ class VrmPoser {
       // A motion moving this arm shapes its hand as it moves -- a thumb
       // held up through a walk looked wrong; otherwise as asked, or as the
       // stance has it.
-      final shape = _ownsArm(own, k)
+      final shape = _ownsArm(own, k) && w > 0.5
           ? mo.handShape[k] ?? "relaxed"
           : asked != "relaxed"
               ? asked
@@ -1092,7 +1163,8 @@ class VrmPoser {
         if (bow != null) {
           mb = mb + (l.knee[s]! + l.v(s * 0.05, 0.12, 0.06) - mb) * (bow * 0.6);
         }
-        base = mb;
+        // From where the stance has it, as far as the motion has taken it.
+        base = base + (mb - base) * w;
       }
       final hv =
           mine ? mo.hand[k] ?? const [0.0, 0.0, 0.0] : const [0.0, 0.0, 0.0];
@@ -1127,10 +1199,14 @@ class VrmPoser {
       final tE = _ev("hand$k", tgt, a);
       final pole = _ev("pole$k", () {
         final def = [s * 0.35, -0.2, -1.0];
-        final p = mine ? mo.pole[k]?.call(s) ?? def : st0.pole?.call(s) ?? def;
+        final p = mine && w > 0.5
+            ? mo.pole[k]?.call(s) ?? def
+            : st0.pole?.call(s) ?? def;
         return _v(p[0], p[1], p[2]);
       }(), a);
-      final pl = mine ? mo.palm[k] ?? [-s.toDouble(), 0, 0] : st0.palmOf(k, s);
+      final pl = mine && w > 0.5
+          ? mo.palm[k] ?? [-s.toDouble(), 0, 0]
+          : st0.palmOf(k, s);
       final palm = _ev("palm$k", _v(pl[0], pl[1], pl[2]), a);
       _solveLimb(
           s > 0 ? VrmHumanBone.leftUpperArm : VrmHumanBone.rightUpperArm,

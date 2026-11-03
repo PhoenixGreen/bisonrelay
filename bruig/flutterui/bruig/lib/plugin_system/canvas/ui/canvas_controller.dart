@@ -59,6 +59,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
@@ -4315,14 +4316,25 @@ class CanvasController extends ChangeNotifier {
     studio3dOpen.value = true;
   }
 
+  /// studio3dPerformance is what [studio3dElement] does in its scene, for
+  /// the Studio's Test step to try; null where it was opened for none.
+  CharacterPerformance? get studio3dPerformance {
+    var id = studio3dElement;
+    var e = id == null ? null : _elementAnywhere(id);
+    return e is Character3dElement ? e.performance : null;
+  }
+
   /// closeStudio3d gives the page back to the canvas. With [kept], the
   /// character as the Studio kept it, every copy of it on the canvas -- and
-  /// the element it was opened for -- is made as it now is: one step to undo.
-  void closeStudio3d([CharacterDesign? kept]) {
+  /// the element it was opened for -- is made as it now is; with
+  /// [performance], the element it was opened for does that in its scene,
+  /// as the Test step left it: one step to undo.
+  void closeStudio3d(
+      [CharacterDesign? kept, CharacterPerformance? performance]) {
     var opened = studio3dElement;
     studio3dElement = null;
     studio3dOpen.value = false;
-    if (kept == null) return;
+    if (kept == null && performance == null) return;
     var before = _document;
     var doc = before;
     for (var e in [
@@ -4331,18 +4343,20 @@ class CanvasController extends ChangeNotifier {
       for (var sc in doc.allScenes) ...sc.elements,
     ]) {
       if (e is! Character3dElement) continue;
-      if (e.id != opened && (e.design.id.isEmpty || e.design.id != kept.id)) {
+      var mine = e.id == opened;
+      if (!mine &&
+          (kept == null || e.design.id.isEmpty || e.design.id != kept.id)) {
         continue;
       }
+      var made = kept == null ? e : e.copyWith(design: kept);
+      if (mine && performance != null) made = made.performing(performance);
       // Named for the character, unless it was named for itself.
-      var renamed = e.base.name.isEmpty || e.base.name == e.design.name;
-      var next = e.copyWith(design: kept);
-      doc = _replacedAnywhere(
-              doc,
-              renamed
-                  ? next.rebase(next.base.copyWith(name: kept.name))
-                  : next) ??
-          doc;
+      CanvasElement next = made;
+      if (kept != null &&
+          (e.base.name.isEmpty || e.base.name == e.design.name)) {
+        next = made.rebase(made.base.copyWith(name: kept.name));
+      }
+      doc = _replacedAnywhere(doc, next) ?? doc;
     }
     if (identical(doc, before)) return;
     _undo.add(before);

@@ -49,7 +49,9 @@ void paintCharacter3d(
       ? ui.PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1
       : 1.0;
   final most = 4096 / math.max(box.width, box.height);
-  scene.expression = e.expression;
+  scene
+    ..expression = e.expression
+    ..performance = e.performance;
   scene.paint(canvas, box,
       frame: frame,
       frameRate: frameRate,

@@ -102,41 +102,38 @@ class CharacterDecalControls extends StatelessWidget {
                 return ConstrainedBox(
                   key: const ValueKey("decalLibrary"),
                   constraints: const BoxConstraints(maxHeight: 6.5 * 58),
-                  child: Scrollbar(
-                    child: SingleChildScrollView(
-                      primary: false,
-                      child: Wrap(spacing: 6, runSpacing: 6, children: [
-                        for (final a in all)
-                          Tooltip(
-                            message: a.name,
-                            child: InkWell(
-                              key: ValueKey("decalAdd-${a.id}"),
-                              borderRadius: BorderRadius.circular(6),
-                              onTap: () {
-                                final n = CharacterDecal(
-                                  id: "${DateTime.now().microsecondsSinceEpoch}",
-                                  source:
-                                      "${a.kind == AssetKind.vector ? "vector" : "picture"}:${a.id}",
-                                  name: a.name,
-                                );
-                                onChanged([...decals, n], n.id);
-                              },
-                              child: Container(
-                                width: 52,
-                                height: 52,
-                                decoration: BoxDecoration(
-                                  color: colors.surfaceContainerHigh,
-                                  borderRadius: BorderRadius.circular(6),
-                                  border:
-                                      Border.all(color: colors.outlineVariant),
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                child: AssetThumb(id: a.id),
+                  child: _Scrolled(
+                    child: Wrap(spacing: 6, runSpacing: 6, children: [
+                      for (final a in all)
+                        Tooltip(
+                          message: a.name,
+                          child: InkWell(
+                            key: ValueKey("decalAdd-${a.id}"),
+                            borderRadius: BorderRadius.circular(6),
+                            onTap: () {
+                              final n = CharacterDecal(
+                                id: "${DateTime.now().microsecondsSinceEpoch}",
+                                source:
+                                    "${a.kind == AssetKind.vector ? "vector" : "picture"}:${a.id}",
+                                name: a.name,
+                              );
+                              onChanged([...decals, n], n.id);
+                            },
+                            child: Container(
+                              width: 52,
+                              height: 52,
+                              decoration: BoxDecoration(
+                                color: colors.surfaceContainerHigh,
+                                borderRadius: BorderRadius.circular(6),
+                                border:
+                                    Border.all(color: colors.outlineVariant),
                               ),
+                              clipBehavior: Clip.antiAlias,
+                              child: AssetThumb(id: a.id),
                             ),
                           ),
-                      ]),
-                    ),
+                        ),
+                    ]),
                   ),
                 );
               },
@@ -229,4 +226,31 @@ class CharacterDecalControls extends StatelessWidget {
           ],
         ]);
   }
+}
+
+/// _Scrolled scrolls [child] with a scrollbar that shares its controller:
+/// a Scrollbar left to find one fell back on a primary controller that no
+/// list had, and asserted as the list was dragged.
+class _Scrolled extends StatefulWidget {
+  final Widget child;
+  const _Scrolled({required this.child});
+
+  @override
+  State<_Scrolled> createState() => _ScrolledState();
+}
+
+class _ScrolledState extends State<_Scrolled> {
+  final ScrollController _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scrollbar(
+        controller: _scroll,
+        child: SingleChildScrollView(controller: _scroll, child: widget.child),
+      );
 }

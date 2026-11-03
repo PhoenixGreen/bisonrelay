@@ -738,6 +738,11 @@ void main() {
       // The decal's own settings are there under it, not pushed away.
       expect(
           find.byKey(const ValueKey('decal-on')).hitTestable(), findsOneWidget);
+      // Dragged, its scrollbar follows it: no error for want of a controller.
+      await tester.drag(
+          find.byKey(const ValueKey('decalLibrary')), const Offset(0, -120));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
       // And the last picture is reached by scrolling the list.
       await tester.scrollUntilVisible(
           find.byKey(const ValueKey('decalAdd-p79.png')), 100,

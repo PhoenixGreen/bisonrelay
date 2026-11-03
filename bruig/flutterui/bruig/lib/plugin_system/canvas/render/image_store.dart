@@ -298,7 +298,8 @@ class CanvasImageStore extends ChangeNotifier
       return null;
     }
     if (_gpu == false) return null;
-    var key = jsonEncode(e.design.toJson()..remove("updated"));
+    final worn = e.worn;
+    var key = jsonEncode(worn.toJson()..remove("updated"));
     var held = _characters.remove(e.id);
     var scene = held?.$1;
     if (scene == null) {
@@ -315,7 +316,7 @@ class CanvasImageStore extends ChangeNotifier
       // frame being painted is done, since starting says so to whoever
       // listens, and nothing may be rebuilt in the middle of painting.
       _pending.add("character3d:${e.id}");
-      var first = held == null, design = e.design;
+      var first = held == null, design = worn;
       scheduleMicrotask(() {
         if (_disposed) return;
         scene!.showDesign(design);

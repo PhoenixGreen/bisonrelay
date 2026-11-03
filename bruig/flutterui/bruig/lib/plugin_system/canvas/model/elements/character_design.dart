@@ -54,6 +54,22 @@ class CharacterDesign {
     required this.updated,
   });
 
+  /// dressed is this wearing [outfit].
+  CharacterDesign dressed(CharacterOutfit outfit) => CharacterDesign(
+      id: id,
+      name: name,
+      body: body,
+      shape: shape,
+      outfit: outfit,
+      lookName: lookName,
+      look: look,
+      decals: decals,
+      sculpt: sculpt,
+      paint: paint,
+      face: face,
+      move: move,
+      updated: updated);
+
   /// pictureIds and vectorIds are the library's pictures and vectors its
   /// decals use, for a tidy of the library to keep.
   Set<String> get pictureIds => {
