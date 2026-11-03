@@ -456,6 +456,242 @@ class ShapedAvatar {
     return out;
   }();
 
+  /// creaseKey is what [creases] are drawn from in [shape], so they are
+  /// drawn again only when it changes.
+  static String creaseKey(CharacterShape shape) => [
+        shape.age,
+        shape.get("muscle.definition"),
+        shape.get("muscle.abs"),
+        shape.get("muscle.pecs"),
+        shape.get("muscle.fat"),
+        shape.get("body.muscle"),
+      ].map((v) => v.toStringAsFixed(2)).join(";");
+
+  /// creases are the lines the years and the muscles draw on the skin, as
+  /// paint: on the forehead, at the corners of the eyes, under them and
+  /// from the nose to the mouth as it ages -- from 35, deepest at 80 -- and
+  /// with muscles defined, the line down the middle of the stomach, the
+  /// bands across it, the pecs' lower edge on a flat chest and the lines of
+  /// the obliques. Laid on the body as made, so they follow its shaping.
+  List<PaintStroke> creases(CharacterShape shape) {
+    final out = <PaintStroke>[];
+    final L = rig.face, B = rig.body;
+    const ink = 0x5a3328;
+    double clamp01(double v) => v.clamp(0.0, 1.0).toDouble();
+
+    // A line through [xy] on the front of the face or the body, followed
+    // along the skin, as a stroke -- mirrored onto the other side where it
+    // is one of a pair.
+    void line(List<(double, double)> xy,
+        {required bool face,
+        required double radius,
+        required double opacity,
+        bool mirror = false}) {
+      if (opacity < 0.02 || xy.length < 2) return;
+      final fwd = L?.fwd ?? 1;
+      // Points close enough together for the brush to run unbroken.
+      final dense = <(double, double)>[xy.first];
+      for (var i = 1; i < xy.length; i++) {
+        final (ax, ay) = xy[i - 1];
+        final (bx, by) = xy[i];
+        final n = math.max(
+            1,
+            (math.sqrt(math.pow(bx - ax, 2) + math.pow(by - ay, 2)) /
+                    (radius * 0.6))
+                .ceil());
+        for (var k = 1; k <= n; k++) {
+          dense.add((ax + (bx - ax) * k / n, ay + (by - ay) * k / n));
+        }
+      }
+      // On the skin itself under each point, not on the nearest corner of
+      // it: corners are further apart than the brush is wide, and a line
+      // laid on them is a row of dots.
+      var lo = vm.Vector2(double.infinity, double.infinity),
+          hi = vm.Vector2(-double.infinity, -double.infinity);
+      for (final (x, y) in dense) {
+        lo = vm.Vector2(math.min(lo.x, x), math.min(lo.y, y));
+        hi = vm.Vector2(math.max(hi.x, x), math.max(hi.y, y));
+      }
+      final near = _skinTriangles(lo, hi, face: face, fwd: fwd);
+      final points = <SculptPoint>[];
+      for (final (x, y) in dense) {
+        final at = _onSkin(x, y, near, fwd);
+        if (at == null) continue;
+        final (p, n) = at;
+        points.add(SculptPoint(p.x, p.y, p.z, n.x, n.y, n.z));
+      }
+      if (points.length < 2) return;
+      out.add(PaintStroke(
+          on: "skin",
+          colour: ink,
+          radius: radius,
+          opacity: clamp01(opacity),
+          softness: 0.85,
+          mirror: mirror,
+          points: points));
+    }
+
+    // The years, on the face.
+    final age = clamp01((shape.age - 35) / 45);
+    if (L != null && age > 0) {
+      final es = L.es, ey = L.eyeY, r = es * 0.036;
+      final cx = (L.eyeL.x + L.eyeR.x) / 2;
+      // Across the forehead, more of them the older.
+      for (var k = 0; k < 3 && k < (age * 3.2).ceil(); k++) {
+        final y = ey + es * (0.95 + 0.22 * k);
+        line([
+          for (var i = -6; i <= 6; i++)
+            (cx + es * 0.85 * i / 6, y + es * 0.05 * (1 - math.pow(i / 6, 2)))
+        ], face: true, radius: r, opacity: age * 0.32 * (1 - 0.2 * k));
+      }
+      // Crow's feet, fanning out from the outer corner of each eye.
+      final corner = L.eyeL.x + es * 0.44;
+      for (final a in const [-0.4, 0.05, 0.45]) {
+        final long = es * 0.16 * (0.6 + 0.4 * age);
+        line([
+          (corner, ey + a * es * 0.08),
+          (corner + math.cos(a) * long, ey + math.sin(a) * long)
+        ], face: true, radius: r * 0.8, opacity: age * 0.22, mirror: true);
+      }
+      // Under each eye.
+      line([
+        for (var i = 0; i <= 6; i++)
+          (
+            L.eyeL.x - es * 0.22 + es * 0.55 * i / 6,
+            ey - es * 0.42 - es * 0.05 * math.sin(math.pi * i / 6)
+          )
+      ], face: true, radius: r, opacity: age * 0.28, mirror: true);
+      // Bracketing the mouth: from a little over its corners, curving
+      // out and down past them -- where the cheeks fold as it ages. Kept
+      // close to the mouth: run from the nose on a face drawn with a small
+      // high nose, they cross the cheek like whiskers.
+      final top = L.mouth.y + (L.noseTip.y - L.mouth.y) * 0.45;
+      line([
+        for (var i = 0; i <= 6; i++)
+          (
+            L.mouth.x +
+                es * (0.3 + 0.12 * i / 6) +
+                es * 0.05 * math.sin(math.pi * i / 6),
+            top + (L.mouth.y - es * 0.1 - top) * i / 6
+          )
+      ], face: true, radius: r, opacity: age * 0.3, mirror: true);
+      // And down from the corners of the mouth, later on.
+      if (age > 0.5) {
+        line([
+          (L.mouth.x + es * 0.42, L.mouth.y - es * 0.05),
+          (L.mouth.x + es * 0.48, L.chin.y + es * 0.2)
+        ], face: true, radius: r, opacity: (age - 0.5) * 0.6, mirror: true);
+      }
+    }
+
+    // The muscles, on the body: as defined as the body is lean.
+    if (B != null) {
+      final u = B.u, r = 0.008 * u;
+      final fat = clamp01(shape.get("muscle.fat"));
+      final defined = clamp01(shape.get("muscle.definition") +
+              0.4 * shape.get("body.muscle") -
+              0.7 * fat) *
+          (1 - fat);
+      final abs =
+          clamp01(defined * 0.7 + 0.5 * shape.get("muscle.abs")) * (1 - fat);
+      final pecs = clamp01(defined * 0.6 + 0.6 * shape.get("muscle.pecs"));
+      final top = B.pec.y - 0.06 * u, bottom = B.navel.y + 0.025 * u;
+      // Down the middle, from under the chest to the navel.
+      line([(0, top), (0, bottom)],
+          face: false, radius: r, opacity: abs * 0.55);
+      // The bands across.
+      for (final t in const [0.28, 0.55, 0.8]) {
+        final y = top + (bottom - top) * t;
+        line([
+          (0.012 * u, y),
+          (0.04 * u, y - 0.004 * u),
+          (0.066 * u, y + 0.002 * u)
+        ], face: false, radius: r, opacity: abs * 0.45, mirror: true);
+      }
+      // The pecs' lower edge, where there is no bust over it.
+      if (B.bustC == null) {
+        line([
+          for (var i = 0; i <= 6; i++)
+            (
+              0.02 * u + 0.11 * u * i / 6,
+              B.pec.y - 0.055 * u + 0.035 * u * math.pow(i / 6, 1.6)
+            )
+        ], face: false, radius: r * 1.2, opacity: pecs * 0.5, mirror: true);
+      }
+      // The obliques, down towards the hips.
+      line([
+        (0.1 * u, B.waist.y - 0.02 * u),
+        (0.075 * u, (B.waist.y + B.hips.y) / 2 - 0.02 * u),
+        (0.045 * u, B.hips.y - 0.03 * u)
+      ], face: false, radius: r, opacity: defined * 0.45, mirror: true);
+    }
+    return out;
+  }
+
+  /// _skinTriangles are the triangles of the front of the face's or the
+  /// body's skin, as made -- the side [fwd] along z faces -- whose outline
+  /// across x and y reaches into [lo]..[hi]: each as its three corners'
+  /// vertex numbers and the positions and normals they index.
+  List<(int, int, int, Float32List, Float32List)> _skinTriangles(
+      vm.Vector2 lo, vm.Vector2 hi,
+      {required bool face, required double fwd}) {
+    final out = <(int, int, int, Float32List, Float32List)>[];
+    for (final m in rig.data.meshes) {
+      if (m.region != (face ? VrmRegion.face : VrmRegion.body)) continue;
+      for (final p in m.primitives) {
+        if (p.part != (face ? VrmPart.face : VrmPart.skin)) continue;
+        final pos = p.vertices.positions, nrm = p.vertices.normals;
+        final ix = p.indices;
+        for (var t = 0; t + 2 < ix.length; t += 3) {
+          final a = ix[t], b = ix[t + 1], c = ix[t + 2];
+          // Facing forward, near enough.
+          final nz =
+              (nrm[a * 3 + 2] + nrm[b * 3 + 2] + nrm[c * 3 + 2]) / 3 * fwd;
+          if (nz < 0.1) continue;
+          final x0 = math.min(pos[a * 3], math.min(pos[b * 3], pos[c * 3])),
+              x1 = math.max(pos[a * 3], math.max(pos[b * 3], pos[c * 3])),
+              y0 = math.min(
+                  pos[a * 3 + 1], math.min(pos[b * 3 + 1], pos[c * 3 + 1])),
+              y1 = math.max(
+                  pos[a * 3 + 1], math.max(pos[b * 3 + 1], pos[c * 3 + 1]));
+          if (x1 < lo.x || x0 > hi.x || y1 < lo.y || y0 > hi.y) continue;
+          out.add((a, b, c, pos, nrm));
+        }
+      }
+    }
+    return out;
+  }
+
+  /// _onSkin is the point on the front of [triangles] seen straight on at
+  /// [x], [y] -- the one nearest the viewer, the side [fwd] along z -- and
+  /// which way the skin faces there; null where none is under it.
+  static (vm.Vector3, vm.Vector3)? _onSkin(double x, double y,
+      List<(int, int, int, Float32List, Float32List)> triangles, double fwd) {
+    (vm.Vector3, vm.Vector3)? best;
+    var front = -double.infinity;
+    for (final (a, b, c, pos, nrm) in triangles) {
+      final ax = pos[a * 3], ay = pos[a * 3 + 1];
+      final bx = pos[b * 3], by = pos[b * 3 + 1];
+      final cx = pos[c * 3], cy = pos[c * 3 + 1];
+      final den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+      if (den.abs() < 1e-12) continue;
+      final u = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / den;
+      final v = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / den;
+      final w = 1 - u - v;
+      if (u < -1e-6 || v < -1e-6 || w < -1e-6) continue;
+      final z = u * pos[a * 3 + 2] + v * pos[b * 3 + 2] + w * pos[c * 3 + 2];
+      if (z * fwd <= front) continue;
+      front = z * fwd;
+      final n = vm.Vector3(
+          u * nrm[a * 3] + v * nrm[b * 3] + w * nrm[c * 3],
+          u * nrm[a * 3 + 1] + v * nrm[b * 3 + 1] + w * nrm[c * 3 + 1],
+          u * nrm[a * 3 + 2] + v * nrm[b * 3 + 2] + w * nrm[c * 3 + 2])
+        ..normalize();
+      best = (vm.Vector3(x, y, z), n);
+    }
+    return best;
+  }
+
   /// _shapedAt are each group's vertices at rest as last shaped, where
   /// shaping moved them.
   final Map<ShapeGroup, Float32List> _shapedAt = {};
@@ -1416,12 +1652,13 @@ class ShapedAvatar {
   Uint32List? _skinTris;
 
   /// _clothLift is how far over the body's own clothes -- VRoid's, in its
-  /// mesh -- a decal or paint lies. Something of them is drawn a few
-  /// millimetres out from their own surface -- not the outline, nor the
-  /// winding, nor the vertices, which all match -- and hid a decal lying
-  /// nearer than that in patches; at 8 mm it is whole, seen in the check
-  /// app. Made clothes do not need it. Why is still to be found.
-  static const double _clothLift = 0.008;
+  /// mesh -- a decal or paint lies: a little more than over clothes made to
+  /// fit. It was 8 mm, for something that hid a decal lying nearer in
+  /// patches; checked again on 2026-11-03 -- three bodies, four looks,
+  /// front, turned and side on, with and without underwear made under the
+  /// clothes -- nothing hides it at 0.9 mm, and at 8 mm a decal floated
+  /// visibly over the buttons and frills it should lie among.
+  static const double _clothLift = 0.0012;
 
   Future<void> _decorate(List<CharacterDecal> decals,
       Future<(Uint8List, int, int)?> Function(String source) load) async {

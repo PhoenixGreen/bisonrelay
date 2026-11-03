@@ -199,6 +199,17 @@ class CanvasGuides {
   /// for is the reader's aim, which does not get better when they zoom in.
   final double snapWithin;
 
+  /// stageSnap is snapping on a 3D stage, which is its own switch: on a
+  /// page snapping catches a line as it passes and lets go otherwise, but
+  /// on a stage it puts everything moved on a step, so it starts off.
+  final bool stageSnap;
+
+  /// stageStep and stageTurn are how a thing moved on a 3D stage snaps:
+  /// to every so many metres across its floor, and every so many degrees
+  /// round. A stage has no grid lines to land on, so it lands on steps.
+  final double stageStep;
+  final double stageTurn;
+
   final CanvasRulers rulers;
 
   /// showRulers hides the rules along the edges without forgetting which
@@ -221,6 +232,9 @@ class CanvasGuides {
     this.snap = true,
     this.snapTo = const SnapTo(),
     this.snapWithin = 6,
+    this.stageSnap = false,
+    this.stageStep = 0.25,
+    this.stageTurn = 15,
     this.rulers = const CanvasRulers(),
     this.showRulers = true,
   });
@@ -240,6 +254,9 @@ class CanvasGuides {
       snapTo.centres &&
       snapTo.objects &&
       snapWithin == 6 &&
+      !stageSnap &&
+      stageStep == 0.25 &&
+      stageTurn == 15 &&
       !rulers.any;
 
   CanvasGuides copyWith({
@@ -252,6 +269,9 @@ class CanvasGuides {
     bool? snap,
     SnapTo? snapTo,
     double? snapWithin,
+    bool? stageSnap,
+    double? stageStep,
+    double? stageTurn,
     CanvasRulers? rulers,
     bool? showRulers,
   }) =>
@@ -265,6 +285,9 @@ class CanvasGuides {
         snap: snap ?? this.snap,
         snapTo: snapTo ?? this.snapTo,
         snapWithin: (snapWithin ?? this.snapWithin).clamp(1.0, 40.0),
+        stageSnap: stageSnap ?? this.stageSnap,
+        stageStep: (stageStep ?? this.stageStep).clamp(0.01, 10.0),
+        stageTurn: (stageTurn ?? this.stageTurn).clamp(1.0, 90.0),
         rulers: rulers ?? this.rulers,
         showRulers: showRulers ?? this.showRulers,
       );
@@ -294,6 +317,9 @@ class CanvasGuides {
         if (!snap) "noSnap": true,
         "snapTo": snapTo.toJson(),
         if (snapWithin != 6) "within": snapWithin,
+        if (stageSnap) "stageSnap": true,
+        if (stageStep != 0.25) "stageStep": stageStep,
+        if (stageTurn != 15) "stageTurn": stageTurn,
         if (rulers.any) "rulers": rulers.toJson(),
         if (!showRulers) "showRulers": false,
       };
@@ -312,6 +338,9 @@ class CanvasGuides {
         snap: !jsonBool(json["noSnap"], false),
         snapTo: jsonSpec(json["snapTo"], SnapTo.fromJson, const SnapTo()),
         snapWithin: jsonDouble(json["within"], 6).clamp(1.0, 40.0),
+        stageSnap: jsonBool(json["stageSnap"], false),
+        stageStep: jsonDouble(json["stageStep"], 0.25).clamp(0.01, 10.0),
+        stageTurn: jsonDouble(json["stageTurn"], 15).clamp(1.0, 90.0),
         rulers: jsonSpec(
             json["rulers"], CanvasRulers.fromJson, const CanvasRulers()),
         showRulers: jsonBool(json["showRulers"], true),

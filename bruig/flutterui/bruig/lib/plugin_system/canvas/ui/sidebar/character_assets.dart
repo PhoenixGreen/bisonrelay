@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/model/elements/character_cast3d.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/storage/character_designs.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -39,6 +40,26 @@ class CharacterAssetSection extends StatelessWidget {
           ),
           Character3dAssetList(
               onPlace: controller.placeCharacter3d, designs: designs),
+          // And the ready-made cast, to place as they are.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+            child: Text("Ready-made",
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: ThemeNotifier.of(context).colors.onSurfaceVariant)),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final m in readyMadeCast)
+                _Character3dTile(
+                    key: ValueKey("characterCast-${m.design.name}"),
+                    design: m.design,
+                    picture: m.picture,
+                    onTap: () => controller.placeCharacter3d(m.design)),
+            ]),
+          ),
         ]),
       );
 }
@@ -120,8 +141,12 @@ class Character3dAssetList extends StatelessWidget {
 class _Character3dTile extends StatefulWidget {
   final CharacterDesign design;
   final VoidCallback onTap;
+
+  /// picture is its picture among the app's assets, for one of the
+  /// ready-made cast; otherwise the one kept with it in the library.
+  final String? picture;
   const _Character3dTile(
-      {required this.design, required this.onTap, super.key});
+      {required this.design, required this.onTap, this.picture, super.key});
 
   @override
   State<_Character3dTile> createState() => _Character3dTileState();
@@ -160,21 +185,28 @@ class _Character3dTileState extends State<_Character3dTile> {
               SizedBox(
                 width: 84,
                 height: 112,
-                child: FutureBuilder<Uint8List?>(
-                  future: _picture,
-                  builder: (context, snap) {
-                    var icon = Center(
-                        child: Icon(Icons.view_in_ar_outlined,
-                            size: 32, color: colors.onSurfaceVariant));
-                    var png = snap.data;
-                    if (png == null) return icon;
-                    return Image.memory(png,
+                child: widget.picture != null
+                    ? Image.asset(widget.picture!,
                         fit: BoxFit.cover,
                         cacheWidth: 168,
-                        gaplessPlayback: true,
-                        errorBuilder: (_, __, ___) => icon);
-                  },
-                ),
+                        errorBuilder: (_, __, ___) => Center(
+                            child: Icon(Icons.view_in_ar_outlined,
+                                size: 32, color: colors.onSurfaceVariant)))
+                    : FutureBuilder<Uint8List?>(
+                        future: _picture,
+                        builder: (context, snap) {
+                          var icon = Center(
+                              child: Icon(Icons.view_in_ar_outlined,
+                                  size: 32, color: colors.onSurfaceVariant));
+                          var png = snap.data;
+                          if (png == null) return icon;
+                          return Image.memory(png,
+                              fit: BoxFit.cover,
+                              cacheWidth: 168,
+                              gaplessPlayback: true,
+                              errorBuilder: (_, __, ___) => icon);
+                        },
+                      ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 2, 4, 6),

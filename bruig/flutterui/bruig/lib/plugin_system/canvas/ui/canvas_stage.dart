@@ -8,7 +8,10 @@ import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/render/instrument_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/stage/stage_camera.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_gizmo.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_nav_controls.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -136,8 +139,16 @@ enum _DragMode {
   tilePaint,
 
   /// stageOrbit is a 3D stage's camera being swung round it, by a drag with
-  /// Option held anywhere on the stage.
+  /// Option held anywhere on the stage -- or with none, the page locked.
   stageOrbit,
+
+  /// stagePan is a 3D stage's camera being slid sideways and up, by a
+  /// shifted or middle-button drag with the page locked.
+  stagePan,
+
+  /// gizmo is a part of the gizmo on an element standing on a stage being
+  /// dragged: see stage_gizmo.dart.
+  gizmo,
 
   /// parallaxPan is parallax scenery's camera being panned, by a drag with
   /// Option held on it: the scenery follows the pointer, as a map does.
@@ -658,6 +669,10 @@ class CanvasStageState extends State<CanvasStage>
     _typingFocus.dispose();
     _previewDebounce?.cancel();
     _legendHold?.cancel();
+    if (_steerTimer?.isActive ?? false) {
+      _steerTimer!.cancel();
+      controller.endInteraction();
+    }
     _backgrounds.dispose();
     _scroll.dispose();
     _scrollX.dispose();
@@ -1049,6 +1064,11 @@ class CanvasStageState extends State<CanvasStage>
   /// is visible.
   @visibleForTesting
   List<FlowLine> get textFlowLines => _flowLines();
+
+  /// gizmo is the gizmo on the selected element standing on a 3D stage, for
+  /// the tests that take hold of its parts -- painted, so nothing to find.
+  @visibleForTesting
+  StageGizmo? get gizmo => _gizmo();
 
   /// toStagePoint is where a point of the document is on screen, for the same
   /// tests: a drag has to start and end somewhere real.
@@ -1914,12 +1934,24 @@ class CanvasStageState extends State<CanvasStage>
     // may be set to do something else.
     if (_stylusPress(event, doc)) return;
 
+    // The gizmo on an element standing on a 3D stage, before anything
+    // under it: it is drawn on top and is what is aimed at.
+    if (_pressGizmo(doc)) return;
+
+    // The page locked on a stage: a press on the stage itself takes hold
+    // of its camera rather than moving the page or sweeping a selection.
+    if (_pressLockedStage(event, doc)) return;
+
     // The pan tool and the middle button pan. Space used to as well, and no
     // longer does: it plays and stops now, which is worth more on a page for
     // building animations, and the pan tool is the discoverable version of
     // what space-drag was for.
-    if (controller.tool == CanvasTool.pan ||
-        event.buttons == kMiddleMouseButton) {
+    //
+    // Not while the page is locked, which is what the lock is for; and the
+    // pan tool not on a 3D stage, where the bar has the 3D tools instead.
+    if (!controller.pageLocked &&
+        ((controller.tool == CanvasTool.pan && !controller.onStage3d) ||
+            event.buttons == kMiddleMouseButton)) {
       _mode = _DragMode.pan;
       _startPan = _clampedPan;
       _dragStart = stage;
@@ -5318,6 +5350,28 @@ class CanvasStageState extends State<CanvasStage>
                   s, from.copyWith(yaw: (yaw * 10).round() / 10, pitch: pitch)),
               transient: true);
         }
+      case _DragMode.stagePan:
+        if (controller.stageOf(_orbiting ?? "") case var s?) {
+          var from = _orbitFrom ?? s.cameraAt(controller.frame);
+          var d = (event.localPosition - _orbitAt) / (_scale == 0 ? 1 : _scale);
+          controller.putStage(
+              controller.stageFilmed(s, StageView(s.bounds, from).panned(d)),
+              transient: true);
+        }
+      case _DragMode.gizmo:
+        if (_gizmoDrag case (var g, var part, var from, var id)?) {
+          if (document.elementById(id) case var e?) {
+            var guides = document.guides;
+            var snap =
+                guides.stageSnap && !HardwareKeyboard.instance.isAltPressed;
+            var spot = g.dragged(part, from, doc,
+                pageScale: _scale,
+                step: snap ? guides.stageStep : 0,
+                turn: snap ? guides.stageTurn : 0);
+            controller.replaceElement(controller.spotted(e, spot),
+                transient: true);
+          }
+        }
       case _DragMode.parallaxPan:
         if ((controller.parallaxOf(_orbiting ?? ""), _panFrom)
             case (var p?, var from?)) {
@@ -5470,7 +5524,12 @@ class CanvasStageState extends State<CanvasStage>
     // Held down, Alt turns it off for the length of the drag -- the usual way
     // to put something exactly where the grid does not want it.
     var box = _startBoxOfSelection();
-    if (box != null && !HardwareKeyboard.instance.isAltPressed) {
+    // Not on a 3D stage, where the page's lines mean nothing: what stands
+    // there snaps to the 3D steps across its floor instead -- see
+    // CanvasController.movedTo.
+    var onStage = _startPosed.keys
+        .any((id) => document.elementById(id)?.base.spot != null);
+    if (box != null && !onStage && !HardwareKeyboard.instance.isAltPressed) {
       var snapped = snapTopLeft(
         box.topLeft + delta,
         box.size,
@@ -6032,6 +6091,8 @@ class CanvasStageState extends State<CanvasStage>
         _mode == _DragMode.rotate ||
         _mode == _DragMode.chartLabel ||
         _mode == _DragMode.stageOrbit ||
+        _mode == _DragMode.stagePan ||
+        _mode == _DragMode.gizmo ||
         _mode == _DragMode.parallaxPan ||
         _mode == _DragMode.tableColumn ||
         _mode == _DragMode.imageFrame ||
@@ -6051,6 +6112,11 @@ class CanvasStageState extends State<CanvasStage>
       // Left on the canvas until the cut lands, so the stroke does not
       // vanish for the moment it takes.
     }
+    // A press on the stage with the page locked that never moved is a
+    // click on nothing: it lets go of what was selected, as it would have.
+    if (_lockedPress && !_travelled) controller.clearSelection();
+    _lockedPress = false;
+    if (_gizmoDrag != null) setState(() => _gizmoDrag = null);
     _mode = _DragMode.none;
     _handle = null;
     _maskOn = null;
@@ -6087,6 +6153,9 @@ class CanvasStageState extends State<CanvasStage>
       setState(() {});
     }
     var doc = _toDocument(stage);
+    // The gizmo's part under the pointer, lit.
+    var hot = _gizmo()?.hit(doc, _gizmoReach);
+    if (hot != _gizmoHot) setState(() => _gizmoHot = hot);
     var element = _hitElement(doc);
     var id = element is ButtonElement ? element.id : null;
 
@@ -6129,6 +6198,118 @@ class CanvasStageState extends State<CanvasStage>
   /// press: a selected button, a selected speaker's or video's controls, or a
   /// live counter's buttons.
   bool _hoverPressable = false;
+
+  // ---------------------------------------------------------- 3D stage
+
+  /// _gizmoDrag is the gizmo being dragged: as it was when the drag began,
+  /// the part held, the page point it was taken hold of at, and the
+  /// element's id.
+  (StageGizmo, GizmoPart, Offset, String)? _gizmoDrag;
+
+  /// _gizmoHot is the gizmo's part under the pointer, lit.
+  GizmoPart? _gizmoHot;
+
+  /// _lockedPress is whether the press under way took hold of the stage's
+  /// camera because the page is locked.
+  bool _lockedPress = false;
+
+  /// _gizmoReach is how near a part, in page units, the pointer has to be
+  /// to take hold of it.
+  double get _gizmoReach => 9 / (_scale == 0 ? 1 : _scale);
+
+  /// _gizmo is the gizmo on the one element selected, where it stands on
+  /// a stage and the handles are shown -- or null.
+  StageGizmo? _gizmo() {
+    if (!controller.showHelpers || controller.playing || controller.gaming) {
+      return null;
+    }
+    if (controller.selection.length != 1) return null;
+    var e = document.elementById(controller.selection.first);
+    if (e == null || e.locked || e.base.spot == null) return null;
+    var at = stagedIn(document, e, controller.frame);
+    if (at == null) return null;
+    return StageGizmo.of(e, at, controller.stageTool, _scale);
+  }
+
+  /// _pressGizmo takes hold of the part of the gizmo under [doc], if any.
+  bool _pressGizmo(Offset doc) {
+    var g = _gizmo();
+    if (g == null) return false;
+    var part = g.hit(doc, _gizmoReach);
+    if (part == null) return false;
+    _gizmoDrag = (g, part, doc, controller.selection.first);
+    _mode = _DragMode.gizmo;
+    controller.beginInteraction();
+    setState(() => _gizmoHot = part);
+    return true;
+  }
+
+  /// _pressLockedStage takes hold of the stage's camera, with the page
+  /// locked, for a press on the stage itself -- not on anything standing
+  /// on it -- or the middle button anywhere: a drag orbits, and shifted or
+  /// the middle button, pans.
+  bool _pressLockedStage(PointerDownEvent event, Offset doc) {
+    if (!controller.pageLocked) return false;
+    var s = controller.steeredStage;
+    if (s == null || s.locked) return false;
+    var middle = event.buttons == kMiddleMouseButton;
+    if (!middle) {
+      var hit = _hitElement(doc);
+      var onStage = hit == null ||
+          hit is StageElement ||
+          (hit is BackgroundElement && hit.isStage);
+      if (!onStage) return false;
+    }
+    _orbiting = s.id;
+    _orbitFrom = s.cameraAt(controller.frame);
+    _orbitAt = event.localPosition;
+    _mode = middle || HardwareKeyboard.instance.isShiftPressed
+        ? _DragMode.stagePan
+        : _DragMode.stageOrbit;
+    _lockedPress = true;
+    controller.beginInteraction();
+    return true;
+  }
+
+  /// _steerTimer ends a run of scrolls and pinches steering the camera
+  /// as one undo step, once they stop.
+  Timer? _steerTimer;
+
+  /// _steering opens the undo step a run of camera steering makes, or
+  /// keeps it open.
+  void _steering() {
+    if (_steerTimer == null) controller.beginInteraction();
+    _steerTimer?.cancel();
+    _steerTimer = Timer(const Duration(milliseconds: 350), () {
+      _steerTimer = null;
+      controller.endInteraction();
+    });
+  }
+
+  /// _steerByScroll is the wheel and two fingers with the page locked on a
+  /// stage: they orbit its camera, shifted they pan it, and with Command
+  /// or Control -- a pinch, to the wheel -- they zoom it.
+  void _steerByScroll(PointerScrollEvent event) {
+    if (!controller.onStage3d) return;
+    var keys = HardwareKeyboard.instance;
+    var d = event.scrollDelta;
+    _steering();
+    if (keys.isControlPressed || keys.isMetaPressed) {
+      controller.dollyBy(math.exp(d.dy * 0.01), transient: true);
+    } else if (keys.isShiftPressed) {
+      controller.panCameraBy(-d / (_scale == 0 ? 1 : _scale),
+          transient: true);
+    } else {
+      controller.orbitBy(-d.dx * 0.4, -d.dy * 0.4, transient: true);
+    }
+  }
+
+  /// _scrollPhysics holds a page that scrolls still while it is locked.
+  ScrollPhysics? get _scrollPhysics =>
+      controller.pageLocked ? const NeverScrollableScrollPhysics() : null;
+
+  /// _pinchScale is the last scale of a pinch steering the camera.
+  double _pinchScale = 1;
 
   void _onScroll(PointerScrollEvent event) {
     // While reframing, the wheel is the picture's zoom rather than the view's.
@@ -6174,6 +6355,12 @@ class CanvasStageState extends State<CanvasStage>
   ({double zoom, Offset pan, double scale, Offset doc})? _pinch;
 
   void _onPinchStart(PointerPanZoomStartEvent e) {
+    // Locked, the page does not zoom: on a stage the fingers steer its
+    // camera instead -- see _onPinchUpdate.
+    if (controller.pageLocked) {
+      _pinchScale = 1;
+      return;
+    }
     _pinch = (
       zoom: controller.zoom,
       pan: _clampedPan,
@@ -6185,6 +6372,22 @@ class CanvasStageState extends State<CanvasStage>
   /// _onPinchUpdate zooms as the fingers spread or close, about where they
   /// are. A two-finger slide alone is the scroll views' to scroll.
   void _onPinchUpdate(PointerPanZoomUpdateEvent e) {
+    if (controller.pageLocked) {
+      if (!controller.onStage3d) return;
+      _steering();
+      var spread = e.scale / (_pinchScale == 0 ? 1 : _pinchScale);
+      _pinchScale = e.scale;
+      if ((spread - 1).abs() > 0.002) {
+        controller.dollyBy(1 / spread, transient: true);
+      } else if (HardwareKeyboard.instance.isShiftPressed) {
+        controller.panCameraBy(e.panDelta / (_scale == 0 ? 1 : _scale),
+            transient: true);
+      } else {
+        controller.orbitBy(e.panDelta.dx * 0.4, e.panDelta.dy * 0.4,
+            transient: true);
+      }
+      return;
+    }
     var p = _pinch;
     if (p == null || (e.scale - 1).abs() < 0.01) return;
     _zoomAbout(e.localPosition, p.zoom * e.scale,
@@ -6288,7 +6491,30 @@ class CanvasStageState extends State<CanvasStage>
     };
     if (arrow != null && _nudgeWarp(arrow)) return KeyEventResult.handled;
 
+    // The page's and the stage's own letters, while no picture or drawing
+    // is being edited -- they have letters of their own. L locks the page,
+    // Shift-S snaps; on a 3D stage G, R and S are the 3D tools, F frames
+    // what is selected and Home puts the camera back.
+    var plain = controller.editingImage == null &&
+        controller.editingVector == null &&
+        !keys.isAltPressed;
+    var three = plain && controller.onStage3d;
+
     switch (event.logicalKey) {
+      case LogicalKeyboardKey.keyL when plain:
+        controller.pageLocked = !controller.pageLocked;
+      case LogicalKeyboardKey.keyS when plain && keys.isShiftPressed:
+        controller.canvasSnap = !controller.canvasSnap;
+      case LogicalKeyboardKey.keyG when three:
+        controller.stageTool = StageTool.move;
+      case LogicalKeyboardKey.keyR when three:
+        controller.stageTool = StageTool.rotate;
+      case LogicalKeyboardKey.keyS when three:
+        controller.stageTool = StageTool.scale;
+      case LogicalKeyboardKey.keyF when three:
+        controller.frameSelected();
+      case LogicalKeyboardKey.home when three:
+        controller.resetCamera();
       case LogicalKeyboardKey.space:
         controller.togglePlay();
       case LogicalKeyboardKey.arrowLeft:
@@ -6648,6 +6874,18 @@ class CanvasStageState extends State<CanvasStage>
                   ),
                 ),
               )),
+              // The gizmo on an element standing on a 3D stage.
+              if (_gizmo() case var g?)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: StageGizmoPainter(g,
+                          hot: _gizmoDrag?.$2 ?? _gizmoHot,
+                          scale: _scale,
+                          origin: _origin),
+                    ),
+                  ),
+                ),
               if (_editorFor() case var editor?) editor,
               if (_typingField() case var typing?) typing,
               if (_brushRing() case var ring?) ring,
@@ -6674,11 +6912,13 @@ class CanvasStageState extends State<CanvasStage>
                 child: SingleChildScrollView(
                   controller: _scrollX,
                   scrollDirection: Axis.horizontal,
+                  physics: _scrollPhysics,
                   child: SizedBox(
                     width: content.width,
                     height: _visible.height,
                     child: SingleChildScrollView(
                       controller: _scroll,
+                      physics: _scrollPhysics,
                       child: painter,
                     ),
                   ),
@@ -6691,6 +6931,7 @@ class CanvasStageState extends State<CanvasStage>
               thumbVisibility: true,
               child: SingleChildScrollView(
                 controller: _scroll,
+                physics: _scrollPhysics,
                 child: painter,
               ),
             );
@@ -6701,6 +6942,7 @@ class CanvasStageState extends State<CanvasStage>
               child: SingleChildScrollView(
                 controller: _scrollX,
                 scrollDirection: Axis.horizontal,
+                physics: _scrollPhysics,
                 child: painter,
               ),
             );
@@ -6738,6 +6980,23 @@ class CanvasStageState extends State<CanvasStage>
               ),
             ]);
           }
+
+          // The 3D view controls, at the right of a scene showing a stage
+          // -- over the page, and still however it scrolls. Not while it
+          // plays, or is played as a game. Always in a Stack, so the page
+          // under them is not built afresh as they come and go.
+          painter = Stack(children: [
+            Positioned.fill(child: painter),
+            if (controller.onStage3d &&
+                controller.stageNav != StageNav.none &&
+                !controller.playing &&
+                !controller.gaming)
+              Positioned(
+                right: 10,
+                top: 10,
+                child: StageNavControls(controller: controller),
+              ),
+          ]);
 
           return Focus(focusNode: _focus, onKeyEvent: _onKey, child: painter);
         },
@@ -6945,7 +7204,14 @@ class CanvasStageState extends State<CanvasStage>
   /// adjustment.
   void _onPointerSignal(PointerSignalEvent signal) {
     if (signal is! PointerScrollEvent) return;
-    if (controller.tool != CanvasTool.pan) return;
+    // Locked, the wheel is claimed before the scroll views see it: on a
+    // stage it steers the camera, and on a page it does nothing at all.
+    if (controller.pageLocked) {
+      GestureBinding.instance.pointerSignalResolver.register(
+          signal, (event) => _steerByScroll(event as PointerScrollEvent));
+      return;
+    }
+    if (controller.tool != CanvasTool.pan || controller.onStage3d) return;
     GestureBinding.instance.pointerSignalResolver
         .register(signal, (event) => _onScroll(event as PointerScrollEvent));
   }
@@ -6959,7 +7225,14 @@ class CanvasStageState extends State<CanvasStage>
       return SystemMouseCursors.precise;
     }
     if (_mode == _DragMode.pan) return SystemMouseCursors.grabbing;
-    if (controller.tool == CanvasTool.pan) return SystemMouseCursors.grab;
+    if (_mode == _DragMode.stageOrbit || _mode == _DragMode.stagePan) {
+      return SystemMouseCursors.grabbing;
+    }
+    if (_mode == _DragMode.gizmo) return SystemMouseCursors.grabbing;
+    if (_gizmoHot != null) return SystemMouseCursors.grab;
+    if (controller.tool == CanvasTool.pan && !controller.onStage3d) {
+      return SystemMouseCursors.grab;
+    }
     // Drawing with the pencil, the pointer is the brush's ring and nothing
     // more: an arrow over the line being drawn is in the way.
     if (controller.editingVector != null &&

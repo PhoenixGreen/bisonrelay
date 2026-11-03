@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_cast3d.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
@@ -212,6 +213,33 @@ void main() {
     expect(find.text("Jess"), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('character3dAsset-d2')));
     expect(placed, ["d2"]);
+  });
+
+  testWidgets('the ready-made cast is listed, and a click places one',
+      (tester) async {
+    final c = CanvasController(CanvasDocument());
+    addTearDown(c.dispose);
+    await show(
+        tester,
+        CharacterAssetSection(
+            controller: c, designs: () async => const <CharacterDesign>[]));
+    for (final m in readyMadeCast) {
+      expect(find.byKey(ValueKey('characterCast-${m.design.name}')),
+          findsOneWidget);
+    }
+    final tile = find.byKey(const ValueKey('characterCast-Theo'));
+    await tester.ensureVisible(tile);
+    await tester.tap(tile);
+    final placed = c.document.elements.single as Character3dElement;
+    expect((placed.name, placed.design.body), ('Theo', 'HairSample_Male'));
+    expect(placed.design.id, isEmpty,
+        reason: 'a copy of the cast, made the user\'s when kept');
+  });
+
+  test('every one of the cast has its picture', () {
+    for (final m in readyMadeCast) {
+      expect(File(m.picture).existsSync(), isTrue, reason: m.picture);
+    }
   });
 
   testWidgets('the Characters section scrolls in a short panel',

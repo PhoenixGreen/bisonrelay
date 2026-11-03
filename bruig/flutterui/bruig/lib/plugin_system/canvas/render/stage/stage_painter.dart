@@ -144,13 +144,19 @@ class Staged {
   /// middle of its bottom edge, standing; its middle, lying on the floor.
   final Offset foot;
 
+  /// shadow is a standing flat's shadow on the floor, as the camera sees
+  /// it, or null: lying down, on the wall, a 3D character -- which casts
+  /// its own -- or in a light that throws none.
+  final Path? shadow;
+
   /// matrix lays the element's own box onto the stage, for a flat: see
   /// StageView.perspective. Null for a 3D character, drawn by its own
   /// scene through [view].
   final Float64List? matrix;
 
   const Staged(this.spot, this.stage, this.view, this.quad, this.box,
-      this.depth, this.matrix, this.foot);
+      this.depth, this.matrix, this.foot,
+      [this.shadow]);
 }
 
 /// stagedIn is [staged] in [doc], against the background behind the canvas
@@ -237,8 +243,26 @@ Staged? staged(CanvasElement e, Iterable<CanvasElement> elements, int frame,
   var foot = spot.stand == SpotStand.floor
       ? middle.page
       : view.see(fx, fy, fz).page;
-  return Staged(
-      spot, stage, view, quad, _around(quad), middle.depth, matrix, foot);
+  // Standing, it throws a shadow on the floor under it: as wide as it is,
+  // a little deep, pushed the way the light throws it.
+  Path? shadow;
+  if (stage.light.shadows &&
+      (spot.stand == SpotStand.upright || spot.stand == SpotStand.camera)) {
+    var deep = math.max(0.12, math.min(wide, tall) * 0.14);
+    var push = tall * stage.light.shadowSlant * 0.25;
+    var points = <Offset>[];
+    for (var k = 0; k < 24; k++) {
+      var a = k / 24 * 2 * math.pi;
+      var across = math.cos(a) * wide * 0.52, depth = math.sin(a) * deep;
+      var p = view.see(fx + ax * across - az * depth + push, 0,
+          fz + az * across + ax * depth);
+      if (p.depth <= StageView.nearest) break;
+      points.add(p.page);
+    }
+    if (points.length == 24) shadow = Path()..addPolygon(points, true);
+  }
+  return Staged(spot, stage, view, quad, _around(quad), middle.depth, matrix,
+      foot, shadow);
 }
 
 Rect _around(List<Offset> points) => Rect.fromLTRB(

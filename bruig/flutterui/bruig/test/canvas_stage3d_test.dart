@@ -247,6 +247,10 @@ void main() {
       expect(get().camera.lens, cameraShots[2].camera.lens);
       await tap(tester, "stageYaw-more");
       expect(get().camera.yaw, 15);
+      // What it looks at, moved across: and the shot is no longer the
+      // shot it was.
+      await tap(tester, "stageAimX-more");
+      expect(get().camera.tx, 0.25);
       await tap(tester, "stageFloor-tiles");
       expect(get().pattern, FloorPattern.tiles);
       await tap(tester, "stageLight-goldenHour");

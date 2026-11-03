@@ -231,6 +231,25 @@ enum CanvasTool {
   const CanvasTool(this.label, this.description);
 }
 
+/// StageTool is what the gizmo on an element standing on a 3D stage does:
+/// the bar's three 3D tools, in place of Select and Pan while the scene is
+/// a stage. Their keys are G, R and S.
+enum StageTool {
+  move("Move", "G",
+      "arrows along the stage, the square across the floor"),
+  rotate("Rotate", "R", "turn it round on the floor"),
+  scale("Scale", "S", "drag the box up to grow it, down to shrink it");
+
+  final String label;
+  final String key;
+  final String description;
+  const StageTool(this.label, this.key, this.description);
+}
+
+/// StageNav is how much of the 3D view controls float at the stage's
+/// right: all of them, the orbit ball alone, or none.
+enum StageNav { all, orbit, none }
+
 /// CanvasFit is how large the canvas's frame is drawn.
 ///
 /// Two modes, because "as big as it will go" means two different things
@@ -936,6 +955,134 @@ class CanvasController extends ChangeNotifier {
     _brushSize = next;
     notifyListeners();
   }
+
+  bool _pageLocked = false;
+
+  /// pageLocked holds the page where it is: nothing scrolls or zooms it.
+  /// On a 3D stage the gestures that would have moved it steer the
+  /// stage's camera instead -- drags orbit, a shifted drag pans, a pinch
+  /// zooms -- so the camera can be flown without the page sliding about.
+  bool get pageLocked => _pageLocked;
+
+  set pageLocked(bool value) {
+    if (_pageLocked == value) return;
+    _pageLocked = value;
+    _notifyView();
+  }
+
+  StageTool _stageTool = StageTool.move;
+
+  /// stageTool is what the gizmo does on an element standing on a stage.
+  StageTool get stageTool => _stageTool;
+
+  set stageTool(StageTool value) {
+    if (_stageTool == value) return;
+    _stageTool = value;
+    _notifyView();
+  }
+
+  StageNav _stageNav = StageNav.all;
+
+  /// stageNav is how much of the 3D view controls are shown. See StageNav.
+  StageNav get stageNav => _stageNav;
+
+  set stageNav(StageNav value) {
+    if (_stageNav == value) return;
+    _stageNav = value;
+    _notifyView();
+  }
+
+  /// canvasSnap is the bar's Snap: the page's snap switch on a page, and
+  /// on a 3D stage the stage's own, which starts off -- both in the Grid
+  /// and guides settings. Not [snapping], which is the timeline's.
+  bool get canvasSnap =>
+      onStage3d ? _document.guides.stageSnap : _document.guides.snap;
+
+  set canvasSnap(bool value) {
+    if (canvasSnap == value) return;
+    var g = _document.guides;
+    apply(_document.copyWith(
+        guides: onStage3d
+            ? g.copyWith(stageSnap: value)
+            : g.copyWith(snap: value)));
+  }
+
+  /// steeredStage is the 3D stage the view controls steer: the one the
+  /// selected element stands on, or else the scene's first -- the canvas
+  /// background's, then a Background element's. Null where the scene has
+  /// none, and the bar shows the page's tools.
+  StageElement? get steeredStage {
+    if (_selection.length == 1) {
+      var spot = _document.elementById(_selection.first)?.base.spot;
+      if (spot != null) {
+        if (stageOf(spot.stage) case var s?) return s;
+      }
+    }
+    for (var (id, _)
+        in stagesIn(_document.elements, backdrop: _document.drawnBackground)) {
+      if (stageOf(id) case var s?) return s;
+    }
+    return null;
+  }
+
+  /// onStage3d is whether the scene shows a 3D stage.
+  bool get onStage3d => steeredStage != null;
+
+  /// steer moves the steered stage's camera to [to] of where it is on this
+  /// frame -- its own setting, or this frame's key where it is keyed.
+  /// Nothing where there is no stage, or it is locked.
+  void steer(StageCamera Function(StageCamera) to, {bool transient = false}) {
+    var s = steeredStage;
+    if (s == null || s.locked) return;
+    putStage(stageFilmed(s, to(s.cameraAt(_frame))), transient: transient);
+  }
+
+  /// orbitBy swings the steered stage's camera round by [dx], [dy]
+  /// degrees: across goes round the stage, down looks from higher.
+  void orbitBy(double dx, double dy, {bool transient = false}) =>
+      steer(
+          (c) => c.copyWith(
+              yaw: (c.yaw + dx + 540) % 360 - 180, pitch: c.pitch + dy),
+          transient: transient);
+
+  /// panCameraBy slides the steered stage's camera by [by], page units:
+  /// the stage follows the pointer.
+  void panCameraBy(Offset by, {bool transient = false}) {
+    var s = steeredStage;
+    if (s == null) return;
+    var view = stageView(s, _frame);
+    steer((c) => view.panned(by), transient: transient);
+  }
+
+  /// dollyBy takes the steered stage's camera [factor] times as far from
+  /// what it looks at: below one nearer.
+  void dollyBy(double factor, {bool transient = false}) =>
+      steer((c) => c.copyWith(distance: c.distance * factor),
+          transient: transient);
+
+  /// frameSelected turns the steered stage's camera on the selected
+  /// element, near enough to fill the view with it. Nothing unless one
+  /// element standing on a stage is selected.
+  void frameSelected() {
+    if (_selection.length != 1) return;
+    var e = _document.elementById(_selection.first);
+    if (e == null) return;
+    var at = stagedIn(_document, e, _frame);
+    if (at == null) return;
+    var spot = at.spot;
+    var tall = e is Character3dElement
+        ? 1.75
+        : spot.height * e.height / math.max(1.0, math.max(e.width, e.height));
+    var size = math.max(tall, spot.height);
+    var middle = spot.stand == SpotStand.wall
+        ? (spot.x, spot.lift + tall / 2, -at.stage.size)
+        : (spot.x, spot.lift + tall / 2, spot.z);
+    steer((c) => at.view.framing(middle.$1, middle.$2, middle.$3, size));
+  }
+
+  /// resetCamera puts the steered stage's camera back where a stage's
+  /// camera starts, with its lens kept.
+  void resetCamera() => steer((c) => StageCamera(lens: c.lens));
 
   CanvasTool _tool = CanvasTool.select;
 
@@ -1669,29 +1816,45 @@ class CanvasController extends ChangeNotifier {
   CanvasElement movedTo(CanvasElement element, Offset topLeft) {
     // Something on a stage is moved across its floor -- or up and along its
     // back wall -- to under where it has been dragged to.
-    if (element.base.spot case var spot?) {
+    if (element.base.spot != null) {
       var at = stagedIn(_document, element, _frame);
       if (at != null) {
+        // Where it stands on this frame, keyed or its own -- and moved, a
+        // key on this frame where it is keyed.
+        var spot = at.spot;
         var by = topLeft - at.box.topLeft;
         var view = at.view;
+        // Snapping, it lands on the 3D steps -- there are no lines on a
+        // stage to land on.
+        var step =
+            _document.guides.stageSnap ? _document.guides.stageStep : 0.0;
+        double snap(double v) =>
+            step > 0 ? (v / step).roundToDouble() * step : v;
         switch (spot.stand) {
           case SpotStand.wall:
             var was = view.toWall(at.box.bottomCenter, -at.stage.size + 0.01);
             var now = view.toWall(at.box.bottomCenter + by,
                 -at.stage.size + 0.01);
             if (was == null || now == null) return element;
-            return element.withBase(
-                spot: spot.copyWith(
-                    x: spot.x + now.dx - was.dx,
-                    lift: spot.lift + now.dy - was.dy));
+            return spotted(
+                element,
+                spot.copyWith(
+                    x: snap(spot.x + now.dx - was.dx),
+                    lift: snap(spot.lift + now.dy - was.dy)));
           default:
             // The point on the floor under the pointer moves as the pointer
             // does: the element keeps its place under the hand that holds it.
-            var was = view.toFloor(at.foot), now = view.toFloor(at.foot + by);
+            // On the level it is lifted to, so a thing off the floor stays
+            // under the hand too.
+            var level = spot.stand == SpotStand.floor ? 0.0 : spot.lift;
+            var was = view.toFloor(at.foot, y: level),
+                now = view.toFloor(at.foot + by, y: level);
             if (was == null || now == null) return element;
-            return element.withBase(
-                spot: spot.copyWith(
-                    x: spot.x + now.dx - was.dx, z: spot.z + now.dy - was.dy));
+            return spotted(
+                element,
+                spot.copyWith(
+                    x: snap(spot.x + now.dx - was.dx),
+                    z: snap(spot.z + now.dy - was.dy)));
         }
       }
     }
@@ -2157,6 +2320,59 @@ class CanvasController extends ChangeNotifier {
         if (!v.key.startsWith("cam.")) v.key: v.value,
     });
     putBackdrop(stage.withBase(
+        track: without.isRest && without.frame != 0
+            ? track.withoutFrame(_frame)
+            : track.withKey(without)));
+  }
+
+  /// spotKeyed is whether where [e] stands on its stage is keyed.
+  bool spotKeyed(CanvasElement e) =>
+      e.track?.keys.any((k) => k.values.keys.any((c) => c.startsWith("spot."))) ??
+      false;
+
+  /// spotted is [e] standing at [spot]: its own spot until it has been
+  /// keyed, and from then on this frame's key -- the rule the camera
+  /// follows. Which stage it is on and how it stands are its own, keyed or
+  /// not.
+  CanvasElement spotted(CanvasElement e, StageSpot spot) {
+    var own = e.base.spot;
+    if (own == null || !spotKeyed(e)) return e.withBase(spot: spot);
+    var kept = e.withBase(
+        spot: own.copyWith(stage: spot.stage, stand: spot.stand));
+    return kept.withBase(track: _pinnedAt(e.track!, _frame, spot.channels));
+  }
+
+  /// keySpot keys where [e] stands as it is on this frame -- and on the
+  /// first frame too, the first time, so it moves from where it stood.
+  void keySpot(CanvasElement e) {
+    var spot = e.spotAt(_frame);
+    if (spot == null) return;
+    var track = e.track ?? ElementTrack.empty;
+    if (!spotKeyed(e) && _frame != 0) {
+      track = _pinnedAt(track, 0, e.base.spot!.channels);
+    }
+    replaceElement(e.withBase(track: _pinnedAt(track, _frame, spot.channels)));
+  }
+
+  /// hasSpotKey is whether where [e] stands is keyed on this frame.
+  bool hasSpotKey(CanvasElement e) =>
+      e.track
+          ?.keyAt(_frame)
+          ?.values
+          .keys
+          .any((c) => c.startsWith("spot.")) ??
+      false;
+
+  /// clearSpotKey takes where [e] stands off this frame's keyframe.
+  void clearSpotKey(CanvasElement e) {
+    var track = e.track;
+    var at = track?.keyAt(_frame);
+    if (track == null || at == null) return;
+    var without = at.copyWith(values: {
+      for (var v in at.values.entries)
+        if (!v.key.startsWith("spot.")) v.key: v.value,
+    });
+    replaceElement(e.withBase(
         track: without.isRest && without.frame != 0
             ? track.withoutFrame(_frame)
             : track.withKey(without)));

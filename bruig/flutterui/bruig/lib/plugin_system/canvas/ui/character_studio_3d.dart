@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_cast3d.dart';
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
@@ -628,6 +629,19 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
                 },
               ),
             ),
+            // The ready-made cast: started from, each is a new character.
+            StudioPills<String>(
+              key: const ValueKey("studioCast"),
+              id: "cast",
+              label: "Ready-made",
+              value: "",
+              options: [
+                for (final m in readyMadeCast) (m.design.name, m.design.name)
+              ],
+              onChanged: (name) => _openDesign(readyMadeCast
+                  .firstWhere((m) => m.design.name == name)
+                  .design),
+            ),
             StudioPills<String>(
               key: const ValueKey("studioBodies"),
               id: "body",
@@ -1203,8 +1217,13 @@ class _StageState extends State<_Stage> {
     if (widget.line case final l? when l != old.line) _character.say(l.text);
   }
 
+  /// _ticks counts the stage's frames, for its shadow to be drawn again on
+  /// each.
+  final ValueNotifier<int> _ticks = ValueNotifier(0);
+
   @override
   void dispose() {
+    _ticks.dispose();
     _dots.dispose();
     _character.removeListener(_changed);
     _character.dispose();
@@ -1305,6 +1324,7 @@ class _StageState extends State<_Stage> {
       ..target = at;
     _character.tick(dt, _camera,
         lookAt: eye, pixelRatio: MediaQuery.devicePixelRatioOf(context));
+    _ticks.value++;
     _placeDots();
   }
 
@@ -1368,7 +1388,11 @@ class _StageState extends State<_Stage> {
               // blank frame flutter_scene warns of.
               child: _character.avatar == null
                   ? const SizedBox.expand()
-                  : SceneView(_character.scene, camera: _camera, onTick: _tick),
+                  // Its shadow on the ground under it, drawn before it.
+                  : CustomPaint(
+                      painter: _GroundShadow(_character, _camera, _ticks),
+                      child: SceneView(_character.scene,
+                          camera: _camera, onTick: _tick)),
             ),
           ),
         ),
@@ -1504,6 +1528,22 @@ class _StageState extends State<_Stage> {
       ),
     ]);
   }
+}
+
+/// _GroundShadow is the character's shadow on the ground under it on the
+/// Studio's stage, as the stage's camera sees it.
+class _GroundShadow extends CustomPainter {
+  final CharacterScene character;
+  final PerspectiveCamera camera;
+  _GroundShadow(this.character, this.camera, Listenable ticks)
+      : super(repaint: ticks);
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      character.shadowOn(canvas, Offset.zero & size, camera);
+
+  @override
+  bool shouldRepaint(_GroundShadow old) => old.character != character;
 }
 
 /// _TestNotes is the Test step's side: what it is for, and whether what is

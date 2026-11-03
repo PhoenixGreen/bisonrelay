@@ -32,6 +32,18 @@ import 'package:provider/provider.dart';
 // library has already been through once. There is a test here that nothing in
 // a row owns one.
 
+/// until turns the real event loop and the fake one alternately until
+/// [done] -- what real file I/O has finished doing -- or five seconds have
+/// gone: a loaded machine takes longer than any fixed wait allows.
+Future<void> until(WidgetTester tester, bool Function() done) async {
+  for (var i = 0; i < 250 && !done(); i++) {
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
+  }
+  await tester.pump();
+}
+
 void main() {
   late Directory root;
 
@@ -124,11 +136,12 @@ void main() {
     expect(find.byTooltip("Save now"), findsNothing);
 
     controller.apply(const CanvasDocument(title: "Plan", frames: 40));
-    await idle(tester);
+    await until(tester, () => find.byTooltip("Save now").evaluate().isNotEmpty);
     expect(find.byTooltip("Save now"), findsOneWidget);
 
     await tester.tap(find.byTooltip("Save now"));
-    await idle(tester);
+    await until(tester, () => !controller.dirty);
+    await until(tester, () => find.byTooltip("Saved").evaluate().isNotEmpty);
     expect(controller.dirty, isFalse);
     expect(find.byTooltip("Saved"), findsOneWidget);
   });

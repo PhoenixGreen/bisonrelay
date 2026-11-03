@@ -601,10 +601,11 @@ void main() {
 
     // And the percentage stays with the tools it belongs to rather than
     // drifting across to the buttons on the right.
-    var zoom = tester.getRect(find.byType(TextField).last);
-    var zoomIn = tester.getRect(find.byIcon(Icons.zoom_in));
-    expect(zoom.left - zoomIn.right, lessThan(12),
-        reason: "the reading sits against the zoom buttons");
+    var zoom = tester.getRect(find.byKey(const ValueKey("zoomScrub")));
+    var before0 = tester.getRect(find.byTooltip(
+        "Show a margin outside the canvas, for animating things on and off"));
+    expect(zoom.left - before0.right, lessThan(18),
+        reason: "the reading sits against the view buttons");
     expect(zoom.right, lessThan(bar.width * 0.6),
         reason: "on the left half of the bar, not beside Publish");
 

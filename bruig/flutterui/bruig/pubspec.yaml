@@ -194,6 +194,8 @@ flutter:
     # The Speech device's breaths, laughs, sighs and coughs: CC0, see
     # its SOURCES.md.
     - assets/canvas/cues/
+    # The ready-made 3D cast's pictures, for the Characters list.
+    - assets/canvas/character_cast/
     # The Flutter GPU shaders hook/build.dart compiles, one folder for each
     # kind of GPU.
     - flutter_scene_generated/

@@ -97,6 +97,35 @@ void main() {
     expect(e.spotAt(10)!.stage, "st");
   });
 
+  test("keyed, it moves between its keys, and moving it keys it", () {
+    final c = CanvasController(CanvasDocument(frames: 48)
+        .addElement(stage())
+        .addElement(flat("a", spot: const StageSpot("st", x: -2))));
+    addTearDown(c.dispose);
+    CanvasElement get() => c.document.elementById("a")!;
+    // Unkeyed, moving it moves it on every frame.
+    c.frame = 20;
+    c.replaceElement(c.spotted(get(), get().spotAt(20)!.copyWith(x: -1)));
+    expect(get().base.spot!.x, -1);
+    expect(c.spotKeyed(get()), isFalse);
+    // Keyed here, it is keyed on the first frame too, where it stood.
+    c.keySpot(get());
+    expect(c.hasSpotKey(get()), isTrue);
+    c.frame = 40;
+    c.replaceElement(c.spotted(get(), get().spotAt(40)!.copyWith(x: 3)));
+    expect(get().spotAt(40)!.x, 3);
+    expect(get().spotAt(20)!.x, -1);
+    expect(get().spotAt(30)!.x, closeTo(1, 0.6), reason: "on its way");
+    expect(get().base.spot!.x, -1, reason: "its own spot left alone");
+    // Dragged on a keyed frame, the drag keys it.
+    final box = stagedIn(c.document, get(), 40)!.box;
+    final moved = c.movedTo(get(), box.topLeft + const Offset(40, 0));
+    expect(moved.spotAt(40)!.x, greaterThan(3));
+    expect(moved.base.spot!.x, -1);
+    c.clearSpotKey(get());
+    expect(c.hasSpotKey(get()), isFalse);
+  });
+
   test("a flat is set into the stage: its corners where the camera sees them",
       () {
     for (final cam in [

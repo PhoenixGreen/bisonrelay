@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:bruig/components/containers.dart' show BisonRelayLogo;
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_strip.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
@@ -262,20 +265,86 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
                     : () => controller.goToScene(controller.document.at + 1)),
             _divider(theme),
           ],
-          // The two tools first, because which one is active changes what
-          // every other gesture on the page does.
+          // The tools first, because which one is active changes what every
+          // other gesture on the page does. On a 3D stage they are what the
+          // gizmo on the selected element does -- move, rotate, scale --
+          // and how much of the view controls float at the stage's right.
+          if (controller.onStage3d) ...[
+            for (var (tool, icon) in const [
+              (StageTool.move, Icons.open_with),
+              (StageTool.rotate, Icons.rotate_right),
+              (StageTool.scale, Icons.open_in_full),
+            ])
+              _barButton(theme,
+                  key: ValueKey("stageTool-${tool.name}"),
+                  icon: icon,
+                  tooltip: "${tool.label} (${tool.key}) — ${tool.description}",
+                  active: controller.stageTool == tool,
+                  onPressed: () => controller.stageTool = tool),
+            _barButton(theme,
+                key: const ValueKey("stageNav"),
+                icon: switch (controller.stageNav) {
+                  StageNav.all => Icons.threed_rotation,
+                  StageNav.orbit => Icons.radio_button_checked,
+                  StageNav.none => Icons.visibility_off_outlined,
+                },
+                tooltip: switch (controller.stageNav) {
+                  StageNav.all =>
+                    "View controls: all of them — press for the orbit ball "
+                        "alone",
+                  StageNav.orbit =>
+                    "View controls: the orbit ball alone — press to hide "
+                        "them",
+                  StageNav.none => "View controls: hidden — press to show "
+                      "them all",
+                },
+                active: controller.stageNav != StageNav.none,
+                onPressed: () =>
+                    controller.stageNav = switch (controller.stageNav) {
+                      StageNav.all => StageNav.orbit,
+                      StageNav.orbit => StageNav.none,
+                      StageNav.none => StageNav.all,
+                    }),
+          ] else ...[
+            _barButton(theme,
+                key: const ValueKey("canvasToolSelect"),
+                icon: Icons.near_me_outlined,
+                tooltip: "${CanvasTool.select.label} — "
+                    "${CanvasTool.select.description}",
+                active: controller.tool == CanvasTool.select,
+                onPressed: () => controller.tool = CanvasTool.select),
+            _barButton(theme,
+                key: const ValueKey("canvasToolPan"),
+                icon: Icons.pan_tool_outlined,
+                tooltip:
+                    "${CanvasTool.pan.label} — ${CanvasTool.pan.description}",
+                active: controller.tool == CanvasTool.pan,
+                onPressed: () => controller.tool = CanvasTool.pan),
+          ],
+          // Snap and the page lock, on a page and on a stage alike.
+          _SnapButton(
+              controller: controller,
+              theme: theme,
+              onMore: widget.guidesOpen ? null : widget.onToggleGuides),
           _barButton(theme,
-              icon: Icons.near_me_outlined,
-              tooltip: "${CanvasTool.select.label} — "
-                  "${CanvasTool.select.description}",
-              active: controller.tool == CanvasTool.select,
-              onPressed: () => controller.tool = CanvasTool.select),
-          _barButton(theme,
-              icon: Icons.pan_tool_outlined,
-              tooltip:
-                  "${CanvasTool.pan.label} — ${CanvasTool.pan.description}",
-              active: controller.tool == CanvasTool.pan,
-              onPressed: () => controller.tool = CanvasTool.pan),
+              key: const ValueKey("pageLock"),
+              icon: controller.pageLocked
+                  ? Icons.lock_outline
+                  : Icons.lock_open_outlined,
+              tooltip: switch ((controller.pageLocked, controller.onStage3d)) {
+                (true, true) => "Unlock the page (L) — while it is locked "
+                    "the page stays put and drags, scrolls and pinches steer "
+                    "the stage's camera",
+                (true, false) => "Unlock the page (L) — it cannot be "
+                    "scrolled or zoomed while locked",
+                (false, true) => "Lock the page in place (L): then drags, "
+                    "scrolls and pinches steer the stage's camera, not the "
+                    "page",
+                (false, false) => "Lock the page in place (L): no scrolling "
+                    "or zooming it by accident",
+              },
+              active: controller.pageLocked,
+              onPressed: () => controller.pageLocked = !controller.pageLocked),
           _divider(theme),
           // The joins between text boxes: locked so a drag cannot change
           // them, and hidden so the lines stop crossing the design. Beside
@@ -338,17 +407,33 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
           // document's shape: a wide banner is limited by the height, while a
           // 9:16 story fitted whole is a narrow strip down the middle of the
           // window with most of the screen empty either side.
+          //
+          // One button for the two: it says which it is, and a press
+          // changes to the other -- or, zoomed away from it, goes back.
           _barButton(theme,
-              icon: Icons.fit_screen_outlined,
-              tooltip: CanvasFit.whole.label,
-              active: controller.fit == CanvasFit.whole && controller.atFit,
-              onPressed: controller.showWhole),
-          _barButton(theme,
-              icon: Icons.width_full,
-              tooltip: "${CanvasFit.width.label} — the canvas scrolls if it "
-                  "is taller than the window",
-              active: controller.fit == CanvasFit.width && controller.atFit,
-              onPressed: controller.fitWidth),
+              key: const ValueKey("canvasFit"),
+              icon: controller.fit == CanvasFit.whole
+                  ? Icons.fit_screen_outlined
+                  : Icons.width_full,
+              tooltip: switch ((controller.fit, controller.atFit)) {
+                (CanvasFit.whole, true) => "Showing the whole canvas — "
+                    "press to fit to width instead",
+                (CanvasFit.width, true) => "Fitting to width, the canvas "
+                    "scrolling if it is taller than the window — press to "
+                    "show the whole canvas instead",
+                (CanvasFit.whole, false) => "Show the whole canvas again",
+                (CanvasFit.width, false) => "Fit to width again",
+              },
+              active: controller.atFit,
+              onPressed: controller.pageLocked
+                  ? null
+                  : () => !controller.atFit
+                      ? (controller.fit == CanvasFit.whole
+                          ? controller.showWhole()
+                          : controller.fitWidth())
+                      : (controller.fit == CanvasFit.whole
+                          ? controller.fitWidth()
+                          : controller.showWhole())),
           // The world just outside the canvas, for building entrances and
           // exits.
           _barButton(theme,
@@ -365,8 +450,8 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
         ],
       );
 
-  /// _zoomGroup is the two zoom buttons and the reading, kept out of the
-  /// scrolling part of the bar.
+  /// _zoomGroup is the zoom's reading, kept out of the scrolling part of
+  /// the bar.
   ///
   /// It is pinned because it is the one thing here that has to be *read*
   /// rather than pressed. Inside the row with everything else, a narrow
@@ -377,14 +462,6 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
         mainAxisSize: MainAxisSize.min,
         children: [
           _divider(theme),
-          _barButton(theme,
-              icon: Icons.zoom_out,
-              tooltip: "Zoom out",
-              onPressed: () => controller.zoomBy(1 / 1.25)),
-          _barButton(theme,
-              icon: Icons.zoom_in,
-              tooltip: "Zoom in",
-              onPressed: () => controller.zoomBy(1.25)),
           // What is actually on screen: document pixels to screen pixels,
           // which is the fitted scale times the zoom. It used to be the zoom
           // alone, so it read 100% for a 4096-pixel canvas squeezed into a
@@ -393,7 +470,8 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
           // since they moved a number that had started from the wrong place.
           //
           // A field rather than a label, because the obvious thing to do with
-          // a percentage is type one.
+          // a percentage is type one -- and dragged sideways, it scrubs: the
+          // zoom buttons either side of it went for that.
           _ZoomField(controller: controller, theme: theme),
         ],
       );
@@ -1222,7 +1300,9 @@ class _SceneFieldState extends State<_SceneField> {
 }
 
 /// _ZoomField is the percentage on the band: what is on screen, and a place
-/// to type what you want instead.
+/// to type what you want instead -- or, dragged sideways, to scrub it: right
+/// zooms in, left out. A double-click fits the canvas again, and a single
+/// click opens it for typing. Still while the page is locked.
 ///
 /// Its own small widget rather than a CanvasNumberField, which is built for a
 /// settings panel and is a caption plus a bordered box tall enough to make
@@ -1272,7 +1352,40 @@ class _ZoomFieldState extends State<_ZoomField> {
   void _commit() {
     var wanted = double.tryParse(_text.text.replaceAll("%", "").trim());
     if (wanted != null) widget.controller.setViewScale(wanted / 100);
-    setState(() => _shown = -1);
+    setState(() {
+      _shown = -1;
+      _typing = false;
+    });
+  }
+
+  /// _typing is whether the reading has been clicked open to type into.
+  bool _typing = false;
+
+  /// _type opens the reading for typing, and puts the caret in it once
+  /// the field is there.
+  void _type() {
+    setState(() => _typing = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
+
+  /// _scrubbing is whether the reading is being dragged.
+  bool _scrubbing = false;
+
+  /// _scrub zooms by a drag of [dx] screen pixels: a little over a
+  /// doubling for every hundred and twenty.
+  void _scrub(double dx) {
+    var c = widget.controller;
+    if (c.pageLocked) return;
+    c.zoomBy(math.exp(dx * 0.006));
+  }
+
+  /// _fit puts the canvas back to the fit it was last given.
+  void _fit() {
+    var c = widget.controller;
+    if (c.pageLocked) return;
+    c.fit == CanvasFit.whole ? c.showWhole() : c.fitWidth();
   }
 
   /// _boxWidth is the room the widest reading takes.
@@ -1292,6 +1405,8 @@ class _ZoomFieldState extends State<_ZoomField> {
     var painter = TextPainter(
       text: TextSpan(text: "8888%", style: style),
       textDirection: TextDirection.ltr,
+      // At the reader's text size, which is what the reading is drawn at.
+      textScaler: MediaQuery.textScalerOf(context),
     )..layout();
     // The padding either side, and the room the caret needs at the end.
     return painter.width + 4 + 6;
@@ -1300,6 +1415,7 @@ class _ZoomFieldState extends State<_ZoomField> {
   @override
   Widget build(BuildContext context) {
     var at = (widget.controller.viewScale * 100).round();
+    var locked = widget.controller.pageLocked;
     if (!_focus.hasFocus && at != _shown) {
       _shown = at;
       // The sign is part of the reading rather than a decoration beside it.
@@ -1322,11 +1438,64 @@ class _ZoomFieldState extends State<_ZoomField> {
     // centres it against the buttons either side. Given a taller box it sat
     // at the top of it, which is what put the number and the per cent sign
     // above the line of buttons.
+    // Not being typed into, it is a reading to drag: the field takes over
+    // only once it has been clicked.
+    if (!_typing) {
+      var colors = widget.theme.colors;
+      return Center(
+        child: Opacity(
+          opacity: locked ? 0.45 : 1,
+          child: Tooltip(
+            message: locked
+                ? "How large the canvas is drawn. The page is locked, so it "
+                    "stays as it is."
+                : "How large the canvas is drawn, as a percentage of its own "
+                    "pixels. Drag sideways to zoom, double-click to fit the "
+                    "canvas again, click to type one.",
+            child: MouseRegion(
+              cursor: locked
+                  ? SystemMouseCursors.basic
+                  : SystemMouseCursors.resizeLeftRight,
+              child: GestureDetector(
+                key: const ValueKey("zoomScrub"),
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragStart:
+                    locked ? null : (_) => setState(() => _scrubbing = true),
+                onHorizontalDragUpdate:
+                    locked ? null : (d) => _scrub(d.delta.dx),
+                onHorizontalDragEnd:
+                    locked ? null : (_) => setState(() => _scrubbing = false),
+                onDoubleTap: locked ? null : _fit,
+                onTap: locked ? null : _type,
+                child: Container(
+                  height: 22,
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(4),
+                    color: _scrubbing ? colors.secondaryContainer : null,
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.code, size: 11, color: colors.onSurfaceVariant),
+                    const SizedBox(width: 2),
+                    SizedBox(
+                      width: _boxWidth(type) - 6,
+                      child: Text("$at%", style: type),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Center(
         child: SizedBox(
       // The room this reading needs, with the per cent sign pinned to the
-      // right of the box and the digits against it. See _boxWidth.
-      width: _boxWidth(type),
+      // right of the box and the digits against it. See _boxWidth. As wide
+      // as the reading it opens from, grip and all.
+      width: _boxWidth(type) + 13,
       child: Tooltip(
         message: "How large the canvas is drawn, as a percentage of its own "
             "pixels. Type one to go there.",
@@ -1354,9 +1523,165 @@ class _ZoomFieldState extends State<_ZoomField> {
                     BorderSide(color: widget.theme.colors.primary, width: 1)),
             contentPadding: const EdgeInsets.symmetric(horizontal: 2),
           ),
-          onSubmitted: (_) => _commit(),
+          // Committed as the caret leaves it -- see initState.
+          onSubmitted: (_) => _focus.unfocus(),
         ),
       ),
     ));
   }
+}
+
+/// _SnapButton is Snap on the band, as a split button: the switch itself,
+/// and beside it an arrow for what it snaps to -- the page's lines on a
+/// page, the 3D steps on a stage. The same switch as the one in the Grid
+/// and guides settings, which the menu's last line opens.
+class _SnapButton extends StatelessWidget {
+  final CanvasController controller;
+  final ThemeNotifier theme;
+
+  /// onMore opens the Grid and guides settings, or is null while they are
+  /// open already.
+  final VoidCallback? onMore;
+
+  const _SnapButton(
+      {required this.controller, required this.theme, this.onMore});
+
+  void _set(CanvasGuides next) =>
+      controller.apply(controller.document.copyWith(guides: next));
+
+  @override
+  Widget build(BuildContext context) {
+    var colors = theme.colors;
+    var guides = controller.document.guides;
+    var on = controller.canvasSnap;
+    var three = controller.onStage3d;
+    var ink = on ? colors.onSecondaryContainer : colors.onSurfaceVariant;
+    String metres(double v) =>
+        v == v.roundToDouble() ? "${v.round()} m" : "$v m";
+    MenuItemButton tick(String label, bool ticked, VoidCallback act,
+            {Key? key}) =>
+        MenuItemButton(
+          key: key,
+          onPressed: act,
+          leadingIcon: Icon(
+              ticked ? Icons.check_box : Icons.check_box_outline_blank,
+              size: 16),
+          child: Text(label, style: const TextStyle(fontSize: 12)),
+        );
+    return MenuAnchor(
+      menuChildren: [
+        if (three) ...[
+          for (var step in const [0.1, 0.25, 0.5, 1.0])
+            tick("Moves in steps of ${metres(step)}", guides.stageStep == step,
+                () => _set(guides.copyWith(stageStep: step)),
+                key: ValueKey("snapStep-$step")),
+          const Divider(height: 1),
+          for (var turn in const [5.0, 15.0, 45.0])
+            tick("Turns in steps of ${turn.round()}°", guides.stageTurn == turn,
+                () => _set(guides.copyWith(stageTurn: turn)),
+                key: ValueKey("snapTurn-${turn.round()}")),
+        ] else ...[
+          tick(
+              "To edges",
+              guides.snapTo.edges,
+              () => _set(guides.copyWith(
+                  snapTo:
+                      guides.snapTo.copyWith(edges: !guides.snapTo.edges)))),
+          tick(
+              "To centres",
+              guides.snapTo.centres,
+              () => _set(guides.copyWith(
+                  snapTo: guides.snapTo
+                      .copyWith(centres: !guides.snapTo.centres)))),
+          tick(
+              "To other elements",
+              guides.snapTo.objects,
+              () => _set(guides.copyWith(
+                  snapTo: guides.snapTo
+                      .copyWith(objects: !guides.snapTo.objects)))),
+        ],
+        const Divider(height: 1),
+        MenuItemButton(
+          key: const ValueKey("snapMore"),
+          onPressed: onMore,
+          leadingIcon: const Icon(Icons.grid_4x4, size: 16),
+          child: const Text("All the snapping settings",
+              style: TextStyle(fontSize: 12)),
+        ),
+      ],
+      builder: (context, menu, _) => Container(
+        height: 26,
+        margin: const EdgeInsets.only(right: 2),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(5),
+          color: on ? colors.secondaryContainer : null,
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Tooltip(
+            message: on
+                ? "Snapping (⇧S) — press to stop"
+                : "Snap (⇧S) — ${three ? "move and turn in steps" : "land on "
+                    "the guides, the grid and other elements"}",
+            child: InkWell(
+              key: const ValueKey("snapToggle"),
+              borderRadius:
+                  const BorderRadius.horizontal(left: Radius.circular(5)),
+              onTap: () => controller.canvasSnap = !on,
+              child: SizedBox(
+                width: 24,
+                height: 26,
+                child: CustomPaint(painter: _MagnetIcon(ink)),
+              ),
+            ),
+          ),
+          Tooltip(
+            message: "What it snaps to",
+            child: InkWell(
+              key: const ValueKey("snapMenu"),
+              borderRadius:
+                  const BorderRadius.horizontal(right: Radius.circular(5)),
+              onTap: () => menu.isOpen ? menu.close() : menu.open(),
+              child: SizedBox(
+                width: 13,
+                height: 26,
+                child: Icon(Icons.arrow_drop_down, size: 14, color: ink),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// _MagnetIcon is Snap's magnet: there is none among the icons.
+class _MagnetIcon extends CustomPainter {
+  final Color color;
+  const _MagnetIcon(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Drawn on a 24-unit square, as an icon is, 15 units across.
+    var k = 15 / 24;
+    canvas.translate(size.width / 2 - 12 * k, size.height / 2 - 12 * k);
+    canvas.scale(k);
+    var pen = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawPath(
+        Path()
+          ..moveTo(6, 4)
+          ..lineTo(6, 12)
+          ..arcToPoint(const Offset(18, 12),
+              radius: const Radius.circular(6), clockwise: false)
+          ..lineTo(18, 4),
+        pen);
+    canvas.drawLine(const Offset(6, 8), const Offset(10, 8), pen);
+    canvas.drawLine(const Offset(14, 8), const Offset(18, 8), pen);
+  }
+
+  @override
+  bool shouldRepaint(_MagnetIcon old) => old.color != color;
 }

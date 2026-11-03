@@ -281,19 +281,20 @@ void main() {
       expect(find.text("Opacity"), findsNothing);
     });
 
-    testWidgets("offers both frame buttons", (tester) async {
+    testWidgets("offers both frames, on one button", (tester) async {
+      // The whole canvas and its width were two buttons side by side; they
+      // are one now, saying which it is and changing to the other.
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
       await pump(tester, bar(controller));
 
       expect(controller.fit, CanvasFit.whole);
       await tester.tap(find.byTooltip(
-          "${CanvasFit.width.label} — the canvas scrolls if it is taller "
-          "than the window"));
+          "Showing the whole canvas — press to fit to width instead"));
       await tester.pumpAndSettle();
       expect(controller.fit, CanvasFit.width);
 
-      await tester.tap(find.byTooltip(CanvasFit.whole.label));
+      await tester.tap(find.byKey(const ValueKey("canvasFit")));
       await tester.pumpAndSettle();
       expect(controller.fit, CanvasFit.whole);
     });
@@ -6662,7 +6663,11 @@ void main() {
           ));
 
       // The band has no stage under it, so the fitted scale is one and the
-      // percentage is the zoom.
+      // percentage is the zoom. A click opens the reading for typing.
+      // A click, once it is plainly not the first of a double-click.
+      await tester.tap(find.byKey(const ValueKey("zoomScrub")));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
       var field = find.byType(TextField);
       expect(field, findsOneWidget);
       await enterValue(tester, field, "250");
@@ -6695,8 +6700,8 @@ void main() {
             onToggleTimeline: () {},
           ));
 
-      var field = tester.getRect(find.byType(TextField));
-      var icon = tester.getRect(find.byIcon(Icons.zoom_in));
+      var field = tester.getRect(find.byKey(const ValueKey("zoomScrub")));
+      var icon = tester.getRect(find.byKey(const ValueKey("canvasFit")));
       var suffix = tester.getRect(find.text("100%"));
       expect((field.center.dy - icon.center.dy).abs(), lessThan(2),
           reason: "the box is at ${field.center.dy} and the buttons at "
@@ -6726,13 +6731,19 @@ void main() {
             onToggleTimeline: () {},
           ));
 
+      // Against the view buttons before it, the rule between them -- the
+      // zoom buttons it once sat between are gone, for dragging it.
+      var reading = find.byKey(const ValueKey("zoomScrub"));
       double gapNow() =>
-          tester.getRect(find.byType(TextField)).left -
-          tester.getRect(find.byIcon(Icons.zoom_in)).right;
+          tester.getRect(reading).left -
+          tester
+              .getRect(find.byTooltip("Show a margin outside the canvas, for "
+                  "animating things on and off"))
+              .right;
 
       var gap = gapNow();
-      var box = tester.getRect(find.byType(TextField)).width;
-      expect(gap, lessThan(12),
+      var box = tester.getRect(reading).width;
+      expect(gap, lessThan(18),
           reason: "the number sits with the buttons it belongs to: $gap");
 
       // One width, big enough for the widest reading there is, and the
@@ -6740,18 +6751,18 @@ void main() {
       // after the sign rather than a gap before the number.
       controller.zoom = 0.25;
       await tester.pumpAndSettle();
-      expect(tester.getRect(find.byType(TextField)).width, box);
+      expect(tester.getRect(reading).width, box);
       expect((gapNow() - gap).abs(), lessThan(0.5),
           reason: "the box does not move when the number gets shorter");
 
       controller.zoom = 16;
       await tester.pumpAndSettle();
-      var wide = tester.getRect(find.byType(TextField));
-      var reading = tester.getRect(find.text("1600%"));
+      var wide = tester.getRect(reading);
+      var digits = tester.getRect(find.text("1600%"));
       expect(wide.width, box, reason: "still one width");
-      expect(reading.left, greaterThanOrEqualTo(wide.left - 0.5),
+      expect(digits.left, greaterThanOrEqualTo(wide.left - 0.5),
           reason: "nothing is cut off the front of it");
-      expect(reading.right, lessThanOrEqualTo(wide.right + 0.5),
+      expect(digits.right, lessThanOrEqualTo(wide.right + 0.5),
           reason: "nor off the end");
     });
 
@@ -6786,7 +6797,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text("1600%"), findsOneWidget);
 
-      var field = tester.getRect(find.byType(TextField));
+      var field = tester.getRect(find.byKey(const ValueKey("zoomScrub")));
       var digits = tester.getRect(find.text("1600%"));
       expect(digits.width, greaterThan(0));
       expect(digits.left, greaterThanOrEqualTo(field.left - 0.5),
@@ -6825,7 +6836,7 @@ void main() {
       await tester.pumpAndSettle();
 
       var reading = tester.getRect(find.text("888%"));
-      var field = tester.getRect(find.byType(TextField));
+      var field = tester.getRect(find.byKey(const ValueKey("zoomScrub")));
       // Inside its own box, sign and all. The box is sized against the widest
       // digits there are rather than against a number that happens to have a
       // narrow one in it -- 888% is wider than 1400% in a face whose one is

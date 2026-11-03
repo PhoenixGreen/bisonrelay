@@ -142,6 +142,50 @@ List<Widget> stageSettings(
                   onCommit: commit,
                 ),
               ]),
+          // What it looks at: a metre over the middle of the floor until
+          // it is panned, or framed on something -- the view controls at
+          // the stage's right do both.
+          CanvasControlGroup(
+              label: "Looks at",
+              help: "Where the camera looks, in metres from a metre above "
+                  "the middle of the floor: across, up and nearer. Pan and "
+                  "Frame in the view controls at the stage's right move it; "
+                  "Reset there puts it back in the middle.",
+              children: [
+                for (var (key, label, value, set) in [
+                  (
+                    "stageAimX",
+                    "Across",
+                    camera.tx,
+                    (double v) => camera.copyWith(tx: v)
+                  ),
+                  (
+                    "stageAimY",
+                    "Up",
+                    camera.ty,
+                    (double v) => camera.copyWith(ty: v)
+                  ),
+                  (
+                    "stageAimZ",
+                    "Nearer",
+                    camera.tz,
+                    (double v) => camera.copyWith(tz: v)
+                  ),
+                ])
+                  CanvasStepper(
+                    key: ValueKey(key),
+                    label: label,
+                    value: value,
+                    min: key == "stageAimY" ? -10 : -50,
+                    max: key == "stageAimY" ? 30 : 50,
+                    step: 0.25,
+                    decimals: 2,
+                    suffix: " m",
+                    defaultValue: 0,
+                    onChanged: (v) => film(set(v), live: true),
+                    onCommit: commit,
+                  ),
+              ]),
           CanvasControlGroup(
               label: "Camera moves",
               help: "Key the camera on one frame, change it on a later one, "
@@ -265,7 +309,10 @@ bool _sameCamera(StageCamera a, StageCamera b) =>
     (a.yaw - b.yaw).abs() < 0.5 &&
     (a.pitch - b.pitch).abs() < 0.5 &&
     (a.distance - b.distance).abs() < 0.05 &&
-    (a.lens - b.lens).abs() < 0.5;
+    (a.lens - b.lens).abs() < 0.5 &&
+    (a.tx - b.tx).abs() < 0.01 &&
+    (a.ty - b.ty).abs() < 0.01 &&
+    (a.tz - b.tz).abs() < 0.01;
 
 /// _stageTile draws [stage] filling the tile, at its first frame.
 void _stageTile(ui.Canvas canvas, Size size, StageElement stage) {

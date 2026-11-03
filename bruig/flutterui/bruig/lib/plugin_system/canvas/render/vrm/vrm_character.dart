@@ -355,7 +355,8 @@ class CharacterScene extends ChangeNotifier {
         head * vm.Quaternion.axisAngle(vm.Vector3(0, 0, 1), _tiltNow * 0.45));
     a.update(dt, camera: camera);
     a.wear(_unitsNow);
-    if ((_mixNow.blush - _blushed).abs() > 0.02) {
+    if ((_mixNow.blush - _blushed).abs() > 0.02 ||
+        ShapedAvatar.creaseKey(_shape) != _creased) {
       _blushed = _mixNow.blush;
       _repaint();
     }
@@ -408,14 +409,15 @@ class CharacterScene extends ChangeNotifier {
       double turn = 0,
       double tilt = 0,
       double zoom = 1,
-      double aspect = 0.5}) {
+      double aspect = 0.5,
+      double reach = 0}) {
     final h = _avatar?.avatar.humanoid;
     vm.Vector3? at(VrmHumanBone b) => restAt(b) ?? h?.worldPosition(b);
     final head = at(VrmHumanBone.head) ?? vm.Vector3(0, 1.4, 0);
     // The top of the hair, over the head bone by about three times the
-    // neck's length.
-    final top =
-        head.y + (head.y - (at(VrmHumanBone.neck)?.y ?? head.y * 0.94)) * 3;
+    // neck's length -- or as high as its hands go, where they go higher.
+    final top = math.max(reach,
+        head.y + (head.y - (at(VrmHumanBone.neck)?.y ?? head.y * 0.94)) * 3);
     final (vm.Vector3 focus, double high, double wide) = switch (framing) {
       Character3dFraming.body => (
           vm.Vector3(head.x, top / 2, head.z),
@@ -473,28 +475,32 @@ class CharacterScene extends ChangeNotifier {
         turn: turn,
         tilt: tilt,
         zoom: zoom,
-        aspect: box.width / box.height);
+        aspect: box.width / box.height,
+        reach: _reach());
     final dt = _advance(frame, frameRate);
     final t = _sceneTime!;
     // Carried across the picture by its walks, turned the way it goes: the
     // camera moved and turned the other way, so the framing stays put.
     final p = performance;
-    if (p != null && p.clips.any((c) => c.dir != 0)) {
+    if (p != null && (p.startsAt != 0 || p.clips.any((c) => c.dir != 0))) {
       final go = p.travelAt(t, _paceOf);
       aim(camera,
           framing: framing,
           turn: turn - go.turn * 0.5,
           tilt: tilt,
           zoom: zoom,
-          aspect: box.width / box.height);
+          aspect: box.width / box.height,
+          reach: _reach());
       final f = camera.target - camera.position;
       // As far as the box's edge and no further: a character is drawn
       // only in its own box, so that is as far across as it can go.
       final edge =
           f.length * math.tan(camera.fovRadiansY / 2) * box.width / box.height -
               _height * 0.3;
-      final x =
-          go.x.clamp(-math.max(0.0, edge), math.max(0.0, edge)).toDouble();
+      // From the edge its walks start at, where they start at one.
+      final x = (p.startsAt * math.max(0.0, edge) + go.x)
+          .clamp(-math.max(0.0, edge), math.max(0.0, edge))
+          .toDouble();
       f.normalize();
       final right = vm.Vector3(0, 1, 0).cross(f).normalized()..scale(x);
       camera
@@ -505,6 +511,41 @@ class CharacterScene extends ChangeNotifier {
     scene.update(dt);
     _shadow(canvas, box, camera, p?.shadow ?? "Soft");
     scene.render(camera, canvas, viewport: box, pixelRatio: pixelRatio);
+  }
+
+  /// _reach is how high its hands go in what it does -- cheering, jumping,
+  /// waving -- for the framing to leave room for them: nought where they
+  /// stay below its head. Worked out from what it is set to do rather than
+  /// where its hands are now, so the camera stays put as they rise.
+  double _reach() {
+    final p = performance;
+    final stances = {
+      _move.stance,
+      if (p?.stance case final s?) s,
+      for (final k in p?.keys ?? const <PoseKey>[]) k.stance,
+    };
+    final motions = {
+      _move.motion,
+      for (final c in p?.clips ?? const <MotionClip3d>[]) c.kind,
+    };
+    final up = stances.contains("Cheer") || motions.contains("Jump");
+    final wave = stances.contains("Wave") || motions.contains("Wave");
+    if (!up && !wave) return 0;
+    // At rest, or -- before it has been stood at all -- as it was made:
+    // the arm as long either way.
+    final h = _avatar?.avatar.humanoid;
+    vm.Vector3? at(VrmHumanBone b) => restAt(b) ?? h?.worldPosition(b);
+    final shoulder = at(VrmHumanBone.rightUpperArm),
+        elbow = at(VrmHumanBone.rightLowerArm),
+        hand = at(VrmHumanBone.rightHand);
+    if (shoulder == null || elbow == null || hand == null) return 0;
+    // The arm straight up -- or raised to wave -- and the hand past the
+    // wrist, a fist or open, with a little room over it.
+    final arm = shoulder.distanceTo(elbow) + elbow.distanceTo(hand);
+    var top = shoulder.y + (up ? arm : arm * 0.85) + _height * 0.13;
+    // A jump lifts all of it.
+    if (motions.contains("Jump")) top += _height * 0.18;
+    return top;
   }
 
   /// _advance moves it on to [frame] of a canvas playing [frameRate] frames
@@ -651,6 +692,13 @@ class CharacterScene extends ChangeNotifier {
     if (!p.breathe && m.motion == "Idle") m = m.copyWith(motion: "Still");
     return (m, t * m.speed, 1, 1, false);
   }
+
+  /// shadowOn draws its shadow on the ground as [camera] sees it in [box],
+  /// for a view that draws the scene itself, as the Studio's does: under
+  /// the scene, before it is drawn.
+  void shadowOn(ui.Canvas canvas, ui.Rect box, PerspectiveCamera camera,
+          {String kind = "Soft"}) =>
+      _shadow(canvas, box, camera, kind);
 
   /// _shadow draws the shadow under it on the ground, as [camera] sees it
   /// in [box]: smaller as it leaves the ground.
@@ -866,13 +914,20 @@ class CharacterScene extends ChangeNotifier {
 
   double _blushed = 0;
 
+  /// _creased is what the skin's creases were last drawn from: see
+  /// ShapedAvatar.creases.
+  String? _creased;
+
   /// _repaint paints what is painted on the character, and the blush.
   void _repaint() {
     final a = _avatar;
     if (a == null) return;
     final b = _mixNow.blush;
     _blushed = b;
+    _creased = ShapedAvatar.creaseKey(_shape);
     a.paint([
+      // The years' and the muscles' lines under whatever is painted.
+      ...a.creases(_shape),
       ..._paint,
       if (b > 0.01)
         for (final (at, n, r) in a.blushAt)

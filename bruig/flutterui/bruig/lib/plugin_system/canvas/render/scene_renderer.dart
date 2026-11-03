@@ -693,6 +693,17 @@ void paintElement(
         return;
       }
     } else {
+      // Its shadow on the floor first, under it -- the fainter the higher
+      // it is held off the floor.
+      if (at.shadow case var shadow?) {
+        var off = (1 - at.spot.lift / 2).clamp(0.25, 1.0);
+        canvas.drawPath(
+            shadow,
+            Paint()
+              ..color = Color.fromARGB((60 * off * alpha).round(), 0, 0, 0)
+              ..maskFilter = ui.MaskFilter.blur(
+                  ui.BlurStyle.normal, math.max(1.0, at.box.height * 0.02)));
+      }
       var light = lightFilter(at.stage.light);
       var flat = element is! Character3dElement;
       var layered = light != null || (!flat && alpha < 0.999);

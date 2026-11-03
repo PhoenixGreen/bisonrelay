@@ -35,19 +35,39 @@ class StageCamera {
   /// wide, 50 natural, 85 a portrait lens.
   final double lens;
 
+  /// tx, ty and tz move what it looks at from a metre above the middle of
+  /// the floor, in metres: across, up and nearer. Panned, or framed on
+  /// something standing on the stage.
+  final double tx, ty, tz;
+
   const StageCamera(
-      {this.yaw = 0, this.pitch = 12, this.distance = 7, this.lens = 35});
+      {this.yaw = 0,
+      this.pitch = 12,
+      this.distance = 7,
+      this.lens = 35,
+      this.tx = 0,
+      this.ty = 0,
+      this.tz = 0});
 
   static const double minDistance = 1.5;
   static const double maxDistance = 40;
 
   StageCamera copyWith(
-          {double? yaw, double? pitch, double? distance, double? lens}) =>
+          {double? yaw,
+          double? pitch,
+          double? distance,
+          double? lens,
+          double? tx,
+          double? ty,
+          double? tz}) =>
       StageCamera(
         yaw: yaw ?? this.yaw,
         pitch: (pitch ?? this.pitch).clamp(-10.0, 89.0),
         distance: (distance ?? this.distance).clamp(minDistance, maxDistance),
         lens: (lens ?? this.lens).clamp(12.0, 200.0),
+        tx: (tx ?? this.tx).clamp(-50.0, 50.0),
+        ty: (ty ?? this.ty).clamp(-10.0, 30.0),
+        tz: (tz ?? this.tz).clamp(-50.0, 50.0),
       );
 
   /// over is this camera with whatever [frame]'s keyframe pins.
@@ -58,7 +78,10 @@ class StageCamera {
         yaw: v[cameraChannel("yaw")],
         pitch: v[cameraChannel("pitch")],
         distance: v[cameraChannel("distance")],
-        lens: v[cameraChannel("lens")]);
+        lens: v[cameraChannel("lens")],
+        tx: v[cameraChannel("tx")],
+        ty: v[cameraChannel("ty")],
+        tz: v[cameraChannel("tz")]);
   }
 
   Map<String, double> get channels => {
@@ -66,10 +89,20 @@ class StageCamera {
         cameraChannel("pitch"): pitch,
         cameraChannel("distance"): distance,
         cameraChannel("lens"): lens,
+        cameraChannel("tx"): tx,
+        cameraChannel("ty"): ty,
+        cameraChannel("tz"): tz,
       };
 
-  Map<String, dynamic> toJson() =>
-      {"yaw": yaw, "pitch": pitch, "distance": distance, "lens": lens};
+  Map<String, dynamic> toJson() => {
+        "yaw": yaw,
+        "pitch": pitch,
+        "distance": distance,
+        "lens": lens,
+        if (tx != 0) "tx": tx,
+        if (ty != 0) "ty": ty,
+        if (tz != 0) "tz": tz,
+      };
 
   factory StageCamera.fromJson(Object? json) {
     if (json is! Map) return const StageCamera();
@@ -78,7 +111,10 @@ class StageCamera {
         yaw: jsonDouble(json["yaw"], d.yaw),
         pitch: jsonDouble(json["pitch"], d.pitch),
         distance: jsonDouble(json["distance"], d.distance),
-        lens: jsonDouble(json["lens"], d.lens));
+        lens: jsonDouble(json["lens"], d.lens),
+        tx: jsonDouble(json["tx"], 0),
+        ty: jsonDouble(json["ty"], 0),
+        tz: jsonDouble(json["tz"], 0));
   }
 }
 

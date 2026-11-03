@@ -230,6 +230,10 @@ class CharacterPerformance {
   /// next (lip_sync.dart).
   final List<MouthAt> mouths;
 
+  /// startsAt is where in its box its walks start from: -1 the left edge,
+  /// 1 the right, nought the middle.
+  final int startsAt;
+
   /// speaksFor is the mixer channel it speaks for, by key, or empty: a slot
   /// played on it -- a narrator's line -- moves its mouth and shows it while
   /// it is heard.
@@ -254,6 +258,7 @@ class CharacterPerformance {
     this.lineAt = 0,
     this.mouths = const [],
     this.speaksFor = "",
+    this.startsAt = 0,
   });
 
   /// copyWith is this with what is given changed; [stance] and [feeling]
@@ -277,6 +282,7 @@ class CharacterPerformance {
     double? lineAt,
     List<MouthAt>? mouths,
     String? speaksFor,
+    int? startsAt,
   }) =>
       CharacterPerformance(
         wearing: wearing ?? this.wearing,
@@ -297,6 +303,7 @@ class CharacterPerformance {
         lineAt: lineAt ?? this.lineAt,
         mouths: mouths ?? this.mouths,
         speaksFor: speaksFor ?? this.speaksFor,
+        startsAt: startsAt ?? this.startsAt,
       );
 
   /// mouthAt is the lip sync's mouth at [t] seconds, or null before its
@@ -386,6 +393,7 @@ class CharacterPerformance {
             for (final m in mouths) [m.t, m.shape.name]
           ],
         if (speaksFor.isNotEmpty) "speaksFor": speaksFor,
+        if (startsAt != 0) "startsAt": startsAt,
       };
 
   static CharacterPerformance fromJson(Object? j, {String? feeling}) {
@@ -428,6 +436,7 @@ class CharacterPerformance {
             )
       ]..sort((a, b) => a.t.compareTo(b.t)),
       speaksFor: j["speaksFor"] is String ? j["speaksFor"] as String : "",
+      startsAt: j["startsAt"] is int ? (j["startsAt"] as int).clamp(-1, 1) : 0,
     );
   }
 
@@ -455,7 +464,8 @@ class CharacterPerformance {
       other.line == line &&
       other.lineAt == lineAt &&
       _sameList(other.mouths, mouths) &&
-      other.speaksFor == speaksFor;
+      other.speaksFor == speaksFor &&
+      other.startsAt == startsAt;
 
   @override
   int get hashCode => Object.hash(
@@ -476,5 +486,6 @@ class CharacterPerformance {
       line,
       lineAt,
       mouths.length,
-      speaksFor);
+      speaksFor,
+      startsAt);
 }

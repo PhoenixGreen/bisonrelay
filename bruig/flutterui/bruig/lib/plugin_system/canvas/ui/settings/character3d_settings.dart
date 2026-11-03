@@ -263,6 +263,25 @@ List<Widget> character3dSettings(
                   },
                 ),
               ]),
+          if (!inStudio && (p.startsAt != 0 || p.clips.any((c) => c.dir != 0)))
+            CanvasControlGroup(
+                label: "Walks start from",
+                help: "Where in its box it stands until a walk carries it "
+                    "off: a walk to the right from the left edge crosses "
+                    "the whole box. It never walks past the box's edges.",
+                children: [
+                  CanvasSegmented<int>(
+                    key: const ValueKey("character3dStartsAt"),
+                    options: const [
+                      (-1, "Left edge"),
+                      (0, "Middle"),
+                      (1, "Right edge")
+                    ],
+                    value: p.startsAt,
+                    keyOf: (v) => "character3dStartsAt-$v",
+                    onChanged: (v) => perf(p.copyWith(startsAt: v)),
+                  ),
+                ]),
           for (final (i, c) in p.clips.indexed)
             CanvasControlGroup(
                 key: ValueKey("character3dClip-$i"),

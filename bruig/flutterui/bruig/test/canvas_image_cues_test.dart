@@ -66,6 +66,18 @@ Future<ui.Image> _solid(List<int> c) {
 ImageLayer _picture(String asset) =>
     ImageLayer.picture(asset, const Rect.fromLTWH(0, 0, 1000, 1000));
 
+/// until turns the real event loop and the fake one alternately until
+/// [done] -- what real file I/O has finished doing -- or five seconds have
+/// gone: a loaded machine takes longer than any fixed wait allows.
+Future<void> until(WidgetTester tester, bool Function() done) async {
+  for (var i = 0; i < 250 && !done(); i++) {
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
+  }
+  await tester.pump();
+}
+
 void main() {
   group("timing", () {
     test("together, every layer takes the whole arrival", () {
@@ -326,7 +338,8 @@ void main() {
       // Kept in Colour, with the picture's other saved things.
       await openSection(tester, "image.picture.colour");
       await tapKey(tester, "imageLookSave");
-      await idle(tester);
+      await until(tester, () => SavedPresetStore.looks.presets.length == 1);
+      await tester.pumpAndSettle();
       expect(SavedPresetStore.looks.presets, hasLength(1));
 
       // Another picture, with nothing on it.

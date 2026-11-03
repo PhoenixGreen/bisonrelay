@@ -103,6 +103,14 @@ void main() {
     expect(p.clipAt(4), isNull);
   });
 
+  test('walks start from an edge of the box, where they are set to', () {
+    const p = CharacterPerformance(startsAt: -1);
+    expect(CharacterPerformance.fromJson(p.toJson()).startsAt, -1);
+    expect(const CharacterPerformance().toJson().containsKey('startsAt'),
+        isFalse);
+    expect(CharacterPerformance.fromJson({'startsAt': 9}).startsAt, 1);
+  });
+
   test('keys hold from their time until the next', () {
     const p = CharacterPerformance(keys: [
       PoseKey(t: 1, stance: "Wave"),

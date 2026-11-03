@@ -32,9 +32,12 @@ List<Widget> stageSpotSettings(
     commit();
   }
 
+  // Where it stands on this frame: its own spot, or its keys' -- and set,
+  // this frame's key where it is keyed.
+  final shown = e.spotAt(controller.frame) ?? spot;
   void live(StageSpot s) {
     begin();
-    write(e.withBase(spot: s));
+    write(controller.spotted(e, s));
   }
 
   final stage = spot == null
@@ -107,7 +110,7 @@ List<Widget> stageSpotSettings(
                                 : null))),
                   ),
               ]),
-          if (spot != null)
+          if (shown != null)
             CanvasControlGroup(
                 label: "Where",
                 help: body
@@ -121,58 +124,89 @@ List<Widget> stageSpotSettings(
                   CanvasSlider(
                     key: const ValueKey("stageSpotX"),
                     label: "Across",
-                    value: spot.x.clamp(-size, size),
+                    value: shown.x.clamp(-size, size),
                     min: -size,
                     max: size,
                     decimals: 1,
-                    onChanged: (v) => live(spot.copyWith(x: v)),
+                    onChanged: (v) => live(shown.copyWith(x: v)),
                     onCommit: commit,
                   ),
-                  if (spot.stand != SpotStand.wall)
+                  if (shown.stand != SpotStand.wall)
                     CanvasSlider(
                       key: const ValueKey("stageSpotZ"),
                       label: "Nearer",
-                      value: spot.z.clamp(-size, size),
+                      value: shown.z.clamp(-size, size),
                       min: -size,
                       max: size,
                       decimals: 1,
-                      onChanged: (v) => live(spot.copyWith(z: v)),
+                      onChanged: (v) => live(shown.copyWith(z: v)),
                       onCommit: commit,
                     ),
                   CanvasSlider(
                     key: const ValueKey("stageSpotLift"),
-                    label: spot.stand == SpotStand.wall
+                    label: shown.stand == SpotStand.wall
                         ? "Up the wall"
                         : "Off the floor",
-                    value: spot.lift.clamp(0.0, 6.0),
+                    value: shown.lift.clamp(0.0, 6.0),
                     min: 0,
                     max: 6,
                     decimals: 1,
-                    onChanged: (v) => live(spot.copyWith(lift: v)),
+                    onChanged: (v) => live(shown.copyWith(lift: v)),
                     onCommit: commit,
                   ),
                   if (!body)
                     CanvasSlider(
                       key: const ValueKey("stageSpotHeight"),
                       label: "Size",
-                      value: spot.height.clamp(0.1, 10.0),
+                      value: shown.height.clamp(0.1, 10.0),
                       min: 0.1,
                       max: 10,
                       decimals: 1,
-                      onChanged: (v) => live(spot.copyWith(height: v)),
+                      onChanged: (v) => live(shown.copyWith(height: v)),
                       onCommit: commit,
                     ),
-                  if (spot.stand == SpotStand.upright ||
-                      spot.stand == SpotStand.floor)
+                  if (shown.stand == SpotStand.upright ||
+                      shown.stand == SpotStand.floor)
                     CanvasSlider(
                       key: const ValueKey("stageSpotFacing"),
                       label: "Facing",
-                      value: spot.facing.clamp(-180.0, 180.0),
+                      value: shown.facing.clamp(-180.0, 180.0),
                       min: -180,
                       max: 180,
                       decimals: 0,
-                      onChanged: (v) => live(spot.copyWith(facing: v)),
+                      onChanged: (v) => live(shown.copyWith(facing: v)),
                       onCommit: commit,
+                    ),
+                ]),
+          if (spot != null)
+            CanvasControlGroup(
+                label: "On the timeline",
+                help: "A key holds where it stands on this frame. With keys "
+                    "on two frames it moves between them, as the camera's "
+                    "keys move the camera; keyed, moving it -- here or by "
+                    "dragging it -- keys it where the playhead is.",
+                children: [
+                  if (controller.hasSpotKey(e))
+                    CanvasTextButton(
+                      key: const ValueKey("stageSpotUnkey"),
+                      label: "Take this frame's key off",
+                      icon: Icons.remove_circle_outline,
+                      onPressed: () {
+                        begin();
+                        controller.clearSpotKey(e);
+                        commit();
+                      },
+                    )
+                  else
+                    CanvasTextButton(
+                      key: const ValueKey("stageSpotKey"),
+                      label: "Key where it stands",
+                      icon: Icons.add_circle_outline,
+                      onPressed: () {
+                        begin();
+                        controller.keySpot(e);
+                        commit();
+                      },
                     ),
                 ]),
         ]),

@@ -9,8 +9,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 //
 // The stage is measured in metres: x across it, y up from the floor, z
 // towards where the camera starts. The camera always looks at a point a
-// metre above the middle of the floor -- about a person's chest -- from
-// some distance away, swung round it ([yaw]) and raised above it ([pitch]).
+// metre above the middle of the floor -- about a person's chest, unless it
+// is panned away -- from some distance away, swung round it ([yaw]) and
+// raised above it ([pitch]).
 // That is the whole of a camera a reader needs to set: where from, how far,
 // how wide a lens. A free camera with its own aim is more to learn and
 // mostly gets lost.
@@ -42,26 +43,27 @@ typedef StagePoint = ({Offset page, double depth});
 class StageView {
   final Rect box;
   final StageCamera camera;
-  final _P _eye, _right, _up, _forward;
+  final _P _eye, _right, _up, _forward, _aim;
   final double _focal;
 
   StageView._(this.box, this.camera, this._eye, this._right, this._up,
-      this._forward, this._focal);
+      this._forward, this._focal, this._aim);
 
   factory StageView(Rect box, StageCamera camera) {
     var yaw = camera.yaw * math.pi / 180;
     var pitch = camera.pitch * math.pi / 180;
-    var eye = _target +
+    var aim = _target + _P(camera.tx, camera.ty, camera.tz);
+    var eye = aim +
         _P(math.sin(yaw) * math.cos(pitch), math.sin(pitch),
                 math.cos(yaw) * math.cos(pitch)) *
             camera.distance;
-    var forward = (_target - eye).unit;
+    var forward = (aim - eye).unit;
     var right = forward.cross(const _P(0, 1, 0)).unit;
     var up = right.cross(forward);
     // A lens's focal length against the 24 mm height of a full frame: how
     // much of the box's height one metre at one metre's distance takes.
     var focal = box.height * camera.lens / 24;
-    return StageView._(box, camera, eye, right, up, forward, focal);
+    return StageView._(box, camera, eye, right, up, forward, focal, aim);
   }
 
   /// nearest is how close in front of the camera a point can be and still
@@ -72,7 +74,7 @@ class StageView {
   /// metres on the stage; fovY is how much it sees top to bottom, in
   /// radians. For a 3D scene to be seen exactly as the stage is.
   (double, double, double) get eye => (_eye.x, _eye.y, _eye.z);
-  (double, double, double) get target => (_target.x, _target.y, _target.z);
+  (double, double, double) get target => (_aim.x, _aim.y, _aim.z);
   double get fovY => 2 * math.atan(box.height / 2 / _focal);
 
   /// right is the camera's right, across the stage: what a flat turned to
@@ -165,15 +167,38 @@ class StageView {
 
   /// toFloor is the point on the floor seen at [page], as metres across
   /// and towards the camera's start, or null where the floor is not seen
-  /// -- above the horizon.
-  Offset? toFloor(Offset page) {
+  /// -- above the horizon. With [y], on the level that far above the
+  /// floor instead: where something lifted off it slides.
+  Offset? toFloor(Offset page, {double y = 0}) {
     var p = page - box.center;
     var ray = (_forward + _right * (p.dx / _focal) - _up * (p.dy / _focal));
-    if (ray.y >= -1e-6) return null;
-    var t = -_eye.y / ray.y;
+    if (ray.y.abs() < 1e-6) return null;
+    var t = (y - _eye.y) / ray.y;
     if (t <= 0) return null;
     var hit = _eye + ray * t;
     return Offset(hit.x, hit.z);
+  }
+
+  /// panned is the camera moved sideways and up by [by], page units on
+  /// the box: what it looks at slides so the stage follows the pointer
+  /// that far, at the distance of what it looks at.
+  StageCamera panned(Offset by) {
+    var k = camera.distance / _focal;
+    var move = _right * (-by.dx * k) + _up * (by.dy * k);
+    return camera.copyWith(
+        tx: camera.tx + move.x, ty: camera.ty + move.y, tz: camera.tz + move.z);
+  }
+
+  /// framing is the camera turned on [x], [y], [z] -- metres on the stage
+  /// -- from far enough away to see [size] metres of it top to bottom,
+  /// with room round it.
+  StageCamera framing(double x, double y, double z, double size) {
+    var d = size * 1.4 * _focal / box.height;
+    return camera.copyWith(
+        tx: x - _target.x,
+        ty: y - _target.y,
+        tz: z - _target.z,
+        distance: math.max(StageCamera.minDistance, d));
   }
 
   /// polygon is [points] on the stage as the camera sees them, cut off

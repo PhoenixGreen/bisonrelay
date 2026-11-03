@@ -74,6 +74,15 @@ class StageSpot {
           facing: facing ?? this.facing,
           stand: stand ?? this.stand);
 
+  /// channels are the settings a keyframe pins, by their channels.
+  Map<String, double> get channels => {
+        spotChannel("x"): x,
+        spotChannel("z"): z,
+        spotChannel("lift"): lift,
+        spotChannel("height"): height,
+        spotChannel("facing"): facing,
+      };
+
   /// over is this spot with whatever [frame]'s keyframe pins.
   StageSpot over(Keyframe frame) {
     final v = frame.values;

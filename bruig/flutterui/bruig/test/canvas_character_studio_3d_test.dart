@@ -171,6 +171,30 @@ void main() {
     expect(done, 1);
   });
 
+  testWidgets('a ready-made character is started from as a new one',
+      (tester) async {
+    CharacterDesign? kept;
+    await _show(tester, gpu: false, onDone: (d, _) => kept = d);
+    final pill = find.byKey(const ValueKey('studioPill-cast-Juno'));
+    await tester.ensureVisible(pill);
+    await tester.tap(pill);
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('studioName')))
+            .controller!
+            .text,
+        'Juno');
+    await tester.tap(find.byKey(const ValueKey('studioDone')));
+    for (var k = 0; k < 100 && kept == null; k++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+    expect((kept?.name, kept?.body, kept?.lookName), ('Juno', 'Vita', 'Comic'));
+    expect(kept?.id, isNotEmpty, reason: 'kept as the user\'s own');
+  });
+
   testWidgets('at every text size, the page fits', (tester) async {
     for (final scale in const [0.65, 0.85, 1.0, 1.15, 1.25, 1.5]) {
       await _show(tester, gpu: false, scale: scale);

@@ -191,12 +191,45 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
             suffix: "px",
             onChanged: (v) => set(guides.copyWith(snapWithin: v)),
           ),
+          // On a 3D stage there are no lines to land on: what is moved
+          // there lands on steps across its floor, and turns in steps --
+          // its own switch, since that is every move rather than a catch.
+          CanvasToggle(
+            key: const ValueKey("snapStage"),
+            label: "Snap on a 3D stage",
+            value: guides.stageSnap,
+            onChanged: (v) => set(guides.copyWith(stageSnap: v)),
+          ),
+          CanvasNumberField(
+            key: const ValueKey("snapStageStep"),
+            label: "3D steps",
+            value: guides.stageStep,
+            min: 0.01,
+            max: 10,
+            decimals: 2,
+            width: 56,
+            suffix: "m",
+            onChanged: (v) => set(guides.copyWith(stageStep: v)),
+          ),
+          CanvasNumberField(
+            key: const ValueKey("snapStageTurn"),
+            label: "3D turns",
+            value: guides.stageTurn,
+            min: 1,
+            max: 90,
+            decimals: 0,
+            width: 56,
+            suffix: "°",
+            onChanged: (v) => set(guides.copyWith(stageTurn: v)),
+          ),
           const CanvasHint(
               "How near, on screen, before it jumps — so it feels the same at "
               "every zoom. With Elements on, the sides and middles of everything "
               "else on the canvas are lines too. The canvas's own edges and "
               "middle are always snapped to. Hold Alt while dragging to put "
-              "something exactly where the grid does not want it."),
+              "something exactly where the grid does not want it. With Snap "
+              "on a 3D stage, what is moved there lands on the 3D steps "
+              "across the floor and turns by the 3D turns."),
         ]),
     // Lining several things up with each other, which snapping cannot do:
     // snapping catches one thing as it passes another, and these move

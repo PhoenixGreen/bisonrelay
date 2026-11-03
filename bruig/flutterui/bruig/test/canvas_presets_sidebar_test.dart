@@ -44,6 +44,18 @@ Future<void> idle(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// until turns the real event loop and the fake one alternately until
+/// [done] -- what real file I/O has finished doing -- or five seconds have
+/// gone: a loaded machine takes longer than any fixed wait allows.
+Future<void> until(WidgetTester tester, bool Function() done) async {
+  for (var i = 0; i < 250 && !done(); i++) {
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
+  }
+  await tester.pump();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -175,7 +187,8 @@ void main() {
     await tester.tap(find.byTooltip("More"));
     await tester.pumpAndSettle();
     await tester.tap(find.text("Delete"));
-    await idle(tester);
+    await until(tester, () => SavedPresetStore.scenes.presets.isEmpty);
+    await tester.pumpAndSettle();
 
     expect(SavedPresetStore.scenes.presets, isEmpty);
     expect(find.text("Title card"), findsNothing);
