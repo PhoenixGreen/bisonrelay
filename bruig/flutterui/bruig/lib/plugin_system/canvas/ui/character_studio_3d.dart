@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_look.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/character3d_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_character.dart';
@@ -15,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/ui/character_decal_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_look_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_outfit_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_shape_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_touchup_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/foundation.dart';
@@ -93,6 +95,8 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
   CharacterLook _look = characterLooks.values.first;
   List<CharacterDecal> _decals = const [];
   String? _openDecal;
+  List<SculptStroke> _sculpt = const [];
+  SculptBrush _brush = const SculptBrush();
   String _part = startPartId;
   StudioView? _view = StudioView.front;
 
@@ -170,6 +174,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
         lookName: _lookName,
         look: _look,
         decals: _decals,
+        sculpt: _sculpt,
         updated: DateTime.now(),
       );
 
@@ -182,7 +187,8 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
       _outfit == CharacterOutfit.asDesigned &&
       _look == characterLooks[_lookName] &&
       _lookName == characterLooks.keys.first &&
-      _decals.isEmpty;
+      _decals.isEmpty &&
+      _sculpt.isEmpty;
 
   /// _done keeps the character in the library, and goes back to the canvas.
   Future<void> _done() async {
@@ -214,6 +220,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
     _look = d?.look ?? characterLooks.values.first;
     _decals = d?.decals ?? const [];
     _openDecal = null;
+    _sculpt = d?.sculpt ?? const [];
     _own = const {};
   }
 
@@ -273,6 +280,7 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
                   outfit: _outfit,
                   styled: _look != characterLooks[_lookName],
                   decorated: _decals.isNotEmpty,
+                  touched: _sculpt.isNotEmpty,
                   selected: _part,
                   onSelect: _pick),
             ),
@@ -325,6 +333,9 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
             outfit: _outfit,
             look: _look,
             decals: _decals,
+            sculpt: _sculpt,
+            brush: _part == touchUpPartId ? _brush : null,
+            onSculpt: (s) => setState(() => _sculpt = s),
             frame: _frame,
             view: _view,
             onView: (v) => setState(() => _view = v),
@@ -339,6 +350,13 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
           part: part,
           shape: _shape,
           onChanged: (s) => setState(() => _shape = s));
+    }
+    if (_part == touchUpPartId) {
+      return CharacterTouchUpControls(
+          brush: _brush,
+          strokes: _sculpt,
+          onBrush: (b) => setState(() => _brush = b),
+          onStrokes: (s) => setState(() => _sculpt = s));
     }
     if (_part == decalsPartId) {
       return CharacterDecalControls(
@@ -563,6 +581,12 @@ class _Stage extends StatefulWidget {
   final CharacterOutfit outfit;
   final CharacterLook look;
   final List<CharacterDecal> decals;
+  final List<SculptStroke> sculpt;
+
+  /// brush is the brush a drag on the stage shapes the body with, while
+  /// Touch up is open; onSculpt is given the strokes as one is drawn.
+  final SculptBrush? brush;
+  final ValueChanged<List<SculptStroke>> onSculpt;
   final ShapeFrame frame;
   final StudioView? view;
   final ValueChanged<StudioView?> onView;
@@ -573,6 +597,9 @@ class _Stage extends StatefulWidget {
       required this.outfit,
       required this.look,
       required this.decals,
+      this.sculpt = const [],
+      this.brush,
+      required this.onSculpt,
       required this.frame,
       required this.view,
       required this.onView,
@@ -616,6 +643,102 @@ class _StageState extends State<_Stage> {
     _pan.add((right * -delta.dx + up * delta.dy) * k);
   }
 
+  // ---------------------------------------------------------------------
+  // Touch up: a drag shapes the body under the pointer.
+
+  /// _before are the strokes from before the one being drawn, _stroke.
+  List<SculptStroke>? _before;
+  SculptStroke? _stroke;
+
+  /// _ring is the brush shown on the body under the pointer: where, and
+  /// how big on screen.
+  ({Offset at, double radius})? _ring;
+  DateTime _ringAt = DateTime(0);
+
+  bool get _sculpting =>
+      widget.brush != null && !HardwareKeyboard.instance.isAltPressed;
+
+  /// _tall is the body's height at rest, which the brush is sized by.
+  double get _tall => _character.avatar?.rig.face?.headTop.y ?? 1.5;
+
+  /// _hitAt is where on the body point [p] of the stage is, if on it.
+  ({vm.Vector3 at, vm.Vector3 normal, double distance})? _hitAt(Offset p) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize || box.size.isEmpty) return null;
+    final size = box.size;
+    final forward = (_camera.target - _camera.position).normalized();
+    final right = forward.cross(vm.Vector3(0, 1, 0)).normalized();
+    final up = right.cross(forward).normalized();
+    final t = math.tan(_camera.fovRadiansY / 2);
+    final x = (2 * p.dx / size.width - 1) * t * size.width / size.height,
+        y = (1 - 2 * p.dy / size.height) * t;
+    return _character.pick(_camera.position, forward + right * x + up * y);
+  }
+
+  /// _showRing puts the brush ring where [p] is on the body, or takes it
+  /// away when it is off it.
+  void _showRing(Offset p, {bool now = false}) {
+    final brush = widget.brush;
+    if (brush == null) {
+      if (_ring != null) setState(() => _ring = null);
+      return;
+    }
+    // Looked for at most every 30 milliseconds as the pointer moves.
+    final at = DateTime.now();
+    if (!now && at.difference(_ringAt).inMilliseconds < 30) return;
+    _ringAt = at;
+    final hit = _hitAt(p);
+    final box = context.findRenderObject() as RenderBox?;
+    setState(() => _ring = hit == null || box == null
+        ? null
+        : (
+            at: p,
+            radius: brush.size *
+                _tall /
+                (hit.distance * math.tan(_camera.fovRadiansY / 2)) *
+                box.size.height /
+                2,
+          ));
+  }
+
+  /// _strokeFrom starts a stroke where [p] is on the body; false if it is
+  /// off it, when the drag turns the character instead.
+  bool _strokeFrom(Offset p) {
+    final brush = widget.brush;
+    final hit = brush == null ? null : _hitAt(p);
+    if (brush == null || hit == null) return false;
+    _before = widget.sculpt;
+    _stroke = SculptStroke(
+        tool: brush.tool,
+        radius: brush.size * _tall,
+        strength: brush.strength,
+        mirror: brush.mirror,
+        points: [_pointOf(hit)]);
+    widget.onSculpt([..._before!, _stroke!]);
+    _showRing(p, now: true);
+    return true;
+  }
+
+  /// _strokeTo carries the stroke on to [p], a point at a time a little
+  /// apart.
+  void _strokeTo(Offset p) {
+    final stroke = _stroke, before = _before;
+    if (stroke == null || before == null) return;
+    _showRing(p);
+    final hit = _hitAt(p);
+    if (hit == null) return;
+    final last = stroke.points.last;
+    final gap = (hit.at - vm.Vector3(last.x, last.y, last.z)).length;
+    if (gap < stroke.radius * 0.3) return;
+    _stroke = stroke.withPoint(_pointOf(hit));
+    widget.onSculpt([...before, _stroke!]);
+  }
+
+  static SculptPoint _pointOf(
+          ({vm.Vector3 at, vm.Vector3 normal, double distance}) hit) =>
+      SculptPoint(hit.at.x, hit.at.y, hit.at.z, hit.normal.x, hit.normal.y,
+          hit.normal.z);
+
   void _resetView() => setState(() {
         _tilt = 0;
         _zoom = 1;
@@ -639,7 +762,8 @@ class _StageState extends State<_Stage> {
       shape: widget.shape,
       outfit: widget.outfit,
       look: widget.look,
-      decals: widget.decals);
+      decals: widget.decals,
+      sculpt: widget.sculpt);
 
   @override
   void initState() {
@@ -750,6 +874,7 @@ class _StageState extends State<_Stage> {
               _panBy(e.delta);
             }
           },
+          onPointerHover: (e) => _showRing(e.localPosition),
           onPointerSignal: (e) {
             if (e is PointerScrollEvent) {
               _zoom =
@@ -759,8 +884,21 @@ class _StageState extends State<_Stage> {
           child: GestureDetector(
             key: const ValueKey("studioStageGestures"),
             onDoubleTap: _resetView,
-            onScaleStart: (_) => _zoomAtStart = _zoom,
+            onScaleStart: (d) {
+              _zoomAtStart = _zoom;
+              if (d.pointerCount == 1 && !_panning && _sculpting) {
+                _strokeFrom(d.localFocalPoint);
+              }
+            },
+            onScaleEnd: (_) {
+              _stroke = null;
+              _before = null;
+            },
             onScaleUpdate: (d) {
+              if (_stroke != null && d.pointerCount == 1) {
+                _strokeTo(d.localFocalPoint);
+                return;
+              }
               if (d.pointerCount > 1) {
                 // Two fingers: pinched to zoom, slid to move the view.
                 _zoom = (_zoomAtStart / d.scale).clamp(0.25, 3.0);
@@ -779,12 +917,32 @@ class _StageState extends State<_Stage> {
             },
             child: ColoredBox(
               color: Color(0xff000000 | widget.look.paperColour),
-              child:
-                  SceneView(_character.scene, camera: _camera, onTick: _tick),
+              // Drawn once there is a body to draw: an empty scene is a
+              // blank frame flutter_scene warns of.
+              child: _character.avatar == null
+                  ? const SizedBox.expand()
+                  : SceneView(_character.scene, camera: _camera, onTick: _tick),
             ),
           ),
         ),
       ),
+      if (_ring case final r? when widget.brush != null)
+        Positioned(
+          left: r.at.dx - r.radius,
+          top: r.at.dy - r.radius,
+          width: r.radius * 2,
+          height: r.radius * 2,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              key: const ValueKey("studioBrushRing"),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: colors.primary.withValues(alpha: 0.9), width: 1.5),
+              ),
+            ),
+          ),
+        ),
       if (_character.error case final e?)
         Center(child: Text(e, style: TextStyle(color: colors.error))),
       if (_character.avatar == null && _character.error == null)
@@ -850,7 +1008,9 @@ class _StageState extends State<_Stage> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-                "Drag to turn and tilt it; shift-drag to move it; scroll to zoom; double-click to reset",
+                widget.brush != null
+                    ? "Drag over the body to shape it; Option-drag to turn it; shift-drag to move it; scroll to zoom"
+                    : "Drag to turn and tilt it; shift-drag to move it; scroll to zoom; double-click to reset",
                 style: TextStyle(fontSize: 12, color: colors.onSurface)),
           ),
         ),

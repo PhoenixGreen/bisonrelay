@@ -275,4 +275,48 @@ void main() {
           reason: 'not waiting out the time it is allowed');
     });
   });
+
+  testWidgets('at every text size and panel height, nothing overflows',
+      (tester) async {
+    final c = CanvasController(
+        CanvasDocument().addElement(_element("c", _design("d1", "Jess"))));
+    for (final scale in const [0.65, 0.85, 1.0, 1.15, 1.25, 1.5]) {
+      for (final high in const [60.0, 140.0, 265.0]) {
+        await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
+          create: (_) => ThemeNotifier(doLoad: false),
+          child: MaterialApp(
+            home: MediaQuery(
+              data: MediaQueryData(
+                  size: const Size(1000, 800),
+                  textScaler: TextScaler.linear(scale)),
+              child: Scaffold(
+                body: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                          width: 284,
+                          height: high,
+                          child: CharacterAssetSection(
+                              controller: c,
+                              designs: () async => [
+                                    for (var i = 0; i < 5; i++)
+                                      _design("d$i", "A long character name $i")
+                                  ])),
+                      SizedBox(
+                          width: 330,
+                          child: SingleChildScrollView(
+                              child: Builder(
+                                  builder: (context) => Column(
+                                      children: elementSettings(context, c,
+                                          c.document.elements.single))))),
+                    ]),
+              ),
+            ),
+          ),
+        ));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: '${scale}x, $high high');
+      }
+    }
+  });
 }

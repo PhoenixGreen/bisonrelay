@@ -168,7 +168,7 @@ void main() {
   testWidgets('at every text size, the page fits', (tester) async {
     for (final scale in const [0.65, 0.85, 1.0, 1.15, 1.25, 1.5]) {
       await _show(tester, gpu: false, scale: scale);
-      for (final part in ['start', 'muscles', 'wear-top']) {
+      for (final part in ['start', 'muscles', 'wear-top', 'style', 'decals', 'touchup']) {
         final tree = find.descendant(
             of: find.byType(CharacterShapeList),
             matching: find.byType(Scrollable));

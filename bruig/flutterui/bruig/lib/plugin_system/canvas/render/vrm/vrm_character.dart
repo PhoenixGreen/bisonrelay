@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_look.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_look.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_mesh.dart';
@@ -61,6 +62,7 @@ class CharacterScene extends ChangeNotifier {
   CharacterOutfit _outfit = CharacterOutfit.asDesigned;
   CharacterLook _look = const CharacterLook();
   List<CharacterDecal> _decals = const [];
+  List<SculptStroke> _sculpt = const [];
 
   ShapedAvatar? _avatar;
   String? _loading;
@@ -88,7 +90,8 @@ class CharacterScene extends ChangeNotifier {
       shape: d.shape,
       outfit: d.outfit,
       look: d.look,
-      decals: d.decals);
+      decals: d.decals,
+      sculpt: d.sculpt);
 
   /// show draws this: what changed is changed, the rest left as it is.
   void show({
@@ -97,6 +100,7 @@ class CharacterScene extends ChangeNotifier {
     required CharacterOutfit outfit,
     required CharacterLook look,
     required List<CharacterDecal> decals,
+    List<SculptStroke> sculpt = const [],
   }) {
     final hairChanged =
         _body == null || shape.hair(body) != _shape.hair(_body!);
@@ -109,6 +113,7 @@ class CharacterScene extends ChangeNotifier {
     _outfit = outfit;
     _look = look;
     _decals = decals;
+    _sculpt = sculpt;
     if (bodyChanged) {
       _load(body);
       return;
@@ -208,7 +213,9 @@ class CharacterScene extends ChangeNotifier {
       final bytes = await File(await VroidAssets.modelPath(id)).readAsBytes();
       final next = await ShapedAvatar.load(bytes);
       if (_disposed || _loading != id) return;
-      next.apply(_shape);
+      next
+        ..sculpt(_sculpt)
+        ..apply(_shape);
       final old = _avatar;
       if (old != null) scene.remove(old.holder);
       scene.add(next.holder);
@@ -266,7 +273,9 @@ class CharacterScene extends ChangeNotifier {
     _finish?.pixelRatio = pixelRatio;
     final a = _avatar, body = _body;
     if (a == null || body == null) return;
-    a.apply(_shape);
+    a
+      ..sculpt(_sculpt)
+      ..apply(_shape);
     final v = a.avatar;
     v.mtoonLighting.fromScene(scene);
     if (lookAt != null) v.lookAt.target = lookAt;
@@ -436,6 +445,12 @@ class CharacterScene extends ChangeNotifier {
       tick(1 / 30, _canvasCamera, lookAt: _canvasCamera.position);
     }
   }
+
+  /// pick is where a ray from [from] going [dir] first meets the
+  /// character: see ShapedAvatar.pick.
+  ({vm.Vector3 at, vm.Vector3 normal, double distance})? pick(
+          vm.Vector3 from, vm.Vector3 dir) =>
+      _avatar?.pick(from, dir);
 
   void _changed() {
     if (!_disposed) notifyListeners();

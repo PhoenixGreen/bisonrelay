@@ -24,8 +24,9 @@ class CharacterShapeList extends StatelessWidget {
   final CharacterOutfit outfit;
 
   /// styled is whether the Drawing style is not the one started from;
-  /// decorated whether any decals are on.
-  final bool styled, decorated;
+  /// decorated whether any decals are on; touched whether the body is
+  /// shaped by hand.
+  final bool styled, decorated, touched;
   final String selected;
   final ValueChanged<String> onSelect;
   const CharacterShapeList(
@@ -33,6 +34,7 @@ class CharacterShapeList extends StatelessWidget {
       this.outfit = CharacterOutfit.asDesigned,
       this.styled = false,
       this.decorated = false,
+      this.touched = false,
       required this.selected,
       required this.onSelect,
       super.key});
@@ -106,6 +108,7 @@ class CharacterShapeList extends StatelessWidget {
       row(wearPartId(s), s.label, outfit.changed(s));
     }
     row("decals", "Decals and tattoos", decorated);
+    row("touchup", "Touch up", touched);
     return ListView(padding: const EdgeInsets.only(bottom: 16), children: rows);
   }
 }

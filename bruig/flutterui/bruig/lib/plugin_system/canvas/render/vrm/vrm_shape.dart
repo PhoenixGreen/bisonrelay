@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_mesh.dart';
 import 'package:vector_math/vector_math.dart' as vm;
@@ -122,6 +123,30 @@ class Blob extends Deformer {
   @override
   String get key =>
       'b${_k(c)}|${_k(r)}|${_k(scale)}|${_k(t)}|$rz|$mirror|$irisOnly';
+}
+
+/// StrokeDeformer is one stroke of the sculpting brush (character_sculpt.dart):
+/// the surface near the stroke raised or lowered along the way it faced
+/// there, or pressed flat. Each spot is moved once, by the stroke's point
+/// nearest it, so a stroke drawn slowly is no deeper than one drawn fast.
+class StrokeDeformer extends Deformer {
+  final SculptStroke stroke;
+
+  /// side is -1 for the mirror image of a mirrored stroke.
+  final double side;
+  const StrokeDeformer(this.stroke, {this.side = 1});
+
+  /// of are the deformers [strokes] make: each, and its mirror image.
+  static List<StrokeDeformer> of(List<SculptStroke> strokes) => [
+        for (final s in strokes)
+          if (s.points.isNotEmpty) ...[
+            StrokeDeformer(s),
+            if (s.mirror) StrokeDeformer(s, side: -1),
+          ]
+      ];
+
+  @override
+  String get key => 's${stroke.key}|$side';
 }
 
 /// StretchBelow stretches everything below [y] down from it by [k].
@@ -728,6 +753,10 @@ class VrmShapeRig {
         }
         continue;
       }
+      if (d is StrokeDeformer) {
+        if (_stroke(d, g, a, on, moved)) any = true;
+        continue;
+      }
       for (final i in g.used) {
         final x = a[i * 3], y = a[i * 3 + 1], z = a[i * 3 + 2];
         switch (d) {
@@ -818,12 +847,93 @@ class VrmShapeRig {
             moved[i] = 1;
             any = true;
           case Radial():
+          case StrokeDeformer():
             break;
         }
       }
     }
     if (!any) return null;
     return Shaped(a, _normals(g, a, moved));
+  }
+
+  /// _stroke moves what of [g] is near stroke [d], in [a]: the shape so far.
+  /// True if it moved anything.
+  static bool _stroke(StrokeDeformer d, ShapeGroup g, Float32List a,
+      Float32List on, Uint8List moved) {
+    final st = d.stroke, r = st.radius, r2 = r * r, sd = d.side;
+    final pts = st.points;
+    final n = pts.length;
+    final px = Float64List(n), py = Float64List(n), pz = Float64List(n);
+    final nx = Float64List(n), ny = Float64List(n), nz = Float64List(n);
+    var lox = double.infinity, loy = double.infinity, loz = double.infinity;
+    var hix = -double.infinity, hiy = -double.infinity, hiz = -double.infinity;
+    for (var k = 0; k < n; k++) {
+      final p = pts[k];
+      px[k] = p.x * sd;
+      py[k] = p.y;
+      pz[k] = p.z;
+      nx[k] = p.nx * sd;
+      ny[k] = p.ny;
+      nz[k] = p.nz;
+      lox = math.min(lox, px[k]);
+      loy = math.min(loy, py[k]);
+      loz = math.min(loz, pz[k]);
+      hix = math.max(hix, px[k]);
+      hiy = math.max(hiy, py[k]);
+      hiz = math.max(hiz, pz[k]);
+    }
+    lox -= r;
+    loy -= r;
+    loz -= r;
+    hix += r;
+    hiy += r;
+    hiz += r;
+    final depth = r * st.strength / 3;
+    var any = false;
+    for (final i in g.used) {
+      final x = a[i * 3], y = a[i * 3 + 1], z = a[i * 3 + 2];
+      if (x < lox || x > hix || y < loy || y > hiy || z < loz || z > hiz) {
+        continue;
+      }
+      // The stroke's nearest point.
+      var best = r2, k0 = -1;
+      for (var k = 0; k < n; k++) {
+        final dx = x - px[k], dy = y - py[k], dz = z - pz[k];
+        final q = dx * dx + dy * dy + dz * dz;
+        if (q < best) {
+          best = q;
+          k0 = k;
+        }
+      }
+      if (k0 < 0) continue;
+      // Only the side of the surface the brush was on: not the back of a
+      // thin arm, or the far side of a finger.
+      final facing =
+          on[i * 3] * nx[k0] + on[i * 3 + 1] * ny[k0] + on[i * 3 + 2] * nz[k0];
+      if (facing < 0) continue;
+      final f0 = 1 - best / r2;
+      final f = f0 * f0 * math.min(1.0, facing * 2);
+      final double move;
+      switch (st.tool) {
+        case SculptTool.raise:
+          move = depth * f;
+        case SculptTool.lower:
+          move = -depth * f;
+        case SculptTool.flatten:
+          // Toward the plane the surface was in where the stroke passed.
+          final h = (x - px[k0]) * nx[k0] +
+              (y - py[k0]) * ny[k0] +
+              (z - pz[k0]) * nz[k0];
+          move = -h * f * st.strength;
+      }
+      if (move == 0) continue;
+      a[i * 3] = x + nx[k0] * move;
+      a[i * 3 + 1] = y + ny[k0] * move;
+      a[i * 3 + 2] = z + nz[k0] * move;
+      moved[i] = 1;
+      any = true;
+    }
+    return any;
   }
 
   /// _normals are the normals again where the shape moved, shared across

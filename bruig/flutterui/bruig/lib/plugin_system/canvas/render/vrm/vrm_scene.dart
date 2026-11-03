@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_look.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_colour.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_decal.dart';
@@ -135,10 +136,11 @@ class ShapedAvatar {
   /// Without [bones], the skeleton is left as made: for a character worn
   /// only for its hair, which is placed on another's head, at its size.
   void apply(CharacterShape s, {bool bones = true}) {
-    if (s == _shape) return;
+    if (s == _shape && !_resculpt) return;
     _shape = s;
+    _resculpt = false;
     for (final region in VrmRegion.values) {
-      final ds = rig.deformers(region, s);
+      final ds = _deformers(region, s);
       final key = ds.map((d) => d.key).join(';');
       if (_regionKeys[region] == key) continue;
       _regionKeys[region] = key;
@@ -165,11 +167,168 @@ class ShapedAvatar {
         vm.Matrix4.diagonal3Values(p.height, p.height, p.height);
   }
 
+  // ---------------------------------------------------------------------
+  // Shaped by hand.
+
+  List<SculptStroke> _sculpt = const [];
+  String _sculptKey = '';
+  bool _resculpt = false;
+
+  /// sculpt shapes the body by hand as well, with [strokes]
+  /// (character_sculpt.dart), on the next [apply].
+  void sculpt(List<SculptStroke> strokes) {
+    final key = strokes.map((s) => s.key).join(';');
+    if (key == _sculptKey) return;
+    _sculpt = strokes;
+    _sculptKey = key;
+    _resculpt = true;
+  }
+
+  /// _deformers are [region]'s changes: the shaping's, then the strokes'.
+  /// Not the hair's, which keeps its own shape over a head shaped by hand.
+  List<Deformer> _deformers(VrmRegion region, CharacterShape s) => [
+        ...rig.deformers(region, s),
+        if (region != VrmRegion.hair) ...StrokeDeformer.of(_sculpt),
+      ];
+
+  /// _shapedAt are each group's vertices at rest as last shaped, where
+  /// shaping moved them.
+  final Map<ShapeGroup, Float32List> _shapedAt = {};
+
+  /// pick is where a ray from [from] going [dir], in the scene, first
+  /// meets the body, its face or the clothes it wears: that place on the
+  /// body as it is shaped at rest, which way the surface faces there, and
+  /// how far along the ray it is. Null if it meets none of them.
+  ({vm.Vector3 at, vm.Vector3 normal, double distance})? pick(
+      vm.Vector3 from, vm.Vector3 dir) {
+    final d = dir.normalized();
+    var best = double.infinity;
+    ({vm.Vector3 at, vm.Vector3 normal, double distance})? hit;
+    final groups = <(ShapeGroup, Node?)>[
+      for (final g in rig.groups)
+        if (g.node.region != VrmRegion.hair && !g.iris)
+          (g, _byName[g.node.name]),
+      for (final w in _worn.values) (w.group, w.node),
+    ];
+    for (final (g, node) in groups) {
+      if (node == null) continue;
+      final vs = g.vertices;
+      final rest = _shapedAt[g] ?? vs.positions;
+      final posed = _posed(g, node, rest);
+      if (posed == null) continue;
+      for (final pi in g.primitives) {
+        if (pi >= g.node.primitives.length) continue;
+        final p = g.node.primitives[pi];
+        final List<int> tris = _indices[p] as List<int>? ?? p.indices;
+        for (var t = 0; t + 2 < tris.length; t += 3) {
+          final i0 = tris[t], i1 = tris[t + 1], i2 = tris[t + 2];
+          final r = _rayTriangle(from, d, posed, i0, i1, i2);
+          if (r == null || r.$1 >= best) continue;
+          best = r.$1;
+          final u = r.$2, v = r.$3, w = 1 - u - v;
+          vm.Vector3 at(Float32List a) => vm.Vector3(
+              a[i0 * 3] * w + a[i1 * 3] * u + a[i2 * 3] * v,
+              a[i0 * 3 + 1] * w + a[i1 * 3 + 1] * u + a[i2 * 3 + 1] * v,
+              a[i0 * 3 + 2] * w + a[i1 * 3 + 2] * u + a[i2 * 3 + 2] * v);
+          final n = at(vs.normals);
+          hit = (
+            at: at(rest),
+            normal: n.length2 < 1e-12 ? vm.Vector3(0, 0, 1) : n.normalized(),
+            distance: r.$1,
+          );
+        }
+      }
+    }
+    return hit;
+  }
+
+  /// _posed is [g]'s vertices, at rest as [rest], posed as [node] is now:
+  /// skinned as the GPU skins them.
+  Float32List? _posed(ShapeGroup g, Node node, Float32List rest) {
+    final vs = g.vertices;
+    final out = Float32List(vs.count * 3);
+    final skin = node.skin;
+    if (!vs.skinned || skin == null) {
+      final m = node.globalTransform;
+      for (final i in g.used) {
+        final v = m.transformed3(
+            vm.Vector3(rest[i * 3], rest[i * 3 + 1], rest[i * 3 + 2]));
+        out[i * 3] = v.x;
+        out[i * 3 + 1] = v.y;
+        out[i * 3 + 2] = v.z;
+      }
+      return out;
+    }
+    final mats = [
+      for (var j = 0; j < skin.joints.length; j++)
+        skin.joints[j] == null
+            ? vm.Matrix4.identity().storage
+            : (skin.joints[j]!.globalTransform * skin.inverseBindMatrices[j]
+                    as vm.Matrix4)
+                .storage
+    ];
+    final jn = vs.joints, wt = vs.weights;
+    for (final i in g.used) {
+      final x = rest[i * 3], y = rest[i * 3 + 1], z = rest[i * 3 + 2];
+      var ox = 0.0, oy = 0.0, oz = 0.0;
+      for (var k = 0; k < 4; k++) {
+        final w = wt[i * 4 + k];
+        if (w == 0) continue;
+        final j = jn[i * 4 + k].toInt();
+        if (j < 0 || j >= mats.length) continue;
+        final m = mats[j];
+        ox += w * (m[0] * x + m[4] * y + m[8] * z + m[12]);
+        oy += w * (m[1] * x + m[5] * y + m[9] * z + m[13]);
+        oz += w * (m[2] * x + m[6] * y + m[10] * z + m[14]);
+      }
+      out[i * 3] = ox;
+      out[i * 3 + 1] = oy;
+      out[i * 3 + 2] = oz;
+    }
+    return out;
+  }
+
+  /// _rayTriangle is how far along [d] from [o] the ray meets triangle
+  /// [i0], [i1], [i2] of [p], and where on it (two barycentric weights);
+  /// null where it misses, from either side.
+  static (double, double, double)? _rayTriangle(
+      vm.Vector3 o, vm.Vector3 d, Float32List p, int i0, int i1, int i2) {
+    final ax = p[i0 * 3], ay = p[i0 * 3 + 1], az = p[i0 * 3 + 2];
+    final e1x = p[i1 * 3] - ax,
+        e1y = p[i1 * 3 + 1] - ay,
+        e1z = p[i1 * 3 + 2] - az;
+    final e2x = p[i2 * 3] - ax,
+        e2y = p[i2 * 3 + 1] - ay,
+        e2z = p[i2 * 3 + 2] - az;
+    final px = d.y * e2z - d.z * e2y,
+        py = d.z * e2x - d.x * e2z,
+        pz = d.x * e2y - d.y * e2x;
+    final det = e1x * px + e1y * py + e1z * pz;
+    if (det.abs() < 1e-12) return null;
+    final inv = 1 / det;
+    final tx = o.x - ax, ty = o.y - ay, tz = o.z - az;
+    final u = (tx * px + ty * py + tz * pz) * inv;
+    if (u < 0 || u > 1) return null;
+    final qx = ty * e1z - tz * e1y,
+        qy = tz * e1x - tx * e1z,
+        qz = tx * e1y - ty * e1x;
+    final v = (d.x * qx + d.y * qy + d.z * qz) * inv;
+    if (v < 0 || u + v > 1) return null;
+    final t = (e2x * qx + e2y * qy + e2z * qz) * inv;
+    if (t <= 1e-6) return null;
+    return (t, u, v);
+  }
+
   void _shapeGroup(ShapeGroup g, List<Deformer> ds, String key) {
     final was = _uploaded[g] ?? '';
     if (was == key) return;
     final shaped = rig.shape(g, ds);
     if (shaped == null && was.isEmpty) return;
+    if (shaped == null) {
+      _shapedAt.remove(g);
+    } else {
+      _shapedAt[g] = shaped.positions;
+    }
     _upload(
         g,
         g.vertices.pack(shaped?.positions ?? g.vertices.positions,
@@ -648,7 +807,7 @@ class ShapedAvatar {
       _worn[slot] = worn;
       _styleWorn(worn);
       final s = shape;
-      final ds = rig.deformers(VrmRegion.body, s);
+      final ds = _deformers(VrmRegion.body, s);
       _shapeGroup(worn.group, ds, ds.map((d) => d.key).join(';'));
     }
     _showOwn(o);
@@ -788,7 +947,7 @@ class ShapedAvatar {
       parent.add(worn.node);
       _decals[d.id] = worn;
       _styleWorn(worn);
-      final ds = rig.deformers(VrmRegion.body, shape);
+      final ds = _deformers(VrmRegion.body, shape);
       _shapeGroup(worn.group, ds, ds.map((x) => x.key).join(';'));
     }
   }

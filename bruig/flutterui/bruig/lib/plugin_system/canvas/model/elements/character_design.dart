@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_look.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_outfit.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_sculpt.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 
 // character_design.dart is a new 3D character as the Character Studio makes
@@ -20,6 +21,9 @@ class CharacterDesign {
   final String lookName;
   final CharacterLook look;
   final List<CharacterDecal> decals;
+
+  /// sculpt is the body shaped by hand, stroke by stroke.
+  final List<SculptStroke> sculpt;
   final DateTime updated;
 
   const CharacterDesign({
@@ -31,6 +35,7 @@ class CharacterDesign {
     this.lookName = "Anime cel",
     this.look = const CharacterLook(),
     this.decals = const [],
+    this.sculpt = const [],
     required this.updated,
   });
 
@@ -55,6 +60,7 @@ class CharacterDesign {
         "lookName": lookName,
         "look": look.toJson(),
         "decals": [for (final d in decals) d.toJson()],
+        if (sculpt.isNotEmpty) "sculpt": [for (final s in sculpt) s.toJson()],
         "updated": updated.toIso8601String(),
       };
 
@@ -85,6 +91,10 @@ class CharacterDesign {
             if (CharacterDecal.fromJson(d.cast<String, dynamic>())
                 case final x?)
               x
+      ],
+      sculpt: [
+        for (final s in (j["sculpt"] is List ? j["sculpt"] as List : const []))
+          if (SculptStroke.fromJson(s) case final x?) x
       ],
       updated: DateTime.tryParse("${j["updated"]}") ??
           DateTime.fromMillisecondsSinceEpoch(0),

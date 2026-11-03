@@ -311,14 +311,31 @@ class CanvasImageStore extends ChangeNotifier
     }
     _characters[e.id] = (scene, key);
     if (held?.$2 != key) {
-      scene.showDesign(e.design);
-      _readyCharacter(e.id, scene, first: held == null);
+      // Loading from now, for an export to wait for; started once the
+      // frame being painted is done, since starting says so to whoever
+      // listens, and nothing may be rebuilt in the middle of painting.
+      _pending.add("character3d:${e.id}");
+      var first = held == null, design = e.design;
+      scheduleMicrotask(() {
+        if (_disposed) return;
+        scene!.showDesign(design);
+        _readyCharacter(e.id, scene, first: first);
+      });
     }
     return scene;
   }
 
+  bool _characterNews = false;
+
+  /// _characterChanged passes on a character's news after the frame being
+  /// painted, and once however much of it there was.
   void _characterChanged() {
-    if (!_disposed) notifyListeners();
+    if (_characterNews || _disposed) return;
+    _characterNews = true;
+    scheduleMicrotask(() {
+      _characterNews = false;
+      if (!_disposed) notifyListeners();
+    });
   }
 
   /// _readyCharacter is loading until [scene] has everything it was asked

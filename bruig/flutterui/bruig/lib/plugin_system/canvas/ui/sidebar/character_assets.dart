@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/storage/character_designs.dart';
 import 'package:bruig/plugin_system/canvas/storage/character_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 // character_assets.dart is the library's characters in the Assets sidebar:
@@ -28,12 +29,11 @@ class CharacterAssetSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var colors = ThemeNotifier.of(context).colors;
-    return ValueListenableBuilder<int>(
-      valueListenable: CharacterLibrary.changed,
-      builder: (context, _, __) => FutureBuilder<List<CharacterAsset>>(
-        future: CharacterLibrary.list(),
-        builder: (context, snap) {
-          var all = snap.data ?? const <CharacterAsset>[];
+    return _Listed<List<CharacterAsset>>(
+        changes: CharacterLibrary.changed,
+        read: CharacterLibrary.list,
+        builder: (context, listed) {
+          var all = listed ?? const <CharacterAsset>[];
           // The new characters, in 3D: made in the new Studio, and placed
           // from here as the others are.
           var new3d =
@@ -86,10 +86,41 @@ class CharacterAssetSection extends StatelessWidget {
               ]),
             ),
           ]);
-        },
-      ),
-    );
+        });
   }
+}
+
+/// _Listed reads a library's list once for each change to it, however
+/// often it is built: the sidebar is built again as it is scrolled and
+/// resized, and reading the folder each time held every frame up.
+class _Listed<T> extends StatefulWidget {
+  final ValueListenable<int> changes;
+  final Future<T> Function() read;
+  final Widget Function(BuildContext context, T? listed) builder;
+  const _Listed(
+      {required this.changes, required this.read, required this.builder});
+
+  @override
+  State<_Listed<T>> createState() => _ListedState<T>();
+}
+
+class _ListedState<T> extends State<_Listed<T>> {
+  Future<T>? _future;
+  int? _at;
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<int>(
+        valueListenable: widget.changes,
+        builder: (context, at, _) {
+          if (_future == null || at != _at) {
+            _at = at;
+            _future = widget.read();
+          }
+          return FutureBuilder<T>(
+              future: _future,
+              builder: (context, snap) => widget.builder(context, snap.data));
+        },
+      );
 }
 
 class _CharacterTile extends StatelessWidget {
@@ -114,7 +145,10 @@ class _CharacterTile extends StatelessWidget {
               SizedBox(
                   width: 84,
                   height: 104,
-                  child: CustomPaint(painter: _CharacterThumb(asset))),
+                  // Painted once, not again on every frame of a scroll: a
+                  // character is a costly drawing.
+                  child: RepaintBoundary(
+                      child: CustomPaint(painter: _CharacterThumb(asset)))),
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
                 child: Text(asset.name.isEmpty ? "Character" : asset.name,
@@ -163,36 +197,53 @@ class Character3dAssetList extends StatelessWidget {
   const Character3dAssetList({required this.onPlace, this.designs, super.key});
 
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder<int>(
-        valueListenable: CharacterDesigns.changed,
-        builder: (context, _, __) => FutureBuilder<List<CharacterDesign>>(
-          future: (designs ?? CharacterDesigns.list)(),
-          builder: (context, snap) {
-            var all = snap.data ?? const <CharacterDesign>[];
-            if (all.isEmpty) return const SizedBox.shrink();
-            return Padding(
-              padding: const EdgeInsets.all(8),
-              child: Wrap(spacing: 8, runSpacing: 8, children: [
-                for (var d in all)
-                  _Character3dTile(
-                      key: ValueKey("character3dAsset-${d.id}"),
-                      design: d,
-                      onTap: () => onPlace(d)),
-              ]),
-            );
-          },
-        ),
+  Widget build(BuildContext context) => _Listed<List<CharacterDesign>>(
+        changes: CharacterDesigns.changed,
+        read: designs ?? CharacterDesigns.list,
+        builder: (context, listed) {
+          var all = listed ?? const <CharacterDesign>[];
+          if (all.isEmpty) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.all(8),
+            child: Wrap(spacing: 8, runSpacing: 8, children: [
+              for (var d in all)
+                _Character3dTile(
+                    key: ValueKey("character3dAsset-${d.id}"),
+                    design: d,
+                    onTap: () => onPlace(d)),
+            ]),
+          );
+        },
       );
 }
 
-class _Character3dTile extends StatelessWidget {
+class _Character3dTile extends StatefulWidget {
   final CharacterDesign design;
   final VoidCallback onTap;
   const _Character3dTile(
       {required this.design, required this.onTap, super.key});
 
   @override
+  State<_Character3dTile> createState() => _Character3dTileState();
+}
+
+class _Character3dTileState extends State<_Character3dTile> {
+  /// _picture is the character's picture, read once and again only when
+  /// the character is kept again.
+  late Future<Uint8List?> _picture = CharacterDesigns.picture(widget.design.id);
+
+  @override
+  void didUpdateWidget(_Character3dTile old) {
+    super.didUpdateWidget(old);
+    if (old.design.id != widget.design.id ||
+        old.design.updated != widget.design.updated) {
+      _picture = CharacterDesigns.picture(widget.design.id);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    var design = widget.design, onTap = widget.onTap;
     var colors = ThemeNotifier.of(context).colors;
     var name = design.name.isEmpty ? "Character" : design.name;
     return Tooltip(
@@ -210,9 +261,7 @@ class _Character3dTile extends StatelessWidget {
                 width: 84,
                 height: 112,
                 child: FutureBuilder<Uint8List?>(
-                  // Read afresh when the character is kept again.
-                  key: ValueKey(design.updated),
-                  future: CharacterDesigns.picture(design.id),
+                  future: _picture,
                   builder: (context, snap) {
                     var icon = Center(
                         child: Icon(Icons.view_in_ar_outlined,
@@ -221,6 +270,7 @@ class _Character3dTile extends StatelessWidget {
                     if (png == null) return icon;
                     return Image.memory(png,
                         fit: BoxFit.cover,
+                        cacheWidth: 168,
                         gaplessPlayback: true,
                         errorBuilder: (_, __, ___) => icon);
                   },
