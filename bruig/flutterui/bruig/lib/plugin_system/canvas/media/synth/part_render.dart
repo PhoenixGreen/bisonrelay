@@ -28,7 +28,7 @@ const soundBankBytes = 215614036;
 
 /// soundBankPath is where the bank is kept, whether or not it is there.
 Future<String> soundBankPath() async => path.join(
-    await CanvasStorage.libraryDir(), "soundbanks", "MuseScore_General.sf2");
+    await CanvasStorage.libraryDir(), canvasSoundBankFolder, "MuseScore_General.sf2");
 
 /// soundBankReady is whether the bank has been downloaded.
 Future<bool> soundBankReady() async {

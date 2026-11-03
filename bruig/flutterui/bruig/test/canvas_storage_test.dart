@@ -408,6 +408,28 @@ void main() {
       var entries = await CanvasStorage.list("");
       expect(entries.where((e) => e.name == "Pictures"), isEmpty);
     });
+
+    test("no folder the app keeps its own things in is offered", () async {
+      // What is downloaded -- the sculpted body, voices, the sound bank, the
+      // VRoid characters -- lives beside the documents, and is not one of
+      // their folders.
+      var library = await CanvasStorage.libraryDir();
+      for (var f in ["Human", "voices", "soundbanks", "VRoid", "Models", "Characters", "Audio", "Videos", "Vectors"]) {
+        await Directory(path.join(library, f)).create(recursive: true);
+      }
+      expect(await CanvasStorage.createFolder("Mine"), isTrue);
+      var entries = await CanvasStorage.list("");
+      expect(entries.where((e) => e.isFolder).map((e) => e.name), ["Mine"]);
+    });
+
+    test("no folder of documents can take an app folder's name", () async {
+      expect(await CanvasStorage.createFolder("Voices"), isFalse, reason: "not even in another case");
+      expect(await CanvasStorage.createFolder("VRoid"), isFalse);
+      expect(await CanvasStorage.createFolder("Mine"), isTrue);
+      expect(await CanvasStorage.renameFolder("Mine", "Human"), isFalse);
+      expect(await CanvasStorage.pathFor("voices", "Song"), isNull, reason: "a canvas is not saved among the voices");
+      expect(await CanvasStorage.pathFor("Mine", "Song"), isNotNull);
+    });
   });
 
   group("reusing a picture", () {

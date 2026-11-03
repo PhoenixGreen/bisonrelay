@@ -125,7 +125,7 @@ bool get qwenSupported => _programs.containsKey(Abi.current());
 List<PinnedFile>? qwenFilesOverride;
 
 Future<String> Function() qwenDir = () async =>
-    path.join(await CanvasStorage.libraryDir(), "voices", "qwen3-tts-1.7b");
+    path.join(await CanvasStorage.libraryDir(), canvasVoicesFolder, "qwen3-tts-1.7b");
 
 /// qwenFiles are the program, for this computer, and the model.
 List<PinnedFile> get qwenFiles {

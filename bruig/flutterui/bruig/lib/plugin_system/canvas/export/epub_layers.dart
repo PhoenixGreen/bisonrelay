@@ -19,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
@@ -1050,6 +1051,7 @@ ElementAnimation? _elementAnimation(CanvasElement e) => switch (e) {
       AudioElement e => e.animation,
       VideoElement e => e.animation,
       CharacterElement e => e.animation,
+      Character3dElement e => e.animation,
       _ => null,
     };
 
@@ -1367,6 +1369,7 @@ bool _travels(CanvasElement e) {
     AudioElement e => e.animation,
     VideoElement e => e.animation,
     CharacterElement e => e.animation,
+    Character3dElement e => e.animation,
     _ => null,
   };
   return a != null && (a.on || a.closes);

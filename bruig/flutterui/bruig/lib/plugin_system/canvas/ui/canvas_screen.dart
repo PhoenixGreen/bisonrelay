@@ -42,6 +42,7 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderProxyBox;
 import 'package:provider/provider.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_studio_3d.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // canvas_screen.dart is the Canvas section: a sidebar, the canvas, a settings
@@ -806,10 +807,29 @@ class _CanvasScreenState extends State<CanvasScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder<String?>(
-      valueListenable: _controller.studioOpen,
-      builder: (context, studio, _) =>
-          studio == null ? _canvasPage(context) : _studioPage(context));
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
+      valueListenable: _controller.studio3dOpen,
+      builder: (context, studio3d, _) => studio3d
+          ? _studio3dPage(context)
+          : ValueListenableBuilder<String?>(
+              valueListenable: _controller.studioOpen,
+              builder: (context, studio, _) => studio == null
+                  ? _canvasPage(context)
+                  : _studioPage(context)));
+
+  /// _studio3dPage is the new Character Studio, given the whole page as the
+  /// old one is -- see character_studio_3d.dart.
+  Widget _studio3dPage(BuildContext context) {
+    var client = Provider.of<ClientModel>(context);
+    var theme = ThemeNotifier.of(context);
+    return ScreenWithChatSideMenu(
+        client,
+        contentAreaFrame(
+            theme,
+            CharacterStudio3D(
+                design: _controller.studio3dDesign,
+                onDone: _controller.closeStudio3d)));
+  }
 
   /// _studioPage is the Character Studio, given the whole page: no sidebar,
   /// no timeline, nothing but the character -- see character_studio.dart.

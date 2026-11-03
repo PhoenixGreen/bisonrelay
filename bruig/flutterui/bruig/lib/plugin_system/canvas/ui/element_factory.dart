@@ -15,7 +15,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
@@ -86,6 +88,7 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     // Standing, most of the page's height, about as wide as a person with
     // their arms a little out is for their height.
     ElementKind.character => Size(short * 0.34, short * 0.7),
+    ElementKind.character3d => Size(short * 0.34, short * 0.7),
     // The whole page: a stage is the set the scene is played on.
     ElementKind.stage => Size(wide, short),
     ElementKind.parallax => Size(wide, short),
@@ -388,5 +391,12 @@ CanvasElement newElement(
           .length;
       var x = (already.isEven ? 1 : -1) * (already + 1) ~/ 2 * 1.2;
       return character.copyWith(onStage: OnStage(stage, x: x.toDouble()));
+
+    // Placed from the library with its design; this is only the box -- see
+    // CanvasController.placeCharacter3d.
+    case ElementKind.character3d:
+      return Character3dElement(base.copyWith(lockAspect: true),
+          design: CharacterDesign(
+              id: "", name: "", body: "Vivi", updated: DateTime(2026)));
   }
 }

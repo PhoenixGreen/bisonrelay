@@ -712,9 +712,12 @@ void main() {
       await pump(tester, CanvasElementsPanel(controller: controller));
 
       // All but the 3D stage and parallax, which are chosen in a
-      // background's Pattern layers rather than added.
+      // background's Pattern layers rather than added, and a 3D character,
+      // made in the Character Studio and placed from Assets.
       for (var kind in ElementKind.values) {
-        if (kind == ElementKind.stage || kind == ElementKind.parallax) {
+        if (kind == ElementKind.stage ||
+            kind == ElementKind.parallax ||
+            kind == ElementKind.character3d) {
           continue;
         }
         expect(find.text(kind.label), findsWidgets, reason: kind.name);

@@ -1,0 +1,6 @@
+{
+  "StudioFinish": {
+    "type": "fragment",
+    "file": "shaders/gpu/studio_finish.frag"
+  }
+}

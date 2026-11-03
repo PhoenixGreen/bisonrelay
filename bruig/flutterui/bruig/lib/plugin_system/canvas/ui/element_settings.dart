@@ -4,7 +4,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/parallax_settings.dart';
 import 'package:bruig/plugin_system/canvas/presets/parallax_looks.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/backdrop_settings.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/character3d_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/stage_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -217,6 +219,8 @@ List<Widget> elementSettings(
             pathSettings(context, controller, e, write, begin, commit),
           CharacterElement e =>
             characterSettings(context, controller, e, write, begin, commit),
+          Character3dElement e =>
+            character3dSettings(context, controller, e, write, begin, commit),
           StageElement e =>
             stageSettings(context, controller, e, write, begin, commit),
           SpriteElement e =>

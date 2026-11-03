@@ -23,6 +23,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
@@ -1784,6 +1785,8 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return VectorElement.fromJson(json, base);
     case ElementKind.character:
       return CharacterElement.fromJson(json, base);
+    case ElementKind.character3d:
+      return Character3dElement.fromJson(json, base);
     // A stage of its own, from before stages were a kind of background.
     case ElementKind.stage:
       return BackgroundElement.fromStage(json, base);

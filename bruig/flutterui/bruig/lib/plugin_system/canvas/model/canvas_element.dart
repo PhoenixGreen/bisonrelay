@@ -46,6 +46,9 @@ enum ElementKind {
   // A person, an animal or a monster, drawn on a skeleton and posed. See
   // CharacterElement.
   character("Character"),
+  // A character made in the new Character Studio, drawn in 3D. See
+  // Character3dElement.
+  character3d("3D character"),
   // A 3D set -- a floor and a wall seen through a camera -- that characters
   // stand on. See StageElement.
   stage("3D stage"),

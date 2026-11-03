@@ -2065,6 +2065,15 @@ class _CharacterStudioPanelState extends State<CharacterStudioPanel> {
                       const SizedBox(height: 12),
                       ...switch (w) {
                         StudioWorkspace.start => [
+                            // The new characters, drawn in 3D, as they are
+                            // built: the new Studio, in this one's place.
+                            CanvasTextButton(
+                              key: const ValueKey("studioNewCharacters"),
+                              label: "Try the new 3D characters",
+                              icon: Icons.view_in_ar_outlined,
+                              onPressed: c.openStudio3d,
+                            ),
+                            const SizedBox(height: 12),
                             ..._generate(e, colors),
                             ..._sections(e, {"character"}),
                             if (drawn) ..._reference(e, colors),

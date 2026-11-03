@@ -197,7 +197,7 @@ bool needsEspeak(String voice) => _tongueOf(voice).espeak != null;
 /// kokoroDir is where the model is kept, whether or not it is there. A
 /// test can put it elsewhere.
 Future<String> Function() kokoroDir = () async =>
-    path.join(await CanvasStorage.libraryDir(), "voices", "kokoro-v1_0");
+    path.join(await CanvasStorage.libraryDir(), canvasVoicesFolder, "kokoro-v1_0");
 
 /// _pinned are the files as the shared downloader takes them.
 List<PinnedFile> get _pinned => [

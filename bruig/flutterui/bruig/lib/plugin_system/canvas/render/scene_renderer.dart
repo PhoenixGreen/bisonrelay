@@ -12,7 +12,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/render/vrm/character3d_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/parallax_painter.dart';
@@ -599,6 +601,7 @@ bool leavesByItself(CanvasElement element) => switch (element) {
       ButtonElement e => e.animation.closes,
       VideoElement e => e.animation.closes,
       CharacterElement e => e.animation.closes,
+      Character3dElement e => e.animation.closes,
       _ => true,
     };
 
@@ -999,6 +1002,14 @@ void paintElement(
             e.animation,
             pose,
             () => paintCharacter(canvas, bounds, e, frame,
+                frameRate: frameRate, editing: editing, images: images));
+      case Character3dElement e:
+        arriving(
+            canvas,
+            bounds,
+            e.animation,
+            pose,
+            () => paintCharacter3d(canvas, bounds, e, frame,
                 frameRate: frameRate, editing: editing, images: images));
       default:
         break;
@@ -3344,6 +3355,7 @@ ElementAnimation? _animationOf(CanvasElement element) => switch (element) {
       AudioElement e => e.animation,
       VideoElement e => e.animation,
       CharacterElement e => e.animation,
+      Character3dElement e => e.animation,
       _ => null,
     };
 

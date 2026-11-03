@@ -1,13 +1,18 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/edge_cleaning.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
 import 'package:bruig/plugin_system/canvas/render/model/model_figure.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/vrm/character3d_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/vrm/vrm_character.dart';
+import 'package:bruig/plugin_system/canvas/render/vrm/vrm_gpu.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:flutter/foundation.dart';
@@ -56,7 +61,11 @@ const int _thumbSide = 192;
 
 /// CanvasImageStore holds decoded pictures for a canvas being edited.
 class CanvasImageStore extends ChangeNotifier
-    implements CanvasImageSource, CanvasModelSource, CleansEdges {
+    implements
+        CanvasImageSource,
+        CanvasModelSource,
+        CleansEdges,
+        CanvasCharacterSource {
   /// _edges makes and keeps pictures with their edges cleaned -- see
   /// edge_cleaning.dart.
   late final EdgeCleaner _edges = EdgeCleaner(
@@ -264,6 +273,72 @@ class CanvasImageStore extends ChangeNotifier
     }
   }
 
+  // The 3D characters: a scene for each element drawn, which is a body read,
+  // shaped and dressed, and so kept until the store goes -- or until more
+  // than [_mostCharacters] are kept, when the one drawn longest ago goes.
+
+  /// _gpu is whether 3D can be drawn here: null until found out.
+  bool? _gpu;
+  final Map<String, (CharacterScene, String)> _characters = {};
+  static const int _mostCharacters = 8;
+
+  @override
+  bool get noCharacters3d => _gpu == false;
+
+  @override
+  CharacterScene? resolveCharacter3d(Character3dElement e) {
+    if (_gpu == null) {
+      if (_pending.add("gpu")) {
+        flutterGpuReady().then((ok) {
+          _gpu = ok;
+          _pending.remove("gpu");
+          if (!_disposed) notifyListeners();
+        });
+      }
+      return null;
+    }
+    if (_gpu == false) return null;
+    var key = jsonEncode(e.design.toJson()..remove("updated"));
+    var held = _characters.remove(e.id);
+    var scene = held?.$1;
+    if (scene == null) {
+      if (_characters.length >= _mostCharacters) {
+        var oldest = _characters.keys.first;
+        _characters.remove(oldest)!.$1.dispose();
+      }
+      scene = CharacterScene(loadDecal: loadDecalPicture, paper: false)
+        ..addListener(_characterChanged);
+    }
+    _characters[e.id] = (scene, key);
+    if (held?.$2 != key) {
+      scene.showDesign(e.design);
+      _readyCharacter(e.id, scene, first: held == null);
+    }
+    return scene;
+  }
+
+  void _characterChanged() {
+    if (!_disposed) notifyListeners();
+  }
+
+  /// _readyCharacter is loading until [scene] has everything it was asked
+  /// for -- what an export waits for -- and then draws it again.
+  Future<void> _readyCharacter(String id, CharacterScene scene,
+      {required bool first}) async {
+    var key = "character3d:$id";
+    _pending.add(key);
+    try {
+      // A moment for the change to start: a body asked for is not loading
+      // until its file is being read.
+      await Future<void>.delayed(Duration.zero);
+      await scene.ready();
+      if (first && !_disposed) scene.settle();
+    } finally {
+      _pending.remove(key);
+      if (!_disposed) notifyListeners();
+    }
+  }
+
   @override
   ImageSilhouette? resolveOutline(String assetId, BackgroundRemoval removal) {
     if (assetId.isEmpty) return null;
@@ -441,6 +516,10 @@ class CanvasImageStore extends ChangeNotifier
       model.dispose();
     }
     _models.clear();
+    for (var (scene, _) in _characters.values) {
+      scene.dispose();
+    }
+    _characters.clear();
     for (var vector in _vectors.values) {
       vector.picture.dispose();
     }

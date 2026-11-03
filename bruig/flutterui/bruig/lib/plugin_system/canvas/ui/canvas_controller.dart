@@ -57,6 +57,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart'
     show posePresets;
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
@@ -4285,6 +4287,97 @@ class CanvasController extends ChangeNotifier {
   /// studioOpen is [studioCharacter], for the page to follow its opening
   /// and closing without rebuilding on every change to the canvas.
   final ValueNotifier<String?> studioOpen = ValueNotifier(null);
+
+  /// studio3dOpen is whether the new Character Studio has the page: the 3D
+  /// characters, as they are built (character_studio_3d.dart). It takes the
+  /// old Studio's place rather than opening over it.
+  final ValueNotifier<bool> studio3dOpen = ValueNotifier(false);
+
+  /// studio3dElement is the 3D character the Studio was opened to change,
+  /// if it was opened for one.
+  String? studio3dElement;
+
+  /// studio3dDesign is the character the Studio opens with: [studio3dElement]'s,
+  /// or null for a new one.
+  CharacterDesign? get studio3dDesign {
+    var id = studio3dElement;
+    var e = id == null ? null : _elementAnywhere(id);
+    return e is Character3dElement ? e.design : null;
+  }
+
+  /// openStudio3d gives the page to the new Character Studio, closing the
+  /// old one first if it is open: to change [element], a 3D character on the
+  /// canvas, or to make a new character.
+  void openStudio3d({String? element}) {
+    if (_session != null) closeStudio();
+    pause();
+    studio3dElement = element;
+    studio3dOpen.value = true;
+  }
+
+  /// closeStudio3d gives the page back to the canvas. With [kept], the
+  /// character as the Studio kept it, every copy of it on the canvas -- and
+  /// the element it was opened for -- is made as it now is: one step to undo.
+  void closeStudio3d([CharacterDesign? kept]) {
+    var opened = studio3dElement;
+    studio3dElement = null;
+    studio3dOpen.value = false;
+    if (kept == null) return;
+    var before = _document;
+    var doc = before;
+    for (var e in [
+      ...doc.elements,
+      ...?doc.master?.elements,
+      for (var sc in doc.allScenes) ...sc.elements,
+    ]) {
+      if (e is! Character3dElement) continue;
+      if (e.id != opened && (e.design.id.isEmpty || e.design.id != kept.id)) {
+        continue;
+      }
+      // Named for the character, unless it was named for itself.
+      var renamed = e.base.name.isEmpty || e.base.name == e.design.name;
+      var next = e.copyWith(design: kept);
+      doc = _replacedAnywhere(
+              doc,
+              renamed
+                  ? next.rebase(next.base.copyWith(name: kept.name))
+                  : next) ??
+          doc;
+    }
+    if (identical(doc, before)) return;
+    _undo.add(before);
+    if (_undo.length > _maxUndo) _undo.removeAt(0);
+    _redo.clear();
+    _document = doc;
+    _dirty = true;
+    scheduleAutosave();
+    notifyListeners();
+  }
+
+  /// _elementAnywhere is element [id] in the scene being edited, the master,
+  /// or any other scene.
+  CanvasElement? _elementAnywhere(String id) {
+    var doc = _document;
+    for (var e in [
+      ...doc.elements,
+      ...?doc.master?.elements,
+      for (var sc in doc.allScenes) ...sc.elements,
+    ]) {
+      if (e.id == id) return e;
+    }
+    return null;
+  }
+
+  /// placeCharacter3d puts library character [design] in the scene, at
+  /// [center] or in the middle, picked: one step to undo.
+  void placeCharacter3d(CharacterDesign design, {Offset? center}) {
+    if (_session != null) return;
+    var made = newElement(ElementKind.character3d, _document, center: center)
+        as Character3dElement;
+    addElement(made
+        .copyWith(design: design)
+        .rebase(made.base.copyWith(name: design.name)));
+  }
 
   String? _studio;
   _StudioSession? _session;
@@ -13985,6 +14078,7 @@ class CanvasController extends ChangeNotifier {
         AudioElement e => e.animation,
         VideoElement e => e.animation,
         CharacterElement e => e.animation,
+        Character3dElement e => e.animation,
         _ => const ElementAnimation(),
       };
 
@@ -14014,7 +14108,8 @@ class CanvasController extends ChangeNotifier {
       element is ButtonElement ||
       element is AudioElement ||
       element is VideoElement ||
-      element is CharacterElement;
+      element is CharacterElement ||
+      element is Character3dElement;
 
   static CanvasElement _withElementAnimation(
           CanvasElement element, ElementAnimation animation) =>
@@ -14030,6 +14125,7 @@ class CanvasController extends ChangeNotifier {
         AudioElement e => e.copyWith(animation: animation),
         VideoElement e => e.copyWith(animation: animation),
         CharacterElement e => e.copyWith(animation: animation),
+        Character3dElement e => e.copyWith(animation: animation),
         _ => element,
       };
 

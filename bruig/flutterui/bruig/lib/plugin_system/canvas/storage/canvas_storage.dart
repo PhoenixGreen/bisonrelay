@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:bruig/config.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:flutter/foundation.dart';
+import 'package:bruig/plugin_system/canvas/storage/character_designs.dart';
 import 'package:bruig/plugin_system/canvas/storage/character_library.dart';
 import 'package:path/path.dart' as path;
 
@@ -47,6 +48,38 @@ const canvasVectorFolder = "Vectors";
 /// canvasModelFolder is where 3D characters live: .glb, .vrm and .gltf
 /// files. See CharacterElement.model.
 const canvasModelFolder = "Models";
+
+/// The folders things are downloaded to, the first time they are wanted:
+/// the sculpted body (human_assets.dart), the voices speech is made with
+/// (kokoro_speech.dart, qwen_speech.dart), the instruments' sound bank
+/// (part_render.dart) and the VRoid characters (vroid_assets.dart).
+const canvasHumanFolder = "Human";
+const canvasVoicesFolder = "voices";
+const canvasSoundBankFolder = "soundbanks";
+const canvasVroidFolder = "VRoid";
+
+/// isCanvasAppFolder is whether [name] is one of the folders the app keeps
+/// its own things in at the top of the library. None is listed with the
+/// documents, and no folder of documents can take one's name. Without
+/// regard to case, as the file system on a Mac has none.
+bool isCanvasAppFolder(String name) => _appFolders.contains(name.toLowerCase());
+
+final _appFolders = {
+  for (final f in [
+    canvasPicturesFolder,
+    canvasAudioFolder,
+    canvasVideoFolder,
+    canvasVectorFolder,
+    canvasModelFolder,
+    canvasCharacterFolder,
+    canvasHumanFolder,
+    canvasVoicesFolder,
+    canvasSoundBankFolder,
+    canvasVroidFolder,
+    canvasCharacter3dFolder,
+  ])
+    f.toLowerCase(),
+};
 
 /// canvasExtension is what a saved canvas is called on disk.
 ///
@@ -126,6 +159,8 @@ class CanvasStorage {
     // And the library's characters': a reference sheet no canvas shows is
     // still the character's.
     live.addAll(await CharacterLibrary.assetIds());
+    // And the new 3D characters' decals.
+    live.addAll(await CharacterDesigns.pictureIds());
     return live;
   }
 
@@ -145,6 +180,7 @@ class CanvasStorage {
       }
     }
     live.addAll(await CharacterLibrary.mediaIds());
+    live.addAll(await CharacterDesigns.vectorIds());
     return live;
   }
 
@@ -222,7 +258,7 @@ class CanvasStorage {
   static Future<String?> _dirFor(String folder) async {
     var root = await libraryDir();
     if (folder.isEmpty) return root;
-    if (sanitizeName(folder) != folder) return null;
+    if (sanitizeName(folder) != folder || isCanvasAppFolder(folder)) return null;
     return path.join(root, folder);
   }
 
@@ -244,16 +280,10 @@ class CanvasStorage {
       await for (var entry in Directory(dir).list(followLinks: false)) {
         var base = path.basename(entry.path);
         if (base.startsWith(".")) continue;
-        // The picture store is a real folder now, so that it can be opened and
-        // looked at -- which means the listing has to leave it out by name
-        // rather than relying on it being hidden.
-        if (base == canvasPicturesFolder ||
-            base == canvasAudioFolder ||
-            base == canvasVideoFolder ||
-            base == canvasVectorFolder ||
-            base == canvasCharacterFolder) {
-          continue;
-        }
+        // The app's own folders are real ones, so that they can be opened
+        // and looked at -- which means the listing has to leave them out by
+        // name rather than relying on them being hidden.
+        if (isCanvasAppFolder(base)) continue;
 
         if (entry is Directory) {
           // One level only, so subfolders are listed at the top and never
@@ -506,6 +536,7 @@ class CanvasStorage {
   static Future<bool> renameFolder(String from, String to) async {
     var clean = sanitizeName(to);
     if (clean == null || sanitizeName(from) != from) return false;
+    if (isCanvasAppFolder(clean) || isCanvasAppFolder(from)) return false;
     try {
       var library = await libraryDir();
       var source = Directory(path.join(library, from));
@@ -524,7 +555,7 @@ class CanvasStorage {
 
   static Future<bool> createFolder(String name) async {
     var clean = sanitizeName(name);
-    if (clean == null) return false;
+    if (clean == null || isCanvasAppFolder(clean)) return false;
     try {
       await Directory(path.join(await libraryDir(), clean))
           .create(recursive: true);

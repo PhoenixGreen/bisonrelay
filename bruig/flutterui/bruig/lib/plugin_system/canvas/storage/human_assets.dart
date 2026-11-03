@@ -41,7 +41,7 @@ class HumanAssets {
   static const int _version = 2;
 
   static Future<String> dir({bool create = false}) async {
-    var d = path.join(await CanvasStorage.libraryDir(), "Human");
+    var d = path.join(await CanvasStorage.libraryDir(), canvasHumanFolder);
     if (create) await Directory(d).create(recursive: true);
     return d;
   }

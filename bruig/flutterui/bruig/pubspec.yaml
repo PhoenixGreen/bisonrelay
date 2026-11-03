@@ -115,6 +115,11 @@ dependencies:
   sherpa_onnx: ^2.0.1
   # MusicXML, for Canvas's sheet music: read and written (MIT).
   xml: ^6.5.0
+  flutter_scene: 0.24.3
+  flutter_vrm: 0.1.0-dev.1
+  vector_math: ^2.4.4
+  # For hook/build.dart, which compiles the Flutter GPU shaders.
+  hooks: ^2.2.0
 
 msix_config:
   display_name: Bison Relay GUI
@@ -189,6 +194,23 @@ flutter:
     # The Speech device's breaths, laughs, sighs and coughs: CC0, see
     # its SOURCES.md.
     - assets/canvas/cues/
+    # The Flutter GPU shaders hook/build.dart compiles, one folder for each
+    # kind of GPU.
+    - flutter_scene_generated/
+    - path: flutter_scene_generated/metal_ios/
+      platforms:
+        - ios
+    - path: flutter_scene_generated/metal_desktop/
+      platforms:
+        - macos
+    - path: flutter_scene_generated/opengl_es_vulkan/
+      platforms:
+        - android
+        - linux
+        - windows
+    - path: flutter_scene_generated/opengl_es/
+      platforms:
+        - web
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
