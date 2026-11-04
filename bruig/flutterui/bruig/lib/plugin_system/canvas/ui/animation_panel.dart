@@ -4,6 +4,12 @@ import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
     show Quantise;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
@@ -51,8 +57,9 @@ class _AnimationPanelState extends State<AnimationPanel> {
   /// _folded are the devices folded to their titles, by id. For the session.
   static final Set<String> _folded = {};
 
-  /// _keysWidth is how wide the Keys device has been dragged.
-  static double _keysWidth = 620;
+  /// _keysWidth is how wide the Keys device has been dragged; null, as wide
+  /// as the room the others leave (Ken: as big as it can be).
+  static double? _keysWidth;
 
   /// _keyPicked is the key picked in the Keys device: its property and
   /// index.
@@ -203,22 +210,73 @@ class _AnimationPanelState extends State<AnimationPanel> {
           ),
         ),
         Expanded(
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            children: [
-              _clipDevice(e, c, colors),
-              _motionDevice(e, c, colors),
-              if (!c.isSound && c.kind != MotionKind.model)
-                _keysDevice(e, c, colors),
-              _timingDevice(e, c, span, colors),
-              if (!c.isSound) _placeDevice(e, c, colors),
-              _launchDevice(e, c, colors),
-            ].expand((w) => [w, const SizedBox(width: 6)]).toList(),
-          ),
+          child: LayoutBuilder(builder: (context, box) {
+            var keys = !c.isSound && c.kind != MotionKind.model;
+            var inside = !c.isSound && _insideShown(e, c);
+            // The others as wide as they are, folded or not: Keys has the
+            // rest, unless it was dragged to a width of its own.
+            var others = [
+              ("clip", 220.0),
+              (
+                "motion",
+                c.isSound || c.kind == MotionKind.model ? 240.0 : 300.0
+              ),
+              if (inside) ("inside", 260.0),
+              ("timing", 290.0),
+              if (!c.isSound) ("place", 240.0),
+              ("launch", 300.0),
+            ];
+            var taken = others.fold(0.0, (a, d) => a + _onScreen(d.$1, d.$2)) +
+                6.0 * (others.length + 1) +
+                16;
+            // At least half the panel, however many devices there are:
+            // those after it scroll (Ken: as big as it can be).
+            var fill = math.max(
+                380.0,
+                math.max(box.maxWidth / 2 - 8, box.maxWidth - taken) / _scale -
+                    1);
+            return ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              children: [
+                _clipDevice(e, c, colors),
+                _motionDevice(e, c, colors),
+                if (keys) _keysDevice(e, c, colors, _keysWidth ?? fill),
+                if (inside) _insideDevice(e, c, colors),
+                _timingDevice(e, c, span, colors),
+                if (!c.isSound) _placeDevice(e, c, colors),
+                _launchDevice(e, c, colors),
+              ].expand((w) => [w, const SizedBox(width: 6)]).toList(),
+            );
+          }),
         ),
       ]),
     );
+  }
+
+  /// _scale is how the devices are scaled to the panel's height, as
+  /// DeviceFrame scales them.
+  double get _scale => ((widget.height - 40) / deviceHeight).clamp(0.5, 1.5);
+
+  double _onScreen(String id, double width) =>
+      (_folded.contains(id) ? deviceFoldedWidth : width) * _scale;
+
+  /// _playhead is where in [c] it is playing: from its slot, or the
+  /// playhead on the stretch of the timeline picked.
+  double? _playhead(CanvasElement e, MotionClip c) {
+    if (controller.liveMotion case var live?) {
+      for (var p in live.of(e.id)?.plays ?? const <LivePlay?>[]) {
+        if (p != null && p.clip == c.id && !p.ended) {
+          return liveTime(c, p, live.clock);
+        }
+      }
+    }
+    var place = controller.pickedPlacement;
+    var span = place == null ? null : controller.spanOf(place);
+    if (span == null) return null;
+    var at = controller.secondsAt(controller.frame);
+    if (at < span.start || at > span.end) return null;
+    return span.clipTime(c, at);
   }
 
   String _slotLabel(CanvasElement e, MotionClip c) {
@@ -386,14 +444,18 @@ class _AnimationPanelState extends State<AnimationPanel> {
     return p.ways.first;
   }
 
-  Widget _keysDevice(CanvasElement e, MotionClip c, ColorScheme colors) {
+  Widget _keysDevice(
+      CanvasElement e, MotionClip c, ColorScheme colors, double width) {
     var picked = _keyPicked;
+    var scene = motionSceneOf(controller.document, controller.frame);
     var key =
         picked == null ? null : c.keys[picked.$1]?.elementAtOrNull(picked.$2);
     var editor = _KeysEditor(
       clip: c,
       picked: key == null ? null : picked,
       colors: colors,
+      sample: (prop, t) => sampleProp(c, prop, t, boxOf(e), scene),
+      playhead: _playhead(e, c),
       onPick: (p) => setState(() => _keyPicked = p),
       onAdd: (prop, t) {
         var scene = motionSceneOf(controller.document, controller.frame);
@@ -435,7 +497,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
       _device(
           "keys",
           "Keys",
-          _keysWidth,
+          width,
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(child: editor),
             const SizedBox(width: 10),
@@ -453,8 +515,11 @@ class _AnimationPanelState extends State<AnimationPanel> {
             child: GestureDetector(
               key: const ValueKey("animKeysGrip"),
               behavior: HitTestBehavior.opaque,
-              onHorizontalDragUpdate: (d) => setState(() =>
-                  _keysWidth = (_keysWidth + d.delta.dx).clamp(380.0, 2400.0)),
+              onHorizontalDragUpdate: (d) => setState(() => _keysWidth =
+                  ((_keysWidth ?? width) + d.delta.dx / _scale)
+                      .clamp(380.0, 2400.0)),
+              // Double-clicked: as wide as there is room for again.
+              onDoubleTap: () => setState(() => _keysWidth = null),
             ),
           ),
         ),
@@ -580,6 +645,104 @@ class _AnimationPanelState extends State<AnimationPanel> {
         onChanged: (x) => write(k.copyWith(ease: x)),
       ),
     ]);
+  }
+
+  /// _ownWay is whether [e] has an arrival and a way out of its own -- as
+  /// its Animation settings have them -- that a clip can play.
+  bool _ownWay(CanvasElement e) =>
+      e is TextElement ||
+      e is ShapeElement ||
+      e is ImageElement ||
+      e is ChartElement;
+
+  bool _insideShown(CanvasElement e, MotionClip c) =>
+      (_ownWay(e) &&
+          (c.kind == MotionKind.arrive || c.kind == MotionKind.leave)) ||
+      e is CounterElement ||
+      e is LineElement ||
+      (e is TextElement && e.curve != null);
+
+  /// _insideDevice is what only this kind of element does in the clip, kept
+  /// as its settings rather than as keys: its own arrival or way out played
+  /// across the clip; a counter counting; a line bowing; text sliding along
+  /// its line.
+  Widget _insideDevice(CanvasElement e, MotionClip c, ColorScheme colors) {
+    var hint = TextStyle(fontSize: 11, color: colors.onSurfaceVariant);
+    void set(String key, Object? value) => _edit(
+        e,
+        (c) => c.copyWith(
+            inside: {...c.inside, key: value}
+              ..removeWhere((_, v) => v == null || v == false)));
+
+    /// span is a from--to pair: a switch, and the two ends when on.
+    List<Widget> span(String key, String label, double from, double to,
+        {int decimals = 2}) {
+      var on = switch (c.inside[key]) { [num _, num _] => true, _ => false };
+      var pair = on ? c.inside[key] as List : [from, to];
+      var a = (pair[0] as num).toDouble(), b = (pair[1] as num).toDouble();
+      return [
+        CanvasToggle(
+          key: ValueKey("animInside-$key"),
+          label: label,
+          value: on,
+          onChanged: (v) => set(key, v ? [a, b] : null),
+        ),
+        if (on)
+          Row(children: [
+            CanvasNumberField(
+              key: ValueKey("animInside-$key-from"),
+              label: "From",
+              value: a,
+              decimals: decimals,
+              width: 100,
+              onChanged: (v) => set(key, [v, b]),
+            ),
+            const SizedBox(width: 8),
+            CanvasNumberField(
+              key: ValueKey("animInside-$key-to"),
+              label: "To",
+              value: b,
+              decimals: decimals,
+              width: 100,
+              onChanged: (v) => set(key, [a, v]),
+            ),
+          ]),
+      ];
+    }
+
+    var arriving = c.kind == MotionKind.arrive;
+    return _device(
+        "inside",
+        "Inside it",
+        260,
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (_ownWay(e) &&
+              (c.kind == MotionKind.arrive || c.kind == MotionKind.leave)) ...[
+            CanvasToggle(
+              key: const ValueKey("animInside-own"),
+              label:
+                  arriving ? "Plays its own arrival" : "Plays its own way out",
+              value: c.inside["own"] == true,
+              onChanged: (v) => set("own", v),
+            ),
+            Text(
+                arriving
+                    ? "Its words, pieces or layers come in as its Animation "
+                        "settings say, across this clip. Before the clip, it "
+                        "is not there yet."
+                    : "It goes as its Animation settings say, across this "
+                        "clip.",
+                style: hint),
+            const SizedBox(height: 6),
+          ],
+          if (e is CounterElement)
+            ...span("count", "Counts", e.from, e.to, decimals: 0),
+          if (e is LineElement)
+            ...span("bow", "Bows", e.curvature, e.curvature == 0 ? 0.5 : 0),
+          if (e is TextElement && e.curve != null)
+            ...span("slide", "Slides along its line", e.curve!.offset, 1),
+        ]),
+        colors);
   }
 
   Widget _timingDevice(
@@ -881,6 +1044,11 @@ class _KeysEditor extends StatefulWidget {
   final MotionClip clip;
   final (MotionProp, int)? picked;
   final ColorScheme colors;
+
+  /// sample is a property's value [t] seconds in, for its curve; playhead
+  /// where the clip is playing, if it is.
+  final double? Function(MotionProp prop, double t) sample;
+  final double? playhead;
   final ValueChanged<(MotionProp, int)?> onPick;
   final void Function(MotionProp prop, double t) onAdd;
   final void Function(MotionProp prop, int index, double t, bool done) onMove;
@@ -889,6 +1057,8 @@ class _KeysEditor extends StatefulWidget {
     required this.clip,
     required this.picked,
     required this.colors,
+    required this.sample,
+    required this.playhead,
     required this.onPick,
     required this.onAdd,
     required this.onMove,
@@ -901,7 +1071,11 @@ class _KeysEditor extends StatefulWidget {
 class _KeysEditorState extends State<_KeysEditor> {
   (MotionProp, int)? _dragging;
 
-  static const double _row = 24;
+  /// _row is a property's row: the device's height shared among the five,
+  /// so the keys' area is as tall as it can be.
+  static final double _row =
+      ((deviceHeight - 28 - 16 - 16 - 8) / MotionProp.values.length)
+          .clamp(24.0, 44.0);
 
   @override
   Widget build(BuildContext context) {
@@ -929,9 +1103,11 @@ class _KeysEditorState extends State<_KeysEditor> {
               child: Stack(clipBehavior: Clip.none, children: [
                 for (var s = 0.0; s <= c.length + 1e-6; s += step)
                   Positioned(
-                    left: xOf(s) - 10,
-                    width: 20,
+                    left: xOf(s) - 20,
+                    width: 40,
                     child: Text("${(s * 100).round() / 100}",
+                        maxLines: 1,
+                        softWrap: false,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             fontSize: 9.5, color: colors.onSurfaceVariant)),
@@ -998,6 +1174,14 @@ class _KeysEditorState extends State<_KeysEditor> {
                   child: CustomPaint(
                     painter: _RowPainter(
                       keys: c.keys[prop] ?? const [],
+                      curve: (c.keys[prop] ?? const []).isEmpty
+                          ? null
+                          : [
+                              for (var i = 0; i <= 48; i++)
+                                widget.sample(prop, c.length * i / 48) ??
+                                    prop.rest,
+                            ],
+                      playhead: widget.playhead,
                       x: xOf,
                       picked:
                           widget.picked?.$1 == prop ? widget.picked!.$2 : null,
@@ -1015,12 +1199,19 @@ class _KeysEditorState extends State<_KeysEditor> {
 
 class _RowPainter extends CustomPainter {
   final List<MotionKey> keys;
+
+  /// curve is the property's value across the clip, evenly; null with no
+  /// keys.
+  final List<double>? curve;
+  final double? playhead;
   final double Function(double) x;
   final int? picked;
   final ColorScheme colors;
 
   _RowPainter(
       {required this.keys,
+      required this.curve,
+      required this.playhead,
       required this.x,
       required this.picked,
       required this.colors});
@@ -1036,6 +1227,35 @@ class _RowPainter extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..color = colors.outlineVariant);
+    // How it goes between its keys, drawn across the row.
+    if (curve case var values? when values.length > 1) {
+      var lo = values.reduce(math.min), hi = values.reduce(math.max);
+      var span = hi - lo;
+      var top = 8.0, bottom = size.height - 8;
+      var line = Path();
+      for (var (i, v) in values.indexed) {
+        var px = size.width * i / (values.length - 1);
+        var py = span < 1e-9
+            ? size.height / 2
+            : bottom - (v - lo) / span * (bottom - top);
+        i == 0 ? line.moveTo(px, py) : line.lineTo(px, py);
+      }
+      canvas.drawPath(
+          line,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = colors.primary.withValues(alpha: 0.55));
+    }
+    if (playhead case var t?) {
+      var px = x(t);
+      canvas.drawLine(
+          Offset(px, 2),
+          Offset(px, size.height - 2),
+          Paint()
+            ..strokeWidth = 1.5
+            ..color = const Color(0xFF3CCF7A));
+    }
     for (var (i, k) in keys.indexed) {
       var c = Offset(x(k.t), size.height / 2);
       var place = k.value is MotionPlace;

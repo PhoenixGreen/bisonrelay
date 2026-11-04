@@ -391,4 +391,39 @@ void main() {
           presetNamed("Go to…")!.clip("g", target: "a").after, ClipHold.last);
     });
   });
+
+  test("Inside it: an arrival of its own runs across the clip", () {
+    var c = MotionClip.ofKind("in", MotionKind.arrive, name: "In")
+        .copyWith(length: 2, inside: {
+      "own": true,
+      "count": [0, 10]
+    });
+    expect(insideAt(c, 0), {"reveal": 0.0, "count": 0.0});
+    expect(insideAt(c, 1), {"reveal": 0.5, "count": 5.0});
+    var out = c.copyWith(kind: MotionKind.leave);
+    expect(insideAt(out, 2), {"close": 1.0, "count": 10.0});
+    var back = MotionClip.fromJson(c.toJson())!;
+    expect(back.inside["count"], [0, 10]);
+  });
+
+  test("placed, its own arrival hides it before and shows it after", () {
+    var clip = MotionClip.ofKind("in", MotionKind.arrive, name: "In")
+        .copyWith(length: 1, inside: {"own": true});
+    var e = ShapeElement(ElementBase(
+        id: "s",
+        width: 10,
+        height: 10,
+        motion: ElementMotion(clips: [
+          clip
+        ], placed: const [
+          ClipPlacement(id: "p", clip: "in", layer: 0, start: 1),
+        ])));
+    var doc = CanvasDocument(frames: 96, frameRate: 24, elements: [e]);
+    double? reveal(int f) =>
+        poseWithMotion(e, f, doc).values[KeyframeChannel.reveal];
+    expect(reveal(0), 0, reason: "an arrival holds its first frame before");
+    expect(reveal(36), closeTo(0.5, 1e-9));
+    expect(reveal(72), isNull,
+        reason: "after, nothing set: all of it there, as at rest");
+  });
 }

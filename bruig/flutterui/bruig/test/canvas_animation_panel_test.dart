@@ -126,7 +126,12 @@ void main() {
     c.pinPlacement("a", p, ClipPin(PinKind.marker, target: m));
     await tester.pumpAndSettle();
     expect(c.spanOf(p)!.start, 2);
+    // Keys folded, for Timing to be in view beside it.
+    await tester.tap(find.byKey(const ValueKey("deviceFold-anim-keys")));
+    await tester.pumpAndSettle();
     expect(find.textContaining("2.00–"), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("deviceFold-anim-keys")));
+    await tester.pumpAndSettle();
   });
 
   for (var scale in [0.65, 1.5]) {
@@ -135,4 +140,56 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets("Keys has the room the others leave; double-clicked, again",
+      (tester) async {
+    await pump(tester);
+    // Its width is kept for the session: as it starts, filling.
+    Future<void> doubleTap() async {
+      await tester.tap(find.byKey(const ValueKey("animKeysGrip")));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.byKey(const ValueKey("animKeysGrip")));
+      await tester.pumpAndSettle();
+    }
+
+    await doubleTap();
+    var keys = find.byKey(const ValueKey("animDevice-keys"));
+    var panel = tester.getRect(find.byKey(const ValueKey("animationPanel")));
+    expect(
+        tester.getSize(keys).width, greaterThanOrEqualTo(panel.width / 2 - 10),
+        reason: "half the panel at least, the devices after it scrolled");
+    expect(tester.getRect(keys).left, lessThan(panel.width / 2),
+        reason: "and in view");
+    var was = tester.getSize(keys).width;
+    await tester.drag(
+        find.byKey(const ValueKey("animKeysGrip")), const Offset(-150, 0));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(keys).width, lessThan(was - 100));
+    await doubleTap();
+    expect(tester.getSize(keys).width, closeTo(was, 1));
+  });
+
+  testWidgets("Inside it: an arrival plays the element's own", (tester) async {
+    var (c, _) = await pump(tester);
+    var id = c.newClip("a", kind: MotionKind.arrive);
+    c.pickMotion("a", id);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("animDevice-inside")), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("animInside-own")));
+    await tester.pumpAndSettle();
+    expect(c.motionOf("a").clip(id)!.inside["own"], isTrue);
+    await tester.tap(find.byKey(const ValueKey("animInside-own")));
+    await tester.pumpAndSettle();
+    expect(c.motionOf("a").clip(id)!.inside, isEmpty,
+        reason: "turned off, nothing left behind");
+  });
+
+  testWidgets("a move has nothing inside it for a shape", (tester) async {
+    var (c, _) = await pump(tester);
+    var id = c.newClip("a", preset: presetNamed("Shake"));
+    c.pickMotion("a", id);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("animDevice-inside")), findsNothing,
+        reason: "a shake is a move: a shape has nothing more to do in it");
+  });
 }

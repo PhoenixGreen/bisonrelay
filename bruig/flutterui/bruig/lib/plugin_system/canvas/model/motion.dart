@@ -641,6 +641,47 @@ String markerKey(TimelineAction a) => a.id.isNotEmpty ? a.id : "m${a.frame}";
 /// math0 keeps a time from going before the scene's start.
 double math0(double v) => v < 0 ? 0 : v;
 
+/// InsideChannel is what a clip can do that only some kinds of element do,
+/// as the renderer's channels have it: an element's own arrival and way
+/// out, a counter's count, a line's bow, text sliding along its line.
+enum InsideChannel {
+  reveal("reveal"),
+  close("close"),
+  count("count"),
+  bow("bow"),
+  slide("slide");
+
+  /// channel is the KeyframeChannel the renderer reads it from.
+  final String channel;
+  const InsideChannel(this.channel);
+}
+
+/// insideAt is what [c]'s Inside it settings come to [t] seconds in: a
+/// value for each of the renderer's channels it sets. Its own arrival runs
+/// from nought to all of it across the clip, its way out likewise; a count,
+/// a bow and a slide go from where they are set to start to where they are
+/// set to end.
+Map<String, double> insideAt(MotionClip c, double t) {
+  var inside = c.inside;
+  if (inside.isEmpty) return const {};
+  var p = c.length <= 0 ? 1.0 : (t / c.length).clamp(0.0, 1.0);
+  var out = <String, double>{};
+  if (inside["own"] == true) {
+    if (c.kind == MotionKind.arrive) out[InsideChannel.reveal.channel] = p;
+    if (c.kind == MotionKind.leave) out[InsideChannel.close.channel] = p;
+  }
+  for (var ch in const [
+    InsideChannel.count,
+    InsideChannel.bow,
+    InsideChannel.slide
+  ]) {
+    if (inside[ch.name] case [num from, num to]) {
+      out[ch.channel] = from + (to - from) * p;
+    }
+  }
+  return out;
+}
+
 /// clipSlots is how many slots an element's strip has at the least: it has
 /// one per cue row, as many as the mixer has.
 const int clipSlots = 4;

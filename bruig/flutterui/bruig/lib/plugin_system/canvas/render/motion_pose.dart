@@ -46,6 +46,10 @@ class MotionPose {
   final double dx, dy, scale, turn, opacity;
   final List<MotionSource> sources;
 
+  /// values are the renderer's channels a clip's Inside it sets -- see
+  /// insideAt -- by name: the latest clip's, not added up.
+  final Map<String, double> values;
+
   const MotionPose({
     this.dx = 0,
     this.dy = 0,
@@ -53,15 +57,27 @@ class MotionPose {
     this.turn = 0,
     this.opacity = 1,
     this.sources = const [],
+    this.values = const {},
   });
 
   static const MotionPose rest = MotionPose();
 
   bool get isRest =>
-      dx == 0 && dy == 0 && scale == 1 && turn == 0 && opacity == 1;
+      dx == 0 &&
+      dy == 0 &&
+      scale == 1 &&
+      turn == 0 &&
+      opacity == 1 &&
+      values.isEmpty;
 
   MotionPose withSources(List<MotionSource> s) => MotionPose(
-      dx: dx, dy: dy, scale: scale, turn: turn, opacity: opacity, sources: s);
+      dx: dx,
+      dy: dy,
+      scale: scale,
+      turn: turn,
+      opacity: opacity,
+      sources: s,
+      values: values);
 
   /// plus is this with [p] added on top, counted [weight] of the way.
   MotionPose plus(MotionPose p, [double weight = 1]) => MotionPose(
@@ -71,6 +87,12 @@ class MotionPose {
         scale: scale * (1 + (p.scale - 1) * weight),
         opacity: opacity * (1 + (p.opacity - 1) * weight),
         sources: [...sources, ...p.sources],
+        // A layer turned all the way down sets nothing of its own.
+        values: weight <= 0 || p.values.isEmpty
+            ? values
+            : values.isEmpty
+                ? p.values
+                : {...values, ...p.values},
       );
 
   /// onto is [pose] -- a keyframe's -- with this added: the clips' moves on
@@ -83,6 +105,7 @@ class MotionPose {
           scale: pose.scale * scale,
           rotate: pose.rotate + turn,
           opacity: pose.opacity * opacity,
+          values: values.isEmpty ? null : {...pose.values, ...values},
         );
 
   @override
@@ -196,6 +219,8 @@ MotionPose clipPose(MotionClip c, double t, Rect self, MotionScene scene,
     scale: from.scale * v(MotionProp.scale),
     turn: from.turn + v(MotionProp.turn),
     opacity: from.opacity * v(MotionProp.opacity),
+    values:
+        c.inside.isEmpty ? from.values : {...from.values, ...insideAt(c, t)},
   );
 }
 
