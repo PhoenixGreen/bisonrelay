@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
@@ -887,9 +888,68 @@ class StagePainter extends CustomPainter {
     }
   }
 
+  /// _paintCameras draws each Camera's frame over the page: what will be
+  /// shown, where it is now. Not while looking through it -- then the page
+  /// is the frame.
+  void _paintCameras(Canvas canvas) {
+    if (camera != null) return;
+    for (var cam in document.elements.whereType<CameraElement>()) {
+      if (!cam.visible) continue;
+      var r = cameraFrame(cam, frame, document, live: liveMotion);
+      var box = Rect.fromPoints(
+          r.topLeft * scale + origin, r.bottomRight * scale + origin);
+      var ink = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..color = const Color(0xE6F2A33D);
+      // Dashed round, and solid at its corners, as a viewfinder.
+      const dash = 8.0, gap = 6.0;
+      for (var (a, b) in [
+        (box.topLeft, box.topRight),
+        (box.topRight, box.bottomRight),
+        (box.bottomRight, box.bottomLeft),
+        (box.bottomLeft, box.topLeft),
+      ]) {
+        var d = b - a;
+        var length = d.distance;
+        if (length <= 0) continue;
+        var unit = d / length;
+        for (var t = 0.0; t < length; t += dash + gap) {
+          canvas.drawLine(
+              a + unit * t, a + unit * math.min(length, t + dash), ink);
+        }
+      }
+      var corner = math.min(18.0, box.shortestSide / 4);
+      var solid = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..color = const Color(0xFFF2A33D);
+      for (var (c, dx, dy) in [
+        (box.topLeft, 1.0, 1.0),
+        (box.topRight, -1.0, 1.0),
+        (box.bottomRight, -1.0, -1.0),
+        (box.bottomLeft, 1.0, -1.0),
+      ]) {
+        canvas.drawLine(c, c + Offset(corner * dx, 0), solid);
+        canvas.drawLine(c, c + Offset(0, corner * dy), solid);
+      }
+      var label = TextPainter(
+        text: TextSpan(
+            text: cam.name,
+            style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFFF2A33D))),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      label.paint(canvas, box.topLeft + const Offset(6, 5));
+    }
+  }
+
   void _paintSelection(Canvas canvas) {
     if (!showHelpers) return;
 
+    _paintCameras(canvas);
     _paintKeptBoxes(canvas);
     _paintFlowLines(canvas);
     _paintTouchAreas(canvas);

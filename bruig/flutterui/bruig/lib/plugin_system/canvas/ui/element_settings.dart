@@ -1,4 +1,9 @@
 import 'package:bruig/plugin_system/canvas/ui/settings/sheet_settings.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
+import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
+    show presetsFor;
+import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/parallax_settings.dart';
 import 'package:bruig/plugin_system/canvas/presets/parallax_looks.dart';
@@ -213,6 +218,65 @@ List<Widget> elementSettings(
             spriteSettings(context, controller, e, write, begin, commit),
           TileMapElement e =>
             tileMapSettings(context, controller, e, write, begin, commit),
+          // A camera is its frame, moved by its clips: here only the way to
+          // see what it sees while the scene stands still.
+          CameraElement e => [
+              section(e, "camera",
+                  icon: Icons.videocam_outlined,
+                  title: "Camera",
+                  summary: controller.cameraView
+                      ? "Looking through it"
+                      : "Its frame is what is shown",
+                  children: [
+                    CanvasControlGroup(
+                        label: "Camera",
+                        help: "What plays and what is exported is this frame, "
+                            "filled out to the page. Draw it in or move it, or "
+                            "give it clips: push in, follow, pull back, shake.",
+                        children: [
+                          CanvasToggle(
+                            key: const ValueKey("cameraLook"),
+                            label: "Look through it",
+                            value: controller.cameraView,
+                            onChanged: (v) => controller.cameraView = v,
+                          ),
+                        ]),
+                  ]),
+              // A move put on the timeline at the playhead, opened to be
+              // shaped: the quickest way to a push in.
+              section(e, "cameraMoves",
+                  icon: Icons.movie_filter_outlined,
+                  title: "Moves",
+                  summary: "${e.base.motion.placed.length} on the timeline",
+                  children: [
+                    Wrap(spacing: 4, runSpacing: 4, children: [
+                      for (var p in presetsFor(MotionKind.camera))
+                        ActionChip(
+                          key: ValueKey("cameraMove-${p.name}"),
+                          visualDensity: VisualDensity.compact,
+                          label: Text(p.name,
+                              style: const TextStyle(fontSize: 11.5)),
+                          onPressed: () {
+                            var target = controller.document.elements
+                                .where(
+                                    (x) => x.id != e.id && x is! CameraElement)
+                                .map((x) => x.id)
+                                .lastOrNull;
+                            controller.beginInteraction();
+                            var clip = controller.newClip(e.id,
+                                preset: p, target: p.aims ? target ?? "" : "");
+                            var placed = controller.placeClip(e.id, clip,
+                                seconds:
+                                    controller.secondsAt(controller.frame));
+                            controller.endInteraction();
+                            controller.pickMotion(e.id, clip,
+                                placement: placed);
+                            controller.animationOpen = true;
+                          },
+                        ),
+                    ]),
+                  ]),
+            ],
           _ => const <Widget>[],
         },
         // Where it stands on a 3D stage, for anything that can.

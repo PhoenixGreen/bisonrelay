@@ -19,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
@@ -1793,6 +1794,8 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
     // one would be: a Background element showing it.
     case ElementKind.sheet:
       return SheetElement.fromJson(json, base);
+    case ElementKind.camera:
+      return CameraElement.fromJson(json, base);
     case ElementKind.parallax:
       return BackgroundElement(base,
           backdrop: BackdropKind.parallax,

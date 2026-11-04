@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
@@ -288,9 +289,11 @@ class _MotionLanesState extends State<MotionLanes> {
     var e = hit.element;
     var seconds = math.max(0.0, _snap(_seconds(local.dx, width)));
     var sound = hit.layer == soundLayer;
+    // A camera's moves for a Camera; everything else's for the rest.
+    var camera = e is CameraElement;
     var presets = [
       for (var p in motionPresets)
-        if (p.kind != MotionKind.camera) p
+        if ((p.kind == MotionKind.camera) == camera) p
     ];
     var picked = await showMenu<Object>(
       context: context,
@@ -298,12 +301,14 @@ class _MotionLanesState extends State<MotionLanes> {
           RelativeRect.fromLTRB(global.dx, global.dy, global.dx, global.dy),
       items: [
         if (!sound)
-          for (var kind in const [
-            MotionKind.arrive,
-            MotionKind.loop,
-            MotionKind.leave,
-            MotionKind.action
-          ]) ...[
+          for (var kind in camera
+              ? const [MotionKind.camera]
+              : const [
+                  MotionKind.arrive,
+                  MotionKind.loop,
+                  MotionKind.leave,
+                  MotionKind.action
+                ]) ...[
             PopupMenuItem<Object>(
                 enabled: false,
                 height: 26,
@@ -319,7 +324,11 @@ class _MotionLanesState extends State<MotionLanes> {
           ],
         PopupMenuItem<Object>(
             key: const ValueKey("makeMotion-empty"),
-            value: sound ? MotionKind.sound : MotionKind.action,
+            value: sound
+                ? MotionKind.sound
+                : camera
+                    ? MotionKind.camera
+                    : MotionKind.action,
             height: 30,
             child:
                 Text(sound ? "An empty sound clip" : "Empty: keys of my own")),

@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
@@ -97,6 +98,8 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     ElementKind.sprite => Size(short * 0.3, short * 0.3),
     // Most of the page: a map is the scene, its box a window onto it.
     ElementKind.tileMap => Size(wide * 0.8, short * 0.8),
+    // The whole page: shown as it is until it is moved or drawn in closer.
+    ElementKind.camera => Size(wide, short),
   };
 }
 
@@ -351,6 +354,12 @@ CanvasElement newElement(
           .firstOrNull;
       return SheetElement(base.copyWith(name: "Sheet music"),
           follows: first?.id ?? "", title: first?.name ?? "");
+
+    // On the whole page, where it shows everything: the frame drawn in
+    // and moved from there. See CameraElement.
+    case ElementKind.camera:
+      return CameraElement(base.copyWith(
+          name: "Camera", x: 0, y: 0, width: size.width, height: size.height));
 
     // The same for parallax scenery: a Background element showing it.
     case ElementKind.parallax:

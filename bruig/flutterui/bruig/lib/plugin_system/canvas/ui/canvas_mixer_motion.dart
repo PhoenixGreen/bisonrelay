@@ -313,7 +313,7 @@ class _MotionSlotState extends State<_MotionSlot> {
   void _make(MotionPreset? preset) {
     var id = c.newClip(widget.element,
         preset: preset,
-        kind: MotionKind.action,
+        kind: _camera ? MotionKind.camera : MotionKind.action,
         slot: widget.row,
         target: preset != null && preset.aims ? _target() : "");
     c.pickMotion(widget.element, id);
@@ -327,13 +327,17 @@ class _MotionSlotState extends State<_MotionSlot> {
           .firstOrNull ??
       "";
 
+  bool get _camera => c.document.elementById(widget.element) is CameraElement;
+
   List<Widget> _emptyMenu() => [
-        for (var kind in const [
-          MotionKind.arrive,
-          MotionKind.loop,
-          MotionKind.leave,
-          MotionKind.action
-        ])
+        for (var kind in _camera
+            ? const [MotionKind.camera]
+            : const [
+                MotionKind.arrive,
+                MotionKind.loop,
+                MotionKind.leave,
+                MotionKind.action
+              ])
           SubmenuButton(
             menuChildren: [
               for (var p in presetsFor(kind))

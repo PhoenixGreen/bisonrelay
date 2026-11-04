@@ -41,6 +41,7 @@ const List<ElementKind> _addable = [
   ElementKind.path,
   ElementKind.sprite,
   ElementKind.tileMap,
+  ElementKind.camera,
   // No 3D stage: it is a kind of background now, chosen in a background's
   // Pattern layers.
 ];
@@ -66,6 +67,7 @@ IconData iconForKind(ElementKind kind) => switch (kind) {
       ElementKind.tileMap => Icons.grid_view,
       ElementKind.parallax => Icons.landscape_outlined,
       ElementKind.sheet => Icons.queue_music,
+      ElementKind.camera => Icons.videocam_outlined,
     };
 
 class CanvasElementsPanel extends StatelessWidget {

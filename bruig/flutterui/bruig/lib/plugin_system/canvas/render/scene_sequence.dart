@@ -6,6 +6,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show cameraOf, sceneFraming;
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 
@@ -152,18 +154,20 @@ void paintSequenceFrame(
     // Each scene with its own backdrop -- see CanvasDocument.backgroundOf.
     // Drawn from the document's own, every scene in the run wore whichever
     // one was edited last.
-    paintCanvasDocument(
-        canvas,
-        doc
-            .goToScene(index)
-            .copyWith(onMaster: false, background: doc.backgroundOf(index)),
+    var shown = doc
+        .goToScene(index)
+        .copyWith(onMaster: false, background: doc.backgroundOf(index));
+    paintCanvasDocument(canvas, shown,
         frame: frame,
         images: images,
         backgrounds: backgrounds,
         audioState: audioState,
         videoShow: videoShow,
         backdrop: backdrop,
-        camera: camera?.at(frame / length, doc.size.rect));
+        // Its Camera, which takes over, or its slow move.
+        camera: cameraOf(shown) != null
+            ? sceneFraming(shown, frame)
+            : camera?.at(frame / length, doc.size.rect));
   }
 
   if (!place.changing) {

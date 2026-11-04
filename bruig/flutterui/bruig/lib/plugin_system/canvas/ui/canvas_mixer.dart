@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
     show sectionColors;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show CanvasElement, newElementId;
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
     show MotionClip, MotionKind, motionLayers;
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'

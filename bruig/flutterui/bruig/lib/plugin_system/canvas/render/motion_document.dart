@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
 
@@ -100,11 +101,16 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
 /// selection box, the handles and the hit-test have to agree with what is
 /// drawn -- the boundsAt lesson, again, for clips.
 extension MovedElement on CanvasElement {
-  /// movedBoundsAt is boundsAt with [doc]'s placed clips moving it too.
-  Rect movedBoundsAt(int frame, CanvasDocument doc, {LiveMotion? live}) =>
-      base.motion.isEmpty
-          ? boundsAt(frame)
-          : boundsWith(poseWithMotion(this, frame, doc, live: live));
+  /// movedBoundsAt is boundsAt with [doc]'s placed clips moving it too. A
+  /// camera's is the frame it shows: closer, smaller.
+  Rect movedBoundsAt(int frame, CanvasDocument doc, {LiveMotion? live}) {
+    if (this case CameraElement cam) {
+      return cameraFrame(cam, frame, doc, live: live);
+    }
+    return base.motion.isEmpty
+        ? boundsAt(frame)
+        : boundsWith(poseWithMotion(this, frame, doc, live: live));
+  }
 
   /// movedRotationAt is rotationAt with the clips' turn added.
   double movedRotationAt(int frame, CanvasDocument doc, {LiveMotion? live}) =>
@@ -115,4 +121,66 @@ extension MovedElement on CanvasElement {
   /// movedFrameAt is frameAt with the clips' turn added.
   BoxFrame movedFrameAt(int frame, CanvasDocument doc, {LiveMotion? live}) =>
       BoxFrame(movedRotationAt(frame, doc, live: live), base.skewX, base.skewY);
+}
+
+/// cameraOf is [doc]'s camera: the first one shown, if there is one.
+CameraElement? cameraOf(CanvasDocument doc) =>
+    doc.elements.whereType<CameraElement>().where((c) => c.visible).firstOrNull;
+
+/// cameraFraming is how [cam] frames the page on [frame]: a zoom -- never
+/// less than one, so the page is always filled -- and the point it is
+/// centred on, held in far enough that the picture stays on the page. Its
+/// box's width is how much it shows; its clips move where it looks and how
+/// close: see CameraElement.
+(double, Offset) cameraFraming(CameraElement cam, int frame, CanvasDocument doc,
+    {LiveMotion? live}) {
+  var page = doc.size.rect;
+  var pose = poseWithMotion(cam, frame, doc, live: live);
+  var box = cam.bounds;
+  var zoom = math.max(
+      1.0, page.width / math.max(1.0, box.width) * math.max(0.01, pose.scale));
+  var c = box.center + Offset(pose.dx, pose.dy);
+  var hx = page.width / 2 / zoom, hy = page.height / 2 / zoom;
+  return (
+    zoom,
+    Offset(c.dx.clamp(page.left + hx, page.right - hx),
+        c.dy.clamp(page.top + hy, page.bottom - hy)),
+  );
+}
+
+/// cameraFrame is the part of the page [cam] shows on [frame], page-shaped.
+Rect cameraFrame(CameraElement cam, int frame, CanvasDocument doc,
+    {LiveMotion? live}) {
+  var page = doc.size.rect;
+  var (zoom, at) = cameraFraming(cam, frame, doc, live: live);
+  return Rect.fromCenter(
+      center: at, width: page.width / zoom, height: page.height / zoom);
+}
+
+/// sceneFraming is how [doc]'s scene is framed on [frame]: through its
+/// Camera, which takes over where there is one; else its slow move, if it
+/// has one (SceneCamera); else null, the whole page.
+(double, Offset)? sceneFraming(CanvasDocument doc, int frame,
+    {LiveMotion? live}) {
+  if (cameraOf(doc) case var cam?) {
+    return cameraFraming(cam, frame, doc, live: live);
+  }
+  return doc.scene.camera
+      ?.at(frame / math.max(1, doc.frames - 1), doc.size.rect);
+}
+
+/// cameraMostZoom is the closest [doc]'s camera ever comes: its frame, and
+/// the largest size any of its clips is keyed to -- one if it has none. For
+/// what is drawn ahead, to be sharp under it.
+double cameraMostZoom(CanvasDocument doc) {
+  var cam = cameraOf(doc);
+  if (cam == null) return 1;
+  var most = 1.0;
+  for (var c in cam.base.motion.clips) {
+    for (var k in c.keys[MotionProp.scale] ?? const <MotionKey>[]) {
+      if (k.value case MotionNumber(:var value)) most = math.max(most, value);
+    }
+  }
+  var base = doc.size.rect.width / math.max(1.0, cam.width);
+  return (math.max(1.0, base) * most).clamp(1.0, 8.0);
 }

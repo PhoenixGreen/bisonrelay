@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -663,6 +664,8 @@ void paintElement(
   /// background element is drawn from as the canvas's own background is.
   ProceduralCache? backgrounds,
 }) {
+  // A camera is what is seen, never in it: see camera_framing.dart.
+  if (element is CameraElement) return;
   // Its own keyframes, and its clips' moves on top. See motion_document.dart.
   var pose = poseWithMotion(element, frame, document, live: liveMotion);
   var outer = poseOutside ? Keyframe.rest : pose;

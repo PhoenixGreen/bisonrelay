@@ -79,6 +79,23 @@ void main() {
     });
   }
 
+  testWidgets("a camera's move goes on the timeline, opened", (tester) async {
+    var document = const CanvasDocument(frames: 96, frameRate: 24);
+    var cam = newElement(ElementKind.camera, document);
+    var c = CanvasController(document.addElement(cam));
+    addTearDown(c.dispose);
+    c.selectOnly(cam.id);
+    c.frame = 24;
+    await pump(tester, c);
+    var move = find.byKey(const ValueKey("cameraMove-Camera shake"));
+    await tester.ensureVisible(move);
+    await tester.tap(move);
+    await tester.pumpAndSettle();
+    var placed = c.document.elementById(cam.id)!.base.motion.placed.single;
+    expect(placed.start, closeTo(1, 1e-9), reason: "at the playhead");
+    expect((c.pickedPlacement, c.animationOpen), (placed.id, true));
+  });
+
   testWidgets("the canvas's own background is sections too", (tester) async {
     var c = CanvasController(const CanvasDocument());
     addTearDown(c.dispose);

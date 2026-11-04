@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/export/audio_export.dart'
     show estimateAudioBytes;
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show cameraMostZoom, sceneFraming;
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
@@ -123,7 +125,11 @@ class ExportBackdrop {
         if (scene.camera case var c?) {
           zoom = math.max(zoom, math.max(c.fromZoom, c.toZoom));
         }
+        zoom = math.max(zoom, cameraMostZoom(document.goToScene(i)));
       }
+    } else {
+      // A Camera element, which takes over: see camera_framing.
+      zoom = cameraMostZoom(document);
     }
     if (!background.isStage &&
         !background.isParallax &&
@@ -209,9 +215,9 @@ Future<ui.Image> renderFrame(
     } else {
       paintCanvasDocument(canvas, document,
           frame: frame,
-          // A document of one scene moves its camera too -- see SceneCamera.
-          camera: document.scene.camera?.at(
-              frame / math.max(1, document.frames - 1), document.size.rect),
+          // A document of one scene moves its camera too: its Camera, or
+          // its slow move -- see sceneFraming.
+          camera: sceneFraming(document, frame),
           images: images,
           backdrop: backdrop?.image,
           videoShow: videoShow);

@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
     show Quantise;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -365,7 +366,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
               style: TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant)),
           colors);
     }
-    var kinds = c.kind == MotionKind.camera
+    var kinds = c.kind == MotionKind.camera || e is CameraElement
         ? const [MotionKind.camera, MotionKind.action]
         : const [
             MotionKind.arrive,

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/ui/orbit_pad.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
@@ -1207,6 +1208,15 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   bool _containsPoint(CanvasElement e, Offset point) {
+    // A camera by its frame's edge: inside it is what it shows, to be
+    // picked as if it were not there.
+    if (e is CameraElement) {
+      var frame = e.movedBoundsAt(controller.frame, controller.document,
+          live: controller.liveMotion);
+      var reach = _strokeReach(2) + 4 / _scale;
+      return frame.inflate(reach).contains(point) &&
+          !frame.deflate(reach).contains(point);
+    }
     // A team on a pitch is wherever the pitch puts its players, not in its
     // own box -- and it is only the players that are it.
     if (e is TeamElement && e.linked) return _hitPlayer(e, point) != null;
@@ -6801,10 +6811,10 @@ class CanvasStageState extends State<CanvasStage>
                         // where the page looks to be.
                         camera: (controller.playing || controller.cameraView) &&
                                 !document.editingMaster
-                            ? document.scene.camera?.at(
-                                controller.frame /
-                                    math.max(1, document.frames - 1),
-                                document.size.rect)
+                            // Its Camera, which takes over, or its slow
+                            // move: see sceneFraming.
+                            ? sceneFraming(document, controller.frame,
+                                live: controller.liveMotion)
                             : null,
                         selectedPath: _selectedPath(),
                         // Over a page that scrolls, the rulers are drawn in a

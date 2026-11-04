@@ -62,7 +62,9 @@ enum ElementKind {
   parallax("Parallax"),
   // A score: an instrument's part engraved, played, and practised against.
   // See SheetElement.
-  sheet("Sheet music");
+  sheet("Sheet music"),
+  // The part of the page shown, moved by clips: see CameraElement.
+  camera("Camera");
 
   final String label;
   const ElementKind(this.label);
