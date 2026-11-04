@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart'
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
     show MotionPreset, presetsFor;
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart'
     show MotionSlotDrag, motionKindColours, motionRowsOf;
 import 'package:bruig/plugin_system/canvas/ui/motion_player.dart'
@@ -529,6 +530,13 @@ class _CanvasMixerState extends State<CanvasMixer>
             lanes.any((l) => narrow.contains(l.key))
                 ? sendsHeight(returns.length, narrow: true)
                 : 0.0);
+    // The elements, outside a sound's own settings and the effects; and
+    // which of the channels are theirs.
+    var rows = widget.embedded || widget.effects
+        ? const <CanvasElement>[]
+        : motionRowsOf(controller);
+    var ownedKeys = {for (var e in rows) elementSoundKey(e.id)};
+    var show = controller.timelineShow;
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
       child: LayoutBuilder(builder: (context, box) {
@@ -558,20 +566,33 @@ class _CanvasMixerState extends State<CanvasMixer>
                 : ListView(
                     scrollDirection: Axis.horizontal,
                     children: [
+                      // The sounds', but an element's own, which go with
+                      // it -- and none, showing only the animation.
                       for (var (i, lane) in lanes.indexed)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: _channelStrip(theme, lane, i, bands),
-                        ),
+                        if (!ownedKeys.contains(lane.key) &&
+                            show != TimelineShow.animation)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: _channelStrip(theme, lane, i, bands),
+                          ),
                       // The elements' strips, after the sounds': their
-                      // animation slots on the same cue rows.
-                      if (!widget.embedded && !widget.effects)
-                        for (var e in motionRowsOf(controller))
+                      // animation slots on the same cue rows, and each
+                      // one's own sound beside it.
+                      for (var e in rows) ...[
+                        if (show != TimelineShow.sound)
                           Padding(
                             padding: const EdgeInsets.only(right: 8),
                             child: _elementStrip(controller, theme, e, bands,
                                 _clipScrolls.of("motion:${e.id}")),
                           ),
+                        if (show != TimelineShow.animation)
+                          for (var (i, lane) in lanes.indexed)
+                            if (lane.key == elementSoundKey(e.id))
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: _channelStrip(theme, lane, i, bands),
+                              ),
+                      ],
                     ],
                   ),
           ),

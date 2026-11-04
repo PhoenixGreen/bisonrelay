@@ -1050,6 +1050,17 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
+  TimelineShow _timelineShow = TimelineShow.everything;
+
+  /// timelineShow is the ⋯ menu's Show: everything, only the animation, or
+  /// only the sound -- on the timeline and in the mixer alike.
+  TimelineShow get timelineShow => _timelineShow;
+  set timelineShow(TimelineShow value) {
+    if (_timelineShow == value) return;
+    _timelineShow = value;
+    _notifyView();
+  }
+
   bool _slotsBeside = false;
 
   /// slotsBeside is the bar's slots button: each element's slots beside its
@@ -1422,6 +1433,13 @@ class CanvasController extends ChangeNotifier {
     var next = _document;
     for (var id in _selection) {
       next = next.removeElement(id);
+      // Its own sound's channel goes with it: see element_sound.dart.
+      var own = "snd-$id";
+      for (var e in [...next.elements]) {
+        if (e is AudioElement && e.clip.channel == own) {
+          next = next.removeElement(e.id);
+        }
+      }
     }
     // And the clips picked on the timeline from another canvas -- another
     // scene's, or the master's -- which are as much on the timeline as this
@@ -13917,6 +13935,17 @@ class TimedLane {
 }
 
 /// TimelineChannel is one channel of the timeline and the sounds on it.
+/// TimelineShow is what the timeline and the mixer show: see
+/// CanvasController.timelineShow.
+enum TimelineShow {
+  everything("Everything"),
+  animation("Animation only"),
+  sound("Sound only");
+
+  final String label;
+  const TimelineShow(this.label);
+}
+
 class TimelineChannel {
   final String key;
   final List<TimedLane> lanes;

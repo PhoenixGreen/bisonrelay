@@ -128,7 +128,8 @@ void main() {
   testWidgets("a slot dragged onto the element's row is placed there",
       (tester) async {
     var c = await pumpBoth(tester);
-    var lanes = tester.getRect(find.byKey(const ValueKey("motionLanesPaint")));
+    var lanes =
+        tester.getRect(find.byKey(const ValueKey("motionLanesPaint-a")));
     var from = tester.getCenter(find.byKey(const ValueKey("motionName-a-0")));
     // Two seconds in, on its first lane.
     var to = Offset(lanes.left + lanes.width * 48 / 240, lanes.top + 12);

@@ -368,6 +368,14 @@ class MixGraph {
       _send(strip.mix, b, n, pre: false);
       _levels[entry.key] = _peaks(b.l, b.r, n);
       heard[entry.key] = (b.l, b.r);
+      // Out into a return, as a group bus, rather than to the master.
+      var bus = strip.mix.output.isEmpty
+          ? null
+          : _returns.where((r) => r.spec.id == strip.mix.output).firstOrNull;
+      if (bus != null) {
+        if (!strip.mix.mute) bus.bus.addScaled(b, n, 1);
+        continue;
+      }
       _land(entry.key, strip.mix, b, n);
     }
     for (var ret in _returns) {

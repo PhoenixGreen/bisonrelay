@@ -629,7 +629,14 @@ class ChannelMix {
   /// timeline. See automation.dart.
   final List<AutomationLane> automation;
 
+  /// output is where the channel goes after its fader: "" the master, or a
+  /// return's id -- all of it into that return, as a group bus, and none
+  /// straight to the master. An element's own sound sent to a shared one
+  /// (Ken). A return that is gone is the master again.
+  final String output;
+
   const ChannelMix({
+    this.output = "",
     this.automation = const [],
     this.speech,
     this.vocaliser,
@@ -660,7 +667,8 @@ class ChannelMix {
       devices.isEmpty &&
       speech == null &&
       vocaliser == null &&
-      automation.isEmpty;
+      automation.isEmpty &&
+      output.isEmpty;
 
   /// sendDb is how much goes to return [id], or null for none.
   double? sendDb(String id) => sends[id];
@@ -684,6 +692,7 @@ class ChannelMix {
 
   /// withSurround places the channel; null puts it back on the front pair.
   ChannelMix withSurround(SurroundPan? pan) => ChannelMix(
+        output: output,
         automation: automation,
         speech: speech,
         vocaliser: vocaliser,
@@ -702,6 +711,7 @@ class ChannelMix {
 
   /// withLfe sets how much goes to the LFE; null sends none.
   ChannelMix withLfe(double? db) => ChannelMix(
+        output: output,
         automation: automation,
         speech: speech,
         vocaliser: vocaliser,
@@ -733,8 +743,10 @@ class ChannelMix {
     VocaliserSpec? vocaliser,
     bool noVocaliser = false,
     List<AutomationLane>? automation,
+    String? output,
   }) =>
       ChannelMix(
+        output: output ?? this.output,
         automation: automation ?? this.automation,
         speech: noSpeech ? null : speech ?? this.speech,
         vocaliser: noVocaliser ? null : vocaliser ?? this.vocaliser,
@@ -767,6 +779,7 @@ class ChannelMix {
         if (vocaliser case var v?) "vocaliser": v.toJson(),
         if (automation.isNotEmpty)
           "automation": [for (var a in automation) a.toJson()],
+        if (output.isNotEmpty) "output": output,
       };
 
   factory ChannelMix.fromJson(Map<String, dynamic> json) => ChannelMix(
@@ -804,6 +817,7 @@ class ChannelMix {
         comp: jsonSpec(json["comp"], Dynamics.fromJson, const Dynamics()),
         duck: jsonSpec(json["duck"], Ducking.fromJson, const Ducking()),
         compFirst: jsonBool(json["compFirst"], false),
+        output: json["output"] is String ? json["output"] as String : "",
       );
 }
 

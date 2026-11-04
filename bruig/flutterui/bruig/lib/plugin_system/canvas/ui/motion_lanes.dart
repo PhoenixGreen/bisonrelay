@@ -5,7 +5,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart'
+    show AssetKind;
+import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart'
+    show droppedAsset, droppedKind;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_player.dart'
     show MotionSlotState;
@@ -56,15 +61,26 @@ const Map<MotionKind, Color> motionKindColours = {
 
 /// motionRowsOf are the elements that have rows: those with clips, and the
 /// one picked. Not the sound channels, which have their own lanes.
-List<CanvasElement> motionRowsOf(CanvasController c) => [
-      for (var e in c.document.elements)
-        if (!(e is AudioElement && e.clip.timed) &&
-            (!e.base.motion.isEmpty || c.selection.contains(e.id)))
-          e,
-    ];
+List<CanvasElement> motionRowsOf(CanvasController c) {
+  // Those with a sound channel of their own: its lane goes under theirs.
+  var owners = {
+    for (var e in c.document.elements)
+      if (e is AudioElement && e.clip.channel.startsWith("snd-"))
+        e.clip.channel.substring(4),
+  };
+  return [
+    for (var e in c.document.elements)
+      if (!(e is AudioElement && e.clip.timed) &&
+          (!e.base.motion.isEmpty ||
+              owners.contains(e.id) ||
+              c.selection.contains(e.id)))
+        e,
+  ];
+}
 
 /// motionLanesOf are [e]'s lanes, top to bottom: its motion layers in use
-/// and one more, and its sound's lane where it has sound. Folded, none.
+/// and one more. Folded, none. Its sound is a channel of its own, under
+/// them: see element_sound.dart.
 List<int> motionLanesOf(CanvasElement e, {bool folded = false}) {
   if (folded) return const [];
   var m = e.base.motion;
@@ -75,7 +91,6 @@ List<int> motionLanesOf(CanvasElement e, {bool folded = false}) {
   var top = used.isEmpty ? 0 : used.reduce(math.max) + 1;
   return [
     for (var l = 0; l <= math.min(top, motionLayers - 1); l++) l,
-    if (m.hasSound) soundLayer,
   ];
 }
 
@@ -83,7 +98,12 @@ class MotionLanes extends StatefulWidget {
   final CanvasController controller;
   final TimelineView view;
 
-  const MotionLanes({required this.controller, required this.view, super.key});
+  /// only is the one element whose rows these are -- its sound channel
+  /// under them, as CanvasChannels lays them -- or null for every one.
+  final String? only;
+
+  const MotionLanes(
+      {required this.controller, required this.view, this.only, super.key});
 
   @override
   State<MotionLanes> createState() => _MotionLanesState();
@@ -102,6 +122,11 @@ typedef _Hit = ({
 
 class _MotionLanesState extends State<MotionLanes> {
   CanvasController get controller => widget.controller;
+
+  List<CanvasElement> get _rows => [
+        for (var e in motionRowsOf(controller))
+          if (widget.only == null || e.id == widget.only) e
+      ];
 
   /// _folded are the elements whose rows are folded to one, by id. For the
   /// session.
@@ -136,7 +161,7 @@ class _MotionLanesState extends State<MotionLanes> {
 
   _Hit? _hit(Offset local, double width) {
     var y = 0.0;
-    for (var e in motionRowsOf(controller)) {
+    for (var e in _rows) {
       var h = _rowHeight(e);
       if (local.dy >= y && local.dy < y + h) {
         var folded = _folded.contains(e.id);
@@ -326,7 +351,7 @@ class _MotionLanesState extends State<MotionLanes> {
 
   @override
   Widget build(BuildContext context) {
-    var rows = motionRowsOf(controller);
+    var rows = _rows;
     if (rows.isEmpty) return const SizedBox.shrink();
     var theme = ThemeNotifier.of(context);
     var colors = theme.colors;
@@ -410,12 +435,25 @@ class _MotionLanesState extends State<MotionLanes> {
             // rows -- let go on a row: placed there, on the lane it is let
             // go on. Another element's, copied to this one first.
             return DragTarget<Object>(
-              onWillAcceptWithDetails: (d) => d.data is MotionSlotDrag,
-              onAcceptWithDetails: (d) {
+              // A sound let go on its rows: on its own channel, there.
+              onWillAcceptWithDetails: (d) =>
+                  d.data is MotionSlotDrag ||
+                  droppedKind(d.data) == AssetKind.audio,
+              onAcceptWithDetails: (d) async {
                 var box = context.findRenderObject() as RenderBox?;
-                if (box == null || d.data is! MotionSlotDrag) return;
-                _dropped(d.data as MotionSlotDrag, box.globalToLocal(d.offset),
-                    width);
+                if (box == null) return;
+                var local = box.globalToLocal(d.offset);
+                if (d.data case MotionSlotDrag drag) {
+                  _dropped(drag, local, width);
+                  return;
+                }
+                var hit = _hit(local, width);
+                var asset = await droppedAsset(d.data);
+                if (hit == null || asset == null || !mounted) return;
+                var frame =
+                    (math.max(0.0, _snap(_seconds(local.dx, width))) * _fps)
+                        .round();
+                controller.addElementSound(hit.element.id, asset.source, frame);
               },
               builder: (context, over, _) =>
                   _lanes(over.isNotEmpty, rows, height, width, colors),
@@ -472,7 +510,9 @@ class _MotionLanesState extends State<MotionLanes> {
                 ? SystemMouseCursors.precise
                 : SystemMouseCursors.basic,
             child: CustomPaint(
-              key: const ValueKey("motionLanesPaint"),
+              key: ValueKey(widget.only == null
+                  ? "motionLanesPaint"
+                  : "motionLanesPaint-${widget.only}"),
               size: Size(width, height),
               painter: _LanesPainter(
                 rows: rows,

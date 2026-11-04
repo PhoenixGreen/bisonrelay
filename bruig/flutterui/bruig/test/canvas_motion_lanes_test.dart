@@ -46,7 +46,7 @@ Future<CanvasController> pump(WidgetTester tester) async {
 /// at is where [seconds] is on the lanes, in the middle of [lane].
 Offset at(WidgetTester tester, CanvasController c, double seconds,
     {int lane = 0}) {
-  var box = tester.getRect(find.byKey(const ValueKey("motionLanesPaint")));
+  var box = tester.getRect(find.byKey(const ValueKey("motionLanesPaint-a")));
   var frames = c.document.frames;
   return Offset(box.left + box.width * seconds * 24 / frames,
       box.top + 2 + 22 * lane + 11);
@@ -78,7 +78,7 @@ void main() {
         at(tester, c, 2.3),
         Offset(
             tester
-                    .getRect(find.byKey(const ValueKey("motionLanesPaint")))
+                    .getRect(find.byKey(const ValueKey("motionLanesPaint-a")))
                     .width *
                 24 /
                 240,
@@ -91,7 +91,7 @@ void main() {
         at(tester, c, end) - const Offset(2, 0),
         Offset(
             tester
-                    .getRect(find.byKey(const ValueKey("motionLanesPaint")))
+                    .getRect(find.byKey(const ValueKey("motionLanesPaint-a")))
                     .width *
                 24 /
                 240,

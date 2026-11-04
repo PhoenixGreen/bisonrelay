@@ -11,7 +11,6 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/ui/scene_strip.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/transport_controls.dart';
 import 'package:bruig/plugin_system/canvas/model/transport.dart';
@@ -1582,7 +1581,20 @@ class CanvasTimelineState extends State<CanvasTimeline> {
       ("trackpadScrolls", Icons.swipe_outlined, "Scrubbing", _trackpadScrolls,
           () => _setTrackpadScrolls(!_trackpadScrolls)),
     ];
+    var show = controller.timelineShow;
     var lit = Row(mainAxisSize: MainAxisSize.min, children: [
+      // Showing only some: lit, and pressed, everything again.
+      if (show != TimelineShow.everything)
+        TransportButton(
+          key: const ValueKey("lit-show"),
+          icon: show == TimelineShow.animation
+              ? Icons.animation
+              : Icons.graphic_eq,
+          tooltip: "${show.label}: press to show everything",
+          on: true,
+          lit: const Color(0xFF3A2F12),
+          onPressed: () => controller.timelineShow = TimelineShow.everything,
+        ),
       for (var (key, icon, tip, on, press) in options)
         if (on)
           TransportButton(
@@ -1651,6 +1663,10 @@ class CanvasTimelineState extends State<CanvasTimeline> {
         heading("Playing"),
         for (var (key, _, tip, on, press) in options.skip(1))
           item("$key-item", tip, on, press),
+        heading("Show"),
+        for (var kind in TimelineShow.values)
+          item("show-${kind.name}", kind.label, show == kind,
+              () => controller.timelineShow = kind),
         heading("View"),
         item("zoomInItem", "Zoom in", null, () => _zoomBy(2)),
         item("zoomOutItem", "Zoom out", null, () => _zoomBy(0.5)),
@@ -2145,10 +2161,10 @@ class CanvasTimelineState extends State<CanvasTimeline> {
               child: CanvasChannels(
                   controller: controller,
                   view: _sceneView,
+                  // The elements' rows, each with its own sound under it:
+                  // see motion_lanes.dart and element_sound.dart.
+                  motionRows: true,
                   leading: Column(mainAxisSize: MainAxisSize.min, children: [
-                    // The elements' clips, over everything else: see
-                    // motion_lanes.dart.
-                    MotionLanes(controller: controller, view: _sceneView),
                     VectorShapeLanes(controller: controller, view: _sceneView),
                     ImageLayerLanes(controller: controller, view: _sceneView),
                   ]))),

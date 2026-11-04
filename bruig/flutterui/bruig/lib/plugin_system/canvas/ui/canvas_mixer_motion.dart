@@ -66,7 +66,8 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
               ),
             ),
           ),
-          devices: () => const SizedBox(),
+          devices: () => _ElementSoundBand(
+              controller: controller, element: e, theme: theme),
           mixer: () => Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -105,6 +106,98 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
             ],
           ]),
         ));
+
+/// _ElementSoundBand is an element's sound, in its strip's devices band: a
+/// channel of its own to give it, or -- with one -- where that goes: to the
+/// master, or into a return shared with others, as a group bus (Ken).
+class _ElementSoundBand extends StatelessWidget {
+  final CanvasController controller;
+  final CanvasElement element;
+  final MixerLook theme;
+
+  const _ElementSoundBand(
+      {required this.controller, required this.element, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    var studio = theme.studio;
+    var small = TextStyle(fontSize: 10, color: studio.muted);
+    var id = element.id;
+    if (controller.soundChannelOf(id) == null) {
+      return Align(
+        alignment: Alignment.topCenter,
+        child: Material(
+          color: studio.inset,
+          borderRadius: BorderRadius.circular(3),
+          child: InkWell(
+            key: ValueKey("elementSoundAdd-$id"),
+            borderRadius: BorderRadius.circular(3),
+            onTap: () => controller.ensureElementSound(id),
+            child: SizedBox(
+              height: _slotH,
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.music_note, size: 11, color: studio.text),
+                    Text(" Give it a sound",
+                        style: TextStyle(fontSize: 10, color: studio.text)),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    var output = controller.soundOutputOf(id);
+    var returns = controller.document.returns;
+    var to = returns.where((r) => r.id == output).firstOrNull;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text("Sound goes to", style: small),
+      const SizedBox(height: 2),
+      MenuAnchor(
+        menuChildren: [
+          MenuItemButton(
+            key: ValueKey("elementSoundOut-$id-master"),
+            onPressed: () => controller.setSoundOutput(id, ""),
+            child: const Text("The master, on its own"),
+          ),
+          for (var r in returns)
+            MenuItemButton(
+              key: ValueKey("elementSoundOut-$id-${r.id}"),
+              onPressed: () => controller.setSoundOutput(id, r.id),
+              child: Text("${r.name}, shared"),
+            ),
+        ],
+        builder: (context, menu, _) => Material(
+          color: studio.inset,
+          borderRadius: BorderRadius.circular(3),
+          child: InkWell(
+            key: ValueKey("elementSoundOut-$id"),
+            borderRadius: BorderRadius.circular(3),
+            onTap: () => menu.isOpen ? menu.close() : menu.open(),
+            child: SizedBox(
+              height: _slotH,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(to?.name ?? "Master",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 10, color: studio.text)),
+                  ),
+                  Icon(Icons.arrow_drop_down, size: 12, color: studio.muted),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ]);
+  }
+}
 
 /// _LayerFader is how much a layer counts, nought to all of it: dragged up
 /// and down; double-clicked, all of it again.

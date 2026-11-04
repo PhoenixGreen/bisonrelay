@@ -12,6 +12,10 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart'
     show isMidiId;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart'
+    show MotionLanes, motionRowsOf;
+import 'package:bruig/plugin_system/canvas/ui/element_sound.dart'
+    show soundOwnerOf;
 import 'package:bruig/plugin_system/canvas/model/session.dart'
     show SessionSlotDrag;
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart' show DbReading;
@@ -88,12 +92,20 @@ class CanvasChannels extends StatefulWidget {
   /// keyframe on the same frame are on the same line. See TimelineView.
   final TimelineView view;
 
+  /// motionRows is whether the elements' rows are here -- each with its own
+  /// sound's channel under it -- above the canvas's other channels.
+  final bool motionRows;
+
   /// leading is rows above the channels that scroll with them: a drawing's
   /// shapes, where they are shown. See VectorShapeLanes.
   final Widget? leading;
 
   const CanvasChannels(
-      {required this.controller, required this.view, this.leading, super.key});
+      {required this.controller,
+      required this.view,
+      this.leading,
+      this.motionRows = false,
+      super.key});
 
   /// hint is what the empty lane says after its name.
   static const String hint =
@@ -579,109 +591,45 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        var channels = _withMoving(controller.timelineChannels);
+        var show = controller.timelineShow;
+        var grouped = widget.motionRows
+            ? motionRowsOf(controller)
+            : const <CanvasElement>[];
+        var owned = <String, List<TimelineChannel>>{};
+        for (var c in controller.timelineChannels) {
+          if (soundOwnerOf(controller.document, c.key) case var o?
+              when grouped.any((e) => e.id == o.id)) {
+            (owned[o.id] ??= []).add(c);
+          }
+        }
+        var ownedKeys = {
+          for (var l in owned.values)
+            for (var c in l) c.key
+        };
+        // The others: the ones whose strips move among themselves.
+        var channels = _withMoving([
+          for (var c in controller.timelineChannels)
+            if (!ownedKeys.contains(c.key)) c
+        ]);
         var width = controller.headerWidth;
         return Stack(key: _stack, children: [
           ListView(
             padding: EdgeInsets.zero,
             children: [
               if (widget.leading case var leading?) leading,
-              for (var channel in channels) ...[
-                _row(channel.key, _heightOf(channel.key), width,
-                    moving: channel.key == _moving,
-                    header: _ChannelHeader(
-                      key: ValueKey("channelStrip-${channel.key}"),
-                      channel: channel,
-                      mix: controller.mixNow(channel),
-                      automation:
-                          controller.automationShown.contains(channel.key),
-                      onAutomation: () =>
-                          controller.toggleAutomation(channel.key),
-                      // Which canvas its clips are on -- M for the master,
-                      // S1 for the first scene -- beside the band whose
-                      // colour says sound or video.
-                      label: channel.sceneLabel,
-                      width: width,
-                      height: _heightOf(channel.key),
-                      selected:
-                          controller.selectedChannels.contains(channel.key),
-                      soloed: controller.solo.contains(channel.key),
-                      theme: theme,
-                      // Shift picks it as well as the others, or leaves it.
-                      onSelect: () => HardwareKeyboard.instance.isShiftPressed
-                          ? controller.toggleChannel(channel.key)
-                          : controller.selectedChannel = channel.key,
-                      onRename: (name) =>
-                          controller.renameChannel(channel, name),
-                      // As the mixer's fader: a level typed over a lane is
-                      // held by hand -- see changeChannelMix.
-                      onMix: (mix) {
-                        controller.beginInteraction();
-                        controller.changeChannelMix(
-                            channel, controller.mixNow(channel), mix,
-                            transient: true);
-                        controller.endInteraction();
-                      },
-                      onLock: () =>
-                          controller.lockChannel(channel, !channel.locked),
-                      onSolo: () => controller.toggleSolo(channel.key),
-                      onGripStart: (y) {
-                        _gripFrom = y;
-                        _gripHeight = _heightOf(channel.key);
-                      },
-                      onGripMove: (y) => controller.setLaneHeight(
-                          channel.key,
-                          (_gripHeight + y - _gripFrom)
-                              .clamp(_laneMin, _laneMax)
-                              .toDouble()),
-                      onMoveStart: (_) => _startMove(channels, channel.key),
-                      onMove: (y) {
-                        var to = _slotAt(y);
-                        if (to != _moveTo) setState(() => _moveTo = to);
-                      },
-                      onMoveEnd: _endMove,
-                    ),
-                    lane: _lane(channel, theme)),
-                // Its automation, opened under it: a lane for each setting
-                // shown, and a row to show another.
-                if (controller.automationShown.contains(channel.key) &&
-                    channel.editable &&
-                    channel.key != _moving) ...[
-                  for (var (i, target)
-                      in controller.automationRows(channel).indexed)
-                    SizedBox(
-                      key: ValueKey("autoRow-${channel.key}-$i"),
-                      height: automationLaneHeight,
-                      child: Row(children: [
-                        SizedBox(
-                            width: width,
-                            child: AutomationLaneHeader(
-                                controller: controller,
-                                channel: channel,
-                                index: i,
-                                width: width)),
-                        Expanded(
-                            child: AutomationLaneBody(
-                                key:
-                                    ValueKey("autoBody-${channel.key}-$target"),
-                                controller: controller,
-                                channel: channel,
-                                target: target,
-                                view: _view)),
-                      ]),
-                    ),
-                  SizedBox(
-                    height: automationAddHeight,
-                    child: Row(children: [
-                      SizedBox(
-                          width: width,
-                          child: AutomationAddRow(
-                              controller: controller, channel: channel)),
-                      const Expanded(child: SizedBox()),
-                    ]),
-                  ),
-                ],
+              // Each element's rows, with its own sound's channel under
+              // them (Ken); then the canvas's other channels.
+              for (var e in grouped) ...[
+                if (show != TimelineShow.sound)
+                  MotionLanes(controller: controller, view: _view, only: e.id),
+                if (show != TimelineShow.animation)
+                  for (var channel in owned[e.id] ?? const <TimelineChannel>[])
+                    ..._channelRows(channel, width, theme, channels,
+                        movable: false, owned: true),
               ],
+              if (show != TimelineShow.animation)
+                for (var channel in channels)
+                  ..._channelRows(channel, width, theme, channels),
               _row(_newLane, channelsLaneHeight, width,
                   header: _EmptyHeader(
                       width: width,
@@ -706,6 +654,105 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       },
     );
   }
+
+  /// _channelRows is [channel]'s row and, opened under it, its automation.
+  /// [movable] is whether its strip is dragged to move it among the others:
+  /// not an element's own sound, which stays under the element.
+  List<Widget> _channelRows(TimelineChannel channel, double width,
+          ThemeNotifier theme, List<TimelineChannel> channels,
+          {bool movable = true, bool owned = false}) =>
+      [
+        _row(channel.key, _heightOf(channel.key), width,
+            moving: channel.key == _moving,
+            accent: owned ? theme.colors.primary : null,
+            header: _ChannelHeader(
+              key: ValueKey("channelStrip-${channel.key}"),
+              channel: channel,
+              mix: controller.mixNow(channel),
+              automation: controller.automationShown.contains(channel.key),
+              onAutomation: () => controller.toggleAutomation(channel.key),
+              // Which canvas its clips are on -- M for the master,
+              // S1 for the first scene -- beside the band whose
+              // colour says sound or video.
+              label: channel.sceneLabel,
+              width: width,
+              height: _heightOf(channel.key),
+              selected: controller.selectedChannels.contains(channel.key),
+              soloed: controller.solo.contains(channel.key),
+              theme: theme,
+              // Shift picks it as well as the others, or leaves it.
+              onSelect: () => HardwareKeyboard.instance.isShiftPressed
+                  ? controller.toggleChannel(channel.key)
+                  : controller.selectedChannel = channel.key,
+              onRename: (name) => controller.renameChannel(channel, name),
+              // As the mixer's fader: a level typed over a lane is
+              // held by hand -- see changeChannelMix.
+              onMix: (mix) {
+                controller.beginInteraction();
+                controller.changeChannelMix(
+                    channel, controller.mixNow(channel), mix,
+                    transient: true);
+                controller.endInteraction();
+              },
+              onLock: () => controller.lockChannel(channel, !channel.locked),
+              onSolo: () => controller.toggleSolo(channel.key),
+              onGripStart: (y) {
+                _gripFrom = y;
+                _gripHeight = _heightOf(channel.key);
+              },
+              onGripMove: (y) => controller.setLaneHeight(
+                  channel.key,
+                  (_gripHeight + y - _gripFrom)
+                      .clamp(_laneMin, _laneMax)
+                      .toDouble()),
+              onMoveStart: (_) {
+                if (movable) _startMove(channels, channel.key);
+              },
+              onMove: (y) {
+                var to = _slotAt(y);
+                if (to != _moveTo) setState(() => _moveTo = to);
+              },
+              onMoveEnd: _endMove,
+            ),
+            lane: _lane(channel, theme)),
+        // Its automation, opened under it: a lane for each setting
+        // shown, and a row to show another.
+        if (controller.automationShown.contains(channel.key) &&
+            channel.editable &&
+            channel.key != _moving) ...[
+          for (var (i, target) in controller.automationRows(channel).indexed)
+            SizedBox(
+              key: ValueKey("autoRow-${channel.key}-$i"),
+              height: automationLaneHeight,
+              child: Row(children: [
+                SizedBox(
+                    width: width,
+                    child: AutomationLaneHeader(
+                        controller: controller,
+                        channel: channel,
+                        index: i,
+                        width: width)),
+                Expanded(
+                    child: AutomationLaneBody(
+                        key: ValueKey("autoBody-${channel.key}-$target"),
+                        controller: controller,
+                        channel: channel,
+                        target: target,
+                        view: _view)),
+              ]),
+            ),
+          SizedBox(
+            height: automationAddHeight,
+            child: Row(children: [
+              SizedBox(
+                  width: width,
+                  child: AutomationAddRow(
+                      controller: controller, channel: channel)),
+              const Expanded(child: SizedBox()),
+            ]),
+          ),
+        ],
+      ];
 
   /// _moving is the channel whose strip is being dragged up or down, and
   /// _moveTo where in the list it would go. The list is shown in that order
@@ -765,7 +812,18 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       _rowsAtStart = const [];
     });
     if (key == null || to == null) return;
-    controller.moveChannel(key, to);
+    // Its place among the others moved, in the list of every channel --
+    // an element's own among them, which stay under their elements.
+    var all = [
+      for (var c in controller.timelineChannels)
+        if (c.key != key) c.key
+    ];
+    var free = [
+      for (var k in all)
+        if (soundOwnerOf(controller.document, k) == null) k
+    ];
+    controller.moveChannel(
+        key, to >= free.length ? all.length : all.indexOf(free[to]));
   }
 
   Widget _boxOverlay(ThemeNotifier theme) {
@@ -788,9 +846,23 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   }
 
   Widget _row(String channel, double height, double width,
-      {required Widget header, required Widget lane, bool moving = false}) {
+      {required Widget header,
+      required Widget lane,
+      bool moving = false,
+      Color? accent}) {
     var row = Row(children: [
-      SizedBox(width: width, child: header),
+      // An element's own sound: the element's stripe down its left, drawn
+      // over the strip so nothing in it moves.
+      SizedBox(
+          width: width,
+          child: accent == null
+              ? header
+              : DecoratedBox(
+                  position: DecorationPosition.foreground,
+                  decoration: BoxDecoration(
+                      border:
+                          Border(left: BorderSide(color: accent, width: 3))),
+                  child: header)),
       Expanded(child: lane),
     ]);
     var colors = ThemeNotifier.of(context).colors;
