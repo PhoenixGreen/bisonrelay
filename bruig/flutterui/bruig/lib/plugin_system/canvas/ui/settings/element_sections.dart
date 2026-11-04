@@ -141,13 +141,13 @@ Widget elementDimCard(CanvasController controller, CanvasElement e) =>
 Widget elementCueCard(CanvasController controller, CanvasElement e) =>
     CanvasControlGroup(
         key: const ValueKey("elementCue"),
-        label: "Cue",
-        help: "Tied to a cue, it arrives when the cue does, wherever the cue "
+        label: "Word cue",
+        help: "Tied to a word cue, it arrives when the word cue does, wherever it "
             "is moved to on the timeline.",
         rule: false,
         children: [
           CanvasDropdown<String>(
-            label: "Arrives on cue",
+            label: "Arrives on word cue",
             value: controller.cues.any((c) => c.id == e.base.cue)
                 ? e.base.cue
                 : "",

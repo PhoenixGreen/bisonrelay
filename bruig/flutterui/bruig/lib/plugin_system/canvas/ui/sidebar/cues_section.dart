@@ -62,7 +62,7 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
       _finding = false;
       _said = n == 0
           ? "No pauses found -- is the sound still being read?"
-          : "$n cues, one at each line.";
+          : "$n word cues, one at each line.";
     });
   }
 
@@ -79,7 +79,7 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
       _finding = false;
       _needsModel = problem == speechModelMissing;
       _said = problem ??
-          "${controller.words.length} words heard; the cues are named "
+          "${controller.words.length} words heard; the word cues are named "
               "by what is said at them.";
     });
   }
@@ -124,12 +124,12 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
         voices.where((v) => v.id == _voice).firstOrNull ?? voices.firstOrNull;
     return CanvasControlGroup(
       key: const ValueKey("cues"),
-      label: "Cues",
+      label: "Word cues",
       children: [
         CanvasIconButton(
           key: const ValueKey("cueAdd"),
           icon: Icons.add_location_alt_outlined,
-          tooltip: "Add a cue at the playhead",
+          tooltip: "Add a word cue at the playhead",
           onPressed: () => controller.addCue(),
         ),
         if (voices.isNotEmpty) ...[
@@ -143,13 +143,13 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
           CanvasIconButton(
             key: const ValueKey("cueFind"),
             icon: Icons.graphic_eq,
-            tooltip: "Put a cue where each line of this voice starts",
+            tooltip: "Put a word cue where each line of this voice starts",
             onPressed: _finding ? null : () => _find(picked),
           ),
           CanvasIconButton(
             key: const ValueKey("cueHear"),
             icon: Icons.subtitles_outlined,
-            tooltip: "Hear the words, and name the cues by what is said",
+            tooltip: "Hear the words, and name the word cues by what is said",
             onPressed: _finding ? null : () => _hear(picked),
           ),
           if (_needsModel)
@@ -171,8 +171,8 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
               ? Icons.visibility_outlined
               : Icons.visibility_off_outlined,
           tooltip: controller.cuesShown
-              ? "Hide the cues on the timeline"
-              : "Show the cues on the timeline",
+              ? "Hide the word cues on the timeline"
+              : "Show the word cues on the timeline",
           active: controller.cuesShown,
           onPressed: () => controller.cuesShown = !controller.cuesShown,
         ),
@@ -182,9 +182,9 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
         ],
         if (controller.cues.isEmpty)
           const CanvasHint(
-              "A cue is a named moment of the whole run -- a line of the "
+              "A word cue is a named moment of the whole run -- a line of the "
               "voice-over, say. Tie an element to one in its settings and "
-              "moving the cue moves the element with it."),
+              "moving the word cue moves the element with it."),
         for (var cue in controller.cues) ...[
           const CanvasLineBreak(),
           CanvasTextField(
@@ -212,7 +212,7 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
           CanvasIconButton(
             key: ValueKey("cueRemove-${cue.id}"),
             icon: Icons.close,
-            tooltip: "Remove this cue",
+            tooltip: "Remove this word cue",
             onPressed: () => controller.removeCue(cue.id),
           ),
         ],

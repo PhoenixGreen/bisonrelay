@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/camera_3d.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -156,6 +157,10 @@ class StagePainter extends CustomPainter {
   /// goes up as they play on -- see CanvasController.liveMotion.
   final LiveMotion? liveMotion;
   final int motionTick;
+
+  /// directed is whether the page is seen through its Camera: on a 3D
+  /// stage, the Camera is the stage's camera. See camera_3d.dart.
+  final bool directed;
   final int Function(CounterElement)? counterPressed;
   final bool Function(CounterElement)? counterRunning;
 
@@ -409,6 +414,7 @@ class StagePainter extends CustomPainter {
     this.counterValue,
     this.liveMotion,
     this.motionTick = 0,
+    this.directed = false,
     this.counterPressed,
     this.counterRunning,
     this.counterTick = 0,
@@ -432,8 +438,11 @@ class StagePainter extends CustomPainter {
         ]));
 
   @override
-  void paint(Canvas canvas, Size size) =>
-      CanvasPerf.time("stagePaint", () => _paintStage(canvas, size));
+  void paint(Canvas canvas, Size size) => CanvasPerf.time(
+      "stagePaint",
+      () => directed
+          ? directedBy(document, liveMotion, () => _paintStage(canvas, size))
+          : _paintStage(canvas, size));
 
   void _paintStage(Canvas canvas, Size size) {
     RasterCache.drafting = drafting;
@@ -892,7 +901,10 @@ class StagePainter extends CustomPainter {
   /// shown, where it is now. Not while looking through it -- then the page
   /// is the frame.
   void _paintCameras(Canvas canvas) {
-    if (camera != null) return;
+    // On a 3D stage it is in the scene, not a frame on the page.
+    if (camera != null || directed || isStageScene(document)) {
+      return;
+    }
     for (var cam in document.elements.whereType<CameraElement>()) {
       if (!cam.visible) continue;
       var r = cameraFrame(cam, frame, document, live: liveMotion);
@@ -1812,6 +1824,7 @@ class StagePainter extends CustomPainter {
       old.document != document ||
       old.frame != frame ||
       old.motionTick != motionTick ||
+      old.directed != directed ||
       old.previewAt != previewAt ||
       old.previewing != previewing ||
       !listEquals(old.anchors, anchors) ||

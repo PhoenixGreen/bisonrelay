@@ -7,7 +7,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
     show ClipTriggerKind;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
-    show MovedElement;
+    show MovedElement, sceneFraming;
+import 'package:bruig/plugin_system/canvas/render/camera_3d.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
@@ -269,11 +270,16 @@ class _PlayedPainter extends CustomPainter {
     canvas.save();
     canvas.clipRect(Offset.zero & size);
     canvas.scale(size.width / page.width, size.height / page.height);
-    paintCanvasDocument(canvas, doc,
-        frame: c.frame,
-        images: c.images,
-        counterValue: c.counterValue,
-        liveMotion: c.liveMotion);
+    // On a 3D stage, its Camera is the stage's: see camera_3d.
+    directedBy(
+        doc,
+        c.liveMotion,
+        () => paintCanvasDocument(canvas, doc,
+            frame: c.frame,
+            images: c.images,
+            counterValue: c.counterValue,
+            liveMotion: c.liveMotion,
+            camera: sceneFraming(doc, c.frame, live: c.liveMotion)));
     canvas.restore();
   }
 

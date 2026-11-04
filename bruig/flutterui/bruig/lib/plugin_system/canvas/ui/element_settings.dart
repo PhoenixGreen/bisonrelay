@@ -3,6 +3,8 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
     show presetsFor;
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show isStageScene;
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/parallax_settings.dart';
@@ -241,6 +243,10 @@ List<Widget> elementSettings(
                             onChanged: (v) => controller.cameraView = v,
                           ),
                         ]),
+                    // On a 3D stage it stands in the scene: where, and its
+                    // lens. Its clips move it from here.
+                    if (isStageScene(controller.document))
+                      _camera3dGroup(controller, e, write, begin, commit),
                   ]),
               // A move put on the timeline at the playhead, opened to be
               // shaped: the quickest way to a push in.
@@ -296,12 +302,12 @@ List<Widget> elementSettings(
 Widget elementCueGroup(CanvasController controller, CanvasElement element) =>
     CanvasControlGroup(
         key: const ValueKey("elementCue"),
-        label: "Cue",
+        label: "Word cue",
         hideCaption: true,
         rule: false,
         children: [
           CanvasDropdown<String>(
-            label: "Arrives on cue",
+            label: "Arrives on word cue",
             value: controller.cues.any((c) => c.id == element.base.cue)
                 ? element.base.cue
                 : "",
@@ -368,4 +374,60 @@ List<Widget> _backgroundElementBackdrop(
       onCommit: commit,
     ),
   ];
+}
+
+/// _camera3dGroup is where a Camera stands on a 3D stage, and its lens.
+Widget _camera3dGroup(
+    CanvasController controller,
+    CameraElement e,
+    void Function(CanvasElement) write,
+    VoidCallback begin,
+    VoidCallback commit) {
+  var doc = controller.document;
+  var view = e.view ??
+      (doc.drawnBackground.isStage
+              ? doc.drawnBackground.stageOn(doc.size.rect)
+              : doc.elements
+                  .whereType<BackgroundElement>()
+                  .where((b) => b.isStage)
+                  .first
+                  .staged)
+          .ownCameraAt(0);
+  Widget field(String key, String label, double value, double min, double max,
+          StageCamera Function(double v) set,
+          {String suffix = "", int decimals = 1}) =>
+      CanvasNumberField(
+        key: ValueKey("camera3d-$key"),
+        label: label,
+        value: value,
+        min: min,
+        max: max,
+        decimals: decimals,
+        suffix: suffix,
+        width: 70,
+        onChanged: (v) {
+          begin();
+          write(e.withView(set(v)));
+        },
+        onCommit: commit,
+      );
+  return CanvasControlGroup(
+      key: const ValueKey("camera3d"),
+      label: "In 3D",
+      help: "Where it stands on the stage. Its clips turn it round what it "
+          "looks at, bring it closer, and aim it at whoever it is on.",
+      children: [
+        field("lens", "Lens", view.lens, 12, 200, (v) => view.copyWith(lens: v),
+            suffix: " mm", decimals: 0),
+        field("distance", "Distance", view.distance, StageCamera.minDistance,
+            StageCamera.maxDistance, (v) => view.copyWith(distance: v),
+            suffix: " m"),
+        field("height", "Height", view.ty, -10, 30, (v) => view.copyWith(ty: v),
+            suffix: " m"),
+        field("turn", "Turn", view.yaw, -360, 360, (v) => view.copyWith(yaw: v),
+            suffix: "°", decimals: 0),
+        field(
+            "tilt", "Tilt", view.pitch, -10, 89, (v) => view.copyWith(pitch: v),
+            suffix: "°", decimals: 0),
+      ]);
 }

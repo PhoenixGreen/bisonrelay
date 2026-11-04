@@ -217,8 +217,20 @@ class StageElement extends CanvasElement {
   ElementKind get kind => ElementKind.stage;
 
   /// cameraAt is the camera on [frame]: its own setting with whatever the
-  /// track keys over it.
-  StageCamera cameraAt(int frame) => camera.over(poseAt(frame));
+  /// track keys over it -- or, while a frame is drawn through a Camera
+  /// element, that Camera's: see [director].
+  StageCamera cameraAt(int frame) =>
+      director?.call(this, frame) ?? camera.over(poseAt(frame));
+
+  /// director is, while a frame is drawn through a Camera element, what
+  /// it makes of a stage's camera -- set round the drawing, as the
+  /// renderer's other drawing-time state is, and null the rest of the time:
+  /// see directedBy in camera_3d.dart. Editing, the stage is seen through
+  /// its own camera, to be set up by orbiting.
+  static StageCamera? Function(StageElement stage, int frame)? director;
+
+  /// ownCameraAt is the stage's own camera on [frame], whoever is directing.
+  StageCamera ownCameraAt(int frame) => camera.over(poseAt(frame));
 
   @override
   CanvasElement rebase(ElementBase base) => StageElement(base,

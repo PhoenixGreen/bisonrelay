@@ -4694,7 +4694,7 @@ class CanvasController extends ChangeNotifier {
   TimelineCue addCue({String name = "", int? frame}) {
     var cue = TimelineCue(
         id: newCueId(),
-        name: name.isEmpty ? "Cue ${cues.length + 1}" : name,
+        name: name.isEmpty ? "Word cue ${cues.length + 1}" : name,
         frame: math.max(0, frame ?? runFrame));
     apply(_document.copyWith(cues: _sortedCues([...cues, cue])));
     return cue;

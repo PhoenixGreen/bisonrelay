@@ -56,7 +56,7 @@ void main() {
     });
     await tester.pumpAndSettle();
     expect(c.cues.length, 2);
-    expect(find.text("2 cues, one at each line."), findsOneWidget);
+    expect(find.text("2 word cues, one at each line."), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

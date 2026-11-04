@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/camera_3d.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -157,17 +158,20 @@ void paintSequenceFrame(
     var shown = doc
         .goToScene(index)
         .copyWith(onMaster: false, background: doc.backgroundOf(index));
-    paintCanvasDocument(canvas, shown,
-        frame: frame,
-        images: images,
-        backgrounds: backgrounds,
-        audioState: audioState,
-        videoShow: videoShow,
-        backdrop: backdrop,
-        // Its Camera, which takes over, or its slow move.
-        camera: cameraOf(shown) != null
-            ? sceneFraming(shown, frame)
-            : camera?.at(frame / length, doc.size.rect));
+    directedBy(
+        shown,
+        null,
+        () => paintCanvasDocument(canvas, shown,
+            frame: frame,
+            images: images,
+            backgrounds: backgrounds,
+            audioState: audioState,
+            videoShow: videoShow,
+            backdrop: backdrop,
+            // Its Camera, which takes over, or its slow move.
+            camera: cameraOf(shown) != null
+                ? sceneFraming(shown, frame)
+                : camera?.at(frame / length, doc.size.rect)));
   }
 
   if (!place.changing) {

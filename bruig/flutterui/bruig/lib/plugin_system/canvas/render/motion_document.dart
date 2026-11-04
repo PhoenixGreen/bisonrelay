@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
@@ -163,6 +164,8 @@ Rect cameraFrame(CameraElement cam, int frame, CanvasDocument doc,
 (double, Offset)? sceneFraming(CanvasDocument doc, int frame,
     {LiveMotion? live}) {
   if (cameraOf(doc) case var cam?) {
+    // On a 3D stage it is the stage's camera, not a frame on the page.
+    if (isStageScene(doc)) return null;
     return cameraFraming(cam, frame, doc, live: live);
   }
   return doc.scene.camera
@@ -184,3 +187,10 @@ double cameraMostZoom(CanvasDocument doc) {
   var base = doc.size.rect.width / math.max(1.0, cam.width);
   return (math.max(1.0, base) * most).clamp(1.0, 8.0);
 }
+
+/// isStageScene is whether [doc]'s scene is played on a 3D stage -- its
+/// background's, or a Background element showing one: a Camera there lives
+/// in the scene rather than framing the page. See camera_3d.dart.
+bool isStageScene(CanvasDocument doc) =>
+    doc.drawnBackground.isStage ||
+    doc.elements.any((e) => e is BackgroundElement && e.isStage);

@@ -358,8 +358,24 @@ CanvasElement newElement(
     // On the whole page, where it shows everything: the frame drawn in
     // and moved from there. See CameraElement.
     case ElementKind.camera:
-      return CameraElement(base.copyWith(
-          name: "Camera", x: 0, y: 0, width: size.width, height: size.height));
+      // On a 3D stage it stands where the stage's camera is, to be moved
+      // from there: see camera_3d.dart.
+      var drawn = document.drawnBackground;
+      return CameraElement(
+          base.copyWith(
+              name: "Camera",
+              x: 0,
+              y: 0,
+              width: size.width,
+              height: size.height),
+          view: drawn.isStage
+              ? drawn.stageOn(document.size.rect).ownCameraAt(0)
+              : document.elements
+                  .whereType<BackgroundElement>()
+                  .where((b) => b.isStage)
+                  .firstOrNull
+                  ?.staged
+                  .ownCameraAt(0));
 
     // The same for parallax scenery: a Background element showing it.
     case ElementKind.parallax:

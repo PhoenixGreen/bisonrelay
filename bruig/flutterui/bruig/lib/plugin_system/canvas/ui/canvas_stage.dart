@@ -6797,6 +6797,10 @@ class CanvasStageState extends State<CanvasStage>
                         counterValue: controller.counterValue,
                         liveMotion: controller.liveMotion,
                         motionTick: controller.motionTick,
+                        // Played or looked through: a 3D stage through its
+                        // Camera.
+                        directed: (controller.playing || controller.cameraView) &&
+                            !document.editingMaster,
                         counterPressed: (e) =>
                             e.id == _hoveredCounter ? _hoveredCounterAt : -1,
                         counterRunning: controller.counterRunning,

@@ -668,7 +668,8 @@ class _LipSyncGroupState extends State<_LipSyncGroup> {
         voices.where((v) => v.id == _voice).firstOrNull ?? voices.firstOrNull;
     return CanvasControlGroup(
         label: "From the voice-over",
-        help: "Hear the words uses the words heard for the Cues -- hearing "
+        help:
+            "Hear the words uses the words heard for the word cues -- hearing "
             "them first if they have not been -- and spells each into the "
             "mouths it is said with. Sound only reads how loud the voice is "
             "frame by frame: rougher, but it works in any language with "

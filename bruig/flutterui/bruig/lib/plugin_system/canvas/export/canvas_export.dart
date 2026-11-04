@@ -2,10 +2,11 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/camera_3d.dart';
 import 'package:bruig/plugin_system/canvas/export/audio_export.dart'
     show estimateAudioBytes;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
-    show cameraMostZoom, sceneFraming;
+    show cameraMostZoom, cameraOf, sceneFraming;
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
@@ -140,9 +141,11 @@ class ExportBackdrop {
         background.parallaxOn(document.size.rect).moves) {
       return null;
     }
-    // A stage whose camera moves is a different picture every frame too.
+    // A stage whose camera moves is a different picture every frame too --
+    // keyed, or a Camera's.
     if (background.isStage &&
-        (background.stage?.track?.keys.isNotEmpty ?? false)) {
+        ((background.stage?.track?.keys.isNotEmpty ?? false) ||
+            cameraOf(drawn) != null)) {
       return null;
     }
     // A video on the timeline behind everything is a different picture every
@@ -203,7 +206,7 @@ Future<ui.Image> renderFrame(
   var width = math.max(1, (document.size.exportSize.width * asked).round());
   var height = math.max(1, (document.size.exportSize.height * asked).round());
 
-  void draw(ui.Canvas canvas) {
+  void drawNow(ui.Canvas canvas) {
     canvas.scale(s);
     // The whole run, where there is one: a document of several scenes
     // publishes as the sequence it plays, not as whichever canvas was being
@@ -223,6 +226,10 @@ Future<ui.Image> renderFrame(
           videoShow: videoShow);
     }
   }
+
+  // In a scene on a 3D stage, its Camera is the stage's: see camera_3d.
+  void draw(ui.Canvas canvas) =>
+      directedBy(document, null, () => drawNow(canvas));
 
   // Its pictures read, not their placeholders -- see drawWhenLoaded.
   await drawWhenLoaded(images, draw);
