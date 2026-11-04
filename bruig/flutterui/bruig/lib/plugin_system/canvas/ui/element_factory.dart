@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
@@ -100,6 +101,8 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     ElementKind.tileMap => Size(wide * 0.8, short * 0.8),
     // The whole page: shown as it is until it is moved or drawn in closer.
     ElementKind.camera => Size(wide, short),
+    // A square, a third of the page high: a model fitted whole in it.
+    ElementKind.object3d => Size(short * 0.4, short * 0.4),
   };
 }
 
@@ -357,6 +360,11 @@ CanvasElement newElement(
 
     // On the whole page, where it shows everything: the frame drawn in
     // and moved from there. See CameraElement.
+    // A box for a model: given one from the library's 3D objects -- see
+    // elementForAsset.
+    case ElementKind.object3d:
+      return Object3dElement(base.copyWith(name: "3D object"));
+
     case ElementKind.camera:
       // On a 3D stage it stands where the stage's camera is, to be moved
       // from there: see camera_3d.dart.

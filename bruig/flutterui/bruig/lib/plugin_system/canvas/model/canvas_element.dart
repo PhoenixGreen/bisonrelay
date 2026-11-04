@@ -64,7 +64,9 @@ enum ElementKind {
   // See SheetElement.
   sheet("Sheet music"),
   // The part of the page shown, moved by clips: see CameraElement.
-  camera("Camera");
+  camera("Camera"),
+  // A model from the library's 3D objects: see Object3dElement.
+  object3d("3D object");
 
   final String label;
   const ElementKind(this.label);

@@ -4,6 +4,8 @@ import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
     show Quantise;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/glb_info.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
@@ -346,15 +348,38 @@ class _AnimationPanelState extends State<AnimationPanel> {
 
   Widget _motionDevice(CanvasElement e, MotionClip c, ColorScheme colors) {
     if (c.kind == MotionKind.model) {
+      var own = e is Object3dElement ? e.animations : const <ModelAnimation>[];
+      var playing = c.inside["animation"] is String
+          ? c.inside["animation"] as String
+          : c.name;
       return _device(
           "motion",
           "Motion · from the model",
-          240,
-          Text(
-              "The model's own animation, read from its file. Its timing, "
-              "launching and place are set here; the bones' keys stay in "
-              "the model.",
-              style: TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant)),
+          260,
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (own.isNotEmpty)
+              CanvasDropdown<String>(
+                key: const ValueKey("animModelAnimation"),
+                label: "Plays",
+                value: own.any((a) => a.$1 == playing) ? playing : own.first.$1,
+                width: 200,
+                options: [for (var (name, _) in own) (name, name)],
+                // Its own length with it, as the model has it.
+                onChanged: (name) => _edit(e, (c) {
+                  var length = own.firstWhere((a) => a.$1 == name).$2;
+                  return c.copyWith(
+                      name: name,
+                      length: length > 0 ? length : c.length,
+                      inside: {...c.inside, "animation": name});
+                }),
+              ),
+            Text(
+                "One of the model's own animations, read from its file. When "
+                "it plays, how fast, and how it is launched are set here; "
+                "the bones' movements stay in the model.",
+                style:
+                    TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant)),
+          ]),
           colors);
     }
     if (c.isSound) {

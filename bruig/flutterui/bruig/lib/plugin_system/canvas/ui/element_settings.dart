@@ -5,6 +5,9 @@ import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show isStageScene;
+import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart'
+    show modelClipsOnto;
+import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/parallax_settings.dart';
@@ -220,6 +223,92 @@ List<Widget> elementSettings(
             spriteSettings(context, controller, e, write, begin, commit),
           TileMapElement e =>
             tileMapSettings(context, controller, e, write, begin, commit),
+          // A 3D object: how it is seen in its box, and its animations.
+          Object3dElement e => [
+              section(e, "object3d",
+                  icon: Icons.view_in_ar,
+                  title: "3D object",
+                  summary: "${e.animations.length} animations of its own",
+                  children: [
+                    CanvasControlGroup(
+                        label: "Seen",
+                        help: "How it is seen in its box. On a 3D stage, "
+                            "the stage's camera sees it instead.",
+                        children: [
+                          for (var (key, label, value, min, max, set) in [
+                            (
+                              "turn",
+                              "Turn",
+                              e.turn,
+                              -360.0,
+                              360.0,
+                              (double v) => e.copyWith(turn: v)
+                            ),
+                            (
+                              "tilt",
+                              "Tilt",
+                              e.tilt,
+                              -89.0,
+                              89.0,
+                              (double v) => e.copyWith(tilt: v)
+                            ),
+                            (
+                              "zoom",
+                              "Closer",
+                              e.zoom,
+                              0.2,
+                              8.0,
+                              (double v) => e.copyWith(zoom: v)
+                            ),
+                          ])
+                            CanvasNumberField(
+                              key: ValueKey("object3d-$key"),
+                              label: label,
+                              value: value,
+                              min: min,
+                              max: max,
+                              decimals: key == "zoom" ? 2 : 0,
+                              width: 64,
+                              onChanged: (v) {
+                                begin();
+                                write(set(v));
+                              },
+                              onCommit: commit,
+                            ),
+                        ]),
+                  ]),
+              // Its own animations, read from its file: its clips.
+              section(e, "object3dAnimations",
+                  icon: Icons.animation,
+                  title: "Its animations",
+                  summary: e.animations.isEmpty
+                      ? "None in its file"
+                      : [for (var (n, _) in e.animations) n].join(", "),
+                  children: [
+                    if (e.animations.isEmpty)
+                      const CanvasHint("This model has no animations of its "
+                          "own: it moves as any element does, by clips.")
+                    else
+                      CanvasControlGroup(
+                          label: "Its animations",
+                          help: "Read from its file, and in its slots as "
+                              "clips From the model: played, placed on the "
+                              "timeline and layered as any clip is.",
+                          children: [
+                            CanvasTextButton(
+                              key: const ValueKey("object3dSlots"),
+                              label: "Put them in its slots again",
+                              onPressed: () {
+                                begin();
+                                write(e.withBase(
+                                    motion: modelClipsOnto(
+                                        e.base.motion, e.id, e.animations)));
+                                commit();
+                              },
+                            ),
+                          ]),
+                  ]),
+            ],
           // A camera is its frame, moved by its clips: here only the way to
           // see what it sees while the scene stands still.
           CameraElement e => [

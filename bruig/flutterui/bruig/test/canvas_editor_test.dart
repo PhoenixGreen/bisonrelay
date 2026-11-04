@@ -719,7 +719,9 @@ void main() {
       for (var kind in ElementKind.values) {
         if (kind == ElementKind.stage ||
             kind == ElementKind.parallax ||
-            kind == ElementKind.character3d) {
+            kind == ElementKind.character3d ||
+            // Placed from the library's 3D objects, with its model.
+            kind == ElementKind.object3d) {
           continue;
         }
         expect(find.text(kind.label), findsWidgets, reason: kind.name);

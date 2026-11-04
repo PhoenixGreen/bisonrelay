@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/model3d/model_scene.dart';
+import 'package:bruig/plugin_system/canvas/render/model3d/model3d_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -65,6 +68,7 @@ class CanvasImageStore extends ChangeNotifier
         CanvasImageSource,
         CleansEdges,
         CanvasCharacterSource,
+        CanvasModelSource,
         CanvasStageSource {
   /// _edges makes and keeps pictures with their edges cleaned -- see
   /// edge_cleaning.dart.
@@ -270,6 +274,48 @@ class CanvasImageStore extends ChangeNotifier
       return false;
     }
     return _gpu!;
+  }
+
+  // The 3D objects: a scene for each element drawn, its model read once,
+  // kept as the characters' are.
+  final Map<String, (ModelScene, String)> _models = {};
+  static const int _mostModels = 12;
+
+  @override
+  bool get noModels3d => _gpu == false;
+
+  @override
+  ModelScene? resolveModel(Object3dElement e) {
+    if (e.assetId.isEmpty || !_gpuKnown()) return null;
+    var held = _models.remove(e.id);
+    if (held != null && held.$2 == e.assetId) {
+      _models[e.id] = held;
+      return held.$1;
+    }
+    held?.$1.dispose();
+    if (_models.length >= _mostModels) {
+      _models.remove(_models.keys.first)!.$1.dispose();
+    }
+    var scene = ModelScene()..addListener(_characterChanged);
+    _models[e.id] = (scene, e.assetId);
+    // Read from now -- an export waits for it -- once this frame is done.
+    var key = "object3d:${e.id}";
+    _pending.add(key);
+    var id = e.assetId;
+    scheduleMicrotask(() async {
+      try {
+        var bytes = await CanvasMedia.load(MediaKind.model, id);
+        if (bytes == null) {
+          scene.error = "This model is not in the library.";
+        } else if (!_disposed) {
+          await scene.load(Uint8List.fromList(bytes));
+        }
+      } finally {
+        _pending.remove(key);
+        if (!_disposed) notifyListeners();
+      }
+    });
+    return scene;
   }
 
   @override
@@ -500,6 +546,10 @@ class CanvasImageStore extends ChangeNotifier
       scene.dispose();
     }
     _characters.clear();
+    for (var (scene, _) in _models.values) {
+      scene.dispose();
+    }
+    _models.clear();
     _stages.clear();
     for (var vector in _vectors.values) {
       vector.picture.dispose();

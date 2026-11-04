@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:bruig/plugin_system/canvas/render/model3d/model_scene.dart'
+    show ModelPlay;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -204,3 +206,24 @@ double cameraMostZoom(CanvasDocument doc) {
 bool isStageScene(CanvasDocument doc) =>
     doc.drawnBackground.isStage ||
     doc.elements.any((e) => e is BackgroundElement && e.isStage);
+
+/// modelPlaysAt is which of [e]'s model's own animations its clips play on
+/// [frame], how far into each and how much each counts: see ModelScene.
+List<ModelPlay> modelPlaysAt(CanvasElement e, int frame, CanvasDocument doc,
+    {LiveMotion? live}) {
+  var motion = e.base.motion;
+  if (motion.isEmpty) return const [];
+  var off = live?.of(e.id);
+  var pose = motionPoseIn(doc, e, frame, live: off, clock: live?.clock ?? 0);
+  return [
+    for (var s in pose.sources)
+      if (s.clip.kind == MotionKind.model)
+        (
+          s.clip.inside["animation"] is String
+              ? s.clip.inside["animation"] as String
+              : s.clip.name,
+          s.time,
+          motion.weight(s.layer),
+        ),
+  ];
+}

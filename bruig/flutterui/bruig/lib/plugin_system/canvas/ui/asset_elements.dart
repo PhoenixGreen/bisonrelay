@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/glb_info.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -45,6 +48,13 @@ CanvasElement elementForAsset(LibraryAsset asset, CanvasDocument document,
           as VideoElement;
       return shaped(e.copyWith(clip: MediaClip(playlist: [asset.source])))
           .withBase(name: asset.name);
+    // Its own animations in its slots, ready to play: see modelClips.
+    case AssetKind.model:
+      var e = newElement(ElementKind.object3d, document, center: center)
+          as Object3dElement;
+      var placed = e.copyWith(assetId: asset.id, animations: asset.animations);
+      return placed.withBase(
+          name: asset.name, motion: modelClips(placed.id, asset.animations));
     case AssetKind.vector:
       var e = newElement(ElementKind.vector, document, center: center)
           as VectorElement;
@@ -113,3 +123,25 @@ Future<LibraryAsset?> droppedAsset(Object? data) async => switch (data) {
       PendingAsset p => await p.fetch(),
       _ => null,
     };
+
+/// modelClips is a 3D object's own [animations] as its clips, "From the
+/// model", one in each slot: each the animation's own length, round and
+/// round, as a model's walk or idle is.
+ElementMotion modelClips(String element, List<ModelAnimation> animations) =>
+    modelClipsOnto(ElementMotion.none, element, animations);
+
+/// modelClipsOnto is [motion] with [animations] in its first slots again:
+/// each one's clip made anew, its placings on the timeline kept.
+ElementMotion modelClipsOnto(
+    ElementMotion motion, String element, List<ModelAnimation> animations) {
+  var m = motion;
+  for (var (i, (name, length)) in animations.indexed) {
+    var clip = MotionClip.ofKind("$element-m$i", MotionKind.model, name: name)
+        .copyWith(
+            length: length > 0 ? length : 1,
+            loop: true,
+            inside: {"animation": name});
+    m = m.withClip(clip).inSlot(i, clip.id);
+  }
+  return m;
+}

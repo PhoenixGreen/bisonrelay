@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'package:bruig/plugin_system/canvas/model/glb_info.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter/foundation.dart';
@@ -37,7 +38,11 @@ enum AssetKind {
 
   /// vector is the drawings -- .svg files, kept in their own store and
   /// placed as a Vector element. See VectorElement.
-  vector("Vectors");
+  vector("Vectors"),
+
+  /// model is the 3D objects -- .glb files, in the model store -- placed as
+  /// a 3D object. See Object3dElement.
+  model("3D objects");
 
   final String label;
   const AssetKind(this.label);
@@ -75,6 +80,10 @@ class LibraryAsset {
   final String origin;
   final String from;
 
+  /// animations are a 3D object's own, as its file has them: see
+  /// glbAnimations.
+  final List<ModelAnimation> animations;
+
   const LibraryAsset({
     required this.id,
     required this.kind,
@@ -90,6 +99,7 @@ class LibraryAsset {
     this.license = "",
     this.origin = "",
     this.from = "",
+    this.animations = const [],
   });
 
   /// credited is whether there is anybody to credit.
@@ -143,6 +153,7 @@ class LibraryAsset {
         license: license ?? this.license,
         origin: origin ?? this.origin,
         from: from ?? this.from,
+        animations: animations,
       );
 
   Map<String, dynamic> toJson() => {
@@ -160,6 +171,10 @@ class LibraryAsset {
         if (license.isNotEmpty) "license": license,
         if (origin.isNotEmpty) "origin": origin,
         if (from.isNotEmpty) "from": from,
+        if (animations.isNotEmpty)
+          "anims": [
+            for (var (name, length) in animations) [name, length]
+          ],
       };
 
   static LibraryAsset? fromJson(Object? json) {
@@ -188,6 +203,11 @@ class LibraryAsset {
       license: text("license"),
       origin: text("origin"),
       from: text("from"),
+      animations: [
+        if (json["anims"] case List anims)
+          for (var a in anims)
+            if (a case [String name, num length]) (name, length.toDouble()),
+      ],
     );
   }
 
@@ -331,6 +351,24 @@ class CanvasLibrary {
         width: width,
         height: height));
   }
+
+  /// addModel puts a 3D object in the library, with what it can do.
+  static Future<void> addModel(
+          String id, String name, List<ModelAnimation> animations,
+          {String author = "",
+          String license = "",
+          String origin = "",
+          String from = ""}) =>
+      add(LibraryAsset(
+          id: id,
+          kind: AssetKind.model,
+          name: name,
+          added: DateTime.now(),
+          animations: animations,
+          author: author,
+          license: license,
+          origin: origin,
+          from: from));
 
   /// addVector puts a drawing in the library, under the Vectors.
   static Future<void> addVector(String id, String name) => add(LibraryAsset(
@@ -550,8 +588,14 @@ class CanvasLibrary {
         added: await when(await CanvasAssets.pathOf(id)),
       ));
     }
-    // The old characters' models are left out: see MediaKind.model.
-    for (var kind in [MediaKind.audio, MediaKind.video, MediaKind.vector]) {
+    // The models with them: what the old characters were made of, which
+    // somebody imported, are 3D objects now.
+    for (var kind in [
+      MediaKind.audio,
+      MediaKind.video,
+      MediaKind.vector,
+      MediaKind.model
+    ]) {
       for (var id in await CanvasMedia.stored(kind)) {
         if (extras.contains(id)) continue;
         var source = sources[id] ?? MediaSource(assetId: id);
@@ -560,7 +604,7 @@ class CanvasLibrary {
               MediaKind.video => AssetKind.video,
               MediaKind.audio => AssetKind.audio,
               MediaKind.vector => AssetKind.vector,
-              MediaKind.model => throw StateError("models are not listed"),
+              MediaKind.model => AssetKind.model,
             },
             source,
             added: await when(await CanvasMedia.existingPath(kind, id))));

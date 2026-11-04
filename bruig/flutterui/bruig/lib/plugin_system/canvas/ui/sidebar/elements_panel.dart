@@ -68,6 +68,7 @@ IconData iconForKind(ElementKind kind) => switch (kind) {
       ElementKind.parallax => Icons.landscape_outlined,
       ElementKind.sheet => Icons.queue_music,
       ElementKind.camera => Icons.videocam_outlined,
+      ElementKind.object3d => Icons.view_in_ar,
     };
 
 class CanvasElementsPanel extends StatelessWidget {

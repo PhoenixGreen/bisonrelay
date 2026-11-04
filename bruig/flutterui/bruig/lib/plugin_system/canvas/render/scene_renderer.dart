@@ -1,4 +1,6 @@
 import 'dart:typed_data';
+import 'package:bruig/plugin_system/canvas/render/model3d/model3d_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
 import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -740,6 +742,11 @@ void paintElement(
       if (element is Character3dElement) {
         paintCharacter3d(canvas, at.box, element, frame,
             frameRate: frameRate, editing: editing, images: images, staged: at);
+      } else if (element is Object3dElement) {
+        paintObject3d(canvas, at.box, element, images,
+            plays: modelPlaysAt(element, frame, document, live: liveMotion),
+            editing: editing,
+            staged: at);
       } else {
         canvas.save();
         canvas.transform(at.matrix!);
@@ -1061,6 +1068,12 @@ void paintElement(
             pose,
             () => paintCharacter3d(canvas, bounds, e, frame,
                 frameRate: frameRate, editing: editing, images: images));
+      case Object3dElement e:
+        paintObject3d(canvas, bounds, e, images,
+            plays: document == null
+                ? const []
+                : modelPlaysAt(e, frame, document, live: liveMotion),
+            editing: editing);
       default:
         break;
     }
