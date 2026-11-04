@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 
 /// SpritePaintView is what the renderer needs to show a sprite being
 /// painted: the frame, its pixels as they are now, the frame before it to
-/// show faintly, and whether to rule the pixels. See sprite_painting.dart.
+/// show faintly, and whether to rule the pixels. See ui/sprite_painting.dart.
 typedef SpritePaintView = ({int frame, ui.Image? live, int? onion, bool grid});
 
 /// spritePaintingOf is how the sprite [SpriteElement] is shown while it is
@@ -22,10 +22,13 @@ SpritePaintView? Function(SpriteElement e)? spritePaintingOf;
 /// paintSprite draws [e] in [box] on [frame] of a canvas played at
 /// [frameRate]: its frame as big as the box allows, standing on the box's
 /// bottom, its pixels square when it is pixel art. A sprite with no sheet
-/// yet -- or one still being read -- is a dashed outline of a figure.
+/// yet, or one still being read, is a dashed outline of a figure. With
 /// [editing], one being painted is shown as its painter shows it.
 void paintSprite(Canvas canvas, Rect box, SpriteElement e, int frame,
-    {int frameRate = 12, CanvasImageSource? images, bool editing = false}) {
+    {int frameRate = 12,
+    CanvasImageSource? images,
+    bool editing = false,
+    double Function(int frame)? dxAt}) {
   var image = e.hasSheet ? images?.resolve(e.sheet, const BackgroundRemoval()) : null;
   var view = editing ? spritePaintingOf?.call(e) : null;
   if (view != null) {
@@ -35,7 +38,7 @@ void paintSprite(Canvas canvas, Rect box, SpriteElement e, int frame,
       return;
     }
   }
-  var at = e.sheetFrameAt(frame, frameRate);
+  var at = e.sheetFrameAt(frame, frameRate, dxAt: dxAt);
   if (image == null || at == null) {
     _paintEmpty(canvas, box);
     return;

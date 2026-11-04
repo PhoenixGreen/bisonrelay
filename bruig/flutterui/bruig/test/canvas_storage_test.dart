@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
+import 'canvas_store_age.dart';
 
 // canvas_storage_test.dart is about the security boundary and the file
 // handling behind it.
@@ -227,6 +228,7 @@ void main() {
 
       expect(await CanvasAssets.load(dropped), isNotNull,
           reason: "still there before the sweep");
+      await ageStores();
       await CanvasAssets.sweepUnused();
 
       expect(await CanvasAssets.load(kept), isNotNull,
@@ -266,6 +268,7 @@ void main() {
             ),
           ]));
 
+      await ageStores();
       await CanvasAssets.sweepUnused();
       expect(await CanvasAssets.load(icon), isNotNull,
           reason: "the icon the headline carries");
@@ -293,11 +296,13 @@ void main() {
       await CanvasStorage.save("", "Two", using());
 
       await CanvasStorage.delete("", "One");
+      await ageStores();
       await CanvasAssets.sweepUnused();
       expect(await CanvasAssets.load(shared), isNotNull,
           reason: "the other canvas still shows it");
 
       await CanvasStorage.delete("", "Two");
+      await ageStores();
       await CanvasAssets.sweepUnused();
       expect(await CanvasAssets.load(shared), isNull,
           reason: "and now nothing does");
@@ -316,6 +321,7 @@ void main() {
                 assetId: filed),
           ]));
 
+      await ageStores();
       await CanvasAssets.sweepUnused();
       expect(await CanvasAssets.load(filed), isNotNull);
     });
@@ -325,6 +331,7 @@ void main() {
       await CanvasStorage.save("", "Backdrop",
           CanvasDocument(background: CanvasBackground(imageAssetId: behind)));
 
+      await ageStores();
       await CanvasAssets.sweepUnused();
       expect(await CanvasAssets.load(behind), isNotNull,
           reason: "the canvas background uses one as much as an element does");

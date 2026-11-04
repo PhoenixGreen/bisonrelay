@@ -5,23 +5,17 @@ import 'package:bruig/plugin_system/canvas/model/layer_blend.dart';
 export 'package:bruig/plugin_system/canvas/model/layer_blend.dart'
     show LayerBlend;
 
-// procedural_layers.dart is the patterns laid over a background's own.
-//
-// One pattern on one ground is a starting point; the backgrounds people
-// actually want are usually several things at once -- a mesh of colour with a
-// faint grid over it, stars over a nebula over a gradient. Each layer is a
-// whole background recipe of its own, laid on with an opacity and a blend.
+// procedural_layers.dart is the patterns laid over a background's own. Each
+// layer is a whole background recipe, laid on with an opacity and a blend.
 
 /// maxBackgroundLayers is how many layers can be laid over a background.
 const int maxBackgroundLayers = 3;
 
 /// BackgroundLayer is one pattern laid over a background.
 ///
-/// Its [spec] is a whole recipe, but only the pattern of it is drawn: the
-/// base colour is the background's -- except for a plain layer, whose base
-/// is all it has -- and the light, the lens and the film over the finished
-/// picture are the background's too. Its movement keeps the background's
-/// time, at the layer's own speed.
+/// Only the pattern of its [spec] is drawn: the base colour (except for a
+/// plain layer, whose base is all it has), light and effects are the
+/// background's. It keeps the background's time at its own speed.
 class BackgroundLayer {
   final ProceduralSpec spec;
   final double opacity;
@@ -64,7 +58,7 @@ class BackgroundLayer {
                 .copyWith(layers: const [])
             : const ProceduralSpec(),
         opacity: jsonDouble(json["opacity"], 1).clamp(0.0, 1.0),
-        blend: LayerBlend.fromName(json["blend"] as String?),
+        blend: LayerBlend.fromName(jsonStr(json["blend"])),
         visible: !jsonBool(json["hidden"], false),
       );
 }

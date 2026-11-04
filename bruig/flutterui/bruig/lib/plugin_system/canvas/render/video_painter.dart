@@ -12,9 +12,9 @@ import 'package:flutter/painting.dart';
 // same rectangles the painter drew. See audio_painter.dart, which is the same
 // arrangement for a speaker.
 
-/// VideoShow is what the painter needs to know about a video right now.
-/// Nothing in the document says it: in an exported picture it is the poster
-/// and a stopped play bar, and on screen it is whatever the reader has done.
+/// VideoShow is what the painter needs to know about a video right now: not
+/// in the document. In an exported picture it is the poster and a stopped
+/// play bar; on screen, whatever the reader has done.
 class VideoShow {
   final bool playing;
   final bool muted;
@@ -85,8 +85,7 @@ VideoPart? videoPartAt(VideoParts parts, Offset at, {required bool clickable}) {
   if (parts.mute case var r? when r.contains(at)) return VideoPart.mute;
   if (parts.volume case var r? when r.contains(at)) return VideoPart.volume;
   // A press on the bar that missed every control is not a press on the
-  // picture: somebody aiming at a small button and missing should not stop
-  // the video instead.
+  // picture, so a missed small button does not stop the video.
   if (parts.bar case var r? when r.contains(at)) return null;
   if (clickable && parts.picture.contains(at)) return VideoPart.picture;
   return null;

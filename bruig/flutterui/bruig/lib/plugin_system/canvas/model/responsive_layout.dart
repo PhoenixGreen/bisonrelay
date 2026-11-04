@@ -8,34 +8,22 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 
-// responsive_layout.dart is one design laid out for several shapes.
+// responsive_layout.dart is one design laid out for several page shapes
+// (4:5, 16:9, 1:1...): the same elements, each with a place and size per
+// shape (see ElementLayout).
 //
-// The same canvas is wanted at 4:5 for a feed, 16:9 for a screen and 1:1 for
-// everywhere else, and it is one design: the same words, the same colours,
-// the same data and the same arrivals. What differs between the three is
-// where things sit and how big they are.
-//
-// So the elements are one set, and each carries a place and a size *per
-// shape* -- see ElementLayout. The shape being looked at is not held in that
-// map: its numbers are the element's own x, y, width and height, live, which
-// is what lets every painter, every handle and every settings field go on
-// reading an element the way they always have. Changing shape puts the live
-// numbers away under the shape being left and takes out the ones belonging to
-// the shape being opened, which is the whole of the mechanism.
-//
-// A shape nobody has worked on yet is seeded by scaling from the one being
-// left, so switching lands on something that already looks right rather than
-// on a heap in the corner. See canvasScale.
+// The shape on screen is not held in that map: its numbers are the element's
+// own live x, y, width and height, so painters, handles and settings read an
+// element as usual. Changing shape stores the live numbers under the shape
+// being left and takes out those of the shape being opened. A shape not yet
+// worked on is seeded from the one being left (see seedFor).
 
 /// shapeKey names a shape in an element's layouts and in a document's
 /// targets.
 ///
-/// The ratio's own name, and "custom" for a custom one whatever numbers it is
-/// set to. Keyed by the numbers instead, typing a new aspect would leave the
-/// document pointing at a shape nothing is laid out for -- and two different
-/// custom shapes in one design is not a thing anybody has asked for. The
-/// width is deliberately not in the key either: it is the document's
-/// resolution rather than its shape.
+/// The ratio's name, and "custom" for any custom ratio, so typing a new
+/// aspect keeps its layout. The width is not in the key: it is the
+/// document's resolution, not its shape.
 String shapeKey(CanvasSize size) => size.ratio.name;
 
 /// shapeLabel is what that key is called in a list.
@@ -46,21 +34,13 @@ String shapeLabel(String key) {
   return key;
 }
 
-/// shapeTag is a short name for a shape, safe in a filename.
-///
-/// What tells three files apart when a canvas is published at every shape it
-/// is designed for: "card-16x9.png" beside "card-4x5.png". The ratio's label
-/// without the words after it, and with the colon a filename cannot carry
-/// turned into an x.
+/// shapeTag is a short name for a shape, safe in a filename ("16x9"), for
+/// telling apart the files of a canvas published at several shapes.
 String shapeTag(String key) =>
     shapeShort(key).replaceAll(":", "x").replaceAll(" ", "");
 
 /// shapeShort is a shape's name with nothing after it: "4:5" rather than
-/// "4:5 · Feed ad".
-///
-/// What a control names itself after when it belongs to one shape — a switch
-/// reading "Own on 4:5" — where the words after the numbers are what the
-/// dropdown is for and would be the whole of a narrow sidebar's line.
+/// "4:5 · Feed ad", for a control that belongs to one shape ("Own on 4:5").
 String shapeShort(String key) {
   var label = shapeLabel(key);
   var cut = label.indexOf(" ·");
@@ -68,11 +48,11 @@ String shapeShort(String key) {
 }
 
 /// canvasScale is how much a design made for one page is sized by for
-/// another -- the smaller of the two ratios, so it fits across and down.
+/// another: the smaller of the two ratios, so it fits across and down.
 ///
-/// The measure for a *thing being dropped on a page* -- a preset, an element
-/// laid out for a shape it has not been seen on. Seeding a whole shape uses
-/// [seedFor] instead, which measures the design rather than the page.
+/// For one thing dropped on a page (a preset, an element on a shape it has
+/// no layout for). Seeding a whole shape uses [seedFor], which measures the
+/// design rather than the page.
 double canvasScale(CanvasSize from, CanvasSize to) {
   if (from.width <= 0 || from.height <= 0) return 1;
   var by = math.min(to.width / from.width, to.height / from.height);
@@ -101,11 +81,9 @@ class ShapeSeed {
       required this.page});
 }
 
-/// coversPage is whether an element is the page rather than something on it:
-/// a photograph behind everything, a colour wash, a frame.
-///
-/// They are seeded by covering the new page rather than by being scaled with
-/// the design, which is the difference between a backdrop and a card.
+/// coversPage is whether an element covers the page (a photograph behind
+/// everything, a colour wash, a frame). Such elements are seeded by covering
+/// the new page rather than being scaled with the design.
 bool coversPage(CanvasElement element, CanvasSize page) {
   var slack = math.max(page.width, page.height) * 0.02;
   return element.x <= slack &&
@@ -116,22 +94,14 @@ bool coversPage(CanvasElement element, CanvasSize page) {
 
 /// seedFor works out how a scene's design moves onto another shape of page.
 ///
-/// Measured against the *design* rather than against the page, which is the
-/// whole difference between this and scaling everything by the ratio of the
-/// two pages. A 4:5 feed card taken to 16:9 has the same width and less than
-/// half the height, so by the page it would be shrunk to 45% -- a table and a
-/// score bug that filled the card left as postage stamps in a corner of the
-/// new one, which is what was reported.
+/// What covers the page goes on covering it; the rest is one block, scaled by
+/// how much the page changed and placed where it sat as a fraction of the
+/// page, so a block across the bottom stays across the bottom. Measuring the
+/// design rather than the pages matters: by page ratio alone a 4:5 card
+/// taken to 16:9 shrinks to 45% in a corner.
 ///
-/// What it does instead: what covers the page goes on covering it, and the
-/// rest is one block, scaled by how much the page changed and placed where it
-/// sat as a fraction of the page -- so a block across the bottom of a feed
-/// card is across the bottom of the screen, at the same share of it.
-///
-/// Never made larger: type grown to fill a bigger page is type nobody chose.
-/// Made smaller than the page asked for where even that does not fit, because
-/// a block hanging off two edges is worse than a small one. And nudged back
-/// on where it would hang off one.
+/// Never made larger (type nobody chose); smaller still where the block
+/// would not fit, and nudged back on where it would hang off an edge.
 ShapeSeed seedFor(
     List<CanvasElement> elements, CanvasSize from, CanvasSize to) {
   var page = Size(to.width.toDouble(), to.height.toDouble());
@@ -146,26 +116,22 @@ ShapeSeed seedFor(
     return ShapeSeed(by: 1, block: Rect.zero, at: Offset.zero, page: page);
   }
 
-  // How much the page itself changed, which is what keeps a design looking
-  // like itself: a page that lost half its height carries a design at half
-  // the size. Never larger -- type grown to fill a bigger page is type
-  // nobody chose -- and smaller still where even that does not fit.
+  // How much the page changed, capped at one, and smaller still where the
+  // block would not fit.
   var by = math.min(
     math.min(1.0, math.min(page.width / from.width, page.height / from.height)),
     math.min(page.width / block.width, page.height / block.height),
   );
   var sized = Size(block.width * by, block.height * by);
 
-  // Where it sat, as a fraction of the page it sat on: a block across the
-  // bottom of a feed card is across the bottom of the screen too.
+  // Where it sat, as a fraction of the page.
   var centre = Offset(
     block.center.dx / math.max(1, from.width) * page.width,
     block.center.dy / math.max(1, from.height) * page.height,
   );
   var at = Offset(centre.dx - sized.width / 2, centre.dy - sized.height / 2);
 
-  // And nudged back on where that would hang it off an edge. A design that
-  // fits the page should be on the page.
+  // Nudged back on where it would hang off an edge.
   at = Offset(
     at.dx.clamp(math.min(0, page.width - sized.width),
         math.max(0, page.width - sized.width)),
@@ -203,12 +169,8 @@ ElementLayout seeded(ElementLayout layout, ShapeSeed seed, bool covers) {
 }
 
 /// withLayoutsFor is [element] given a layout for every shape in [targets],
-/// seeded from the one it is showing.
-///
-/// What a new element needs on a document that is being designed for several
-/// shapes: added while the 16:9 is open, it should be on the 4:5 as well,
-/// scaled to it -- otherwise the same card has to be built once per shape,
-/// which is the whole thing this was written to avoid.
+/// scaled from the one it is showing, so an element added on one shape
+/// appears on the others too.
 CanvasElement withLayoutsFor(
     CanvasElement element, CanvasSize size, List<String> targets,
     {required CanvasSize Function(String) sizeOf}) {
@@ -224,11 +186,7 @@ CanvasElement withLayoutsFor(
 }
 
 /// sizeForShape is the page a shape key names, at the width [like] is drawn
-/// at.
-///
-/// The width is kept because it is the document's own resolution rather than
-/// part of its shape: designing the same canvas at 4:5 and at 16:9 should not
-/// change how many pixels it publishes at.
+/// at: the width is the document's resolution, not part of its shape.
 CanvasSize sizeForShape(String key, CanvasSize like) {
   for (var ratio in CanvasRatio.values) {
     if (ratio.name == key) return like.copyWith(ratio: ratio);
@@ -236,41 +194,24 @@ CanvasSize sizeForShape(String key, CanvasSize like) {
   return like;
 }
 
-/// movedTo is [element] showing the layout it has for [to], with what it was
-/// showing put away under [from].
-///
-/// The one step of a shape change, for one element, and it moves three
-/// things: where the element sits, how much its own measurements have been
-/// scaled by, and -- for words -- which set this shape shows.
-///
-/// A shape nobody has worked on yet is seeded by scaling what was just put
-/// away, so the first visit lands on something that already looks like the
-/// design. The type comes down with the box: seeded without that, a headline
-/// keeps the size it had on the larger page and runs out of the frame.
-/// showing is [element] wearing [layout]: its place, its size, and its own
-/// design brought to that layout's scale.
-///
-/// The one place a layout is put on an element. The design has to be scaled
-/// by the *difference* between the two, because the element carries one set
-/// of measurements for every shape and they are currently at the scale of the
-/// shape being left -- see ElementBase.typeScale.
-/// detachedHere is [element] given a design of its own on the shape being
-/// looked at, with the shared one kept aside.
-///
-/// Kept aside at the moment of detaching, because from then on the element
-/// *is* this shape's design and there is nowhere else the shared one could
-/// be read from. See ElementBase.shared.
+/// detachedHere is [element] given a design of its own on the shape on
+/// screen, with the shared design kept aside: from now on the element is
+/// this shape's design, so the shared one can be read from nowhere else.
+/// See ElementBase.shared.
 CanvasElement detachedHere(CanvasElement element) => element.withBase(
       ownDesign: true,
-      shared: element.base.shared ?? element.toJson(),
+      shared: element.base.shared ?? _snapshot(element),
     );
 
-/// sharedAgain is [element] back on the design the shapes share, at once
-/// rather than on the next shape change.
-///
-/// What is on screen is this shape's own copy, so switching the toggle off
-/// has to put the shared design back or the copy would quietly become the
-/// shared one the next time the shape is left.
+/// _snapshot is [element]'s design as JSON, without the layouts and the
+/// shared design it carries: those are kept once, on the element itself.
+Map<String, dynamic> _snapshot(CanvasElement element) => element.toJson()
+  ..remove("layouts")
+  ..remove("shared");
+
+/// sharedAgain is [element] back on the design the shapes share, at once:
+/// otherwise this shape's copy would become the shared design the next time
+/// the shape is left.
 CanvasElement sharedAgain(CanvasElement element) {
   var shared = element.base.shared;
   if (shared == null) return element.withBase(ownDesign: false);
@@ -283,13 +224,18 @@ CanvasElement sharedAgain(CanvasElement element) {
   );
 }
 
+/// showing is [element] wearing [layout]: its place, its size, and its
+/// design brought to that layout's scale.
+///
+/// The one place a layout is put on an element. The design is scaled by the
+/// ratio of the two type scales, because the element's measurements are at
+/// the scale of the shape being left (see ElementBase.typeScale).
 CanvasElement showing(CanvasElement element, ElementLayout layout,
     {Map<String, dynamic>? shared}) {
   var base = element.base;
 
   // A design this shape keeps for itself is taken back whole, under the
-  // element's own id: nothing done to it on another shape reaches here. See
-  // ElementBase.ownDesign.
+  // element's own id. See ElementBase.ownDesign.
   if (layout.own case var own?) {
     element = elementFromJson({...own, "id": element.id}).withBase(
       layouts: base.layouts,
@@ -297,8 +243,8 @@ CanvasElement showing(CanvasElement element, ElementLayout layout,
       shared: shared,
     );
   } else if (base.ownDesign && shared != null) {
-    // And a shape that shares takes the shared design back, which is the
-    // only copy of it while a detached shape is the one on screen.
+    // A sharing shape takes the shared design back: while a detached shape
+    // was on screen, [shared] was its only copy.
     element = elementFromJson({...shared, "id": element.id}).withBase(
       layouts: base.layouts,
       ownDesign: false,
@@ -306,8 +252,7 @@ CanvasElement showing(CanvasElement element, ElementLayout layout,
     );
   }
 
-  // And a picture's framing and crop, which belong to this shape whether or
-  // not the rest of the design does -- the frame is a different shape here.
+  // A picture's framing and crop always belong to the shape.
   if (element is ImageElement) {
     element = element.copyWith(
       framing: layout.framing == null
@@ -337,6 +282,12 @@ CanvasElement showing(CanvasElement element, ElementLayout layout,
       );
 }
 
+/// movedTo is [element] showing the layout it has for [to], with what it was
+/// showing put away under [from]: one element's step of a shape change.
+///
+/// It moves place and size, the scale of the element's own measurements, and
+/// for words which text this shape shows. A shape not yet worked on is
+/// seeded from what was just put away, type scaled down with the box.
 CanvasElement movedTo(CanvasElement element, String from, String to,
     {required ShapeSeed seed, required bool covers}) {
   var layouts = {...element.base.layouts};
@@ -344,31 +295,26 @@ CanvasElement movedTo(CanvasElement element, String from, String to,
   var ownHere = element.base.ownText;
   var picture = element is ImageElement ? element : null;
 
-  // What is on screen belongs to the shape being left -- its place and size,
-  // the design where this shape keeps its own, and a picture's framing and
-  // crop, which belong to the shape either way.
+  // What is on screen is stored under the shape being left: place and size,
+  // the design if this shape keeps its own, and a picture's framing and crop.
   var detached = element.base.ownDesign;
   layouts[from] = ElementLayout.of(
     element.base,
     text: words,
-    own: detached ? element.toJson() : null,
+    own: detached ? _snapshot(element) : null,
     framing: picture?.framing.toJson(),
     crop: picture?.crop.toJson(),
   );
 
-  // The design the shapes share. Refreshed on the way out of a shape that is
-  // sharing it -- that element *is* the shared design -- and left alone on
-  // the way out of one that is not, whose changes are its own.
-  var sharedDesign = detached ? element.base.shared : element.toJson();
-  // Nothing detached anywhere means there is nothing to keep aside: the
-  // element is the design, and a second copy in the file would be a copy to
-  // keep in step.
+  // The shared design: refreshed when leaving a sharing shape (that element
+  // is the shared design), left alone when leaving a detached one.
+  var sharedDesign = detached ? element.base.shared : _snapshot(element);
+  // With nothing detached anywhere no shared copy is kept: the element is
+  // the design.
   var anyOwn = layouts.values.any((l) => l.own != null);
 
-  // Where this shape was following the others, they are all showing the same
-  // words, so they all take what has been typed. Done on the way out rather
-  // than on every keystroke: one place, and nothing to keep in step while
-  // somebody is typing.
+  // If this shape followed the others' words, every following shape takes
+  // what was typed. Done here, on leaving, rather than on every keystroke.
   if (!ownHere && words != null) {
     for (var key in layouts.keys.toList()) {
       if (!layouts[key]!.ownText) {
@@ -377,12 +323,11 @@ CanvasElement movedTo(CanvasElement element, String from, String to,
     }
   }
 
-  // The words every shape that has not been given its own is showing.
+  // The words every shape without its own is showing.
   var shared = _shared(layouts) ?? words;
 
   var next = layouts.remove(to) ??
-      // A new shape follows the others' words: a headline shortened for the
-      // narrow page is that page's business, not the next one's.
+      // A new shape follows the shared words, not a shape's own.
       seeded(layouts[from]!, seed, covers)
           .copyWith(text: shared, ownText: false);
 

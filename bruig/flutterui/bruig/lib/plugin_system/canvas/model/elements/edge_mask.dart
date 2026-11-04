@@ -1,11 +1,9 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// edge_mask.dart is a mask an element's box can wear without anything being
-// drawn by hand: its edges softened, and a fade in from one side or out from
-// the middle. For the elements that are a moving picture in a box -- a video,
-// a generated pattern -- whose hard rectangle is what most often needs
-// taking away. A picture has the full mask, drawn with brushes; this is the
-// part of it that needs no brush.
+// edge_mask.dart is a mask an element's box wears with nothing drawn by hand:
+// softened edges and a fade from a side or the middle. It is for moving
+// pictures in a box (video, generated patterns); a picture has the full,
+// brush-drawn mask in image_mask.dart.
 
 /// EdgeFade is where an edge mask fades the box out.
 enum EdgeFade {
@@ -56,6 +54,6 @@ class EdgeMask {
 
   factory EdgeMask.fromJson(Map<String, dynamic> json) => EdgeMask(
       feather: jsonDouble(json["feather"], 0).clamp(0.0, 0.5),
-      fade: EdgeFade.fromName(json["fade"] as String?),
+      fade: EdgeFade.fromName(jsonStr(json["fade"])),
       reach: jsonDouble(json["reach"], 0.5).clamp(0.01, 1.0));
 }

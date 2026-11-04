@@ -7,14 +7,11 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/line_settings.dart';
 
-// path settings.dart is a path's settings.
+// path_settings.dart is a path's settings.
 
-/// pathSettings is a curve, and what travels along it.
-///
-/// The follower is chosen from a flat list of everything on the canvas plus
-/// every player of every team, because "which player runs this" is the
-/// question this feature exists to answer and making it a two-step choice --
-/// pick a team, then pick a row -- would be two dropdowns for one decision.
+/// pathSettings is a curve, and what travels along it. The follower is one
+/// flat list of everything on the canvas plus every team's players, not a
+/// team-then-row choice: it is one decision.
 List<Widget> pathSettings(
     BuildContext context,
     CanvasController controller,
@@ -32,8 +29,10 @@ List<Widget> pathSettings(
   /// anything that changes the route or its timing, since the movement is
   /// baked rather than evaluated -- see CanvasController.applyPathFollow.
   void relink(PathElement next) {
-    now(next);
+    begin();
+    write(next);
     controller.applyPathFollow(next);
+    commit();
   }
 
   var followed = e.follow == null
@@ -145,10 +144,8 @@ List<Widget> pathSettings(
               CanvasDropdown<String>(
                 label: "Who follows",
                 value: _followKey(e.follow),
-                // The least it will be. At a hundred and seventy-six the two
-                // frame fields and the button were pushed onto a line of their
-                // own the moment anybody pulled the sidebar in; it grows back
-                // into a wide one.
+                // The least it will be: any wider and the frame fields and the button
+                // wrapped onto a line of their own in a narrow sidebar.
                 width: 112,
                 options: _followOptions(controller),
                 onChanged: (v) {
@@ -224,9 +221,6 @@ List<Widget> pathSettings(
 
 /// _followKey encodes a follower as a dropdown value, since a dropdown wants
 /// one comparable thing and a follower is an id and maybe an index.
-
-/// _followKey encodes a follower as a dropdown value, since a dropdown wants
-/// one comparable thing and a follower is an id and maybe an index.
 String _followKey(PathFollow? follow) =>
     follow == null ? "" : "${follow.elementId}/${follow.playerIndex ?? -1}";
 
@@ -260,25 +254,10 @@ List<(String, String)> _followOptions(CanvasController controller) {
   return out;
 }
 
-/// _pathNodeList is one row per point: when the follower reaches it, and where
-/// it is.
-///
-/// The frame is the interesting column. Retiming a point is how the movement
-/// is made to look right -- fast out of the turn, slow into the box -- and
-/// doing it by dragging the marks on the timeline is the other half of the
-/// same control.
-
-/// _pathNodeList is one row per point: when the follower reaches it, and where
-/// it is.
-///
-/// The frame is the interesting column. Retiming a point is how the movement
-/// is made to look right -- fast out of the turn, slow into the box -- and
-/// doing it by dragging the marks on the timeline is the other half of the
-/// same control.
-/// An ordinary group rather than something to open. A path has a handful of
-/// points, they are the thing anybody came to this panel for, and a section
-/// that has to be opened before the main work can start is a press paid every
-/// time.
+/// _pathNodeList is one row per point: when the follower reaches it, and
+/// where it is. Retiming a point is how the movement is made to look right,
+/// as dragging its mark on the timeline is. An ordinary group, not a section
+/// to open: the points are what anybody came to this panel for.
 Widget _pathNodeList(CanvasController controller, PathElement e,
         void Function(PathElement) relink) =>
     CanvasControlGroup(
@@ -291,10 +270,8 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
           Padding(
             key: ValueKey("path-node-$i-${e.id}"),
             padding: const EdgeInsets.only(bottom: 2),
-            // A CanvasWrap rather than a Wrap, so the three numbers grow into
-            // a wide sidebar the way every other line of settings does. Every
-            // point has the same controls, so they all take the same share and
-            // the rows come out in columns.
+            // A CanvasWrap, so the numbers grow into a wide sidebar, each taking the
+            // same share so the rows come out in columns.
             child: CanvasWrap(children: [
               CanvasNumberField(
                 key: ValueKey("node-frame-$i-${e.id}"),
@@ -357,6 +334,3 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
           ),
       ],
     );
-
-/// _tableRuleName says what a rule picks out, for its own heading and for the
-/// button that removes it.

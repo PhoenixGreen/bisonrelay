@@ -17,6 +17,7 @@ import 'package:vector_math/vector_math.dart' as vm;
 /// in seconds, and how much it counts.
 typedef ModelPlay = (String name, double time, double weight);
 
+/// ModelScene is one 3D object's model, read into a scene of its own.
 class ModelScene extends ChangeNotifier {
   final Scene scene = Scene()..maxGpuFramesInFlight = 0;
   Node? _node;
@@ -122,8 +123,8 @@ class ModelScene extends ChangeNotifier {
       double pixelRatio = 1}) {
     var node = _node;
     if (node == null || box.width < 1 || box.height < 1) return;
-    // The stage's metres in the scene's: across mirrored, as the
-    // characters' are -- see GPU stage in canvas_controller's notes.
+    // The stage's metres in the scene's: across mirrored, as for the stage
+    // and the characters (see StageScene.paint).
     vm.Vector3 toScene((double, double, double) v) =>
         vm.Vector3(-v.$1, v.$2, v.$3);
     var scale = height / math.max(0.001, _size.y);

@@ -4,46 +4,28 @@ import 'dart:typed_data';
 
 import 'package:flutter/painting.dart';
 
-// pdf_writer.dart writes a one-page PDF holding a picture.
+// pdf_writer.dart writes a PDF of pictures, one to a page: a catalogue, a
+// page tree, and per page an image (with a soft mask where it has
+// transparency) and a content stream that draws it. No fonts.
 //
-// Hand-written, for the same reason gif_encoder.dart is: the alternative was a
-// dependency for a file format this needs one page of. What is written here is
-// the smallest PDF that is actually a PDF -- a catalogue, a page, an image and
-// a content stream that draws it -- and nothing else. No fonts, no annotations,
-// no compression of anything but the pixels.
-//
-// The picture is a *raster*, deliberately, and that is worth defending. A
-// vector PDF would mean drawing the canvas a second time in PDF's own
-// operators, which is precisely the second renderer the whole export path
-// exists to avoid -- and it could not draw most of a canvas anyway: a
-// photograph, a procedural background, a blur, a background taken out of a
-// picture. So the page carries what the canvas actually looks like, at
-// whatever resolution was asked for, and the scale control on the publish
-// sheet is the print resolution.
-//
-// Everything is written as bytes with the offsets tracked as they go, because
-// a PDF's cross-reference table is a list of byte offsets into itself and
-// there is no way to know one until the bytes before it exist.
+// The pages are rasters on purpose: a vector PDF would be a second renderer,
+// and could not draw photographs, procedural backgrounds or blurs anyway.
+// The publish sheet's scale is the print resolution.
 
-/// PdfPage is the size of the sheet, in points, and how much of it is left
-/// empty round the picture.
-///
-/// A point is a seventy-second of an inch, which is what a PDF measures
-/// everything in.
+/// PdfPage is the size of the sheet in points (1/72 inch) and the margin
+/// round the picture.
 class PdfPage {
   final String label;
   final double width;
   final double height;
 
-  /// margin is the white edge on a paper size. Zero for a page cut to the
-  /// canvas, where a margin would be a border nobody asked for.
+  /// margin is the white edge on a paper size; zero for a page cut to the
+  /// canvas.
   final double margin;
 
   const PdfPage(this.label, this.width, this.height, {this.margin = 0});
 
-  /// a4 and letter are portrait. A canvas wider than it is tall gets them
-  /// turned round -- see [pageFor], because a landscape design on a portrait
-  /// sheet is a third of a page of picture and two thirds of nothing.
+  /// a4 and letter are portrait; [pageFor] turns them for a wide canvas.
   static const a4 = PdfPage("A4", 595.28, 841.89, margin: 36);
   static const letter = PdfPage("Letter", 612, 792, margin: 36);
 
@@ -59,18 +41,13 @@ enum PdfPaper {
   final String label;
   const PdfPaper(this.label);
 
-  /// turns is whether this is a sheet of paper, and so has an orientation to
-  /// argue about. A page cut to the canvas is already the canvas's shape.
+  /// turns is whether this paper has an orientation to choose: a page cut
+  /// to the canvas does not.
   bool get turns => this != PdfPaper.canvas;
 }
 
-/// PdfOrientation is which way up the paper goes.
-///
-/// Following the canvas is the sensible default and is not always what is
-/// wanted: a wide design on a portrait sheet is a band across the top of the
-/// page with room under it for everything else that is going on that page --
-/// a heading, a table, a signature -- and somebody printing a report wants
-/// exactly that far more often than they want a sideways sheet.
+/// PdfOrientation is which way up the paper goes. Portrait for a wide
+/// canvas leaves room on the page for other printed matter.
 enum PdfOrientation {
   auto("Match the canvas"),
   portrait("Portrait"),
@@ -80,19 +57,12 @@ enum PdfOrientation {
   const PdfOrientation(this.label);
 }
 
-/// pointsPerPixel converts a canvas's own pixels to points.
-///
-/// A canvas is laid out in the same pixels a screen uses, which are 96 to the
-/// inch; a PDF counts 72 to the inch. So a 1280-pixel canvas is a 960-point
-/// page -- thirteen and a third inches -- which is the size the design would
-/// print at if it were a web page. Treating a pixel as a point instead would
-/// make every canvas a third larger than it was drawn.
+/// pointsPerPixel converts canvas pixels (96 to the inch, as on screen) to
+/// PDF points (72 to the inch).
 const double pointsPerPixel = 72 / 96;
 
-/// pageFor is the sheet a canvas of [size] pixels goes on.
-///
-/// [orientation] is ignored for a page cut to the canvas, which is the
-/// canvas's shape by definition and has no second way up.
+/// pageFor is the sheet a canvas of [size] pixels goes on. [orientation] is
+/// ignored for a page cut to the canvas.
 PdfPage pageFor(PdfPaper paper, Size size,
     {PdfOrientation orientation = PdfOrientation.auto}) {
   switch (paper) {
@@ -114,15 +84,7 @@ PdfPage pageFor(PdfPaper paper, Size size,
   }
 }
 
-/// writePdf is one page carrying [rgba], straight (not premultiplied) RGBA of
-/// [width] by [height] pixels.
-///
-/// The picture is centred on the page and made as large as it can be inside
-/// the margin without changing shape -- so a wide canvas on a portrait sheet
-/// fills the width and leaves the room above and below, which is the whole
-/// reason somebody would choose that. A page cut to the canvas has no margin
-/// and no letterboxing, so the two are the same thing there.
-/// PdfPicture is one page's worth of pixels.
+/// PdfPicture is one page's pixels: straight (not premultiplied) RGBA.
 class PdfPicture {
   final Uint8List rgba;
   final int width;
@@ -131,12 +93,8 @@ class PdfPicture {
   const PdfPicture(this.rgba, {required this.width, required this.height});
 }
 
-/// writePdf writes [pictures], one to a page.
-///
-/// Several pages rather than one, because a document with several canvases is
-/// several pages -- which is what anybody asking for a PDF of it meant, and
-/// what the one-page version could not give them however the scene range was
-/// set.
+/// writePdf writes [pictures], one to a page, each centred and made as
+/// large as fits inside the margin without changing shape.
 Uint8List writePdf(List<PdfPicture> pictures, {required PdfPage page}) {
   if (pictures.isEmpty) throw ArgumentError("a PDF needs at least one page");
   for (var picture in pictures) {
@@ -151,12 +109,9 @@ Uint8List writePdf(List<PdfPicture> pictures, {required PdfPage page}) {
   var out = _PdfBuilder();
   out.header();
 
-  // Object numbers are handed out up front, because a page has to name the
-  // image it draws and the image comes after it.
-  //
-  // One catalogue, one page tree, then three objects per page: the page, its
-  // image and its content stream, with a fourth for the transparency mask
-  // where there is one.
+  // Object numbers are handed out up front, as a page names the image that
+  // follows it: catalogue 1, page tree 2, then per page the page, image,
+  // content stream and, where needed, the mask.
   var pageRefs = <int>[];
   var next = 3;
   var plan = <(int, int, int, int, Uint8List, Uint8List?, Rect)>[];
@@ -173,8 +128,7 @@ Uint8List writePdf(List<PdfPicture> pictures, {required PdfPage page}) {
       if (a != 255) opaque = false;
     }
     var colours = Uint8List.fromList(deflate.encode(rgb));
-    // A canvas with no transparency anywhere is the common case, and its mask
-    // would be a megabyte of 255s that changes nothing.
+    // No mask for a fully opaque picture.
     var mask = opaque ? null : Uint8List.fromList(deflate.encode(alpha));
 
     var box = _fit(
@@ -214,10 +168,8 @@ Uint8List writePdf(List<PdfPicture> pictures, {required PdfPage page}) {
         "${maskRef == 0 ? "" : " /SMask $maskRef 0 R"} >>",
         colours);
 
-    // PDF's origin is the bottom left and its y counts upwards, so the image
-    // is placed by its bottom edge. The matrix is a scale and a translation
-    // in one: an image XObject is always drawn into the unit square, and this
-    // is what says how big that square is and where it goes.
+    // PDF's y counts up from the bottom, so the image is placed by its
+    // bottom edge; the matrix maps the image's unit square onto [box].
     out.stream(
         contentRef,
         "<< /Filter /FlateDecode >>",
@@ -256,13 +208,10 @@ Rect _fit(Size size, Rect into) {
   );
 }
 
-/// _n prints a number the way a PDF wants it: a plain decimal, never an
-/// exponent, which is what Dart produces for a small enough double and which
-/// no PDF reader accepts.
+/// _n prints a number as a PDF wants it: a plain decimal, never the
+/// exponent Dart gives a small double.
 String _n(double value) {
   var text = value.toStringAsFixed(3);
-  // Trailing zeroes are legal and are just noise in a file that carries a few
-  // hundred of these.
   text = text.replaceFirst(RegExp(r"\.?0+$"), "");
   return text.isEmpty || text == "-" ? "0" : text;
 }
@@ -271,15 +220,14 @@ String _n(double value) {
 class _PdfBuilder {
   final BytesBuilder _bytes = BytesBuilder();
 
-  /// _offsets is object number to byte offset, which is the whole content of
-  /// the cross-reference table at the end.
+  /// _offsets is object number to byte offset, for the cross-reference
+  /// table.
   final Map<int, int> _offsets = {};
 
   void header() {
     _bytes.add(ascii.encode("%PDF-1.7\n"));
-    // Four bytes above 127 on the second line. It is a comment, and it is
-    // there to tell anything transferring the file that this is binary and
-    // must not have its line endings helpfully corrected.
+    // A comment of bytes above 127, marking the file as binary to anything
+    // that would correct its line endings.
     _bytes.add([0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A]);
   }
 
@@ -290,8 +238,8 @@ class _PdfBuilder {
 
   void stream(int number, String dict, Uint8List data) {
     _offsets[number] = _bytes.length;
-    // The length goes in the dictionary that precedes the bytes it describes,
-    // which is why the data has to be complete before any of this is written.
+    // The length goes in the dictionary before the data, so the data must
+    // be complete first.
     var head = dict.substring(0, dict.length - 3);
     _bytes.add(ascii
         .encode("$number 0 obj\n$head /Length ${data.length} >>\nstream\n"));
@@ -304,8 +252,7 @@ class _PdfBuilder {
     var start = _bytes.length;
 
     var table = StringBuffer("xref\n0 $count\n");
-    // Object zero is always the head of the free list, and is always written
-    // exactly like this.
+    // Object zero is always the head of the free list.
     table.write("0000000000 65535 f \n");
     for (var i = 1; i < count; i++) {
       var at = _offsets[i] ?? 0;

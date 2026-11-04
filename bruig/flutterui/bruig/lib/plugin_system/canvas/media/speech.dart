@@ -1,17 +1,15 @@
 import 'dart:io';
 
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
 // speech.dart is a voice-over heard as words: what is said, and when.
 //
-// The pauses in a recording say where its lines start -- see speechStarts --
-// but not what the lines are, so cues found that way are called "Line 1" to
-// "Line 53", and an element meant to arrive on "$300" has to be put there by
-// ear. whisper.cpp hears the words and their times on the reader's own
-// machine. Like ffmpeg it is the reader's program rather than one shipped
-// here, and nothing is sent anywhere: the recording never leaves the disk.
+// Pauses (speechStarts) only say where lines start; whisper.cpp hears the
+// words and their times. Like ffmpeg it is the reader's own program, not
+// shipped here, and the recording never leaves the disk.
 
 /// speechModelName is the model whisper listens with: the small English one,
 /// about 150 MB, which hears a clear voice-over word for word.
@@ -68,13 +66,6 @@ Future<String?> whisperPath() async {
   return _found = null;
 }
 
-/// useWhisperForTest fixes what [whisperPath] answers; null pins "not there".
-@visibleForTesting
-void useWhisperForTest(String? path) {
-  _looked = true;
-  _found = path;
-}
-
 /// speechModelPath is where the model is kept: beside the library, in a
 /// dotted folder the library's own listing skips.
 Future<String> speechModelPath() async =>
@@ -101,8 +92,7 @@ Future<List<HeardWord>?> listenTo(
       "error",
       if (from > 0) ...["-ss", "$from"],
       if (to != null) ...["-to", "$to"],
-      "-i",
-      audio,
+      ...ffmpegInput(audio),
       "-ar",
       "16000",
       "-ac",

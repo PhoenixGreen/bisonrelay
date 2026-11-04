@@ -10,15 +10,11 @@ import 'package:flutter/foundation.dart';
 // ffmpeg_video.dart is everything the canvas asks ffmpeg about a video: what
 // it is, a still from it, its sound, and its frames one after another.
 //
-// ffmpeg rather than the platform's player because the frames have to come
-// back as pictures the canvas renderer can draw, key and grade -- see
-// scene_renderer.dart, which is the only place a canvas becomes pixels. A
-// player that draws into a texture of its own cannot be keyed, cannot be cut
-// to a shape, and cannot be exported, which is three of the things a Video
-// element is for.
+// ffmpeg rather than the platform's player because the frames must come
+// back as pictures scene_renderer.dart can draw, key and grade: a player's
+// own texture cannot be keyed, cut to a shape or exported.
 //
-// Found where the video exporter finds it -- see ffmpegPath. Without it a
-// video can still be shown as its poster, which is stored as a picture.
+// Found by ffmpegPath. Without it a video is shown as its stored poster.
 
 /// VideoProbe is what a file turned out to be.
 class VideoProbe {
@@ -37,6 +33,12 @@ class VideoProbe {
   });
 }
 
+/// ffmpegInput is ffmpeg's arguments for reading the file at [path]: local
+/// files only, so a received file that is really a playlist cannot make
+/// ffmpeg fetch from the network.
+List<String> ffmpegInput(String path) =>
+    ["-protocol_whitelist", "file", "-i", path];
+
 /// probeVideo asks ffmpeg what [path] is, or returns null where it is not a
 /// video it can read.
 ///
@@ -44,7 +46,7 @@ class VideoProbe {
 /// installed everywhere ffmpeg is.
 Future<VideoProbe?> probeVideo(String ffmpeg, String path) async {
   try {
-    var run = await Process.run(ffmpeg, ["-hide_banner", "-i", path]);
+    var run = await Process.run(ffmpeg, ["-hide_banner", ...ffmpegInput(path)]);
     return parseProbe(run.stderr.toString());
   } catch (exception) {
     debugPrint("Unable to probe $path: $exception");
@@ -52,8 +54,7 @@ Future<VideoProbe?> probeVideo(String ffmpeg, String path) async {
   }
 }
 
-/// parseProbe reads ffmpeg's description of an input. Public so the reading
-/// can be tested against real reports without running ffmpeg.
+/// parseProbe reads ffmpeg's description of an input.
 @visibleForTesting
 VideoProbe? parseProbe(String report) {
   var video = RegExp(r"Stream #\S+.*?Video: .*").firstMatch(report)?.group(0);
@@ -86,7 +87,7 @@ Future<Uint8List?> posterOf(String ffmpeg, String path,
         ffmpeg,
         [
           "-hide_banner", "-loglevel", "error", //
-          "-ss", at.toStringAsFixed(3), "-i", path,
+          "-ss", at.toStringAsFixed(3), ...ffmpegInput(path),
           "-frames:v", "1",
           "-vf", "scale='min($maxWidth,iw)':-2",
           "-f", "image2pipe", "-c:v", "png", "-",
@@ -107,7 +108,7 @@ Future<bool> extractSound(String ffmpeg, String path, String to) async {
   try {
     var run = await Process.run(ffmpeg, [
       "-hide_banner", "-loglevel", "error", "-y", //
-      "-i", path, "-vn", "-c:a", "flac", to,
+      ...ffmpegInput(path), "-vn", "-c:a", "flac", to,
     ]);
     return run.exitCode == 0 && await File(to).exists();
   } catch (exception) {
@@ -156,7 +157,7 @@ class FfmpegFrames implements FrameSource {
     try {
       var process = await Process.start(ffmpeg, [
         "-hide_banner", "-loglevel", "error", //
-        "-ss", from.toStringAsFixed(3), "-i", path, "-an",
+        "-ss", from.toStringAsFixed(3), ...ffmpegInput(path), "-an",
         "-vf", "fps=${fps.toStringAsFixed(3)},scale=$width:$height",
         "-pix_fmt", "rgba", "-f", "rawvideo", "-",
       ]);
@@ -263,9 +264,8 @@ class _FfmpegReader implements FrameReader {
   return (even(width), even(height));
 }
 
-/// filePeaks is [path]'s loudness in [count] even steps across the file,
-/// nought to one -- the same shape the editor reads for a waveform -- or
-/// null where ffmpeg cannot read it.
+/// filePeaks is [path]'s peak level in [count] even steps across the file,
+/// nought to one, for a waveform; null where ffmpeg cannot read it.
 Future<Float32List?> filePeaks(String ffmpeg, String path,
     {int count = 2400}) async {
   try {
@@ -274,8 +274,7 @@ Future<Float32List?> filePeaks(String ffmpeg, String path,
         [
           "-v",
           "error",
-          "-i",
-          path,
+          ...ffmpegInput(path),
           "-ac",
           "1",
           "-ar",

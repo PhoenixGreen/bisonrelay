@@ -36,28 +36,24 @@ import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart'
+    show ElementMotion;
 
 // epub_layers.dart is a page of an interactive EPUB as the things on it, each
 // animated by the reader the way it is animated on the canvas.
 //
-// The page itself is never a film, and never a run of pictures. What does not
-// move is drawn once -- the background still, whatever it does on the canvas
-// -- and each element that moves is a real element over it:
+// The page is never a film of itself. What does not move is drawn once (the
+// background held still), and each element that moves is its own layer:
 //
-// - Its own picture, drawn once by the renderer.
-// - Moved, turned, grown and faded by CSS keyframes. Where it is at each
-//   frame is ElementTrack.at, as the editor asks; how it arrives and leaves
-//   is read off the renderer itself as it draws each frame -- see
-//   motionProbe -- so a fade, a slide, a pop, a spin, a wipe, word by word or
-//   letter by letter, is the renderer's own motion and its own settings,
-//   played by the reader smoothly between frames. A word-by-word arrival is
-//   a picture a word, cut from the element's.
+// - Its picture, drawn once by the renderer.
+// - Moved, turned, grown and faded by CSS keyframes sampled a frame at a
+//   time. The pose is the element's clips and keyframes together; how
+//   it arrives and leaves is read off the renderer as it draws each frame
+//   (see motionProbe). A word-by-word arrival is a picture a word.
 // - What CSS cannot do -- a chart growing, a counter counting, a picture
-//   shattering, a keyed video -- is a short video of that element alone, over
-//   nothing, for the moments it changes, and its own picture either side.
-//
-// The keyframes are sampled a frame at a time and the reader moves between
-// them, so an overshoot, a bounce and a hold are the canvas's own curves.
+//   shattering, a keyed video -- is a short video of that element alone for
+//   the frames it changes, with its own picture either side.
 
 /// EpubSprite is one picture: where it goes on the page, in pixels, and where
 /// it is on its sheet.
@@ -186,17 +182,16 @@ class EpubStage {
   /// marks are the timeline's stops, pauses, loops and jumps.
   final List<TimelineAction> marks;
 
-  /// autoplay is whether the page starts by itself. It does unless it has
-  /// buttons of its own to start it -- a page that moves and has nothing to
-  /// press would otherwise never move at all.
+  /// autoplay is whether the page starts by itself: unless it has playhead
+  /// buttons of its own.
   final bool autoplay;
 
   /// timeline is whether sound or video follows its playhead.
   final bool timeline;
 
-  /// backdropVideo is the page's background video, played as itself -- the
-  /// reader's own player, going round -- over the backdrop and under
-  /// everything else. Null where there is none, or none a reader can show.
+  /// backdropVideo is the page's background video, played by the reader on a
+  /// loop over the backdrop and under everything else. Null where there is
+  /// none, or none a reader can show.
   final String? backdropVideo;
 
   const EpubStage({
@@ -211,9 +206,8 @@ class EpubStage {
 
   Iterable<EpubLayer> get layers => items.whereType<EpubLayer>();
 
-  /// animates is whether anything on it changes with the playhead, as
-  /// opposed to a page laid out only so things on it can be shown, hidden
-  /// and pointed at.
+  /// animates is whether anything on it changes with the playhead, rather
+  /// than being laid out only to be shown, hidden and pointed at.
   bool get animates => timeline || layers.any((l) => l.moves);
 }
 
@@ -270,8 +264,7 @@ class ElementFilms {
 /// page pixels to the design unit on a page of [width] by [height] pixels.
 ///
 /// Returns null where the page has nothing that moves, nothing to show or
-/// hide and nothing that changes under the pointer: its picture, and any
-/// players on it, are the whole of it, as they always were.
+/// hide and nothing that changes under the pointer: its picture is enough.
 Future<StageResult?> buildEpubStage(
   CanvasDocument document,
   int index, {
@@ -290,12 +283,10 @@ Future<StageResult?> buildEpubStage(
   ExportMedia? media,
 
   /// layered are elements to give a layer whether or not they move: a video
-  /// the reader plays, which has to sit between what is under it and what is
-  /// over it, and so needs a place of its own in the stack.
+  /// the reader plays, which needs its own place in the stack.
   Set<String> layered = const {},
 
-  /// timeline is whether the page has sound or video on its timeline, which
-  /// is something that moves with the playhead however still the rest is.
+  /// timeline is whether the page has sound or video on its timeline.
   bool timeline = false,
 
   /// backdropVideo is the page's background video as a file a reader plays,
@@ -344,16 +335,15 @@ Future<StageResult?> buildEpubStage(
       if ((e.visible || toggled.contains(e.id)) && !hidden.contains(e.id)) e,
   ];
 
-  // Which elements move: their pose changes, or what they look like does. A
-  // background element never does, here: a pattern going round is a page
-  // that never settles, and in a book it holds still.
+  // Which elements move: their pose changes, or their look does. A
+  // background element holds still in a book.
   bool keyedVideo(CanvasElement e) =>
       e is VideoElement && media != null && isTimedMedia(e) && !plainVideo(e);
   var moving = <String>{};
   var changing = <String>{};
   for (var e in drawn) {
     if (e is BackgroundElement) continue;
-    var changes = _changes(e, frames, page.frameRate) || keyedVideo(e);
+    var changes = _changes(e, frames, page) || keyedVideo(e);
     if (changes) changing.add(e.id);
     if (changes ||
         toggled.contains(e.id) ||
@@ -384,9 +374,9 @@ Future<StageResult?> buildEpubStage(
   var first = true;
 
   // The still elements since the last one that moved, as one picture. The
-  // first carries what is under everything: the backdrop, still, and the
-  // facing leaf's overhang -- and, where the background is a video the reader
-  // plays, the backdrop alone, so the video can go between it and the rest.
+  // first also carries the backdrop and the facing leaf's overhang; with a
+  // background video, the backdrop is a slab of its own so the video can go
+  // between it and the rest.
   Future<void> flatten() async {
     var base = first;
     first = false;
@@ -420,9 +410,8 @@ Future<StageResult?> buildEpubStage(
     still.clear();
     var picture = recorder.endRecording();
     try {
-      // The backdrop is the whole page, and a sheet of its own: packed with
-      // the rest, one large picture would push everything else onto more
-      // sheets than it needs.
+      // The backdrop is a whole page: a sheet of its own, or it would push
+      // everything else onto more sheets.
       var sprite = withBackdrop
           ? await sheets.alone(picture, pageBox)
           : await sheets.add(picture, pageBox);
@@ -439,8 +428,8 @@ Future<StageResult?> buildEpubStage(
       continue;
     }
     await flatten();
-    var region =
-        _regionFor(e, pixels, pageBox, document, moves: e.track != null);
+    var region = _regionFor(e, pixels, pageBox, document,
+        moves: e.track != null || !e.base.motion.isEmpty);
     var maker = _LayerMaker(
         e, page, frames, pixels, images, sheets, start, region, pageBox,
         films: changing.contains(e.id) ? films : null,
@@ -539,7 +528,7 @@ class _LayerMaker {
 
   int get rate => page.frameRate <= 0 ? 1 : page.frameRate;
 
-  Keyframe poseAt(int f) => e.track?.at(f) ?? Keyframe.rest;
+  Keyframe poseAt(int f) => poseWithMotion(e, f, page);
 
   ui.Picture record(int f,
       {bool hovered = false,
@@ -569,7 +558,7 @@ class _LayerMaker {
   Future<EpubLayer> make({required bool hovers}) async {
     var names = [
       for (var f = 0; f < frames; f++)
-        _lookAt(e, f, poseAt(f), frames, page.frameRate),
+        _lookAt(e, f, poseAt(f), frames, page.frameRate, poseAt: poseAt),
     ];
     var changes = names.toSet().length > 1 || media != null;
 
@@ -620,10 +609,8 @@ class _LayerMaker {
     );
   }
 
-  /// _legend is the chart as it is with each set of its key's series
-  /// switched, by mask: a picture for each, as it is once it has grown, drawn
-  /// by the renderer -- so the key shows which are off exactly as the canvas
-  /// does.
+  /// _legend is the chart with each set of its key's series switched, by
+  /// mask: a picture for each, as it is once it has grown.
   Future<Map<int, EpubSprite>> _legend() async {
     var chart = e;
     var series = _switchable(chart);
@@ -707,10 +694,9 @@ class _LayerMaker {
   /// _cssParts is [e] as pictures moved by CSS, read off the renderer frame
   /// by frame -- or null where what it does cannot be read that way.
   Future<List<EpubPart>?> _cssParts() async {
-    // The renderer, asked frame by frame what it moves and how. Only over the
-    // stretch where the element arrives or leaves: either side of it, it is
-    // simply there or not.
-    var span = _valuedSpan(e.track);
+    // Ask the renderer, frame by frame, what it moves and how -- only over
+    // the stretch where the element arrives or leaves.
+    var span = _valuedSpan(e, frames, poseAt);
     if (span == null) return null;
     var calls = <int, List<MotionCall>>{};
     for (var f = math.max(0, span.$1);
@@ -762,8 +748,11 @@ class _LayerMaker {
           KeyframeChannel.reveal: reveal,
           KeyframeChannel.close: 0,
         });
-    var settled = e.withBase(track: ElementTrack([settledWith(1)]));
-    var bare = e.withBase(track: ElementTrack([settledWith(0)]));
+    // Its clips set aside: these are it at one fixed pose.
+    var settled = e.withBase(
+        track: ElementTrack([settledWith(1)]), motion: ElementMotion.none);
+    var bare = e.withBase(
+        track: ElementTrack([settledWith(0)]), motion: ElementMotion.none);
 
     var parts = <EpubPart>[];
     if (await picture(0, element: bare) case var s?) parts.add(EpubPart(s));
@@ -880,12 +869,9 @@ class _LayerMaker {
         (region.width / 2).ceil() * 2.0, (region.height / 2).ceil() * 2.0);
     var w = box.width.round(), h = box.height.round();
 
-    // What is under it on the page, which holds still.
-    //
-    // With a clear background -- HEVC with alpha, which Apple Books plays --
-    // it is only asked what colour a half-clear pixel of the element makes
-    // over the page: see _solidOrClear. Without one, the element is filmed
-    // over it as an ordinary video.
+    // What is under it on the page, which holds still. With HEVC alpha it is
+    // only used for half-clear pixels (see _solidOrClear); without, the
+    // element is filmed over it.
     ui.Picture under;
     {
       var recorder = ui.PictureRecorder();
@@ -908,11 +894,9 @@ class _LayerMaker {
         "-hide_banner", "-loglevel", "error", "-y", //
         "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "${w}x$h",
         "-r", "$rate", "-i", "-",
-        // Said to be sRGB, which is what the renderer drew. Left unsaid, a
-        // reader takes video to be in the television curve and shows it
-        // brighter and bluer than the element's own picture beside it -- a
-        // chart that changed colour when it stopped growing. The encoder
-        // takes this from the frames, not from options of its own.
+        // Tagged sRGB, which is what the renderer drew: untagged, a reader
+        // assumes the TV curve and the film no longer matches the element's
+        // own picture. The encoder takes this from the frames.
         "-vf",
         [
           if (!films.alpha) "scale=out_color_matrix=bt709:out_range=tv",
@@ -1009,18 +993,12 @@ class _LayerMaker {
 }
 
 /// _solidOrClear makes every pixel of [alone] -- the element by itself --
-/// either clear or solid: a clear one stays clear, a solid one stays as it
-/// is, and a half-clear one takes the colour it makes over the page, from
-/// [onPage], and becomes solid.
+/// either clear or solid: a half-clear one takes the colour it makes over the
+/// page, from [onPage], and becomes solid.
 ///
-/// A video with nothing half-clear in it looks the same however a reader
-/// takes its alpha. Apple Books takes a video's colours to be already
-/// scaled by their alpha, and a half-clear pixel handed over as it is --
-/// the band under a line, a gridline, the soft edge of anything -- came out
-/// brighter than the same pixel in the element's own picture, so a chart
-/// changed colour when it stopped growing. Exact because what is under the
-/// element holds still; the clear pixels still show the page itself, so
-/// nothing about the page is faked.
+/// Apple Books treats video colour as premultiplied, so half-clear pixels
+/// would come out too bright; with none, it looks the same however alpha is
+/// read. Exact because what is under the element holds still.
 void _solidOrClear(Uint8List alone, Uint8List onPage) {
   var mine = alone.buffer.asUint32List(alone.offsetInBytes, alone.length >> 2);
   var page =
@@ -1412,13 +1390,14 @@ Future<ui.Image> _fromPixels(Uint8List rgba, int width, int height) {
 
 /// _changes is whether [e] looks different, or is somewhere different, at
 /// any frame of a page [frames] long.
-bool _changes(CanvasElement e, int frames, int rate) {
+bool _changes(CanvasElement e, int frames, CanvasDocument page) {
   if (frames <= 1) return false;
-  var track = e.track;
-  var first = track?.at(0) ?? Keyframe.rest;
-  var firstLook = _lookAt(e, 0, first, frames, rate);
+  var rate = page.frameRate;
+  Keyframe poseAt(int f) => poseWithMotion(e, f, page);
+  var first = poseAt(0);
+  var firstLook = _lookAt(e, 0, first, frames, rate, poseAt: poseAt);
   for (var f = 1; f < frames; f++) {
-    var pose = track?.at(f) ?? Keyframe.rest;
+    var pose = poseAt(f);
     if (pose.dx != first.dx ||
         pose.dy != first.dy ||
         pose.rotate != first.rotate ||
@@ -1426,7 +1405,9 @@ bool _changes(CanvasElement e, int frames, int rate) {
         pose.opacity != first.opacity) {
       return true;
     }
-    if (_lookAt(e, f, pose, frames, rate) != firstLook) return true;
+    if (_lookAt(e, f, pose, frames, rate, poseAt: poseAt) != firstLook) {
+      return true;
+    }
   }
   return false;
 }
@@ -1434,25 +1415,21 @@ bool _changes(CanvasElement e, int frames, int rate) {
 /// _lookAt names what [e] looks like at frame [f], its pose aside: two frames
 /// with the same name are the same picture.
 ///
-/// Mostly that is the channels the pose pins -- an arrival's progress, a
-/// count, a bow -- which is everything the renderer reads besides the pose.
-/// A few things read the frame itself, and for them the frame is part of the
-/// name wherever it can matter: text staggered piece by piece, a chart whose
-/// series start apart, text riding a line that moves, a team whose players
-/// run, and a pattern that animates.
-String _lookAt(CanvasElement e, int f, Keyframe pose, int frames, int rate) {
+/// Mostly that is the channels the pose pins. Things that read the frame
+/// itself (staggered text, chart series, text on a line, running players,
+/// animated patterns) add the frame to the name where it can matter.
+String _lookAt(CanvasElement e, int f, Keyframe pose, int frames, int rate,
+    {Keyframe Function(int frame)? poseAt}) {
   var values = pose.values.entries.toList()
     ..sort((a, b) => a.key.compareTo(b.key));
   var named = values.map((v) => "${v.key}=${v.value}").join(";");
-  // A chart whose series start apart is told how far each has got, which is
-  // the whole of what its frame changes -- so that is its name, and once the
-  // last series is in, every frame after is the same picture.
+  // A chart whose series start apart is named by how far each has got.
   if (e is ChartElement) {
-    if (chartSeriesReveal(e, f, rate) case var series?) {
+    if (chartSeriesReveal(e, f, rate, poseAt: poseAt) case var series?) {
       named = "$named;series=${series.join(",")}";
     }
   }
-  var span = _frameSpan(e, frames);
+  var span = _frameSpan(e, frames, poseAt);
   if (span == null) return named;
   var (from, to) = span;
   var when = f < from
@@ -1465,7 +1442,8 @@ String _lookAt(CanvasElement e, int f, Keyframe pose, int frames, int rate) {
 
 /// _frameSpan is the stretch of frames over which [e]'s look depends on the
 /// frame itself, or null where it never does.
-(int, int)? _frameSpan(CanvasElement e, int frames) {
+(int, int)? _frameSpan(
+    CanvasElement e, int frames, Keyframe Function(int frame)? poseAt) {
   var all = (0, frames - 1);
   switch (e) {
     case BackgroundElement b:
@@ -1474,7 +1452,7 @@ String _lookAt(CanvasElement e, int f, Keyframe pose, int frames, int rate) {
       return t.players.any((p) => p.track?.isEmpty == false) ? all : null;
     case TextElement t:
       if (t.curve != null) return all;
-      return _valuedSpan(t.track);
+      return _valuedSpan(t, frames, poseAt);
     case ChartElement _:
       // Named by its channels and its series -- see _lookAt.
       return null;
@@ -1484,14 +1462,36 @@ String _lookAt(CanvasElement e, int f, Keyframe pose, int frames, int rate) {
 }
 
 /// _valuedSpan is from the first keyframe that pins a channel to the last.
-(int, int)? _valuedSpan(ElementTrack? track) {
+///
+/// With clips, the stretch over which the values its poses carry change,
+/// sampled frame by frame through [poseAt].
+(int, int)? _valuedSpan(
+    CanvasElement e, int frames, Keyframe Function(int frame)? poseAt) {
+  if (poseAt != null && !e.base.motion.isEmpty) {
+    int? from, to;
+    var was = poseAt(0).values;
+    for (var f = 1; f < frames; f++) {
+      var now = poseAt(f).values;
+      if (!_sameValues(was, now)) {
+        from ??= f - 1;
+        to = f;
+      }
+      was = now;
+    }
+    // Values held the whole way still count from the start.
+    if (from == null && poseAt(0).values.isNotEmpty) return (0, 0);
+    return from == null ? null : (from, to!);
+  }
   var keys = [
-    for (var k in track?.keys ?? const <Keyframe>[])
+    for (var k in e.track?.keys ?? const <Keyframe>[])
       if (k.values.isNotEmpty) k.frame,
   ];
   if (keys.isEmpty) return null;
   return (keys.reduce(math.min), keys.reduce(math.max));
 }
+
+bool _sameValues(Map<String, double> a, Map<String, double> b) =>
+    a.length == b.length && a.entries.every((x) => b[x.key] == x.value);
 
 /// _inkBounds is the smallest rectangle holding every pixel of [rgba] that
 /// is not fully transparent, or null for none. A word a pixel, so a row of
@@ -1545,10 +1545,8 @@ Rect? _inkBounds(Uint8List rgba, int width, int height) {
 }
 
 /// _hashOf names a picture's pixels: FNV-1a over its words, 64 bits. Only
-/// ever compared between pictures of the same size in the same place on the
-/// same page, where two different ones coming out the same does not happen
-/// -- and a small fraction of the time a cryptographic hash of every look
-/// took.
+/// compared between pictures of the same size in the same place on the same
+/// page, so a fast non-cryptographic hash is enough.
 int _hashOf(Uint8List rgba) {
   var words = rgba.buffer.asUint32List(rgba.offsetInBytes, rgba.length >> 2);
   var h = 0xcbf29ce484222325;
@@ -1558,8 +1556,7 @@ int _hashOf(Uint8List rgba) {
   return h;
 }
 
-/// isTimedMedia is whether [e] is a sound or a video on the timeline, which a
-/// layered page cannot yet play in step and so has filmed.
+/// isTimedMedia is whether [e] is a sound or a video on the timeline.
 bool isTimedMedia(CanvasElement e) => switch (e) {
       AudioElement a => a.clip.timed && !a.clip.isEmpty,
       VideoElement v => v.clip.timed && !v.clip.isEmpty,

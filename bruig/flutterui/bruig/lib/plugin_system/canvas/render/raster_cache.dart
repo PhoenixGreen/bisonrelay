@@ -10,21 +10,13 @@ import 'dart:math' as math;
 // what an adjustment makes of the layers under it, a layer flattened for its
 // effects -- from one frame to the next.
 //
-// They were kept against the element object itself, and that was two
-// problems. Every edit makes a new element, so a drag in the settings -- a
-// new element every frame -- found nothing kept and rasterised every
-// adjustment and every effect again, every frame. And the undo history holds
-// on to every element there has been, so each one went on holding the
-// rasters made for it: hundreds of megabytes of pictures nobody would see
-// again, which is most of where the memory went.
-//
-// Here they are kept by name -- the element's id and the layer's, and the
-// size drawn at -- with what each was drawn from beside it. A raster is used
-// again only while every one of those is still the same object, or equal;
-// anything changed, and it is drawn afresh. Where the element *is* on the
-// page is not among them, so moving a picture moves its rasters with it
-// rather than redrawing them. And the whole is held to a budget, the least
-// recently drawn going first.
+// Rasters are kept by name (element id, layer id, size class), not against
+// the element object: every edit makes a new element, and the undo history
+// holds every old one, so keying by object both missed on every drag frame
+// and kept hundreds of megabytes alive. Beside each raster is what it was
+// drawn from; it is used again only while every part is identical or equal.
+// Position is not among them, so moving a picture keeps its rasters. The
+// whole is held to [rasterBudget], least recently drawn going first.
 
 /// rasterBudget is how many bytes of pixels the cache holds at most.
 const int rasterBudget = 384 << 20;
@@ -64,7 +56,7 @@ class RasterCache {
     if (kept == null) return null;
     if (!_same(kept.from, from)) {
       if (CanvasPerf.on) {
-        // Which part of what it was drawn from is not what it was.
+        // Which part of [from] changed, for the perf log.
         var at = -1;
         for (var i = 0; i < math.min(kept.from.length, from.length); i++) {
           if (!identical(kept.from[i], from[i]) && kept.from[i] != from[i]) {
@@ -85,25 +77,16 @@ class RasterCache {
   /// sized is the raster kept for the layer [key] -- drawn from [from] --
   /// to draw at [w] by [h] pixels.
   ///
-  /// A layer keeps two at most: one at its full size and, while a gesture
-  /// is under way, a draft. They were named by their size, and every size a
-  /// picture passed through while it was resized or zoomed -- each frame a
-  /// new one -- was another raster kept, until the budget was full of
-  /// pictures of sizes nobody would draw at again. While drafting, a full
-  /// one still good is better than a draft and is used rather than drawing
-  /// one.
+  /// Each size class keeps two at most: a full one and, while a gesture is
+  /// under way, a draft; keying by exact size filled the budget with sizes
+  /// passed through during a resize or zoom. While drafting, a full one
+  /// still good is used rather than drawing a draft.
   ///
-  /// A full one near enough the size asked for is used rather than drawn
-  /// again: within a third smaller and twice as large, it is scaled to fit.
-  /// Asked for to the pixel, every frame of a sidebar sliding open -- the
-  /// canvas a few pixels smaller each frame -- drew every layer under an
-  /// adjustment again, and the panels crawled.
-  ///
-  /// A thumbnail of it -- the scene's, in the scenes list -- is kept apart
-  /// from the one the canvas draws: kept as one, each was drawn again in
-  /// turn for the other, and every change on the canvas drew everything
-  /// under an adjustment twice over, a second of the graphics card's time
-  /// each on a picture of six masked photographs.
+  /// A full one [nearEnough] the size asked for is scaled to fit rather than
+  /// drawn again, so a sidebar sliding open (the canvas a few pixels smaller
+  /// each frame) does not redraw every adjusted layer. The size class keeps
+  /// the scenes-list thumbnail apart from the canvas raster, so the two do
+  /// not evict each other.
   ui.Image? sized(String key, List<Object?> from, int w, int h) {
     key = "$key|${_sizeClass(w, h)}";
     var full = get("$key|full", from);

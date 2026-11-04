@@ -8,20 +8,14 @@ import 'package:flutter/painting.dart' show EdgeInsets;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 
-// text_spec.dart is how text looks, wherever it appears.
-//
-// Five things on a canvas draw text -- a text element, the label inside a
-// shape, a button, a chart's title and axes, a table's cells -- and every one
-// of them wants the same list of decisions. Written five times, the fifth
-// would quietly be missing letter spacing, and the settings bar would need
-// five nearly-identical panels. So the decisions are one object that all five
-// hold, and one panel edits it.
+// text_spec.dart is how text looks, wherever it appears: text elements, shape
+// labels, buttons, chart titles and axes, table cells all hold one TextSpec,
+// and one settings panel edits it.
 
 /// TextCase is the transform applied on the way to the screen.
 ///
 /// Applied at paint time rather than to the stored string, so turning it off
-/// gives back what was typed. Somebody who set a title to upper case, typed
-/// it, and then changed their mind should not be left holding SHOUTING.
+/// gives back what was typed.
 enum TextCase {
   none("As typed"),
   upper("UPPER CASE"),
@@ -87,10 +81,8 @@ enum VerticalAlignSpec {
 
 /// canvasFonts are the faces offered in the font dropdown.
 ///
-/// Only families the app already bundles or that every desktop has, because a
-/// canvas is exported to a PNG on this machine and shared as a picture -- a
-/// font that resolves to something else here silently changes the design, and
-/// nobody would find out until they looked at what they had sent.
+/// Meant to be families the app bundles or every desktop has: a font that
+/// resolves to something else silently changes an exported design.
 const List<String> canvasFonts = [
   "Inter",
   "Roboto",
@@ -104,7 +96,6 @@ const List<String> canvasFonts = [
   "Impact",
 ];
 
-/// TextSpec is one set of type decisions.
 /// TextFillKind is what the letters are painted with.
 enum TextFillKind {
   color("Colour"),
@@ -120,15 +111,10 @@ enum TextFillKind {
 
 /// TextFill is a picture or a pattern showing through the letters.
 ///
-/// The letters are the window, not the paint: whatever is chosen is drawn
-/// across the whole word and then cut to the shape of the type. That is why
-/// this is one setting on the type rather than a property of each glyph --
-/// a flame that restarted inside every letter would be a row of little
-/// flames, and what makes the effect work is that it does not.
-///
-/// The pattern is an ordinary [ProceduralSpec], the same recipe a generated
-/// background is, so every style, colour and slider that exists for one works
-/// here as well and a new style arrives in both places at once.
+/// The letters are the window, not the paint: the fill is drawn across the
+/// whole word and then cut to the shape of the type, so it does not restart
+/// in every letter. The pattern is an ordinary [ProceduralSpec], the same
+/// recipe a generated background uses.
 class TextFill {
   final TextFillKind kind;
 
@@ -137,62 +123,39 @@ class TextFill {
 
   final ProceduralSpec pattern;
 
-  /// zoom sizes what is drawn against the words: 1 fits it across them, 2
-  /// shows a quarter of it twice as large. What "it" is depends on the kind --
-  /// the picture, or the pattern's own frame.
+  /// zoom sizes the picture, or the pattern's frame, against the words: 1
+  /// fits it across them, 2 shows a quarter of it twice as large.
   final double zoom;
 
   /// tile repeats a picture instead of covering the words with one copy.
   final bool tile;
 
-  /// filter is the named look a picture is drawn with -- greyscale, sepia,
-  /// faded -- and saturation and brightness are the two sliders beside it.
-  ///
-  /// The same three a picture element has, with the same meanings: both
-  /// sliders are multipliers and 1 is "as it came in". It is the same picture
-  /// and the same question about it -- a photograph showing through a
-  /// headline wants to be knocked back exactly as often as one in a frame.
+  /// filter, saturation and brightness are a picture element's three look
+  /// settings, with the same meanings: both sliders are multipliers, 1 is
+  /// unchanged.
   final ImageFilterPreset filter;
   final double saturation;
   final double brightness;
 
-  /// overlay is a colour laid over the picture and blend is how, which is the
-  /// second half of what a picture element calls its Look.
-  ///
-  /// The same pair, with the same meaning: a photograph showing through a
-  /// headline wants to be tinted to the palette exactly as often as one in a
-  /// frame does, and Filter on its own cannot do it. The colour is only laid
-  /// where there is picture -- see paintThroughText.
+  /// overlay is a colour laid over the picture and blend is how, as in a
+  /// picture element's Look. The colour is only laid where there is picture
+  /// -- see paintThroughText.
   final Color overlay;
   final OverlayBlend blend;
 
-  /// overlayFade fades the overlay from one colour to another across what it
-  /// is laid on, the way every other colour in the panel can fade. Null is
-  /// the flat colour.
+  /// overlayFade fades the overlay to a second colour; null is flat.
   final GradientSpec? overlayFade;
 
-  /// opacity is how much of what is painted here actually lands: 1 is all of
-  /// it, 0 none.
-  ///
-  /// What a picture or a pattern used behind something needs and a colour
-  /// does not -- a colour has an alpha of its own in the picker, and a
-  /// photograph has none. Knocking the picture back is how it becomes a
-  /// ground for words to sit on rather than a thing competing with them.
+  /// opacity is how much of the fill lands, 0..1. A colour has its own
+  /// alpha; a picture or pattern needs this to be knocked back.
   final double opacity;
 
-  /// locked carries what shows through the words along with them while they
-  /// are arriving, instead of leaving it pinned to the box.
+  /// locked carries the fill along with the words while they arrive, so the
+  /// same part of it shows through each letter throughout, instead of the
+  /// words sweeping across a fill pinned to the box.
   ///
-  /// The fill is cut to the letters at the moment they are drawn, so words
-  /// sliding or growing through a fill that stays put sweep across it: the
-  /// flame or the photograph inside the letters changes all the way through
-  /// the animation, which is not what somebody who chose a picture for the
-  /// word wanted. Locked, the picture travels with the words -- the same bit
-  /// of it shows through the same letter from the first frame to the last.
-  ///
-  /// It applies to a whole-paragraph arrival, which is the one that moves the
-  /// words as a block. Letter by letter there is no single movement to lock
-  /// to, and the fill stays where it is.
+  /// Only for a whole-paragraph arrival: letter by letter there is no single
+  /// movement to lock to.
   final bool locked;
 
   const TextFill({
@@ -232,9 +195,7 @@ class TextFill {
     GradientSpec? overlayFade,
     double? opacity,
 
-    /// flatOverlay takes the fade away rather than replacing it, since a null
-    /// passed to [overlayFade] means "leave it alone" like every other null
-    /// here.
+    /// flatOverlay clears [overlayFade], since a null there means "keep".
     bool flatOverlay = false,
   }) =>
       TextFill(
@@ -270,7 +231,7 @@ class TextFill {
       };
 
   factory TextFill.fromJson(Map<String, dynamic> json) => TextFill(
-        kind: TextFillKind.fromName(json["kind"] as String?),
+        kind: TextFillKind.fromName(jsonStr(json["kind"])),
         assetId: jsonString(json["assetId"], ""),
         pattern: json["pattern"] is Map<String, dynamic>
             ? ProceduralSpec.fromJson(json["pattern"] as Map<String, dynamic>)
@@ -278,11 +239,11 @@ class TextFill {
         zoom: jsonDouble(json["zoom"], 1).clamp(0.05, 20),
         tile: jsonBool(json["tile"], false),
         locked: jsonBool(json["locked"], false),
-        filter: ImageFilterPreset.fromName(json["filter"] as String?),
+        filter: ImageFilterPreset.fromName(jsonStr(json["filter"])),
         saturation: jsonDouble(json["sat"], 1).clamp(0.0, 3.0),
         brightness: jsonDouble(json["bri"], 1).clamp(0.0, 3.0),
         overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
-        blend: OverlayBlend.fromName(json["blend"] as String?),
+        blend: OverlayBlend.fromName(jsonStr(json["blend"])),
         overlayFade: json["overlayFade"] is Map<String, dynamic>
             ? GradientSpec.fromJson(json["overlayFade"] as Map<String, dynamic>)
             : null,
@@ -298,6 +259,7 @@ double _angleOf(double dx, double dy) {
   return degrees < 0 ? degrees + 360 : degrees;
 }
 
+/// TextSpec is one set of type decisions.
 class TextSpec {
   final String fontFamily;
   final double fontSize;
@@ -322,52 +284,34 @@ class TextSpec {
 
   /// fade is the second colour the words run to, or null for one flat colour.
   ///
-  /// Chosen in the picker beside [color] -- see GradientSpec. Run across the
-  /// box the text is drawn in rather than across the letters' own bounds: the
-  /// letters are not measured until they are laid out, and a gradient that
-  /// started again on every line is not what anybody means by a fade across a
-  /// heading.
-  ///
-  /// Ignored where the letters are outlined rather than filled, and where a
-  /// picture or a pattern is showing through them -- both of those already
-  /// decide what the letters are painted with. See textStyleOf.
+  /// Runs across the text's box, not the letters' bounds, so it does not
+  /// restart on every line. Ignored for outlined letters and where a [fill]
+  /// is on. See textStyleOf.
   final GradientSpec? fade;
 
-  /// fill is a picture or a pattern showing through the letters, or nothing
-  /// at all -- which is the usual answer and means [color].
+  /// fill is a picture or a pattern showing through the letters; when off,
+  /// the letters are [color].
   final TextFill fill;
 
-  /// outlineWidth strokes the glyph outlines. Zero means no outline, which is
-  /// why the colour is allowed to be meaningless when it is zero.
+  /// outlineWidth strokes the glyph outlines; zero is no outline.
   final double outlineWidth;
   final Color outlineColor;
 
   final double shadowBlur;
   final Color shadowColor;
 
-  /// shadowAngle is the direction the light comes *from*, in degrees, the way
-  /// a compass is read: 0 is straight up, 90 to the right, 180 down. The
-  /// shadow falls the opposite way, which is the thing being set -- somebody
-  /// placing a shadow is placing a light.
-  ///
-  /// Kept as an angle and a distance rather than as an offset because that is
-  /// how it is thought about: a scene has one light, and every element in it
-  /// should agree about where it is. Two numbers that can be copied between
-  /// elements do that; a dx and a dy have to be worked out again for every
-  /// distance.
+  /// shadowAngle is the direction the light comes *from*, in compass degrees
+  /// (0 up, 90 right, 180 down); the shadow falls the opposite way. An angle
+  /// and a distance rather than an offset, so one light direction can be
+  /// copied between elements whatever their distances.
   final double shadowAngle;
 
   /// shadowDistance is how far the shadow is thrown, in design units. Zero
-  /// leaves it directly underneath, which is a glow in the shadow's colour.
+  /// leaves it directly underneath.
   final double shadowDistance;
 
   /// glowBlur is a soft light all round the letters, in [glowColor]. Zero is
-  /// off.
-  ///
-  /// A shadow with no distance is nearly the same drawing, but not the same
-  /// setting: a glow is light and a shadow is dark, and wanting both at once
-  /// -- lit type that still sits above its background -- is ordinary. Kept
-  /// apart so neither has to be spent to have the other.
+  /// off. Separate from the shadow so type can have both at once.
   final double glowBlur;
   final Color glowColor;
 
@@ -396,10 +340,7 @@ class TextSpec {
   });
 
   /// shadowOffset is where the shadow lands: [shadowDistance] away from the
-  /// letters, in the direction opposite the light.
-  ///
-  /// Screen coordinates have y going down, and the angle is read off a
-  /// compass -- so up is -y, and the shadow is thrown the other way.
+  /// letters, opposite the light (screen y runs down, so compass up is -y).
   Offset get shadowOffset {
     if (shadowDistance == 0) return Offset.zero;
     var radians = shadowAngle * math.pi / 180;
@@ -459,17 +400,13 @@ class TextSpec {
         glowColor: glowColor ?? this.glowColor,
       );
 
-  /// fontWeight is [weight] as Flutter says it. Clamped and rounded to the
-  /// nearest hundred, because FontWeight.values is indexed and a weight of
-  /// 137 arriving from a saved file would otherwise be an index out of range.
+  /// fontWeight is [weight] as a Flutter FontWeight, truncated to a hundred
+  /// and clamped so a stray saved value cannot index out of range.
   FontWeight get fontWeight =>
       FontWeight.values[((weight ~/ 100) - 1).clamp(0, 8)];
 
   /// scaledBy is this type at [by] times the size: the point size and
-  /// everything measured in design units with it.
-  ///
-  /// Not the line height, which is a multiple of the point size and so scales
-  /// with it, and not a colour or a weight, which have no size to scale.
+  /// everything measured in design units (line height is relative already).
   TextSpec scaledBy(double by) => copyWith(
         fontSize: fontSize * by,
         letterSpacing: letterSpacing * by,
@@ -506,15 +443,15 @@ class TextSpec {
 
   factory TextSpec.fromJson(Map<String, dynamic> json) => TextSpec(
         fontFamily: jsonString(json["font"], "Inter"),
-        fontSize: jsonDouble(json["size"], 48),
+        fontSize: jsonDouble(json["size"], 48).clamp(1.0, 4000.0),
         weight: jsonInt(json["weight"], 600),
         italic: jsonBool(json["italic"], false),
         underline: jsonBool(json["underline"], false),
         letterSpacing: jsonDouble(json["ls"], 0),
         lineHeight: jsonDouble(json["lh"], 1.2),
-        align: TextAlignSpec.fromName(json["align"] as String?),
-        verticalAlign: VerticalAlignSpec.fromName(json["valign"] as String?),
-        textCase: TextCase.fromName(json["case"] as String?),
+        align: TextAlignSpec.fromName(jsonStr(json["align"])),
+        verticalAlign: VerticalAlignSpec.fromName(jsonStr(json["valign"])),
+        textCase: TextCase.fromName(jsonStr(json["case"])),
         color: colorFromJson(json["color"]),
         fade: json["fade"] is Map
             ? GradientSpec.fromJson(
@@ -527,9 +464,8 @@ class TextSpec {
         outlineColor: colorFromJson(json["oc"], const Color(0xFF000000)),
         shadowBlur: jsonDouble(json["sb"], 0),
         shadowColor: colorFromJson(json["sc"], const Color(0x80000000)),
-        // An older document wrote the shadow as a dx and a dy. Read back as
-        // the angle and the distance they describe, so a scene saved before
-        // the light had a direction opens with its shadows where they were.
+        // Older documents wrote the shadow as sx/sy; read those as the angle
+        // and distance they describe.
         shadowAngle: json["sa"] != null
             ? jsonDouble(json["sa"], 315)
             : _angleOf(jsonDouble(json["sx"], 0), jsonDouble(json["sy"], 0)),
@@ -541,13 +477,8 @@ class TextSpec {
         glowColor: colorFromJson(json["gc"], const Color(0xFFFFFFFF)),
       );
 
-  /// Two specs are the same when every decision in them is.
-  ///
-  /// Worth having on a value object anyway, and needed by one thing in
-  /// particular: laying out a line of text is the most expensive thing the
-  /// renderer does, and it cannot be skipped for a line already laid out
-  /// unless "the same type" is a question that can be asked. See
-  /// paint_util's layout cache.
+  /// Equality is what lets paint_util's layout cache reuse a laid-out line.
+  /// It does not compare [fill].
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -597,20 +528,12 @@ class TextSpec {
       );
 }
 
-/// BoxSpec is the frame around something: a fill, a border and a padding.
-///
-/// Shared for the same reason TextSpec is. A text element, a button, a table
-/// and an image all want a rounded rectangle behind them with an outline on
-/// it, and there is nothing about any of them that makes their version of it
-/// different.
 /// Corners is four corner radii with one number answering for whichever of
 /// them has not been given its own.
 ///
-/// Its own type because two things have corners -- the frame round an element
-/// and a rectangle shape -- and they had better round them the same way. One
-/// number and four overrides rather than four numbers: a box is almost always
-/// even, that is how somebody wants to say it, and every document ever saved
-/// has the one number in it.
+/// Shared by the frame round an element and a rectangle shape so both round
+/// corners the same way. One number plus overrides because a box is almost
+/// always even, and saved documents hold the one number.
 class Corners {
   /// all is every corner that has not been given its own.
   final double all;
@@ -661,9 +584,8 @@ class Corners {
         bl: bl ?? this.bl,
       );
 
-  /// rrect is [rect] with these corners, inset by [by] all round -- which is
-  /// how a border draws itself inside a fill without the two drifting out of
-  /// step.
+  /// rrect is [rect] with these corners, inset by [by] all round, so a border
+  /// drawn inside a fill stays concentric with it.
   RRect rrect(Rect rect, {double by = 0}) => RRect.fromRectAndCorners(
         by == 0 ? rect : rect.deflate(by),
         topLeft: Radius.circular(math.max(0, topLeft - by)),
@@ -675,10 +597,8 @@ class Corners {
   /// inside is [inner] -- a rectangle some padding has already been taken off
   /// -- with corners that stay concentric with these.
   ///
-  /// Each corner is pulled in by the wider of the two sides that meet there.
-  /// With even padding that is the plain arithmetic; with uneven padding
-  /// there is no single right answer, and the wider of the two is the one
-  /// that keeps the curve inside the room it has.
+  /// Each corner is pulled in by the wider of the two sides that meet there,
+  /// which keeps the curve inside its room when the padding is uneven.
   RRect inside(Rect inner, Room room) => RRect.fromRectAndCorners(
         inner,
         topLeft: Radius.circular(
@@ -794,54 +714,38 @@ class Room {
   int get hashCode => Object.hash(left, top, right, bottom);
 }
 
+/// BoxSpec is the frame around something: a fill, a border and a padding,
+/// shared by text, buttons, tables and images.
 class BoxSpec {
-  /// fill is what is painted behind whatever the box holds: the background.
+  /// fill is the background colour behind whatever the box holds.
   final Color fill;
 
-  /// painted is a picture or a pattern behind it instead, cut to the box's
-  /// own shape and its corners.
-  ///
-  /// The same spec the letters are painted with -- see TextFill -- because it
-  /// is the same question asked of a different shape: what is this filled
-  /// with, how big is it, and does it repeat. A second one for boxes would be
-  /// a second list of kinds to keep level with the first.
-  ///
-  /// A colour is the default and the ordinary answer, and [fill] is still
-  /// what draws it: this is what covers the box when the answer is not a
-  /// colour.
+  /// painted is a picture or a pattern covering the box instead, cut to its
+  /// shape and corners. The same spec letters use (see TextFill); when it is
+  /// off, [fill] draws the box.
   final TextFill painted;
   final double borderWidth;
   final Color borderColor;
 
-  /// fillFade and borderFade are the second colours, where the fill or the
-  /// border fades to one. Null for the flat ones, which is most of them.
-  ///
-  /// Chosen in the picker beside the colour itself -- see GradientSpec -- so
-  /// there is no on/off flag and no row of gradient settings anywhere near
-  /// the swatch.
+  /// fillFade and borderFade are the second colours the fill or border fade
+  /// to, or null for flat. Chosen in the colour picker; see GradientSpec.
   final GradientSpec? fillFade;
   final GradientSpec? borderFade;
 
-  /// borderRadius is every corner that has not been given its own, and
-  /// [padding] is every side that has not been given its own; padL..radBL are
-  /// the ones that have.
-  ///
-  /// Stored flat rather than as the [Corners] and [Room] they describe,
-  /// because a const constructor cannot build an object out of its own
-  /// parameters -- and every BoxSpec in the codebase is written as a const.
-  /// The *behaviour* is not duplicated: [corners] and [pad] hand back the two
-  /// of them and everything below is asked of those, so a rectangle shape and
-  /// a box round a picture round their corners by the same code.
-  /// bwL, bwT, bwR and bwB are one side's own border, or null to take
-  /// [borderWidth] -- the same shape as the padding above and for the same
-  /// reason: a rule under a heading, a bar down the left of a quote, a box
-  /// open on one side. All four even is what almost every box wants and is
-  /// the one field; the rest are there for the boxes that are not boxes.
+  /// bwL, bwT, bwR and bwB are one side's own border width, or null to take
+  /// [borderWidth] (a rule under a heading, a bar down a quote).
   final double? bwL;
   final double? bwT;
   final double? bwR;
   final double? bwB;
 
+  /// borderRadius is every corner that has not been given its own, and
+  /// [padding] every side; padL..radBL are the overrides.
+  ///
+  /// Stored flat rather than as [Corners] and [Room] because a const
+  /// constructor cannot build them from its own parameters, and BoxSpecs are
+  /// written as consts. [corners] and [pad] hand them back for everything
+  /// else to use.
   final double borderRadius;
   final double padding;
   final double? padL;
@@ -880,8 +784,7 @@ class BoxSpec {
       Corners(all: borderRadius, tl: radTL, tr: radTR, br: radBR, bl: radBL);
   Room get pad => Room(all: padding, l: padL, t: padT, r: padR, b: padB);
 
-  /// borders is the four border widths, the same way [pad] is the four
-  /// paddings.
+  /// borders is the four border widths, as [pad] is the four paddings.
   Room get borders => Room(all: borderWidth, l: bwL, t: bwT, r: bwR, b: bwB);
 
   /// evenBorder is the one number the four sides share, or null where they
@@ -931,26 +834,19 @@ class BoxSpec {
 
   /// assetIds is the picture this box is painted with, where it has one.
   ///
-  /// Every element that carries a box has to fold this into its own answer --
-  /// see CanvasElement.assetIds -- or the sweep that clears out pictures
-  /// nothing is using any more takes it away, and the canvas opens next time
-  /// with the box empty. Which is exactly what happened.
+  /// Every element that carries a box must fold this into its own assetIds,
+  /// or the unused-picture sweep deletes it.
   Set<String> get assetIds =>
       painted.assetId.isEmpty ? const {} : {painted.assetId};
 
-  /// scaledBy is this box at [by] times the size: its corners, the room
-  /// inside it and how thick its border is drawn.
+  /// scaledBy is this box at [by] times the size: corners, padding and
+  /// border widths.
   BoxSpec scaledBy(double by) => withCorners(corners.scaledBy(by))
       .withRoom(pad.scaledBy(by))
       .withBorders(borders.scaledBy(by));
 
   /// withCorners and withRoom replace the whole of one of them, overrides
-  /// and all.
-  ///
-  /// Not copyWith: that fills a null with what was there before, which is
-  /// right for "change this one field" and wrong here -- setting all four
-  /// corners to one number means forgetting the three that had their own, and
-  /// through copyWith they would have survived it.
+  /// and all. Not copyWith, whose nulls keep the old overrides.
   BoxSpec withCorners(Corners corners) => BoxSpec(
       fill: fill,
       painted: painted,
@@ -995,9 +891,8 @@ class BoxSpec {
       padR: room.r,
       padB: room.b);
 
-  /// withBorders replaces all four border widths, overrides and all -- see
-  /// [withRoom], which is the same thing for the padding and says why it is
-  /// not a copyWith.
+  /// withBorders replaces all four border widths, overrides and all; see
+  /// [withCorners].
   BoxSpec withBorders(Room room) => BoxSpec(
       fill: fill,
       painted: painted,
@@ -1081,16 +976,14 @@ class BoxSpec {
         if (borderFade != null) "borderFade": borderFade!.toJson(),
         if (borderWidth > 0) "bw": borderWidth,
         if (hasBorder) "bc": colorToJson(borderColor),
-        // Only the sides somebody has actually singled out, like the paddings
-        // and the corners below.
+        // Overrides are written only where set, so an even box saves as it
+        // always did.
         if (bwL != null) "bwL": bwL,
         if (bwT != null) "bwT": bwT,
         if (bwR != null) "bwR": bwR,
         if (bwB != null) "bwB": bwB,
         if (borderRadius > 0) "br": borderRadius,
         "pad": padding,
-        // Only the sides and corners somebody has actually singled out, so a
-        // box that is simply even saves exactly what it always saved.
         if (padL != null) "padL": padL,
         if (padT != null) "padT": padT,
         if (padR != null) "padR": padR,

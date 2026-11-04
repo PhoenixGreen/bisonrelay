@@ -12,11 +12,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
 import 'package:flutter/material.dart';
 
-// image_saved.dart is what a picture keeps to use again: its looks -- the
-// grade without the photograph: adjustments, textures, colour layers -- and
-// its designs, the whole element as a preset. One card with a switch
-// between the two, in Colour, since a look is a colour grade; the designs
-// beside them, since both are a thing saved and worn again.
+// image_saved.dart is what a picture keeps to use again: its looks (the
+// grade without the photograph: adjustments, textures, colour layers) and its
+// designs (the whole element as a preset), one card switching between them.
 
 /// _showingLooks is which the card shows, for this run of the app: looks,
 /// unless designs were last asked for.

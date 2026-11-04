@@ -4,41 +4,27 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 
-// chart_animation.dart is how a chart arrives: which preset, how much its
-// items overlap, and what the end of the movement does.
-//
-// It is a closed set of presets rather than a general mechanism, for the
-// reason given on ChartAnimationPreset. The whole file is decisions about
-// timing and nothing about drawing -- what a bar does with progressAt is the
-// painter's business, which is why this can be read on its own.
+// chart_animation.dart is how a chart arrives and leaves: which preset, how
+// much its items overlap, and what the end of the movement does. Timing only;
+// what a bar does with progressAt is the painter's business.
 
-/// chartAnimationSeconds is how long a preset runs when it is first applied.
-///
-/// A starting point, not a setting: the two keyframes it lays are dragged on
-/// the timeline like anything else, which is where the length actually lives.
+/// chartAnimationSeconds is how long a new arrival runs when nothing else
+/// says; the timeline is where its length then lives.
 const int chartAnimationSeconds = 2;
 
-/// ChartAnimationPreset is how a chart arrives.
-///
-/// Presets rather than a set of controls that could express all of them. What
-/// somebody wants is "the bars grow up one after another"; what a general
-/// mechanism asks is which property, over what range, with what stagger and
-/// what easing, four times over -- and the answer is the same four answers
-/// every time. The two things that genuinely vary are how much the items
-/// overlap and what the end of the movement does, and those are settings.
+/// ChartAnimationPreset is how a chart arrives. A closed set of presets: what
+/// genuinely varies (overlap and easing) is a setting on [ChartAnimation].
 enum ChartAnimationPreset {
   none("None", "The chart is simply there"),
 
-  /// grow is the one anybody means. Bars rise out of the axis, horizontal bars
-  /// run out from it, pie slices open out from the middle.
+  /// grow raises bars out of the axis and opens pie slices from the middle.
   grow("Grow", "Each one grows to its full size, in turn"),
 
   /// drawOn traces a line from its start to its end. For bars there is nothing
   /// to trace, so it grows them instead.
   drawOn("Draw on", "Lines are drawn along their length"),
 
-  /// wipe reveals the plot left to right, everything in it at once. The one
-  /// preset with nothing to stagger.
+  /// wipe reveals the plot left to right, everything in it at once.
   wipe("Wipe across", "The whole plot is uncovered from the left"),
 
   /// sweep is wipe for a circle: the chart is uncovered clockwise.
@@ -46,11 +32,8 @@ enum ChartAnimationPreset {
 
   popIn("Pop in", "Each one springs up where it stands, in turn"),
 
-  /// random is popIn with the order shuffled. What a scatter wants: points in
-  /// a scatter have no order worth animating in -- left to right is a
-  /// property of how they were typed rather than of what they mean -- and a
-  /// cloud that fills in unevenly reads as a cloud arriving rather than as a
-  /// row being dealt.
+  /// random is popIn with the order shuffled, for a scatter, whose points
+  /// have no meaningful order.
   random("Random", "Each one appears on its own, in no particular order"),
 
   fadeIn("Fade in", "Each one fades up, in turn");
@@ -64,17 +47,15 @@ enum ChartAnimationPreset {
         orElse: () => ChartAnimationPreset.none,
       );
 
-  /// staggers is whether the items go one after another, which is what the gap
-  /// setting decides. A wipe and a sweep move one edge across everything at
-  /// once and have nothing to space out.
+  /// staggers is whether the items go one after another (spaced by the gap
+  /// setting); a wipe and a sweep move one edge across everything at once.
   bool get staggers => this != none && this != wipe && this != sweep;
 
   /// scrambles is whether the order things arrive in is shuffled.
   bool get scrambles => this == random;
 
   /// suitsCircular and suitsCartesian are which chart families a preset makes
-  /// sense on. A wipe across a pie is a wipe across a circle, which reads as a
-  /// mistake; a sweep round a bar chart is worse.
+  /// sense on.
   bool get suitsCircular =>
       this == none ||
       this == grow ||
@@ -87,10 +68,6 @@ enum ChartAnimationPreset {
 }
 
 /// ChartEase is what the end of an item's movement does.
-///
-/// The reason this is a setting and not a fixed curve: a bar that eases to a
-/// stop is a chart, and a bar that overshoots and settles is an advertisement,
-/// and which of the two is wanted is not something a drawing routine can know.
 enum ChartEase {
   linear("Linear"),
   easeIn("Ease in"),
@@ -130,30 +107,16 @@ enum ChartEase {
       case ChartEase.bounce:
         return bounceOut(t);
       case ChartEase.spring:
-        // A decaying oscillation. Three visible swings before it settles,
-        // which is enough to read as a spring and few enough to stop being
-        // charming on the fourth chart.
+        // A decaying oscillation: three visible swings before it settles.
         var decay = math.pow(2, -9 * t).toDouble();
         return 1 - decay * math.cos(t * math.pi * 6);
     }
   }
 }
 
-/// ChartAnimation is how a chart draws itself on, and how much of it has.
-///
-/// The *timing* is not here. It is two keyframes on the element's own track,
-/// pinning KeyframeChannel.reveal at 0 and at 1, so the length of the
-/// animation is dragged on the timeline like everything else that moves. A
-/// duration stored here would be a second timeline that the first one could
-/// not see.
 /// staggeredProgress is how far item [index] of [count] has got when a
-/// staggered animation is [reveal] through.
-///
-/// One piece of arithmetic for every staggered thing on a canvas. The chart
-/// painter asks it for bars, for points, for slices and for series, and the
-/// text painter asks it for letters, words and lines; a stagger that meant
-/// something slightly different in each is a chart and a headline that do
-/// not line up with each other on the same canvas.
+/// staggered animation is [reveal] through. Shared by charts (bars, points,
+/// slices, series) and text (letters, words, lines) so their staggers agree.
 double staggeredProgress(
   double reveal,
   int index,
@@ -176,73 +139,46 @@ double staggeredProgress(
   var total = 1 + step * (count - 1);
   var place =
       scrambles ? ChartAnimation.scrambled(index, count) : index.toDouble();
-  // Which end the stagger starts from. On the way out the whole movement runs
-  // backwards, so the item with the *last* place is the first to go -- which
-  // is the chart unwinding. Flipping the places instead empties it from the
-  // front. See flipOrder.
+  // On the way out the movement runs backwards, so the last item goes first;
+  // flipping the places empties it from the front instead.
   if (flipOrder) place = (count - 1) - place;
   var local = (reveal * total - step * place).clamp(0.0, 1.0);
   return ease.apply(local);
 }
 
+/// ChartAnimation is how a chart draws itself on and off.
+///
+/// The timing is not here: it is the element's arrival and leaving on the
+/// timeline, which drive KeyframeChannel.reveal and close from 0 to 1. A
+/// duration stored here would be a second timeline the first could not see.
 class ChartAnimation {
   final ChartAnimationPreset preset;
 
   /// exit is how the chart leaves, using the same presets played backwards:
-  /// bars sink into the axis, a wipe uncovers in reverse, slices close.
-  ///
-  /// The same enum rather than a second list of "fade out, shrink away,
-  /// unwipe", because that list is this list backwards and having two of them
-  /// is having two of them to keep in step. Which way round it runs is
-  /// decided by which pair of keyframes the playhead is in -- see
-  /// KeyframeChannel.close.
-  ///
-  /// It has its own pair of keyframes, so a chart can arrive at the start, sit
-  /// there, and leave at the end. It shares [gap] and [ease] with the
-  /// entrance: a chart that bounced in and eased out would be two animations
-  /// on one object, and nobody asked for that.
+  /// bars sink into the axis, a wipe uncovers in reverse, slices close. It is
+  /// timed separately (KeyframeChannel.close) and shares [gap] and [ease]
+  /// with the entrance.
   final ChartAnimationPreset exit;
 
-  /// exitInOrder empties the chart the way it filled: the first item leaves
-  /// first, then the second, and so on.
-  ///
-  /// A different thing from the exit preset, and the reason it is a switch
-  /// rather than eight more entries in the list. "Grow, reversed" is the
-  /// entrance run backwards, so the *last* bar sinks first and the chart
-  /// unwinds; with this on, the same shrinking runs front to back, so the
-  /// chart empties from the left. Both are wanted -- one reads as rewinding,
-  /// the other as clearing away -- and neither can be had by choosing a
-  /// different preset.
+  /// exitInOrder empties the chart the way it filled, first item first.
+  /// Without it the exit is the entrance run backwards, so the last item
+  /// leaves first.
   final bool exitInOrder;
 
-  /// flipOrder reverses which item is staggered first.
-  ///
-  /// Not saved and never set by hand: it is what [leaving] puts on the copy
-  /// the painter draws the way out with. The order an animation runs in is a
-  /// fact about the direction it is being played, not about the chart, so
-  /// storing it beside [exitInOrder] would be the same answer written down
-  /// twice with a chance of disagreeing.
+  /// flipOrder reverses which item is staggered first. Not saved: [leaving]
+  /// sets it from [exitInOrder] on the copy drawn for the way out.
   final bool flipOrder;
 
   /// gap is how long after one item starts before the next does, as a
-  /// fraction of one item's own movement.
-  ///
-  /// 1 is strictly one after another: each finishes as the next begins. Below
-  /// 1 they overlap, and 0 is all of them together. Above 1 leaves a pause
-  /// between one finishing and the next starting.
+  /// fraction of one item's own movement: 1 is strictly one after another,
+  /// below 1 they overlap (0 is all together), above 1 leaves a pause.
   final double gap;
 
   final ChartEase ease;
 
   /// length is how many frames a new arrival or exit is laid down with, or 0
-  /// for the usual two seconds.
-  ///
-  /// A setting rather than a reading: the keyframes on the timeline are where
-  /// the animation actually is, and this is what a new one is laid down with.
-  /// Dragging those keyframes does not write back here -- the number somebody
-  /// typed is what they asked for, and a field that changed itself every time
-  /// the timeline was nudged would be a setting that could not be relied on.
-  /// See TextAnimation.length, which this is deliberately identical to.
+  /// for [chartAnimationSeconds]. Dragging it on the timeline does not write
+  /// back here. Same as TextAnimation.length.
   final int length;
 
   const ChartAnimation({
@@ -269,11 +205,7 @@ class ChartAnimation {
   bool get closes => exit != ChartAnimationPreset.none;
 
   /// leaving is this animation as it is played on the way out: the exit
-  /// preset in the entrance's place.
-  ///
-  /// Returned as a whole animation so that everything downstream -- the bars,
-  /// the slices, the candles, the legend -- goes on asking the one object how
-  /// far along something is and never has to know which half of the timeline
+  /// preset in the entrance's place, so the painter need not know which half
   /// it is drawing.
   ChartAnimation get leaving => copyWith(preset: exit, flipOrder: exitInOrder);
 
@@ -299,12 +231,7 @@ class ChartAnimation {
       );
 
   /// progressAt is how far item [index] of [count] has got when the whole
-  /// animation is [reveal] through.
-  ///
-  /// The arithmetic is in one place because the painter asks it for bars, for
-  /// points, for slices and for series, and a stagger that meant something
-  /// slightly different in four places is four animations that do not line up
-  /// with each other.
+  /// animation is [reveal] through. See [staggeredProgress].
   double progressAt(double reveal, int index, int count) => staggeredProgress(
         reveal,
         index,
@@ -317,28 +244,18 @@ class ChartAnimation {
         ease: ease,
       );
 
-  /// scrambled is where item [index] comes in the order things arrive, for the
-  /// presets that shuffle. Not a whole number: two items may well arrive
-  /// together, which is what random looks like.
+  /// scrambled is where item [index] comes in the arrival order for the
+  /// presets that shuffle; not a whole number, so items may arrive together.
   ///
-  /// Arithmetic rather than a shuffled list, and the same answer every time
-  /// rather than a fresh one. A chart is drawn once per frame and exported
-  /// frame by frame in a separate pass, so anything that consulted a random
-  /// number generator would deal the points differently on every frame and on
-  /// every export -- which is not an animation, it is static.
-  ///
-  /// A mix rather than "multiply by a prime and take the remainder", which is
-  /// the obvious version and is not random at all: the multiplier is only ever
-  /// used modulo the count, so twelve items came out as a plain reversal and
-  /// two series of six arrived one series at a time -- which is the exact
-  /// thing this preset exists to avoid.
+  /// Deterministic, because every frame and every export must deal the same
+  /// order. A hash rather than "multiply by a prime mod count", which gives
+  /// visible patterns (twelve items came out as a plain reversal).
   static double scrambled(int index, int count) {
     if (count <= 1) return 0;
     return _mix(index) * (count - 1);
   }
 
-  /// _mix avalanches an index into 0..1. Murmur3's finaliser, which is the
-  /// standard answer to "spread these integers out" and is three multiplies.
+  /// _mix avalanches an index into 0..1 with Murmur3's finaliser.
   static double _mix(int index) {
     var x = (index + 1) & 0xFFFFFFFF;
     x ^= x >>> 16;
@@ -360,11 +277,11 @@ class ChartAnimation {
       };
 
   factory ChartAnimation.fromJson(Map<String, dynamic> json) => ChartAnimation(
-        preset: ChartAnimationPreset.fromName(json["preset"] as String?),
-        exit: ChartAnimationPreset.fromName(json["exit"] as String?),
+        preset: ChartAnimationPreset.fromName(jsonStr(json["preset"])),
+        exit: ChartAnimationPreset.fromName(jsonStr(json["exit"])),
         exitInOrder: jsonBool(json["exitOrder"], false),
         gap: jsonDouble(json["gap"], 0.55).clamp(0.0, 4.0),
-        ease: ChartEase.fromName(json["ease"] as String?),
+        ease: ChartEase.fromName(jsonStr(json["ease"])),
         length: jsonInt(json["length"], 0).clamp(0, 100000),
         loop: json["loop"] is Map<String, dynamic>
             ? ElementLoop.fromJson(json["loop"] as Map<String, dynamic>)

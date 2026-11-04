@@ -40,11 +40,10 @@ void main() {
     addTearDown(c.dispose);
     c.applyElementAnimation(_in(c), ElementAnimationPreset.fadeIn);
     c.applyElementExit(_in(c), ElementAnimationPreset.slideUp);
-    var keys = _in(c).track!.keys.length;
     _drag(c, 60);
     expect(_in(c).x, 140, reason: "put somewhere else");
-    expect(_in(c).track!.keys.length, keys, reason: "no keyframe added");
-    expect(_in(c).track!.keys.every((k) => !k.movesElement), isTrue);
+    expect(_in(c).track?.keys.any((k) => k.movesElement) ?? false, isFalse,
+        reason: "no keyframe added: arrivals and exits are not moves");
   });
 
   test("and dimmed or faded, it is still moved", () {

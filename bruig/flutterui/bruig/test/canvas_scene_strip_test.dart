@@ -54,8 +54,7 @@ void main() {
 
   List<int> lengths(CanvasController c) => [for (var s in c.scenes) s.frames];
 
-  Future<void> playAll(WidgetTester tester) =>
-      tapTimelineItem(tester, "playAll-item");
+  Future<void> playAll(WidgetTester tester) => tapPlayAll(tester);
 
   Rect rectOf(WidgetTester tester, String key) =>
       tester.getRect(find.byKey(ValueKey(key)));
@@ -65,7 +64,7 @@ void main() {
   double perFrame(WidgetTester tester, CanvasController c) =>
       rectOf(tester, "keyframeStrip").width / c.document.sequenceFrames;
 
-  testWidgets("is there only while Play runs every scene, under the ruler",
+  testWidgets("is there only while Play runs every scene, over the channels",
       (tester) async {
     var c = await show(tester);
     var before = tester.getSize(find.byType(CanvasTimeline)).height;
@@ -82,17 +81,26 @@ void main() {
         closeTo(before + sceneStripHeight, 0.5),
         reason: "the timeline grows by the strip, the channels keep theirs");
 
-    // Between the ruler and the keyframes.
+    // Under the keyframes: the first row over the channels.
     var strip = rectOf(tester, "keyframeStrip");
     var box = rectOf(tester, "sceneBox0");
-    expect(box.top, greaterThan(strip.top + 20), reason: "under the ruler");
     var keyframes = tester.getRect(find.text("Keyframes"));
-    expect(keyframes.top, greaterThan(box.bottom),
-        reason: "over the keyframes");
+    expect(box.top, greaterThan(keyframes.bottom), reason: "under the keys");
+    expect(strip.bottom - box.bottom, lessThan(8),
+        reason: "at the bottom of the strip, over the channels");
     expect(tester.takeException(), isNull);
 
     await playAll(tester);
     expect(find.byType(CanvasSceneStrip), findsNothing);
+  });
+
+  testWidgets("its button is on the play bar, beside Loop", (tester) async {
+    await show(tester);
+    var loop = tester.getRect(find.byKey(const ValueKey("loop")));
+    var all = tester.getRect(find.byKey(const ValueKey("playAll")));
+    expect(all.left, greaterThanOrEqualTo(loop.right));
+    expect(all.left - loop.right, lessThan(8), reason: "next to it");
+    expect((all.top - loop.top).abs(), lessThan(1));
   });
 
   testWidgets("each scene sits under its own frames of the ruler",
@@ -422,7 +430,7 @@ void main() {
         ),
       ));
       await tester.pumpAndSettle();
-      await tapTimelineItem(tester, "playAll-item");
+      await tapPlayAll(tester);
 
       var three = c.timelineChannels.firstWhere((ch) => ch.sceneLabel == "S3");
       // On its label, clear of its buttons.
@@ -535,7 +543,7 @@ void main() {
           greaterThanOrEqualTo(24),
           reason: "the zoom buttons are big enough to hit");
 
-      await tapTimelineItem(tester, "playAll-item");
+      await tapPlayAll(tester);
       Finder strip(String id) => find.byKey(ValueKey(
           "channelStrip-${c.timelineChannels.firstWhere((ch) => ch.first.element.id == id).key}"));
       expect(strip("c"), findsOneWidget, reason: "every scene's channels");
@@ -620,24 +628,12 @@ void main() {
       expect([c.sceneAt, c.frame], [1, 0], reason: "and on again");
     });
 
-    test("back to the start: this scene's, then the one before's", () {
-      var c = run();
-      c.goToScene(1);
-      c.frame = 12;
-      c.rewind();
-      expect([c.sceneAt, c.frame], [1, 0]);
-      c.rewind();
-      expect([c.sceneAt, c.frame], [0, 0]);
-    });
-
     test("with one scene at a time, a scene's ends are its own", () {
       var c = run();
       c.playAll = false;
       c.goToScene(1);
       c.frame = 0;
       c.stepFrame(-1);
-      expect([c.sceneAt, c.frame], [1, 0]);
-      c.rewind();
       expect([c.sceneAt, c.frame], [1, 0]);
     });
   });

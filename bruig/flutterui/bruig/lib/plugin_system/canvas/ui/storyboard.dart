@@ -8,13 +8,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/material.dart';
 
 // storyboard.dart is the whole run at a glance: every scene as a strip of
-// pictures at even points through it, drawn by the renderer the export uses,
-// so what is looked over here is what will be published. A press on a
-// picture goes there.
-//
-// It exists because the only other way to review a three-minute video was to
-// play all three minutes, or to scrub scene by scene and remember the last
-// one while looking at the next.
+// pictures at even points through it, drawn by the export's renderer, so what
+// is reviewed here is what will be published. A press on a picture goes there.
 
 /// storyboardShots is how many pictures each scene is shown as.
 const int storyboardShots = 5;
@@ -75,9 +70,9 @@ class _CanvasStoryboardState extends State<CanvasStoryboard> {
     super.dispose();
   }
 
-  /// _drawAll draws the pictures one at a time, top to bottom, each shown
-  /// as soon as it is ready: all of them at once is a long wait for the
-  /// first, and a burst of work the editor behind is still drawing through.
+  /// _drawAll draws the pictures one at a time, top to bottom, each shown as
+  /// soon as it is ready, rather than all at once with a long wait for the
+  /// first.
   Future<void> _drawAll() async {
     var render = widget.render ??
         (CanvasDocument d, int f) => renderFrame(d,

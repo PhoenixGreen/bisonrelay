@@ -222,11 +222,9 @@ class _Sections {
   Widget position() {
     var look = _look;
     String summary;
-    // A plain picture is its frame, and is placed as any element is; with
-    // layers, its base picture has a place in the frame of its own, and the
-    // frame is the Frame section's.
-    // A picture alone -- flipped, or with an effect, but nothing laid over
-    // it and filling its frame -- is still placed as any element is.
+    // A plain picture (flipped or with an effect, but nothing laid over it) is
+    // its frame, placed as any element is; with layers, its base picture has a
+    // place of its own in the frame, and the frame is the Frame section's.
     var framed = picked.isBase &&
         (!e.layered || (e.stack.length == 1 && picked.basePlace == null));
     if (framed) {
@@ -359,8 +357,6 @@ class _Sections {
     var framed = !_picture;
     var mask = framed ? picked.mask : _look.mask;
     var tools = framed ? framedMaskTools : maskTools;
-    // The Crop tool's settings are the amounts trimmed off; every other
-    // tool's are its brush's or its own.
     void put(ImageMask next) {
       if (framed) {
         write(e.withLayer(picked.id, (l) => l.copyWith(mask: next)));
@@ -769,9 +765,7 @@ class _Sections {
       remember: _remember("own"),
       initiallyOpen: true,
       forceOpen: _holds(paintTools) || _holds(retouchTools),
-      // Strokes are work done, not a setting moved: no dot, and no reset
-      // that would wipe them -- the Strokes group takes them back one at a
-      // time, or clears them when that is what is meant.
+      // Strokes are work done: no dot and no reset, as in Retouch.
       children: [
         imageToolTiles(controller, e, picked, paintTools, settings,
             help: "Paint on this layer, and rub it out again. Pick a brush "
@@ -886,10 +880,13 @@ class _Sections {
                   max: 240,
                   suffix: " fr",
                   defaultValue: 0,
-                  onChanged: (v) => controller.changeImage(
-                      e.withLayer(
-                          picked.id, (l) => l.copyWith(cueGap: v.round())),
-                      transient: true),
+                  onChanged: (v) {
+                    begin();
+                    controller.changeImage(
+                        e.withLayer(
+                            picked.id, (l) => l.copyWith(cueGap: v.round())),
+                        transient: true);
+                  },
                   onCommit: commit,
                 ),
             ],
@@ -998,8 +995,7 @@ class _Sections {
               begin,
               commit,
               remember: "image",
-              // Unnamed: the shelf says "Background and border" over it
-              // already, and the card said it a second time.
+              // Unnamed: the shelf already says "Background and border" over it.
               label: "",
               fillLabel: "Background",
               rule: false,

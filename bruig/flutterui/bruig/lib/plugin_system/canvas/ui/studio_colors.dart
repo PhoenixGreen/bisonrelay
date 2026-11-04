@@ -5,16 +5,14 @@ import 'package:provider/provider.dart';
 // studio_colors.dart is the palette the sound side of Canvas is drawn in: the
 // mixer, the effects, the timeline's channels and the instruments.
 //
-// Two ways to get it. Studio is a look of its own, dark and lit like a desk,
-// and where everyone starts. Follow my theme asks the app's theme for every
-// role instead, so a light theme gets a light mixer. Either way any one role
-// can be changed by hand, in Settings > Plugins > Canvas -- which is where
-// these live rather than among the app's theme areas, because the theming
-// system is its own submission and Canvas is stacked on it, not part of it.
+// Studio is a dark look of its own; Follow my theme asks the app's theme for
+// every role. Any role can be changed by hand in Settings > Plugins > Canvas,
+// kept there rather than among the app's theme areas because the theming
+// system is a separate submission that Canvas is stacked on.
 //
-// Only what a state means is a colour of its own here -- on, solo, armed,
-// the meter's three bands, a device's screen. Everything else is a surface or
-// a text level, asked for by role.
+// Only what a state means (on, solo, armed, the meter's bands, a device's
+// screen) has a colour of its own; everything else is a surface or text
+// level, asked for by role.
 
 /// StudioRole is one colour of the studio palette.
 enum StudioRole {
@@ -104,9 +102,8 @@ class StudioColors {
     StudioRole.displayLine: Color(0xFF5FD0FF),
   });
 
-  /// fromScheme is the palette asked of the app's theme. Tertiary is not
-  /// used: in this app it is a panel's fill, not an accent, and anything
-  /// drawn in it vanishes into the panel behind.
+  /// fromScheme is the palette asked of the app's theme. Tertiary is not used:
+  /// in this app it is a panel fill, and anything drawn in it vanishes.
   factory StudioColors.fromScheme(ColorScheme c) => StudioColors._({
         StudioRole.panel: c.surface,
         StudioRole.strip: c.surfaceContainer,

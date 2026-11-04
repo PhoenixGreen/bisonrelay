@@ -487,6 +487,8 @@ class _LanePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Points before or after the frames shown stay inside the lane.
+    canvas.clipRect(Offset.zero & size);
     canvas.drawRect(Offset.zero & size,
         Paint()..color = colors.surfaceContainerLow.withValues(alpha: 0.6));
     canvas.drawLine(

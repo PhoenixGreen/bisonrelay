@@ -12,13 +12,11 @@ import 'package:flutter/painting.dart';
 // audio_painter.dart draws an Audio element: its icon in whichever state the
 // sound is in, and the mute switch and volume bar beside it when it has them.
 //
-// The layout is worked out once, in audioParts, and the stage presses the same
-// rectangles the painter drew -- a second opinion about where the volume bar
-// is would be a bar that sets the volume from somewhere slightly to its left.
+// The layout is worked out once, in audioParts, and the stage hit-tests the
+// same rectangles the painter draws.
 
-/// AudioState is what the painter needs to know about the sound. Nothing in
-/// the document says it: in an exported picture it is the idle state the
-/// author set up, and on screen it is whatever the reader has done.
+/// AudioState is the sound's live state, which the document does not hold:
+/// on screen it is what the reader has done; in an export, the idle state.
 class AudioState {
   final bool playing;
   final bool muted;
@@ -58,9 +56,8 @@ class AudioParts {
 
 /// audioParts lays out [e] inside [bounds].
 ///
-/// The icon is a square as tall as the room inside the box. With nothing
-/// beside it, it is centred -- a speaker on its own is a round button, not a
-/// button pushed into the corner of an empty pill.
+/// The icon is a square as tall as the box's inside, centred when nothing is
+/// beside it.
 AudioParts audioParts(AudioElement e, Rect bounds) {
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) {
@@ -86,8 +83,7 @@ AudioParts audioParts(AudioElement e, Rect bounds) {
   }
   Rect? volume;
   if (e.has(AudioControl.volume) && inner.right - x > side * 0.5) {
-    // As tall as the icon to press, however thin it is drawn: a bar a few
-    // pixels high is a bar nobody can hit.
+    // As tall as the icon to press, however thin it is drawn.
     volume = Rect.fromLTRB(x, icon.top, inner.right, icon.bottom);
   }
   return AudioParts(icon, mute, volume);
@@ -101,9 +97,10 @@ double volumeAt(Rect bar, double x) {
   return ((x - from) / (to - from)).clamp(0.0, 1.0);
 }
 
+/// paintAudio draws [e] in [bounds] as [state] says: a keyboard for an
+/// instrument, otherwise the icon and its controls.
 void paintAudio(ui.Canvas canvas, Rect bounds, AudioElement e, AudioState state,
     {CanvasImageSource? images}) {
-  // An instrument is its keyboard.
   if (e.instrument case var part?) {
     paintKeyboard(canvas, bounds, part,
         lit: state.keys,
@@ -126,8 +123,8 @@ void paintAudio(ui.Canvas canvas, Rect bounds, AudioElement e, AudioState state,
   if (!drawnPicture) {
     _paintGlyph(canvas, parts.icon.deflate(parts.icon.width * 0.18), e, state);
   }
-  // A picture of the reader's own for "muted" says so itself. Without one, a
-  // picture is struck through like the drawn icons are.
+  // A custom muted picture says so itself; any other picture is struck
+  // through.
   if (state.muted && (drawnPicture ? e.mutedPicture.isEmpty : false)) {
     _strike(canvas, parts.icon.deflate(parts.icon.width * 0.15), e);
   }
@@ -151,8 +148,7 @@ void _paintGlyph(ui.Canvas canvas, Rect r, AudioElement e, AudioState state) {
 
   switch (e.glyph) {
     case AudioGlyph.speaker:
-      // The box and cone in the icon colour whatever the state: it is the
-      // waves that say whether anything is coming out of it.
+      // The cone stays the icon colour; the waves show playing.
       canvas.drawPath(
           Path()
             ..moveTo(p(0.05, 0.36).dx, p(0.05, 0.36).dy)
@@ -173,8 +169,7 @@ void _paintGlyph(ui.Canvas canvas, Rect r, AudioElement e, AudioState state) {
         canvas.drawLine(p(0.92, 0.36), p(0.64, 0.64), cross);
         return;
       }
-      // One, two or three waves by how loud it is, so the icon answers "how
-      // loud" as well as "is it on".
+      // One to three waves by volume.
       var waves = state.volume <= 0
           ? 0
           : state.volume < 0.34
@@ -252,8 +247,7 @@ void _paintGlyph(ui.Canvas canvas, Rect r, AudioElement e, AudioState state) {
       canvas.drawLine(p(0.32, 0.94), p(0.68, 0.94), line);
       if (state.muted) _strike(canvas, r, e);
     case AudioGlyph.play:
-      // The one glyph that says what pressing it will do rather than what it
-      // is: a triangle to start, two bars to stop.
+      // Shows what pressing will do: play, or pause bars while playing.
       if (on) {
         for (var x in [0.18, 0.58]) {
           canvas.drawRRect(

@@ -7,16 +7,12 @@ import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart'
     show channelClip;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 
-// element_sound.dart is an element's own sound: a sound channel it owns,
-// shown with it -- its lane under the element's rows on the timeline, its
-// strip beside the element's in the mixer -- rather than among the canvas's
-// other channels (Ken).
-//
-// A channel like any other underneath: its sounds are hidden audio elements
-// on the channel keyed [elementSoundKey], so playing, the slots, the effects,
-// the fader and an export all work on it as they do on any. Its Output sends
-// it whole into a return instead of to the master, for a group of elements
-// to share one bus -- see ChannelMix.output.
+// element_sound.dart is an element's own sound channel, shown with it: its
+// lane under the element's rows on the timeline, its strip beside the
+// element's in the mixer. Underneath it is a channel like any other, keyed
+// [elementSoundKey] and holding hidden audio elements, so playing, slots,
+// effects, the fader and export all work on it. Its Output can send it into
+// a return, for elements to share a bus; see ChannelMix.output.
 
 /// elementSoundKey is the key of [element]'s own sound channel.
 String elementSoundKey(String element) => "snd-$element";

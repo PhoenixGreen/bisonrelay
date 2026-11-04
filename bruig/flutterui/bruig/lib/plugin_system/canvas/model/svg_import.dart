@@ -6,19 +6,18 @@ import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 // svg_import.dart takes an .svg apart into the shapes a Vector element edits:
 // runs of points with handles, each with a fill and a stroke.
 //
-// Its own reader rather than a package, and deliberately small. What it keeps
-// is what a drawing is made of -- paths and the basic shapes, groups and
-// transforms, fills and strokes, classes in a stylesheet. What it cannot keep
-// it says so about, in [SvgImport.dropped], so the reader is told before the
-// drawing is changed: a gradient becomes the colour it starts with, and words,
-// pictures, filters and masks are left out.
+// Its own small reader rather than a package. It keeps paths and the basic
+// shapes, groups and transforms, fills and strokes, and stylesheet classes.
+// What it cannot keep is listed in [SvgImport.dropped] so the user is told
+// first: a gradient becomes its first colour, and text, images, filters and
+// masks are left out.
 
 /// SvgImport is a drawing taken apart.
 class SvgImport {
   final Rect viewBox;
   final List<VectorShape> shapes;
 
-  /// dropped is what could not be kept, said the way the reader is told:
+  /// dropped is what could not be kept, as shown to the user:
   /// "gradients (made solid)", "text".
   final Set<String> dropped;
 
@@ -190,6 +189,13 @@ class _Importer {
   final List<VectorShape> _shapes = [];
   final Set<String> _dropped = {};
 
+  /// _using is each `<use>` target being drawn, so one that uses itself stops.
+  /// _maxVisits and _maxShapes bound what nested uses can multiply into.
+  final Set<_Node> _using = {};
+  int _visits = 0;
+  static const _maxVisits = 200000;
+  static const _maxShapes = 20000;
+
   _Importer(this.svg);
 
   SvgImport run() {
@@ -350,6 +356,7 @@ class _Importer {
   }
 
   void _walk(_Node n, _Style up, _Matrix m, {required bool inDefs}) {
+    if (++_visits > _maxVisits) return;
     var style = _styled(n, up);
     if (style.hidden) return;
     var here = m.times(_Matrix.parse(n.attrs["transform"] ?? ""));
@@ -390,7 +397,7 @@ class _Importer {
         var target = href != null && href.startsWith("#")
             ? _ids[href.substring(1)]
             : null;
-        if (target == null) break;
+        if (target == null || !_using.add(target)) break;
         var at = here.times(_Matrix.translate(
             _length(n.attrs["x"]) ?? 0, _length(n.attrs["y"]) ?? 0));
         if (target.name == "symbol") {
@@ -400,6 +407,7 @@ class _Importer {
         } else {
           _walk(target, style, at, inDefs: false);
         }
+        _using.remove(target);
       default:
         if (n.attrs.containsKey("filter")) _dropped.add("filters");
         if (n.attrs.containsKey("clip-path") || n.attrs.containsKey("mask")) {
@@ -494,6 +502,10 @@ class _Importer {
       stroke = stroke.withValues(alpha: stroke.a * s.strokeOpacity * s.opacity);
     }
     if (fill == null && stroke == null) return;
+    if (_shapes.length >= _maxShapes) {
+      _dropped.add("shapes past $_maxShapes");
+      return;
+    }
     _shapes.add(VectorShape(
       paths: [for (var r in runs) r.toPath(m)],
       fill: fill,
@@ -609,6 +621,7 @@ class _PathData {
     while (true) {
       _skip();
       if (_i >= d.length) break;
+      var from = _i;
       var c = d[_i];
       if (_letter.hasMatch(c)) {
         command = c;
@@ -708,6 +721,9 @@ class _PathData {
           finish();
           return out;
       }
+      // A number that would not read leaves the same command at the same
+      // place: stop there rather than read it again forever.
+      if (_i == from) break;
     }
     finish();
     return out;
@@ -909,7 +925,7 @@ double? _number(String? s) {
   return double.tryParse(s);
 }
 
-/// _length reads a length, its unit taken as pixels at 96 to the inch.
+/// _length reads a length in pixels, units converted at 96 to the inch.
 double? _length(String? s) {
   if (s == null) return null;
   var m = RegExp(r"^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*([a-z%]*)")
@@ -1051,6 +1067,6 @@ const Map<String, Color> _named = {
   "sienna": Color(0xFFA0522D),
 };
 
-/// _letter is a path command's letter -- compiled once, since a path's
-/// every character is asked.
+/// _letter matches a path command's letter; compiled once, since every
+/// character of a path is tested.
 final RegExp _letter = RegExp(r"[A-Za-z]");

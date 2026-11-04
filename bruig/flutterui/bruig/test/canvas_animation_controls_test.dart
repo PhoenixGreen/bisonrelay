@@ -382,7 +382,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(now().animation.on, isTrue);
       expect(sequenced(now().shapes!), isTrue);
-      expect(vectorArrivalSpan(now()), isNotNull);
+      expect(vectorArrivalSpan(now(), 24), isNotNull);
       c.undo();
       expect(now().animation.on, isFalse, reason: "one undo step");
       expect(sequenced(now().shapes!), isFalse);

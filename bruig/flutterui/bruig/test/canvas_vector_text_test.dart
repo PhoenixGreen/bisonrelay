@@ -167,9 +167,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.runAsync(() => FontFiles.instance.load("Inter", 400, false));
     Future<void> settle() async {
-      for (var i = 0; i < 6; i++) {
+      for (var i = 0; i < 3; i++) {
         await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 60)));
+            () => Future<void>.delayed(const Duration(milliseconds: 10)));
         await tester.pump();
       }
     }

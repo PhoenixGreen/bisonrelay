@@ -5,12 +5,8 @@ import 'package:bruig/plugin_system/canvas/media/mix/decode.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 
 // click_track.dart is the metronome: a click on every beat, the first of
-// each bar higher, made as it is read rather than held -- so it is as long
-// as anything it plays under, costs nothing to move about in, and is never
-// a file.
-//
-// The editor's alone. An export renders the document's sounds, and this is
-// not one of them.
+// each bar higher. It is generated as it is read, so it is never a file and
+// seeking is free. Editor only: exports do not include it.
 
 class ClickTrack implements TrackSource {
   /// secondsPerBeat and beatsPerBar are the metre it counts.

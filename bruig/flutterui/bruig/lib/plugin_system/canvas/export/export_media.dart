@@ -23,16 +23,12 @@ import 'package:path/path.dart' as path;
 // export_media.dart is the media on the timeline, for an export: the frame
 // each video shows on each frame of the run, and the sound to put under it.
 //
-// The editor plays media with the runtimes, which keep time by the sound card
-// -- see video_runtime.dart. An export has no sound card and no clock: it
-// renders frame after frame as fast as it can, and frame 200 is the frame at
-// eight seconds however long it took to get there. So the same question --
-// where is this clip at this frame -- is asked of the same function,
-// MediaClip.momentAt, and answered by decoding: one reader per video, read
-// forward as the export goes forward.
+// The editor's runtimes keep time by the sound card (see video_runtime.dart);
+// an export has no clock, so it asks MediaClip.momentAt where each clip is at
+// each frame and decodes: one reader per video, read forward with the export.
 //
-// Only media on the timeline is here. Media a reader presses is not part of
-// the animation, and an export shows it as its poster, silent.
+// Only timed media is here (see _timed): audio a reader presses is not part of
+// the animation and an export leaves it silent.
 
 /// ExportSound is one stretch of one file in the finished sound: where it
 /// starts in the export, which part of the file, and how it fades.
@@ -127,15 +123,15 @@ class _Placed {
 }
 
 /// _timed is whether [e] plays in an export. A video plays whether it is on
-/// the timeline or not: one that is not starts with its scene, as a film
-/// has no viewer to press its play button -- and a poster with a player's
-/// controls drawn on it was what it had been.
+/// the timeline or not: one that is not starts with its scene, as a film has
+/// no viewer to press play.
 bool _timed(CanvasElement e) => switch (e) {
       VideoElement v => !v.isLink && !v.clip.isEmpty,
       AudioElement a => a.clip.timed && !a.clip.isEmpty,
       _ => false,
     };
 
+/// ExportMedia is the timed media of one export run: see the file comment.
 class ExportMedia {
   final CanvasDocument document;
   final FrameSource frames;
@@ -315,7 +311,9 @@ class ExportMedia {
       var place = _placeOf(p, clip, begins, limit);
 
       var t = 0.0;
-      while (t < limit) {
+      // Bounded, for a loop of something a sliver long.
+      var repeats = 0;
+      while (t < limit && repeats++ < 10000) {
         for (var source in clip.playlist) {
           var span = source.span;
           if (span <= 0 || t >= limit) continue;
@@ -419,14 +417,10 @@ class ExportMedia {
   }
 }
 
-/// renderSoundtrack is [document]'s timeline sound through its mix and
-/// nothing else -- what a video export of it would carry -- as an AAC file
-/// exactly as long as the timeline. Null where there is nothing to hear, or
-/// no ffmpeg.
-///
-/// For a book page laid out as its elements: the page plays its soundtrack
-/// in step with its own playhead, and every channel strip, the master and
-/// the loudness target are in it, as they are in a film of the page.
+/// renderSoundtrack is [document]'s timeline sound through its mix -- what a
+/// video export of it would carry -- as an AAC file exactly as long as the
+/// timeline, for a book page laid out as its elements. Null where there is
+/// nothing to hear, or no ffmpeg.
 Future<Uint8List?> renderSoundtrack(CanvasDocument document,
     {Future<String?> Function(MediaKind kind, String id)? locate}) async {
   var ffmpeg = await ffmpegPath();
@@ -505,9 +499,8 @@ Loudness? parseLoudness(String report) {
   return Loudness(integrated, range ?? 0, peak ?? double.negativeInfinity);
 }
 
-/// measureMix plays [document]'s timeline sound through its mix, as an
-/// export would, into ffmpeg's loudness meter -- and nowhere else. The one
-/// honest answer to "how loud is this", because it is the export's own sound.
+/// measureMix renders [document]'s timeline sound through its mix, as an
+/// export would, and measures it with ffmpeg's loudness meter.
 Future<Loudness?> measureMix(CanvasDocument document,
     {Future<String?> Function(MediaKind kind, String id)? locate}) async {
   var ffmpeg = await ffmpegPath();
@@ -520,7 +513,6 @@ Future<Loudness?> measureMix(CanvasDocument document,
     if (sounds.isEmpty) return null;
     var seconds = document.playFrames /
         (document.frameRate <= 0 ? 1 : document.frameRate);
-    // The mix as an export renders it, then ffmpeg's meter over that.
     work = await Directory.systemTemp.createTemp("canvas-measure");
     var mixed = path.join(work.path, "mix.wav");
     if (!await renderMixWav(sounds, document.masterMix,

@@ -462,9 +462,7 @@ class _ParallaxSettingsState extends State<ParallaxSettings> {
                   now(layer.copyWith(assetId: id));
                 },
               ),
-              // From what the library already has: its pictures, or its
-              // drawings -- drawn as a picture, as a drawing anywhere is
-              // (Ken).
+              // From the library: its pictures, or its drawings drawn as pictures.
               CanvasIconButton(
                 key: const ValueKey("parallaxFromPictures"),
                 icon: Icons.photo_library_outlined,

@@ -35,8 +35,8 @@ class CharacterLook {
   /// light is where the light comes from: left, front, right or top.
   final String light;
 
-  /// The colour of the whole: saturation, brightness and warmth, -1 to 1,
-  /// and bands, nought to one, for the tones stepped into bands.
+  /// sat, bright and warmth are the colour of the whole, -1 to 1; bands,
+  /// nought to one, steps the tones into bands.
   final double sat, bright, warmth, bands;
 
   /// render is the page's finish: colour, manga, pencil, watercolour,

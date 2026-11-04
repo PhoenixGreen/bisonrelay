@@ -46,8 +46,8 @@ void main() {
     });
 
     test("the arrival is fitted round the layers again", () {
-      var e = withLayerSpanFitted(withLayerStartAt(_picture(), 1, 10, 10));
-      expect(imageArrivalSpan(e), (0, 20),
+      var e = withLayerSpanFitted(withLayerStartAt(_picture(), 1, 10, 10), 24);
+      expect(imageArrivalSpan(e, 24), (0, 20),
           reason: "ten for the base, then ten for the layer");
     });
   });
@@ -99,7 +99,7 @@ void main() {
     await tester.dragFrom(at(2, 1), at(12, 1) - at(2, 1));
     await tester.pumpAndSettle();
     expect(now().layerById(_top.id)!.cue, VectorCue.after);
-    expect(imageArrivalSpan(now()), (0, 14),
+    expect(imageArrivalSpan(now(), 24), (0, 14),
         reason: "the arrival fitted round both: ten, then four");
     c.undo();
     expect(now().layerById(_top.id)!.cue, VectorCue.together,

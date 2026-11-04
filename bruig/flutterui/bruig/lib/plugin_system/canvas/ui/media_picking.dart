@@ -15,14 +15,10 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 
 // media_picking.dart is adding a sound to a canvas: choosing the file,
-// making it something the player can open, storing it and measuring it.
-//
-// The player opens MP3, WAV, Ogg (Vorbis and Opus) and FLAC. The two formats
-// most people actually have -- AAC in an .m4a from a phone, and AIFF from a
-// Mac -- are neither, so they are converted on the way in when ffmpeg is on
-// the machine. Converted to FLAC, which loses nothing and which every ffmpeg
-// can write whatever it was built with. Without ffmpeg they are refused with
-// a sentence saying what would take them, rather than stored and silent.
+// making it something the player can open, storing it and measuring it. The
+// player opens MP3, WAV, Ogg (Vorbis and Opus) and FLAC. AAC (.m4a) and AIFF
+// are converted to FLAC (lossless, and any ffmpeg build can write it) when
+// ffmpeg is on the machine, and refused with a sentence saying why when not.
 
 const _audioPickable = [
   "mp3", "wav", "ogg", "opus", "flac", "m4a", "aac", "aiff", "aif", "mp4" //
@@ -141,11 +137,8 @@ Future<MediaSource?> pickCanvasVideo(
 }
 
 /// addCanvasVideo stores the video at [file]: the file itself, a still from
-/// it as a picture, and its sound as a file the audio engine can open.
-///
-/// ffmpeg is needed for all three, and for playing it afterwards, so a
-/// machine without it is told so here rather than given a video that never
-/// moves.
+/// it as a picture, and its sound as a file the audio engine can open. All
+/// three need ffmpeg, as does playing it, so without it the user is told here.
 Future<MediaSource?> addCanvasVideo(BuildContext context, String file) async {
   var name = path.basenameWithoutExtension(file);
   void report(String message) {

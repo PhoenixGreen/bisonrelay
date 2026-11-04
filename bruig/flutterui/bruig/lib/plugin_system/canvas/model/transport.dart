@@ -2,13 +2,10 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 
-// transport.dart is the arithmetic behind the timeline's control bar: where
-// the playhead is, said three ways and read back from any of them, and the
-// tempo worked out from presses in time.
-//
-// A frame is the timeline's step; [rate] of them make a second. Bars and
-// beats are the AudioSettings' metre laid over the same seconds, counted
-// from the start of the timeline.
+// transport.dart is the arithmetic behind the timeline's control bar: the
+// playhead position written three ways and parsed back, and tap tempo.
+// `rate` is frames per second; bars and beats are the AudioSettings metre
+// counted from the start of the timeline.
 
 /// PositionFormat is how the position reads.
 enum PositionFormat {
@@ -42,8 +39,7 @@ String barsText(AudioSettings audio, int frame, int rate) {
 }
 
 /// lengthText is a span of [frames] as bars, beats and sixteenths, each
-/// counted from nought -- "4. 0. 0" is four bars long -- as a loop's length
-/// is shown.
+/// counted from nought ("4. 0. 0" is four bars long).
 String lengthText(AudioSettings audio, int frames, int rate) {
   var seconds = frames / math.max(1, rate);
   var sixteenth = audio.secondsPerBeat / sixteenthsPerBeat(audio);
@@ -66,8 +62,7 @@ String timeText(int frame, int rate) {
   return "$minutes:$s";
 }
 
-/// positionText is [frame] read as [format]. Frames are counted from one, as
-/// the frame field always has.
+/// positionText is [frame] read as [format]. Frames are counted from one.
 String positionText(PositionFormat format, AudioSettings audio, int frame,
         int rate, int frames) =>
     switch (format) {
@@ -76,10 +71,10 @@ String positionText(PositionFormat format, AudioSettings audio, int frame,
       PositionFormat.frames => "${frame + 1} / $frames",
     };
 
-/// parsePosition is the frame a typed position names, or null where it
-/// names none. Read by its shape rather than by the format showing: "5.2.3"
-/// (or "5 2 3", or "5") is a bar, "1:04.5" minutes and seconds, "#288" or
-/// "f288" a frame. A plain number is a bar in [bars] and a frame otherwise.
+/// parsePosition is the frame a typed position names, or null. It is read by
+/// shape, not by the format showing: "5.2.3" (or "5 2 3") is a bar,
+/// "1:04.5" minutes and seconds, "#288" or "f288" a frame. A plain number is
+/// a bar in [bars] and a frame otherwise.
 int? parsePosition(String typed, AudioSettings audio, int rate,
     {required bool bars}) {
   var text = typed.trim().toLowerCase();
@@ -117,10 +112,9 @@ int? parsePosition(String typed, AudioSettings audio, int rate,
   return (seconds * rate).round();
 }
 
-/// tapTempo is the tempo that presses at [taps] (in seconds, oldest first)
-/// keep, or null until there are enough to say. The last few intervals are
-/// averaged; a gap of more than two seconds starts the count again, as a
-/// pause before tapping again would mean.
+/// tapTempo is the tempo of presses at [taps] (seconds, oldest first), or
+/// null until there are four. The last eight are averaged; a gap of more
+/// than two seconds starts the count again.
 double? tapTempo(List<double> taps) {
   var run = <double>[];
   for (var t in taps) {
@@ -136,8 +130,8 @@ double? tapTempo(List<double> taps) {
 }
 
 /// parseLength is the span a typed length names, in frames, or null. In
-/// [bars], counted from nought as lengthText writes them: "4" is four bars,
-/// "4.2" four bars and two beats. Otherwise a number of frames.
+/// [bars] it is counted from nought as [lengthText] writes it ("4.2" is four
+/// bars and two beats); otherwise it is a number of frames.
 int? parseLength(String typed, AudioSettings audio, int rate,
     {required bool bars}) {
   var text = typed.trim();

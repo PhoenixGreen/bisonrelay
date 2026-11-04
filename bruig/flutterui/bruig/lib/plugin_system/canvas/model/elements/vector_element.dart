@@ -8,25 +8,21 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
     show ImageCrop;
 
-// vector_element.dart is a drawing: an .svg, placed on the canvas and kept a
-// drawing all the way to the screen and the export, so it is sharp at any
-// size -- and, unlike a picture, edited point by point.
+// vector_element.dart is a drawing: an .svg kept as vectors all the way to
+// the screen and the export, and editable point by point.
 //
 // It starts as the file it came from, drawn exactly as the file says. The
-// first time it is opened for editing it is taken apart into shapes -- each a
-// run of points with handles, a fill and a stroke -- and from then on it is
-// those shapes that are drawn and saved, so what is seen is what is edited.
-// Anything in the file that is not a shape (a gradient, words, a filter) is
-// simplified or left out at that moment, and the reader is told before it is.
+// first time it is opened for editing it is taken apart into shapes, and from
+// then on those shapes are what is drawn and saved. Anything in the file that
+// is not a shape (a gradient, words, a filter) is simplified or left out at
+// that moment, and the user is told first.
 
 /// VectorNode is one point of a shape's outline, and the handles that bend
 /// the segments either side of it.
 ///
-/// In the drawing's own units -- its viewBox -- rather than as fractions of
-/// the element's box, because that is what the file is written in and the
-/// box can be any shape: a drawing stretched to fit is the same drawing.
-/// The handles are offsets from the point, so moving a point takes its
-/// handles with it. Both nought is a corner with straight segments.
+/// In the drawing's own units (its viewBox), not fractions of the element's
+/// box. The handles are offsets from the point, so moving a point takes its
+/// handles with it; both zero is a corner with straight segments.
 class VectorNode {
   final double x;
   final double y;
@@ -35,13 +31,10 @@ class VectorNode {
   final double outX;
   final double outY;
 
-  /// smooth is whether the two handles stay in line with each other: dragged,
-  /// one swings the other round with it. Off is a corner, whose handles move
-  /// apart.
+  /// smooth keeps the two handles in line with each other; off is a corner.
   final bool smooth;
 
-  /// mirrored is, for a smooth point, whether its handles are each other's
-  /// mirror: dragged, one gives the other its length as well as its line.
+  /// mirrored, for a smooth point, also keeps the handles the same length.
   final bool mirrored;
 
   /// handles is how the two handles move together -- see VectorHandles.
@@ -51,13 +44,12 @@ class VectorNode {
           ? VectorHandles.mirrored
           : VectorHandles.aligned;
 
-  /// width is how thick the shape's line is at this point, as a share of the
-  /// shape's own stroke width: 1 is as set, 2 twice as thick. It tapers from
-  /// point to point along the line between.
+  /// width is the line's thickness at this point as a multiple of the shape's
+  /// stroke width; it tapers between points.
   final double width;
 
-  /// cap and join are this point's own line end -- where a run ends here --
-  /// and line corner, or null for the shape's.
+  /// cap and join are this point's own line end (where a run ends here) and
+  /// line corner, or null for the shape's.
   final StrokeCap? cap;
   final StrokeJoin? join;
 
@@ -125,14 +117,13 @@ class VectorNode {
   /// moved is this node put at [to], its handles going with it.
   VectorNode moved(Offset to) => copyWith(x: to.dx, y: to.dy);
 
-  /// toJson is a short list rather than a map: a drawing can have thousands
-  /// of points, and the names of six numbers written out thousands of times
-  /// is most of the file. Trailing noughts are left off.
+  /// toJson is a short list rather than a map, since a drawing can have
+  /// thousands of points: x, y, inX, inY, outX, outY, then optionally the
+  /// smooth flag, width, cap index and join index (-1 for the shape's).
+  /// Trailing zeros are left off.
   List<num> toJson() {
     num r(double v) => double.parse(v.toStringAsFixed(3));
     var out = <num>[r(x), r(y), r(inX), r(inY), r(outX), r(outY)];
-    // A cap and a join are a ninth and tenth -- each its place in the list
-    // of them, or -1 for the shape's -- after the width spelt out.
     if (cap != null || join != null) {
       return [
         ...out,
@@ -142,7 +133,6 @@ class VectorNode {
         join?.index ?? -1,
       ];
     }
-    // A width is an eighth number, after the smooth flag spelt out.
     if (width != 1) return [...out, _smoothFlag, r(width)];
     if (smooth) return [...out, _smoothFlag];
     while (out.length > 2 && out.last == 0) {
@@ -173,9 +163,8 @@ class VectorNode {
   }
 }
 
-/// _withLegacyStrokes hands the tints and rub-outs a drawing kept for the
-/// whole of itself, before they were each shape's own, to the shapes each
-/// lay over -- what they showed on when they were saved.
+/// _withLegacyStrokes hands tints and rub-outs saved on the whole drawing
+/// (older documents) to the shapes each lies over.
 List<VectorShape> _withLegacyStrokes(
     List<VectorShape> shapes, List<VectorTint> tints, List<VectorTint> rubs) {
   if (tints.isEmpty && rubs.isEmpty) return shapes;
@@ -225,10 +214,9 @@ class VectorPath {
   final List<VectorNode> nodes;
   final bool closed;
 
-  /// part is which piece of its shape this run is in, once the shape has
-  /// been cut: the runs of one part are picked and moved together, and the
-  /// shape is still one shape. Nought, for a shape never cut. See
-  /// vector_cut.dart.
+  /// part is which piece of its shape this run is in once the shape has been
+  /// cut: a part's runs are picked and moved together, and the shape stays
+  /// one shape. Zero for a shape never cut. See vector_cut.dart.
   final int part;
 
   const VectorPath(this.nodes, {this.closed = false, this.part = 0});
@@ -274,8 +262,7 @@ class VectorShape {
   final GradientSpec? fillFade;
   final GradientSpec? strokeFade;
 
-  /// strokeWidth is in the drawing's own units, so it scales with the
-  /// drawing as the file's own lines do.
+  /// strokeWidth is in the drawing's own units, so it scales with it.
   final double strokeWidth;
   final StrokeCap cap;
   final StrokeJoin join;
@@ -284,24 +271,22 @@ class VectorShape {
   /// hole even when it goes the same way round.
   final bool evenOdd;
 
-  /// combine is how this shape is combined into the shape before it -- see
-  /// VectorCombine -- or null for a shape of its own. The shape a run of
-  /// combining shapes starts from gives the result its fill and stroke; the
-  /// others only give it their outlines, and keep their own colours for the
-  /// day they are separated again.
+  /// combine is how this shape is combined into the shape before it (see
+  /// VectorCombine), or null for a shape of its own. The first shape of a
+  /// combined run gives the result its fill and stroke; the others give only
+  /// their outlines and keep their colours for when they are separated.
   final VectorCombine? combine;
 
   /// tints and erasures are the tint brush's strokes and the eraser's
-  /// rub-outs laid on this shape -- those it was under when they were
-  /// painted. Its own, so a shape drawn later over the same place comes out
-  /// in its own colours, whole; and a shape that goes takes them with it.
-  /// In the drawing's units, where they were painted. See VectorTint.
+  /// rub-outs that were painted over this shape, in the drawing's units.
+  /// Held per shape so a shape drawn later over the same place is not
+  /// tinted, and a deleted shape takes its tints with it. See VectorTint.
   final List<VectorTint> tints;
   final List<VectorTint> erasures;
 
-  /// cue is when this shape comes in, in the playlist -- see VectorCue --
-  /// and cueGap the frames after the shape before it, for VectorCue.gap.
-  /// Read for the first of a run of combined shapes, which come in as one.
+  /// cue is when this shape comes in, in the playlist (see VectorCue), and
+  /// cueGap the frames after the shape before it, for VectorCue.gap. Read for
+  /// the first of a run of combined shapes, which come in as one.
   final VectorCue cue;
   final int cueGap;
 
@@ -309,34 +294,28 @@ class VectorShape {
   /// as long as the drawing's own arrival takes.
   final int? cueLength;
 
-  /// owns is which parts of [animation] this shape has made its own --
-  /// coming in, looping, leaving. Every other part is the drawing's, and
-  /// follows it. See animatedAs.
+  /// owns is which parts of [animation] this shape has made its own; the
+  /// rest follow the drawing's. See animatedAs.
   final Set<ShapeAnimationPart> owns;
 
-  /// text is the words this shape is the letters of, while it is still
-  /// text: typed with the text tool, its runs drawn from the font. Once its
-  /// points are edited any other way it is a shape like any other -- see
-  /// liveText -- and this is only what it was.
+  /// text is the words this shape is the letters of, while it is still text
+  /// (typed with the text tool). Once its points are edited it is an
+  /// ordinary shape; see liveText.
   final VectorText? text;
 
-  /// animation is this shape's own animation in place of the drawing's --
-  /// how it comes in, loops and leaves -- or null to animate as the drawing
-  /// does. Its timing is the playlist's and the drawing's keyframes'. Read
-  /// for the first of a run of combined shapes.
+  /// animation is this shape's own animation, or null to animate as the
+  /// drawing does. Its timing comes from the playlist and the drawing's own.
+  /// Read for the first of a run of combined shapes.
   final ElementAnimation? animation;
 
-  /// hidden leaves the shape out of the drawing, and locked holds it as it
-  /// is while the others are worked on: neither can be picked on the canvas.
-  /// Each is its layer's, in the Layers list -- read for the first of a run
-  /// of combined shapes, as [cue] is.
+  /// hidden leaves the shape out of the drawing, and locked keeps it as it
+  /// is; neither can be picked on the canvas. Set from the Layers list and
+  /// read for the first of a run of combined shapes, as [cue] is.
   final bool hidden;
   final bool locked;
 
-  /// origin is what made this shape, where something did and keeps track
-  /// of it: for a character's drawing, which of a layer's shapes as the
-  /// character drew it this began as -- see character_live.dart. Null for
-  /// a shape drawn by hand. Kept through every edit.
+  /// origin is a tag naming what made this shape, kept through every edit;
+  /// null for a shape drawn by hand. Nothing currently sets it.
   final String? origin;
 
   const VectorShape({
@@ -424,9 +403,8 @@ class VectorShape {
   /// its stroke width says -- see VectorNode.width.
   bool get tapered => paths.any((p) => p.nodes.any((n) => n.width != 1));
 
-  /// ownLine is whether its line is drawn point by point: tapered, or with
-  /// points that end or turn their own way -- what one stroke of the whole
-  /// path, with one end and one corner for all of it, cannot draw.
+  /// ownLine is whether its line must be drawn point by point: tapered, or
+  /// with per-point caps or joins, which a single stroke cannot draw.
   bool get ownLine =>
       tapered ||
       paths.any((p) => p.nodes.any((n) => n.cap != null || n.join != null));
@@ -484,8 +462,7 @@ class VectorShape {
       };
 
   /// liveText is [text] while this shape is still the letters it was laid
-  /// out as -- moved, perhaps, but not otherwise changed -- or null once it
-  /// has been edited into a shape of its own.
+  /// out as (moved, perhaps, but not otherwise changed), or null once edited.
   VectorText? get liveText {
     var t = text;
     if (t == null || t.signature != pathSignature(paths)) return null;
@@ -501,8 +478,8 @@ class VectorShape {
     return first == null ? t.origin : first.nodes.first.point + t.fromFirst;
   }
 
-  /// _animationFromJson reads a shape's own animation -- or the arrival and
-  /// loop it was kept as, separately, for a little while before.
+  /// _animationFromJson reads a shape's own animation, or the older separate
+  /// "arrive" and "loop" keys.
   static ElementAnimation? _animationFromJson(Map<String, dynamic> json) {
     if (json["anim"] case Map<String, dynamic> own) {
       return ElementAnimation.fromJson(own);
@@ -557,7 +534,7 @@ class VectorShape {
       hidden: json["hid"] == true,
       locked: json["lock"] == true,
       origin: json["from"] is String ? json["from"] as String : null,
-      // Kept before the parts were told apart: all of them its own.
+      // Without "animOwn" (older documents) an own animation owns every part.
       owns: json["animOwn"] is List
           ? {
               for (var n in json["animOwn"] as List)
@@ -572,9 +549,8 @@ class VectorShape {
 
 /// VectorCue is when a shape comes in, in the drawing's playlist: with the
 /// shape before it, as that one finishes coming in, or a number of frames
-/// after. Each comes in as the drawing's Animation says, taking as long as
-/// that animation does; with every shape together -- the start -- the
-/// drawing comes in as one, as it always has.
+/// after. With every shape together (the default) the drawing comes in as
+/// one.
 enum VectorCue {
   together("With previous"),
   after("After previous"),
@@ -583,14 +559,13 @@ enum VectorCue {
   final String label;
   const VectorCue(this.label);
 
-  /// next is the cue after this one, round again -- a playlist row's
-  /// button steps through them.
+  /// next is the cue after this one, wrapping round.
   VectorCue get next => values[(index + 1) % values.length];
 }
 
-/// VectorCombine is how a shape is combined with the shapes before it --
-/// the Boolean tool's operators. Kept rather than worked out once, so every
-/// shape in the result keeps its own points and can still be edited.
+/// VectorCombine is how a shape is combined with the shapes before it: the
+/// Boolean tool's operators. Kept live rather than applied once, so every
+/// shape keeps its own points and can still be edited.
 enum VectorCombine {
   /// unite joins it on: the outline round both.
   unite("Unite", PathOperation.union),
@@ -609,13 +584,11 @@ enum VectorCombine {
   const VectorCombine(this.label, this.operation);
 }
 
-/// VectorTint is one stroke of the tint brush: colour painted over the
-/// drawing, and seen only where the drawing is -- on its lines, its fills,
-/// or both, as the stroke was painted.
+/// VectorTint is one stroke of the tint brush (or eraser): colour painted
+/// over a shape and seen only on its lines, its fills, or both.
 ///
-/// A tint belongs to the drawing rather than to a shape: what is painted is
-/// what was seen under the brush, whichever shape that was. In the drawing's
-/// own units, so it moves and scales with the drawing.
+/// Held by the shapes it was painted over (VectorShape.tints), in the
+/// drawing's own units so it moves and scales with the drawing.
 class VectorTint {
   /// points is the brush's path. One point is a dab.
   final List<Offset> points;
@@ -678,8 +651,8 @@ class VectorTint {
       fill: fill,
       erase: erase);
 
-  /// mapped is this stroke with every point put through [f]: what moving or
-  /// scaling the drawing's points does to the tint laid on them.
+  /// mapped is this stroke with every point put through [f], for when the
+  /// points under it are moved or scaled.
   VectorTint mapped(Offset Function(Offset) f, {double scale = 1}) =>
       VectorTint(
           points: [for (var p in points) f(p)],
@@ -732,8 +705,7 @@ enum VectorFit {
   /// contain is the whole drawing, as large as fits, never squashed.
   contain("Fit"),
 
-  /// cover fills the box, never squashed, cut off where it does not fit --
-  /// what a drawing behind a whole page wants.
+  /// cover fills the box, never squashed, cut off where it does not fit.
   cover("Fill"),
 
   /// stretch fills the box, the drawing taking its shape.
@@ -750,46 +722,40 @@ enum VectorFit {
 /// is chosen: a blue that reads on light and dark drawings alike.
 const Color defaultHandleColor = Color(0xFF2F80ED);
 
+/// VectorElement is a drawing on the canvas; see the note at the top of the
+/// file.
 class VectorElement extends CanvasElement {
   /// assetId is the file the drawing came from, in the Vectors store.
   final String assetId;
 
-  /// viewBox is the drawing's own coordinate space -- what its points are
-  /// written in, and what is fitted to the element's box. Empty until it is
-  /// first taken apart, and read from the file to draw it before that.
+  /// viewBox is the drawing's own coordinate space, fitted to the element's
+  /// box. Empty until it is first taken apart; before that it is read from
+  /// the file.
   final Rect viewBox;
 
   /// shapes is the drawing taken apart, or null while it is still drawn as
-  /// the file it came from. See the note at the top of the file.
+  /// the file it came from.
   final List<VectorShape>? shapes;
 
   final VectorFit fit;
 
   /// handleColor and handleSize are how the edit points and handles are
-  /// drawn while it is being edited: so they can be told from the drawing
-  /// whatever colour the drawing is.
+  /// drawn, so they can be told from the drawing whatever its colours.
   final Color handleColor;
   final double handleSize;
 
   /// tint is one colour laid over the whole drawing, or null to draw it in
-  /// its own colours.
+  /// its own colours. Only the colour is taken: transparency stays.
   ///
-  /// For the commonest change a drawing gets -- an icon in the brand's
-  /// colour rather than black -- without taking it apart: the drawing stays
-  /// a reference to its file, a few bytes in the document. Recoloured shape
-  /// by shape instead, every copy of an icon carried its whole outline, and
-  /// a video with a few dozen icons in it was the best part of a megabyte.
-  /// Only the colour is taken: what was transparent stays transparent.
+  /// Recolours without taking the drawing apart, so it stays a small
+  /// reference to its file rather than carrying its whole outline.
   final Color? tint;
 
-  /// crop is which part of the drawing is shown, in fractions of the whole
-  /// of it -- a picture's crop, and the same numbers.
+  /// crop is which part of the drawing is shown, in fractions of the whole,
+  /// as a picture's crop is.
   ///
-  /// Kept apart from [viewBox] on purpose. The view box is the drawing's own
-  /// coordinate space, read from the file and rewritten whenever the drawing
-  /// is taken apart or reverted; a crop is a decision about how much of it
-  /// to show, and has to survive both. It is what lets a logo's mark be used
-  /// without its wordmark while the drawing stays a reference to its file.
+  /// Separate from [viewBox], which is rewritten whenever the drawing is
+  /// taken apart or reverted; the crop must survive both.
   final ImageCrop crop;
 
   final ElementAnimation animation;
@@ -815,13 +781,9 @@ class VectorElement extends CanvasElement {
 
   bool get hasDrawing => assetId.isNotEmpty || (shapes?.isNotEmpty ?? false);
 
-  /// placement is where the viewBox lands in [box]: the matrix that takes
-  /// the drawing's units to the canvas.
-  ///
-  /// Returned as a scale for each axis and an offset, which is all a fitted
-  /// drawing ever needs.
-  ///
-  /// [view] is the whole drawing; what is fitted is the part [crop] leaves.
+  /// placement is the scale and offset that take the drawing's units to the
+  /// canvas, fitting it into [box]. [view] is the whole drawing; what is
+  /// fitted is the part [crop] leaves.
   ({double sx, double sy, double dx, double dy}) placement(
       Rect box, Rect view) {
     view = croppedView(view);
@@ -851,9 +813,8 @@ class VectorElement extends CanvasElement {
           whole.left + whole.width * crop.right,
           whole.top + whole.height * crop.bottom);
 
-  /// shownIn is where the cropped drawing lands in [box], on the canvas:
-  /// what a painter clips to, so the parts cropped away stay away. Null
-  /// where nothing is cropped and there is nothing to clip.
+  /// shownIn is where the cropped drawing lands in [box], for a painter to
+  /// clip to; null when nothing is cropped.
   Rect? shownIn(Rect box, Rect whole) {
     if (crop.isWhole || whole.width <= 0 || whole.height <= 0) return null;
     var p = placement(box, whole);
@@ -863,13 +824,11 @@ class VectorElement extends CanvasElement {
   }
 
   /// croppedTo is this drawing with [next] as its crop and its box trimmed
-  /// to what is left, so the drawing stays exactly where it was on the
-  /// canvas -- see ImageElement.croppedTo, which is the same promise.
+  /// to what is left, so the drawing stays where it was on the canvas (as
+  /// ImageElement.croppedTo does).
   ///
-  /// Worked from where the drawing actually lands rather than from the box:
-  /// a drawing is fitted inside its box, with room to spare on one side, so
-  /// a strip of it is not a strip of the box. [whole] is the drawing's own
-  /// space -- its file's size, or its view box once taken apart.
+  /// Worked from where the drawing lands, not from the box, since a fitted
+  /// drawing may not fill its box. [whole] is the drawing's own space.
   VectorElement croppedTo(ImageCrop next, Rect whole) {
     if (whole.width <= 0 || whole.height <= 0) return copyWith(crop: next);
     var p = placement(bounds, whole);
@@ -930,9 +889,9 @@ class VectorElement extends CanvasElement {
     return copyWith(shapes: list);
   }
 
-  /// A drawing named by an extensionless id is still in the picture store
-  /// -- see CanvasMedia.migrateVectors -- and is a picture's to keep; one
-  /// that says it is a drawing is the Vectors store's.
+  /// An extensionless id is still in the picture store (see
+  /// CanvasMedia.migrateVectors); an .svg id is the Vectors store's, so it
+  /// is a media id instead.
   @override
   Set<String> get assetIds =>
       assetId.isNotEmpty && !assetId.endsWith(".svg") ? {assetId} : const {};
@@ -974,7 +933,7 @@ class VectorElement extends CanvasElement {
               ], _strokes(json["tints"]),
                 _strokes(json["erasures"], erase: true))
             : null,
-        fit: VectorFit.fromName(json["fit"] as String?),
+        fit: VectorFit.fromName(jsonStr(json["fit"])),
         handleColor: colorFromJson(json["handle"], defaultHandleColor),
         handleSize: jsonDouble(json["handleSize"], 8),
         tint: json["tint"] is num ? colorFromJson(json["tint"]) : null,
@@ -1029,9 +988,8 @@ Set<ShapeAnimationPart> partsChanged(
         ShapeAnimationPart.leaving,
     };
 
-/// pathSignature is [runs]' shape wherever they are: their points measured
-/// from the first, so that moving them all leaves it as it was and changing
-/// any one of them does not.
+/// pathSignature is a hash of [runs]' shape measured from their first point,
+/// so moving them all keeps it and changing any point does not.
 int pathSignature(List<VectorPath> runs) {
   var first = runs.where((r) => r.nodes.isNotEmpty).firstOrNull?.nodes.first;
   if (first == null) return 0;
@@ -1077,9 +1035,9 @@ class VectorText {
   final double leading;
   final VectorTextAlign align;
 
-  /// origin is where the first line started, on its baseline, when it was
-  /// laid out; fromFirst the same measured from the first point of its
-  /// runs, which is what carries it with them when they are moved.
+  /// origin is where the first line started, on its baseline, when laid
+  /// out; fromFirst is that measured from the runs' first point, so it
+  /// moves with them.
   final Offset origin;
   final Offset fromFirst;
 

@@ -9,23 +9,13 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 
 // canvas_scene.dart is one canvas of several in a document.
 //
-// A scene is what the whole document used to be: a set of elements, an order
-// to draw them in, a length in frames and the actions along it. A document is
-// a list of them, played one after another, and a document with one scene in
-// it is exactly the document there was before -- which is why nothing above
-// this file had to learn a new word to keep working. See CanvasDocument.scene.
-//
-// What a scene is *not* is a copy of the whole document. The page's size, its
-// background, its guides and what it will be published as belong to the
-// document: they are what makes the scenes one piece of work rather than
-// several. A scene that could change the page size would be a second
-// document with extra steps.
+// A scene is a set of elements, the order they are drawn in, a length in
+// frames and the actions along it. A document plays its scenes one after
+// another; see CanvasDocument.scene. The page's size, guides and publishing
+// settings belong to the document, not to a scene.
 
-/// SceneTransitionFamily groups the kinds in the picker.
-///
-/// The list is long enough that a flat one is a wall of names: asked in two
-/// steps the question is "what sort of change" and then "which one", which is
-/// how somebody actually chooses. The same shape the text animations use.
+/// SceneTransitionFamily groups the kinds in the picker, so choosing is "what
+/// sort of change" and then "which one".
 enum SceneTransitionFamily {
   none("None"),
   fade("Fade"),
@@ -34,10 +24,7 @@ enum SceneTransitionFamily {
   overlay("Overlay"),
   drawn("Drawn"),
 
-  /// paper is the one that belongs to a document: a leaf being turned. Its
-  /// own family rather than one more entry under Move, because somebody
-  /// looking for it is looking for the thing a book does, not for a
-  /// direction to slide in.
+  /// paper is a leaf being turned, the transition a book uses.
   paper("Paper");
 
   final String label;
@@ -45,15 +32,10 @@ enum SceneTransitionFamily {
 }
 
 /// SceneTransitionWay is which way a transition that has a direction goes.
-///
-/// Its own setting rather than four kinds with the direction in their names.
-/// The overlay ones each take a direction and two of them take a count as
-/// well, and a list with every combination spelled out would be sixty names
-/// for six ideas.
+/// A setting of its own, so the kinds list does not spell out every
+/// direction.
 enum SceneTransitionWay {
-  /// inPlace is for the kinds that can either travel or simply grow where
-  /// they are -- a row of shapes opening in the middle of the page rather
-  /// than crossing it.
+  /// inPlace grows where it is rather than crossing the page.
   inPlace("In place"),
   left("To the left"),
   right("To the right"),
@@ -65,19 +47,16 @@ enum SceneTransitionWay {
 
   bool get horizontal => this == left || this == right || this == inPlace;
 
-  /// waysFor is the directions worth offering for one kind.
-  ///
-  /// Barn doors take an axis rather than a side: two doors opening left and
-  /// right look exactly like two doors opening right and left, so offering
-  /// four of them is offering the same two twice. Growing in place is only
-  /// worth having where something can also travel.
+  /// waysFor is the directions worth offering for one kind. Barn doors take
+  /// an axis rather than a side, since left-and-right looks the same as
+  /// right-and-left.
   static List<SceneTransitionWay> waysFor(SceneTransitionKind kind) {
     if (kind == SceneTransitionKind.barn) return const [left, up];
     if (kind == SceneTransitionKind.shapeWipe) return values;
     return const [left, right, up, down];
   }
 
-  /// says is what this way is called for [kind], which is not always the
+  /// saysFor is what this way is called for [kind], which is not always the
   /// direction it points in.
   String saysFor(SceneTransitionKind kind) {
     if (kind != SceneTransitionKind.barn) return label;
@@ -90,9 +69,7 @@ enum SceneTransitionWay {
 
 /// SceneTransitionKind is how one scene becomes the next.
 enum SceneTransitionKind {
-  /// cut is no transition at all: the last frame of one scene, then the first
-  /// frame of the next. The default, because it is what film does most of the
-  /// time and the only one that costs nothing.
+  /// cut is no transition at all, and the default.
   cut("Cut"),
 
   /// fade crosses the two scenes over each other.
@@ -102,11 +79,6 @@ enum SceneTransitionKind {
   /// whatever the design wants. See SceneTransition.color.
   through("Fade through a colour"),
 
-  // Named the way the movement goes, in as few words as a menu can say it.
-  // They used to be sentences -- "The new one slides in, to the left" --
-  // which is what the label of a setting has to be when it is the only place
-  // the setting is explained, and is far too long for a list beside a dozen
-  // others that say it in two words.
   slideLeft("Slide left"),
   slideRight("Slide right"),
   slideUp("Slide up"),
@@ -128,10 +100,9 @@ enum SceneTransitionKind {
   zoomIn("Zoom in"),
   zoomOut("Zoom out"),
 
-  // The overlay family: something passes over the join rather than the two
-  // scenes simply crossing. What they have in common is that the change
-  // happens *under* something -- a band of colour, a shape opening, a set of
-  // bars -- which is what makes a cut look deliberate rather than abrupt.
+  // The overlay family: the change happens under something passing over the
+  // join -- a band of colour, a shape opening, a set of bars.
+
   /// band sweeps a panel of colour across, the scenes changing behind it.
   band("A band sweeps over", SceneTransitionFamily.overlay),
 
@@ -150,11 +121,10 @@ enum SceneTransitionKind {
   /// blurThrough goes soft, changes, and comes back sharp.
   blurThrough("Blur through", SceneTransitionFamily.overlay),
 
-  // The drawn family: transitions with a hand in them. Each is a mask made of
-  // shapes rather than of rectangles -- paint thrown at the page, a brush
-  // dragged across it, a comic's dots and speed lines -- and each is built
-  // from its own seed, so the same transition is the same every time it is
-  // played and every time it is exported.
+  // The drawn family: shapes with a hand in them -- paint, brush strokes, a
+  // comic's dots and speed lines. Each is built from its kind's seed, so it
+  // is the same every time it is played or exported.
+
   /// arrow drives an arrowhead across the page.
   arrow("Arrows", SceneTransitionFamily.drawn),
 
@@ -175,20 +145,11 @@ enum SceneTransitionKind {
   burst("Comic burst", SceneTransitionFamily.drawn),
 
   /// rays swings the same lines shut like a fan and open again.
-  ///
-  /// Its own kind rather than the second half of burst, because a burst that
-  /// grows out of the middle and then comes apart into rays is two ideas in
-  /// one transition -- each of them good on its own and strange together.
-  /// This one is the same shape doing the same thing at both ends.
   rays("Comic rays", SceneTransitionFamily.drawn),
 
   /// pageTurn turns the leaf over about its spine, the next page underneath.
-  ///
-  /// With facing pages it is the right-hand leaf that turns, and its back is
-  /// the next left-hand page -- the leaf is a sheet printed on both sides,
-  /// which is what the four earlier attempts at this lacked: each had one
-  /// page moving over another, and the reverse of the moving one was blank
-  /// paper or nothing. See paintPageTurn.
+  /// With facing pages the right-hand leaf turns and its back is the next
+  /// left-hand page, a sheet printed on both sides. See paintPageTurn.
   pageTurn("Page turn", SceneTransitionFamily.paper);
 
   final String label;
@@ -197,13 +158,10 @@ enum SceneTransitionKind {
       [this.family = SceneTransitionFamily.none]);
 
   /// covers is whether this kind works by putting something *over* the join
-  /// rather than by showing one scene through the other.
-  ///
-  /// The whole overlay and drawn families do. What they draw is a shape in
-  /// the transition's own colour that grows until it covers the page, and the
-  /// scenes change behind it -- which is what an overlay is, and what these
-  /// were not: built as masks, they were windows onto the next scene, so the
-  /// next scene's backdrop arrived through a shape before the scene did.
+  /// rather than by showing one scene through the other: a shape in the
+  /// transition's colour grows until it covers the page and the scenes
+  /// change behind it. Not a mask, which would show the next scene's
+  /// backdrop through the shape before the scene arrived.
   bool get covers =>
       familyOf == SceneTransitionFamily.overlay && this != blurThrough ||
       familyOf == SceneTransitionFamily.drawn;
@@ -258,11 +216,6 @@ enum SceneTransitionKind {
   bool get takesShape => this == shapeWipe;
 
   /// takesSoftness is whether its edge can be feathered.
-  ///
-  /// Everything that works by masking, which is most of the two later
-  /// families: the edge of the mask is the edge of the transition, and a
-  /// little softness is the difference between a shape being dragged over the
-  /// page and something happening to it.
   bool get takesSoftness =>
       this == band ||
       this == blinds ||
@@ -270,7 +223,7 @@ enum SceneTransitionKind {
       this == clock ||
       familyOf == SceneTransitionFamily.drawn;
 
-  /// takesColour is also true of the drawn ones that put paint on the page.
+  /// paints is whether this is a drawn kind that puts paint on the page.
   bool get paints => this == splatter || this == brush;
 
   /// inFamily is the kinds of one family, in the order they are listed.
@@ -279,8 +232,8 @@ enum SceneTransitionKind {
           if (kind.familyOf == family) kind,
       ];
 
-  /// familyOf is which group this kind belongs to, worked out from its own
-  /// name for the ones that were here before families were.
+  /// familyOf is which group this kind belongs to; kinds constructed without
+  /// a family are placed by name.
   SceneTransitionFamily get familyOf {
     if (family != SceneTransitionFamily.none) return family;
     return switch (this) {
@@ -319,14 +272,9 @@ class SceneTransition {
   /// frames is how long it takes.
   final int frames;
 
-  /// overlap is how many of those frames the two scenes are both playing
-  /// for.
-  ///
-  /// Its own number rather than the whole length, because the two are
-  /// different questions: a cross fade of twelve frames where both scenes run
-  /// for all twelve is one thing, and a fade to black where each scene has
-  /// six frames to itself is another. Zero means the outgoing scene is frozen
-  /// on its last frame while the incoming one has not started.
+  /// overlap is how many of those frames both scenes are playing for. Zero
+  /// freezes the outgoing scene on its last frame while the incoming one has
+  /// not started.
   final int overlap;
 
   /// color is what a transition through a colour goes through.
@@ -338,40 +286,33 @@ class SceneTransition {
   /// way is which direction the ones with a direction go.
   final SceneTransitionWay way;
 
-  /// shape is what opens, for the shape wipe. Any of the shapes an element
-  /// can be, drawn by the same code -- a transition that could only be a
-  /// circle would be a second, smaller list of shapes to keep in step.
+  /// shape is what opens, for the shape wipe: any shape an element can be.
   final ShapeKind shape;
 
-  /// count is how many pieces it is made of, for the blinds.
+  /// count is how many pieces it is made of. See takesCount.
   final int count;
 
   /// spacing is the room between the pieces, as a fraction of a piece.
   final double spacing;
 
-  /// angle turns the whole arrangement, in degrees. What lets a set of
-  /// strokes or arrows run across a corner rather than along an edge.
+  /// angle turns the whole arrangement, in degrees.
   final double angle;
 
   /// radius is how large each piece is, as a fraction of the room it has.
   final double radius;
 
-  /// softness feathers the edge, as a fraction of the page. Nothing is a hard
-  /// edge; a little makes a wipe read as a light sweeping across rather than
-  /// as a rectangle being dragged.
+  /// softness feathers the edge, as a fraction of the page. Zero is a hard
+  /// edge.
   final double softness;
 
-  /// sound is what is heard as the transition plays -- a whoosh, a glitch --
-  /// by the Audio store's id, or empty for silence. Heard where the
-  /// transition is, wherever that is: a scene made longer takes its
-  /// transition's sound with it, which a clip laid on the master by hand
-  /// would not. See CanvasDocument.transitionSounds.
+  /// sound is the Audio store id heard as the transition plays, or empty for
+  /// silence. It moves with the transition when a scene's length changes.
+  /// See CanvasDocument.transitionSounds.
   final String sound;
   final String soundName;
 
   /// soundLength is the file's length in seconds, soundVolume how loud it
-  /// plays, and soundLead how many frames before the transition it starts --
-  /// a whoosh is loudest a little after it begins.
+  /// plays, and soundLead how many frames before the transition it starts.
   final double soundLength;
   final double soundVolume;
   final int soundLead;
@@ -399,14 +340,8 @@ class SceneTransition {
   /// cut is the default: nothing between one scene and the next.
   static const cut = SceneTransition();
 
-  /// bestFor is this kind at its best, for somebody who has just chosen it.
-  ///
-  /// One set of defaults cannot suit two dozen transitions: six pieces is a
-  /// sensible number of blinds and a poor number of halftone dots, and
-  /// eighteen frames is slow for a cut and quick for paint being thrown at
-  /// the page and washed off again. So each kind says what it wants, and
-  /// choosing a kind -- or pressing reset -- starts from that rather than
-  /// from whatever the last kind happened to leave behind.
+  /// bestFor is the starting settings for [kind], used when a kind is chosen
+  /// or reset, so it never inherits what the last kind left behind.
   static SceneTransition bestFor(SceneTransitionKind kind) {
     var length = switch (kind) {
       SceneTransitionKind.cut => 0,
@@ -420,8 +355,7 @@ class SceneTransition {
       SceneTransitionKind.pageTurn => 16,
       _ => 14,
     };
-    // How many pieces this one is made of. A number that means something
-    // different in each: bars, splats, strokes, dots, rays, shapes.
+    // Bars, splats, strokes, dots, rays or shapes, depending on the kind.
     var pieces = switch (kind) {
       SceneTransitionKind.blinds => 8,
       SceneTransitionKind.shapeWipe => 5,
@@ -446,9 +380,8 @@ class SceneTransition {
       SceneTransitionKind.halftone => 0.55,
       _ => 0.5,
     };
-    // A little softness on the ones whose edge is a straight line, and none
-    // on the ones whose edge is already ragged -- paint with a blurred edge
-    // is not paint.
+    // Softness only where the edge is a straight line; ragged edges stay
+    // sharp.
     var soft = switch (kind) {
       SceneTransitionKind.band ||
       SceneTransitionKind.blinds ||
@@ -461,10 +394,8 @@ class SceneTransition {
       kind: kind,
       frames: length,
       overlap: length,
-      // Pointed a way this kind actually has. Barn doors open on an axis
-      // rather than in four directions, and "to the right" -- the way every
-      // transition started out pointing -- is not one of the two, so the
-      // setting came up with nothing chosen in it.
+      // A way this kind offers: barn doors have no "right", and the picker
+      // would show nothing chosen.
       way: SceneTransitionWay.waysFor(kind).contains(SceneTransitionWay.right)
           ? SceneTransitionWay.right
           : SceneTransitionWay.waysFor(kind).first,
@@ -479,7 +410,6 @@ class SceneTransition {
     );
   }
 
-  /// on is whether anything is drawn between the two scenes.
   bool get on => !kind.isCut && frames > 0;
 
   SceneTransition copyWith({
@@ -545,18 +475,17 @@ class SceneTransition {
 
   factory SceneTransition.fromJson(Map<String, dynamic> json) =>
       SceneTransition(
-        kind: SceneTransitionKind.fromName(json["kind"] as String?),
+        kind: SceneTransitionKind.fromName(jsonStr(json["kind"])),
         frames: jsonInt(json["frames"], 12).clamp(0, 600),
         overlap: jsonInt(json["overlap"], 12).clamp(0, 600),
         color: colorFromJson(json["color"], const Color(0xFF000000)),
-        ease: SceneTransitionEase.fromName(json["ease"] as String?),
-        way: SceneTransitionWay.fromName(json["way"] as String?),
-        // Absent means the default, which is a circle -- toJson leaves the
-        // circle out. ShapeKind's own fallback is a rectangle, so asking it
-        // turned every circle into a square on the next load.
+        ease: SceneTransitionEase.fromName(jsonStr(json["ease"])),
+        way: SceneTransitionWay.fromName(jsonStr(json["way"])),
+        // Absent means a circle, which toJson leaves out. ShapeKind.fromName
+        // falls back to a rectangle.
         shape: json["shape"] == null
             ? ShapeKind.circle
-            : ShapeKind.fromName(json["shape"] as String?),
+            : ShapeKind.fromName(jsonStr(json["shape"])),
         count: jsonInt(json["count"], 6).clamp(1, 40),
         spacing: jsonDouble(json["spacing"], 0.15).clamp(0.0, 2.0),
         angle: jsonDouble(json["angle"], 0).clamp(-180.0, 180.0),
@@ -600,13 +529,11 @@ enum SceneTransitionEase {
   }
 }
 
-/// SceneCamera is a slow move over a whole scene: from one framing to
-/// another across its length -- a push in, a pull out, a drift across.
+/// SceneCamera is a slow move over a whole scene, from one framing to
+/// another across its length: a push in, a pull out, a drift across.
 ///
 /// A framing is a zoom, never less than one so the page is always filled,
-/// and the point of the page it is centred on, as fractions of the page.
-/// What a still design needs to feel shot rather than placed, without a
-/// keyframe on every element of it.
+/// and the point it is centred on, as fractions of the page.
 class SceneCamera {
   final double fromZoom;
   final double fromX;
@@ -682,7 +609,7 @@ class SceneCamera {
       toZoom: to[0].clamp(1.0, 8.0),
       toX: to[1].clamp(0.0, 1.0),
       toY: to[2].clamp(0.0, 1.0),
-      ease: SceneTransitionEase.fromName(json["ease"] as String?),
+      ease: SceneTransitionEase.fromName(jsonStr(json["ease"])),
     );
   }
 }
@@ -696,8 +623,7 @@ class CanvasScene {
 
   final String name;
 
-  /// elements are painted first to last, so the last one is on top -- the
-  /// same order the document's own list had, because it is that list.
+  /// elements are painted first to last, so the last one is on top.
   final List<CanvasElement> elements;
 
   /// frames is this scene's length. One means a still.
@@ -707,27 +633,15 @@ class CanvasScene {
 
   /// holds is whether playback stops at the end of this scene instead of
   /// going on to the next one.
-  ///
-  /// For the two moments it is wanted: a scene being worked on, where running
-  /// into the next one is a distraction, and the end of a sequence that is
-  /// meant to sit on its last frame rather than loop away from it.
   final bool holds;
 
   /// background is this canvas's own backdrop, or null to use the
-  /// document's.
-  ///
-  /// Only the master scene uses it, and that is the point: a background put
-  /// on the shared canvas belongs to the shared canvas. Written to the
-  /// document's own background instead, as it was, turning the master off
-  /// left every scene wearing it with nothing to say where it came from.
+  /// document's. Only the master scene uses it, so turning the master off
+  /// takes its background with it.
   final CanvasBackground? background;
 
-  /// backgroundOff switches this canvas's backdrop off without forgetting it.
-  ///
-  /// For the shared canvas above all: a master worth having is often one that
-  /// carries a logo and a transition and nothing else, and the scenes under
-  /// it want their own backdrops. Without this the only way to stop the
-  /// master covering them would be to throw its background away.
+  /// backgroundOff switches this canvas's backdrop off without forgetting it,
+  /// so a master can stop covering the scenes' own backdrops.
   final bool backgroundOff;
 
   /// masterOff leaves the master canvas off this one: a game's title screen
@@ -736,32 +650,25 @@ class CanvasScene {
   final bool masterOff;
 
   /// gameSounds are what each mixer channel does as a game comes to this
-  /// scene, by channel key: "stop" stops it, "slot:<clip id>" plays that
+  /// scene, by channel key: "stop" stops it, `slot:<clip id>` plays that
   /// slot; a channel not here keeps playing. See CanvasController.gameSound.
   final Map<String, String> gameSounds;
 
   /// cover marks this canvas as the outside of a document rather than one of
-  /// its leaves -- see PageCover.
-  ///
-  /// On the scene rather than on the document, because it is a fact about this
-  /// canvas: dragged to another place in the list it is still the cover, and
-  /// a document that named its cover by position would have the wrong one the
-  /// first time anything moved. Read only where the document is pages; a
-  /// scene carrying it is a page that was a scene for a while.
+  /// its leaves; see PageCover. Kept on the scene, not as a position on the
+  /// document, so it survives reordering. Read only when the document is
+  /// pages.
   final PageCover cover;
 
-  /// transition is how this scene gives way to the next, or null for whatever
-  /// the document's default is -- see CanvasDocument.defaultTransition, which
-  /// is the master scene's.
-  ///
-  /// Null rather than a copy of the default, so changing the default changes
-  /// every scene that has not been given one of its own. A scene with its own
-  /// is what the panel marks as custom.
+  /// transition is how this scene gives way to the next, or null for the
+  /// document's default (CanvasDocument.defaultTransition, the master
+  /// scene's). Null rather than a copy, so changing the default reaches
+  /// every scene without its own.
   final SceneTransition? transition;
 
-  /// camera is this scene's slow move, or null to hold still -- see
-  /// SceneCamera. Seen in playback through the run and in the export; the
-  /// editor shows the page still, so a press lands where it looks.
+  /// camera is this scene's slow move, or null to hold still. Applied in
+  /// playback and export only; the editor shows the page still so a press
+  /// lands where it looks.
   final SceneCamera? camera;
 
   const CanvasScene({
@@ -780,12 +687,8 @@ class CanvasScene {
     this.camera,
   });
 
-  /// says is what the panel calls this canvas: its name, or what it is and
-  /// where it comes when it has not been given one.
-  ///
-  /// A cover says so rather than saying a number: "Page 1" on the cover and
-  /// again on the first leaf is the list naming two different things the
-  /// same, which is exactly the confusion marking a cover is meant to end.
+  /// saysAt is what the panel calls this canvas: its name, or its kind and
+  /// number. A cover is called by its cover label rather than a number.
   String saysAt(int index, [CanvasKind kind = CanvasKind.scenes]) {
     if (name.isNotEmpty) return name;
     if (kind.isPages && cover.isCover) return cover.label;
@@ -796,8 +699,7 @@ class CanvasScene {
   /// it, or null where it has none or has been told not to.
   CanvasBackground? get sharedBackground => backgroundOff ? null : background;
 
-  /// custom is whether this scene has a transition of its own rather than the
-  /// document's.
+  /// custom is whether this scene has a transition of its own.
   bool get custom => transition != null;
 
   CanvasScene copyWith({
@@ -886,17 +788,14 @@ class CanvasScene {
       transition: json["transition"] is Map<String, dynamic>
           ? SceneTransition.fromJson(json["transition"] as Map<String, dynamic>)
           : null,
-      cover: PageCover.fromName(json["cover"] as String?),
+      cover: PageCover.fromName(jsonStr(json["cover"])),
       camera: SceneCamera.fromJson(json["camera"]),
     );
   }
 }
 
-/// _sceneCounter and newSceneId make ids that are unique within a session.
-///
-/// The same shape as an element's id and for the same reason: a button's
-/// action names a scene by id, so a scene has to keep its name across a
-/// rename, a reorder and a save.
+/// newSceneId makes an id unique within a session, in the same shape as an
+/// element's id.
 int _sceneCounter = 0;
 String newSceneId() => "sc${DateTime.now().microsecondsSinceEpoch}_"
     "${_sceneCounter++}";

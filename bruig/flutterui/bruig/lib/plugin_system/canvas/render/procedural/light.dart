@@ -1,19 +1,17 @@
 part of 'generators.dart';
 
 // light.dart is the Gradient & light family: colour that blends, waves of
-// light, out-of-focus discs, and stars. (Rings are in generators.dart, and
-// a plain fill is just the base.)
+// light, out-of-focus discs, and stars. (Rings are in generators.dart.)
 //
-// What each style drew before it had settings of its own is its first kind,
-// and the default, so that a document saved then is the same picture now.
+// Each style's first kind is the default and must keep drawing what the style
+// drew before it had kinds, so older documents look the same.
 
 /// _colourGrid draws a lattice of [cols] by [rows] cells over [rect], the
 /// colour at each corner given by [at] as 0xAARRGGBB and blended smoothly
 /// across each cell.
 ///
-/// Colour that changes smoothly over the whole frame -- a mesh gradient, a
-/// nebula -- is a few hundred corners rather than a million pixels: the
-/// blending between them is done by the graphics card for nothing.
+/// Smooth colour over the whole frame is then a few hundred corners rather
+/// than a million pixels; the GPU blends between them for free.
 void _colourGrid(ui.Canvas canvas, Rect rect, int cols, int rows,
     int Function(double u, double v) at) {
   var colours = Int32List((cols + 1) * (rows + 1));
@@ -71,9 +69,8 @@ void _gradientMesh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 
 /// _blooms is a handful of soft radial blooms, blended additively.
 ///
-/// Additive rather than alpha-blended: overlapping blooms should get brighter
-/// where they meet, which is what makes it read as light rather than as
-/// several coloured circles lying on top of one another.
+/// Additive so overlaps get brighter, which reads as light rather than as
+/// coloured circles lying on one another.
 void _blooms(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var rnd = SeededRandom(spec.seed);
   var count = 3 + (spec.density * 9).round();
@@ -114,9 +111,8 @@ void _blooms(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 /// frame, every place in between a blend of the nearest of them, the whole
 /// thing gently bent.
 ///
-/// The colours are the base, the main and the accent, and the blends between
-/// them -- so a palette chosen for the background is the palette of the
-/// mesh.
+/// The colours are the base, main and accent and blends of them, so the
+/// background's palette is the mesh's.
 void _mesh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var count = spec.p("points").round().clamp(2, 9);
   // The steeper each point's pull falls off, the more the frame is patches
@@ -184,8 +180,8 @@ void _aurora(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var wave = rect.height * 0.12 * (0.4 + spec.variation);
     var positions = <double>[];
     var colours = <int>[];
-    // And a short fade below the bright edge, which a real curtain has: the
-    // glow does not stop at a line.
+    // A short fade below the bright edge too: the glow does not stop at a
+    // line.
     var below = <double>[];
     var belowColours = <int>[];
     for (var i = 0; i <= steps; i++) {
@@ -260,9 +256,8 @@ void _flowWaves(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 
 /// _strands traces ribbons through a flow field, glowing where they bunch.
 ///
-/// They are drawn in bands of neighbouring start points so that a band
-/// stays together as it flows, which is what makes the ribbons read as
-/// ribbons rather than as unrelated strands.
+/// Drawn in bands of neighbouring start points, so a band stays together
+/// as it flows and reads as a ribbon rather than unrelated strands.
 void _strands(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var noise = ValueNoise(spec.seed);
   var bands = 3 + (spec.density * 9).round();
@@ -280,9 +275,8 @@ void _strands(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var color = rnd.next() < 0.35 ? spec.accent : spec.foreground;
     var width = math.max(0.7, _unit(rect, spec) * rnd.range(0.03, 0.12));
 
-    // The band's strands are built once and drawn twice: the glow blurs a
-    // layer holding all of them, and the filament goes over the top. One
-    // blur for the band rather than one for each strand.
+    // Built once, drawn twice: one blurred layer holds every strand's glow
+    // (one blur per band, not per strand), then the filaments go on top.
     var strands = <Path>[];
     for (var s = 0; s < perBand; s++) {
       var frac = perBand == 1 ? 0.5 : s / (perBand - 1);
@@ -454,9 +448,8 @@ Path _aperture(Offset c, double r, int sides, double turn) {
 
 /// _bokeh is out-of-focus discs of light.
 ///
-/// Each disc is brighter at its rim than at its centre, which is what an
-/// out-of-focus highlight actually looks like through a real lens and is the
-/// difference between this and a picture of some circles.
+/// Each disc is brighter at its rim than its centre, as an out-of-focus
+/// highlight is through a real lens.
 void _bokeh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var rnd = SeededRandom(spec.seed);
   var count = 8 + (spec.density * 90).round();
@@ -544,8 +537,8 @@ void _starfield(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
         r,
         Paint()
           ..color = _fade(mag > 0.93 ? spec.accent : spec.foreground, alpha));
-    // The brightest few get a cross of light, which is what makes a starfield
-    // read as stars rather than as noise.
+    // The brightest few get a cross of light, so the field reads as stars
+    // rather than noise.
     if (mag > 1 - spec.p("spikes")) {
       var arm = r * 6;
       var paint = Paint()

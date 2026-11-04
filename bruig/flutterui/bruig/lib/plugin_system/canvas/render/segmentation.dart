@@ -5,15 +5,12 @@ import 'dart:typed_data';
 // by edge: the engine behind Quick select, and behind Select subject where
 // the operating system cannot find one itself.
 //
-// It is GrabCut, more or less. Two colour models -- what the subject is made
-// of, and what the background is made of -- are learnt from pixels known to
-// be one or the other; every other pixel is then given to whichever side
-// costs least, where a pixel costs what its colour is unlikely to be on that
-// side, and cutting between two neighbours costs more the more alike they
-// are. The cheapest cut is a minimum cut of a graph, found as a maximum flow.
-// So the boundary runs where the picture has an edge, and nowhere it does
-// not, which is the whole of what threshold-and-flood removal could never
-// promise.
+// It is GrabCut, more or less. Two colour models (subject and background)
+// are learnt from pixels known to be one or the other; every other pixel
+// goes to whichever side costs least, where a pixel costs how unlikely its
+// colour is on that side and cutting between neighbours costs more the more
+// alike they are. The cheapest cut is a minimum cut of a graph, found as a
+// maximum flow, so the boundary runs where the picture has an edge.
 //
 // Pure Dart over plain lists, so it runs in an isolate.
 
@@ -25,11 +22,11 @@ abstract final class Seed {
 }
 
 /// SegmentJob is one cut to make: [rgba] is [width] x [height] pixels, four
-/// bytes each (straight or premultiplied -- only colour is compared, and the
-/// pictures cut are opaque), and [seeds] says what is known of each, one
-/// byte each. [prior], where given, is how sure each pixel already was of
-/// being the subject, 0 to 255: it does not decide anything, but it gives the
-/// colour models more to learn from than the seeds alone.
+/// bytes each (straight or premultiplied: only colour is compared, and the
+/// pictures cut are opaque), and [seeds] is a [Seed] per pixel. [prior],
+/// where given, is how sure each pixel already was of being the subject, 0
+/// to 255: it decides nothing, but gives the colour models more to learn
+/// from than the seeds alone.
 class SegmentJob {
   final Uint8List rgba;
   final int width;
@@ -63,8 +60,8 @@ class SegmentJob {
 Uint8List segment(SegmentJob job) {
   var n = job.width * job.height;
   var labels = Uint8List(n);
-  // To begin with, what is known, and -- where a prior says -- what was
-  // thought; nothing else is the subject.
+  // To begin with the subject is the subject seeds plus what the prior
+  // leans towards.
   for (var i = 0; i < n; i++) {
     var s = job.seeds[i];
     labels[i] =
@@ -74,11 +71,9 @@ Uint8List segment(SegmentJob job) {
   }
   var prior = job.prior;
   for (var round = 0; round < math.max(1, job.rounds); round++) {
-    // The first models are learnt from what is known -- the seeds, and what
-    // a prior is sure of -- and from nothing guessed. Learnt from every
-    // pixel not yet called the subject, the background's model took in most
-    // of the subject itself, and a subject a shade off its background then
-    // looked like background everywhere but under the stroke.
+    // The first models are learnt only from what is known (the seeds, and
+    // what the prior is sure of). Learnt from every pixel not yet called
+    // the subject, the background model would take in most of the subject.
     bool first = round == 0;
     bool known(int i, bool subject) {
       var s = job.seeds[i];

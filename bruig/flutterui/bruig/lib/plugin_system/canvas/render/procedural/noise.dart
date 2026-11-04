@@ -2,26 +2,17 @@ import 'dart:math' as math;
 
 // noise.dart is the randomness every generated background draws from.
 //
-// Two kinds, and the difference matters. [hash] is white noise: given the same
-// three integers it always returns the same number, and neighbouring inputs
-// are unrelated. That is what scatters things -- which cell is lit, how big
-// this disc is, which glyph falls here. [ValueNoise] is smooth: neighbouring
-// inputs return *nearly* the same number, so it makes fields that flow --
-// contours, waves, blooms of colour.
+// [hash] is white noise (neighbouring inputs unrelated): it scatters things.
+// [ValueNoise] is smooth (neighbours nearly equal): it makes fields that flow.
 //
-// Both are pure functions of a seed and a position. Nothing here holds state
-// and nothing calls Random(), which is the whole reason a background is
-// reproducible: the same document renders the same picture on the stage at
-// 400px, in the export at 2400px, and on somebody else's machine a year later.
-// A Random() walked in draw order would give a different picture the moment
-// anything was drawn in a different order or skipped.
+// Everything is a pure function of a seed and a position, never Random(), so
+// a background renders the same picture at any size, in any draw order, on
+// any machine.
 
 /// hash returns a deterministic value in 0..1 from three integers.
 ///
-/// A cheap integer mix rather than anything cryptographic. What is wanted is
-/// that adjacent inputs look unrelated to the eye, which this does, and that
-/// it costs nothing -- it runs a few hundred thousand times per frame of a
-/// dense background.
+/// A cheap integer mix, not cryptographic: it runs a few hundred thousand
+/// times per frame of a dense background.
 double hash(int seed, int x, int y) {
   var h = seed * 374761393 + x * 668265263 + y * 2147483647;
   h = (h ^ (h >> 13)) * 1274126177;
@@ -29,19 +20,16 @@ double hash(int seed, int x, int y) {
   return (h & 0x7FFFFFFF) / 0x7FFFFFFF;
 }
 
-/// hashRange is [hash] mapped onto a span, for the many places that want "a
-/// size between this and that".
+/// hashRange is [hash] mapped onto lo..hi.
 double hashRange(int seed, int x, int y, double lo, double hi) =>
     lo + hash(seed, x, y) * (hi - lo);
 
 /// SeededRandom is a stream of numbers from a seed, for the generators that
 /// scatter a fixed count of things rather than filling a grid.
 ///
-/// Deliberately not dart:math's Random even though that also takes a seed: a
-/// generator that draws N discs wants to be able to draw the first 40 of 200
-/// when the density is turned down and have them be *the same* first 40, and
-/// that only works if the sequence is fixed and consumed in a fixed order.
-/// Writing the generator out makes that guarantee visible instead of implied.
+/// Not dart:math's Random: turning density down from 200 discs to 40 must
+/// draw the same first 40, which needs a sequence this file fixes rather than
+/// one the SDK could change.
 class SeededRandom {
   int _state;
 
@@ -63,18 +51,14 @@ class SeededRandom {
 }
 
 /// ValueNoise is smooth 2D noise: a lattice of random values, interpolated.
-///
-/// Value noise rather than Perlin or simplex. Perlin's gradients give a
-/// slightly nicer distribution and simplex is faster in high dimensions;
-/// neither difference is visible in a background, and both are considerably
-/// more code to read.
+/// Value noise rather than Perlin or simplex: the difference is not visible
+/// in a background and it is much less code.
 class ValueNoise {
   final int seed;
   const ValueNoise(this.seed);
 
-  /// at samples the field. [x] and [y] are in lattice units -- one unit is one
-  /// cell of the underlying grid, so the caller scales the coordinates to
-  /// choose how large the features are.
+  /// at samples the field. [x] and [y] are in lattice cells, so the caller
+  /// scales them to choose the feature size.
   double at(double x, double y) {
     var x0 = x.floor(), y0 = y.floor();
     var fx = _smooth(x - x0), fy = _smooth(y - y0);
@@ -87,10 +71,9 @@ class ValueNoise {
     return _lerp(_lerp(a, b, fx), _lerp(c, d, fx), fy);
   }
 
-  /// fbm sums several octaves of [at], each half the amplitude and twice the
-  /// frequency of the last. It is what turns noise that looks like a blurred
-  /// grid into noise that looks like landscape, and every generator here that
-  /// wants an organic field uses it rather than a single octave.
+  /// fbm sums [octaves] of [at], each half the amplitude and twice the
+  /// frequency of the last, normalised to 0..1. One octave looks like a
+  /// blurred grid; several look organic.
   double fbm(double x, double y, {int octaves = 4}) {
     var sum = 0.0, amp = 1.0, norm = 0.0, freq = 1.0;
     for (var i = 0; i < octaves; i++) {
@@ -102,37 +85,29 @@ class ValueNoise {
     return norm == 0 ? 0 : sum / norm;
   }
 
-  /// _smooth is the smoothstep that removes the creases. Interpolating the
-  /// lattice linearly leaves a visible diamond grid, because the derivative
-  /// jumps at every cell boundary.
+  /// _smooth is smoothstep: linear interpolation leaves a visible grid,
+  /// because the derivative jumps at every cell boundary.
   static double _smooth(double t) => t * t * (3 - 2 * t);
 
   static double _lerp(double a, double b, double t) => a + (b - a) * t;
 }
 
-/// angleNoise is a flow field: a direction at every point, varying smoothly.
-///
-/// What bends the ribbons in the wave styles. Its own function because the
-/// mapping from a 0..1 field onto an angle wants more than a full turn of
-/// range -- with less, the field never doubles back and the ribbons all drift
-/// the same way.
+/// angleNoise is a flow field: a smoothly varying angle in radians, spanning
+/// [turns] full turns. Below about one turn the field never doubles back and
+/// everything following it drifts the same way.
 double angleNoise(ValueNoise noise, double x, double y, double turns) =>
     noise.fbm(x, y, octaves: 3) * turns * 2 * math.pi;
 
 /// worley is cellular noise: how far a point is from the nearest of a set of
 /// scattered feature points, and which point that was.
 ///
-/// A different kind of noise from the two above, and worth having for what it
-/// makes: smooth noise makes fields that flow and white noise makes scatter,
-/// but neither makes *rounded things at random intervals* -- a dent, a pit, a
-/// bubble in a casting. That is a distance to the nearest of something, which
-/// is what this is.
+/// It makes rounded things at random intervals (a dent, a pit, a bubble),
+/// which neither smooth nor white noise does. Returns the distance (capped at
+/// 1) and the feature's own 0..1 id, so a caller can keep some features and
+/// drop the rest.
 ///
-/// One feature point per lattice cell, found by hashing the cell, so the
-/// nearest one is always in the nine cells around the sample. The id that
-/// comes back with it is the feature's own random number, which is what lets
-/// a caller keep some of them and drop the rest -- the difference between a
-/// sheet covered in dents and a sheet with three.
+/// One feature point per lattice cell, so the nearest is always in the nine
+/// cells around the sample.
 (double, double) worley(int seed, double x, double y) {
   var cx = x.floor(), cy = y.floor();
   var best = 8.0, id = 0.0;
@@ -154,12 +129,9 @@ double angleNoise(ValueNoise noise, double x, double y, double turns) =>
 
 /// ridged is noise folded at its middle so the peaks come to a crease.
 ///
-/// Smooth noise is round everywhere, which is right for a field and wrong for
-/// anything with an edge. Folding it -- taking the distance from the middle
-/// rather than the value -- turns every crossing into a sharp ridge, and a
-/// high threshold on that leaves long thin lines that wander: a scratch, a
-/// crack, a gouge. Drawing those as line segments instead is what makes them
-/// look drawn.
+/// Taking the distance from the middle turns every crossing into a sharp
+/// ridge, so a high threshold on it leaves long thin wandering lines: a
+/// scratch, a crack, a gouge.
 double ridged(ValueNoise noise, double x, double y, {int octaves = 3}) {
   var sum = 0.0, amp = 1.0, norm = 0.0, freq = 1.0;
   for (var i = 0; i < octaves; i++) {

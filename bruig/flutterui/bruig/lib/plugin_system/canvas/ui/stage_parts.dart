@@ -6,22 +6,15 @@ import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
 import 'package:flutter/painting.dart';
 
-// stage_parts.dart is dragging a *part* of an element rather than the element:
-// a chart's title, description or key, a table's column rules, and which cell
-// of a table a point is in.
+// stage_parts.dart is dragging a part of an element rather than the element: a
+// chart's title, description or key, a table's column rules, and which table
+// cell a point is in.
 //
-// These are their own file because they are the one kind of gesture the stage
-// cannot answer out of an element's rectangle. Everything else it drags is a
-// box with a position and a size; these are pieces drawn inside a box, whose
-// places are decided by the painters. So the questions are asked of the same
-// code that draws them -- chartLabelPlaces, tableColumnWidths -- and a label
-// is picked up exactly where it can be seen rather than where a second,
-// separately maintained idea of its place says it should be.
-//
-// Nothing here touches the controller or the widget. Each function is given
-// the element and the rectangle it is drawn in and returns either an answer
-// or a new element; committing that to the document, and deciding whether the
-// change is transient, stays with the stage.
+// These pieces are placed inside a box by the painters, so the questions are
+// asked of the same code that draws them (chartLabelPlaces, tableColumnWidths),
+// and a label is picked up exactly where it is seen. Nothing here touches the
+// controller or the widget: each function takes the element and its rectangle
+// and returns an answer or a new element; committing it stays with the stage.
 
 /// ChartLabelGrab is which of a chart's three pieces of writing is being
 /// dragged, and whether by its body or by its corner.
@@ -37,17 +30,10 @@ class ChartLabelGrab {
 }
 
 /// chartLabelGrabAt is which of the three a document point lands on, if any.
-///
-/// The corner is tried before the body, and they are tried in reverse drawing
-/// order, so the one on top is the one picked up when they overlap.
-///
-/// The key is moved but not resized: its size is decided by its own setting
-/// and by the words in it, so a corner to drag would be a corner that argued
-/// with the number in the panel.
-///
-/// [slop] is the corner's reach in document units -- the stage's screen-pixel
-/// allowance divided by the zoom, so it is the same size under the pointer at
-/// every scale.
+/// Corners before bodies, in reverse drawing order, so the one on top wins.
+/// The key is moved but not resized: its size comes from its setting and its
+/// words. [slop] is the corner's reach in document units (the stage's
+/// screen-pixel allowance over the zoom).
 ChartLabelGrab? chartLabelGrabAt(
     ChartElement e, Rect bounds, Offset doc, double slop) {
   var rects = chartLabelPlaces(e, bounds);
@@ -65,12 +51,9 @@ ChartLabelGrab? chartLabelGrabAt(
   return null;
 }
 
-/// chartLabelDragged is [e] with the drag written onto whichever label is
-/// held, in fractions of the chart's own box so that it stays put when the
-/// chart is resized.
-///
-/// Null when there is nothing sensible to write -- a chart with no area is
-/// one where every fraction would be a division by zero.
+/// chartLabelDragged is [e] with the drag written onto the held label, in
+/// fractions of the chart's box so it stays put when the chart is resized.
+/// Null for a chart with no area, where every fraction divides by zero.
 ChartElement? chartLabelDragged(
     ChartElement e, Rect bounds, ChartLabelGrab grab, Offset doc) {
   if (bounds.width <= 0 || bounds.height <= 0) return null;
@@ -83,9 +66,8 @@ ChartElement? chartLabelDragged(
     return grownFor(e.copyWith(legend: e.legend.copyWith(x: x, y: y)), bounds);
   }
 
-  // Where it is drawn now, which is its own place or the chart's idea of one
-  // -- a label dragged for the first time must move from where it can be seen
-  // rather than from a corner it has never been in.
+  // Where it is drawn now (its own place or the chart's default), so a
+  // label dragged for the first time moves from where it is seen.
   var drawn = chartLabelPlaces(e, bounds)[grab.part]!;
   var box = (grab.part == ChartLabelPart.title ? e.titleBox : e.descriptionBox)
       .copyWith(
@@ -112,20 +94,12 @@ ChartElement? chartLabelDragged(
 }
 
 /// grownFor sizes the chart's box to exactly hold the chart and its placed
-/// labels, keeping everything where it looks like it is.
-///
-/// Without it a title dragged off the side sat outside the element's box. It
-/// still drew -- nothing clips it -- but it was outside the selection outline
-/// and outside what a marquee or a group move would pick up, so it read as a
-/// separate thing that happened to be near the chart. The box is what says
-/// "this text belongs to this chart".
+/// labels, keeping everything where it looks to be, so a label dragged off
+/// the side stays inside the selection and moves with the chart.
 ///
 /// It shrinks as well as grows, back to the chart's own rectangle once the
-/// labels are inside it again. Growing only was the first attempt and left a
-/// box that could be stretched but never put back, so an experimental drag out
-/// and back cost a chart a margin of empty selection for good. Shrinking is
-/// only safe because the chart's own rectangle is a thing in its own right --
-/// see ChartBody -- so the plot does not follow the box in either direction.
+/// labels are inside again. That is safe only because the chart's rectangle
+/// is its own (see ChartBody), so the plot does not follow the box.
 ChartElement grownFor(ChartElement e, Rect bounds) {
   var rects = chartLabelPlaces(e, bounds);
   if (rects.isEmpty) return e;
@@ -153,10 +127,8 @@ ChartElement grownFor(ChartElement e, Rect bounds) {
       .copyWith(
         titleBox: refit(e.titleBox),
         descriptionBox: refit(e.descriptionBox),
-        // The chart itself stays exactly where it is. Growing the box grew the
-        // plot with it, so dragging a title off the corner made the bars
-        // taller -- a resize nobody asked for, from a drag that was about the
-        // words.
+        // The chart itself stays exactly where it is: a drag about the words
+        // must not resize the plot.
         body: ChartBody.fitting(e.body.rectIn(bounds), wanted),
       )
       .withBase(
@@ -167,12 +139,9 @@ ChartElement grownFor(ChartElement e, Rect bounds) {
       ) as ChartElement;
 }
 
-/// tableColumnDividers is where a table's column rules fall, in document
-/// units.
-///
-/// Only the inner ones. The outer two are the element's own edges, which
-/// already have resize handles on them and would be two controls doing
-/// different things in the same place.
+/// tableColumnDividers is where a table's inner column rules fall, in
+/// document units. The outer two are the element's edges, which have resize
+/// handles already.
 List<double> tableColumnDividers(TableElement e, Rect bounds) {
   var widths = tableColumnWidths(e, bounds);
   var out = <double>[];
@@ -185,15 +154,9 @@ List<double> tableColumnDividers(TableElement e, Rect bounds) {
 }
 
 /// tableColumnAt is which divider a document point is on, if any, given the
-/// pointer's reach in document units.
-///
-/// The reach is narrowed to a quarter of the thinner column either side of
-/// the rule. A league table has a dozen columns, several of them three
-/// characters wide, and a fixed thirteen-pixel allowance each way swallowed
-/// most of them -- so a cell in the GD column could not be clicked at all,
-/// because every point in it was nearer a rule than not. What is being
-/// allowed for is an unsteady hand, and it cannot be worth more than the
-/// thing it is covering up.
+/// pointer's reach in document units. The reach is narrowed to a quarter of
+/// the thinner column either side, so narrow columns (a league table's GD)
+/// can still be clicked.
 int? tableColumnAt(TableElement e, Rect bounds, Offset doc, double slop) {
   if (!bounds.inflate(slop).contains(doc)) return null;
   var widths = tableColumnWidths(e, bounds);
@@ -210,17 +173,14 @@ int? tableColumnAt(TableElement e, Rect bounds, Offset doc, double slop) {
 }
 
 /// tableColumnDragged is [e] with the drag written onto the two columns
-/// either side of divider [at], leaving every other column where it is.
-///
-/// Either side, because a table fills its element: making one column wider
-/// has to make another narrower, and taking it from its neighbour is the only
-/// choice that does not shuffle the whole table sideways.
+/// either side of divider [at], leaving every other column where it is: a
+/// table fills its element, so widening one narrows its neighbour.
 TableElement? tableColumnDragged(
     TableElement e, Rect bounds, int at, Offset doc) {
   if (bounds.width <= 0) return null;
 
-  // Seeded from the measured widths the first time, so a drag starts from the
-  // table as it looks rather than from equal columns.
+  // Seeded from the measured widths, so a drag starts from the table as
+  // it looks rather than from equal columns.
   var widths = tableColumnWidths(e, bounds);
   if (at + 1 >= widths.length) return null;
 

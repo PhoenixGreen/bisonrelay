@@ -9,11 +9,8 @@ import 'package:flutter/painting.dart';
 // counter_painter.dart draws a counter: a formatted number with words either
 // side of it, in a box, over whatever buttons it carries.
 //
-// The number and the words are painted as one line of differently styled
-// stretches rather than as three pieces side by side. Pieces painted one
-// after another have to be positioned by adding up their widths, and a line
-// laid out that way is a line that will not centre -- which matters more here
-// than anywhere else, because the width of the number changes as it counts.
+// The number and words are painted as one line of styled runs, not three
+// pieces, so the line centres as the number's width changes.
 
 /// counterGap is the space between the buttons, and between them and the
 /// number above.
@@ -21,18 +18,13 @@ const double counterGap = 8;
 
 /// counterButtonRects is where a counter's buttons are, in document space.
 ///
-/// Public for the same reason tableRowHeights is: the stage has to know which
-/// button the pointer is over, and a second calculation would be a second
-/// answer -- a button that lights up under the pointer and does nothing when
-/// pressed is worse than no button.
+/// The stage hit-tests with it, so there is only one calculation.
 List<Rect> counterButtonRects(CounterElement e, Rect bounds) {
   if (e.buttons.isEmpty) return const [];
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return const [];
 
-  // Placed by hand: each one where it was put, at the size the element
-  // carries. The row below is what a set of controls is, and this is for the
-  // counters that are not that.
+  // Placed by hand, at the element's button size; otherwise a row.
   if (e.looseButtons) {
     var w = math.max(8.0, inner.width * e.buttonSize.width);
     var h = math.max(8.0, inner.height * e.buttonSize.height);
@@ -57,9 +49,7 @@ List<Rect> counterButtonRects(CounterElement e, Rect bounds) {
 
 /// _placed turns a fraction-of-the-box placement into a point.
 ///
-/// From the middle rather than from a corner, so that nought is the middle
-/// and the two halves are symmetrical -- which is what makes "a little to the
-/// left" a small negative number rather than something under a half.
+/// Measured from the middle, so nought is centred.
 Offset _placed(Rect inner, Offset at) => Offset(
       inner.center.dx + inner.width * at.dx,
       inner.center.dy + inner.height * at.dy,
@@ -74,16 +64,13 @@ double counterButtonHeight(CounterElement e, Rect inner) {
   return math.min(inner.height * 0.5, label + pad);
 }
 
-/// _unit scales the fixed gaps with the element, so a counter exported at four
-/// times the size is the same picture rather than the same picture with
-/// hairline gaps.
+/// _unit scales the fixed gaps with the element's size.
 double _unit(Rect inner) => math.max(0.2, inner.shortestSide / 120);
 
 /// paintCounter draws one, showing [value].
 ///
-/// The value is handed in rather than worked out here: on the timeline it
-/// comes from the keyframes and in a live counter it comes from a clock that
-/// is running, and a painter is the wrong place to know the difference.
+/// [value] is handed in: it comes from the animation or from a live clock
+/// in the controller.
 void paintCounter(
   ui.Canvas canvas,
   Rect bounds,
@@ -93,10 +80,8 @@ void paintCounter(
   /// stage, and none at all in an exported picture.
   int pressed = -1,
 
-  /// running is whether it is counting at this moment, which is what the
-  /// start/stop button has to say. Null falls back to what the element says
-  /// it does when it opens -- which is what a picture of one shows, nothing
-  /// there being able to run.
+  /// running is whether it is counting now, for the start/stop label. Null
+  /// falls back to the element's own running setting.
   bool? running,
 }) {
   if (bounds.width <= 0 || bounds.height <= 0) return;
@@ -106,17 +91,14 @@ void paintCounter(
   if (inner.width <= 0 || inner.height <= 0) return;
 
   var buttons = counterButtonRects(e, bounds);
-  // The number keeps the whole box where the buttons have been placed by
-  // hand: they are somewhere of their own choosing, and reserving a strip for
-  // a row that is not there would push the figures up for nothing.
+  // Loose buttons take no strip from the number.
   var room = buttons.isEmpty || e.looseButtons
       ? inner
       : Rect.fromLTRB(inner.left, inner.top, inner.right,
           buttons.first.top - counterGap * _unit(inner));
 
   if (room.height > 0) {
-    // Sized to the whole count rather than to the number showing, so that the
-    // figures do not change size as they go -- see counterFitScale.
+    // See counterFitScale.
     var scale = e.fit ? counterFitScale(e, room, value) : 1.0;
     var number = _scaled(e.numberSpec, scale);
     var affix = _scaled(e.affixSpec, scale);
@@ -127,9 +109,8 @@ void paintCounter(
       _paintLoose(canvas, inner, e.before, affix, e.beforeAt);
       _paintLoose(canvas, inner, e.after, affix, e.afterAt);
     } else {
-      // A space in the number's own ems, so it holds when the type is shrunk
-      // to fit. Written as a stretch of its own rather than as letter spacing
-      // on the words, which would space the words themselves apart as well.
+      // A space run in the number's ems, so it shrinks with fitting; letter
+      // spacing would space out the words too.
       var space = _spacer(e.gap, number);
       paintRunsInBox(
         canvas,
@@ -169,10 +150,7 @@ void paintCounter(
 
 /// _spacer is the gap between the number and a word, as a stretch of text.
 ///
-/// A space set at the gap's own size: one em of type is one space that wide,
-/// and asking for two and a half of them is a space two and a half ems wide.
-/// Nothing at all where no gap was asked for, so the commonest counter draws
-/// exactly what it drew before this existed.
+/// A space at [gap] ems of the number's type, or null for no gap.
 (String, TextSpec)? _spacer(double gap, TextSpec number) => gap <= 0
     ? null
     : (" ", number.copyWith(fontSize: math.max(0.1, number.fontSize * gap)));
@@ -182,8 +160,7 @@ void _paintLoose(
     ui.Canvas canvas, Rect inner, String text, TextSpec spec, Offset at) {
   if (text.isEmpty) return;
   var centre = _placed(inner, at);
-  // A box the width of the element around the point, so long words have
-  // somewhere to go and the placement stays the middle of them.
+  // Element-wide and centred on the point.
   var box = Rect.fromCenter(
       center: centre,
       width: inner.width,
@@ -200,13 +177,8 @@ void _paintLoose(
 /// counterFitScale is how much the type has to come down for the whole count
 /// to fit the room it has.
 ///
-/// Measured against the widest value the counter will ever show rather than
-/// the one on screen: a number that fits at 42 and not at 1,234,567 would
-/// otherwise shrink partway through the count, and a figure that changes size
-/// as it counts is worse than one that is small.
-///
-/// Both ends and the value showing, because a point in the middle of a count
-/// can be higher than either end -- that is what points are for.
+/// Measured at both ends of the count and the value showing (a point mid
+/// count can exceed either end), so the figures do not resize as they count.
 double counterFitScale(CounterElement e, Rect room, double value) {
   if (room.width <= 0 || room.height <= 0) return 1;
   var widest = 0.0, tallest = 0.0;
@@ -250,9 +222,7 @@ Size _measure(CounterElement e, double value) {
   return size;
 }
 
-/// _scaled is one spec at a fraction of its size. The letter spacing goes
-/// with it: spacing set for sixty-point figures is a gap between
-/// twenty-point ones.
+/// _scaled is one spec at a fraction of its size, letter spacing included.
 TextSpec _scaled(TextSpec spec, double scale) => scale >= 0.999
     ? spec
     : spec.copyWith(
@@ -261,10 +231,7 @@ TextSpec _scaled(TextSpec spec, double scale) => scale >= 0.999
 
 /// _labelFor is what one button says.
 ///
-/// The start/stop button says which of the two it would do next, which is the
-/// only honest label for a control with two jobs -- but only where the
-/// counter is running; a still one says "Start" whether it has been stopped
-/// or never started.
+/// The start/stop button says what it would do next.
 String _labelFor(CounterElement e, CounterButton button, bool running) =>
     switch (button) {
       CounterButton.startStop => running ? "Stop" : "Start",
@@ -272,6 +239,5 @@ String _labelFor(CounterElement e, CounterButton button, bool running) =>
       CounterButton.input => "Set",
     };
 
-/// _lit is a button's fill under the pointer: a little brighter, whatever it
-/// started as, so that a counter with its own colours still answers a hover.
+/// _lit is a button's fill under the pointer: a little brighter.
 Color _lit(Color fill) => Color.lerp(fill, const Color(0xFFFFFFFF), 0.18)!;

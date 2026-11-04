@@ -5,12 +5,9 @@ import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // image_adjustment.dart is what an adjustment layer does to the layers under
-// it: a grade, a curve, a colour kept while the rest goes grey. Drawn by
-// shaders/adjust.frag -- see adjust_painter.dart.
-//
-// Each kind lists its own settings as AdjustParams, so the panel is built
-// from the list and a saved document holds only the settings that were
-// moved: a name and a number each, readable in the file.
+// it, drawn by shaders/adjust.frag (see adjust_painter.dart). Each kind lists
+// its settings as AdjustParams, so the panel is built from the list and a
+// saved document holds only the settings that were moved.
 
 /// AdjustParam is one number an adjustment is set by.
 class AdjustParam {
@@ -19,17 +16,16 @@ class AdjustParam {
   final double min, max, initial;
   final int decimals;
 
-  /// percent shows it a hundred times bigger than it is kept: a fraction
-  /// read and typed as a percentage.
+  /// percent is whether the stored fraction is shown and typed as a
+  /// percentage.
   final bool percent;
 
   const AdjustParam(this.key, this.label, this.min, this.max, this.initial,
       {this.decimals = 0, this.percent = true});
 }
 
-/// AdjustKind is what an adjustment layer does. The shader's mode is the
-/// kind's [mode], not its index, so the list can be put in a sensible order
-/// for reading and grow in the middle.
+/// AdjustKind is what an adjustment layer does. The shader is told [mode],
+/// not the index, so the list can be reordered and grow in the middle.
 enum AdjustKind {
   brightness("Brightness and contrast", 0, [
     AdjustParam("brightness", "Brightness", -1, 1, 0),
@@ -225,7 +221,7 @@ class ImageAdjustment {
       }
     }
     return ImageAdjustment(
-      kind: AdjustKind.fromName(json["k"] as String?),
+      kind: AdjustKind.fromName(jsonStr(json["k"])),
       values: values,
       colour: colorFromJson(json["c"], const Color(0xFFF2B33D)),
       fade: json["fade"] == null
@@ -236,10 +232,8 @@ class ImageAdjustment {
   }
 }
 
-/// curveAt is [points]'s curve at [x]: a smooth curve through every point
-/// that never overshoots between two of them -- Fritsch and Carlson's
-/// monotone cubic, the curve an image editor draws -- so a gentle S stays an
-/// S and never rings into the shadows.
+/// curveAt is [points]'s curve at [x]: Fritsch-Carlson monotone cubic, so
+/// it never overshoots between two points.
 double curveAt(List<Offset> points, double x) {
   if (points.isEmpty) return x;
   if (points.length == 1) return points.single.dy;

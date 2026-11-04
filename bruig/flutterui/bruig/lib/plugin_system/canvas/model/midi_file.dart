@@ -3,14 +3,9 @@ import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 
-// midi_file.dart reads a Standard MIDI File -- the .mid every notation
-// program and sequencer writes -- into notes an instrument can play.
-//
-// Formats 0 and 1: one track, or several played together. Times in the file
-// are ticks; the tempo changes as the file says, so seconds are worked out
-// through every tempo change in turn. MIDI's tenth channel is drums by
-// convention, and is left out: a piano playing a drum part is a piano
-// playing nonsense.
+// midi_file.dart reads a Standard MIDI File (formats 0 and 1) into notes an
+// instrument can play. Ticks become seconds through every tempo change in
+// turn. MIDI's tenth channel (drums, by convention) is left out.
 
 /// MidiImport is what a file held: its notes, and the sound its first
 /// instrument asked for.
@@ -20,8 +15,29 @@ class MidiImport {
   const MidiImport(this.notes, this.program);
 }
 
-/// readMidiFile reads [bytes], or throws a FormatException.
+/// readMidiFile reads [bytes]. It throws a FormatException for a file that
+/// is not MIDI, uses timecode, or is cut short.
 MidiImport readMidiFile(Uint8List bytes) {
+  try {
+    return _readMidiFile(bytes);
+  } on FormatException {
+    rethrow;
+  } catch (exception) {
+    throw FormatException("This MIDI file could not be read: $exception");
+  }
+}
+
+/// _stable sorts [list] by [by], keeping the order of equals: a note let go
+/// and struck again on one tick must stay in that order.
+List<T> _stable<T>(List<T> list, int Function(T) by) {
+  var indexed = [for (var (i, x) in list.indexed) (i, x)]
+    ..sort((a, b) => by(a.$2) != by(b.$2)
+        ? by(a.$2).compareTo(by(b.$2))
+        : a.$1.compareTo(b.$1));
+  return [for (var (_, x) in indexed) x];
+}
+
+MidiImport _readMidiFile(Uint8List bytes) {
   var d = ByteData.sublistView(bytes);
   String tag(int at) => String.fromCharCodes(bytes.sublist(at, at + 4));
   if (bytes.length < 14 || tag(0) != "MThd") {
@@ -32,6 +48,7 @@ MidiImport readMidiFile(Uint8List bytes) {
   if (division & 0x8000 != 0) {
     throw const FormatException("Timecode MIDI files are not read");
   }
+  if (division == 0) throw const FormatException("A MIDI file with no beat");
   var at = 8 + headerLength;
 
   // Every event of every track, with its tick: tempos, and notes.
@@ -99,7 +116,8 @@ MidiImport readMidiFile(Uint8List bytes) {
   }
 
   // Ticks to seconds, through the tempo changes.
-  tempos.sort((a, b) => a.$1.compareTo(b.$1));
+  // The file's own tempo at tick nought after the default, so it wins.
+  tempos = _stable(tempos, (t) => t.$1);
   double seconds(int tick) {
     var s = 0.0, from = 0, tempo = 500000;
     for (var (t, us) in tempos) {
@@ -111,7 +129,7 @@ MidiImport readMidiFile(Uint8List bytes) {
     return s + (tick - from) * tempo / division / 1e6;
   }
 
-  events.sort((a, b) => a.$1.compareTo(b.$1));
+  events = _stable(events, (e) => e.$1);
   var open = <(int, int), (int, int)>{}; // (channel, key) -> (tick, vel)
   var notes = <MidiNote>[];
   void close((int, int) k, int tick) {

@@ -3,15 +3,10 @@ import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// canvas_cues.dart is the named moments of a whole run -- "OR DIE", "the
-// flip side" -- that what is on the scenes is timed against.
-//
-// A video cut to a voice-over is timed to the voice, and the voice is on the
-// master: the one timeline every scene plays under. A cue is a point on that
-// timeline with a name. An element tied to one keeps its timing *relative* to
-// it, so when the voice is re-recorded and a line lands half a second later,
-// moving the cue moves everything that arrives on it -- in whichever scene it
-// is -- rather than somebody finding and dragging forty keyframes.
+// canvas_cues.dart is the named moments of a whole run, on the master
+// timeline every scene plays under (where a voice-over sits). What is tied to
+// a cue keeps its timing relative to it, so moving the cue moves the clip
+// placements and keyframes that arrive on it, in whichever scene they are.
 
 /// TimelineCue is one named moment, in frames of the whole run.
 class TimelineCue {
@@ -41,14 +36,12 @@ class TimelineCue {
   }
 }
 
-/// SpokenWord is one word of a voice-over, where it is said: what a
-/// transcription heard, in frames of the whole run like a cue.
+/// SpokenWord is one word of a voice-over as a transcription heard it, in
+/// frames of the whole run like a cue: used to name cues by what is said and
+/// to put an element on its word.
 ///
-/// Kept so a cue can be named by what is said there -- "First, we need the
-/// hardware" rather than "Line 9" -- and so an element can be put on the word
-/// it belongs to: the price arriving as the price is spoken. [from] is the
-/// clip it was heard on, `voice:<id>` as the cues found there are tagged, so
-/// hearing that clip again replaces its words and leaves any other's alone.
+/// [from] is the clip it was heard on, `voice:<id>` as that clip's cues are
+/// tagged, so hearing the clip again replaces only its own words.
 class SpokenWord {
   final String text;
   final int frame;
@@ -87,8 +80,7 @@ class SpokenWord {
 ///
 /// A word starting up to [lead] frames before a cue is that cue's: a cue
 /// found at a pause lands a moment after the voice has started again, and
-/// read from the cue itself every name lost its first word -- "it
-/// actually cost to secure" for "What does it actually cost".
+/// would otherwise lose its first word.
 String saidBetween(List<SpokenWord> words, int from, int to,
     {int most = 34, int lead = 2}) {
   var out = StringBuffer();
@@ -119,9 +111,7 @@ String newCueId() =>
 /// loudness from nought to one across [seconds].
 ///
 /// A pause is at least [gap] seconds quieter than [floor] of the recording's
-/// loudest; the first sound in the file counts too. Not transcription -- it
-/// cannot say what is said -- but on a voice-over the pauses are where the
-/// lines change, which is what a scene wants cutting on.
+/// loudest; the first sound in the file counts too.
 List<double> speechStarts(Float32List peaks, double seconds,
     {double gap = 0.35, double floor = 0.08}) {
   if (peaks.isEmpty || seconds <= 0) return const [];

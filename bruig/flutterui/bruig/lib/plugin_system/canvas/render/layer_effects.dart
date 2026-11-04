@@ -10,12 +10,13 @@ import 'package:flutter/painting.dart';
 // a layer with its effects: a shadow and a glow under it, a blur through it,
 // an inner shadow over it. See image_effects.dart for the settings.
 //
-// Shadows, glows and plain blurs are the compositor's: a layer with a blur
-// on it. Motion and zoom blurs and the colour fringe are the same picture
-// drawn several times, shifted or scaled, so the layer is rasterised once
-// for them -- at the size the canvas is drawn at -- and kept against the
-// element, as an adjustment's result is.
+// Shadows, glows and plain blurs are compositor layers with an image
+// filter. Motion and zoom blurs and the colour fringe draw the same picture
+// several times, shifted or scaled, so for them the layer is rasterised
+// once at the canvas's drawn size and kept in [RasterCache].
 
+/// TextureShader loads shaders/texture.frag once; [ready] turns true when it
+/// has, so painters waiting on it can repaint.
 class TextureShader {
   static ui.FragmentProgram? _program;
   static Future<void>? _loading;
@@ -62,7 +63,9 @@ void paintTexture(ui.Canvas canvas, Rect frame, TextureSpec spec) {
 final List<ui.Image> _loose = [];
 
 /// _raster is [content] -- covering [room] -- as pixels at the size [canvas]
-/// is drawn at, kept as [key], drawn from [from], where there is a key.
+/// is drawn at, capped at 4096 a side and 16 megapixels. With a [key] it is
+/// kept in [RasterCache] against [from]; without, the last few are kept in
+/// [_loose] until they fall out.
 (ui.Image, Rect) _raster(ui.Canvas canvas, Rect room, ui.Picture content,
     String? key, List<Object?> from) {
   var scale = deviceScaleOf(canvas);
@@ -132,12 +135,11 @@ const _brightnessAsShape = ColorFilter.matrix([
 /// [effects], [unit] canvas units to a thousandth of the frame's shorter
 /// side. [key] names what is rasterised, drawn from [from], so it is kept.
 ///
-/// [lightening] is the blend of a layer laid by one that only lightens --
-/// screen, add: it shows where it is bright, not where it is drawn, so its
-/// shadow and glow take its shape from its brightness, and it is laid over
-/// them by that blend too. Taken from where it is drawn, a screened
-/// photograph of a light on black glows as a rectangle; laid over its glow
-/// plainly, its black covers the glow.
+/// [lightening] is the blend of a layer laid with one that only lightens
+/// (screen, add). Such a layer shows where it is bright, not where it is
+/// drawn, so its shadow and glow take their shape from its brightness and
+/// it is laid over them with that blend; otherwise a screened light on
+/// black would glow as a rectangle, its black covering the glow.
 void paintWithEffects(ui.Canvas canvas, Rect room, double unit,
     List<LayerEffect> effects, ui.Picture content,
     {String? key, List<Object?> from = const [], BlendMode? lightening}) {
@@ -234,6 +236,8 @@ void _paintCopies(ui.Canvas canvas, Rect room, double unit,
     List<LayerEffect> effects, ui.Image image, Rect src) {
   // Every copy of each effect, as where it goes and how it is coloured.
   var copies = <(Rect, ColorFilter?)>[(room, null)];
+  // The fringes drawn, for how bright each copy is drawn.
+  var fringes = 0;
   for (var f in effects) {
     var next = <(Rect, ColorFilter?)>[];
     switch (f.kind) {
@@ -274,11 +278,14 @@ void _paintCopies(ui.Canvas canvas, Rect room, double unit,
       default:
         next = copies;
     }
+    // Each effect multiplies the copies: one that would take them past 256
+    // is left out, and so is everything after it.
+    if (next.length > 256) break;
     copies = next;
+    if (f.kind == EffectKind.fringe) fringes++;
   }
   // A fringe's three copies add up to one picture; the blurs' copies are
   // averaged. Plus blending sums them; each blur copy brings its share.
-  var fringes = effects.where((f) => f.kind == EffectKind.fringe).length;
   var share = 1 / (copies.length / math.pow(3, fringes));
   canvas.saveLayer(room.inflate(room.shortestSide), Paint());
   for (var (r, c) in copies) {

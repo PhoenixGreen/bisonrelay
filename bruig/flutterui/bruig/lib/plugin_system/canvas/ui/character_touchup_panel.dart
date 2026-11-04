@@ -3,12 +3,12 @@ import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// character_touchup_panel.dart is the new Character Studio's Touch up: the
-// body shaped by hand, and the skin and clothes painted, with a brush
-// dragged over the character on the stage, where the sliders and the
-// decals do not reach. See character_sculpt.dart.
+// character_touchup_panel.dart is the Character Studio's Touch up: the body
+// shaped by hand, and the skin and clothes painted, with a brush dragged
+// over the character on the stage, where the sliders and decals do not
+// reach. See character_sculpt.dart.
 
-/// The list's id for Touch up.
+/// touchUpPartId is the list's id for Touch up.
 const String touchUpPartId = "touchup";
 
 /// TouchMode is what the brush does: shapes the body, or paints on it.
@@ -27,7 +27,7 @@ class TouchBrush {
   final SculptTool tool;
   final PaintTool paintTool;
 
-  /// size is the brush's radius as a share of the body's height; strength
+  /// size is the brush's radius as a share of the body's height; strength is
   /// how far a shaping stroke goes, nought to one.
   final double size, strength;
 

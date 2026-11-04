@@ -12,24 +12,21 @@ export 'package:bruig/plugin_system/canvas/model/layer_blend.dart'
 
 // video_element.dart is a moving picture on a canvas.
 //
-// Two kinds of source, and they are deliberately not equals:
+// Two kinds of source, deliberately not equals:
 //
 // - **A file** is footage the canvas owns. It is decoded frame by frame and
 //   drawn by the same renderer as everything else, so it can be keyed, graded,
-//   cut to a shape and -- later -- put on the timeline and exported. Its sound
-//   plays through the audio engine, in step with the picture.
-// - **A link** (YouTube, Vimeo, anything else) is somebody else's video that
-//   the canvas points at. It shows a poster and opens the video when pressed.
-//   Those services' terms forbid downloading or altering what they host, and
-//   a published canvas with someone's video baked into it would carry that
-//   video to everyone it was sent to -- so a link is never decoded, keyed or
-//   exported as footage.
+//   cut to a shape and exported. Its sound plays through the audio engine, in
+//   step with the picture.
+// - **A link** (YouTube, Vimeo, anything else) is somebody else's video. It
+//   shows a poster and opens the video when pressed. Those services' terms
+//   forbid downloading or altering what they host, and a published canvas
+//   would carry the video to everyone it was sent to, so a link is never
+//   decoded, keyed or exported as footage.
 //
-// What the picture looks like -- the shape it is cut to, its crop and framing,
-// the filter, overlay, outline, and the box round it -- is an image element's
-// look, held whole in [look]. The same controls set it and the same painter
-// draws it, so a video and a photograph beside it are graded by one set of
-// rules rather than two that drift.
+// How the picture is drawn (shape, crop, filter, overlay, outline, box) is an
+// image element's look, held whole in [VideoElement.look], set by the same
+// controls and drawn by the same painter.
 
 /// VideoControl is one thing a reader can do to the video from the canvas.
 enum VideoControl {
@@ -54,25 +51,22 @@ enum VideoControl {
 
 /// ChromaKey takes one colour out of the picture -- a green screen.
 ///
-/// Worked on the GPU, frame by frame, before the look is applied -- see
-/// video_key.dart. Not the image element's background removal, which decides
-/// colour by colour on the processor and would take most of a second on
-/// every frame of a video.
+/// Worked on the GPU, frame by frame, before the look is applied (see
+/// video_key.dart): the image element's CPU background removal is far too
+/// slow for every frame.
 class ChromaKey {
   final bool on;
 
-  /// color is the screen's colour. Green and blue are what screens are.
+  /// color is the screen's colour.
   final Color color;
 
-  /// tolerance is how far from [color] a pixel may be and still go, and
-  /// softness how wide the edge between gone and kept is -- hair is neither
-  /// one nor the other, and a hard edge cuts it off in steps.
+  /// tolerance is how far from [color] a pixel may be and still be removed,
+  /// and softness how wide the edge between removed and kept is.
   final double tolerance;
   final double softness;
 
   /// spill is how much of the screen's colour is taken back out of what is
-  /// kept. Light bounces off a green screen onto whoever stands in front of
-  /// it, and without this they come out with a green outline.
+  /// kept, against the green fringe light bounced off the screen leaves.
   final double spill;
 
   const ChromaKey({
@@ -134,8 +128,7 @@ enum VideoHost {
 }
 
 /// linkAt is [url] with a start time written into it, the way each host
-/// reads one. Only the start: neither host takes an end in the address of a
-/// page to watch, and a canvas cannot stop somebody else's player.
+/// reads one. Only the start: neither host takes an end in a watch address.
 String linkAt(String url, double start) {
   if (start <= 0) return url;
   var seconds = start.floor();
@@ -154,13 +147,14 @@ String linkAt(String url, double start) {
   }
 }
 
+/// VideoElement is a video on the canvas, from files or a link.
 class VideoElement extends CanvasElement {
-  /// clip is the files, their ranges, the fades, the loop and the sound's
-  /// volume -- the same settings an Audio element has. See MediaClip.
+  /// clip is the files, their ranges, fades, loop and volume, as an Audio
+  /// element has. See MediaClip.
   final MediaClip clip;
 
   /// link is a video somewhere else, instead of files. See the top of this
-  /// file for why the two are not the same thing.
+  /// file.
   final String link;
 
   /// linkStart is where the linked video opens, in seconds.
@@ -175,15 +169,14 @@ class VideoElement extends CanvasElement {
 
   final List<VideoControl> controls;
 
-  /// accent colours the controls: the played part of the bar, the switches
-  /// that are on.
+  /// accent colours the controls: the played part of the bar, switches that
+  /// are on.
   final Color accent;
 
   final ElementAnimation animation;
 
-  /// blend is how the video is laid on what is under it: normally, or as
-  /// light (screen, add) that only brightens -- which is what a glitch, a
-  /// light leak or a lens flare shot on black is for -- or as shade.
+  /// blend is how the video is laid on what is under it; the light modes
+  /// suit overlays shot on black (light leaks, flares).
   final LayerBlend blend;
 
   /// edges softens the box's edges and fades it out. See EdgeMask.
@@ -213,13 +206,12 @@ class VideoElement extends CanvasElement {
   bool get isLink => link.trim().isNotEmpty;
   bool has(VideoControl control) => controls.contains(control);
 
-  /// picture is [look] standing where this element stands, which is what the
-  /// image painter and the image settings both need: a crop or a padding
-  /// that moves the box is worked out from the box.
+  /// picture is [look] on this element's base, for the image painter and
+  /// image settings, which work crops and padding out from the box.
   ImageElement get picture => look.rebase(base) as ImageElement;
 
-  /// withPicture takes the look back from an edited [picture], and the box
-  /// with it where the edit moved one.
+  /// withPicture takes the look back from an edited [picture], and its box
+  /// where the edit moved it.
   VideoElement withPicture(ImageElement edited) {
     var next = copyWith(
         look: edited.rebase(const ElementBase(id: "")) as ImageElement);
@@ -315,7 +307,7 @@ class VideoElement extends CanvasElement {
         accent: colorFromJson(json["accent"], const Color(0xFF3D7EFF)),
         animation: jsonSpec(
             json["anim"], ElementAnimation.fromJson, const ElementAnimation()),
-        blend: LayerBlend.fromName(json["blend"] as String?),
+        blend: LayerBlend.fromName(jsonStr(json["blend"])),
         edges: jsonSpec(json["edges"], EdgeMask.fromJson, const EdgeMask()));
   }
 }

@@ -37,6 +37,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 // ignore: depend_on_referenced_packages
 import 'package:xml/xml.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_convert.dart';
 
 // canvas_epub_layers_test.dart is a page of an interactive EPUB laid out as
 // its elements, each animated by the reader: that nothing is a film of the
@@ -268,6 +269,32 @@ void main() {
         reason: "it overshoots, as Pop does on the canvas");
     expect(scales.where((s) => s < 0.9), isNotEmpty, reason: "it starts small");
     expect(moves.last["opacity"], "1");
+  });
+
+  // A canvas opened in this build has clips where it had keyframes, and an
+  // arrival chosen now is a clip from the start: the book moves them all
+  // the same.
+  testWidgets("moved and arriving by clips, it is animated just the same",
+      (tester) async {
+    CanvasElement clipped(CanvasElement e) => convertElement(e, 12)!;
+    var wiping = ShapeElement(
+      ElementBase(
+          id: "w",
+          x: 100,
+          y: 40,
+          width: 120,
+          height: 80,
+          track: arriving(0, 6)),
+      fill: const Color(0xFF00AA00),
+      animation: const ElementAnimation(preset: ElementAnimationPreset.wipe),
+    );
+    var bytes =
+        await publish(tester, book([clipped(sliding()), clipped(wiping)]));
+    var page = pageOf(bytes, 0);
+    expect(keyframes(byId(page, "l-dot")!).length, greaterThan(2),
+        reason: "the slide is played by the reader");
+    expect(keyframes(parts(byId(page, "l-w")!).single), isNotEmpty,
+        reason: "and the wipe uncovers it");
   });
 
   testWidgets("word by word, each word is its own picture on its own time",

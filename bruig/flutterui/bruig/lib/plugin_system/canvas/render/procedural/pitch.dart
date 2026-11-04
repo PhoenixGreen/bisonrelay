@@ -9,25 +9,17 @@ import 'package:flutter/painting.dart';
 
 // pitch.dart draws a marked playing surface.
 //
-// Drawn rather than shipped as a photograph, and the reasons are the same ones
-// that make the whole canvas vector: it exports sharp at any width, it takes
-// the document's own colours, it weighs nothing, and -- the one that matters
-// for publication -- the markings are where the laws put them. Every sport is
-// drawn in metres from its governing body's own dimensions, line widths
-// included, so a 5 cm basketball line is a fifth of the width of a 25 cm
-// football line on the same page, as it is on the floor.
+// Every sport is drawn in metres from its governing body's dimensions, line
+// widths included, so the markings are where the laws put them and keep
+// their true proportions between sports.
 //
-// The pitch is drawn on the ground, and the ground is then seen: from
-// straight above, from an isometric angle, or from a broadcast camera in the
-// stand. Seeing it is a projection of the ground plane onto the page -- a
-// homography, which a canvas can apply to everything drawn on it -- so the
-// markings stay true however the pitch is looked at, and the things that
-// stand up off it (goals, posts, hoops, stands) are put through the same
-// projection a point at a time.
+// The pitch is drawn on the ground plane, which is then put onto the page by
+// a homography ([_View.ground], applied with Canvas.transform), so markings
+// stay true from any camera. What stands up off the ground (goals, posts,
+// hoops, stands) is projected a point at a time.
 //
-// The colours come from the spec: the surface is the background, the
-// markings are the foreground, and the accent is what is painted -- a key, an
-// end zone, the run-off round a court, the seats.
+// Colours: the surface is the background, the markings the foreground, and
+// the accent is what is painted (a key, an end zone, run-off, the seats).
 
 // --------------------------------------------------------------------------
 // The mapping
@@ -79,10 +71,9 @@ PitchMetrics pitchRect(Rect rect, PitchSport sport) {
 /// PitchPlacement is where a pitch puts a point on it, as it is drawn: with
 /// its camera, its zoom, its position and its turn.
 ///
-/// What a team linked to the pitch stands on. The team keeps its players in
-/// the pitch's own metres and asks this where they are, so that moving,
-/// turning, zooming or tilting the pitch carries them with it -- in
-/// perspective, smaller towards the far touchline.
+/// A team linked to the pitch keeps its players in the pitch's metres and
+/// asks this where they land, so moving, turning, zooming or tilting the
+/// pitch carries them with it, in perspective.
 class PitchPlacement {
   final _View _view;
   final _Field _field;
@@ -90,7 +81,7 @@ class PitchPlacement {
   final double _turn;
 
   /// visibleFrom is the length along the field from which it is shown, for
-  /// half a pitch; nought for the whole of it.
+  /// half a pitch; -1e9 for the whole of it.
   final double visibleFrom;
 
   /// reference is how many pixels a metre is on this pitch drawn flat,
@@ -159,9 +150,9 @@ class _Field {
   /// playing area: in-goal areas, end zones, the run-off round a court.
   final Rect apron;
 
-  /// fitsField is whether the picture is fitted to the field of play alone
-  /// rather than to the apron -- the football pitch, whose players are
-  /// placed in its own metres. See pitchRect.
+  /// fitsField is whether a plain flat view is fitted to the field of play
+  /// alone rather than to the apron, for pitches whose players are placed in
+  /// its metres. See [_View._window].
   final bool fitsField;
 
   const _Field(this.sport, this.length, this.width, this.line, this.apron,
@@ -358,10 +349,8 @@ class _View {
         for (var y in [window.top, window.bottom]) (x, y, 0),
     ];
     if (spec.choice("surround") == 1) {
-      // Round exactly what is drawn of the stands -- the near one is left
-      // out where the camera is in it, and the corners of an open ground --
-      // so none of it is cut off at the frame and none of the frame is left
-      // empty for it.
+      // Round exactly what is drawn of the stands (not the near one, nor an
+      // open ground's corners), so none is cut off and no frame is wasted.
       points.addAll(_stadiumExtent(view, window, spec));
     }
     var minX = double.infinity, maxX = -double.infinity;
@@ -628,9 +617,6 @@ void paintPitch(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
     _goals(canvas, view, field, spec, items,
         from: half ? _View._window(spec, field, true).left : -1e9);
   }
-  // Furthest first, the stands softened by how far they are from the pitch
-  // -- a little behind it, more and more in front of it, where they fade as
-  // well -- and never over the pitch itself.
   _drawStadium(canvas, view, field, spec, all, items, far, near);
   canvas.restore();
 
@@ -708,7 +694,7 @@ void _surface(ui.Canvas canvas, _Field field, ProceduralSpec spec, Rect ground,
         }
       }
       if (kind == PitchSurface.checks) break;
-      // And a little unevenness, so the bands are grass and not paint.
+      // A little unevenness, so the bands are grass and not paint.
       _speckle(canvas, area, spec, dark, 0.8);
     case PitchSurface.wood:
       _woodFloor(canvas, area, spec);
@@ -1187,7 +1173,7 @@ void _rugbyUnion(_Pen pen, _Field f, ProceduralSpec spec) {
   for (var x in <double>[40, 60, 5, l - 5]) {
     pen.dashed(x, 0, x, w, 1, 1);
   }
-  // And the lines five and fifteen metres in from touch.
+  // The lines five and fifteen metres in from touch.
   for (var y in <double>[5, 15, w - 15, w - 5]) {
     pen.dashed(0, y, l, y, 1, 4);
   }
@@ -1290,9 +1276,9 @@ void _gridiron(_Pen pen, _Field f, ProceduralSpec spec, bool painted) {
 // --------------------------------------------------------------------------
 
 /// _standDepth is how far the stands run back from the boards, and
-/// _standHeight how high they rise: in proportion to what they are round, so
-/// an arena round a court is not a football stadium round a postage stamp --
-/// and as big again as the stadium's Size asks.
+/// _standHeight how high they rise: in proportion to the field, so an arena
+/// round a court is not a stadium round a postage stamp, then scaled by the
+/// "standSize" setting.
 double _standDepth(Rect window, [ProceduralSpec? spec]) =>
     (math.max(window.width, window.height) * 0.24).clamp(7.0, 26.0) *
     (spec?.p("standSize") ?? 1);
@@ -1315,8 +1301,8 @@ double _standTop(Rect window, [ProceduralSpec? spec]) =>
     1.8 * (_tiers(spec) - 1) +
     ((spec?.choice("roof") ?? 0) > 0 ? 3.5 : 2.5);
 
-/// _trackInner and _trackLane are the inside of a 400 m track's first lane
-/// and the width of a lane; _trackStraight its two straights.
+/// _trackInner and _trackLane are the inside radius of a 400 m track's first
+/// lane and the width of a lane; _trackStraight is the length of a straight.
 const double _trackInner = 36.5, _trackLane = 1.22, _trackStraight = 84.39;
 
 int _lanes(ProceduralSpec spec) => spec.p("lanes").round().clamp(4, 10);
@@ -1544,9 +1530,8 @@ double _facingAmount(_View view, Rect window, Offset a, Offset b) {
 }
 
 /// _standShown is whether the stand between [a] and [b] is one the picture
-/// is fitted round: built, and facing the camera. The near stand is drawn
-/// too where it is asked for -- see _stadium -- but in front of the picture,
-/// soft, and running out of the frame as the stand nearest a camera does.
+/// is fitted round: built, and facing the camera. A near stand (see
+/// _stadium) is drawn in front and allowed to run out of the frame.
 bool _standShown(
         _View view, Rect window, ProceduralSpec spec, Offset a, Offset b) =>
     !_standOpen(window, spec, a, b) && _standFacing(view, window, a, b);
@@ -1775,9 +1760,9 @@ void _stadium(ui.Canvas canvas, _View view, _Field f, ProceduralSpec spec,
     }
   }
 
-  // The back wall along the top, and a roof over the rows where there is
-  // one: a canopy over the back of the stand, or the whole of it -- pitched
-  // down towards the pitch, ribbed, with a fascia along its leading edge.
+  // The back wall along the top, and any roof: a canopy over the back of
+  // the stand or the whole of it, pitched down towards the pitch, ribbed,
+  // with a fascia along its leading edge.
   var reach = _standReach(window, spec);
   var back = _ring(window, reach, 6);
   var z = topRing ?? 1.5 + height;
@@ -1814,9 +1799,8 @@ void _stadium(ui.Canvas canvas, _View view, _Field f, ProceduralSpec spec,
           return view.project(m.dx, m.dy, rz + (lip - rz) * t);
         }
 
-        // The sheet, darker at the back where it meets the wall and lit
-        // towards its leading edge -- and fading out where the stand turns
-        // towards the camera, rather than stopping dead.
+        // The sheet, darker at the back and lit towards its leading edge,
+        // fading out where the stand turns towards the camera.
         var fade = (fadeOf / 0.35).clamp(0.0, 1.0);
         fade = fade * fade * (3 - 2 * fade);
         if (fade <= 0.01) return;
@@ -1889,12 +1873,11 @@ void _stadium(ui.Canvas canvas, _View view, _Field f, ProceduralSpec spec,
   }
 }
 
-/// _drawStadium draws what stands up off the ground, furthest first: the
-/// pitch's own goals and boards sharp, and the stadium ([far] and [near])
-/// through a depth of field -- each piece blurred, and the nearer ones faded,
-/// by how far it is from the pitch, so the focus falls off gradually rather
-/// than at the line where one stand becomes the next. The stadium is clipped
-/// out of the pitch's outline: it never lies over the pitch.
+/// _drawStadium draws what stands up off the ground, furthest first: [items]
+/// (goals, boards) sharp, and the stadium ([far] and [near]) through a depth
+/// of field, each piece blurred and the near ones faded by its distance from
+/// the pitch, so focus falls off gradually rather than stand by stand. The
+/// stadium is clipped to outside the pitch's outline.
 void _drawStadium(
     ui.Canvas canvas,
     _View view,

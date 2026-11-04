@@ -16,8 +16,8 @@ enum WrapSide {
   both("Both sides"),
 
   /// left keeps the words to the left of whatever is in the way, and right to
-  /// the right of it. What a caption beside a picture wants: one block of
-  /// text, not a line broken in two by something in the middle of it.
+  /// the right of it: one block of text beside a picture, not lines broken
+  /// in two.
   left("Left of it"),
   right("Right of it");
 
@@ -30,11 +30,8 @@ enum WrapSide {
 
 /// TextWrap is words flowing around whatever overlaps their box.
 ///
-/// Off by default, and deliberately: with it on the words are set line by
-/// line against the elements around them rather than laid out once as a
-/// paragraph, which is a different and slower way of setting type. It earns
-/// that where it is wanted -- a picture in the middle of a column -- and pays
-/// for nothing where it is not.
+/// Off by default: with it on the words are set line by line against the
+/// elements around them rather than laid out once, which is slower.
 class TextWrap {
   final bool on;
 
@@ -61,7 +58,7 @@ class TextWrap {
   factory TextWrap.fromJson(Map<String, dynamic> json) => TextWrap(
         on: jsonBool(json["on"], false),
         gap: jsonDouble(json["gap"], 12).clamp(0, 400),
-        side: WrapSide.fromName(json["side"] as String?),
+        side: WrapSide.fromName(jsonStr(json["side"])),
       );
 }
 
@@ -82,13 +79,9 @@ enum ColumnRuleStyle {
 }
 
 /// TextColumns is how a paragraph is broken into columns.
-///
-/// Its own object rather than four fields on the element, because three of the
-/// four are meaningless when [count] is 1 and grouping them is what lets the
-/// settings hide the rule controls until there is a gap to draw one in.
 class TextColumns {
-  /// count is how many columns the text flows across. One is the ordinary
-  /// case and costs nothing extra to draw.
+  /// count is how many columns the text flows across. One costs nothing
+  /// extra to draw.
   final int count;
 
   /// gap is the space between two columns, in design units. The rule, if there
@@ -99,17 +92,9 @@ class TextColumns {
   final double ruleWidth;
   final Color ruleColor;
 
-  /// noBlankStart drops a blank line that would have begun a column.
-  ///
-  /// The gap between two paragraphs is a line like any other, and when the
-  /// break lands on one the next column starts with an empty row and its
-  /// text sits lower than its neighbour's -- which reads as a mistake in the
-  /// setting rather than as a paragraph break. The line is not moved, it is
-  /// dropped: it is a space, and a space at the top of a column is the thing
-  /// being complained about.
-  ///
-  /// On by default: the ragged column top is a fault every time it appears,
-  /// so the setting exists to turn the tidying off, not to ask for it.
+  /// noBlankStart drops a blank line that would have begun a column (or a
+  /// box in a chain), so its text does not sit lower than its neighbour's.
+  /// On by default; the setting exists to turn it off.
   final bool noBlankStart;
 
   const TextColumns({
@@ -123,9 +108,8 @@ class TextColumns {
 
   bool get isSingle => count <= 1;
 
-  /// says is whether this has anything to record. A single column with
-  /// nothing else set is what every text element starts with, and writing it
-  /// out would be a line of noise in every saved file.
+  /// says is whether this has anything to record: not the single column
+  /// every text element starts with.
   bool get says => !isSingle || !noBlankStart;
 
   /// columnWidth is how wide each column is inside a box [total] wide.
@@ -164,23 +148,19 @@ class TextColumns {
 
   factory TextColumns.fromJson(Map<String, dynamic> json) => TextColumns(
         noBlankStart: jsonBool(json["noBlankStart"], true),
-        count: jsonInt(json["count"], 1),
-        gap: jsonDouble(json["gap"], 24),
-        ruleStyle: ColumnRuleStyle.fromName(json["ruleStyle"] as String?),
-        ruleWidth: jsonDouble(json["ruleWidth"], 1),
+        count: jsonInt(json["count"], 1).clamp(1, 12),
+        gap: jsonDouble(json["gap"], 24).clamp(0.0, 400.0),
+        ruleStyle: ColumnRuleStyle.fromName(jsonString(json["ruleStyle"], "")),
+        ruleWidth: jsonDouble(json["ruleWidth"], 1).clamp(0.0, 40.0),
         ruleColor: colorFromJson(json["ruleColor"], const Color(0x66FFFFFF)),
       );
 }
 
-/// TextOnCurve puts a paragraph along another element's line.
-///
-/// The curve is named rather than copied, so moving or reshaping the line
-/// carries its text with it -- which is the whole reason to attach text to a
-/// line instead of rotating a text box next to one.
+/// TextOnCurve puts a paragraph along another element's line. The line is
+/// named rather than copied, so moving or reshaping it carries the text.
 class TextOnCurve {
-  /// elementId is a line or a path element. Anything else is ignored, which is
-  /// also what happens when the element it names has been deleted: the text
-  /// falls back to its box, rather than vanishing.
+  /// elementId is a line or a path element. Anything else, or an element
+  /// since deleted, is ignored and the text falls back to its box.
   final String elementId;
 
   /// offset slides the text along the curve, as a fraction of its length.
@@ -191,26 +171,17 @@ class TextOnCurve {
   final bool away;
 
   /// spacing is extra room between letters as they are placed, on top of the
-  /// spec's own letter spacing. A curve needs more of it on a tight bend than
-  /// a straight line does, and the alternative is glyphs overlapping.
+  /// spec's own letter spacing, for tight bends where glyphs would overlap.
   final double spacing;
 
-  /// hideHost leaves the line itself undrawn.
-  ///
-  /// Usually what is wanted. A line drawn to carry a caption round the top of
-  /// a badge is scaffolding: the words are the design and the line is how they
-  /// were placed. Hiding the line element itself would work, except that a
-  /// hidden element is skipped everywhere -- including here -- so the text
-  /// would go with it.
+  /// hideHost leaves the line itself undrawn. Hiding the line element
+  /// instead would not do: a hidden element is skipped everywhere, including
+  /// here, so the text would go with it.
   final bool hideHost;
 
-  /// mask hides whatever has slid off the ends of the line.
-  ///
-  /// The words follow the line past its ends -- that is what lets a caption
-  /// travel off and back on -- so without this a slide carries them across
-  /// whatever else is on the canvas. With it the line is a window: a letter
-  /// is cut off at the end rather than continuing beyond it, which is what
-  /// makes the same slide read as words arriving from behind something.
+  /// mask hides whatever has slid off the ends of the line. The words follow
+  /// the line past its ends; with this the line is a window, so a slide
+  /// reads as words arriving from behind something.
   final bool mask;
 
   const TextOnCurve({
@@ -258,22 +229,16 @@ class TextOnCurve {
       );
 }
 
-/// TextElement is a paragraph in a box.
-///
-/// Everything about how the letters look is in [textSpec]; everything about
-/// the box around them is in [box]. This class is only the string and the
-/// wiring, which is why it is short and why adding a type control means
-/// touching TextSpec rather than touching every element that draws words.
+/// TextElement is a paragraph in a box. How the letters look is in
+/// [textSpec] and the box around them in [box], so a new type control
+/// belongs in TextSpec rather than here.
 class TextElement extends CanvasElement {
   final String text;
   final TextSpec textSpec;
   final BoxSpec box;
 
-  /// autoSize grows the type to fill the box rather than wrapping it.
-  ///
-  /// What a title wants and what a paragraph does not, so it is a switch
-  /// rather than a mode: a headline should get bigger when its box does,
-  /// while body copy should reflow.
+  /// autoSize grows the type to fill the box rather than wrapping it: a
+  /// headline grows with its box, where body copy reflows.
   final bool autoSize;
 
   /// columns is how the paragraph is broken up. See [TextColumns].
@@ -284,67 +249,39 @@ class TextElement extends CanvasElement {
 
   /// slot is where the element's own words sit, or null for the box.
   ///
-  /// Null is what nearly every text element is and what every one of them was:
-  /// the words fill the box, wrap inside it, take columns and flow on into the
-  /// next box. Given a slot they behave like a piece instead -- as wide as
-  /// they come out and held to the corner the slot names -- which is what lets
-  /// them *stack* with the pieces. A title with a paragraph under it and no
-  /// gap between them is one slot and two blocks; before this the paragraph
-  /// was a piece held to the top of the box and the words filled the box, so
-  /// the two were drawn over each other.
-  ///
-  /// Ignored where the words are not a block in the box to begin with: on a
-  /// line, in columns, or flowing on into another box. Those are arrangements
-  /// of the whole box, and a slot is a corner of it.
+  /// Null, the usual case, fills the box: the words wrap, take columns and
+  /// flow on. Given a slot they behave like a piece -- as wide as they come
+  /// out, held to that corner -- so they stack with the pieces in it.
+  /// Ignored on a line, in columns or in a chain, which arrange the whole box.
   final TextSlot? slot;
 
   /// items are the extra pieces of writing in this element's box, each in a
-  /// slot of its own. See [TextItem].
-  ///
-  /// Empty for nearly every text element. They exist for the one that is a
-  /// card rather than a paragraph: a number, a title, a line of small print
-  /// and a name in the corner, which used to be four elements and a shape
-  /// that had to be moved together.
+  /// slot of its own, for a card rather than a paragraph. See [TextItem].
   final List<TextItem> items;
 
   /// parts are the runs of this text that are drawn differently -- a word in
-  /// another colour, a phrase in bold. See [TextPart].
-  ///
-  /// On the element rather than inside any one feature, because "these words,
-  /// not the others" is the same question a colour, an animation and an echo
-  /// all ask.
+  /// another colour, a phrase in bold, its own arrival. See [TextPart].
   final List<TextPart> parts;
 
   /// highlight and underline are the element's own marks: a band behind all
-  /// of the words, a line under all of them.
-  ///
-  /// The same two a part carries, because they are the same question asked of
-  /// everything rather than of a few words -- and asked far more often. A
-  /// highlighted headline should not need a part covering the whole sentence
-  /// before it can be highlighted.
+  /// of the words, a line under all of them. The same two a part carries;
+  /// see [drawnParts].
   final PartHighlight? highlight;
   final PartUnderline? underline;
 
   /// flowTo is the text element the words that do not fit run on into, or ""
-  /// for none.
-  ///
-  /// One way, always. A chain is a line of boxes with a head and a tail, and
-  /// the words run from one to the next; a link that could point backwards
-  /// would let somebody make a ring of boxes, and a ring has no first box to
-  /// start reading from. See flowFor, which refuses to make one.
+  /// for none. One way only: a ring of boxes has no first box, and flowFor
+  /// refuses to make one.
   final String flowTo;
 
   /// document is the Writing library document these words came from, if any.
-  ///
-  /// The words themselves are in [text]: read once and copied in, because a
-  /// canvas has to draw the same on a machine that has never seen the
-  /// library and an export has no disk to wait on. See TextDocumentRef.
+  /// The words are copied into [text], so the canvas draws without the
+  /// library and an export never waits on disk. See TextDocumentRef.
   final TextDocumentRef document;
 
   /// documentParts are the runs the document's own markdown asked for -- a
   /// heading, a bold phrase, a link. Kept apart from [parts] because they are
-  /// not the reader's: they are rewritten from scratch every time the
-  /// document is read, and a reader's own part must survive that.
+  /// rewritten every time the document is read, and the reader's must survive.
   final List<TextPart> documentParts;
 
   /// wrap flows the words around whatever overlaps the box. See TextWrap.
@@ -384,12 +321,8 @@ class TextElement extends CanvasElement {
   ElementKind get kind => ElementKind.text;
 
   /// assetIds is every stored picture this element refers to: the pictures
-  /// among its pieces, and one showing through its letters.
-  ///
-  /// Without this the sweep that clears out pictures nothing is using any
-  /// more could not see them -- so a picture lasted until the next sweep and
-  /// was gone by the next time the canvas was opened. Every element that can
-  /// name a picture has to answer this. See CanvasStorage.liveAssetIds.
+  /// among its pieces, and one showing through its letters. A picture left
+  /// out is swept away as unused; see CanvasStorage.liveAssetIds.
   @override
   Set<String> get assetIds => {
         for (var item in items) ...{
@@ -402,28 +335,20 @@ class TextElement extends CanvasElement {
       };
 
   /// drawnParts are the parts the painter works from: the element's own
-  /// marks as a part covering every word, and then the parts themselves.
-  ///
-  /// A part rather than a second mechanism, because "a line under all of it"
-  /// is "a line under words one to the end" -- and written that way the
-  /// marks, their timing and their drawing on are one piece of code instead
-  /// of two that would have to agree.
-  ///
-  /// First in the list, so a part's own highlight is drawn over the
-  /// element's rather than under it, and so a part still decides the colour
-  /// and weight of the words it covers.
+  /// marks as a part covering every word, so they share the parts' drawing
+  /// and timing, and then the parts themselves. The marks come first, so a
+  /// part's own highlight is drawn over them and a part still decides the
+  /// colour and weight of its words.
   List<TextPart> get drawnParts => drawnPartsWith(documentParts);
 
   /// drawnPartsWith is drawnParts with the document's runs given rather than
   /// taken from the element -- which is what a box in a chain needs, since
   /// the runs it draws are the head's, moved. See TextFlow.parts.
   List<TextPart> drawnPartsWith(List<TextPart> fromDocument) => [
-        // The element's own marks, as a part covering every word.
         if (highlight != null || underline != null)
           TextPart(highlight: highlight, underline: underline),
-        // Then what a document's markdown asked for, and then the reader's
-        // own parts -- which are last so that they win where they overlap.
-        // See partAt: the later part is the one that decides.
+        // The reader's own parts last, so they win where they overlap: see
+        // partAt, where the later part decides.
         ...fromDocument,
         ...parts,
       ];
@@ -433,14 +358,12 @@ class TextElement extends CanvasElement {
   /// baked into [text].
   String get displayText => textSpec.textCase.apply(text);
 
-  /// scaledBy is the words, the pieces and the box at [by] times the size,
-  /// so that holding the proportions holds them of what is inside as well.
-  ///
-  /// Not the text on a curve's offset, which is a fraction of the line it
-  /// rides, and not the columns' count. See CanvasElement.scaledBy.
   @override
   bool get scalesInside => true;
 
+  /// scaledBy is the words, the pieces and the box at [by] times the size.
+  /// Not a curve's offset, which is a fraction of the line, and not the
+  /// column count. See CanvasElement.scaledBy.
   @override
   CanvasElement scaledBy(double by) => copyWith(
         textSpec: textSpec.scaledBy(by),
@@ -517,11 +440,8 @@ class TextElement extends CanvasElement {
         "textSpec": textSpec.toJson(),
         "box": box.toJson(),
         if (autoSize) "autoSize": true,
-        // Written whenever it says anything, not only when there is more
-        // than one column: No blank first line is asked of a box with one
-        // column too -- a chain of boxes is the same question asked of boxes
-        // -- so a one-column box that had it turned off saved nothing at all
-        // and opened with it on again.
+        // Written whenever it says anything, not only for several columns:
+        // No blank first line applies to a one-column box in a chain too.
         if (columns.says) "columns": columns.toJson(),
         if (animation.any) "animation": animation.toJson(),
         if (slot != null) "slot": slot!.name,
@@ -545,11 +465,14 @@ class TextElement extends CanvasElement {
               json["textSpec"], TextSpec.fromJson, const TextSpec()),
           box: jsonSpec(json["box"], BoxSpec.fromJson, const BoxSpec()),
           autoSize: jsonBool(json["autoSize"], false),
-          animation: jsonSpec(json["animation"], TextAnimation.fromJson,
-              const TextAnimation()),
+          animation: _animatesPart(
+                  json)
+              ? const TextAnimation()
+              : jsonSpec(json["animation"], TextAnimation.fromJson,
+                  const TextAnimation()),
           slot: json[
                   "slot"] is String
-              ? TextSlot.fromName(json["slot"] as String?)
+              ? TextSlot.fromName(jsonStr(json["slot"]))
               : null,
           items: _itemsFromJson(json),
           parts: _partsFromJson(json),
@@ -565,8 +488,6 @@ class TextElement extends CanvasElement {
                   ? PartUnderline.fromJson(json["underline"] as Map<String,
                       dynamic>)
                   : null,
-          // Not onto the element any more: an icon is a piece, and
-          // _itemsFromJson has already made one of it.
           document:
               json["document"] is Map<String,
                       dynamic>
@@ -593,18 +514,8 @@ class TextElement extends CanvasElement {
 }
 
 /// _itemsFromJson reads the pieces, and turns an older document's single
-/// icon into one of them.
-///
-/// An icon was a feature of its own: one per element, with a place, an
-/// alignment and a gap that were all its own rather than the ones the words
-/// use. It is a piece now, like any other -- see TextItem -- so the place and
-/// the alignment it had become the slot they add up to.
-///
-/// It does not lay out quite as it did: an icon *before* the words used to
-/// take its room out of the box and push them along, where a piece sits over
-/// the box in the corner its slot names. A document with one may want a
-/// little left padding to get its old arrangement back, which is one setting
-/// against a feature that had eight.
+/// icon into one, in the slot its place and alignment add up to. A piece
+/// sits over the box rather than pushing the words along as the icon did.
 List<TextItem> _itemsFromJson(Map<String, dynamic> json) {
   var items = [
     if (json["items"] case List raw)
@@ -626,11 +537,8 @@ List<TextItem> _itemsFromJson(Map<String, dynamic> json) {
 }
 
 /// _slotForIcon is the corner an old icon's place and alignment add up to.
-///
-/// Beside the words, the place says which side and the alignment says how far
-/// down; above or below them, the place says how far down and the alignment
-/// says which side. Two questions and nine answers, which is exactly what a
-/// slot is.
+/// Beside the words the place is the side and the alignment how far down;
+/// above or below them, the other way round.
 TextSlot _slotForIcon(TextIcon icon) {
   if (icon.place.beside) {
     var left = icon.place == IconPlace.start;
@@ -648,14 +556,23 @@ TextSlot _slotForIcon(TextIcon icon) {
   };
 }
 
-/// _partsFromJson reads the parts, and moves an old document's pointed
-/// animation onto the part it pointed at.
-///
-/// The arrival used to be able to name one part and happen to that instead of
-/// to the whole paragraph. It is the part's own animation now -- so the rest
-/// of the sentence can have an arrival too, and the part can land at its own
-/// moment -- and a document saved before that would otherwise open with the
-/// animation apparently applied to everything.
+/// _animatesPart is whether [json]'s animation is an old one of a single
+/// part: moved onto the part by [_partsFromJson].
+bool _animatesPart(Map<String, dynamic> json) {
+  var animation = json["animation"];
+  if (animation is! Map<String, dynamic>) return false;
+  var at = jsonInt(animation["part"], -1);
+  var parts = json["parts"];
+  return at >= 0 &&
+      parts is List &&
+      at < parts.length &&
+      TextAnimationPreset.fromName(jsonStr(animation["preset"])) !=
+          TextAnimationPreset.none;
+}
+
+/// _partsFromJson reads the parts, and moves an older document's arrival
+/// that named one part onto that part's own animation; otherwise it would
+/// open applied to the whole paragraph.
 List<TextPart> _partsFromJson(Map<String, dynamic> json) {
   var parts = [
     if (json["parts"] case List raw)
@@ -667,7 +584,7 @@ List<TextPart> _partsFromJson(Map<String, dynamic> json) {
   if (animation is! Map<String, dynamic>) return parts;
   var at = jsonInt(animation["part"], -1);
   if (at < 0 || at >= parts.length) return parts;
-  var preset = TextAnimationPreset.fromName(animation["preset"] as String?);
+  var preset = TextAnimationPreset.fromName(jsonStr(animation["preset"]));
   if (preset == TextAnimationPreset.none) return parts;
 
   return [
@@ -680,6 +597,6 @@ List<TextPart> _partsFromJson(Map<String, dynamic> json) {
                 preset: preset,
                 gap: jsonDouble(animation["gap"], 0.35),
                 scale: jsonDouble(animation["scale"], 0),
-                ease: ChartEase.fromName(animation["ease"] as String?))),
+                ease: ChartEase.fromName(jsonStr(animation["ease"])))),
   ];
 }

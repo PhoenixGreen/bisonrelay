@@ -17,6 +17,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
 // canvas_element_animation_test.dart is a shape or a picture arriving.
 //
@@ -237,9 +239,10 @@ void main() {
       controller.applyElementAnimation(
           shapeIn(controller), ElementAnimationPreset.slideUp);
 
-      var band = bandsIn(shapeIn(controller).track).single;
-      expect(band.channel, KeyframeChannel.reveal);
-      expect(band.real, isTrue, reason: "two keyframes, not one");
+      var (_, took) = ownSpan(shapeIn(controller), MotionKind.arrive,
+          controller.document.frameRate)!;
+      expect(took, greaterThan(0), reason: "an arrival clip with a length");
+      expect(shapeIn(controller).track, isNull, reason: "a clip, not keys");
       expect(
           shapeIn(controller).animation.preset, ElementAnimationPreset.slideUp);
     });
@@ -288,11 +291,10 @@ void main() {
       controller.applyElementExit(
           shapeIn(controller), ElementAnimationPreset.assemble);
 
-      var bands = bandsIn(shapeIn(controller).track);
-      expect(bands.length, 2);
-      var arrive = bands.firstWhere((b) => b.channel == KeyframeChannel.reveal);
-      var leave = bands.firstWhere((b) => b.channel == KeyframeChannel.close);
-      expect(leave.from, greaterThan(arrive.to),
+      var rate = controller.document.frameRate;
+      var (at, took) = ownSpan(shapeIn(controller), MotionKind.arrive, rate)!;
+      var (leaves, _) = ownSpan(shapeIn(controller), MotionKind.leave, rate)!;
+      expect(leaves, greaterThan(at + took),
           reason: "it never starts before the arrival has finished");
     });
 
@@ -312,10 +314,10 @@ void main() {
           shapeIn(controller), ElementAnimationPreset.fadeIn);
 
       var track = shapeIn(controller).track!;
-      var leave =
-          bandsIn(track).firstWhere((b) => b.channel == KeyframeChannel.close);
-      expect(leave.from, greaterThan(12));
-      for (var f = 12; f <= leave.to; f++) {
+      var (from, took) = ownSpan(shapeIn(controller), MotionKind.leave,
+          controller.document.frameRate)!;
+      expect(from, greaterThan(12));
+      for (var f = 12; f <= from + took; f++) {
         expect(track.at(f).dx, 200, reason: "still moved at frame $f");
         expect(track.at(f).opacity, 0.4, reason: "still faded at frame $f");
       }

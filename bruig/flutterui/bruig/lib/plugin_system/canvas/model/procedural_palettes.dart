@@ -4,14 +4,7 @@ import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 
 // procedural_palettes.dart is sets of colours a background can be given in
-// one go.
-//
-// Three colours that have to agree with each other is three pickers and a
-// good eye, and the commonest way a generated background goes wrong is that
-// they do not: the default green on near-black was every style's colours,
-// and twenty styles in the one pair of colours look like one style. A
-// palette is the base, its fade, the main colour and the accent chosen
-// together.
+// one go: the base, its fade, the main colour and the accent chosen together.
 
 /// BackgroundPalette is a base colour, what it fades to, and the pattern's
 /// two colours.

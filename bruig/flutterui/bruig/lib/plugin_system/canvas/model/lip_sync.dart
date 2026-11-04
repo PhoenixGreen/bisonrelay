@@ -3,26 +3,20 @@ import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
 
-// lip_sync.dart is a voice-over turned into mouths: which shape, from which
-// frame. A 3D character's mouth takes them (character_performance.dart).
+// lip_sync.dart turns a voice-over into mouth shapes by frame, for a 3D
+// character's mouth (elements/character_performance.dart).
 //
-// Two ways, for two kinds of recording. With the words heard (whisper, the
-// same hearing the Cues use), each word is spelt into the shapes its sounds
-// make and its time shared between them. With nothing but the sound, the
-// loudness of each frame chooses how open the mouth is -- rougher, but it
-// works in any language and with nothing installed.
+// With the words heard (the [SpokenWord]s of the word cues), each word is
+// spelt into shapes sharing its time. With only the sound, each frame's
+// loudness sets how open the mouth is: rougher, but language-free.
 //
-// Either way the result is a list of mouths, each holding until the next,
-// tidied the way an animator would: nothing shorter than a couple of frames
-// (it flickers), the mouth moving a frame before the sound (the eye expects
-// the shape before the ear hears it), and a closed mouth for M, B and P
-// never dropped, because a "b" without the lips meeting is the one mistake
-// everybody sees.
+// Either way the mouths are tidied as an animator would: none shorter than
+// a couple of frames (it flickers), each a frame before its sound (the eye
+// expects the shape first), and a closed mouth for M, B and P never dropped:
+// a "b" without the lips meeting is the mistake everybody sees.
 
-/// MouthShape is one of the mouths speech is drawn with: the six basic
-/// shapes and three extra that hand-drawn animation has used since the
-/// Hanna-Barbera studios, named by their usual letters. [rest] is no shape
-/// at all -- the mouth the face's own controls make, smiling or frowning.
+/// MouthShape is one of the mouths speech is drawn with: the Hanna-Barbera
+/// letters A to H, and [rest] (X), which leaves the face's own mouth.
 enum MouthShape {
   rest("X", "Rest"),
   closed("A", "M B P"),
@@ -37,11 +31,6 @@ enum MouthShape {
   final String letter;
   final String sounds;
   const MouthShape(this.letter, this.sounds);
-
-  static MouthShape fromIndex(num? i) {
-    var n = i?.round() ?? 0;
-    return n >= 0 && n < values.length ? values[n] : rest;
-  }
 
   static MouthShape fromName(String? name) =>
       values.firstWhere((m) => m.name == name, orElse: () => rest);
@@ -64,10 +53,8 @@ class LipSyncFeel {
   const LipSyncFeel({this.shortest = 2, this.lead = 1, this.pause = 0.25});
 }
 
-/// mouthsOfWord is the shapes [word] is said with, in order, from its
-/// spelling. English spelling is not English sound, but the mouth shapes
-/// are few and forgiving: what matters is where the lips close, where they
-/// round, where the teeth show and how wide the vowels open.
+/// mouthsOfWord is the shapes [word] is said with, in order, guessed from
+/// its spelling. That is rough, but the shapes are few and forgiving.
 List<MouthShape> mouthsOfWord(String word) {
   var w = word.toLowerCase().replaceAll(RegExp(r"[^a-z]"), "");
   // A final silent e: "make", "home", "time" -- but not "the" or "be".
@@ -88,7 +75,6 @@ List<MouthShape> mouthsOfWord(String word) {
     }
     if (!matched) i++;
   }
-  // The same shape twice in a row is one shape held.
   var merged = <MouthShape>[];
   for (var s in out) {
     if (merged.isEmpty || merged.last != s) merged.add(s);
@@ -229,14 +215,12 @@ List<MouthKey> mouthsFromWords(List<SpokenWord> words,
   return tidyMouths(out, feel);
 }
 
-/// mouthsFromLoudness is the mouths for a recording whose shape is [peaks]
-/// -- loudness from nought to one, evenly across [seconds] -- starting at
-/// [startFrame], tidied by [feel] at [frameRate].
+/// mouthsFromLoudness is the mouths for a recording whose [peaks] (nought to
+/// one, evenly across [seconds]) start at [startFrame].
 ///
-/// Louder is more open. Where the voice dips sharply for a moment in the
-/// middle of speech the lips are closed, which is where the m's, b's and
-/// p's mostly are; a long stretch at one loudness is broken into two shapes
-/// so a held vowel does not freeze the face.
+/// Louder is more open. A sharp, brief dip mid-speech closes the lips (where
+/// m, b and p mostly are); a long stretch at one loudness alternates two
+/// shapes so a held vowel does not freeze the face.
 List<MouthKey> mouthsFromLoudness(Float32List peaks, double seconds,
     {required int startFrame,
     required int frameRate,
@@ -296,11 +280,10 @@ List<MouthKey> mouthsFromLoudness(Float32List peaks, double seconds,
   return tidyMouths(out, feel);
 }
 
-/// tidyMouths is [keys] in order, led by [feel.lead] frames, with every
-/// mouth held for at least [feel.shortest] -- a mouth too short is dropped,
-/// unless it closes the lips, in which case the one before it gives way, or
-/// it is the rest, which waits its turn -- and the same shape twice in a row
-/// made one.
+/// tidyMouths is [keys] sorted, led by `feel.lead` frames, each held at
+/// least `feel.shortest` frames: a mouth too short is dropped, unless it
+/// closes the lips (the one before gives way) or is the rest (it waits its
+/// turn). Repeats are merged.
 List<MouthKey> tidyMouths(List<MouthKey> keys, LipSyncFeel feel) {
   var sorted = [
     for (var k in keys) (frame: math.max(0, k.frame - feel.lead), shape: k.shape),
@@ -318,9 +301,8 @@ List<MouthKey> tidyMouths(List<MouthKey> keys, LipSyncFeel feel) {
         out.removeLast();
       } else if (out.last.shape == MouthShape.closed ||
           k.shape == MouthShape.rest) {
-        // Let the closure be held its frames: this one starts after it. And
-        // a rest is never lost -- the end of a phrase must close the mouth
-        // -- only put off until the shape before it has had its time.
+        // After a closure, or for a rest (a phrase must end closed), wait
+        // until the shape before has had its frames.
         k = (frame: out.last.frame + feel.shortest, shape: k.shape);
       } else {
         continue;

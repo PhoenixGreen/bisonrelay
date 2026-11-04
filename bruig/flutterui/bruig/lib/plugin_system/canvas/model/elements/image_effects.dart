@@ -3,16 +3,13 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
 
-// image_effects.dart is what is done to a layer as it is drawn -- a shadow
-// under it, a glow round it, a blur through it -- and what a texture layer
-// draws: grain, paper, grunge, a vignette.
+// image_effects.dart holds the effects done to a layer as it is drawn
+// (shadow, glow, blur) and what a texture layer draws (grain, paper, ...).
+// Both list their settings per kind as AdjustParams, so the panel is built
+// from the lists and a document holds only what was moved.
 //
-// Both are settings listed per kind, as adjustments are (see AdjustParam), so
-// the panel is built from the lists and a document holds only what was moved.
-//
-// Distances are thousandths of the frame's shorter side, as a picture layer's
-// place is in thousandths of the frame: a shadow stays the same shadow when
-// the poster is drawn twice the size.
+// Distances are thousandths of the frame's shorter side, so a shadow scales
+// with the picture.
 
 /// EffectKind is something done to a layer as it is drawn.
 enum EffectKind {
@@ -117,7 +114,7 @@ class LayerEffect {
       };
 
   factory LayerEffect.fromJson(Map<String, dynamic> json) => LayerEffect(
-        kind: EffectKind.fromName(json["k"] as String?),
+        kind: EffectKind.fromName(jsonString(json["k"], "")),
         on: !jsonBool(json["off"], false),
         values: _numbers(json["v"]),
         colour: json["c"] == null ? null : colorFromJson(json["c"]),
@@ -127,7 +124,7 @@ class LayerEffect {
 Map<String, double> _numbers(Object? raw) => {
       if (raw is Map)
         for (var e in raw.entries)
-          if (e.key is String && e.value is num)
+          if (e.key is String && e.value is num && (e.value as num).isFinite)
             e.key as String: (e.value as num).toDouble()
     };
 
@@ -267,7 +264,7 @@ class TextureSpec {
       };
 
   factory TextureSpec.fromJson(Map<String, dynamic> json) => TextureSpec(
-        kind: TextureKind.fromName(json["k"] as String?),
+        kind: TextureKind.fromName(jsonStr(json["k"])),
         values: _numbers(json["v"]),
         colour: json["c"] == null ? null : colorFromJson(json["c"]),
         second: json["c2"] == null ? null : colorFromJson(json["c2"]),

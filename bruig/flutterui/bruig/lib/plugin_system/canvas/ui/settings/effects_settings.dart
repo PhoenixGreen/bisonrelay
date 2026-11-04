@@ -218,10 +218,9 @@ List<Widget> effectsGroups(
 final Map<String, Set<EffectKind>> _openEffects = {};
 
 /// EffectTiles is a layer's effects as tiles. The first press on one puts
-/// the effect on and opens its settings; after that a press opens and shuts
-/// the settings, and only the switch in them turns the effect off. A tile
-/// wears a tick while its effect is on and is lit while its settings are
-/// open -- so several effects can be on with one, or none, open.
+/// the effect on and opens its settings; later presses open and shut the
+/// settings, and only the switch in them turns it off. A tick marks an
+/// effect that is on; a lit tile has its settings open.
 class EffectTiles extends StatefulWidget {
   final CanvasController controller;
   final ImageElement element;

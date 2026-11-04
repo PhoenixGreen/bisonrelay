@@ -9,20 +9,17 @@ import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
-// motion_convert.dart turns a canvas animated with keyframes -- each
-// element's own track -- into one animated with clips, as it looks: the
-// same move, frame for frame.
+// motion_convert.dart turns legacy keyframe tracks into clips, frame for
+// frame, when a canvas opens.
 //
-// An element's moves (across, down, size, turn, fade) become one clip, from
+// An element's moves (across, down, size, turn, fade) become one clip from
 // its first keyframe to its last, holding its first pose before and its last
-// after as a track does. Its other keyed values -- an arrival played, a way
-// out, a count, a bow, a slide -- become a short clip for each stretch
-// between two keyframes that name them, on a layer of their own, easing as
-// the stretch did.
+// after as a track does. Its other keyed values (reveal, close, count, bow,
+// slide) become a clip for each stretch between two keyframes naming them,
+// on a layer per group, easing as the stretch did.
 //
-// Left as they are: a stage's and scenery's cameras, which are theirs and
-// keyed as such; a team's runs; and any track keying something a clip
-// cannot say -- those keep their keyframes, which still play.
+// Left as tracks, and still played: backgrounds, stages, scenery, players
+// (a team's runs), and any track keying something a clip cannot say.
 
 /// TracksConverted is what a conversion did: how many elements' keyframes
 /// became clips, and how many were kept as they were.
@@ -33,9 +30,8 @@ class TracksConverted {
   const TracksConverted(this.document, this.converted, this.kept);
 }
 
-/// _channels are the keyed values a clip can say, the stretches between
-/// which go on one layer together: an arrival and a way out follow one
-/// another; the others each on their own.
+/// _groups are the keyed values a clip can say; each group's stretches share
+/// one layer.
 const _groups = [
   ["reveal", "close"],
   ["count"],
@@ -120,7 +116,7 @@ CanvasElement? convertElement(CanvasElement e, int rate) {
     moved[prop] = [
       for (var (i, k) in keys.indexed)
         MotionKey(sec(k.frame - keys.first.frame), MotionNumber(of(k)),
-            // A track eases out of each key; a clip into it.
+            // A track eases out of each key; a clip eases into it.
             ease: i == 0 ? KeyframeEasing.linear : keys[i - 1].easing),
     ];
   }
@@ -173,8 +169,7 @@ CanvasElement? convertElement(CanvasElement e, int rate) {
     }
     for (var (i, (fa, fb, va, vb, ease, ch)) in all.indexed) {
       var length = math.max(0.05, sec(fb - fa));
-      // An arrival from nothing to all of it is the element's own; a way
-      // out likewise -- as Inside it shows them.
+      // A full 0-to-1 reveal or close is the element's own arrival or exit.
       var own = va == 0 && vb == 1 && (ch == "reveal" || ch == "close");
       var kind = ch == "reveal"
           ? MotionKind.arrive

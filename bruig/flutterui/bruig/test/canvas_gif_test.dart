@@ -306,4 +306,15 @@ void main() {
       codec.dispose();
     });
   });
+
+  test("played once is played once: no loop block to repeat it", () {
+    var frames = [_solid(2, 2, 1, 2, 3), _solid(2, 2, 3, 2, 1)];
+    var once = encodeGif(frames, loop: 1);
+    var needle = "NETSCAPE2.0";
+    expect(String.fromCharCodes(once).contains(needle), isFalse);
+    var twice = encodeGif(frames, loop: 2);
+    var at = String.fromCharCodes(twice).indexOf(needle);
+    // The count after the sub-block's id: repeats after the first play.
+    expect(twice[at + 13] | twice[at + 14] << 8, 1);
+  });
 }

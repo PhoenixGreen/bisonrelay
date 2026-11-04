@@ -27,19 +27,17 @@ import 'package:provider/provider.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 
 // stock_panel.dart is the Stock section of the Assets sidebar: search Pixabay,
-// the Noun Project, Freesound and Jamendo, look and listen, and use what fits.
+// the Noun Project, Freesound and Jamendo, preview, and use what fits.
 //
-// Nothing connects until somebody searches. Opening the sidebar, choosing a
-// library or changing a filter before the first search makes no request --
-// the sidebar is somewhere people pass through, and a design tool that
-// phoned four companies every time it was opened would be telling them when
-// its owner was at work. After a search, changing a filter searches again,
-// because that is what the change was for.
+// Nothing connects until somebody searches: opening the sidebar or changing a
+// library or filter before then makes no request, so the app does not tell four
+// companies whenever it is opened. After a search, a filter change searches
+// again.
 //
-// A result is a preview until it is used: clicked (onto the middle of the
-// canvas), dragged (to where it is let go, or onto a channel), or added with
-// its + (into the library only). Then it is fetched, stored, and credited --
-// see stock_import.dart.
+// A result is a preview until it is used: clicked (to the middle of the
+// canvas), dragged (where it is dropped, or onto a channel), or added with its
+// + (to the library only). Then it is fetched, stored and credited: see
+// stock_import.dart.
 
 const _sourceKey = "canvasStock.source";
 
@@ -81,8 +79,8 @@ class _StockPanelState extends State<StockPanel> {
   /// _licenceOpen is whether the licence button's panel is showing.
   bool _licenceOpen = false;
 
-  /// _query is the last search made, or null before the first -- which is
-  /// what decides whether changing a filter searches again.
+  /// _query is the last search made, or null before the first, which decides
+  /// whether changing a filter searches again.
   StockQuery? _query;
   StockPage? _last;
   List<StockItem> _items = const [];
@@ -290,8 +288,8 @@ class _StockPanelState extends State<StockPanel> {
 
     if (_proxied == null) return const SizedBox.shrink();
 
-    // The two gates, before anything else is drawn: a search box that could
-    // only ever answer "no" is worse than saying so.
+    // The two gates first: say why there is no search rather than show a
+    // box that can only answer "no".
     if (!prefs.allowFetching) {
       return ListView(padding: const EdgeInsets.all(8), children: [
         note(
@@ -321,9 +319,8 @@ class _StockPanelState extends State<StockPanel> {
       ]);
     }
 
-    // The licence choice is behind the licence button rather than among the
-    // filters: it is a question about what may be done with a result, asked
-    // once, not a way of narrowing a search that is changed every time.
+    // The licence choice is behind the licence button rather than among
+    // the filters: it is set once, not changed every search.
     var filters = [
       for (var f in filtersFor(_source))
         if (!_licenceFilter(f)) f,
@@ -336,8 +333,8 @@ class _StockPanelState extends State<StockPanel> {
     var visual = _source.kind != AssetKind.audio;
     var keyed = _hasKey == true && !_editingKey;
 
-    // The libraries to search, and Kenney's free sprites: no key, no
-    // search, a pack picked and its sprites shown.
+    // The libraries to search, and Kenney's free sprites (no key, no
+    // search: pick a pack and see its sprites).
     var library = CanvasDropdown<String>(
       key: const ValueKey("stockSource"),
       label: "Library",
@@ -558,8 +555,8 @@ class _StockPanelState extends State<StockPanel> {
         ),
         childWhenDragging: Opacity(opacity: 0.35, child: body),
         child: Material(
-          // Its own, inside the list: on the sidebar's the highlight spilled
-          // over the other sections and stayed put when the list scrolled.
+          // Its own Material inside the list: the sidebar's let the highlight
+          // spill over other sections and stay put when the list scrolled.
           type: MaterialType.transparency,
           child: InkWell(
             borderRadius: BorderRadius.circular(6),
@@ -591,8 +588,8 @@ class _StockPanelState extends State<StockPanel> {
               if (item.length > 0)
                 Positioned(
                     left: 4, bottom: 4, child: _Badge(clipLength(item.length))),
-              // A video is watched before it is chosen: a small copy,
-              // fetched when this is pressed and thrown away after.
+              // A video can be watched first: a small copy, fetched when pressed and
+              // thrown away after.
               if (item.kind == AssetKind.video && item.preview.isNotEmpty)
                 Positioned(
                   right: 3,
@@ -833,8 +830,8 @@ class _Badge extends StatelessWidget {
       );
 }
 
-/// _Previewer plays one stock sound at a time, fetched to a temporary file --
-/// the player reads files -- and forgotten when the sidebar closes.
+/// _Previewer plays one stock sound at a time, fetched to a temporary file
+/// (the player reads files), forgotten when the sidebar closes.
 class _Previewer {
   final AudioEngine engine;
   final VoidCallback changed;
@@ -963,8 +960,8 @@ class _VideoPreviewer {
         if (!got) return "The preview of ${item.title} could not be fetched.";
       }
       if (run != _run) return null;
-      // Twice the tile, for a sharp picture on a retina screen, and even on
-      // both sides, which the decoder's scaler needs.
+      // Twice the tile, for retina, and even on both sides, which the
+      // decoder's scaler needs.
       var w = 192;
       var h = item.width > 0 && item.height > 0
           ? ((w * item.height / item.width).round() ~/ 2) * 2
@@ -1014,10 +1011,12 @@ class _VideoPreviewer {
     if (run == _run) stop();
   }
 
-  /// _sleep waits [ms] -- cut short by a stop, so nothing is left waiting
-  /// after the preview has gone.
+  // _tick and _asleep are the wait in progress, for _wake to cut short.
   Timer? _tick;
   Completer<void>? _asleep;
+
+  /// _sleep waits [ms], cut short by a stop, so nothing is left waiting
+  /// after the preview has gone.
   Future<void> _sleep(int ms) {
     var done = Completer<void>();
     _asleep = done;

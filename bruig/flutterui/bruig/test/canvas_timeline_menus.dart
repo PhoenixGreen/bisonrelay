@@ -29,12 +29,20 @@ Future<void> openMore(WidgetTester tester, {bool settle = true}) async {
 }
 
 /// tapTimelineItem opens the ⋯ menu and presses the item [key] in it, such
-/// as "playAll-item", "snap-item" or "toolKnifeItem". The menu closes.
+/// as "snap-item" or "toolKnifeItem". The menu closes.
 Future<void> tapTimelineItem(WidgetTester tester, String key,
     {bool settle = true}) async {
   await openMore(tester, settle: settle);
   await tester.tap(find.byKey(ValueKey(key)));
   await settleMenu(tester, settle: settle);
+}
+
+/// tapPlayAll presses the play bar's button for Play running every scene.
+Future<void> tapPlayAll(WidgetTester tester) async {
+  var button = find.byKey(const ValueKey("playAll"));
+  await tester.ensureVisible(button);
+  await tester.tap(button);
+  await tester.pump();
 }
 
 /// openTiming opens the menu behind the playhead's readout: the length,

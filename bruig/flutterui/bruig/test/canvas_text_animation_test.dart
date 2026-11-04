@@ -15,6 +15,8 @@ import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
 // canvas_text_animation_test.dart is a paragraph arriving.
 //
@@ -212,9 +214,9 @@ void main() {
 
       controller.applyTextAnimation(
           textIn(controller), TextAnimationPreset.words);
-      var band = bandsIn(textIn(controller).track).single;
-      expect(band.channel, KeyframeChannel.reveal);
-      expect(band.real, isTrue, reason: "two keyframes, not one");
+      var (_, took) = ownSpan(textIn(controller), MotionKind.arrive,
+          controller.document.frameRate)!;
+      expect(took, greaterThan(0), reason: "an arrival clip with a length");
       expect(textIn(controller).animation.preset, TextAnimationPreset.words);
     });
 
@@ -249,10 +251,10 @@ void main() {
           textIn(controller), TextAnimationPreset.fadeIn);
       controller.applyTextExit(textIn(controller), TextAnimationPreset.fadeIn);
 
-      var bands = bandsIn(textIn(controller).track);
-      expect(bands.length, 2);
-      expect(bands.last.channel, KeyframeChannel.close);
-      expect(bands.last.from, greaterThan(bands.first.to));
+      var rate = controller.document.frameRate;
+      var (at, took) = ownSpan(textIn(controller), MotionKind.arrive, rate)!;
+      var (leaves, _) = ownSpan(textIn(controller), MotionKind.leave, rate)!;
+      expect(leaves, greaterThan(at + took));
     });
   });
 

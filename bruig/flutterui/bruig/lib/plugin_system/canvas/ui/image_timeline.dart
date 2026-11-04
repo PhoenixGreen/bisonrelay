@@ -5,24 +5,21 @@ import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:flutter/material.dart';
 
-// image_timeline.dart is a picture's layers on the timeline, as a drawing's
-// shapes are -- see vector_timeline.dart: a lane for each, bottom layer
-// first, under the picture's own keyframes, with a bar from where it starts
-// coming in to where it has. Shown as the keyframe row's toggle says (none,
-// the layer picked, every layer), and scrolled with the channels. Dragging
-// an end or a bar retimes that layer; see layerTimes and retimeLayers.
+// image_timeline.dart is a picture's layers on the timeline, as
+// vector_timeline.dart is a drawing's shapes: a lane each, bottom layer first,
+// with a bar from where it starts coming in to where it has. Dragging an end
+// or a bar retimes that layer; see layerTimes and retimeLayers.
 
 /// imageLaneHeight is one layer's lane.
 const double imageLaneHeight = 18;
 
-/// imageLanesFor is the picture whose layers can have lanes on the timeline
-/// -- the one element selected, a picture of layers with an arrival -- or
-/// null. Not only once the layers come in one after another: dragging a
-/// lane is one way to start them doing so.
+/// imageLanesFor is the picture whose layers can have lanes (the one element
+/// selected, a picture of layers with an arrival), or null. Its layers need
+/// not come in one after another yet: dragging a lane is one way to start it.
 ImageElement? imageLanesFor(CanvasController controller) {
   var e = controller.selected;
   if (e is! ImageElement || !e.layered || !e.animation.on) return null;
-  if (imageArrivalSpan(e) == null) return null;
+  if (imageArrivalSpan(e, controller.document.frameRate) == null) return null;
   return e;
 }
 
@@ -81,7 +78,7 @@ class _ImageLayerLanesState extends State<ImageLayerLanes> {
     var row = local.dy ~/ imageLaneHeight;
     if (row < 0 || row >= shown.length) return null;
     var index = shown[row];
-    var (at, span) = imageArrivalSpan(e)!;
+    var (at, span) = imageArrivalSpan(e, controller.document.frameRate)!;
     var (start, length) = layerTimes(e.stack, span)[index];
     var from = _x(at + start, width), to = _x(at + start + length, width);
     const reach = 7.0;
@@ -94,7 +91,7 @@ class _ImageLayerLanesState extends State<ImageLayerLanes> {
   void _drag(ImageElement e, double x, double width) {
     var index = _index, grip = _grip;
     if (index == null || grip == null) return;
-    var (at, span) = imageArrivalSpan(e)!;
+    var (at, span) = imageArrivalSpan(e, controller.document.frameRate)!;
     var f = _frame(x, width);
     if (index == 0 && grip != _Grip.end) {
       // The bottom layer starts as the picture's arrival does: moving it
@@ -105,7 +102,7 @@ class _ImageLayerLanesState extends State<ImageLayerLanes> {
       _was += delta;
       return;
     }
-    var baked = withLayerTimingBaked(e);
+    var baked = withLayerTimingBaked(e, controller.document.frameRate);
     var (start, _) = layerNaturalTimes(baked.stack, span)[index];
     controller.retimeLayers(
         e,
@@ -177,7 +174,8 @@ class _ImageLayerLanesState extends State<ImageLayerLanes> {
                 _index = hit?.$1;
                 _grip = hit?.$2;
                 if (hit == null || hit.$2 == null) return;
-                var (at, span) = imageArrivalSpan(e)!;
+                var (at, span) =
+                    imageArrivalSpan(e, controller.document.frameRate)!;
                 var (start, _) = layerTimes(e.stack, span)[hit.$1];
                 var begins = at + start.round();
                 _offset = hit.$2 == _Grip.bar
@@ -200,6 +198,7 @@ class _ImageLayerLanesState extends State<ImageLayerLanes> {
               child: CustomPaint(
                 size: Size(width, height),
                 painter: _LanesPainter(
+                  rate: controller.document.frameRate,
                   element: e,
                   shown: shown,
                   picked: picked,
@@ -228,8 +227,12 @@ class _LanesPainter extends CustomPainter {
   final ColorScheme colors;
   final double Function(num) xFor;
 
+  /// rate is the canvas's frames a second.
+  final int rate;
+
   _LanesPainter(
       {required this.element,
+      required this.rate,
       required this.shown,
       required this.picked,
       required this.colors,
@@ -238,7 +241,7 @@ class _LanesPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.clipRect(Offset.zero & size);
-    var (at, span) = imageArrivalSpan(element)!;
+    var (at, span) = imageArrivalSpan(element, rate)!;
     var times = layerTimes(element.stack, span);
     for (var (row, i) in shown.indexed) {
       var (start, length) = times[i];

@@ -21,17 +21,14 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 // into sounds by pronouncing dictionaries: British and American English,
 // and Chinese.
 //
-// Kokoro has 53 voices in nine languages; its other six languages had only
-// espeak-ng to say their words, so the 36 here are the English and Chinese
-// ones. Each is graded by Kokoro's makers (VOICES.md), A best, for how good
-// and how much of its training was.
+// All 53 of Kokoro's voices are listed: the 36 English and Chinese ones use
+// those dictionaries, the other six languages need espeak-ng installed (see
+// espeak.dart). Each is graded by Kokoro's makers (VOICES.md), A best.
 //
-// The model is not shipped with the app: it is downloaded once, when the
-// Speech device asks for it, to the Canvas library's "voices" folder -- its
-// files from a fixed revision, each checked against its SHA-256 before it is
-// kept. Kokoro's full-precision model is used, not its int8 one: on Apple
-// Silicon the int8 one is three times slower, about real time, where this
-// speaks a sentence in a third of the time it takes to say.
+// The model is not shipped: it is downloaded once to the library's
+// "voices" folder, from a fixed revision, each file checked against its
+// SHA-256. The full-precision model is used: on Apple Silicon the int8 one
+// is three times slower.
 
 /// KokoroFile is one of the model's files: its name, size and SHA-256.
 typedef KokoroFile = ({String name, int bytes, String sha256});
@@ -214,9 +211,7 @@ List<PinnedFile> get _pinned => [
 /// kokoroReady is whether every file is there, at its size.
 Future<bool> kokoroReady() async => pinnedReady(await kokoroDir(), _pinned);
 
-/// downloadKokoro fetches the files not yet there, telling [progress] how
-/// much has arrived, nought to one. Answers why not, or null once all are
-/// there. [stop] is asked between pieces, to give up.
+/// downloadKokoro is [downloadPinned] for Kokoro's files.
 Future<String?> downloadKokoro(
         {void Function(double share)? progress, bool Function()? stop}) async =>
     downloadPinned(await kokoroDir(), _pinned, progress: progress, stop: stop);
@@ -227,14 +222,14 @@ class KokoroDownload extends PinnedDownload {
   KokoroDownload() : super(() => kokoroDir(), () => _pinned);
 }
 
-/// KokoroSpeech speaks with Kokoro, on this computer. Its breaths, laughs,
-/// sighs and coughs are recordings of a woman's or a man's, as the voice
-/// is, and its whisper the voice laid onto hiss -- see speech_cues.dart. It
-/// cannot stress a word: that cue is left out rather than faked.
 /// kokoroSoftLevel is how loud a whisper is kept: Kokoro cannot be told to
 /// speak low, so it is only quieter.
 const kokoroSoftLevel = 0.55;
 
+/// KokoroSpeech speaks with Kokoro, on this computer. Its breaths, laughs,
+/// sighs and coughs are recordings, a woman's or a man's as the voice is,
+/// and its whisper the voice said softly (see speech_cues.dart). It cannot
+/// stress a word: that cue is left out rather than faked.
 class KokoroSpeech extends SpeechEngine {
   /// library is where sherpa-onnx's own library is, for tests; in the app
   /// it is already loaded, and this is null.
@@ -262,8 +257,8 @@ class KokoroSpeech extends SpeechEngine {
   Future<SpokenAudio> speak(SpeechSpec spec) async =>
       (await _speakAll(spec, [spec.script])).single;
 
-  /// Kokoro loads its model for each call -- most of a short line's time
-  /// -- so a script's lines are spoken in one.
+  /// Kokoro loads its model for each call (most of a short line's time),
+  /// so a script's lines are spoken in one.
   @override
   bool get batches => true;
 
@@ -310,8 +305,7 @@ class KokoroSpeech extends SpeechEngine {
             (p.words.join(" "), spec.speed * (p.slow ? 0.8 : 1))
     ];
     var lib = library;
-    // Brought to the mix's rate there too: on the app's isolate, a long
-    // script held it up.
+    // Brought to the mix's rate in the isolate too, off the UI isolate.
     var spoken = await Isolate.run(() => [
           for (var s in _say(dir, lib, speaker, tongue, jobs, espeak: espeak))
             upsample2x(s)

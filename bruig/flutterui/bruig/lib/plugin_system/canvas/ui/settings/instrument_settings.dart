@@ -17,12 +17,10 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-// instrument_settings.dart is an instrument's settings: what it sounds like,
-// the keyboard it is drawn as, and its part -- the notes, where they came
-// from, and clearing them. Then, as any sound's, where it is heard from.
-//
-// The part is played into its clip's file whenever it changes -- see
-// CanvasController.renderParts -- so nothing here has to ask for it.
+// instrument_settings.dart is an instrument's settings: its sound, the
+// keyboard it is drawn as, its part and, as any sound's, where it is heard
+// from. The part is played into its clip's file whenever it changes (see
+// CanvasController.renderParts), so nothing here has to ask for it.
 
 List<Widget> instrumentSettings(
   BuildContext context,

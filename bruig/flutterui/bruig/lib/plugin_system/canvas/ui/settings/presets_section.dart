@@ -10,20 +10,11 @@ import 'package:bruig/plugin_system/canvas/model/elements/background_element.dar
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:flutter/material.dart';
 
-// presets_section.dart is the row of saved designs at the top of an element's
-// settings.
-//
-// At the top because it is the first decision: start from something, or start
-// from nothing. Below the type and the colours it would be a thing to find
-// after the work of setting them by hand has already been done.
-//
-// A preset *replaces* the element being edited rather than adding a second
-// one beside it. Adding put the new design exactly on top of the old one --
-// two elements in the same place, one of them invisible and still there --
-// which is a mess to clear up and never what somebody choosing a design
-// meant. What it leaves behind is an ordinary element: nothing is locked and
-// there is no link back to the preset, so it is a head start rather than a
-// template, and changing a preset later leaves what was made from it alone.
+// presets_section.dart is the row of saved designs at the top of an
+// element's settings: the first decision, starting from something or from
+// nothing. A preset replaces the element being edited (added beside it, it
+// would sit exactly on top of the old one) and leaves an ordinary element
+// with no link back, so changing a preset later leaves it alone.
 
 /// presetsSection lists the presets that make this kind of element.
 Widget presetsSection(
@@ -76,14 +67,8 @@ class _PresetsSection extends StatefulWidget {
 class _PresetsSectionState extends State<_PresetsSection> {
   ElementPresetStore get store => ElementPresetStore.instance;
 
-  /// _chosen is the design this element was last started from.
-  ///
-  /// Held so that Rename and Remove have something to act on. They were one
-  /// button opening a list to pick from, which is a dialog to do a thing the
-  /// row already has a list for -- and it only appeared once something had
-  /// been saved, so on a panel showing the built-in designs there was no way
-  /// to reach it at all. Two buttons beside the list, acting on whatever is
-  /// in it, is one fewer list.
+  /// _chosen is the design this element was last started from, for Rename
+  /// and Remove to act on.
   String _chosen = "";
 
   @override
@@ -105,14 +90,9 @@ class _PresetsSectionState extends State<_PresetsSection> {
     if (mounted) setState(() {});
   }
 
-  /// _touched is whether this element has been worked on.
-  ///
-  /// Measured against what the Add panel would have made: an element that is
-  /// still exactly what dropping one gives you has nothing in it to lose, and
-  /// asking "are you sure" about that is asking about nothing. Its place and
-  /// its id are left out of the comparison -- everybody moves an element
-  /// before doing anything else with it, and being moved is not work anybody
-  /// minds losing.
+  /// _touched is whether this element has been worked on: whether it differs
+  /// from what the Add panel would make, its place and id aside (everybody
+  /// moves an element first).
   bool get _touched {
     var fresh = newElement(widget.element.kind, widget.controller.document);
     return _shape(widget.element).toString() != _shape(fresh).toString();
@@ -138,21 +118,26 @@ class _PresetsSectionState extends State<_PresetsSection> {
     var made = scaledElement(preset.build(),
         presetScale(preset.madeOn, widget.controller.document.size.size));
     var here = widget.element;
-    // Where the element already is, and the preset's own size: a design is a
-    // shape as much as it is a set of colours, and one dropped into the box
-    // of whatever was there before is not the design that was saved.
-    widget.controller.replaceElement(
-      made
-          .withBase(
-            name: here.name,
-            x: here.x,
-            y: here.y,
-            opacity: here.opacity,
-            visible: here.visible,
-            locked: here.locked,
-          )
-          .withId(here.id),
-    );
+    // Where the element already is, at the preset's own size: a design is a
+    // shape as much as its colours. What it does (clips, keyframes, cue, game
+    // part, stage place) is the element's, and stays.
+    var placed = made.withId(here.id);
+    var hereBase = here.base;
+    widget.controller.replaceElement(placed.rebase(placed.base.copyWith(
+      name: here.name,
+      x: here.x,
+      y: here.y,
+      opacity: here.opacity,
+      visible: here.visible,
+      locked: here.locked,
+      track: hereBase.track,
+      clearTrack: hereBase.track == null,
+      motion: hereBase.motion,
+      cue: hereBase.cue,
+      play: hereBase.play,
+      spot: hereBase.spot,
+      clearSpot: hereBase.spot == null,
+    )));
   }
 
   Future<bool> _confirm(ElementPreset preset) => askToConfirm(context,
@@ -193,15 +178,11 @@ class _PresetsSectionState extends State<_PresetsSection> {
     // kind of element with designs of its own.
     var chosen = presets.where((p) => p.name == _chosen).firstOrNull;
 
-    // One row, uncaptioned. "PRESETS" over a list already offering to save
-    // this design was the word twice, at the top of every element's settings,
-    // above the settings somebody actually came for.
+    // One row, uncaptioned: the save offer already says what it is.
     return CanvasControlGroup(
         label: "Presets",
         hideCaption: true,
-        // No rule under it either. A line between one row and the first
-        // section of the element's own settings divides nothing: what is
-        // above it is a single row, and a rule wants two groups to separate.
+        // No rule under a single row.
         rule: false,
         children: [
           CanvasDropdown<String>(
@@ -226,9 +207,7 @@ class _PresetsSectionState extends State<_PresetsSection> {
               _use(picked);
             },
           ),
-          // Only for a design somebody saved. A built-in one is not theirs to
-          // rename, and a button that is there and refuses is worse than no
-          // button.
+          // Only for a design somebody saved: a built-in one cannot be renamed.
           if (chosen != null && !chosen.builtIn) ...[
             CanvasIconButton(
               key: const ValueKey("elementPresetRename"),
@@ -267,9 +246,8 @@ class _PresetsSectionState extends State<_PresetsSection> {
               var name =
                   await _ask("Save as a preset", initial: widget.element.name);
               if (name == null || name.trim().isEmpty) return;
-              // With the page it was designed on, so that dropping it on a
-              // canvas of another size brings it in at the scale it was
-              // saved at rather than the size it happened to be.
+              // With the page it was designed on, so it comes in at the scale it was
+              // saved at on a canvas of another size.
               await store.save(name, widget.element,
                   madeOn: widget.controller.document.size.size);
               if (mounted) setState(() => _chosen = name);

@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/gltf_pack.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_api_keys.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
 import 'package:crypto/crypto.dart';
@@ -15,18 +15,14 @@ import 'package:path/path.dart' as path;
 // stock_client.dart makes the requests a stock search needs: the search
 // itself, a preview to listen to, and the file when one is used.
 //
-// Behind the same two gates as a table's data -- see canvas_data.dart. Nothing
-// is fetched unless the reader has turned fetching on, and nothing at all
-// while a proxy is set, because a request from here would not go through it.
-// Both are asked by the caller and handed in, so this file never decides on
-// its own to connect.
+// Behind the same two gates as a table's data (see canvas_data.dart):
+// nothing is fetched unless the reader has turned fetching on, and nothing
+// at all while a proxy is set. Both are decided by the caller and handed in.
+// Keys, where a library needs one, are the reader's own, kept on this
+// machine by CanvasApiKeys and never written into anything shared.
 //
-// Keys are the reader's own, one per library, kept on this machine by
-// CanvasApiKeys and never written into anything that is shared.
-//
-// A search answer is kept for a day. Pixabay's terms ask for that, and it is
-// the right thing for every library on a free tier: paging back and forth,
-// or searching for the same thing twice, should not spend the allowance.
+// A search answer is kept for a day: Pixabay's terms ask for that, and it
+// saves a free tier's allowance on every library.
 
 /// StockKeys reads and writes the keys, filed under each library's host.
 class StockKeys {
@@ -49,8 +45,8 @@ class StockKeys {
 }
 
 /// pct is RFC 3986 percent-encoding, which OAuth signs over. Dart's own
-/// encodeComponent leaves ! * ' ( ) alone, and a signature over those is a
-/// signature the server works out differently.
+/// encodeComponent leaves ! * ' ( ) alone, so the server would compute a
+/// different signature.
 String pct(String s) {
   var out = StringBuffer();
   for (var b in utf8.encode(s)) {
@@ -65,10 +61,8 @@ String pct(String s) {
 }
 
 /// oauthHeader signs a GET of [uri] with a consumer [key] and [secret] alone:
-/// OAuth 1.0a, two-legged, HMAC-SHA1 -- which is what the Noun Project asks
-/// for, and what its own examples send.
-///
-/// [nonce] and [timestamp] are for a test to fix; left out, they are fresh.
+/// OAuth 1.0a, two-legged, HMAC-SHA1, as the Noun Project asks. [nonce] and
+/// [timestamp] are for a test to fix; left out, they are fresh.
 String oauthHeader(Uri uri, String key, String secret,
     {String? nonce, int? timestamp}) {
   var random = math.Random.secure();
@@ -157,6 +151,10 @@ class StockClient {
   static const polyHavenAgent = "BisonRelay-Canvas/1.0";
   static const _polyHavenHeaders = {"User-Agent": polyHavenAgent};
 
+  /// _maxTextBytes is the most an answer from a library may be: a page of
+  /// results, or Poly Haven's whole catalogue, is a few megabytes.
+  static const _maxTextBytes = 32 * 1024 * 1024;
+
   /// _jsonOf is [uri]'s answer read, kept as searches are -- or null.
   Future<Object?> _jsonOf(Uri uri) async {
     var key = uri.toString();
@@ -217,44 +215,41 @@ class StockClient {
     var gltf = entry["gltf"] as Map;
     if (gltf["url"] is! String) return false;
     var include = gltf["include"] is Map ? gltf["include"] as Map : const {};
-    var total = (gltf["size"] as num? ?? 0) +
-        include.values.fold<num>(
-            0, (a, f) => a + (f is Map ? (f["size"] as num? ?? 0) : 0));
+    num sizeOf(Object? f) => f is Map && f["size"] is num ? f["size"] : 0;
+    var total =
+        sizeOf(gltf) + include.values.fold<num>(0, (a, f) => a + sizeOf(f));
     if (total > maxBytes) return false;
-    var (status, text) =
-        await getText(Uri.parse(gltf["url"] as String), _polyHavenHeaders);
+    var main = Uri.tryParse(gltf["url"] as String);
+    if (main == null) return false;
+    var (status, text) = await getText(main, _polyHavenHeaders);
     if (status != 200) return false;
     var got = <String, Uint8List>{};
     for (var e in include.entries) {
       if (e.key is! String || e.value is! Map || e.value["url"] is! String) {
         continue;
       }
-      var bytes = await _bytesOf(Uri.parse(e.value["url"] as String), maxBytes);
+      var room = maxBytes - got.values.fold<int>(0, (n, b) => n + b.length);
+      var at = Uri.tryParse(e.value["url"] as String);
+      var bytes = at == null ? null : await _bytesOf(at, room);
       if (bytes == null) return false;
       got[e.key as String] = bytes;
     }
     var packed = packGltf(text, got);
-    if (packed == null) return false;
-    await to.writeAsBytes(packed);
+    if (packed == null || packed.length > maxBytes) return false;
+    var partial = File("${to.path}.part");
+    await partial.writeAsBytes(packed, flush: true);
+    await partial.rename(to.path);
     return true;
   }
 
   /// _bytesOf is [uri] read whole, or null: refused, failed or larger than
   /// [maxBytes].
   Future<Uint8List?> _bytesOf(Uri uri, int maxBytes) async {
-    if (!uri.isScheme("https")) return null;
-    var client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    var client = canvasHttpClient();
     try {
-      var request = await client.getUrl(uri);
-      _polyHavenHeaders.forEach(request.headers.set);
-      var response = await request.close();
-      if (response.statusCode != 200) return null;
-      var out = BytesBuilder(copy: false);
-      await for (var chunk in response) {
-        out.add(chunk);
-        if (out.length > maxBytes) return null;
-      }
-      return out.toBytes();
+      var response = await canvasGet(client, uri, headers: _polyHavenHeaders);
+      if (response?.statusCode != 200) return null;
+      return await readCapped(response!, maxBytes);
     } catch (exception) {
       debugPrint("Stock download failed: $exception");
       return null;
@@ -293,17 +288,16 @@ class StockClient {
   /// is no answer at all.
   @protected
   Future<(int, String)> getText(Uri uri, Map<String, String> headers) async {
-    if (!uri.isScheme("https")) return (0, "");
-    var client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    var client = canvasHttpClient();
     try {
-      var request = await client.getUrl(uri);
-      headers.forEach(request.headers.set);
-      var response = await request.close();
+      var response = await canvasGet(client, uri, headers: headers);
+      if (response == null) return (0, "");
       if (response.statusCode != 200) {
         await response.drain<void>();
         return (response.statusCode, "");
       }
-      return (200, await response.transform(utf8.decoder).join());
+      var bytes = await readCapped(response, _maxTextBytes);
+      return bytes == null ? (0, "") : (200, utf8.decode(bytes));
     } catch (exception) {
       debugPrint("Stock search failed: $exception");
       return (0, "");
@@ -322,17 +316,18 @@ class StockClient {
       return false;
     }
     var uri = Uri.tryParse(url);
-    if (uri == null || !uri.isScheme("https")) return false;
-    var client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    if (uri == null) return false;
+    var client = canvasHttpClient();
     var partial = File("${to.path}.part");
     try {
-      var response = await (await client.getUrl(uri)).close();
-      if (response.statusCode != 200) return false;
+      var response = await canvasGet(client, uri);
+      if (response?.statusCode != 200) return false;
       var sink = partial.openWrite();
       var got = 0;
       var tooBig = false;
       try {
-        await for (var chunk in response) {
+        await for (var chunk
+            in response!.timeout(const Duration(seconds: 60))) {
           got += chunk.length;
           if (got > maxBytes) {
             tooBig = true;
@@ -392,7 +387,7 @@ class StockClient {
     try {
       var dir = await _cacheDir();
       await dir.create(recursive: true);
-      await File(path.join(dir.path, "${_hash(key)}.json")).writeAsString(text);
+      await writeWholeText(path.join(dir.path, "${_hash(key)}.json"), text);
       // And out with the old, while here: a day's searches are small, a
       // year's are not.
       await for (var f in dir.list()) {

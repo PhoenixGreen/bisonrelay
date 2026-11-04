@@ -22,16 +22,14 @@ import 'package:bruig/plugin_system/canvas/ui/vector_items.dart';
 import 'package:flutter/material.dart';
 
 // colour_panel.dart is the Design sidebar's Colour section: the colours of
-// whatever is selected -- a shape's fill and line, a caption's words and its
-// box, or, with nothing selected, the background's three -- as swatches,
-// the one in front the one being chosen; the colour picker for it, always
-// open and laid out small; and an eyedropper that takes a colour off the
-// canvas.
+// whatever is selected (or the background's three) as swatches, the one in
+// front being the one chosen; an always-open compact colour picker; and an
+// eyedropper that takes a colour off the canvas.
 
-/// ColourSlot is one colour the Colour section can set: what it is called,
-/// whether it is drawn as a line (a ring) or an area (a disc), what it is
-/// now -- null for none -- and how it is set, colour and fade. [transient]
-/// is for a change still being made: see CanvasController.replaceElement.
+/// ColourSlot is one colour the Colour section can set: its name, whether it
+/// is a line (drawn as a ring) or an area (a disc), its value (null for none),
+/// and how it is set, colour and fade. [transient] is for a change still being
+/// made: see CanvasController.replaceElement.
 class ColourSlot {
   final String id;
   final String label;
@@ -54,10 +52,9 @@ class ColourSlot {
   });
 }
 
-/// colourSlotsFor is the colours the Colour section offers now: the
-/// selected element's -- the one that covers an area, and the one that
-/// draws its line or its words -- or, with nothing selected, or the
-/// background picked, the background's three.
+/// colourSlotsFor is the colours the Colour section offers now: the selected
+/// element's area and line or words colours, or the background's three when
+/// nothing (or the background) is selected.
 List<ColourSlot> colourSlotsFor(CanvasController controller) {
   var e = controller.selected;
   if (e == null) return _backgroundSlots(controller);
@@ -86,10 +83,8 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
       );
 
   switch (e) {
-    // A drawing with nothing in it yet: the colours its shapes will be
-    // drawn in -- by the shapes tool, the pencil and the pen alike -- so a
-    // new drawing starts in them. A fade is a shape's own, once there is
-    // one to have it.
+    // An empty drawing: the colours its shapes will be drawn in, by any
+    // tool. A fade belongs to a shape, once there is one.
     case VectorElement v
         when (v.shapes ?? const []).isEmpty && v.assetId.isEmpty:
       return [
@@ -120,8 +115,8 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
       ];
     case VectorElement v when (v.shapes ?? const []).isNotEmpty:
       var shapes = v.shapes!;
-      // The shapes picked -- with the select shapes tool, or one shape --
-      // or every shape, as the shape settings change them.
+      // The shapes picked (with the select tool, or one shape), or every
+      // shape, as the shape settings change them.
       var items = controller.vectorEditing == v.id
           ? controller.vectorItems
           : const <VectorItem>{};
@@ -169,8 +164,8 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
                     strokeWidth: s.strokeWidth > 0 ? null : 1,
                     strokeFade: g))),
       ];
-    // A drawing still as its file draws it: one colour over the whole of
-    // it -- see VectorElement.tint. None is the file's own colours.
+    // A drawing still as its file draws it: one tint over the whole of it
+    // (see VectorElement.tint). None is the file's own colours.
     case VectorElement v:
       return [
         slot(
@@ -183,8 +178,8 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
                 c == null ? v.copyWith(clearTint: true) : v.copyWith(tint: c),
             (_) => v),
       ];
-    // A chart's colours are its series' -- or, on a pie, its slices'. As
-    // many as there are, up to a row of swatches' worth.
+    // A chart's colours are its series' (a pie's, its slices'), up to a
+    // row of swatches.
     case ChartElement c when c.type.isCircular:
       var slices = c.data.categories.length.clamp(0, 8);
       return [
@@ -406,8 +401,8 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
 List<ColourSlot> _backgroundSlots(CanvasController controller) {
   var bg = controller.document.editedBackground;
   var spec = bg.spec;
-  // None is the colour gone clear: the base shows what is behind the
-  // canvas, and the pattern's colour leaves the pattern.
+  // None is clear: the base shows what is behind the canvas, and the
+  // pattern's colour leaves the pattern.
   const clear = Color(0x00000000);
   Color? shown(Color c) => c.a == 0 ? null : c;
   void set(ProceduralSpec next, bool transient) =>
@@ -551,11 +546,9 @@ class _ColourPanelState extends State<ColourPanel> {
                     : null,
               ),
               Row(mainAxisSize: MainAxisSize.min, children: [
-                // The eyedropper: its next press on the canvas takes the
-                // colour there for the colour being chosen.
-                // Drawn small, not as an IconButton: that keeps a 40px
-                // square round itself whatever it is told, which is room
-                // the numbers beside it need.
+                // The eyedropper: its next press on the canvas takes the colour there
+                // for the slot being chosen. Drawn small rather than as an IconButton,
+                // which keeps a 40px square whatever it is told.
                 Tooltip(
                   message: "Pick colour",
                   child: InkWell(
@@ -567,8 +560,8 @@ class _ColourPanelState extends State<ColourPanel> {
                             _slot(active.id)?.setColour(c, transient: true))),
                     child: SizedBox.square(
                       dimension: 24,
-                      // Drawn rather than the icon font's, whose stroke is
-                      // heavier than the swatches beside it.
+                      // Drawn rather than the icon font's, whose stroke is heavier than the
+                      // swatches'.
                       child: CustomPaint(
                         painter: _DropperPainter(controller.sampling
                             ? Theme.of(context).colorScheme.primary
@@ -589,8 +582,8 @@ class _ColourPanelState extends State<ColourPanel> {
               ]),
             ],
           );
-          // Scrolled where there is not the room, with no bar -- as every
-          // other panel in the column is.
+          // Scrolled where there is not the room, with no bar, as every panel
+          // in the column is.
           return ScrollConfiguration(
               behavior: const CanvasNoScrollbar(),
               child: SingleChildScrollView(
@@ -609,8 +602,8 @@ class _ColourPanelState extends State<ColourPanel> {
                           _write(() => active.setColour(c, transient: true)),
                       onGradientChanged: (g) =>
                           _write(() => active.setGradient(g, transient: true)),
-                      // A saved colour replaced by this one, everywhere on
-                      // the canvas it is used -- see replaceColour.
+                      // A saved colour replaced by this one everywhere on the canvas: see
+                      // replaceColour.
                       onReplaceEverywhere: (from, to) {
                         _done();
                         controller.replaceColour(from, to);
@@ -623,11 +616,10 @@ class _ColourPanelState extends State<ColourPanel> {
       );
 }
 
-/// _Swatches is the colours, each in its own place -- the first top left,
-/// the next down and to the right of it -- the one being chosen drawn over
-/// the others; pressed, a swatch is the one being chosen. Beside them, for
-/// two, the arrows that swap them; below, the swatch that sets the one being
-/// chosen to none.
+/// _Swatches is the colours, each offset down and right from the one before,
+/// the one being chosen drawn on top; pressing a swatch chooses it. Beside
+/// them, for two, arrows that swap them; below, a swatch that sets the chosen
+/// one to none.
 class _Swatches extends StatelessWidget {
   final List<ColourSlot> slots;
   final ColourSlot active;
@@ -649,9 +641,8 @@ class _Swatches extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var outline = Theme.of(context).colorScheme.outline;
-    // Round to the pointer as well as to the eye -- the corners of the one
-    // in front lie over the others -- so the clip is outermost, round the
-    // tooltip's own catch as well.
+    // Clipped round, outermost (around the tooltip too), so the pointer
+    // meets the circle the eye sees: the one in front overlaps the others.
     Widget swatch(ColourSlot s) => ClipOval(
           child: Tooltip(
             message: s.label,

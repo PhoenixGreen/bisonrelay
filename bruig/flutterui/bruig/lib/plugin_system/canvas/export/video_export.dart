@@ -12,43 +12,23 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
-// video_export.dart is the MP4, and it is the one export that needs something
-// this app does not carry.
+// video_export.dart writes MP4 and WebM through the system's ffmpeg, if it is
+// there; it also finds ffmpeg for the other features that use it.
 //
-// Flutter can encode a PNG and nothing else. The GIF next door is written out
-// by hand for exactly that reason -- see gif_encoder.dart -- and an H.264
-// encoder is not a thing anybody sensibly writes by hand: it is a
-// standards-sized job whose output has to be right in a way a GIF's does not.
-// The alternatives were a video codec nobody can review, a large native
-// dependency shipped to every reader for a feature most will never press, or
-// the encoder that is already on a lot of machines.
-//
-// So: ffmpeg, if it is there. The thing that made this unattractive before was
-// failing silently on the machines without it, and that is what everything
-// here is arranged to avoid. [ffmpegPath] is asked when the publish sheet
-// opens rather than when Publish is pressed, so a reader without one is told
-// while they are choosing -- the row is still listed, because a feature nobody
-// can see is a feature nobody knows they could have, but it says [ffmpegHelp]
-// and the button is disabled. Nothing else in the canvas depends on this file:
-// with no ffmpeg the feature is one row that explains itself, and the GIF
-// still exports.
+// Flutter encodes only PNG, and a video encoder is not something to write by
+// hand (the GIF is: see gif_encoder.dart). [ffmpegPath] is asked when the
+// publish sheet opens, so a reader without ffmpeg sees [ffmpegHelp] and a
+// disabled row while choosing, rather than a silent failure on Publish.
 
-/// _found is the answer to "is ffmpeg here", worked out once.
-///
-/// Cached because the publish sheet asks on every build and a process launch
-/// per rebuild would be absurd. Cached even when the answer is no, for the
-/// same reason -- somebody who installs ffmpeg while the sheet is open can
-/// close and reopen the app, which is a fair price for not launching a
-/// process on every frame.
+/// _found is the answer to "is ffmpeg here", worked out once, even when the
+/// answer is no: the publish sheet asks on every build. Installing ffmpeg
+/// takes an app restart to be seen.
 String? _found;
 bool _looked = false;
 
 /// _candidates are the places an ffmpeg tends to be when it is not on PATH.
-///
-/// A GUI app on macOS does not inherit the shell's PATH -- it is started by
-/// the window server, not by a login shell -- so the Homebrew install that
-/// works perfectly in a terminal is invisible to `which` here. These are the
-/// two Homebrew prefixes and the usual system ones.
+/// A macOS GUI app does not inherit the shell's PATH, so a Homebrew install
+/// is invisible to `which`.
 const List<String> _candidates = [
   "/opt/homebrew/bin/ffmpeg",
   "/usr/local/bin/ffmpeg",
@@ -59,12 +39,8 @@ const List<String> _candidates = [
 
 /// ffmpegHelp is what to tell somebody who has not got one.
 ///
-/// The exact commands rather than "install ffmpeg", because this message is
-/// the whole of what stands between a reader and a working export -- ffmpeg is
-/// not bundled, and it is not bundled for a reason worth knowing: the H.264
-/// encoder ffmpeg uses, libx264, is GPL, and Bison Relay is ISC. Shipping the
-/// two together would relicense the app. So the encoder is the reader's, on
-/// their machine, under whatever licence they please.
+/// ffmpeg is not bundled because libx264 is GPL and Bison Relay is ISC:
+/// shipping them together would relicense the app.
 const String ffmpegHelp =
     "Publishing a video or a sound needs ffmpeg, which is not installed. "
     "Install it with "
@@ -75,8 +51,7 @@ const String ffmpegHelp =
 Future<String?> ffmpegPath() async {
   if (_looked) return _found;
   _looked = true;
-  // Phones do not let one app run another's binaries, and there is nothing to
-  // find there in any case.
+  // Phones do not let one app run another's binaries.
   if (Platform.isAndroid || Platform.isIOS) return null;
 
   try {
@@ -87,9 +62,7 @@ Future<String?> ffmpegPath() async {
       if (first.isNotEmpty && await File(first).exists()) return _found = first;
     }
   } catch (exception) {
-    // A machine with no `which` at all is a machine with no ffmpeg on PATH,
-    // which is not an error worth reporting -- the list below is still worth
-    // trying.
+    // No `which` at all: still try the list below.
     debugPrint("Unable to look for ffmpeg on the path: $exception");
   }
 
@@ -99,16 +72,9 @@ Future<String?> ffmpegPath() async {
   return _found = null;
 }
 
-/// useFfmpegForTest fixes what [ffmpegPath] answers.
-///
-/// A test can point this at a script that records what it was called with.
-/// Everything except the encoding itself -- the frames written out, the
-/// arguments, reading the file back, clearing up afterwards -- is then
-/// checked on a machine with no ffmpeg on it, which is most machines.
-///
-/// Pass null to pin the answer to "there is not one", which is what the
-/// publish sheet's own tests need and cannot get from the machine they happen
-/// to be running on. [forgetFfmpegForTest] puts it back.
+/// useFfmpegForTest fixes what [ffmpegPath] answers: a script that records
+/// its arguments, or null for "there is not one". [forgetFfmpegForTest] puts
+/// it back.
 @visibleForTesting
 void useFfmpegForTest(String? path) {
   _looked = true;
@@ -116,24 +82,15 @@ void useFfmpegForTest(String? path) {
 }
 
 /// forgetFfmpegForTest clears the pinned answer, so the next look is a real
-/// one. Every test that pins has to end with this, or a machine that does have
-/// ffmpeg quietly stops testing the half that uses it.
+/// one. Every test that pins must end with this.
 @visibleForTesting
 void forgetFfmpegForTest() {
   _looked = false;
   _found = null;
 }
 
-/// VideoFormat is which of the two files to write.
-///
-/// Two rather than one because they fail in opposite places. An MP4 is the
-/// file everything takes -- QuickTime, Photos, a phone, a browser -- and its
-/// encoder is GPL, which is why it can only ever be the reader's own copy of
-/// ffmpeg and never one shipped here. A WebM is smaller at the same quality
-/// and its encoder is BSD, so it is the one that could be built in one day if
-/// that ever became worth doing; what it will not do is open in iOS or macOS
-/// Photos, which is exactly where somebody sending a clip to a friend expects
-/// it to land.
+/// VideoFormat is which of the two files to write: MP4 plays everywhere,
+/// WebM is smaller but does not open in Photos on a Mac or an iPhone.
 enum VideoFormat {
   mp4("MP4", "video/mp4", ".mp4", "libx264",
       "Plays everywhere, including Photos on a Mac or an iPhone."),
@@ -149,8 +106,7 @@ enum VideoFormat {
   final String mime;
   final String extension;
 
-  /// encoder is what ffmpeg is asked for by name. A build without it says so
-  /// and is reported as such -- see [renderVideo].
+  /// encoder is what ffmpeg is asked for by name.
   final String encoder;
 
   final String note;
@@ -159,14 +115,8 @@ enum VideoFormat {
 }
 
 /// VideoQuality is the constant-rate factor handed to ffmpeg: lower is better
-/// and larger.
-///
-/// Offered as three named choices rather than a number, because a CRF is a
-/// number nobody outside video encoding has an opinion about -- and because
-/// the two encoders do not even use the same scale. x264 runs 0..51 and calls
-/// 18 visually lossless; VP9 runs 0..63 and wants something in the low
-/// thirties for the same picture. One label, two numbers, so that switching
-/// format does not silently change how good the file is.
+/// and larger. One label, two numbers, because x264 (0..51) and VP9 (0..63)
+/// use different scales.
 enum VideoQuality {
   high("Best", 18, 24),
   balanced("Balanced", 23, 31),
@@ -182,23 +132,10 @@ enum VideoQuality {
 
 /// renderVideo draws every frame and hands them to ffmpeg.
 ///
-/// Raw pixels down ffmpeg's standard input, rather than a directory of PNGs.
-/// Encoding each frame as a PNG was most of what an export spent its time on
-/// -- measured on a 2048-square canvas with a generated texture behind it,
-/// four hundred milliseconds a frame against thirty for the drawing, which on
-/// a thirty-second animation is five minutes of compressing pictures that
-/// were about to be thrown away by a video encoder.
-///
-/// Piping was tried before and deadlocked, and the way it deadlocks is worth
-/// naming: ffmpeg writes progress to stderr, nobody reads it, its pipe fills,
-/// ffmpeg blocks on the write, and it stops reading the frames we are blocked
-/// trying to give it. Both output pipes are drained here from the moment the
-/// process starts, and each frame is flushed before the next is drawn, which
-/// is also what keeps a long export from queueing gigabytes in memory.
-///
-/// If the pipe fails for any reason, the frames go to a temporary directory
-/// as PNGs instead -- the way this always worked. An export that is slow is
-/// better than an export that is not there.
+/// Raw pixels go down ffmpeg's standard input (see _renderPiped): encoding
+/// each frame as a PNG cost over ten times the drawing. If the pipe fails for
+/// any reason, the frames are written as PNGs to a temporary directory
+/// instead.
 ///
 /// Returns null when there is no ffmpeg, when it fails, or when the document
 /// has no frames. The caller reports it; see [ffmpegHelp].
@@ -213,9 +150,8 @@ Future<CanvasExport?> renderVideo(
   /// sound is how its sound is written -- see AudioOptions.videoArgs.
   AudioOptions sound = const AudioOptions(),
 
-  /// viaFiles takes the old road: every frame written out as a PNG and handed
-  /// to ffmpeg as a numbered set. What the pipe falls back to, and what the
-  /// test for the fallback asks for on purpose.
+  /// viaFiles skips the pipe and writes every frame as a numbered PNG: the
+  /// fallback, asked for directly by its test.
   bool viaFiles = false,
 }) async {
   var ffmpeg = await ffmpegPath();
@@ -241,8 +177,6 @@ Future<CanvasExport?> renderVideo(
   try {
     work = await Directory.systemTemp.createTemp("bruig-canvas-video");
 
-    // The background, once. It is the most expensive thing on a canvas and on
-    // a still one it is the same picture every frame -- see ExportBackdrop.
     backdrop =
         await ExportBackdrop.prepare(document, scale: scale, images: images);
 
@@ -266,9 +200,7 @@ Future<CanvasExport?> renderVideo(
         image?.dispose();
       }
       onProgress?.call(i + 1, document.playFrames);
-      // The same yield the GIF export makes, and for the same reason: without
-      // it the whole run happens in one turn of the event loop and the
-      // progress line the caller is drawing never appears.
+      // Yield so progress can be drawn (as in renderGif).
       await Future<void>.delayed(Duration.zero);
     }
     if (width == 0) return null;
@@ -286,8 +218,7 @@ Future<CanvasExport?> renderVideo(
 
     if (result.exitCode != 0) {
       var why = "${result.stderr}";
-      // An ffmpeg built without the encoder is a different problem from a
-      // failed encode, and it is one the reader can do something about.
+      // A build without the encoder is something the reader can fix.
       if (why.contains("Unknown encoder")) {
         debugPrint("This ffmpeg has no ${format.encoder}: ${format.label} "
             "needs a build that includes it.");
@@ -307,8 +238,7 @@ Future<CanvasExport?> renderVideo(
   } finally {
     backdrop?.dispose();
     media?.dispose();
-    // Whatever happened, the frames are not left behind. A 200-frame 4K export
-    // is gigabytes of PNG in the temporary directory.
+    // A 200-frame 4K export is gigabytes of PNG: never leave it behind.
     try {
       await work?.delete(recursive: true);
     } catch (exception) {
@@ -319,8 +249,9 @@ Future<CanvasExport?> renderVideo(
 
 /// _renderPiped draws every frame and writes its raw pixels to ffmpeg.
 ///
-/// Returns null where anything at all went wrong, so the caller can fall back
-/// to files rather than telling somebody their export failed.
+/// Both of ffmpeg's output pipes are drained from the start, and each frame
+/// is flushed before the next is drawn. Returns null where anything went
+/// wrong, so the caller can fall back to files.
 Future<CanvasExport?> _renderPiped(
   CanvasDocument document, {
   required String ffmpeg,
@@ -336,8 +267,8 @@ Future<CanvasExport?> _renderPiped(
   Directory? work;
   var media = ExportMedia.of(document, scale: scale);
   try {
-    // The size is needed before ffmpeg starts -- raw pixels carry no header
-    // saying how wide they are -- so the first frame is drawn first and kept.
+    // Raw pixels carry no size, so the first frame is drawn before ffmpeg
+    // starts and kept.
     backdrop =
         await ExportBackdrop.prepare(document, scale: scale, images: images);
     var first = await renderFrame(document,
@@ -370,10 +301,8 @@ Future<CanvasExport?> _renderPiped(
       out,
     ]);
 
-    // Drained from the moment it starts. This is the deadlock: ffmpeg writes
-    // its progress to stderr, and if nobody empties that pipe it fills, ffmpeg
-    // blocks writing to it, and it stops reading the frames we are blocked
-    // trying to hand over.
+    // Drained from the start: an unread stderr fills, ffmpeg blocks writing
+    // to it and stops reading frames, and both sides deadlock.
     var errors = StringBuffer();
     var draining = [
       process.stderr.transform(utf8.decoder).forEach(errors.write),
@@ -386,9 +315,8 @@ Future<CanvasExport?> _renderPiped(
             await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
         if (raw == null) throw StateError("no pixels");
         process!.stdin.add(raw.buffer.asUint8List());
-        // Flushed per frame, which is what applies the backpressure: without
-        // it a long export queues every frame it has drawn in memory while
-        // ffmpeg works through them.
+        // Flushed per frame for backpressure; otherwise every drawn frame
+        // queues in memory.
         await process.stdin.flush();
       } finally {
         image.dispose();
@@ -405,9 +333,7 @@ Future<CanvasExport?> _renderPiped(
           backdrop: backdrop,
           videoShow: await media?.at(i)));
       onProgress?.call(i + 1, document.playFrames);
-      // The same yield the other exports make: without it the whole run
-      // happens in one turn of the event loop and the progress line the
-      // caller is drawing never appears.
+      // Yield so progress can be drawn.
       await Future<void>.delayed(Duration.zero);
     }
 
@@ -419,9 +345,8 @@ Future<CanvasExport?> _renderPiped(
       if (why.contains("Unknown encoder")) {
         debugPrint("This ffmpeg has no ${format.encoder}: ${format.label} "
             "needs a build that includes it.");
-        // Nothing about the road in fixes a missing encoder, and writing the
-        // whole run out as files to be told so again is a minute of somebody's
-        // time for the same message.
+        // Returns null like any failure, so renderVideo still retries
+        // through files.
         return null;
       }
       debugPrint("ffmpeg could not write the video: $why");
@@ -441,7 +366,7 @@ Future<CanvasExport?> _renderPiped(
     try {
       process?.kill();
     } catch (_) {
-      // Already gone, which is the usual case and not worth saying.
+      // Already gone: the usual case.
     }
     try {
       await work?.delete(recursive: true);
@@ -451,13 +376,10 @@ Future<CanvasExport?> _renderPiped(
   }
 }
 
-/// _input is where ffmpeg reads the frames from: a numbered set of PNGs.
-/// _soundArgs is the sound of the media on the timeline, as ffmpeg inputs
-/// after the picture's and the arguments that mix and encode them -- or
-/// nothing at all, for an export with nothing to hear.
-///
-/// The sound is mixed first, into a WAV in [work] -- see mix_render.dart --
-/// and that is the one input ffmpeg is given for it.
+/// _soundArgs is the sound of the media on the timeline as ffmpeg arguments:
+/// the mix rendered to one WAV in [work] (see mix_render.dart) as an input
+/// after the picture's, and how it is encoded. Empty when there is nothing to
+/// hear.
 Future<({List<String> inputs, List<String> output})> _soundArgs(
     ExportMedia? media, VideoFormat format, String ffmpeg, String work,
     [AudioOptions sound = const AudioOptions()]) async {
@@ -490,6 +412,7 @@ Future<({List<String> inputs, List<String> output})> _soundArgs(
   );
 }
 
+/// _input is where ffmpeg reads the frames from: a numbered set of PNGs.
 List<String> _input(CanvasDocument document, String work) => [
       "-framerate",
       "${document.frameRate}",
@@ -498,39 +421,30 @@ List<String> _input(CanvasDocument document, String work) => [
     ];
 
 /// _encoderArgs is everything after the input: what the file is and how good
-/// it is. Shared by both ways of getting frames in, so the two cannot drift
-/// into producing different files.
+/// it is. Shared by the pipe and the file fallback so they cannot drift.
 List<String> _encoderArgs(
         CanvasDocument document, VideoFormat format, VideoQuality quality) =>
     [
-      // yuv420p and the even-sized scale are what makes the file play in
-      // QuickTime, on a phone and in a browser rather than only in VLC.
-      // Neither codec in 4:2:0 can have an odd dimension, and a canvas is any
-      // size its author made it.
+      // yuv420p is what QuickTime, phones and browsers play, and 4:2:0 cannot
+      // have an odd dimension.
       "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
       "-pix_fmt", "yuv420p",
       "-c:v", format.encoder,
       "-crf", "${quality.crfFor(format)}",
       if (format == VideoFormat.mp4) ...[
         "-preset", "medium",
-        // Puts the index at the front, so the file starts playing before it
-        // has all arrived -- which is the difference between a link that
-        // plays and one that downloads.
+        // Index at the front, so it plays before it has all arrived.
         "-movflags", "+faststart",
       ],
       if (format == VideoFormat.webm) ...[
-        // VP9 only honours the CRF when the bitrate is explicitly nothing.
-        // Left out, it quietly encodes to a default bitrate instead and the
-        // quality control does nothing at all.
+        // VP9 ignores the CRF unless the bitrate is explicitly zero.
         "-b:v", "0",
-        // Rows in parallel. VP9 is slow enough without it that a long export
-        // reads as a hang.
+        // Rows in parallel: without it a long VP9 export reads as a hang.
         "-row-mt", "1",
       ],
     ];
 
-/// _numbered is ffmpeg's zero-padded sequence, which is how it knows the order
-/// without being told.
+/// _numbered is a frame's file name in ffmpeg's zero-padded sequence.
 String _numbered(int frame) =>
     "frame-${(frame + 1).toString().padLeft(5, "0")}.png";
 
@@ -538,19 +452,13 @@ String _numbered(int frame) =>
 int _even(int side) => math.max(2, side - (side % 2));
 
 /// estimateVideoBytes is a rough guess at a video's size, for the line under
-/// the publish sheet.
-///
-/// Deliberately crude: bits per pixel per frame at the chosen quality, times
-/// the pixels, times the frames. Video compression depends almost entirely on
-/// how much moves between one frame and the next, which is not something that
-/// can be known without encoding -- so this is honest about orders of
-/// magnitude and nothing finer, which is exactly what the line is for.
+/// the publish sheet: bytes per pixel at the chosen quality, times the
+/// pixels, times the frames. Orders of magnitude only.
 int estimateVideoBytes(CanvasDocument document,
     {double scale = 1,
     VideoFormat format = VideoFormat.mp4,
     VideoQuality quality = VideoQuality.balanced}) {
-  // The pixels that come out. See CanvasSize.exportSize: the design's own
-  // space and the file's size are two different numbers now.
+  // The file's size, not the design's: see CanvasSize.exportSize.
   var pixels = document.size.exportSize.width *
       document.size.exportSize.height *
       scale *
@@ -560,13 +468,10 @@ int estimateVideoBytes(CanvasDocument document,
     VideoQuality.balanced => 0.05,
     VideoQuality.small => 0.02,
   };
-  // VP9 lands somewhere around two thirds of what x264 does at a matched
-  // quality, which is the reason anybody chooses it.
+  // VP9 lands around two thirds of x264 at a matched quality.
   if (format == VideoFormat.webm) perPixel *= 0.65;
-  // A canvas animation is mostly still: the background does not change, and
-  // the parts that do are a few elements moving. An inter-frame codec spends
-  // almost nothing on the rest, so the frames after the first are a fraction
-  // of it.
+  // A canvas animation is mostly still, so frames after the first cost a
+  // fraction of it.
   var first = pixels * perPixel;
   var rest = math.max(0, document.playFrames - 1) * pixels * perPixel * 0.15;
   return (first + rest).round() + 40000;

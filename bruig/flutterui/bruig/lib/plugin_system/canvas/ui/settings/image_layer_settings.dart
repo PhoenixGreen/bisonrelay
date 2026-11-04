@@ -11,7 +11,6 @@ import 'package:bruig/plugin_system/canvas/ui/image_masking.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
@@ -156,9 +155,8 @@ class LayerThumbnail extends StatelessWidget {
                 size: Size.infinite,
                 painter: _CoverPainter(controller.images.thumbnail(image)));
     }
-    // No clip of its own: the picture rounds its own corners as it is
-    // drawn. A clip a chip was a pass of its own every frame the strip
-    // scrolled.
+    // No clip of its own: the picture rounds its own corners, since a
+    // clip was a pass of its own every frame the strip scrolled.
     return Container(
       width: width,
       height: height,
@@ -204,7 +202,7 @@ class _CoverPainter extends CustomPainter {
 /// -- giving it one, in the same step, where it has none to stagger them
 /// over.
 void staggerLayers(CanvasController controller, ImageElement e) {
-  var span = _arrivalSpanOf(e);
+  var span = imageArrivalSpan(e, controller.document.frameRate)?.$2;
   if (span != null && e.animation.on) {
     controller.changeImage(withLayersStaggered(e, span));
     return;
@@ -220,28 +218,12 @@ void staggerLayers(CanvasController controller, ImageElement e) {
   controller.endInteraction();
 }
 
-/// _arrivalSpanOf is how many frames [e]'s arrival takes, by its reveal
-/// keyframes, or null where it has none.
-int? _arrivalSpanOf(ImageElement e) {
-  int? from, to;
-  for (var key in e.track?.keys ?? const <Keyframe>[]) {
-    if (!key.values.containsKey(KeyframeChannel.reveal)) continue;
-    from = from == null ? key.frame : math.min(from, key.frame);
-    to = to == null ? key.frame : math.max(to, key.frame);
-  }
-  if (from == null || to == null || to <= from) return null;
-  return to - from;
-}
-
-/// ImageLayersList is every layer of the picture. Shut, it is a strip that
-/// scrolls sideways, what is in front first; opened, it is a list down the
-/// panel, what is in front at the top -- as the canvas's own layers list has
-/// it -- with each layer's eye, and the picked one's arrows, copy and delete.
-/// Either way, a layer is picked by pressing it, which opens the layers.
-///
-/// Nothing in a row opens anything over the page -- no tooltip, no menu: a
-/// row is moved, not rebuilt, as it is dragged, and anything floating over
-/// it comes apart. See the drawing's playlist, which this follows.
+/// ImageLayersList is every layer of the picture: shut, a strip scrolling
+/// sideways, front first; opened, a list, front at the top, with each
+/// layer's eye and the picked one's arrows, copy and delete. Pressing a layer
+/// picks it and opens the layers. Nothing in a row floats over the page (no
+/// tooltip, no menu): a row is moved, not rebuilt, as it is dragged, and
+/// anything over it comes apart.
 class ImageLayersList extends StatefulWidget {
   final CanvasController controller;
   final ImageElement element;
@@ -295,9 +277,7 @@ class _ImageLayersListState extends State<ImageLayersList> {
     var e = widget.element;
     var stack = e.stack;
     var n = stack.length;
-    // Nothing is picked until the layers are open: the strip is always there
-    // to start from, but a layer lit while nothing is being edited would say
-    // otherwise.
+    // Nothing is lit as picked until the layers are open for editing.
     var picked = controller.imageEditing == e.id ? controller.imageLayer : "";
     var muted = theme.colors.onSurfaceVariant;
 
@@ -471,8 +451,7 @@ class _ImageLayersListState extends State<ImageLayersList> {
     var n = stack.length;
     var accent = theme.colors.primary;
     // Pressed and held, a layer lifts and is carried along the strip to its
-    // new place in the stack -- front first, as the strip reads. A press
-    // that lets go picks it, as before.
+    // new place; a press let go picks it.
     return SizedBox(
       height: 84,
       child: ReorderableListView(
@@ -485,9 +464,8 @@ class _ImageLayersListState extends State<ImageLayersList> {
         },
         children: [
           for (var row = 0; row < n; row++)
-            // Each chip kept until what it shows changes: an edit to one
-            // layer rebuilt all of them. See CanvasKept -- a press picks
-            // through this state, so a kept chip picks as it is now.
+            // Each chip kept until what it shows changes (see CanvasKept); a
+            // press picks through this state, so a kept chip picks as it is now.
             CanvasKept(
                 key: ValueKey("imageLayerChip-${stack[n - 1 - row].id}"),
                 deps: [
@@ -569,7 +547,7 @@ class _ImageLayersListState extends State<ImageLayersList> {
     );
   }
 
-  /// _list_ is the layers down the panel, front at the top.
+  /// _column is the layers down the panel, front at the top.
   Widget _column(BuildContext context, ThemeNotifier theme, ImageElement e,
       String picked) {
     var stack = e.stack;
@@ -900,11 +878,6 @@ Widget imageToolTiles(CanvasController controller, ImageElement e,
   );
 }
 
-/// blendPreview is a picture of what [blend] does: a colour laid by it over
-/// a run from dark to light.
-Widget blendPreview(LayerBlend blend) =>
-    CustomPaint(painter: _BlendPainter(blend));
-
 class _BlendPainter extends CustomPainter {
   final LayerBlend blend;
   _BlendPainter(this.blend);
@@ -1181,11 +1154,8 @@ List<Widget> fillLayerSettings(ImageElement e, ImageLayer picked,
 }
 
 /// layerPositionGroup is where the picked picture layer is, how big and how
-/// turned -- in the same canvas units as an element's own, so a layer is
-/// placed the way anything else is.
-///
-/// Measured in the picture's frame as it is before the element is turned,
-/// which is the canvas's own units for a picture that is not.
+/// turned, in the same canvas units as an element's own, measured in the
+/// picture's frame before the element is turned.
 Widget layerPositionGroup(
     CanvasController controller,
     ImageElement e,
@@ -1234,7 +1204,6 @@ Widget layerPositionGroup(
       ),
       CanvasStepper(
         key: const ValueKey("layerY"),
-        // Two to a line, as an element's are -- see positionGroup.
         width: 104,
         label: "Y",
         value: rect.top,
@@ -1244,7 +1213,6 @@ Widget layerPositionGroup(
       const CanvasLineBreak(),
       CanvasStepper(
         key: const ValueKey("layerW"),
-        // Two to a line, as an element's are -- see positionGroup.
         width: 104,
         label: "Width",
         value: rect.width,
@@ -1254,7 +1222,6 @@ Widget layerPositionGroup(
       ),
       CanvasStepper(
         key: const ValueKey("layerH"),
-        // Two to a line, as an element's are -- see positionGroup.
         width: 104,
         label: "Height",
         value: rect.height,
@@ -1269,7 +1236,6 @@ Widget layerPositionGroup(
       if (!layer.isBase)
         CanvasStepper(
           key: const ValueKey("layerAngle"),
-          // Two to a line, as an element's are -- see positionGroup.
           width: 104,
           label: "Angle",
           value: layer.turn,

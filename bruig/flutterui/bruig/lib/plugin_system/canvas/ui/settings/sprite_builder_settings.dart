@@ -15,11 +15,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// sprite_builder_settings.dart is building a figure for a Sprite element
-// from Kenney's modular character pack: each piece chosen -- skin, hair, the
-// face, a shirt and its sleeves, trousers and their legs, shoes -- seen as
-// it is chosen, and its animations drawn into the sprite's sheet. See
-// sprite_builder.dart.
+// sprite_builder_settings.dart is building a Sprite element's figure from
+// Kenney's modular character pack: each piece chosen and seen as it is, and
+// its animations drawn into the sprite's sheet. See sprite_builder.dart.
 
 /// modularPack is Kenney's modular character pack, among his packs.
 KenneyPack get modularPack => kenneyPacks.firstWhere((p) => p.slug == "modular-character-pack");

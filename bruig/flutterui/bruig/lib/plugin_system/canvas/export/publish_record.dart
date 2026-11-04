@@ -4,25 +4,16 @@ import 'dart:io';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// publish_record.dart remembers where a saved canvas has been published to.
+// publish_record.dart remembers where a saved canvas has been published,
+// so the publish sheet can offer Update and Unpublish rather than only a
+// fresh send.
 //
-// It exists so that a canvas can be *updated* rather than only sent. A pitch
-// diagram put on a page and then corrected should replace what is on the page,
-// and a shared file should be replaceable without the reader having to
-// remember which of four similarly named files was the one they shared. So the
-// destinations are written down, and the publish sheet offers Update and
-// Unpublish for the ones it finds.
-//
-// Not written into the .bcanvas itself. A published-to record is about this
-// machine -- a path on this disk, a file shared by this client -- and a canvas
-// copied to another machine or sent to somebody else should arrive as a
-// canvas, not as one claiming to be published somewhere it is not.
-//
-// One JSON file for the whole library rather than a sidecar per canvas: the
-// records are tiny, the sheet wants to look one up before it has opened
-// anything, and a directory of dotfiles shadowing the real documents is worse
-// to explain than one file.
+// Not written into the .bcanvas: the record is about this machine (a path
+// on this disk, a file shared by this client), and a copied canvas should
+// not claim to be published somewhere it is not. One JSON file serves the
+// whole library, so the sheet can look a record up before opening anything.
 
 /// _fileName is the record file, hidden from the library listing by its
 /// leading dot.
@@ -31,23 +22,19 @@ const _fileName = ".published.json";
 /// PublishRecord is where one canvas has gone.
 class PublishRecord {
   /// sharedPath is the file this canvas was written to for Files > Shared, or
-  /// empty. Kept as the path rather than the share id because the path is what
-  /// re-sharing an updated copy needs, and the id is discoverable from it.
+  /// empty. The path, not the share id, because re-sharing needs the path.
   final String sharedPath;
 
-  /// documentFolder and documentName are the post-library document this canvas
-  /// was published into, so it can be embedded in a post or a page. Empty when
-  /// it has not been.
+  /// documentFolder and documentName are the post-library document this
+  /// canvas was published into, or empty.
   final String documentFolder;
   final String documentName;
 
-  /// embedId is the picture the library document points at. Kept so an update
-  /// can overwrite the same picture rather than leaving the old one behind and
-  /// growing the embed store by a copy on every republish.
+  /// embedId is the picture the library document points at, so an update
+  /// overwrites it rather than adding a copy to the embed store.
   final String embedId;
 
-  /// format is what was published last -- "image/png", "image/gif" -- so the
-  /// sheet can offer the same again without asking twice.
+  /// format is the MIME type published last, offered again by the sheet.
   final String format;
 
   final DateTime? publishedAt;
@@ -93,12 +80,12 @@ class PublishRecord {
       };
 
   factory PublishRecord.fromJson(Map<String, dynamic> json) => PublishRecord(
-        sharedPath: json["sharedPath"] as String? ?? "",
-        documentFolder: json["documentFolder"] as String? ?? "",
-        documentName: json["documentName"] as String? ?? "",
-        embedId: json["embedId"] as String? ?? "",
-        format: json["format"] as String? ?? "",
-        publishedAt: DateTime.tryParse(json["publishedAt"] as String? ?? ""),
+        sharedPath: jsonStr(json["sharedPath"]) ?? "",
+        documentFolder: jsonStr(json["documentFolder"]) ?? "",
+        documentName: jsonStr(json["documentName"]) ?? "",
+        embedId: jsonStr(json["embedId"]) ?? "",
+        format: jsonStr(json["format"]) ?? "",
+        publishedAt: DateTime.tryParse(jsonStr(json["publishedAt"]) ?? ""),
       );
 }
 
@@ -106,11 +93,8 @@ class PublishRecord {
 class PublishRecords {
   PublishRecords._();
 
-  /// key identifies one canvas. Folder and name rather than a generated id,
-  /// because a canvas has no id of its own -- it is a file -- and renaming one
-  /// losing its publish record is the honest outcome: the file at the old name
-  /// is what was published, and there is nothing here that can tell a rename
-  /// from a delete and a new document.
+  /// key identifies one canvas by folder and name, as a canvas has no id of
+  /// its own. A renamed canvas therefore loses its record.
   static String key(String folder, String name) =>
       folder.isEmpty ? name : "$folder/$name";
 
@@ -130,8 +114,8 @@ class PublishRecords {
                 PublishRecord.fromJson(entry.value as Map<String, dynamic>),
       };
     } catch (_) {
-      // An unreadable record file is not worth failing a publish over. The
-      // worst case is being offered Publish where Update was expected.
+      // Not worth failing a publish over: the worst case is being offered
+      // Publish where Update was expected.
       return {};
     }
   }
@@ -148,10 +132,10 @@ class PublishRecords {
       all[key(folder, name)] = record;
     }
     try {
-      await File(await _path()).writeAsString(
+      await writeWholeText(
+          await _path(),
           const JsonEncoder.withIndent("  ")
-              .convert({for (var e in all.entries) e.key: e.value.toJson()}),
-          flush: true);
+              .convert({for (var e in all.entries) e.key: e.value.toJson()}));
     } catch (exception) {
       debugPrint("Unable to save the canvas publish record: $exception");
     }

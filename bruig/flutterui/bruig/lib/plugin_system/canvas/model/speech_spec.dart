@@ -6,26 +6,22 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
 import 'package:bruig/plugin_system/canvas/model/text_document.dart'
     show TextDocumentRef;
 
-// speech_spec.dart is the Speech device's settings: a script to be spoken,
-// the voice and engine to speak it, how it is delivered, and the takes it
-// has spoken -- each a sound file with its words timed, for a Character's
-// lips and for the Vocaliser.
+// speech_spec.dart is the Speech device's settings: the script, the voice
+// and engine, the delivery, and the takes spoken (sound files with timed
+// words, for a character's lips and the Vocaliser).
 //
-// It belongs to an audio channel -- see ChannelMix.speech -- and what it
-// speaks is an ordinary clip on that channel, so the timeline, the mixer
-// and an export treat it as any other sound.
+// It belongs to an audio channel (ChannelMix.speech), and what it speaks is
+// an ordinary clip on that channel.
 //
-// The script is plain text with cues in square brackets, put in from the
-// device's cue buttons: [pause 0.5] for half a second's silence, [breath]
-// and [exhale] for a breath in and out, [laugh], [sigh] and [cough] for
-// those sounds, [whisper] and [slow] for
-// the sentence after them, and [stress] for the word after it. Each engine
-// offers only the cues it can really do -- see SpeechEngineKind.cues.
+// The script is plain text with cues in square brackets: `[pause 0.5]`,
+// `[breath]`, `[exhale]`, `[laugh]`, `[sigh]` and `[cough]` are sounds or
+// silences; `[whisper]` and `[slow]` hold to the end of the sentence;
+// `[stress]` marks the next word. Each engine offers only the cues it can
+// do (SpeechEngineKind.cues).
 
-/// SpeechEngineKind is what speaks: our own voices, on this computer --
-/// Kokoro, quick, or the expressive voices (Qwen3-TTS), which take a
-/// direction for each line. ElevenLabs, in the cloud, was the third, and is
-/// gone: a device saved with it opens on Built in.
+/// SpeechEngineKind is what speaks, on this computer: Kokoro (quick), or
+/// the expressive voices (Qwen3-TTS), which take a direction per line. A
+/// device saved with the removed ElevenLabs engine opens on Built in.
 enum SpeechEngineKind {
   local("Built in"),
   expressive("Expressive");
@@ -33,17 +29,15 @@ enum SpeechEngineKind {
   final String label;
   const SpeechEngineKind(this.label);
 
-  /// cues are the cues it can do: our own voices pause, breathe, laugh,
-  /// sigh, cough -- recordings, see speech_cues.dart -- whisper and slow
-  /// down, but cannot stress a word, and that is not faked.
+  /// cues are the cues it can do. The sounds are recordings laid in
+  /// (media/speech_cues.dart); stress is not faked.
   List<SpeechCue> get cues => switch (this) {
         local => [
             for (var c in SpeechCue.values)
               if (c != SpeechCue.stress) c
           ],
-        // Its sounds and whisper are ours, laid in after; a stressed word or
-        // a slower stretch mid-line it cannot do -- the line's direction
-        // says those.
+        // Stress and slow mid-line it cannot do; the line's direction says
+        // those.
         expressive => [
             for (var c in SpeechCue.values)
               if (c != SpeechCue.stress && c != SpeechCue.slow) c
@@ -51,7 +45,7 @@ enum SpeechEngineKind {
       };
 
   /// directs is whether this engine can say a line as [d] says: Kokoro
-  /// only as far as its cues go -- a laugh, a sigh, a whisper, slower.
+  /// only as far as its cues go ([SpeechDirection.kokoro]).
   bool directs(SpeechDirection d) =>
       this != local || d == SpeechDirection.plain || d.kokoro.isNotEmpty;
 
@@ -59,9 +53,8 @@ enum SpeechEngineKind {
   bool get ownWords => this != local;
 }
 
-/// SpeechDirection is how a line is said, chosen for it in the device: to
-/// the expressive voices, a direction in plain words; to Kokoro, the
-/// nearest of its own cues, where it has one.
+/// SpeechDirection is how a line is said: plain words for the expressive
+/// voices ([say]), the nearest cue for Kokoro ([kokoro]).
 enum SpeechDirection {
   plain("As written", ""),
   warm("Warm", "Warm and friendly, with a hint of excitement held back."),
@@ -80,15 +73,13 @@ enum SpeechDirection {
 
   final String label;
 
-  /// say is the direction as the expressive voices are given it.
   final String say;
   const SpeechDirection(this.label, this.say);
 
-  /// token is the direction as it is written at the start of its line.
+  /// token is the direction as written at the start of its line.
   String get token => "[$name]";
 
-  /// kokoro is the nearest of Kokoro's cues, written before the line, or
-  /// "" where it has none.
+  /// kokoro is the nearest Kokoro cue, written before the line, or "".
   String get kokoro => switch (this) {
         laughing => "[laugh]",
         whisper => "[whisper]",
@@ -98,9 +89,8 @@ enum SpeechDirection {
       };
 }
 
-/// SpeechPreset is a starting point for a voice's feel: its speed, how
-/// steady and how expressive it is, how much room and whether the speaker
-/// boost is on. Moving any of them makes the device "custom".
+/// SpeechPreset is a starting point for a voice's feel. Moving any of its
+/// settings makes the device "custom".
 enum SpeechPreset {
   natural("Natural", 1.0, 0.5, 0.5, 0, true),
   narrator("Audiobook narrator", 0.97, 0.7, 0.4, 0, true),
@@ -115,24 +105,21 @@ enum SpeechPreset {
       this.room, this.boost);
 }
 
-/// SpeechLine is one line of the script, as the device speaks it: its
-/// words, how it is said -- a direction, or the reader's own words for one
-/// -- and the takes spoken of it, one of them chosen for the clip.
+/// SpeechLine is one line of the script: its words, its direction (or one
+/// in the reader's own words), and its takes, one chosen for the clip.
 class SpeechLine {
   final String text;
   final SpeechDirection direction;
 
-  /// own is a direction in the reader's own words, over [direction]; ""
-  /// for none.
+  /// own is a direction in the reader's own words, overriding [direction];
+  /// "" for none.
   final String own;
 
-  /// slots are the line's takes, A to C, each in its own place: null for
-  /// one not in use. A take stays in its slot until the reader removes it
-  /// or speaks the line again into it.
+  /// slots are the line's takes A to C (null: unused). A take stays in its
+  /// slot until removed or spoken over.
   final List<SpeechTake?> slots;
 
-  /// chosen is the slot picked -- the one "Add all lines" puts on the
-  /// timeline -- or -1 for none.
+  /// chosen is the slot picked (what "Add all lines" places), or -1.
   final int chosen;
 
   const SpeechLine(this.text,
@@ -147,13 +134,13 @@ class SpeechLine {
   /// slot is the take in slot [i], or null for one not in use.
   SpeechTake? slot(int i) => i >= 0 && i < slots.length ? slots[i] : null;
 
-  /// takes are those in use, A to C.
+  /// takes are the slots in use, A to C.
   List<SpeechTake> get takes => [
         for (var t in slots)
           if (t != null) t
       ];
 
-  /// freeSlot is the first slot not in use, or -1 for all three in use.
+  /// freeSlot is the first unused slot, or -1.
   int get freeSlot {
     for (var i = 0; i < speechSlots; i++) {
       if (slot(i) == null) return i;
@@ -161,14 +148,14 @@ class SpeechLine {
     return -1;
   }
 
-  /// say is the direction as the expressive voices are given it.
+  /// say is the direction given to the expressive voices.
   String get say => own.isNotEmpty ? own : direction.say;
 
-  /// take is the slot picked's take, or null.
+  /// take is the chosen slot's take, or null.
   SpeechTake? get take => slot(chosen);
 
-  /// withSlot is the line with [take] in slot [i] -- null to empty it --
-  /// and, a take put there, that slot picked.
+  /// withSlot is the line with [take] in slot [i] (null empties it); a take
+  /// put there is picked.
   SpeechLine withSlot(int i, SpeechTake? take) {
     var next = [for (var k = 0; k < speechSlots; k++) slot(k)];
     next[i] = take;
@@ -214,8 +201,7 @@ class SpeechLine {
     if (json is! Map<String, dynamic>) return null;
     var text = jsonString(json["text"], "");
     if (text.isEmpty) return null;
-    // Slots in their places; or, from before there were slots, the takes
-    // in order, A on.
+    // Older files have "takes" in order rather than "slots".
     var slots = <SpeechTake?>[
       if (json["slots"] case List list)
         for (var t in list.take(speechSlots)) SpeechTake.fromJson(t)
@@ -238,12 +224,9 @@ class SpeechLine {
 
 final _lineHead = RegExp(r"^\s*\[(say:[^\]]*|[a-z]+)\]\s*");
 
-/// scriptLines is [script] as its sections: one for each line of the text,
-/// spoken as one take -- in one go, so in one voice, start to finish; a
-/// voice made to start again at every sentence sounded like a different
-/// take each time (Ken, 2026-10-31). A new section is a new line of the
-/// text, for a change in how it is said. One whose words are as in [was]
-/// keeps its takes.
+/// scriptLines is [script] as lines, one per line of text, each spoken as
+/// one take: restarting the voice at every sentence sounds like a different
+/// take each time. A line whose words match one in [was] keeps its takes.
 List<SpeechLine> scriptLines(String script, [List<SpeechLine> was = const []]) {
   var out = <SpeechLine>[];
   var unused = [...was];
@@ -251,7 +234,7 @@ List<SpeechLine> scriptLines(String script, [List<SpeechLine> was = const []]) {
     var direction = SpeechDirection.plain;
     var own = "";
     var text = piece.trim();
-    // Its direction, at its start: one of ours, or the reader's own words.
+    // A direction at its start: one of ours, or the reader's own words.
     var head = _lineHead.firstMatch(text);
     if (head != null) {
       var token = head[1]!;
@@ -274,8 +257,8 @@ List<SpeechLine> scriptLines(String script, [List<SpeechLine> was = const []]) {
       unused.remove(kept);
       return kept;
     }
-    // Said another way now, its words the same: its takes stay -- only the
-    // reader empties a slot.
+    // Same words with a new direction keep their takes: only the reader
+    // empties a slot.
     var same = unused.where((l) => l.text == text).firstOrNull;
     if (same != null) {
       unused.remove(same);
@@ -284,8 +267,7 @@ List<SpeechLine> scriptLines(String script, [List<SpeechLine> was = const []]) {
     return SpeechLine(text, direction: direction, own: own);
   }
 
-  // A line of cues alone, with no words, goes with the words after it --
-  // or before it, at the end: a section has words to say.
+  // A line of cues alone joins the words after it (or before, at the end).
   var pieces = <String>[];
   var held = "";
   for (var paragraph in script.split("\n")) {
@@ -314,7 +296,7 @@ List<SpeechLine> scriptLines(String script, [List<SpeechLine> was = const []]) {
   ];
 }
 
-/// SpeechCue is one of the script's cues: see the note at the top.
+/// SpeechCue is one of the script's cues; see the file header.
 enum SpeechCue {
   pause("Pause"),
   breath("Breath in"),
@@ -329,11 +311,11 @@ enum SpeechCue {
   final String label;
   const SpeechCue(this.label);
 
-  /// token is the cue as it is written in the script.
+  /// token is the cue as written in the script.
   String get token => this == pause ? "[pause 0.5]" : "[$name]";
 
-  /// sound is whether the cue is a sound of its own -- a breath, a laugh --
-  /// rather than a way of saying the words around it.
+  /// sound is whether the cue is a sound of its own rather than a way of
+  /// saying the words around it.
   bool get sound =>
       this == breath ||
       this == exhale ||
@@ -342,14 +324,14 @@ enum SpeechCue {
       this == cough;
 }
 
-/// SpeechPiece is a stretch of the script: words, said a way, or a cue
-/// that is a sound or a silence of its own.
+/// SpeechPiece is a stretch of the parsed script: words, a sound or a
+/// silence.
 sealed class SpeechPiece {
   const SpeechPiece();
 }
 
-/// SpokenText is words, and how they are said: whispered, slower, with one
-/// of them stressed -- by its index among them.
+/// SpokenText is words and how they are said; [stressed] holds word
+/// indexes.
 class SpokenText extends SpeechPiece {
   final String text;
   final bool whisper;
@@ -379,9 +361,8 @@ final _token = RegExp(r"\[([a-z]+)(?:\s+([0-9.]+))?\]");
 /// _ownDirection is a direction in the reader's own words: never spoken.
 final _ownDirection = RegExp(r"\[say:[^\]]*\]");
 
-/// parseScript is [script] as the pieces it is spoken in. A [whisper] or a
-/// [slow] holds to the end of its sentence; a [stress] to the next word; a
-/// token it does not know is left out.
+/// parseScript is [script] as the pieces it is spoken in. Unknown tokens
+/// are dropped.
 List<SpeechPiece> parseScript(String script) {
   script = script.replaceAll(_ownDirection, " ");
   var out = <SpeechPiece>[];
@@ -406,7 +387,6 @@ List<SpeechPiece> parseScript(String script) {
         stressNext = false;
       }
       words.add(w);
-      // A sentence's end ends a whisper or a slower stretch.
       if (RegExp(r"[.!?]$").hasMatch(w) && (whisper || slow)) {
         flush();
         whisper = false;
@@ -442,40 +422,36 @@ List<SpeechPiece> parseScript(String script) {
   return out;
 }
 
-/// speechBreaths is [script] with a breath in between its sentences -- after
-/// each stop with more words to come, where no cue is already -- as a voice
-/// told to be vivid takes them: see SpeechSpec.expression.
+/// speechBreaths is [script] with a `[breath]` between sentences where no
+/// cue already is, as a vivid voice takes them (SpeechSpec.expression).
 String speechBreaths(String script) => script.replaceAllMapped(
     RegExp(r"([.!?]+)(\s+)(?=[^\s\[])"), (m) => "${m[1]} [breath]${m[2]}");
 
-/// TimedWord is one word of a take and when it is said, in seconds from the
-/// take's start.
+/// TimedWord is one word of a take, in seconds from the take's start.
 typedef TimedWord = ({String text, double start, double end});
 
-/// SpeechTake is what one press of Speak made: the file, how long, and its
-/// words timed -- exactly where the engine says, or as near as the words'
-/// lengths put them where it does not.
+/// SpeechTake is what one press of Speak made: the file, its length, and
+/// its timed words (see [exact]).
 class SpeechTake {
   final String assetId;
   final double length;
   final List<TimedWord> words;
 
-  /// spoken is the take as the voice spoke it, where it has been shaped
-  /// since -- see Phrasing -- and [shapes] each of its words' shapes, by
-  /// their place in spoken's words. Its own sound is spoken's shaped, as
-  /// [shapedAs] -- the shapes it was made with -- says; they differ for a
-  /// moment after a word is moved, until it is made again.
+  /// spoken is the take as the voice spoke it, once shaped since
+  /// (media/phrasing.dart); [shapes] are its words' shapes, by index in
+  /// spoken's words. Its own sound was made from [shapedAs], which lags
+  /// [shapes] until it is made again.
   final SpeechTake? spoken;
   final List<WordShape> shapes;
   final String shapedAs;
 
-  /// exact is whether the words' times are the engine's own, or heard by
-  /// whisper, rather than estimated.
+  /// exact is whether the word times are the engine's or whisper's rather
+  /// than estimated ([estimateWords]).
   final bool exact;
 
-  /// saved is whether it is in the Audio library -- saved, or put on the
-  /// timeline. A line's take is not, until then: it is kept apart, with
-  /// the canvas that has it -- see CanvasController.speechTakeStore.
+  /// saved is whether it is in the Audio library (saved, or put on the
+  /// timeline). Until then a line's take is kept apart with its canvas; see
+  /// CanvasController.speechTakeStore.
   final bool saved;
   const SpeechTake(this.assetId, this.length, this.words,
       {this.exact = false,
@@ -492,14 +468,14 @@ class SpeechTake {
           shapes: shapes,
           shapedAs: shapedAs);
 
-  /// asSpoken is the take as the voice spoke it: itself, never shaped.
+  /// asSpoken is the take as the voice spoke it, unshaped.
   SpeechTake get asSpoken => spoken ?? this;
 
-  /// shapeOf is word [i]'s shape: plain, where it has none.
+  /// shapeOf is word [i]'s shape, or plain.
   WordShape shapeOf(int i) =>
       i >= 0 && i < shapes.length ? shapes[i] : WordShape.plain;
 
-  /// shaped is whether any of its words is.
+  /// shaped is whether any word is shaped.
   bool get shaped => shapes.any((s) => !s.isPlain);
 
   /// shapesKey is its shapes as [shapedAs] holds them.
@@ -508,8 +484,8 @@ class SpeechTake {
   /// needsShaping is whether its sound is not as its shapes say.
   bool get needsShaping => shapesKey != shapedAs;
 
-  /// withShapes is it with [next] as its words' shapes, its sound as it was
-  /// until it is made again.
+  /// withShapes is it with [next] as its words' shapes; its sound is
+  /// unchanged until made again.
   SpeechTake withShapes(List<WordShape> next) {
     var from = asSpoken;
     return SpeechTake(assetId, length, words,
@@ -523,15 +499,15 @@ class SpeechTake {
         shapedAs: shapedAs);
   }
 
-  /// madeAs is it with its sound made from its shapes: [id], [length] long,
-  /// its words where [words] say -- or, with none shaped, as spoken.
+  /// madeAs is it with its sound made from its shapes as [id] and [words],
+  /// or as spoken when nothing is shaped.
   SpeechTake madeAs(String id, double length, List<TimedWord> words) {
     if (!shaped) return asSpoken;
     return SpeechTake(id, length, words,
         exact: exact, spoken: spoken, shapes: shapes, shapedAs: shapesKey);
   }
 
-  /// ids are the stored sounds it needs: its own, and the take as spoken.
+  /// ids are the stored sounds it needs: its own and the take as spoken.
   Set<String> get ids => {
         if (assetId.isNotEmpty) assetId,
         ...?spoken?.ids,
@@ -584,11 +560,9 @@ class SpeechTake {
   }
 }
 
-/// WordShape is how one word of a take is shaped after it was spoken --
-/// see phrasing.dart: moved in [pitch], in semitones; its rise and fall
-/// made more or less of, [inflection] times what it was; drawn out or
-/// hurried, [length] times as long; a [pause] after it, in seconds; and
-/// louder or quieter by [loudness] dB.
+/// WordShape is how one word of a take is shaped after it was spoken
+/// (media/phrasing.dart): [pitch] in semitones, [inflection] and [length] as
+/// multiples, a [pause] after it in seconds, and [loudness] in dB.
 class WordShape {
   final double pitch, inflection, length, pause, loudness;
   const WordShape(
@@ -607,8 +581,7 @@ class WordShape {
       pause == 0 &&
       loudness == 0;
 
-  /// copyWith is it changed, each kept within what still sounds like the
-  /// voice: six semitones either way, 0.7 to 1.4 times as long.
+  /// copyWith clamps each setting to what still sounds like the voice.
   WordShape copyWith(
           {double? pitch,
           double? inflection,
@@ -623,8 +596,7 @@ class WordShape {
         loudness: (loudness ?? this.loudness).clamp(-12.0, 6.0),
       );
 
-  /// stressed is it stressed: a little higher, longer, louder, and more
-  /// rise and fall.
+  /// stressed is it a little higher, longer, louder and more inflected.
   WordShape get stressed => copyWith(
       pitch: pitch + 1.5,
       length: length + 0.1,
@@ -669,9 +641,8 @@ class SpeechSpec {
   final String voiceName;
   final String script;
 
-  /// speed is how fast, one as the voice speaks; expression how much the
-  /// voice moves, and steadiness how alike each take is -- both nought to
-  /// one, and the expressive voices' alone.
+  /// speed is a multiple of the voice's own; expression and steadiness
+  /// (nought to one) are for the expressive voices only.
   final double speed;
   final double expression;
   final double steadiness;
@@ -679,18 +650,18 @@ class SpeechSpec {
   /// takes are what has been spoken, the latest last.
   final List<SpeechTake> takes;
 
-  /// lines are the script line by line, each with its direction and its
-  /// takes -- see scriptLines -- kept in step with [script].
+  /// lines are the script line by line with directions and takes
+  /// ([scriptLines]), kept in step with [script].
   final List<SpeechLine> lines;
 
-  /// language is what the expressive voices speak: each keeps its own
-  /// accent in it. "" for English.
+  /// language is what the expressive voices speak, each in its own accent;
+  /// "" for English.
   final String language;
 
-  /// room is how much room is heard round the voice, nought (close and
-  /// dry, where a voice starts) to one; boost is the speaker boost -- gentle compression and an
-  /// even level -- and preset the feel it was set from, or "custom". All
-  /// ours, after the voice: see speech_finish.dart.
+  /// room is how much room is heard round the voice, nought (dry) to one;
+  /// boost is gentle compression to an even level; preset is the feel it was
+  /// set from, or "custom". Applied after the voice; see
+  /// media/speech_finish.dart.
   final double room;
   final bool boost;
   final String preset;
@@ -698,9 +669,9 @@ class SpeechSpec {
   /// clip is the element the joined lines play in, or "" for none yet.
   final String clip;
 
-  /// document is the Writing Tools document the script is read from --
-  /// kept up to date as it is edited, see text_documents.dart -- or none.
-  /// Its wasText is the script typed before, given back when it is let go.
+  /// document is the Writing Tools document the script is read from, kept
+  /// up to date as it is edited (ui/text_documents.dart). Its wasText is the
+  /// script typed before, restored when it is let go.
   final TextDocumentRef document;
 
   const SpeechSpec({
@@ -783,23 +754,23 @@ class SpeechSpec {
       boost: p.boost,
       preset: p.name);
 
-  /// withScript is the device with [script] typed -- its lines cut again,
-  /// those unchanged keeping their takes.
+  /// withScript is the device with [script], its lines re-cut and unchanged
+  /// ones keeping their takes.
   SpeechSpec withScript(String script) =>
       copyWith(script: script, lines: scriptLines(script, lines));
 
-  /// withLines is the device with [lines] -- the script written from them.
+  /// withLines is the device with [lines], the script written from them.
   SpeechSpec withLines(List<SpeechLine> lines) => copyWith(
       lines: lines, script: [for (var l in lines) l.written].join("\n"));
 
-  /// shownLines are the lines as the device lists them: its own, or the
-  /// script's, cut, where it has none yet.
+  /// shownLines are its lines, or the script cut into lines when it has
+  /// none yet.
   List<SpeechLine> get shownLines =>
       lines.isNotEmpty || script.trim().isEmpty ? lines : scriptLines(script);
 
   static SpeechSpec fromJson(Object? json) {
     if (json is! Map<String, dynamic>) return const SpeechSpec();
-    // One of ElevenLabs' voices is none of ours.
+    // An ElevenLabs ("cloud") voice id means nothing to our engines.
     var gone = json["engine"] == "cloud";
     return const SpeechSpec().copyWith(
       engine: SpeechEngineKind.values
@@ -833,9 +804,8 @@ class SpeechSpec {
   }
 }
 
-/// estimateWords spreads [words] across [from] to [to] seconds by their
-/// lengths -- a long word takes longer to say -- for an engine that does not
-/// say where each one is.
+/// estimateWords spreads [words] across [from] to [to] seconds by length,
+/// for an engine that does not time its words.
 List<TimedWord> estimateWords(List<String> words, double from, double to) {
   if (words.isEmpty || to <= from) return const [];
   var weights = [for (var w in words) math.max(1, w.length) + 1.0];
@@ -851,15 +821,14 @@ List<TimedWord> estimateWords(List<String> words, double from, double to) {
 }
 
 /// VocaliserSpec is the Vocaliser on a channel: it sings the channel's
-/// latest Speech take to a MIDI channel's notes -- see vocaliser.dart.
+/// latest Speech take to a MIDI channel's notes (media/vocaliser.dart).
 class VocaliserSpec {
   /// melody is the MIDI channel whose notes are sung, by key; "" for the
   /// first there is.
   final String melody;
 
-  /// vibrato is how much each held note swings, nought to one -- a
-  /// semitone at the most -- and glide how long each note slides in from
-  /// the last, in seconds.
+  /// vibrato is each held note's swing, nought to one (one a semitone), and
+  /// glide the seconds each note slides in from the last.
   final double vibrato;
   final double glide;
 

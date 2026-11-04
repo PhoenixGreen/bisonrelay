@@ -2,8 +2,7 @@ import 'package:flutter/painting.dart';
 
 // layer_blend.dart is how one thing is laid over what is under it: a
 // picture's layer, a video over the scene, a pattern over a background.
-// One list for all three, so a blend learned in one panel is the same blend,
-// called the same thing, in the others.
+// One list for all three, so a blend has the same name in every panel.
 
 /// LayerBlend is how a layer is laid over what is under it.
 enum LayerBlend {
@@ -29,9 +28,9 @@ enum LayerBlend {
   final BlendMode flutter;
   const LayerBlend(this.label, this.flutter);
 
-  /// lightens is whether the blend only ever brightens what is under it --
-  /// so a layer laid by it shows where it is bright, not where it is drawn,
-  /// and an effect that follows its outline should follow its brightness.
+  /// lightens is whether the blend only ever brightens what is under it, so
+  /// the layer shows where it is bright rather than where it is drawn; an
+  /// effect that follows its outline should follow its brightness.
   bool get lightens =>
       this == screen || this == add || this == lighten || this == colorDodge;
 

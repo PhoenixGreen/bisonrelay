@@ -2,41 +2,33 @@ import 'dart:async';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:flutter/foundation.dart';
 
-// text_documents.dart keeps a document-backed text element up to date.
-//
-// The words live in the element -- see TextDocumentRef on why they are copied
-// rather than read at drawing time -- so something has to notice when the
-// document behind them changes. That is this: a poll while the canvas is
-// open, which reads each referenced document and writes back only what
-// actually differs.
-//
-// A poll rather than a watcher because the library is a folder of files that
-// another part of the app writes, with no change feed of any kind, and
-// because the cost is a handful of small reads every few seconds against a
-// canvas that has asked for them. A canvas with no document-backed element
-// does no work at all.
+// text_documents.dart keeps a document-backed text element up to date. The
+// words are copied into the element (see TextDocumentRef), so a poll while the
+// canvas is open reads each referenced document and writes back only what
+// differs. A poll because the library is a folder of files with no change
+// feed; a canvas with no document-backed element does no work.
 
 /// canvasDocumentPoll is how often the library is looked at while a canvas is
-/// open. Slow enough to be free, quick enough that somebody switching from
-/// Writing back to Canvas sees their edit by the time they have looked at it.
+/// open: cheap, and quick enough that an edit made in Writing is there on
+/// switching back.
 const Duration canvasDocumentPoll = Duration(seconds: 3);
 
 /// refreshTextDocuments re-reads every document-backed text element in
-/// [controller]'s canvas -- and every Speech device's script read from one
-/// -- and returns whether anything changed.
-///
-/// Applied as one transient change: it is not something the reader did, so it
-/// does not belong in the undo history -- undoing your own typing and getting
-/// somebody else's document back is not an undo.
+/// [controller]'s canvas, and every Speech device's script read from one, and
+/// returns whether anything changed. Applied as one transient change, outside
+/// the undo history: it is not something the reader did.
 Future<bool> refreshTextDocuments(CanvasController controller) async {
-  var next = controller.document;
   var changed = false;
 
+  // Read first, applied after: the reads wait, and a document captured
+  // before them would put back whatever was edited meanwhile.
+  var read = <String, (String, List<TextPart>)>{};
   for (var element in controller.document.elements) {
     if (element is! TextElement || !element.document.on) continue;
     String? raw;
@@ -47,19 +39,21 @@ Future<bool> refreshTextDocuments(CanvasController controller) async {
       debugPrint("Unable to read ${element.document.says}: $exception");
       continue;
     }
-    // A document that has been deleted or renamed leaves the words that were
-    // last read where they are. Emptying the element would lose work that is
-    // on the canvas and nowhere else.
+    // A deleted or renamed document leaves the last words read in place,
+    // rather than losing work that is only on the canvas.
     if (raw == null) continue;
-
-    var (text, parts) = readDocument(raw,
+    read[element.id] = readDocument(raw,
         markdown: element.document.markdown, allow: element.document.allow);
-    if (text == element.text && _same(parts, element.documentParts)) continue;
+  }
 
+  var next = controller.document;
+  for (var MapEntry(key: id, value: (text, parts)) in read.entries) {
+    var element = next.elementById(id);
+    if (element is! TextElement || !element.document.on) continue;
+    if (text == element.text && _same(parts, element.documentParts)) continue;
     next = next.withElement(element.copyWith(text: text, documentParts: parts));
     changed = true;
   }
-
   if (changed) controller.apply(next, transient: true);
 
   // The Speech devices' scripts: the document's words, as plain text.

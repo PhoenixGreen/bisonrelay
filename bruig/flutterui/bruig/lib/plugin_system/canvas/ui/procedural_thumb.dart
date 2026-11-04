@@ -10,12 +10,9 @@ import 'package:flutter/material.dart';
 // procedural_thumb.dart is a background drawn small: what a style or a look
 // looks like, shown rather than named.
 
-/// ProceduralThumb draws [spec] at the size it is given.
-///
-/// Drawn rather than kept as a picture: at this size even the slowest style
-/// is a millisecond or two, and it only draws again when the spec does --
-/// which, for the looks and the style list, is never, since theirs are made
-/// once and kept.
+/// ProceduralThumb draws [spec] at the size it is given, once, and keeps it
+/// (see TileSnapshot): a pattern is thousands of marks, too many to replay on
+/// every frame a panel of looks scrolls.
 class ProceduralThumb extends StatelessWidget {
   final ProceduralSpec spec;
   final double width;
@@ -24,9 +21,6 @@ class ProceduralThumb extends StatelessWidget {
   const ProceduralThumb(this.spec,
       {this.width = 36, this.height = 20, this.radius = 3, super.key});
 
-  // Drawn once and kept -- see TileSnapshot. A generated pattern is
-  // thousands of marks, some through layers of their own, and a panel of
-  // looks replayed every one of them on every frame it scrolled.
   @override
   Widget build(BuildContext context) => SizedBox(
         width: width,
@@ -55,11 +49,9 @@ class _ThumbPainter extends CustomPainter {
     var k = size.width / across;
     canvas.save();
     canvas.scale(k);
-    // A moment into the movement, for the styles that start from nothing:
+    // Lattice points to the thumbnail's pixels, not the frame's: a lit surface
+    // is most of a second of work at full size. The time is a moment in, since
     // rain that has not started falling is an empty rectangle.
-    // As many lattice points as the thumbnail has pixels, not as many as
-    // the frame it is drawn as: a lit surface is most of a second of work
-    // at full size, and a panel of looks draws a dozen of them.
     var detail = latticeDetail;
     latticeDetail = (k * 1.5).clamp(0.15, 1.0);
     try {

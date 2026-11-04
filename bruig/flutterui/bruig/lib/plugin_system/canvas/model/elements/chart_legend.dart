@@ -1,12 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// chart_legend.dart is the key: where it sits, which way it runs, how big it
-// is and what each entry says.
-//
-// Whether there is one at all stays on the element as showLegend, where every
-// saved document already has it. Everything else about the key is here,
-// because a key is the one part of a chart people adjust for a while, and its
-// settings outnumber the ones for the chart itself.
+// chart_legend.dart is a chart's key: where it sits, which way it runs, how
+// big it is and what each entry says.
 
 /// LegendPlacement is which side of the chart the key sits on.
 enum LegendPlacement {
@@ -27,17 +22,13 @@ enum LegendPlacement {
 }
 
 /// ChartLegend is everything about the key except whether it is shown.
-///
-/// Whether it is shown stays on the element as showLegend, where it already
-/// was and where every saved document already has it. Splitting a setting in
-/// two to tidy the model is how a chart that used to have a legend stops
-/// having one.
+/// Whether it is shown stays on the element as showLegend, where saved
+/// documents keep it.
 class ChartLegend {
   final LegendPlacement placement;
 
-  /// vertical puts one entry per line. Horizontal wraps them along the width
-  /// it is given, which is what a key over the top of a chart wants and what a
-  /// key down the side of one does not.
+  /// vertical puts one entry per line; otherwise entries wrap along the
+  /// width given, which suits a key above or below the chart.
   final bool vertical;
 
   /// scale sizes the key against the chart's own label size, so a legend
@@ -55,19 +46,13 @@ class ChartLegend {
   final double x;
   final double y;
 
-  /// separator goes between an entry's name and its number.
-  ///
-  /// A string rather than a boolean, because which one reads best depends on
-  /// the names: a colon after "Q1" is a label and a colon after "Revenue
-  /// 2024" is a sentence, and two spaces is enough on a short list.
+  /// separator goes between an entry's name and its number; one of
+  /// [separators].
   final String separator;
 
-  /// values writes each entry's number beside its name.
-  ///
-  /// Its own switch rather than the chart's showValues. They are two
-  /// questions -- a bar chart may well want numbers on its bars and a key
-  /// without them, and a radial bar has nowhere to put a number *except* the
-  /// key -- and one switch answering both meant neither could be had alone.
+  /// values writes each entry's number beside its name. Separate from the
+  /// chart's showValues so bars and key can differ (a radial bar can show
+  /// its numbers only in the key).
   final bool values;
 
   const ChartLegend({
@@ -84,8 +69,7 @@ class ChartLegend {
   /// hasPlace is whether it has been dragged somewhere of its own.
   bool get hasPlace => !x.isNaN && !y.isNaN;
 
-  /// separators are the ones offered. Free text would be a field somebody
-  /// could put a paragraph in.
+  /// separators are the ones offered: a fixed list rather than free text.
   static const List<(String, String)> separators = [
     (": ", "Colon"),
     (" - ", "Dash"),
@@ -128,7 +112,7 @@ class ChartLegend {
       };
 
   factory ChartLegend.fromJson(Map<String, dynamic> json) => ChartLegend(
-        placement: LegendPlacement.fromName(json["at"] as String?),
+        placement: LegendPlacement.fromName(jsonStr(json["at"])),
         vertical: jsonBool(json["vertical"], false),
         scale: jsonDouble(json["scale"], 1).clamp(0.3, 4.0),
         spacing: jsonDouble(json["spacing"], 1).clamp(0.0, 6.0),

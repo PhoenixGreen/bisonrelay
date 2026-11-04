@@ -11,7 +11,7 @@ import 'package:bruig/components/text.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
-// image settings.dart is a picture's settings.
+// image_settings.dart is a picture's settings.
 
 /// imageSettings is a picture's settings: its layers, and the picked layer's
 /// settings in sections -- see image_sections.dart. A backdrop's picture is
@@ -41,19 +41,16 @@ List<Widget> _pictureSettings(
     {Rect? layerFrame,
     ValueChanged<ImageElement?>? tryLook}) {
   // A picture layer rather than the element's own picture: the frame it is
-  // placed in, which putting a new picture in it needs, and no removal
-  // brushes -- they paint on the base picture, and only there, until they are
-  // rebuilt for every layer.
+  // placed in, and no removal brushes, which paint on the base picture only.
   var layer = layerFrame != null;
 
   return [
-    // No caption: the panel header says "Picture settings" already, and a
-    // group called Picture directly under it was the word twice.
+    // No caption: the panel header already says "Picture settings".
     CanvasControlGroup(
         label: "Picture",
         hideCaption: true,
-        // No line under it. The picture and what is taken out of it are one
-        // question, and the rule between them read as two.
+        // No line under it: the picture and what is taken out of it are one
+        // question.
         rule: false,
         children: [
           ...pictureSourceButtons(context, e, write, begin, commit,
@@ -117,24 +114,14 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
       rule: false,
       children: [
         // The brush comes before the method, and outside the check for whether
-        // anything is being removed yet.
-        //
-        // It used to be inside it, which made it unreachable on exactly the
-        // picture it is for: a fresh image has no method chosen and no strokes,
-        // so nothing was being removed, so the brushes were hidden -- and the
-        // only way to reach the tool that needs no method was to choose a
-        // method first.
-        //
-        // It is first because it is the tool. Every automatic method has
-        // photographs it cannot do, and on those this is not a refinement.
+        // anything is being removed yet: a fresh picture has no method and no
+        // strokes, and the brush is the tool for photographs no method can do.
         if (!layer) ...[
-          // The old brushes -- rub out, cut around, put back -- are the mask
-          // tools now, on every layer: see image_layer_settings.dart. What is
-          // left here is what keeps a picture painted with them before working:
-          // its strokes, to undo or clear, and the marking brushes of the method
-          // that learns from marks.
-          // A drawn stroke waits here until it is applied, so the settings above
-          // can be adjusted against it and the result watched on the canvas.
+          // The old brushes are the mask tools now, on every layer (see
+          // image_layer_settings.dart). What is left here serves a picture already
+          // painted with them: its strokes, to undo or clear, and the marks of the
+          // method that learns from them. A drawn stroke waits here until applied,
+          // so the settings above can be adjusted against it.
           if (controller.hasPendingStroke) ...[
             Padding(
               padding: const EdgeInsets.only(top: controlLabelHeight, right: 6),
@@ -181,12 +168,8 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
                 value: controller.brushHardness,
                 onChanged: (v) => controller.brushHardness = v,
               ),
-              // Not for putting back: clinging finds the edge of a background,
-              // and what is being put back is the subject, which is every colour
-              // there is.
-              // Neither for putting back nor for cutting around. Clinging finds
-              // the edge of a background by colour; what is being put back is the
-              // subject, and a boundary does not care what colour anything is.
+              // Neither for putting back nor for cutting around: clinging finds the
+              // edge of a background by colour, and a subject is every colour.
               if (!controller.retouch.keeps && !controller.retouch.fills)
                 CanvasNumberField(
                   label: "Cling",
@@ -305,10 +288,8 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
             },
             onCommit: commit,
           ),
-        // A method's own settings, and only while one is chosen. They were
-        // shown whenever anything was being removed -- which includes a
-        // picture the brush alone has been used on -- so somebody working by
-        // hand was offered a tolerance and a softness that nothing reads.
+        // A method's own settings, only while one is chosen: work by hand
+        // alone reads no tolerance or softness.
         if (e.removal.mode != RemovalMode.none) ...[
           // Edge first, because on a photograph it is the control that does
           // the work: it says how sharply the picture has to change for the
@@ -359,10 +340,8 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
             },
             onCommit: commit,
           ),
-          // Marking, when the method is the one that learns from it. These
-          // two are the whole interface to it: mark some background, mark
-          // some subject, and the numbers below are a fine adjustment rather
-          // than the way in.
+          // Marking, for the method that learns from it: mark some background
+          // and some subject; the numbers below only fine-tune.
           if (e.removal.mode == RemovalMode.learn) ...[
             CanvasIconButton(
               icon: Icons.format_paint_outlined,
@@ -437,13 +416,9 @@ List<Widget> pictureSourceButtons(BuildContext context, ImageElement e,
     commit();
   }
 
-  // Putting a picture in also gives the box the picture's proportions. A
-  // photograph dropped into whatever rectangle happened to be there is either
-  // cropped by the fit or squashed by it, and the first thing anybody did was
-  // drag the handles until it looked right -- which is arithmetic the picture
-  // itself already knows the answer to. It only ever shrinks the box: growing
-  // one could push it off the canvas, and the reader asked for a picture, not
-  // for the layout to move.
+  // Putting a picture in gives the box the picture's proportions, so it is
+  // neither cropped nor squashed by the fit. It only ever shrinks the box:
+  // growing it could push it off the canvas.
   Future<void> use(String id) async {
     var next = e.copyWith(assetId: id);
     var size = await pictureSize(id);
@@ -456,8 +431,7 @@ List<Widget> pictureSourceButtons(BuildContext context, ImageElement e,
   }
 
   return [
-    // The one control this element did not have, and without which it does
-    // nothing at all: somewhere to put a picture in it.
+    // Somewhere to put a picture in: without one the element does nothing.
     CanvasIconButton(
       icon: e.hasImage ? Icons.image_outlined : Icons.add_photo_alternate,
       tooltip: e.hasImage ? "Replace this picture" : "Add a picture",
@@ -466,10 +440,8 @@ List<Widget> pictureSourceButtons(BuildContext context, ImageElement e,
         if (id != null) await use(id);
       },
     ),
-    // The other half of a shared picture store: the bytes have always been
-    // shared between canvases, but nothing ever showed what was in there, so
-    // the only way to put the same badge on a second canvas was to go and
-    // find the file again.
+    // The pictures already in the store, to reuse one without finding the
+    // file again.
     CanvasIconButton(
       icon: Icons.photo_library_outlined,
       tooltip: "Use a picture you have already added",
@@ -478,11 +450,8 @@ List<Widget> pictureSourceButtons(BuildContext context, ImageElement e,
         if (id != null) await use(id);
       },
     ),
-    // The size controls are offered on the way in, but only above half a
-    // megabyte -- so anybody who wanted them for a smaller picture, or who
-    // took a size on the way in and thought better of it, had nowhere to
-    // go. This is that door, and it is the app's own width, quality and
-    // format controls, the same ones an embedded picture goes through.
+    // The size controls again: on the way in they are offered only past
+    // half a megabyte. The app's own width, quality and format controls.
     if (e.hasImage)
       CanvasIconButton(
         icon: Icons.compress,
@@ -501,20 +470,11 @@ List<Widget> pictureSourceButtons(BuildContext context, ImageElement e,
   ];
 }
 
-/// grownForPadding gives [e] its new padding and grows its box to match, so the room
-/// is added *around* the picture rather than taken out of it.
-///
-/// Padding that shrinks the drawing area is right for words -- a box with
-/// room round the type is what padding means there, and the words reflow. A
-/// picture cannot reflow: told to cover a box that has become shorter, it
-/// keeps its proportions and crops, so asking for a little room along the
-/// bottom quietly cut the top and bottom off the photograph. What somebody
-/// asking for padding on a picture wants is a mount around it.
-///
-/// Worked out from where the picture is drawn now rather than from the change
-/// in the numbers, so it does not matter how many times this is called while
-/// a field is dragged: the picture's own rectangle is what stays put, and the
-/// box is whatever surrounds it.
+/// grownForPadding gives [e] its new padding and grows its box to match, so
+/// the room is added around the picture rather than taken out of it: a
+/// picture cannot reflow as words do, and would crop. Worked out from where
+/// the picture is drawn now, so repeated calls while a field is dragged keep
+/// the picture's own rectangle in place.
 ImageElement grownForPadding(ImageElement e, BoxSpec box) {
   var inner = e.box.inner(e.bounds);
   if (inner.width <= 0 || inner.height <= 0) return e.copyWith(box: box);
@@ -531,20 +491,10 @@ ImageElement grownForPadding(ImageElement e, BoxSpec box) {
       height: grown.height) as ImageElement;
 }
 
-/// boxed draws a rule around a section and leaves a gap after it.
-///
-/// For the one section that is a panel rather than a row of controls. The rest
-/// of these settings are captioned clusters that read as a list; a table with
-/// its own scrollbars sitting in the middle of that list needs an edge, or
-/// what follows it looks like part of it.
-
 /// pictureLookGroups is how a picture is drawn: the shape it is cut to, its
-/// framing and crop, the filter and overlay, and the outline.
-///
-/// Its own function because a video is drawn by exactly these rules -- see
-/// VideoElement.look -- and two copies of forty controls is two panels that
-/// drift. [shown] is whether there is anything to look at yet: an empty
-/// picture has no framing to set.
+/// framing and crop, the filter and overlay, and the outline. Shared with
+/// the video (see VideoElement.look). [shown] is whether there is anything
+/// to look at yet: an empty picture has no framing to set.
 List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
     VoidCallback begin, VoidCallback commit,
     {required bool shown,
@@ -584,15 +534,10 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
               : e.copyWith(frame: ShapeKind.fromName(v), clip: true)),
         ),
       ]),
-    // Framing is the same three numbers the double-click gesture writes -- see
-    // CanvasStageState._applyFraming. Here as well as there because a number
-    // is the only way to put two pictures in exactly the same place as each
-    // other, and because a control that exists is how anybody finds out the
-    // gesture is there at all.
-    // Said rather than silently missing: the three numbers are only
-    // offered for a picture that fills its frame, and a reader who set them
-    // once and cannot find them again is looking for controls that would do
-    // nothing where they are.
+    // Framing is the same three numbers the double-click gesture writes (see
+    // CanvasStageState._applyFraming): numbers put two pictures in exactly the
+    // same place. Said rather than missing where the picture does not fill
+    // its frame, since they would do nothing there.
     if (shown && framing && e.fit != ImageFit.cover)
       const CanvasHint(
           "Framing — moving the picture about inside its box and zooming it "
@@ -669,10 +614,8 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
                 onChanged: (c) => now(e.copyWith(overlay: c)),
               ),
           ]),
-    // Not part of "Remove background", though that is what it is for. It
-    // traces the alpha channel and does not care how the alpha got there, so
-    // it works just as well on a picture that arrived with one -- and burying
-    // it in the removal group would say otherwise.
+    // Not under "Remove background", though that is its use: it traces the
+    // alpha channel however the alpha got there.
     if (shown && outline)
       CanvasControlGroup(label: "Outline", rule: false, children: [
         CanvasNumberField(

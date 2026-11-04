@@ -10,6 +10,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
 // canvas_animation_test.dart is about what an element looks like at frame N.
 //
@@ -554,22 +556,28 @@ void main() {
     ChartElement chartIn(CanvasController c) =>
         c.document.elementById("c") as ChartElement;
 
-    test("choosing one lays a pair of keyframes at the end", () {
+    // Where its arrival and its way out are: the clips the presets lay.
+    (int, int)? own(CanvasController c, MotionKind kind) =>
+        ownSpan(chartIn(c), kind, c.document.frameRate);
+
+    // A way out on the keyframes of a canvas not yet converted: what the
+    // strip's bands are dragged by.
+    void closingKeys(CanvasController c, int from, int to) =>
+        c.replaceElement(chartIn(c).withBase(
+            track: ElementTrack([
+          Keyframe(frame: from, values: const {KeyframeChannel.close: 0}),
+          Keyframe(frame: to, values: const {KeyframeChannel.close: 1}),
+        ])));
+
+    test("choosing one puts its way out at the end", () {
       var controller = withChart();
       addTearDown(controller.dispose);
       controller.applyChartExit(
           chartIn(controller), ChartAnimationPreset.fadeIn);
 
-      var track = chartIn(controller).track!;
-      var closes = [
-        for (var key in track.keys)
-          if (key.values.containsKey(KeyframeChannel.close)) key,
-      ];
-      expect(closes.length, 2);
-      expect(closes.first.values[KeyframeChannel.close], 0);
-      expect(closes.last.values[KeyframeChannel.close], 1);
-      expect(closes.last.frame, 47,
-          reason: "it is the thing that happens last");
+      var (from, length) = own(controller, MotionKind.leave)!;
+      expect(from + length, 47, reason: "it is the thing that happens last");
+      expect(chartIn(controller).track, isNull, reason: "a clip, not keys");
     });
 
     test("and it never starts before the entrance has finished", () {
@@ -580,15 +588,10 @@ void main() {
       controller.frame = 0;
       controller.applyChartAnimation(
           chartIn(controller), ChartAnimationPreset.grow);
-      var entranceEnds = 0;
-      for (var key in chartIn(controller).track!.keys) {
-        if (key.values[KeyframeChannel.reveal] == 1) entranceEnds = key.frame;
-      }
+      var (at, took) = own(controller, MotionKind.arrive)!;
 
       controller.applyChartExit(chartIn(controller), ChartAnimationPreset.grow);
-      var band = bandsIn(chartIn(controller).track!)
-          .firstWhere((b) => b.channel == KeyframeChannel.close);
-      expect(band.from, greaterThan(entranceEnds));
+      expect(own(controller, MotionKind.leave)!.$1, greaterThan(at + took));
     });
 
     test("choosing None takes the keyframes with it", () {
@@ -599,10 +602,7 @@ void main() {
       controller.applyChartExit(chartIn(controller), ChartAnimationPreset.grow);
       controller.applyChartExit(chartIn(controller), ChartAnimationPreset.none);
 
-      var track = chartIn(controller).track;
-      expect(
-          track?.keys.where((k) => k.values.containsKey(KeyframeChannel.close)),
-          anyOf(isNull, isEmpty));
+      expect(own(controller, MotionKind.leave), isNull);
       expect(chartIn(controller).animation.closes, isFalse);
     });
 
@@ -611,16 +611,13 @@ void main() {
       addTearDown(controller.dispose);
       controller.applyChartAnimation(
           chartIn(controller), ChartAnimationPreset.grow);
-      var before = bandsIn(chartIn(controller).track!)
-          .firstWhere((b) => b.channel == KeyframeChannel.reveal);
+      var before = own(controller, MotionKind.arrive);
 
       controller.applyChartExit(
           chartIn(controller), ChartAnimationPreset.fadeIn);
       controller.applyChartExit(chartIn(controller), ChartAnimationPreset.none);
-      var after = bandsIn(chartIn(controller).track!)
-          .firstWhere((b) => b.channel == KeyframeChannel.reveal);
 
-      expect([after.from, after.to], [before.from, before.to]);
+      expect(own(controller, MotionKind.arrive), before);
       expect(chartIn(controller).animation.preset, ChartAnimationPreset.grow);
     });
 
@@ -658,7 +655,7 @@ void main() {
     test("dragging the band moves both ends and keeps its length", () {
       var controller = withChart();
       addTearDown(controller.dispose);
-      controller.applyChartExit(chartIn(controller), ChartAnimationPreset.grow);
+      closingKeys(controller, 30, 47);
       var before = bandsIn(chartIn(controller).track!).single;
 
       controller.shiftKeyframes("c", [before.from, before.to], -6);
@@ -675,7 +672,7 @@ void main() {
       // played it.
       var controller = withChart();
       addTearDown(controller.dispose);
-      controller.applyChartExit(chartIn(controller), ChartAnimationPreset.grow);
+      closingKeys(controller, 30, 47);
       var before = bandsIn(chartIn(controller).track!).single;
 
       controller.shiftKeyframes("c", [before.from, before.to], 10);

@@ -81,11 +81,11 @@ List<TileSheetOffer> tileSheetsIn(Archive archive, {int most = 512}) {
           file: file, tileW: t.tileW, tileH: t.tileH, margin: t.margin, spacing: t.spacing);
     }
   }
-  // Kenney's notes in a line or two of text, in the three ways he has
-  // written them: "16 x 16px, 1px margin" -- his margin then the gap
-  // between tiles -- "Tile size 16px × 16px, Space between tiles 1px",
-  // and "Tile width: 16px, Margin: 0px, Spacing: 1px". Beside his sheets,
-  // or by itself at the top with them in a folder of their own.
+  // Kenney's notes in a line or two of text, in the three ways he writes
+  // them: "16 x 16px, 1px margin" (his margin being the gap between tiles),
+  // "Tile size 16px × 16px, Space between tiles 1px", and "Tile width: 16px,
+  // Margin: 0px, Spacing: 1px". Beside his sheets, or at the top with them
+  // in a folder of their own.
   bool aSheet(String p) =>
       p.toLowerCase().endsWith(".png") && !RegExp(r"preview|sample", caseSensitive: false).hasMatch(path.basename(p));
   bool inSheetFolder(String p) =>
@@ -120,8 +120,8 @@ List<TileSheetOffer> tileSheetsIn(Archive archive, {int most = 512}) {
           spacing: p.toLowerCase().contains("packed") ? 0 : known.spacing);
     }
   }
-  // Folders of tiles, a picture each.
-  // A sheet already offered is not a tile of its folder as well.
+  // Folders of tiles, a picture each; a sheet already offered is not a tile
+  // of its folder as well.
   var folders = <String, List<String>>{};
   for (var g in spriteGroups(names)) {
     (folders[g.folder] ??= []).addAll(g.files.where((f) => !sheets.containsKey(f)));
@@ -236,11 +236,10 @@ Future<(ui.Image, int, int)> packTiles(List<ui.Image> tiles, {int across = 16}) 
   return (await rec.endRecording().toImage(cols * tw, rows * th), tw, th);
 }
 
-/// kenneyTerrains is the terrain sets [file] -- one of Kenney's sheets, as
-/// [s] -- comes with: those of its blocks that are drawn as terrains, each
-/// tagged from its colours as anyone's would be. Checked by eye: his
-/// roguelike sheet's pond, grass round water, is one; its dirt and stone
-/// patches are shapes to lay by hand, and are not.
+/// kenneyTerrains is the terrain sets [file] (one of Kenney's sheets, as
+/// [s]) comes with: those of its blocks drawn as terrains, each tagged from
+/// its colours. Chosen by eye: his roguelike sheet's pond (grass round water)
+/// is one; its dirt and stone patches are shapes to lay by hand.
 List<TerrainSet> kenneyTerrains(String file, TileSource s, ui.Color Function(int x, int y) pixel) {
   var name = path.basename(file).toLowerCase();
   if (name.startsWith("roguelikesheet") && s.tileW == 16 && s.columns == 57) {

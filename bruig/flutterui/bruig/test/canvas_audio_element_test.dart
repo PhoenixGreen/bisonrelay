@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -25,11 +26,13 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_store_age.dart';
 
 // canvas_audio_element_test.dart is the Audio element in the editor: what it
 // saves, how it is stored and sent, how it is drawn, what the controller does
@@ -185,6 +188,7 @@ void main() {
     // A sound added to a canvas nobody has saved yet is named by no saved
     // canvas. Swept on another canvas's save, it vanished from this one.
     test("a sweep keeps what the open canvas uses", () async {
+      await ageStores();
       var removed =
           await CanvasMedia.sweep(MediaKind.audio, {song}); // bell is unused
       expect(removed, 1);
@@ -195,18 +199,33 @@ void main() {
     });
 
     test("a bundle carries the sound and puts it back", () async {
-      var doc = CanvasDocument(elements: [speaker("x", clip: clipOf(song))]);
-      var packed = await packCanvas(doc,
-          media: (id) async => id == song ? [9, 8, 7] : null);
+      // Named by its digest, as every stored sound is: a name that is not
+      // the bytes' digest is refused.
+      var bytes = [9, 8, 7];
+      var sent = "${sha256.convert(bytes).toString().substring(0, 16)}.mp3";
+      var doc = CanvasDocument(elements: [speaker("x", clip: clipOf(sent))]);
+      var packed =
+          await packCanvas(doc, media: (id) async => id == sent ? bytes : null);
       var back = (await unpackCanvas(packed))!;
-      expect(back.media.keys, [song]);
+      expect(back.media.keys, [sent]);
       expect(back.pictures, isEmpty, reason: "a sound is not a picture");
 
-      await File(path.join(root.path, "Canvas", canvasAudioFolder, song))
-          .delete();
       await storeBundlePictures(back);
-      var stored = await CanvasMedia.load(MediaKind.audio, song);
-      expect(stored, [9, 8, 7]);
+      expect(await CanvasMedia.load(MediaKind.audio, sent), bytes);
+
+      var forged = CanvasBundle(
+          back.document, const {}, {song: Uint8List.fromList(bytes)});
+      expect(await storeBundlePictures(forged), 0,
+          reason: "bytes under somebody else's name");
+
+      var playlist = "#EXTM3U\nfile:///etc/passwd\n".codeUnits;
+      expect(isPlaylist(playlist), isTrue);
+      expect(isPlaylist([0x49, 0x44, 0x33, 4]), isFalse, reason: "ID3");
+      var listed =
+          "${sha256.convert(playlist).toString().substring(0, 16)}.mp3";
+      expect(await CanvasMedia.saveBytes(MediaKind.audio, listed, playlist),
+          isFalse,
+          reason: "a playlist is not a sound, whatever it is called");
     });
   });
 

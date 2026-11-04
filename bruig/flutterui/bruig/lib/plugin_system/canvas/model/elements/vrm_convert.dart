@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // vrm_convert.dart turns a VRM 0.x character (the glTF extension "VRM") into
 // VRM 1.0 (VRMC_vrm, VRMC_springBone, VRMC_materials_mtoon), which is what
@@ -24,8 +25,8 @@ class VrmConvertError implements Exception {
   String toString() => message;
 }
 
-/// vrmConvertVersion is how the conversion is done: a character converted
-/// by another is converted again.
+/// vrmConvertVersion is the conversion's version: a character converted by
+/// a different version is converted again.
 const int vrmConvertVersion = 1;
 
 /// isVrm0 is whether [glb] is a VRM 0.x character.
@@ -157,7 +158,7 @@ class _Glb {
 // ---------------------------------------------------------------------------
 // The half turn: x and z change sign.
 
-/// _floats is the float accessor [ai]'s values, read and written in place.
+/// _Floats is one float accessor's values, read and written in place.
 class _Floats {
   final ByteData data;
   final int start, stride, count, width;
@@ -307,7 +308,7 @@ Map<String, dynamic> _material(
   final vp = (mp['vectorProperties'] as Map?) ?? const {};
   final tp = (mp['textureProperties'] as Map?) ?? const {};
   final kw = (mp['keywordMap'] as Map?) ?? const {};
-  num f(String k, num d) => (fp[k] as num?) ?? d;
+  num f(String k, num d) => (jsonNum(fp[k])) ?? d;
   List<num> v(String k, List<num> d) => ((vp[k] as List?)?.cast<num>()) ?? d;
   final tt = _texTransform(mp);
   const dropped = {

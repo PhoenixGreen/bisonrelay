@@ -21,17 +21,15 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
-// canvas_file_player.dart is a canvas file -- a .bcanvas, sent, shared or
-// downloaded -- played where Files previews a PDF or a video (Ken): its
-// animation run through every scene, with play, pause and start again. Its
-// pictures and sounds are stored as they are when one is opened from Files
-// into the library, for it to be drawn and heard by.
+// canvas_file_player.dart plays a canvas file (.bcanvas) where Files
+// previews a PDF or a video: every scene in turn, with play, pause and start
+// again. Its pictures and sounds are stored in the library on opening, so
+// they can be drawn and heard.
 
-/// openCanvasFile opens the canvas in the file at [filePath] in the Canvas
-/// page: put in the library -- its pictures and sounds stored, filed under
-/// its own name, or its file's -- and the page gone to, where it opens. A
-/// .bcanvas has no other program to open it (Ken: Open on a shared game did
-/// nothing).
+/// openCanvasFile puts the canvas in the file at [filePath] in the library
+/// (its pictures and sounds stored, filed under its own name or its file's)
+/// and goes to the Canvas page, where it opens. A .bcanvas has no other
+/// program to open it.
 Future<void> openCanvasFile(BuildContext context, String filePath) async {
   var snackbar = SnackBarModel.of(context, listen: false);
   var prefs = Provider.of<CanvasPreferences>(context, listen: false);
@@ -41,7 +39,7 @@ Future<void> openCanvasFile(BuildContext context, String filePath) async {
     return;
   }
   try {
-    var bundle = await unpackCanvas(await File(filePath).readAsBytes());
+    var bundle = await unpackCanvasFile(File(filePath));
     if (bundle == null) {
       snackbar.error("That file is not a canvas.");
       return;
@@ -98,8 +96,14 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
   }
 
   Future<void> _open() async {
+    // A preview stores what the canvas brings with it, so it counts as using
+    // Canvas: not while that is switched off.
+    if (!Provider.of<CanvasPreferences>(context, listen: false).enabled) {
+      setState(() => _error = "Turn Canvas on in Settings to play a canvas.");
+      return;
+    }
     try {
-      var bundle = await unpackCanvas(await widget.file.readAsBytes());
+      var bundle = await unpackCanvasFile(widget.file);
       if (bundle == null) {
         if (mounted) setState(() => _error = "This is not a canvas.");
         return;
@@ -161,8 +165,8 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
   }
 
   /// _press is a click at [at] in a view [size] big: the button there does
-  /// what it does, and a sound or a video there plays or stops -- the top
-  /// one, the scene's over the master's.
+  /// what it does, and the top sound or video there (the scene's over the
+  /// master's) plays or stops.
   void _press(CanvasController c, Offset at, Size size) {
     var doc = c.document;
     var page = doc.size.size;
@@ -178,8 +182,7 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
           !e.movedBoundsAt(c.frame, doc, live: c.liveMotion).contains(p)) {
         continue;
       }
-      // Clips that start when it is clicked, whatever else it does: the
-      // top one's, the one the reader sees.
+      // Clips that start on a click, whatever else it does: the top one's.
       if (!clicked) {
         clicked = true;
         c.fireMotionTrigger(ClipTriggerKind.clicked, e.id);
@@ -212,8 +215,8 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
           child: AspectRatio(
             aspectRatio: aspect,
             child: Stack(fit: StackFit.expand, children: [
-              // Its buttons and speakers pressed, as a reader presses them;
-              // a link is not followed from a preview.
+              // Buttons and speakers work as for a reader; links are not followed from
+              // a preview.
               LayoutBuilder(
                 builder: (context, box) => Focus(
                   autofocus: true,

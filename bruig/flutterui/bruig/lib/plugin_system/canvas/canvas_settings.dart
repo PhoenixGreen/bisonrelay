@@ -6,16 +6,12 @@ import 'package:bruig/theming_system/runtime/theme_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// canvas_settings.dart is Canvas's section of Settings > Plugins: the switch
-// that decides whether the feature exists.
-//
-// Two switches and an explanation. Everything else about a canvas is a
-// property of that canvas and belongs on the canvas's own settings band, not
-// in a settings screen a long way from the thing being changed -- these two
-// are here because neither is about a canvas. One decides whether the feature
-// exists at all; the other is about what this app is allowed to do with the
-// network, which is a decision about the app and not about a design.
+// canvas_settings.dart is Canvas's section of Settings > Plugins. Only
+// choices about the app live here (whether the feature exists, network
+// access, the playback engine, studio colours); anything about one canvas
+// belongs on that canvas's own settings band.
 
+/// CanvasSettingsSection is the Canvas switches and studio colours.
 class CanvasSettingsSection extends StatelessWidget {
   const CanvasSettingsSection({super.key});
 

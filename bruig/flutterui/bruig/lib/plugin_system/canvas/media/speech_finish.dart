@@ -8,16 +8,12 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 
 // speech_finish.dart is what is done to a Speech device's lines once they
-// are spoken, on every engine: they are put end to end, with a pause
-// between them as long as the speed asks, and given the finish -- a little
-// room round the voice, and the speaker boost. The finish is ours, after
-// the voice, so changing it changes what is heard without anything being
-// spoken again.
+// are spoken, on every engine: joined with pauses that follow the speed,
+// then given the finish (a little room, the speaker boost). The finish runs
+// after the voice, so changing it needs nothing spoken again.
 //
-// It is kept light on purpose: a heavier finish -- warmth, a deeper room --
-// was tried in the listening tests and made the voices sound more made, and
-// a room of a third sounded like an echo chamber (Ken, 2026-10-31). A voice
-// starts dry; even all the room there is is a small one, a tenth wet.
+// Kept light on purpose: heavier warmth or room makes the voices sound
+// artificial. A voice starts dry; the most room is a small one, a tenth wet.
 
 /// lineGap is the pause between two lines, at [speed]: shorter as it is
 /// faster, by more than the words are.

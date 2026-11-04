@@ -5,21 +5,14 @@ import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 
-/// BackgroundElement is a generated pattern in a rectangle.
-///
-/// The same generators the canvas's own background uses (see
-/// procedural_spec.dart), placed as an element instead of covering the
-/// document. That is what a panel of matrix rain behind a title is, or a
-/// marked pitch occupying the middle two thirds of a wider canvas with a
-/// scoreboard beside it.
-///
-/// Or a 3D stage in that rectangle, where [backdrop] says so: see [staged].
+/// BackgroundElement is a generated pattern in a rectangle: the generators
+/// the canvas's own background uses (see procedural_spec.dart), placed as an
+/// element instead of covering the document. Or, as [backdrop] says, a 3D
+/// stage (see [staged]) or parallax scenery (see [parallaxed]).
 class BackgroundElement extends CanvasElement {
   final ProceduralSpec spec;
 
-  /// cornerRadius clips the pattern to a rounded rectangle, so a generated
-  /// panel can sit inside a layout rather than always being a hard-edged
-  /// block.
+  /// cornerRadius clips the pattern to a rounded rectangle.
   final double cornerRadius;
 
   /// mask softens its edges and fades it out. See EdgeMask.
@@ -60,7 +53,7 @@ class BackgroundElement extends CanvasElement {
   Set<String> get assetIds => {...?parallax?.assetIds};
 
   /// parallaxed is the scenery as this element draws it: in its box, on its
-  /// track. The parallax's [staged].
+  /// track. The parallax counterpart of [staged].
   ParallaxElement get parallaxed =>
       (parallax ?? const ParallaxElement(ElementBase(id: ""))).rebase(base)
           as ParallaxElement;
@@ -75,10 +68,8 @@ class BackgroundElement extends CanvasElement {
   }
 
   /// staged is the stage as this element draws it: its settings in this
-  /// element's box, under this element's id, moving on this element's
-  /// track. That id is what a character standing on it names, and the
-  /// track is where the camera's keys are -- so everything that worked on
-  /// a stage of its own works on this one unchanged.
+  /// element's box, under this element's id (what a character standing on
+  /// it names), on this element's track (where the camera's keys are).
   StageElement get staged =>
       (stage ?? const StageElement(ElementBase(id: ""))).rebase(base)
           as StageElement;
@@ -133,7 +124,7 @@ class BackgroundElement extends CanvasElement {
               json["spec"], ProceduralSpec.fromJson, const ProceduralSpec()),
           cornerRadius: jsonDouble(json["cr"], 0),
           mask: jsonSpec(json["mask"], EdgeMask.fromJson, const EdgeMask()),
-          backdrop: BackdropKind.fromName(json["backdrop"] as String?),
+          backdrop: BackdropKind.fromName(jsonStr(json["backdrop"])),
           stage: json["stage"] is Map<String, dynamic>
               ? StageElement.fromJson(json["stage"] as Map<String, dynamic>,
                   const ElementBase(id: ""))
@@ -143,10 +134,9 @@ class BackgroundElement extends CanvasElement {
                   const ElementBase(id: ""))
               : null);
 
-  /// fromStage is a stage saved when it was an element of its own, read as
-  /// what it is now: a background showing it, in the same place, under the
-  /// same id -- so the characters standing on it still are -- with its
-  /// camera keys on the same track.
+  /// fromStage reads an older file's stage element as a background showing
+  /// it, with the same place, id (so characters still stand on it) and
+  /// camera keys.
   factory BackgroundElement.fromStage(
           Map<String, dynamic> json, ElementBase b) =>
       BackgroundElement(b,

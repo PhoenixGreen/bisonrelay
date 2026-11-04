@@ -4,16 +4,12 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 
-// phrasing.dart shapes a take's words after it is spoken: the voice cannot
-// be told to raise one word, or draw out another, so the take is changed
-// afterwards, a word at a time -- its pitch moved by PSOLA, which keeps the
-// voice its own (as Auto-tune does), its length changed by the same slices
-// laid further apart or closer (as Warp does), its loudness a gain. A word
-// left as it was is copied as it was, and each joins the next across 5ms,
-// so nothing clicks where they meet.
-//
-// readTake is what the Phrasing panel opens on: each word's pitch, read
-// along it, and how loud it is.
+// phrasing.dart shapes a take's words after it is spoken, since the voice
+// cannot be told to raise or draw out one word. Each word's pitch is moved
+// by PSOLA (which keeps the voice its own), its length changed by laying
+// the same slices further apart or closer, its loudness by a gain. A word
+// left plain is copied as it was; pieces cross-fade over 10ms (two 5ms
+// margins) so nothing clicks where they meet.
 
 /// TakeReading is a take as the voice said it: its pitch every 20ms, as a
 /// MIDI note -- null where nothing is voiced -- each word's loudness in

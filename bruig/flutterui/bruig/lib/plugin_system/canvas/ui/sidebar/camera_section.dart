@@ -19,7 +19,7 @@ enum CameraMove {
   const CameraMove(this.label);
 
   /// camera is this move at [strength]: how far it zooms in, as a fraction
-  /// -- 0.12 is twelve per cent closer.
+  /// (0.12 is twelve per cent closer).
   SceneCamera? camera(double strength) {
     var z = 1 + strength;
     var d = strength / 2;

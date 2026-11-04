@@ -13,16 +13,13 @@ import 'package:flutter/foundation.dart';
 // video_runtime.dart plays the canvas's videos: which file, which frame of it
 // is showing, where the sound has got to, and what survives a page turn.
 //
-// Session state, like the audio runtime's -- see audio_runtime.dart. The same
-// rules about ranges, playlists and loops, applied to pictures.
+// Session state, with the same rules about ranges, playlists and loops as
+// audio_runtime.dart.
 //
-// **Time is kept by the sound.** A video with sound hands it to the audio
-// runtime, and the picture shows whichever frame is due at the position the
-// sound has reached. Two clocks -- a stopwatch for the picture and the sound
-// card for the sound -- drift apart by a frame every few seconds, and lips
-// that move before the words is the one thing anybody notices about a video.
-// A video with no sound, or before its sound has opened, keeps time by a
-// stopwatch.
+// Time is kept by the sound: a video's sound plays in the audio runtime and
+// the picture shows the frame due at the sound's position. A separate
+// stopwatch drifts by a frame every few seconds, which shows on lips. With
+// no sound, or before it opens, a stopwatch keeps time.
 
 /// VideoView is how a video is doing now, for the painter.
 class VideoView {
@@ -105,6 +102,8 @@ class _Showing {
   }
 }
 
+/// VideoRuntime plays the open canvas's Video elements: see the file
+/// comment.
 class VideoRuntime extends ChangeNotifier {
   final FrameSource frames;
   final AudioRuntime audio;
@@ -131,8 +130,8 @@ class VideoRuntime extends ChangeNotifier {
     super.notifyListeners();
   }
 
-  /// isVideoSound is whether an id in the audio runtime is a video's sound,
-  /// and whose -- so the page-turn rule for sounds can ask the video.
+  /// videoOfSound is the video whose sound [soundId] is, or null, so the
+  /// page-turn rule for sounds can ask the video.
   static String? videoOfSound(String soundId) =>
       soundId.startsWith("video:") ? soundId.substring(6) : null;
 
@@ -195,9 +194,8 @@ class VideoRuntime extends ChangeNotifier {
   void pause(String id) {
     var p = _shows[id];
     if (p == null || !p.playing) return;
-    // Where it got to, read while it is still playing -- which is when the
-    // clock is the sound's. Read after, it was the stopwatch's, and pressing
-    // play again jumped back to wherever that had been started.
+    // Read while still playing, when the clock is the sound's; once paused
+    // _time reads the stopwatch.
     var at = _time(p);
     p.playing = false;
     p.watch
@@ -277,19 +275,14 @@ class VideoRuntime extends ChangeNotifier {
     }
   }
 
-  /// cue puts [e] where the playhead says it is. See AudioRuntime.cue, which
-  /// is the same idea for a sound: held or playing as the playhead is, moved
-  /// back into step when it drifts, and never on to its next file by itself.
-  ///
-  /// Held, it is moved to within a frame, because a held video is being
-  /// scrubbed and the frame under the playhead is the whole point; playing,
-  /// it is left alone unless it is a good fraction of a second out, because
-  /// reopening a file to correct a frame of drift is a stutter.
+  /// cue puts [e] where the playhead says it is, as AudioRuntime.cue does
+  /// for a sound. Held (scrubbing), it is kept within a frame; playing, it
+  /// is reopened only when 0.3s out, since reopening for a frame of drift
+  /// stutters.
   void cue(VideoElement e, ClipMoment? moment, {required bool playing}) {
     var p = _for(e);
     p.timed = true;
-    // As loud as its clip's volume line says, as a sound on the timeline is:
-    // nobody turns a timed video up by hand.
+    // A timed video's level is its clip's, not a hand-set one.
     if (p.volume != e.clip.volume || p.muted != e.clip.muted) {
       p.volume = e.clip.volume;
       p.muted = e.clip.muted;
@@ -477,9 +470,8 @@ class VideoRuntime extends ChangeNotifier {
         p.ended = true;
         return;
       }
-      // The first frame goes straight up: it is the picture for a video that
-      // has just been opened or moved, and waiting for its moment would leave
-      // the old picture showing.
+      // The first frame after an open or a move goes straight up, or the
+      // old picture would stay showing.
       if (p.shown == null || !p.playing) {
         p.shown?.image.dispose();
         p.shown = frame;
@@ -502,8 +494,8 @@ class VideoRuntime extends ChangeNotifier {
         if (p.index + 1 < list.length) {
           unawaited(_start(p, p.index + 1));
         } else {
-          // The last frame stays up: a video that snaps back to its poster
-          // the moment it ends reads as having been interrupted.
+          // The last frame stays up: snapping back to the poster reads as
+          // an interruption.
           p.generation++;
           p.reader?.close();
           p.reader = null;

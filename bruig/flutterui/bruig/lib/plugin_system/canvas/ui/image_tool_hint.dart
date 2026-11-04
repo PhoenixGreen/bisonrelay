@@ -6,11 +6,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/image_layer_settings.dart
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// image_tool_hint.dart is what floats over the canvas while a picture's
-// layers are open: the tool in hand and what to do with it, where the eye
-// already is -- the panel's hint is a long way off across the screen -- and
-// a button that shows the picture as it was put in for as long as it is
-// held.
+// image_tool_hint.dart is the pill over the canvas while a picture's layers
+// are open: the tool in hand and what to do with it, where the eye already
+// is rather than in the far-off panel, and a hold-to-compare button.
 
 /// toolHint is what to do with [tool], in a line.
 String toolHint(CanvasController controller, ImageTool tool) => switch (tool) {

@@ -3,19 +3,18 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 
-// tile_terrain.dart is a terrain painted onto a map, as Godot paints one:
-// each cell painted -- and each round it -- given the tile whose corners
-// and sides match what is about it, so water painted into grass finds its
-// own shore, a path its own bends. And a set's tiles tagged from their
-// colours: each corner, side and middle of a tile told apart by which
-// terrain's own tile it looks like, or as nothing where it is clear.
+// tile_terrain.dart paints a terrain onto a map, as Godot does: each cell
+// painted, and each round it, given the tile whose corners and sides match
+// its neighbours, so water painted into grass finds its own shore. It also
+// tags a set's tiles from their colours: each corner, side and middle told
+// apart by which terrain's tile it looks like, or as nothing where clear.
 //
-// A set told apart by corners keeps a terrain at each corner between
-// cells: painting a cell makes its four that terrain, and every cell
-// touching them takes the tile that matches its four -- into an empty
-// cell too, an edge spreading out round a patch. A set told apart by sides
-// keeps a terrain in each cell's middle: a cell joins its neighbours of
-// the same terrain, and only cells already of the set are changed.
+// A set told apart by corners keeps a terrain at each corner between cells:
+// painting a cell sets its four corners, and every cell touching them takes
+// the matching tile, an empty one too, so an edge spreads round a patch. A
+// set told apart by sides keeps a terrain in each cell's middle: a cell
+// joins neighbours of the same terrain, and only cells already of the set
+// change.
 
 /// paintTerrain is [cells] -- one layer's, by [cellKey] -- with terrain
 /// [terrain] of [set], of tile set [source], painted at [at]: the cells

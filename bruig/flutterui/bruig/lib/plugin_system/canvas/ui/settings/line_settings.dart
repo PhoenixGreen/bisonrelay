@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
-// line settings.dart is a line's settings.
+// line_settings.dart is a line's settings.
 
 List<Widget> lineSettings(
     BuildContext context,
@@ -212,12 +212,7 @@ List<Widget> lineSettings(
 }
 
 /// strokeEndControls is how a stroke starts, how it ends, and how big the
-/// ends are.
-///
-/// Shared by the line and the path, which are the same four controls with a
-/// different element behind them: an arrowhead that means one thing on a line
-/// and another on a route is the sort of difference nobody asks for and
-/// everybody notices.
+/// ends are. Shared by the line and the path, so the two always match.
 List<Widget> strokeEndControls({
   required LineStrokeCap cap,
   required LineEnd startEnd,

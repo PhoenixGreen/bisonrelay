@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 
 // sound_placement.dart is where a placed sound is heard from on a frame:
@@ -45,11 +46,12 @@ Heard? heardAt(
   }
 }
 
-/// _across is [e]'s place across the canvas, where it is on [frame].
+/// _across is [e]'s place across the canvas on [frame], as its clips and
+/// keyframes move it.
 Heard _across(
     CanvasDocument doc, CanvasElement e, SoundPlacement place, int frame) {
-  var pose = e.track?.at(frame);
-  var centre = e.x + e.width / 2 + (pose?.dx ?? 0);
+  var pose = poseWithMotion(e, frame, doc);
+  var centre = e.x + e.width / 2 + pose.dx;
   var width = doc.size.rect.width;
   var u = width <= 0 ? 0.5 : (centre - doc.size.rect.left) / width;
   return Heard(wrapAngle((u.clamp(0.0, 1.0) - 0.5) * place.arc));

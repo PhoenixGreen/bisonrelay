@@ -25,8 +25,16 @@ class CharacterDesigns {
     return d;
   }
 
-  static Future<String> _file(String id) async =>
-      path.join(await dir(), "$id.json");
+  /// isId is whether [id] can name a character's files: letters, digits,
+  /// "_" and "-". A design's id comes from documents other people send, and
+  /// one with a "/" or ".." in it must never become a path.
+  static bool isId(String id) => _idPattern.hasMatch(id);
+  static final RegExp _idPattern = RegExp(r"^[A-Za-z0-9_-]{1,64}$");
+
+  static Future<String> _file(String id) async {
+    if (!isId(id)) throw ArgumentError.value(id, "id", "not a character id");
+    return path.join(await dir(), "$id.json");
+  }
 
   /// newId is an id no character has: random, so two made on two machines
   /// do not meet.
@@ -101,8 +109,10 @@ class CharacterDesigns {
 
   /// pictureFile is where character [id]'s picture is kept: a PNG of it
   /// standing, drawn as the Studio is left, for the library's list.
-  static Future<String> pictureFile(String id) async =>
-      path.join(await dir(), "$id.png");
+  static Future<String> pictureFile(String id) async {
+    if (!isId(id)) throw ArgumentError.value(id, "id", "not a character id");
+    return path.join(await dir(), "$id.png");
+  }
 
   /// picture is character [id]'s picture, or null where it has none.
   static Future<Uint8List?> picture(String id) async {

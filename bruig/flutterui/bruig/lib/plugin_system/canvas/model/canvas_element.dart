@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -9,16 +10,11 @@ import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
 // canvas_element.dart is what everything on a canvas has in common, and
 // nothing else.
 //
-// Every element is a rectangle with a rotation, an opacity and a name, plus
-// its own properties. The base class owns the first list and knows nothing
-// about the second, which is what lets the stage drag, resize, rotate,
-// reorder and animate a chart without ever asking what a chart is. Only the
-// painter and the settings bar switch on the kind.
-//
-// Elements are immutable. Every edit produces a new element and a new
-// document, which is what makes undo a list of documents rather than a list
-// of reversible operations -- and reversible operations are where an editor
-// like this usually goes wrong.
+// ElementBase holds the box, turn, opacity, name and motion every element
+// has, so the stage can move, resize and animate any element without knowing
+// its kind; only the painter and the settings switch on the kind. Elements
+// are immutable, which is what makes undo a list of documents rather than of
+// reversible operations.
 
 /// ElementKind names the families. Serialised by name, so the order here is
 /// free to change but the names are not.
@@ -31,41 +27,24 @@ enum ElementKind {
   table("Table"),
   button("Button"),
   background("Background"),
-  // "Team", because one of these is a whole side rather than one dot -- see
-  // TeamElement. The enum value keeps its old name so that documents saved
-  // before the change still load.
   path("Path"),
+  // A whole side, not one dot (TeamElement); the value keeps its old name so
+  // saved documents load.
   player("Team"),
-  // A number that counts -- across the timeline, or in real time when nobody
-  // has keyframed it. See CounterElement.
   counter("Counter"),
-  // A sound, and the icon a reader presses to hear it. See AudioElement.
   audio("Audio"),
-  // A moving picture, from a file or a link. See VideoElement.
   video("Video"),
-  // A drawing -- an .svg -- edited point by point. See VectorElement.
   vector("Vector"),
-  // A character made in the new Character Studio, drawn in 3D. See
-  // Character3dElement.
   character3d("3D character"),
-  // A 3D set -- a floor and a wall seen through a camera -- that characters
-  // stand on. See StageElement.
+  // The 3D set a background carries (BackdropKind.stage), not added by itself.
   stage("3D stage"),
-  // A figure played from a sprite sheet: its frames, its actions, the way
-  // it faces. See SpriteElement.
   sprite("Sprite"),
-  // A scene painted from tile sets onto a grid, in layers. See
-  // TileMapElement.
   tileMap("Tile map"),
-  // Layers of scenery moving at different speeds as the camera pans. A kind
-  // of background, never added by itself. See ParallaxElement.
+  // Scenery a background carries (BackdropKind.parallax), not added by itself.
   parallax("Parallax"),
-  // A score: an instrument's part engraved, played, and practised against.
-  // See SheetElement.
   sheet("Sheet music"),
-  // The part of the page shown, moved by clips: see CameraElement.
+  // The part of the page shown, moved by clips.
   camera("Camera"),
-  // A model from the library's 3D objects: see Object3dElement.
   object3d("3D object");
 
   final String label;
@@ -73,12 +52,8 @@ enum ElementKind {
 }
 
 /// colorToJson and colorFromJson are the one encoding of a colour in a saved
-/// document: 0xAARRGGBB as a plain integer.
-///
-/// Written by hand rather than through Color.value, which is deprecated in
-/// favour of floating-point channels -- and a float channel round-tripped
-/// through JSON is a colour that comes back very slightly different from the
-/// one that was saved.
+/// document: 0xAARRGGBB as a plain integer, so a colour round-trips exactly
+/// (float channels through JSON would not).
 int colorToJson(Color c) =>
     (_channel(c.a) << 24) |
     (_channel(c.r) << 16) |
@@ -88,32 +63,56 @@ int colorToJson(Color c) =>
 int _channel(double v) => (v * 255).round().clamp(0, 255);
 
 Color colorFromJson(dynamic v, [Color fallback = const Color(0xFFFFFFFF)]) =>
-    v is num ? Color(v.toInt()) : fallback;
+    v is num && v.isFinite ? Color(v.toInt() & 0xFFFFFFFF) : fallback;
 
-double _d(dynamic v, double fallback) => v is num ? v.toDouble() : fallback;
-int _i(dynamic v, int fallback) => v is num ? v.toInt() : fallback;
+// Non-finite numbers are refused: JSON reads 1e999 as infinity, which would
+// throw on the first round() and lose the document.
+double _d(dynamic v, double fallback) =>
+    v is num && v.isFinite ? v.toDouble() : fallback;
+int _i(dynamic v, int fallback) =>
+    v is num && v.isFinite ? v.toInt() : fallback;
+
+/// jsonStr and jsonNum are a field as a string or a finite number, or null
+/// where it is missing or of another type.
+String? jsonStr(Object? v) => v is String ? v : null;
+num? jsonNum(Object? v) => v is num && v.isFinite ? v : null;
+
+/// _far is the furthest out, and the biggest, a received element may be:
+/// many times any page, but not a size that cannot be drawn.
+const double _far = 1e6;
+
 bool _b(dynamic v, bool fallback) => v is bool ? v : fallback;
 String _s(dynamic v, String fallback) => v is String ? v : fallback;
 
-/// jsonDouble, jsonInt, jsonBool and jsonString are the same readers, exported
-/// for the element subclasses. A saved document is text from disk and may be
-/// from an older build, so every read has to survive the field being absent or
-/// being the wrong type -- never a cast that throws and loses the document.
+/// jsonDouble, jsonInt, jsonBool and jsonString are the readers above,
+/// exported for the element subclasses. A saved document may be from an
+/// older build or another person, so every read survives a field being absent
+/// or the wrong type: a cast that throws loses the whole document.
 double jsonDouble(dynamic v, double fallback) => _d(v, fallback);
 int jsonInt(dynamic v, int fallback) => _i(v, fallback);
 bool jsonBool(dynamic v, bool fallback) => _b(v, fallback);
 String jsonString(dynamic v, String fallback) => _s(v, fallback);
 
+/// fractionsFromJson reads a flat [x, y, x, y, ...] list of points that are
+/// fractions of a picture: within a picture's width either side of it, and
+/// at most 100,000 of them, so a sent stroke cannot ask for billions of dabs.
+List<Offset> fractionsFromJson(Object? flat) {
+  var points = <Offset>[];
+  if (flat is! List) return points;
+  for (var i = 0; i + 1 < flat.length && points.length < 100000; i += 2) {
+    var x = flat[i], y = flat[i + 1];
+    if (x is num && y is num && x.isFinite && y.isFinite) {
+      points.add(
+          Offset(x.toDouble().clamp(-1.0, 2.0), y.toDouble().clamp(-1.0, 2.0)));
+    }
+  }
+  return points;
+}
+
 /// ElementBase is every property that every element has.
 ///
-/// Held by composition rather than spread across nine constructors. The stage
-/// only ever changes these -- drag changes x and y, the handles change width
-/// and height, the rotate ring changes rotation, the layer list changes the
-/// order and the name -- so pulling them into one object means an element
-/// subclass implements exactly one method to be fully editable, instead of
-/// re-declaring nine fields and threading them through three constructors.
-/// The first version of this file did it the other way and the boilerplate
-/// was longer than every element's real content put together.
+/// Held by composition, so an element subclass implements one method
+/// ([CanvasElement.rebase]) to be fully editable by the stage.
 class ElementBase {
   /// id is stable for the life of the element and survives saving. Keyframes
   /// and button actions refer to elements by it.
@@ -130,8 +129,8 @@ class ElementBase {
   final double width;
   final double height;
 
-  /// rotation is in degrees, clockwise, about the element's centre. Degrees
-  /// rather than radians because it is a number the user types.
+  /// rotation is in degrees (a number the user types), clockwise, about the
+  /// element's centre.
   final double rotation;
 
   /// skewX and skewY slant the element about its centre, in degrees, after
@@ -147,106 +146,65 @@ class ElementBase {
 
   final bool visible;
 
-  /// locked keeps an element out of the way of the pointer. A pitch or a
-  /// background is something you place once and then want to stop selecting
-  /// by accident every time you click near a player standing on it.
+  /// locked keeps an element out of the way of the pointer, so a pitch or a
+  /// background is not selected by a click near what stands on it.
   final bool locked;
 
-  /// lockAspect holds an element's proportions while it is resized.
-  ///
-  /// On the base rather than on the elements that want it, because every
-  /// element can want it: a logo, a headline box, a chart drawn to a shape
-  /// that suits it. It was a picture's own setting, and a picture is only the
-  /// most obvious case of a general one.
-  ///
-  /// It does not stop a resize, which is the whole of what it is for. The
-  /// width and the height move together, so dragging a corner or typing a
-  /// width changes the size without changing the shape.
+  /// lockAspect holds an element's proportions while it is resized: the
+  /// width and the height move together.
   final bool lockAspect;
 
   /// anchorX and anchorY are the element's anchor point, as shares of its
-  /// width and height from its top-left corner: what it turns and grows
-  /// about when it is animated -- a keyframe's angle and size, a loop's
-  /// swing, an arrival's spin -- and what stays put when it is turned. A
-  /// half and a half, its centre, unless it has been moved.
+  /// width and height from its top-left corner: what its animation turns and
+  /// grows about, and what stays put when it is turned. The centre (0.5,
+  /// 0.5) unless moved.
   final double anchorX;
   final double anchorY;
 
   /// anchorLocked keeps the anchor where it is, even while it is shown.
   final bool anchorLocked;
 
-  /// track is this element's animation, or null when it does not move.
+  /// track is the element's legacy keyframe track, or null. Tracks are
+  /// converted to [motion] clips when a canvas opens (motion_convert.dart),
+  /// except those a clip cannot say: backgrounds, stages, scenery, teams.
   final ElementTrack? track;
 
-  /// typeScale is how much the element's own measurements -- its type, its
-  /// spacing, the room inside its box -- have been sized by for the shape
-  /// being looked at.
+  /// typeScale is how much the element's own measurements (type, spacing,
+  /// padding) have been sized by for the shape being looked at.
   ///
-  /// Bookkeeping for the shape switch rather than a setting in its own
-  /// right, and the reason it has to be written down: moving to another
-  /// shape has to *undo* this one's scaling before applying that one's, and
-  /// the scaled numbers themselves cannot say what they were scaled by.
-  ///
-  /// It is also the knob a design needs on a narrow page, where the type that
-  /// was right across a banner is a word a line. See ElementLayout.typeScale.
+  /// Kept because switching shape has to undo this shape's scaling before
+  /// applying the next one's, and the scaled numbers cannot say what they
+  /// were scaled by. See ElementLayout.typeScale.
   final double typeScale;
 
   /// ownText is whether the shape being looked at has words of its own --
   /// see ElementLayout.ownText.
   final bool ownText;
 
-  /// ownDesign is whether this element is its own on the shape being looked
-  /// at rather than the one the shapes share.
-  ///
-  /// Off, an element is one thing laid out several ways: its colours, its
-  /// type and its settings are the same everywhere and only its place, its
-  /// size and how much that design has been scaled by belong to the shape.
-  /// That is what keeps a typo fixed once and a colour changed once.
-  ///
-  /// On, this shape keeps a copy of the whole element and nothing done to it
-  /// anywhere else reaches this one. For the case the shared design cannot
-  /// carry: a headline that is a different size *and* a different weight on
-  /// the narrow page, a chart that is a bar on one shape and a line on
-  /// another.
+  /// ownDesign is whether the shape being looked at has its own copy of the
+  /// whole element. Off, an element is one design laid out several ways and
+  /// only its place, size and typeScale belong to the shape; on, nothing done
+  /// to it on another shape reaches this one.
   final bool ownDesign;
 
-  /// shared is the design the shapes share, kept aside while a shape is
-  /// showing one of its own.
-  ///
-  /// The element itself is whatever the shape being looked at shows, so
-  /// without this the shared design is gone the moment a detached shape is
-  /// opened: there is one set of settings and the detached shape is using
-  /// it. Null while nothing is detached, which is nearly every element --
-  /// then the element *is* the shared design. See ownDesign.
+  /// shared is the design the shapes share, kept aside while the shape being
+  /// looked at shows one of its own (the element's fields then hold that
+  /// shape's design). Null while nothing is detached. See ownDesign.
   final Map<String, dynamic>? shared;
 
   /// layouts is where this element sits on each of the *other* shapes the
-  /// document is being designed for, by ratio -- see ElementLayout and
+  /// document is designed for, by ratio -- see ElementLayout and
   /// CanvasDocument.targets.
   ///
-  /// The shape being looked at is not in here: its numbers are x, y, width
-  /// and height above, live, so that every painter, every handle and every
-  /// settings field goes on reading the element the way it always has.
-  /// Changing the document's shape puts the live numbers away under the
-  /// shape being left and takes out the ones belonging to the shape being
-  /// opened. See CanvasDocument.forShape.
-  ///
-  /// Only the place and the size. What the element *is* -- its words, its
-  /// colours, its data, how it arrives -- is one thing across every shape,
-  /// so that a headline fixed on the square is fixed on the banner too.
+  /// The shape being looked at is not in here: its numbers are the live x, y,
+  /// width and height, so every painter and handle reads them as usual.
+  /// Changing shape swaps them. See CanvasDocument.forShape.
   final Map<String, ElementLayout> layouts;
 
   /// cue is the TimelineCue this element's timing is tied to, by id, or
-  /// empty for none. Moving the cue moves every keyframe of the element with
-  /// it -- see CanvasController.moveCue.
+  /// empty for none. Moving the cue moves the element's clip placements and
+  /// keyframes with it -- see CanvasController.moveCue.
   final String cue;
-
-  /// link groups linked copies: elements made from one another that share
-  /// their design, by a shared id, or empty for none. Pushing one copy's
-  /// design to the rest keeps each where it is and when it is -- see
-  /// CanvasController.pushToLinked. What a symbol is, without a second kind
-  /// of element to learn.
-  final String link;
 
   /// play is what it does when the canvas is played as a game. See play.dart.
   final PlaySpec play;
@@ -283,7 +241,6 @@ class ElementBase {
     this.ownDesign = false,
     this.shared,
     this.cue = "",
-    this.link = "",
     this.play = const PlaySpec(),
     this.spot,
     this.motion = ElementMotion.none,
@@ -315,7 +272,6 @@ class ElementBase {
     Map<String, dynamic>? shared,
     bool clearShared = false,
     String? cue,
-    String? link,
     PlaySpec? play,
     StageSpot? spot,
     bool clearSpot = false,
@@ -348,7 +304,6 @@ class ElementBase {
         ownDesign: ownDesign ?? this.ownDesign,
         shared: clearShared ? null : (shared ?? this.shared),
         cue: cue ?? this.cue,
-        link: link ?? this.link,
       );
 
   factory ElementBase.fromJson(Map<String, dynamic> json, String defaultName) {
@@ -356,10 +311,10 @@ class ElementBase {
     return ElementBase(
       id: _s(json["id"], newElementId()),
       name: _s(json["name"], defaultName),
-      x: _d(json["x"], 0),
-      y: _d(json["y"], 0),
-      width: _d(json["w"], 200),
-      height: _d(json["h"], 100),
+      x: _d(json["x"], 0).clamp(-_far, _far),
+      y: _d(json["y"], 0).clamp(-_far, _far),
+      width: _d(json["w"], 200).clamp(0.0, _far),
+      height: _d(json["h"], 100).clamp(0.0, _far),
       rotation: _d(json["rot"], 0),
       skewX: _d(json["skx"], 0).clamp(-maxSkew, maxSkew),
       skewY: _d(json["sky"], 0).clamp(-maxSkew, maxSkew),
@@ -380,7 +335,6 @@ class ElementBase {
           ? json["shared"] as Map<String, dynamic>
           : null,
       cue: _s(json["cue"], ""),
-      link: _s(json["link"], ""),
       play: PlaySpec.fromJson(json["play"]),
       spot: StageSpot.fromJson(json["spot"]),
       motion: ElementMotion.fromJson(json["motion"]),
@@ -407,12 +361,8 @@ class ElementBase {
         if (opacity != 1) "opacity": opacity,
         if (!visible) "visible": false,
         if (locked) "locked": true,
-        // Written even when false, unlike the other switches here. Its
-        // absence has to mean "saved before elements had this", so that a
-        // picture from an older document can be given back the locked
-        // proportions every picture used to have -- see
-        // ImageElement.fromJson. An absent key that could also mean "off"
-        // would make that impossible to tell.
+        // Written even when false: absence means "saved before elements had
+        // this", which ImageElement.fromJson reads as locked.
         "aspect": lockAspect,
         if (anchorX != 0.5) "ax": anchorX,
         if (anchorY != 0.5) "ay": anchorY,
@@ -423,7 +373,6 @@ class ElementBase {
         if (ownDesign) "ownDesign": true,
         if (shared != null) "shared": shared,
         if (cue.isNotEmpty) "cue": cue,
-        if (link.isNotEmpty) "link": link,
         if (!play.isNone) "play": play.toJson(),
         if (spot != null) "spot": spot!.toJson(),
         if (!motion.isEmpty) "motion": motion.toJson(),
@@ -434,15 +383,9 @@ class ElementBase {
       };
 }
 
-/// ElementLayout is where an element sits on one shape of the canvas.
-///
-/// The place and the size and nothing else. A document designed for several
-/// shapes -- a 4:5 for a feed, a 16:9 for a screen -- is one set of elements
-/// laid out several ways, not several documents to keep in step.
-///
-/// [visible] is part of the layout because "not on this one" is a layout
-/// decision: a wide strip across the top of a banner has no business on a
-/// tall canvas, and squeezing it is not the answer.
+/// ElementLayout is where an element sits on one shape of the canvas: its
+/// place, size and visibility there, plus the few things that differ per
+/// shape (type scale, own words, own design, a picture's framing and crop).
 class ElementLayout {
   final double x;
   final double y;
@@ -452,18 +395,12 @@ class ElementLayout {
 
   /// typeScale is how much the element's own measurements are sized by on
   /// this shape -- see ElementBase.typeScale.
-  ///
-  /// Part of the layout because it is a layout decision: a headline that
-  /// carries a banner is a word a line on a tall page, and the answer is
-  /// smaller type there rather than different words.
   final double typeScale;
 
-  /// text is the words this shape shows. Null for everything that is not a
-  /// text element.
-  ///
-  /// Kept on every shape, its own or not, so that going to a shape with its
-  /// own words and back again gives the others theirs. [ownText] is what
-  /// tells the two apart.
+  /// text is the words this shape shows, or null for a non-text element.
+  /// Kept on every shape, its own or not, so that visiting a shape with its
+  /// own words and coming back restores the others'; [ownText] tells them
+  /// apart.
   final String? text;
 
   /// own is this element's whole design on this shape, for one that has been
@@ -471,23 +408,14 @@ class ElementLayout {
   /// design the shapes share.
   final Map<String, dynamic>? own;
 
-  /// framing and crop are a picture's own on this shape, always.
-  ///
-  /// Not part of the shared design and not something anybody has to ask for:
-  /// which part of a photograph is showing, and how much of it, is a decision
-  /// about a frame -- and the frame is a different shape on every one of
-  /// these. A portrait cropped to sit beside a headline on a feed card is the
-  /// wrong crop for the same headline across a screen.
+  /// framing and crop are a picture's own on this shape, always: the frame
+  /// is a different shape on each, so the crop that suits one does not suit
+  /// another.
   final Map<String, dynamic>? framing;
   final Map<String, dynamic>? crop;
 
-  /// ownText is whether those words are this shape's own.
-  ///
-  /// The one thing scaling cannot fix: type half the size still wraps where
-  /// the page is narrow, and a headline that takes two lines across a banner
-  /// takes four down a feed. Somewhere there has to be a place to say "on
-  /// this one, fewer words" -- and everywhere else goes on sharing one set,
-  /// so a typo is still fixed once.
+  /// ownText is whether those words are this shape's own, for a narrow page
+  /// that needs fewer words; the other shapes go on sharing one set.
   final bool ownText;
 
   const ElementLayout({
@@ -533,9 +461,8 @@ class ElementLayout {
         width: math.max(1, width * by),
         height: math.max(1, height * by),
         visible: visible,
-        // The design inside the box comes down with the box, or a headline
-        // seeded onto a smaller page keeps the type it had on the larger one
-        // and runs out of the frame.
+        // The design inside the box scales with the box, or the type
+        // seeded onto a smaller page runs out of the frame.
         typeScale: typeScale * by,
         text: text,
         ownText: ownText,
@@ -582,10 +509,10 @@ class ElementLayout {
       };
 
   factory ElementLayout.fromJson(Map<String, dynamic> json) => ElementLayout(
-        x: _d(json["x"], 0),
-        y: _d(json["y"], 0),
-        width: _d(json["w"], 200),
-        height: _d(json["h"], 100),
+        x: _d(json["x"], 0).clamp(-_far, _far),
+        y: _d(json["y"], 0).clamp(-_far, _far),
+        width: _d(json["w"], 200).clamp(0.0, _far),
+        height: _d(json["h"], 100).clamp(0.0, _far),
         visible: _b(json["visible"], true),
         typeScale: _d(json["typeScale"], 1),
         text: json["text"] is String ? json["text"] as String : null,
@@ -612,29 +539,28 @@ class ElementLayout {
           other.visible == visible &&
           other.typeScale == typeScale &&
           other.text == text &&
-          other.ownText == ownText;
+          other.ownText == ownText &&
+          _sameJson(other.own, own) &&
+          _sameJson(other.framing, framing) &&
+          _sameJson(other.crop, crop);
 
   @override
   int get hashCode =>
       Object.hash(x, y, width, height, visible, typeScale, text, ownText);
+
+  /// _sameJson is whether two saved designs are the same.
+  static bool _sameJson(Map<String, dynamic>? a, Map<String, dynamic>? b) =>
+      identical(a, b) ||
+      (a != null && b != null && jsonEncode(a) == jsonEncode(b));
 }
 
 /// jsonSpec reads a nested value object -- a TextSpec, a BoxSpec, a
-/// ProceduralSpec -- falling back to [fallback] when the field is missing or
-/// is not a map.
-///
-/// One function rather than the same three-line conditional at every nested
-/// field, and the reason it takes the parser as an argument is that these
-/// specs have nothing in common beyond being maps.
+/// ProceduralSpec -- with [parse], falling back to [fallback] when the field
+/// is missing or is not a map.
 T jsonSpec<T>(dynamic v, T Function(Map<String, dynamic>) parse, T fallback) =>
     v is Map<String, dynamic> ? parse(v) : fallback;
 
-/// CanvasElement is one thing on the canvas.
-///
-/// Immutable. Every edit produces a new element and a new document, which is
-/// what makes undo a list of documents rather than a list of reversible
-/// operations -- and reversible operations are where an editor like this
-/// usually goes wrong.
+/// CanvasElement is one thing on the canvas. Immutable: see the file header.
 abstract class CanvasElement {
   final ElementBase base;
 
@@ -643,9 +569,8 @@ abstract class CanvasElement {
   ElementKind get kind;
 
   /// rebase is the one method a subclass owes the stage: the same element,
-  /// with different base properties. Everything the stage does -- move,
-  /// resize, rotate, rename, lock, hide, duplicate, animate -- goes through
-  /// it, and none of it needs to know what the element is.
+  /// with different base properties. Every move, resize, rename, lock and
+  /// animation goes through it.
   CanvasElement rebase(ElementBase base);
 
   /// props is the element's own fields, and nothing [ElementBase] owns.
@@ -671,31 +596,22 @@ abstract class CanvasElement {
   Rect get bounds => Rect.fromLTWH(x, y, width, height);
   Offset get center => bounds.center;
 
-  /// poseAt is where this element is on [frame], as an offset from where it
-  /// rests. See canvas_animation.dart.
+  /// poseAt is where this element's keyframe track puts it on [frame], as an
+  /// offset from where it rests; clips are not included (see poseWithMotion
+  /// in render/motion_document.dart).
   Keyframe poseAt(int frame) => base.track?.at(frame) ?? Keyframe.rest;
 
   /// spotAt is where it stands on a stage on [frame], its own spot with
   /// whatever its track keys over it; null for on the page.
   StageSpot? spotAt(int frame) => base.spot?.over(poseAt(frame));
 
-  /// boundsAt is where the element actually *is* on [frame].
-  ///
-  /// Everything that puts something on screen beside an element has to use
-  /// this rather than [bounds], and forgetting is the sort of bug that looks
-  /// like the animation itself is wrong. The selection box and the handles
-  /// used [bounds], so scrubbing an animated text element moved the words and
-  /// left the blue rectangle behind at the resting position -- which reads
-  /// exactly as though the text were being animated *inside* a box that was
-  /// standing still.
-  ///
-  /// The transform matches the painter's, in the painter's order: the pose's
-  /// shift in document space, then the scale about the centre it has moved to.
+  /// boundsAt is where the element's keyframes put it on [frame]. Anything
+  /// drawn beside a moving element must use a posed box, not [bounds]; with
+  /// clips too, that is movedBoundsAt in render/motion_document.dart.
   Rect boundsAt(int frame) => boundsWith(poseAt(frame));
 
-  /// boundsWith is where the element is posed as [pose] -- its keyframes'
-  /// pose, or that with its clips' moves on top: see movedBoundsAt in
-  /// motion_document.dart, which everything beside it on the stage uses.
+  /// boundsWith is the element's box posed as [pose], in the painter's order:
+  /// the pose's shift, then its scale about the anchor.
   Rect boundsWith(Keyframe pose) {
     var box = bounds.shift(Offset(pose.dx, pose.dy));
     if (pose.scale == 1) return box;
@@ -767,8 +683,7 @@ abstract class CanvasElement {
     return turned.withBase(x: base.x + shift.dx, y: base.y + shift.dy);
   }
 
-  /// rotationAt and opacityAt are the same question for the other two things a
-  /// pose carries.
+  /// rotationAt and opacityAt are the keyframed turn and opacity on [frame].
   double rotationAt(int frame) => rotation + poseAt(frame).rotate;
 
   double opacityAt(int frame) =>
@@ -781,48 +696,24 @@ abstract class CanvasElement {
   /// rotationRadians is what the painter and the hit test both want.
   double get rotationRadians => rotation * math.pi / 180;
 
-  /// assetIds is every stored picture this element refers to.
-  ///
-  /// Asked of the element rather than worked out by the document, and that is
-  /// the whole point: the document used to know that a picture element has an
-  /// asset and that nothing else does, so when a table learnt to hold one in
-  /// a cell the sweep did not hear about it and deleted every badge on the
-  /// next restart. An element that refers to a picture says so here, and
-  /// there is nowhere else to forget.
+  /// assetIds is every stored picture this element refers to. The asset
+  /// sweep deletes any picture no saved canvas names, so an element that
+  /// refers to one must list it here.
   Set<String> get assetIds => const {};
 
   /// mediaIds is every stored sound or video this element refers to, in the
-  /// media store rather than the picture store -- see CanvasMedia.
-  ///
-  /// The same arrangement as [assetIds], and for the same reason: a sweep
-  /// deletes whatever no saved canvas names, so an element that plays a file
-  /// says so here or loses it on the next restart.
+  /// media store (see CanvasMedia). Swept as [assetIds] are.
   Set<String> get mediaIds => const {};
 
-  /// scaledBy is this element with everything inside it sized by [by].
-  ///
-  /// The type, the spacing, the room inside a box: the things that are in
-  /// design units and would otherwise stay the size they were while the box
-  /// round them changed. Only asked while the proportions are being held --
-  /// see ElementBase.lockAspect -- because it is only then that one number
-  /// can stand for what happened to both sides.
-  ///
-  /// The default is to change nothing, which is right for every element whose
-  /// contents are already fractions of its box: a chart, a picture. The ones
-  /// that carry measurements say so -- see TextElement.scaledBy and
-  /// TableElement.scaledBy.
+  /// scaledBy is this element with its inside measurements (type, spacing,
+  /// padding, in design units) sized by [by]. Asked only while proportions
+  /// are held, when one number stands for both sides. The default changes
+  /// nothing, right for elements whose contents are fractions of their box;
+  /// see TextElement.scaledBy and TableElement.scaledBy.
   CanvasElement scaledBy(double by) => this;
 
-  /// scalesInside is whether [scaledBy] does anything to this element.
-  ///
-  /// Asked by the settings panel, which offers a field for the number an
-  /// element is scaled inside by on the shape of page being looked at -- see
-  /// ElementBase.typeScale. A picture, a shape or a chart is already
-  /// fractions of its box, so that field was a number that moved and changed
-  /// nothing on screen, which is worse than not offering it.
-  ///
-  /// Said here rather than worked out by scaling an element and comparing,
-  /// because an element has no value equality to compare with.
+  /// scalesInside is whether [scaledBy] does anything to this element, so
+  /// the settings offer a typeScale field only where it has an effect.
   bool get scalesInside => false;
 
   /// withBase is [ElementBase.copyWith] plumbed through [rebase], so a caller
@@ -852,7 +743,6 @@ abstract class CanvasElement {
     Map<String, dynamic>? shared,
     bool clearShared = false,
     String? cue,
-    String? link,
     StageSpot? spot,
     bool clearSpot = false,
     ElementMotion? motion,
@@ -885,11 +775,12 @@ abstract class CanvasElement {
         shared: shared,
         clearShared: clearShared,
         cue: cue,
-        link: link,
       ));
 
   /// withId returns a copy under a new id, for duplicating an element.
-  CanvasElement withId(String newId) => rebase(base.copyWith(id: newId));
+  CanvasElement withId(String newId) => newId == id
+      ? this
+      : rebase(base.copyWith(id: newId, motion: base.motion.renamedFor(newId)));
 
   Map<String, dynamic> toJson() => {
         "kind": kind.name,
@@ -900,9 +791,6 @@ abstract class CanvasElement {
 
 /// _idCounter and newElementId make ids that are unique within a session and
 /// unlikely to collide across them.
-///
-/// Not a UUID and not a hash of the contents: two identical stars added one
-/// after another must be two elements, and a content hash would make them one.
 int _idCounter = 0;
 final math.Random _idRandom = math.Random();
 
@@ -918,11 +806,10 @@ const double maxSkew = 80;
 
 /// BoxFrame is how an element's own box is laid on the page about its
 /// middle: turned by [rotation], then slanted by [skewX] and [skewY], all in
-/// degrees. A point a box's own way across from its middle is [apply]'d
-/// to where it is on the page from the middle, and [invert] goes back --
-/// the same mapping the renderer draws with (Canvas.rotate, then
-/// Canvas.skew), so a click, a handle and an outline land where the element
-/// is drawn.
+/// degrees. [apply] maps an offset from the middle in the box's own space to
+/// one on the page, and [invert] goes back. It is the mapping the renderer
+/// draws with (Canvas.rotate, then Canvas.skew), so clicks, handles and
+/// outlines land where the element is drawn.
 class BoxFrame {
   final double rotation;
   final double skewX;

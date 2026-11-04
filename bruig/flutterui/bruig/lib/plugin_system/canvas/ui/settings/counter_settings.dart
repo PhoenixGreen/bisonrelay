@@ -6,16 +6,11 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
-// counter_settings.dart is a counter's settings.
-//
-// The order is the order somebody sets one up in: what it counts from and to,
-// how the number is written, the words either side of it, and only then the
-// type, the box and -- for a live one -- the buttons.
-//
-// The one section that is not a list of fields is Count, which has the two
-// keyframe buttons in it. They are there rather than on the timeline because
-// what they pin is this element's own number, and the timeline has no idea
-// what a counter is.
+// counter_settings.dart is a counter's settings, in the order one is set up:
+// what it counts from and to, how the number is written, the words either
+// side, then the type, the box and, for a live one, the buttons. Count holds
+// the key buttons: they pin this element's own number, which the timeline
+// knows nothing of.
 
 List<Widget> counterSettings(
   BuildContext context,
@@ -293,10 +288,8 @@ Widget _countSection(
           onChanged: (v) => now(e.copyWith(keyed: v)),
         ),
         if (e.keyed) ...[
-          // The two ends, pinned where the playhead is. A button rather than
-          // a frame field because the frame somebody means is the one they
-          // are looking at, and because moving it afterwards is dragging the
-          // keyframe -- which the timeline already does.
+          // The two ends, pinned where the playhead is: the frame meant is the one
+          // being looked at, and moving it afterwards is a drag on the timeline.
           CanvasIconButton(
             key: const ValueKey("counterPinFrom"),
             icon: Icons.first_page,
@@ -315,10 +308,9 @@ Widget _countSection(
                 : () => controller.setValueKey(e, KeyframeChannel.count, e.to,
                     seed: false),
           ),
-          // A point in the middle, whose value can be anything at all: a
-          // count from 0 to 100 can go up past 140 and come back, which is
-          // the whole reason the channel holds the number rather than a
-          // fraction of the way through.
+          // A point in the middle, of any value: a count from 0 to 100 can pass 140
+          // and come back, which is why the channel holds the number rather than a
+          // fraction of the way.
           CanvasIconButton(
             key: const ValueKey("counterAddPoint"),
             icon: Icons.add_location_alt_outlined,
@@ -342,10 +334,8 @@ Widget _countSection(
             },
             onCommit: commit,
           ),
-          // How the number gets from this keyframe to the next one. The
-          // keyframe's own easing, which is the same field the timeline's
-          // panel shows -- one value, two places to reach it, rather than a
-          // second kind of easing that only counters have.
+          // How the number gets to the next key: the key's own easing, the same
+          // field the timeline's panel shows, not a kind only counters have.
           if (e.track?.keyAt(at) case var keyHere?)
             CanvasDropdown<KeyframeEasing>(
               key: const ValueKey("counterEasing"),
@@ -356,10 +346,8 @@ Widget _countSection(
                 for (var easing in KeyframeEasing.values)
                   (
                     easing,
-                    // Said in the counter's own words. "Hold" is what it is
-                    // called everywhere else and what it does to a pose; on a
-                    // number, what it does is leave it alone until the next
-                    // keyframe, and that is worth saying where the number is.
+                    // Said in the counter's own words: on a number, Hold leaves it alone
+                    // until the next key.
                     easing == KeyframeEasing.hold
                         ? "Hold (stays the same)"
                         : easing.label
@@ -371,14 +359,9 @@ Widget _countSection(
                 commit();
               },
             ),
-          // The same easing on every point of the count.
-          //
-          // A count is usually one movement in several hops, and setting each
-          // hop by hand is the same choice made four times -- and getting one
-          // of them wrong is a single point that slides while the rest step.
-          // Only the points that carry a number: an element can have a move
-          // keyframed on the same track, and that is not this setting's to
-          // restyle.
+          // The same easing on every point of the count, so no single hop slides
+          // while the rest step. Only the points carrying a number: a move keyed on
+          // the same track is not this setting's to restyle.
           if (e.track?.keyAt(at) case var keyHere?)
             CanvasIconButton(
               key: const ValueKey("counterEasingAll"),
@@ -518,11 +501,8 @@ Widget _countSection(
   );
 }
 
-/// _placing is the X and Y of one thing that has been placed by hand.
-///
-/// A fraction of the box from its middle rather than a position in document
-/// units: the counter can be resized, and the words should stay where they
-/// were put relative to it, which pixels cannot do.
+/// _placing is the X and Y of one thing placed by hand: a fraction of the
+/// box from its middle, so it stays put relative to the counter when resized.
 List<Widget> _placing(
   String name,
   Offset at,
@@ -584,9 +564,8 @@ Widget _buttonsSection(
               label: button.label,
               value: e.buttons.contains(button),
               onChanged: (v) => now(e.copyWith(buttons: [
-                // Kept in the order they are declared in rather than the
-                // order they were switched on, so a counter set up twice
-                // comes out the same way round both times.
+                // In declaration order, not switch-on order, so a counter set up
+                // twice comes out the same way round.
                 for (var b in CounterButton.values)
                   if (b == button ? v : e.buttons.contains(b)) b,
               ])),

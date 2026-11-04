@@ -17,7 +17,7 @@ import 'package:provider/provider.dart';
 // retimes it; the Keys device is dragged wider; each change one undo step.
 
 Future<(CanvasController, String)> pump(WidgetTester tester,
-    {double scale = 1}) async {
+    {double scale = 1, double height = 360}) async {
   tester.view.physicalSize = const Size(1600, 900);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -44,7 +44,7 @@ Future<(CanvasController, String)> pump(WidgetTester tester,
       child: Scaffold(
           body: Align(
               alignment: Alignment.bottomCenter,
-              child: AnimationPanel(controller: c, height: 360))),
+              child: AnimationPanel(controller: c, height: height))),
     )),
   ));
   await tester.pumpAndSettle();
@@ -52,11 +52,43 @@ Future<(CanvasController, String)> pump(WidgetTester tester,
 }
 
 void main() {
+  testWidgets(
+      "its text is one size however tall the panel, its hints behind a ?",
+      (tester) async {
+    Size sizeAt(double height) => tester.getSize(find.text("Length").first);
+    await pump(tester, height: 280);
+    var short = sizeAt(280);
+    await pump(tester, height: 520);
+    expect(sizeAt(520), short, reason: "not shrunk to the panel");
+    expect(find.textContaining("Click a row to add a key"), findsNothing);
+    var help = find.byKey(const ValueKey("animHelp-keys"));
+    expect(help, findsOneWidget);
+    var tip = tester.widget<Tooltip>(
+        find.ancestor(of: help, matching: find.byType(Tooltip)).first);
+    expect(tip.message, contains("Click a row to add a key"));
+    // The ones in view: the rest are along the row, built as it scrolls.
+    for (var id in ["clip", "motion"]) {
+      expect(find.byKey(ValueKey("animHelp-$id")), findsOneWidget, reason: id);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets("nothing picked, it says how to pick something", (tester) async {
     var (c, _) = await pump(tester);
     c.pickMotion(null, null);
+    c.clearSelection();
     await tester.pump();
     expect(find.textContaining("Pick a slot"), findsOneWidget);
+  });
+
+  testWidgets("an element picked, with no clip, shows its first",
+      (tester) async {
+    var (c, clip) = await pump(tester);
+    c.pickMotion(null, null);
+    c.selectOnly("a");
+    await tester.pump();
+    expect(find.textContaining("Pick a slot"), findsNothing);
+    expect(find.text("Logo · Pop"), findsOneWidget);
   });
 
   testWidgets("a ready-made motion picked writes the clip's keys",

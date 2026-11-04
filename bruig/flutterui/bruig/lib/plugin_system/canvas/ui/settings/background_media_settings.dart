@@ -16,14 +16,10 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/video_settings.dart';
 import 'package:flutter/material.dart';
 
-// background_media_settings.dart is the picture, video and sound a background
-// can carry, under its pattern's settings.
-//
-// Each is the settings of its own element -- a background picture is set up
-// exactly as a picture element is, a background video as a video -- with the
-// parts that mean nothing on a backdrop left out: nothing on it is pressed,
-// it has no box of its own, and it does not arrive, it is there. See
-// CanvasBackground.picture.
+// background_media_settings.dart is the picture, video and sound a
+// background can carry, under its pattern's settings. Each is its own
+// element's settings less what means nothing on a backdrop: pressing, a box
+// of its own, an arrival. See CanvasBackground.picture.
 
 List<Widget> backgroundMediaSettings(
     BuildContext context, CanvasController controller) {
@@ -242,9 +238,8 @@ List<Widget> backgroundMediaSettings(
         ],
       ),
     ),
-    // Sound goes on the timeline's channels now. A background that already
-    // has one keeps it -- changed, or taken off, here -- but a new one is
-    // not offered: two places to put a soundtrack is one too many.
+    // A background sound already there can be changed or taken off here, but a
+    // new one is not offered: soundtracks go on the timeline's channels.
     if (sound != null)
       expanderAsSection(
         Icons.library_music_outlined,

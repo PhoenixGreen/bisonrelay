@@ -12,28 +12,21 @@ import 'package:flutter/material.dart';
 
 // builtin_presets.dart is the canvases the Presets tab starts you from.
 //
-// A preset is a whole document, not a template with holes in it. Choosing one
-// puts a copy of it in the editor and there is no link back -- no inheritance,
-// no "reset to preset", nothing that would make a preset a thing a saved
-// canvas depends on. That is the point: the presets exist to save somebody the
-// first twenty minutes, and after that the document is theirs.
-//
-// Which is also why there are four rather than forty. Each one is here to show
-// that a different *kind* of thing is possible -- a still design, data, a
-// diagram -- and the second banner preset would teach nobody anything.
+// A preset is a whole document copied into the editor with no link back, so
+// no saved canvas depends on one. Each shows a different kind of canvas (a
+// still design, data, a diagram).
 
 /// CanvasPreset is one starting point.
 class CanvasPreset {
-  /// id is stable and is what a saved "last used preset" refers to. Renaming
-  /// the label must not lose it.
+  /// id is stable: a saved "last used preset" refers to it, whatever the
+  /// label.
   final String id;
   final String label;
   final String description;
   final IconData icon;
 
-  /// build makes a fresh document. A function rather than a value, so that two
-  /// canvases started from the same preset get separate elements with separate
-  /// ids -- sharing them would make editing one edit the other.
+  /// build makes a fresh document. A function rather than a value, so each
+  /// canvas started from it gets its own element ids.
   final CanvasDocument Function() build;
 
   const CanvasPreset({
@@ -45,8 +38,8 @@ class CanvasPreset {
   });
 }
 
-/// builtinPresets is the list, in the order the tab shows them: emptiest
-/// first, so the list reads as "start from nothing, or from one of these".
+/// builtinPresets is the list, in the order the tab shows them, emptiest
+/// first.
 final List<CanvasPreset> builtinPresets = [
   CanvasPreset(
     id: "empty",
@@ -140,8 +133,7 @@ CanvasDocument bannerCanvas() {
           shadowBlur: 26,
           shadowColor: Color(0xCC000814),
         ),
-        // Grown to the box rather than set at a size, so the same preset works
-        // whether it is published as a wide banner or cropped to a square.
+        // Grown to the box, so it works as a wide banner or a square.
         autoSize: true,
       ),
       TextElement(
@@ -242,17 +234,13 @@ CanvasDocument footballCanvas() {
     ),
   );
 
-  // The same mapping the painter uses, so a dot placed at 18 metres lands on
-  // the line the painter drew at 18 metres. Asking the renderer where the
-  // pitch is, rather than working it out again here, is what keeps the two
-  // from ever disagreeing.
+  // The painter's own mapping, so players placed in metres land on the
+  // lines it draws.
   var metrics = pitchRect(rect, PitchSport.football);
   var diameter = metrics.m(3.2);
 
-  // Each side is one element covering its own half, which is exactly the box a
-  // formation is laid out against -- see TeamFormation. So the back four lands
-  // on the edge of its own penalty area because the pitch, the box and the
-  // formation are all measured in the same metres.
+  // Each side is one element covering its own half, the box a formation is
+  // laid out against (see TeamFormation), so all are in the same metres.
   var halfWidth = metrics.area.width / 2;
   var squadNames = [
     "GK",
@@ -295,9 +283,8 @@ CanvasDocument footballCanvas() {
           fontSize: diameter * 0.46,
           weight: 700,
           color: const Color(0xFFFFFFFF),
-          // Outlined rather than shadowed, because a name has to stay readable
-          // over both the light mowing stripe and the dark one, and an outline
-          // works against either where a shadow only works against the light.
+          // Outlined rather than shadowed, to read over both light and dark
+          // mowing stripes.
           outlineWidth: diameter * 0.035,
           outlineColor: const Color(0xCC0A1A0A),
         ),
@@ -305,8 +292,7 @@ CanvasDocument footballCanvas() {
         nameGap: diameter * 0.18,
       )
           .withFormation(TeamFormation.f442, mirror: mirrored)
-          // Standing on the pitch, so they go wherever it is turned, zoomed
-          // or tilted to.
+          // Linked to the pitch, so they follow its camera.
           .linkedTo(teamLinkBackground,
               pitch: PitchSport.football, reference: metrics.scale, area: rect);
 
@@ -317,8 +303,7 @@ CanvasDocument footballCanvas() {
               .copyWith(name: i < squadNames.length ? squadNames[i] : ""),
       ]);
 
-  // Home attacks left to right; away is the same formation mirrored, so the
-  // two face each other rather than both running the same way.
+  // Home attacks left to right; away is the same formation mirrored.
   var elements = <CanvasElement>[
     named(team(
       name: "Home",
@@ -343,10 +328,7 @@ CanvasDocument footballCanvas() {
     size: size,
     background: background,
     elements: elements,
-    // Twenty-four frames of room to move somebody, rather than a still. A
-    // tactics diagram is the one preset that is nearly always going to become
-    // an animation, and starting it as a single frame means finding the frame
-    // count control before anything can move.
+    // Room to animate: a tactics diagram nearly always becomes an animation.
     frames: 24,
   );
 }

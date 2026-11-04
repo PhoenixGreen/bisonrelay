@@ -1,31 +1,21 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 
-// table_sort.dart puts a table's rows in order.
+// table_sort.dart puts a table's rows in order: a column to sort on, more to
+// break ties, and a first column of positions that stays put (a league table
+// needs all three).
 //
-// Written for a league table, which is the case that needs every part of it: a
-// column to sort on, more columns to break the ties with, and a first column
-// of positions that must not travel with the rows it numbers. Sorting on
-// points alone leaves four teams on six points in whatever order they were
-// typed, which is not a league table -- it is a list that happens to be nearly
-// sorted.
-//
-// It is a spec that is applied, not a view the painter reads through. Two
-// reasons. A table whose rows re-ordered themselves while a cell was being
-// typed into would be unusable, and the rules that colour cells are written
-// against row numbers -- so rows that moved underneath them would take their
-// colours somewhere unexpected. Applying it rewrites the rows once, which is
-// one undo step and exactly what is on screen. The spec is kept so that the
-// same order can be put back after the data changes underneath, which is what
-// a refreshed table needs.
+// The sort is applied, rewriting the rows once (one undo step), rather than a
+// view the painter reads through: rows that reordered while a cell was typed
+// into would be unusable, and cell colour rules are written against row
+// numbers. The spec is kept so a refreshed table can be put back in order.
 
 /// TableSortLevel is one column to order by, and which way.
 class TableSortLevel {
   /// column is an index into the row, or -1 for "not set".
   final int column;
 
-  /// descending is highest first, which is what a league table wants and is
-  /// therefore the default. A column of names wants the other one.
+  /// descending is highest first, the default (what a league table wants).
   final bool descending;
 
   const TableSortLevel({this.column = -1, this.descending = true});
@@ -49,19 +39,11 @@ class TableSortLevel {
 /// first one.
 class TableSort {
   /// levels are tried in turn, so the second only decides the rows the first
-  /// left equal. Three because that is what a league table needs -- points,
-  /// then goal difference, then goals scored -- and a fourth has never decided
-  /// anything anybody has been able to name.
+  /// left equal. The settings offer three (points, goal difference, goals).
   final List<TableSortLevel> levels;
 
   /// pinFirstColumn keeps the first column's values where they are while the
-  /// rest of each row moves.
-  ///
-  /// A league table's first column is the position, and a position is a
-  /// property of the row's place rather than of the team in it -- so it must
-  /// read 1, 2, 3 after sorting rather than travelling with whoever used to be
-  /// first. On by default because a table with a first column worth sorting on
-  /// would be sorted on it.
+  /// rest of each row moves, so a position column still reads 1, 2, 3.
   final bool pinFirstColumn;
 
   const TableSort({this.levels = const [], this.pinFirstColumn = true});
@@ -103,15 +85,11 @@ class TableSort {
       );
 }
 
-/// sortTableRows is [rows] in the order [sort] asks for.
+/// sortTableRows is [rows] in the order [sort] asks for, with the header row
+/// (when [headerRow]) left on top.
 ///
-/// [headerRow] is kept where it is: it is a label for the columns, not a row
-/// of data, and a header that sorted into the middle of the table is the most
-/// obvious possible bug.
-///
-/// Ragged rows are tolerated, as everywhere else here -- a row too short to
-/// have the column being sorted on counts as empty, which sorts to the bottom
-/// rather than throwing.
+/// A row too short to have the sorted column counts as empty there, which
+/// sorts below the numbers when descending.
 List<List<String>> sortTableRows(
   List<List<String>> rows,
   TableSort sort, {
@@ -154,11 +132,8 @@ List<List<String>> sortTableRows(
 String _at(List<String> row, int column) =>
     column >= 0 && column < row.length ? row[column] : "";
 
-/// _compare orders two cells, as numbers when they both are.
-///
-/// Numbers first because this is a table of them and "10" must not come before
-/// "9". Falling back to text means a column of names still sorts sensibly, and
-/// a column of mixed rubbish sorts consistently rather than throwing.
+/// _compare orders two cells, as numbers when they both are (so "9" comes
+/// before "10"), else as case-blind text.
 int _compare(String a, String b) {
   var x = cellNumber(a);
   var y = cellNumber(b);

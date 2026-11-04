@@ -5,11 +5,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 // there -- upright like a piece of scenery, turned to the camera, laid on
 // the floor, or hung on the back wall.
 //
-// Any element can stand on a stage. A 3D character stands there as itself,
-// seen through the stage's camera; everything else -- a picture, words, a
-// video, a chart -- is a flat, drawn as it is on the page and then set into
-// the stage in perspective, so it moves with the camera as the set does.
-// See render/stage/stage_painter.dart.
+// A 3D character stands there as itself, seen through the stage's camera;
+// any other element is drawn flat as on the page and set into the stage in
+// perspective. See render/stage/stage_painter.dart.
 
 /// SpotStand is how an element stands on its spot.
 enum SpotStand {
@@ -39,10 +37,8 @@ class StageSpot {
   /// metres off the floor -- or up the wall, for one hung on it.
   final double x, z, lift;
 
-  /// height is how big it is, in metres: its box's longer side, the other
-  /// following the box's shape -- how tall a picture stands, how long a
-  /// line or a chart is. A 3D character is as tall as it was made, and
-  /// ignores it.
+  /// height is its box's longer side in metres, the other following the
+  /// box's shape. A 3D character ignores it and keeps its made height.
   final double height;
 
   /// facing is which way round it stands, in degrees, before the camera is

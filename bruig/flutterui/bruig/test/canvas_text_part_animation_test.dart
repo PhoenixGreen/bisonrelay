@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -14,6 +13,9 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 
 // canvas_text_part_animation_test.dart is a part of the text arriving on its
 // own account, at its own moment.
@@ -453,15 +455,15 @@ void main() {
     TextElement textIn(CanvasController c) =>
         c.document.elements.single as TextElement;
 
-    int? spanOf(CanvasController c) {
-      int? from;
-      int? to;
-      for (var key in textIn(c).track?.keys ?? const <Keyframe>[]) {
-        if (!key.values.containsKey(KeyframeChannel.reveal)) continue;
-        from = from == null ? key.frame : math.min(from, key.frame);
-        to = to == null ? key.frame : math.max(to, key.frame);
-      }
-      return from == null || to == null ? null : to - from;
+    // How long its arrival -- or its way out -- takes: the clip a preset
+    // lays on the timeline.
+    int? spanOf(CanvasController c, [MotionKind kind = MotionKind.arrive]) =>
+        ownSpan(textIn(c), kind, c.document.frameRate)?.$2;
+
+    // Takes [kind] off the timeline, as Delete on its clip does.
+    void takeOff(CanvasController c, MotionKind kind) {
+      var (_, p) = ownClipOf(textIn(c), kind)!;
+      c.removePlacement("t", p.id);
     }
 
     test("is what a new animation is laid down with", () {
@@ -489,14 +491,7 @@ void main() {
           textIn(controller), TextAnimationPreset.fadeIn);
       controller.applyTextExit(textIn(controller), TextAnimationPreset.fadeIn);
 
-      int? from;
-      int? to;
-      for (var key in textIn(controller).track!.keys) {
-        if (!key.values.containsKey(KeyframeChannel.close)) continue;
-        from = from == null ? key.frame : math.min(from, key.frame);
-        to = to == null ? key.frame : math.max(to, key.frame);
-      }
-      expect(to! - from!, 9);
+      expect(spanOf(controller, MotionKind.leave), 9);
     });
 
     test("but changing it leaves an animation already laid down alone", () {
@@ -514,21 +509,20 @@ void main() {
           animation: textIn(controller).animation.copyWith(length: 30)));
       controller.applyTextAnimation(
           textIn(controller), TextAnimationPreset.words);
-      expect(spanOf(controller), 10, reason: "the keyframes have not moved");
+      expect(spanOf(controller), 10, reason: "the arrival has not moved");
 
-      // Delete one of them and the animation is gone, so the next one chosen
-      // is a new one and takes the setting.
-      controller.removeKeyframe("t", 0);
+      // Take it off the timeline and the animation is gone, so the next one
+      // chosen is a new one and takes the setting.
+      takeOff(controller, MotionKind.arrive);
       expect(textIn(controller).animation.on, isFalse);
       controller.applyTextAnimation(
           textIn(controller), TextAnimationPreset.fadeIn);
       expect(spanOf(controller), 30);
     });
 
-    test("deleting a keyframe takes the animation with it", () {
-      // An animation is a pair: nothing to travel between is not half an
-      // arrival, it is none of one. The orphan used to sit on the timeline
-      // with the preset still chosen and nothing to show for either.
+    test("taking a way out off the timeline takes the animation with it", () {
+      // An animation with nothing on the timeline is none at all: the
+      // setting goes back to None rather than sitting there showing nothing.
       var controller = controllerFor();
       controller.frame = 0;
       controller.applyTextAnimation(
@@ -537,21 +531,12 @@ void main() {
       controller.applyTextExit(textIn(controller), TextAnimationPreset.fadeIn);
       expect(textIn(controller).animation.closes, isTrue);
 
-      // The far end of the exit.
-      var last = 0;
-      for (var key in textIn(controller).track!.keys) {
-        if (key.values.containsKey(KeyframeChannel.close)) {
-          last = math.max(last, key.frame);
-        }
-      }
-      controller.removeKeyframe("t", last);
+      takeOff(controller, MotionKind.leave);
 
       expect(textIn(controller).animation.closes, isFalse,
           reason: "the leaving setting goes back to None");
-      expect([
-        for (var key in textIn(controller).track?.keys ?? const <Keyframe>[])
-          if (key.values.containsKey(KeyframeChannel.close)) key
-      ], isEmpty, reason: "and its other keyframe goes too");
+      expect(ownClipOf(textIn(controller), MotionKind.leave), isNull,
+          reason: "and its clip goes too");
       expect(textIn(controller).animation.on, isTrue,
           reason: "the arrival is untouched");
       expect(spanOf(controller), 10);

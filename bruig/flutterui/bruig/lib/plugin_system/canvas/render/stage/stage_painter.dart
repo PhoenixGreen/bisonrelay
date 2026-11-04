@@ -18,10 +18,8 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_scene.dart';
 
 // stage_painter.dart draws a 3D stage -- its sky, its floor and what the
 // floor is made of, its back wall, its light -- and works out where the
-// characters standing on it are on the page.
-//
-// Both from the one camera, at the one frame, so a character's feet are on
-// the floor where the floor is drawn, however the camera moves.
+// elements standing on it are on the page. Both come from the one camera at
+// the one frame, so feet stay on the floor where it is drawn.
 
 /// stageView is how [stage]'s camera sees it on [frame].
 StageView stageView(StageElement stage, int frame) =>

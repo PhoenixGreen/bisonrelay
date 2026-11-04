@@ -2,14 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 
-// timeline_view.dart is which stretch of frames the timeline is showing.
-//
-// One of these is shared by the keyframe strip and every channel under it.
-// Each used to turn frames into pixels on its own, across its own width --
-// which could only ever agree while both showed the whole timeline at the
-// same width. Zooming, and a column of channel names down the left, would
-// each have pulled them out of step; one view that every conversion goes
-// through keeps a keyframe and the sound it is timed to on the same line.
+// timeline_view.dart is which stretch of frames the timeline is showing. One
+// view is shared by every row of the timeline, so all of them turn frames into
+// pixels the same way and stay in step when zoomed.
 
 /// timelineMinSpan is the fewest frames the timeline zooms in to. Closer than
 /// this a frame is wider than anything drawn on it.
@@ -36,9 +31,8 @@ class TimelineView {
   double xOf(num frame, double width) =>
       span <= 0 ? 0 : (frame - first) / span * width;
 
-  /// centreOf is where [frame]'s mark is drawn: on its leading edge, the
-  /// line a sound starts on and a cut is made on. The middle of the frame
-  /// put the playhead half a frame to the right of every cut made at it.
+  /// centreOf is where [frame]'s mark is drawn: on its leading edge, the line
+  /// a sound starts on and a cut is made on.
   double centreOf(int frame, double width) => xOf(frame, width);
 
   /// frameAt is the frame whose line is nearest [x], clamped to the
@@ -72,7 +66,7 @@ class TimelineView {
     return TimelineView(around - share * s, s).fitted(frames);
   }
 
-  /// scrolled is moved along by [frames] frames.
+  /// scrolled is moved along by [by] frames.
   TimelineView scrolled(double by, int frames) =>
       TimelineView(first + by, span).fitted(frames);
 
@@ -92,10 +86,8 @@ class TimelineView {
 }
 
 /// timelinePointers is what may press, drag and scrub on the timeline: the
-/// mouse and a finger, not the trackpad. Two fingers on a trackpad are how
-/// somebody scrolls the channels up and down, and a drag recognizer takes a
-/// trackpad's pan as a drag -- so a swipe over the strip scrubbed the
-/// playhead, and one over a sound dragged the sound.
+/// mouse and a finger, not the trackpad, whose two-finger pan scrolls the
+/// channels and would otherwise be taken as a drag.
 const Set<PointerDeviceKind> timelinePointers = {
   PointerDeviceKind.mouse,
   PointerDeviceKind.touch,

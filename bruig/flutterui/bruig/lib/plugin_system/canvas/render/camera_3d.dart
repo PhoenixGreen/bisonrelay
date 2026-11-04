@@ -9,19 +9,18 @@ import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_camera.dart';
 
 // camera_3d.dart is a Camera element in a scene on a 3D stage: the stage's
-// camera, from where the Camera stands -- its own view, or the stage's
-// until it has one -- moved by its clips, as Ken settled it:
+// camera from the Camera's own view (or the stage's until it has one),
+// moved by its clips:
 //
 //   a turn orbits round what it looks at;
-//   a size dollies it closer -- 2 is half as far;
-//   an "on" another element aims it at that element's spot on the stage,
-//     as far along as the clip has got: a push in arrives there, a follow
-//     stays there as it walks, a pull back leaves;
-//   across and down without a place -- a shake -- pan it, as far in metres
-//     as that many pixels are across the picture at what it looks at.
+//   a size dollies it closer (2 is half as far);
+//   an "on" another element aims it at that element's stage spot, as far as
+//     the clip has got: a push in arrives, a follow stays, a pull back leaves;
+//   across and down without a place (a shake) pan it, by as many metres as
+//     that many pixels span at what it looks at.
 //
-// Drawn through it while playing, exporting and looking through it -- see
-// directedBy -- and through the stage's own camera while editing.
+// Used while playing, exporting and looking through it (see directedBy); the
+// stage's own camera is used while editing.
 
 /// camera3dAt is what [cam] makes of [stage]'s camera on [frame] of [doc].
 StageCamera camera3dAt(
@@ -53,10 +52,9 @@ StageCamera camera3dAt(
   return base.copyWith(yaw: yaw, distance: distance, tx: tx, ty: ty, tz: tz);
 }
 
-/// _aim is where [cam]'s clips have it look on [frame], and how far along
-/// to it -- from what its across and down have made of a place "on"
-/// another element that stands on a stage -- or null where it looks at no
-/// such place.
+/// _aim is the stage spot [cam]'s clip aims at on [frame] (an "on" place in
+/// its x keys) and how far along to it, from [dx] and [dy] against the whole
+/// move; null where it aims at nothing.
 ((double, double, double), double)? _aim(
     CameraElement cam, int frame, CanvasDocument doc, double dx, double dy) {
   var motion = cam.base.motion;

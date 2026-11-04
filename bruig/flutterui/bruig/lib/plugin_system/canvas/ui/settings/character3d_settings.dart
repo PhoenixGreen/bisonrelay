@@ -13,10 +13,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
 // character3d_settings.dart is a 3D character's settings on the canvas: the
-// character itself, changed in the Character Studio; what it does in this
-// scene -- how it stands, the motions it plays and when, its face and what
-// it says (character_performance.dart); and how the box shows it -- how
-// much of it, from which side, how close.
+// character (changed in the Character Studio), what it does in this scene
+// (see character_performance.dart) and how its box shows it.
 
 /// character3dSettings are [e]'s settings. [inStudio] is for the Character
 /// Studio's Test step, which tries a scene's settings on its own stage: no

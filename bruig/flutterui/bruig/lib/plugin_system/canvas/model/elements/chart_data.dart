@@ -7,27 +7,16 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 
 // chart_data.dart is the numbers a chart is drawn from: the series, the
-// categories they are indexed by, and the colours they arrive in.
-//
-// Kept apart from the element because it is the half that gets typed, pasted
-// and parsed. Everything the data editor does lands here -- see
-// tabular_text.dart for the paste -- while the element next door is only
-// settings, and neither has to be read to work on the other.
-//
-// ChartType is here rather than with the element because the data has to know
-// it: how many series a type can use, and whether it reads its colours off
-// the series or off the values, are questions ChartData answers.
+// categories they are indexed by, and the colours they arrive in. It is what
+// the data editor and the paste (tabular_text.dart) change; chart_element.dart
+// is the settings. ChartType is here because the data has to know it.
 
-/// ChartType is which drawing the numbers get.
 /// ChartLineStyle is what a line is drawn as: a stroke, a run of dashes, or a
 /// run of dots.
 ///
-/// A property of the series, and a different statement from the dashes that
-/// mark an estimated year. Those say "this figure was worked out"; this says
-/// "this line is a different kind of thing from the one beside it" -- a
-/// projection against a measurement, a target against a total. A series drawn
-/// dotted stays dotted across an estimated stretch, where the faintness
-/// carries the estimate on its own.
+/// A property of the series, separate from the marking of an estimated year:
+/// a dotted series stays dotted across an estimated stretch, where faintness
+/// carries the estimate.
 enum ChartLineStyle {
   solid("Solid"),
   dashed("Dashed"),
@@ -42,10 +31,8 @@ enum ChartLineStyle {
       );
 
   /// pattern is the on and off lengths, in multiples of the line's own
-  /// weight, or null for a line drawn straight through.
-  ///
-  /// A dot is a dash of almost no length: with a round cap, that is a circle
-  /// the width of the line, which is what a dotted line is made of.
+  /// weight, or null for solid. A dot is a near-zero dash drawn with a round
+  /// cap.
   List<double>? get pattern => switch (this) {
         ChartLineStyle.solid => null,
         ChartLineStyle.dashed => const [2.6, 2.0],
@@ -77,19 +64,16 @@ enum ChartBackdropGrow {
       );
 }
 
-/// ChartBackdrop is a panel drawn behind every bar of one series: the track
-/// a progress bar fills, or a card each bar stands on.
-///
-/// [height] is a share of the plot along the value axis, so 1 is the whole
-/// height of the chart and more stands proud of it.
-/// [width] is a share of the bar's own thickness, so 1 is exactly as wide as
-/// the bar and 1.5 stands a quarter proud on each side when grown from the
-/// centre. Off by default, and kept when switched off so switching it back
-/// on finds it as it was left.
 /// maxBackdropHeight is the tallest a bar's background is drawn, as a share
 /// of the chart's height.
 const double maxBackdropHeight = 3;
 
+/// ChartBackdrop is a panel drawn behind every bar of one series: the track
+/// a progress bar fills, or a card each bar stands on.
+///
+/// [height] is a share of the plot along the value axis (1 is the whole
+/// chart); [width] is a share of the bar's thickness. Kept when switched off,
+/// so switching it back on finds it as it was.
 class ChartBackdrop {
   final bool on;
   final double height;
@@ -154,28 +138,21 @@ class ChartBackdrop {
       border: colorFromJson(json["border"], const Color(0x00000000)),
       radius: num_("radius", 0, 0, 200),
       borderWidth: num_("borderWidth", 0, 0, 40),
-      grow: ChartBackdropGrow.fromName(json["grow"] as String?),
+      grow: ChartBackdropGrow.fromName(jsonStr(json["grow"])),
     );
   }
 }
 
-/// missingValue is a cell nobody filled in.
-///
-/// A NaN rather than a nullable double, so that a series' values stay a plain
-/// list of doubles: every sum, every axis range, every scale that walks them
-/// goes on compiling and running, and the places that have to care ask
-/// [ChartData.hasValueAt]. NaN is also the one double that is not equal to
-/// itself, which means no arithmetic can produce it by accident and mistake a
-/// result for a gap.
+/// missingValue is a cell nobody filled in. A NaN rather than a nullable
+/// double, so a series' values stay a plain list of doubles; the places that
+/// care ask [ChartData.hasValueAt].
 const double missingValue = double.nan;
 
-/// maxSeriesDelay is how far a series may be offset, in seconds either way.
-///
-/// A guard rail rather than a scale: a canvas is a handful of seconds long
-/// and half a minute is far past anything that lines two series up, but a
-/// typo in the field should not put a series outside the document for good.
+/// maxSeriesDelay is how far a series may be offset, in seconds either way:
+/// a guard against a typo, not a scale.
 const double maxSeriesDelay = 30;
 
+/// ChartType is which drawing the numbers get.
 enum ChartType {
   bar("Bars", "One bar per category"),
   groupedBar("Grouped bars", "Series side by side within each category"),
@@ -203,45 +180,29 @@ enum ChartType {
       this == pie || this == donut || this == radialBar || this == radar;
 
   /// isCandles is the one type that reads four series as a single mark.
-  ///
-  /// Named rather than compared to the constant everywhere, because it is
-  /// asked in half a dozen places -- what the axis does, how many series are
-  /// wanted, what the legend says -- and each of them means "is this the
-  /// four-values-per-period type" rather than "is this that particular
-  /// enum".
   bool get isCandles => this == candlestick;
 
-  /// startsAtZero is whether the value axis has to include zero.
-  ///
-  /// Bars must: a bar is read as a length, and one drawn from 12 to 16 on an
-  /// axis starting at 12 says four times what it means. A candlestick is read
-  /// as a position, not a length -- a price chart forced down to zero is a
-  /// flat line along the top with the whole month squeezed into a tenth of
-  /// the plot, which is exactly what makes it useless.
+  /// startsAtZero is whether the value axis has to include zero. Bars are
+  /// read as lengths, so they must; a candlestick is read as a position, and
+  /// forcing it down to zero squeezes the month into a sliver.
   bool get startsAtZero => !isCandles;
 
   /// isStacked is whether values accumulate, which changes how the axis
   /// maximum is worked out.
   bool get isStacked => this == stackedBar;
 
-  /// needsFourSeries is the candlestick's requirement, stated so the settings
-  /// can say so rather than drawing nothing and leaving it a mystery.
+  /// needsFourSeries is the candlestick's requirement, so the settings can
+  /// say so rather than draw nothing.
   bool get needsFourSeries => isCandles;
 
-  /// needsMultipleSeries is whether the type is *only* different from plain
-  /// bars once there are two series to group or stack.
-  ///
-  /// Worth naming, because choosing one of these on a one-series chart draws
-  /// exactly what was already there -- which reads as the setting being
-  /// broken rather than as there being nothing to group.
+  /// needsMultipleSeries is whether the type only differs from plain bars
+  /// once there are two series to group or stack.
   bool get needsMultipleSeries => this == groupedBar || this == stackedBar;
 
-  /// usesSmooth is whether curving between the points means anything. Bars
-  /// have nothing to curve, and a scatter is unconnected by definition.
+  /// usesSmooth is whether curving between the points means anything.
   bool get usesSmooth => this == line || this == area || this == radar;
 
-  /// isCartesian is everything drawn against an x and a y axis, which is
-  /// every type that is not circular.
+  /// isCartesian is everything drawn against an x and a y axis.
   bool get isCartesian => !isCircular;
 
   /// isBar and isLinear split the cartesian types by how they are drawn,
@@ -254,12 +215,8 @@ enum ChartType {
   bool get isLinear => this == line || this == area || this == scatter;
 }
 
-/// chartPalette is the default series colours.
-///
-/// Ordered so that the first three are distinguishable from each other in
-/// greyscale as well as in colour, because the commonest chart has two or
-/// three series and the commonest failure is two of them being the same grey
-/// once somebody has printed it.
+/// chartPalette is the default series colours, ordered so the first three
+/// stay distinguishable in greyscale.
 const List<Color> chartPalette = [
   Color(0xFF3D7EFF),
   Color(0xFFFFB020),
@@ -278,34 +235,18 @@ class ChartSeries {
   final List<double> values;
 
   /// type draws this series differently from the rest of the chart, so a set
-  /// of bars can have a line over it.
-  ///
-  /// Null means "whatever the chart is", which is what almost every series
-  /// wants and is why this is an override rather than a required field. Only
-  /// meaningful for the types with an x and a y axis: a pie has one ring and
-  /// nothing to overlay on it.
+  /// of bars can have a line over it, or null for the chart's own. Only
+  /// meaningful on cartesian types.
   final ChartType? type;
 
   /// numbers writes this series' values differently from the rest of the
-  /// chart, or null to write them the way the chart does.
-  ///
-  /// An override for the same reason [type] is one. A chart of a price beside
-  /// a market cap is two series whose figures are four orders of magnitude
-  /// apart, and one style across both writes either "0.0B" against the price
-  /// or "18,400,000,000" against the cap. The axis keeps the chart's own
-  /// style, since there is one axis and it cannot be two things.
+  /// chart (a price beside a market cap), or null for the chart's own. The
+  /// axis always keeps the chart's style.
   final ChartNumbers? numbers;
 
-  /// band fills the space between this line and the next one.
-  ///
-  /// "The next one" rather than a series named or numbered, because that is
-  /// the only way of saying it that survives the series being reordered --
-  /// and because a band is nearly always between a pair that sit together
-  /// for exactly that reason: a budget and what was paid out of it, a high
-  /// and a low, a forecast and an outturn.
-  ///
-  /// The fill fades from this series' colour into the next one's, so the band
-  /// says which two lines it belongs to without a third colour to explain.
+  /// band fills the space between this line and the next one (by position,
+  /// so it survives reordering), fading from this series' colour into the
+  /// next one's.
   final bool band;
 
   /// lineStyle is whether this series is drawn as a stroke, a run of dashes
@@ -313,64 +254,29 @@ class ChartSeries {
   final ChartLineStyle lineStyle;
 
   /// hidden takes this series off the chart without taking it out of the
-  /// table.
-  ///
-  /// Pressed on its own entry in the key, which is where a reader is already
-  /// looking when they want one line out of six out of the way -- and what
-  /// makes a published chart something to read rather than only to look at.
-  /// The numbers stay where they are: this is about what is drawn, not about
-  /// what is known, and the axis is re-scaled to what is left so that
-  /// isolating one pot actually shows it.
+  /// table; toggled from its entry in the key. The axis re-scales to what is
+  /// left.
   final bool hidden;
 
-  /// gradient draws this series in two colours instead of one. Null for the
-  /// almost every series that is one colour.
-  ///
-  /// Set in the colour picker beside [color] rather than in a row of its own,
-  /// which is why it has no on/off flag of its own: there either is a second
-  /// colour or there is not.
+  /// gradient draws this series in two colours instead of one, or null. Set
+  /// in the colour picker beside [color], so it has no on/off flag.
   final GradientSpec? gradient;
 
   /// delay shifts this series' arrival in **seconds**: positive starts it
-  /// later, negative starts it sooner. 0 for almost every series.
+  /// later, negative sooner. A shift in time, not a change of speed; see
+  /// chartSeriesReveal.
   ///
-  /// Seconds, and a true shift. It was a fraction of the animation squeezed
-  /// into what was left of the window, and that is a speed control wearing an
-  /// offset's name: a series put back by a third arrived in two thirds of the
-  /// time, so lining two series up made one of them race. Applied by the
-  /// renderer, which asks the element's own keyframes what the chart looked
-  /// like a second and a half ago -- so the series really is playing a second
-  /// and a half late, at the speed everything else is playing at, and it goes
-  /// on arriving after the chart's own arrival has finished.
-  ///
-  /// It exists because the presets stagger by *item*, and two series drawn
-  /// differently do not have the same items: a set of bars is one item per
-  /// category and a line is one item per series, so the line traces over the
-  /// whole window while the bars go one after another. That is right for each
-  /// of them on its own and wrong for the pair, and no single stagger rule
-  /// fixes it -- which is why this is a knob rather than a cleverer default.
+  /// Needed because presets stagger by item, and bars (one item per
+  /// category) and a line (one per series) on the same chart do not line up.
   final double delay;
 
-  /// width overrides the chart's stroke for this series, or 0 to draw it at
-  /// whatever the chart's own is.
-  ///
-  /// So that a line laid over a set of bars can be heavy enough to read
-  /// against them without every other line on the chart thickening with it.
+  /// width overrides the chart's stroke for this series, or 0 for the
+  /// chart's own.
   final double width;
 
   /// corner, smooth, points, pointSize and pointColor are how this series is
-  /// drawn, or null to be drawn the way the chart is.
-  ///
-  /// They were the chart's own settings, in three groups under the table --
-  /// Bars, Lines, Points -- which asked somebody reading a chart of bars with
-  /// a line over it to work out which group was about which half of it. They
-  /// are per series now, behind the series' own button, so the answer is
-  /// where the question is.
-  ///
-  /// Null rather than a sentinel because every one of these has a meaningful
-  /// zero: a corner of nought is a square bar, points off is points off. Null
-  /// is the only value left to mean "whatever the chart says", which is what
-  /// makes a series drawn the same way as the first one follow it.
+  /// drawn, or null to follow the chart (each has a meaningful zero, so null
+  /// is the only "unset").
   final double? corner;
   final bool? smooth;
   final bool? points;
@@ -378,8 +284,7 @@ class ChartSeries {
   final Color? pointColor;
 
   /// backdrop is the panel drawn behind each of this series' bars, or null
-  /// for none -- which is almost every series. Only drawn where the series is
-  /// drawn as bars.
+  /// for none. Only drawn where the series is drawn as bars.
   final ChartBackdrop? backdrop;
 
   const ChartSeries({
@@ -410,9 +315,8 @@ class ChartSeries {
   /// [chartWidth].
   double widthOn(double chartWidth) => width > 0 ? width : chartWidth;
 
-  /// cornerOn and the four beside it are the same question as [widthOn] for
-  /// the rest of the drawing: this series' own answer where it has been given
-  /// one, and the chart's where it has not.
+  /// cornerOn and the four beside it are like [widthOn]: this series' own
+  /// value where set, else the chart's.
   double cornerOn(double chartCorner) => corner ?? chartCorner;
   bool smoothOn(bool chartSmooth) => smooth ?? chartSmooth;
   bool pointsOn(bool chartPoints) => points ?? chartPoints;
@@ -444,13 +348,9 @@ class ChartSeries {
     bool writtenLikeChart = false,
     bool oneColour = false,
 
-    /// drawnLikeChart gives back every override about how this series is
-    /// drawn, so it follows the chart's own again.
-    ///
-    /// For the series that *leads* its kind of drawing. Its settings are the
-    /// chart's -- that is what leading means -- so one of its own on top of
-    /// them is a contradiction: the panel writes the chart's value, the
-    /// override goes on winning, and the control reads as broken.
+    /// drawnLikeChart drops every override about how this series is drawn,
+    /// for the series that leads its kind of drawing: the panel writes its
+    /// settings to the chart, so an override would keep winning.
     bool drawnLikeChart = false,
   }) =>
       ChartSeries(
@@ -478,8 +378,7 @@ class ChartSeries {
   Map<String, dynamic> toJson() => {
         "name": name,
         "color": colorToJson(color),
-        // A gap is written as a null, because JSON has no NaN. Read back by
-        // ChartSeries.fromJson.
+        // A gap is written as a null, because JSON has no NaN.
         "values": [for (var v in values) v.isNaN ? null : v],
         if (type != null) "type": type!.name,
         if (numbers != null) "numbers": numbers!.toJson(),
@@ -489,8 +388,7 @@ class ChartSeries {
         if (band) "band": true,
         if (width > 0) "width": width,
         if (delay != 0) "delay": delay,
-        // Written only where this series has been given its own, so a chart
-        // whose series all follow it saves the same file it always did.
+        // Written only where this series has its own.
         if (corner != null) "corner": corner,
         if (smooth != null) "smooth": smooth,
         if (points != null) "points": points,
@@ -506,20 +404,18 @@ class ChartSeries {
       color: colorFromJson(
           json["color"], chartPalette[index % chartPalette.length]),
       type: json["type"] is String
-          ? ChartType.fromName(json["type"] as String?)
+          ? ChartType.fromName(jsonStr(json["type"]))
           : null,
       numbers: json["numbers"] is Map<String, dynamic>
           ? ChartNumbers.fromJson(json["numbers"] as Map<String, dynamic>)
           : null,
-      // A gradient saved before the second colour moved into the picker
-      // carried an "on" flag with it, and one saved switched off is one
-      // nobody wanted: read as no gradient rather than as a black fade.
+      // Older files carry an "on" flag; one saved off is no gradient.
       gradient: json["gradient"] is Map<String, dynamic> &&
               (json["gradient"] as Map<String, dynamic>)["on"] != false
           ? GradientSpec.fromJson(json["gradient"] as Map<String, dynamic>)
           : null,
       hidden: json["off"] == true,
-      lineStyle: ChartLineStyle.fromName(json["line"] as String?),
+      lineStyle: ChartLineStyle.fromName(jsonStr(json["line"])),
       band: json["band"] == true,
       width: json["width"] is num ? (json["width"] as num).toDouble() : 0,
       delay: json["delay"] is num
@@ -538,9 +434,7 @@ class ChartSeries {
       backdrop: json["backdrop"] is Map<String, dynamic>
           ? ChartBackdrop.fromJson(json["backdrop"] as Map<String, dynamic>)
           : null,
-      // A null in the list is a cell nobody filled in -- see
-      // ChartData.hasValueAt. Anything else that is not a number is a nought,
-      // which is what a stray string in a pasted column has always been.
+      // A null is a cell nobody filled in; anything else not a number is 0.
       values: raw is List
           ? [
               for (var v in raw)
@@ -565,8 +459,8 @@ class Ohlc {
 
   const Ohlc(this.open, this.high, this.low, this.close);
 
-  /// rose is whether the period closed above where it opened, which is the
-  /// only thing that decides a candle's colour.
+  /// rose is whether the period closed at or above where it opened, which
+  /// decides a candle's colour.
   bool get rose => close >= open;
 
   /// top and bottom are the body's ends, which are the open and the close
@@ -581,17 +475,9 @@ class ChartData {
   final List<String> categories;
   final List<ChartSeries> series;
 
-  /// estimated marks the rows whose figures are worked out rather than looked
-  /// up, by category rather than by series.
-  ///
-  /// By category because that is where the doubt lives. A year is sourced or
-  /// it is not -- an explorer balance, a foundation's own report, a filing --
-  /// and when it is not, every figure for that year came out of the same
-  /// arithmetic. Marking it per series would be the same flag written once
-  /// per column and four chances for them to disagree.
-  ///
-  /// Empty on the charts nobody has marked, which is almost all of them, so a
-  /// chart that never uses this saves the file it always did.
+  /// estimated marks the rows (categories, not series: a year is sourced or
+  /// it is not) whose figures are worked out rather than looked up. Empty on
+  /// charts that do not mark them.
   final List<bool> estimated;
 
   const ChartData({
@@ -613,9 +499,8 @@ class ChartData {
         estimated: estimated ?? this.estimated,
       );
 
-  /// withRowRemoved takes a row out of the categories, out of every series,
-  /// and out of the estimate marks -- which is three lists that have to stay
-  /// the same length as each other.
+  /// withRowRemoved takes a row out of the categories, every series and the
+  /// estimate marks, keeping the three lists in step.
   ChartData withRowRemoved(int row) => ChartData(
         categories: [...categories]..removeAt(row),
         series: [
@@ -645,44 +530,25 @@ class ChartData {
   bool isEstimated(int row) =>
       row >= 0 && row < estimated.length && estimated[row];
 
-  /// marksEstimates is whether this chart distinguishes at all, which is what
-  /// decides whether the panel offers the column and whether the key says
-  /// what the two weights mean.
+  /// marksEstimates is whether this chart marks any row estimated, which
+  /// decides whether the key explains the two weights.
   bool get marksEstimates => estimated.contains(true);
 
-  /// valueAt is the number at [row] of [seriesIndex], or zero where the data
-  /// is ragged.
-  ///
-  /// Ragged data is normal, not an error. Somebody pasting a table with a
-  /// missing cell should get a chart with a gap in it, not a red message
-  /// telling them to go and fix their spreadsheet.
+  /// valueAt is the number at [row] of [seriesIndex], [missingValue] for a
+  /// gap, or zero where the data is ragged (normal, not an error).
   double valueAt(int seriesIndex, int row) {
     if (seriesIndex < 0 || seriesIndex >= series.length) return 0;
     var v = series[seriesIndex].values;
     return row >= 0 && row < v.length ? v[row] : 0;
   }
 
-  /// hasValueAt is whether there is a number there at all.
-  ///
-  /// A cell left empty is not a nought. A fund that did not exist until 2020
-  /// and one that held nothing in 2019 are different facts, and a chart that
-  /// draws both as a bar of zero height says the second about the first. Kept
-  /// as [missingValue] -- a NaN -- so that the values stay a list of doubles
-  /// and every sum, scale and axis that walks them keeps working; what
-  /// changes is that the drawing asks this before it draws.
+  /// hasValueAt is whether there is a number there at all: an empty cell is
+  /// a gap, not a nought, and is drawn as one.
   bool hasValueAt(int seriesIndex, int row) => !valueAt(seriesIndex, row).isNaN;
 
-  /// ohlcAt is one period of a candlestick chart, or null when there is not
-  /// enough to draw one.
-  ///
-  /// Four series read as one mark. By name where the names say which is
-  /// which -- a source that sends "Open, High, Low, Close" in any order is
-  /// read correctly -- and by position otherwise, which is the order every
-  /// market API sends them in and the order anybody typing them would use.
-  ///
-  /// Reading the names is what makes the ordinary path work without a fifth
-  /// setting to say which column is which: the mapping already named the
-  /// columns, and naming them twice is a thing to get wrong.
+  /// ohlcAt is one period of a candlestick chart, or null when there are not
+  /// four series. The series are matched by name where the names say which
+  /// is which, else taken in open, high, low, close order.
   Ohlc? ohlcAt(int row) {
     if (series.length < 4) return null;
     var at = _ohlcOrder ?? const [0, 1, 2, 3];
@@ -695,13 +561,8 @@ class ChartData {
   }
 
   /// _ohlcOrder is which series is the open, the high, the low and the close,
-  /// worked out from their names -- or null when the names do not say, in
-  /// which case the first four in order are taken.
-  ///
-  /// All four have to be found, and found once each. Half a match is worse
-  /// than none: a chart drawing the high as the open because one column
-  /// happened to be called "Close price" and another "Closing" would be
-  /// wrong in a way nobody could see.
+  /// from their names, or null unless all four are found once each (half a
+  /// match would be silently wrong).
   List<int>? get _ohlcOrder {
     var wanted = ["open", "high", "low", "close"];
     var found = <int>[];
@@ -719,9 +580,8 @@ class ChartData {
     return found;
   }
 
-  /// asText renders the data back into the format [parse] reads, which is
-  /// what the quick-entry box is filled with when a chart is selected. The
-  /// round trip is the whole feature: edit the text, get the chart.
+  /// asText renders the data back into the format [parse] reads, for the
+  /// quick-entry box.
   String asText() {
     var out = StringBuffer();
     out.writeln(["", ...series.map((s) => s.name)].join("\t"));
@@ -741,28 +601,19 @@ class ChartData {
           ? v.round().toString()
           : v.toString();
 
-  /// parse reads a pasted table.
+  /// parse reads a pasted table, split by [splitTable]. The first row is
+  /// series names if none of its cells after the first is a number.
   ///
-  /// The splitting is [splitTable]'s -- tab, comma or a run of spaces, chosen
-  /// once for the whole paste. See tabular_text.dart, and in particular why
-  /// the line is not trimmed before it is split.
-  ///
-  /// The first row is treated as series names if none of its cells after the
-  /// first parses as a number. Sniffed rather than declared, for the same
-  /// reason -- and it is the right guess almost always, since a header row of
-  /// numbers is indistinguishable from data by any means at all.
-  /// [keep] is the series this is replacing, if any. Their colours and their
-  /// per-series types are carried across by position, so editing the numbers
-  /// does not throw away the fact that the second series was drawn as a line.
+  /// [keep] is the series this is replacing, if any: their settings are
+  /// carried across by position, so retyping the numbers keeps how each
+  /// series is drawn.
   static ChartData parse(String text,
       {List<Color>? colors, List<ChartSeries>? keep}) {
     var rows = splitTable(text);
     if (rows.isEmpty) return const ChartData();
 
     var header = rows.first;
-    // Through cellNumber, so a row beginning "Jan 1,000" is a row of numbers
-    // and not a header. tryParse refuses a thousands separator, which made
-    // every figure written the way people write it look like a word.
+    // cellNumber, not tryParse, so "1,000" counts as a number.
     var hasHeader =
         header.length > 1 && header.skip(1).every((c) => cellNumber(c) == null);
     var names = hasHeader
@@ -776,9 +627,7 @@ class ChartData {
       categories.add(row.isEmpty ? "" : row.first);
       for (var i = 0; i < names.length; i++) {
         var cell = i + 1 < row.length ? row[i + 1] : "";
-        // An empty cell is one nobody filled in, and the chart leaves a hole
-        // where it is. A cell with something unreadable in it is still a
-        // nought: that is a typo in a number, not an absence.
+        // Empty is a gap; something unreadable is a typo, read as 0.
         values[i]
             .add(cell.trim().isEmpty ? missingValue : cellNumber(cell) ?? 0);
       }
@@ -788,20 +637,19 @@ class ChartData {
       categories: categories,
       series: [
         for (var i = 0; i < names.length; i++)
-          ChartSeries(
-            name: names[i],
-            color: colors != null && i < colors.length
-                ? colors[i]
-                : keep != null && i < keep.length
-                    ? keep[i].color
-                    : chartPalette[i % chartPalette.length],
-            type: keep != null && i < keep.length ? keep[i].type : null,
-            // What was decided about how it looks survives its numbers being
-            // retyped, the same way it survives a refresh.
-            numbers: keep != null && i < keep.length ? keep[i].numbers : null,
-            gradient: keep != null && i < keep.length ? keep[i].gradient : null,
-            values: values[i],
-          ),
+          if (keep != null && i < keep.length)
+            keep[i].copyWith(
+                name: names[i],
+                values: values[i],
+                color: colors != null && i < colors.length ? colors[i] : null)
+          else
+            ChartSeries(
+              name: names[i],
+              color: colors != null && i < colors.length
+                  ? colors[i]
+                  : chartPalette[i % chartPalette.length],
+              values: values[i],
+            ),
       ],
     );
   }
@@ -809,8 +657,6 @@ class ChartData {
   Map<String, dynamic> toJson() => {
         "categories": categories,
         "series": series.map((s) => s.toJson()).toList(),
-        // Only on a chart that marks them, so one that does not saves the
-        // file it always did.
         if (estimated.contains(true)) "est": estimated,
       };
 

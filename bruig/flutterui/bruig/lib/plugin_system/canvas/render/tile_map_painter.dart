@@ -44,10 +44,9 @@ Offset? tileCameraShift;
 typedef TileFigure = (double, void Function())? Function(String id);
 
 /// paintTileMap draws [e] in [box] on [frame]; [figures] finds the figures
-/// on its objects layers. [editing], one being painted is shown as its
-/// painter has it, ruled into cells.
-///
-/// [frames] is how long the scene is, for a light that changes over it.
+/// on its objects layers. With [editing], a map being painted is shown as
+/// its painter has it, ruled into cells. [frames] is how long the scene is,
+/// for a light that changes over it.
 void paintTileMap(Canvas canvas, Rect box, TileMapElement e, int frame,
     {int frameRate = 12, int frames = 0, CanvasImageSource? images, bool editing = false, TileFigure? figures}) {
   var view = editing ? tileMapEditingOf?.call(e) : null;
@@ -146,11 +145,9 @@ void paintTileMap(Canvas canvas, Rect box, TileMapElement e, int frame,
 }
 
 /// _paintObjects draws [layer]'s things and figures, the furthest up the
-/// page first. Its things are cut to the map's box; a figure is not -- it
-/// is an element of the canvas, walking where it likes.
-///
-/// [unshift] is how far the layer has been moved: its figures, elements of
-/// the canvas, are drawn where they are all the same.
+/// page first. Its things are cut to the map's box and moved with the layer;
+/// a figure is an element of the canvas, so it is not cut, and [unshift]
+/// takes the layer's movement back off it.
 void _paintObjects(Canvas canvas, Rect box, TileMapElement m, TileLayer layer, List<ui.Image?> sheets,
     double seconds, TileFigure? figures, {Offset unshift = Offset.zero}) {
   var drawn = <(double, void Function())>[
@@ -196,13 +193,11 @@ void _paintObject(Canvas canvas, TileMapElement m, TileObject o, List<ui.Image?>
       tint: tint, seconds: seconds, window: (0, 0, o.stamp.width - 1, o.stamp.height - 1), cell: cs);
 }
 
-/// paintTileCells draws [cells] of [m] -- by [cellKey], each a [TileRef]
-/// word -- from [sheets], one for each of its sets, in [box]; those whose
-/// sheet is not read yet left out.
-///
-/// [seconds] in, a tile that plays shows the frame it has got to. The
-/// cells drawn are those in the map's window, or in [window] -- first and
-/// last column and row -- counted from [box]'s top left.
+/// paintTileCells draws [cells] of [m] (by [cellKey], each a [TileRef] word)
+/// from [sheets], one for each of its sets, in [box]; cells whose sheet is
+/// not read yet are left out. [seconds] in, a tile that plays shows the
+/// frame it has got to. The cells drawn are those in the map's window, or in
+/// [window] (first and last column and row) counted from [box]'s top left.
 void paintTileCells(Canvas canvas, Rect box, TileMapElement m, Map<int, int> cells, List<ui.Image?> sheets,
     {Color? tint, double seconds = 0, (int, int, int, int)? window, Size? cell}) {
   var paint = Paint()..filterQuality = m.pixelArt ? FilterQuality.none : FilterQuality.medium;

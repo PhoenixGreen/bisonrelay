@@ -4,14 +4,13 @@ import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/font_files.dart';
 import 'package:bruig/plugin_system/canvas/model/font_outlines.dart';
 
-// vector_text.dart sets a drawing's text: the words laid out letter by
-// letter in the font's own outlines, as runs of points -- the same runs any
-// other shape is made of, which is what lets the text be edited into a shape
-// of its own once it is no longer to be typed into. See VectorText.
+// vector_text.dart sets a drawing's text in the font's own outlines, as the
+// same runs of points any shape is made of, so the text can later be edited
+// into an ordinary shape. See VectorText.
 
-/// VectorTextLayout is text laid out: its runs, and where the caret stands
-/// before each of its characters -- one more than there are, for after the
-/// last -- on its baseline, with how tall a line is.
+/// VectorTextLayout is text laid out: its runs, the caret position on the
+/// baseline before each character (plus one after the last), and the line's
+/// ascent and descent.
 class VectorTextLayout {
   final List<VectorPath> runs;
   final List<Offset> carets;
@@ -99,9 +98,9 @@ VectorPath? _run(GlyphContour c, Offset Function(Offset) at) {
   return VectorPath(nodes, closed: true);
 }
 
-/// typed is [shape] set as [t] from [origin], in [pick]: its runs the
-/// letters, and the text kept with them, signed so that it is known to be
-/// text until they are changed.
+/// typed is [shape] set as [t] from [origin], in [pick]: its runs become
+/// the letters, and the text is kept with a signature (see
+/// VectorShape.liveText) so it stays text until the runs are changed.
 VectorShape typed(
     VectorShape shape, VectorText t, Offset origin, FontPick pick) {
   var laid = layoutVectorText(t, origin, pick);

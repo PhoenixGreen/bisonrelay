@@ -4,11 +4,10 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 
 // speech_timing.dart is where a take's words are, for an engine that does
-// not say: the voice's own pauses found, and matched in order to the stops,
-// commas and beats written, the words between spread by their lengths
-// across the time spoken. Spread by their lengths alone they drift -- by
-// half a second, ten words on -- the pauses not being words. Both engines'
-// takes are timed so, for lip sync and for Phrasing.
+// not say: the voice's pauses are found and matched in order to the stops,
+// commas and beats written, and the words between are spread by length
+// across the time spoken. Length alone drifts (half a second ten words on)
+// because pauses are not words. Used for lip sync and Phrasing.
 
 /// voicePauses is where the voice paused in [sound], at the mix rate: from
 /// and to where it speaks, and each pause between, in seconds. A pause is
@@ -53,14 +52,8 @@ List<double> _levels(Float32List sound) => [
         }(),
     ];
 
-/// timeWords is [words] -- a stretch's, as it was given them -- timed
-/// across [sound], at the mix rate, and the pause after each the voice
-/// paused after. The program says nothing of where its words are, and
-/// spread by their lengths alone they drift: by half a second, ten words
-/// on, the voice's pauses -- the longest at "...", a sentence's end -- not
-/// being words. So its pauses are found, and matched in order to the
-/// stops, commas and beats written: the words between spread by their
-/// lengths across the time spoken, which no pause is in.
+/// timeWords is [words] timed across [sound], at the mix rate, and the
+/// pause after each word the voice paused after. See the file comment.
 ({List<TimedWord> words, Map<int, (double, double)> after}) timeWords(
     Float32List sound, List<String> words) {
   var (:from, :to, :pauses) = voicePauses(sound);

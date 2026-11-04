@@ -11,13 +11,11 @@ import 'package:path/path.dart' as path;
 
 // vroid_assets.dart fetches the characters the Character Studio builds from:
 // four of pixiv's VRoid sample characters, released CC0, as bodies, and four
-// more kept only for their hair. Each is fetched the first time it is
-// wanted -- the bodies when the Studio first opens, a hairstyle's source
-// when that hairstyle is first picked -- turned from VRM 0.x into VRM 1.0
-// here (vrm_convert.dart), and kept in the library.
-//
-// Fetched from GitHub at a pinned commit, and not at all through a proxy,
-// which a direct download cannot honour (canvas_network.dart).
+// more kept only for their hair. Each is fetched the first time it is wanted
+// (the bodies when the Studio first opens, a hairstyle's source when it is
+// first picked), turned from VRM 0.x into VRM 1.0 (vrm_convert.dart), and
+// kept in the library. Fetched from GitHub at a pinned commit, and not at all
+// through a proxy (canvas_network.dart).
 
 /// VroidModel is one character to fetch: its name in the samples, and
 /// whether it is kept whole or only for its hair.
@@ -44,7 +42,7 @@ const List<VroidModel> vroidHairSources = [
 int get vroidBodiesBytes => vroidBodies.fold(0, (s, m) => s + m.bytes);
 
 class VroidAssets {
-  /// _commit is the samples, pinned: what is fetched never changes.
+  /// _base is the samples, pinned to a commit: what is fetched never changes.
   static const String _base =
       "https://raw.githubusercontent.com/madjin/vrm-samples/"
       "e16eb187100149a315ad92c3c9968f1d5baa6c7d/vroid/beta";
@@ -55,12 +53,22 @@ class VroidAssets {
     return d;
   }
 
-  /// modelPath is where [id], converted, is kept.
-  static Future<String> modelPath(String id) async =>
-      path.join(await dir(), "$id.vrm");
+  /// isModel is whether [id] is one of the models above: a body's id comes
+  /// from documents other people send, and only these ever become paths.
+  static bool isModel(String id) =>
+      vroidBodies.any((m) => m.id == id) ||
+      vroidHairSources.any((m) => m.id == id);
 
-  static Future<String> _stampPath(String id) async =>
-      path.join(await dir(), "$id.version");
+  /// modelPath is where [id], converted, is kept.
+  static Future<String> modelPath(String id) async {
+    if (!isModel(id)) throw ArgumentError.value(id, "id", "not a VRoid model");
+    return path.join(await dir(), "$id.vrm");
+  }
+
+  static Future<String> _stampPath(String id) async {
+    if (!isModel(id)) throw ArgumentError.value(id, "id", "not a VRoid model");
+    return path.join(await dir(), "$id.version");
+  }
 
   /// installed is whether [id] is here, converted the way this version of
   /// the app converts.

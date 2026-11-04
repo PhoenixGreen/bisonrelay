@@ -1,12 +1,9 @@
 part of 'generators.dart';
 
-// metals.dart is the Metal texture's finishes other than the original
-// brushing: fine hairline brushing, polished chrome, diamond plate,
-// hammered, corrugated, perforated and riveted panels.
-//
-// Built like the surfaces -- a height and a colour at every point of a
-// lattice, lit -- with one thing a surface does not have: they mirror what is
-// round them. See _shadeLattice. Rust and damage work on every finish.
+// metals.dart is the Metal texture's finishes other than brushed (which is
+// _metal in generators.dart): a lit height-and-colour lattice like the
+// surfaces, plus a mirror term (see _shadeLattice). Rust and damage apply to
+// every finish.
 
 /// MetalFinish is the Metal texture's "finish" setting.
 abstract final class MetalFinish {
@@ -89,21 +86,18 @@ void _metalFinish(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
           h += (n1.at(u * bf * 0.05, v * bf) - 0.5) * depthFor(0.05, bf);
           sheen = bump * 0.25;
         case MetalFinish.hammered:
-          // Dimpled all over by a hammer: overlapping shallow dishes, no two
-          // the same.
+          // Overlapping shallow dishes: the depth is the distance to the
+          // nearest blow.
           var f = carried(18 / size);
-          // Every point is in one dish or another: the depth is the
-          // distance to the middle of whichever blow landed nearest.
           var (d, id) = worley(spec.seed + 13, u * f, v * f);
           h += math.sqrt(d) * (0.8 + id * 0.4) * depthFor(1.6, f);
         case MetalFinish.corrugated:
-          // Corrugated sheet: one smooth wave after another.
           var f = 7 / size;
           h += math.sin(v * f * math.pi * 2) * depthFor(2.2, f);
           var bf = carried(140 / size);
           h += (n1.at(u * bf * 0.06, v * bf) - 0.5) * depthFor(0.1, bf);
         case MetalFinish.perforated:
-          // Perforated: round holes on a staggered grid, each with a lip.
+          // Round holes on a staggered grid, each with a lip.
           var c = 0.06 * size;
           var j = (v / c).floor();
           var shift = j.isOdd ? 0.5 : 0.0;
@@ -120,7 +114,7 @@ void _metalFinish(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
           var bf = carried(160 / size);
           h += (n1.at(u * bf * 0.05, v * bf) - 0.5) * depthFor(0.1, bf);
         case MetalFinish.riveted:
-          // Panels: seams between plates, and a row of rivets along each.
+          // Seams between plates, and a row of rivets along each.
           var pw = 0.55 * size, ph = 0.38 * size;
           var px = u / pw, py = v / ph;
           var fx = px - px.floorToDouble(), fy = py - py.floorToDouble();
@@ -130,7 +124,6 @@ void _metalFinish(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
             dark = 0.45;
             h -= depthFor(0.6, 60);
           }
-          // Rivets a little in from each seam.
           var pitch = 0.05 * size, inset = 0.022 * size;
           double rivet(double along, double off) {
             var k = along / pitch;
@@ -161,9 +154,8 @@ void _metalFinish(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
               (n2.fbm(u * 0.6 / size, v * 3 / size, octaves: 2) - 0.5) * 0.4;
       }
 
-      // Knocks: a few scratches across the grain, wherever there is grain.
-      // Long, thin and at a slant, and only the sharpest few: a sheet is
-      // scratched in a handful of places, not hatched all over.
+      // Scratches at a slant, only the sharpest few ridges so the sheet is
+      // scratched in places rather than hatched all over.
       if (m.damage > 0.2) {
         var a = (u + v) * 0.7071, b = (v - u) * 0.7071;
         var creased = ridged(n2, a * 0.6 / size, b * 90 / size, octaves: 1);
@@ -171,8 +163,7 @@ void _metalFinish(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
             ((creased - (0.995 - m.damage * 0.04)) / 0.006).clamp(0.0, 1.0);
         h -= cut * depthFor(0.4 + m.damage, 90 / size);
       }
-      // Rust: creeping in from a threshold on a smooth field, rough and
-      // matt where it has taken hold.
+      // Rust: a threshold on a smooth field, rough and matt where it holds.
       var rust = 0.0;
       if (m.rust > 0) {
         var n = patch.fbm(u * 4.2, v * 4.2, octaves: 3);

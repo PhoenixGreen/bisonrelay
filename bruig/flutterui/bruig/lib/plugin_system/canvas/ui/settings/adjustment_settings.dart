@@ -542,9 +542,8 @@ class _LevelsHistogramState extends State<LevelsHistogram> {
           widget.onChanged(next, done: done);
         }
 
-        // Held to its own size: in a column that stretches its children,
-        // the plot was drawn the panel's width while its handles were
-        // worked out on 280 pixels, and a drag landed off the handle.
+        // Held to its own size: stretched to the panel's width, the plot no longer
+        // matched its handles (worked out on 280 pixels) and a drag missed them.
         return Align(
             alignment: Alignment.centerLeft,
             child: SizedBox.fromSize(

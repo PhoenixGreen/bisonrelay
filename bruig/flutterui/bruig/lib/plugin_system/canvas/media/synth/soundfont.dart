@@ -1,14 +1,10 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-// soundfont.dart reads a SoundFont 2 bank: its samples, and the presets
-// and instruments that say which sample plays which key, how loud, tuned
-// how, and shaped by which envelope. See the SoundFont 2.01 specification;
-// generator numbers are the specification's.
-//
-// What a key and a velocity play is worked out once, here -- preset zones
-// over instrument zones, global zones under both -- as a list of Zone,
-// each a sample and every setting it plays with. sampler.dart plays them.
+// soundfont.dart reads a SoundFont 2 bank (see the SoundFont 2.01
+// specification; generator numbers are its own) and resolves what a key and
+// velocity play as a list of [Zone]: preset zones over instrument zones,
+// global zones under both. sampler.dart plays them.
 
 /// Gen is the generators this reader understands, by the specification's
 /// numbers.
@@ -67,17 +63,15 @@ abstract final class Gen {
     return d;
   }();
 
-  /// instrumentOnly are those a preset may not set: where in the sample a
-  /// note plays from, the sample itself, how it loops and what overrides
-  /// the key and velocity. A preset's values for the rest are added to its
-  /// instrument's.
+  /// instrumentOnly are the generators a preset may not set (sample
+  /// offsets, the sample, loop mode, key and velocity overrides). A
+  /// preset's values for the rest are added to its instrument's.
   static const instrumentOnly = {
     0, 1, 2, 3, 4, 12, 45, 50, 46, 47, 53, 54, 57, 58, //
   };
 }
 
-/// SfSample is one sample's header: where it is in the bank's samples, how
-/// it loops, and the key it was recorded at.
+/// SfSample is one sample's header.
 class SfSample {
   final String name;
   final int start, end, loopStart, loopEnd, rate;
@@ -87,8 +81,8 @@ class SfSample {
       this.rate, this.originalKey, this.correction);
 }
 
-/// Zone is what one key at one velocity plays: a sample and every
-/// generator worked out.
+/// Zone is one sample a key and velocity play, with every generator
+/// resolved.
 class Zone {
   final SfSample sample;
   final Int32List gens;
@@ -117,8 +111,7 @@ class _Instrument {
   _Instrument(this.name, this.global, this.zones);
 }
 
-/// SfPreset is one preset: an instrument as a player chooses it, by bank
-/// and program number.
+/// SfPreset is one preset, chosen by bank and program number.
 class SfPreset {
   final String name;
   final int bank, program;
@@ -129,8 +122,7 @@ class SfPreset {
 
 /// SoundFont is a bank, read.
 class SoundFont {
-  /// samples are the bank's sample data, sixteen-bit, every sample end to
-  /// end.
+  /// samples are all the bank's 16-bit sample data, end to end.
   final Int16List samples;
   final List<SfPreset> presets;
   final List<_Instrument> _instruments;
@@ -152,8 +144,8 @@ class SoundFont {
     return presets.isEmpty ? null : presets.first;
   }
 
-  /// zones are what [key] at [velocity] plays in [preset]: one zone for each
-  /// sample sounding -- two for a stereo pair, more for a layered sound.
+  /// zones are what [key] at [velocity] plays in [preset]: one zone per
+  /// sample sounding (two for a stereo pair, more when layered).
   List<Zone> zones(SfPreset preset, int key, int velocity) {
     var out = <Zone>[];
     for (var pz in preset._zones) {
@@ -166,15 +158,15 @@ class SoundFont {
         var id = iz.gens[Gen.sampleId];
         if (id < 0 || id >= _headers.length) continue;
         var gens = Int32List.fromList(Gen.defaults);
-        // The instrument's global zone, then its own: each overrides.
+        // The instrument's global zone, then its own, each overriding.
         for (var src in [inst.global, iz]) {
           if (src == null) continue;
           for (var g in src.set) {
             gens[g] = src.gens[g];
           }
         }
-        // The preset's, added on top -- the global zone's where the zone's
-        // own does not set it.
+        // The preset's values are added on top, the preset global zone's
+        // where the zone itself does not set one.
         for (var g = 0; g < Gen.count; g++) {
           if (Gen.instrumentOnly.contains(g) ||
               g == Gen.keyRange ||
@@ -196,7 +188,9 @@ class SoundFont {
     return out;
   }
 
-  /// read reads a bank from its bytes, or throws a FormatException.
+  /// read reads a bank from its bytes. It throws a FormatException for a
+  /// file that is not a bank, and may throw a RangeError for a truncated
+  /// one.
   static SoundFont read(Uint8List bytes) {
     var data = ByteData.sublistView(bytes);
     String tag(int at) =>
@@ -230,8 +224,7 @@ class SoundFont {
           .trim();
     }
     if (chunks["smpl"] case (var at, var size)) {
-      // RIFF chunks start on even bytes, so the samples can be viewed in
-      // place -- two hundred megabytes is not copied.
+      // Viewed in place where aligned, so ~200MB of samples is not copied.
       smpl = at.isEven
           ? Int16List.view(bytes.buffer, bytes.offsetInBytes + at, size ~/ 2)
           : Int16List.fromList([
@@ -249,8 +242,7 @@ class SoundFont {
       return latin1.decode(end < 0 ? raw : raw.sublist(0, end)).trim();
     }
 
-    // Generators and bags: a bag is a zone, its generators the run from its
-    // index to the next bag's.
+    // A bag is a zone; its generators run from its index to the next bag's.
     List<(int, int)> gens(String id) {
       var (at, size) = chunk(id);
       return [
@@ -276,7 +268,7 @@ class SoundFont {
       for (var i = from; i < to && i < list.length; i++) {
         var (op, amount) = list[i];
         if (op >= Gen.count) continue;
-        // Ranges are two bytes, low then high: kept as they were read.
+        // Ranges are two bytes, low then high, kept packed.
         if (op == Gen.keyRange || op == Gen.velRange) {
           g[op] = amount & 0xFFFF;
         } else if (op == Gen.instrument || op == Gen.sampleId) {

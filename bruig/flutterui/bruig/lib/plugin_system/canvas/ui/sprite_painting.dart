@@ -10,11 +10,10 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/foundation.dart';
 
 // sprite_painting.dart is painting a Sprite element's frames on the canvas,
-// pixel by pixel, as a pixel painter does: a frame shown big in the
-// element's box, the one before it faint under it, a pencil, a rubber, a
-// fill and a picker, and frames added or copied. Each stroke is kept as the
-// sheet's picture again when the pen lifts -- one undo -- and undone, the
-// sheet before it is painted on.
+// pixel by pixel: the frame shown big in the element's box with the one before
+// it faint underneath, a pencil, rubber, fill and picker, and frames added or
+// copied. Each stroke is kept as the sheet's picture when the pen lifts, as one
+// undo step.
 
 /// SpriteTool is what painting a sprite does with the pen.
 enum SpriteTool {
@@ -163,8 +162,8 @@ class SpritePaintSession extends ChangeNotifier {
   bool _showing = false;
   bool _again = false;
 
-  /// _show makes the picture of the pixels again -- one at a time, the
-  /// last change caught up after.
+  /// _show makes the picture of the pixels again, one at a time, catching up
+  /// the last change after.
   Future<void> _show() async {
     if (_showing) {
       _again = true;
@@ -191,8 +190,8 @@ class SpritePaintSession extends ChangeNotifier {
     await _keep();
   }
 
-  /// _keep stores the pixels as the sheet's picture, and makes it the
-  /// sprite's -- with [change] made to it as well -- as one change.
+  /// _keep stores the pixels as the sheet's picture and makes it the sprite's,
+  /// with [change] made too, as one change.
   Future<void> _keep([SpriteElement Function(SpriteElement)? change]) async {
     var e = sprite, p = _pixels;
     if (e == null || p == null) return;
@@ -213,9 +212,9 @@ class SpritePaintSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// addFrame adds a frame after the last -- clear, or [copy]ing the one
-  /// painted -- to the animation shown, and paints it next: a column more
-  /// on a sheet of one row, a row more on a sheet of several.
+  /// addFrame adds a frame after the last (clear, or a [copy] of the one
+  /// painted) to the animation shown, and paints it next: a column more on a
+  /// one-row sheet, a row more on a sheet of several.
   Future<void> addFrame({bool copy = false}) async {
     var e = sprite;
     if (e == null || e.rects.isNotEmpty) return;
@@ -249,9 +248,8 @@ class SpritePaintSession extends ChangeNotifier {
   }
 }
 
-/// blankSprite is [e] made of a new, clear sheet of [count] frames in a
-/// row, each [w] by [h] pixels, played as one animation: a sprite to paint
-/// from nothing.
+/// blankSprite is [e] made of a new, clear sheet of [count] frames in a row,
+/// each [w] by [h] pixels, played as one animation.
 Future<SpriteElement?> blankSprite(CanvasController controller, SpriteElement e, int w, int h, int count) async {
   var p = SpritePixels.blank(w * count, h);
   var bytes = await p.png();

@@ -5,27 +5,25 @@ import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
+import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
 import 'package:flutter/foundation.dart';
 
 // decode.dart reads a sound file as 48kHz stereo floats, a block at a time,
 // for the mix engine to play.
 //
-// Through miniaudio -- the decoder SoLoud itself is built on, compiled into
-// its plugin -- called directly, since flutter_soloud has no call that hands
-// back a file's samples (its readSamples is for drawing a waveform: one
-// level per point, not the sound). So it reads exactly what SoLoud would
-// have played: MP3, WAV and FLAC by miniaudio's own decoders, Ogg Vorbis and
-// Opus by the libvorbis backend SoLoud registers for them.
+// It calls miniaudio, compiled into SoLoud's plugin, directly: flutter_soloud
+// has no call that hands back a file's samples (readSamples is one level per
+// point, for waveforms). MP3, WAV and FLAC use miniaudio's own decoders, Ogg
+// Vorbis the libvorbis backend SoLoud registers; anything else falls back to
+// ffmpeg (see [ffmpegTrack]).
 //
-// The two structures handed across are miniaudio 0.11's. Their layout was
-// measured with the compiler against flutter_soloud 4.1.7's own header, on
-// arm64 and x86_64 alike: ma_decoder_config is 144 bytes with the custom
-// backend list at 120 and its count at 128; ma_decoder is 552 bytes. A
-// decoder is given far more room than that, so a rebuild that grows it a
-// little does no harm. If flutter_soloud is upgraded, measure again.
+// The structures handed across are miniaudio 0.11's, measured against
+// flutter_soloud 4.1.7's header on arm64 and x86_64: ma_decoder_config is
+// 144 bytes with the custom backend list at 120 and its count at 128;
+// ma_decoder is 552 bytes and is given far more room. If flutter_soloud is
+// upgraded, measure again.
 
-/// TrackSource is a sound the engine reads from: a file being decoded, or --
-/// in the tests -- samples already in memory.
+/// TrackSource is a sound the engine reads from.
 abstract class TrackSource {
   /// frames is how long it is, in frames at mixRate.
   int get frames;
@@ -73,8 +71,7 @@ final class _Config extends ffi.Struct {
   external ffi.Array<ffi.Uint8> bytes;
 }
 
-/// _Miniaudio is the handful of miniaudio's functions the decoder calls,
-/// looked up once.
+/// _Miniaudio is the miniaudio functions the decoder calls, looked up once.
 class _Miniaudio {
   final ffi.Pointer<ffi.Void> Function(int, ffi.Pointer<ffi.Void>) malloc;
   final void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>) free;
@@ -138,14 +135,13 @@ class _Miniaudio {
   void release(ffi.Pointer p) => free(p.cast(), ffi.nullptr);
 }
 
-/// miniaudioLibrary is where to find the library instead of the running
-/// app: for a test that loads a built copy of the plugin to decode real
-/// files with it.
+/// miniaudioLibrary overrides where the library is loaded from, for a test
+/// that decodes real files with a built copy of the plugin.
 @visibleForTesting
 String? miniaudioLibrary;
 
-/// _miniaudio is the library, or null where it cannot be had -- in the
-/// tests, which do not load the plugin, and on the web.
+/// _miniaudio is the library, or null where it cannot be loaded (tests,
+/// the web).
 _Miniaudio? get _miniaudio => _loaded ??= _load();
 _Miniaudio? _loaded;
 
@@ -165,8 +161,8 @@ _Miniaudio? _load() {
   }
 }
 
-/// readWhole is [file] read whole, both sides at the mix's rate -- or null
-/// where the decoder cannot read it.
+/// readWhole is [file] decoded whole at mixRate, or null where the decoder
+/// cannot read it.
 (Float32List, Float32List)? readWhole(String file) {
   var track = FileTrack.open(file);
   if (track == null) return null;
@@ -194,9 +190,8 @@ _Miniaudio? _load() {
   }
 }
 
-/// readWholeAway is [readWhole] in an isolate of its own: a whole song
-/// read on the app's isolate held up everything there -- the mix's sound
-/// with it -- for a second or more.
+/// readWholeAway is [readWhole] in its own isolate: a whole song decoded on
+/// the app's isolate stalls it, and the mix, for a second or more.
 Future<(Float32List, Float32List)?> readWholeAway(String file) {
   var library = miniaudioLibrary;
   return Isolate.run(() {
@@ -334,14 +329,12 @@ class FileTrack implements TrackSource {
   }
 }
 
-/// ffmpegDecode is [path] -- or [length] seconds of it from [from] -- as
-/// 48kHz stereo, by ffmpeg, or null where ffmpeg cannot read it.
+/// ffmpegDecode is [path], or [length] seconds of it from [from], decoded
+/// by ffmpeg as 48kHz stereo; null where ffmpeg cannot read it.
 ///
-/// A mono file is put on both sides at its own level, as the editor plays
-/// one: ffmpeg's own mono-to-stereo spreads it at the -3dB of a centre pan,
-/// and exports of a mono voice-over came out three decibels under what was
-/// heard while editing. So it is decoded in its own channels and split here;
-/// only a file of more than two is folded down by ffmpeg.
+/// A mono file is copied to both sides at full level, as the editor plays
+/// it: ffmpeg's own upmix is 3dB down. So only files of more than two
+/// channels are folded by ffmpeg.
 Future<(Float32List, Float32List)?> ffmpegDecode(String ffmpeg, String path,
     {double? from, double? length}) async {
   Future<ProcessResult> run(bool fold) => Process.run(
@@ -350,7 +343,7 @@ Future<(Float32List, Float32List)?> ffmpegDecode(String ffmpeg, String path,
         "-hide_banner", //
         if (from != null) ...["-ss", from.toStringAsFixed(4)],
         if (length != null) ...["-t", length.toStringAsFixed(4)],
-        "-i", path,
+        ...ffmpegInput(path),
         "-f", "f32le", "-acodec", "pcm_f32le", "-ar", "$mixRate",
         if (fold) ...["-ac", "2"],
         "-",
@@ -386,8 +379,7 @@ Future<(Float32List, Float32List)?> ffmpegDecode(String ffmpeg, String path,
 }
 
 /// ffmpegTrack is [path] decoded whole by ffmpeg, for a file miniaudio
-/// cannot read -- Ogg Opus, which SoLoud's Vorbis backend does not cover.
-/// Null where ffmpeg cannot read it either.
+/// cannot read, such as Ogg Opus. Null where ffmpeg cannot read it either.
 Future<MemoryTrack?> ffmpegTrack(String ffmpeg, String path) async {
   var pcm = await ffmpegDecode(ffmpeg, path);
   return pcm == null ? null : MemoryTrack(pcm.$1, pcm.$2);

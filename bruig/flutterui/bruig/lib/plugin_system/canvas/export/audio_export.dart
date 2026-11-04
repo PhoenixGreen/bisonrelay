@@ -15,9 +15,9 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
-// audio_export.dart is a canvas's sound on its own: its timeline mixed, as a
-// video's soundtrack is, and written as a sound file -- and the settings any
-// export with sound in it takes for how that sound is written.
+// audio_export.dart writes a canvas's timeline, mixed as a video's
+// soundtrack is, as a sound file, plus the ffmpeg arguments any export with
+// sound uses.
 
 /// AudioWriting is how ffmpeg is told to write a sound in [AudioOptions].
 extension AudioWriting on AudioOptions {
@@ -50,8 +50,7 @@ extension AudioWriting on AudioOptions {
       ];
 
   /// videoArgs is how a video's sound is written: AAC in an MP4, Opus in a
-  /// WebM -- what each container plays everywhere -- at this bitrate and
-  /// rate.
+  /// WebM, the codecs each container plays everywhere.
   List<String> videoArgs({required bool webm, int channels = 2}) => webm
       ? [
           "-c:a", "libopus", "-b:a", "${kbps}k", "-ar", "48000", //

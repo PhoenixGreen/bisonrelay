@@ -1,15 +1,12 @@
 import 'dart:math' as math;
 
-// panel_heights.dart sizes the panels stacked under the canvas -- the
-// mixer, the effects, the timeline -- as one: together never taller than the
-// room under the settings bar, and, once they fill it, kept filling it.
-//
-// Each panel is sized by dragging its top edge. Made taller, it takes the
-// free room first and then the room of the panels over it, the nearest
-// first, down to each one's least: so it never pushes the stack past the
-// bar. Made shorter while the stack fills the room, the panel over it takes
-// what it gives up: the top stays pinned where it is, under the bar. Only
-// the top panel's own edge, dragged down, lets the stack come away from it.
+// panel_heights.dart sizes the panels stacked under the canvas (mixer,
+// effects, timeline) as one: never taller than the room under the settings
+// bar and, once they fill it, kept filling it. A panel made taller takes the
+// free room, then the room of the panels over it, nearest first, down to each
+// one's least; made shorter while the stack fills the room, the panel over it
+// takes what it gives up, so the top stays pinned under the bar. Only the top
+// panel's own edge, dragged down, lets the stack come away from it.
 
 /// resizePanel is [heights] -- panels top to bottom, none shorter than its
 /// [least] -- with panel [index]'s top edge dragged so it would be [wanted]

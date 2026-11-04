@@ -1,24 +1,22 @@
 import 'dart:ui';
 
-// vector_brush.dart is how the pencil tool draws a line: how wide, how the
-// pen's pressure, tilt and speed change it, how its ends taper and how much
-// the hand's wobble is smoothed out. A brush makes lines in a drawing --
-// each stroke a shape, its thickness carried point by point -- so a brush
-// stroke stays a drawing: sharp at any size, and edited like any other line.
+// vector_brush.dart is how the pencil tool draws a line: its width, how pen
+// pressure, tilt and speed change it, its tapers and smoothing. Each stroke
+// becomes a shape in the drawing with its thickness carried point by point
+// (VectorNode.width), so it stays editable like any other line.
 
 /// VectorBrush is one brush: the built-in ones below, or one somebody saved.
 class VectorBrush {
   final String name;
 
-  /// size is the line's full width, in pixels on screen when it is drawn --
-  /// the same brush however far in the canvas is zoomed.
+  /// size is the line's full width in screen pixels while drawing, so the
+  /// brush feels the same at any zoom.
   final double size;
 
-  /// pressure is whether the pen's pressure -- or, with none, the speed it
-  /// moves at -- makes the line thicker and thinner; thinnest is how thin, as
-  /// a share of [size], at the lightest touch; and curve how pressure turns
-  /// into width: under 1 a light touch already goes wide, over 1 it takes a
-  /// firm press.
+  /// pressure is whether pen pressure (or, without it, speed) varies the
+  /// width; thinnest is the width at the lightest touch as a share of
+  /// [size]; curve maps pressure to width: under 1 a light touch already
+  /// goes wide, over 1 it takes a firm press.
   final bool pressure;
   final double thinnest;
   final double curve;
@@ -26,21 +24,20 @@ class VectorBrush {
   /// opacity is how see-through the line is.
   final double opacity;
 
-  /// taperIn and taperOut are how much of the stroke, from 0 to half of it,
-  /// its start and end take to swell from nothing and fade back to it.
+  /// taperIn and taperOut are the share of the stroke (0 to 0.5) its start
+  /// and end take to swell from nothing and fade back to it.
   final double taperIn;
   final double taperOut;
 
   /// smoothing is how much the hand's wobble is taken out, 0 to 1.
   final double smoothing;
 
-  /// tilt is how much tilting the pen widens the line -- shading with the
-  /// side of a pencil.
+  /// tilt is how much tilting the pen widens the line.
   final double tilt;
 
-  /// nib and nibAngle make it a broad nib: [nib] of the width depends on
-  /// which way the stroke goes, thinnest along [nibAngle] (degrees, 0 to the
-  /// right, turning clockwise) and widest across it.
+  /// nib and nibAngle make it a broad nib: the share [nib] of the width
+  /// depends on direction, thinnest along [nibAngle] (degrees clockwise from
+  /// the right) and widest across it.
   final double nib;
   final double nibAngle;
 
@@ -48,9 +45,8 @@ class VectorBrush {
   /// they are round.
   final bool flat;
 
-  /// fill closes each stroke and fills it -- with the pencil's fill colour
-  /// -- and line is whether its line is drawn too. A fill with no line is a
-  /// shape painted in one stroke, round its edge.
+  /// fill closes each stroke and fills it with the pencil's fill colour;
+  /// line is whether its line is drawn too.
   final bool fill;
   final bool line;
 
@@ -110,8 +106,7 @@ class VectorBrush {
   /// cap is how the line ends.
   StrokeCap get cap => flat ? StrokeCap.butt : StrokeCap.round;
 
-  /// sameAs is whether [other] draws exactly as this does, whatever either
-  /// is called -- whether the brush in hand is still the one picked.
+  /// sameAs is whether [other] draws exactly as this does, ignoring names.
   bool sameAs(VectorBrush other) =>
       size == other.size &&
       pressure == other.pressure &&
@@ -222,8 +217,8 @@ const builtInBrushes = [
       nib: 0.85,
       nibAngle: 45,
       flat: true),
-  // Painted round its edge and filled: a shape in one stroke. Steadier than
-  // the others, so the edge is clean, and the same width all the way.
+  // Painted round its edge and filled: a shape in one stroke, smoothed more
+  // and of even width so the edge is clean.
   VectorBrush(
       name: "Fill",
       size: 2,
@@ -249,9 +244,8 @@ enum StylusAction {
   const StylusAction(this.label);
 }
 
-/// PenSample is one reading of the pen as a stroke is drawn: where it was
-/// on the canvas, how hard it pressed (0 to 1, or null where the pen or the
-/// platform does not say), how far over it was tilted (0 upright to a
+/// PenSample is one reading of the pen as a stroke is drawn: where on the
+/// canvas, pressure (0..1, or null if not reported), tilt (0 upright to a
 /// quarter turn flat, or null), and when.
 class PenSample {
   final Offset at;

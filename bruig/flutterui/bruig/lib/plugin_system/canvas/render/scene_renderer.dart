@@ -77,39 +77,31 @@ import 'package:flutter/painting.dart';
 
 // scene_renderer.dart draws a whole document at one frame.
 //
-// It is the single place a canvas becomes pixels, and everything that shows a
-// canvas goes through it: the editing stage, the sidebar's thumbnails, the PNG
-// export, every frame of the GIF export, and a published interactive canvas
-// being replayed inside a chat message. One renderer is what makes "what you
-// see is what gets sent" true rather than aspirational -- two would drift, and
-// the drift would only ever be discovered after something had been published.
+// It is the single place a canvas becomes pixels: the editing stage, the
+// thumbnails, every export and a published canvas replayed in a chat all go
+// through it, so what is seen is what is sent.
 //
 // It draws in the document's own design coordinates and knows nothing about
-// zoom, scroll, selection handles or the widget tree. The caller sets up
-// whatever transform it wants first. That is also why it takes no
-// BuildContext: the export runs with no widget tree at all.
+// zoom, scroll, selection or the widget tree; the caller sets up the
+// transform. It takes no BuildContext because the export has no widget tree.
 
-/// CanvasImageSource hands the renderer decoded pictures.
-///
-/// An interface rather than a map because a picture may not be ready -- it is
-/// decoded off the main thread, and a cut-out is recomputed when its settings
-/// change. Returning null for "not yet" lets the renderer draw a placeholder
-/// and the stage redraw a moment later, rather than either blocking a frame or
-/// making the whole document wait on an image.
 /// CanvasVector is a picture kept as a picture: the drawing itself and the
 /// size it was drawn for.
 ///
-/// A vector stays a vector wherever it can. A club badge drawn into a table
-/// cell is forty pixels on screen and four hundred in a poster export, and a
-/// bitmap has to pick one of those in advance -- so a canvas with twenty-two
-/// of them either looks soft in the export or carries twenty-two half-megabyte
-/// bitmaps around in memory. Drawn from the picture there is nothing to pick.
+/// A vector stays a vector wherever it can, so it is sharp at any size
+/// without carrying a bitmap for each.
 class CanvasVector {
   final ui.Picture picture;
   final Size size;
   const CanvasVector(this.picture, this.size);
 }
 
+/// CanvasImageSource hands the renderer decoded pictures.
+///
+/// An interface rather than a map because a picture may not be ready: it is
+/// decoded off the main thread, and a cut-out is recomputed when its
+/// settings change. Null for "not yet" lets the renderer draw a placeholder
+/// and the stage redraw a moment later, rather than blocking a frame.
 abstract class CanvasImageSource {
   /// resolve returns the picture for [assetId] with [removal] applied, or null
   /// when it is not decoded yet.
@@ -117,19 +109,16 @@ abstract class CanvasImageSource {
 
   /// resolveVector is the same asset kept as a drawing, when it is one.
   ///
-  /// Null by default, and null for every bitmap: a caller that can draw a
-  /// vector asks for one and falls back to [resolve], and a caller that
-  /// cannot -- anything that has to look at pixels, which is the background
-  /// remover and the whole of the export pipeline -- simply does not ask.
+  /// Null by default and for every bitmap: a caller that can draw a vector
+  /// asks and falls back to [resolve]; one that needs pixels (the background
+  /// remover, the export pipeline) does not ask.
   CanvasVector? resolveVector(String assetId) => null;
 
-  /// resolveOutline is where the picture's ink actually is, for the things
-  /// that have to keep out of its way rather than draw it -- see
-  /// ImageSilhouette, and text wrapping, which is the only caller.
+  /// resolveOutline is where the picture's ink actually is, for text wrapped
+  /// round it (the only caller). See ImageSilhouette.
   ///
-  /// Null until it has been worked out, which is on purpose: it is read from
-  /// the decoded pixels and a painter cannot wait. The box is the answer in
-  /// the meantime, and the shape arrives on a later frame.
+  /// Null until it has been read from the decoded pixels, since a painter
+  /// cannot wait: the box stands in until a later frame.
   ImageSilhouette? resolveOutline(String assetId, BackgroundRemoval removal) =>
       null;
 
@@ -143,13 +132,11 @@ abstract class CanvasImageSource {
 /// it to arrive, so that what an export draws next is the pictures rather
 /// than their placeholders.
 ///
-/// The editor's picture store reads a picture only when something first asks
-/// for it -- on screen, a moment of "Loading…" that the next frame replaces.
-/// An export draws each page once, so a page whose pictures had not been
-/// looked at yet was printed with the placeholder in it: a picture laid
-/// across a spread from the facing page, say, which the editor had not drawn
-/// since the book was opened. Asked twice at most, since a picture arriving
-/// can ask for another -- its outline, for text wrapped round it.
+/// The picture store reads a picture only when something first asks for it,
+/// and an export draws each page once, so without this a picture not yet
+/// drawn in the editor is exported as its placeholder. Up to three rounds,
+/// since a picture arriving can ask for another (its outline, for text
+/// wrapped round it).
 Future<void> drawWhenLoaded(
     CanvasImageSource? images, void Function(ui.Canvas canvas) paint) async {
   if (images == null) return;
@@ -166,20 +153,11 @@ Future<void> drawWhenLoaded(
   }
 }
 
-/// paintCanvasDocument draws [doc] at [frame].
-///
-/// [hoveredButton] is the id of the button under the pointer, if any. It is
-/// the one piece of interaction state the renderer takes, because a button's
-/// hover colours are part of its design and have to be visible while they are
-/// being chosen.
 /// CanvasPaintPart is how much of a canvas one call draws.
 ///
-/// For the editor's facing pages, and nothing else. Two leaves shown side by
-/// side want their backdrops laid down first and their contents over the top
-/// of both, so that a picture placed on one page and pulled across the gutter
-/// is seen on the other -- drawn a whole page at a time, the second page's
-/// backdrop covered the first page's overhang and the spread had a seam
-/// through the middle of it.
+/// For facing pages only: both leaves' backdrops go down first and their
+/// contents over both, so a picture pulled across the gutter is seen on the
+/// other page rather than covered by its backdrop.
 enum CanvasPaintPart {
   /// all is a whole canvas, which is what every other caller wants.
   all,
@@ -192,6 +170,11 @@ enum CanvasPaintPart {
   contents,
 }
 
+/// paintCanvasDocument draws [doc] at [frame].
+///
+/// [hoveredButton] is the id of the button under the pointer, if any: the
+/// one piece of interaction state the renderer takes, because hover colours
+/// are part of a button's design and must show while they are chosen.
 void paintCanvasDocument(
   ui.Canvas canvas,
   CanvasDocument doc, {
@@ -201,15 +184,12 @@ void paintCanvasDocument(
   String? hoveredButton,
   bool editing = false,
 
-  /// skipElement is left out of the drawing. The editor exists for one case --
-  /// a text element being typed into has a real text field over it, and
-  /// painting the words underneath as well shows the sentence twice.
+  /// skipElement is left out of the drawing: a text element being typed
+  /// into has a real text field over it.
   String? skipElement,
 
   /// skipTextItem is one of a text element's extra pieces, left out for the
-  /// same reason: its words have a field of their own over them while they
-  /// are being typed. The element itself goes on being drawn -- a card with
-  /// one piece being edited is still a card.
+  /// same reason; the rest of the element is still drawn.
   String? skipTextItem,
 
   /// backgrounds is the editor's cache of generated backgrounds. Null for the
@@ -280,27 +260,17 @@ void paintCanvasDocument(
   }
   if (part == CanvasPaintPart.backdrop) return;
 
-  // The shared canvas, under every scene. Under rather than over: what goes
-  // on a master is a backdrop, a frame, a watermark -- the things a scene is
-  // laid on top of. Something that has to sit over the scenes is a thing to
-  // put on each of them, and there is no way to have both without asking the
-  // question twice on every element.
-  //
-  // Not while the master is the canvas being edited, or it would be drawn
-  // twice: once as itself and once as the thing behind itself.
+  // The shared canvas, under every scene (over it with doc.masterOver). Not
+  // while the master is itself being edited, or it would be drawn twice.
   var master = doc.masterScene;
-  // The master runs on the whole run's clock, not the scene's: a line that
-  // creeps along under twenty scenes is at frame 4000 of its track in the
-  // last of them, not back at nought. Its timed sounds already played that
-  // way; its keyframes were read on the scene's frame, so every master
-  // animation started again at every scene. See CanvasDocument.offTimeline.
+  // The master runs on the whole run's clock, not the scene's, so its
+  // animation does not restart at every scene. See
+  // CanvasDocument.startOfScene.
   var onMaster = master != null && !doc.editingMaster
       ? {for (var e in master.elements) e.id}
       : const <String>{};
-  //
-  // Not a book's. Its pages are read one at a time, in any order and for as
-  // long as the reader likes, and what is on its master -- a page number, a
-  // running head -- belongs to the page it is printed on.
+  // Except in a book: its pages are read in any order, and what is on its
+  // master (a page number, a running head) belongs to the page it is on.
   var runFrame = doc.hasScenes && !doc.isPages && onMaster.isNotEmpty
       ? doc.startOfScene(doc.at) + frame
       : frame;
@@ -358,11 +328,8 @@ void paintCanvasDocument(
       backgrounds: backgrounds);
 }
 
-/// _paintScene draws one canvas's worth of elements.
-///
-/// Its own function because a document draws two of them now -- the shared
-/// canvas and the scene on top of it -- and the rules for what is skipped are
-/// the same for both.
+/// _paintScene draws one canvas's worth of elements: the shared canvas or
+/// the scene, with the same rules for what is skipped.
 void _paintScene(
   ui.Canvas canvas,
   CanvasDocument doc,
@@ -378,26 +345,16 @@ void _paintScene(
   String? skipElement,
   String? skipTextItem,
   double Function(CounterElement)? counterValue,
-
-  /// liveMotion is the elements playing from their slots -- see
-  /// motion_player.dart. Null in an export, which draws the timeline.
   LiveMotion? liveMotion,
   int Function(CounterElement)? counterPressed,
   bool Function(CounterElement)? counterRunning,
-
-  /// audioState is how a sound is doing -- playing, muted, how loud -- for the
-  /// icon to show it. Null in an export, where nothing is playing.
   AudioState Function(AudioElement)? audioState,
-
-  /// videoShow is where each video has got to -- its frame, its play bar.
-  /// Null in an export, which shows the poster.
   VideoShow Function(VideoElement)? videoShow,
   ({String id, int frame})? previewing,
   ProceduralCache? backgrounds,
 }) {
-  // Lines that are only there to carry somebody's text, and have been asked to
-  // stay out of the picture. Collected first because the text that hides a line
-  // may be drawn after it.
+  // Lines that only carry a text and are set to stay out of the picture.
+  // Collected first because the text that hides a line may be drawn after it.
   var hidden = <String>{
     for (var e in elements)
       if (e is TextElement && e.curve?.hideHost == true) e.curve!.elementId,
@@ -452,16 +409,12 @@ void _paintDocumentBackground(
     double frameRate,
     [ui.Image? backdrop,
     VideoShow Function(VideoElement)? videoShow]) {
-  // A backdrop handed in has already been generated: it is this document's own
-  // background, rasterised once for a whole run of frames -- see
-  // ExportBackdrop. Generating the same still picture for every frame of an
-  // export is the most expensive thing an export does.
+  // A backdrop handed in is this document's background, rasterised once for
+  // a whole run of frames. See ExportBackdrop.
   if (backdrop != null) {
-    // On the export's own pixels it is one pixel to one pixel, and wants no
-    // filtering: any filter at all resamples it -- which is both slower and,
-    // pixel for pixel, not the picture the slow road would have drawn. Under
-    // a scene's camera it is drawn larger or smaller than that, and is
-    // filtered like any picture that is.
+    // At one pixel to one pixel it is drawn unfiltered, so it matches what
+    // the slow road would draw; under a scene's camera it is scaled, and
+    // filtered like any scaled picture.
     var m = canvas.getTransform();
     var across = rect.width * math.sqrt(m[0] * m[0] + m[1] * m[1]);
     var exact = (across - backdrop.width).abs() < 0.5;
@@ -478,9 +431,8 @@ void _paintDocumentBackground(
   // See CanvasDocument.drawnBackground.
   var bg = doc.drawnBackground;
 
-  // The picture, the video and the sound are elements stretched to the page
-  // -- see CanvasBackground.picture. Whatever box they were saved with, the
-  // page is theirs.
+  // The picture, the drawing and the video are elements stretched to the
+  // page, whatever box they were saved with.
   T onPage<T extends CanvasElement>(T e) => e.rebase(ElementBase(
       id: e.id,
       x: rect.left,
@@ -492,19 +444,17 @@ void _paintDocumentBackground(
   var decoded = picture == null
       ? null
       : images?.resolve(picture.assetId, picture.removal);
-  // A picture that covers the whole page with nothing cut out of it hides
-  // the pattern entirely, and generating a pattern nobody can see is the most
-  // expensive way there is to draw nothing. Anything else -- a picture with
-  // its background removed, cut to a shape, contained, or still decoding --
-  // has the pattern showing round it or through it.
+  // A decoded picture covering the whole page with nothing cut out hides the
+  // pattern, so the pattern is not generated. Anything else shows the
+  // pattern round it or through it.
   var covered = decoded != null &&
       picture!.fit == ImageFit.cover &&
       !picture.removal.active &&
       picture.frame == null &&
       picture.box.padding == 0;
   if (bg.isStage) {
-    // The stage in the pattern's place: a set, through its camera, that
-    // the characters standing on it are drawn in front of.
+    // The stage in the pattern's place, seen through its camera; whatever
+    // stands on it is drawn in front.
     paintStage(canvas, rect, bg.stageOn(rect), (time * frameRate).round(),
         images: images);
   } else if (bg.isParallax) {
@@ -538,9 +488,8 @@ void _paintPattern(
     CanvasImageSource? images,
     ProceduralCache? backgrounds,
     double frameRate) {
-  // The one drawn last time, where it is the same background at the same
-  // size. Generating one is the most expensive thing on a canvas and the
-  // editor repaints for everything -- see ProceduralCache.
+  // The cached one where it is the same background at the same size. See
+  // ProceduralCache.
   var ready = backgrounds?.imageFor(bg.spec, rect.size, time, images);
   if (ready != null) {
     canvas.drawImageRect(
@@ -550,41 +499,38 @@ void _paintPattern(
         Paint()..filterQuality = FilterQuality.low);
     return;
   }
-  // The rate as well as the moment: a movement that runs once is told how
-  // many frames it has, and frames are not seconds until somebody says how
-  // many there are in one. See ProceduralSpec.passFrames.
+  // The rate as well as the time: a movement that runs once is counted in
+  // frames. See ProceduralSpec.passFrames.
   paintProcedural(canvas, rect, bg.spec,
       time: time, frameRate: frameRate, images: images);
 }
 
 /// paintDocumentBackdrop draws a document's background and nothing else.
 ///
-/// For an export, which rasterises it once and then draws that picture on
-/// every frame -- see ExportBackdrop. Public because the background painter
-/// itself is private and has six arguments, half of which an export has no
-/// answer for.
+/// For an export, which rasterises it once and draws that picture on every
+/// frame. See ExportBackdrop.
 void paintDocumentBackdrop(ui.Canvas canvas, CanvasDocument doc,
         {CanvasImageSource? images}) =>
     _paintDocumentBackground(
         canvas, doc.size.rect, doc, 0, images, null, doc.frameRate.toDouble());
 
 /// chartSeriesReveal is how far each of a chart's series is through its own
-/// arrival, or null where none of them has been offset -- which is nearly
-/// every chart, and is why this costs nothing to have.
+/// arrival, or null where none has been offset (nearly every chart).
 ///
-/// Worked out by asking the element's own keyframes what the chart looked
-/// like a second and a half ago, rather than by squeezing a fraction out of
-/// the chart's reveal. That is what makes the offset a shift in time and not
-/// a change of speed: the series plays at the speed everything else does, a
-/// second and a half behind it. It also means a series put back really does
-/// go on arriving after the chart's own arrival has finished -- the keyframes
-/// hold at their last value, so asking for an earlier frame keeps returning
-/// the middle of the arrival until the shift has been paid off.
-List<double>? chartSeriesReveal(ChartElement e, int frame, int frameRate) {
+/// A series' reveal is the chart's own reveal read ChartSeries.delay
+/// seconds earlier, so the offset is a shift in time rather than a change of
+/// speed, and a delayed series goes on arriving after the chart's arrival
+/// has finished.
+///
+/// [poseAt] is the chart's pose on a frame, clips included; without it, its
+/// legacy track alone.
+List<double>? chartSeriesReveal(ChartElement e, int frame, int frameRate,
+    {Keyframe Function(int frame)? poseAt}) {
   if (!e.data.series.any((s) => s.delay != 0)) return null;
   var track = e.track;
   var rate = frameRate <= 0 ? 1 : frameRate;
-  double at(int f) => track?.at(f).values[KeyframeChannel.reveal] ?? 1;
+  var pose = poseAt ?? (int f) => track?.at(f) ?? Keyframe.rest;
+  double at(int f) => pose(f).values[KeyframeChannel.reveal] ?? 1;
   var whole = at(frame);
   return [
     for (var s in e.data.series)
@@ -592,10 +538,9 @@ List<double>? chartSeriesReveal(ChartElement e, int frame, int frameRate) {
   ];
 }
 
-/// paintElement draws one element, with its animation pose applied.
-/// leavesByItself is whether [element] has a way out of its own to play
-/// over its closing keyframes -- an exit chosen -- or is a kind that has no
-/// exits at all. Where neither is true, paintElement fades it instead.
+/// leavesByItself is whether [element] has an exit of its own chosen to
+/// play over its closing stretch, or is a kind with no exits at all. Where
+/// neither is true, paintElement fades it instead.
 bool leavesByItself(CanvasElement element) => switch (element) {
       TextElement e => e.animation.closes,
       ChartElement e => e.animation.closes,
@@ -612,6 +557,7 @@ bool leavesByItself(CanvasElement element) => switch (element) {
       _ => true,
     };
 
+/// paintElement draws one element, with its animation pose applied.
 void paintElement(
   ui.Canvas canvas,
   CanvasElement element,
@@ -620,41 +566,30 @@ void paintElement(
   CanvasImageSource? images,
   bool hovered = false,
 
-  /// editing is true on the stage and false everywhere a document is turned
-  /// into a file. Only a guide path reads it -- see _paintPath.
+  /// editing is true on the stage and false wherever a document is turned
+  /// into a file: a guide path is drawn only while editing (_paintPath).
   bool editing = false,
 
   /// skipTextItem is the one of this element's pieces not to draw, because it
   /// has an editor open over it. See CanvasTextEditor.
   String? skipTextItem,
 
-  /// document is needed only by text that has been attached to a line, which
-  /// has to go and find it. Null elsewhere -- a thumbnail of one element has
-  /// no document to look in, and text on a curve simply falls back to its own
-  /// box there.
+  /// document is the element's document, for clips, stages, curves and page
+  /// numbers. Null for a lone element (a thumbnail), which then draws from
+  /// its own track and box alone.
   CanvasDocument? document,
 
   /// counterValue is what a live counter is showing at this instant, and
-  /// counterPressed which of its buttons is lit.
+  /// counterPressed which of its buttons is lit. Asked of the caller because
+  /// a running counter runs in somebody's window; null, as in an export,
+  /// means nothing is running.
   ///
-  /// Asked of the caller rather than worked out here, because a counter that
-  /// is running is running in somebody's window: the stage knows, a published
-  /// canvas knows, and an exported frame has nobody to ask. Null means
-  /// nobody is running anything, which is what an export is.
+  /// liveMotion, audioState and videoShow: see paintCanvasDocument.
   double Function(CounterElement)? counterValue,
-
-  /// liveMotion is the elements playing from their slots -- see
-  /// motion_player.dart. Null in an export, which draws the timeline.
   LiveMotion? liveMotion,
   int Function(CounterElement)? counterPressed,
   bool Function(CounterElement)? counterRunning,
-
-  /// audioState is how a sound is doing -- playing, muted, how loud -- for the
-  /// icon to show it. Null in an export, where nothing is playing.
   AudioState Function(AudioElement)? audioState,
-
-  /// videoShow is where each video has got to -- its frame, its play bar.
-  /// Null in an export, which shows the poster.
   VideoShow Function(VideoElement)? videoShow,
 
   /// poseOutside leaves the pose's move, turn, scale and fade out, for a
@@ -668,30 +603,24 @@ void paintElement(
   /// background element is drawn from as the canvas's own background is.
   ProceduralCache? backgrounds,
 }) {
-  // A camera is what is seen, never in it: see camera_framing.dart.
+  // A camera frames the picture and is never in it: see cameraFrame.
   if (element is CameraElement) return;
-  // Its own keyframes, and its clips' moves on top. See motion_document.dart.
+  // Its clips' moves over any legacy track. See motion_document.dart.
   var pose = poseWithMotion(element, frame, document, live: liveMotion);
   var outer = poseOutside ? Keyframe.rest : pose;
   var alpha = (element.opacity * outer.opacity).clamp(0.0, 1.0);
-  // A way out with no exit chosen fades rather than doing nothing. The
-  // editor never leaves one like that -- choosing None takes the keyframes
-  // too -- but a preset, a paste or a document written by a script can, and
-  // an element that stays on screen through its own leaving band reads as a
-  // broken timeline rather than as a missing setting.
+  // A closing stretch with no exit chosen fades rather than doing nothing:
+  // the editor never leaves one, but a preset, a paste or a script can.
   var close = pose.values[KeyframeChannel.close] ?? 0;
   if (!poseOutside && close > 0 && !leavesByItself(element)) {
     alpha *= (1 - close).clamp(0.0, 1.0);
   }
   if (alpha <= 0.002) return;
 
-  // A video on the timeline is on screen while its clip is, as in an
-  // editor: from where it starts to where it ends. Its poster before and
-  // after was a second picture over the first wherever a clip had been cut
-  // in two, the later half's still covering the earlier half as it played.
-  //
-  // A master's video in a run of scenes has been handed the run's frame
-  // already -- see paintCanvasDocument -- and a book's has its page's.
+  // A video is on screen only while its clip is, so the two halves of a cut
+  // clip do not cover each other with posters. A master's video in a run of
+  // scenes has been handed the run's frame already (paintCanvasDocument), and
+  // a book's has its page's.
   if (element is VideoElement &&
       document != null &&
       document.offTimeline(element.clip, frame,
@@ -702,10 +631,9 @@ void paintElement(
 
   var bounds = element.bounds;
 
-  // Something standing on a stage is where the stage's camera sees it: a
-  // 3D character drawn through the camera, and everything else drawn as
-  // it is on the page and set into the stage, a flat in perspective. Both
-  // lit by the stage.
+  // Something standing on a stage is drawn where the stage's camera sees it:
+  // a 3D model through the camera, anything else as a flat in perspective.
+  // Both lit by the stage.
   var spot = element.base.spot;
   if (spot != null && document != null && canStand(element)) {
     var at = stagedIn(document, element, frame);
@@ -772,11 +700,9 @@ void paintElement(
     }
   }
 
-  // A page number that sits on the outside edge of the leaf. Mirrored about
-  // the middle of the page rather than nudged by a figure somebody types, so
-  // that the two sides of a spread match however it is placed -- and so that
-  // one already in the middle stays there, the mirror of the centre being the
-  // centre. See CounterElement.mirrored.
+  // A page number on the outside edge of the leaf: mirrored about the middle
+  // of a left-hand page, so both sides of a spread match and a centred one
+  // stays centred. See CounterElement.mirrored.
   if (element is CounterElement &&
       element.mirrored &&
       element.isPageNumber &&
@@ -787,26 +713,14 @@ void paintElement(
         bounds.width, bounds.height);
   }
 
-  // Nothing to draw in no room -- except for a line, which is a stroke from
-  // one corner of its box to the other and so has a box with no height when
-  // it is level and none with no width when it is plumb. paintArriving says
-  // the same thing about the effects; this said the opposite and dropped the
-  // element, so a line dragged flat, or snapped flat against a guide,
-  // vanished. It is still selectable while invisible -- a line is hit-tested
-  // against its stroke rather than its box -- which is the worst way for it
-  // to go.
+  // Nothing to draw in no room -- except a line, whose box has no height
+  // when it is level and no width when it is plumb. paintArriving agrees.
   var flat = element is LineElement;
   if (bounds.width <= 0 && bounds.height <= 0) return;
   if (!flat && (bounds.width <= 0 || bounds.height <= 0)) return;
 
-  // Text riding a line has no transform of its own. Where it is, how it is
-  // turned and how big it is are all the line's to decide -- that is the whole
-  // point of attaching it -- so applying the element's own position and angle
-  // on top moved the words off the line they were supposed to be on, and
-  // turned them independently of it.
-  //
-  // The fade is kept: an entrance is a property of the text rather than of the
-  // line it happens to be sitting on.
+  // Text riding a line has no transform of its own: where it is, its turn
+  // and its size are the line's. Its fade is kept, being the text's own.
   if (element is TextElement && _curveFor(element, document, frame) != null) {
     canvas.saveLayer(
         null,
@@ -821,10 +735,8 @@ void paintElement(
 
   canvas.save();
 
-  // A team standing on a pitch has no place of its own: where it is, how it
-  // is turned and how big it is are all the pitch's to decide -- see
-  // team_painter.dart -- so nothing of its own box is applied. Its fade
-  // still is.
+  // A team linked to a pitch likewise takes its place from the pitch (see
+  // team_painter.dart); only its fade is its own.
   if (element is TeamElement && element.linked) {
     if (alpha < 0.999) {
       canvas.saveLayer(null,
@@ -837,16 +749,12 @@ void paintElement(
     return;
   }
 
-  // The pose's shift is applied in document space, then the rotation and the
-  // scale about the element's own centre. In that order, so that an element
-  // moved by a keyframe rotates about where it now is rather than swinging
-  // around where it was drawn.
+  // The pose's shift first, in document space, so a moved element turns
+  // about where it now is rather than where it was drawn.
   if (outer.dx != 0 || outer.dy != 0) canvas.translate(outer.dx, outer.dy);
 
-  // Its own angle about its centre, as it rests; then a keyframe's turn
-  // and size about its anchor -- the same thing while the anchor is in the
-  // middle. See ElementBase.anchorX.
-  // Turned and slanted about its centre -- see BoxFrame.
+  // Its resting turn and slant about its centre (BoxFrame); then the pose's
+  // turn and size about its anchor (ElementBase.anchorX).
   BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
       .applyTo(canvas, bounds.center);
   if (outer.rotate != 0 || outer.scale != 1) {
@@ -857,12 +765,11 @@ void paintElement(
     canvas.translate(-a.dx, -a.dy);
   }
 
-  // Its loop, over whatever its keyframes have done: moved, turned and
-  // sized about the loop's own pivot, and faded with the rest of it. See
-  // ElementLoop.
+  // Its loop, over its pose: moved, turned and sized about the loop's own
+  // pivot, and faded with the rest. See ElementLoop.
   if (_wholeLoop(element) case var loop? when loop.on) {
     var swing = loop.poseAt(frame,
-        arrived: arrivalEnd(element),
+        arrived: arrivalEnd(element, frameRate),
         last: (document?.frames ?? (1 << 30)) - 1);
     if (swing != null) {
       _applyLoopPose(canvas, bounds, swing,
@@ -880,10 +787,8 @@ void paintElement(
       element is VideoElement ? element.blend.flutter : BlendMode.srcOver;
   var layered = alpha < 0.999 || blend != BlendMode.srcOver;
   if (layered) {
-    // Grown before saving the layer, because a shadow, an outline or a glow
-    // reaches outside the element's own bounds and a layer clipped to them
-    // would cut it off -- visible as a shadow that vanishes the moment an
-    // element is faded.
+    // Grown, because a shadow, an outline or a glow reaches outside the
+    // element's bounds and a layer clipped to them would cut it off.
     canvas.saveLayer(
         bounds.inflate(math.max(bounds.width, bounds.height)),
         Paint()
@@ -892,8 +797,6 @@ void paintElement(
   }
 
   var time = frame / (frameRate <= 0 ? 1 : frameRate);
-  // What draws it: once, as a rule, but as often as a loop that draws into
-  // it or over it needs -- see paintLoopEffect.
   // An arrival grows, spins and flips about the anchor, where it has been
   // moved. See ElementBase.anchorX.
   var pivot = element.anchorCentred ? null : element.anchorIn(bounds);
@@ -919,7 +822,7 @@ void paintElement(
           frame: frame,
           at: frame + betweenFrames,
           last: (document?.frames ?? (1 << 30)) - 1,
-          arrived: arrivalEnd(e),
+          arrived: arrivalEnd(e, frameRate),
         );
         try {
           if (_layerByLayer(e, pose) case var arrive?) {
@@ -940,16 +843,14 @@ void paintElement(
               () => paintVector(canvas, bounds, e, images));
         }
       case ChartElement e:
-        // How much of it has arrived. A chart with no animation on it has no
-        // keyframe pinning this and gets 1, which is all of it.
+        // How much has arrived (all, with no animation), how much has left,
+        // and how far each offset series has got.
         paintChart(canvas, bounds.deflate(bounds.shortestSide * 0.02), e,
             reveal: pose.values[KeyframeChannel.reveal] ?? 1,
-            // And how much of it has left again, which is a second pair of
-            // keyframes and is zero for every chart that has none.
             close: pose.values[KeyframeChannel.close] ?? 0,
-            // And how much of each series has arrived, where they have been
-            // offset from one another in time.
-            seriesReveal: chartSeriesReveal(e, frame, frameRate));
+            seriesReveal: chartSeriesReveal(e, frame, frameRate,
+                poseAt: (f) =>
+                    poseWithMotion(e, f, document, live: liveMotion)));
       case TableElement e:
         arriving(canvas, bounds, e.animation, pose,
             () => paintTable(canvas, bounds, e, images: images));
@@ -957,17 +858,8 @@ void paintElement(
         arriving(canvas, bounds, e.animation, pose,
             () => _paintButton(canvas, bounds, e, hovered, images));
       case CounterElement e:
-        // A page number on a page that has none is not drawn at all. It used to
-        // fall back to the counter's start value, so a cover wore a 1 -- and
-        // because that 1 was the same whatever the numbering said, turning
-        // "Covers count" and "Number on covers" on and off did nothing
-        // visible, which is how both settings came to look broken.
+        // A page number on a page that has none (a cover) is not drawn.
         if (e.isPageNumber && document?.pageNumber == null) break;
-        // Keyed, the number is whatever the timeline says here; live, it is
-        // whatever the thing running it says -- and in a picture, where nothing
-        // is running, it is where the count starts. A live counter exported as
-        // a PNG is a photograph of a stopped clock, which is the only thing a
-        // still picture of one can be.
         arriving(
             canvas,
             bounds,
@@ -977,16 +869,10 @@ void paintElement(
                 canvas,
                 bounds,
                 e,
-                // Keyed, the number is the timeline's and nothing else may
-                // answer for it: the live callback is asked for *live* counters
-                // only. Asked for both, it answered "wherever this counter's
-                // clock has got to" for a counter that has no clock -- which is
-                // its starting value, at every frame, however many keyframes
-                // had been laid on it.
-                // A page number is read off the page rather than run or
-                // keyed: the same element on the master canvas says a
-                // different number on every leaf, which is the whole of what
-                // makes it a page number. See CounterSource.page.
+                // A page number is read off the page (CounterSource.page);
+                // a live counter from whatever runs it, or its start where
+                // nothing does; a keyed one from its pose alone, never the
+                // live callback, which would answer with its start.
                 e.isPageNumber
                     ? (document?.pageNumber ?? 0).toDouble()
                     : e.live
@@ -1036,7 +922,13 @@ void paintElement(
         paintStage(canvas, bounds, e, frame, images: images);
       case SpriteElement e:
         paintSprite(canvas, bounds, e, frame,
-            frameRate: frameRate, images: images, editing: editing);
+            frameRate: frameRate,
+            images: images,
+            editing: editing,
+            // Turned the way its clips move it, not only its keyframes.
+            dxAt: e.faceTravel && !e.base.motion.isEmpty && document != null
+                ? (f) => poseWithMotion(e, f, document, live: liveMotion).dx
+                : null);
       case TileMapElement e:
         // Its figures are drawn among the things stood on it, by their
         // feet, rather than where they come in the canvas's order.
@@ -1085,7 +977,7 @@ void paintElement(
   var phase = looping == null || !looping.on || looping.preset.moves
       ? null
       : looping.phaseAt(frame,
-          arrived: arrivalEnd(element),
+          arrived: arrivalEnd(element, frameRate),
           last: (document?.frames ?? (1 << 30)) - 1);
   if (looping != null && phase != null) {
     paintLoopEffect(canvas, bounds, looping, phase.$1, phase.$2,
@@ -1108,14 +1000,9 @@ void _paintText(
     String? skipItem}) {
   _paintTextBody(canvas, bounds, e, doc,
       pose: pose, frame: frame, images: images);
-  // The extra pieces of writing, over the paragraph and inside the same box.
-  // Out here rather than at the end of the body, because the body returns
-  // from half a dozen places -- riding a line, nothing arrived yet, wrapped
-  // round something, in columns -- and an item is drawn whichever of those
-  // the element's own words took.
-  //
-  // Except on a line: a text element riding a curve has no box to put them
-  // in, which is the same reason it draws no background and no border.
+  // The extra pieces of writing, over the paragraph in the same box. Out here
+  // because the body returns from half a dozen places. Not on a line, which
+  // gives them no box.
   if (e.items.isEmpty || _curveFor(e, doc, frame) != null) return;
   var (animation, reveal) = _arrival(e, pose);
   paintTextItems(canvas, bounds, e,
@@ -1125,19 +1012,15 @@ void _paintText(
 void _paintTextBody(
     ui.Canvas canvas, Rect bounds, TextElement e, CanvasDocument? doc,
     {Keyframe pose = Keyframe.rest, int frame = 0, CanvasImageSource? images}) {
-  // Text on a curve has no box of its own to fill or frame: it belongs to the
-  // line it is riding, and drawing its rectangle behind the line would be a
-  // panel nobody asked for sitting across the design.
+  // Text on a curve has no box of its own to fill or frame.
   var curve = _curveFor(e, doc, frame);
   if (curve != null) {
-    // A keyframe may be sliding the words along the line -- see
-    // KeyframeChannel.slide. Absolute rather than an offset, because a
-    // position along a line has no resting value to be measured from.
+    // The pose may slide the words along the line (KeyframeChannel.slide):
+    // an absolute position, not an offset.
     var on = e.curve!;
     var slide = pose.values[KeyframeChannel.slide];
-    // Riding a line does not exempt the words from arriving: the same
-    // animation and the same parts, applied a letter at a time in each
-    // letter's own turned frame. See paintTextOnPath.
+    // The words still arrive, a letter at a time in each letter's own turned
+    // frame. See paintTextOnPath.
     var (curveAnimation, curveReveal) = _arrival(e, pose);
     paintTextOnPath(canvas, e.displayText, e.textSpec, curve,
         slide == null ? on : on.copyWith(offset: slide),
@@ -1155,36 +1038,30 @@ void _paintTextBody(
   if (inner.width <= 0 || inner.height <= 0) return;
 
   // Given a slot, the element's own words are a block in the box like any
-  // piece rather than the paragraph filling it -- which is what lets them
-  // stack with the pieces instead of being drawn over them. See
-  // TextElement.slot.
+  // piece, so they stack with the pieces. See TextElement.slot.
   inner = textBodyRect(e, bounds) ?? inner;
   if (inner.width <= 0 || inner.height <= 0) return;
 
   var spec = drawnTextSpec(e, bounds);
 
-  // A box may be one of a line of them, sharing one piece of text -- see
-  // flowFor. What it draws is its own share of that, which for a box on its
-  // own is all of it.
+  // A box may be one of a chain sharing one text, and draws its own share
+  // of it. See flowFor.
   var flow = flowFor(e, doc, inner, spec, frame: frame, images: images);
   var words = flow.text;
-  // The styled runs that apply to *these* words: a box in a chain draws the
-  // head's text further along, so the head's runs are counted from its own
-  // first word. See TextFlow.parts.
+  // The styled runs for *these* words, counted from this box's first word.
+  // See TextFlow.parts.
   var drawn = e.drawnPartsWith(flow.parts);
 
-  // How much of it has arrived, and how much has left again -- the same two
-  // channels a chart's animation uses, so the timeline treats the two kinds
-  // of element identically. See TextAnimation.
+  // How much has arrived and how much has left: the same two channels a
+  // chart uses. See TextAnimation.
   var (animation, reveal) = _arrival(e, pose);
   var timings = _partTimings(e, frame, pose);
 
   // On the way out the paragraph goes as one: a part has a moment of its own
   // arriving, and there is no second leaving animation for it to have.
   var leaving = (pose.values[KeyframeChannel.close] ?? 0) > 0;
-  // Nothing yet -- unless what is being animated is a mark drawn *on* the
-  // words and the words are meant to be there already, which is what an
-  // underline being drawn under a finished sentence looks like.
+  // Nothing yet -- unless the animation is a mark drawn on words that are
+  // already there, such as an underline under a finished sentence.
   if (animation.on &&
       reveal <= 0 &&
       !(animation.keeps && animation.draw.start == TextDrawStart.showText) &&
@@ -1194,23 +1071,15 @@ void _paintTextBody(
     return;
   }
 
-  // Around whatever is in the way, where that has been asked for and there
-  // is something in the way. A different way of setting type -- line by line
-  // against the elements round it -- so it runs only for an element that
-  // wants it. See text_wrap.dart.
+  // Set line by line round whatever is in the way, where asked for. See
+  // text_wrap.dart.
   var blocked = wrapObstacles(e, doc, frame, inner, images: images);
   if (e.wrap.on &&
       blocked.isNotEmpty &&
       wrapFits(words, spec, inner, blocked, e.wrap)) {
-    // The marks and the arrival still apply, as a block: the words are set a
-    // line at a time here, so there are no pieces for a per-letter motion to
-    // move. A whole-paragraph preset reads the same either way.
-    //
-    // The outline and the fill apply too, and used not to: wrapped text was
-    // laid out and painted straight, so Outline and Painted with stopped
-    // meaning anything the moment Wrap around things was turned on. Both are
-    // asked for the same way as everywhere else -- see outlineSpecFor and
-    // paintThroughText.
+    // The marks and the arrival apply as a block: set a line at a time,
+    // there are no pieces for a per-letter motion to move. The outline and
+    // the fill apply as everywhere else (outlineSpecFor, paintThroughText).
     var wrapped = layoutWrapped(words, spec, inner, blocked, e.wrap,
         parts: drawn,
         outlineSpec: outlineSpecFor(spec,
@@ -1225,10 +1094,8 @@ void _paintTextBody(
         canvas.saveLayer(inner.inflate(inner.height),
             Paint()..color = Color.fromRGBO(0, 0, 0, frameOf.alpha));
       }
-      // The stroke drawn onto words that are already there, where that is
-      // the preset. The motion itself leaves the opacity alone -- see
-      // applyMotion -- so without this Draw the outline drew the finished
-      // paragraph from its first frame here too.
+      // The stroke drawn onto the words, where that is the preset: the
+      // motion leaves the opacity alone (applyMotion), so it is done here.
       var p = animation.progressAt(reveal, 0, 1);
       var stroke = animation.on &&
           animation.preset.motion == TextMotion.strokeOn &&
@@ -1261,14 +1128,9 @@ void _paintTextBody(
   }
 
   if (e.columns.isSingle) {
-    // Kept inside its box. A box is a box: words that do not fit are hidden,
-    // which is what makes the overflow grip's red mean anything and what lets
-    // them run on into another box -- see flowFor.
-    //
-    // Not while something is arriving, though. Half the presets bring the
-    // words in from outside the box and an echo leaves its copies there, so a
-    // clip that was always on would cut an animation into a box-shaped hole.
-    // At rest the words are inside; on the way in they are allowed out.
+    // Clipped to its box at rest, so words that do not fit are hidden (and
+    // can run on into another box, see flowFor) -- but not while arriving,
+    // since many presets bring the words in from outside the box.
     var arriving = animation.on && (reveal < 1 || animation.keeps);
     paintTextInBox(canvas, words, spec, inner,
         clip: !arriving && !partsAnimate(drawn),
@@ -1280,12 +1142,9 @@ void _paintTextBody(
         images: images);
     return;
   }
-  // Columns animate piece by piece like anything else: the pieces are worked
-  // out once for the whole paragraph and drawn column by column, so a stagger
-  // carries on from the last word of one column into the first of the next.
-  // How the words are broken is the chain's, not this box's: every box in one
-  // tidies its column tops the same way or none of them does. See
-  // TextFlow.tidyStart.
+  // The pieces are worked out once for the whole paragraph and drawn column
+  // by column, so a stagger runs on from one column into the next. Whether
+  // column tops are tidied is the chain's choice: see TextFlow.tidyStart.
   paintTextInColumns(canvas, words, spec, inner,
       e.columns.copyWith(noBlankStart: flow.tidyStart),
       animation: animation,
@@ -1299,10 +1158,8 @@ void _paintTextBody(
 /// _arrival is the animation a text element is playing on this frame, and how
 /// far through it is.
 ///
-/// The two channels a chart's animation uses, read the same way, so the
-/// timeline treats the two kinds of element identically -- and so that text
-/// in a box and text riding a line ask the same question rather than two that
-/// drift apart. See TextAnimation.
+/// The two channels a chart uses, read the same way; text in a box and text
+/// on a line both ask here. See TextAnimation.
 (TextAnimation, double) _arrival(TextElement e, Keyframe pose) {
   var animation = e.animation;
   var reveal = pose.values[KeyframeChannel.reveal] ?? 1;
@@ -1313,9 +1170,9 @@ void _paintTextBody(
   return (animation, reveal);
 }
 
-/// _arrivalFrames is the stretch [e]'s arrival plays over: the frames of
-/// its arrival's keyframes, or of the clip playing it (see revealsIn) --
-/// what its words, layers and shapes are timed against.
+/// _arrivalFrames is the stretch [e]'s arrival plays over -- the clip
+/// playing it (see revealsIn), or a legacy track's reveal keyframes -- which
+/// its words, layers and shapes are timed against.
 (int?, int?) _arrivalFrames(CanvasElement e, Keyframe pose) {
   int? from, to;
   for (var key in e.track?.keys ?? const <Keyframe>[]) {
@@ -1334,27 +1191,19 @@ void _paintTextBody(
 
 /// _partTimings is where each of [e]'s parts has got to on [frame].
 ///
-/// Measured from the element's own arrival -- the two keyframes the timeline
-/// shows -- so a part's offset is a nudge against the thing it belongs to
-/// rather than a frame number of its own that goes stale the moment those
-/// keyframes are dragged.
-///
-/// Everything is simply there when the element is leaving: on the way out the
-/// paragraph goes as one, and a part still playing its own arrival underneath
-/// an exit is two animations arguing.
+/// Measured from the element's own arrival (_arrivalFrames), so a part's
+/// offset moves with it. Everything is simply there while the element is
+/// leaving: the paragraph goes as one.
 List<PartTiming> _partTimings(TextElement e, int frame, Keyframe pose) {
-  // Against drawnParts rather than the parts themselves: the element's own
-  // marks are one of them, and a timing list that did not line up with the
-  // list the painter uses would give every part the one before its own.
+  // Against drawnParts, which includes the element's own marks, so the list
+  // lines up with the one the painter uses.
   var parts = e.drawnParts;
   if (parts.isEmpty) return const [];
   var closing = (pose.values[KeyframeChannel.close] ?? 0) > 0;
   if (closing) return [for (var _ in parts) PartTiming.there];
 
   var (from, to) = _arrivalFrames(e, pose);
-  // No arrival to measure against -- one keyframe, or none. A part with an
-  // animation of its own has nothing to be early or late for, so it simply
-  // follows the element: an offset needs two keyframes to be an offset from.
+  // No arrival stretch to measure against: every part follows the element.
   if (from == null || to == null || to <= from) {
     var reveal = pose.values[KeyframeChannel.reveal] ?? 1;
     return [
@@ -1371,11 +1220,9 @@ List<PartTiming> _partTimings(TextElement e, int frame, Keyframe pose) {
 
 /// drawnTextSpec is the type a text element is actually drawn in.
 ///
-/// Which is not always the type it is set in: with Fit to box on, the size
-/// comes from the room rather than from the setting. Public, and asked by the
-/// editor as well as by the painter, because the two have to agree -- clicking
-/// into a fitted paragraph and having the letters change size is the editor
-/// answering a question the canvas has already answered differently.
+/// With Fit to box on, the size comes from the room rather than the setting.
+/// The editor asks too, so the letters do not change size when a fitted
+/// paragraph is clicked into.
 ///
 /// [bounds] is the element's rectangle, padding included; the fit is measured
 /// inside it.
@@ -1386,19 +1233,16 @@ TextSpec drawnTextSpec(TextElement e, Rect bounds) {
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return spec;
 
-  // Measured against one column's *width*, since that is the width a line
-  // will be given -- but against all the columns' room, since that is where
-  // the text goes. Fitted to one column's box, the type came out a third of
-  // the size it could be and all of it landed in the first column, which read
-  // as columns not working with Fit to box at all.
+  // Against one column's width, the width a line is given, but all the
+  // columns' room, which is where the text goes.
   var column = Size(e.columns.columnWidth(inner.width), inner.height);
   return spec.copyWith(
       fontSize:
           fitFontSize(e.displayText, spec, column, columns: e.columns.count));
 }
 
-/// lineWithPose is [e] with whatever its keyframes say about its bow on
-/// [frame], so the hit test catches the curve where it is drawn.
+/// lineWithPose is [e] with its track's bow on [frame], so the hit test
+/// catches the curve where it is drawn. Clips' bows are not included.
 LineElement lineWithPose(LineElement e, int frame) =>
     _bowed(e, e.poseAt(frame));
 
@@ -1410,17 +1254,10 @@ LineElement _bowed(LineElement e, Keyframe pose) {
 
 /// visualBoundsOf is where [element] is actually drawn.
 ///
-/// Different from its own rectangle for exactly three things, and for all
-/// three the rectangle is misleading rather than merely approximate:
-///
-///   a bowed line or a pulled-about path bulges outside its box, so the box
-///   covers the chord and not the curve;
-///   text riding a line is drawn wherever the line is, and its own box is
-///   wherever it happened to be dropped -- often nowhere near the words.
-///
-/// The selection outline, the handles and the on-canvas text editor all use
-/// this, because a box drawn somewhere other than the thing it belongs to is
-/// worse than no box: it invites dragging empty space.
+/// Different from its moved rectangle for something on a stage (where the
+/// camera puts it), a bowed line or a path (which bulge outside their box),
+/// and text riding a line (drawn wherever the line is). The selection
+/// outline, the handles and the on-canvas text editor all use this.
 Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame,
     {LiveMotion? live}) {
   // With its clips' moves on it: see movedBoundsAt.
@@ -1437,9 +1274,7 @@ Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame,
       var glyphs = placeTextOnPath(
           element.displayText, element.textSpec, curve, element.curve!);
       var box = textOnPathBounds(glyphs, element.curve!);
-      // No letters placed -- an empty string, or a slide that has carried them
-      // off the end of the line -- so there is nothing to draw a box around
-      // except the line itself.
+      // No letters placed (empty, or slid off the end): the line itself.
       return box ?? _boundsOfPoints(curve) ?? moved();
     }
     return moved();
@@ -1450,10 +1285,8 @@ Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame,
     var curve = curveOfElement(host);
     var box = _boundsOfPoints(curve);
     if (box == null) return moved();
-    // Room for the stroke itself, which is centred on the path, and for
-    // whatever is drawn at the ends -- an arrowhead reaches three and a half
-    // stroke widths past the point the line stops at, and a box that ignored
-    // it would cut the arrow in half.
+    // Room for the stroke, centred on the path, and for the ends: an
+    // arrowhead reaches 3.5 stroke widths past the end point.
     var width = element is LineElement
         ? element.strokeWidth
         : (element as PathElement).strokeWidth;
@@ -1484,13 +1317,10 @@ Rect? _boundsOfPoints(List<Offset>? points) {
 
 /// hasOwnGeometry is whether an element's size and angle are its own to change.
 ///
-/// False for text riding a line: where it is, how big and how turned are all
-/// the line's, so resize handles and a rotate ring on it would be controls
-/// that appear to do nothing.
+/// False for text riding a line, whose place, size and turn are the line's.
 bool hasOwnGeometry(CanvasElement element, CanvasDocument? doc, int frame) =>
     !(element is TextElement && _curveFor(element, doc, frame) != null) &&
-    // Nor is something's standing on a stage: it is sized and turned by
-    // the camera, its height in metres in its settings.
+    // Nor for something standing on a stage: the camera sizes and turns it.
     !(element.base.spot != null &&
         doc != null &&
         stagedIn(doc, element, frame) != null);
@@ -1498,11 +1328,8 @@ bool hasOwnGeometry(CanvasElement element, CanvasDocument? doc, int frame) =>
 /// curveOfElement is [element]'s own line as a polyline in document space, or
 /// null when it has none.
 ///
-/// Public because the stage needs it to hit-test: a curved line or path bows
-/// *outside* its own bounding box, so clicking where the stroke visibly is
-/// missed the element and clicking a corner of the empty box selected it. The
-/// renderer already knows how to walk one, and two answers to "where is this
-/// curve" would be one answer too many.
+/// The stage hit-tests against it, since a curved line or path bows outside
+/// its own box.
 List<Offset>? curveOfElement(CanvasElement element) {
   var points = _curvePoints(element);
   if (points == null) return null;
@@ -1532,25 +1359,18 @@ List<Offset> _rotatedWith(CanvasElement host, List<Offset> points) {
 /// _curveFor is the line a text element is riding, as a list of points in
 /// document space, or null when it is an ordinary paragraph.
 ///
-/// Named rather than copied, so moving or reshaping the line carries its text
-/// with it. A curve that has been deleted since simply stops being found, and
-/// the text falls back to its own box -- which is visible and fixable, where
-/// vanishing would not be.
+/// Found by id, so moving or reshaping the line carries its text with it. A
+/// deleted line is simply not found, and the text falls back to its box.
 List<Offset>? _curveFor(TextElement e, CanvasDocument? doc, int frame) {
   var on = e.curve;
   if (on == null || doc == null) return null;
   var host = doc.elementById(on.elementId);
-  // The host's own keyframes count: a line whose bow is animated has to carry
-  // its text through the bend rather than leaving it on the shape the line had
-  // at frame zero.
+  // The host's animated bow counts (its track only; clips' bows do not).
   if (host is LineElement) host = _bowed(host, host.poseAt(frame));
   var points = _curvePoints(host);
   if (points == null) return null;
 
-  // Turned with the line, about the line's own centre -- the same transform
-  // the painter applies when it draws it. Without this, changing a line's
-  // angle moved the line and left its text lying flat where the line used to
-  // be, which is the one thing attaching text to a line is supposed to prevent.
+  // Turned with the line about its centre, as the painter turns it.
   return _rotatedWith(host!, points);
 }
 
@@ -1566,13 +1386,10 @@ List<Offset>? _curvePoints(CanvasElement? host) {
     ];
   }
   if (host is LineElement) {
-    // A line's own curvature is a quadratic bow between its ends, so it is
-    // sampled rather than taken as two points -- otherwise text on a bent line
-    // runs straight through the bend.
+    // A bowed line is a quadratic between its ends, so it is sampled, with
+    // the painter's own control point (lineControlPoint).
     var a = host.start, b = host.end;
     if (host.curvature == 0) return [a, b];
-    // The same control point the painter uses, rather than the same formula
-    // written out again -- see lineControlPoint.
     var control = lineControlPoint(host);
     return [
       for (var i = 0; i <= _curveSamplesPerSegment * 2; i++)
@@ -1583,8 +1400,7 @@ List<Offset>? _curvePoints(CanvasElement? host) {
 }
 
 /// _curveSamplesPerSegment is how finely a curve is walked when text is placed
-/// along it. Sixteen a segment keeps the letters on the line at any size a
-/// canvas is exported at, without turning a paragraph into thousands of points.
+/// along it: enough to keep letters on the line at any export size.
 const int _curveSamplesPerSegment = 16;
 
 Offset _quadratic(Offset a, Offset control, Offset b, double t) {
@@ -1610,9 +1426,8 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e,
       corners: e.corners,
       bubble: e.bubble);
 
-  // Across the shape's own bounds, so a gradient runs the length of the thing
-  // it is filling rather than of whatever rectangle the caller happened to
-  // hand down.
+  // Across the shape's own bounds, so a gradient runs the length of the
+  // shape rather than of the rectangle handed down.
   var area = path.getBounds();
   // A fade of its own counts as a fill: the flat colour may have been turned
   // all the way down on the way to setting one. See PaintSpec.shows.
@@ -1620,8 +1435,7 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e,
   if (filled.shows) {
     canvas.drawPath(path, filled.into(Paint(), area));
   }
-  // A picture or a pattern inside it, cut to the outline -- the same cut the
-  // letters and a box get, of a third shape. See TextFill.
+  // A picture or a pattern inside it, cut to the outline. See TextFill.
   if (e.painted.on) {
     paintThroughText(
         canvas, area, e.painted, images, () => canvas.drawPath(path, Paint()));
@@ -1639,12 +1453,6 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e,
   }
 
   if (e.text.isNotEmpty) {
-    // Inset to the largest rectangle comfortably inside the shape rather than
-    // to its bounds, so a label in a circle or a triangle does not run out
-    // over the edge. A crude fraction is right here: the alternative is
-    // solving for the inscribed rectangle of an arbitrary path.
-    // A bubble's words go in its body, which is the box less whatever the tail
-    // took -- so a tail on the left does not push the text off to the right.
     paintTextInBox(canvas, e.textSpec.textCase.apply(e.text), e.textSpec,
         labelRoom(e, rect));
   }
@@ -1653,14 +1461,11 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e,
 /// labelRoom is where a shape's label is set: the padding it has been given,
 /// or the shape's own sensible inset where it has been given none.
 ///
-/// The fractions are crude on purpose -- the alternative is solving for the
-/// inscribed rectangle of an arbitrary path -- and they are what makes a
-/// label in a circle or a triangle stay off the edge without anybody setting
-/// anything. Asking for padding replaces them, side by side, which is the
-/// point of asking.
+/// The fractions are crude on purpose (the alternative is solving for the
+/// inscribed rectangle of an arbitrary path) and keep a label in a circle or
+/// a triangle off the edge. Padding, when set, replaces them.
 Rect labelRoom(ShapeElement e, Rect rect) {
-  // A bubble's words go in its body, which is the box less whatever the tail
-  // took -- so a tail on the left does not push the text off to the right.
+  // A bubble's words go in its body: the box less whatever the tail took.
   if (e.shape == ShapeKind.speechBubble) {
     var body = bubbleBodyRect(rect, e.bubble);
     if (e.padded) return e.pad.inner(body);
@@ -1687,11 +1492,7 @@ Rect labelRoom(ShapeElement e, Rect rect) {
 /// lineControlPoint is the control point of the quadratic a bowed line is
 /// drawn as, in the element's own unrotated coordinates.
 ///
-/// One definition, because three things need it and any two of them disagreeing
-/// is a visible fault: the painter draws the curve from it, the hit test walks
-/// the same curve, and the arrowheads take their direction from it. It used to
-/// be written out twice and the arrowheads did not use it at all.
-///
+/// The painter, the hit test and text on the line all use it, so they agree.
 /// Pushed out perpendicular to the chord, so the bow is symmetrical whichever
 /// way round the line runs.
 Offset lineControlPoint(LineElement e) {
@@ -1712,8 +1513,7 @@ void _paintLine(ui.Canvas canvas, LineElement e) {
     path.quadraticBezierTo(control.dx, control.dy, e.end.dx, e.end.dy);
   }
 
-  // Across the whole line, so a stroke that fades runs from one end of it to
-  // the other whichever way the line is pointing.
+  // Across the whole line, so a fade runs end to end whichever way it points.
   var paint = PaintSpec(e.color, gradient: e.fade).into(
       Paint()
         ..style = PaintingStyle.stroke
@@ -1721,11 +1521,8 @@ void _paintLine(ui.Canvas canvas, LineElement e) {
         ..strokeCap = e.cap.flutter,
       path.getBounds());
 
-  // Measured rather than worked out by hand. A path metric gives the exact
-  // position *and* direction at any distance along the curve, which is the one
-  // thing the arrowheads need and the one thing that was being guessed: they
-  // took the straight chord's angle whatever the bow, so on a curve they sat
-  // askew with the tail across the line instead of flat against the end.
+  // A path metric gives the exact position and direction at each end, so the
+  // decorations sit square on a bowed line.
   var metrics = path.computeMetrics().toList();
   if (metrics.isEmpty) return;
   var metric = metrics.first;
@@ -1735,10 +1532,8 @@ void _paintLine(ui.Canvas canvas, LineElement e) {
   var endTangent = metric.getTangentForOffset(length);
   if (startTangent == null || endTangent == null) return;
 
-  // A pointed decoration is drawn with its tip on the line's end, so the
-  // stroke is cut back to the decoration's base. Without the trim, a thick
-  // stroke runs on underneath and pokes out of the sides of the barb -- and
-  // the whole point of an arrow is that it comes to a point.
+  // A decoration is drawn on the line's end, so the stroke is cut back to its
+  // base, or a thick stroke pokes out of the sides of the barb.
   var trimStart = _trimFor(e.startEnd, e.strokeWidth, e.endSize);
   var trimEnd = _trimFor(e.endEnd, e.strokeWidth, e.endSize);
   var from = math.min(trimStart, length * 0.45);
@@ -1748,14 +1543,8 @@ void _paintLine(ui.Canvas canvas, LineElement e) {
   canvas.drawPath(
       e.dash > 0 ? dashPath(stroke, e.dash, e.dash * 0.8) : stroke, paint);
 
-  // From the vector, never from Tangent.angle. That getter is defined as
-  // *minus* atan2(dy, dx) -- an angle measured anticlockwise, the way a
-  // mathematician draws axes -- while everything drawn here is in canvas
-  // space, where y grows downwards. Using it flipped every decoration about
-  // the horizontal: on a diagonal line the arrowhead pointed into the wrong
-  // quadrant and sat off the end of the line entirely. It costs nothing to
-  // read and is invisible on a horizontal line, which is the worst kind of
-  // difference to have between two coordinate systems.
+  // From the vector, never Tangent.angle: that is *minus* atan2(dy, dx), y
+  // up, and flips every decoration on a diagonal line in canvas space.
   double heading(ui.Tangent t) => math.atan2(t.vector.dy, t.vector.dx);
 
   // The start decoration points back out of the line, so its heading is the
@@ -1767,9 +1556,8 @@ void _paintLine(ui.Canvas canvas, LineElement e) {
 
 /// _trimFor is how far back from a line's end its decoration begins.
 ///
-/// Every decoration, not only the pointed ones -- see LineEnd.cover. A hollow
-/// ring with the stroke running through the middle of it was the reported
-/// "you can see the end of the line through it".
+/// Every decoration, not only the pointed ones, so the stroke does not show
+/// through a hollow one. See LineEnd.cover.
 double _trimFor(LineEnd end, double strokeWidth, double endSize) =>
     end.cover * strokeWidth * endSize;
 
@@ -1802,20 +1590,16 @@ void _paintLineEnd(
     case LineEnd.hollowArrow:
       arrowHead(canvas, at, angle, w * 3.5, stroke, filled: false);
     case LineEnd.openArrow:
-      // A chevron rather than two strokes. Two strokes are the same thickness
-      // all the way along and finish square, so at any weight they read as a
-      // pair of blunt sticks; this is thickest where the barbs meet at the tip
-      // and comes to a point at each outer end, which is what an open arrow
-      // looks like when it is drawn by hand.
+      // A filled chevron rather than two strokes: thickest at the tip and
+      // pointed at each outer end, as an open arrow is drawn by hand.
       var size = w * 4.2;
       var back = angle + math.pi;
       var b1 = at.translate(math.cos(back - arrowSpread) * size,
           math.sin(back - arrowSpread) * size);
       var b2 = at.translate(math.cos(back + arrowSpread) * size,
           math.sin(back + arrowSpread) * size);
-      // The notch behind the tip is what gives the shape its thickness. A
-      // fraction of the barb rather than a fixed number, so the proportions
-      // hold when the end size changes.
+      // The notch behind the tip gives it its thickness, as a fraction of
+      // the barb so the proportions hold at any end size.
       var notch = at - along * (size * 0.58);
       canvas.drawPath(
         Path()
@@ -1828,10 +1612,7 @@ void _paintLineEnd(
       );
     case LineEnd.diamond:
     case LineEnd.hollowDiamond:
-      // Centred on the line's end, like the circle and the square, rather than
-      // hung off the back of it. Hung off, its forward point sat on the end
-      // and the whole shape trailed behind, which reads as a diamond that has
-      // slipped down the line.
+      // Centred on the line's end, like the circle and the square.
       var long = w * 1.7;
       var wide = w * 1.0;
       canvas.drawPath(
@@ -1907,10 +1688,8 @@ ui.Canvas? _arrivingCanvas;
 void _paintImage(
     ui.Canvas canvas, Rect bounds, ImageElement e, CanvasImageSource? images,
     {_LayerArrive? arrive}) {
-  // The border over the picture, not under it: under, a picture that runs
-  // to its box's edge -- which is what a picture with no padding does --
-  // covered its own border, and the border only showed with padding added
-  // to make room round the picture for it.
+  // The border goes over the picture, which would otherwise cover it
+  // wherever it runs to its box's edge.
   paintBoxFill(canvas, bounds, e.box, images);
   // A drift on the picture as a whole -- see ElementLoop.driftAt -- zooms
   // or pans everything in it as one: a picture alone inside its frame, as a
@@ -1946,11 +1725,10 @@ void _paintImage(
 /// has really got, nought to one, while it plays -- and nought otherwise,
 /// and always in an export, whose frames are whole.
 ///
-/// A drift moves a little every frame, and at 24 frames a second on a screen
-/// that redraws 60 or 120 times, a slow zoom or pan drawn only on whole
-/// frames went in visible steps. Drifts are drawn at the playhead's exact
-/// time instead, and the stage redraws on every refresh while one plays.
-/// Set round the stage's drawing, the way RasterCache.drafting is.
+/// Drifts are drawn at the playhead's exact time, so a slow zoom or pan does
+/// not step at the frame rate on a faster screen; the stage redraws on every
+/// refresh while one plays. Set round the stage's drawing, the way
+/// RasterCache.drafting is.
 double betweenFrames = 0;
 
 /// _drifting is how far through [loop]'s drift the picture being drawn is,
@@ -2050,12 +1828,24 @@ void _throughAdjustments(ui.Canvas canvas, Rect inner, Rect room,
     var adj = adjustments[k];
     var covers =
         adj.opacity >= 1 && adj.blend == LayerBlend.normal && !adj.mask.active;
-    // What shows through it, as it is.
-    if (!covers) through(c, k - 1);
+    if (covers) {
+      c.saveLayer(room, _over(adj));
+      paintAdjustedLive(c, room, adj.adjust, (a) => through(a, k - 1));
+      _frameMasked(c, inner, adj);
+      c.restore();
+      return;
+    }
+    // What is under it is drawn once and shown twice -- as it is, and
+    // adjusted -- or each adjustment would double the drawing beneath it.
+    var recorder = ui.PictureRecorder();
+    through(ui.Canvas(recorder), k - 1);
+    var below = recorder.endRecording();
+    c.drawPicture(below);
     c.saveLayer(room, _over(adj));
-    paintAdjustedLive(c, room, adj.adjust, (a) => through(a, k - 1));
+    paintAdjustedLive(c, room, adj.adjust, (a) => a.drawPicture(below));
     _frameMasked(c, inner, adj);
     c.restore();
+    below.dispose();
   }
 
   through(canvas, adjustments.length - 1);
@@ -2089,12 +1879,9 @@ void _paintImageInside(
     // rounded frame stays concentric with the border drawn round it.
     canvas.clipRRect(e.box.insetRounded(inner));
   } else {
-    // Room for an outline to be outside something. A picture that fills its
-    // box -- which is what "Cover" does, and it is the default -- has
-    // its own edge exactly on the clip, so an outward band had nowhere to go
-    // and the width control appeared to do nothing at all. The picture is
-    // still drawn inside the box; only the band is let out, which is what
-    // outside means.
+    // Room for an outside outline: a picture that fills its box (Cover, the
+    // default) has its edge exactly on the clip. The picture itself stays
+    // inside the box.
     canvas.clipRect(inner.inflate(_outlineRoom(e)));
   }
   _paintPicture(canvas, inner, e, image, images);
@@ -2200,13 +1987,6 @@ void _paintPictureFlat(ui.Canvas canvas, Rect inner, ImageElement e,
       masked(() => _drawImage(canvas, image, inner, e.fit,
           crop: e.crop, framing: e.framing, silhouette: colour));
 
-  // With an overlay, the picture goes into a layer of its own first.
-  //
-  // A blend mode blends against whatever is already on the canvas, and what is
-  // already on the canvas is every element painted before this one -- so an
-  // overlay set on a photograph was multiplying its way through the background
-  // and everything sitting under it. Inside a layer there is nothing under the
-  // picture but the picture.
   // Behind the picture, so the band only shows where the picture is not.
   if (e.outline.on &&
       (e.outline.style == OutlineStyle.outside ||
@@ -2215,10 +1995,13 @@ void _paintPictureFlat(ui.Canvas canvas, Rect inner, ImageElement e,
   }
 
   // The picture with the background's colour taken out of its edge, where
-  // its mask asks for that and it has been worked out -- see
-  // edge_cleaning.dart. Only its colours: its shape is the picture's.
+  // its mask asks for that and it has been worked out (edge_cleaning.dart).
+  // Only its colours: its shape is the picture's.
   var shown = masking ? cleanedFor(images, e, image) : image;
   masked(() {
+    // With an overlay, the picture goes into a layer of its own, so the
+    // overlay's blend mode blends with the picture alone and not with every
+    // element painted before it.
     if (overlaid) canvas.saveLayer(inner, Paint());
 
     _drawImage(canvas, shown, inner, e.fit,
@@ -2237,20 +2020,16 @@ void _paintPictureFlat(ui.Canvas canvas, Rect inner, ImageElement e,
             ..color = e.overlay
             ..blendMode = e.blend.flutter);
 
-      // Then cut back to the picture's own shape. Every separable blend mode
-      // leaves its colour behind on transparent pixels -- multiply on nothing is
-      // the source -- so on a photograph with its background taken out the
-      // overlay filled the hole it had just been cut out of. Drawing the picture
-      // again as a mask keeps the overlay only where there is picture to tint.
+      // Then cut back to the picture's own shape: a blend mode leaves its
+      // colour on transparent pixels, which would fill a removed background.
       _drawImage(canvas, image, inner, e.fit,
           crop: e.crop, framing: e.framing, maskOnly: true);
       canvas.restore();
     }
   });
 
-  // Over the picture, and after the overlay, because an inside band is meant
-  // to be the outermost thing there is -- an overlay painted on top of it
-  // would tint the one part of the picture that is not picture at all.
+  // Over the picture and after the overlay, so the overlay does not tint an
+  // inside band.
   if (e.outline.on &&
       (e.outline.style == OutlineStyle.inside ||
           e.outline.style == OutlineStyle.centred)) {
@@ -2261,10 +2040,8 @@ void _paintPictureFlat(ui.Canvas canvas, Rect inner, ImageElement e,
 /// _paintLayered draws a picture made of layers into its frame [inner].
 ///
 /// The frame's shape clips the whole composite, as it clips a single
-/// picture, and the composite is drawn in a layer of its own: a blend mode
-/// blends against what is under it, and what is under a layer of a picture
-/// is the layers below it -- not whatever else is on the canvas, which
-/// would change the picture every time something was moved behind it.
+/// picture, and the composite is drawn in a layer of its own, so a layer's
+/// blend mode blends with the layers below it and not with the canvas.
 void _paintLayered(
     ui.Canvas canvas, Rect inner, ImageElement e, CanvasImageSource? images,
     {_LayerArrive? arrive}) {
@@ -2286,10 +2063,9 @@ void _paintLayered(
   canvas.save();
   Rect room;
   if (!e.clip) {
-    // Nothing cut: what runs past the frame -- a layer dragged out of it, a
-    // stroke not yet taken in, a shadow -- is drawn where it is. The frame
-    // takes the pictures and the paint in as they are put there (see
-    // ImageElement.grownToFit); the room is for what it does not.
+    // Nothing cut: what runs past the frame (a layer dragged out, a stroke
+    // not yet taken in, a shadow) is drawn where it is. See
+    // ImageElement.grownToFit.
     room = inner
         .expandToInclude(contentRectOf(e, inner) ?? inner)
         .inflate(math.max(_outlineRoom(e), _effectsReach(e, inner)));
@@ -2331,10 +2107,8 @@ ui.Picture _record(void Function(ui.Canvas) draw) {
 /// under may hold adjustments of its own, and is drawn the same way.
 void _paintStack(ui.Canvas canvas, Rect inner, ImageElement e,
     List<ImageLayer> stack, _Watched images, Rect room, _LayerArrive? arrive) {
-  // Layers coming in one after another, or looping on their own: each is
-  // drawn with the adjustments over it worked in, so it arrives -- or
-  // moves -- already adjusted, rather than the adjustment turning up after
-  // it or staying where the layer was.
+  // Layers arriving in turn or looping on their own: each is drawn with the
+  // adjustments over it worked in, so it arrives or moves already adjusted.
   if (arrive != null || stack.any((l) => l.visible && l.loop.on)) {
     _paintGroups(canvas, inner, e, stack, images, room, arrive,
         adjustEach: true);
@@ -2363,11 +2137,9 @@ void _paintStack(ui.Canvas canvas, Rect inner, ImageElement e,
   // What is under it changes frame by frame while layers arrive, so the
   // adjusted picture is not kept then.
   var complete = images.misses == misses && arrive == null;
-  // What is under is drawn as it is and the adjusted picture over it -- for
-  // what shows through: an adjustment at part strength, blended, masked or
-  // arriving. Wholly over it, the adjusted picture covers every pixel of
-  // what is under, and drawing all of that first was a picture's every
-  // layer drawn for nothing on every frame.
+  // What is under is drawn as it is only where it can show through the
+  // adjusted picture (part strength, blended, masked or arriving); an
+  // adjustment that wholly covers it skips that.
   var top = stack[at];
   var covers = !top.retouchesUnder &&
       top.opacity >= 1 &&
@@ -2899,28 +2671,19 @@ double _outlineRoom(ImageElement e) {
 
 /// _paintOutline traces the edge of the picture's alpha channel.
 ///
-/// Done with the compositor rather than with pixels. The obvious way is to
-/// build an outlined bitmap in image_store beside the cut-out, and it is the
-/// wrong way twice over: the outline would be cached against the removal
-/// settings and so recomputed every time a colour was nudged, and it would be
-/// drawn at the picture's resolution rather than the canvas's, so a small
-/// photograph blown up to fill a poster would get a chunky pixelated line
-/// around it. A dilate on a layer is neither.
+/// Done with the compositor (a dilate on a layer) rather than as a bitmap, so
+/// it is drawn at the canvas's resolution, not the picture's, and is not
+/// recomputed when a colour changes.
 ///
-/// An outward band is drawn in two passes and it has to be. One blurred pass
-/// on its own fades at *both* of its edges -- and the inner edge is not
-/// hidden behind the picture, because the picture's own edge is soft after a
-/// background comes out. What showed was a bright core with a fade either
-/// side of it and a dim ring where the subject's rim lay over the band, which
-/// is three lines' worth of edge for something asked to draw one. So the fade
-/// is a pass of its own and a solid band is laid over the inside of it, which
-/// leaves exactly one edge to look at: the outer one.
+/// An outward band takes two passes: one blurred pass fades at both edges,
+/// and the inner edge shows through a cut-out's soft rim. So the fade is one
+/// pass and a solid band is laid over its inside, leaving only the outer
+/// edge.
 void _paintOutline(
     ui.Canvas canvas, void Function(Color) shape, Rect inner, ImageElement e,
     {required bool outward}) {
   var outline = e.outline;
-  // Centred splits the band between the two sides, which is what centred
-  // means; the other styles put all of it on one.
+  // Centred splits the band between the two sides.
   var width =
       outline.style == OutlineStyle.centred ? outline.width / 2 : outline.width;
   if (width <= 0) return;
@@ -2933,20 +2696,16 @@ void _paintOutline(
   }
 
   if (outward) {
-    // A glow is all fade and no band -- that is what makes it a glow rather
-    // than a thick line -- so it skips the solid pass entirely.
+    // A glow is all fade and no band.
     var glow = outline.style == OutlineStyle.glow;
-    // Never all fade, however far the feather is pushed. The band has to
-    // meet the subject at full strength or it is no longer tracing anything
-    // -- feathering it away to nothing at both ends is the fault this is
-    // fixing, not a setting worth offering.
+    // Otherwise never all fade, however far the feather is pushed: the band
+    // must meet the subject at full strength.
     var solid = glow ? 0.0 : width * (1 - outline.feather * 0.8);
     var fade = width - solid;
 
     if (glow || fade > 0) {
-      // Dilate to the middle of where the fade should be and blur across it,
-      // so the band still reaches the width that was asked for rather than
-      // the feather quietly making the outline bigger.
+      // Dilate to the middle of the fade and blur across it, so the feather
+      // does not make the outline wider than asked.
       var spread = glow ? width * 0.35 : solid + fade / 2;
       var sigma = glow ? width * (0.25 + outline.feather * 0.4) : fade / 4;
       silhouette(
@@ -2958,11 +2717,9 @@ void _paintOutline(
           ));
     }
 
-    // The solid part, over the inside of the fade. Drawn even when there is
-    // none to speak of -- a glow has none at all -- because its other job is
-    // to back the subject's own soft rim with the outline's colour. Without
-    // it the rim lies over the fade at half strength and shows as a second,
-    // dimmer line hugging the first.
+    // The solid part, over the inside of the fade. Drawn even with no width
+    // (a glow) to back the subject's soft rim with the outline's colour, or
+    // the rim shows as a second, dimmer line.
     silhouette(
         outline.color,
         solid > 0
@@ -2971,25 +2728,17 @@ void _paintOutline(
     return;
   }
 
-  // A band that touches the picture is drawn *over* it, as one ring, rather
-  // than as an outward half behind and an inward half in front. Two halves
-  // meeting at the edge leave the subject's own soft rim sandwiched between
-  // them, and neither half can be more than half-opaque where that rim is --
-  // so the join came out dimmer than either side of it and read as two lines
-  // with a gap. One ring has no join.
-  //
-  // The ring is the silhouette grown by [grow] with a copy of itself shrunk
-  // by [shrink] punched out of the middle.
+  // A band that touches the picture is drawn over it as one ring, not as two
+  // halves, whose join over the soft rim would show as a gap. The ring is the
+  // silhouette grown by `grow` with a copy shrunk by `shrink` punched out.
   var grow = outline.style == OutlineStyle.centred ? width : 0.0;
   var shrink = width;
   var blur = width * outline.feather / 2;
 
   canvas.saveLayer(inner, Paint());
 
-  // Feathering fades the edge that faces away from the subject, whichever
-  // that is: outwards for a centred band, inwards for one wholly inside. The
-  // edge being traced stays crisp either way -- an outline that blurs the
-  // very line it is drawing is no longer drawing it.
+  // Feathering fades the edge facing away from the subject (outwards for a
+  // centred band, inwards for an inside one); the traced edge stays crisp.
   var fill = <ui.ImageFilter>[
     if (grow > 0) ui.ImageFilter.dilate(radiusX: grow, radiusY: grow),
     if (grow > 0 && blur > 0)
@@ -3056,17 +2805,16 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
     /// over it in its own pixels -- see brush_painter.dart.
     List<StrokeMark> retouch = const [],
 
-    /// maskOnly draws the picture's *shape* rather than the picture: no
-    /// colour, no filters, composited with dstIn so that whatever is already
-    /// in the layer survives only where the picture has pixels. See
-    /// _paintImage, which uses it to keep an overlay off a removed background.
+    /// maskOnly draws the picture's *shape*, composited with dstIn, so what
+    /// is already in the layer survives only where the picture has pixels.
+    /// _paintPictureFlat uses it to keep an overlay off a removed background.
     bool maskOnly = false,
 
     /// silhouette draws the picture's shape filled with one colour, keeping
     /// its alpha and throwing its own colours away. What an outline traces.
     Color? silhouette}) {
-  // Worked out once, in image_placement.dart, because the retouching brush
-  // needs the same mapping backwards -- see ImagePlacement.toImage.
+  // Shared with the retouching brush, which maps it backwards: see
+  // ImagePlacement.toImage.
   var placement = placeImage(
       Size(image.width.toDouble(), image.height.toDouble()), rect, fit,
       crop: crop, framing: framing);
@@ -3075,26 +2823,20 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
 
   var paint = Paint()..filterQuality = FilterQuality.high;
 
-  // As a mask the picture contributes nothing but its alpha, so none of the
-  // colour work applies and dstIn keeps the layer only where there are pixels.
   if (maskOnly) {
     canvas.drawImageRect(image, src, dst, paint..blendMode = BlendMode.dstIn);
     return;
   }
 
   // srcIn keeps the source's alpha and takes the colour from the filter, so a
-  // half-transparent strand of hair contributes a half-transparent piece of
-  // outline rather than a hard one. That is most of why an outline drawn this
-  // way looks right on a photograph.
+  // half-transparent strand of hair gives a half-transparent piece of outline.
   if (silhouette != null) {
     canvas.drawImageRect(image, src, dst,
         paint..colorFilter = ColorFilter.mode(silhouette, BlendMode.srcIn));
     return;
   }
 
-  // One matrix for the lot: a preset and the two sliders multiplied together,
-  // rather than a saveLayer per effect. Layers are the expensive part of
-  // drawing and a canvas may hold a dozen pictures.
+  // One colour matrix for the preset and both sliders, not a layer each.
   var matrix = combineMatrices(
       presetMatrix(filter), colorMatrix(saturation, brightness));
   if (matrix != null) paint.colorFilter = ColorFilter.matrix(matrix);
@@ -3164,12 +2906,9 @@ void _paintBackgroundElement(
     if (e.cornerRadius > 0) canvas.restore();
     return;
   }
-  // Drawn from the editor's cache where it can be, as the canvas's own
-  // background is: generated afresh on every repaint, a metal or a surface
-  // panel was eighty milliseconds of every frame anything on the canvas
-  // moved.
-  // During a gesture -- the panel being resized -- the last one made,
-  // stretched, and a new one made when the gesture ends.
+  // From the editor's cache where it can be, as the canvas's own background
+  // is. During a gesture (the panel being resized) the last one made is
+  // stretched, and a new one is made when the gesture ends.
   var ready = backgrounds?.imageFor(
           e.spec, bounds.size, time, images, !RasterCache.drafting, false) ??
       (RasterCache.drafting ? backgrounds?.latestFor(e.spec) : null);
@@ -3188,11 +2927,8 @@ void _paintBackgroundElement(
 
 /// _paintPath draws a bezier curve.
 ///
-/// A path whose job is to describe a movement is scaffolding rather than
-/// artwork, so [PathElement.guide] leaves it out of anything published while
-/// keeping it on screen while the document is being worked on. That is what
-/// [editing] is for -- the exporter passes false, the stage passes true, and
-/// neither has to know why.
+/// A guide path (PathElement.guide) is scaffolding: drawn only while
+/// [editing], and left out of anything published.
 void _paintPath(ui.Canvas canvas, Rect bounds, PathElement e, bool editing) {
   if (e.nodes.length < 2) return;
   if (e.guide && !editing) return;
@@ -3215,8 +2951,7 @@ void _paintPath(ui.Canvas canvas, Rect bounds, PathElement e, bool editing) {
   }
   if (e.closed) path.close();
 
-  // Across the whole path, so a stroke that fades fades along its length
-  // rather than each segment starting the gradient again.
+  // Across the whole path, so a fade runs along its length.
   var paint = PaintSpec(e.color, gradient: e.fade).into(
       Paint()
         ..style = PaintingStyle.stroke
@@ -3226,9 +2961,8 @@ void _paintPath(ui.Canvas canvas, Rect bounds, PathElement e, bool editing) {
 
   canvas.drawPath(e.dash > 0 ? dashPath(path, e.dash, e.dash) : path, paint);
 
-  // The arrowhead points along the last segment's own direction rather than at
-  // the straight line between the last two nodes, which on a curve that
-  // doubles back would point roughly backwards.
+  // The arrowhead points along the last segment's own direction, not the
+  // chord between the last two nodes, which can point backwards.
   if (e.endEnd != LineEnd.none && !e.closed) {
     var last = e.segments - 1;
     var tip = e.pointOnSegment(last, 1);
@@ -3289,9 +3023,9 @@ bool _shapeByShape(VectorElement e, Keyframe pose) {
 }
 
 /// _vectorArrival is where a drawing's arrival starts and how many frames
-/// it takes: its arrival's keyframes', or the clip's playing it.
+/// it takes: a legacy track's reveal keyframes (vectorArrivalSpan), else
+/// the stretch _arrivalFrames finds.
 (int, int)? _vectorArrival(VectorElement e, Keyframe pose) {
-  if (vectorArrivalSpan(e) case var span?) return span;
   var (from, to) = _arrivalFrames(e, pose);
   if (from == null || to == null || to <= from) return null;
   return (from, to - from);
@@ -3301,9 +3035,8 @@ bool _shapeByShape(VectorElement e, Keyframe pose) {
 /// whatever is combined into it, animated as its own animation says or as
 /// the drawing's does. Coming in, in its own box, where its cue puts it and
 /// for its own length; looping, from when it has come in; leaving, with the
-/// drawing's way-out keyframes. A shape left as the drawing loops and leaves
-/// about the whole drawing, as if it were drawn as one. [last] is the
-/// scene's last frame.
+/// drawing's closing stretch. A shape left as the drawing loops and leaves
+/// about the whole drawing. [last] is the scene's last frame.
 void _paintVectorInTurn(ui.Canvas canvas, Rect bounds, VectorElement e,
     Keyframe pose, int frame, int last) {
   var shapes = e.shapes!;
@@ -3311,16 +3044,16 @@ void _paintVectorInTurn(ui.Canvas canvas, Rect bounds, VectorElement e,
   var times = arrival == null ? null : cueTimes(shapes, arrival.$2);
   var own = _ownShapes(e);
   var leaving = (pose.values[KeyframeChannel.close] ?? 0) > 0;
-  // How far through its arrival the drawing is, as its keyframes -- and
-  // their easing -- say: the clock every shape's turn is read off.
+  // How far through its arrival the drawing is, easing included: the clock
+  // every shape's turn is read off.
   var through = pose.values[KeyframeChannel.reveal] ?? 1;
   for (var (i, d) in vectorDrawn(shapes).indexed) {
     var box = vectorGroupBox(bounds, e, d);
     var owns =
         d.style.animation == null ? const <ShapeAnimationPart>{} : d.style.owns;
     var animation = animatedAs(e.animation, d.style.animation, owns);
-    // How far in it is, and when it is all in: with no arrival keyframes on
-    // the drawing, it is there from the start.
+    // How far in it is, and when it is all in: with no arrival on the
+    // drawing, it is there from the start.
     var reveal = 1.0;
     int? arrived;
     var loopsOwn = owns.contains(ShapeAnimationPart.looping);

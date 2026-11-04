@@ -7,28 +7,23 @@ import 'package:bruig/plugin_system/canvas/model/instrument.dart'
     show InstrumentLook, MidiControl;
 
 // sampler.dart plays notes: a bank's samples where there is a bank (see
-// soundfont.dart), and otherwise a small piano of our own, so an
+// soundfont.dart), otherwise built-in piano, drum and plucked voices, so an
 // instrument sounds the moment it is added.
 //
-// A SoundFont voice is the sample stepped through at the note's pitch,
-// looped as its zone says, shaped by the volume envelope -- delay, attack,
-// hold, decay, sustain, release -- and by a low-pass filter where the zone
-// has one, then panned. What a generator means, and the 0.4 the initial
-// attenuation is scaled by, follow FluidSynth, which MuseScore's bank was
-// made to sound right through.
+// Generator meanings, and the 0.4 scale on initial attenuation, follow
+// FluidSynth, which MuseScore's bank was voiced for.
 
 /// Voice is one note sounding.
 abstract class Voice {
   final int key;
 
-  /// released is set when the key is let go: the voice goes on through its
-  /// release, and is done when that has died away.
+  /// released is set when the key is let go; the voice is [done] once its
+  /// release has died away.
   bool released = false;
   bool done = false;
 
-  /// pitch is how far the voice is bent from its key, as a ratio: the
-  /// pitch bend and the mod wheel's vibrato. The bank's voices and the
-  /// piano follow it; a plucked string and a drum keep their own.
+  /// pitch is the bend from the voice's key as a ratio (pitch bend plus mod
+  /// wheel vibrato). Plucked and drum voices ignore it.
   double pitch = 1;
   Voice(this.key);
 
@@ -49,15 +44,14 @@ class _SfVoice extends Voice {
   final double gainL, gainR;
   double _pos;
 
-  // The volume envelope, in samples, and where it has got to. The decay and
-  // the release fall in decibels -- by a factor a sample -- the decay as
-  // far as the sustain level.
+  // The volume envelope, in samples. Decay and release are per-sample
+  // factors (a fall in decibels), the decay stopping at the sustain level.
   final int _delay, _attack, _hold;
   final double _decayFactor, _sustain, _releaseFactor;
   int _t = 0;
   double _level = 0;
 
-  // The low-pass, where the zone has one: one biquad, mono.
+  // The zone's low-pass, if any: one mono biquad.
   final List<double>? _f;
   double _x1 = 0, _x2 = 0, _y1 = 0, _y2 = 0;
 
@@ -86,7 +80,7 @@ class _SfVoice extends Voice {
             (_seconds(z[Gen.holdVolEnv] + z[Gen.keyToVolEnvHold] * (60 - key)) *
                     mixRate)
                 .round(),
-        // The decay and the release are times to fall a hundred decibels.
+        // Decay and release times are times to fall 100dB.
         _decayFactor = _fall(_seconds(
             z[Gen.decayVolEnv] + z[Gen.keyToVolEnvDecay] * (60 - key))),
         _sustain =
@@ -94,8 +88,7 @@ class _SfVoice extends Voice {
         _releaseFactor = _fall(_seconds(z[Gen.releaseVolEnv])),
         _f = _filter(z, velocity);
 
-  /// _fall is the factor a sample that falls a hundred decibels in
-  /// [seconds].
+  /// _fall is the per-sample factor that falls 100dB in [seconds].
   static double _fall(double seconds) =>
       math.pow(10, -100 / 20 / math.max(1, seconds * mixRate)).toDouble();
 
@@ -108,18 +101,18 @@ class _SfVoice extends Voice {
     return math.pow(2, cents / 1200) * z.sample.rate / mixRate;
   }
 
-  /// _gain is the zone's level at [velocity]: its initial attenuation, at
-  /// the 0.4 FluidSynth scales it by, and the velocity's own curve -- the
-  /// specification's default modulator, which comes to velocity squared.
+  /// _gain is the zone's level at [velocity]: its initial attenuation (times
+  /// FluidSynth's 0.4) and the spec's default velocity modulator, which
+  /// comes to velocity squared.
   static double _gain(Zone z, int velocity) {
     var cb = z[Gen.attenuation].clamp(0, 1440) * 0.4;
     var v = velocity.clamp(1, 127) / 127;
     return math.pow(10, -cb / 200) * v * v;
   }
 
-  /// _filter is the zone's low-pass as a biquad's coefficients, or null for
-  /// none. Velocity closes it: the default modulator takes up to two
-  /// octaves off a soft note, which is what makes it sound soft.
+  /// _filter is the zone's low-pass as biquad coefficients, or null for
+  /// none. The default modulator lowers it by up to two octaves for a soft
+  /// note.
   static List<double>? _filter(Zone z, int velocity) {
     var cents = z[Gen.filterFc] - 2400 * (1 - velocity.clamp(1, 127) / 127);
     if (cents >= 13500) return null;
@@ -164,7 +157,7 @@ class _SfVoice extends Voice {
     for (var i = 0; i < n; i++) {
       if (done) return;
       var at = _pos.floor();
-      if (at >= end) {
+      if (at >= end || at < 0) {
         done = true;
         return;
       }
@@ -191,9 +184,8 @@ class _SfVoice extends Voice {
   }
 }
 
-/// _PianoVoice is the piano of our own: a struck string as a handful of
-/// partials, each dying away faster the higher it is, a little sharp of
-/// the harmonic as a real string's are, and a soft knock at the start.
+/// _PianoVoice is the built-in piano: a handful of slightly inharmonic
+/// partials, the higher ones dying faster.
 class _PianoVoice extends Voice {
   final double _f0;
   final double _gain;
@@ -250,16 +242,15 @@ class _PianoVoice extends Voice {
   }
 }
 
-/// _DrumVoice is a drum of our own, made from what a drum is: a kick a
-/// falling sine with a click, a snare a tone under noise, a hat or a cymbal
-/// bright noise ringing short or long, a tom a falling sine.
+/// _DrumVoice is the built-in drum kit, by General MIDI key: a falling sine
+/// and/or filtered noise per drum.
 class _DrumVoice extends Voice {
   final math.Random _noise = math.Random(1);
   final double _gain;
   double _phase = 0;
   int _t = 0;
-  // Each drum's: its tone's start and end in Hz, how long the tone and the
-  // noise last, how much of each, and how bright the noise is.
+  // Per drum: tone start and end Hz, tone and noise lifetimes in seconds,
+  // tone and noise levels, and noise brightness.
   late final double _f0, _f1, _toneLife, _noiseLife, _tone, _hiss, _bright;
   double _lp = 0, _hp = 0;
 
@@ -323,9 +314,8 @@ class _DrumVoice extends Voice {
   }
 }
 
-/// _PluckVoice is a plucked string of our own: Karplus and Strong's -- a
-/// burst of noise round a delay as long as the string's period, softened
-/// each time round, which is what a string does.
+/// _PluckVoice is the built-in plucked string: Karplus-Strong, a burst of
+/// noise round a delay one period long, averaged each time round.
 class _PluckVoice extends Voice {
   final Float32List _line;
   final double _gain;
@@ -372,14 +362,12 @@ class _PluckVoice extends Voice {
   }
 }
 
-/// Sampler is an instrument: a bank's preset, or the piano of our own,
-/// played note by note.
+/// Sampler is an instrument: a bank's preset, or a built-in voice.
 class Sampler {
   final SoundFont? font;
   final SfPreset? preset;
 
-  /// look is what it is played on, which says what plays with no bank: the
-  /// piano, the drums or the strings of our own.
+  /// look picks the built-in voice used with no bank.
   final InstrumentLook look;
   final List<Voice> _voices = [];
 
@@ -396,8 +384,7 @@ class Sampler {
 
   int get sounding => _voices.length;
 
-  /// _controls are the channel's controllers as last set, nought to one:
-  /// see MidiControl.
+  /// _controls are the channel's controllers as last set, 0 to 1.
   final Map<MidiControl, double> _controls = {
     for (var c in MidiControl.values) c: c.rest,
   };
@@ -412,11 +399,7 @@ class Sampler {
   bool _rendered = false;
   Float32List _l = Float32List(0), _r = Float32List(0);
 
-  double controlValue(MidiControl c) => _controls[c]!;
-
-  /// control sets one of the channel's controllers -- the mod wheel, the
-  /// pitch bend, the sustain pedal, expression, volume, pan -- nought to
-  /// one, as a MIDI channel's are.
+  /// control sets one of the channel's controllers, 0 to 1.
   void control(MidiControl c, double value) {
     _controls[c] = value.clamp(0.0, 1.0);
     if (c == MidiControl.sustain && value < 0.5) {
@@ -469,12 +452,11 @@ class Sampler {
     }
   }
 
-  /// render adds the next [n] frames of everything sounding to [l], [r]:
-  /// bent and swung as the controllers say, then at the channel's volume
-  /// and expression, panned.
+  /// render adds the next [n] frames of everything sounding to [l] and [r],
+  /// through the controllers.
   void render(Float32List l, Float32List r, int n) {
-    // Two semitones either way, a bend's usual range; the mod wheel a
-    // vibrato of up to half a semitone, five and a half times a second.
+    // Bend range is two semitones; the mod wheel gives up to half a
+    // semitone of vibrato at 5.5Hz.
     var bend = (_controls[MidiControl.pitchBend]! - 0.5) * 4;
     var vibrato = _controls[MidiControl.modulation]! *
         0.5 *
@@ -492,17 +474,16 @@ class Sampler {
       v.render(_l, _r, n);
       if (v.done) _voices.remove(v);
     }
-    // Volume and expression as MIDI has them -- squared, so the middle of
-    // the travel is a usable level -- at nothing changed for volume's
-    // hundred and expression's full.
+    // Volume and expression are squared, as MIDI has them; unity at
+    // volume's rest value and full expression.
     var volume = _controls[MidiControl.volume]! / MidiControl.volume.rest;
     var expression = _controls[MidiControl.expression]!;
     var gain = volume * volume * expression * expression;
     var pan = _controls[MidiControl.pan]!;
     var toL = gain * (pan <= 0.5 ? 1 : (1 - pan) * 2);
     var toR = gain * (pan >= 0.5 ? 1 : pan * 2);
-    // Glided across the block, so a curve moving is never a step -- but
-    // from the first block where it is set to be, not glided down to.
+    // Ramped across the block so a moving curve never steps, except the
+    // first block, which starts at the set level.
     if (!_rendered) {
       _rendered = true;
       _gainL = toL;

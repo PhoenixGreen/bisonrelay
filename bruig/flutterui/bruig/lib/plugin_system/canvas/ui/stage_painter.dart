@@ -26,47 +26,38 @@ import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
-import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
+import 'package:flutter/foundation.dart'
+    show ValueListenable, listEquals, setEquals;
 import 'package:flutter/material.dart';
 
-// stage_painter.dart is everything the stage draws: the document itself, the
-// sheet it sits on, and the marks over the top that say what is selected and
-// what can be taken hold of.
-//
-// Split from canvas_stage.dart because the two halves have nothing to say to
-// each other. This one is handed a pile of already-decided values -- where
-// the handles go, which labels are placed, what the held stroke looks like --
-// and draws them. It never asks a question, which is why it can be read on
-// its own; deciding is the stage's half.
+// stage_painter.dart is everything the stage draws: the document, the sheet it
+// sits on, and the marks over it for what is selected and what can be taken
+// hold of. It is handed values the stage has already decided (where handles go,
+// which labels are placed, what a held stroke looks like) and only draws them.
 
 /// shapeTurnReach is how far above a shape's box, on screen, the handle
 /// that turns it sits.
 const double shapeTurnReach = 22;
 
 /// StageFraming is a picture being repositioned inside its frame, worked out
-/// by the stage and drawn by [StagePainter].
-///
-/// [src] is the whole of the picture the frame is choosing from and [dst] is
-/// where all of it would land, which is bigger than [frame] in at least one
-/// direction -- that difference is precisely what is being spent. The painter
-/// draws the whole of it faintly, so that what is being dragged out of shot
-/// can be seen while it is being dragged.
+/// by the stage and drawn by [StagePainter]. [src] is the whole picture the
+/// frame chooses from and [dst] where all of it would land, larger than
+/// [frame] in at least one direction; the painter draws it faintly, so what
+/// is dragged out of shot stays visible.
 class StageFraming {
   final ui.Image image;
   final Rect src;
   final Rect dst;
 
-  /// frame is the element's own rectangle: the part of [dst] that is actually
-  /// kept, and the only part drawn at full strength -- by the renderer, which
-  /// has already drawn it under all of this.
+  /// frame is the element's own rectangle: the part of [dst] that is kept, drawn
+  /// at full strength by the renderer underneath all of this.
   final Rect frame;
 
-  /// rotation is the element's, in radians. The overlay turns with it, or a
-  /// tilted photograph would be reframed against a level ghost of itself.
+  /// rotation is the element's, in radians: the overlay turns with it.
   final double rotation;
 
-  /// pivot is what the element turns about: the middle of its frame, which
-  /// is not the middle of a picture placed in a frame grown round layers.
+  /// pivot is what the element turns about: the middle of its frame, which is
+  /// not the picture's middle in a frame grown round layers.
   final Offset? pivot;
 
   /// flipX and flipY are the picture's own mirror in its place, which the
@@ -78,14 +69,9 @@ class StageFraming {
       {this.pivot, this.flipX = false, this.flipY = false});
 }
 
-/// StagePainter draws the document, the page edge, the handles and the
-/// marquee.
-/// chosenOutlines is every element that should be outlined on its own.
-///
-/// Each element of a multi-selection, so that three things selected out of
-/// six overlapping ones can be told apart: the box round the lot says what
-/// will be moved and resized, and says nothing about what is in it. Nothing
-/// for a single selection, which has its own box already.
+/// chosenOutlines is every element of a multi-selection, to be outlined on
+/// its own so overlapping selected elements can be told apart (the box round
+/// the lot says nothing about what is in it). Empty for a single selection.
 List<CanvasElement> chosenOutlines(
     CanvasDocument document, Set<String> selection, int frame) {
   if (selection.length < 2) return const [];
@@ -95,19 +81,20 @@ List<CanvasElement> chosenOutlines(
   ];
 }
 
+/// StagePainter draws the document, the page edge, the handles and the
+/// marquee.
 class StagePainter extends CustomPainter {
   final CanvasDocument document;
   final int frame;
 
   /// between is how far past [frame] the playhead has got while it plays,
-  /// redrawing the stage as it changes -- see scene_renderer's
-  /// betweenFrames. Null when nothing is drawn between frames.
+  /// redrawing the stage as it changes (see scene_renderer's betweenFrames).
+  /// Null when nothing is drawn between frames.
   final ValueListenable<double>? between;
 
-  /// previewAt is a frame of the whole run, when a transition is being
-  /// watched. The canvas then draws the sequence rather than the scene being
-  /// edited -- the same function the export uses, so what is watched is what
-  /// will be published. See paintSequenceFrame.
+  /// previewAt is a frame of the whole run, when a transition is being watched:
+  /// the canvas then draws the sequence with the export's own function. See
+  /// paintSequenceFrame.
   final int? previewAt;
 
   /// previewing is the one element being previewed, at its own frame. See
@@ -125,8 +112,8 @@ class StagePainter extends CustomPainter {
   /// bottom, on the page.
   final (Offset, Offset)? caret;
 
-  /// scale is document units to screen pixels -- the fitted size times the
-  /// reader's zoom, already combined by the stage.
+  /// scale is document units to screen pixels: the fitted size times the
+  /// reader's zoom.
   final double scale;
   final Offset origin;
   final CanvasImageSource images;
@@ -136,25 +123,23 @@ class StagePainter extends CustomPainter {
   final double selectionRotation;
 
   /// touchAreas are what a game touches of each element played, on the
-  /// canvas, drawn while the Game tab is open -- see gameTouchArea.
+  /// canvas, drawn while the Game tab is open (see gameTouchArea).
   final List<Rect> touchAreas;
 
-  /// selectionSkew is the single selected element's slant, in degrees,
-  /// across and down -- see ElementBase.skewX.
+  /// selectionSkew is the single selected element's slant, in degrees, across
+  /// and down (see ElementBase.skewX).
   final Offset selectionSkew;
   final Offset Function(StageHandle, Rect) handleFor;
   final Rect? marquee;
 
-  /// counterValue is what a live counter is showing at this instant, and
-  /// counterPressed which of its buttons is under the pointer.
-  ///
-  /// Handed in rather than read from the document, because where a running
-  /// counter has got to is session state and not design -- see
-  /// CanvasController.counterValue.
+  /// counterValue is what a live counter is showing now, and counterPressed
+  /// which of its buttons is under the pointer. Handed in because a running
+  /// counter's value is session state, not design (see
+  /// CanvasController.counterValue).
   final double Function(CounterElement)? counterValue;
 
-  /// liveMotion is the elements playing from their slots, and motionTick
-  /// goes up as they play on -- see CanvasController.liveMotion.
+  /// liveMotion is the elements playing from their slots, and motionTick goes
+  /// up as they play on (see CanvasController.liveMotion).
   final LiveMotion? liveMotion;
   final int motionTick;
 
@@ -164,12 +149,12 @@ class StagePainter extends CustomPainter {
   final int Function(CounterElement)? counterPressed;
   final bool Function(CounterElement)? counterRunning;
 
-  /// counterTick is what changes when a running counter moves, so that a
-  /// repaint happens even though nothing in the document has changed.
+  /// counterTick changes when a running counter moves, to repaint though the
+  /// document has not changed.
   final int counterTick;
 
   /// audioState is how each speaker's sound is doing, and audioRevision what
-  /// changes when any of that does -- the same arrangement as the counters.
+  /// changes when any of that does, as for the counters.
   final AudioState Function(AudioElement)? audioState;
   final VideoShow Function(VideoElement)? videoShow;
   final int audioRevision;
@@ -189,45 +174,38 @@ class StagePainter extends CustomPainter {
   /// wherever the pointer has got to.
   final FlowLine? flowDrag;
 
-  /// page is the frame the canvas is drawn inside. Everything the document
-  /// contributes is clipped to it; the shadow and the border are drawn outside
-  /// the clip, which is what keeps the edge of the canvas visible at every
-  /// zoom.
+  /// page is the frame the canvas is drawn inside. The document is clipped to
+  /// it; the shadow and border are drawn outside the clip, keeping the canvas
+  /// edge visible at every zoom.
   final Rect page;
 
-  /// view is everything drawn: the page, plus the overspill around it when
-  /// that is showing. The clip is this rather than [page], so an element
-  /// waiting off the left of the canvas can be seen and taken hold of.
+  /// view is everything drawn: the page, plus the overspill round it when that
+  /// is showing. The clip is this rather than [page], so an element waiting off
+  /// the canvas can be seen and taken hold of.
   final Rect view;
 
-  /// levelShown is whether [view] is a game's level reaching past the page:
-  /// the sheet's shadow under the page alone, and the page marked out --
-  /// the screen the game starts on.
+  /// levelShown is whether [view] is a game's level reaching past the page: the
+  /// sheet's shadow under the page alone, and the page (the screen the game
+  /// starts on) marked out.
   final bool levelShown;
 
   /// facing is the page drawn beside the one being edited, by index, or null
-  /// where it stands alone. See CanvasStage._facingPage.
-  ///
-  /// Drawn and nothing else: no handles, no guides, no selection. It is there
-  /// so that a spread is seen as it is read, and a neighbour that could be
-  /// taken hold of would be two canvases being edited at once.
+  /// where it stands alone (see CanvasStage._facingPage). Drawn only: no
+  /// handles, guides or selection, so only one canvas is edited at a time.
   final int? facing;
 
   /// facingFrame is the frame the neighbour is drawn at: where that page was
-  /// left -- see CanvasController.frameOn.
+  /// left (see CanvasController.frameOn).
   final int facingFrame;
 
   /// facingOnLeft is whether the page being edited is the left leaf, so the
   /// neighbour goes to its right.
   final bool facingOnLeft;
 
-  /// facingShown is whether the neighbour has room of its own on screen.
-  ///
-  /// Off while the canvas is fitted to the width, where there is one page in
-  /// the window -- and the neighbour is still drawn then, because a picture
-  /// laid across the gutter is part of what this page looks like. What it
-  /// loses is its own backdrop and its half of the frame: drawn, there would
-  /// be a second page's paper over the one being worked on.
+  /// facingShown is whether the neighbour has room of its own on screen. Off
+  /// while fitted to the width, with one page in the window: the neighbour is
+  /// still drawn then (a picture across the gutter is part of this page), but
+  /// without its own backdrop and half of the frame.
   final bool facingShown;
 
   /// selectedPath is the selected element when it is a path, whose points and
@@ -247,8 +225,8 @@ class StagePainter extends CustomPainter {
   final bool rulersApart;
 
 
-  /// editingVector is the drawing being edited point by point, the shape of
-  /// it picked and the point picked -- drawn in place of a selection box.
+  /// editingVector is the drawing being edited point by point, its picked shape
+  /// and point, drawn in place of a selection box.
   final ({
     VectorElement element,
     int shape,
@@ -263,61 +241,46 @@ class StagePainter extends CustomPainter {
     Set<int>? combining,
   })? editingVector;
 
-  /// editingLayers is the layers of the picture being edited -- drawn in
-  /// place of a selection box. See StageLayers.
+  /// editingLayers is the layers of the picture being edited, drawn in place
+  /// of a selection box. See StageLayers.
   final StageLayers? editingLayers;
 
   /// chartLabels is the boxes of the selected chart's placed labels, in
-  /// document units. Outlined so that a title somebody has taken control of
-  /// looks like something that can be taken hold of -- placed and then not
-  /// drawn, it is a piece of text that mysteriously moves when dragged and
-  /// has no visible corner to resize by.
+  /// document units, outlined so a placed title visibly can be taken hold of
+  /// and resized.
   final List<Rect> chartLabels;
 
   /// tableColumns is where a selected table's column rules are, in document
-  /// units, so each can be given a grip.
-  ///
-  /// Without one there was nothing to say a rule could be dragged at all: the
-  /// pointer had to be within a few pixels of a hairline nobody had been told
-  /// about.
+  /// units, so each can be given a grip that says it can be dragged.
   final List<(double, double, double)> tableColumns;
 
-  /// preview is a picture of what a held stroke would do, and previewOn is
-  /// the placement it is drawn through. Both null when nothing is held.
-  ///
-  /// The placement, not just a destination. The preview is the size of the
-  /// whole picture, and the picture is not necessarily drawn whole -- "fill
-  /// the box" shows a centre crop of it. Stretching the whole preview into the
-  /// element put the tint somewhere other than the stroke, over an area that
-  /// had nothing to do with it.
+  /// preview is a picture of what a held stroke would do, and previewOn the
+  /// placement it is drawn through; both null when nothing is held. The
+  /// placement, not just a destination: the picture is not always drawn whole
+  /// ("fill the box" crops it), and stretching the preview into the element
+  /// would put the tint in the wrong place.
   final ui.Image? preview;
   final ImagePlacement? previewOn;
 
   /// liveStroke is the retouching stroke being drawn, in canvas coordinates,
   /// with liveStrokeRadius its width and liveStrokeKeeps which way round it
-  /// works.
-  ///
-  /// Drawn here rather than by changing the picture, because changing the
-  /// picture means reprocessing every pixel of it -- see
-  /// CanvasStageState._liveImage. This is what the reader watches while the
-  /// stroke is being made; the picture catches up when the pointer comes up.
+  /// works. Drawn here because changing the picture means reprocessing every
+  /// pixel; the picture catches up when the pointer comes up.
   final List<Offset> liveStroke;
   final double liveStrokeRadius;
   final bool liveStrokeKeeps;
 
   /// editingText is the id of a text element being typed into, whose own words
-  /// are left unpainted -- the editor over the top is drawing them, and both
-  /// at once is the same sentence twice, half a pixel apart.
+  /// are left unpainted: the editor over the top draws them.
   final String? editingText;
 
   /// editingItem is which of that element's pieces has the editor on it, so
   /// the rest of the card goes on being drawn under it.
   final String? editingItem;
 
-  /// showHandles is false for something whose size and angle belong to
-  /// another element -- text riding a line. The outline is still drawn, so it
-  /// is clear what is selected; the eight squares and the rotate ring are not,
-  /// because they would be controls that appear to do nothing.
+  /// showHandles is false for something whose size and angle belong to another
+  /// element (text riding a line): the outline is still drawn, but not the
+  /// handles and rotate ring, which would do nothing.
   final bool showHandles;
 
   /// framing is the picture being repositioned inside its frame, if one is.
@@ -328,40 +291,25 @@ class StagePainter extends CustomPainter {
   final ProceduralCache? backgrounds;
 
   /// guides is the scaffolding: the grid and the lines the reader put down.
-  /// Editing furniture, so it is drawn here and never by the renderer -- a
-  /// published picture with a grid over it is a mistake nobody would ask for.
+  /// Drawn here and never by the renderer, so nothing published has a grid.
   final CanvasGuides guides;
 
-  /// snapped is the line or lines a drag is currently caught on. Drawn bright
-  /// and only while the drag lasts: a snap nobody can see is a mysterious
-  /// jump.
+  /// snapped is the line or lines a drag is caught on, drawn bright while the
+  /// drag lasts so a snap is never a mysterious jump.
   final SnapResult? snapped;
 
   /// showHelpers draws the selection box, the handles and the rotation ring.
-  ///
-  /// Passed in rather than being faked by blanking the selection, which is how
-  /// this was first written and did nothing at all: _paintSelection reads
-  /// selectionBounds, not the selection, so emptying the set left every mark
-  /// exactly where it was.
+  /// A flag of its own: _paintSelection reads selectionBounds, so emptying the
+  /// selection would not hide them.
   final bool showHelpers;
 
-  /// camera is the scene's camera on this frame while it plays, or null --
-  /// see SceneCamera. Never while editing: a press has to land where the
-  /// page looks to be.
+  /// camera is the scene's camera on this frame while it plays, or null (see
+  /// SceneCamera). Never while editing: a press has to land where the page
+  /// looks to be.
   final (double, Offset)? camera;
 
-  /// The picture store is handed to CustomPainter as something to repaint on,
-  /// which is the only way a picture that arrives late reaches the screen.
-  ///
-  /// Pictures load off the disk after the frame that asked for them: the
-  /// painter draws a placeholder, the bytes turn up a moment later and the
-  /// store says so. Nothing else here changes when that happens -- the
-  /// document is the same, the selection is the same -- so shouldRepaint
-  /// answered no and the placeholder stayed until something unrelated forced
-  /// a repaint. The reported version of that was a picture put in a table
-  /// cell showing a grey crossed box until another cell was clicked.
-  /// drafting draws what is rasterised -- adjustments, effects -- at a
-  /// smaller size while a gesture is under way; see RasterCache.drafting.
+  /// drafting draws what is rasterised (adjustments, effects) at a smaller size
+  /// while a gesture is under way; see RasterCache.drafting.
   final bool drafting;
 
   StagePainter({
@@ -430,9 +378,10 @@ class StagePainter extends CustomPainter {
     required this.marquee,
   }) : super(
             repaint: Listenable.merge([
+          // Pictures and the background arrive after the frame that asked
+          // for them, and nothing else changes when they do, so without
+          // these a placeholder stays up until something else repaints.
           if (images is Listenable) images as Listenable,
-          // The background arrives after the frame that asked for it, the
-          // same way a picture does, and nothing else changes when it does.
           if (backgrounds != null) backgrounds,
           if (between != null) between,
         ]));
@@ -457,14 +406,12 @@ class StagePainter extends CustomPainter {
 
   void _paint(Canvas canvas, Size size) {
     // A shadow under the frame, so the canvas reads as a sheet on a desk
-    // rather than as a region of the window -- which matters most when the
-    // document's own background happens to be the same colour as the editor's.
+    // even when its background matches the editor's.
     var shadow = Paint()
       ..color = const Color(0x55000000)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
     if (previewAt case var at? when facingShown) {
-      // Only under the leaves there are. A cover stands on its own side of
-      // the book, and a shadow under the empty half is a grey page.
+      // Only under the leaves there are: a cover stands on its own side.
       var (onLeft, onRight) = bookSides(document, at);
       var leftLeaf = facingOnLeft ? page : page.shift(Offset(-page.width, 0));
       if (onLeft) canvas.drawRect(leftLeaf.shift(const Offset(0, 6)), shadow);
@@ -476,9 +423,9 @@ class StagePainter extends CustomPainter {
           (levelShown ? page : view).shift(const Offset(0, 6)), shadow);
     }
 
-    // Everything the document contributes goes inside the frame, at whatever
-    // zoom, including the selection handles. The frame itself never moves --
-    // see CanvasStage._pageRect.
+    // Everything the document contributes, handles included, goes inside
+    // the frame at any zoom. The frame never moves (see
+    // CanvasStage._pageRect).
     canvas.save();
     canvas.clipRect(view);
 
@@ -487,30 +434,24 @@ class StagePainter extends CustomPainter {
     canvas.translate(origin.dx, origin.dy);
     canvas.scale(scale);
     // The leaf beside this one. Both backdrops go down first and both sets
-    // of contents over the top of them, so that a picture placed on one page
-    // and pulled across the gutter is seen on the other -- drawn a whole page
-    // at a time, the second backdrop covered the first page's overhang and
-    // the spread had a seam through the middle of it.
+    // of contents over them, so a picture pulled across the gutter shows
+    // on the other page without a seam.
     //
-    // The neighbour is a page of the document even while the master canvas is
-    // the thing being edited: goToScene alone would leave onMaster set and
-    // draw the master twice, side by side.
+    // The neighbour is a page of the document even while the master is
+    // being edited: goToScene alone would leave onMaster set and draw the
+    // master twice.
     var beside = facing;
     var over = beside == null
         ? null
         : document.goToScene(beside).copyWith(onMaster: false);
     var aside = facingOnLeft ? docSize.width : -docSize.width;
-    // The neighbour where it was left. Drawn at frame nought, a chart
-    // scrubbed past its animation vanished the moment the other leaf was
-    // clicked; drawn finished, a chart left at its start jumped to the end.
+    // The neighbour at the frame it was left on, so a chart on it neither
+    // vanishes nor jumps to its end.
     var overFrame = facingFrame;
 
     if (previewAt case var at?) {
-      // Played as a book, every leaf is drawn in its own place in the spread
-      // and a transition between two spreads moves both leaves -- see
-      // paintBookFrame. Given one page's room instead, the leaf beside the
-      // one changing stood still, and a picture across the gutter was cut off
-      // at the spine as soon as the second leaf played.
+      // Played as a book, each leaf is drawn in its place in the spread and
+      // a transition between spreads moves both (see paintBookFrame).
       if (facingShown) {
         paintBookFrame(canvas, document, at,
             left: facingOnLeft ? 0.0 : -docSize.width,
@@ -530,10 +471,8 @@ class StagePainter extends CustomPainter {
       return;
     }
     if (over != null) {
-      // This page's own paper goes down between the two, so that the
-      // neighbour's backdrop is under it and the neighbour's overhang is over
-      // it. That order is the whole of what makes a picture across the gutter
-      // work.
+      // This page's paper goes down between the two: the neighbour's
+      // backdrop under it, the neighbour's overhang over it.
       if (facingShown) {
         canvas.save();
         canvas.translate(aside, 0);
@@ -549,12 +488,8 @@ class StagePainter extends CustomPainter {
           part: CanvasPaintPart.backdrop,
           images: images,
           backgrounds: backgrounds);
-      // On the neighbour's leaf, the neighbour's own elements go over
-      // whatever this page hangs across the gutter -- a picture laid across
-      // the spread from this side is under the words on that side, as it is
-      // in the book. Drawn the other way round, a picture placed on the left
-      // leaf covered everything on the right one for as long as the left was
-      // the one selected, and dropped behind again when the right was.
+      // On the neighbour's leaf, its own elements go over whatever this page
+      // hangs across the gutter, as in the book, whichever leaf is selected.
       canvas.save();
       canvas.clipRect(Rect.fromLTWH(aside, 0, docSize.width, docSize.height));
       _paintContents(canvas, document, frame);
@@ -565,9 +500,8 @@ class StagePainter extends CustomPainter {
           frame: overFrame, part: CanvasPaintPart.contents, images: images);
       canvas.restore();
 
-      // The spine, drawn on the join: two pages meeting edge to edge with
-      // nothing between them read as one canvas twice as wide. Only where
-      // there are two of them on screen.
+      // The spine on the join, so two pages edge to edge do not read as one
+      // wide canvas. Only with both on screen.
       if (facingShown) {
         var join = facingOnLeft ? docSize.width : 0.0;
         canvas.drawRect(
@@ -579,8 +513,8 @@ class StagePainter extends CustomPainter {
     }
 
     if (over != null) {
-      // Everywhere but the neighbour's leaf, which had this page's overhang
-      // drawn under its own elements above.
+      // Everywhere but the neighbour's leaf, which drew this page's overhang
+      // under its own elements above.
       canvas.save();
       canvas.clipRect(Rect.fromLTWH(aside, 0, docSize.width, docSize.height),
           clipOp: ui.ClipOp.difference);
@@ -591,11 +525,9 @@ class StagePainter extends CustomPainter {
           part: CanvasPaintPart.all, camera: camera);
     }
 
-    // Which of the two leaves is being edited, said with a line round it
-    // rather than by dimming the other one. A tint over half a spread is a
-    // tint over half of any picture laid across the gutter, which is the one
-    // thing the spread view is there to show. Drawn after the contents, or an
-    // element against the page edge hides it.
+    // The leaf being edited gets a line round it rather than dimming the
+    // other, which would dim a picture across the gutter too. Drawn after
+    // the contents, or an element against the edge hides it.
     if (over != null && facingShown) {
       canvas.drawRect(
         (Offset.zero & docSize).deflate(docSize.width * 0.002),
@@ -642,9 +574,9 @@ class StagePainter extends CustomPainter {
             ..color = const Color(0xAA3D7EFF));
     }
 
-    // What a held stroke would do, over the picture it belongs to. Drawn from
-    // the brush's own output rather than from its settings, so what is shown
-    // and what will happen cannot drift apart -- see strokePreview.
+    // What a held stroke would do, over its picture, drawn from the
+    // brush's own output so preview and result cannot drift apart (see
+    // strokePreview).
     if (preview != null && previewOn != null) {
       var to = previewOn!.dst;
       canvas.drawImageRect(
@@ -659,12 +591,9 @@ class StagePainter extends CustomPainter {
           Paint()..filterQuality = FilterQuality.medium);
     }
 
-    // The stroke being drawn, inside the frame's clip along with everything
-    // else the document contributes -- unclipped, a stroke on a zoomed canvas
-    // carries on over the sidebar. A thick
-    // round-capped line rather than a stamp per point: it is a preview of a
-    // brush that will be dabbed along the same path, and the two read the same
-    // at any speed the pointer moves.
+    // The stroke being drawn, inside the page clip (unclipped, it runs over
+    // the sidebar when zoomed). A thick round-capped line rather than a
+    // stamp per point: it reads the same as the dabbed brush at any speed.
     if (liveStroke.length > 1 && liveStrokeRadius > 0) {
       var path = Path()
         ..moveTo(liveStroke.first.dx * scale + origin.dx,
@@ -686,10 +615,8 @@ class StagePainter extends CustomPainter {
 
     canvas.restore();
 
-    // Everything outside the page dimmed, so the edge of what will actually be
-    // published stays obvious. Four bands rather than a stroked rectangle with
-    // a hole in it, which is what a Path.difference would be for one frame of
-    // shading.
+    // Everything outside the page dimmed, so the published edge stays
+    // obvious: four bands rather than a Path.difference.
     if (view != page) {
       var shade = Paint()..color = const Color(0x66000000);
       canvas.drawRect(
@@ -703,8 +630,8 @@ class StagePainter extends CustomPainter {
           Rect.fromLTRB(page.right, page.top, view.right, page.bottom), shade);
     }
 
-    // The border last and outside the clip, so it is a crisp full-width line
-    // rather than a half-width one sitting on the edge of the clip.
+    // The border last and outside the clip, so it is a full-width line
+    // rather than half of one on the clip's edge.
     canvas.drawRect(
         page,
         Paint()
@@ -712,9 +639,8 @@ class StagePainter extends CustomPainter {
           ..strokeWidth = 1
           ..color = const Color(0x55FFFFFF));
 
-    // A hint that there is more of the canvas outside the frame. Drawn only
-    // when there is: at zoom 1 the document exactly fills the frame and a
-    // shadow round the inside would be saying something untrue.
+    // A hint that there is more canvas outside the frame, only when there
+    // is.
     if (docSize.width * scale > page.width + 1) {
       canvas.drawRect(
         page,
@@ -728,16 +654,13 @@ class StagePainter extends CustomPainter {
       );
     }
 
-    // The rulers last of everything, in the widget's own pixels rather than
-    // the document's and outside the page clip -- a ruler is a fixed strip
-    // along the edge of the *window*, and what moves under it is the canvas.
-    // Drawn inside the clip, as they first were, they were clipped away
-    // entirely and no ruler ever appeared.
+    // The rulers last, in the widget's own pixels and outside the page
+    // clip, which would clip them away.
     _paintRulers(canvas, size);
   }
 
   /// _paintContents is the page being edited, everything on it as the editor
-  /// shows it -- over its own backdrop, or with [part] all, with it.
+  /// shows it, over its own backdrop, or with [part] all, with it.
   void _paintContents(Canvas canvas, CanvasDocument document, int frame,
       {CanvasPaintPart part = CanvasPaintPart.contents,
       (double, Offset)? camera}) {
@@ -757,25 +680,17 @@ class StagePainter extends CustomPainter {
         counterRunning: counterRunning,
         audioState: audioState,
         videoShow: videoShow,
-        // Drawn once and kept while the design and the size hold still. See
-        // ProceduralCache: the editor repaints for a pointer moving over the
-        // stage, and generating the background again to produce exactly the
-        // pixels it produced last time is what made a canvas with one on it
-        // slow to touch.
+        // Drawn once and kept while the design and size hold still (see
+        // ProceduralCache): the editor repaints on every pointer move.
         backgrounds: backgrounds,
-        // Guide paths show here and nowhere else: the line describing a run is
-        // scaffolding, and a published diagram with every run drawn on it is
-        // unreadable.
+        // Guide paths show only while editing: they are scaffolding.
         editing: true,
         previewing: previewing);
   }
 
   /// _paintChartLabels outlines a chart's placed title and description, with a
-  /// grip on the corner that resizes them.
-  ///
-  /// Dashes rather than a solid line, so it does not read as part of the
-  /// design: it is scaffolding, the same as the selection box, and it is never
-  /// exported -- this painter draws over the document rather than into it.
+  /// grip on the corner that resizes them, dashed so it does not read as part
+  /// of the design.
   void _paintChartLabels(Canvas canvas) {
     if (chartLabels.isEmpty) return;
     var line = Paint()
@@ -807,11 +722,8 @@ class StagePainter extends CustomPainter {
     }
   }
 
-  /// _paintTableColumns puts a grip on each of a table's inner column rules.
-  ///
-  /// A short bar at the top and the bottom rather than a line down the whole
-  /// rule: the rule is already drawn by the table, and a second line over it
-  /// would read as the table having two.
+  /// _paintTableColumns puts a grip on each of a table's inner column rules: a
+  /// short bar at top and bottom, since the table draws the rule itself.
   void _paintTableColumns(Canvas canvas) {
     if (tableColumns.isEmpty) return;
     var paint = Paint()..color = const Color(0xFF3D7EFF);
@@ -830,10 +742,8 @@ class StagePainter extends CustomPainter {
     }
   }
 
-  /// _paintAnchors draws each anchor shown: a ring with a cross through it,
-  /// greyed where it is locked and cannot be dragged.
-  /// _paintKnife draws the knife's line: a thin dashed cut over a pale
-  /// edge, so it shows on anything.
+  /// _paintKnife draws the knife's line: a thin dashed cut over a pale edge,
+  /// so it shows on anything.
   void _paintKnife(Canvas canvas) {
     if (knife.length < 2) return;
     var path = Path()
@@ -859,6 +769,8 @@ class StagePainter extends CustomPainter {
           ..color = const Color(0xFFE53935));
   }
 
+  /// _paintAnchors draws each anchor shown: a ring with a cross through it,
+  /// greyed where it is locked and cannot be dragged.
   void _paintAnchors(Canvas canvas) {
     for (var a in anchors) {
       var c = a.at * scale + origin;
@@ -897,9 +809,8 @@ class StagePainter extends CustomPainter {
     }
   }
 
-  /// _paintCameras draws each Camera's frame over the page: what will be
-  /// shown, where it is now. Not while looking through it -- then the page
-  /// is the frame.
+  /// _paintCameras draws each Camera's frame over the page: what will be shown,
+  /// where it is now. Not while looking through it, when the page is the frame.
   void _paintCameras(Canvas canvas) {
     // On a 3D stage it is in the scene, not a frame on the page.
     if (camera != null || directed || isStageScene(document)) {
@@ -968,9 +879,8 @@ class StagePainter extends CustomPainter {
 
     _paintChartLabels(canvas);
     _paintTableColumns(canvas);
-    // A selected path shows its points and handles instead of a box: the box
-    // round a curve is a rectangle nobody drew and cannot be usefully dragged,
-    // where the points are the whole of what there is to edit.
+    // A selected path shows its points and handles instead of a box: the
+    // box round a curve cannot be usefully dragged.
     var path = selectedPath;
     if (path != null) {
       _paintPathControls(canvas, path);
@@ -981,8 +891,8 @@ class StagePainter extends CustomPainter {
       return;
     }
     if (editingVector case var editing?) {
-      // Painting -- tint, or the pencil with its points hidden -- nothing is
-      // picked or boxed: the drawing alone.
+      // Painting (tint, or the pencil with its points hidden): nothing is
+      // picked or boxed, the drawing alone.
       if (editing.mirror case var m?) {
         _paintMirrorLines(canvas, editing.element, m.across, m.down);
       }
@@ -1000,13 +910,9 @@ class StagePainter extends CustomPainter {
     var bounds = selectionBounds;
     if (bounds == null) return;
 
-    // Every element in a multi-selection outlined on its own, under the box
-    // round the lot.
-    //
-    // The box says what will be moved and resized; it does not say what is
-    // in it, and three elements selected out of six overlapping ones is
-    // exactly when that matters. No handles on these: there is one thing
-    // being resized and it is the group.
+    // Every element of a multi-selection outlined on its own, under the
+    // box round the lot (see chosenOutlines). No handles on these: the
+    // group is what is resized.
     _paintChosenBoxes(canvas);
 
     var centre = bounds.center * scale + origin;
@@ -1014,8 +920,8 @@ class StagePainter extends CustomPainter {
 
     canvas.save();
     canvas.translate(centre.dx, centre.dy);
-    // Turned and slanted as the selection is -- the handles are where its
-    // corners and sides are drawn.
+    // Turned and slanted as the selection is, so the handles are at its
+    // drawn corners and sides.
     BoxFrame(selectionRotation * 180 / math.pi, selectionSkew.dx,
             selectionSkew.dy)
         .applyTo(canvas, Offset.zero);
@@ -1027,8 +933,7 @@ class StagePainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1
           ..color = const Color(0xFF3D7EFF));
-    // The line out to the rotate ring, so it reads as attached to the
-    // selection rather than as a stray dot floating above it.
+    // The line out to the rotate ring, so it reads as attached.
     if (showHandles) {
       canvas.drawLine(
           Offset(0, -half.dy),
@@ -1039,8 +944,7 @@ class StagePainter extends CustomPainter {
     }
     canvas.restore();
 
-    // The outline alone for something placed by another element: it says what
-    // is selected without offering eight squares that would do nothing.
+    // The outline alone for something placed by another element.
     if (!showHandles) return;
 
     var fill = Paint()..color = const Color(0xFFFFFFFF);
@@ -1065,11 +969,8 @@ class StagePainter extends CustomPainter {
     _paintFlowGrips(canvas);
   }
 
-  /// _paintChosenBoxes outlines each element of a multi-selection.
-  ///
-  /// Brighter than the kept boxes and thinner than the selection's own, which
-  /// is the order they should read in: what is selected, then what each of
-  /// them is, then everything else.
+  /// _paintChosenBoxes outlines each element of a multi-selection: brighter
+  /// than the kept boxes, thinner than the selection's own.
   void _paintChosenBoxes(Canvas canvas) {
     var paint = Paint()
       ..style = PaintingStyle.stroke
@@ -1088,12 +989,8 @@ class StagePainter extends CustomPainter {
     }
   }
 
-  /// _paintKeptBoxes outlines every element while that is asked for.
-  ///
-  /// Quieter than the selection's own outline and drawn under it: what these
-  /// say is "this is where that other thing is", not "this is what you are
-  /// working on". Editing furniture, so it is drawn here and never by the
-  /// renderer -- see CanvasController.showAllBounds.
+  /// _paintKeptBoxes outlines every element while that is asked for (see
+  /// CanvasController.showAllBounds), quieter than the selection and under it.
   void _paintKeptBoxes(Canvas canvas) {
     if (!showAllBounds) return;
     var paint = Paint()
@@ -1181,16 +1078,14 @@ class StagePainter extends CustomPainter {
     }
   }
 
-  /// _paintFlowLines draws the links between text boxes.
-  ///
-  /// Drawn from a list rather than from the selected box, and drawn before
-  /// anything can return early: a link belongs to two boxes, either of them
-  /// can be the reason it is showing, and one of those reasons -- a box asked
-  /// to stay visible -- has nothing to do with what is selected.
+  /// _paintFlowLines draws the links between text boxes, from a list rather
+  /// than from the selection, before anything can return early: a link
+  /// belongs to two boxes, and a box asked to stay visible is shown whatever
+  /// is selected.
   void _paintFlowLines(Canvas canvas) {
     for (var line in flowLines) {
-      // Red says the box the words leave has more than it can show, which is
-      // the same thing its own grip says.
+      // Red: the box the words leave has more than it can show, as its grip
+      // says.
       var colour =
           line.overflowing ? const Color(0xFFE5484D) : const Color(0xFF3D7EFF);
       canvas.drawLine(
@@ -1213,8 +1108,8 @@ class StagePainter extends CustomPainter {
     var grips = flowGrips;
     if (grips == null) return;
 
-    // Red is the whole point of the grip: it is the only thing on the canvas
-    // that says there are words the box is not showing.
+    // Red is the only thing on the canvas saying there are words the box
+    // is not showing.
     var out = grips.overflowing ? const Color(0xFFE5484D) : blue;
 
     if (flowDrag case var dragged?) {
@@ -1229,8 +1124,7 @@ class StagePainter extends CustomPainter {
     }
 
     void dot(Offset at, Color colour, bool filled) {
-      // The grip's own size, not the resize handles'. Drawn off handleSize
-      // these were the same size as the controls they are meant to defer to.
+      // The grip's own size, not the resize handles'.
       var radius = flowGripSize / 2 + 1;
       canvas.drawCircle(at, radius, filled ? (Paint()..color = colour) : white);
       canvas.drawCircle(
@@ -1248,22 +1142,9 @@ class StagePainter extends CustomPainter {
     dot(grips.outAt, out, grips.overflowing || grips.linked);
   }
 
-  /// _paintPathControls draws a path's points and its handles.
-  ///
-  /// Handles only where there are any: an unbent node's handles sit exactly on
-  /// top of it, and drawing them there would be three overlapping dots that
-  /// cannot be told apart or aimed at separately.
-  /// _paintVectorControls draws a drawing being edited: every shape's
-  /// outline, faint; the picked shape's in the drawing's own handle colour,
-  /// with its points -- and the points of any shape with points picked, since
-  /// a box dragged across the drawing can pick from several -- and the
-  /// handles of the one point picked, where exactly one is.
-  ///
-  /// [everyShape] shows every shape's points: while a box is dragged across
-  /// the drawing, so what it will take in can be seen.
-  /// _paintShapeBox draws the box round the shape the shapes tool has
-  /// picked, in the drawing's units [box], with a handle at each corner and
-  /// each side's middle: what moves and resizes it.
+  /// _paintShapeBox draws the box round the shape the shapes tool has picked,
+  /// in the drawing's units [box], with a handle at each corner and each side's
+  /// middle: what moves and resizes it.
   void _paintShapeBox(Canvas canvas, VectorElement e, Rect box,
       {bool turnable = false}) {
     var space = VectorSpace(e);
@@ -1278,8 +1159,8 @@ class StagePainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1
           ..color = colour);
-    // The round handle above the box, on a stalk, that turns what is in
-    // it -- as an element's does.
+    // The round handle on a stalk above the box that turns what is in it,
+    // as an element's does.
     if (turnable) {
       var top = screen(box.topCenter);
       var knob = top - const Offset(0, shapeTurnReach);
@@ -1449,15 +1330,15 @@ class StagePainter extends CustomPainter {
   }
 
   /// _paintMirrorLines draws the pencil's mirror lines through the middle of
-  /// the drawing [e] -- dashed, and through the whole of it, so what a
-  /// stroke will be mirrored across can be seen before it is drawn.
+  /// the drawing [e], dashed and through the whole of it, so what a stroke will
+  /// be mirrored across can be seen first.
   void _paintMirrorLines(
       Canvas canvas, VectorElement e, bool across, bool down) {
     if (!across && !down) return;
     var space = VectorSpace(e);
     var v = e.viewBox;
-    // Out past the drawing a little each way: the line reads as a line, not
-    // as an edge of the drawing.
+    // A little past the drawing each way, so it reads as a line, not an
+    // edge.
     var r = v.inflate(math.max(v.width, v.height) * 0.1);
     var paint = Paint()
       ..color = e.handleColor.withValues(alpha: 0.7)
@@ -1480,6 +1361,11 @@ class StagePainter extends CustomPainter {
     if (down) dashed(Offset(r.left, v.center.dy), Offset(r.right, v.center.dy));
   }
 
+  /// _paintVectorControls draws a drawing being edited: every shape's outline,
+  /// faint; the picked shape's in the handle colour with its points, and the
+  /// points of any shape with points picked (a box can pick from several);
+  /// and the handles of the one point picked, where exactly one is.
+  /// [everyShape] shows every shape's points, while a box is dragged.
   void _paintVectorControls(Canvas canvas, VectorElement e, int picked,
       VectorPick? pick, Set<VectorPick> picks,
       {bool everyShape = false, Set<int>? combining}) {
@@ -1489,8 +1375,8 @@ class StagePainter extends CustomPainter {
     var colour = e.handleColor;
     Offset screen(Offset v) => space.toCanvas(v) * scale + origin;
 
-    // The outlines, drawn through the same placement the drawing is drawn
-    // with -- and its turn -- so they lie exactly on it.
+    // Through the same placement and turn the drawing is drawn with, so
+    // the outlines lie exactly on it.
     var place = e.placement(e.bounds, e.viewBox);
     var centre = e.bounds.center;
     canvas.save();
@@ -1502,9 +1388,8 @@ class StagePainter extends CustomPainter {
     canvas.translate(place.dx, place.dy);
     canvas.scale(place.sx, place.sy);
     var hair = 1 / (scale * math.max(1e-6, math.min(place.sx, place.sy)));
-    // Combining shapes: whole shapes are what is picked, so their outlines
-    // are all there is -- the picked ones, and every shape combined into
-    // them, lit.
+    // Combining shapes: whole shapes are picked, so outlines are all there
+    // is: the picked ones, and every shape combined into them, lit.
     if (combining != null) {
       for (var i = 0; i < shapes.length; i++) {
         var lit = combining.contains(groupOf(e, i));
@@ -1536,9 +1421,9 @@ class StagePainter extends CustomPainter {
     }
     canvas.restore();
 
-    // Every shape's points while a box is dragged -- and while nothing is
-    // picked, which is how the drawing opens: there is always something to
-    // take hold of.
+    // Every shape's points while a box is dragged, and while nothing is
+    // picked (how the drawing opens), so there is always something to take
+    // hold of.
     if (picked < 0 && picks.isEmpty) everyShape = true;
     var shown = <int>{
       if (everyShape) ...[for (var i = 0; i < shapes.length; i++) i],
@@ -1547,8 +1432,8 @@ class StagePainter extends CustomPainter {
         if (p.shape < shapes.length) p.shape,
     };
     if (shown.isEmpty) return;
-    // The box round several picked points, faint: it says where a press
-    // takes hold of them all.
+    // The box round several picked points, faint: where a press takes hold
+    // of them all.
     if (picksBox(e, picks) case var box?) {
       var r = Rect.fromPoints(
               box.topLeft * scale + origin, box.bottomRight * scale + origin)
@@ -1590,9 +1475,8 @@ class StagePainter extends CustomPainter {
         }
       }
     }
-    // A joint is one point however many lines meet at it: picked, every
-    // end lying there is drawn picked, not only the one taken hold of --
-    // or the others, drawn over it, hide that it is.
+    // A joint is one point however many lines meet at it: every end lying
+    // there is drawn picked, or those drawn over it hide that it is.
     var lit = joinedTo(e, picks);
     for (var showing in shown) {
       var paths = shapes[showing].paths;
@@ -1601,8 +1485,8 @@ class StagePainter extends CustomPainter {
           var node = paths[p].nodes[n];
           var at = screen(node.point);
           var chosen = lit.contains(VectorPick(showing, p, n));
-          // A smooth point is round, a corner square: the two kinds can be
-          // told apart at a glance, which is what decides how a handle moves.
+          // A smooth point is round, a corner square, since that decides how a
+          // handle moves.
           if (node.smooth) {
             canvas.drawCircle(at, size / 2, chosen ? ink : fill);
             canvas.drawCircle(at, size / 2, edge);
@@ -1616,6 +1500,8 @@ class StagePainter extends CustomPainter {
     }
   }
 
+  /// _paintPathControls draws a path's points and its handles, the handles
+  /// only where a node is bent: an unbent node's sit on top of it.
   void _paintPathControls(Canvas canvas, PathElement path) {
     Offset at(Offset doc) => doc * scale + origin;
 
@@ -1652,14 +1538,9 @@ class StagePainter extends CustomPainter {
     }
   }
 
-  /// _paintFraming shows the rest of the picture while it is being moved
-  /// about inside its frame.
-  ///
-  /// Everything outside the frame is drawn faintly and everything inside it is
-  /// left alone -- the renderer has already drawn that part properly, and
-  /// painting it again half-transparent on top would only muddy it. Without
-  /// the ghost, dragging a photograph inside its frame is done blind: what
-  /// comes into shot cannot be seen until it has arrived.
+  /// _paintFraming shows the rest of the picture while it is moved about inside
+  /// its frame: everything outside the frame faint, the inside left to the
+  /// renderer, so what comes into shot can be seen.
   void _paintFraming(Canvas canvas) {
     var it = framing;
     if (it == null || it.dst.isEmpty) return;
@@ -1679,9 +1560,8 @@ class StagePainter extends CustomPainter {
       canvas.translate(-it.frame.center.dx, -it.frame.center.dy);
     }
 
-    // The whole picture, faint, with the frame punched out of it -- so the
-    // part already on the canvas shows through at full strength and the two
-    // are seen as one picture rather than as two overlaid.
+    // The whole picture faint, with the frame punched out, so the part on
+    // the canvas shows at full strength and the two read as one picture.
     canvas.save();
     canvas.clipRect(it.frame, clipOp: ui.ClipOp.difference);
     canvas.drawImageRect(
@@ -1693,8 +1573,7 @@ class StagePainter extends CustomPainter {
           ..color = const Color(0x55FFFFFF));
     canvas.restore();
 
-    // The frame itself, so the edge the picture is being placed against is
-    // unmistakable while everything around it is half there.
+    // The frame itself, so the edge being placed against is clear.
     canvas.drawRect(
         it.frame,
         Paint()
@@ -1704,28 +1583,21 @@ class StagePainter extends CustomPainter {
     canvas.restore();
   }
 
-  /// _paintGuides draws the grid, the guides, and whatever a drag is caught
-  /// on.
-  ///
-  /// Under the selection and over the document: the scaffolding belongs behind
-  /// the handles, which have to stay findable, and in front of the design,
-  /// because a guide hidden by a photograph is a guide that cannot be used.
+  /// _paintGuides draws the grid, the guides, and whatever a drag is caught on:
+  /// over the document, so a photograph cannot hide a guide, and under the
+  /// selection, so the handles stay findable.
   void _paintGuides(Canvas canvas) {
     canvas.save();
     canvas.translate(origin.dx, origin.dy);
     canvas.scale(scale);
 
-    // In document units, because that is the space the canvas is in after
-    // the transform above. page is the frame *on screen*: adding sheet.left to
-    // a guide's position, as this did, put the grid and every guide a few
-    // hundred units to the right of where they belong -- and moved them
-    // whenever the window was resized, since the frame's position on screen
-    // is what changes when it is.
+    // In document units, the canvas's space after the transform above.
+    // [page] is the frame on screen; adding its offset would shift every
+    // guide and move them with the window.
     var sheet = Offset.zero & document.size.size;
     var size = sheet.size;
     canvas.clipRect(sheet);
-    // Hairlines: divided by the zoom so a guide is one pixel on screen at
-    // every magnification, which is what a guide is for.
+    // Hairlines: divided by the zoom, one pixel on screen at any zoom.
     var thin = 1 / scale;
 
     if (guides.showGrid) {
@@ -1773,8 +1645,8 @@ class StagePainter extends CustomPainter {
       }
     }
 
-    // What the drag has caught, over everything else and in a colour nothing
-    // else on the canvas uses.
+    // What the drag has caught, over everything, in a colour nothing else
+    // uses.
     if (snapped case var it? when it.caught) {
       var paint = Paint()
         ..strokeWidth = thin * 1.5
@@ -1791,21 +1663,11 @@ class StagePainter extends CustomPainter {
     canvas.restore();
   }
 
-  /// _paintRulers draws a strip along each edge that has been asked for.
-  ///
-  /// In screen pixels, with the tick positions worked out by putting document
-  /// coordinates through the same transform everything else uses. A ruler that
-  /// scrolled with the canvas would be a ruler that left the window.
-  ///
-  /// Laid against the page rather than the window -- see rulerBandsFor -- and
-  /// numbered from the page's top-left, because that is what every number in
-  /// the settings panel means. An element at x=0 is against the left edge of
-  /// the canvas, and a ruler that disagreed with the X field would be worse
-  /// than no ruler.
-  ///
-  /// The numbers land on the grid: the step is a whole multiple of the grid's
-  /// own spacing, so every figure on the ruler has a line under it and the two
-  /// are read together rather than against each other.
+  /// _paintRulers draws a strip along each edge asked for, in screen pixels,
+  /// ticks placed by putting document coordinates through the same transform.
+  /// Laid against the page (see rulerBandsFor) and numbered from its top-left,
+  /// so the numbers agree with the X and Y fields; the step lands on the grid
+  /// (see rulerStep).
   void _paintRulers(Canvas canvas, Size size) {
     // Over a page that scrolls, the stage draws them in a layer that does
     // not -- see paintStageRulers.
@@ -1859,7 +1721,8 @@ class StagePainter extends CustomPainter {
       old.hoveredButton != hoveredButton ||
       old.counterTick != counterTick ||
       old.audioRevision != audioRevision ||
-      old.selection != selection ||
+      // A new set each build: the same ids are the same selection.
+      !setEquals(old.selection, selection) ||
       old.selectionBounds != selectionBounds ||
       old.selectionSkew != selectionSkew ||
       old.marquee != marquee;
@@ -1881,10 +1744,10 @@ class StageWarp {
 }
 
 /// StageLayers is what the stage draws over a picture whose layers are being
-/// edited, in document units: the corners of every picture layer not picked,
-/// and the picked one's corners, handles and turning knob. A picked base
-/// picture has its frame as its corners and no handles -- the frame is
-/// resized as the element.
+/// edited, in document units: the corners of every layer not picked, and the
+/// picked one's corners, handles and turning knob. A picked base picture has
+/// its frame as its corners and no handles: the frame is resized as the
+/// element.
 class StageLayers {
   final List<List<Offset>> others;
   final List<Offset>? picked;
@@ -1912,9 +1775,9 @@ class StageLayers {
   final List<Offset>? lasso;
 
   /// warp is a picture's warp grid being worked on, in document units: its
-  /// lines, curved as the picture bends; its points and which are picked;
-  /// and, with two or more picked, the box round them -- four corners to
-  /// size them by, and a knob to turn them by. See ImageWarp.
+  /// lines, curved as the picture bends; its points and which are picked; and,
+  /// with two or more picked, the box round them to size and turn them by. See
+  /// ImageWarp.
   final StageWarp? warp;
 
   const StageLayers(
@@ -1932,12 +1795,11 @@ class StageLayers {
 }
 
 
-/// paintStageRulers draws the rulers [guides] asks for: a strip along each
-/// edge of [page] that is asked for, kept inside a view [size] across,
-/// numbered from the page's top-left at [scale] screen pixels to a unit of
-/// a sheet [sheet] big whose top-left is at [origin]. What the stage draws
-/// along its page -- and, over a page that scrolls, in a layer of its own
-/// that does not, so the rulers stay at the edges of the window.
+/// paintStageRulers draws the rulers [guides] asks for along the edges of
+/// [page], kept inside a view [size] across, numbered from the page's
+/// top-left at [scale] screen pixels to a unit of a [sheet] whose top-left
+/// is at [origin]. The stage calls it along its page, or in a layer of its
+/// own over a page that scrolls, so the rulers stay at the window's edges.
 void paintStageRulers(Canvas canvas, Size size, CanvasGuides guides, Size sheet,
     double scale, Offset origin, Rect page) {
     if (!guides.rulers.any || !guides.showRulers) return;
@@ -1951,19 +1813,16 @@ void paintStageRulers(Canvas canvas, Size size, CanvasGuides guides, Size sheet,
     var tick = Paint()
       ..strokeWidth = 1
       ..color = const Color(0x66FFFFFF);
-    // The unnumbered ticks are the grid itself, drawn fainter: at any zoom
-    // where they are far enough apart to be told from each other, they say
-    // which line is which without another number on the strip.
+    // The unnumbered ticks are the grid itself, fainter.
     var fine = Paint()
       ..strokeWidth = 1
       ..color = const Color(0x33FFFFFF);
     var minor = guides.gridSize;
     var showFine = minor > 0 && minor < step && minor * scale >= 6;
 
-    // Where the page's origin sits on screen. In document units the page
-    // starts at (0, 0), so that is exactly the origin -- putting the frame's
-    // screen corner through the transform a second time is what once pushed
-    // every tick off the canvas it was measuring.
+    // The page starts at (0, 0) in document units, so its screen origin is
+    // [origin] as given; putting the frame's corner through the transform
+    // again would push every tick off the page.
     var zero = origin;
 
     void number(double at, Offset where, {required bool vertical}) {
@@ -1975,8 +1834,7 @@ void paintStageRulers(Canvas canvas, Size size, CanvasGuides guides, Size sheet,
         textDirection: TextDirection.ltr,
       )..layout();
       if (vertical) {
-        // Turned on its side, as every vertical ruler does: the numbers read
-        // up the strip rather than sticking out of it.
+        // Turned on its side, so the numbers read up the strip.
         canvas.save();
         canvas.translate(where.dx, where.dy);
         canvas.rotate(-math.pi / 2);
@@ -1998,8 +1856,7 @@ void paintStageRulers(Canvas canvas, Size size, CanvasGuides guides, Size sheet,
 
       canvas.save();
       canvas.clipRect(band);
-      // Only across the page. A ruler that went on numbering the grey around
-      // the canvas would be measuring something that is not there.
+      // Only across the page, not the grey round it.
       if (showFine) {
         for (var i = 0; i * minor <= sheet.width; i++) {
           var x = zero.dx + i * minor * scale;

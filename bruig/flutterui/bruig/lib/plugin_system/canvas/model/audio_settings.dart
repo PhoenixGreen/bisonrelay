@@ -1,7 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 export 'package:bruig/plugin_system/canvas/model/surround.dart' show SpeakerLayout;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonDouble, jsonInt;
+    show jsonDouble, jsonInt, jsonStr;
 
 // audio_settings.dart is a document's sound as a production: its tempo and
 // time signature, and how its sound is written when it is published -- the
@@ -359,8 +359,8 @@ class AudioSettings {
           for (var raw in list)
             if (SongSection.fromJson(raw) case var section?) section,
       ],
-      quantise: Quantise.fromName(json["quantise"] as String?),
-      speakers: SpeakerLayout.fromName(json["speakers"] as String?),
+      quantise: Quantise.fromName(jsonStr(json["quantise"])),
+      speakers: SpeakerLayout.fromName(jsonStr(json["speakers"])),
     );
   }
 }

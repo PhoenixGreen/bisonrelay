@@ -6,14 +6,11 @@ import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/notation.dart';
 import 'package:xml/xml.dart';
 
-// musicxml.dart is a score in MusicXML, the file every notation program --
-// MuseScore, Sibelius, Finale, Dorico -- reads and writes: written out from
-// a Score, and read back in as notes.
+// musicxml.dart writes a Score as MusicXML and reads MusicXML back as notes.
 //
-// Partwise, one part: a piano's two staves in one part, as MuseScore writes
-// it. Read in, every part's notes are taken together, as one instrument
-// plays them; grace notes are left out, ties joined into one held note, and
-// a compressed file (.mxl, a zip) opened for the score inside it.
+// Written partwise as one part, a piano's two staves in it, as MuseScore
+// writes it. Read in, every part's notes are merged as one instrument; grace
+// notes are dropped and ties joined into one held note.
 
 /// _divisions is how finely a quarter note is counted: a dotted semiquaver
 /// is nine of them, a triplet quaver eight.
@@ -84,8 +81,8 @@ String scoreToMusicXml(Score score, {String title = "", double tempo = 120}) {
           var barLength = (score.barQuarters * _divisions).round();
           var firstVoice = true;
           for (var (i, staff) in score.staves.indexed) {
-            // Each voice of the staff, back to the bar's start between
-            // them -- numbered as MuseScore does: a staff's from four on.
+            // Each voice of the staff, with a backup to the bar's start
+            // between them; numbered as MuseScore does, four per staff.
             var voices = <int, List<Written>>{};
             for (var w in bar.staves[staff] ?? const <Written>[]) {
               (voices[w.voice] ??= []).add(w);
@@ -238,9 +235,20 @@ class MusicXmlException implements Exception {
   String toString() => message;
 }
 
-/// readMusicXml reads a MusicXML file's [bytes] -- a score, or a compressed
-/// one (.mxl) with the score inside.
+/// readMusicXml reads a MusicXML file's [bytes], plain or compressed (.mxl).
+/// Anything that is not a score it can read -- a broken zip, bad text, bad
+/// XML -- is a MusicXmlException.
 MusicXmlScore readMusicXml(List<int> bytes) {
+  try {
+    return _readMusicXml(bytes);
+  } on MusicXmlException {
+    rethrow;
+  } catch (exception) {
+    throw MusicXmlException("That file could not be read: $exception");
+  }
+}
+
+MusicXmlScore _readMusicXml(List<int> bytes) {
   String text;
   // A zip: PK at its start.
   if (bytes.length > 4 && bytes[0] == 0x50 && bytes[1] == 0x4B) {
@@ -363,8 +371,7 @@ MusicXmlScore readMusicXml(List<int> bytes) {
             };
             var at = measureStart + start;
             if (ties.contains("stop") && open.containsKey(key)) {
-              // Carried on from the note it is tied to: that one held
-              // longer.
+              // Tied on: the note it is tied to is held longer.
               var i = open[key]!;
               var held = notes[i];
               notes[i] = held.copyWith(length: at + length - held.start);

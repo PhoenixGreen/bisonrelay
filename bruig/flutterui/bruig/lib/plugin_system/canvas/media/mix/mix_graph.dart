@@ -8,27 +8,21 @@ import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 
-// mix_graph.dart is how the sound gets from the channels to the speakers:
-// each channel through its strip; from each, what its sends ask for into the
-// returns -- before the fader or after it, as each return says -- each return
-// through its devices and its own strip; and all of it into the master.
+// mix_graph.dart is the routing from channels to speakers: each channel
+// through its strip, its sends (pre- or post-fader, as each return says)
+// into the returns, each return through its devices and strip, and all of
+// it into the master. The editor (mix_core.dart) and exports (mix_render.dart)
+// both use it, so a send heard while editing is the send in the file.
 //
-// The one routing there is. The editor's mixer (mix_core.dart) and an
-// export's render (mix_render.dart) both fill the channels' inputs a block at
-// a time and ask this for the master, so a send heard while editing is the
-// send in the file.
+// Each channel reaches the speakers as a gain per speaker from each of its
+// two sides (_Pan): left to left and right to right in stereo; spread about
+// its SurroundPan's angle in surround; or, for a placed sound, one point at
+// its [Heard] angle and gain. The gains ramp over each block so a moving
+// sound does not click.
 //
-// Where each channel lands among the speakers is a gain for each speaker
-// from each of its two sides -- see _Pan. In stereo, its left to the left
-// and its right to the right, as it always was. In surround, its sides are
-// spread about its SurroundPan's angle; and a placed sound (SoundPlacement)
-// is one point at the angle the picture puts it, as loud as its distance.
-// The gains glide from block to block, so a sound moving round the room
-// does not click as it goes.
-//
-// A surround mix's master runs a pair of speakers at a time; the LFE is
-// filtered below 120Hz. The editor hears the speakers folded down to two
-// (foldDown); an export takes them whole, from [speakers].
+// A surround master runs a pair of speakers at a time and the LFE is
+// filtered below 120Hz. The editor hears the speakers folded down to two;
+// an export takes them whole from [speakers].
 
 class _Bus {
   Float32List l, r;
@@ -70,8 +64,8 @@ class _Return {
         bus = _Bus(n);
 }
 
-/// _Pan is a channel's way to the speakers: the gain to each speaker from
-/// its left side and from its right, now and where it is going.
+/// _Pan is the gain to each speaker from a channel's left and right sides,
+/// as the last block ended.
 class _Pan {
   Float64List fromL, fromR;
   _Pan(int speakers)
@@ -80,12 +74,10 @@ class _Pan {
 }
 
 class MixGraph {
-  /// speakersLayout is what the mix is for: see setSpeakers.
-  SpeakerLayout get speakersLayout => _layout;
   SpeakerLayout _layout = SpeakerLayout.stereo;
 
-  /// speakers is the last block of each speaker, in the layout's order --
-  /// what an export writes.
+  /// speakers is the last block of each speaker, in the layout's order,
+  /// for an export to write.
   List<Float32List> get speakers => _out;
   List<Float32List> _out = [Float32List(1024), Float32List(1024)];
 
@@ -109,18 +101,25 @@ class MixGraph {
   final Map<String, (double, double)> _levels = {};
   (double, double) _masterLevels = (0, 0);
 
-  /// heard is each channel's and each return's last block, after its strip,
-  /// by key -- for a spectrum.
+  /// heard is each channel's and return's last block after its strip, by
+  /// key, for a spectrum.
   final Map<String, (Float32List, Float32List)> heard = {};
 
   bool has(String key) => _strips.containsKey(key);
 
-  /// setChannel makes or changes a channel. A strip set again unchanged
-  /// keeps its processors, and so what is in them.
+  /// setChannel makes or changes a channel, keeping its processors' state
+  /// where it can.
+  /// removeChannel stops running channel [key]'s strip: gone from the
+  /// canvas, its sounds go to the master.
+  void removeChannel(String key) {
+    _strips.remove(key);
+    _signatures.remove(key);
+    _structures.remove(key);
+  }
+
   void setChannel(String key, ChannelMix mix) {
-    // Its Speech device is not part of how it sounds: a script typed into
-    // keeps the strip's processors, and what is in them. Nor are its lanes:
-    // what they move arrives here already moved.
+    // Speech and vocaliser settings do not change the sound here, and
+    // automation arrives already applied, so none of them resets the strip.
     var json = mix.toJson()
       ..remove("speech")
       ..remove("vocaliser")
@@ -128,9 +127,8 @@ class MixGraph {
     var signature = json.toString();
     if (_signatures[key] == signature) return;
     _signatures[key] = signature;
-    // The same strip but for its levels, its sends and its devices'
-    // settings -- automation playing -- is retuned, not made again: its
-    // compressor, its reverb's tail and the rest carry on.
+    // A strip differing only in levels, sends and device settings (as when
+    // automation plays) is retuned, so reverb tails and the like carry on.
     var structure = (json
           ..remove("gain")
           ..remove("balance")
@@ -168,7 +166,7 @@ class MixGraph {
   MasterMix _masterMix = const MasterMix(limiter: false);
   double _normaliseDb = 0;
 
-  /// setSpeakers is what the mix is for: stereo, or surround.
+  /// setSpeakers sets the speaker layout the mix is for.
   void setSpeakers(SpeakerLayout layout) {
     if (layout == _layout) return;
     _layout = layout;
@@ -188,7 +186,7 @@ class MixGraph {
   }
 
   /// setPlacement is where the sound on channel [key] is heard from, taken
-  /// from the picture -- or null, the channel's own pan.
+  /// from the picture; null for the channel's own pan.
   void setPlacement(String key, Heard? heard) {
     if (heard == null) {
       _placed.remove(key);
@@ -197,8 +195,7 @@ class MixGraph {
     }
   }
 
-  /// _targets is where [mix]'s two sides go now: a gain to each speaker
-  /// from each side.
+  /// _targets is the gain to each speaker from each of [mix]'s sides now.
   (Float64List, Float64List) _targets(String key, ChannelMix mix) {
     var count = _layout.channels;
     var l = Float64List(count), r = Float64List(count);
@@ -219,8 +216,8 @@ class MixGraph {
       r[1] = 1;
       return (l, r);
     }
-    // Spread about the angle; drawn together to a point, each side half
-    // as much again, so a point is as loud as the pair.
+    // Spread about the angle. As the width narrows to a point each side is
+    // scaled down to 1/sqrt2, so the point is as loud as the pair.
     var near = 1 / math.sqrt2;
     var k = near + (1 - near) * (pan.width / 60).clamp(0.0, 1.0);
     var gl = panGains(_layout, pan.angle - pan.width / 2);
@@ -232,9 +229,8 @@ class MixGraph {
     return (l, r);
   }
 
-  /// _land adds [b], a channel's block, to the speakers through its pan --
-  /// gliding from where it was to where it is now over the block -- and to
-  /// the LFE as its strip asks.
+  /// _land adds [b], a channel's block, to the speakers through its pan
+  /// (ramped over the block) and to the LFE as its strip asks.
   void _land(String key, ChannelMix mix, _Bus b, int n) {
     var count = _layout.channels;
     var (tl, tr) = _targets(key, mix);
@@ -275,9 +271,8 @@ class MixGraph {
     }
   }
 
-  /// pitchOf is the pitch the first of strip [key]'s devices that listens
-  /// for one has heard -- a tuner, or Auto-tune -- or null. The master with
-  /// no key.
+  /// pitchOf is the pitch heard by strip [key]'s first tuner or Auto-tune
+  /// (the master's with no key), or null.
   PitchReading? pitchOf([String? key]) {
     var devices = key == null
         ? _master.devices
@@ -320,8 +315,7 @@ class MixGraph {
   }
 
   /// input is where a sound on channel [key] is added for this block: its
-  /// channel's input, or -- for a sound on no channel there is -- straight
-  /// into the master.
+  /// channel's input, or straight into the master for an unknown channel.
   (Float32List, Float32List) input(String? key, int n) {
     if (key == null || !_strips.containsKey(key)) return (_direct.l, _direct.r);
     var b = _inputs[key];
@@ -334,8 +328,7 @@ class MixGraph {
   }
 
   /// finish routes the block and leaves the master in [l] and [r]. The
-  /// limiter only when [limit]: the first of an export's two passes measures
-  /// the mix before it.
+  /// limiter runs only when [limit] (see [MasterProcessor.process]).
   void finish(Float32List l, Float32List r, int n, {bool limit = true}) {
     // What is on no channel, to the front pair.
     for (var i = 0; i < n; i++) {
@@ -419,8 +412,8 @@ class MixGraph {
     _masterLevels = _peaks(l, r, n);
   }
 
-  /// _send adds what [mix]'s sends ask for, from [from], into the returns
-  /// that take their sends at this point -- before the fader or after it.
+  /// _send adds [mix]'s sends from [from] into the returns that take them
+  /// at this point, [pre] or post fader.
   void _send(ChannelMix mix, _Bus from, int n, {required bool pre}) {
     if (mix.sends.isEmpty || mix.mute) return;
     for (var ret in _returns) {

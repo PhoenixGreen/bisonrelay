@@ -18,16 +18,12 @@ import 'package:flutter/painting.dart';
 
 // text_wrap.dart sets words around the things in their way.
 //
-// It is a second way of setting type, and that is why it is a switch rather
-// than the way everything works. A paragraph is normally laid out once by
-// Flutter, which breaks lines against a rectangle -- fast, correctly shaped,
-// and unable to know that there is a photograph in the middle of it. Here the
-// lines are worked out one at a time: what is in the way at this height, what
-// room that leaves, and how many words fit in it.
-//
-// The cost is real (one measurement per word rather than one per paragraph,
-// though the layout cache absorbs most of it), so this runs only for a text
-// element that has asked for it and only while something actually overlaps.
+// A second way of setting type, and a switch rather than the default: a
+// paragraph is normally laid out once by Flutter against a rectangle. Here
+// the lines are worked out one at a time (what is in the way at this
+// height, what room that leaves, how many words fit), one measurement per
+// word, though the layout cache absorbs most of it. So this runs only for a
+// text element that asks for it, and only while something overlaps.
 
 /// WrappedLine is one line of wrapped text: which characters, where they go,
 /// and the paragraph they were measured as.
@@ -38,12 +34,8 @@ class WrappedLine {
   final TextPainter painter;
 
   /// outline is the same line laid out as an outline, where the type has one.
-  ///
-  /// Laid out here rather than at drawing time because a line's styled runs
-  /// are worked out from how many words came before it, which is a fact about
-  /// the setting and not about the painting -- and because wrapped text had
-  /// no outline at all until this existed: the Outline setting simply stopped
-  /// meaning anything the moment Wrap around things was turned on.
+  /// Laid out here because a line's styled runs depend on how many words came
+  /// before it, a fact about the setting rather than the painting.
   final TextPainter? outline;
 
   /// soft is the shadow and the glow for this line, laid out on their own.
@@ -68,13 +60,9 @@ class WrappedText {
   const WrappedText(this.lines, this.consumed, this.height);
 }
 
-/// WrapShape is one thing the words have to go around.
-///
-/// A rectangle *and*, where the element has one, its own outline. The
-/// difference is the whole of how tight a wrap looks: a circle's box is a
-/// square, so words kept clear of the corners as if they were full -- most
-/// obviously at the top and bottom of the circle, where there is nearly a
-/// whole square of empty room the words would not go into.
+/// WrapShape is one thing the words have to go around: a rectangle and,
+/// where the element has one, its own outline, so words can go into the
+/// corners of a circle's box.
 class WrapShape {
   /// bounds is the element's box, spread by the gap. What the outline is
   /// tested against, and the answer on its own where there is no outline.
@@ -87,11 +75,7 @@ class WrapShape {
 
   /// silhouette is where a picture's ink actually is, with [drawn] the
   /// rectangle it is drawn into and [shown] the part of the picture that is
-  /// in it.
-  ///
-  /// A photograph fills its frame and this says the same as the box. A
-  /// cut-out does not, and the difference is most of the picture: text set
-  /// around such a thing's box keeps a wide empty margin round nothing.
+  /// in it, so text wraps a cut-out's ink rather than its box.
   final ImageSilhouette? silhouette;
   final Rect drawn;
   final Rect shown;
@@ -110,11 +94,8 @@ class WrapShape {
   });
 
   /// spanIn is the horizontal room this takes out of a line between [top] and
-  /// [bottom], or null where it takes none.
-  ///
-  /// Asked per line, which is what makes a wrap tight: a circle takes almost
-  /// nothing out of the line by its top edge and its full width out of the
-  /// one across its middle.
+  /// [bottom], or null where it takes none. Asked per line, which is what
+  /// makes a wrap tight round a curved shape.
   (double, double)? spanIn(double top, double bottom) {
     if (bounds.bottom <= top || bounds.top >= bottom) return null;
 
@@ -142,24 +123,17 @@ class WrapShape {
 
 /// wrapObstacles is what a text element has to set its words around.
 ///
-/// Everything visible that overlaps its box, less a few things that would
-/// make nonsense of it: the element itself, the line it may be riding, and
-/// anything that covers the whole box -- a panel behind a headline is a
-/// background, and a paragraph cannot go round it. Backgrounds proper are
-/// left out for the same reason.
+/// Everything visible that overlaps its box, less the element itself, the
+/// line it may be riding, backgrounds, and anything covering the whole box
+/// (a panel behind a headline is a background). The rectangles come back in
+/// document space, already spread by the element's gap.
 ///
-/// The rectangles come back in document space, already spread by the gap the
-/// element asked for.
+/// Nothing is left out for being tall: a picture beside a column is usually
+/// taller than it. A thing that really covers the words is caught by
+/// wrapFits instead.
 ///
-/// Nothing is left out for being tall. A picture beside a column of text
-/// usually *is* taller than the column -- that is what a picture beside a
-/// column looks like -- and dropping those as "backgrounds" meant the words
-/// ran straight under them. A thing that really covers the words is caught
-/// where it matters instead: see wrapFits, which sets them the ordinary way
-/// when going round what is in the way would leave nowhere to put them.
-/// [images] is where a picture's ink is read from. Without one -- a model
-/// test, or anything measuring before the picture has been decoded -- a
-/// picture is its box, which is what it was before its ink could be read.
+/// [images] is where a picture's ink is read from; without one (a model
+/// test, or before decoding) a picture is its box.
 List<WrapShape> wrapObstacles(
     TextElement e, CanvasDocument? doc, int frame, Rect inner,
     {CanvasImageSource? images}) {
@@ -170,11 +144,9 @@ List<WrapShape> wrapObstacles(
     if (other.id == e.id || !other.visible) continue;
     if (other.kind == ElementKind.background) continue;
     if (e.curve?.elementId == other.id) continue;
-    // Never the boxes this one shares its words with. They are one paragraph
-    // in several places, they are routinely laid over each other while a
-    // chain is being arranged, and treating the box the words come *from* as
-    // something to go around squeezed them into whatever strip was left --
-    // which read as the wrapping having deleted them.
+    // Never the boxes this one shares its words with: they are one paragraph
+    // in several places, often overlapping while a chain is arranged, and
+    // going around them would squeeze the words out of sight.
     if (_sameChain(e, other, doc)) continue;
 
     var at = other.boundsAt(frame);
@@ -189,11 +161,9 @@ List<WrapShape> wrapObstacles(
   return out;
 }
 
-/// _pictureShape is a picture as something to go around.
-///
-/// Its ink where that has been read, and its box until then -- and its box
-/// for good if it is turned, since the profile is rows of the picture as it
-/// stands and a turned picture's rows are not the canvas's.
+/// _pictureShape is a picture as something to go around: its ink where that
+/// has been read, and its box until then, or for good if it is turned (the
+/// profile is rows of the unturned picture).
 WrapShape _pictureShape(
     ImageElement e, Rect at, Rect box, double gap, CanvasImageSource? images) {
   var ink = images?.resolveOutline(e.assetId, e.removal);
@@ -215,12 +185,8 @@ WrapShape _pictureShape(
 }
 
 /// _outlineOf is an element's own shape in document space, or null for the
-/// ones whose shape is their box.
-///
-/// A shape element knows its outline exactly -- see shapePath -- and that is
-/// what a wrap should follow. A picture's outline is its alpha, which is a
-/// different question and not one a layout can ask cheaply; it keeps its box
-/// for now.
+/// ones whose shape is their box. A shape element knows its outline exactly
+/// (see shapePath); pictures are handled by _pictureShape.
 Path? _outlineOf(CanvasElement e, Rect at) {
   if (e is! ShapeElement) return null;
   var path = shapePath(e.shape, at,
@@ -230,10 +196,8 @@ Path? _outlineOf(CanvasElement e, Rect at) {
       bubble: e.bubble);
   if (e.rotationRadians == 0) return path;
 
-  // Turned about its own centre, the way it is drawn. Written out rather
-  // than built from a matrix class: it is one rotation about one point, and
-  // the four numbers are easier to check than the library call that makes
-  // them.
+  // Turned about its own centre, the way it is drawn: one rotation about one
+  // point, written out.
   var centre = at.center;
   var cos = math.cos(e.rotationRadians);
   var sin = math.sin(e.rotationRadians);
@@ -249,10 +213,8 @@ Path? _outlineOf(CanvasElement e, Rect at) {
 }
 
 /// _sameChain is whether [other] is one of the boxes [e] shares its words
-/// with, in either direction.
-///
-/// Walked rather than asked of text_flow, which is the other side of this
-/// question and imports this file to answer it.
+/// with, in either direction. Walked here because text_flow imports this
+/// file.
 bool _sameChain(TextElement e, CanvasElement other, CanvasDocument doc) {
   if (other is! TextElement) return false;
 
@@ -271,10 +233,9 @@ bool _sameChain(TextElement e, CanvasElement other, CanvasDocument doc) {
   return reaches(e, other.id) || reaches(other, e.id);
 }
 
-/// freeRuns is the room left on a line between [top] and [bottom].
-///
-/// The box's own width less every obstacle that reaches into that band,
-/// merged so two overlapping pictures are one hole rather than two.
+/// freeRuns is the room left on a line between [top] and [bottom]: the box's
+/// width less every obstacle reaching into that band, overlapping obstacles
+/// merged into one hole.
 List<(double, double)> freeRuns(Rect box, List<WrapShape> blocked, double top,
     double bottom, WrapSide side) {
   var holes = <(double, double)>[];
@@ -316,25 +277,18 @@ List<(double, double)> freeRuns(Rect box, List<WrapShape> blocked, double top,
 }
 
 /// wrapFits is whether wrapping this text round these obstacles leaves
-/// anywhere to put it.
-///
-/// Something covering the box from side to side leaves no room on any line,
-/// and a paragraph set into no room is a paragraph nobody can see. Where that
-/// happens the words are laid out the ordinary way and drawn over whatever is
-/// in the way: that is wrong, and it is visibly wrong, which is what somebody
-/// can act on. Silently deleting a page of text is neither.
+/// anywhere to put it. Where it does not, the words are laid out the
+/// ordinary way and drawn over what is in the way: visibly wrong rather than
+/// silently deleted.
 bool wrapFits(String text, TextSpec spec, Rect box, List<WrapShape> blocked,
         TextWrap wrap) =>
     text.trim().isEmpty ||
     layoutWrapped(text, spec, box, blocked, wrap).lines.isNotEmpty;
 
-/// layoutWrapped sets [text] inside [box], going around [blocked].
-///
-/// Greedy, a line at a time, which is what makes it able to answer the
-/// question a paragraph layout cannot: the room on *this* line. Words are
-/// added while they fit and the line ends when the next one does not -- the
-/// same rule Flutter's own line breaker uses, so a box with nothing in its
-/// way sets identically to one that never asked to wrap.
+/// layoutWrapped sets [text] inside [box], going around [blocked]. Greedy, a
+/// line at a time: words are added while they fit, the same rule Flutter's
+/// line breaker uses, so a box with nothing in its way sets identically to
+/// one that never asked to wrap.
 WrappedText layoutWrapped(
   String text,
   TextSpec spec,
@@ -353,9 +307,8 @@ WrappedText layoutWrapped(
     return const WrappedText([], 0, 0);
   }
 
-  // The height of a line of this type, measured once. Every line is the same
-  // height: the words on a line have to sit on one baseline, and a wrapped
-  // paragraph is not the place to discover otherwise.
+  // The height of a line of this type, measured once: every line is the same
+  // height, the words on a line sharing one baseline.
   var probe = layoutText("Ag", spec, maxWidth: double.infinity, scale: scale);
   var lineHeight = math.max(1.0, probe.height);
 
@@ -365,18 +318,16 @@ WrappedText layoutWrapped(
   var words = 0;
 
   while (at < text.length && y + lineHeight <= box.bottom + 0.5) {
-    // A line of its own that has nothing on it: the gap between two
-    // paragraphs. Taken here, because the word-fitting below cannot advance
-    // past a break -- and a paragraph gap that nothing consumed stalled the
-    // whole layout on it, so a document set this way lost everything after
-    // its first paragraph.
+    // A line of its own with nothing on it: the gap between two paragraphs.
+    // Taken here, because the word-fitting below cannot advance past a break
+    // and would stall on it.
     if (text[at] == "\n") {
       at++;
       y += lineHeight;
       continue;
     }
     // The space a line broke on belongs to the line that broke, not to this
-    // one. A line that began with it started a word's width in from the edge.
+    // one.
     while (at < text.length && text[at] != "\n" && text[at].trim().isEmpty) {
       at++;
     }
@@ -435,11 +386,8 @@ WrappedText layoutWrapped(
 }
 
 /// _fit is the longest run of words from [at] that fits in [width], and the
-/// paragraph it was measured as.
-///
-/// Word by word rather than by bisection: the answer is usually a handful of
-/// words in, the measurements are cached, and a bisection would have to lay
-/// out a candidate that is mostly wrong to find out that it is.
+/// paragraph it was measured as. Word by word rather than by bisection: the
+/// answer is usually a handful of words in, and measurements are cached.
 (int, TextPainter) _fit(String text, int at, TextSpec spec, double width,
     List<TextPart> parts, int wordsBefore, double scale) {
   var end = at;
@@ -492,19 +440,13 @@ TextPainter _line(String text, TextSpec spec, List<TextPart> parts,
 
 /// paintWrapped draws what layoutWrapped worked out.
 ///
-/// [align] is the element's own, applied inside each run: a centred paragraph
-/// beside a picture is centred in the room it actually has, which is the only
-/// reading of "centred" that means anything here.
-/// [phase] is which half of the drawing this pass is for, which is how a
-/// paragraph with a picture or a pattern showing through it is drawn: the
-/// outline outside the layer the fill is cut to, the letters inside it. See
-/// TextDrawPhase.
-/// [written] is how much of the pen's work has been done, line by line and
-/// left to right, and [fillAlpha] how far up the letters have come behind it
-/// -- which together are Draw the outline. The pen writes the outline where
-/// the type has one and the words themselves where it has not, so [written]
-/// applies to whichever of the two is on the page. Null for both, which is
-/// every other preset.
+/// [align] is the element's own, applied inside each run, so a centred
+/// paragraph beside a picture is centred in the room it has. [phase] is
+/// which half of the drawing this pass is for (see TextDrawPhase). [written]
+/// is how much of the pen's work is done, line by line and left to right,
+/// and [fillAlpha] how far the letters have come up behind it: together,
+/// Draw the outline. The pen writes the outline where the type has one and
+/// the words where it has not. Null for both in every other preset.
 void paintWrapped(ui.Canvas canvas, WrappedText wrapped, TextSpec spec,
     {TextDrawPhase phase = TextDrawPhase.all,
     double? written,
@@ -546,12 +488,9 @@ void paintWrapped(ui.Canvas canvas, WrappedText wrapped, TextSpec spec,
       return true;
     }
 
-    /// stroke draws the outline, or as much of it as has been written.
-    ///
-    /// Written along the line rather than faded up: each line gets its share
-    /// of the time and is uncovered left to right, which is the pen. Here it
-    /// can be done with a clip and nothing else, since every line is laid out
-    /// as its own paragraph.
+    /// stroke draws the outline, or as much of it as has been written: each
+    /// line uncovered left to right in its share of the time, by a clip,
+    /// since every line is its own paragraph.
     void stroke() {
       if (!phase.drawsOutline || line.outline == null) return;
       var go = written ?? 1;
@@ -561,10 +500,9 @@ void paintWrapped(ui.Canvas canvas, WrappedText wrapped, TextSpec spec,
       canvas.restore();
     }
 
-    // Behind the letters when it is simply the type's outline -- a stroke
-    // centred on the letterform with the fill over it, so it takes nothing
-    // out of the shape of the type, see layoutText -- and on top of them
-    // while it is being drawn on, since that is the thing being watched.
+    // Behind the letters when it is simply the type's outline (a centred
+    // stroke with the fill over it, see layoutText), and on top while it is
+    // being drawn on, since that is what is being watched.
     if (phase.drawsOutline) line.soft?.paint(canvas, at);
     if (written == null) stroke();
     if (phase.drawsLetters) {

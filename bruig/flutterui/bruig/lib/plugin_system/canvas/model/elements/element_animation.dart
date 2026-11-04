@@ -5,21 +5,14 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 
-// element_animation.dart is how a shape or a picture arrives and leaves.
+// element_animation.dart is how a shape or a picture arrives and leaves:
+// the same idea as a text element's arrival, placed and sized on the
+// timeline.
 //
-// The same idea a text element has had all along -- choose an arrival, get
-// two keyframes on the timeline, drag them to say when and how long -- for
-// the elements that had nothing but the pose channels. A shape could be moved
-// and faded by hand, keyframe by keyframe, and that is not the same thing as
-// asking for it to fly in.
-//
-// Deliberately not a second animation system. The motions are the ones the
-// text animator already has (see MotionSpec, which was pulled out of
-// TextAnimationPreset for exactly this), the easing is the one a chart uses,
-// and the keyframes are the same reveal and close channels. What is here is
-// the list somebody chooses from, which is shorter than the text one: a
-// picture has no words, so nothing scoped to letters, lines or parts, and
-// nothing that draws a mark on anything.
+// Not a second animation system: the motions are the text animator's (see
+// MotionSpec), the easing is a chart's, and it plays on the same reveal and
+// close channels. Only the list is its own, shorter than text's: nothing
+// scoped to letters, lines or parts, and no drawn marks.
 
 /// ElementAnimationFamily groups the presets, so choosing is "what kind" and
 /// then "which one" rather than one list of twenty.
@@ -36,11 +29,8 @@ enum ElementAnimationFamily {
 }
 
 /// ElementAnimationPreset is the list a shape or a picture chooses from.
-///
-/// The same names as the text element's where the animation is the same
-/// animation, on purpose: a headline and the picture beside it should be able
-/// to arrive the same way, and two lists that named the same movement
-/// differently would make that a puzzle.
+/// Named as the text element's are where the movement is the same, so a
+/// headline and the picture beside it can arrive alike.
 enum ElementAnimationPreset {
   none("None", ElementAnimationFamily.fade, TextMotion.fade),
 
@@ -78,8 +68,7 @@ enum ElementAnimationPreset {
   flipIn("Flip in", ElementAnimationFamily.transform, TextMotion.flip),
   shake("Shake on", ElementAnimationFamily.transform, TextMotion.shake),
 
-  // The cutting ones. These are what a picture wants that a headline mostly
-  // does not, and they are the reason this list exists at all.
+  // The cutting ones.
   mosaic("Mosaic", ElementAnimationFamily.effect, TextMotion.mosaic,
       wants: ChartEase.linear),
   glitch("Glitch", ElementAnimationFamily.effect, TextMotion.glitch,
@@ -168,9 +157,8 @@ enum AnimationDirection {
 class ElementAnimation {
   final ElementAnimationPreset preset;
 
-  /// exit is how it leaves, the same presets played backwards -- which is
-  /// where a destruction comes from: Build up reversed is a thing coming
-  /// apart, and Break apart reversed is one being thrown together.
+  /// exit is how it leaves: the same presets played backwards, so Build up
+  /// reversed is a thing coming apart.
   final ElementAnimationPreset exit;
 
   /// scale is where a growing preset starts from, or 0 for the preset's own.
@@ -180,9 +168,8 @@ class ElementAnimation {
   final ChartEase ease;
 
   /// length is how many frames a new arrival is laid down with, or 0 for the
-  /// usual two seconds. What the timeline holds is the truth -- see
-  /// CanvasController.elementAnimationSpan -- and this is what a new one is
-  /// laid down with.
+  /// usual two seconds. The timeline holds where it actually is: see
+  /// CanvasController.elementAnimationSpan.
   final int length;
 
   /// loop is what it goes on doing after it has arrived -- or instead of
@@ -197,9 +184,8 @@ class ElementAnimation {
   /// against the preset's own: 1 is the preset as it is.
   final double strength;
 
-  /// exitDirection and exitStrength are the same for the way out: which
-  /// way it leaves, and how far -- its own, not the arrival's, so a thing
-  /// can come in from the left and go out to the right.
+  /// exitDirection and exitStrength are the same for the way out, its own,
+  /// so a thing can come in from the left and go out to the right.
   final AnimationDirection? exitDirection;
   final double exitStrength;
 
@@ -246,7 +232,7 @@ class ElementAnimation {
   bool get directed => _directs(preset) || _directs(exit);
 
   /// arrivalDirected, arrivalStrengthens, exitDirected and exitStrengthens
-  /// are the same, for the way in and the way out alone.
+  /// are [directed] and [strengthens] for the way in or the way out alone.
   bool get arrivalDirected => _directs(preset);
   bool get exitDirected => _directs(exit);
   bool get arrivalStrengthens => _strengthens(preset);
@@ -299,17 +285,13 @@ class ElementAnimation {
   /// spec is the motion of what is playing -- see specFor.
   MotionSpec get spec => specFor(preset);
 
-  /// progressAt eases [reveal] the way this animation asks for.
-  ///
-  /// One piece rather than a stagger: an element is a single thing. What the
-  /// cutting presets stagger is their own pieces, which they work out
-  /// themselves from EffectSpec.stagger -- the tiles of one picture are not
-  /// elements and have no keyframes.
+  /// progressAt eases [reveal] the way this animation asks for. No stagger:
+  /// the cutting presets stagger their own pieces from EffectSpec.stagger.
   double progressAt(double reveal) =>
       on ? ease.apply(reveal.clamp(0.0, 1.0)) : reveal.clamp(0.0, 1.0);
 
-  /// leaving is this animation as it is played on the way out.
-  /// Played with the way out's own direction and strength.
+  /// leaving is this animation as it is played on the way out, with the way
+  /// out's own direction and strength.
   ElementAnimation get leaving => copyWith(
       preset: exit,
       direction: exitDirection,
@@ -354,9 +336,8 @@ class ElementAnimation {
         if (loop.on) "loop": loop.toJson(),
         if (direction != null) "direction": direction!.name,
         if (strength != 1) "strength": strength,
-        // Written out wherever the arrival has its own, even when the way
-        // out has none: kept without, the way out reads as the arrival's,
-        // which is what it was before it could be told apart.
+        // Written wherever the arrival has its own, even when the way out
+        // has none: fromJson reads a missing one as the arrival's.
         if (direction != null || exitDirection != null)
           "exitDirection": exitDirection?.name,
         if (strength != 1 || exitStrength != 1) "exitStrength": exitStrength,
@@ -364,23 +345,23 @@ class ElementAnimation {
 
   factory ElementAnimation.fromJson(Map<String, dynamic> json) =>
       ElementAnimation(
-        preset: ElementAnimationPreset.fromName(json["preset"] as String?),
-        exit: ElementAnimationPreset.fromName(json["exit"] as String?),
+        preset: ElementAnimationPreset.fromName(jsonStr(json["preset"])),
+        exit: ElementAnimationPreset.fromName(jsonStr(json["exit"])),
         scale: jsonDouble(json["scale"], 0).clamp(0.0, 8.0),
         effect: json["effect"] is Map<String, dynamic>
             ? EffectSpec.fromJson(json["effect"] as Map<String, dynamic>)
             : const EffectSpec(),
-        ease: ChartEase.fromName(json["ease"] as String?),
+        ease: ChartEase.fromName(jsonStr(json["ease"])),
         length: jsonInt(json["length"], 0).clamp(0, 100000),
         loop: json["loop"] is Map<String, dynamic>
             ? ElementLoop.fromJson(json["loop"] as Map<String, dynamic>)
             : const ElementLoop(),
-        direction: AnimationDirection.fromName(json["direction"] as String?),
+        direction: AnimationDirection.fromName(jsonStr(json["direction"])),
         strength: jsonDouble(json["strength"], 1).clamp(0.0, 10.0),
-        // Kept before the way out had its own: the arrival's, as it was.
+        // Older files have none: the way out takes the arrival's.
         exitDirection: json.containsKey("exitDirection")
-            ? AnimationDirection.fromName(json["exitDirection"] as String?)
-            : AnimationDirection.fromName(json["direction"] as String?),
+            ? AnimationDirection.fromName(jsonStr(json["exitDirection"]))
+            : AnimationDirection.fromName(jsonStr(json["direction"])),
         exitStrength: jsonDouble(json["exitStrength"] ?? json["strength"], 1)
             .clamp(0.0, 10.0),
       );

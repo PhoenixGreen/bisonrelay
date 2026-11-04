@@ -6,16 +6,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:flutter/painting.dart';
 
-// image_mask_painter.dart draws a picture's mask -- see image_mask.dart --
-// with the compositor rather than with pixels.
+// image_mask_painter.dart draws a picture's mask (see image_mask.dart).
 //
-// The mask is recorded once, in the picture's own pixels, as a picture of
-// its own: the subject drawn as alpha, and every mark over it in order. It is
-// then drawn through the same placement as the picture, as a layer whose
-// blend keeps the picture only where the mask has something, with the edge
-// refinements as filters on that layer. So it is as sharp as the canvas is
-// drawn, whatever size the picture is, and redrawing it as a brush moves is
-// the brush's new dabs and nothing more expensive.
+// The mask is recorded in the picture's own pixels (the subject as alpha,
+// then every mark in order), rasterised and refined once (see maskImage),
+// and drawn through the picture's placement as a layer whose blend keeps the
+// picture only where the mask is.
 
 /// _subjectAlpha turns a grey mask picture into alpha: white kept, black
 /// gone, whatever colour -- the colour is never looked at, only the alpha.
@@ -33,20 +29,15 @@ class _Recorded {
   _Recorded(this.subject, this.size, this.picture);
 }
 
-/// _recorded is the masks last drawn, recorded, the most recently drawn
-/// last.
-///
-/// It was kept on each mask, for as long as the mask lived -- and the undo
-/// history keeps every mask there has been: a hundred strokes was a hundred
-/// recordings, of one stroke, of two, ... of a hundred, every one of them
-/// held. Only a mask being drawn needs its recording; a few are kept, for a
-/// canvas with a few masked pictures on it.
+/// _recorded is the recordings of the masks last drawn, most recent last.
+/// A bounded cache rather than a field on the mask: undo history keeps every
+/// mask there has been.
 final Map<ImageMask, _Recorded> _recorded = LinkedHashMap.identity();
 const int _recordedMost = 16;
 
 /// maskPicture is [mask] recorded for a picture of [size] pixels, with
-/// [subject] the decoded subject mask where it has one. Kept with the mask,
-/// which never changes: a new mark is a new mask.
+/// [subject] the decoded subject mask where it has one. Cached by mask
+/// identity, which is safe because a new mark makes a new mask.
 ui.Picture maskPicture(ImageMask mask, Size size, ui.Image? subject) {
   var kept = _recorded.remove(mask);
   if (kept != null && kept.size == size && identical(kept.subject, subject)) {
@@ -58,8 +49,7 @@ ui.Picture maskPicture(ImageMask mask, Size size, ui.Image? subject) {
   var whole = Offset.zero & size;
   paintMaskMarks(canvas, mask, size, subject);
   if (mask.invert) {
-    // White over the lot with xor leaves white where there was nothing and
-    // nothing where there was white: the alpha turned over.
+    // White with xor inverts the alpha.
     canvas.drawRect(
         whole,
         Paint()
@@ -86,31 +76,22 @@ class _Rastered {
   _Rastered(this.subject, this.size, this.area, this.image, this.over);
 }
 
-/// _rastered is the masks last drawn, as pixels, the most recently drawn
-/// last -- let go of as they fall out.
+/// _rastered is the masks last drawn, as pixels, most recent last; disposed
+/// as they fall out.
 final Map<ImageMask, _Rastered> _rastered = LinkedHashMap.identity();
 
 /// _maskSide is the most a mask is drawn into across: a mask is an edge's
 /// softness, not a photograph's detail.
 const double _maskSide = 2048;
 
-/// maskImage is [mask] for a picture of [size] pixels as pixels, white what
-/// is kept, at most [_maskSide] across -- drawn once, then kept with the
-/// mask -- cut to [area] of the picture (the part of it drawn: its crop) and
-/// refined, with [over] the part of the picture, in its own pixels, the
-/// image covers: the area and as far as the refining spreads past it.
+/// maskImage is [mask] for a picture of [size] pixels as pixels (white is
+/// kept), at most [_maskSide] across, cut to [area] (the crop) and refined.
+/// [over] is the part of the picture, in its own pixels, the image covers:
+/// the area plus the refining's spread.
 ///
-/// Drawn as its recording on every frame instead, a mask was its every mark
-/// again: a brush stroke is a soft dab at every step along it, each blurred
-/// on its own, and a picture of six masked photographs was thousands of
-/// them -- a second of the graphics card's time whenever it was drawn
-/// anywhere but straight to the screen.
-///
-/// And refined here, in the picture's own pixels, not as a filter where it
-/// is drawn: under a picture turned and drifting closer, the engine works a
-/// filter at whole pixels of a place that moves a little every frame, and a
-/// feathered or grown mask -- the picture it cuts out with it -- shook by a
-/// pixel or two from frame to frame instead of gliding.
+/// Rasterised once because replaying every blurred dab each frame is far too
+/// slow. Refined here, in picture pixels, because a filter applied where a
+/// moving picture is drawn snaps to whole screen pixels and the edge shakes.
 ({ui.Image image, Rect over}) maskImage(
     ImageMask mask, Size size, ui.Image? subject,
     {Rect? area}) {
@@ -139,11 +120,9 @@ const double _maskSide = 2048;
   }
   canvas.scale(w / over.width, h / over.height);
   canvas.translate(-over.left, -over.top);
-  // Nothing of the mask past the part of the picture that is drawn -- a
-  // crop's mask must not reach out over the frame. A hard clip: a smoothed
-  // one does not soften the mask along its edge, it softens how much of the
-  // mask is applied there -- so the pixel the edge crossed kept part of the
-  // picture whatever the mask said, a hairline round every faded picture.
+  // Clipped to the drawn part, so a crop's mask does not reach over the
+  // frame. A hard clip: an anti-aliased one leaves a hairline of picture
+  // round every faded edge.
   canvas.clipRect(area, doAntiAlias: false);
   canvas.drawPicture(maskPicture(mask, size, subject));
   if (refine != null) canvas.restore();
@@ -171,7 +150,7 @@ void paintMaskMarks(
           ..filterQuality = FilterQuality.medium
           ..colorFilter = _subjectAlpha);
   } else {
-    // Past the picture's edges, as a fade's is -- see paintMaskMark.
+    // Past the picture's edges, as a fade is (see paintMaskMark).
     canvas.drawRect(_beyond(whole), Paint()..color = const Color(0xFFFFFFFF));
   }
   for (var mark in mask.marks) {
@@ -183,9 +162,8 @@ void paintMaskMarks(
 void paintMaskMark(ui.Canvas canvas, MaskMark mark, Size size) {
   if (mark.points.isEmpty) return;
   Offset at(Offset f) => Offset(f.dx * size.width, f.dy * size.height);
-  // Each mark is laid down in a layer of its own: its strength is the
-  // layer's, so a stroke's dabs build up to it and no further, and hiding
-  // takes away from what is under the layer rather than painting black.
+  // A layer per mark: dabs build up to its strength and no further, and a
+  // hiding mark removes alpha rather than painting black.
   canvas.saveLayer(
       null,
       Paint()
@@ -210,13 +188,9 @@ void paintMaskMark(ui.Canvas canvas, MaskMark mark, Size size) {
                 const [Color(0x00FFFFFF), Color(0xFFFFFFFF)])
             : ui.Gradient.linear(
                 from, to, const [Color(0xFFFFFFFF), Color(0x00FFFFFF)]);
-        // A gradient carries on as its end colours past its ends, so one
-        // rectangle covers the lot: a line's hidden side wholly hidden, a
-        // radial fade wholly hidden past its rim. Drawn past the picture's
-        // edges: drawn to them, the half-covered pixel along each edge was
-        // half hidden of a half-shown base -- a quarter of the picture left
-        // showing, a hairline round every faded picture. The mask is clipped
-        // to the picture where it is used.
+        // A gradient clamps past its ends, so one rectangle covers the lot.
+        // Drawn past the picture's edges, or the half-covered edge pixels
+        // leave a hairline; the mask is clipped where it is used.
         canvas.drawRect(_beyond(Offset.zero & size), Paint()..shader = shader);
       }
   }
@@ -239,8 +213,7 @@ void _paintDabs(
       : mark.pressure[math.min(i, mark.pressure.length - 1)];
 
   void dab(Offset c, double p) {
-    // Lighter pressure is a thinner line, never less than a quarter of the
-    // brush, which is where a pen's first touch starts.
+    // Lighter pressure thins the line to a quarter of the brush at least.
     var r = full * (0.25 + 0.75 * p);
     var sigma = r * soft * 0.35;
     var paint = Paint()..color = const Color(0xFFFFFFFF);
@@ -277,8 +250,7 @@ ui.ImageFilter? refineFilter(MaskRefine refine, double scale) {
     steps.add(ui.ImageFilter.erode(radiusX: -shift, radiusY: -shift));
   }
   if (refine.smooth > 0) {
-    // Blurred and then pulled back to an edge: the jags are averaged away
-    // and the edge stays where the average put it, as hard as it was.
+    // Blurred, then hardened again: the jags are averaged away.
     var s = refine.smooth * scale * 0.5;
     steps.add(
         ui.ImageFilter.blur(sigmaX: s, sigmaY: s, tileMode: TileMode.decal));
@@ -330,18 +302,14 @@ void paintMaskLayer(ui.Canvas canvas, ImageMask mask, Size picture,
     {BlendMode blend = BlendMode.dstIn, Rect? bounds}) {
   var m = pictureToPlacement(placement);
   var scale = math.min(m.sx.abs(), m.sy.abs());
-  // The layer only as large as the picture and as far as its edge is
-  // softened past it: left unbounded, each masked picture's feathering was
-  // a blur over everything it was drawn in, once a frame no longer cut its
-  // layers to it.
+  // The layer bounded to the picture plus the refining's spread.
   var r = mask.refine;
   var reach = (r.feather * 1.5 + r.smooth + r.shift.abs()) * scale + 2;
   canvas.saveLayer(
       bounds ?? placement.dst.inflate(reach), Paint()..blendMode = blend);
   canvas.translate(m.dx, m.dy);
   canvas.scale(m.sx, m.sy);
-  // As pixels, cut to what is drawn and refined, once and kept: see
-  // maskImage.
+  // See maskImage.
   var (:image, :over) = maskImage(mask, picture, subject, area: placement.src);
   canvas.drawImageRect(
       image,

@@ -6,19 +6,14 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 
-// media_timeline_settings.dart is putting a video or a sound on the timeline.
-//
-// One switch and one number, shared by the video and the background sound so
-// they are said the same way in both. On the timeline a clip stops being
-// something a reader presses and becomes part of the animation: it plays with
-// the playhead from the frame it is placed at, is scrubbed with it, and goes
-// into an exported video with everything else. See MediaClip.timed.
+// media_timeline_settings.dart is putting a video or a sound on the
+// timeline, shared by both so they read the same. A timed clip plays with the
+// playhead from its frame, is scrubbed with it, and goes into an exported
+// video. See MediaClip.timed.
 
-/// timelineControls is the switch, the frame it starts at, and -- where the
-/// clip runs past the end of the timeline -- a button that makes room for it.
-///
-/// [key] prefixes the widgets' keys, so the video's and the sound's can both
-/// be found.
+/// timelineControls is the switch, the frame it starts at and, where the
+/// clip runs past the end of the timeline, a button that makes room for it.
+/// [key] prefixes the widgets' keys.
 List<Widget> timelineControls(
   CanvasController controller,
   MediaClip clip, {

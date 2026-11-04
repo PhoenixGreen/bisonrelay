@@ -19,14 +19,11 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-// assets_panel.dart is the Assets sidebar: the pictures, videos and sounds in
-// the library, one panel each, in the same stack the Design sidebar is.
-//
-// An asset is clicked to put it in the middle of the canvas, or dragged to put
-// it where it is let go -- onto a channel on the timeline, for a sound. Its
-// name is double-clicked to rename it. Each section shows its assets as icons
-// or as a list, whichever it was last left on. It is added here, and it
-// leaves the library only from here: see CanvasLibrary.
+// assets_panel.dart is the Assets sidebar: the library's pictures, videos and
+// sounds, one panel each in a panel stack. An asset is clicked to put it in the
+// middle of the canvas, or dragged to where it is let go (onto a timeline
+// channel, for a sound); its name is double-clicked to rename it. Assets leave
+// the library only from here: see CanvasLibrary.
 
 class CanvasAssetsPanel extends StatelessWidget {
   final CanvasController controller;
@@ -41,8 +38,7 @@ class CanvasAssetsPanel extends StatelessWidget {
             for (var kind in AssetKind.values)
               StackPanel(
                 id: kind.name,
-                // The 3D objects shut at first: a heading until somebody
-                // has models, rather than room taken from the others.
+                // 3D objects start shut, as a heading until somebody has models.
                 startsOpen: kind != AssetKind.model,
                 label: kind.label,
                 icon: _iconOf(kind),
@@ -61,10 +57,8 @@ class CanvasAssetsPanel extends StatelessWidget {
                       "the canvas, or drag it where you want it: its own "
                       "animations are in its slots. .glb files.",
                 },
-                // Keyed by its kind: panels sharing a row become tabs, and
-                // without a key the one section is handed each tab's kind in
-                // turn -- the Audio tab showed the pictures, and Pictures
-                // showed nothing.
+                // Keyed by kind: panels sharing a row become tabs, and without a key
+                // one section's state is handed each tab's kind in turn.
                 body: AssetSection(
                     key: ValueKey("assets-${kind.name}"),
                     controller: controller,
@@ -77,8 +71,7 @@ class CanvasAssetsPanel extends StatelessWidget {
               hint: "The characters made in the Character Studio. Click one "
                   "to place a copy in the middle of the canvas: change it in "
                   "the Studio and every copy follows.",
-              // Shut until wanted, as Stock is: the panels it would
-              // squeeze are the ones most canvases use.
+              // Shut until wanted, as Stock is.
               startsOpen: false,
               body: CharacterAssetSection(
                   key: const ValueKey("assets-characters"),
@@ -143,12 +136,10 @@ class AssetSection extends StatefulWidget {
 class _AssetSectionState extends State<AssetSection> {
   List<LibraryAsset>? _assets;
 
-  /// _type is the sounds shown, by their kind of file -- ".mid", ".mp3" --
-  /// or "" for all of them.
+  /// _type is the sounds shown, by file type (".mid", ".mp3"), or "" for all.
   String _type = "";
 
-  /// _view is this section's, and is kept: somebody who wants a list of
-  /// sounds and icons of pictures sets each once.
+  /// _view is this section's, saved per kind.
   AssetView _view = AssetView.icons;
 
   String get _viewKey => "canvasAssets.view.${widget.kind.name}";
@@ -156,7 +147,7 @@ class _AssetSectionState extends State<AssetSection> {
   @override
   void initState() {
     super.initState();
-    // Sounds were a list before there was a choice, and start as one.
+    // Sounds start as a list.
     if (widget.kind == AssetKind.audio) _view = AssetView.list;
     CanvasLibrary.changes.addListener(_load);
     _load();
@@ -166,7 +157,6 @@ class _AssetSectionState extends State<AssetSection> {
   @override
   void didUpdateWidget(AssetSection old) {
     super.didUpdateWidget(old);
-    // And if it is ever handed another kind all the same, it shows that one.
     if (old.kind != widget.kind) {
       _assets = null;
       _load();
@@ -248,8 +238,7 @@ class _AssetSectionState extends State<AssetSection> {
     var theme = ThemeNotifier.of(context);
     var all = _assets;
     var kind = widget.kind.name;
-    // The kinds of sound file there are, for the filter: only those there
-    // are, MIDI first.
+    // The sound file types present, for the filter, MIDI first.
     var types = widget.kind != AssetKind.audio || all == null
         ? const <String>[]
         : ({for (var a in all) audioTypeOf(a.id)}.toList()
@@ -351,10 +340,8 @@ class _AssetSectionState extends State<AssetSection> {
   Widget _draggable(LibraryAsset asset, Widget body) => Draggable<LibraryAsset>(
         key: ValueKey("asset-${asset.id}"),
         data: asset,
-        // Carried from the pointer rather than from wherever in the tile it
-        // was picked up: where it is dropped is where the pointer is, which
-        // is the frame on a channel and the middle of the element on the
-        // canvas.
+        // Anchored at the pointer, so the drop lands where the pointer is: the
+        // frame on a channel, the element's middle on the canvas.
         dragAnchorStrategy: pointerDragAnchorStrategy,
         feedback: Material(
           color: Colors.transparent,
@@ -364,8 +351,8 @@ class _AssetSectionState extends State<AssetSection> {
         ),
         childWhenDragging: Opacity(opacity: 0.35, child: body),
         child: Material(
-          // Its own, inside the list: on the sidebar's the highlight spilled
-          // over the other sections and stayed put when the list scrolled.
+          // Its own Material inside the list: the sidebar's let the highlight
+          // spill over other sections and stay put when the list scrolled.
           type: MaterialType.transparency,
           child: InkWell(
             borderRadius: BorderRadius.circular(6),
@@ -486,8 +473,7 @@ class _RowState extends State<_Row> {
     return MouseRegion(
       onEnter: (_) => setState(() => _over = true),
       onExit: (_) => setState(() => _over = false),
-      // Taller where a credit sits under the name: two lines in thirty-six
-      // pixels overflowed by four.
+      // Taller where a credit sits under the name, which needs two lines.
       child: SizedBox(
         height: a.credited ? 44 : 36,
         child: Row(children: [
@@ -495,8 +481,8 @@ class _RowState extends State<_Row> {
           const SizedBox(width: 8),
           Expanded(
             child: a.credited
-                // Where it came from, under the name, for a stock asset: the
-                // credit a licence like CC BY asks the user to give.
+                // For a stock asset, its source under the name: the credit a licence
+                // like CC BY asks for.
                 ? Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -536,11 +522,10 @@ class _RowState extends State<_Row> {
   }
 }
 
-/// AssetName is an asset's name, double-clicked to rename it in place.
-///
-/// A click on the name never uses the asset: a double-click would otherwise
-/// put it on the canvas twice on the way to renaming it. The second click is
-/// counted by hand, as the preset rows count it -- see DoubleClick.
+/// AssetName is an asset's name, double-clicked to rename it in place. A
+/// click on the name never uses the asset, or a double-click would put it on
+/// the canvas twice on the way. The second click is counted by hand: see
+/// DoubleClick.
 class AssetName extends StatefulWidget {
   final LibraryAsset asset;
   final ValueChanged<String> onRename;
@@ -570,20 +555,17 @@ class _AssetNameState extends State<AssetName> {
   /// on when that press is let go.
   bool _second = false;
 
-  /// _pressed counts the click: on the press, so a slow release does not
+  /// _pressed counts the click on the press, so a slow release does not
   /// stretch the pair past DoubleClick.window.
   void _pressed() => _second = _clicks.isSecond(this);
 
-  /// _released opens the field -- on the release, never the press. Opened
-  /// on the press, the name was replaced while the button was still down,
-  /// the name's own click went with it, and letting go was a click on the
-  /// tile: which put the asset on the canvas on the way to renaming it.
+  /// _released opens the field on the release, never the press: opened on the
+  /// press, the release lands on the tile and puts the asset on the canvas.
   void _released() {
     if (!_second) return;
     _second = false;
-    // After the frame, so the release has been settled by then; and a frame
-    // asked for, since the name has no ink to ask for one -- without it the
-    // field opened whenever the mouse next moved.
+    // After the frame, once the release has settled, and a frame asked for:
+    // the name has no ink to ask for one.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       setState(() {
@@ -623,12 +605,8 @@ class _AssetNameState extends State<AssetName> {
       onPointerDown: (_) => _pressed(),
       onPointerUp: (_) => _released(),
       onPointerCancel: (_) => _second = false,
-      // Taken here, so a click on the name reaches nothing under it -- not the
-      // tile's own click, which would use the asset.
-      //
-      // The whole line, not just the letters: a short name left most of the
-      // line to the tile, and a double-click that landed past the end of the
-      // word put the asset on the canvas instead of renaming it.
+      // Taken here, across the whole line rather than just the letters, so a
+      // click on the name never reaches the tile, which would use the asset.
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {},
@@ -697,13 +675,14 @@ String clipLength(double seconds) {
   return "${s ~/ 60}:${(s % 60).toString().padLeft(2, "0")}";
 }
 
-/// AssetThumb is a stored picture, small: read once and kept while the
-/// sidebar is open, so scrolling does not read it again.
+/// _isSvg is whether [bytes] read as an SVG file.
 bool _isSvg(Uint8List bytes) =>
     String.fromCharCodes(bytes.take(4096).where((b) => b < 128))
         .toLowerCase()
         .contains("<svg");
 
+/// AssetThumb is a stored picture, small: read once and kept while the
+/// sidebar is open, so scrolling does not read it again.
 class AssetThumb extends StatefulWidget {
   final String id;
   const AssetThumb({required this.id, super.key});
@@ -725,8 +704,8 @@ class _AssetThumbState extends State<AssetThumb> {
   Future<void> _read() async {
     var bytes = _cache[widget.id];
     if (bytes == null) {
-      // A drawing is in the Vectors store, a picture in the pictures -- and a
-      // drawing added before the two were separated may still be there.
+      // A drawing is in the Vectors store, a picture in the pictures; older
+      // drawings may still be in the pictures.
       var read = await CanvasMedia.load(MediaKind.vector, widget.id) ??
           await CanvasAssets.load(widget.id);
       if (read == null) return;

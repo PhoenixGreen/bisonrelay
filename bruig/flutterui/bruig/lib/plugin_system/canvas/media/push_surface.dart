@@ -8,17 +8,15 @@ import 'package:bruig/plugin_system/canvas/model/midi_effects.dart'
 // push_surface.dart is Ableton Push played as an instrument: its 8x8 pads
 // laid out in key -- or chromatically -- and lit to show it, its octave and
 // scale buttons, Play and Record, the touch strip as the pitch bend, and
-// the eight encoders over its display turning the played channel's
-// controllers.
+// the encoders over its display turning the played channel's controllers.
 //
 // From Ableton's Push 2 MIDI and Display Interface Manual (1.1): the pads
 // are notes 36 (bottom left) to 99 (top right), eight to a row; a pad is
 // lit by sending its note back with a colour from the palette as the
 // velocity; a button by its controller number, likewise; the encoders turn
 // controllers 71 to 79, relative -- 1 to 63 one way, 127 down to 64 the
-// other. It listens on its User port once it has been told it is in User
-// mode. Push 3 has the same User port, and is taken for the same; the
-// manual says nothing of it either way.
+// other. It listens on its User port once told it is in User mode. Push 3
+// is assumed to be the same (the manual does not cover it).
 //
 // The first Push, made with Akai, has the same pads, buttons, encoders and
 // touch strip by the same numbers; its own colours, and its own message
@@ -110,8 +108,9 @@ abstract final class PushButton {
 /// PadClip is how a clip slot a pad stands for is doing, for its light.
 enum PadClip { empty, stopped, playing, queued, recording }
 
-/// pushEncoders are what the eight encoders over the display turn, left to
-/// right, on the channel played; the ninth, the master, its volume too.
+/// pushEncoders are what the encoders over the display turn, left to right,
+/// on the channel played; the last two turn nothing, and the master encoder
+/// turns volume too.
 const pushEncoders = [
   MidiControl.volume,
   MidiControl.pan,
@@ -296,8 +295,7 @@ class PushSurface {
       var index = a == 79 ? 0 : a - 71;
       if (index >= pushEncoders.length) return true;
       var control = pushEncoders[index];
-      // Relative: 1 to 63 one way, 127 down to 64 the other, a step a
-      // hundred-and-twenty-eighth of the travel.
+      // Relative (see the file comment); a step is 1/128 of the travel.
       var step = b < 64 ? b : b - 128;
       var value = (_values[control]! + step / 128).clamp(0.0, 1.0);
       _values[control] = value;

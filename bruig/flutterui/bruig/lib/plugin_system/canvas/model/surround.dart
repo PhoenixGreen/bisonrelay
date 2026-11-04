@@ -2,20 +2,15 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonDouble;
+    show jsonDouble, jsonStr;
 
-// surround.dart is where a sound comes from: the speakers a piece is mixed
-// for, a channel's place among them, and the arithmetic that puts a sound
-// at an angle -- between the two speakers either side of it, as loud
-// together as one would be alone (pairwise constant-power panning, the 2D
-// case of Pulkki's vector-based amplitude panning).
+// surround.dart is the speaker layouts, a channel's place among them, and
+// pairwise constant-power panning (2D VBAP) between the two speakers either
+// side of an angle.
 //
-// Angles are in degrees, nought straight ahead, positive to the right, a
-// half turn behind. The speakers stand where ITU-R BS.775 puts them.
-//
-// The editor plays surround folded down to stereo (ITU's own fold-down),
-// since that is what it has to play through; an export writes every
-// speaker.
+// Angles are in degrees: nought ahead, positive to the right, 180 behind.
+// Speakers stand where ITU-R BS.775 puts them. The editor plays surround
+// folded down to stereo ([foldDown]); an export writes every speaker.
 
 /// SpeakerLayout is the speakers a piece is mixed for.
 enum SpeakerLayout {
@@ -23,7 +18,7 @@ enum SpeakerLayout {
     ("L", -30),
     ("R", 30),
   ]),
-  // ffmpeg's "5.1": FL FR FC LFE BL BR. The rears at 110 degrees.
+  // ffmpeg's "5.1" order: FL FR FC LFE BL BR.
   surround51("5.1 surround", "5.1", [
     ("L", -30),
     ("R", 30),
@@ -32,7 +27,7 @@ enum SpeakerLayout {
     ("Ls", -110),
     ("Rs", 110),
   ]),
-  // ffmpeg's "7.1": FL FR FC LFE BL BR SL SR. Sides at 90, backs at 150.
+  // ffmpeg's "7.1" order: FL FR FC LFE BL BR SL SR.
   surround71("7.1 surround", "7.1", [
     ("L", -30),
     ("R", 30),
@@ -49,8 +44,8 @@ enum SpeakerLayout {
   /// ffmpeg is the layout's name to ffmpeg.
   final String ffmpeg;
 
-  /// speakers are each speaker, in the order a file carries them, with its
-  /// angle -- null for the LFE, which has no direction.
+  /// speakers are each speaker in file order, with its angle (null for the
+  /// LFE).
   final List<(String, int?)> speakers;
   const SpeakerLayout(this.label, this.ffmpeg, this.speakers);
 
@@ -75,8 +70,7 @@ class SurroundPan {
   final double angle;
 
   /// width is how far apart its left and right are heard, in degrees: 60 is
-  /// the front pair -- a stereo sound as it was mixed -- and nought one
-  /// point.
+  /// the front pair (stereo as mixed), nought a single point.
   final double width;
 
   const SurroundPan({this.angle = 0, this.width = 60});
@@ -109,10 +103,9 @@ double wrapAngle(double degrees) {
   return a - 180;
 }
 
-/// panGains are [layout]'s channel gains for a sound heard from [angle]:
-/// the two speakers either side of it share it, their powers summing to
-/// one. The LFE gets none. In stereo, an angle past the front pair is held
-/// at its speaker, and one behind is heard where it would be in front.
+/// panGains are [layout]'s channel gains for a sound heard from [angle], the
+/// two speakers either side sharing it with powers summing to one. In
+/// stereo an angle behind is mirrored to the front, then held to the pair.
 Float64List panGains(SpeakerLayout layout, double angle) {
   var out = Float64List(layout.channels);
   var a = wrapAngle(angle);
@@ -142,10 +135,8 @@ Float64List panGains(SpeakerLayout layout, double angle) {
   return out;
 }
 
-/// foldDown is how much of each of [layout]'s channels goes to the left
-/// and the right when it is heard on two speakers -- ITU-R BS.775's: the
-/// centre and the surrounds three decibels down into their side, the LFE
-/// left out.
+/// foldDown is each of [layout]'s channels' (left, right) gains in the
+/// ITU-R BS.775 stereo fold-down: centre and surrounds 3 dB down, no LFE.
 List<(double, double)> foldDown(SpeakerLayout layout) {
   const half = 0.7071067811865476;
   return [
@@ -161,9 +152,8 @@ List<(double, double)> foldDown(SpeakerLayout layout) {
   ];
 }
 
-/// loudnessWeights are BS.1770's weights for each of [layout]'s channels:
-/// one for the front, a decibel and a half more for those to the side and
-/// behind, nothing for the LFE.
+/// loudnessWeights are BS.1770's channel weights for [layout]: 1.41 (+1.5
+/// dB) for side and rear speakers, none for the LFE.
 List<double> loudnessWeights(SpeakerLayout layout) => [
       for (var (_, deg) in layout.speakers)
         if (deg == null)
@@ -189,29 +179,26 @@ enum PlaceBy {
 }
 
 /// SoundPlacement is where a sound is heard from, taken from the picture:
-/// across the canvas, from a spot on a 3D stage, or from wherever another
-/// element is -- a character speaking, a car going by. Its channel follows
-/// it, in place of the channel's own pan. See placement.dart.
+/// across the canvas, a spot on a 3D stage, or another element. When on it
+/// replaces the channel's own pan. See render/sound_placement.dart.
 class SoundPlacement {
   final PlaceBy by;
 
-  /// arc is how wide the canvas is heard, in degrees, from its left edge
-  /// to its right: 60 is the front pair of speakers, more wraps round the
-  /// listener (in surround).
+  /// arc is how wide the canvas is heard, in degrees, edge to edge: 60 is the
+  /// front pair; more wraps round the listener in surround.
   final double arc;
 
-  /// stage is the stage a spot is on, and x and z the spot on its floor,
-  /// in metres -- as a character stands. y is how high.
+  /// stage is the stage a spot is on; x and z the spot on its floor and y
+  /// its height, in metres.
   final String stage;
   final double x, y, z;
 
   /// follow is the element followed.
   final String follow;
 
-  /// near is how far from the camera a sound on a stage is still at its
-  /// full level, in metres -- nought for the middle of the stage, where the
-  /// camera looks -- and rolloff how fast it falls away beyond: one is the
-  /// inverse-distance law, six decibels for every doubling; nought, none.
+  /// near is how far from the camera, in metres, a stage sound keeps full
+  /// level (nought: the stage's middle); rolloff how fast it falls beyond:
+  /// one is the inverse-distance law (6 dB per doubling), nought none.
   final double near;
   final double rolloff;
 
@@ -266,7 +253,7 @@ class SoundPlacement {
 
   factory SoundPlacement.fromJson(Map<String, dynamic> json) =>
       const SoundPlacement().copyWith(
-        by: PlaceBy.fromName(json["by"] as String?),
+        by: PlaceBy.fromName(jsonStr(json["by"])),
         arc: jsonDouble(json["arc"], 60),
         stage: json["stage"] is String ? json["stage"] as String : "",
         x: jsonDouble(json["x"], 0),
@@ -278,8 +265,7 @@ class SoundPlacement {
       );
 }
 
-/// Heard is where a placed sound is heard from at a moment: its angle, and
-/// its level for the distance.
+/// Heard is a placed sound's angle and distance level at a moment.
 class Heard {
   final double angle;
   final double gain;

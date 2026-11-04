@@ -3,13 +3,14 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:flutter/material.dart';
 
-// character_shape_panel.dart is the Character base step of the new
-// Character Studio: its parts down the left, and the open part's settings
-// on the right (the clothes' are in character_outfit_panel.dart). Apart
-// from the stage, so it is tested without Flutter GPU.
+// character_shape_panel.dart is the Character Studio's Character base step:
+// its parts down the left, and the open part's settings on the right (the
+// clothes' are in character_outfit_panel.dart). Kept apart from the stage so
+// it is tested without Flutter GPU.
 
-/// The list's ids for what is not a shaping part: the body to start from,
-/// the whole outfit, and each piece of it.
+/// startPartId, outfitPartId and wearPartId are the list's ids for what is
+/// not a shaping part: the body to start from, the whole outfit, and each
+/// piece of it.
 const String startPartId = "start";
 const String outfitPartId = "outfit";
 String wearPartId(WearSlot s) => "wear-${s.name}";

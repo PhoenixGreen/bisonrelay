@@ -15,36 +15,19 @@ import 'package:flutter/foundation.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 import 'package:path/path.dart' as path;
 
-// publish_targets.dart is where a rendered canvas actually goes.
+// publish_targets.dart is where a rendered canvas goes: a file on disk, a
+// chat message, a post-library document, or a file shared with contacts.
 //
-// Four destinations, and they are four rather than one because they are
-// genuinely different things: a file on the reader's disk, a message in a
-// chat, a document in the post library that a post or a page can embed, and a
-// file shared with contacts. Each one is a few lines; what they share is only
-// the bytes handed to them.
-//
-// Nothing here renders. The caller has already produced a CanvasExport, so a
-// destination cannot silently produce a different picture from the one the
-// publish sheet previewed.
+// Nothing here renders: the caller hands over the CanvasExport the publish
+// sheet previewed, so a destination cannot produce a different picture.
 
 /// publishedFolderName is the post-library folder canvases are published
-/// into.
-///
-/// Its own folder rather than loose among the writer's posts, because a
-/// published canvas is a generated document -- it is one line of embed markup
-/// and nothing anybody would edit -- and mixing those in with drafts somebody
-/// is writing makes both lists worse.
+/// into, keeping these generated one-line documents apart from drafts.
 const String publishedFolderName = "Canvas";
 
-// The files offered to contacts are written to a file of their own --
-// CanvasStorage.sharedDir, the "shared" folder beside downloads and the
-// library -- rather than shared straight out of the library directory,
-// because sharing a file publishes whatever is at that path from then on, and
-// the library's .bcanvas is a document the reader goes on editing. A separate
-// rendered copy is what makes "published" a moment rather than a live feed of
-// unfinished work. (It was a "published" folder inside the library, out of
-// sight; Ken wanted it found beside the downloads, to preview and to keep up
-// to date. A canvas shared from there before is moved on its next publish.)
+// Files offered to contacts are rendered copies in CanvasStorage.sharedDir,
+// never the library's .bcanvas: sharing publishes whatever is at the path
+// from then on, and the library document goes on being edited.
 
 /// extensionFor is the file extension a mime type gets.
 String extensionFor(String mime) => switch (mime) {
@@ -65,20 +48,15 @@ String extensionFor(String mime) => switch (mime) {
       _ => ".bin",
     };
 
-/// embedMarkupFor is the app's own embed syntax carrying [export] inline.
-///
-/// The same markup a picture attached to a post uses, so a canvas pasted into
-/// a chat, a post or a page renders through exactly the code every other
-/// picture does. Inline base64 rather than a library reference, because a
-/// message sent to somebody else has to carry its picture with it -- a
-/// reference points at a store only this client has.
+/// embedMarkupFor is the app's own embed syntax carrying [export] inline,
+/// as a picture attached to a post uses. Inline base64 rather than a
+/// library reference, because a message sent to somebody else must carry
+/// its picture: a reference points at a store only this client has.
 String embedMarkupFor(CanvasExport export) =>
     "--embed[type=${export.mime},data=${base64Encode(export.data)}]--";
 
-/// saveToDisk asks where to put the file and writes it there.
-///
-/// Returns the path written, or null when the reader cancelled. Cancelling is
-/// not an error and must not be reported as one.
+/// saveToDisk asks where to put the file and writes it there. Returns the
+/// path written, or null when cancelled (not an error) or on failure.
 Future<String?> saveToDisk(CanvasExport export, String suggestedName) async {
   try {
     var chosen = await FilePicker.platform.saveFile(
@@ -88,13 +66,9 @@ Future<String?> saveToDisk(CanvasExport export, String suggestedName) async {
     );
     if (chosen == null) return null;
 
-    // On the platforms where saveFile only returns a path, the bytes still
-    // have to be written; on the ones where it writes them itself, writing
-    // again is harmless because it is the same bytes to the same place.
-    var file = File(chosen);
-    if (!await file.exists() || await file.length() != export.data.length) {
-      await file.writeAsBytes(export.data, flush: true);
-    }
+    // Some platforms' saveFile only returns a path, so the bytes are always
+    // written; where it wrote them already, this rewrites the same bytes.
+    await File(chosen).writeAsBytes(export.data, flush: true);
     return chosen;
   } catch (exception) {
     debugPrint("Unable to save the canvas to disk: $exception");
@@ -102,15 +76,9 @@ Future<String?> saveToDisk(CanvasExport export, String suggestedName) async {
   }
 }
 
-/// saveAllToDisk writes one file per shape into a folder the reader chooses.
-///
-/// A folder asked for once rather than a save dialog per shape: publishing a
-/// canvas at the three shapes it was designed for is one action, and three
-/// dialogs in a row is three chances to put the set in three places.
-///
-/// Answers with the folder, or null where the reader cancelled. A shape whose
-/// file could not be written is left out of [written] rather than stopping
-/// the rest: two files saved is better than none.
+/// saveAllToDisk writes one file per shape into a folder chosen once.
+/// Answers with the folder, or null where cancelled. A shape that could not
+/// be written is left out of `written` rather than stopping the rest.
 Future<({String folder, List<String> written})?> saveAllToDisk(
   List<({String tag, CanvasExport export})> shapes,
   String suggestedName,
@@ -140,12 +108,9 @@ Future<({String folder, List<String> written})?> saveAllToDisk(
   }
 }
 
-/// sendToChat posts the canvas into a chat as an inline embed.
-///
-/// Refuses rather than truncating when the result is over the wire limit: a
-/// message that is too large fails at the far end with nothing to show for it,
-/// and the reader can do something about it here -- turn the width down, or
-/// switch to JPEG.
+/// sendToChat posts the canvas into a chat as an inline embed, answering
+/// with an error message or null. Over the wire limit it refuses, since an
+/// oversized message fails at the far end with nothing to show.
 Future<String?> sendToChat(ChatModel chat, CanvasExport export,
     {String caption = ""}) async {
   var markup = embedMarkupFor(export);
@@ -165,14 +130,9 @@ Future<String?> sendToChat(ChatModel chat, CanvasExport export,
   }
 }
 
-/// publishToLibrary writes the canvas into the post library as a document that
-/// a post or a page can embed.
-///
-/// The picture goes into the embed store and the document holds a reference to
-/// it, which is exactly what a draft with a picture in it looks like -- so the
-/// composer, the page publisher and the store all already know what to do with
-/// it. That is the whole reason to publish here rather than inventing a fourth
-/// kind of attachment.
+/// publishToLibrary writes the canvas into the post library as a document
+/// that a post or a page can embed. The picture goes into the embed store
+/// and the document references it, exactly as a draft with a picture does.
 Future<PublishRecord?> publishToLibrary(
   CanvasExport export,
   String name,
@@ -182,9 +142,8 @@ Future<PublishRecord?> publishToLibrary(
   if (clean == null) return null;
 
   try {
-    // Reusing the embed id on an update overwrites the old picture instead of
-    // leaving it behind. Without this, republishing a canvas ten times leaves
-    // nine orphaned copies of it in the embed store.
+    // Reusing the embed id on an update overwrites the old picture rather
+    // than orphaning a copy per republish.
     var id = existing.embedId.isNotEmpty ? existing.embedId : _newEmbedId();
     await EmbedStore.save(id, base64Encode(export.data));
 
@@ -217,16 +176,12 @@ Future<void> unpublishFromLibrary(PublishRecord record) async {
   } catch (exception) {
     debugPrint("Unable to remove the published canvas: $exception");
   }
-  // The picture is deliberately left in the embed store rather than deleted
-  // here. A post the reader wrote may already refer to it, and the store's own
-  // sweep is what knows whether anything still does.
+  // The picture is left in the embed store: a post may refer to it, and
+  // the store's own sweep knows whether anything still does.
 }
 
-/// shareInFiles writes the canvas to a file and offers it to contacts.
-///
-/// Public rather than to one contact: a canvas is a picture somebody made to
-/// be seen, and the Files area is where the app already puts those. Sharing it
-/// with one person is a message, which is what sendToChat is for.
+/// shareInFiles writes the canvas to a file and shares it publicly in
+/// Files. (Sending to one person is [sendToChat].)
 Future<PublishRecord?> shareInFiles(
   CanvasExport export,
   String name,
@@ -240,9 +195,8 @@ Future<PublishRecord?> shareInFiles(
     var dir = await CanvasStorage.sharedDir();
     var file = path.join(dir, "$clean${extensionFor(export.mime)}");
 
-    // An existing share of the same canvas is withdrawn before the new file is
-    // put in its place. Writing over the file without re-sharing leaves the
-    // client offering the old hash, so contacts would fetch and get nothing.
+    // Withdraw an existing share first: overwriting the file without
+    // re-sharing leaves the client offering the old hash.
     if (existing.hasShare) await unshareFiles(existing);
 
     await File(file).writeAsBytes(export.data, flush: true);
@@ -265,10 +219,7 @@ Future<PublishRecord?> shareInFiles(
 Future<void> unshareFiles(PublishRecord record) async {
   if (!record.hasShare) return;
   try {
-    // The share is found by the path it was made from, because that is what
-    // was recorded -- the id is assigned by the client and is not known until
-    // afterwards. Listing is cheap and happens once, on an action the reader
-    // asked for.
+    // Found by file name, as the record keeps the path, not the share id.
     var shared = await Golib.listSharedFiles();
     for (var entry in shared) {
       if (entry.sf.filename != path.basename(record.sharedPath)) continue;
@@ -281,14 +232,9 @@ Future<void> unshareFiles(PublishRecord record) async {
   }
 }
 
-/// _newEmbedId matches what the composer generates: twelve letters and digits.
-/// See EmbedStore, which refuses anything else before it becomes a path.
-///
-/// Random rather than derived from the clock. Two canvases published in the
-/// same microsecond is unlikely, but an id derived from a timestamp runs out
-/// of entropy in its high bits and starts repeating characters, and a
-/// collision here means one published canvas quietly showing another's
-/// picture.
+/// _newEmbedId matches what the composer generates: twelve letters and
+/// digits, which EmbedStore requires before it becomes a path. Securely
+/// random, since a collision would show one canvas's picture for another.
 String _newEmbedId() {
   const alphabet =
       "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";

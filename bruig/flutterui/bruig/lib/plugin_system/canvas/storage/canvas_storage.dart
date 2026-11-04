@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:bruig/config.dart';
@@ -9,28 +10,19 @@ import 'package:path/path.dart' as path;
 // canvas_storage.dart is the whole filesystem side of the canvas library:
 // JSON documents in plain folders under "<appDataDir>/Canvas".
 //
-// Deliberately the same shape as the post library next door (see
-// writing_tools/post_library/post_storage.dart) -- one level of folders, a
-// hidden order file, names sanitised down to a known-safe set -- because a
-// reader who has learned how saved posts behave should not have to learn a
-// second thing for saved canvases. The differences are only the extension and
-// the fact that a canvas carries pictures, which live in a sibling asset
-// store.
-//
-// Written straight from Dart, like themes, palettes and posts. It is not a
-// plugin capability and could not be: a plugin runs with no filesystem, which
-// is the whole reason installing one is safe.
+// The same shape as the post library (see
+// writing_tools/post_library/post_storage.dart): one level of folders, a
+// hidden order file, names sanitised down to a known-safe set, so saved
+// canvases behave as saved posts do. Written straight from Dart: a plugin
+// has no filesystem, which is why installing one is safe.
 
 /// _libraryDirName is the folder inside the app data directory, beside
 /// downloads, palettes, themes and my-posts.
 const _libraryDirName = "Canvas";
 
 /// canvasPicturesFolder is where the pictures live, inside the library.
-///
-/// Named here rather than only in canvas_assets.dart because the listing has
-/// to leave it out: it is a real, visible folder so that somebody can open it
-/// and see what is in it, which means it would otherwise appear as a canvas
-/// folder of its own.
+/// Named here because the listing has to leave it out: it is a real, visible
+/// folder, which would otherwise show as a folder of canvases.
 const canvasPicturesFolder = "Pictures";
 
 /// canvasAudioFolder and canvasVideoFolder are where sounds and videos live,
@@ -52,9 +44,10 @@ const canvasModelFolder = "Models";
 const canvasCharacterFolder = "Characters";
 const canvasHumanFolder = "Human";
 
-/// The folders things are downloaded to, the first time they are wanted:
-/// the voices speech is made with (kokoro_speech.dart, qwen_speech.dart),
-/// the instruments' sound bank (part_render.dart) and the VRoid characters
+/// canvasVoicesFolder, canvasSoundBankFolder and the rest are the folders
+/// things are downloaded to, the first time they are wanted: the voices
+/// speech is made with (kokoro_speech.dart, qwen_speech.dart), the
+/// instruments' sound bank (part_render.dart) and the VRoid characters
 /// (vroid_assets.dart).
 const canvasVoicesFolder = "voices";
 const canvasSoundBankFolder = "soundbanks";
@@ -83,11 +76,9 @@ final _appFolders = {
     f.toLowerCase(),
 };
 
-/// canvasExtension is what a saved canvas is called on disk.
-///
-/// A distinct extension rather than ".json" so that the library listing does
-/// not have to open a file to know whether it belongs here, and so that a
-/// canvas exported out of the app is recognisable when it comes back.
+/// canvasExtension is what a saved canvas is called on disk: its own
+/// extension rather than ".json", so the listing need not open a file to
+/// know it, and an exported canvas is recognisable when it comes back.
 const canvasExtension = ".bcanvas";
 
 /// _orderFile keeps a folder's chosen order, hidden from the listing by its
@@ -123,32 +114,39 @@ class CanvasEntry {
 }
 
 /// inTestsUnaimed is whether this is a test that has not said where its
-/// library is: the real one is not looked in -- what is downloaded on this
-/// machine is no test's business.
+/// library is: the real one, and what is downloaded on this machine, is not
+/// looked in.
 bool get inTestsUnaimed =>
     Platform.environment.containsKey("FLUTTER_TEST") &&
     !CanvasStorage.overridden;
 
+/// writeWhole writes [bytes] to [file] by way of a file beside it, renamed
+/// over it: an interrupted write leaves the old file or none, never half of
+/// one, which for a file named by its content would be kept for ever.
+Future<void> writeWhole(String file, List<int> bytes) async {
+  var temp = File("$file.tmp");
+  await temp.writeAsBytes(bytes, flush: true);
+  await temp.rename(file);
+}
+
+/// writeWholeText is [writeWhole] for text.
+Future<void> writeWholeText(String file, String text) =>
+    writeWhole(file, utf8.encode(text));
+
 /// CanvasStorage reads and writes the library.
 class CanvasStorage {
-  /// rootOverride replaces the app data directory, for tests.
-  ///
-  /// A seam rather than a mock of path_provider: what the tests are for is
-  /// proving that a name from a text field cannot write outside the library,
-  /// and that is worth checking against a real directory rather than a stubbed
-  /// filesystem that would agree with whatever the code did.
+  /// rootOverride replaces the app data directory, for tests: a real
+  /// directory rather than a mocked filesystem, to prove that a name from a
+  /// text field cannot write outside the library.
   @visibleForTesting
   static String? rootOverride;
 
   /// overridden is whether a test has said where the library is.
   static bool get overridden => rootOverride != null;
 
-  /// liveAssetIds is every stored picture that some saved canvas still uses.
-  ///
-  /// Every folder and every document, because one picture can be used by more
-  /// than one canvas -- a document duplicated, or an element copied between two
-  /// of them -- and a sweep that only looked at the open one would delete a
-  /// picture another document is still showing.
+  /// liveAssetIds is every stored picture that some saved canvas still uses:
+  /// every folder and document, since one picture can be used by several
+  /// canvases.
   static Future<Set<String>> liveAssetIds() async {
     var live = <String>{};
     // The top level, and then each folder in it. The library is one level
@@ -220,11 +218,10 @@ class CanvasStorage {
   /// sanitizeName reduces what the user typed to something safe as a single
   /// path segment, or returns null if nothing usable is left.
   ///
-  /// This is the security boundary of the feature. Every name reaching the
-  /// filesystem comes from a text field, and a name like "../../config" or one
-  /// with a separator in it would write wherever it pleased. Rather than
-  /// blacklisting the dangerous forms -- there are always more -- this keeps a
-  /// known-safe set and drops everything else.
+  /// The security boundary of the feature: every name reaching the filesystem
+  /// comes from a text field, and "../../config" or a separator would write
+  /// anywhere. A known-safe set is kept and everything else dropped, rather
+  /// than blacklisting dangerous forms.
   static String? sanitizeName(String raw) {
     var out = StringBuffer();
     for (var rune in raw.trim().runes) {
@@ -254,12 +251,8 @@ class CanvasStorage {
   }
 
   /// _dirFor resolves a folder name to a directory, refusing anything the
-  /// sanitiser would not have produced.
-  ///
-  /// Checked here as well as at the point a name is chosen, because a folder
-  /// name also arrives from the saved "which folder was open" preference and
-  /// from a document's own path -- neither of which went through a text field
-  /// on this run.
+  /// sanitiser would not have produced: a folder name also arrives from the
+  /// saved "which folder was open" preference and from a document's path.
   static Future<String?> _dirFor(String folder) async {
     var root = await libraryDir();
     if (folder.isEmpty) return root;
@@ -285,15 +278,13 @@ class CanvasStorage {
       await for (var entry in Directory(dir).list(followLinks: false)) {
         var base = path.basename(entry.path);
         if (base.startsWith(".")) continue;
-        // The app's own folders are real ones, so that they can be opened
-        // and looked at -- which means the listing has to leave them out by
-        // name rather than relying on them being hidden.
+        // The app's own folders are real ones, so they can be opened and
+        // looked at; the listing leaves them out by name.
         if (isCanvasAppFolder(base)) continue;
 
         if (entry is Directory) {
-          // One level only, so subfolders are listed at the top and never
-          // inside one. A tree would need a breadcrumb, a move and a recursive
-          // delete to be worth having, and this needs none of those.
+          // One level only: subfolders are listed at the top and never
+          // inside one.
           if (folder.isEmpty) {
             folders.add(CanvasEntry(name: base, folder: "", isFolder: true));
           }
@@ -341,13 +332,10 @@ class CanvasStorage {
     ];
   }
 
-  /// orderKeyFor is how an entry is named in the order file.
-  ///
-  /// A folder is prefixed and a document is not, which is both what tells them
-  /// apart and what keeps every order file written before folders could be
-  /// moved readable: a bare name has always meant a document and still does.
-  /// Without the prefix a folder and a canvas of the same name would be the
-  /// same line, and one of them would take the other's place.
+  /// orderKeyFor is how an entry is named in the order file. A folder is
+  /// prefixed and a document is not: that tells them apart, so a folder and
+  /// a canvas of the same name are two lines, and a bare name (as in older
+  /// order files) still means a document.
   static String orderKeyFor(CanvasEntry entry) =>
       entry.isFolder ? "f:${entry.name}" : entry.name;
 
@@ -364,10 +352,9 @@ class CanvasStorage {
     }
   }
 
-  /// saveOrder writes the order a listing should come back in.
-  ///
-  /// Takes the entries rather than their names so that folders and documents
-  /// cannot be confused for one another -- see [orderKeyFor].
+  /// saveOrder writes the order a listing should come back in. Takes the
+  /// entries rather than names, so folders and documents cannot be confused
+  /// (see [orderKeyFor]).
   static Future<void> saveOrder(
       String folder, List<CanvasEntry> entries) async {
     var dir = await _dirFor(folder);
@@ -381,19 +368,12 @@ class CanvasStorage {
     }
   }
 
-  /// keepPlace keeps a renamed or copied entry where its original was.
-  ///
-  /// The order is a list of names -- see [list] -- so a renamed canvas is a
-  /// name the order has never heard of, and anything the order does not
-  /// mention follows everything it does. That is why renaming a file sent it
-  /// to the bottom of the list, and why a duplicate landed there rather than
-  /// beside the thing it was a copy of.
-  ///
-  /// [after] puts the new name directly after the old one and leaves the old
-  /// one where it is, which is a copy; without it the new name takes the old
-  /// one's place, which is a rename. Nothing happens where there is no order
-  /// file: the listing is alphabetical then, and alphabetical already puts a
-  /// renamed file where its name says it goes.
+  /// keepPlace keeps a renamed or copied entry where its original was: the
+  /// order is a list of names, and a name it does not mention goes to the
+  /// end. [after] puts the new name directly after the old one and leaves the
+  /// old one, which is a copy; without it the new name takes the old one's
+  /// place, which is a rename. Nothing happens where there is no order file,
+  /// since the listing is alphabetical then.
   static Future<void> keepPlace(String folder,
       {required String was, required String now, bool after = false}) async {
     var dir = await _dirFor(folder);
@@ -416,11 +396,9 @@ class CanvasStorage {
     }
   }
 
-  /// load reads one document, or null when it is missing or unreadable.
-  ///
-  /// Null rather than an exception, because the caller's response is the same
-  /// either way -- say so and leave the file alone. See CanvasDocument.decode
-  /// on why a document that will not parse must never be overwritten.
+  /// load reads one document, or null when it is missing or unreadable: the
+  /// caller says so and leaves the file alone. See CanvasDocument.decode on
+  /// why a document that will not parse must never be overwritten.
   static Future<CanvasDocument?> load(String folder, String name) async {
     var file = await pathFor(folder, name);
     if (file == null) return null;
@@ -431,27 +409,20 @@ class CanvasStorage {
     }
   }
 
-  /// save writes a document, creating its folder if it does not exist yet.
-  ///
-  /// Returns whether it was written. The name is sanitised by the caller
-  /// before it gets here; this refuses rather than corrects, so a save that
-  /// would have gone somewhere unexpected does not silently go somewhere else
-  /// instead.
+  /// save writes a document, creating its folder if it does not exist yet,
+  /// and returns whether it was written. The name is sanitised by the caller;
+  /// this refuses rather than corrects, so a save never silently goes
+  /// somewhere else.
   static Future<bool> save(
       String folder, String name, CanvasDocument document) async {
     var dir = await _dirFor(folder);
     if (dir == null || sanitizeName(name) != name) return false;
     try {
       await Directory(dir).create(recursive: true);
-      // Written to a temporary file and renamed, because a save that is
-      // interrupted halfway -- the app quitting, the disk filling -- would
-      // otherwise leave a truncated document where a good one was. The rename
-      // is atomic within a directory: either the old file or the new one, and
-      // never half of either.
-      var target = path.join(dir, "$name$canvasExtension");
-      var temp = File("$target.tmp");
-      await temp.writeAsString(document.encode(), flush: true);
-      await temp.rename(target);
+      // Written to a temporary file and renamed (see writeWhole), so an
+      // interrupted save never leaves a truncated document.
+      await writeWholeText(
+          path.join(dir, "$name$canvasExtension"), document.encode());
       return true;
     } catch (exception) {
       debugPrint("Unable to save the canvas $name: $exception");
@@ -479,9 +450,8 @@ class CanvasStorage {
     var source = await pathFor(folder, from);
     var target = await pathFor(folder, to);
     if (source == null || target == null) return false;
-    // Refuses to write over an existing document. Renaming onto a name already
-    // in use is a mistake, not an instruction, and there is nothing to undo it
-    // with.
+    // Refuses to write over an existing document: renaming onto a name in
+    // use is a mistake, and there is nothing to undo it with.
     if (await File(target).exists()) return false;
     try {
       await File(source).rename(target);
@@ -493,18 +463,11 @@ class CanvasStorage {
     }
   }
 
-  /// move puts a canvas in another folder, keeping its name.
-  ///
-  /// Its own method rather than a rename with a different folder, because a
-  /// rename is about the name and this is about the place -- and the two
-  /// checks are different. A rename refuses a name already in use here; this
-  /// refuses one already in use *there*, which is the only way a move can
-  /// destroy anything.
-  ///
-  /// The order file is not touched. The canvas simply drops out of the one it
-  /// was in -- an order forgives what has gone, by name -- and lands at the
-  /// end of wherever it went, which is where a listing puts anything its order
-  /// does not mention.
+  /// move puts a canvas in another folder, keeping its name. Its own method
+  /// rather than a rename, because the check differs: it refuses a name
+  /// already in use *there*, the only way a move can destroy anything. The
+  /// order file is not touched: the canvas drops out of the old order and
+  /// lands at the end of the new folder.
   static Future<bool> move(String from, String name, String to) async {
     if (from == to) return true;
     var source = await pathFor(from, name);
@@ -529,15 +492,10 @@ class CanvasStorage {
           if (entry.isFolder) entry.name,
       ];
 
-  /// renameFolder renames a folder, with everything in it.
-  ///
-  /// Its own method rather than a branch in [rename], which is about documents
-  /// and appends the extension to both names -- handing it a folder made a
-  /// path to a file that was never there and failed quietly.
-  ///
-  /// Refuses to write over anything that already exists, as renaming a
-  /// document does, and for the same reason: a rename onto a name in use is a
-  /// mistake, and this one would merge two folders with no way back.
+  /// renameFolder renames a folder, with everything in it. Separate from
+  /// [rename], which appends the document extension to both names. Refuses
+  /// to write over anything that already exists, since that would merge two
+  /// folders with no way back.
   static Future<bool> renameFolder(String from, String to) async {
     var clean = sanitizeName(to);
     if (clean == null || sanitizeName(from) != from) return false;
@@ -571,11 +529,8 @@ class CanvasStorage {
   }
 
   /// deleteFolder removes a folder and everything in it, and refuses when it
-  /// still holds documents unless [force] says otherwise.
-  ///
-  /// The refusal is the default because a folder of saved work is exactly the
-  /// thing there is no undo for. The caller counts what is inside and says so
-  /// before asking again.
+  /// still holds documents unless [force] says otherwise: there is no undo,
+  /// so the caller counts what is inside and asks again.
   static Future<bool> deleteFolder(String name, {bool force = false}) async {
     var dir = await _dirFor(name);
     if (dir == null || name.isEmpty) return false;

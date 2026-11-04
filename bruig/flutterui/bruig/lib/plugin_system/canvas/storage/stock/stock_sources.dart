@@ -1,17 +1,17 @@
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 
-// stock_sources.dart is the four stock libraries the Assets sidebar searches:
-// what each is called, what it has, what can be asked of it, and how its
-// answer is read.
+// stock_sources.dart is the stock libraries the Assets sidebar searches
+// (Pixabay's pictures and videos, the Noun Project, Freesound, Jamendo and
+// Poly Haven): what each is called, what it has, what can be asked of it,
+// and how its answer is read.
 //
-// Nothing here touches the network. A search is built into a request here
-// and read back here, and the request is made in stock_client.dart -- so the
-// shape of five different APIs can be pinned by tests with nothing but JSON.
+// Nothing here touches the network: requests are built and answers read
+// here, and the request is made in stock_client.dart, so each API's shape
+// can be pinned by tests with nothing but JSON.
 //
-// Previews only. What a search returns is addresses: a thumbnail to show, a
-// sound to listen to. Nothing is kept until it is used -- clicked onto the
-// canvas, dragged, or added to the library -- and then it is stored like any
-// other asset, with who made it and under what licence.
+// Previews only: a search returns addresses. Nothing is kept until it is
+// used (placed, dragged, or added to the library), and then it is stored
+// like any other asset, with its author and licence.
 
 /// StockSource is one library to search.
 enum StockSource {
@@ -257,7 +257,7 @@ List<StockFilter> filtersFor(StockSource source) => switch (source) {
       StockSource.polyHaven => const [],
     };
 
-/// pageSize is how many results a search asks for at a time.
+/// stockPageSize is how many results a search asks for at a time.
 const int stockPageSize = 30;
 
 /// StockQuery is one search: where, for what, narrowed how, and which page.
@@ -318,7 +318,6 @@ class StockRequest {
 }
 
 /// requestFor is [q] as a request, with [key] where the source wants it.
-///
 /// Freesound's goes in a header rather than the address, so it is not
 /// written into a log line by accident; Pixabay and Jamendo take it only in
 /// the address.
@@ -577,8 +576,8 @@ StockPage parseStock(StockQuery q, Object? json) {
       var hits = _at<List>(json, ["hits"]) ?? const [];
       var items = <StockItem>[];
       for (var h in hits) {
-        // Medium is 1280 wide, which is the canvas's own size: large is
-        // four times the download for pixels nobody sees.
+        // Medium is 1280 wide, the canvas's own size: large is four times
+        // the download for pixels nobody sees.
         var chosen = ["medium", "small", "large", "tiny"]
             .map((r) => _at<Map>(h, ["videos", r]))
             .firstWhere((v) => v != null && _s(v, ["url"]).isNotEmpty,

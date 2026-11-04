@@ -5,23 +5,12 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 // canvas_guides.dart is the scaffolding a canvas is laid out against: a grid,
 // the lines the reader puts down themselves, and what an element snaps to.
 //
-// All of it belongs to the document rather than to the reader's preferences,
-// and that is the one decision here worth defending. A grid of twelve columns
-// with guides down the margins *is* the design -- it is the reason everything
-// on the canvas lines up, and somebody opening the file on another machine
-// needs it as much as the person who drew it. What is a preference is whether
-// the scaffolding is *shown*, and that travels with it too, because a canvas
-// sent with its guides hidden is a canvas that looks finished.
-//
-// Nothing here is drawn on an export. See scene_renderer: the grid, the guides
-// and the rulers are all editing furniture, and a published picture with a
-// grid over it is a mistake nobody would ask for.
+// It is saved in the document, not in preferences, because the grid and
+// guides are part of the design; whether they are shown is saved too.
+// Nothing here is drawn on an export (see scene_renderer.dart).
 
-/// GuideAxis is which way a guide runs.
-///
-/// A vertical guide is a vertical line, fixed at an x. The name describes the
-/// line rather than the axis it is pinned to, because that is what somebody
-/// dragging one out of a ruler sees.
+/// GuideAxis is which way a guide runs: a vertical guide is a vertical line,
+/// fixed at an x.
 enum GuideAxis {
   vertical("Vertical"),
   horizontal("Horizontal");
@@ -52,25 +41,15 @@ class CanvasGuide {
       );
 }
 
-/// SnapTo is what part of an element is allowed to land on a line.
-///
-/// Three, because they are three different intentions: lining up a row of
-/// boxes by their edges, centring a title over a chart, and putting a corner
-/// exactly where two guides cross. Anybody who has used one of these knows
-/// which they want and is annoyed by the others.
+/// SnapTo is what part of an element is allowed to land on a line: its
+/// corners, its edges or its centre, each switched separately.
 class SnapTo {
   final bool vertices;
   final bool edges;
   final bool centres;
 
   /// objects is whether the other elements on the canvas count as lines too:
-  /// their sides and their middles, so a thing dragged near another lines up
-  /// with it.
-  ///
-  /// The lines that matter most of the time, and the ones that were missing.
-  /// A grid catches a design at regular intervals; what anybody actually
-  /// wants is this heading over that picture, and no grid spacing puts them
-  /// together unless both were already on it.
+  /// their sides and their middles. See canvas_snap.dart.
   final bool objects;
 
   const SnapTo({
@@ -103,9 +82,7 @@ class SnapTo {
 }
 
 /// CanvasAlign is one of the six ways a set of elements can be lined up.
-///
-/// Named for what they do to the selection rather than for a direction, so
-/// that "left" means "all their left edges together" and not "move them left".
+/// "left" means all their left edges together, not "move them left".
 enum CanvasAlign {
   left("Align left", Icons.align_horizontal_left),
   centreX("Centre across", Icons.align_horizontal_center),
@@ -122,11 +99,8 @@ enum CanvasAlign {
   bool get across => this == left || this == centreX || this == right;
 }
 
-/// CanvasRulers is which edges carry a ruler.
-///
-/// Four switches rather than one, because a ruler eats a strip of the window
-/// and which strip anybody can spare depends on their screen. Top and left is
-/// the arrangement almost everything uses, so it is the one that is on.
+/// CanvasRulers is which edges of the window carry a ruler. All are off by
+/// default.
 class CanvasRulers {
   final bool top;
   final bool left;
@@ -173,53 +147,40 @@ class CanvasGuides {
   final bool showGrid;
   final double gridSize;
 
-  /// subdivisions are the faint lines between the strong ones. Four means a
-  /// line every quarter of the grid, drawn lighter -- what a ruler does, and
-  /// for the same reason: the strong lines are for counting and the faint ones
-  /// are for landing on.
+  /// subdivisions are the faint lines between the strong ones: four means a
+  /// lighter line every quarter of the grid. Snapping lands on them too.
   final int subdivisions;
 
   final List<CanvasGuide> guides;
 
-  /// showGuides hides the lines without forgetting them, which is what
-  /// somebody wants when they are checking how the design looks rather than
-  /// building it.
+  /// showGuides hides the lines without forgetting them. Hidden guides are
+  /// not snapped to.
   final bool showGuides;
 
-  /// lockGuides stops them being dragged. A guide is a thing you put down once
-  /// and then work against, so the commonest thing to do to one by accident is
-  /// move it.
+  /// lockGuides stops them being dragged.
   final bool lockGuides;
 
   final bool snap;
   final SnapTo snapTo;
 
   /// snapWithin is how near, in *screen* pixels, an element has to be before
-  /// it jumps. Screen rather than document units on purpose: what it allows
-  /// for is the reader's aim, which does not get better when they zoom in.
+  /// it jumps, since the reader's aim does not improve with zoom.
   final double snapWithin;
 
-  /// stageSnap is snapping on a 3D stage, which is its own switch: on a
-  /// page snapping catches a line as it passes and lets go otherwise, but
-  /// on a stage it puts everything moved on a step, so it starts off.
+  /// stageSnap is snapping on a 3D stage, a separate switch that starts off:
+  /// on a stage snapping puts everything moved on a step, rather than
+  /// catching a line as it passes.
   final bool stageSnap;
 
-  /// stageStep and stageTurn are how a thing moved on a 3D stage snaps:
-  /// to every so many metres across its floor, and every so many degrees
-  /// round. A stage has no grid lines to land on, so it lands on steps.
+  /// stageStep and stageTurn are the steps a thing moved on a 3D stage snaps
+  /// to: metres across its floor, and degrees round.
   final double stageStep;
   final double stageTurn;
 
   final CanvasRulers rulers;
 
-  /// showRulers hides the rules along the edges without forgetting which
-  /// edges they were on.
-  ///
-  /// Its own switch, beside showGrid and showGuides, because the four edges
-  /// are the *setting* and this is the *view*: turning the rulers off by
-  /// unticking four boxes means ticking four boxes to get them back, and
-  /// which four is exactly what somebody who wanted them out of the way for a
-  /// moment has stopped thinking about.
+  /// showRulers hides the rulers without forgetting which edges they were
+  /// on.
   final bool showRulers;
 
   const CanvasGuides({
@@ -239,8 +200,8 @@ class CanvasGuides {
     this.showRulers = true,
   });
 
-  /// isDefault is whether any of this is worth writing down. A canvas nobody
-  /// has set up keeps its file free of a block that says "no grid, no guides".
+  /// isDefault is whether every setting is at its default, so nothing need
+  /// be saved.
   bool get isDefault =>
       !showGrid &&
       gridSize == 40 &&
@@ -257,6 +218,7 @@ class CanvasGuides {
       !stageSnap &&
       stageStep == 0.25 &&
       stageTurn == 15 &&
+      showRulers &&
       !rulers.any;
 
   CanvasGuides copyWith({
@@ -292,9 +254,6 @@ class CanvasGuides {
         showRulers: showRulers ?? this.showRulers,
       );
 
-  /// withGuide adds one, and moved replaces one, because those are the two
-  /// things the stage does to this list and doing them by hand at the call
-  /// site is how a list ends up sorted in one place and not another.
   CanvasGuides withGuide(CanvasGuide guide) =>
       copyWith(guides: [...guides, guide]);
 
@@ -346,11 +305,9 @@ class CanvasGuides {
         showRulers: jsonBool(json["showRulers"], true),
       );
 
-  /// linesFor is every line an element could land on, in document units.
-  ///
-  /// The grid and the guides together, because an element does not care which
-  /// it is snapping to -- and the canvas's own edges and middle, which are the
-  /// lines people reach for most and which nobody should have to draw first.
+  /// linesFor is every line an element could land on, in document units: the
+  /// canvas's edges and middle, the grid, and the shown guides, as vertical
+  /// and horizontal lists.
   (List<double>, List<double>) linesFor(Size canvas) {
     var vertical = <double>[0, canvas.width / 2, canvas.width];
     var horizontal = <double>[0, canvas.height / 2, canvas.height];

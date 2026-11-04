@@ -6,16 +6,15 @@ import 'package:bruig/plugin_system/canvas/ui/stage_gizmo.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// stage_nav_controls.dart is the 3D view controls that float at the right
-// of a scene showing a 3D stage: an orbit ball to swing its camera round,
-// pads to drag for zooming and panning it, and buttons to frame what is
-// selected and to put the camera back. The bar's view-controls button folds
-// them to the ball alone, or hides them (StageNav).
+// stage_nav_controls.dart is the 3D view controls floating at the right of a
+// scene showing a 3D stage: an orbit ball to swing the camera, pads to drag for
+// zoom and pan, and buttons to frame the selection and reset the camera. The
+// bar's view-controls button folds them to the ball alone or hides them
+// (StageNav).
 //
-// They steer the stage the controller says is steered -- the one the
-// selected element stands on, or the scene's first -- and write its camera
-// as anything else does, keyed where the camera is keyed. A drag is one
-// undo step.
+// They steer the stage the controller says is steered (the selected element's,
+// or the scene's first) and write its camera as anything else does. A drag is
+// one undo step.
 
 /// StageNavControls is the column of view controls.
 class StageNavControls extends StatelessWidget {
@@ -256,10 +255,10 @@ class _OrbitBallState extends State<_OrbitBall> {
   }
 }
 
-/// OrbitAxis is one end of one of the stage's ways on the orbit ball:
-/// where it is drawn, its letter (none for the far ends), its colour, how
-/// far towards the camera it points, and the yaw -- or null to keep the
-/// camera's -- and pitch that look along it.
+/// OrbitAxis is one end of one of the stage's axes on the orbit ball: where it
+/// is drawn, its letter (none for the far ends), its colour, how far towards
+/// the camera it points, and the yaw (null keeps the camera's) and pitch that
+/// look along it.
 typedef OrbitAxis = ({
   Offset at,
   String name,
@@ -268,13 +267,12 @@ typedef OrbitAxis = ({
   (double?, double) look,
 });
 
-/// orbitAxes are the six ends of the stage's three ways as [camera] sees
-/// them, on a ball [size] across: the furthest first, so the nearest are
-/// drawn on top.
+/// orbitAxes are the six ends of the stage's three axes as [camera] sees
+/// them, on a ball [size] across, furthest first so the nearest draw on top.
 List<OrbitAxis> orbitAxes(StageCamera camera, double size) {
   var yaw = camera.yaw * math.pi / 180, pitch = camera.pitch * math.pi / 180;
-  // From the eye to what it looks at; its right along the floor, and its
-  // up -- as StageView has them.
+  // From the eye to what it looks at, its right along the floor, and
+  // its up, as StageView has them.
   var f = (
     -math.sin(yaw) * math.cos(pitch),
     -math.sin(pitch),

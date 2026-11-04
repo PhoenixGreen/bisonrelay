@@ -136,8 +136,8 @@ const List<StyleParam> blockchainParams = [
 // --------------------------------------------------------------------------
 // Grids & tech
 //
-// Every default here is what the style drew before it had settings of its
-// own, so a document saved then is the same picture now.
+// The defaults are what each style drew before it had settings, so older
+// documents draw the same.
 // --------------------------------------------------------------------------
 
 const _dots = {
@@ -148,8 +148,7 @@ const _led = {
 };
 
 const List<StyleParam> dotGridParams = [
-  // LED wall was a style of its own. It is a grid of dots that light up,
-  // which is what this is.
+  // LED wall was a style of its own (see ProceduralStyle.hidden).
   StyleParam.choice("dotKind", "Kind", ["Dots", "LED wall"]),
   StyleParam.choice(
       "dotShape", "Shape", ["Circle", "Square", "Diamond", "Cross"],
@@ -204,8 +203,7 @@ const _rainOnly = {
 };
 
 const List<StyleParam> rainParams = [
-  // Symbol field was a style of its own: the same characters, scattered
-  // rather than falling.
+  // Symbol field was a style of its own (see ProceduralStyle.hidden).
   StyleParam.choice("mode", "Kind", ["Rain", "Field"]),
   StyleParam.choice("glyphFont", "Font", ["System", "Mono", "Serif"]),
   StyleParam("trail", "Trail",
@@ -365,7 +363,7 @@ const List<StyleParam> surfaceParams = [
 // Sport
 // --------------------------------------------------------------------------
 
-/// PitchView is [ProceduralStyle.pitch]'s "view" setting.
+/// PitchViewKind is [ProceduralStyle.pitch]'s "view" setting.
 abstract final class PitchViewKind {
   static const flat = 0;
   static const isometric = 1;
@@ -390,8 +388,8 @@ const List<StyleParam> pitchParams = [
   StyleParam.choice("area", "Show", ["Whole", "Half"]),
   StyleParam.choice("runs", "Runs", ["Across", "Up the page"]),
   StyleParam.choice("surround", "Surround", ["Plain", "Stadium", "Track"]),
-  // A starting point for the camera, which the settings beside it then
-  // move: choosing one puts all of them in place.
+  // A starting point for the camera: choosing one sets the camera settings
+  // beside it.
   StyleParam.choice(
       "view", "View", ["Flat", "Isometric", "Broadcast", "End on"],
       group: "Camera",
@@ -456,9 +454,8 @@ const List<StyleParam> pitchParams = [
   StyleParam("crowd", "Crowd",
       initial: 0.6, group: "Stadium", onlyWhen: _stadium),
   StyleParam.toggle("pylons", "Pylons", group: "Stadium", onlyWhen: _stadium),
-  // The stand between the camera and the pitch: drawn in front of it, soft
-  // and faded, rather than left out -- and how much the picture is focused
-  // on the pitch, softening the stands away from it.
+  // The near stand is drawn in front of the pitch, soft and faded; focus
+  // softens the stands away from the pitch.
   StyleParam("nearStands", "Near stand",
       initial: 0.45, group: "Stadium", onlyWhen: _stadium),
   StyleParam("depthOfField", "Depth of field",
@@ -480,9 +477,8 @@ const List<StyleParam> pitchParams = [
       initial: true, group: "Track", onlyWhen: _track),
 ];
 
-/// PitchShot is one of the camera positions a View offers: its name, and
-/// the camera settings it puts in place -- "zoom" among them, which is the
-/// spec's Size.
+/// PitchShot is one of the camera positions a View offers: its name and
+/// the camera settings it sets ("zoom" is the spec's Size).
 typedef PitchShot = (String, Map<String, double>);
 
 Map<String, double> _shot(double tiltV, double turn, double perspective,
@@ -566,10 +562,8 @@ const List<StyleParam> metalParams = [
 /// pitchCameraParams is [params] with the pitch's camera settings filled in
 /// from its View where they have not been set.
 ///
-/// A pitch saved before the camera had settings of its own said only which
-/// view it was and, as fractions, how far it was tilted and turned -- read
-/// here as they were meant, so it looks as it did and the settings show
-/// where its camera is.
+/// Older pitches saved only the view and, as fractions, tilt and turn; they
+/// are read here so they look as they did.
 Map<String, double> pitchCameraParams(Map<String, double> params) {
   if (params.containsKey("tiltV")) return params;
   var view = (params["view"] ?? 0).round().clamp(0, 3);

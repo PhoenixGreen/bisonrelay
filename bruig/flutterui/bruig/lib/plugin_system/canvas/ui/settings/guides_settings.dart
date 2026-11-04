@@ -5,32 +5,28 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 
 // guides_settings.dart is the grid, the guides, the rulers and the snapping,
-// as a panel that opens off the settings bar.
-//
-// A panel rather than a row of buttons on the bar itself. There are a dozen
-// switches here and they are all set up once and then left alone -- the bar is
-// for what gets pressed while working, and this is what gets arranged before
-// the work starts.
-//
-// It opens over the top of the canvas rather than pushing it down, which is
-// what the canvas settings beside it do and for the same reason: opening a
-// panel must not move the design or change the zoom under whatever is being
-// looked at. Closing it gets the strip back.
+// as a panel off the settings bar: a dozen switches set up once and left, so
+// not on the bar, which is for what is pressed while working. It opens over
+// the canvas, as the canvas settings do, so opening it never moves the design
+// or changes the zoom.
 
-/// canvasGuidesSettings is the whole panel.
-///
-/// Five groups, each of which can be shut -- they are set up once and then
-/// left alone, and the three you are not using are what makes the strip
-/// scroll. What is shut is remembered across a restart.
+/// canvasGuidesSettings is the whole panel: five groups, each of which can be
+/// shut (remembered across a restart), so those not in use do not make the
+/// strip scroll.
 List<Widget> canvasGuidesSettings(CanvasController controller) {
   var guides = controller.document.guides;
   void set(CanvasGuides next) =>
       controller.apply(controller.document.copyWith(guides: next));
+  // A number dragged or typed: one change, closed when it is let go.
+  void slide(CanvasGuides next) {
+    controller.beginInteraction();
+    controller.apply(controller.document.copyWith(guides: next),
+        transient: true);
+  }
 
   return [
-    // Rulers first, because they are the edge of the page: everything else
-    // here is drawn inside the frame they make, and a reader going along the
-    // strip meets them in the order the canvas does.
+    // Rulers first: they are the edge of the page, met in the order the canvas
+    // meets them.
     CanvasFoldingGroup(label: "Rulers", remember: "guidesRulers", children: [
       for (var (label, on, apply)
           in <(String, bool, CanvasRulers Function(bool))>[
@@ -48,10 +44,7 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
           value: on,
           onChanged: (v) => set(guides.copyWith(rulers: apply(v))),
         ),
-      // Shown or hidden without forgetting which edges were asked for, which
-      // is the whole of what this is for. It was in the bar and nowhere else,
-      // so a canvas saved with the rulers hidden had no way back to them once
-      // the bar stopped carrying switches.
+      // Shown or hidden without forgetting which edges were asked for.
       CanvasToggle(
         key: const ValueKey("guidesShowRulers"),
         label: "Show",
@@ -65,15 +58,9 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
           "when the canvas is small on screen. Drag out of one to put a guide "
           "down."),
     ]),
-    // "Every" sets the spacing for the grid and the ruler together. They are
-    // one measurement of the page shown two ways, and when they disagreed --
-    // a ruler picking its own round numbers by zoom, a grid on its own
-    // spacing -- reading a position off the ruler meant counting squares on
-    // the grid to find it.
-    //
-    // Named for the grid all the same. It was "Grid and rulers", which put
-    // the word Rulers on two captions a group apart and read as though the
-    // ruler edges were in here somewhere.
+    // "Every" sets the grid's and the ruler's spacing together: one measurement
+    // shown two ways, so a position read off the ruler lands on a grid line. The
+    // group is named Grid alone so that Rulers is not a caption twice.
     CanvasFoldingGroup(label: "Grid", remember: "guidesGrid", children: [
       CanvasToggle(
         label: "Show a grid",
@@ -87,7 +74,8 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
         max: 1000,
         decimals: 0,
         width: 62,
-        onChanged: (v) => set(guides.copyWith(gridSize: v)),
+        onChanged: (v) => slide(guides.copyWith(gridSize: v)),
+        onCommit: controller.endInteraction,
       ),
       CanvasNumberField(
         label: "Divided by",
@@ -96,7 +84,8 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
         max: 10,
         decimals: 0,
         width: 62,
-        onChanged: (v) => set(guides.copyWith(subdivisions: v.round())),
+        onChanged: (v) => slide(guides.copyWith(subdivisions: v.round())),
+        onCommit: controller.endInteraction,
       ),
       const CanvasHint(
           "Every sets the spacing for the grid and for the ruler's numbers "
@@ -171,9 +160,8 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
             onChanged: (v) => set(
                 guides.copyWith(snapTo: guides.snapTo.copyWith(centres: v))),
           ),
-          // The lines that matter most of the time, and the ones that were
-          // missing: a grid catches a design at regular intervals, and what
-          // anybody actually wants is this heading over that picture.
+          // The lines that matter most: what anybody wants is this heading over that
+          // picture, not a grid's regular intervals.
           CanvasToggle(
             key: const ValueKey("snapToObjects"),
             label: "Elements",
@@ -189,7 +177,8 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
             decimals: 0,
             width: 56,
             suffix: "px",
-            onChanged: (v) => set(guides.copyWith(snapWithin: v)),
+            onChanged: (v) => slide(guides.copyWith(snapWithin: v)),
+            onCommit: controller.endInteraction,
           ),
           // On a 3D stage there are no lines to land on: what is moved
           // there lands on steps across its floor, and turns in steps --
@@ -209,7 +198,8 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
             decimals: 2,
             width: 56,
             suffix: "m",
-            onChanged: (v) => set(guides.copyWith(stageStep: v)),
+            onChanged: (v) => slide(guides.copyWith(stageStep: v)),
+            onCommit: controller.endInteraction,
           ),
           CanvasNumberField(
             key: const ValueKey("snapStageTurn"),
@@ -220,7 +210,8 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
             decimals: 0,
             width: 56,
             suffix: "°",
-            onChanged: (v) => set(guides.copyWith(stageTurn: v)),
+            onChanged: (v) => slide(guides.copyWith(stageTurn: v)),
+            onCommit: controller.endInteraction,
           ),
           const CanvasHint(
               "How near, on screen, before it jumps — so it feels the same at "

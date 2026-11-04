@@ -10,19 +10,17 @@ import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/painting.dart';
 
-// parallax_painter.dart draws parallax scenery: every layer moved by the
-// camera times its own scroll scale, plus its own drift, and laid side by
-// side for as far as the page needs where it repeats.
+// parallax_painter.dart draws parallax scenery: each layer moved by the
+// camera times its scroll scale plus its own drift, and tiled where it
+// repeats.
 //
-// Drawn scenery is made to repeat without a seam: a ridge is a sum of sines
-// whose every frequency is a whole number of waves across one tile, so its
-// two ends meet at the same height, and trees, buildings and clouds are
-// placed in a tile and drawn again a tile along -- one that leans over the
-// edge is completed by the next tile's copy of itself.
+// Drawn scenery repeats without a seam: a ridge is a sum of sines with a
+// whole number of waves per tile, so its ends meet, and trees, buildings and
+// clouds are drawn again a tile along, so one over the edge is completed by
+// the next tile's copy.
 
 /// paintParallax draws [p] as it is on [frame], filling [box]. [loopFrames]
-/// is how many frames the timeline goes round in -- see parallaxLoopFrames
-/// -- for its layers' drift to go round with it.
+/// (see parallaxLoopFrames) lets a layer's drift loop with the timeline.
 void paintParallax(ui.Canvas canvas, Rect box, ParallaxElement p, int frame,
     {double frameRate = 30, CanvasImageSource? images, int? loopFrames}) {
   if (box.isEmpty) return;
@@ -39,8 +37,8 @@ void paintParallax(ui.Canvas canvas, Rect box, ParallaxElement p, int frame,
 }
 
 /// parallaxLoopFrames is how many frames [doc]'s timeline goes round in:
-/// from a Loop back's target to the frame it loops from, or -- with none --
-/// the whole of it, played round from its end to its start.
+/// from an endless Loop back's target to its frame, or else the whole
+/// timeline.
 int parallaxLoopFrames(CanvasDocument doc) {
   for (var a in doc.actions) {
     if (a.kind == TimelineActionKind.loop &&
@@ -52,9 +50,9 @@ int parallaxLoopFrames(CanvasDocument doc) {
   return math.max(1, doc.frames);
 }
 
-/// loopedDrift is [speed] -- a drift, in design units a second -- evened out
-/// to a whole number of [tile]s in [loopFrames] at [frameRate]: the nearest,
-/// and never none where it drifts at all.
+/// loopedDrift is [speed] (design units a second) rounded to the nearest
+/// whole number of [tile]s per [loopFrames] at [frameRate], and never to
+/// none where it drifts at all.
 double loopedDrift(
     double speed, double tile, int loopFrames, double frameRate) {
   if (speed == 0 || tile <= 0 || loopFrames <= 0 || frameRate <= 0) {
@@ -105,8 +103,7 @@ void _paintLayer(
   if (layer.kind == SceneryKind.picture && picture == null) return;
   var tile = tileSize(layer, box, picture);
   if (tile.width < 1 || tile.height < 1) return;
-  // Round with the timeline: a whole number of tiles each time it loops,
-  // where it repeats that way.
+  // A whole number of tiles per timeline loop, on the axes it repeats on.
   if (layer.loopDrift && loopFrames != null) {
     layer = layer.copyWith(
         autoX: layer.repeatX
@@ -184,9 +181,8 @@ void _paintLayer(
   canvas.restore();
 }
 
-/// _patterns are still patterns drawn once for a tile size, since a
-/// generator is the most expensive thing on a canvas and a repeating layer
-/// asks for the same tile many times over.
+/// _patterns are still patterns drawn once per tile size: a generator is
+/// expensive and a repeating layer asks for the same tile many times.
 final Map<String, ui.Image> _patterns = {};
 
 void _paintPattern(ui.Canvas canvas, Rect rect, ParallaxLayer layer,
@@ -217,8 +213,8 @@ void _paintPattern(ui.Canvas canvas, Rect rect, ParallaxLayer layer,
       Paint()..filterQuality = FilterQuality.low);
 }
 
-/// _drawn are drawn scenery tiles already worked out, by layer and size:
-/// the camera moves them every frame, and moving is all that changes.
+/// _drawn are drawn scenery tiles, by layer and size; only the camera's
+/// move changes from frame to frame, so the paths are kept.
 final Map<String, List<(Path, Paint)>> _drawn = {};
 
 List<(Path, Paint)> _sceneryOf(ParallaxLayer layer, Size tile) {
@@ -328,9 +324,8 @@ List<(Path, Paint)> scenery(ParallaxLayer layer, Size tile) {
         ));
       }
     case SceneryKind.mountains || SceneryKind.hills:
-      // Stretched so the highest peak stands at the layer's height and the
-      // lowest dip is a fifth of the way up it: whatever the sum of waves
-      // came to, Height is how tall the range is.
+      // Normalised so the highest peak is at the layer's Height and the
+      // lowest dip a fifth of the way up, whatever the waves summed to.
       const steps = 160;
       var r = [for (var s = 0; s <= steps; s++) ridge(layer, s / steps)];
       var lo = r.reduce(math.min), hi = r.reduce(math.max);

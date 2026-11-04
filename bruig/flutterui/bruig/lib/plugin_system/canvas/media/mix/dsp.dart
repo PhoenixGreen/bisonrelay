@@ -10,15 +10,13 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 // dsp.dart is the arithmetic a mix is made of: filters, a compressor, a
 // limiter, a channel strip, the master, and a loudness meter.
 //
-// It is the one definition of how a mix sounds. The editor plays through it
-// and an export is rendered by it, so the two cannot disagree -- before this
-// a mix was played by SoLoud's filters and exported by ffmpeg's, which were
-// each made to follow mix.dart and each got there their own way.
+// It is the one definition of how a mix sounds: the editor plays through it
+// and exports render with it, so the two cannot disagree.
 //
-// Pure Dart with no Flutter in it, so a render can run in an isolate. Every
-// processor works on blocks of stereo audio held as two Float32Lists, left and
-// right, and keeps its state between blocks, so a sound processed in pieces
-// is the same as one processed whole.
+// Pure Dart with no Flutter, so a render can run in an isolate. Every
+// processor works on blocks of stereo audio (two Float32Lists) and keeps its
+// state between blocks, so a sound processed in pieces matches one
+// processed whole.
 
 /// mixRate is the sample rate everything is mixed at.
 const int mixRate = 48000;
@@ -82,9 +80,6 @@ class Compressor {
       : _attack = _coefficient(d.attackMs, sampleRate),
         _release = _coefficient(d.releaseMs, sampleRate),
         _makeup = dbToGain(d.totalMakeupDb);
-
-  /// reductionDb is how far it is turning down now, for a meter.
-  double get reductionDb => _reduction;
 
   void process(Float32List l, Float32List r, int n) {
     var wet = d.mix.clamp(0.0, 1.0);
@@ -150,23 +145,18 @@ class Limiter {
   }
 }
 
-/// StripProcessor is a channel strip: EQ and compressor in the order set,
-/// then the fader and balance. A muted strip is silent.
-///
-/// Retuned -- its levels, sends or a device's settings moved, as
-/// automation moves them -- it keeps what is in it: see [retune].
+/// StripProcessor is a channel strip: its devices, EQ and compressor in the
+/// order set, then the fader and balance. A muted strip is silent.
 class StripProcessor {
   ChannelMix _mix;
   final EqProcessor _eq;
   final Compressor? _comp;
 
-  /// _chain is a processor for each of the channel's own devices, in
-  /// order, before its EQ and compressor -- null for one switched off: see
-  /// ChannelMix.devices.
+  /// _chain is a processor for each of the channel's devices, in order,
+  /// null for one switched off.
   final List<DeviceProcessor?> _chain;
 
-  /// _gl and _gr are the levels the last block ended on: a new level is
-  /// glided to over a block, not jumped to.
+  /// _gl and _gr are the levels the last block ended on (see [level]).
   double _gl, _gr;
 
   StripProcessor(ChannelMix mix)
@@ -179,8 +169,7 @@ class StripProcessor {
 
   ChannelMix get mix => _mix;
 
-  /// devices are the channel's own devices, running -- for a tuner's
-  /// reading.
+  /// devices are the channel's running devices, for a tuner's reading.
   List<DeviceProcessor> get devices => [
         for (var d in _chain)
           if (d != null) d,
@@ -188,10 +177,9 @@ class StripProcessor {
 
   Compressor? get compressor => _comp;
 
-  /// retune takes [next] in without starting again: a channel the same but
-  /// for its levels, its sends and its devices' settings. A device whose
-  /// settings changed is made again -- or tuned in place, where it can be
-  /// -- and the rest keep what is in them.
+  /// retune takes [next], a channel differing only in levels, sends and
+  /// device settings, without resetting state. A changed device is tuned in
+  /// place where it is [Tunable], otherwise rebuilt.
   void retune(ChannelMix next) {
     for (var i = 0; i < _chain.length && i < next.devices.length; i++) {
       var was = _mix.devices[i], now = next.devices[i];
@@ -211,9 +199,8 @@ class StripProcessor {
     level(l, r, n);
   }
 
-  /// shape is the strip before its fader: the EQ and the compressor, in
-  /// the order set -- where a pre-fader send is taken. A muted strip is
-  /// silent from here on, sends included.
+  /// shape is the strip before its fader, where a pre-fader send is taken.
+  /// A muted strip is silent from here on, sends included.
   void shape(Float32List l, Float32List r, int n) {
     if (_mix.mute) {
       l.fillRange(0, n, 0);
@@ -232,8 +219,8 @@ class StripProcessor {
     }
   }
 
-  /// level is the fader and the balance -- glided to from the last block's
-  /// over this one, so a level moved by automation does not click.
+  /// level is the fader and balance, ramped from the last block's over this
+  /// one so a level moved by automation does not click.
   void level(Float32List l, Float32List r, int n) {
     if (_mix.mute) return;
     var (gl, gr) = _mix.gains;
@@ -251,9 +238,8 @@ class StripProcessor {
   }
 }
 
-/// Tunable is a device that takes new settings without starting again:
-/// what it is in the middle of -- a delay line, a reverb's tail, an LFO's
-/// phase -- carries on.
+/// Tunable is a device that takes new settings without losing its state (a
+/// delay line, a reverb's tail, an LFO's phase).
 abstract class Tunable {
   void tune(MixDevice device);
 }
@@ -286,10 +272,9 @@ abstract class DeviceProcessor {
   }
 }
 
-/// Reverb is Freeverb -- Jezar's public-domain design: eight parallel
-/// damped comb filters and four allpasses a side, the right side's delays a
-/// little longer than the left's for width -- tuned for 48kHz, with a
-/// pre-delay in front.
+/// Reverb is Freeverb (Jezar's public-domain design: eight damped combs and
+/// four allpasses a side, the right's delays a little longer for width),
+/// scaled to 48kHz, with a pre-delay in front.
 class Reverb implements DeviceProcessor, Tunable {
   static const _combs = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
   static const _allpasses = [556, 441, 341, 225];
@@ -300,8 +285,8 @@ class Reverb implements DeviceProcessor, Tunable {
   final List<_Comb> _cl, _cr;
   final List<_Allpass> _al, _ar;
 
-  /// _preL and _preR are as long as the longest pre-delay, read [_pre]
-  /// behind where they are written: moved, nothing starts again.
+  /// _preL and _preR are as long as the longest pre-delay and read [_pre]
+  /// behind the write point, so changing the pre-delay reallocates nothing.
   final Float32List _preL, _preR;
   int _preAt = 0, _pre = 0;
 
@@ -397,13 +382,11 @@ class _Allpass {
   }
 }
 
-/// Delay is an echo: each side delayed by the time, fed back by the
-/// feedback through a low-pass, so each repeat is quieter and darker -- and
-/// with ping-pong, each repeat crosses to the other side.
+/// Delay is an echo fed back through a low-pass, so each repeat is quieter
+/// and darker; with ping-pong, each repeat crosses to the other side.
 class Delay implements DeviceProcessor, Tunable {
-  /// _l and _r are as long as the longest time, read [_time] behind where
-  /// they are written -- a time moved glides there, as a tape delay's
-  /// does, rather than jumping.
+  /// _l and _r are as long as the longest time and read [_time] behind the
+  /// write point. A changed time glides there, as a tape delay's does.
   final Float32List _l, _r;
   final double _rate;
   late double _feedback, _wet, _dry, _cross, _lp, _to;
@@ -445,7 +428,7 @@ class Delay implements DeviceProcessor, Tunable {
   void process(Float32List l, Float32List r, int n) {
     for (var i = 0; i < n; i++) {
       if (_time != _to) {
-        // Over about a tenth of a second.
+        // A time constant of about 40ms.
         _time += (_to - _time) * 0.0005;
         if ((_to - _time).abs() < 0.01) _time = _to;
       }
@@ -477,8 +460,8 @@ class MasterProcessor {
   final List<DeviceProcessor> _devices;
   List<DeviceProcessor> get devices => _devices;
 
-  /// normaliseDb is the gain that brings the mix to its target: measured
-  /// on a first pass, so it is not known until then. Nought until it is.
+  /// normaliseDb is the gain that brings the mix to its loudness target,
+  /// measured on a first pass; 0 until then.
   double normaliseDb;
 
   MasterProcessor(this.mix, {this.normaliseDb = 0})
@@ -490,9 +473,8 @@ class MasterProcessor {
             if (DeviceProcessor.of(d) case var p?) p,
         ];
 
-  /// process runs the master on a block, the limiter only when [limit].
-  /// The first of two passes leaves it out: what is measured there is the
-  /// mix before the limiter, as a loudness normaliser measures it.
+  /// process runs the master on a block, the limiter only when [limit]. The
+  /// measuring pass leaves it out, as a loudness normaliser measures.
   void process(Float32List l, Float32List r, int n, {bool limit = true}) {
     for (var d in _devices) {
       d.process(l, r, n);
@@ -579,10 +561,8 @@ class LoudnessMeter {
   }
 }
 
-/// SpeakerLoudness is LoudnessMeter over every speaker of a surround mix:
-/// each K-weighted, its power weighted as BS.1770 says -- the side and
-/// rear speakers a decibel and a half more, the LFE not at all -- and the
-/// whole gated in the same way.
+/// SpeakerLoudness is LoudnessMeter over every speaker of a surround mix,
+/// each weighted as BS.1770 says ([weights]: surrounds +1.5dB, LFE 0).
 class SpeakerLoudness {
   final List<double> weights;
   final List<(Biquad, Biquad)> _filters;

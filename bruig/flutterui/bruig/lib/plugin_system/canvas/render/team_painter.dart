@@ -14,23 +14,21 @@ import 'package:bruig/plugin_system/canvas/render/procedural/pitch.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/painting.dart';
 
-// team_painter.dart draws a team: where each player stands -- on the team's
-// own box, or on the pitch it is linked to -- and what each one looks like.
+// team_painter.dart draws a team: where each player stands, on the team's
+// own box or on the pitch it is linked to, and what each one looks like.
 //
-// A linked team keeps its players in the pitch's own metres, its own half of
-// the field, and asks the pitch where those metres are on the page. So the
-// team goes wherever the pitch goes: moved, turned, zoomed, tilted, in
-// perspective. The stage asks the same questions here when a player is
-// clicked or dragged, so where a player is drawn and where a player is
-// picked up can never disagree.
+// A linked team keeps its players in the pitch's metres, in its own half,
+// and asks the pitch where those are on the page, so it follows the pitch
+// however it is moved, turned, zoomed or tilted. The stage hit-tests players
+// through the same functions, so drawing and picking up agree.
 
 /// TeamGround is the pitch a linked team stands on, as it is on the page.
 class TeamGround {
   final PitchPlacement place;
 
   /// toPage and fromPage carry a point between the pitch's own rectangle
-  /// and the page, for a pitch that is an element with a move and a turn of
-  /// its own. The identity for the canvas's background.
+  /// and the page for a pitch element; the identity for the canvas's
+  /// background.
   final Offset Function(Offset) toPage;
   final Offset Function(Offset) fromPage;
 
@@ -108,7 +106,8 @@ List<PitchChoice> pitchChoices(CanvasDocument doc) => [
 
 /// elementTransform is how [e] is moved, turned and sized on [frame], as a
 /// pair of functions taking a point in its own rectangle to the page and
-/// back -- the same transform the renderer applies before drawing it.
+/// back. Reads [e]'s track: pitches are background elements, which stay on
+/// tracks (see motion_convert.dart).
 (Offset Function(Offset), Offset Function(Offset)) elementTransform(
     CanvasElement e, int frame) {
   var pose = e.track?.at(frame) ?? Keyframe.rest;
@@ -143,14 +142,12 @@ List<PitchChoice> pitchChoices(CanvasDocument doc) => [
 
 /// PlayerPlace is where one player is on one frame.
 class PlayerPlace {
-  /// ground is where they stand, and centre where their token is drawn --
-  /// the same on a pitch seen from above, and lifted to stand up off it on
-  /// one seen at an angle.
+  /// ground is where they stand and centre where their token is drawn: the
+  /// same from above, lifted off the pitch when it is seen at an angle.
   final Offset ground;
   final Offset centre;
 
-  /// size is how much bigger or smaller than its set size their token is
-  /// drawn: the pitch's zoom, and its perspective.
+  /// size is their token's scale: the pitch's zoom and perspective.
   final double size;
 
   /// depth is how far from the camera they are, for drawing nearer players
@@ -167,9 +164,9 @@ class PlayerPlace {
       this.ground, this.centre, this.size, this.depth, this.shown, this.field);
 }
 
-/// teamFieldPoint is where [spot] rests on a pitch [place]s, in metres: the
-/// team's own half -- the far one when it attacks the other way -- with
-/// across measured down the team's box, as it always was.
+/// teamFieldPoint is where [spot] rests on a pitch [place]s, in metres: in
+/// the team's own half (the far one when [TeamElement.mirrored]), with
+/// across measured down the team's box.
 Offset teamFieldPoint(TeamElement team, PlayerSpot spot, PitchPlacement place) {
   var half = place.length / 2;
   return Offset(
@@ -196,9 +193,9 @@ PlayerPlace playerPlace(
   var place = g.place;
   var rest = teamFieldPoint(team, spot, place);
   var x = rest.dx, y = rest.dy;
-  // A run is kept in design units, as an element's is; on a pitch it is
-  // read as metres at the pitch's flat size, across the page being along
-  // the field and down it being across.
+  // A run (the player's track) is in design units; on a pitch it is read as
+  // metres at the pitch's flat size, page x along the field and page y
+  // across it.
   var track = spot.track;
   if (track != null && !track.isEmpty) {
     var pose = track.at(frame);
@@ -215,9 +212,8 @@ PlayerPlace playerPlace(
 
 /// paintTeam draws every player in a team.
 ///
-/// In list order, which is what Bring forward and Send to back move a player
-/// through -- except on a pitch seen at an angle, where the nearer players
-/// are drawn over the further ones whatever the list says, as they would be.
+/// In list order (what Bring forward and Send to back change), except on a
+/// pitch seen at an angle, where nearer players are drawn over further ones.
 void paintTeam(ui.Canvas canvas, Rect bounds, TeamElement e, int frame,
     {CanvasDocument? document, CanvasImageSource? images}) {
   if (e.dotRadius <= 0) return;
@@ -247,8 +243,8 @@ void paintTeam(ui.Canvas canvas, Rect bounds, TeamElement e, int frame,
   }
 }
 
-/// _paintRun is where a player with keyframes goes: a dashed line through
-/// every frame of their movement, to an arrow.
+/// _paintRun draws a player's run, from their track's keyframes: a dashed
+/// line through their movement, ending in an arrow.
 void _paintRun(
     ui.Canvas canvas, TeamGround? g, TeamElement e, PlayerSpot spot, int i) {
   var track = spot.track;
@@ -328,8 +324,8 @@ void _paintPlayer(ui.Canvas canvas, TeamElement e, int i, PlayerSpot spot,
   var keeper = i == 0 && e.sport.hasKeeper;
   var kit = _kitColour(e, i);
 
-  // A shadow on the ground under them: always on a pitch seen at an angle,
-  // where a token with none floats; where asked for, on one seen from above.
+  // A shadow under them: always on a pitch seen at an angle, where a token
+  // without one floats; from above, only where asked for.
   if (g != null && !g.place.flat) {
     canvas.drawOval(
         Rect.fromCenter(
@@ -589,9 +585,9 @@ const _hairs = [
   Color(0xFF8E8A86),
 ];
 
-/// _paintFace draws a face -- a drawn one, for a player with no photo: skin,
-/// hair and its cut, the shoulders of a shirt in the kit. Each player's own,
-/// from their name and number, so it stays theirs through every change.
+/// _paintFace draws a face for a player with no photo: skin, hair and its
+/// cut, shoulders in the kit. Seeded from their name, number and place in the
+/// list (see _faceSeed), so it is stable from frame to frame.
 void _paintFace(ui.Canvas canvas, double r, int seed, Color kit, Color trim) {
   double pick(int salt) => hash(seed, salt, 7);
   var skin = _skins[(pick(1) * _skins.length).floor() % _skins.length];
@@ -788,8 +784,7 @@ void _paintLabels(
           canvas.drawCircle(Offset.zero, r * 0.56, Paint()..color = kit);
         }
         if (rotate != 0) canvas.rotate(rotate);
-        // Centred on the ink rather than on the line box -- see
-        // paintCentredGlyphs.
+        // Centred on the ink, not the line box. See paintCentredGlyphs.
         paintCentredGlyphs(canvas, spot.number, e.labelSpec, Offset.zero);
     }
     canvas.restore();
@@ -805,8 +800,7 @@ void _paintLabels(
   var painter = layoutText(text, spec, maxWidth: math.max(40, r * 8));
   var plate = e.nameStyle == NameStyle.plate;
   var pad = plate ? Offset(r * 0.35, r * 0.12) : Offset.zero;
-  // Placed from the token's edge, so a name stays the same distance from its
-  // player whatever the token's size.
+  // Measured from the token's edge, so the gap holds whatever its size.
   var gapX = e.dotWidth / 2 + e.nameGap;
   var gapY = e.dotHeight / 2 + e.nameGap;
   var half = Offset(painter.width / 2, painter.height / 2) + pad;
@@ -832,7 +826,7 @@ void _paintLabels(
         _ring(e, math.max(1, r * 0.05)));
   }
   var inner = Offset(painter.width / 2, painter.height / 2);
-  // The type's shadow and glow, under the letters -- as the number has them.
+  // The type's shadow and glow, under the letters.
   softFor(text, spec, maxWidth: math.max(40, r * 8), fillWidth: false)
       ?.paint(canvas, -inner);
   if (spec.outlineWidth > 0 && !plate) {
@@ -849,11 +843,10 @@ void _paintBall(ui.Canvas canvas, TeamElement e, PlayerSpot spot,
   var r = e.radiusOf(spot);
   var k = at.size;
   if (r <= 0) return;
-  // On the ground under it: a shadow, which is most of what says where a
-  // ball is when it is lifted off a pitch seen at an angle.
   var look = e.ballLook;
   var lifted = g != null && !g.place.flat;
   if (look.trail) _paintBallTrail(canvas, e, spot, at, g, frame, r);
+  // The shadow on the ground is most of what says where a lifted ball is.
   if (look.shadow) {
     canvas.drawOval(
         Rect.fromCenter(

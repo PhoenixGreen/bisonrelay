@@ -5,15 +5,12 @@ import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 
-// vocoder.dart is the Vocoder: a channel vocoder of the classic kind. The
-// voice -- the channel's own sound, the modulator -- is split into bands,
-// and how loud each band is, moment to moment, is laid onto the same band of
-// a second sound, the carrier: hiss, a buzz, or another channel. What comes
-// out says what the voice said, in the carrier's tone.
+// vocoder.dart is a classic channel vocoder. The channel's own sound (the
+// modulator) is split into bands, and each band's envelope is laid onto the
+// same band of the carrier: noise, a buzz, or another channel.
 //
-// Each carrier band is first evened out by its own loudness, so a carrier
-// with little in a band -- a chord with a gap in it -- still carries the
-// voice there, up to a limit.
+// Each carrier band is first normalised by its own envelope, up to
+// [_maxEven], so a carrier with little in a band still carries the voice.
 
 const double _rate = 48000;
 
@@ -61,13 +58,11 @@ List<double> _bandPass(double hz, double q) {
   ];
 }
 
-/// _coef is a follower's pull for a time of [ms]: e to the minus one over
-/// it in samples.
+/// _coef is a one-pole follower coefficient for a time of [ms].
 double _coef(double ms) => math.exp(-1 / (ms / 1000 * _rate));
 
-/// Sidechained is a device that hears a second channel beside its own:
-/// [feed] is given that channel's sound, as it came in, before the block is
-/// processed.
+/// Sidechained is a device that hears a second channel: [feed] is given
+/// that channel's pre-strip input before each block is processed.
 abstract class Sidechained implements DeviceProcessor {
   String? get source;
   void feed(Float32List l, Float32List r, int n);
@@ -88,11 +83,11 @@ class Vocoder implements Sidechained {
   Float32List _side = Float32List(1024);
   int _fed = 0;
 
-  // The buzz: a phase and its step; following the voice, a step it eases to.
+  // The buzz's phase and step, easing to [_toStep] when following the voice.
   double _phase = 0, _step, _toStep;
   int _seed = 22222;
 
-  // Following the voice: what it has heard of it, to listen to.
+  // Recent voice, for pitch-following.
   final Float32List _heard = Float32List(2048), _window = Float32List(2048);
   int _heardAt = 0, _sinceListen = 0;
   bool _voiced = false;

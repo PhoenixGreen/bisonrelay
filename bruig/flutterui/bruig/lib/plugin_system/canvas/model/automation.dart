@@ -251,7 +251,8 @@ class AutomationLane {
         [
           if (json["points"] case List list)
             for (var p in list)
-              if (p case [num t, num v]) (t.toDouble(), v.toDouble()),
+              if (p case [num t, num v] when t.isFinite && v.isFinite)
+                (t.toDouble(), v.toDouble()),
         ]..sort((a, b) => a.$1.compareTo(b.$1)));
   }
 
@@ -284,7 +285,7 @@ ChannelMix automatedAt(ChannelMix mix, double seconds,
     changed = true;
     switch (what.kind) {
       case AutomationKind.volume:
-        gain = v;
+        gain = v.clamp(-90.0, 12.0);
       case AutomationKind.pan:
         balance = v.clamp(-1.0, 1.0);
       case AutomationKind.send:
@@ -421,7 +422,7 @@ ChannelMix clipAutomatedAt(
     changed = true;
     switch (what.kind) {
       case AutomationKind.volume:
-        gain = v;
+        gain = v.clamp(-90.0, 12.0);
       case AutomationKind.pan:
         balance = v.clamp(-1.0, 1.0);
       case AutomationKind.send:

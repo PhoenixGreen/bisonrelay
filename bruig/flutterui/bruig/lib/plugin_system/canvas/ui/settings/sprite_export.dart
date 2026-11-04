@@ -149,14 +149,12 @@ const Map<SpriteFacing, double> spriteFacings = {
   SpriteFacing.right: -90,
 };
 
-/// spriteFromCharacter is [e] made of [who], a character -- drawn [count]
-/// frames from [from], [step] frames of the canvas apart, each in a cell
-/// [cell] pixels tall -- and, with [directions], turned each way a sprite
-/// can face, a row each. Played as one animation at the canvas's own speed
-/// over the frames taken.
-///
-/// Each frame is drawn on its own, once all it needs has loaded: a 3D
-/// character's scene drawn twice into one picture shows only the last.
+/// spriteFromCharacter is [e] made of [who], a character: [count] frames from
+/// [from], [step] canvas frames apart, each in a cell [cell] pixels tall and,
+/// with [directions], a row for each way a sprite can face; played at the
+/// canvas's own speed. Each frame is drawn on its own once all it needs has
+/// loaded: a 3D character's scene drawn twice into one picture shows only the
+/// last.
 Future<SpriteElement?> spriteFromCharacter(SpriteElement e, CanvasElement who,
     {required int from,
     int count = 8,

@@ -10,69 +10,48 @@ import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
-// chart_painter.dart draws a ChartElement.
+// chart_painter.dart draws a ChartElement's frame: the title, description,
+// legend and empty placeholder, and the room they leave for the picture.
 //
-// It is the frame round a chart rather than the chart itself: the title, the
-// description, the legend, the empty-chart placeholder, and the arithmetic
-// that decides how much room is left for the picture once all of those have
-// taken their share. Everything here is measured, nothing is a guessed
-// margin, so a chart with a three-line key and a chart with none both use the
-// space they have.
-//
-// The picture itself is drawn by one of two painters, which have almost
-// nothing in common beyond the animation: chart_cartesian.dart for the types
-// with an x and a y axis, chart_circular.dart for the ones arranged round a
-// centre. What they do share -- how far through its arrival one item is, what
-// colour it takes, how a number is written -- is in chart_common.dart, so the
-// legend here can ask the same questions and its swatches cannot drift out of
-// step with the picture.
+// The picture is drawn by chart_cartesian.dart (x and y axes) or
+// chart_circular.dart (round a centre). What they share with the legend --
+// item progress, colours, number formats -- is in chart_common.dart, so the
+// key's swatches match the picture.
 
 /// paintChart draws [e] filling [rect].
 ///
-/// [reveal] is how much of the chart has arrived, 0 to 1, which comes off the
-/// element's keyframes -- see KeyframeChannel.reveal. One means "all of it",
-/// which is what a chart with no animation on it always gets.
+/// [reveal] is how much of the chart has arrived, 0 to 1 (the
+/// KeyframeChannel.reveal channel); 1 for a chart with no animation.
 ///
-/// [close] is how far through leaving it is, which is the other pair of
-/// keyframes -- see KeyframeChannel.close. While it is above zero the chart is
-/// drawn with its closing preset, running backwards: the same presets played
-/// in reverse, which is what a chart leaving looks like.
-/// [seriesReveal] is the same number worked out per series, for a chart whose
-/// series have been offset in time -- see ChartSeries.delay. Null where no
-/// series has been, which is nearly every chart. It is the renderer that
-/// works these out, because an offset is a number of seconds and the timeline
-/// is the only thing that knows how long a second is.
+/// [close] is how far through leaving it is (KeyframeChannel.close). Above
+/// zero the chart is drawn with its closing preset run in reverse.
+///
+/// [seriesReveal] is reveal per series, for series offset by
+/// ChartSeries.delay, or null. The renderer works it out (see
+/// chartSeriesReveal) because the delay is in seconds.
 void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
     {double reveal = 1, double close = 0, List<double>? seriesReveal}) {
   if (rect.width <= 8 || rect.height <= 8) return;
 
-  // Leaving, once the closing band has started. The exit preset takes the
-  // entrance's place for the rest of the drawing, so that everything
-  // downstream -- bars, slices, candles, the legend -- goes on asking one
-  // object how far along an item is and never learns there are two halves.
+  // Leaving: the exit preset replaces the entrance one, so nothing below
+  // needs to know there are two.
   var leaving = e.animation.closes && close > 0;
   if (leaving) {
     e = e.copyWith(animation: e.animation.leaving);
     reveal = 1 - close.clamp(0.0, 1.0);
-    // Leaving is one movement for the whole chart: an offset says when a
-    // series arrives, and a chart half of which had gone would read as a
-    // chart with a hole in it rather than as a chart on its way out.
+    // The whole chart leaves together; series delays apply only on arrival.
     seriesReveal = null;
   }
 
   var animation = e.animation;
   var showing = animation.on ? reveal.clamp(0.0, 1.0) : 1.0;
-  // The furthest on of them, for the question "has anything arrived yet": a
-  // series brought forward is arriving while the chart's own reveal is still
-  // nought, and the early return below would have drawn none of it.
+  // The furthest on of them: a series brought forward arrives while the
+  // chart's own reveal is still nought.
   var furthest = showing;
   for (var r in seriesReveal ?? const <double>[]) {
     furthest = math.max(furthest, r.clamp(0.0, 1.0));
   }
-  // Nothing at all yet. Returning rather than drawing zero-height bars,
-  // because the axes and the labels arrive with the chart -- a chart whose
-  // grid appears a second before anything is in it looks broken rather than
-  // early.
+  // Nothing has arrived: the axes and labels arrive with the chart.
   if (animation.on && furthest <= 0) return;
   var data = e.data;
   if (data.series.isEmpty) {
@@ -80,41 +59,27 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
     return;
   }
 
-  // Everything but a placed label is drawn in the body rather than in the
-  // whole box. They are the same rectangle until a label has been dragged
-  // outside the element, at which point the box grew to hold the label and the
-  // body kept the plot where it was. See ChartBody.
+  // Everything but a placed label is drawn in the body, which differs from
+  // the box only once a label is dragged outside it. See ChartBody.
   var body = e.body.rectIn(rect);
   var area = body;
 
-  // The two labels, each either laid out by the chart or sitting where it was
-  // put. A placed label is drawn last, over the plot, because a label somebody
-  // has dragged onto the plot was dragged there on purpose -- and because
-  // taking room away from the plot for a label that is no longer above it
-  // would leave a band of nothing where it used to be.
-  // Stacked above the chart, taking their share of the height -- or floating
-  // over it, taking none. Floating, they are drawn *after* the chart rather
-  // than before it, since a title behind a bar is a title nobody can read.
+  // Labels either stack above the chart, taking height, or float over it,
+  // taking none and drawn after it so they stay readable.
   var floating = e.floatingLabels;
   if (!floating) {
     area = _flowLabel(canvas, area, body, e.title, e.titleBox, e.titleSpec);
     area = _flowLabel(canvas, area, body, e.description, e.descriptionBox,
         descriptionSpec(e));
-    // Not "and more than one series". A one-series chart with the legend
-    // turned on used to draw nothing at all, which reads as the switch being
-    // broken rather than as the legend being unnecessary -- and a single
-    // series with a name worth reading is a good reason to want one.
-    // Unless it has been dragged off its slot, in which case it takes no
-    // room and is drawn over the plot below, like a placed label.
+    // A one-series chart gets a legend too. A legend dragged off its slot
+    // takes no room and is drawn over the plot below.
     if (e.showLegend && data.series.isNotEmpty && !e.legend.hasPlace) {
       area = _legend(canvas, area, e, showing);
     }
   }
 
-  // A wipe and a sweep are one edge travelling over everything, so they are a
-  // clip round the whole plot rather than anything the series need to know
-  // about. Everything else is per item and is handled where the items are
-  // drawn.
+  // Wipe and sweep are a clip round the whole plot; every other preset is
+  // per item, where the items are drawn.
   var clipping = animation.on &&
       showing < 1 &&
       (animation.preset == ChartAnimationPreset.wipe ||
@@ -137,7 +102,6 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
 
   if (clipping) canvas.restore();
 
-  // On top of everything, and only when they are floating.
   if (floating) {
     _placedLabel(
         canvas, rect, e.title, e.titleBox, defaultTitlePlacement, e.titleSpec);
@@ -152,9 +116,7 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
       _legend(canvas, rect, e, showing);
     }
   } else if (e.showLegend && data.series.isNotEmpty && e.legend.hasPlace) {
-    // A key dragged off its slot, on a chart whose labels are still laid out
-    // for it. Drawn here for the same reason a placed label is: it was put
-    // over the plot on purpose.
+    // A key dragged off its slot on a chart with stacked labels.
     _legend(canvas, rect, e, showing);
   }
 }
@@ -162,15 +124,12 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
 /// chartLabelPlaces is where a floating chart draws its three pieces of
 /// writing, in the element's own coordinates.
 ///
-/// Asked of the painter rather than worked out again by the stage, because
-/// the stage has to hit-test exactly what was drawn -- and a legend's size is
-/// decided by measuring its own text, which is not something to reimplement.
+/// The stage hit-tests these, so they come from the painter's own
+/// measurement.
 Map<ChartLabelPart, Rect> chartLabelPlaces(ChartElement e, Rect rect) {
   if (!e.floatingLabels) {
-    // The key on its own, where it has been dragged off the slot Place gives
-    // it. Nothing else here can be moved while the chart is laying its
-    // writing out, but the key is drawn over the plot once it has a place of
-    // its own, and a thing that is drawn floating has to be grabbable.
+    // With stacked labels only a key dragged off its slot floats, so only it
+    // can be grabbed.
     if (e.showLegend && e.legend.hasPlace && e.data.series.isNotEmpty) {
       return {ChartLabelPart.legend: _legendBlock(e, rect, 1)};
     }
@@ -207,13 +166,8 @@ TextSpec descriptionSpec(ChartElement e) => e.descriptionText.copyWith(
 Rect _flowLabel(ui.Canvas canvas, Rect area, Rect rect, String text,
     ChartLabel box, TextSpec spec) {
   if (!box.show || text.isEmpty) return area;
-  // Against the top of what is left, always.
-  //
-  // The box handed to paintTextInBox is the whole remaining area, and a
-  // TextSpec is vertically centred unless it says otherwise -- so the title
-  // was drawn down the middle of the plot while the description, which did
-  // say otherwise, sat at the top above it. A title under its own description,
-  // over the bars.
+  // Top-aligned: the box is the whole remaining area, and a TextSpec is
+  // centred vertically by default.
   var h = paintTextInBox(
       canvas,
       text,
@@ -229,9 +183,7 @@ Rect _flowLabel(ui.Canvas canvas, Rect area, Rect rect, String text,
 void _placedLabel(ui.Canvas canvas, Rect rect, String text, ChartLabel box,
     ChartLabel fallback, TextSpec spec) {
   if (!box.show || text.isEmpty) return;
-  // Where it was put, or where the chart would have put it. A label that has
-  // never been dragged still has to land somewhere sensible the moment the
-  // switch is thrown.
+  // Where it was put, or the default place if it has never been dragged.
   paintTextInBox(canvas, text, spec, _placeOf(box, fallback, rect), clip: true);
 }
 
@@ -240,8 +192,7 @@ void _placedLabel(ui.Canvas canvas, Rect rect, String text, ChartLabel box,
 Path _wedge(Rect area, double turn) {
   if (turn >= 1) return Path()..addRect(area);
   var centre = area.center;
-  // Long enough to reach any corner, so the wedge clips the whole rectangle
-  // rather than a circle inscribed in it.
+  // Long enough to reach any corner.
   var reach = area.longestSide;
   return Path()
     ..moveTo(centre.dx, centre.dy)
@@ -251,9 +202,8 @@ Path _wedge(Rect area, double turn) {
     ..close();
 }
 
-/// _placeholder is what an empty chart looks like: a labelled frame rather
-/// than nothing, so a chart just dragged in is visible and selectable before
-/// any numbers have been typed into it.
+/// _placeholder is an empty chart: a labelled frame, so a new chart is
+/// visible and selectable before it has data.
 void _placeholder(ui.Canvas canvas, Rect rect, ChartElement e) {
   canvas.drawRect(
       rect,
@@ -270,23 +220,11 @@ void _placeholder(ui.Canvas canvas, Rect rect, ChartElement e) {
       clip: true);
 }
 
-/// _legendEntries is what a legend has one line of: a colour and a name.
-///
-/// Series for the types drawn as series, and *categories* for the ones whose
-/// colours belong to the values rather than to the series -- a pie of one
-/// series has one entry naming that series and five slices nobody has a key
-/// for, which is a legend answering a question nobody asked.
-///
-/// It is also where the radial bars get their numbers. They are rings a few
-/// pixels thick with no room to write on and no axis to read against, so a
-/// value written here is the only place it can go.
 /// LegendEntry is one line of the key: its swatch, its name, and which series
 /// it stands for.
 ///
-/// The series index is what makes the key something to press rather than only
-/// to read -- see chartLegendRects. It is -1 where an entry does not stand for
-/// a series at all: a pie's entries are its categories, and a candlestick's
-/// two are "closed up" and "closed down".
+/// [series] makes the entry pressable (see chartLegendRects); it is -1 where
+/// the entry is not a series: a pie's categories, a candlestick's up and down.
 class LegendEntry {
   final Color colour;
   final String name;
@@ -297,12 +235,12 @@ class LegendEntry {
       {this.series = -1, this.hidden = false});
 }
 
+/// _legendEntries is the key's lines: series for types drawn as series, and
+/// categories for types coloured by value (a pie). Radial bars have no room
+/// for numbers on the rings, so the key is where their values are written.
 List<LegendEntry> _legendEntries(ChartElement e, double reveal) {
   var data = e.data;
-  // A candlestick's four series are one mark, so naming them is a key to
-  // four things nobody can point at on the chart. What the colours actually
-  // say is whether the period closed up or down, so that is what the key
-  // says.
+  // A candlestick's colours mean closed up or down, not its four series.
   if (e.type.isCandles && data.series.length >= 4) {
     return [
       LegendEntry(e.riseColor, "Closed up"),
@@ -332,39 +270,26 @@ String _legendName(ChartElement e, int i, double value, SliceProgress slice) {
   var name = i < e.data.categories.length && e.data.categories[i].isNotEmpty
       ? e.data.categories[i]
       : "${i + 1}";
-  // The key's own switch, not the chart's. A bar chart may well want numbers
-  // on its bars and a key without them, and a radial bar has nowhere to put a
-  // number except the key -- one switch answering both meant neither could be
-  // had on its own.
+  // The key's own switch, separate from the chart's showValues.
   if (!e.legend.values) return name;
-  // Counting with its ring, like every other number on an animating chart.
+  // Counts up with its slice or ring.
   return "$name${e.legend.separator}"
       "${formatSeries(e, 0, value * slice.size.clamp(0.0, 1.0))}";
 }
 
-/// legendEntriesForTest is [_legendEntries], which decides what a legend says
-/// and is worth checking without reading it off a bitmap.
+/// legendEntriesForTest is [_legendEntries], for tests.
 @visibleForTesting
 List<LegendEntry> legendEntriesForTest(ChartElement e, double reveal) =>
     _legendEntries(e, reveal);
 
-/// legendLeavesForTest is what the chart gets once the key has taken its
-/// share -- which is the whole of what placement, direction, size and spacing
-/// actually decide.
-///
-/// Asked of the layout rather than read off a bitmap, because the key's own
-/// swatches are drawn in the series' colours: a test looking for "where the
-/// blue starts" finds the swatch, not the bars.
+/// legendLeavesForTest is the area left for the chart once the key has taken
+/// its share. A bitmap test would find the swatches, not the bars.
 @visibleForTesting
 Rect legendLeavesForTest(ChartElement e, Rect area, {double reveal = 1}) =>
     _legend(ui.Canvas(ui.PictureRecorder()), area, e, reveal);
 
-/// _LegendLayout is the key measured but not yet drawn: the rows it will take
-/// and how much room they need.
-///
-/// Split out because three callers want it and only one of them draws --
-/// where the chart goes, where the key goes, and what the stage must hit-test
-/// are the same measurement asked three ways.
+/// _LegendLayout is the key measured but not yet drawn: its rows and size.
+/// Shared by drawing, layout and the stage's hit-testing.
 class _LegendLayout {
   final List<List<(LegendEntry, TextPainter)>> rows;
   final double swatch;
@@ -390,9 +315,8 @@ _LegendLayout? _measureLegend(ChartElement e, Rect area, double reveal) {
   var rowHeight = spec.fontSize * 1.6;
   var between = spec.fontSize * legend.spacing.clamp(0.0, 6.0);
 
-  // Down the side, the key gets a third of the width to wrap its names in;
-  // along the top it gets all of it. Either way the width it *takes* is the
-  // width it turns out to need.
+  // A side key wraps within a third of the width; a top or bottom one within
+  // all of it. It takes only the width it needs.
   var room = legend.placement.isSide ? area.width * 0.34 : area.width;
 
   var items = [
@@ -401,9 +325,8 @@ _LegendLayout? _measureLegend(ChartElement e, Rect area, double reveal) {
         entry,
         layoutText(
             entry.name,
-            // A switched-off series is still named, and faintly: there has to
-            // be something to press to bring it back, and a key that drops
-            // the entry is a key that hides the way back in.
+            // A hidden series stays in the key, faint, so it can be shown
+            // again.
             entry.hidden
                 ? spec.copyWith(color: spec.color.withValues(alpha: 0.4))
                 : spec,
@@ -448,14 +371,8 @@ _LegendLayout? _measureLegend(ChartElement e, Rect area, double reveal) {
 /// chartLegendRects is where each of the key's entries was drawn, in the
 /// element's own coordinates, paired with the series it stands for.
 ///
-/// Measured by the same function that draws, so what the stage hit-tests is
-/// exactly what the reader can see -- the same arrangement counterButtonRects
-/// has, and for the same reason: a hit area worked out separately is a hit
-/// area that drifts.
-///
-/// Empty for the charts whose key does not stand for series one to one: a
-/// pie's entries are its categories and a candlestick's are up and down, and
-/// neither is a thing that can be switched off.
+/// Measured by the same function that draws, so hit areas cannot drift (as
+/// with counterButtonRects). Entries that are not series are left out.
 List<(int, Rect)> chartLegendRects(ChartElement e, Rect bounds,
     {double reveal = 1}) {
   if (!e.showLegend || e.data.series.isEmpty) return const [];
@@ -474,8 +391,7 @@ List<(int, Rect)> chartLegendRects(ChartElement e, Rect bounds,
       var (entry, painter) = r[i];
       var width = layout.swatch + layout.gap * 0.6 + painter.width;
       if (entry.series >= 0) {
-        // The swatch and its name together: a reader aiming at a key aims at
-        // the words as readily as at the colour.
+        // The swatch and its name together.
         out.add((entry.series, Rect.fromLTWH(x, y, width, layout.rowHeight)));
       }
       x += width;
@@ -486,11 +402,8 @@ List<(int, Rect)> chartLegendRects(ChartElement e, Rect bounds,
 }
 
 /// _legendArea is the rectangle the key is laid out in: the whole box once it
-/// floats, and whatever the title and the description have left of the plot
-/// while the chart is arranging them.
-///
-/// The same walk the painter takes, into a canvas nobody keeps -- measuring a
-/// label means laying it out, and laying it out is what the drawing does.
+/// floats, else what the stacked title and description leave. Found by the
+/// painter's own walk into a throwaway canvas.
 Rect _legendArea(ChartElement e, Rect bounds) {
   if (e.floatingLabels || e.legend.hasPlace) return bounds;
   var body = e.body.rectIn(bounds);
@@ -502,10 +415,7 @@ Rect _legendArea(ChartElement e, Rect bounds) {
 
 /// _legendOrigin is the top left corner the key is drawn from.
 Offset _legendOrigin(ChartElement e, Rect area, Size size) {
-  // Dragged somewhere of its own. The key is placed on its own terms rather
-  // than only when the labels are floating: it is the one piece a reader
-  // presses as well as reads, and a key that can only be moved by first
-  // putting the title over the chart is a key most people never move.
+  // A dragged key keeps its place whether or not the labels float.
   if (e.legend.hasPlace) {
     return Offset(area.left + e.legend.x * area.width,
         area.top + e.legend.y * area.height);
@@ -528,19 +438,13 @@ Rect _legendBlock(ChartElement e, Rect area, double reveal) {
 /// chartLegendBlock is where the whole key is drawn, in the element's own
 /// coordinates, whether the chart is laying it out or it has been placed.
 ///
-/// The stage needs it to take hold of a key that has never been moved: the
-/// place it is given on the first drag is the place it is already in, so it
-/// does not jump out from under the pointer.
+/// The stage uses it on a key's first drag, so the key does not jump.
 Rect chartLegendBlock(ChartElement e, Rect bounds, {double reveal = 1}) {
   if (!e.showLegend || e.data.series.isEmpty) return Rect.zero;
   return _legendBlock(e, _legendArea(e, bounds), reveal);
 }
 
 /// _legend draws the key and returns what is left for the chart.
-///
-/// Laid out by measuring rather than into a reserved margin, in whichever
-/// direction it has been put, so a key of eleven names down the right takes
-/// the width it needs and a key of two along the top takes one line.
 Rect _legend(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   var layout = _measureLegend(e, area, reveal);
   if (layout == null) return area;
@@ -556,9 +460,7 @@ Rect _legend(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
           Rect.fromLTWH(x, y + (layout.rowHeight - layout.swatch) / 2,
               layout.swatch, layout.swatch),
           Radius.circular(layout.swatch * 0.25));
-      // Hollow where the series is switched off: an outline says "this one
-      // exists and is not being drawn", which a filled swatch beside a chart
-      // missing that colour cannot.
+      // Hollow for a hidden series.
       canvas.drawRRect(
         box,
         entry.hidden
@@ -577,7 +479,7 @@ Rect _legend(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     y += layout.rowHeight + layout.rowGap;
   }
 
-  // Floating, it takes no room at all -- that is what floating means.
+  // Floating, it takes no room.
   if (e.floatingLabels) return area;
 
   var pad = e.labelSpec.fontSize * 0.5;
@@ -592,9 +494,8 @@ Rect _legend(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         area.left, area.top, area.right - layout.size.width - pad, area.bottom),
   };
 
-  // Never all of it. A key given more room than the chart is a key with a
-  // chart in the corner, and a key sized up until there is nothing left draws
-  // over an empty rectangle rather than reporting an error nobody can act on.
+  // A key that would leave the chart under 35% of either side takes no room
+  // and draws over it instead.
   if (left.width < area.width * 0.35 || left.height < area.height * 0.35) {
     return area;
   }

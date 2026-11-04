@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 
 import 'package:archive/archive.dart';
@@ -6,53 +7,31 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:flutter/foundation.dart';
 
-// canvas_bundle.dart is a canvas with its pictures inside it.
+// canvas_bundle.dart is a canvas with its pictures and media inside it.
 //
-// A saved .bcanvas is the document and nothing else: pictures live once in the
-// asset store beside the library and the document holds their ids -- see
-// canvas_assets.dart, which is the right arrangement for a canvas being worked
-// on, and exactly the wrong one for a canvas being sent to somebody. The file
-// arrived, opened, and had a grey placeholder where every photograph had been,
-// because the ids pointed at a store on the sender's machine.
+// A saved .bcanvas holds only asset ids pointing at this machine's stores
+// (see canvas_assets.dart), so a canvas sent elsewhere needs its files with
+// it. A bundle is a zip of the document JSON plus those files: smaller than
+// base64 in the JSON, and openable with any unzip tool.
 //
-// So a bundle: a zip holding the same document JSON and a folder of the
-// pictures it refers to. A zip rather than the pictures base64'd into the
-// JSON, which was the other obvious answer -- base64 is a third larger, and
-// the whole point of a bundle is that it travels. It is also a format anybody
-// can open: a bundle that will not load into this app can still be taken apart
-// with the thing every operating system already has.
-//
-// The ids inside are the sender's, and they are kept. They are hashes of the
-// pictures' own bytes, so the same photograph in two canvases is the same id on
-// every machine, and a bundle unpacked into a library that already holds one of
-// its pictures adds nothing.
+// The ids are kept as they are. They are hashes of the files' bytes, so a
+// picture the recipient already has is not stored twice.
 
-/// _documentEntry is the document, at the top so that anything listing the
-/// archive shows what it is first.
+/// _documentEntry is the document, added first so a listing shows it first.
 const String _documentEntry = "canvas.json";
 
 /// _pictureDir is where the pictures go, named by their asset ids.
 const String _pictureDir = "pictures";
 
-/// _mediaDir is where sounds and videos go, named by their media ids -- see
-/// CanvasMedia. A folder of their own, since they are restored into a
-/// different store from the pictures.
+/// _mediaDir is where sounds and videos go, named by their CanvasMedia ids.
 const String _mediaDir = "media";
 
-/// bundleMime marks a canvas that carries its pictures.
-///
-/// Its own type rather than application/zip, because what matters to whatever
-/// receives it is that this is a canvas -- and it saves as .bcanvas either
-/// way, since a reader has no reason to care which of the two forms their
-/// canvas came in.
+/// bundleMime marks a canvas that carries its pictures. It saves as
+/// .bcanvas, like a plain canvas.
 const String bundleMime = "application/x-bruig-canvas";
 
-/// looksLikeBundle is whether these bytes are a zip rather than the plain
-/// JSON a .bcanvas has always been.
-///
-/// Sniffed rather than taken from the file name, because both forms are saved
-/// under the same extension on purpose: one kind of canvas file, which either
-/// has its pictures with it or does not need any.
+/// looksLikeBundle is whether these bytes are a zip rather than plain JSON.
+/// Sniffed, because both forms share the .bcanvas extension.
 bool looksLikeBundle(List<int> bytes) =>
     bytes.length > 4 &&
     bytes[0] == 0x50 &&
@@ -60,12 +39,10 @@ bool looksLikeBundle(List<int> bytes) =>
     (bytes[2] == 0x03 || bytes[2] == 0x05) &&
     (bytes[3] == 0x04 || bytes[3] == 0x06);
 
-/// packCanvas writes [document] and the pictures it refers to into one file.
-///
-/// [pictures] is asked for each id the document uses; one that comes back null
-/// is left out rather than failing the whole bundle. A canvas that has lost a
-/// picture already looks like that on the sender's screen, and refusing to
-/// export it would strand the other nineteen.
+/// packCanvas writes [document] and the pictures and media it refers to
+/// into one file. An id [pictures] or [media] cannot load is left out
+/// rather than failing the bundle: it is already missing on the sender's
+/// screen.
 Future<Uint8List> packCanvas(
   CanvasDocument document, {
   Future<List<int>?> Function(String id)? pictures,
@@ -87,11 +64,6 @@ Future<Uint8List> packCanvas(
         ArchiveFile.bytes("$_pictureDir/$id", Uint8List.fromList(bytes)));
   }
 
-  // Stored rather than deflated. Everything of any size in here is a PNG or a
-  // JPEG, which are compressed already; deflating them again spends the time
-  // and saves nothing, and the document itself is a few kilobytes.
-  // The sounds a canvas plays travel with it, or a published canvas arrives
-  // with a speaker that does nothing when pressed.
   for (var id in document.mediaIds) {
     var bytes = await loadMedia(id);
     if (bytes == null) {
@@ -102,10 +74,12 @@ Future<Uint8List> packCanvas(
         ArchiveFile.bytes("$_mediaDir/$id", Uint8List.fromList(bytes)));
   }
 
+  // Stored, not deflated: the large entries are already compressed, and
+  // unpackCanvas's zip-bomb check relies on it.
   return Uint8List.fromList(ZipEncoder().encode(archive, level: 0));
 }
 
-/// CanvasBundle is what came out of one.
+/// CanvasBundle is an unpacked bundle.
 class CanvasBundle {
   final CanvasDocument document;
 
@@ -118,23 +92,38 @@ class CanvasBundle {
   const CanvasBundle(this.document, this.pictures, [this.media = const {}]);
 }
 
-/// unpackCanvas reads a bundle, or a plain .bcanvas, into a document and its
-/// pictures.
-///
-/// Null when the bytes are neither. Both forms go through here so that
-/// whatever opens a canvas from outside the library has one thing to call and
-/// cannot get the two the wrong way round.
+/// maxBundleBytes is the biggest canvas file read from a chat or a folder.
+const int maxBundleBytes = 1 << 30;
+
+/// unpackCanvasFile is [unpackCanvas] for [file], or null where it is
+/// bigger than [maxBundleBytes], since it is read whole into memory.
+Future<CanvasBundle?> unpackCanvasFile(File file) async {
+  if (await file.length() > maxBundleBytes) return null;
+  return unpackCanvas(await file.readAsBytes());
+}
+
+/// unpackCanvas reads a bundle or a plain .bcanvas from outside the
+/// library; null when the bytes are neither.
 Future<CanvasBundle?> unpackCanvas(List<int> bytes) async {
   try {
     if (!looksLikeBundle(bytes)) {
-      var document = CanvasDocument.decode(utf8.decode(bytes));
+      var document = _received(utf8.decode(bytes));
       return document == null ? null : CanvasBundle(document, const {});
     }
 
     var archive = ZipDecoder().decodeBytes(bytes);
+    // A bundle is stored, not compressed (see packCanvas), so its contents
+    // are about its own size. Far more is a zip bomb, refused before
+    // anything is inflated.
+    var room = 64 * 1024 * 1024 + 4 * bytes.length;
+    var declared = 0;
+    for (var file in archive.files) {
+      declared += file.size;
+    }
+    if (declared > room) return null;
     var entry = archive.findFile(_documentEntry);
     if (entry == null) return null;
-    var document = CanvasDocument.decode(utf8.decode(entry.content));
+    var document = _received(utf8.decode(entry.content));
     if (document == null) return null;
 
     var pictures = <String, Uint8List>{};
@@ -145,10 +134,9 @@ Future<CanvasBundle?> unpackCanvas(List<int> bytes) async {
           !file.name.startsWith("$_mediaDir/")) {
         continue;
       }
-      // Only the last part of the name is used, so a bundle carrying
-      // "pictures/../../something" names a picture called "something" and
-      // nothing else. The id is checked again by CanvasAssets.saveAs before
-      // it becomes a path; this is the first of the two.
+      // Only the last part of the name is used, so "pictures/../../x" names
+      // a picture "x". CanvasAssets.saveAs checks the id again before it
+      // becomes a path.
       var id = file.name.split("/").last;
       if (id.isEmpty) continue;
       if (file.name.startsWith("$_mediaDir/")) {
@@ -157,6 +145,9 @@ Future<CanvasBundle?> unpackCanvas(List<int> bytes) async {
       }
       pictures[id] = Uint8List.fromList(file.content);
     }
+    var inflated = pictures.values.fold(0, (n, b) => n + b.length) +
+        media.values.fold(0, (n, b) => n + b.length);
+    if (inflated > room) return null;
     return CanvasBundle(document, pictures, media);
   } catch (exception) {
     debugPrint("Unable to read the canvas bundle: $exception");
@@ -164,11 +155,31 @@ Future<CanvasBundle?> unpackCanvas(List<int> bytes) async {
   }
 }
 
-/// storeBundlePictures puts a bundle's pictures into the asset store, under
-/// the ids the document already refers to them by.
-///
-/// Returns how many were stored. The document is saved by the caller, after
-/// this, so a canvas is never listed before the pictures it needs are there.
+/// _received is a canvas from elsewhere with every reference to a Writing
+/// document removed (the words it last read are kept). Otherwise it would
+/// read whatever document of that name the recipient has.
+CanvasDocument? _received(String text) {
+  Object? strip(Object? v) => switch (v) {
+        Map<String, dynamic> m => {
+            for (var e in m.entries)
+              if (!(e.key == "document" && e.value is Map))
+                e.key: strip(e.value),
+          },
+        List l => [for (var x in l) strip(x)],
+        _ => v,
+      };
+  try {
+    var json = finiteJson(strip(jsonDecode(text)));
+    return json is Map<String, dynamic> ? CanvasDocument.fromJson(json) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/// storeBundlePictures puts a bundle's pictures and media into their
+/// stores under the ids the document uses, and returns how many were
+/// stored. The caller saves the document afterwards, so a canvas is never
+/// listed before its files are there.
 Future<int> storeBundlePictures(CanvasBundle bundle) async {
   var stored = 0;
   for (var entry in bundle.pictures.entries) {

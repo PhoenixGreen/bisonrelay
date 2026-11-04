@@ -15,11 +15,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/placement_settings.dart';
 import 'package:flutter/material.dart';
 
-// video_settings.dart is a Video element's settings.
-//
-// In the order one is set up: where the video comes from, how it plays, what
-// the reader can do to it, the green screen, and then how the picture looks.
-// The look is the image element's own groups -- see pictureLookGroups -- so a
+// video_settings.dart is a Video element's settings, in the order one is set
+// up: source, playback, the reader's controls, green screen, then the look.
+// The look is the image element's own groups (see pictureLookGroups), so a
 // video and a photograph are cut, cropped and graded by the same controls.
 
 List<Widget> videoSettings(
@@ -56,10 +54,8 @@ List<Widget> videoSettings(
         link: "",
         clip: current.clip
             .copyWith(playlist: [...current.clip.playlist, source]));
-    // The first file gives the box its shape, the way a photograph does: a
-    // video squeezed into whatever rectangle happened to be there is either
-    // cropped or letterboxed, and the first thing anybody would do is drag
-    // the handles until it fits.
+    // The first file gives the box its shape, as a photograph does, rather
+    // than being cropped or letterboxed into the box there was.
     if (current.clip.playlist.isEmpty &&
         source.width > 0 &&
         source.height > 0) {
@@ -86,8 +82,8 @@ List<Widget> videoSettings(
     clipNow(clip.copyWith(playlist: sources));
   }
 
-  // The look is edited as the picture it is, standing where the video
-  // stands, and taken back with whatever it did to the box.
+  // The look is edited as a picture standing where the video stands, and
+  // taken back with whatever it did to the box.
   void writeLook(CanvasElement edited) =>
       write(e.withPicture(edited as ImageElement));
 
@@ -249,8 +245,8 @@ List<Widget> videoSettings(
         options: [for (var l in MediaLoop.values) (l, l.label)],
         onChanged: (v) => clipNow(clip.copyWith(loop: v)),
       ),
-      // On the timeline, the playhead says when it starts and whether it
-      // carries on -- so those two questions are not asked.
+      // On the timeline, the clip says when it starts and whether it carries
+      // on, so those are not asked here.
       if (!clip.timed)
         CanvasToggle(
           key: const ValueKey("videoAutoplay"),
@@ -416,9 +412,8 @@ List<Widget> videoSettings(
   ]);
   var lookGroups =
       pictureLookGroups(e.picture, writeLook, begin, commit, shown: true);
-  // A backdrop's video: its groups, laid into the section that shows it.
-  // Nothing under it to blend with, no reader's controls, no box of its
-  // own and no arrival.
+  // A backdrop's video: its groups only. Nothing under it to blend with,
+  // no reader's controls, no box of its own and no arrival.
   if (background) {
     return [
       videoGroup,
@@ -450,7 +445,7 @@ List<Widget> videoSettings(
           videoGroup,
           if (!e.isLink) playbackGroup,
         ]),
-    // Where its sound is heard from -- a link's is the site's own.
+    // Where its sound is heard from; a link's is the site's own.
     if (!e.isLink)
       section(e, "placement",
           icon: Icons.surround_sound_outlined,

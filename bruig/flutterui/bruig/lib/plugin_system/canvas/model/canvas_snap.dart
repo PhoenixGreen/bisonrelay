@@ -3,21 +3,12 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 
-// canvas_snap.dart decides where a dragged element actually lands.
-//
-// Pure arithmetic, deliberately: what makes snapping feel right or wrong is
-// entirely in these few rules, and they are far easier to be sure of against a
-// handful of numbers than against a pointer. The stage does the dragging; this
-// says where the drag ends up.
-//
-// The rule in one sentence: of everything on the element that is allowed to
-// snap, whichever is nearest a line wins, and only if it is near enough.
+// canvas_snap.dart decides where a dragged element actually lands. Pure
+// arithmetic, so it can be tested without a pointer: of everything on the
+// element allowed to snap, whichever is nearest a line wins, if near enough.
 
-/// SnapResult is where an element should go, and which lines it caught.
-///
-/// The lines come back so they can be drawn. A snap nobody can see is a
-/// mysterious jump; the line lighting up as an edge lands on it is the whole
-/// of the feedback.
+/// SnapResult is where an element should go, and which lines it caught, so
+/// the stage can draw them.
 class SnapResult {
   final Offset at;
   final double? onVertical;
@@ -31,9 +22,8 @@ class SnapResult {
 /// snapTopLeft nudges a moving element's top-left so that one of its own
 /// interesting points lands on a line.
 ///
-/// [within] is in document units -- the caller converts the reader's
-/// screen-pixel allowance through the zoom, so that snapping feels the same
-/// distance away however far in the canvas is.
+/// [within] is in document units: the caller converts
+/// CanvasGuides.snapWithin, in screen pixels, through the zoom.
 SnapResult snapTopLeft(
   Offset topLeft,
   Size size,
@@ -48,10 +38,8 @@ SnapResult snapTopLeft(
   vertical = [...vertical, ...theirX];
   horizontal = [...horizontal, ...theirY];
 
-  // What on the element is allowed to land on a line. An edge and a vertex are
-  // the same x -- a corner is where two edges meet -- so the two switches only
-  // differ in the axis they contribute, and asking for both is not asking
-  // twice.
+  // A corner lies on two edges, so on one axis edges and vertices offer the
+  // same points.
   var xs = <double>[
     if (guides.snapTo.edges || guides.snapTo.vertices) topLeft.dx,
     if (guides.snapTo.edges || guides.snapTo.vertices) topLeft.dx + size.width,
@@ -73,11 +61,8 @@ SnapResult snapTopLeft(
   );
 }
 
-/// snapEdge nudges one edge -- what a resize drags -- onto a line.
-///
-/// Its own function rather than a flag on the one above, because a resize
-/// moves one side and leaves the other where it is: the whole point is that
-/// the opposite edge must not be dragged along by a snap meant for this one.
+/// snapEdgeTo is the line one edge -- what a resize drags -- should land on,
+/// or null. Only that edge is considered, so the opposite edge stays put.
 double? snapEdgeTo(
   double edge,
   CanvasGuides guides,
@@ -95,16 +80,9 @@ double? snapEdgeTo(
 }
 
 /// objectLines is what the other elements on the canvas offer to land on:
-/// their sides and their middles, down and across.
-///
-/// The lines that matter most of the time, and the ones that were missing. A
-/// grid catches a design at regular intervals; what anybody actually wants is
-/// this heading over that picture, and no grid spacing puts the two together
-/// unless both were already on it.
-///
-/// Which lines an element *offers* follows the same two switches as which of
-/// its own points can land: turn centres off and nothing lines up on a middle,
-/// theirs or its own.
+/// their sides and their middles, down and across. What they offer follows
+/// the same switches as what the moving element may land with: with centres
+/// off, nothing lines up on a middle, theirs or its own.
 (List<double>, List<double>) objectLines(
     List<Rect> others, CanvasGuides guides) {
   if (!guides.snapTo.objects || others.isEmpty) {
@@ -140,10 +118,8 @@ class _Catch {
 /// _nearest is the closest pairing of anything on the element with anything on
 /// the canvas, if one of them is near enough.
 ///
-/// Nearest wins rather than first, and that matters where lines are close
-/// together: on a fine grid an element is always within reach of several, and
-/// taking the first would make it jump backwards past the one it was nearly
-/// touching.
+/// Nearest wins rather than first: on a fine grid several lines are in
+/// reach, and the first could jump past the one it was nearly touching.
 _Catch? _nearest(List<double> points, List<double> lines, double within) {
   _Catch? best;
   var closest = within;
@@ -158,11 +134,8 @@ _Catch? _nearest(List<double> points, List<double> lines, double within) {
   return best;
 }
 
-/// gridLines is every line a grid draws, for painting it.
-///
-/// Returned as majors and minors so the two can be drawn differently: the
-/// strong lines are for counting and the faint ones are for landing on, and a
-/// grid drawn all one weight is a grid nobody can count.
+/// gridLines is every line a grid draws, for painting it, as majors and
+/// minors so the two can be drawn at different weights.
 (List<double>, List<double>) gridLines(
     double extent, double size, int subdivisions) {
   var majors = <double>[];
@@ -170,8 +143,7 @@ _Catch? _nearest(List<double> points, List<double> lines, double within) {
   if (size <= 0 || extent <= 0) return (majors, minors);
 
   var step = size / math.max(1, subdivisions);
-  // Bounded, so a grid of one document unit on a four-thousand-pixel canvas
-  // cannot ask for four thousand lines and take the frame with it.
+  // Bounded, so a tiny grid on a large canvas cannot stall the frame.
   if (extent / step > 2000) return (majors, minors);
 
   for (var i = 0; i * step <= extent; i++) {

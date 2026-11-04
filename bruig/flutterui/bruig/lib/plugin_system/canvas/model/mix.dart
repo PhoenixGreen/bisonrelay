@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/automation.dart';
@@ -7,33 +8,25 @@ import 'package:bruig/plugin_system/canvas/model/surround.dart';
 export 'package:bruig/plugin_system/canvas/model/surround.dart'
     show SurroundPan, SpeakerLayout;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonBool, jsonDouble, jsonSpec;
+    show jsonBool, jsonDouble, jsonSpec, jsonStr;
 
-// mix.dart is how the media on the timeline is mixed: each channel's level,
-// balance, EQ and compressor, and the master's EQ, compressor, limiter and
-// loudness target.
+// mix.dart is the mix settings: each channel strip and the master strip.
 //
-// What a mix does to the sound is media/mix/dsp.dart's: an export is
-// rendered by it, and the editor will play through it too. A mix may still
-// play in places that are not that arithmetic -- SoLoud's filters in the
-// editor until then, and Web Audio in an interactive EPUB -- so each setting
-// is defined once, here, in terms each of them can be told exactly:
+// media/mix/dsp.dart is the arithmetic that runs them. A mix also plays
+// through SoLoud's filters and Web Audio (interactive EPUB), so each setting
+// is defined here in terms all of them can be told exactly:
 //
-// - the EQ is RBJ biquads (cuts, shelves and bells), which dsp.dart runs
-//   and which Web Audio's BiquadFilterNode is. SoLoud's EQ is a set of
-//   bands rather than biquads, so it is given this curve sampled at its
-//   band centres -- see eqBandGains -- and follows it to within a fraction
-//   of a decibel;
-// - balance is a gain on each side, worked out here and handed to each of
-//   them as two numbers, not as a "pan" each would read by its own law;
+// - the EQ is RBJ biquads, which dsp.dart runs and Web Audio's
+//   BiquadFilterNode is. SoLoud's band EQ is given a fit of the curve
+//   ([eqBandGains]);
+// - balance is a gain per side ([ChannelMix.gains]), not a "pan" each
+//   player would read by its own law;
 // - the compressor and limiter take the parameters all three share.
 
-/// EqKind is what a band of the EQ does: cut everything beyond it, lift or
-/// lower everything beyond it, or lift or lower round it.
+/// EqKind is what a band of the EQ does: a cut, a shelf or a bell.
 enum EqKind { lowCut, lowShelf, bell, highShelf, highCut }
 
-/// EqSlot is one of the EQ's eight bands, in order up the spectrum -- the
-/// layout of a channel EQ on a desk or in Logic.
+/// EqSlot is one of the EQ's eight bands, in order up the spectrum.
 enum EqSlot {
   lowCut("Low cut", EqKind.lowCut, EqBand(30, on: false)),
   low("Low shelf", EqKind.lowShelf, EqBand(120)),
@@ -52,19 +45,18 @@ enum EqSlot {
   bool get isCut => kind == EqKind.lowCut || kind == EqKind.highCut;
 }
 
-/// eqSlopes are the steepnesses a cut can have, in decibels an octave: one,
-/// two, three or four second-order sections, each of which every player has.
+/// eqSlopes are the steepnesses a cut can have, in dB an octave: one to four
+/// second-order sections.
 const eqSlopes = [12, 24, 36, 48];
 
-/// EqBand is one band: where it acts, how much, how widely -- and, for a
-/// cut, how steeply.
+/// EqBand is one band: frequency, gain, Q and, for a cut, [slope].
 class EqBand {
   final double freq;
   final double gainDb;
   final double q;
   final bool on;
 
-  /// slope is a cut's steepness, in decibels an octave: one of eqSlopes.
+  /// slope is a cut's steepness in dB an octave: one of [eqSlopes].
   final int slope;
 
   const EqBand(this.freq,
@@ -90,8 +82,7 @@ class EqBand {
       ? EqBand(jsonDouble(json["f"], fallback.freq).clamp(20.0, 20000.0),
           gainDb: jsonDouble(json["g"], 0).clamp(-12.0, 12.0),
           q: jsonDouble(json["q"], fallback.q).clamp(0.1, 10.0),
-          // Written only when off: a band that is there and says nothing
-          // is on, whatever its slot starts as.
+          // Written only when off, so a band present without it is on.
           on: jsonBool(json["on"], true),
           slope: eqSlopes.contains(json["s"]) ? json["s"] as int : 12)
       : fallback;
@@ -100,9 +91,8 @@ class EqBand {
 /// Eq is a channel EQ of eight bands: a low cut, a low shelf, four bells, a
 /// high shelf and a high cut, then a gain.
 ///
-/// The gains are limited to twelve decibels either way, which is as far as
-/// the band EQ in the editor can follow. Files from before there were eight
-/// bands have "low", "mid" and "high", which are still those three.
+/// Gains are limited to ±12 dB, as far as SoLoud's band EQ can follow. Older
+/// three-band files' "low", "mid" and "high" are still those slots.
 class Eq {
   final bool on;
   final EqBand lowCut;
@@ -152,8 +142,8 @@ class Eq {
         EqSlot.highCut => copyWith(highCut: b),
       };
 
-  /// shaping is whether [slot] changes anything: on, and -- unless it is a
-  /// cut, which always does -- lifting or lowering.
+  /// shaping is whether [slot] changes anything: on, and a cut or non-zero
+  /// gain.
   bool shaping(EqSlot slot) {
     var b = band(slot);
     return b.on && (slot.isCut || b.gainDb != 0);
@@ -208,8 +198,7 @@ class Eq {
     );
   }
 
-  /// bandDb is what [slot] alone does to [freq], in decibels: each band's
-  /// own curve, drawn in its colour.
+  /// bandDb is what [slot] alone does to [freq], in dB.
   double bandDb(EqSlot slot, double freq, {double sampleRate = 48000}) {
     var b = band(slot);
     if (!b.on) return 0;
@@ -219,8 +208,8 @@ class Eq {
     ].fold(0.0, (a, v) => a + v);
   }
 
-  /// responseDb is how much this EQ lifts or cuts [freq], in decibels -- the
-  /// curve drawn on screen, and the one both players are made to follow.
+  /// responseDb is how much this EQ lifts or cuts [freq], in dB: the curve
+  /// drawn and the one every player follows.
   double responseDb(double freq, {double sampleRate = 48000}) {
     if (!on) return 0;
     var db = gainDb;
@@ -231,9 +220,8 @@ class Eq {
   }
 }
 
-/// eqBiquads is [eq] as the filters that run it, in order up the spectrum:
-/// each [b0, b1, b2, a1, a2] already divided through by a0, which is the
-/// form a processor runs. Its overall [Eq.gainDb] is not among them.
+/// eqBiquads is [eq] as biquads in order up the spectrum, each
+/// `[b0, b1, b2, a1, a2]` normalised by a0. [Eq.gainDb] is not included.
 List<List<double>> eqBiquads(Eq eq, double sampleRate) => [
       if (eq.on)
         for (var slot in EqSlot.values)
@@ -243,9 +231,9 @@ List<List<double>> eqBiquads(Eq eq, double sampleRate) => [
               [b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0],
     ];
 
-/// _sections is [b] in [slot] as the biquads that make it: one for a shelf
-/// or a bell, and for a cut one per twelve decibels an octave -- the first
-/// at the band's Q, so it can ring at the corner, the rest Butterworth.
+/// _sections is [b] in [slot] as biquads: one for a shelf or bell; for a cut
+/// one per 12 dB an octave, the first at the band's Q (so it can resonate),
+/// the rest Butterworth.
 List<_Biquad> _sections(EqSlot slot, EqBand b, double fs) =>
     switch (slot.kind) {
       EqKind.lowShelf => [_shelf(b, fs, high: false)],
@@ -258,8 +246,8 @@ List<_Biquad> _sections(EqSlot slot, EqBand b, double fs) =>
         ],
     };
 
-/// eqBandCentres is where SoLoud's EQ bands sit for [bands] of them: spaced
-/// evenly on a log scale from 30 Hz to 16 kHz, as its own source places them.
+/// eqBandCentres is where SoLoud places [bands] EQ bands: log-spaced from
+/// 30 Hz to 16 kHz.
 List<double> eqBandCentres(int bands) => [
       for (var i = 0; i < bands; i++)
         bands == 1 ? 1000.0 : 30.0 * math.pow(16000 / 30, i / (bands - 1)),
@@ -268,10 +256,9 @@ List<double> eqBandCentres(int bands) => [
 /// soloudBands is how many bands the editor's EQ is given: SoLoud's most.
 const int soloudBands = 64;
 
-/// soloudBlend is how SoLoud's band EQ weighs its bands at [f], given their
-/// [centres]: a triangle round each centre reaching to the midpoints either
-/// side, linear in hertz, normalised to sum to one -- written out from
-/// parametric_eq_filter.cpp, so that what it will do can be worked out here.
+/// soloudBlend is how SoLoud's band EQ weighs its bands at [f]: a triangle
+/// round each centre to the midpoints either side, linear in hertz,
+/// normalised to sum to one. Mirrors SoLoud's parametric_eq_filter.cpp.
 List<double> soloudBlend(double f, List<double> centres,
     {double nyquist = 24000}) {
   var n = centres.length;
@@ -303,17 +290,21 @@ List<double> soloudBlend(double f, List<double> centres,
 /// eqBandGains is what to give SoLoud's band EQ so that it follows [eq]'s
 /// curve: linear gains, nought to four, one per band.
 ///
-/// Fitted, not sampled. SoLoud blends neighbouring bands in a straight line
-/// between their centres, so a curve sampled at the centres is right at the
-/// centres and wrong between them -- by three and a half decibels for a
-/// narrow cut, which is a different sound from the export's. Instead the
-/// gains are the ones whose blend comes closest to the curve everywhere from
-/// 30 Hz to 16 kHz: a least-squares fit, weighted so an error counts by how
-/// many decibels it is rather than by how big a number. Worked out only when
-/// an EQ is changed.
+/// Fitted, not sampled: SoLoud blends bands linearly between centres, so a
+/// curve sampled at the centres is off by up to 3.5 dB between them for a
+/// narrow cut. This is a least-squares fit over 30 Hz to 16 kHz, weighted so
+/// errors count in dB. Cached, as the audio runtime asks every tick.
 List<double> eqBandGains(Eq eq, {int bands = soloudBands}) {
+  var key = "$bands ${jsonEncode(eq.toJson())}";
+  if (_fitted[key] case var known?) return known;
+  if (_fitted.length >= 64) _fitted.remove(_fitted.keys.first);
+  return _fitted[key] = List.unmodifiable(_fitBandGains(eq, bands));
+}
+
+final Map<String, List<double>> _fitted = {};
+
+List<double> _fitBandGains(Eq eq, int bands) {
   var centres = eqBandCentres(bands);
-  // The curve, at many more points than there are bands.
   const points = 480;
   var rows = <List<double>>[];
   var targets = <double>[];
@@ -325,8 +316,8 @@ List<double> eqBandGains(Eq eq, {int bands = soloudBands}) {
     targets.add(t);
     weights.add(1 / (t * t));
   }
-  // Normal equations: (A^T W A) g = A^T W t, with a whisker of ridge so that a
-  // band no point reaches still has an answer.
+  // Normal equations (A^T W A) g = A^T W t, with a little ridge so a band no
+  // point reaches still has an answer.
   var n = bands;
   var m = List.generate(n, (_) => List<double>.filled(n + 1, 0));
   for (var r = 0; r < rows.length; r++) {
@@ -369,9 +360,8 @@ List<double> eqBandGains(Eq eq, {int bands = soloudBands}) {
   ];
 }
 
-/// AutoGain is a compressor making up, by itself, what it takes off: none,
-/// enough that a full-scale level comes out at full scale, or enough that
-/// one twelve decibels down does.
+/// AutoGain is a compressor's own makeup: none, enough that 0 dB in comes out
+/// at 0 dB, or enough that −12 dB does.
 enum AutoGain {
   off("Off"),
   zero("0 dB"),
@@ -393,12 +383,11 @@ class Dynamics {
   final double releaseMs;
   final double makeupDb;
 
-  /// kneeDb is how wide the bend at the threshold is: nought is a hard
-  /// corner, wider eases into the ratio.
+  /// kneeDb is the width of the knee at the threshold; nought is hard.
   final double kneeDb;
 
-  /// mix is how much of the compressed sound is heard against the dry: one
-  /// is all compressed, less is parallel compression.
+  /// mix is the wet share: one is all compressed, less is parallel
+  /// compression.
   final double mix;
 
   /// autoGain makes up what is taken off, on top of [makeupDb].
@@ -460,12 +449,11 @@ class Dynamics {
         makeupDb: jsonDouble(json["makeup"], 0).clamp(0.0, 24.0),
         kneeDb: jsonDouble(json["knee"], 6).clamp(0.0, 18.0),
         mix: jsonDouble(json["mix"], 1).clamp(0.0, 1.0),
-        autoGain: AutoGain.fromName(json["autoGain"] as String?),
+        autoGain: AutoGain.fromName(jsonStr(json["autoGain"])),
       );
 
-  /// reducedDb is what the threshold, ratio and knee make of a level of
-  /// [input] dB, before any makeup: untouched below the knee, turned down by
-  /// the ratio above it, and a curve between.
+  /// reducedDb is [input] dB after threshold, ratio and knee, before
+  /// makeup.
   double reducedDb(double input) {
     var t = threshold, r = math.max(1.0, ratio), k = kneeDb;
     if (k <= 0) return input <= t ? input : t + (input - t) / r;
@@ -475,8 +463,7 @@ class Dynamics {
     return input + (1 / r - 1) * over * over / (2 * k);
   }
 
-  /// totalMakeupDb is the makeup asked for and what auto gain adds: enough
-  /// to bring its reference level back to where it went in.
+  /// totalMakeupDb is [makeupDb] plus what [autoGain] adds.
   double get totalMakeupDb {
     var auto = switch (autoGain) {
       AutoGain.off => 0.0,
@@ -489,15 +476,15 @@ class Dynamics {
 
 /// DuckCurve is how a ducked channel sinks and comes back.
 enum DuckCurve {
-  /// hard is no fade at all: down and up at once.
+  /// hard is no fade: down and up at once.
   hard("Hard"),
   linear("Linear"),
 
-  /// smooth eases in and out, an S: the change is gentlest at both ends.
+  /// smooth is an S curve, gentlest at both ends.
   smooth("Smooth"),
 
-  /// natural is even in decibels rather than in level, which is how a hand
-  /// on a fader moves and how an ear hears an even fade.
+  /// natural is even in decibels rather than in level, as an ear hears an
+  /// even fade.
   natural("Natural");
 
   final String label;
@@ -507,31 +494,25 @@ enum DuckCurve {
       values.firstWhere((c) => c.name == name, orElse: () => smooth);
 }
 
-/// Ducking is a channel turning the others down while it is heard: a voice
-/// over music, the music sinking under every line.
-///
-/// Set on the channel that is listened for -- the voice -- not on each
-/// channel that sinks, so one setting covers everything under it. Every
-/// other channel is ducked except those in [except]. Worked out from the
-/// listened-for channel's own recordings, where it is speaking, rather than
-/// from a level meter while it plays: so what is heard while editing and
-/// what is exported are the same, and the dips can be drawn. See
-/// duckEnvelopes.
+/// Ducking is a channel (a voice) turning the others down while it is
+/// heard. It is set on the voice; every other channel is ducked except those
+/// in [except]. The dips are worked out from the voice's recordings, not a
+/// live meter, so editing and export agree and the dips can be drawn. See
+/// duckEnvelopes in audio_tools.dart.
 class Ducking {
   final bool on;
 
   /// depthDb is how far the other channels sink, below nought.
   final double depthDb;
 
-  /// attack is how long, in seconds, a channel takes to sink before a line,
-  /// and release how long it takes to come back after one.
+  /// attack and release are seconds to sink before a line and to come back
+  /// after it.
   final double attack;
   final double release;
 
   /// except are the channels, by key, left alone.
   final List<String> except;
 
-  /// curve is the shape of the way down and the way back up.
   final DuckCurve curve;
 
   const Ducking({
@@ -574,7 +555,7 @@ class Ducking {
         depthDb: jsonDouble(json["depth"], -10).clamp(-40.0, -1.0),
         attack: jsonDouble(json["attack"], 0.3).clamp(0.0, 2.0),
         release: jsonDouble(json["release"], 0.8).clamp(0.0, 4.0),
-        curve: DuckCurve.fromName(json["curve"] as String?),
+        curve: DuckCurve.fromName(jsonStr(json["curve"])),
         except: [
           if (json["except"] is List)
             for (var k in json["except"] as List)
@@ -593,46 +574,40 @@ class ChannelMix {
   final Eq eq;
   final Dynamics comp;
 
-  /// duck is how this channel turns the others down while it is heard --
-  /// see Ducking.
+  /// duck is how this channel turns the others down. See [Ducking].
   final Ducking duck;
 
-  /// compFirst is whether the compressor comes before the EQ. Either order
-  /// is a way to mix; what matters is that playing and exporting agree, so
-  /// it is said here rather than left to whichever was switched on first.
+  /// compFirst is whether the compressor comes before the EQ, stored so
+  /// playing and exporting agree.
   final bool compFirst;
 
-  /// sends is how much of this channel also goes to each return, by the
-  /// return's id, in decibels. A return not listed is sent nothing.
+  /// sends is how much of this channel also goes to each return, by return
+  /// id, in dB. A return not listed is sent nothing.
   final Map<String, double> sends;
 
-  /// surround is where among the speakers this channel is heard, in a
-  /// piece mixed for surround -- null for the front pair, as it was mixed
-  /// -- and lfeDb how much of it also goes to the LFE, or null for none.
-  /// See surround.dart. A stereo piece hears neither.
+  /// surround is where this channel is heard in a surround mix (null: the
+  /// front pair), and lfeDb how much also goes to the LFE (null: none).
+  /// Ignored in stereo. See surround.dart.
   final SurroundPan? surround;
   final double? lfeDb;
 
-  /// devices are the channel's own devices -- a chorus, a gate, a drive --
-  /// in order, before its EQ and compressor. See devices.dart.
+  /// devices are the channel's own devices, in order, before its EQ and
+  /// compressor. See devices.dart.
   final List<MixDevice> devices;
 
-  /// speech is the channel's Speech device, if it has one: a script it
-  /// speaks into clips on the channel. See speech_spec.dart.
+  /// speech is the channel's Speech device, if any. See speech_spec.dart.
   final SpeechSpec? speech;
 
-  /// vocaliser is the channel's Vocaliser, if it has one: its Speech
-  /// take sung to a MIDI channel's notes. See vocaliser.dart.
+  /// vocaliser is the channel's Vocaliser, if any: its Speech take sung to
+  /// a MIDI channel's notes. See media/vocaliser.dart.
   final VocaliserSpec? vocaliser;
 
-  /// automation is the channel's lanes: its settings moved along the
-  /// timeline. See automation.dart.
+  /// automation is the channel's automation lanes. See automation.dart.
   final List<AutomationLane> automation;
 
   /// output is where the channel goes after its fader: "" the master, or a
-  /// return's id -- all of it into that return, as a group bus, and none
-  /// straight to the master. An element's own sound sent to a shared one
-  /// (Ken). A return that is gone is the master again.
+  /// return's id (all of it, as a group bus). A missing return means the
+  /// master.
   final String output;
 
   const ChannelMix({
@@ -680,10 +655,9 @@ class ChannelMix {
         if (db != null && db > -90) id: db.clamp(-90.0, 6.0),
       });
 
-  /// gains is the level of each side: the fader, and the balance taking away
-  /// from the side it turns from. Nothing is ever made louder than the fader
-  /// by turning -- a balance that boosts one side makes a sound jump in level
-  /// as it is placed, which reads as the fader moving.
+  /// gains is the level of each side: the fader, with the balance taking
+  /// away from the far side. Balance never boosts, or placing a sound would
+  /// change its level.
   (double, double) get gains {
     var level = dbToGain(gainDb);
     var b = balance.clamp(-1.0, 1.0);
@@ -821,11 +795,8 @@ class ChannelMix {
       );
 }
 
-/// loudnessTargets are the targets offered: a loud master, the CD level the
-/// CD preset sets, what the streaming services play at, what podcasts do, and
-/// the two broadcast standards. One list for every place a target is
-/// chosen -- the mixer, Canvas settings and Publish -- so a target set in one
-/// is always one of the others' items.
+/// loudnessTargets are the loudness targets offered, one list for every
+/// place a target is chosen (mixer, Canvas settings, Publish).
 const loudnessTargets = <(double, String)>[
   (-9, "−9 LUFS · loud master"),
   (-12, "−12 LUFS · CD"),
@@ -836,9 +807,8 @@ const loudnessTargets = <(double, String)>[
   (-24, "−24 LKFS · film & TV"),
 ];
 
-/// loudnessOptions is [loudnessTargets] with [current] added when it is none
-/// of them -- one read from an older file, say -- so a dropdown always has
-/// exactly one item for the value it shows.
+/// loudnessOptions is [loudnessTargets] plus [current] when it is none of
+/// them, so a dropdown always has an item for the value it shows.
 List<(double, String)> loudnessOptions(double current) => [
       ...loudnessTargets,
       if (!loudnessTargets.any((t) => t.$1 == current))
@@ -857,17 +827,17 @@ class MasterMix {
   final bool limiter;
   final double ceilingDb;
 
-  /// target is the loudness the mix is aimed at, and normalise whether an
-  /// export is brought to it -- measured and adjusted, rather than hoped.
+  /// target is the loudness (LUFS) the mix is aimed at, and normalise
+  /// whether an export is measured and adjusted to it.
   final double target;
   final bool normalise;
 
-  /// compFirst is whether the glue comes before the EQ -- see
-  /// ChannelMix.compFirst. The limiter is always last.
+  /// compFirst is whether the glue comes before the EQ. The limiter is
+  /// always last.
   final bool compFirst;
 
   /// devices are the master's own devices, in order, before its EQ and
-  /// glue -- as a channel's are. See devices.dart.
+  /// glue.
   final List<MixDevice> devices;
 
   const MasterMix({
@@ -955,10 +925,8 @@ double dbToGain(double db) => db <= -90 ? 0 : math.pow(10, db / 20).toDouble();
 double gainToDb(double gain) =>
     gain <= 0 ? -double.infinity : 20 * math.log(gain) / math.ln10;
 
-// The RBJ "Audio EQ Cookbook" biquads, which ffmpeg's lowshelf, equalizer and
-// highshelf and Web Audio's BiquadFilterNode implement. Only their magnitude
-// is needed here -- for drawing the curve and for telling SoLoud's band EQ
-// what to follow.
+// The RBJ "Audio EQ Cookbook" biquads, as Web Audio's BiquadFilterNode
+// implements them. Each is (b0, b1, b2, a0, a1, a2).
 
 typedef _Biquad = (double, double, double, double, double, double);
 
@@ -999,8 +967,8 @@ _Biquad _shelf(EqBand band, double fs, {required bool high}) {
   );
 }
 
-/// _pass is the RBJ high-pass or low-pass at [freq] with [q]: half of a
-/// cut's every twelve decibels an octave.
+/// _pass is the RBJ high-pass or low-pass at [freq] with [q]: one 12 dB an
+/// octave section of a cut.
 _Biquad _pass(double freq, double q, double fs, {required bool high}) {
   var w0 = 2 * math.pi * freq.clamp(1.0, fs / 2 - 1) / fs;
   var c = math.cos(w0);
@@ -1012,8 +980,8 @@ _Biquad _pass(double freq, double q, double fs, {required bool high}) {
 double _biquadDb(_Biquad q, double f, double fs) {
   var (b0, b1, b2, a0, a1, a2) = q;
   var w = 2 * math.pi * f / fs;
-  // |H(e^jw)| from the coefficients: the magnitude of the numerator over
-  // that of the denominator, each a quadratic in e^-jw.
+  // |H(e^jw)|: numerator magnitude over denominator, each a quadratic in
+  // e^-jw.
   double mag(double c0, double c1, double c2) {
     var re = c0 + c1 * math.cos(w) + c2 * math.cos(2 * w);
     var im = -(c1 * math.sin(w) + c2 * math.sin(2 * w));

@@ -3,10 +3,10 @@ import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// vector_tool_hint.dart is what floats over the canvas while a drawing is
-// being edited, as a picture's does (see image_tool_hint.dart): the tool in
-// hand and what to do with it, where the eye already is, and the way back
-// out -- to the points tool, or out of the drawing altogether.
+// vector_tool_hint.dart is what floats over the canvas while a drawing is being
+// edited, as a picture's does (see image_tool_hint.dart): the tool in hand,
+// what to do with it, and the way back out to the points tool or out of the
+// drawing.
 
 /// vectorToolIcon is each drawing tool's icon, on its tile and over the
 /// canvas.

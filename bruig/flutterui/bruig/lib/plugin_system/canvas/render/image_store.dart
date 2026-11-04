@@ -27,25 +27,20 @@ import 'package:flutter_svg/flutter_svg.dart';
 // It is the asynchronous half of drawing an image: the renderer is synchronous
 // and cannot wait for a file, so it asks this for a decoded picture and draws
 // a placeholder when the answer is null. The store then loads it and notifies,
-// and the next frame has it. That is the whole contract, and it is why an
-// image arriving late never stalls a frame or leaves the rest of the document
-// undrawn.
+// and the next frame has it, so a late image never stalls a frame.
 //
-// Everything is keyed by the *result*, not the source: a picture with a colour
+// Entries are keyed by the *result*, not the source: a picture with a colour
 // key applied is a different entry from the same picture without one, so
-// switching a removal mode on and off is instant after the first time and two
-// elements sharing both the picture and the settings share one decode.
+// toggling a removal mode is instant after the first time and elements
+// sharing picture and settings share one decode.
 
-/// _budget bounds the cache, in bytes of decoded pixels.
+/// _budget bounds the cache, in bytes of decoded pixels (a 4000x3000
+/// photograph is 48MB of RGBA).
 ///
-/// Pictures are large -- a decoded 4000x3000 photograph is 48MB of RGBA --
-/// and this was a count of them, forty-eight, which is two gigabytes of
-/// photographs held whether anything was looking at them or not: most of
-/// what an idle canvas was using. A budget in bytes evicts the least recently
-/// asked for once the pixels pass it -- but never one asked for in the last
-/// few seconds, which is on screen: a canvas showing more than the budget at
-/// once is drawn, at the cost of the memory, rather than reloading pictures
-/// on every frame.
+/// The least recently asked for is evicted once the pixels pass it -- but
+/// never one asked for within [_inUse], which is on screen: a canvas showing
+/// more than the budget is drawn at the cost of the memory rather than
+/// reloading pictures every frame.
 const int _budget = 640 << 20;
 
 /// _inUse is how recently a picture has to have been asked for to be kept
@@ -53,9 +48,8 @@ const int _budget = 640 << 20;
 const Duration _inUse = Duration(seconds: 4);
 
 /// _longest is the most pixels a picture is decoded at along its longer
-/// side. A canvas is exported at a few thousand pixels at most; a fifty
-/// megapixel photograph decoded whole is two hundred megabytes for detail
-/// no export can show.
+/// side. A canvas is exported at a few thousand pixels at most, so more is
+/// memory for detail no export can show.
 const int _longest = 4096;
 
 /// _thumbSide is how big a [CanvasImageStore.thumbnail] is along its longer
@@ -84,45 +78,38 @@ class CanvasImageStore extends ChangeNotifier
 
   final Map<String, ui.Image> _images = {};
 
-  /// _order is the keys in least-recently-used order, which is what makes the
-  /// bound above evict something sensible rather than something arbitrary,
-  /// with when each was last asked for.
+  /// _order is the keys in least-recently-used order, for [_evict]; _asked
+  /// is when each was last asked for.
   final List<String> _order = [];
   final Map<String, DateTime> _asked = {};
 
   /// _bytes is how many bytes of pixels [_images] holds.
   int _bytes = 0;
 
-  /// bytes is that, for whoever is watching the memory.
+  /// bytes is [_bytes], for whoever is watching the memory.
   int get bytes => _bytes;
 
   int _sizeOf(ui.Image image) => image.width * image.height * 4;
 
-  /// _pending stops the same picture being decoded four times when four
-  /// elements ask for it in one frame.
+  /// _pending is the loads in flight, so several elements asking for one
+  /// picture in a frame start one decode. Non-empty means [loading].
   final Set<String> _pending = {};
 
-  /// _failed remembers what could not be loaded, so a missing picture is asked
-  /// for once rather than on every single frame forever.
+  /// _failed remembers what could not be loaded, so a missing picture is not
+  /// asked for again on every frame.
   final Set<String> _failed = {};
 
   /// _vectors is the assets that are drawings rather than bitmaps, kept as
-  /// drawings.
-  ///
-  /// Separate from _images and loaded separately, so a table of twenty-two
-  /// badges rasterises none of them. Only a caller that needs pixels -- the
-  /// image element, with its background remover and its filters -- makes one.
+  /// drawings and loaded apart from [_images], so a table of badges
+  /// rasterises none of them. Only a caller that needs pixels (the image
+  /// element, for its remover and filters) makes a bitmap.
   final Map<String, CanvasVector> _vectors = {};
 
   bool _disposed = false;
 
-  /// putForTest seeds the store with an already-decoded picture.
-  ///
-  /// The retouching brush cannot do anything without one -- a stroke is stored
-  /// in the picture's own coordinates, so with nothing loaded there is nothing
-  /// to convert against and the stroke goes nowhere. Loading normally means a
-  /// file on disk and an asynchronous decode, neither of which a widget test
-  /// has, so this is the seam.
+  /// putForTest seeds the store with an already-decoded picture, for widget
+  /// tests of the retouching brush, which has no file or async decode to
+  /// load one from.
   @visibleForTesting
   void putForTest(String assetId, ui.Image image) {
     _images[assetId] = image;
@@ -141,18 +128,16 @@ class CanvasImageStore extends ChangeNotifier
     notifyListeners();
   }
 
-  /// notifyForTest is the store saying a picture arrived, which is the one
-  /// thing a late load does that anything else can see.
+  /// notifyForTest is the store saying a picture arrived, as a late load
+  /// does.
   @visibleForTesting
   void notifyForTest() => notifyListeners();
 
   /// original is the picture as it was loaded, with nothing taken out.
   ///
-  /// What the retouching brush measures against: a stroke is stored in the
-  /// picture's own pixels, and those do not change when a background is
-  /// removed -- the removal only rewrites the alpha. Asking [resolve] instead
-  /// would hand back null until the treated copy had been built, so the first
-  /// stroke of a session would land nowhere.
+  /// The retouching brush measures against this: removal only rewrites
+  /// alpha, so the coordinates are the same, and [resolve] would return null
+  /// until the treated copy was built, losing the first stroke.
   ui.Image? original(String assetId) {
     var image = _images[assetId];
     if (image != null) _touch(assetId);
@@ -160,17 +145,13 @@ class CanvasImageStore extends ChangeNotifier
   }
 
   /// _thumbs is a small copy of each picture held, made the first time a
-  /// tile asked for one and let go of with the picture.
+  /// tile asks for one and let go of with the picture.
   final Map<ui.Image, ui.Image> _thumbs = Map.identity();
 
   /// thumbnail is [image] -- one this store handed out -- small enough for a
-  /// tile.
-  ///
-  /// The filter tiles and the layer thumbnails drew the whole decoded picture,
-  /// four thousand pixels of it, into a box sixty across -- a dozen times
-  /// over, a colour filter on each -- and did it again for every frame of a
-  /// strip scrolling past. A picture not this store's is handed back as it
-  /// is: nothing here would know when to let a copy of it go.
+  /// tile, so filter tiles and layer thumbnails do not draw the full decode
+  /// into a tiny box every frame. A picture not this store's is returned as
+  /// it is: nothing here would know when to let a copy of it go.
   ui.Image thumbnail(ui.Image image) {
     if (math.max(image.width, image.height) <= _thumbSide) return image;
     var kept = _thumbs[image];
@@ -216,10 +197,9 @@ class CanvasImageStore extends ChangeNotifier
   CanvasVector? resolveVector(String assetId) {
     if (assetId.isEmpty) return null;
     var vector = _vectors[assetId];
-    // A drawing whose own size is nothing, or is infinite, cannot be scaled
-    // to fit anything -- an .svg with no width, height or viewBox is one.
-    // Refused here rather than in every caller, so they fall back to the
-    // rasterised copy instead of drawing nothing at all.
+    // A drawing with an empty or infinite size (an .svg with no width,
+    // height or viewBox) cannot be scaled to fit. Refused here so every
+    // caller falls back to the rasterised copy instead of drawing nothing.
     if (vector != null) {
       var size = vector.size;
       var usable = size.width.isFinite &&
@@ -238,9 +218,9 @@ class CanvasImageStore extends ChangeNotifier
 
   final Map<String, ImageSilhouette> _outlines = {};
 
-  // The 3D characters: a scene for each element drawn, which is a body read,
-  // shaped and dressed, and so kept until the store goes -- or until more
-  // than [_mostCharacters] are kept, when the one drawn longest ago goes.
+  // The 3D characters: a scene per element drawn (a body read, shaped and
+  // dressed), kept until the store goes or more than [_mostCharacters] are
+  // kept, when the one drawn longest ago goes.
 
   /// _gpu is whether 3D can be drawn here: null until found out.
   bool? _gpu;
@@ -250,8 +230,7 @@ class CanvasImageStore extends ChangeNotifier
   @override
   bool get noCharacters3d => _gpu == false;
 
-  // 3D stages' sets, one scene each by the stage's id, kept as long as the
-  // store is.
+  // 3D stages' sets, one scene per stage id, kept as long as the store is.
   final Map<String, StageScene> _stages = {};
 
   @override
@@ -276,8 +255,8 @@ class CanvasImageStore extends ChangeNotifier
     return _gpu!;
   }
 
-  // The 3D objects: a scene for each element drawn, its model read once,
-  // kept as the characters' are.
+  // The 3D objects: a scene per element drawn, its model read once, at most
+  // [_mostModels] kept.
   final Map<String, (ModelScene, String)> _models = {};
   static const int _mostModels = 12;
 
@@ -298,7 +277,7 @@ class CanvasImageStore extends ChangeNotifier
     }
     var scene = ModelScene()..addListener(_characterChanged);
     _models[e.id] = (scene, e.assetId);
-    // Read from now -- an export waits for it -- once this frame is done.
+    // Pending from now, so an export waits; read once this frame is done.
     var key = "object3d:${e.id}";
     _pending.add(key);
     var id = e.assetId;
@@ -335,9 +314,9 @@ class CanvasImageStore extends ChangeNotifier
     }
     _characters[e.id] = (scene, key);
     if (held?.$2 != key) {
-      // Loading from now, for an export to wait for; started once the
-      // frame being painted is done, since starting says so to whoever
-      // listens, and nothing may be rebuilt in the middle of painting.
+      // Pending from now, for an export to wait for; started after the
+      // frame being painted, since starting notifies listeners and nothing
+      // may be rebuilt mid-paint.
       _pending.add("character3d:${e.id}");
       var first = held == null, design = worn;
       scheduleMicrotask(() {
@@ -369,8 +348,8 @@ class CanvasImageStore extends ChangeNotifier
     var key = "character3d:$id";
     _pending.add(key);
     try {
-      // A moment for the change to start: a body asked for is not loading
-      // until its file is being read.
+      // One turn for the change to start: a body asked for is not loading
+      // until its file is being read, so ready() would pass too early.
       await Future<void>.delayed(Duration.zero);
       await scene.ready();
       if (first && !_disposed) scene.settle();
@@ -387,10 +366,9 @@ class CanvasImageStore extends ChangeNotifier
     var outline = _outlines[key];
     if (outline != null) return outline;
 
-    // The picture has to be decoded before its alpha can be read, and asking
-    // for it starts that. Both answers arrive by notification, so a caller
-    // that draws on every frame gets the box on the first one and the shape
-    // on a later one.
+    // The picture has to be decoded before its alpha can be read; asking
+    // starts that. Both arrive by notification, so a caller gets the box
+    // first and the shape on a later frame.
     var image = resolve(assetId, removal);
     if (image == null) return null;
 
@@ -421,8 +399,8 @@ class CanvasImageStore extends ChangeNotifier
 
   Future<void> _loadVector(String assetId, String key) async {
     try {
-      // From the drawings first, where an .svg now lives, and the pictures
-      // after -- where one added before the two were separated still is.
+      // The Vectors store first, then the pictures, where an .svg added
+      // before the two were separated still is.
       var bytes = await CanvasMedia.load(MediaKind.vector, assetId) ??
           await CanvasAssets.load(assetId);
       if (bytes == null || !_looksLikeSvg(Uint8List.fromList(bytes))) {
@@ -454,8 +432,8 @@ class CanvasImageStore extends ChangeNotifier
   Future<void> _load(
       String assetId, BackgroundRemoval removal, String key) async {
     try {
-      // A drawing used as a picture -- a text element's icon, a badge --
-      // is in the Vectors store now, and is drawn from there.
+      // Falls back to the Vectors store for a drawing used as a picture (a
+      // text element's icon, a badge).
       var bytes = await CanvasAssets.load(assetId) ??
           await CanvasMedia.load(MediaKind.vector, assetId);
       if (bytes == null) {
@@ -534,8 +512,9 @@ class CanvasImageStore extends ChangeNotifier
         k == "vector:$assetId" ||
         k.startsWith("outline:$assetId"));
     _outlines.removeWhere((k, _) => k.startsWith(assetId));
-    _vectors.remove(assetId)?.picture.dispose();
-    if (keys.isNotEmpty) notifyListeners();
+    var drawing = _vectors.remove(assetId);
+    drawing?.picture.dispose();
+    if (keys.isNotEmpty || drawing != null) notifyListeners();
   }
 
   @override
@@ -573,12 +552,10 @@ class CanvasImageStore extends ChangeNotifier
 /// _decode turns stored bytes into a picture, whatever kind of picture they
 /// are.
 ///
-/// Vectors go through flutter_svg and come out as a bitmap, because
-/// everything downstream of here -- the background remover, the export, the
-/// canvas itself -- works on pixels. Rasterised once at [_vectorSize] rather
-/// than at the size it happens to be drawn: a badge in a table cell is drawn
-/// at forty pixels on screen and at four hundred in a poster export, and
-/// re-rasterising per frame would be a decode inside the paint loop.
+/// Vectors come out as a bitmap, because everything downstream (the
+/// background remover, export, canvas) works on pixels. Rasterised once at
+/// [_vectorSize] rather than at the drawn size, which changes per frame and
+/// per export and would put a decode inside the paint loop.
 Future<ui.Image?> _decode(Uint8List bytes) async {
   if (_looksLikeSvg(bytes)) return _rasterise(bytes);
   try {
@@ -599,9 +576,8 @@ Future<ui.Image?> _decode(Uint8List bytes) async {
     return frame.image;
   } catch (exception) {
     debugPrint("Unable to decode a canvas picture: $exception");
-    // A sniff is a guess, and the cost of a wrong one used to be a picture
-    // that could not be drawn by either path. Anything the codec refuses is
-    // offered to the vector loader before it is given up on.
+    // The SVG sniff is a guess: anything the codec refuses is offered to
+    // the vector loader before it is given up on.
     return _rasterise(bytes);
   }
 }
@@ -609,13 +585,9 @@ Future<ui.Image?> _decode(Uint8List bytes) async {
 /// _vectorSize is how large a vector is rasterised on its longest side.
 const int _vectorSize = 512;
 
-/// _looksLikeSvg reads far enough in to find the tag.
-///
-/// A drawing program's export opens with an XML declaration, a doctype, a
-/// licence comment and a block of its own metadata before it gets to the tag,
-/// which can be most of a kilobyte. Sniffed over a few hundred bytes, such a
-/// file was not a vector -- and it is not a bitmap either, so nothing could
-/// draw it at all.
+/// _looksLikeSvg is whether `<svg` appears in the first 4KB. A drawing
+/// program's export can carry most of a kilobyte of XML declaration,
+/// doctype, licence and metadata before the tag.
 bool _looksLikeSvg(Uint8List bytes) =>
     String.fromCharCodes(bytes.take(4096)).toLowerCase().contains("<svg");
 
@@ -653,13 +625,9 @@ Future<ui.Image?> _removeBackground(
     ui.Image image, BackgroundRemoval removal) async {
   if (!removal.active) return null;
 
-  // At the working size, like the preview. The result is drawn into a few
-  // hundred pixels on a canvas and published at whatever the canvas is, so a
-  // twelve-megapixel pass buys nothing anybody can see and costs the whole
-  // wait -- and, worse, costs it again on every adjustment.
-  //
-  // The brush's own measurements are fractions of the picture rather than
-  // pixel counts, so a stroke lands in the same place whichever size this is.
+  // At the working size, like the preview (see [workingSize]). Brush
+  // measurements are fractions of the picture, so a stroke lands in the
+  // same place whichever size this is.
   var working = await _atWorkingSize(image);
   var data = await working.toByteData(format: ui.ImageByteFormat.rawRgba);
   if (data == null) return null;
@@ -669,9 +637,8 @@ Future<ui.Image?> _removeBackground(
 
   applyRemovalForTest(pixels, width, height, removal);
 
-  // decodeImageFromPixels rather than re-encoding to PNG and decoding that:
-  // the pixels are already exactly what is wanted, and a PNG round trip on a
-  // twelve-megapixel photograph is most of a second for no change at all.
+  // decodeImageFromPixels rather than a PNG round trip, which on a large
+  // photograph is most of a second for no change.
   var completer = Completer<ui.Image>();
   ui.decodeImageFromPixels(
       pixels, width, height, ui.PixelFormat.rgba8888, completer.complete);
@@ -681,9 +648,7 @@ Future<ui.Image?> _removeBackground(
 /// _alphaFor turns a distance and the tolerance into an alpha.
 ///
 /// Inside the tolerance a pixel is fully removed; over the next [softness] it
-/// fades back in. That ramp is what stops a cut-out having a hard jagged
-/// boundary one pixel wide, which is the single most obvious sign of a
-/// mechanically removed background.
+/// fades back in, so a cut-out has no hard one-pixel jagged edge.
 int _alphaFor(double distance, double tolerance, double softness, int current) {
   if (distance <= tolerance) return 0;
   if (softness <= 0 || distance >= tolerance + softness) return current;
@@ -693,18 +658,11 @@ int _alphaFor(double distance, double tolerance, double softness, int current) {
 
 /// _premultiply scales the colours to match the alpha they now have.
 ///
-/// The pixel format either side of this file is premultiplied: a pixel's
-/// colour channels are already multiplied by its own alpha, so a fully
-/// transparent pixel is all zeroes and a half-transparent red is (128, 0, 0,
-/// 128) rather than (255, 0, 0, 128).
-///
-/// Everything that removes a background writes alpha and leaves the colour
-/// alone, which breaks that. A pixel taken out entirely kept its full colour
-/// at zero alpha -- data that means nothing in premultiplied form, and which
-/// Skia is free to draw as the colour rather than as nothing. That is a whole
-/// picture washing over in whatever it happened to be, and it is why every
-/// feathered edge glowed: a half-transparent pixel was carrying twice the
-/// colour it should.
+/// The pixels either side of this file are premultiplied (a half-transparent
+/// red is (128, 0, 0, 128)), but the removal passes write alpha and leave
+/// colour alone. Unscaled, a removed pixel keeps its colour at zero alpha,
+/// which Skia may draw as the colour, and feathered edges glow. [was] is the
+/// alpha before removal.
 void _premultiply(Uint8List pixels, Uint8List was) {
   for (var i = 0; i < was.length; i++) {
     var before = was[i];
@@ -721,19 +679,14 @@ void _premultiply(Uint8List pixels, Uint8List was) {
 
 /// applyRemovalForTest runs a removal over raw RGBA pixels in place.
 ///
-/// The whole of the work, with the image decoding either side of it left out.
-/// Exposed because that is where every question worth asking of this code
-/// lives -- does a two-tone background go, does a gradient creep into the
-/// subject, does inverting keep a halo -- and none of them can be asked of a
-/// photograph nobody can check into a repository. See canvas_removal_test.
+/// It is the whole of the work without the decoding either side, and is
+/// also what [_removeBackground] calls; exposed so tests can run it on
+/// synthetic pixels (see canvas_removal_test).
 @visibleForTesting
 void applyRemovalForTest(
     Uint8List pixels, int width, int height, BackgroundRemoval removal) {
-  // What the alpha was before anything was taken out, so the colours can be
-  // put back into the form Flutter expects afterwards. See _premultiply --
-  // and note it belongs in here rather than around the call, because this
-  // function claims to be the whole of the work and a caller that forgot the
-  // other half would draw a picture washed over in its own colour.
+  // The alpha before anything was taken out, for [_premultiply]. Kept in
+  // here rather than around the call so no caller can forget it.
   var was = Uint8List(width * height);
   for (var i = 0; i < was.length; i++) {
     was[i] = pixels[i * 4 + 3];
@@ -741,9 +694,8 @@ void applyRemovalForTest(
 
   switch (removal.mode) {
     case RemovalMode.none:
-      // Not a return: the brush still has to run. Painting the background out
-      // by hand with no method chosen is a legitimate way to use this, and on
-      // a photograph no automatic method can do it is the only way.
+      // Not a return: the brush still runs, since painting the background
+      // out by hand with no method chosen is a legitimate use.
       break;
     case RemovalMode.chromaKey:
       _chromaKey(pixels, removal);
@@ -755,39 +707,19 @@ void applyRemovalForTest(
       _learn(pixels, width, height, removal);
   }
 
-  // Last, so a stroke is always the final word: the reader can put back a hand
-  // the automatic pass ate and take out a patch it missed without changing the
-  // settings, and without one undoing the other.
+  // Last, so a stroke always has the final word over the automatic pass.
   _paintStrokes(pixels, width, height, removal.strokes);
 
   _premultiply(pixels, was);
 }
 
-/// strokePreview is a picture of what [stroke] would do, for showing on the
-/// canvas before it is applied.
+/// workingSize is the largest a picture is worked on at, along its longer
+/// side.
 ///
-/// It runs the brush itself over a blank alpha channel rather than describing
-/// what the brush would do, so the preview and the result cannot drift apart.
-/// A stroke that clings to an edge is not a shape anybody can draw from its
-/// settings -- it depends on the picture -- so the only honest preview is the
-/// real thing.
-///
-/// Returned as RGBA in [colour], transparent where the stroke does not reach.
-/// Sized to the whole picture: cropping to the stroke would mean carrying its
-/// offset around, and the caller draws it through the same placement the
-/// picture uses.
-/// workingSize is the largest a picture is worked on at.
-///
-/// Background removal is a pass over every pixel, and several of them: a
-/// twelve-megapixel photograph is twelve million pixels flooded, feathered and
-/// premultiplied, and the brush's preview does the same again on every
-/// adjustment. That is where the waiting was. Nothing here needs the full
-/// resolution -- the result is drawn into a few hundred pixels on screen and
-/// published at whatever the canvas is -- so the work is done on a copy no
-/// bigger than this and scaled back up.
-///
-/// Sixteen hundred is a good deal more than a canvas ever shows and about
-/// fifty times less work than a modern camera's output.
+/// Background removal is several passes over every pixel, and the brush
+/// preview repeats them on every adjustment. The result is drawn into a few
+/// hundred pixels on screen, so the work is done on a copy no bigger than
+/// this and scaled back up.
 const int workingSize = 1600;
 
 /// scaleForWork is how much a picture has to shrink to be worked on, or 1 when
@@ -797,15 +729,11 @@ double scaleForWork(int width, int height) {
   return longest <= workingSize ? 1 : workingSize / longest;
 }
 
-/// _workingPixels remembers the shrunk-down bytes of each picture.
+/// _workingPixels remembers the shrunk-down bytes of a picture, since
+/// getting them is a GPU readback and the preview asks on every adjustment.
 ///
-/// Getting them is a draw onto a new surface and then a read back off the GPU
-/// -- seven megabytes for a picture this size -- and the preview asks for them
-/// again on every adjustment of every setting. The picture itself does not
-/// change while a brush is being tuned, so this is asked once and kept.
-///
-/// Keyed by identity rather than by asset id: a picture that has been reloaded
-/// is a different object, and the old bytes go with the old object.
+/// Keyed by identity rather than asset id: a reloaded picture is a different
+/// object, and the old bytes go with the old object.
 final Map<ui.Image, _Working> _workingPixels = {};
 
 class _Working {
@@ -824,8 +752,7 @@ Future<_Working?> _workingCopy(ui.Image source) async {
   var data = await working.toByteData(format: ui.ImageByteFormat.rawRgba);
   if (data == null) return null;
 
-  // One picture at a time is all this is ever asked for, and holding several
-  // megabytes for pictures nobody is editing is not worth the lookup it saves.
+  // One picture at a time: only the one being edited is asked for.
   _workingPixels.clear();
   var made = _Working(data.buffer.asUint8List(), working.width, working.height);
   _workingPixels[source] = made;
@@ -850,30 +777,34 @@ Future<ui.Image> _atWorkingSize(ui.Image source) async {
   return recorder.endRecording().toImage(width, height);
 }
 
-/// snapForStroke works out how far [stroke] should cling on [source]. See
-/// suggestSnap, which does the work once the pixels are to hand.
+/// snapForStroke works out how far [stroke] should cling on [source]; see
+/// [suggestSnap], which does the work once the pixels are to hand.
 Future<double?> snapForStroke(ui.Image source, RemovalStroke stroke) async {
   var working = await _workingCopy(source);
   if (working == null) return null;
   return suggestSnap(working.pixels, working.width, working.height, stroke);
 }
 
+/// strokePreview is a picture of what [stroke] would do, for showing on the
+/// canvas before it is applied.
+///
+/// It runs the brush itself ([strokeEffect]) rather than drawing a shape from
+/// the settings, because a stroke that clings to or fills from an edge
+/// depends on the picture; so preview and result cannot drift apart.
+///
+/// Returned as premultiplied RGBA at the working size, transparent where the
+/// stroke does not reach. Sized to the whole picture so the caller draws it
+/// through the same placement the picture uses.
 Future<ui.Image?> strokePreview(ui.Image source, RemovalStroke stroke) async {
-  // At the working size, and from the copy that was already made: a preview is
-  // looked at rather than published, and it is rebuilt on every adjustment of
-  // every setting.
+  // From the cached working copy: a preview is rebuilt on every adjustment.
   var working = await _workingCopy(source);
   if (working == null) return null;
 
-  // Copied, because the coverage pass reads the picture and the tinting pass
-  // below writes over it -- and the next adjustment wants the picture back.
+  // Copied, so the cached working copy is left as it was for the next
+  // adjustment.
   var pixels = Uint8List.fromList(working.pixels);
   var width = working.width, height = working.height;
 
-  // The same arithmetic the stroke will be applied with, not a description of
-  // it: neither a stroke that clings to an edge nor one that fills from it is a
-  // shape anybody can draw from its settings, because both depend on what is
-  // in the picture.
   var cover = strokeEffect(pixels, width, height, stroke);
 
   var out = Uint8List(width * height * 4);
@@ -881,23 +812,20 @@ Future<ui.Image?> strokePreview(ui.Image source, RemovalStroke stroke) async {
     var strength = cover[i];
     if (strength == 0) continue;
 
-    // Coloured by how hard the brush is at that pixel rather than tinted
-    // flat, because the thing being judged is where the falloff starts and
-    // how far it runs. A flat wash showed neither: hardness could be moved
-    // from end to end and the picture looked identical.
+    // Coloured by brush strength rather than tinted flat, so the falloff
+    // can be judged:
     //
     //   blue    fully taken -- inside the hard core
     //   yellow  barely taken -- the outer rim of the falloff
     //
-    // So the width of the yellow band *is* the softness, and at a hardness of
-    // one there is no yellow at all.
+    // The width of the yellow band is the softness; at hardness one there is
+    // none.
     var t = strength / 255;
     var r = ((1 - t) * 255).round();
     var g = ((1 - t) * 210 + t * 90).round();
     var b = (t * 255).round();
 
-    // Half again on the alpha, so the picture underneath stays visible: this
-    // is a guide over the work rather than a replacement for looking at it.
+    // Three-quarter alpha, so the picture underneath stays visible.
     var alpha = (strength * 0.75).round().clamp(0, 255);
     var scale = alpha / 255;
     out[i * 4] = (r * scale).round();
@@ -914,13 +842,9 @@ Future<ui.Image?> strokePreview(ui.Image source, RemovalStroke stroke) async {
   return done.future;
 }
 
-/// _markClingEdge draws a dashed green line where cling decided to stop.
-///
-/// The one thing about cling nobody can otherwise see. Where the brush's own
-/// rim runs out, the edge is a circle and obviously the brush; where cling
-/// stopped it, the edge follows something in the picture -- and being able to
-/// tell which is which is the difference between a setting that can be tuned
-/// and a number that is guessed at.
+/// _markClingEdge draws a dashed green line round the edge of what the
+/// stroke reaches, so where cling stopped it (following the picture) can be
+/// told from where the brush's own round rim ran out.
 void _markClingEdge(Uint8List out, Uint8List cover, int width, int height) {
   for (var y = 1; y < height - 1; y++) {
     for (var x = 1; x < width - 1; x++) {
@@ -949,20 +873,13 @@ void _markClingEdge(Uint8List out, Uint8List cover, int width, int height) {
 /// suggestSnap works out how far a stroke should cling, from the picture
 /// under it.
 ///
-/// The number cling wants is "how different from the background does a pixel
-/// have to be before it is not the background", and nobody can read that off a
-/// photograph -- which is why setting it by hand never worked. But it is
-/// visible in the picture: gather every pixel the stroke passes over, measure
-/// how far each is from what the stroke started on, and the two things the
-/// stroke crossed show up as two clusters of distances with a gap between.
+/// Cling wants "how different from the background must a pixel be", which
+/// cannot be read off a photograph by eye. So the pixels under the stroke
+/// are histogrammed by distance from the colour it started on, and Otsu's
+/// method finds the gap between the two clusters.
 ///
-/// Otsu's method finds that gap. It is the standard way to split a histogram
-/// into two groups -- pick the threshold that leaves the least variation
-/// *within* each group -- and it needs nothing to be told about either.
-///
-/// Returns null when there is no gap worth calling one: a stroke drawn
-/// entirely on the background has one cluster, and inventing a split in it
-/// would cut the background in half for no reason.
+/// Returns null when there is no gap: a stroke drawn wholly on the
+/// background has one cluster, and a split in it would cut the background.
 double? suggestSnap(
     Uint8List pixels, int width, int height, RemovalStroke stroke) {
   if (stroke.points.isEmpty) return null;
@@ -977,8 +894,8 @@ double? suggestSnap(
       (stroke.points.first.dy * height).round(),
       math.max(1, radius ~/ 3));
 
-  // How many pixels sit at each distance from that colour, in 256 steps of the
-  // furthest two colours can be apart.
+  // How many pixels sit at each distance from that colour, in 256 steps up
+  // to the RGB diagonal (the furthest two colours can be apart).
   const diagonal = 441.6729559300637;
   var counts = List<int>.filled(256, 0);
   var total = 0;
@@ -992,8 +909,8 @@ double? suggestSnap(
     var top = math.max(0, (at.dy - radius).floor());
     var bottom = math.min(height - 1, (at.dy + radius).ceil());
 
-    // Every third pixel: a histogram does not need all of them, and this is
-    // run while somebody is waiting for the line to move.
+    // Every third pixel: enough for a histogram, and this runs while the
+    // user waits.
     for (var y = top; y <= bottom; y += 3) {
       for (var x = left; x <= right; x += 3) {
         var dx = x - at.dx, dy = y - at.dy;
@@ -1015,9 +932,8 @@ double? suggestSnap(
   var split = _otsu(counts, total);
   if (split == null) return null;
 
-  // A little past the split, so the pixels sitting exactly on the boundary --
-  // the blend along an outline -- fall inside the fading part of the tolerance
-  // rather than outside it altogether.
+  // A little past the split, so the blend along an outline falls inside the
+  // fading part of the tolerance rather than outside it.
   return ((split + 1.5) / 255).clamp(0.01, 0.6);
 }
 
@@ -1031,12 +947,9 @@ int? _otsu(List<int> counts, int total) {
 
   var belowWeight = 0, best = -1.0;
   var belowSum = 0.0;
-  // The first and last thresholds that are equally the best.
-  //
-  // On a picture of two flat colours every threshold between the two is
-  // exactly as good, and taking the first of them puts the line hard against
-  // the background -- so a faint edge came out as no tolerance at all. The
-  // middle of the run is the one that sits between the two things.
+  // The first and last thresholds that are equally the best. With two flat
+  // colours every threshold between is as good, and the first sits hard
+  // against the background (no tolerance); the middle of the run is used.
   int? first, last;
 
   for (var i = 0; i < counts.length; i++) {
@@ -1061,26 +974,16 @@ int? _otsu(List<int> counts, int total) {
     }
   }
 
-  // A stroke drawn entirely on one thing has one cluster, and the best split
-  // of one cluster separates nothing. Everything here is measured in 256ths of
-  // the furthest two colours can be apart, so this is a real separation rather
-  // than the noise inside a single surface.
+  // One cluster (a stroke drawn wholly on one thing) has no useful split.
   if (first == null || last == null || best <= 0) return null;
   return (first + last) ~/ 2;
 }
 
 /// strokeCoverage is how strongly a stroke touches each pixel, from 0 to 255.
 ///
-/// The *most* any of the stroke's dabs reach a pixel, not the sum of them.
-/// That is the whole reason this is a separate pass. Applying each dab to the
-/// picture as it went meant a pixel under six overlapping dabs was blended
-/// towards the target six times, and repeated blending arrives at the target
-/// however gentle each step is -- so the feathered rim collapsed into a hard
-/// edge everywhere except the two ends of the stroke, and hardness appeared to
-/// do nothing at all.
-///
-/// Shared with the preview, so what is shown and what will happen are the same
-/// arithmetic rather than two descriptions of it.
+/// It is the *most* any dab reaches a pixel, not the sum, which is why this
+/// is a separate pass: blending dab by dab drives overlapping pixels to the
+/// target and collapses the feathered rim into a hard edge.
 Uint8List strokeCoverage(
     Uint8List pixels, int width, int height, RemovalStroke stroke) {
   var cover = Uint8List(width * height);
@@ -1089,13 +992,8 @@ Uint8List strokeCoverage(
   var shorter = math.min(width, height);
   var radius = math.max(1.0, stroke.radius * shorter);
 
-  // What the stroke is clinging *to*, sampled where it began.
-  //
-  // Once for the stroke, not once per dab. Per dab, the brush took its
-  // reference from whatever happened to be under the pointer at that moment --
-  // so the instant the stroke crossed onto the subject it re-learnt the
-  // subject and started clinging to that instead, which is the opposite of the
-  // whole idea.
+  // What the stroke is clinging *to*, sampled once where it began: sampled
+  // per dab it would re-learn the subject as soon as it crossed onto it.
   var reference = stroke.snap > 0
       ? _averageAround(
           pixels,
@@ -1109,16 +1007,9 @@ Uint8List strokeCoverage(
   const diagonal = 441.6729559300637;
   var tolerance = stroke.snap * diagonal;
 
-  // Where the dabs go: every third of a radius along the stroke, measured by
-  // distance travelled rather than per point.
-  //
-  // Per point was the whole of the slowness. A drag reports a couple of
-  // hundred positions, and a dab was placed at each end of every one of the
-  // segments between them -- so a stroke was six hundred dabs whether it
-  // crossed the picture or wobbled in one place, and each dab is a flood over
-  // its own square of the picture. Walking the length instead makes a long
-  // stroke a dozen dabs and a short one two, which is what the spacing was
-  // meant to say in the first place.
+  // Where the dabs go: every third of a radius of distance travelled, not
+  // one per reported point (a drag reports hundreds, and each dab is a
+  // flood over its own square).
   var spacing = math.max(1.0, radius / 3);
   var path = [
     for (var point in stroke.points)
@@ -1126,10 +1017,9 @@ Uint8List strokeCoverage(
   ];
 
   for (var at in _alongPath(path, spacing)) {
-    // The reference is allowed to drift with the background -- a sky that
-    // shades from one side to the other is still the background -- but only
-    // towards colours it already agrees with. A pixel it does not recognise is
-    // the subject, and the reference does not follow it.
+    // The reference drifts with the background (a sky shading across is
+    // still background), but only towards colours within tolerance; it
+    // does not follow onto the subject.
     if (reference != null) {
       var here = _averageAround(pixels, width, height, at.dx.round(),
           at.dy.round(), math.max(1, radius ~/ 6));
@@ -1149,34 +1039,24 @@ Uint8List strokeCoverage(
 
 /// strokeEffect is everything a stroke reaches, from 0 to 255.
 ///
-/// The same for a mark and for a boundary, so that the preview and the picture
-/// go through one function and cannot come out differently. For an ordinary
-/// stroke it is where the brush went; for a fill it is that *plus* everything
-/// the picture's own edge can reach without crossing it.
+/// The preview and the picture both go through this. For an ordinary stroke
+/// it is [strokeCoverage]; for a fill it is that *plus* everything the
+/// picture's border can reach without crossing it.
 Uint8List strokeEffect(
     Uint8List pixels, int width, int height, RemovalStroke stroke) {
   var cover = strokeCoverage(pixels, width, height, stroke);
   if (!stroke.fill) return cover;
 
-  // A boundary is all or nothing, however soft the brush drawing it is.
-  //
-  // Left soft, the line's feathered rim carried partial coverage *inwards*
-  // past the cut -- so a band of half-removed pixels hugged the inside of the
-  // line and read as a strange outline drawn around the subject. A soft edge
-  // is right for a mark, where it blends into what is around it; here there is
-  // nothing on the inside to blend into, because the inside is being kept.
+  // A boundary is all or nothing, however soft the brush: a soft rim would
+  // leave a band of half-removed pixels inside the line. Softness is applied
+  // to the finished cut below instead.
   for (var i = 0; i < cover.length; i++) {
     if (cover[i] != 0) cover[i] = 255;
   }
 
-  // Everything reachable from the outside without crossing the line.
-  //
-  // From the edge inwards rather than from a point the reader picked: what is
-  // being taken out is the background, and the background is what surrounds
-  // the thing that is not. It also means a line that does not quite close --
-  // and no line drawn by hand quite closes -- fails safe: the flood leaks
-  // through the gap and takes more, which is visible and undoable, rather than
-  // silently doing nothing.
+  // Everything reachable from the border without crossing the line. A line
+  // that does not quite close fails visibly: the flood leaks through the gap
+  // and takes more, which can be seen and undone.
   var reached = Uint8List(width * height);
   var stack = <int>[];
 
@@ -1208,32 +1088,21 @@ Uint8List strokeEffect(
     if (y < height - 1) stack.add(index + width);
   }
 
-  // Inside out, when that is what was asked for: a hole cut out of something
-  // rather than something cut free of its surroundings. What the boundary
-  // encloses is simply everything the outside could not get to.
+  // Inside out for fillInside: a hole cut out, being everything the outside
+  // could not reach.
   if (stroke.fillInside) {
     for (var i = 0; i < reached.length; i++) {
       reached[i] = reached[i] == 0 ? 255 : 0;
     }
   }
 
-  // The line itself goes with whichever side is being taken, so the cut lands
-  // on the line rather than just to one side of it.
+  // The line goes with the side being taken, so the cut lands on it.
   for (var i = 0; i < reached.length; i++) {
     if (cover[i] > reached[i]) reached[i] = cover[i];
   }
 
-  // Then softened, if a soft cut was asked for.
-  //
-  // The softness is applied to the finished outline rather than being carried
-  // in from the brush that drew it. Carried in, the brush's own feathered rim
-  // reached *past* the cut and left a band of half-removed pixels hugging the
-  // inside of the line. Applied here it is what it sounds like: the edge of
-  // the cut, blurred.
-  //
-  // Independent of the brush's size on purpose. How thickly the boundary is
-  // drawn and how soft the cut is are two different decisions, and tying them
-  // together meant a fat boundary brush gave a cut nobody could aim.
+  // Then softened by hardness, independent of the brush's size on purpose:
+  // how thick the boundary is drawn and how soft the cut is are separate.
   var feather = ((1 - stroke.hardness.clamp(0.0, 1.0)) * _cutFeather).round();
   return feather <= 0 ? reached : _blur(reached, width, height, feather);
 }
@@ -1242,9 +1111,8 @@ Uint8List strokeEffect(
 /// pixels, counting both sides of the line.
 const int _cutFeather = 12;
 
-/// _blur is a box blur run twice, which is close enough to a smooth falloff
-/// and is two passes of running sums rather than a kernel per pixel. Each
-/// pass is half the asked-for radius, so the two together reach it.
+/// _blur is a box blur of running sums run twice, close to a smooth
+/// falloff. Each pass is half of [reach], so the two together reach it.
 Uint8List _blur(Uint8List mask, int width, int height, int reach) {
   var radius = (reach ~/ 2).clamp(1, reach);
   var out = mask;
@@ -1266,9 +1134,8 @@ Uint8List _blurAxis(
     int at(int i) => horizontal ? o * width + i : i * width + o;
 
     var sum = 0;
-    // The window starts hanging off the near edge, with the edge pixel
-    // counted for every position outside -- so a mask that reaches the border
-    // is not dimmed by nothing lying beyond it.
+    // Positions off the edge count as the edge pixel, so a mask reaching
+    // the border is not dimmed.
     for (var i = -radius; i <= radius; i++) {
       sum += mask[at(i.clamp(0, inner - 1))];
     }
@@ -1300,25 +1167,15 @@ void _paintStrokes(
 
 /// _alongPath is a point every [spacing] of distance travelled, starting at
 /// the beginning and always including the end.
-///
-/// The end matters: a stroke has to finish where the pointer finished, or
-/// letting go a little past something leaves it untouched.
 List<ui.Offset> _alongPath(List<ui.Offset> path, double spacing) {
   if (path.isEmpty) return const [];
   if (path.length == 1) return [path.first];
 
   var out = <ui.Offset>[path.first];
 
-  // How much further before the next dab is due. Carried across the joins
-  // between segments, which is the whole difficulty: a drag is hundreds of
-  // segments a pixel or two long, and a spacing measured within each one
-  // separately would put a dab at every single point.
-  //
-  // The first attempt carried the *unwalked remainder* of a segment and then
-  // used it as a starting offset in the next -- wrong in meaning and in sign,
-  // so on a real stroke the dabs landed almost anywhere and most of the line
-  // was never covered at all. That is what turned a swept line into a row of
-  // blobs.
+  // How much further before the next dab is due, carried across segment
+  // joins: a drag is hundreds of segments a pixel or two long, and spacing
+  // within each separately would put a dab at every point.
   var until = spacing;
 
   for (var i = 1; i < path.length; i++) {
@@ -1335,15 +1192,13 @@ List<ui.Offset> _alongPath(List<ui.Offset> path, double spacing) {
     until -= span - walked;
   }
 
-  // Always the end, so a stroke finishes where the pointer finished: letting
-  // go a little past something would otherwise leave it untouched.
+  // Always the end, so a stroke finishes where the pointer finished.
   if (out.last != path.last) out.add(path.last);
   return out;
 }
 
-/// _averageAround is the mean colour of a small patch, which is steadier than
-/// one pixel: a photograph's noise moves a single pixel around by more than
-/// some of the distinctions being drawn here.
+/// _averageAround is the mean colour of a small patch, steadier than one
+/// pixel against a photograph's noise.
 List<double> _averageAround(
     Uint8List pixels, int width, int height, int cx, int cy, int radius) {
   var r = 0.0, g = 0.0, b = 0.0, seen = 0;
@@ -1372,16 +1227,11 @@ double _distance(List<double> a, List<double> b) {
 /// _reachable is how strongly each pixel of a dab's disc belongs to the thing
 /// the stroke is clinging to, from 0 to 255.
 ///
-/// A strength rather than a yes or no, and that is what puts the edge in the
-/// right place. All-or-nothing at the tolerance left a halo: the pixels along
-/// an outline are blends of the subject and what is behind it, so they fall
-/// outside any tolerance tight enough to protect the subject and were left
-/// behind as a fringe of background. Fading out across the last part of the
-/// tolerance takes those pixels partly, which is exactly what they are --
-/// partly background.
+/// A strength rather than yes or no: outline pixels are blends of subject
+/// and background, so all-or-nothing leaves a fringe of background. Fading
+/// across the last part of the tolerance takes them partly.
 ///
-/// A flood inside the brush and nowhere else, so it costs what the brush costs
-/// and cannot run away across the picture the way a full-frame one can.
+/// The flood stays inside the brush's disc, so it costs what the brush costs.
 Uint8List _reachable(
     Uint8List pixels,
     int width,
@@ -1401,9 +1251,8 @@ Uint8List _reachable(
 
   const diagonal = 441.6729559300637;
   var tolerance = snap * diagonal;
-  // Everything within this is wholly the background; between here and the
-  // tolerance it fades. A blended edge pixel is half of each and is treated as
-  // half of each.
+  // Within this is wholly background; between here and the tolerance it
+  // fades.
   var solid = tolerance * 0.6;
   var fade = math.max(0.001, tolerance - solid);
 
@@ -1418,8 +1267,8 @@ Uint8List _reachable(
     var dx = x - centreX, dy = y - centreY;
     if (math.sqrt(dx * dx + dy * dy) > radius) continue;
 
-    // Against what the stroke set out to remove, not against the pixel under
-    // the pointer -- see _paintStrokes.
+    // Against what the stroke set out to remove, not the pixel under the
+    // pointer -- see [strokeCoverage].
     var p = (y * width + x) * 4;
     var dr = pixels[p] - reference[0];
     var dg = pixels[p + 1] - reference[1];
@@ -1442,11 +1291,9 @@ Uint8List _reachable(
 
 /// _dab is one press of the brush, recorded into [cover] rather than applied.
 ///
-/// Two things make it a brush rather than a rubber stamp. It fades towards its
-/// rim, so strokes blend into one another and into whatever the automatic pass
-/// left, and it can be told to spread only through pixels like the one the
-/// stroke started on -- see RemovalStroke.snap -- so brushing along a shoulder
-/// takes the sky and stops at the coat.
+/// It fades towards its rim by [RemovalStroke.hardness], and with
+/// [RemovalStroke.snap] spreads only through pixels like [reference], so
+/// brushing along a shoulder takes the sky and stops at the coat.
 void _dab(
     Uint8List cover,
     Uint8List pixels,
@@ -1522,11 +1369,8 @@ void _luminance(Uint8List pixels, BackgroundRemoval removal) {
     var l =
         (pixels[i] * 0.2126 + pixels[i + 1] * 0.7152 + pixels[i + 2] * 0.0722) /
             255;
-    // How far past the threshold this pixel is, positive when it should go.
-    // Negated into a distance so the same ramp _alphaFor applies to a colour
-    // key applies here: at or past the threshold the distance is zero or less
-    // and the pixel is removed outright, and the softness fades the rest back
-    // in.
+    // How far past the threshold this pixel is, positive when it should go,
+    // negated into a distance for the same [_alphaFor] ramp as a colour key.
     var over = removal.invert ? removal.threshold - l : l - removal.threshold;
     pixels[i + 3] = _alphaFor(-over, 0, removal.softness, pixels[i + 3]);
   }
@@ -1534,31 +1378,19 @@ void _luminance(Uint8List pixels, BackgroundRemoval removal) {
 
 /// _cornerFlood removes the connected region touching the picture's edges.
 ///
-/// It walks outwards from the border and stops **where the picture changes
-/// suddenly**, not where the colour stops matching something. That is the
-/// whole idea, and it is what makes this usable on a photograph rather than
-/// only on a flat backdrop: a background is nearly always smooth -- out of
-/// focus, or a wall, or a sky -- while the subject has a crisp outline, so
-/// "keep going while it changes gently, stop where it changes sharply"
-/// separates them far better than any judgement about colour can.
-///
-/// Two earlier versions judged each pixel against a fixed colour instead: the
-/// picture's top-left pixel, and then each edge seed's own. Both fail on the
-/// same photograph for the same reason -- a background running from bright
-/// bokeh to near-black is nowhere near any one colour, so the tolerance that
-/// reaches the dark half has already eaten the subject. On the reported
-/// stadium shot it had to be set so low that half the background survived and
-/// the shirt was still being nibbled.
+/// It walks in from the border and stops **where the picture changes
+/// suddenly**, not where the colour stops matching one reference colour: a
+/// background is usually smooth (out of focus, a wall, a sky) while the
+/// subject has a crisp outline, and a background running from bright bokeh
+/// to near-black is near no single colour.
 ///
 /// [BackgroundRemoval.edge] is the local step: how much the picture may change
 /// from one pixel to the next and still count as the same region.
-/// [BackgroundRemoval.tolerance] is a drift budget on top of it, so a very
-/// gradual ramp cannot creep from the border all the way through the subject
-/// and out the other side. Neither alone is enough: the local step follows
-/// gradients but would follow one anywhere, and the budget bounds it.
+/// [BackgroundRemoval.tolerance] is a drift budget from the seed on top of
+/// it, so a gradual ramp cannot creep through the subject.
 ///
-/// An explicit stack rather than recursion: a full-frame flood on a large
-/// picture is millions of pixels deep and would overflow.
+/// An explicit stack rather than recursion: a full-frame flood would
+/// overflow.
 void _cornerFlood(
     Uint8List pixels, int width, int height, BackgroundRemoval removal) {
   var count = width * height;
@@ -1577,9 +1409,8 @@ void _cornerFlood(
     return math.sqrt(dr * dr + dg * dg + db * db);
   }
 
-  // Each entry is the pixel to consider, the pixel it was reached from, and
-  // the seed the whole chain started at -- the first for the local step, the
-  // last for the drift budget.
+  // Each entry is three ints: the pixel, the pixel it was reached from (for
+  // the local step) and the chain's seed (for the drift budget).
   var stack = <int>[];
   void push(int index, int from, int seed) {
     stack
@@ -1608,16 +1439,14 @@ void _cornerFlood(
     var index = stack.removeLast();
     if (index < 0 || index >= count || seen[index] != 0) continue;
 
-    // The step from the pixel this was reached through. An edge in the picture
-    // is a big step, and an edge is where the background ends.
+    // A big step from the pixel this was reached through is an edge.
     if (index != from && distance(index, from) > step) continue;
     // And no further from where this chain started than the budget allows.
     if (distance(index, seed) > budget) continue;
 
-    // Marked only once it is accepted. Marking on sight -- which is what the
-    // shared visited array did -- also marked every pixel the flood merely
-    // looked at and rejected, so inverting the mask kept the subject *and* a
-    // halo of everything the flood had touched around it.
+    // Marked only once accepted: a pixel rejected from one neighbour may
+    // still be reached from another, and marking on sight left a halo when
+    // inverted.
     seen[index] = 1;
     removed[index] = 1;
     pixels[index * 4 + 3] = 0;
@@ -1639,37 +1468,24 @@ void _cornerFlood(
 }
 
 /// _learn removes the background by comparing it with the subject, from marks
-/// the reader has drawn on each.
+/// the user has drawn on each, for photographs where no threshold separates
+/// them.
 ///
-/// The other three methods ask for a number that stands for something nobody
-/// can see: how far apart two colours are, how sharply an edge changes. On a
-/// photograph there is usually no such number -- the reported stadium shot has
-/// a white shirt touching bright highlights and a soft outline against a dark
-/// crowd, and every threshold that keeps the background out also takes part of
-/// the player. This asks instead for the one thing anybody can see perfectly
-/// well: which part is the background.
+///   1. Collect the colours under each set of marks, to five bits a channel
+///      (about as fine as a photograph's noise allows).
+///   2. Classify each of the 32768 colours once ([_classify]), not per pixel.
+///   3. Flood from the background marks and the border through pixels the
+///      table calls background.
 ///
-/// Three steps, none of them clever:
-///
-///   1. Collect the colours under each set of marks, coarsely -- to five bits
-///      a channel, which is about as finely as a photograph's noise allows
-///      anything to be told apart anyway.
-///   2. Decide, once per colour rather than once per pixel, which side of the
-///      evidence it falls on. That is a table of 32768 entries built in a few
-///      milliseconds and then read for free.
-///   3. Flood outwards from the background marks and from any border that
-///      looks like background, through pixels the table calls background.
-///
-/// The flood in step three is what stops a white shirt going when the
-/// background also has white in it: the shirt is only removed if there is a
-/// path to it through other background-looking pixels, and a subject mark
-/// blocks the way.
+/// The flood means a subject colour that also appears in the background is
+/// only removed where background-looking pixels connect to it, and a subject
+/// mark blocks the way.
 void _learn(
     Uint8List pixels, int width, int height, BackgroundRemoval removal) {
   var background = _paletteOf(pixels, width, height, removal.backgroundHints);
   var subject = _paletteOf(pixels, width, height, removal.subjectHints);
-  // With nothing to compare there is nothing to learn, and taking a guess here
-  // would remove something arbitrary the moment the mode was chosen.
+  // Nothing to compare until both kinds of mark exist; a guess would remove
+  // something arbitrary the moment the mode was chosen.
   if (background.isEmpty || subject.isEmpty) return;
 
   var table = _classify(background, subject, removal.tolerance);
@@ -1695,8 +1511,7 @@ void _learn(
   for (var i = 0; i < count; i++) {
     if (marked[i] != 0) seed(i);
   }
-  // ...and from any edge that looks like background, so the reader does not
-  // have to trace all four sides to have the obvious parts taken out.
+  // ...and from the border, so the user need not trace all four sides.
   for (var x = 0; x < width; x++) {
     seed(x);
     seed((height - 1) * width + x);
@@ -1762,13 +1577,9 @@ Set<int> _paletteOf(
 /// _classify decides, for every colour there is, whether it belongs to the
 /// background or the subject.
 ///
-/// Once per colour rather than once per pixel: 32768 entries against a few
-/// hundred samples is a few million comparisons and happens once, where the
-/// same work per pixel on a twelve-megapixel photograph would not finish.
-///
-/// [bias] shifts the boundary between the two. At a half it is a fair fight;
-/// higher takes more, which is the dial to reach for when a little background
-/// survives.
+/// Once per colour rather than per pixel, so the cost does not grow with the
+/// picture. [bias] shifts the boundary: at a half it is even, higher takes
+/// more as background.
 Uint8List _classify(Set<int> background, Set<int> subject, double bias) {
   var table = Uint8List(32768);
   var backgroundList = background.toList();
@@ -1832,12 +1643,10 @@ void _markPixels(Uint8List into, int width, int height,
 
 /// _featherAlpha softens the edge the removal left behind.
 ///
-/// A flood gives every pixel all or nothing, which on anything with a soft
-/// outline -- hair, most of all -- leaves a hard staircase where a photograph
-/// had a gradual one. This averages the alpha over a small neighbourhood, but
-/// only where there is an edge to soften: a pixel surrounded by pixels that
-/// agree with it is left exactly as it was, so the middle of the subject stays
-/// solid and the middle of the hole stays empty.
+/// A flood is all or nothing, a staircase on soft outlines such as hair.
+/// This averages alpha over a small neighbourhood, but only where the
+/// neighbours disagree, so the inside of the subject and of the hole are
+/// left as they were.
 void _featherAlpha(
     Uint8List pixels, int width, int height, BackgroundRemoval removal) {
   var radius = (removal.softness * 3).round().clamp(1, 6);
@@ -1867,8 +1676,7 @@ void _featherAlpha(
           seen++;
         }
       }
-      // Nothing to soften: every neighbour agrees, so this is the inside of
-      // the subject or the inside of the hole.
+      // Nothing to soften: every neighbour agrees.
       if (!mixed || seen == 0) continue;
       pixels[index * 4 + 3] = (total / seen).round().clamp(0, 255);
     }

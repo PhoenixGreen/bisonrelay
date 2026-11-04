@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 
 import 'canvas_audio_fake.dart';
+import 'canvas_store_age.dart';
 
 // canvas_session_keep_test.dart is what the clip slots and the Speech device
 // keep: saved with the canvas, read back after a restart -- and the sounds
@@ -135,6 +136,7 @@ void main() {
     var unused = await stored();
     expect(await c.save(), isTrue);
     // The library tidied, as every save does: what nothing uses goes.
+    await ageStores();
     await CanvasLibrary.tidy(open: {});
     expect(await exists(unused), isFalse, reason: "the sweep ran");
     for (var id in [timeline, slot, reversed, warped, played, take]) {
@@ -198,6 +200,7 @@ void main() {
         .whereType<AudioElement>()
         .firstWhere((e) => e.clip.playlist.any((s) => s.assetId == take));
     expect(await c.save(), isTrue);
+    await ageStores();
     await CanvasLibrary.tidy(open: {});
     expect(await exists(take), isTrue);
     expect(kept.existsSync(), isTrue,
@@ -216,6 +219,7 @@ void main() {
     // Removed by the reader, and the canvas saved: the take's file goes.
     c.removeTake("a", 0, 0);
     expect(await c.save(), isTrue);
+    await ageStores();
     await CanvasLibrary.tidy(open: {});
     expect(kept.existsSync(), isFalse,
         reason: "no canvas has it, and it was never saved");
@@ -300,6 +304,7 @@ void main() {
     expect(await c.reverseClip(), isNull);
     var reversed = c.session.at("a", 0)!.sound!.assetId;
     expect(await c.save(), isTrue);
+    await ageStores();
     await CanvasLibrary.tidy(open: c.document.mediaIds);
     expect(await exists(reversed), isTrue, reason: "kept by the tidy");
     expect(await c.setWarp(true), isNull, reason: "no error");

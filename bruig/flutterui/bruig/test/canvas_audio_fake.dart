@@ -80,6 +80,9 @@ class FakeEngine implements AudioEngine {
   void setChannel(String key, ChannelSound sound) => channels[key] = sound;
 
   @override
+  void removeChannel(String key) => channels.remove(key);
+
+  @override
   void setMaster(MasterSound sound) => master = sound;
 
   /// returns is the returns as last set -- see AudioEngine.setReturns.

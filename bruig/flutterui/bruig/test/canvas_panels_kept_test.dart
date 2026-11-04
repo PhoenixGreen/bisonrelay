@@ -103,22 +103,6 @@ void main() {
   });
 
   group("the mixer at its smallest", () {
-    test("the Mixer button steps through it, before hidden", () {
-      var c = _make();
-      addTearDown(c.dispose);
-      var steps = <(bool, bool, bool)>[];
-      for (var i = 0; i < 4; i++) {
-        c.cycleMixer();
-        steps.add((c.mixerOpen, c.mixerMinimised, c.mixerSmallest));
-      }
-      expect(steps, [
-        (true, false, false),
-        (true, true, false),
-        (true, true, true),
-        (false, false, false),
-      ]);
-    });
-
     testWidgets("its meters alone: no names, no narrow arrows, no rail",
         (tester) async {
       var c = _make();

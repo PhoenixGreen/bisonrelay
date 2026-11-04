@@ -4,16 +4,12 @@ import 'dart:typed_data';
 // matting.dart is the fine work at a cut-out's edge, where a mask cannot be
 // simply in or out: hair, fur, a soft shoulder against the sky.
 //
-// Both jobs here rest on one estimate. Near any edge pixel there are pixels
-// that are surely the subject and pixels that are surely the background, and
-// their average colours -- F and B -- are what the edge pixel is a mix of.
-// Its colour C sits somewhere on the line from B to F, and how far along is
-// how much of it is the subject: its alpha. And knowing F, the background's
-// share can be taken out of C, which is what decontaminating is -- the green
-// of a pitch lifted out of the blond hair that was photographed against it.
+// Both jobs rest on one estimate: near an edge pixel, the mean colours of
+// surely-subject (F) and surely-background (B) pixels are what it is a mix
+// of. How far its colour C sits along the line from B to F is its alpha;
+// moving C towards F removes the background's share (decontamination).
 //
-// The averages are taken over a window round each pixel with summed-area
-// tables, so a window of any size costs the same.
+// The means use summed-area tables, so a window of any size costs the same.
 //
 // Pure Dart over plain lists, so it runs in an isolate.
 
@@ -88,15 +84,10 @@ class RefineJob {
 /// refineAlpha is [job]'s mask with its alpha worked out afresh along its
 /// edge, wherever the band reaches, one byte a pixel.
 ///
-/// Only along the edge: within half the reach of where the mask changes
-/// from kept to hidden. The brush says where to look; the edge says what is
-/// in doubt. Allowed to change everything the brush covered, a stroke laid a
-/// little inside a head of dark hair took its colour as "not the face" and
-/// washed the hair out -- the face being the nearest thing surely kept.
-///
-/// What is sure is whatever is clearly on one side and not near the edge,
-/// brushed or not, so the subject's colour is read from just inside the edge
-/// -- the hair -- rather than from the middle of the subject.
+/// Only within half the radius of where the mask changes from kept to
+/// hidden: the brush says where to look, the edge says what is in doubt.
+/// Changing everything brushed would wash out dark hair a stroke strayed
+/// into, measured against the face.
 Uint8List refineAlpha(RefineJob job) {
   var w = job.width, h = job.height, n = w * h;
   var out = Uint8List.fromList(job.alpha);
@@ -120,15 +111,9 @@ Uint8List refineAlpha(RefineJob job) {
   }
 
   var nearEdge = within(zone);
-  // The samples come from a ring just outside the zone being worked out,
-  // not from anywhere surely kept: the colour of the subject at its edge --
-  // the hair -- rather than the subject's average, which is mostly face.
-  // Averaged over the face, dark hair on a dark backdrop looked unlike the
-  // backdrop, and was taken out as background.
-  //
-  // Thin, too: a third of the zone again. As wide as the zone, the ring at a
-  // footballer's crown reached his forehead, and half skin was still not
-  // hair.
+  // F and B are sampled from a thin ring (a third of the zone) just outside
+  // it, brushed or not, so F is the subject's colour at its edge (the hair)
+  // rather than its average (mostly face). A wider ring reaches the face.
   var ring = within(zone + math.max(2, zone ~/ 3));
   var fg = _Sums.of(
       job.rgba,

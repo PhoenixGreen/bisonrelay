@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
-// button settings.dart is a button's settings.
+// button_settings.dart is a button's settings.
 
 List<Widget> buttonSettings(
     BuildContext context,
@@ -93,14 +93,6 @@ List<Widget> buttonSettings(
         (a) => write(e.copyWith(animation: a)), begin, commit),
   ];
 }
-
-/// _teamSettings is a whole team's controls.
-///
-/// Ordered the way a team is actually set up: which game, what shape, who is
-/// in it, what colour they are, and how big the dots are. The squad list is
-/// behind an expander because eleven rows of four fields is more than every
-/// other element's settings put together, and somebody opening a team is
-/// usually there for the formation or the kit.
 
 /// _playable is whether a button's media actions can be aimed at [e]: a
 /// sound, or a video made from files. A linked video is somebody else's

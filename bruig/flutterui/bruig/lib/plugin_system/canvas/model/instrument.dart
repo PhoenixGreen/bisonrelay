@@ -2,22 +2,21 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonInt, jsonDouble;
+    show jsonInt, jsonDouble, jsonStr;
 import 'package:bruig/plugin_system/canvas/model/midi_effects.dart';
 import 'package:crypto/crypto.dart';
 
 // instrument.dart is an instrument's part: the notes it plays, the sound it
 // plays them with, and the keyboard it is drawn as.
 //
-// An instrument is an Audio element that has one. Its notes are played --
-// rendered, by sampler.dart -- into an ordinary sound file, which is its
-// clip's file; so on the timeline, in the mixer, in a published canvas and
-// in an export it is a sound like any other, and a canvas sent to someone
-// without the sound bank still plays. Played live -- pressed on the canvas
-// or on a MIDI keyboard -- it is the sampler itself, on the same channel.
+// An instrument is an Audio element with a part. Its notes are rendered
+// (media/synth/sampler.dart) into an ordinary sound file, its clip's file, so
+// everywhere else it is a sound like any other and a canvas sent to someone
+// without the sound bank still plays. Played live it is the sampler itself,
+// on the same channel.
 
 /// MidiNote is one note: which key (MIDI's numbering, middle C is 60),
-/// when, for how long -- seconds from the start of the part -- and how hard.
+/// when and for how long (seconds in a part, beats in a clip), and how hard.
 class MidiNote {
   final int key;
   final double start;
@@ -31,8 +30,9 @@ class MidiNote {
   MidiNote copyWith({int? key, double? start, double? length, int? velocity}) =>
       MidiNote(
           (key ?? this.key).clamp(0, 127),
-          math.max(0, start ?? this.start),
-          math.max(0.01, length ?? this.length),
+          // Within an hour: a part is rendered as long as its last note.
+          (start ?? this.start).clamp(0.0, 3600.0),
+          (length ?? this.length).clamp(0.01, 3600.0),
           (velocity ?? this.velocity).clamp(1, 127));
 
   List<num> toJson() => [key, _round(start), _round(length), velocity];
@@ -169,8 +169,8 @@ class InstrumentPart {
   /// monitor is when what comes in is heard -- see MidiMonitor.
   final MidiMonitor monitor;
 
-  /// rendered is what the clip's file was played from -- see [signature] --
-  /// so it is played again only when something it was played from changes.
+  /// rendered is the [signature] the clip's file was rendered from, so it is
+  /// rendered again only when that changes.
   final String rendered;
 
   const InstrumentPart({
@@ -213,12 +213,11 @@ class InstrumentPart {
           ? "Drum kit"
           : gmPrograms[program.clamp(0, 127)];
 
-  /// signature is what the part sounds like, as a few characters: its notes
-  /// and its sound. The same signature is the same file.
+  /// signature is a short hash of what the part sounds like: the same
+  /// signature is the same file.
   String get signature {
     var text = jsonEncode([
-      // The look is part of the sound only where the piano of our own plays:
-      // its drums and its strings are its own.
+      // The look changes the sound only for the built-in instrument.
       if (sound == InstrumentSound.builtin) look.name,
       sound.name,
       bank,
@@ -241,7 +240,7 @@ class InstrumentPart {
   /// needsPlaying is whether the clip's file is not this part's.
   bool get needsPlaying => notes.isNotEmpty && rendered != signature;
 
-  /// needsPlayingAt is [needsPlaying] at a tempo -- see signatureAt.
+  /// needsPlayingAt is [needsPlaying] at a tempo; see [signatureAt].
   bool needsPlayingAt(double secondsPerBeat) =>
       notes.isNotEmpty && rendered != signatureAt(secondsPerBeat);
 
@@ -305,8 +304,8 @@ class InstrumentPart {
 
   factory InstrumentPart.fromJson(Map<String, dynamic> json) =>
       const InstrumentPart().copyWith(
-        look: InstrumentLook.fromName(json["look"] as String?),
-        sound: InstrumentSound.fromName(json["sound"] as String?),
+        look: InstrumentLook.fromName(jsonStr(json["look"])),
+        sound: InstrumentSound.fromName(jsonStr(json["sound"])),
         bank: jsonInt(json["bank"], 0),
         program: jsonInt(json["program"], 0),
         lowKey: jsonInt(json["low"], 48),
@@ -359,23 +358,6 @@ const keyboards = <(String, int, int)>[
 
 /// isBlackKey is whether [key] is a black key.
 bool isBlackKey(int key) => const {1, 3, 6, 8, 10}.contains(key % 12);
-
-/// keyName is [key] as a note's name and octave: middle C is C4.
-String keyName(int key) => "${const [
-      "C",
-      "C♯",
-      "D",
-      "E♭",
-      "E",
-      "F",
-      "F♯",
-      "G",
-      "A♭",
-      "A",
-      "B♭",
-      "B"
-    ][key % 12]}"
-    "${key ~/ 12 - 1}";
 
 /// gmPrograms are General MIDI's 128 sounds, by program number.
 const gmPrograms = [

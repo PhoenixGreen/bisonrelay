@@ -98,7 +98,10 @@ void main() {
   testWidgets("an empty slot, double-clicked, makes a clip in it",
       (tester) async {
     var c = await pumpBoth(tester);
-    var slot = find.byKey(const ValueKey("motionSlot-a-2"));
+    // The empty one shown past the last used.
+    var row = c.slotsShown - 1;
+    expect(c.motionOf("a").slot(row), isNull);
+    var slot = find.byKey(ValueKey("motionSlot-a-$row"));
     await tester.tap(slot);
     await tester.pump(const Duration(milliseconds: 50));
     await tester.tap(slot);
@@ -107,7 +110,8 @@ void main() {
     await frames(tester);
     await tester.tap(find.byKey(const ValueKey("slotMotion-Pop")));
     await frames(tester);
-    expect(c.motionOf("a").slot(2)?.name, "Pop");
+    expect(c.motionOf("a").slot(row)?.name, "Pop");
+    expect(c.slotsShown, row + 2, reason: "and one more slot shown");
     expect(c.animationOpen, isTrue, reason: "opened to be shaped");
   });
 
@@ -157,9 +161,170 @@ void main() {
     c.pause();
   });
 
+  testWidgets("an empty slot beside the rows makes a clip, and opens it",
+      (tester) async {
+    var c = await pumpBoth(tester);
+    await tester.tap(find.byKey(const ValueKey("slotsToggle")));
+    await frames(tester);
+    var empty = [
+      for (var i = 0; i < c.session.rows; i++)
+        if (c.motionOf("a").slot(i) == null) i
+    ].first;
+    await tester.tap(find.byKey(ValueKey("rowSlotNew-a-$empty")));
+    await frames(tester);
+    var made = c.motionOf("a").slot(empty);
+    expect(made, isNotNull, reason: "a clip in the slot pressed");
+    expect(c.pickedMotion, made!.id);
+    expect(c.animationOpen, isTrue);
+  });
+
+  testWidgets("the strips and the slots each have a grip", (tester) async {
+    var c = await pumpBoth(tester);
+    await tester.tap(find.byKey(const ValueKey("slotsToggle")));
+    await frames(tester);
+    var header = c.headerWidth, slots = c.slotsWidth;
+    await tester.drag(
+        find.byKey(const ValueKey("headerGrip")), const Offset(-30, 0));
+    await frames(tester);
+    expect(c.headerWidth, lessThan(header));
+    expect(c.slotsWidth, slots, reason: "the slots keep their width");
+    await tester.drag(
+        find.byKey(const ValueKey("slotsGrip")), const Offset(-60, 0));
+    await frames(tester);
+    expect(c.slotsWidth, lessThan(slots));
+    expect(c.headerWidth, lessThan(header), reason: "and the strips theirs");
+  });
+
+  test("slots start at two, and one more shows as the last fills", () {
+    var c = make();
+    addTearDown(c.dispose);
+    expect(c.slotsShown, 2, reason: "one used, one to fill");
+    c.newClip("a", slot: 1);
+    expect(c.slotsShown, 3);
+    var rows = c.session.rows;
+    c.newClip("a", slot: rows - 1);
+    expect(c.session.rows, rows + 1, reason: "a cue added past the last");
+    expect(c.slotsShown, rows + 1);
+    c.undo();
+    expect(c.session.rows, rows, reason: "one step with the clip");
+  });
+
+  test("a cue added at the end is one of the slots shown", () {
+    var c = make();
+    addTearDown(c.dispose);
+    c.addClipScene();
+    expect(c.slotsShown, 4, reason: "the new cue, and one empty past it");
+    expect(c.session.sceneName(2), "3");
+  });
+
+  testWidgets("the slots beside the rows keep one size and scroll together",
+      (tester) async {
+    var c = await pumpBoth(tester);
+    c.newClip("a", slot: 1);
+    c.newClip("a", slot: 2);
+    await tester.tap(find.byKey(const ValueKey("slotsToggle")));
+    await frames(tester);
+    // Narrower than the slots: they scroll rather than shrink.
+    c.slotsColumn = CanvasController.slotsColumnMin;
+    await frames(tester);
+    expect(c.slotsWidth, lessThan(c.slotsContent));
+    var slot = find.byKey(const ValueKey("rowSlotName-a-1"));
+    var cue = find.byKey(const ValueKey("cueLaunch-1"));
+    var size = tester.getSize(slot);
+    var (slotX, cueX) = (tester.getRect(slot).left, tester.getRect(cue).left);
+    c.scrollSlots(CanvasController.slotCellWidth + 3);
+    await frames(tester);
+    expect(tester.getRect(slot).left,
+        closeTo(slotX - CanvasController.slotCellWidth - 3, 0.5));
+    expect(tester.getRect(cue).left,
+        closeTo(cueX - slotX + tester.getRect(slot).left, 0.5),
+        reason: "the cues over them with them");
+    // Taller rows, the same slots.
+    c.nextLaneSize();
+    c.nextLaneSize();
+    await frames(tester);
+    expect(tester.getSize(slot), size);
+    // Pressed where it has scrolled to, it still opens.
+    await tester.tap(slot);
+    await frames(tester);
+    expect(c.pickedMotion, c.motionOf("a").slot(1)!.id);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      "with the mixer on, it sits left of the rows, in the slots' place",
+      (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    var c = make();
+    addTearDown(c.dispose);
+    c.slotsBeside = true;
+    c.mixerOpen = true;
+    expect(c.mixerBeside, isTrue);
+    expect(c.slotsWidth, 0, reason: "no slots beside the rows");
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: CanvasTimeline(
+                      controller: c, height: 420, mixerBeside: true)))),
+    ));
+    await frames(tester);
+    var mixer = tester.getRect(find.byKey(const ValueKey("mixerBeside")));
+    var strip = tester.getRect(find.byKey(const ValueKey("keyframeStrip")));
+    var bar = tester.getRect(find.byKey(const ValueKey("play")));
+    expect(mixer.right, lessThan(strip.left));
+    expect(mixer.top, greaterThan(bar.bottom), reason: "under the play bar");
+    expect(find.byKey(const ValueKey("motionStrip-a")), findsOneWidget);
+    expect(find.byKey(const ValueKey("rowSlot-a-0")), findsNothing);
+    await tester.drag(
+        find.byKey(const ValueKey("mixerBesideGrip")), const Offset(80, 0));
+    await frames(tester);
+    expect(tester.getRect(find.byKey(const ValueKey("mixerBeside"))).width,
+        closeTo(mixer.width + 80, 1));
+    expect(tester.getRect(find.byKey(const ValueKey("keyframeStrip"))).left,
+        closeTo(strip.left + 80, 1),
+        reason: "the time moves over for it");
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets("an element's strip narrows as a channel's does", (tester) async {
+    var c = await pumpBoth(tester);
+    var strip = find.byKey(const ValueKey("motionStrip-a"));
+    var wide = tester.getSize(strip).width;
+    expect(find.text("L1 100"), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("narrow-motion:a")));
+    await frames(tester);
+    expect(tester.getSize(strip).width, lessThan(wide));
+    expect(
+        find.descendant(of: strip, matching: find.text("L1")), findsOneWidget,
+        reason: "its faders by layer");
+    expect(c.narrowStrips, contains("motion:a"));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets("a clip starting before the frames shown stays in its lane",
+      (tester) async {
+    await pumpBoth(tester);
+    var lanes = find.byKey(const ValueKey("motionLanesPaint-a"));
+    expect(lanes, paints..clipRect(rect: Offset.zero & tester.getSize(lanes)));
+  });
+
   for (var scale in [0.65, 1.5]) {
     testWidgets("at text size $scale, the strip fits", (tester) async {
-      await pumpBoth(tester, scale: scale);
+      var c = await pumpBoth(tester, scale: scale);
+      expect(tester.takeException(), isNull);
+      // Narrow, and with the slots beside the rows.
+      c.toggleNarrow(motionStripKey("a"));
+      c.slotsBeside = true;
+      await frames(tester);
       expect(tester.takeException(), isNull);
     });
   }

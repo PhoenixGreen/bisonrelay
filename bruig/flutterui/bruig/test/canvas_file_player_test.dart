@@ -57,11 +57,14 @@ void main() {
     }
 
     Future<void> show(WidgetTester tester, File file) async {
+      SharedPreferences.setMockInitialValues({});
       await tester.pumpWidget(MultiProvider(
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(
               create: (c) => ThemeNotifier(doLoad: false)),
           ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(
+              create: (c) => CanvasPreferences()..enabled = true),
         ],
         child: MaterialApp(
             home: Scaffold(

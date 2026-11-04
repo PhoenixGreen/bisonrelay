@@ -1,10 +1,9 @@
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// studio_controls.dart is the new Character Studio's controls, in the look
-// of its approved prototype: small capital headings, rows of pills for
-// presets and choices, sliders with their value beside them, and round
-// colour swatches. Coloured from the app's theme, like everything else.
+// studio_controls.dart is the Character Studio's controls, in the look of its
+// prototype: small capital headings, rows of pills, sliders with their value
+// beside them, and round colour swatches, coloured from the app's theme.
 
 /// StudioLabel is a heading over a group of controls.
 class StudioLabel extends StatelessWidget {
@@ -350,8 +349,8 @@ class StudioPartRow extends StatelessWidget {
   /// onReset puts the part back; null for a mark that only marks.
   final VoidCallback? onReset;
 
-  /// keyPrefix names its keys: "<keyPrefix>-<id>", and the mark
-  /// "<keyPrefix minus Part>Changed-<id>".
+  /// keyPrefix names its keys: `<keyPrefix>-<id>`, and the mark
+  /// `<keyPrefix minus Part>Changed-<id>`.
   final String keyPrefix;
   const StudioPartRow(
       {required this.id,

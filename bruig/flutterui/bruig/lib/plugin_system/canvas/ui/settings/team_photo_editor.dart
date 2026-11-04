@@ -17,13 +17,10 @@ import 'package:flutter/services.dart';
 // it is round that player's face.
 
 /// TeamPhotoEditor shows [team]'s team photo with every player's crop on it.
-/// One is chosen at a time: tap a circle, or pick the player from the list.
-/// The chosen circle is dragged to move it, its edge handle to size it, and
-/// the handle above it to turn it.
-///
-/// The photo zooms -- scroll or pinch over it, the zoom buttons, or Focus to
-/// go straight to the chosen face -- and, zoomed, is dragged about from
-/// anywhere off the circle. Shift-scroll sizes the chosen circle.
+/// One is chosen at a time: tap a circle, or pick the player from the list;
+/// drag it to move it, its edge handle to size it, the handle above it to
+/// turn it. The photo zooms (scroll, pinch, the zoom buttons, or Focus) and,
+/// zoomed, drags from anywhere off the circle. Shift-scroll sizes the circle.
 class TeamPhotoEditor extends StatefulWidget {
   final TeamElement team;
   final VoidCallback begin;
@@ -114,7 +111,7 @@ class _TeamPhotoEditorState extends State<TeamPhotoEditor> {
   void _setCrop(int i, PhotoCrop crop) =>
       widget.write(team.withPlayer(i, team.players[i].copyWith(crop: crop)));
 
-  /// _View is where the photo is in the editor: its top-left corner and how
+  /// _view is where the photo is in the editor: its top-left corner and how
   /// many editor pixels an image pixel is.
   ({Offset origin, double scale}) _view(Size box, double iw, double ih) {
     var base = math.min((box.width - 2 * teamPhotoMargin) / iw,

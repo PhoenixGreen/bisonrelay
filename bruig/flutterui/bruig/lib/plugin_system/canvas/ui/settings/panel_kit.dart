@@ -10,25 +10,19 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// panel_kit.dart is the parts of the sectioned settings panel: a section that
-// folds, holding cards; a row of picture tiles; a section's tools; and the
-// stepper -- a number with an arrow either side.
-//
-// Built for the picture's panel first and meant for every element's after it,
-// so nothing here knows what a picture is. See image_settings.dart for the
-// first panel built from them, and settings/README.md for the rows inside a
-// section, which are the same groups as ever.
+// panel_kit.dart is the parts of the sectioned settings panel: a section
+// that folds, holding cards; a row of picture tiles; a section's tools; and
+// the stepper. Nothing here knows what an element is; see settings/README.md
+// for the rows inside a section.
 
 /// stepperHeight is a stepper's box. Taller than the other controls' because
 /// the arrows are pressed rather than aimed at.
 const double stepperHeight = 30;
 
-/// CanvasStepper is a number with an arrow either side of it.
-///
-/// The arrows nudge it a [step] at a time, and repeat while held. The number
-/// itself is dragged sideways to run it up and down -- from the first pixel,
-/// since nothing else in the box wants a drag -- and double-clicked to type
-/// one. Changed from [defaultValue], its caption turns the accent colour and
+/// CanvasStepper is a number with an arrow either side of it. The arrows
+/// nudge it a [step] at a time, repeating while held; the number is dragged
+/// sideways to run it, from the first pixel, and double-clicked to type one.
+/// Changed from [defaultValue], its caption turns the accent colour and
 /// gains a ↺ that puts it back.
 class CanvasStepper extends StatefulWidget implements CanvasGrowable {
   @override
@@ -44,9 +38,8 @@ class CanvasStepper extends StatefulWidget implements CanvasGrowable {
   final double? step;
 
   /// dragStep is how far one pixel of a drag moves it. Null is its last
-  /// digit, or a fifth of [step] where that is coarser -- a step of five
-  /// percent dragged at one percent a pixel is about right; at a tenth it is
-  /// five hundred pixels from one end to the other.
+  /// digit, or a fifth of [step] where that is coarser, so a whole range is
+  /// not hundreds of pixels long.
   final double? dragStep;
 
   final String suffix;
@@ -456,18 +449,12 @@ class _CanvasStepperState extends State<CanvasStepper> {
   }
 }
 
-/// CanvasTile is one choice in a row of [CanvasTiles]: a picture of what it
-/// does and the word for it.
-/// CanvasKept is [builder]'s widget, built again only when one of [deps] is
-/// not what it was -- or something it reads from above, the theme say, has
-/// changed.
-///
-/// Every edit rebuilds the whole panel, and most of it -- the layers strip,
-/// the headings of the sections that are shut -- is what it was: the same
-/// widget handed back is a subtree Flutter does not go through at all. What
-/// it is handed must be everything the widget shows, and anything it does
-/// when pressed must look up what is current then, not keep what was: a
-/// widget kept is a callback kept.
+/// CanvasKept is [builder]'s widget, built again only when one of [deps]
+/// changes, or something it reads from above (the theme, say). Every edit
+/// rebuilds the panel, and a widget handed back unchanged is a subtree
+/// Flutter skips. What it is handed must be everything it shows, and what it
+/// does when pressed must look up what is current then: a widget kept is a
+/// callback kept.
 class CanvasKept extends StatefulWidget {
   final List<Object?> deps;
   final WidgetBuilder builder;
@@ -502,6 +489,8 @@ class _CanvasKeptState extends State<CanvasKept> {
   }
 }
 
+/// CanvasTile is one choice in a row of [CanvasTiles]: a picture of what it
+/// does and the word for it.
 class CanvasTile<T> {
   final T value;
   final String label;
@@ -529,10 +518,8 @@ class CanvasTile<T> {
 typedef TilePaint = void Function(Canvas canvas, Size size);
 
 /// _snapshots is every tile's picture, drawn once, the most recently drawn
-/// last. A strip of tiles scrolled was every tile's filter, blend layer and
-/// shader drawn again on every frame -- with nothing kept between frames, as
-/// the renderer keeps nothing -- and a rounded clip a tile on top. Drawn
-/// from here, a tile is one picture, clipped in place.
+/// last: a scrolled strip otherwise drew every tile's filter, blend layer and
+/// shader again on every frame.
 final LinkedHashMap<String, ui.Image> _snapshots = LinkedHashMap();
 const int _snapshotsKept = 240;
 
@@ -686,9 +673,8 @@ class CanvasTiles<T> extends StatelessWidget {
   final double tileWidth;
 
   /// foldAs makes the card fold, remembered under that name: shut, its tiles
-  /// are one line that scrolls sideways, with the one chosen in view and
-  /// named in the heading; open, all of them. As the layers strip does --
-  /// a choice made once and then mostly looked at takes a line, not a block.
+  /// are one line that scrolls sideways, the one chosen in view and named in
+  /// the heading; open, all of them.
   final String? foldAs;
 
   const CanvasTiles({
@@ -1237,14 +1223,11 @@ class _CanvasSectionsState extends State<CanvasSections> {
   }
 }
 
-/// CanvasSection is one subject of an element's settings -- where it is, its
-/// mask, its colour -- as a card that folds.
-///
-/// Shut, it is its icon, its name and a line saying how it is set now, so
-/// the panel reads as a summary of the element before anything is opened.
-/// [changes] puts a dot on it, and once open a reset beside the chevron, for
-/// a section moved away from how it starts. Open, what is inside is in
-/// cards -- see CanvasCards.
+/// CanvasSection is one subject of an element's settings (where it is, its
+/// mask, its colour) as a card that folds. Shut, it is its icon, its name and
+/// a line saying how it is set, so the panel reads as a summary. [changes]
+/// puts a dot on it and, open, a reset beside the chevron. Open, what is
+/// inside is in cards: see CanvasCards.
 class CanvasSection extends StatefulWidget {
   final IconData icon;
   final String title;
@@ -1428,10 +1411,9 @@ class _CanvasSectionState extends State<CanvasSection> {
           ),
         ),
       ),
-      // Outside the heading's ink, so pressing them does not also fold
-      // the section: what it is for, and what it does shut. All of them
-      // left of the fold's arrow, which keeps the far right of every
-      // heading in the panel, whatever buttons a section has.
+      // Outside the heading's ink, so pressing them does not fold the
+      // section; all left of the fold's arrow, which keeps every heading's
+      // far right the same.
       if (_help.isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(right: 6),
@@ -1529,9 +1511,8 @@ class _CanvasSectionState extends State<CanvasSection> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // The heading is what it was unless what it says has changed --
-          // nine of them, rebuilt on every edit, were half of a shut panel's
-          // work. See CanvasKept.
+          // The heading is kept unless what it says has changed: rebuilt on
+          // every edit, the headings were half of a shut panel's work.
           CanvasKept(
             deps: [
               widget.icon,
@@ -1697,9 +1678,8 @@ class CanvasToolTiles<T> extends StatelessWidget {
             var n = tools.length;
             var width = box.maxWidth.isFinite ? box.maxWidth : 300.0;
             var each = math.max(64.0, (width - gap * (n - 1)) / n);
-            // The tool in hand kept in view: picked from elsewhere -- a
-            // layers strip's Add, a key -- one off the end of the line
-            // looked like nothing picked at all.
+            // The tool in hand kept in view, when picked from elsewhere (a
+            // layers strip's Add, a key).
             return _ToolRow(
                 active: tools.indexWhere((t) => t.$1 == active),
                 step: each + gap,
@@ -1804,18 +1784,14 @@ class CanvasToolTiles<T> extends StatelessWidget {
   }
 }
 
-/// _FoldingTiles is a card of tiles that folds -- see CanvasTiles.foldAs.
-/// _ScrollingTiles is a card of tiles in one line that scrolls sideways,
-/// with the one chosen brought into view -- so a kind chosen at the far end
-/// of the line, a picture's Drift, is seen on coming back to the panel
-/// rather than found by scrolling.
-/// _labelRoom is what a tile in a strip needs under its picture: its
-/// border and padding and a line of its name at the reader's text size --
-/// at a larger one, the name ran out of the bottom of a strip sized for
-/// the smallest.
+/// _labelRoom is what a tile in a strip needs under its picture: its border
+/// and padding and a line of its name at the reader's text size.
 double _labelRoom(BuildContext context) =>
     math.max(30.0, 16 + MediaQuery.textScalerOf(context).scale(9.5) * 1.35);
 
+/// _ScrollingTiles is a card of tiles in one line that scrolls sideways,
+/// with the one chosen brought into view, so a kind chosen at the far end is
+/// seen on coming back to the panel.
 class _ScrollingTiles<T> extends StatefulWidget {
   final CanvasTiles<T> tiles;
   const _ScrollingTiles({required this.tiles, super.key});
@@ -1894,6 +1870,7 @@ class _ScrollingTilesState<T> extends State<_ScrollingTiles<T>> {
   }
 }
 
+/// _FoldingTiles is a card of tiles that folds: see CanvasTiles.foldAs.
 class _FoldingTiles<T> extends StatefulWidget {
   final CanvasTiles<T> tiles;
   const _FoldingTiles({required this.tiles, super.key});
@@ -1935,9 +1912,7 @@ class _FoldingTilesState<T> extends State<_FoldingTiles<T>> {
 
   final ScrollController _strip = ScrollController();
 
-  /// _shown is the tile the strip last brought into view, so it is brought
-  /// there once when it is chosen and not again on every rebuild -- which
-  /// would snap the strip back under somebody scrolling it.
+  /// _shown is the tile last brought into view, as in _ScrollingTiles.
   int _shown = -1;
 
   @override
@@ -2003,9 +1978,8 @@ class _FoldingTilesState<T> extends State<_FoldingTiles<T>> {
     var body = LayoutBuilder(builder: (context, box) {
       var width = box.maxWidth.isFinite ? box.maxWidth : 300.0;
       var each = math.max(40.0, (width - gap * (t.columns - 1)) / t.columns);
-      // Open, clicked too: a tile tried on a hover was, to the panel, the
-      // tile chosen -- the highlight followed the pointer about, and the
-      // settings that hang on the choice came and went under it.
+      // Open, clicked too: a tile tried on a hover would be the tile chosen,
+      // and the settings hanging on it would come and go under the pointer.
       if (_open) {
         return Wrap(spacing: gap, runSpacing: gap, children: [
           for (var tile in t.tiles)
@@ -2029,9 +2003,8 @@ class _FoldingTilesState<T> extends State<_FoldingTiles<T>> {
           key: ValueKey("tilesStrip-${t.foldAs}"),
           controller: _strip,
           scrollDirection: Axis.horizontal,
-          // Clicked, never tried on a hover: a hover tried the tile, the
-          // tile tried was the one chosen, the strip scrolled to bring it
-          // into view under the pointer -- and the pointer was on the next.
+          // Clicked, never tried on a hover: trying a tile chose it, the strip
+          // scrolled it into view, and the pointer landed on the next.
           child: Row(children: [
             for (var (i, tile) in t.tiles.indexed)
               Padding(

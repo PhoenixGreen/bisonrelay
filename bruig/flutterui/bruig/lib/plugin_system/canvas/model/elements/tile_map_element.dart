@@ -4,17 +4,15 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // tile_map_element.dart is the Tile map element: a scene painted from tile
-// sets -- sheets of tiles, each sliced by a grid -- onto a grid of cells,
-// as Godot's TileMapLayer and Tiled paint a game's levels. It has layers,
-// one over another -- the ground, the paths on it, the walls -- each a
-// sparse map of the cells painted, and each cell a tile: which set, which
-// tile in it, and whether flipped or turned. The element's box is a window
-// onto the map: made bigger it shows more of it, not the tiles bigger.
+// sets (sheets sliced by a grid) onto a grid of cells, as Godot's
+// TileMapLayer and Tiled do. Each layer is a sparse map of painted cells. The
+// element's box is a window onto the map: made bigger it shows more of it,
+// not bigger tiles.
 
-/// TileRef is a tile as painted in a cell: the set it is from, its number
-/// in the set, and how it is turned -- flipped across, flipped down, and
-/// its across and down swapped, the three Tiled and Godot turn a tile with;
-/// together they make its eight ways round.
+/// TileRef is a tile as painted in a cell, packed in one int: the set (8
+/// bits), its index in the set (20 bits), and the three flags Tiled and
+/// Godot turn a tile with -- flip across, flip down, swap axes -- which make
+/// its eight orientations.
 extension type const TileRef(int word) {
   static const int _flipX = 1 << 28, _flipY = 1 << 29, _swap = 1 << 30;
 
@@ -59,15 +57,14 @@ extension type const TileRef(int word) {
   }
 }
 
-/// cellKey is cell ([col], [row]) as a map key; colOf and rowOf it back.
-/// A map runs from -32768 to 32767 each way.
+/// cellKey is cell ([col], [row]) as a map key; colOf and rowOf read it
+/// back. A map runs from -32768 to 32767 each way.
 int cellKey(int col, int row) => ((row + 0x8000) & 0xFFFF) << 16 | ((col + 0x8000) & 0xFFFF);
 int colOf(int key) => (key & 0xFFFF) - 0x8000;
 int rowOf(int key) => ((key >> 16) & 0xFFFF) - 0x8000;
 
 /// TileSource is a tile set: a stored sheet of tiles and the grid it is
-/// sliced by -- each tile so many pixels across and down, so far in from
-/// the sheet's edge, so far apart.
+/// sliced by (tile size, margin from the edge, spacing), in sheet pixels.
 class TileSource {
   final String sheet;
   final String name;
@@ -75,8 +72,7 @@ class TileSource {
   final int tileW, tileH;
   final int margin, spacing;
 
-  /// animations is the tiles that play, by the tile painted: the tiles it
-  /// shows in turn, and how many a second -- water, a torch, a flag.
+  /// animations is the tiles that play (water, a torch), by tile index.
   final Map<int, TileAnimation> animations;
 
   /// terrains is its terrain sets: tiles told apart by what they are at
@@ -96,8 +92,8 @@ class TileSource {
     this.terrains = const [],
   });
 
-  /// shownAt is the tile [index] shows [seconds] in: itself, or the frame
-  /// of its animation it has got to.
+  /// shownAt is the tile [index] shows [seconds] in: itself, or its
+  /// animation's current frame.
   int shownAt(int index, double seconds) {
     var a = animations[index];
     if (a == null || a.frames.length < 2) return index;
@@ -169,11 +165,11 @@ class TileSource {
     int n(String k, int or) => jsonDouble(json[k], or.toDouble()).round();
     return TileSource(
       sheet: sheet,
-      name: json["name"] as String? ?? "",
+      name: jsonStr(json["name"]) ?? "",
       sheetW: n("w", 1).clamp(1, 1 << 15),
       sheetH: n("h", 1).clamp(1, 1 << 15),
-      tileW: n("tw", 16).clamp(1, 4096),
-      tileH: n("th", 16).clamp(1, 4096),
+      tileW: n("tw", 16).clamp(4, 4096),
+      tileH: n("th", 16).clamp(4, 4096),
       margin: n("margin", 0).clamp(0, 4096),
       spacing: n("spacing", 0).clamp(0, 4096),
       animations: {
@@ -190,9 +186,9 @@ class TileSource {
   }
 }
 
-/// TerrainMode is what a terrain set's tiles are told apart by, as Godot's
-/// are: their corners -- ponds, patches, the grass round them -- their
-/// sides -- a path, a fence -- or both, a set of 47 that join every way.
+/// TerrainMode is what a terrain set's tiles are matched by, as in Godot:
+/// their corners (ponds, patches), their sides (a path, a fence), or both (a
+/// 47-tile set that joins every way).
 enum TerrainMode {
   corners("Corners"),
   sides("Sides"),
@@ -202,19 +198,20 @@ enum TerrainMode {
   const TerrainMode(this.label);
 }
 
-/// The places on a tile a terrain is told by, in a tag: its middle, then
-/// round it from the top, clockwise.
+/// The places on a tile in a terrain tag: its middle, then round it from
+/// the top, clockwise.
 const int tagCentre = 0, tagTop = 1, tagTopRight = 2, tagRight = 3, tagBottomRight = 4;
 const int tagBottom = 5, tagBottomLeft = 6, tagLeft = 7, tagTopLeft = 8;
 
 /// tagCorners and tagSides are the corners and the sides, clockwise from
-/// the top; tagStep is the way to the cell each one looks to.
+/// the top; tagStep is the (column, row) step to the neighbour each place
+/// faces.
 const List<int> tagCorners = [tagTopRight, tagBottomRight, tagBottomLeft, tagTopLeft];
 const List<int> tagSides = [tagTop, tagRight, tagBottom, tagLeft];
 const List<(int, int)> tagStep = [(0, 0), (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)];
 
-/// Terrain is one terrain of a set: grass, water, a path; and the tile that
-/// is all of it, its colour told from.
+/// Terrain is one terrain of a set (grass, water, a path), with its colour
+/// and an optional sample tile that is all of it.
 class Terrain {
   final String name;
   final Color color;
@@ -225,15 +222,15 @@ class Terrain {
 
   static Terrain? fromJson(Object? json) {
     if (json is! Map) return null;
-    return Terrain(json["name"] as String? ?? "Terrain",
+    return Terrain(jsonStr(json["name"]) ?? "Terrain",
         json["color"] is num ? colorFromJson(json["color"]) : const Color(0xFF888888),
-        sample: (json["sample"] as num?)?.toInt());
+        sample: (jsonNum(json["sample"]))?.toInt());
   }
 }
 
-/// TerrainSet is terrains whose tiles join one another, and what each
-/// tile of them is where: by the tile, nine terrains -- its middle, then
-/// round it from the top, clockwise; -1 where it is nothing.
+/// TerrainSet is terrains whose tiles join one another. [tags] holds, by
+/// tile index, nine terrain indices in tag order (see tagCentre); -1 is
+/// none.
 class TerrainSet {
   final String name;
   final TerrainMode mode;
@@ -241,7 +238,7 @@ class TerrainSet {
   final Map<int, List<int>> tags;
   const TerrainSet(this.name, {this.mode = TerrainMode.corners, this.terrains = const [], this.tags = const {}});
 
-  /// places is the places on a tile its mode tells tiles apart by.
+  /// places is the tag places its mode matches tiles by.
   List<int> get places => switch (mode) {
         TerrainMode.corners => tagCorners,
         TerrainMode.sides => [tagCentre, ...tagSides],
@@ -252,8 +249,8 @@ class TerrainSet {
       TerrainSet(name ?? this.name,
           mode: mode ?? this.mode, terrains: terrains ?? this.terrains, tags: tags ?? this.tags);
 
-  /// tagged is it with tile [tile]'s place [place] made terrain [t] -- or,
-  /// with every place nothing, the tile untagged.
+  /// tagged is this set with [tile]'s [place] set to terrain [t]; a tile
+  /// left with every place -1 is untagged.
   TerrainSet tagged(int tile, int place, int t) {
     var tag = [...(tags[tile] ?? List.filled(9, -1))];
     tag[place] = t;
@@ -276,7 +273,7 @@ class TerrainSet {
   static TerrainSet? fromJson(Object? json) {
     if (json is! Map) return null;
     return TerrainSet(
-      json["name"] as String? ?? "Terrain",
+      jsonStr(json["name"]) ?? "Terrain",
       mode: TerrainMode.values.where((m) => m.name == json["mode"]).firstOrNull ?? TerrainMode.corners,
       terrains: [
         if (json["terrains"] case List raw)
@@ -314,9 +311,9 @@ class TileAnimation {
   }
 }
 
-/// TileObject is a thing stood on an objects layer anywhere, not in a
-/// cell: a tree, a rock, a lamp post -- a stamp, standing with the middle
-/// of its bottom at ([x], [y]), counted in cells from the map's top left.
+/// TileObject is a stamp stood anywhere on an objects layer, not in a cell
+/// (a tree, a lamp post), with the middle of its bottom at ([x], [y]) in
+/// cells from the map's top left.
 class TileObject {
   final double x, y;
   final TileStamp stamp;
@@ -335,9 +332,9 @@ class TileObject {
   }
 }
 
-/// TileStamp is tiles laid together -- a pattern: a doorway, a tree of
-/// four tiles, a stretch of fence -- each at its place from the stamp's top
-/// left; or, painted at random, the tiles picked from.
+/// TileStamp is tiles laid together (a doorway, a stretch of fence), each at
+/// its (column, row) from the stamp's top left; or, when painting at random,
+/// the tiles picked from.
 class TileStamp {
   final List<(int, int, TileRef)> cells;
   const TileStamp(this.cells);
@@ -355,9 +352,8 @@ class TileStamp {
     return null;
   }
 
-  /// of is the tiles in [cells] -- by [cellKey] -- from column [c0] to
-  /// [c1] and row [r0] to [r1], as a stamp from its first painted cell's
-  /// row and column; null with none.
+  /// of is the painted [cells] (by [cellKey]) in columns [c0]..[c1] and rows
+  /// [r0]..[r1] as a stamp, trimmed to the painted ones; null with none.
   static TileStamp? of(Map<int, int> cells, int c0, int r0, int c1, int r1) {
     var found = <(int, int, TileRef)>[];
     for (var r = r0; r <= r1; r++) {
@@ -439,9 +435,8 @@ class TileLayer {
   /// word.
   final Map<int, int> cells;
 
-  /// isObjects is whether it is an objects layer: things stood anywhere --
-  /// [objects] -- and figures, Sprite elements of the canvas drawn among
-  /// them, each by where its feet are, the nearer the reader in front.
+  /// isObjects is whether it is an objects layer: [objects] stood anywhere,
+  /// and [figures] drawn among them, depth-sorted by where their feet are.
   final bool isObjects;
   final List<TileObject> objects;
 
@@ -452,13 +447,12 @@ class TileLayer {
   final double opacity;
   final Color? tint;
 
-  /// parallax is how far it moves when the scene's camera does, as much as
-  /// the rest of the map: 1 with it, less further off -- a far hill -- 0
-  /// not at all, the sky; more nearer, the leaves in front.
+  /// parallax is how far it moves when the scene's camera does: 1 with the
+  /// map, less for far off (0 is the sky), more for nearer than the map.
   final double parallax;
 
   /// repeat is which ways its cells go on for ever, and drift how far it
-  /// moves by itself, in cells a second: clouds going by.
+  /// moves by itself, in cells a second.
   final TileRepeat repeat;
   final Offset drift;
 
@@ -556,11 +550,13 @@ class TileLayer {
     if (json["cells"] case List raw) {
       for (var i = 0; i + 2 < raw.length; i += 3) {
         var (c, r, w) = (raw[i], raw[i + 1], raw[i + 2]);
-        if (c is num && r is num && w is num) cells[cellKey(c.toInt(), r.toInt())] = w.toInt();
+        if (c is num && r is num && w is num && c.isFinite && r.isFinite && w.isFinite) {
+          cells[cellKey(c.toInt(), r.toInt())] = w.toInt();
+        }
       }
     }
     return TileLayer(
-      name: json["name"] as String? ?? "Layer",
+      name: jsonStr(json["name"]) ?? "Layer",
       cells: cells,
       isObjects: json["kind"] == "objects",
       objects: [
@@ -595,9 +591,9 @@ class TileMapElement extends CanvasElement {
   /// layers is its layers, the first at the bottom.
   final List<TileLayer> layers;
 
-  /// cell is how wide a cell is on the canvas; its height is in the first
-  /// set's tiles' shape. A bigger tile than that stands up out of its cell,
-  /// on the cell's bottom, as Godot draws one.
+  /// cell is how wide a cell is on the canvas; its height follows the first
+  /// set's tile shape. A larger tile stands up out of its cell from the
+  /// cell's bottom, as in Godot.
   final double cell;
 
   /// pixelArt draws the tiles' pixels square, not smoothed.
@@ -606,10 +602,9 @@ class TileMapElement extends CanvasElement {
   /// patterns is the stamps kept with the map, to paint with again.
   final List<TileStamp> patterns;
 
-  /// light is the colour the whole map -- and the figures on it -- is lit
-  /// by, laid over it, as Godot's CanvasModulate: dusk, night, a cave; and
-  /// lightTo the colour it has become by the end of the scene, day turning
-  /// to night. Null, it is as it is.
+  /// light is a colour laid over the whole map and its figures, as Godot's
+  /// CanvasModulate (dusk, a cave), and lightTo the colour it reaches by the
+  /// end of the scene. Null is unlit.
   final Color? light;
   final Color? lightTo;
 
@@ -648,7 +643,7 @@ class TileMapElement extends CanvasElement {
       light: light,
       lightTo: lightTo);
 
-  /// scale is how many of the canvas's pixels a tile's pixel is drawn.
+  /// scale is how many canvas pixels one tile pixel is drawn as.
   double get scale => sources.isEmpty ? 1 : cell / sources.first.tileW;
 
   /// cellSize is a cell's size on the canvas.
@@ -735,8 +730,8 @@ class TileMapElement extends CanvasElement {
   TileMapElement withLayer(int i, TileLayer layer) =>
       copyWith(layers: [for (var (k, l) in layers.indexed) k == i ? layer : l]);
 
-  /// withoutSource is it with tile set [s] taken out, and every tile of it
-  /// rubbed out; the sets after it move up one.
+  /// withoutSource is this map with tile set [s] and every tile from it
+  /// removed; later sets are renumbered down one.
   TileMapElement withoutSource(int s) {
     TileRef moved(TileRef t) => t.source > s ? TileRef(t.word - (1 << 20)) : t;
     return copyWith(

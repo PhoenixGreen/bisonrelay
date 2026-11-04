@@ -4,10 +4,9 @@ import 'package:bruig/plugin_system/canvas/model/font_outlines.dart';
 import 'package:flutter/services.dart';
 
 // font_files.dart finds the font file a drawing's text is set from: the
-// faces the app carries itself, and the ones every desktop has, where this
-// one keeps them. A face asked for that is not to be had comes out in Inter,
-// the app's own -- and a style a family has no file for is made: an italic
-// leant over, where there is no italic to read.
+// app's bundled faces, and the common desktop ones where this system keeps
+// them. A missing face falls back to Inter, and a missing italic is the
+// upright face leant over.
 
 /// FontPick is the face found for a family, weight and slant: the face,
 /// and whether it has to be leant over to be italic.
@@ -28,9 +27,8 @@ class FontFiles {
   static String _key(String family, int weight, bool italic) =>
       "$family/$weight/$italic";
 
-  /// cached is the face for [family], [weight] and [italic] where it has
-  /// been read already -- what typing reads, a letter at a time, without
-  /// waiting -- or null.
+  /// cached is the face for [family], [weight] and [italic] if already read,
+  /// or null; typing uses it so as not to wait.
   FontPick? cached(String family, int weight, bool italic) =>
       _picks[_key(family, weight, italic)];
 
@@ -54,8 +52,8 @@ class FontFiles {
     return null;
   }
 
-  /// _read is the face [source] names -- an asset, or a file and the style
-  /// to pick out of it where it is a collection -- or null.
+  /// _read is the face [source] names (an asset, or a file plus the style
+  /// to pick from a collection), or null.
   Future<FontFace?> _read((String, String?) source) async {
     var (path, style) = source;
     Uint8List? bytes;
@@ -80,10 +78,16 @@ class FontFiles {
     return FontFace.parse(bytes);
   }
 
+  /// _familyName is what a family name may be. It comes from the document
+  /// and becomes part of a path, so only letters, digits, spaces and a few
+  /// marks.
+  static final _familyName = RegExp(r"^[A-Za-z0-9 _+&'-]{1,64}$");
+
   /// _sources is where [family] in [weight] and [italic] may be, best
   /// first, each with whether what is found there has to be leant over.
   List<((String, String?), bool)> _sources(
       String family, int weight, bool italic) {
+    if (!_familyName.hasMatch(family)) return const [];
     var bold = weight >= 600;
     // The family's own files with each style, best first: the one asked
     // for, then the same weight upright -- to lean -- then regular.

@@ -10,7 +10,10 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'canvas_store_age.dart';
+import 'package:path/path.dart' as path;
 
 // canvas_library_test.dart is the Assets sidebar's library against real files:
 // what is already stored joins it the first time, less a video's poster and
@@ -37,9 +40,12 @@ void main() {
     if (await root.exists()) await root.delete(recursive: true);
   });
 
-  const song = "a1b2c3d4e5f60718.mp3";
-  const film = "0f1e2d3c4b5a6978.mp4";
-  const filmSound = "99aa88bb77cc66dd.flac";
+  // Named by their digests, as the store requires.
+  String idOf(List<int> bytes, String ext) =>
+      "${sha256.convert(bytes).toString().substring(0, 16)}$ext";
+  final song = idOf([1, 2, 3], ".mp3");
+  final film = idOf([7, 8, 9], ".mp4");
+  final filmSound = idOf([4, 5, 6], ".flac");
 
   Future<(String, String)> storeSome() async {
     var badge = (await CanvasAssets.save(png(1)))!;
@@ -90,6 +96,7 @@ void main() {
     // since dropped -- and nothing using the song or the badge.
     var stray = (await CanvasAssets.save(png(40)))!;
     await CanvasStorage.save("", "Match day", const CanvasDocument());
+    await ageStores();
     await CanvasLibrary.tidy();
     expect(await CanvasAssets.exists(stray), isFalse);
     expect(await CanvasMedia.existingPath(MediaKind.audio, song), isNotNull);
@@ -114,12 +121,24 @@ void main() {
 
   test("added and renamed, newest first", () async {
     await CanvasLibrary.add(LibraryAsset.fromSource(
-        AssetKind.audio, const MediaSource(assetId: song, name: "Anthem")));
+        AssetKind.audio, MediaSource(assetId: song, name: "Anthem")));
     await CanvasLibrary.rename(song, "Club anthem");
     var all = await CanvasLibrary.list();
     expect(all.single.name, "Club anthem");
     var audio = AudioElement(const ElementBase(id: "a"),
         clip: MediaClip(playlist: [all.single.source]));
     expect(audio.clip.playlist.single.assetId, song);
+  });
+
+  test("a library index that cannot be read is kept, not written over",
+      () async {
+    await storeSome();
+    await CanvasLibrary.list();
+    var index =
+        File(path.join(await CanvasStorage.libraryDir(), "assets.json"));
+    await index.writeAsString("{ not json");
+    CanvasLibrary.resetForTest();
+    await CanvasLibrary.list();
+    expect(await File("${index.path}.unreadable").readAsString(), "{ not json");
   });
 }

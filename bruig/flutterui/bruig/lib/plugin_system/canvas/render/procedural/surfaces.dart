@@ -3,13 +3,11 @@ part of 'generators.dart';
 // surfaces.dart is the Surface style: paper, concrete, wood, marble, carbon
 // fibre, fabric and leather.
 //
-// Built the way the metal is -- see _metal -- rather than drawn: each kind is
-// a height and a colour at every point of a lattice, and a light shone
-// across the heights does the rest. That is what makes a weave look woven and
-// wood look like it has a grain rather than stripes: the light finds the
-// slopes. And like the metal, every relief is asked for as the slope it
-// should reach rather than as a depth, since fine detail given a depth comes
-// out as corrugated iron.
+// Built like the metal (see _metal) rather than drawn: each kind is a height
+// and a colour at every point of a lattice, and a light across the heights
+// does the rest; the light finding the slopes is what makes a weave look
+// woven. Every relief is asked for as the slope it should reach, not as a
+// depth, since fine detail given a depth comes out as corrugated iron.
 
 /// SurfaceKind is [ProceduralStyle.surface]'s "surfaceKind" setting.
 abstract final class SurfaceKind {
@@ -56,8 +54,8 @@ double _smooth(double a, double b, double x) {
 void _surface(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
   var short = math.min(rect.width, rect.height);
   if (short <= 0) return;
-  // A point a pixel, capped, as the metal's lattice is: the lattice is a
-  // ceiling on how fine anything can be.
+  // A point a pixel, capped, as in _metal: the lattice is a ceiling on how
+  // fine anything can be.
   var cols = (rect.width * latticeDetail).round().clamp(8, 448);
   var rows = (rect.height * latticeDetail).round().clamp(8, 448);
   var stepX = rect.width / cols, stepY = rect.height / rows;
@@ -186,8 +184,8 @@ void _surface(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
           var late = _smooth(0.7, 0.93, ring) * (1 - _smooth(0.93, 1, ring));
           var gf = carried(110 / size);
           var streak = n2.at(x * 1.2 / size, y * gf);
-          // And the fine pores running along the grain, which are most of
-          // what makes a board read as wood close up.
+          // The fine pores along the grain, most of what makes a board read
+          // as wood close up.
           var pore =
               math.pow(n3.at(x * 0.9 / size, y * gf * 1.7), 3).toDouble();
           main = late * 0.55 +
@@ -217,11 +215,10 @@ void _surface(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
           var sharp = 5 + n3.at(u * 2.2 / size, v * 2.2 / size) * 28;
           var vein = math.pow(near, sharp).toDouble() * 0.85 +
               math.pow(near, 2.2).toDouble() * 0.12;
-          // Fainter veins crossing the main ones at another angle, and a
-          // few of the accent -- gold, in a Calacatta -- that come and go
-          // along their length. Veins rather than the creases of a field:
-          // creases of value noise line up with its lattice and come out as
-          // little crosses.
+          // Fainter veins crossing the main ones, and a few of the accent
+          // (gold, in a Calacatta) that come and go along their length.
+          // Sines rather than the creases of a field: creases of value noise
+          // line up with its lattice and come out as little crosses.
           var y2 = (v * 0.9 - u * 0.45) * (2.2 + spec.density * 3) / size +
               (turb - 0.5) * 2.2;
           var fine = math.pow(1 - math.sin(y2 * math.pi).abs(), 30).toDouble() *
@@ -248,8 +245,7 @@ void _surface(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
           h += profile * depthFor(1.2 * relief, 1 / c) +
               (fibre - 0.5) * depthFor(0.3 * relief, 220 / size);
           // The tows running across catch the light and the ones running
-          // down do not, which is the whole of carbon fibre's look: a
-          // checker of light and dark that steps diagonally.
+          // down do not: a checker of light and dark that steps diagonally.
           main = (across ? 0.55 : 0.12) + profile * 0.2 + (fibre - 0.5) * 0.15;
         case SurfaceKind.fabric:
           // Threads: up and down in the main colour, across in the accent,
@@ -333,12 +329,11 @@ void _surface(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
 
 /// _shadeLattice lights a lattice of heights and colours and draws it.
 ///
-/// Lit from up and to the left, as the metal is: a diffuse light lifted so
-/// the side away from it is shaded rather than black, and a highlight as
-/// tight as each point's gloss. [metal] is how much each point mirrors its
-/// surroundings rather than scattering the light -- which, more than any
-/// highlight, is what makes a surface read as metal: a mirror shows the room
-/// it is in, tinted by its own colour.
+/// Shared by the surfaces and the metal finishes. Lit from up and to the
+/// left: a diffuse light lifted so the far side is shaded rather than black,
+/// and a highlight as tight as each point's gloss. [metal] is how much each
+/// point mirrors its surroundings rather than scattering light; a tinted
+/// reflection, more than any highlight, is what reads as metal.
 void _shadeLattice(
     ui.Canvas canvas,
     Rect rect,
@@ -365,9 +360,8 @@ void _shadeLattice(
   hz /= hl;
   var bright = 0.55 + spec.intensity * 0.6;
 
-  // The highlight's curve, worked out once for each gloss the surface uses
-  // and read from a table: a fractional power at every point of the
-  // lattice is the most expensive thing in it.
+  // The highlight's curve, tabled once per gloss: a fractional power at
+  // every point is the most expensive thing in the lattice.
   const steps = 1024;
   var curves = <double, Float64List>{};
   Float64List curveFor(double g) => curves.putIfAbsent(g, () {
@@ -393,10 +387,8 @@ void _shadeLattice(
     var diffuse = 0.45 + 0.55 * (nx * lx + ny * ly + nz * lz) / 0.70;
     var g = gloss[at];
     var hDot = (nx * hx + ny * hy + nz * hz).clamp(0.0, 1.0);
-    // Rounded to one of 64 glosses before its curve is looked up. Gloss that
-    // varies across a surface -- dulled by rust, say -- otherwise built a
-    // table for every point of it, and a rusty sheet took a second and a
-    // half to draw.
+    // Rounded to one of 64 glosses, so gloss that varies across a surface
+    // (dulled by rust, say) builds at most 64 tables, not one per point.
     var spec_ =
         g <= 0 ? 0.0 : curveFor((g * 64).round() / 64)[(hDot * steps).round()];
     var m = metal == null ? 0.0 : metal[at];

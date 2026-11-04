@@ -3,9 +3,8 @@ part of 'generators.dart';
 // tech.dart is the Grids & tech family: dots, ruled lines, a honeycomb, a
 // circuit board and falling symbols. (Blockchain is in blockchain.dart.)
 //
-// Each style's own settings default to what it drew before it had any, so
-// that a document saved then is the same picture now; the new ones are all
-// things a default leaves off.
+// Each style's settings default to what it drew before it had any, so older
+// documents look the same; every later addition is off by default.
 
 /// _dot draws one dot of radius [r] at [p] in the shape [shape] -- circle,
 /// square, diamond or cross.
@@ -94,9 +93,8 @@ void _dotGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 
 /// _ledGrid is a dot-matrix wall: cells lit in clusters rather than at random.
 ///
-/// The clustering is what a plain per-cell hash does not give: lit cells form
-/// blocks and runs, because a noise field decides the region's brightness and
-/// the per-cell hash only decides whether this cell reaches it.
+/// A noise field sets each region's brightness and the per-cell hash only
+/// decides whether a cell reaches it, so lit cells form blocks and runs.
 void _ledGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var cell = _unit(rect, spec);
   var cols = (rect.width / cell).ceil() + 1;
@@ -115,8 +113,7 @@ void _ledGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       var h = hash(spec.seed, ix, iy);
       var lit = h < region * spec.density * 1.8;
       if (!lit) {
-        // The dark cells of a real panel, which are what make it read as a
-        // panel rather than as dots on a wall.
+        // The dark cells, which make it read as a panel rather than dots.
         if (unlit) canvas.drawCircle(p, dot, off);
         continue;
       }
@@ -125,8 +122,7 @@ void _ledGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       var color = hot > 0.86 ? spec.accent : spec.foreground;
       var alpha = spec.intensity * (0.25 + region * 0.75);
 
-      // A diamond for a share of the cells, which breaks the grid up and
-      // costs one branch.
+      // A diamond for a share of the cells, to break the grid up.
       var diamond = hash(spec.seed + 41, ix, iy) < spec.variation * 0.45;
       var paint = Paint()
         ..blendMode = BlendMode.plus
@@ -181,8 +177,8 @@ void _lineGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     case GridLayout.perspective:
       return _floorGrid(canvas, rect, spec, t, step, every, thin, thick);
     case GridLayout.isometric:
-      // Three sets of lines at sixty degrees to one another: a grid of
-      // triangles, which is what isometric drawing paper is.
+      // Three sets of lines at sixty degrees: a grid of triangles, as on
+      // isometric paper.
       var gap = step * math.sqrt(3) / 2;
       var reach = rect.width + rect.height;
       var drift = spec.animated ? t * gap * 0.3 : 0.0;
@@ -201,9 +197,8 @@ void _lineGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       }
       return;
     default:
-      // Drifting, where it moves, a cell's width a few seconds -- slowly, so
-      // it is a background that is alive rather than one that is going
-      // somewhere.
+      // When animated, drifts slowly (a cell every few seconds): alive
+      // rather than going somewhere.
       var drift = spec.animated ? t * step * 0.25 : 0.0;
       var first = (drift / step).floor();
       var shift = drift - first * step;
@@ -295,7 +290,7 @@ void _sun(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double horizon) {
     canvas.drawRect(Rect.fromLTWH(box.left, y, box.width, h), cut);
   }
   canvas.restore();
-  // And the glow round it.
+  // The glow round it.
   canvas.drawCircle(
       c,
       r * 1.8,
@@ -474,14 +469,13 @@ void _circuit(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       horizontal = !horizontal;
     }
 
-    // A slow pulse along the traces when animated, so the board looks powered
-    // rather than printed. Each trace gets its own phase from the sequence, so
-    // they do not all breathe together.
+    // A slow pulse when animated, so the board looks powered; each trace has
+    // its own phase so they do not breathe together.
     var phase = rnd.next() * math.pi * 2;
     var pulse = spec.animated ? 0.55 + 0.45 * math.sin(t * 1.6 + phase) : 1.0;
 
-    // Angled, each corner is cut across at forty-five degrees, which is
-    // what makes a board look routed rather than drawn on squared paper.
+    // Angled, each corner is cut across at forty-five degrees, as a board
+    // is routed.
     var route = pts;
     if (angled && pts.length > 2) {
       var cut = cell * 0.45;
@@ -599,9 +593,8 @@ void _rain(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
             (hash(spec.seed + 17, ix, 2) * (6 + spec.variation * 26)).round()) *
         trail;
     var tailLen = math.max(1, tail.round());
-    // The head is measured in rows and advances with time. Offsetting by the
-    // column's own hash is what stops every column starting level, which is
-    // the single most obvious giveaway that a rain effect is generated.
+    // The head is in rows and advances with time. Offset by the column's
+    // hash so the columns do not start level, the most obvious giveaway.
     var head = (hash(spec.seed + 23, ix, 3) * rowsOnScreen * 3) +
         (spec.animated ? t * speed * 6 : 0);
 
@@ -611,10 +604,9 @@ void _rain(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       var y = up ? rect.bottom - row * size : rect.top + row * size;
       if (y < rect.top - size || y > rect.bottom + size) continue;
 
-      // The glyph is chosen from the *cell*, not from the position in the
-      // tail, so a column's characters stay put while the light runs down
-      // through them -- which is what makes it read as falling light rather
-      // than as scrolling text.
+      // The glyph is chosen from the cell, not the place in the tail, so a
+      // column's characters stay put while the light runs down through them:
+      // falling light rather than scrolling text.
       var cellRow = row.floor();
       var gi = (hash(spec.seed + 31, ix,
                   cellRow + (spec.animated ? (t * speed).floor() : 0)) *

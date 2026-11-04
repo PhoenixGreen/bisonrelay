@@ -11,38 +11,28 @@ import 'package:flutter/services.dart';
 // while it is being written.
 //
 // A canvas is painted, not laid out, so there is nothing on screen to type
-// into: the words are pixels drawn by a CustomPainter. What goes over the top
-// instead is a real TextField, positioned on the element, transformed the same
-// way, and styled from the same TextSpec -- so what is typed looks like what
-// will be drawn, at the size and face it will be drawn at.
+// into. What goes over the top is a real TextField, positioned on the
+// element, transformed the same way and styled from the same TextSpec, so
+// what is typed looks like what will be drawn.
 //
-// It replaces a two-line Content box in the settings panel, which could show
-// neither the size nor the face nor the width the text had to fit, so writing
-// a headline meant typing in one place and looking in another.
-//
-// The illusion has three requirements, and all three are easy to lose:
+// The illusion has three requirements, all easy to lose:
 //
 //   the element's own text is not painted while this is open, or the words
 //   appear twice, half a pixel apart;
 //   the field has no decoration, no fill and no cursor padding of its own;
-//   and the transform matches the stage's exactly -- scale, then rotation
+//   and the transform matches the stage's exactly: scale, then rotation
 //   about the centre, in that order.
 
 /// CanvasTextEditor is the field itself, in the element's own coordinates.
-///
-/// It is given the element's rectangle in *stage* pixels and the scale it is
-/// drawn at, and sizes its type by that scale so a canvas zoomed to 200% is
-/// typed into at 200%.
+/// It is given the element's rectangle in stage pixels and the scale it is
+/// drawn at, so a canvas zoomed to 200% is typed into at 200%.
 class CanvasTextEditor extends StatefulWidget {
   final TextElement element;
 
   /// item is the one of the element's extra pieces being typed into, or null
-  /// for the element's own paragraph.
-  ///
-  /// It brings its own words and its own type, and it is given a rectangle of
-  /// its own -- so the box's padding and the room an icon has taken are not
-  /// applied here: those put the *paragraph* where it goes, and the piece is
-  /// already where it goes. See textItemRects.
+  /// for the element's own paragraph. A piece has its own words, type and
+  /// rectangle, so the box's padding and an icon's room are not applied: see
+  /// textItemRects.
   final TextItem? item;
 
   /// rect is where the element's box is on the stage, unrotated.
@@ -71,13 +61,9 @@ class CanvasTextEditor extends StatefulWidget {
 }
 
 class _CanvasTextEditorState extends State<CanvasTextEditor> {
-  /// The writing tools' controller rather than a plain one, which is the
-  /// whole of what it takes to get the marks: it composes the styled text
-  /// itself and reads the capability from the context it is painted in.
-  ///
-  /// With no provider enabled it behaves exactly like a plain controller, so
-  /// there is nothing to switch on here and nothing to check -- a canvas on a
-  /// machine with the writing tools off is the editor it always was.
+  /// The writing tools' controller, which is all it takes to get the marks:
+  /// it composes the styled text itself and reads the capability from the
+  /// context. With no provider enabled it behaves like a plain controller.
   late final TextEditingController _text = WritingTextEditingController(
       text: widget.item?.text ?? widget.element.text);
   final FocusNode _focus = FocusNode();
@@ -101,10 +87,9 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
     super.dispose();
   }
 
-  /// _onFocus closes the editor when the focus goes elsewhere -- clicking the
-  /// canvas, another element, or a control in the sidebar. Clicking away is
-  /// how most people finish typing, and an editor that stayed open behind the
-  /// next thing they did would keep swallowing their keystrokes.
+  /// _onFocus closes the editor when the focus goes elsewhere (the canvas,
+  /// another element, a control in the sidebar): an editor left open behind
+  /// the next thing would keep swallowing keystrokes.
   void _onFocus() {
     if (!_focus.hasFocus) widget.onDone();
   }
@@ -121,15 +106,10 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
   Widget build(BuildContext context) {
     var e = widget.element;
     var item = widget.item;
-    // The type it is *drawn* in, which with Fit to box on is not the type it
-    // is set in. Clicking into a fitted paragraph and having the letters
-    // change size is the editor answering a question the canvas has already
-    // answered differently, and it makes the thing hard to edit -- which is
-    // the one job an editor has.
-    //
-    // A piece is set in its own type, and held to the edge its slot holds it
-    // to -- which is how it is drawn, and the only way the words do not move
-    // as they are typed.
+    // The type it is drawn in, which with Fit to box on is not the type it is
+    // set in: the letters must not change size when the paragraph is clicked
+    // into. A piece is set in its own type and held to the edge its slot holds
+    // it to, as it is drawn, so the words do not move as they are typed.
     var spec = item == null
         ? drawnTextSpec(e, e.bounds)
         : item.spec.copyWith(
@@ -146,10 +126,8 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
       child: Transform.rotate(
         angle: e.rotationRadians,
         child: Padding(
-          // The box's padding, and then the room an icon has taken -- so the
-          // words are typed where they will be drawn. Without the second
-          // part, clicking into a headline with an icon beside it moved the
-          // words on top of it for as long as the editor was open.
+          // The box's padding and then the room an icon has taken, so the words
+          // are typed where they will be drawn rather than on top of the icon.
           padding: item == null ? _room(e, scale) : EdgeInsets.zero,
           child: Align(
             alignment: switch (spec.verticalAlign) {
@@ -159,9 +137,8 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
             },
             child: Shortcuts(
               shortcuts: const {
-                // Escape finishes. Enter must not: a text element is a
-                // paragraph, and the one key everybody presses to start a new
-                // line cannot be the one that closes the editor.
+                // Escape finishes. Enter must not: a text element is a paragraph, and
+                // Enter starts a new line.
                 SingleActivator(LogicalKeyboardKey.escape): _FinishIntent(),
               },
               child: Actions(
@@ -193,19 +170,16 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
                     color: spec.color,
                   ),
                   decoration: const InputDecoration(
-                    // Nothing at all: no border, no fill, no counter, and --
-                    // the one that is easy to miss -- no content padding. The
-                    // default inset is sixteen pixels, which would put every
-                    // character somewhere other than where it will be drawn.
+                    // Nothing at all: no border, no fill, no counter, and no content
+                    // padding (the default inset of sixteen pixels would put every
+                    // character somewhere other than where it will be drawn).
                     isDense: true,
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.zero,
                   ),
-                  // What an enabled capability offers for the text under the
-                  // pointer -- a correction, a word to add to the dictionary,
-                  // a synonym -- falling back to the ordinary menu. Empty
-                  // when nothing is enabled, which is why nothing here names
-                  // a provider.
+                  // What an enabled capability offers for the text under the pointer
+                  // (a correction, a dictionary word, a synonym), falling back to the
+                  // ordinary menu. Nothing here names a provider.
                   contextMenuBuilder: (context, editableTextState) =>
                       writingContextMenu(context, editableTextState,
                           fallbackItems:
@@ -227,11 +201,9 @@ class _FinishIntent extends Intent {
 
 /// CanvasCellEditor is one table cell, opened for typing where it is drawn.
 ///
-/// A plain field rather than CanvasTextEditor, which sets the element's own
-/// type at the element's own size across the whole box. That is right for a
-/// headline and wrong for a cell in a grid, where what is wanted is a slot the
-/// size of the cell with a visible edge -- the cell has rules round it already
-/// and an invisible field inside them cannot be told from the table.
+/// A plain field rather than CanvasTextEditor: a cell wants a slot the size
+/// of the cell with a visible edge, since an invisible field inside the
+/// cell's rules cannot be told from the table.
 class CanvasCellEditor extends StatefulWidget {
   final String value;
   final double fontSize;
@@ -240,14 +212,8 @@ class CanvasCellEditor extends StatefulWidget {
 
   /// onPickPicture puts a picture in this cell instead of words.
   ///
-  /// Offered here rather than behind a right-click menu, because this is
-  /// already the gesture for "I want to change this cell" -- and a menu with
-  /// one item on it is a menu nobody finds.
-  ///
-  /// Returns a Future so that it can be *awaited*. Called and forgotten, an
-  /// exception inside it becomes an unhandled Future error, which in a
-  /// release build goes nowhere at all -- so a picker that fell over on its
-  /// first line looked exactly like a button that was not connected.
+  /// It returns a Future so it is awaited: called and forgotten, an exception
+  /// in it would be an unhandled Future error, silent in a release build.
   final Future<void> Function() onPickPicture;
 
   const CanvasCellEditor({
@@ -264,9 +230,7 @@ class CanvasCellEditor extends StatefulWidget {
 }
 
 class _CanvasCellEditorState extends State<CanvasCellEditor> {
-  /// A table cell gets the marks too. It is text somebody wrote, in the same
-  /// canvas, and a spelling that is flagged in a headline and not in the cell
-  /// under it would be the tools half applied.
+  /// A table cell gets the writing tools' marks too.
   late final TextEditingController _text =
       WritingTextEditingController(text: widget.value);
   final FocusNode _focus = FocusNode();
@@ -280,24 +244,18 @@ class _CanvasCellEditorState extends State<CanvasCellEditor> {
     _text.selection =
         TextSelection(baseOffset: 0, extentOffset: widget.value.length);
     _focus.addListener(() {
-      // Not while the file picker is up. Opening it takes the focus away from
-      // the field, which closed the editor and took its own button with it --
-      // so the tap that opened the picker was cancelled before it finished
-      // and no picture ever arrived.
+      // Not while the file picker is up: opening it takes the focus from the
+      // field, and closing the editor then would cancel the tap that opened it.
       if (!_focus.hasFocus && !_picking) widget.onDone();
     });
   }
 
   /// _picking is whether the picture button has been pressed.
   ///
-  /// Set on pointer *down*, not on the tap. The field loses focus the moment
-  /// the pointer goes down somewhere else, and losing focus is what closes
-  /// this editor -- so a flag set when the tap completed was set after the
-  /// editor it was protecting had already gone, taking the half-finished tap
-  /// with it. Which is why the button did nothing three times over.
-  ///
-  /// Not in setState: a rebuild in the middle of a gesture is another way to
-  /// lose it.
+  /// Set on pointer down, not on the tap: the field loses focus as the
+  /// pointer goes down elsewhere, which closes this editor, so a flag set when
+  /// the tap completed would be too late. Not in setState: a rebuild in the
+  /// middle of a gesture can lose it.
   bool _picking = false;
 
   @override
@@ -354,12 +312,9 @@ class _CanvasCellEditorState extends State<CanvasCellEditor> {
             ),
             Tooltip(
               message: "Put a picture in this cell",
-              // A bare detector rather than an InkWell, which asks for focus
-              // and so takes it off the field the moment it is pressed.
-              // Listener rather than the detector's own onTapDown, which
-              // fires only once the gesture arena has settled -- by which
-              // time the focus has already moved and the editor has already
-              // been told to close. A Listener sees the pointer itself.
+              // A Listener rather than an InkWell, which takes focus off the field
+              // when pressed, or onTapDown, which fires only once the gesture arena
+              // has settled, by which time the editor has been told to close.
               child: Listener(
                 onPointerDown: (_) => _picking = true,
                 child: GestureDetector(
@@ -395,18 +350,15 @@ class _CloseCellIntent extends Intent {
   const _CloseCellIntent();
 }
 
-/// CounterInput is the field that opens on a live counter's Set button.
-///
-/// On the button rather than in a dialog: a box over the middle of the canvas
-/// asking for one number is a lot of ceremony for a stopwatch, and it covers
-/// the thing being set. It opens with the current value selected, so typing
-/// replaces it and there is nothing to clear first.
+/// CounterInput is the field that opens on a live counter's Set button,
+/// rather than a dialog that would cover the counter. It opens with the
+/// current value selected, so typing replaces it.
 class CounterInput extends StatefulWidget {
   final double value;
   final int decimals;
 
   /// onDone hands back the number typed, or null where the field was closed
-  /// without one -- which means leave the counter alone.
+  /// without one, which leaves the counter alone.
   final ValueChanged<double?> onDone;
 
   const CounterInput({
@@ -441,9 +393,8 @@ class _CounterInputState extends State<CounterInput> {
     super.dispose();
   }
 
-  /// _read is the number typed, with the separators a counter writes taken
-  /// back out: somebody setting a counter that shows 1,240 types what they
-  /// see.
+  /// _read is the number typed, with the separators a counter writes (1,240)
+  /// taken back out.
   double? _read() => double.tryParse(
       _field.text.trim().replaceAll(",", "").replaceAll(" ", ""));
 

@@ -6,15 +6,11 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// structure_panel.dart is a piece of sound's structure, where a document of
-// scenes has its scenes: the sections it is laid out in -- an intro, a
-// verse, a chorus, a middle eight -- each so many bars long, one after
-// another along the timeline.
-//
-// The structure is a map of the timeline, not a cut through it: every sound
-// is on the one timeline, and one that runs from the verse into the chorus
-// simply plays on. With no sections the piece is its master structure, the
-// whole of it as one.
+// structure_panel.dart is a sound document's sections (intro, verse, chorus),
+// each so many bars long, in the place a document of scenes has its scenes.
+// The sections map the one timeline rather than cut it: a sound running from
+// the verse into the chorus plays on. With no sections the piece is its master
+// structure.
 
 class CanvasStructurePanel extends StatelessWidget {
   final CanvasController controller;
@@ -54,10 +50,8 @@ class CanvasStructurePanel extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-            // One line where the sidebar has room for it; in a narrow one --
-            // or at a larger text size -- the bars and the buttons go under
-            // the name. They were a row of fixed widths that ran off the
-            // panel's edge.
+            // One line where there is room; in a narrow sidebar or at a larger
+            // text size the bars and buttons go under the name.
             child: LayoutBuilder(builder: (context, box) {
               var swatch = InkWell(
                 key: ValueKey("sectionColour-$i"),
@@ -174,9 +168,8 @@ class CanvasStructurePanel extends StatelessWidget {
       );
     }
 
-    // A list rather than a column, as the Scenes panel is: the stack gives
-    // the panel its height, and a structure of a dozen sections -- or the
-    // master's note and the chips in a short panel -- is taller than that.
+    // A list, as the Scenes panel is: the stack sets the panel's height
+    // and the sections can be taller than that.
     return ListView(padding: const EdgeInsets.all(8), children: [
       if (sections.isEmpty)
         Container(

@@ -3,10 +3,9 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// image_warp.dart is a picture bent by a grid of points over it: each point
-// moved, and the picture following in smooth curves through them. The grid is
-// fractions of the picture's own box -- nought to one across and down -- so a
-// warp moves, sizes and turns with the picture it is on.
+// image_warp.dart is a picture bent by a grid of points over it, the picture
+// following in smooth curves through them. Points are fractions (0 to 1) of
+// the picture's own box, so a warp moves, sizes and turns with the picture.
 
 /// mostWarpCells is the most cells a warp grid has across or down.
 const int mostWarpCells = 10;
@@ -17,9 +16,8 @@ class ImageWarp {
   final int cols;
   final int rows;
 
-  /// points are where each grid point is, row by row from the top-left, as
-  /// fractions of the picture's box -- or empty for an even grid, a picture
-  /// not warped at all.
+  /// points are the grid points, row by row from the top-left, as fractions
+  /// of the picture's box; empty for an unwarped picture.
   final List<Offset> points;
 
   const ImageWarp({this.cols = 4, this.rows = 4, this.points = const []});
@@ -53,8 +51,8 @@ class ImageWarp {
       ? points
       : ImageWarp.even(cols, rows).points;
 
-  /// at is the point [j] across and [i] down; past the edges, the grid
-  /// carried on straight, so the curve runs on through the outermost points
+  /// at is the point [j] across and [i] down. Past the edges the grid is
+  /// extended straight, so the curve runs on through the outermost points
   /// rather than bending back at them.
   Offset at(List<Offset> g, int i, int j) {
     if (i < 0) return at(g, 0, j) * 2 - at(g, 1, j);
@@ -64,10 +62,9 @@ class ImageWarp {
     return g[i * across + j];
   }
 
-  /// sample is where the point [u] across and [v] down the picture -- its
-  /// own fractions -- is drawn: through every grid point, in smooth curves
-  /// between them (Catmull-Rom, across then down). Past nought or one, the
-  /// warp carried on.
+  /// sample is where the picture's point ([u], [v]), in its own fractions,
+  /// is drawn: Catmull-Rom through the grid, across then down. Values past 0
+  /// or 1 follow the extended grid.
   Offset sample(double u, double v, [List<Offset>? g]) {
     g ??= grid;
     var x = u * cols, y = v * rows;
@@ -88,8 +85,7 @@ class ImageWarp {
   }
 
   /// regridded is this warp with [cols] by [rows] cells, each new point
-  /// where the warp already puts it: the shape kept, the grid finer or
-  /// coarser.
+  /// where the warp already puts it, so the shape is kept.
   ImageWarp regridded(int cols, int rows) {
     cols = cols.clamp(1, mostWarpCells);
     rows = rows.clamp(1, mostWarpCells);
@@ -102,7 +98,6 @@ class ImageWarp {
     ]);
   }
 
-  /// withPoints is this warp with [next] as its points.
   ImageWarp withPoints(List<Offset> next) =>
       ImageWarp(cols: cols, rows: rows, points: List.unmodifiable(next));
 
@@ -125,7 +120,9 @@ class ImageWarp {
     var rows = jsonInt(json["r"], 4).clamp(1, mostWarpCells);
     var raw = json["p"];
     var points = <Offset>[];
-    if (raw is List && raw.length == (cols + 1) * (rows + 1) * 2) {
+    if (raw is List &&
+        raw.length == (cols + 1) * (rows + 1) * 2 &&
+        raw.every((v) => v is num)) {
       for (var k = 0; k + 1 < raw.length; k += 2) {
         points.add(
             Offset((raw[k] as num).toDouble(), (raw[k + 1] as num).toDouble()));
@@ -154,10 +151,10 @@ class ImageWarp {
       points.isEmpty ? 0 : points.first, points.isEmpty ? 0 : points.last);
 }
 
-/// warpMesh is [warp] as triangles for Canvas.drawVertices: [box] -- the
-/// picture's box -- bent, each grid cell cut [fine] times each way so the
-/// curves are smooth, with [texture] saying where each corner of it is in
-/// the picture as drawn (a raster of [room], [scale] pixels to a unit).
+/// warpMesh is [warp] as triangles for Canvas.drawVertices: the picture's
+/// [box] bent, each grid cell cut [fine] times each way. Texture
+/// coordinates are into the picture as rasterised over [room], at [scale]
+/// pixels to a unit.
 Vertices warpMesh(ImageWarp warp, Rect box, Rect room, double scale,
     {int fine = 8}) {
   var g = warp.grid;
@@ -190,8 +187,7 @@ Vertices warpMesh(ImageWarp warp, Rect box, Rect room, double scale,
       textureCoordinates: texture, indices: indices);
 }
 
-/// warpBounds is where [warp] draws [box]'s corners and edges, to the
-/// nearest box round them all: what a warped picture reaches.
+/// warpBounds is the box round where [warp] draws [box]'s edges.
 Rect warpBounds(ImageWarp warp, Rect box) {
   if (!warp.active) return box;
   var g = warp.grid;

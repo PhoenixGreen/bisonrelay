@@ -8,22 +8,16 @@ import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:flutter/painting.dart';
 
 // quick_fill.dart is the paint bucket: a click inside an area that lines
-// close round -- any lines, from any number of strokes, crossing or touching
-// -- fills it, as a shape of its own laid under them.
-//
-// Found the way a bucket in a painting program finds it: the lines are drawn
-// into a picture, the area is flooded out from the click until it meets
-// them, and the edge of what was flooded is traced back into a shape. Lines
-// that nearly meet count as meeting, within the gap allowed, so a sketch
-// whose strokes stop a hair short of each other still fills.
+// close round, from any number of strokes, fills it with a shape of its own
+// laid under them. As in a painting program, the lines are drawn into a
+// picture, flooded from the click, and the flood's edge traced back into a
+// shape. Lines that stop short within the gap allowed count as meeting.
 
 /// quickFilled is [e] with the area round [canvasPoint] filled with
-/// [colour], or null where the lines do not close round it -- the flood
-/// reached the drawing's edge -- or there are no lines to close it. [gap]
-/// is the widest opening, in the drawing's units, still counted as closed.
-///
-/// The fill goes under every shape with a line, and over the fills that
-/// have none: under the ink, over a background.
+/// [colour], or null where no lines close round it. [gap] is the widest
+/// opening, in the drawing's units, still counted as closed. The fill goes
+/// under every shape with a line and over the fills without: under the ink,
+/// over a background.
 Future<VectorElement?> quickFilled(
     VectorElement e, Offset canvasPoint, Color colour,
     {double gap = 0}) async {
@@ -35,12 +29,10 @@ Future<VectorElement?> quickFilled(
   ];
   if (lined.isEmpty) return null;
 
-  // The grid: everything drawn, and a margin round it, about twelve
-  // hundred cells across its longer side -- fine enough for a hairline,
-  // quick to flood. Everything drawn and not only the drawing's box: while
-  // it is edited, strokes go where the pen goes, and the box is only fitted
-  // round them when the editing is done. A box that cut through a shape
-  // would let the flood out through the cut.
+  // The grid: everything drawn plus a margin, about 1200 cells across its
+  // longer side. Everything drawn, not the drawing's box: while editing, the
+  // box is not yet fitted round the strokes, and a box cutting through a shape
+  // would let the flood out.
   Rect? reach;
   for (var d in lined) {
     var b = d.combined ? d.outline.getBounds() : shapeExtent(d.style);

@@ -48,18 +48,15 @@ import 'package:flutter/scheduler.dart';
 part 'canvas_mixer_strips.dart';
 part 'canvas_mixer_motion.dart';
 
-// canvas_mixer.dart is the mixer: a strip for each sound on the timeline and
-// a master strip, floated over the canvas from a button at the end of the
-// timeline -- see CanvasTimeline -- and resized by the grip along its top.
+// canvas_mixer.dart is the mixer panel: a column for each channel, each
+// return and the master (the columns are canvas_mixer_strips.dart), resized
+// by dragging its top edge. The same widget is the effects panel, one
+// column's chain of devices (CanvasMixer.effects), and a section of a
+// sound's settings (CanvasMixer.section).
 //
-// A strip, top to bottom: its name; its EQ, drawn as the curve in miniature;
-// its compressor; its balance; mute and solo; a fader beside a meter; and the
-// fader's reading. Clicking the EQ or the compressor opens that strip's
-// editor in the panel, and back returns to the strips.
-//
-// Everything a strip sets is saved with the clip it belongs to, except solo,
-// which is for listening -- see CanvasController.solo. What it sets is
-// defined in mix.dart, in terms the editor and an export both follow.
+// Everything it sets is saved with the canvas except solo, which is for
+// listening (see CanvasController.solo). What it sets is defined in
+// model/mix.dart, in terms the editor and an export both follow.
 
 /// mixerMinHeight is the least the panel is ever given, and
 /// mixerDefaultHeight what it opens at; how short it goes with its bands as
@@ -68,14 +65,13 @@ const double mixerMinHeight = 56;
 const double mixerDefaultHeight = 320;
 
 /// mixerLeastHeight is how short the mixer goes with its bands as
-/// [controller]'s C, D and M say -- each at its least: a slot of clips and
-/// its stop, a device slot, the fader at its least or the mixer minimised
-/// as a row -- for the screen to stop a drag at. Short of their room, the
-/// clips and the devices scroll; the mixer is never swapped for another
-/// view of it.
+/// [controller]'s C, D and M say, each at its least (a slot of clips and its
+/// stop, a device slot, the fader at its least or the mixer minimised as a
+/// row), for the screen to stop a drag at. Short of that, the clips and the
+/// devices scroll.
 ///
-/// [bare] is the mixer at its smallest -- see mixerSmallest -- which drops
-/// the columns' heads; by default, whether it is.
+/// [bare] is the mixer at its smallest (see mixerSmallest), which drops the
+/// columns' heads; by default, whether it is.
 double mixerLeastHeight(CanvasController controller, {bool? bare}) {
   bare ??= controller.mixerSmallest;
   var bands = 0.0;
@@ -133,8 +129,8 @@ class CanvasMixer extends StatefulWidget {
   final VoidCallback onClose;
 
   /// resizable is whether it has a grip along its top to be dragged taller
-  /// by. Not where its top is pinned -- the effects over the mixer with the
-  /// canvas put away, where the line between the two is the mixer's grip.
+  /// by. Not where its top is pinned (the effects over the mixer with the
+  /// canvas put away, where the line between the two is the mixer's grip).
   final bool resizable;
 
   /// only is the one channel to show beside the master, by key, or null for
@@ -143,8 +139,8 @@ class CanvasMixer extends StatefulWidget {
   final String? only;
   final bool embedded;
 
-  /// effects makes this the effects panel: the chain of one strip --
-  /// controller.effectsOf -- in a panel of its own, rather than the strips.
+  /// effects makes this the effects panel: the chain of one strip
+  /// (controller.effectsOf) in a panel of its own, rather than the strips.
   final bool effects;
 
   const CanvasMixer({
@@ -225,8 +221,8 @@ class _CanvasMixerState extends State<CanvasMixer>
   /// _open opens [key]'s chain of effects on [what], unfolded and scrolled
   /// to.
   void _open(String key, _Opened what) {
-    // In the effects panel, from here and from a sound's settings alike:
-    // the strips stay where they are.
+    // In the effects panel, from here and from a sound's settings alike: the
+    // strips stay where they are.
     controller.openEffects(key, device: _deviceOf(what));
   }
 
@@ -234,11 +230,10 @@ class _CanvasMixerState extends State<CanvasMixer>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       var at = _devices[device]?.currentContext;
       if (at != null && at.mounted) {
-        // Into view only if it is not: a scroll view takes no presses while
-        // it moves, so a chain moved by its padding for a device already
-        // in view swallowed the first press on it. Otherwise its left edge
-        // in view -- its switch and its name -- where a narrow chain cannot
-        // show it whole.
+        // Into view only if it is not: a scroll view takes no presses while it
+        // moves, so scrolling to a device already in view would swallow the
+        // first press on it. Otherwise its left edge (its switch and name) in
+        // view, where a narrow chain cannot show it whole.
         var box = at.findRenderObject() as RenderBox?;
         var view =
             Scrollable.maybeOf(at)?.context.findRenderObject() as RenderBox?;
@@ -288,7 +283,7 @@ class _CanvasMixerState extends State<CanvasMixer>
     super.dispose();
   }
 
-  /// _meter reads every strip's level, about thirty times a second.
+  /// _last and _meter read every strip's level, about thirty times a second.
   Duration _last = Duration.zero;
   void _meter(Duration now) {
     if (now - _last < const Duration(milliseconds: 33)) return;
@@ -341,19 +336,16 @@ class _CanvasMixerState extends State<CanvasMixer>
 
   /// build zooms the desk to the reader's text size, as Ableton's zoom does.
   ///
-  /// The strips, the devices and their screens are drawn at sizes of their
-  /// own, a desk's, and at the larger text sizes in Settings > Appearance
-  /// their labels ran out of them -- four pixels over at Medium, a hundred
-  /// at Extra Large. So the desk is laid out at the ordinary size and
-  /// scaled as a whole: everything bigger by the same amount, in the same
-  /// proportions. The faders, curves and dials read the pointer in their
-  /// own coordinates, so they stay under it.
+  /// The strips, devices and their screens are drawn at a desk's own sizes,
+  /// and at the larger text sizes their labels ran out of them, so the desk is
+  /// laid out at the ordinary size and scaled as a whole. The faders, curves
+  /// and dials read the pointer in their own coordinates, so they stay under
+  /// it.
   @override
   Widget build(BuildContext context) {
     var zoom = MediaQuery.textScalerOf(context).scale(1);
     // Never so far that the desk is left less than its least height: a
-    // mixer folded down to one line, zoomed, was a line too short for its
-    // own names.
+    // mixer folded to one line, zoomed, would be too short for its names.
     if ((zoom - 1).abs() < 0.01 || zoom <= 0) return _desk(context, 1);
     if (zoom > 1) {
       zoom = math.max(
@@ -363,17 +355,16 @@ class _CanvasMixerState extends State<CanvasMixer>
               widget.height /
                   (widget.effects ? effectsMinHeight : mixerMinHeight)));
     }
-    // Held to its own size either way: zoomed, or -- with no room to zoom --
+    // Held to its own size either way: zoomed, or (with no room to zoom)
     // drawn at the size it was laid out for.
     Widget unscaled(double zoom) => MediaQuery(
           data:
               MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
           child: Builder(builder: (context) => _desk(context, zoom)),
         );
-    // Zoomed to one -- the panel dragged down to its least -- it is still
-    // laid out the same way: unwrapped there, the desk was built afresh as
-    // it crossed, every device moved over to the new one, and a device's
-    // tooltip showing as it moved asserted (Ken's log, 2026-10-30).
+    // Zoomed to one (the panel dragged down to its least) it is still laid
+    // out the same way: rebuilt unwrapped as it crossed, every device would
+    // move to a new desk, and a tooltip showing as it moved asserts.
     return LayoutBuilder(builder: (context, box) {
       var width = box.maxWidth.isFinite
           ? box.maxWidth
@@ -395,7 +386,7 @@ class _CanvasMixerState extends State<CanvasMixer>
   }
 
   /// _desk is the mixer, or the effects, laid out at [zoom]'s share of its
-  /// height -- see build.
+  /// height (see build).
   Widget _desk(BuildContext context, double zoom) {
     var theme = MixerLook.of(context);
     return ListenableBuilder(
@@ -415,15 +406,15 @@ class _CanvasMixerState extends State<CanvasMixer>
         TimelineChannel? lane;
         if (editing != null && editing != _master) {
           lane = lanes.where((l) => l.key == editing).firstOrNull;
-          // A channel gone from the timeline: the master's, in the effects
-          // panel, which always shows a chain. A return is not on the
-          // timeline, and keeps its own.
+          // A channel gone from the timeline: the master's, in the effects panel,
+          // which always shows a chain. A return is not on the timeline and keeps
+          // its own.
           if (lane == null && controller.returnOf(editing) == null) {
             editing = widget.effects ? _master : null;
           }
         }
-        // No scroll bars, on the strips or the chain: they scroll with the
-        // wheel or the trackpad, and a bar was a stripe across the meters.
+        // No scroll bars, on the strips or the chain: they scroll with the wheel
+        // or the trackpad, and a bar would be a stripe across the meters.
         return _SoundScene(
             speakers: controller.document.audio.speakers,
             placed: controller.placementsNow,
@@ -452,10 +443,9 @@ class _CanvasMixerState extends State<CanvasMixer>
                       ),
                     ]),
                   ),
-                  // Its top edge, dragged: taller or shorter. No handle --
-                  // the cursor says it. The drag is in the desk's own,
-                  // zoomed, coordinates: put back into the screen's, so the
-                  // edge stays with the pointer.
+                  // Its top edge, dragged: taller or shorter. The drag is in the
+                  // desk's own, zoomed, coordinates, put back into the screen's so
+                  // the edge stays with the pointer.
                   if (!widget.embedded && widget.resizable)
                     Positioned(
                       top: 0,
@@ -481,9 +471,9 @@ class _CanvasMixerState extends State<CanvasMixer>
     );
   }
 
-  /// _leastOrScrolled is [strips] given at least their least height --
-  /// see mixerLeastHeight -- and scrolled where the panel is shorter: the
-  /// screen never makes it so, but a window can be.
+  /// _leastOrScrolled is [strips] given at least their least height (see
+  /// mixerLeastHeight) and scrolled where the panel is shorter, as a window
+  /// can be.
   Widget _leastOrScrolled(Widget strips) => LayoutBuilder(builder: (c, box) {
         var least = mixerLeastHeight(controller) - _edgeRoom;
         if (widget.embedded || box.maxHeight >= least) return strips;
@@ -505,7 +495,7 @@ class _CanvasMixerState extends State<CanvasMixer>
           }
         : {for (var s in MixerSection.values) s: controller.bandState(s)};
     var showReturns = !widget.embedded && controller.returnsShown;
-    // Every band one height in every column: the tallest column's devices
+    // Every band is one height in every column: the tallest column's devices
     // set it, so the faders all start on one line.
     var devicesWanted = [
       for (var l in lanes)
@@ -519,11 +509,11 @@ class _CanvasMixerState extends State<CanvasMixer>
       if (showReturns)
         for (var r in returns) _ReturnStrip.devicesWanted(r),
     ].reduce(math.max);
-    // Three slots, while the clips and the mixer show whole: a longer
-    // chain scrolls, rather than squeezing them.
+    // Three slots, while the clips and the mixer show whole: a longer chain
+    // scrolls rather than squeezing them.
     var devicesCap = _slotsHeight(3);
-    // The sends: as tall as the most dials take -- a narrow column's, two
-    // to a row, where there is one.
+    // The sends: as tall as the most dials take (a narrow column's, two to a
+    // row, where there is one).
     var sendsH = widget.embedded && lanes.isEmpty
         ? 0.0
         : math.max(
@@ -541,13 +531,13 @@ class _CanvasMixerState extends State<CanvasMixer>
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
       child: LayoutBuilder(builder: (context, box) {
-        // Inside a column's padding and its edge.
         // At its smallest: no heads, and no rail of bands.
         var bare =
             !widget.embedded && !widget.effects && controller.mixerSmallest;
+        // The column's height inside its padding and its edge.
         var bands = _Bands.fit(
             box.maxHeight - 14, states, devicesWanted, devicesCap,
-            sendsH: sendsH, bare: bare);
+            sendsH: sendsH, bare: bare, clipRows: controller.slotsShown);
         return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(
             child: lanes.isEmpty && widget.embedded
@@ -567,8 +557,8 @@ class _CanvasMixerState extends State<CanvasMixer>
                 : ListView(
                     scrollDirection: Axis.horizontal,
                     children: [
-                      // The sounds', but an element's own, which go with
-                      // it -- and none, showing only the animation.
+                      // The sounds', except an element's own, which go with it; none
+                      // shows only the animation.
                       for (var (i, lane) in lanes.indexed)
                         if (!ownedKeys.contains(lane.key) &&
                             show != TimelineShow.animation)
@@ -597,7 +587,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                     ],
                   ),
           ),
-          // The returns, pinned beside the master as Ableton's are: in view
+          // The returns, pinned beside the master as Ableton's are, in view
           // however far the channels are scrolled. Never more than half the
           // width; past that they scroll among themselves.
           if (showReturns) ...[
@@ -665,9 +655,9 @@ class _CanvasMixerState extends State<CanvasMixer>
               returnsShown: controller.returnsShown,
               onReturns: () =>
                   controller.returnsShown = !controller.returnsShown,
-              allNarrow: _allKeys(lanes).every(narrow.contains),
+              allNarrow: _allKeys(lanes, rows).every(narrow.contains),
               onNarrowAll: () {
-                var keys = _allKeys(lanes);
+                var keys = _allKeys(lanes, rows);
                 controller.setAllNarrow(keys, !keys.every(narrow.contains));
               },
             ),
@@ -677,8 +667,8 @@ class _CanvasMixerState extends State<CanvasMixer>
     );
   }
 
-  /// _removeDevice takes device [id] -- "dev2", "midi0", "speech" -- out of
-  /// strip [key]'s chain: one change to undo.
+  /// _removeDevice takes device [id] ("dev2", "midi0", "speech") out of strip
+  /// [key]'s chain, as one change to undo.
   void _removeDevice(String key, String id) {
     controller.beginInteraction();
     if (id == "speech") {
@@ -703,8 +693,11 @@ class _CanvasMixerState extends State<CanvasMixer>
   }
 
   /// _allKeys is every column's key: channels, returns, master.
-  List<String> _allKeys(List<TimelineChannel> lanes) => [
+  List<String> _allKeys(
+          List<TimelineChannel> lanes, List<CanvasElement> rows) =>
+      [
         for (var l in lanes) l.key,
+        for (var e in rows) motionStripKey(e.id),
         for (var r in controller.document.returns) r.id,
         _master,
       ];
@@ -712,8 +705,8 @@ class _CanvasMixerState extends State<CanvasMixer>
   Widget _channelStrip(
       MixerLook theme, TimelineChannel lane, int index, _Bands bands) {
     var e = lane.first.element;
-    // As it plays now: a setting a lane moves, where the lane has it -- and a
-    // hand on one of them holds it there. See changeChannelMix.
+    // As it plays now: a setting a lane moves, where the lane has it, and a
+    // hand on one holds it there. See changeChannelMix.
     var shown = controller.mixNow(lane);
     return _ChannelStrip(
       key: ValueKey("strip-${lane.key}"),
@@ -835,8 +828,8 @@ class _CanvasMixerState extends State<CanvasMixer>
           ? master.compFirst
           : ret?.mix.compFirst ?? lane!.mix.compFirst;
       var skin = DeviceSkin.themed(theme.colors);
-      // The editor -- a clip's, opened from its slot, or a part's piano
-      // roll -- first in its channel's strip.
+      // The editor (a clip's, opened from its slot, or a part's piano roll)
+      // first in its channel's strip.
       var wide = controller.editorWide;
       var most = math.max(420.0, room.maxWidth - 24);
       // As its right edge was dragged to; else as Wider or Narrower has it.
@@ -881,10 +874,8 @@ class _CanvasMixerState extends State<CanvasMixer>
               child: ClipEditor(controller: controller, wide: wide, part: true),
             ),
           ),
-        // A return's own devices first -- its reverb, its delay -- then a
-        // way to add another, then its EQ and compressor.
-        // A MIDI channel's In and its MIDI effects, before its instrument
-        // plays: what comes in, and what is done to the notes.
+        // A MIDI channel's In and its MIDI effects, before its instrument plays:
+        // what comes in, and what is done to the notes.
         if (lane != null && controller.instrumentChannel(key)) ...[
           device(
               "midiIn",
@@ -932,8 +923,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                   folded: f,
                   onFold: fold,
                   height: h)),
-        // A return's devices, a channel's own or the master's -- a chorus,
-        // a gate --
+        // A return's devices, a channel's own or the master's (a chorus, a gate),
         // then a way to add another, then its EQ and compressor.
         if (ret != null || lane != null || isMaster) ...[
           for (var i = 0; i < controller.devicesOf(key).length; i++)
@@ -1011,10 +1001,10 @@ class _CanvasMixerState extends State<CanvasMixer>
           ),
         ],
         // Where it is heard from, big enough to place it by: the room, its
-        // speakers and the channel among them -- stereo or surround.
+        // speakers and the channel among them, stereo or surround.
         if (lane != null || ret != null)
           device("panner", (f, fold) {
-            // A channel's pan as it plays now -- see mixNow.
+            // A channel's pan as it plays now: see mixNow.
             var mix = lane != null ? controller.mixNow(lane) : ret!.mix;
             void write(ChannelMix next, {bool transient = false}) {
               controller.beginInteraction();
@@ -1041,8 +1031,8 @@ class _CanvasMixerState extends State<CanvasMixer>
           }),
         if (lane != null)
           device("meter",
-              // The channel's own strip, as on the mixer -- its panning,
-              // mute and solo, fader and meter -- under its name.
+              // The channel's own strip, as on the mixer (panning, mute and solo,
+              // fader and meter), under its name.
               (f, fold) {
             var level = _now[key] ?? (-90.0, -90.0);
             var peak = _peaks[key] ?? (-90.0, -90.0);
@@ -1139,15 +1129,14 @@ class _CanvasMixerState extends State<CanvasMixer>
                 onFold: fold,
                 height: h)),
       ];
-      // The devices' own lists scroll as they always have: only the chain
-      // itself is not dragged.
+      // The devices' own lists still scroll; only the chain itself is not
+      // dragged.
       var inside = ScrollConfiguration.of(context);
-      // Held to the left: a chain narrower than the panel was centred.
+      // Held to the left, not centred, when narrower than the panel.
       return Align(
         alignment: Alignment.topLeft,
-        // By the wheel and the trackpad, not by a drag: a drag in a device
-        // -- a note drawn, a point moved -- is the device's, and the chain
-        // took the first from the piano roll and the clip editor.
+        // By the wheel and the trackpad, not by a drag: a drag in a device (a
+        // note drawn, a point moved) is the device's.
         child: ScrollConfiguration(
           behavior: inside.copyWith(
               scrollbars: false, dragDevices: {PointerDeviceKind.trackpad}),
@@ -1157,10 +1146,9 @@ class _CanvasMixerState extends State<CanvasMixer>
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // Each wrapper keyed as its device is: unkeyed, they were
-              // matched by place, so a device put in ahead -- the clip
-              // editor opened -- moved every one after it to another
-              // wrapper, and a showing tooltip moved that way asserts.
+              // Each wrapper keyed as its device is: matched by place, a device put in
+              // ahead (the clip editor opened) would move every one after it to
+              // another wrapper, and a showing tooltip moved that way asserts.
               for (var (i, d) in chain.indexed) ...[
                 if (i > 0) const SizedBox(width: 4),
                 ScrollConfiguration(
@@ -1184,8 +1172,8 @@ typedef _MixWrite<T> = void Function(T next, {bool transient});
 // Pieces of a strip
 // ---------------------------------------------------------------------------
 
-/// faderTop and faderBottom are the fader's travel, in decibels. The bottom is
-/// silence.
+/// _faderTop and _faderBottom are the fader's travel, in decibels. The
+/// bottom is silence.
 const double _faderTop = 6;
 const double _faderBottom = -60;
 
@@ -1210,7 +1198,7 @@ String dbText(double db) => db <= -89
     : "${db > 0 ? "+" : db < 0 ? "−" : ""}${db.abs().toStringAsFixed(1)}";
 
 /// parseDb reads a level somebody typed: "-6", "−6.5 dB", "+3", "0", or
-/// "-inf" for silence -- clamped to what the fader reaches. Null for anything
+/// "-inf" for silence, clamped to what the fader reaches. Null for anything
 /// that is not a level, which leaves the fader where it was.
 double? parseDb(String text) {
   var t = text
@@ -1311,8 +1299,8 @@ class _DbReadingState extends State<DbReading> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _open,
-        // One line, shrunk rather than wrapped: a reading on two lines was
-        // a column's fader shorter than its neighbours'.
+        // One line, shrunk rather than wrapped: a reading on two lines would
+        // make a column's fader shorter than its neighbours'.
         child: FittedBox(
           fit: BoxFit.scaleDown,
           child: Text("${dbText(widget.db)}${widget.unit}",
@@ -1336,9 +1324,9 @@ class _Fader extends StatelessWidget {
   final VoidCallback onCommit;
   final bool wide;
 
-  /// small is a mixer strip's: half the size of the effects' own, for
-  /// shorter, narrower strips. [labels] is whether its scale is numbered --
-  /// not in a narrow strip, which has room for the marks alone.
+  /// small is a mixer strip's: half the size of the effects' own. [labels] is
+  /// whether its scale is numbered (not in a narrow strip, which has room for
+  /// the marks alone).
   final bool small;
   final bool labels;
 
@@ -1516,9 +1504,9 @@ class _MeterPainter extends CustomPainter {
   final bool horizontal;
   _MeterPainter(this.level, this.peak, this.colors, {this.horizontal = false});
 
-  /// A meter reads from minus sixty to nought, in lit segments: green, then
-  /// amber for the last nine decibels, then red at the top -- the colours
-  /// of every meter anybody has seen, from the studio palette.
+  /// _fill is how far a meter is lit: it reads from minus sixty to nought, in
+  /// segments, green, then amber for the last nine decibels, then red at the
+  /// top.
   double _fill(double db) => ((db + 60) / 60).clamp(0.0, 1.0);
 
   @override
@@ -1612,8 +1600,8 @@ Widget _slot(MixerLook theme, String label, bool on, Widget trailing,
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           child: LayoutBuilder(
             builder: (context, box) => Row(children: [
-              // A long label -- "Add a device", a device's own name -- fades
-              // at the slot's edge rather than running out of it.
+              // A long label ("Add a device", a device's own name) fades at the
+              // slot's edge rather than running out of it.
               ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: box.maxWidth * 0.7),
                 child: Text(label,
@@ -1628,10 +1616,8 @@ Widget _slot(MixerLook theme, String label, bool on, Widget trailing,
                             : theme.colors.onSurfaceVariant)),
               ),
               const SizedBox(width: 4),
-              // Scaled down rather than overflowing: a reading like
-              // "−12.0 dBTP" beside its label is wider than a strip in some
-              // fonts, and a strip that overflows is a striped warning where
-              // the control should be.
+              // Scaled down rather than overflowing: "−12.0 dBTP" beside its label
+              // is wider than a strip in some fonts.
               Expanded(
                 child: Align(
                   alignment: Alignment.centerRight,
@@ -1697,8 +1683,8 @@ class _Toggle extends StatelessWidget {
       );
 }
 
-/// _Balance is a knob: dragged up to turn right, down to turn left, double-
-/// clicked to centre.
+/// _Balance is a knob: dragged up to turn right, down to turn left,
+/// double-clicked to centre.
 class _Balance extends StatelessWidget {
   final double value;
   final MixerLook theme;
@@ -1777,9 +1763,9 @@ String angleText(double angle) {
 
 /// _PanControl is where a channel is heard from. Stereo: the balance knob.
 /// Surround: a pad of the room, its speakers round it, the channel a dot to
-/// drag round them -- with how wide its two sides are spread, and how much
-/// goes to the LFE. Placed by the picture: the same pad, showing where the
-/// picture puts it, and not to be dragged.
+/// drag (with how wide its two sides are spread, and how much goes to the
+/// LFE). Placed by the picture: the same pad, showing where the picture
+/// puts it, not to be dragged.
 class _PanControl extends StatelessWidget {
   final String channel;
   final ChannelMix mix;
@@ -1814,8 +1800,7 @@ class _PanControl extends StatelessWidget {
     var small = TextStyle(fontSize: 9, color: colors.onSurfaceVariant);
     var value = TextStyle(fontSize: 10, color: colors.onSurface);
     // The pad beside its readings, not over them: a strip is a column of
-    // fixed height with the fader taking what is left, and the pad stacked
-    // over its numbers took eighty pixels from the fader.
+    // fixed height with the fader taking what is left.
     var pad = Tooltip(
       message: placed != null
           ? "Heard from where the picture puts it: see the sound's "
@@ -1849,9 +1834,8 @@ class _PanControl extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Each shrinks rather than runs out of a narrow strip.
-                // Placed says so; otherwise the reading -- Front, or an
-                // angle -- says what it is by itself.
+                // Each shrinks rather than runs out of a narrow strip. Placed says
+                // so; otherwise the reading (Front, or an angle) says what it is.
                 if (placed != null)
                   fit(Text("Placed", style: small), Alignment.centerLeft),
                 fit(
@@ -1904,7 +1888,7 @@ class _PanControl extends StatelessWidget {
 }
 
 /// speakerLights is how much of a channel each of [layout]'s speakers
-/// carries, nought to one -- the same sums MixGraph lands it with -- for
+/// carries, nought to one (the same sums MixGraph lands it with), for
 /// lighting them.
 List<double> speakerLights(
     SpeakerLayout layout, ChannelMix mix, Heard? placed) {
@@ -1940,10 +1924,8 @@ List<double> speakerLights(
 
 /// _PannerDevice is the effects panel's view of where a channel is heard
 /// from: the room from above, big enough to place a sound by, its speakers
-/// lit by how much of the channel each carries. Stereo: the dot is the
-/// balance, between the front pair. Surround: anywhere round the room,
-/// with its width and its LFE beside. Placed by the picture: where the
-/// picture puts it, and not to be dragged.
+/// lit by how much of the channel each carries. See _PanControl for the
+/// stereo, surround and placed cases.
 class _PannerDevice extends StatelessWidget {
   final String channel;
   final ChannelMix mix;
@@ -1992,10 +1974,9 @@ class _PannerDevice extends StatelessWidget {
                 ? "C"
                 : "${mix.balance < 0 ? "L" : "R"}"
                     "${(mix.balance.abs() * 100).round()}");
-    // The room fills the device: as wide as it is, as tall as the device
-    // less the bar of readings along its foot -- a room is wider than it is
-    // deep, and the speakers stand round it on an ellipse to match. A press
-    // is read against the room as it was drawn.
+    // The room fills the device: as wide as it is, as tall as the device less
+    // the bar of readings along its foot, with the speakers on an ellipse to
+    // match. A press is read against the room as it was drawn.
     void point(Offset local, Size room) {
       var rx = room.width / 2 - 22, ry = room.height / 2 - 18;
       var d = local - room.center(Offset.zero);
@@ -2658,7 +2639,7 @@ class _LoudnessEditor extends StatelessWidget {
   }
 }
 
-/// _Sends is a channel's sends: a dial for each return, by its letter --
+/// _Sends is a channel's sends: a dial for each return, by its letter,
 /// dragged up for more, double-clicked for none.
 class _Sends extends StatelessWidget {
   final ChannelMix mix;
@@ -2733,10 +2714,9 @@ class _SendDial extends StatefulWidget {
 }
 
 class _SendDialState extends State<_SendDial> {
-  /// _from is where the drag started, and _was where the dial was then:
-  /// the turn is measured from the press, not added up from each move --
-  /// several moves can arrive between two frames, and summed against a dial
-  /// not yet redrawn all but the last were lost.
+  /// _from is where the drag started, and _was where the dial was then: the
+  /// turn is measured from the press, not summed from each move, which loses
+  /// moves that arrive between two frames.
   double _from = 0, _was = 0;
 
   @override

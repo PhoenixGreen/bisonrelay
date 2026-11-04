@@ -5,15 +5,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/preset_scaling.dart';
 
-// saved_preset.dart is a scene or a whole canvas somebody wants again.
-//
-// The same bargain an element preset makes -- see element_preset.dart -- of a
-// whole thing saved as its own JSON with a name on it, so there is nothing
-// here to keep in step as scenes and documents grow settings.
-//
-// A preset is a copy and not a link. What is saved is what was there at the
-// moment of saving; editing the scene it came from afterwards changes
-// nothing, which is the point of saving one at all.
+// saved_preset.dart is a saved scene, canvas, brush, look or similar: the
+// thing's own JSON with a name on it (as element_preset.dart does), so
+// nothing here changes as they grow settings. A preset is a copy, not a link.
 
 /// SavedPresetKind is what a saved preset holds.
 enum SavedPresetKind {
@@ -23,23 +17,18 @@ enum SavedPresetKind {
   /// canvas is a whole document: its page, its backdrop and all its scenes.
   canvas("canvases"),
 
-  /// brush is a pencil brush somebody made -- see VectorBrush.
+  /// brush is a pencil brush somebody made. See VectorBrush.
   brush("brushes"),
 
   /// pitchView is a sports pitch's camera somebody liked.
   pitchView("pitch-views"),
 
-  /// look is a picture's grade -- its adjustments, textures and colour
-  /// layers -- to put on another picture. See lookData.
+  /// look is a picture's grade (adjustments, textures and colour layers) to
+  /// put on another picture. See lookData.
   look("looks"),
 
-  /// paintBrush is a brush for a picture's paint layers somebody made --
-  /// see BrushPreset.
-  paintBrush("paint-brushes"),
-
-  /// pose is a character's pose somebody kept -- see the Puppet section's
-  /// poses.
-  pose("poses");
+  /// paintBrush is a brush for a picture's paint layers. See BrushPreset.
+  paintBrush("paint-brushes");
 
   /// folder is where these are kept on disk, under the presets folder.
   final String folder;
@@ -57,16 +46,12 @@ class SavedPreset {
   /// data is the scene's or the document's own JSON.
   final Map<String, dynamic> data;
 
-  /// made is when it was saved, which is how the list is ordered where two
-  /// presets share a name.
+  /// made is when it was saved; it orders presets that share a name.
   final DateTime made;
 
-  /// madeOn is the page it was designed on.
-  ///
-  /// Kept so that a scene saved on a banner and dropped on a square canvas
-  /// arrives at the scale it was designed at rather than hanging off the
-  /// side -- see presetScale. A canvas preset carries its page in its own
-  /// JSON as well; this is what a *scene* has no other way of saying.
+  /// madeOn is the page it was designed on, so a scene dropped on another
+  /// page shape arrives scaled to fit (see presetScale). A canvas preset also
+  /// carries its page in its own JSON.
   final Size? madeOn;
 
   const SavedPreset({
@@ -78,12 +63,9 @@ class SavedPreset {
     this.madeOn,
   });
 
-  /// scene is a fresh scene from this preset, under new ids.
-  ///
-  /// New ids every time, and it matters for the same reason an element's
-  /// does: two scenes sharing one are one scene as far as a button's Go to
-  /// scene is concerned, and two elements sharing one cannot both be
-  /// selected.
+  /// buildScene is a fresh scene from this preset, under new ids: scenes or
+  /// elements sharing an id are one as far as Go to scene and selection are
+  /// concerned.
   CanvasScene? buildScene({Size? on}) {
     if (kind != SavedPresetKind.scene) return null;
     var scene = CanvasScene.fromJson(data);
@@ -91,8 +73,7 @@ class SavedPreset {
       id: newSceneId(),
       elements: [for (var e in scene.elements) e.withId(newElementId())],
     );
-    // Sized to the page it is arriving on, where one was given and it is not
-    // the page it was made on.
+    // Sized to the page it arrives on, where one is given.
     return on == null ? fresh : scaledScene(fresh, presetScale(madeOn, on));
   }
 
@@ -112,26 +93,20 @@ class SavedPreset {
   /// buildScenes is what this preset adds to a document that is already
   /// open: one scene, or every scene of a saved canvas.
   ///
-  /// A canvas preset can start a document of its own, and it can also be
-  /// dropped into one -- and dropped in, what it is is its scenes. Its page
-  /// size and backdrop stay with the document being worked on, which is the
-  /// only thing that can be meant by adding one canvas to another.
+  /// A canvas preset dropped into a document adds only its scenes; the page
+  /// size and backdrop stay the open document's.
   List<CanvasScene> buildScenes({Size? on}) => switch (kind) {
         SavedPresetKind.scene => [if (buildScene(on: on) case var s?) s],
         SavedPresetKind.canvas => _canvasScenes(on),
         SavedPresetKind.brush ||
         SavedPresetKind.pitchView ||
         SavedPresetKind.look ||
-        SavedPresetKind.paintBrush ||
-        SavedPresetKind.pose =>
+        SavedPresetKind.paintBrush =>
           const [],
       };
 
-  /// _canvasScenes is a saved canvas's scenes, sized to the page they are
-  /// being added to.
-  ///
-  /// The page a canvas preset was made on is its own -- it is a whole
-  /// document -- so that is what its scenes are scaled from.
+  /// _canvasScenes is a saved canvas's scenes, scaled from its own page to
+  /// the page they are added to.
   List<CanvasScene> _canvasScenes(Size? on) {
     var document = buildDocument();
     if (document == null) return const [];

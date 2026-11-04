@@ -14,15 +14,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 // text_layers.dart is a text element's layers: its own words first, then
-// each piece added to the box -- more words, or a picture -- in the order
-// they stack, the way a picture's and a drawing's layers are shown (see
-// ImageLayersList and VectorLayersList, which this follows). Shut, a strip
-// that scrolls sideways; opened, a list down the panel, with each piece's
-// eye and lock and the picked one's arrows, copy and delete. The layer
-// picked is the one whose settings the panel shows.
-//
-// In reading order rather than front first: pieces in one slot stack in the
-// order they are in the list, so first in the list is first down the box.
+// each piece added to the box (more words, or a picture), shown as a
+// picture's and a drawing's layers are (see ImageLayersList and
+// VectorLayersList). The layer picked is the one whose settings the panel
+// shows. In reading order, not front first: pieces in one slot stack in the
+// order of the list.
 
 /// TextLayersList is [element]'s layers. [onChanged] writes a change to the
 /// element as one step.

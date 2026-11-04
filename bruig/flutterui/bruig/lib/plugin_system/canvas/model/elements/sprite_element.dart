@@ -4,14 +4,11 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// sprite_element.dart is the Sprite element: a sprite sheet -- a picture
-// of frames side by side, of anything: a figure, a flame, a coin, a door --
-// sliced into them, by a grid or by the frames the sheet's own notes say,
-// and its animations, each a run of those frames played at so many frames
-// a second. A figure's can have directions too: frames for each way it
-// faces, played for the way it faces now, as a sprite sheet is drawn for
-// a game. (An animation is a SpriteAction, from when sprites were figures
-// only; saved canvases keep the name.)
+// sprite_element.dart is the Sprite element: a sprite sheet sliced into
+// frames (by a grid, or by the sheet's own notes) and its animations, each a
+// run of frames at so many frames a second, optionally per facing. An
+// animation is a SpriteAction: the name dates from figure-only sprites and
+// saved canvases keep it.
 
 /// SpriteFacing is a way a sprite can face: towards the reader, away, or
 /// to the page's left or right.
@@ -24,19 +21,10 @@ enum SpriteFacing {
   final String label;
   const SpriteFacing(this.label);
 
-  /// of is the way a character turned [turn] degrees faces: turned a
-  /// quarter round it faces the page's left, as a sketch's side view does.
-  static SpriteFacing of(double turn) {
-    var t = ((turn + 180) % 360 + 360) % 360 - 180;
-    if (t.abs() < 45) return front;
-    if (t.abs() > 135) return back;
-    return t > 0 ? left : right;
-  }
 }
 
-/// SpriteAction is one thing a sprite does -- stands, walks, jumps -- as
-/// the frames played for each way it faces, how fast, and whether over
-/// and over or once.
+/// SpriteAction is one animation (stand, walk, jump): the frames for each
+/// facing, how fast, and whether it loops.
 class SpriteAction {
   final String name;
   final Map<SpriteFacing, List<int>> frames;
@@ -47,10 +35,9 @@ class SpriteAction {
       {this.frames = const {}, this.fps = 8, this.loop = true});
 
   /// framesFor is the frames played facing [f], and whether they are drawn
-  /// flipped: a side with none of its own is the other side mirrored, and
-  /// a way with none at all is the front -- mirrored, facing left, as a
-  /// pack's figure walks to the right in its frames. Without it, a player
-  /// run left walked backwards (Ken).
+  /// flipped. A side with none of its own is the other side mirrored; left
+  /// with neither side is the front mirrored, since a pack's figure walks to
+  /// the right in its frames.
   (List<int>, bool) framesFor(SpriteFacing f, {bool mirrorSides = true}) {
     var own = frames[f];
     if (own != null && own.isNotEmpty) return (own, false);
@@ -107,29 +94,28 @@ class SpriteAction {
   }
 }
 
-/// SpriteCue is what a sprite takes up on a frame of the canvas, until the
-/// next cue: an action, and -- when the cue says -- a way to face.
+/// SpriteCue is the action (and optionally facing) a sprite takes up on a
+/// canvas frame, until the next cue.
 typedef SpriteCue = ({int frame, String action, SpriteFacing? facing});
 
 /// SpriteElement is a sprite sheet on the canvas, and what is made of it.
 class SpriteElement extends CanvasElement {
-  /// sheet is the stored picture of the frames, and width and height its
-  /// size in pixels -- kept so the frames can be found without it.
+  /// sheet is the stored picture id; sheetW and sheetH its size in pixels,
+  /// kept so frames can be found without loading it.
   final String sheet;
   final String sheetName;
   final int sheetW;
   final int sheetH;
 
-  /// columns and rows are the grid the sheet is sliced by; margin how far
-  /// in from its edge the first frame is, and spacing the gap between
-  /// frames -- all in the sheet's pixels.
+  /// columns and rows are the slicing grid; margin is the inset of the
+  /// first frame and spacing the gap between frames, in sheet pixels.
   final int columns;
   final int rows;
   final double margin;
   final double spacing;
 
-  /// rects are the frames a sheet's own notes give, in place of the grid:
-  /// an Aseprite or TexturePacker sheet, packed tight.
+  /// rects are the frames from the sheet's own notes (Aseprite,
+  /// TexturePacker), used in place of the grid.
   final List<Rect> rects;
 
   final List<SpriteAction> actions;
@@ -148,37 +134,33 @@ class SpriteElement extends CanvasElement {
   /// facing is the way it faces, until a cue turns it.
   final SpriteFacing facing;
 
-  /// faceTravel turns it to face the way it goes on the timeline -- a slime
-  /// patrolling a ledge -- left or right as it moves, and held while it
-  /// stands still (Ken: patrols walked backwards one way).
+  /// faceTravel turns it left or right the way it moves across, held while
+  /// it stands still.
   final bool faceTravel;
 
-  /// drawnLeft is whether its frames, where it has only the front's, are
-  /// drawn facing left -- Kenney's enemies are -- rather than right, as a
-  /// pack's figures walk: what is mirrored to face the other way.
+  /// drawnLeft is whether front-only frames are drawn facing left (as
+  /// Kenney's enemies are) rather than right, which flips the mirroring.
   final bool drawnLeft;
 
-  /// directions is whether its animations have frames for each way it can
-  /// face -- a figure's -- or one run each, whichever way: a flame's.
+  /// directions is whether its animations have frames per facing (a
+  /// figure) or one run whichever way (a flame).
   final bool directions;
 
-  /// glow draws it as light: lightening what is under it, its black
-  /// nothing -- a flame or a spark drawn white on black.
+  /// glow draws it as light: it lightens what is under it and its black is
+  /// nothing.
   final bool glow;
 
-  /// tint is the colour its frames are drawn in, laid over their own -- as
-  /// Godot's modulate -- or null for their own.
+  /// tint is laid over the frames' own colours (as Godot's modulate), or
+  /// null for none.
   final Color? tint;
 
-  /// built is what it was built from, when the builder made its sheet --
-  /// the pieces chosen and the animations -- for the builder to open with
-  /// again. See sprite_builder.dart.
+  /// built is the builder's recipe (pieces and animations) when the builder
+  /// made the sheet, so it can reopen with it. See sprite_builder.dart.
   final Map<String, dynamic>? built;
 
-  /// drawn is the part of its frames anything is drawn in, as shares of a
-  /// frame -- every frame's, together -- or null where it was not measured:
-  /// what a game touches. A pack's coin is drawn in the middle of a square
-  /// of nothing, and touching the square took it from a step away.
+  /// drawn is the part of a frame anything is drawn in across all frames,
+  /// as shares of a frame, or null if not measured. It is what a game
+  /// touches, so a coin in a mostly empty square is not hit from a step away.
   final Rect? drawn;
 
   const SpriteElement(
@@ -213,7 +195,6 @@ class SpriteElement extends CanvasElement {
   /// hasSheet is whether it has a sheet to draw from yet.
   bool get hasSheet => sheet.isNotEmpty;
 
-  /// Its sheet is a stored picture, kept while it is used.
   @override
   Set<String> get assetIds => {if (sheet.isNotEmpty) sheet};
 
@@ -275,11 +256,14 @@ class SpriteElement extends CanvasElement {
     return actionNamed(name) ?? actions.firstOrNull;
   }
 
-  /// facingAt is the way it faces on [frame]: the last cue's that turns it,
-  /// or its own.
-  SpriteFacing facingAt(int frame) {
+  /// facingAt is the way it faces on [frame]: its travel with [faceTravel],
+  /// else the last cue that turns it, or its own.
+  ///
+  /// [dxAt] is how far across it has been moved on a frame, by its clips as
+  /// well as its keyframes; without it, its keyframes alone.
+  SpriteFacing facingAt(int frame, {double Function(int frame)? dxAt}) {
     if (faceTravel) {
-      if (_travelFacing(frame) case var f?) return f;
+      if (_travelFacing(frame, dxAt) case var f?) return f;
     }
     if (!directions) return SpriteFacing.front;
     var f = facing;
@@ -289,22 +273,29 @@ class SpriteElement extends CanvasElement {
     return f;
   }
 
-  /// _travelFacing is the way it goes across on the timeline at [frame]:
-  /// the last move before it, held while it stands -- or, still from the
-  /// start, its first move after -- or null where it never moves across.
-  SpriteFacing? _travelFacing(int frame) {
+  /// _travelFacing is the way it moves across at [frame]: the last move
+  /// before, held while it stands, else its first move after, or null if it
+  /// never moves across.
+  SpriteFacing? _travelFacing(int frame, double Function(int frame)? dxAt) {
     var track = base.track;
-    if (track == null || track.isEmpty) return null;
+    var moved = dxAt ??
+        (track == null || track.isEmpty ? null : (int f) => track.at(f).dx);
+    if (moved == null) return null;
+    // How far to look: back, ten seconds at 60 fps; on, to its last
+    // keyframe. Moved by clips, worked out pose by pose, five seconds each
+    // way at most.
+    var reach = dxAt == null ? 600 : 120;
+    var last = track != null && !track.isEmpty ? track.keys.last.frame : 0;
+    if (dxAt != null) last = math.max(last, frame + reach);
     SpriteFacing? way(int a, int b) {
-      var dx = track.at(b).dx - track.at(a).dx;
+      var dx = moved(b) - moved(a);
       if (dx.abs() < 0.01) return null;
       return dx < 0 ? SpriteFacing.left : SpriteFacing.right;
     }
 
-    for (var f = frame; f > frame - 600 && f > 0; f--) {
+    for (var f = frame; f > frame - reach && f > 0; f--) {
       if (way(f - 1, f) case var w?) return w;
     }
-    var last = track.keys.last.frame;
     for (var f = math.max(0, frame); f < last; f++) {
       if (way(f, f + 1) case var w?) return w;
     }
@@ -313,13 +304,13 @@ class SpriteElement extends CanvasElement {
 
   /// sheetFrameAt is the sheet's frame drawn on [frame] of a canvas played at
   /// [frameRate] -- and whether flipped -- or null with no frames to draw.
-  (int, bool)? sheetFrameAt(int frame, int frameRate) {
-    var facing = facingAt(frame);
+  (int, bool)? sheetFrameAt(int frame, int frameRate,
+      {double Function(int frame)? dxAt}) {
+    var facing = facingAt(frame, dxAt: dxAt);
     var a = actionAt(frame);
     if (a == null) return frameCount > 0 ? (0, false) : null;
     var (list, flip) = a.framesFor(facing, mirrorSides: mirrorSides);
-    // Only the front's frames, drawn facing left: mirrored to face right,
-    // not left.
+    // Front-only frames drawn facing left are mirrored to face right.
     if (drawnLeft &&
         (facing == SpriteFacing.left || facing == SpriteFacing.right) &&
         (a.frames[SpriteFacing.left]?.isEmpty ?? true) &&
@@ -387,14 +378,12 @@ class SpriteElement extends CanvasElement {
         glow: glow ?? this.glow,
         tint: noTint ? null : (tint ?? this.tint),
         built: notBuilt ? null : (built ?? this.built),
-        // Another sheet is drawn somewhere else in its frames: measured
-        // again, or not at all.
+        // A new sheet invalidates the measured area.
         drawn: drawn ?? (sheet == null || sheet == this.sheet ? this.drawn : null),
       );
 
-  /// touchIn is what of [box] -- its box, where it is now -- a game
-  /// touches: the part of its frame drawn in, the frame fitted as it is
-  /// drawn. All of it where that was not measured.
+  /// touchIn is the part of its current [box] a game touches: [drawn]
+  /// within the fitted frame, or all of [box] if not measured.
   Rect touchIn(Rect box) {
     var d = drawn;
     if (d == null) return box;
@@ -403,8 +392,8 @@ class SpriteElement extends CanvasElement {
         f.left + d.right * f.width, f.top + d.bottom * f.height);
   }
 
-  /// withAction is this with [a] in place of the action of its name -- or
-  /// added, when there is none.
+  /// withAction is this with [a] replacing the action named [replacing]
+  /// (default a's name), or added if there is none.
   SpriteElement withAction(SpriteAction a, {String? replacing}) {
     var name = replacing ?? a.name;
     var found = actions.any((x) => x.name == name);
@@ -418,9 +407,7 @@ class SpriteElement extends CanvasElement {
   Map<String, dynamic> props() => {
         "sheet": sheet,
         if (sheetName.isNotEmpty) "sheetName": sheetName,
-        // Not "w" and "h": those are the element's own width and height,
-        // which the sheet's size wrote over -- every sprite saved came back
-        // as big as its sheet.
+        // Not "w" and "h": those are the element's own width and height.
         "sheetW": sheetW,
         "sheetH": sheetH,
         "cols": columns,
@@ -457,10 +444,9 @@ class SpriteElement extends CanvasElement {
         SpriteFacing.values.where((f) => f.name == v).firstOrNull;
     return SpriteElement(
       b,
-      sheet: json["sheet"] as String? ?? "",
-      sheetName: json["sheetName"] as String? ?? "",
-      // Saved before it had keys of its own, the sheet's size is "w" and
-      // "h" -- which the element's own size was lost under.
+      sheet: jsonStr(json["sheet"]) ?? "",
+      sheetName: jsonStr(json["sheetName"]) ?? "",
+      // Older saves keep the sheet's size in "w" and "h".
       sheetW: jsonDouble(json["sheetW"] ?? json["w"], 1).round().clamp(1, 1 << 15),
       sheetH: jsonDouble(json["sheetH"] ?? json["h"], 1).round().clamp(1, 1 << 15),
       columns: jsonDouble(json["cols"], 1).round().clamp(1, 512),
@@ -479,7 +465,7 @@ class SpriteElement extends CanvasElement {
           for (var a in raw)
             if (SpriteAction.fromJson(a) case var action?) action,
       ],
-      action: json["action"] as String? ?? "",
+      action: jsonStr(json["action"]) ?? "",
       cues: [
         if (json["cues"] case List raw)
           for (var c in raw)
@@ -508,9 +494,8 @@ class SpriteElement extends CanvasElement {
   }
 }
 
-/// SheetNotes is what a sprite sheet's own notes -- an Aseprite or a
-/// TexturePacker .json beside it -- say: each frame's place on the sheet,
-/// the sheet's size and file, and its tagged runs of frames.
+/// SheetNotes is what a sheet's Aseprite or TexturePacker .json says: each
+/// frame's place, the sheet's size and file, and its tagged runs of frames.
 class SheetNotes {
   final List<Rect> frames;
   final int width, height;
@@ -518,10 +503,9 @@ class SheetNotes {
   final List<SpriteAction> actions;
   const SheetNotes(this.frames, this.width, this.height, this.image, this.actions);
 
-  /// read reads [text] as notes, or null when it is not any it knows:
-  /// frames as a list or as a map by name, the "meta" size and image, and
-  /// Aseprite's frame tags -- each an action, played at the speed its
-  /// frames last.
+  /// read parses [text], or is null when it is not notes. Frames may be a
+  /// list or a map by name; each Aseprite frame tag becomes an action at the
+  /// speed its frames last.
   static SheetNotes? read(String text) {
     Object? json;
     try {
@@ -572,16 +556,14 @@ class SheetNotes {
             frames: {SpriteFacing.front: list}, fps: (1000 / math.max(1, ms)).clamp(0.5, 60.0)));
       }
     }
-    return SheetNotes(frames, math.max(1, w), math.max(1, h), meta["image"] as String? ?? "", actions);
+    return SheetNotes(frames, math.max(1, w), math.max(1, h), jsonStr(meta["image"]) ?? "", actions);
   }
 }
 
-/// gridFromGaps is the grid a sheet [width] by [height] pixels is laid out
-/// in, found from [clear] -- whether a pixel is see-through -- the columns
-/// and rows of nothing between its frames: how many across and down, or
-/// null when no gaps run right across it.
+/// gridFromGaps is the (columns, rows) grid a [width] by [height] sheet is
+/// laid out in, found from the fully [clear] lines between frames, or null
+/// when no gaps run right across it.
 (int, int)? gridFromGaps(int width, int height, bool Function(int x, int y) clear) {
-  // A line of the sheet is a gap where every pixel along it is clear.
   List<bool> gaps(int along, int across, bool Function(int a, int b) at) => [
         for (var a = 0; a < along; a++)
           () {
@@ -607,9 +589,8 @@ class SheetNotes {
   return (cols, rows);
 }
 
-/// spriteFit is a frame [size] across fitted into [box], standing on its
-/// bottom, in the middle across: where a sprite is drawn, and so what a
-/// game touches.
+/// spriteFit is a frame of [size] fitted into [box], bottom-centred: where
+/// a sprite is drawn.
 Rect spriteFit(Size size, Rect box) {
   var k = math.min(box.width / size.width, box.height / size.height);
   var w = size.width * k, h = size.height * k;

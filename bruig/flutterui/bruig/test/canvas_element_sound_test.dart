@@ -174,8 +174,14 @@ void main() {
     // The element's slots, and a channel's, a cue each.
     expect(find.byKey(const ValueKey("rowSlot-a-0")), findsOneWidget);
     expect(find.byKey(const ValueKey("rowClip-m-0")), findsOneWidget);
-    expect(find.byKey(ValueKey("rowClip-${elementSoundKey("a")}-7")),
+    // As many as are shown: the last, empty one past what is used.
+    expect(
+        find.byKey(
+            ValueKey("rowClip-${elementSoundKey("a")}-${c.slotsShown - 1}")),
         findsOneWidget);
+    expect(
+        find.byKey(ValueKey("rowClip-${elementSoundKey("a")}-${c.slotsShown}")),
+        findsNothing);
     expect(find.byKey(const ValueKey("cueLaunch-0")), findsOneWidget);
     // The lanes moved over by the slots, every row alike.
     var lanes =

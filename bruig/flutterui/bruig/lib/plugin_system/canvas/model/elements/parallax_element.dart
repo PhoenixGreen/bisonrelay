@@ -2,8 +2,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-// cameraChannel: the same "cam." channels a stage's camera is keyed on, so
-// the rules for keying a camera serve both.
+// cameraChannel: the same "cam." channels a stage's camera is keyed on.
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart'
     show cameraChannel;
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
@@ -12,17 +11,14 @@ import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 // moving a different amount when the camera does, so the far hills slide
 // slowly behind the near trees and the picture has depth.
 //
-// The model is Godot's Parallax2D. Each layer has a scroll scale -- how far
-// it moves for each pixel the camera moves, 0 for a sky pinned to the screen,
-// 1 for the ground the camera is travelling over, more than 1 for things
-// passing in front -- a repeat, so that it goes on for ever, and an
-// autoscroll, for clouds that drift whether or not the camera moves.
+// The model is Godot's Parallax2D. Each layer has a scroll scale (0 pinned
+// to the screen, 1 the ground the camera travels over, more than 1 passing
+// in front), a repeat, and an autoscroll that drifts on its own.
 //
-// Like a stage, it is a kind of background (see backdrop.dart) rather than an
-// element that can be added: the canvas's own background or a Background
-// element carries one. Its camera is keyed the way a stage's is, as "cam."
-// channels on the track of whatever carries it, so a pan across the scene is
-// two keyframes.
+// Like a stage, it is a kind of background (see backdrop.dart) carried by
+// the canvas's own background or a Background element, not added alone. Its
+// camera is keyed as "cam." channels on the carrier's track, which stay
+// keyframes when tracks are converted to clips (see motion_convert.dart).
 
 /// ParallaxCamera is where the camera is looking: how far it has travelled
 /// across and down the scene, in design units, and how far it is zoomed in.
@@ -146,9 +142,9 @@ class ParallaxLayer {
   final double autoX;
   final double autoY;
 
-  /// loopDrift is whether that drift is evened out to go round with the
-  /// timeline: a whole number of its tiles each time the timeline loops,
-  /// so a cloud comes back where it was rather than jumping (Ken).
+  /// loopDrift is whether that drift is evened out to a whole number of its
+  /// tiles each time the timeline loops, so a cloud comes back where it was
+  /// rather than jumping.
   final bool loopDrift;
 
   /// offset moves it from where it would be, in design units.
@@ -266,7 +262,7 @@ class ParallaxLayer {
     var off = json["offset"];
     return d.copyWith(
       name: jsonString(json["name"], ""),
-      kind: SceneryKind.fromName(json["kind"] as String?),
+      kind: SceneryKind.fromName(jsonStr(json["kind"])),
       color: colorFromJson(json["color"], d.color),
       color2: colorFromJson(json["color2"], d.color2),
       height: jsonDouble(json["height"], d.height),
@@ -286,7 +282,7 @@ class ParallaxLayer {
           ? Offset((off[0] as num).toDouble(), (off[1] as num).toDouble())
           : Offset.zero,
       size: jsonDouble(json["size"], 1),
-      anchor: LayerAnchor.fromName(json["anchor"] as String?),
+      anchor: LayerAnchor.fromName(jsonStr(json["anchor"])),
       opacity: jsonDouble(json["opacity"], 1),
       visible: jsonBool(json["visible"], true),
     );

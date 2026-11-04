@@ -210,6 +210,13 @@ class CharacterScene extends ChangeNotifier {
       final model =
           [...vroidBodies, ...vroidHairSources].firstWhere((m) => m.id == id);
       if (!await VroidAssets.installed(id)) {
+        // Fetched only by someone who has already chosen to download the
+        // characters: a received canvas opening is not that choice.
+        if ((await VroidAssets.missing(vroidBodies)).isNotEmpty) {
+          error = "This hair comes from a character not downloaded yet. "
+              "Download the characters in Character Studio first.";
+          return;
+        }
         fetching =
             hairSources.where((h) => h.$1 == id).firstOrNull?.$2 ?? "the hair";
         fetched = 0;
@@ -262,6 +269,8 @@ class CharacterScene extends ChangeNotifier {
     } catch (e) {
       error = "This character could not be drawn: $e";
       _changed();
+    } finally {
+      if (_loading == id) _loading = null;
     }
   }
 
@@ -289,6 +298,7 @@ class CharacterScene extends ChangeNotifier {
           : ({h.back, h.fringe, if (h.tails case final t?) t}..remove(_body));
       if (error != null) return;
       if (a != null &&
+          _loading == null &&
           _finishTried &&
           !a.busy &&
           want.every(_donors.containsKey) &&
@@ -327,8 +337,7 @@ class CharacterScene extends ChangeNotifier {
       }
       v.lookAt.target = at;
     }
-    v.autoBlink.enabled =
-        _face.blinks && !_noBlink && (performance?.blink ?? true);
+    v.autoBlink.enabled = _face.blinks && (performance?.blink ?? true);
     if (!v.autoBlink.enabled) v.expressions.setValue('blink', 0);
     // Stood as its Move settings say, rather than in the T it was made in;
     // the face's tilt of the head over the stance's.
@@ -457,9 +466,9 @@ class CharacterScene extends ChangeNotifier {
 
   /// paint draws the character into [box] on [canvas] at [frame] of a
   /// canvas playing [frameRate] frames a second, seen as [aim] says, with
-  /// [pixelRatio] pixels to each of the canvas's points. It is moved on
-  /// once a frame, however often the frame is drawn: the stage and an
-  /// export both draw one more than once.
+  /// [pixelRatio] pixels to each of the canvas's points. Moved on once a
+  /// frame however often the frame is drawn, since the stage and an export
+  /// both draw one more than once.
   void paint(ui.Canvas canvas, ui.Rect box,
       {required int frame,
       int frameRate = 12,
@@ -513,10 +522,10 @@ class CharacterScene extends ChangeNotifier {
     scene.render(camera, canvas, viewport: box, pixelRatio: pixelRatio);
   }
 
-  /// _reach is how high its hands go in what it does -- cheering, jumping,
-  /// waving -- for the framing to leave room for them: nought where they
-  /// stay below its head. Worked out from what it is set to do rather than
-  /// where its hands are now, so the camera stays put as they rise.
+  /// _reach is how high its hands go in what it does (cheering, jumping,
+  /// waving), for the framing to leave room for them; nought where they stay
+  /// below its head. From what it is set to do rather than where its hands
+  /// are now, so the camera stays put as they rise.
   double _reach() {
     final p = performance;
     final stances = {
@@ -810,11 +819,6 @@ class CharacterScene extends ChangeNotifier {
   /// expression is the expression worn, by name, in place of the face's
   /// own: a scene's choice for a character on the canvas. Null for its own.
   set expression(String? name) => _expression = name;
-
-  /// noBlink stops the face blinking by itself, whatever it is set to: for
-  /// a picture of it.
-  set noBlink(bool v) => _noBlink = v;
-  bool _noBlink = false;
 
   SpokenLine? _line;
   double _lineAt = 0, _clock = 0;

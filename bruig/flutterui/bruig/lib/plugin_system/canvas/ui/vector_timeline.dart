@@ -5,24 +5,22 @@ import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:flutter/material.dart';
 
-// vector_timeline.dart is a drawing's shapes on the timeline: a lane for
-// each, under the drawing's own keyframes, with a bar from where it starts
-// coming in to where it has, and a diamond at each end. Shown as the
-// keyframe row's toggle says -- none, the shape picked, every shape -- and
-// scrolled with the channels, never holding the timeline open. Dragging an
-// end or a bar retimes that shape; see VectorCue and retimeShapes.
+// vector_timeline.dart is a drawing's shapes on the timeline: a lane each, with
+// a bar from where the shape starts coming in to where it has arrived and a
+// diamond at each end. Shown as CanvasController.vectorLanes says (none, the
+// shape picked, every shape), scrolled with the channels. Dragging an end or a
+// bar retimes that shape; see VectorCue and retimeShapes.
 
 /// vectorLaneHeight is one shape's lane.
 const double vectorLaneHeight = 18;
 
-/// vectorLanesFor is the drawing whose shapes can have lanes on the
-/// timeline -- the one element selected, a drawing with shapes and an
-/// arrival -- or null.
+/// vectorLanesFor is the drawing whose shapes can have lanes on the timeline
+/// (the one element selected, a drawing with shapes and an arrival), or null.
 VectorElement? vectorLanesFor(CanvasController controller) {
   var e = controller.selected;
   if (e is! VectorElement || !e.edited || !e.animation.on) return null;
   if ((e.shapes ?? const []).isEmpty) return null;
-  if (vectorArrivalSpan(e) == null) return null;
+  if (vectorArrivalSpan(e, controller.document.frameRate) == null) return null;
   return e;
 }
 
@@ -65,8 +63,8 @@ class _VectorShapeLanesState extends State<VectorShapeLanes> {
   CanvasController get controller => widget.controller;
 
   /// _group and _grip are what the drag in hand is moving; _offset where on
-  /// the bar it was taken, in frames from its start; _was the frame the
-  /// first shape's bar was at when the drag last moved it.
+  /// the bar it was taken, in frames from its start; _was the frame the first
+  /// shape's bar was at when the drag last moved it.
   int? _group;
   _Grip? _grip;
   int _offset = 0;
@@ -83,7 +81,7 @@ class _VectorShapeLanesState extends State<VectorShapeLanes> {
     var row = local.dy ~/ vectorLaneHeight;
     if (row < 0 || row >= shown.length) return null;
     var group = shown[row];
-    var (at, span) = vectorArrivalSpan(e)!;
+    var (at, span) = vectorArrivalSpan(e, controller.document.frameRate)!;
     var (start, length) = cueTimes(e.shapes!, span)[group];
     var from = _x(at + start, width), to = _x(at + start + length, width);
     const reach = 7.0;
@@ -96,20 +94,20 @@ class _VectorShapeLanesState extends State<VectorShapeLanes> {
   void _drag(VectorElement e, double x, double width) {
     var group = _group, grip = _grip;
     if (group == null || grip == null) return;
-    var (at, span) = vectorArrivalSpan(e)!;
+    var (at, span) = vectorArrivalSpan(e, controller.document.frameRate)!;
     var f = _frame(x, width);
     if (group == 0 && grip != _Grip.end) {
-      // The first shape starts as the drawing's arrival does: moving it
-      // moves the arrival, and every shape after it with it.
+      // The first shape starts as the drawing's arrival does: moving it moves
+      // the arrival, and every shape after it.
       var delta = f - (grip == _Grip.bar ? _offset : 0) - _was;
       if (delta == 0) return;
       controller.shiftKeyframes(e.id, [at, at + span], delta);
       _was += delta;
       return;
     }
-    // In the timeline's own frames: the shapes' timing written out as it
-    // plays first, as retimeShapes does, so the drag lands where it shows.
-    var baked = withTimingBaked(e);
+    // In the timeline's own frames: the shapes' timing baked as it plays,
+    // as retimeShapes does, so the drag lands where it shows.
+    var baked = withTimingBaked(e, controller.document.frameRate);
     var (start, _) = naturalTimes(baked.shapes!, span)[group];
     controller.retimeShapes(
         e,
@@ -160,7 +158,7 @@ class _VectorShapeLanesState extends State<VectorShapeLanes> {
               return GestureDetector(
                 supportedDevices: timelinePointers,
                 behavior: HitTestBehavior.opaque,
-                // A click picks the shape -- the same as its playlist row.
+                // A click picks the shape, as its playlist row does.
                 onTapDown: (d) {
                   if (_hit(e, shown, d.localPosition, width)
                       case (var group, _)) {
@@ -172,7 +170,8 @@ class _VectorShapeLanesState extends State<VectorShapeLanes> {
                   _group = hit?.$1;
                   _grip = hit?.$2;
                   if (hit == null || hit.$2 == null) return;
-                  var (at, span) = vectorArrivalSpan(e)!;
+                  var (at, span) =
+                      vectorArrivalSpan(e, controller.document.frameRate)!;
                   var (start, _) = cueTimes(e.shapes!, span)[hit.$1];
                   var begins = at + start.round();
                   _offset = hit.$2 == _Grip.bar
@@ -197,6 +196,7 @@ class _VectorShapeLanesState extends State<VectorShapeLanes> {
                 child: CustomPaint(
                   size: Size(width, height),
                   painter: _LanesPainter(
+                    rate: controller.document.frameRate,
                     element: e,
                     shown: shown,
                     picked: picked,
@@ -227,8 +227,12 @@ class _LanesPainter extends CustomPainter {
   final ColorScheme colors;
   final double Function(num) xFor;
 
+  /// rate is the canvas's frames a second.
+  final int rate;
+
   _LanesPainter(
       {required this.element,
+      required this.rate,
       required this.shown,
       required this.picked,
       required this.colors,
@@ -237,7 +241,7 @@ class _LanesPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.clipRect(Offset.zero & size);
-    var (at, span) = vectorArrivalSpan(element)!;
+    var (at, span) = vectorArrivalSpan(element, rate)!;
     var times = cueTimes(element.shapes!, span);
     for (var (row, g) in shown.indexed) {
       var (start, length) = times[g];

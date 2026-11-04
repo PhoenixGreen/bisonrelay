@@ -697,7 +697,8 @@ void main() {
     var failures = <String>[];
     for (var scale in [1.0, 1.15, 1.25, 1.5]) {
       for (var roll in [false, true]) {
-        for (var h = 200.0; h <= 620; h += 20) {
+        var height = ValueNotifier(200.0);
+        {
           var c = CanvasController(
               CanvasDocument(frames: 100, elements: [
                 AudioElement(const ElementBase(id: "p", name: "Keys"),
@@ -726,16 +727,22 @@ void main() {
                 home: Scaffold(
                     body: Align(
                         alignment: Alignment.bottomCenter,
-                        child: CanvasMixer.effects(
-                            controller: c,
-                            height: h,
-                            onResize: (_) {},
-                            onClose: () {})))),
+                        child: ValueListenableBuilder(
+                            valueListenable: height,
+                            builder: (context, h, _) => CanvasMixer.effects(
+                                controller: c,
+                                height: h,
+                                onResize: (_) {},
+                                onClose: () {}))))),
           ));
-          await tester.pump();
-          if (tester.takeException() case var e?) {
-            failures.add("${roll ? "roll" : "chain"} $h ${scale}x: "
-                "${e.toString().split("\n").first}");
+          // Resized, as a drag resizes it.
+          for (var h = 200.0; h <= 620; h += 20) {
+            height.value = h;
+            await tester.pump();
+            if (tester.takeException() case var e?) {
+              failures.add("${roll ? "roll" : "chain"} $h ${scale}x: "
+                  "${e.toString().split("\n").first}");
+            }
           }
           await tester.pump(const Duration(milliseconds: 300));
           await tester.pumpWidget(const SizedBox());

@@ -18,17 +18,13 @@ import 'package:path/path.dart' as path;
 // It is run by qwen3-tts (MIT), a C program that speaks with the model on
 // the computer's own processor.
 //
-// Neither is shipped with the app. Both are downloaded once, when the
-// Speech device asks, to the Canvas library's "voices" folder: the program
-// from its project's release, the model from a fixed revision, every file
-// checked against its SHA-256 before it is kept. The program is built for
-// Apple Silicon Macs and for Linux; elsewhere the expressive voices are not
-// offered.
+// Neither is shipped. Both are downloaded once to the library's "voices"
+// folder (the program from its release, the model from a fixed revision),
+// every file checked against its SHA-256. The program is built for Apple
+// Silicon Macs and Linux; elsewhere these voices are not offered.
 //
-// The program is run once for each line, then ends. It has a server mode
-// that would keep the model loaded between lines, but that listens on every
-// network the computer is on, not only on the computer itself -- so it is
-// not used.
+// Its server mode would keep the model loaded between runs, but it listens
+// on every network, not only localhost, so it is not used.
 
 /// qwenVersion is the program's release; qwenRevision the model's.
 const qwenVersion = "v0.23.0";
@@ -119,11 +115,11 @@ const qwenProgram = "qwen_tts";
 /// qwenSupported is whether the program is built for this computer.
 bool get qwenSupported => _programs.containsKey(Abi.current());
 
-/// qwenFilesOverride is what is downloaded instead, and qwenDir where to:
-/// both for tests.
+/// qwenFilesOverride is what is downloaded instead, for tests.
 @visibleForTesting
 List<PinnedFile>? qwenFilesOverride;
 
+/// qwenDir is where the program and model are kept; a test can move it.
 Future<String> Function() qwenDir = () async =>
     path.join(await CanvasStorage.libraryDir(), canvasVoicesFolder, "qwen3-tts-1.7b");
 
@@ -206,11 +202,9 @@ String qwenDirection(SpeechLine line, double expression) {
   return say;
 }
 
-/// qwenSampling is how freely the voice is let go, from [steadiness] --
-/// nought to one -- for a line with a direction or without: the
-/// temperature, and the nucleus. The engine's own, at the middle: 0.9 as
-/// the model comes, and 1.1 with a direction, which a lower one flattens
-/// into the voice saying it as written (Ken, 2026-10-31). Steadier
+/// qwenSampling is the temperature and nucleus for [steadiness], nought to
+/// one. At the middle: 0.9 as the model comes, and 1.1 with a direction,
+/// since lower flattens a direction into the words said plainly. Steadier
 /// narrows both.
 (double, double) qwenSampling(double steadiness, {required bool directed}) {
   var s = steadiness.clamp(0.0, 1.0);
@@ -268,14 +262,12 @@ String spokenText(SpeechLine line) => [
 // Several lines, and their cues, in one run
 // ---------------------------------------------------------------------------
 //
-// The program loads its model for each run -- nine seconds of a short line's
-// twenty -- and has no way to be given lines one after another but its
-// server, which listens on every network. So the lines sharing a direction
-// are spoken in one run -- those said softly in a second -- written with the
-// program's own markup: each stretch kept apart by a pause. A pause it
-// renders as exact silence, which speech never is: the take is cut at
-// those, and the cues -- our recordings, a pause of the length asked for --
-// put into the voice's own pauses.
+// The program loads its model for each run (nine seconds of a short line's
+// twenty) and only its server could take lines one after another. So the
+// lines are spoken in one run, those said softly in a second, each stretch
+// kept apart by the program's pause markup. It renders a pause as exact
+// silence, which speech never is: the take is cut there, and the cues (our
+// recordings, or pauses) put into the voice's own pauses.
 
 /// QwenGap is what is between two stretches of speech in a run: the lines'
 /// ends, and the cues.
@@ -333,12 +325,10 @@ class QwenSpoken {
 
 /// qwenWritten are the cues the expressive voices are given written into
 /// the words, so they do them in the same breath: after the words before
-/// them -- "the way, haha." -- or, with none, before the words after. A
-/// laugh of their own, put before the words, stopped dead where they began,
-/// and our recording sounded laid on (Ken, 2026-10-31). A cough is as good
-/// so; a sigh and a breath, written so, sounded strange.
-/// Each is said two ways: within a sentence, and as one of its own after
-/// a sentence's end.
+/// them ("the way, haha.") or, with none, before the words after. Our
+/// recording here sounds laid on; a sigh or breath written so sounds
+/// strange. Each is said two ways: within a sentence, and as a sentence of
+/// its own.
 const qwenWritten = {
   SpeechCue.laugh: ("haha", "Haha!"),
   SpeechCue.cough: ("ahem", "Ahem."),
@@ -384,10 +374,8 @@ const qwenMark = 0.6;
 /// sentences: the vivid third, where it is told to be.
 const qwenBreathing = 0.66;
 
-/// qwenSoftly is [direction] said softly, for a whisper. The program
-/// cannot whisper -- asked to, it speaks low -- and a whisper made of its
-/// voice afterwards, hiss through its shape, was heard as a vocoder (Ken,
-/// 2026-10-31): a voice as near a real one as can be, said low.
+/// qwenSoftly is [direction] said softly, for a whisper: see softly in
+/// speech_cues.dart.
 String qwenSoftly(String direction) {
   var soft = SpeechDirection.whisper.say;
   return direction.isEmpty || direction == soft ? soft : "$direction $soft";
@@ -399,17 +387,14 @@ const qwenSoftLevel = 0.7;
 
 final _leadingMarks = RegExp(r"^[.,!?;:…]+");
 
-/// qwenScript is [lines] -- sections -- as one run's markup, each section
-/// one stretch, spoken in one go: cut, at every cue, the voice started
-/// again at each, and was heard to (Ken, 2026-10-31). So the cues are
-/// written into it. A laugh and a cough are words -- see qwenWritten. A
-/// breath, a sigh and a pause are a beat, "...", which the voice pauses at:
-/// our recording, or a pause the length asked for, is put into that pause
-/// afterwards -- see timeWords. A "..." alone, the breath the voice takes
-/// itself there, was not heard (Ken, 2026-10-31). Only a whisper's
-/// edge cuts a section, its words whispered after. The cues the expressive
-/// voices cannot do mid-line -- stressing a word, a slower stretch -- are
-/// left out: the section's direction says those.
+/// qwenScript is [lines] (sections) as one run's markup, each section one
+/// stretch spoken in one go: cut at every cue, the voice audibly restarts.
+/// So cues are written in: a laugh and a cough as words (see qwenWritten);
+/// a breath, a sigh and a pause as a beat, "...", which the voice pauses
+/// at, our recording or pause put into that pause afterwards (see
+/// timeWords), since the voice's own breath there is inaudible. Only a
+/// whisper's edge cuts a section. Cues the voices cannot do mid-line
+/// (stress, a slower stretch) are left out: the direction covers them.
 QwenScript qwenScript(List<SpeechLine> lines) {
   var spoken = <QwenSpoken>[];
   var gaps = <List<QwenGap>>[[]];

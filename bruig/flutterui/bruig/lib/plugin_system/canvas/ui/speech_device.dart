@@ -17,18 +17,18 @@ import 'package:bruig/plugin_system/canvas/ui/document_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
 import 'package:flutter/material.dart';
 
-// speech_device.dart is the Speech device in a channel's chain: the engine
-// and the voice; the script, line by line, each with how it is said and its
-// takes; the voice's feel; and Speak all -- which speaks the lines, one at
-// a time in the background, and joins the takes chosen into a clip on the
-// channel. See speech_spec.dart for what it keeps, and speech_engines.dart
-// for how it speaks.
+// speech_device.dart is the Speech device in a channel's chain: the engine and
+// voice; the script, line by line, each with its direction and takes; the
+// voice's feel; and Speak all, which speaks the lines one at a time in the
+// background and joins the chosen takes into a clip on the channel. See
+// speech_spec.dart for what it keeps, and speech_engines.dart for how it
+// speaks.
 
 const _problemInk = Color(0xFFFF8A80);
 
-/// _cueIcons are the cues' icons. Not emoji: Impeller draws an emoji into
-/// its glyph atlas slowly, and redraws them all whenever the atlas is made
-/// again -- seconds a frame, with the device open.
+/// _cueIcons are the cues' icons. Not emoji: Impeller draws emoji into its
+/// glyph atlas slowly and redraws them whenever the atlas is rebuilt, costing
+/// seconds a frame.
 const _cueIcons = {
   SpeechCue.pause: Icons.pause,
   SpeechCue.breath: Icons.air,
@@ -42,8 +42,7 @@ const _cueIcons = {
 };
 
 /// SpeechKit is what the Speech device is drawn with: the studio palette's
-/// text, boxes, buttons, chips and dropdowns, each the same everywhere in
-/// it.
+/// text, boxes, buttons, chips and dropdowns, the same everywhere in it.
 class SpeechKit {
   final StudioColors s;
   final ColorScheme scheme;
@@ -63,8 +62,8 @@ class SpeechKit {
       fontWeight: FontWeight.w500,
       color: colour ?? s.text);
 
-  /// cued is [script]'s words with its cues -- "[laugh]", "[pause 0.5]" --
-  /// shown as tags among them, not as the brackets they are written in.
+  /// cued is [script]'s words with its cues ("[laugh]", "[pause 0.5]") shown as
+  /// tags among them, not as brackets.
   TextSpan cued(String script) {
     var spans = <InlineSpan>[];
     var at = 0;
@@ -200,9 +199,9 @@ class SpeechKit {
     );
   }
 
-  /// take is one of a line's slots, by its letter: lit when its take is
-  /// the one chosen, greyed while [empty], ringed blue while [picked] in
-  /// the line panel, turning while [working] -- being spoken into.
+  /// take is one of a line's slots, by its letter: lit when its take is the
+  /// one chosen, greyed while [empty], ringed blue while [picked] in the line
+  /// panel, turning while [working] (being spoken into).
   Widget take(String letter, bool on, VoidCallback? onTap,
           {Key? key,
           bool empty = false,
@@ -251,8 +250,8 @@ class SpeechKit {
         ),
       );
 
-  /// dropdown is a choice of [items] -- each its value and words -- in a
-  /// box like the device's fields.
+  /// dropdown is a choice of [items], each its value and words, in a box like
+  /// the device's fields.
   Widget dropdown<T>(
           {required Key key,
           required T value,
@@ -325,8 +324,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
   String _voicesFor = "";
   String _filter = "";
 
-  /// _accent is the accent the voice list is narrowed to -- the start of a
-  /// voice's description, "UK", "US" -- or "" for all.
+  /// _accent is the accent the voice list is narrowed to (the start of a
+  /// voice's description, "UK", "US"), or "" for all.
   String _accent = "";
 
   /// _missing is how much of the voices is still to download, for each
@@ -339,8 +338,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
   /// written yet.
   bool? _asText;
 
-  /// _line is the line picked in the list, and _slot its slot picked --
-  /// A to C, in use or not -- null for the one its take is chosen in.
+  /// _line is the line picked in the list, and _slot its slot picked (A to C,
+  /// in use or not), null for the one its take is chosen in.
   int _line = 0;
   int? _slot;
 
@@ -418,14 +417,14 @@ class _SpeechDeviceState extends State<SpeechDevice> {
 
   void _speakAll() => _run(() => c.speakLines(widget.channel));
 
-  /// _lines are the device's lines, set out from its script where it has
+  /// _linesOf is the device's lines, set out from its script where it has
   /// none of its own yet.
   List<SpeechLine> _linesOf(SpeechSpec spec) => spec.shownLines;
 
-  /// _changeLine changes line [index] -- its direction, or its own words --
-  /// and, where it has been spoken and has a slot free, speaks it again
-  /// that way into it, the takes it has kept to compare. With every slot in
-  /// use, nothing is spoken: the reader picks a slot to replace.
+  /// _changeLine changes line [index] (its direction, or its own words) and,
+  /// where it has been spoken and has a slot free, speaks it again that way
+  /// into it, keeping the other takes to compare. With every slot in use,
+  /// nothing is spoken: the reader picks a slot to replace.
   void _changeLine(SpeechSpec spec, int index, SpeechLine changed) {
     var lines = [..._linesOf(spec)];
     if (index >= lines.length) return;
@@ -456,9 +455,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
     _changeLine(spec, _line, lines[_line].copyWith(own: own));
   }
 
-  /// _downloadPanel is in place of the voice list until the engine's
-  /// voices are here: how big they are, and the button to fetch them -- or
-  /// how far they have got.
+  /// _downloadPanel stands in for the voice list until the engine's voices are
+  /// here: their size and the button to fetch them, or how far they have got.
   Widget _downloadPanel(
       PinnedDownload voices, SpeechEngineKind engine, SpeechKit k) {
     var expressive = engine == SpeechEngineKind.expressive;
@@ -547,7 +545,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
   }
 
   /// _pickDocument reads the script from a document picked in the Writing
-  /// library: again, another one, the typed script still kept.
+  /// library ([again] rereads it), the typed script still kept.
   Future<void> _pickDocument(SpeechSpec spec, {bool again = false}) async {
     var picked = await pickLibraryDocument(context);
     if (picked == null || !mounted) return;
@@ -575,8 +573,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
     var download = _downloadOf(engine);
     // The expressive voices are built for some computers only.
     var unmade = expressive && !qwenSupported;
-    // Our own voices, until they are downloaded: the download in place of
-    // the list, and nothing to speak with.
+    // Our own voices, until downloaded: the download in place of the
+    // list, and nothing to speak with.
     var needsVoices = unmade || download.ready != true;
     var picked = spec.voice.isEmpty
         ? switch (engine) {
@@ -613,8 +611,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
       });
     }
 
-    // A voice heard saying a line, in the device's feel: playing, it
-    // stops; being spoken for it, it says so.
+    // A voice heard saying a line, in the device's feel; pressed while
+    // playing, it stops.
     Widget previewButton(String voice) {
       var heard = c.speechHeard == "voice:$voice";
       var speaking = c.speechPreviewing == voice;
@@ -719,8 +717,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                                         style: k.text(10, colour: s.muted)),
                                 ]),
                           ),
-                          // Heard before it is picked: our own voices only,
-                          // as a preview from ElevenLabs costs the reader.
+                          // A preview for our own voices only: one from ElevenLabs costs the
+                          // reader.
                           previewButton(v.id),
                         ]),
                       ),
@@ -748,8 +746,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                 ),
                 const SizedBox(height: 5),
               ],
-              // One line, scrolled sideways where the text is too large for
-              // it: wrapped, it took the list's room.
+              // One line, scrolled sideways where the text is too large: wrapped,
+              // it took the list's room.
               if (gendered && all.length > 2 && !needsVoices)
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -824,8 +822,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
     }
 
     // A slot, A to C: picked, its take is the one "Add all lines" uses,
-    // and its actions are in the line panel. Not in use, greyed; being
-    // spoken into, turning.
+    // and its actions are in the line panel. Greyed when not in use;
+    // turning while being spoken into.
     Widget slotButton(int i, SpeechLine l, int t, {Key? key}) {
       var take = l.slot(t);
       var picked = i == _line && (_slot ?? l.chosen) == t;
@@ -928,11 +926,9 @@ class _SpeechDeviceState extends State<SpeechDevice> {
             children: [for (var (i, l) in lines.indexed) lineCard(i, l)],
           );
 
-    // One palette, under the script: how the section the cursor is in is
-    // said, and the cues, put where the cursor is -- in the text, or at
-    // the end of the section picked. They were two, the directions beside
-    // the lines and the cues under the text, and asked for the same things
-    // in two places (Ken, 2026-10-31).
+    // One palette, under the script, for both the direction of the section
+    // the cursor is in and the cues, put at the cursor (in the text, or at
+    // the end of the section picked).
     Widget palette() {
       var l = line;
       var editable = l != null && !reading;
@@ -956,8 +952,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                 key: const ValueKey("speechSaid"),
                 value: said,
                 items: [
-                  // Those the engine can say -- and the section's own, as
-                  // it was set, though another engine is picked now.
+                  // Those the engine can say, and the section's own as it was set even
+                  // if another engine is picked now.
                   for (var d in SpeechDirection.values)
                     if (engine.directs(d) || d == said) (d, d.label),
                   if (said == null) (null, "In your own words"),
@@ -1104,8 +1100,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                             ),
                         ]),
                         const SizedBox(height: 4),
-                        // The slot picked: what can be done with its take --
-                        // nothing, where it has none.
+                        // What can be done with the picked slot's take, if it has one.
                         if (selTake == null)
                           Text(
                               "Slot $letter is free: Another take, or Speak "
@@ -1237,8 +1232,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
         const SizedBox(height: 6),
         SizedBox(
           height: 32,
-          // While it speaks, Stop: a voice that takes too long, or does not
-          // look like finishing, is let go.
+          // While it speaks, Stop, to let go of a voice that takes too long.
           child: queue != null
               ? FilledButton.icon(
                   key: const ValueKey("speechStop"),
@@ -1269,8 +1263,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(5)),
                   ),
-                  // Every line spoken, there is nothing for it to do: Another
-                  // take, or a new direction, speaks a line again.
+                  // With every line spoken there is nothing to do: Another take, or a
+                  // new direction, speaks a line again.
                   onPressed: busy || cantSpeak || allSpoken ? null : _speakAll,
                   icon: busy
                       ? SizedBox.square(
@@ -1382,9 +1376,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           k.label("Feel"),
           const SizedBox(height: 4),
-          // A dropdown, not a row of chips: the sliders under it have the
-          // room (Ken, 2026-10-31). Custom is only shown, as the sliders
-          // were moved to it, not picked.
+          // A dropdown rather than chips, leaving the sliders under it room.
+          // Custom is shown when the sliders have moved to it, not picked.
           k.dropdown<String>(
             key: const ValueKey("speechPreset"),
             value: SpeechPreset.values.any((p) => p.name == spec.preset)
@@ -1495,8 +1488,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
       ),
     );
 
-    // ---- The lines, each its slot picked: put on the timeline only when
-    // asked -- joined into the channel's clip, or that clip made again.
+    // ---- The lines, each with its slot picked: put on the timeline only
+    // when asked, joined into the channel's clip or that clip made again.
     var onTimeline = spec.clip.isNotEmpty &&
         c.document.elements.any((e) => e.id == spec.clip);
     var clipTake = onTimeline ? spec.takes.lastOrNull : null;
@@ -1626,8 +1619,8 @@ class _SpeechDeviceState extends State<SpeechDevice> {
               ),
             ),
           ),
-        // Phrasing: the next step, after a voice has spoken -- the take's
-        // words shaped, in place of the sections.
+        // Phrasing, the step after a voice has spoken: the take's words
+        // shaped, in place of the sections.
         Container(
             key: const ValueKey("speechPhrasingRule"),
             width: 1.5,
@@ -1732,9 +1725,9 @@ class _SpeechDeviceState extends State<SpeechDevice> {
   }
 }
 
-/// VocaliserDevice is channel [channel]'s Vocaliser: the MIDI channel
-/// whose notes it sings, how it sings them, and Sing -- which sings the
-/// channel's latest Speech take into a new clip.
+/// VocaliserDevice is channel [channel]'s Vocaliser: the MIDI channel whose
+/// notes it sings, how it sings them, and Sing, which sings the channel's
+/// latest Speech take into a new clip.
 class VocaliserDevice extends StatefulWidget {
   final CanvasController controller;
   final String channel;

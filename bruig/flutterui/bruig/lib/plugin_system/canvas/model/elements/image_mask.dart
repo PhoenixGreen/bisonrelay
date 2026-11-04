@@ -2,33 +2,24 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// image_mask.dart is what of a picture is shown: a mask, which every picture
-// -- the element's own, and every picture layer -- has one of.
+// image_mask.dart is the mask every picture (the element's own and each
+// picture layer) has: a found subject, then marks painted, lassoed and faded
+// by hand, with the edge refined last. BackgroundRemoval (flat colour keyed
+// out) is separate and applied first.
 //
-// Kept apart from BackgroundRemoval, which goes on doing what it was good at
-// (a logo's flat colour keyed out, a scan's paper taken away) and is applied
-// first. The mask is the photograph's tool, and is built the way an image
-// editor builds one: a subject found in the picture, then painted, lassoed
-// and faded by hand, with its edge refined last.
-//
-// It is a recipe, like everything else in a canvas, with one exception. The
-// subject a picture was found to have is a picture of its own -- a grey mask
-// kept in the picture store beside the picture -- because finding it is the
-// work of a model that a later version of the operating system might do
-// differently, and a cut-out must not change under a document that was
-// finished last year. Everything after it is marks, kept as marks.
+// The mask is a recipe except for the subject, which is stored as a grey
+// picture in the picture store: it comes from an OS model that a later OS
+// might run differently, and a finished cut-out must not change under it.
 
 /// MaskMarkKind is what one mark on a mask is.
 enum MaskMarkKind {
-  /// brush is a painted stroke: soft or hard, light or heavy, wide or thin
-  /// as the pen was pressed.
+  /// brush is a painted stroke, its width following pen pressure.
   brush,
 
   /// lasso is a shape drawn round something, filled.
   lasso,
 
-  /// fade is a gradient: the picture fading out across a line or away from
-  /// a middle.
+  /// fade is a gradient across a line or away from a middle.
   fade;
 
   static MaskMarkKind fromName(String? name) => values
@@ -38,8 +29,7 @@ enum MaskMarkKind {
 /// MaskMark is one mark made on a mask, in the order it was made.
 ///
 /// Points are fractions of the picture's own width and height, so a mark
-/// stays on the shoulder it was made on however the picture is resized,
-/// cropped or reframed -- as the old removal brush's strokes did.
+/// stays put however the picture is resized, cropped or reframed.
 class MaskMark {
   final MaskMarkKind kind;
 
@@ -95,8 +85,8 @@ class MaskMark {
 
   Map<String, dynamic> toJson() => {
         "k": kind.name,
-        // Flat pairs, rounded: a stroke is hundreds of points, and five
-        // places of a fraction is finer than any picture's pixels.
+        // Flat pairs, rounded to five places (finer than any pixel): a stroke
+        // is hundreds of points.
         "p": [
           for (var p in points) ...[_round(p.dx), _round(p.dy)]
         ],
@@ -111,18 +101,9 @@ class MaskMark {
   static double _round(double v) => (v * 100000).round() / 100000;
 
   factory MaskMark.fromJson(Map<String, dynamic> json) {
-    var flat = json["p"];
-    var points = <Offset>[];
-    if (flat is List) {
-      for (var i = 0; i + 1 < flat.length; i += 2) {
-        var x = flat[i], y = flat[i + 1];
-        if (x is num && y is num) {
-          points.add(Offset(x.toDouble(), y.toDouble()));
-        }
-      }
-    }
+    var points = fractionsFromJson(json["p"]);
     return MaskMark(
-      kind: MaskMarkKind.fromName(json["k"] as String?),
+      kind: MaskMarkKind.fromName(jsonStr(json["k"])),
       points: points,
       hide: !jsonBool(json["show"], false),
       pressure: [
@@ -138,9 +119,8 @@ class MaskMark {
   }
 }
 
-/// MaskRefine is what is done to the mask's edge, last, in the picture's own
-/// pixels -- the units every editor gives these in, and the ones that mean
-/// the same thing at every size the picture is drawn.
+/// MaskRefine is what is done to the mask's edge, last. Distances are in the
+/// picture's own pixels, so they mean the same at every drawn size.
 class MaskRefine {
   /// shift moves the edge out (above nought) or in (below), to take a halo
   /// off or give back a rim that was cut too close.
@@ -155,8 +135,8 @@ class MaskRefine {
   /// contrast hardens a soft edge, 0 to 1.
   final double contrast;
 
-  /// decontaminate takes the background's colour out of the edge -- the
-  /// green fringe on a player cut off a pitch -- 0 to 1.
+  /// decontaminate takes the background's colour out of the edge (a green
+  /// fringe from a pitch), 0 to 1.
   final double decontaminate;
 
   const MaskRefine({
@@ -218,8 +198,7 @@ class ImageMask {
 
   final MaskRefine refine;
 
-  /// invert shows what the mask hides and hides what it shows: the sky
-  /// rather than the player.
+  /// invert swaps what the mask shows and hides.
   final bool invert;
 
   /// on is false to see the picture whole without losing the mask.
@@ -254,7 +233,6 @@ class ImageMask {
         on: on ?? this.on,
       );
 
-  /// withMark is this mask with [mark] made last.
   ImageMask withMark(MaskMark mark) => copyWith(marks: [...marks, mark]);
 
   /// withLastMark is this mask with its last mark replaced by [mark] -- a

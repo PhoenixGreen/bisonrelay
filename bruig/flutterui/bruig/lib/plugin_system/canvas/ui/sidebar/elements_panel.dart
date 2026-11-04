@@ -4,25 +4,12 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// elements_panel.dart is what you can put on a canvas: a grid of chips, and
-// nothing else.
-//
-// It used to carry the settings as well, and before that the layer list, both
-// for the same reason -- the three are used together and were in different
-// tabs, so each one kept a copy of its neighbour. They are one column now (see
-// design_panel.dart), which is what lets this go back to being one thing.
-//
-// An element can be added by clicking it or by dragging it onto the canvas.
-// Both, because the two answer different questions -- a click means "I want
-// one of those", a drag means "I want one of those *there*" -- and supporting
-// only the first makes every new element start life in the middle of the page
-// and need moving.
+// elements_panel.dart is what can be put on a canvas: a grid of chips. A chip
+// is clicked to add one in the middle of the page, or dragged to add it where
+// it is dropped.
 
-/// _addable is which kinds the panel offers, in the order it shows them.
-///
-/// Ordered by how often they are wanted rather than by the enum, so the two
-/// that almost every canvas starts with are first and the specialised ones are
-/// last.
+/// _addable is which kinds the panel offers, in the order it shows them:
+/// most wanted first, not enum order.
 const List<ElementKind> _addable = [
   ElementKind.text,
   ElementKind.shape,
@@ -42,8 +29,7 @@ const List<ElementKind> _addable = [
   ElementKind.sprite,
   ElementKind.tileMap,
   ElementKind.camera,
-  // No 3D stage: it is a kind of background now, chosen in a background's
-  // Pattern layers.
+  // No 3D stage: it is a background kind now (BackdropKind).
 ];
 
 IconData iconForKind(ElementKind kind) => switch (kind) {
@@ -85,8 +71,8 @@ class CanvasElementsPanel extends StatelessWidget {
             children: [
               for (var kind in _addable) ...[
                 _AddChip(controller, kind),
-                // An instrument is a sound -- an Audio element playing a
-                // part -- so it sits after the speaker.
+                // An instrument is an Audio element playing a part, so it sits after
+                // the speaker.
                 if (kind == ElementKind.audio) _AddInstrument(controller),
               ],
             ],
@@ -126,16 +112,16 @@ class _AddChip extends StatelessWidget {
     // No hover text: the chip's own icon and name say what it adds.
     return Draggable<ElementKind>(
       data: kind,
-      // The same chip under the pointer, faded. A generic drag rectangle
-      // gives no clue what is being carried once there are nine of them.
+      // The same chip under the pointer, faded, so it is clear what is
+      // being carried.
       feedback: Material(
         color: Colors.transparent,
         child: Opacity(opacity: 0.8, child: body),
       ),
       childWhenDragging: Opacity(opacity: 0.35, child: body),
       child: Material(
-        // Its own, inside the list: on the sidebar's the highlight spilled
-        // over the other sections and stayed put when the list scrolled.
+        // Its own Material inside the list: the sidebar's let the highlight
+        // spill over other sections and stay put when the list scrolled.
         type: MaterialType.transparency,
         child: InkWell(
           borderRadius: BorderRadius.circular(8),

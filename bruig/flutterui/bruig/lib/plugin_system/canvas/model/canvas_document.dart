@@ -48,22 +48,13 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 // canvas_document.dart is a whole canvas: its shape, its background, what is
 // on it, and how long it runs for.
 //
-// Immutable, like the elements it holds. Every edit is a new document, which
-// is what makes undo a list and makes the painter safe to hand a document to
-// from a background isolate during export. A mutable scene graph would be the
-// obvious thing and would put a "did this change under me" question into every
-// one of those places.
-//
-// The file format is JSON with a version number on it, written to
-// "<appDataDir>/canvas". Plain text on purpose: a document is a few kilobytes
-// because every element is a description rather than a picture, and a format
-// somebody can read in a text editor is a format they can still recover
-// something from in ten years.
+// Immutable, like the elements it holds: every edit is a new document, so
+// undo is a list and a painter or exporter never sees one change under it.
+// Saved as versioned JSON, readable in a text editor.
 
 /// canvasFormatVersion is bumped when a saved document would be read wrongly
-/// by an older build. Read on load and never used to refuse a document -- an
-/// unknown future version is read as best it can be, since every field reader
-/// already falls back when a field is missing or the wrong type.
+/// by an older build. Never used to refuse a document: every field reader
+/// already falls back on a missing or mistyped field.
 const int canvasFormatVersion = 1;
 
 /// transitionSoundPrefix starts the id of every sound a transition carries
@@ -72,109 +63,67 @@ const String transitionSoundPrefix = "transition-sound:";
 
 /// defaultRateFor is how fast a document of this shape and this kind runs.
 ///
-/// A page is a still -- see defaultFrameRateFor -- and a document of them is
-/// not. It carries whatever transitions and arrivals somebody puts on it, and
-/// at one frame a second a transition of a dozen frames takes a dozen
-/// seconds: playing the document through looked like playback that never
-/// ended. It was playback at reading speed, which is not the same thing and
-/// is far worse to watch. So a document of pages runs at film's rate like
-/// everything else, and it is the number of frames a page is held for that
-/// says how long it is looked at.
+/// A single page is a still at one frame a second (defaultFrameRateFor), but
+/// a document of pages runs at [defaultFrameRate]: its transitions and
+/// arrivals would otherwise take a second a frame.
 int defaultRateFor(CanvasRatio ratio, CanvasKind kind) =>
     kind.isPages ? defaultFrameRate : defaultFrameRateFor(ratio);
 
-/// defaultFrameRate is what a new document plays at.
-///
-/// Twenty-four, which is film's rate and what a canvas that moves is usually
-/// for. It was twelve, on the grounds that what gets made here is a tactics
-/// diagram or a title moving into place, and that twelve is where a GIF stops
-/// looking choppy while staying a quarter of the size of a 30fps one. That
-/// trade is still real and is why twelve is the first thing on the Rate list
-/// -- but a document published as a video is the common case now, and
-/// twenty-four is what somebody making one expects to find.
-///
-/// A page is the exception and takes one: see defaultFrameRateFor, which is
-/// what the settings bar follows when the shape changes.
+/// defaultFrameRate is what a new document plays at, except a page: see
+/// defaultFrameRateFor.
 const int defaultFrameRate = 24;
 
-/// defaultFrameCount is one second at [defaultFrameRate]. A new document is
-/// deliberately a still: one frame's worth of timeline, so the timeline is
-/// visible and explains itself without a still picture having to be an
-/// animation nobody asked for.
+/// defaultFrameCount is how long a new document is: one frame, a still.
 const int defaultFrameCount = 1;
 
-/// maxFrameCount is the longest one canvas may be: twenty minutes at an
-/// audio document's rate (audioFrameRate), a hundred at twenty-four a
-/// second. A guard rail on the Length field rather than a judgement about
-/// how long a scene should be -- and long enough for a song, which counts
-/// its time in small steps so that a beat lands on one.
+/// maxFrameCount is the longest one scene may be: twenty minutes at
+/// [audioFrameRate], a hundred at 24 a second.
 const int maxFrameCount = 144000;
 
 /// audioFrameRate is the steps a second a piece of sound's timeline counts
-/// in: fine enough that every beat at any tempo lands within a few
-/// milliseconds of a step, where at twenty-four it could be twenty off.
+/// in: fine enough that any beat lands within a few milliseconds of a step.
 const int audioFrameRate = 120;
 
-/// maxSequenceFrames is the longest a whole document may run -- every scene
-/// end to end, which is a different question from how long any one of them
-/// may be.
-///
-/// It was the same number, and that is a bug somebody hit with six scenes of
-/// seven hundred and twenty frames: four thousand three hundred and twenty
-/// frames of canvas reported as three thousand six hundred, so playing the
-/// whole document stopped in the middle of the last scene and the master
-/// canvas said it was shorter than the scenes it covers.
+/// maxSequenceFrames is the longest a whole document may run, every scene
+/// end to end. It must stay well above [maxFrameCount], or a run of long
+/// scenes is cut short.
 const int maxSequenceFrames = maxFrameCount * 100;
 
-/// CanvasBackground is what is behind everything, covering the whole document.
-///
-/// Either a picture or a generated pattern, never both -- an image wins when
-/// there is one, and clearing it falls back to whatever the pattern was, so
-/// trying a photograph behind a design and then changing your mind does not
-/// lose the gradient that was there before.
+/// CanvasBackground is what is behind everything, covering the whole document:
+/// a generated pattern, a stage or parallax scenery (see [backdrop]), with
+/// any picture, drawing and video laid over it. Each is kept while another
+/// is shown, so trying one and going back loses nothing.
 class CanvasBackground {
   final ProceduralSpec spec;
 
-  /// imageAssetId and imageFit are the picture a background carried before a
-  /// background could carry a picture with settings -- see [picture]. Still
-  /// read, so a canvas saved then opens with its picture; never written once
-  /// the picture has been edited.
+  /// imageAssetId and imageFit are the legacy picture field, from before
+  /// [picture]. Still read; never written once the picture has been edited.
   final String imageAssetId;
   final ImageFit imageFit;
 
   /// picture, video and sound are what a background can carry besides its
-  /// pattern, each an element of its own kind with that element's settings:
-  /// a picture can be cut out, cropped and graded; a video keyed, trimmed and
-  /// looped; a sound given a playlist and fades.
-  ///
-  /// Elements rather than a second set of fields, so that one set of controls
-  /// and one painter serve both -- a background video that could not be keyed
-  /// the way a video element can would be a difference nobody could explain.
-  /// They are laid over the pattern in that order, and each is stretched to
-  /// the page when drawn, whatever box it was saved with. The sound is never
-  /// drawn.
+  /// pattern, each an element so the element's controls and painter serve it
+  /// too. Each is stretched to the page when drawn, whatever box it was saved
+  /// with; the sound is never drawn.
   final ImageElement? picture;
   final VideoElement? video;
   final AudioElement? sound;
 
-  /// drawing is a vector drawing behind everything, laid over the picture
-  /// and under the video -- what a background picture that was an .svg is
-  /// now, since drawings and pictures were separated. See VectorElement.
+  /// drawing is a vector drawing laid over the picture and under the video
+  /// (a background .svg). See VectorElement.
   final VectorElement? drawing;
 
-  /// backdrop is whether the pattern is drawn, or [stage].
+  /// backdrop is whether the pattern, [stage] or [parallax] is drawn.
   final BackdropKind backdrop;
 
   /// stage is the 3D stage this background is, where [backdrop] says so:
-  /// its settings, and on its own track the keys its camera moves on. Its
-  /// id is [backgroundStageId], which is what a character standing on it
-  /// names. Kept while the pattern is shown, so trying one and going back
-  /// to the other loses neither.
+  /// its settings, and on its own track its camera's keys. Its id is
+  /// [backgroundStageId], which a character standing on it names.
   final StageElement? stage;
 
   /// parallax is the parallax scenery this background is, where [backdrop]
   /// says so, its camera's keys on its own track under
-  /// [backgroundParallaxId]. Kept the way [stage] is.
+  /// [backgroundParallaxId].
   final ParallaxElement? parallax;
 
   const CanvasBackground({
@@ -295,9 +244,8 @@ class CanvasBackground {
         raw is Map<String, dynamic> && elementFromJson(raw) is T
             ? elementFromJson(raw) as T
             : null;
-    // A picture saved before drawings and pictures were separated, that was
-    // a drawing, is the background's drawing now -- read as a picture it
-    // would come back as nothing, since a drawing is not one any more.
+    // A saved "picture" that is a drawing (an .svg) is read as the drawing:
+    // as a picture it would come back as nothing.
     var image = jsonString(json["image"], "");
     var drawing = element<VectorElement>(json["drawing"]) ??
         element<VectorElement>(json["picture"]) ??
@@ -314,14 +262,14 @@ class CanvasBackground {
       spec: jsonSpec(
           json["spec"], ProceduralSpec.fromJson, const ProceduralSpec()),
       imageAssetId: image.endsWith(".svg") ? "" : image,
-      imageFit: ImageFit.fromName(json["fit"] as String?),
+      imageFit: ImageFit.fromName(jsonStr(json["fit"])),
       picture: element<ImageElement>(json["picture"]),
       video: element<VideoElement>(json["video"]),
       sound: element<AudioElement>(json["sound"]),
       drawing: drawing,
-      backdrop: BackdropKind.fromName(json["backdrop"] as String?),
-      // Read as a stage itself: elementFromJson reads a saved stage as the
-      // Background element a stage of its own has become.
+      backdrop: BackdropKind.fromName(jsonStr(json["backdrop"])),
+      // Read as a stage directly: elementFromJson would turn a saved stage
+      // into a Background element.
       stage: json["stage"] is Map<String, dynamic>
           ? StageElement.fromJson(
               json["stage"] as Map<String, dynamic>,
@@ -352,17 +300,11 @@ class CanvasDocument {
   final CanvasSize size;
   final CanvasBackground background;
 
-  /// guides is the scaffolding the canvas is laid out against -- the grid, the
-  /// lines the reader put down, the rulers and what snaps to what. See
-  /// [CanvasGuides]; it belongs to the document because it is the reason
-  /// everything on the canvas lines up.
+  /// guides is the grid, guide lines, rulers and snapping the canvas is laid
+  /// out against. See [CanvasGuides].
   final CanvasGuides guides;
 
-  /// kind is whether the canvases are moments or leaves. See CanvasKind.
-  ///
-  /// It changes remarkably little: the same elements on the same canvases,
-  /// named a different word, with covers and numbers and a page turn between
-  /// them. What it is not is a second editor.
+  /// kind is whether the canvases are scenes or pages. See CanvasKind.
   final CanvasKind kind;
 
   /// pages are the settings that only a document of pages reads. Carried
@@ -386,13 +328,14 @@ class CanvasDocument {
   final SessionGrid session;
 
   /// controls are what drives it played as a game: each action and the keys
-  /// and controller buttons that press it. Null is the usual six -- see
-  /// defaultControls -- and is what most documents have.
+  /// and controller buttons that press it. Null for defaultControls.
   final List<ControlAction>? controls;
 
   /// controlsNow are its controls, the usual ones where it has none of its
   /// own.
-  List<ControlAction> get controlsNow => controls ?? defaultControls;
+  List<ControlAction> get controlsNow =>
+      controls ??
+      (players.length > 1 ? sharedDefaultControls : defaultControls);
 
   /// playerControls are the second, third and fourth players' controls, by
   /// player, where they have been changed; controlsFor any player's.
@@ -419,32 +362,23 @@ class CanvasDocument {
   final String gameStart;
 
   /// game is whether it is being made into a game: the Game panel is in the
-  /// sidebar, and Play in the bar plays it. Its elements are still only what
-  /// each is set to be -- still, unless set otherwise.
+  /// sidebar, and Play in the bar plays it.
   final bool game;
 
   /// hasCanvas is whether there is a picture at all: false is the Ratio
-  /// "None" a piece of sound starts with, which puts the canvas away and
-  /// leaves its size and rate unasked. The size is kept underneath, for the
-  /// day a ratio is chosen.
+  /// "None" a piece of sound starts with. The size is kept underneath.
   final bool hasCanvas;
 
-  /// scenes are the canvases this document plays, in order.
-  ///
-  /// Empty means the one scene held in the fields below, which is what a
-  /// document written before scenes existed is and what a new one still is.
-  /// That is the whole trick of this change: everything above this file goes
-  /// on asking a document for its elements, its length and its actions, and
-  /// gets the scene being edited -- so a document with one scene behaves
-  /// exactly as it did, and nothing had to learn a new word to keep working.
+  /// scenes are the canvases this document plays, in order. Empty means the
+  /// one scene held in the fields below, as a new document is. Either way a
+  /// document's elements, length and actions are the scene being edited's.
   final List<CanvasScene> scenes;
 
   /// sceneAt is which scene is being edited and played.
   final int sceneAt;
 
-  /// master is the scene whose elements appear on every other one, or null
-  /// where there is none. See masterOn: it is kept when switched off, so
-  /// turning it off is not the same as throwing it away.
+  /// master is the scene whose elements appear on every other one, or null.
+  /// Kept while [masterOn] is off.
   final CanvasScene? master;
   final bool masterOn;
 
@@ -453,15 +387,9 @@ class CanvasDocument {
   final bool masterOver;
 
   /// targets are the shapes this document is being designed for, by ratio
-  /// key -- see shapeKey.
-  ///
-  /// Empty for a document made for one shape, which is most of them. Adding a
-  /// shape here is what starts a responsive design: every element gains a
-  /// layout for it, seeded from the shape being looked at and then the
-  /// reader's to adjust. See forShape.
-  ///
-  /// A list rather than a set so the order is the reader's, and a list of
-  /// keys rather than of CanvasRatio so a custom shape can be one of them.
+  /// key (see shapeKey, which allows a custom shape), in the reader's order.
+  /// Empty for one shape. Adding one gives every element a layout for it,
+  /// seeded from the shape being looked at. See forShape.
   final List<String> targets;
 
   /// cues are the named moments of the whole run, in order -- see
@@ -469,8 +397,7 @@ class CanvasDocument {
   final List<TimelineCue> cues;
 
   /// words are what the voice-over says and when, in frames of the whole
-  /// run, as a transcription heard them -- see SpokenWord. What cues are
-  /// named from, and what an element can be put on.
+  /// run -- see SpokenWord.
   final List<SpokenWord> words;
 
   /// textStyles are the document's named text styles, in the order they
@@ -479,13 +406,9 @@ class CanvasDocument {
   /// does, in every scene.
   final List<NamedTextStyle> textStyles;
 
-  /// onMaster is whether the master canvas is the one being edited.
-  ///
-  /// A document-level fact rather than a flag in the editor, and that is what
-  /// makes the master canvas cost almost nothing: with it set, a document
-  /// answers for the master when it is asked for its elements, so every
-  /// panel, the stage, the layer list and the settings edit the master
-  /// without knowing there is such a thing.
+  /// onMaster is whether the master canvas is the one being edited. Kept on
+  /// the document so that, while it is set, [elements] and the rest answer
+  /// for the master and every panel edits it unawares.
   final bool onMaster;
 
   /// _elements, _frames and _actions hold the single scene of a document that
@@ -496,24 +419,13 @@ class CanvasDocument {
 
   /// estimate is which file this canvas is meant to become, for the size the
   /// settings band shows. See [CanvasEstimate].
-  ///
-  /// On the document because it is a decision about the canvas rather than
-  /// about the editor: the same design is four hundred kilobytes as a PNG and
-  /// forty as a JPEG, and which of those somebody is watching is a fact about
-  /// what they are making.
   final CanvasEstimate estimate;
 
   final int _frames;
 
-  /// frameRate belongs to the document rather than to a scene: it is how fast
-  /// the whole thing plays, and two scenes running at different speeds would
-  /// be two films.
-  ///
-  /// Bounded by minFrameRate and maxFrameRate, which is where the settings
-  /// bar's Custom entry is bounded too. It used to be clamped at sixty here
-  /// and offered to a hundred and twenty there, so a canvas typed at ninety
-  /// came back as sixty with nothing said -- the field that asked for it and
-  /// the document that kept it disagreed, and the document won quietly.
+  /// frameRate is how fast the whole document plays (one rate for every
+  /// scene), bounded by minFrameRate and maxFrameRate as the settings bar's
+  /// Custom entry is.
   final int frameRate;
 
   final List<TimelineAction> _actions;
@@ -566,12 +478,8 @@ class CanvasDocument {
       ? master!.elements
       : (scenes.isEmpty ? _elements : scenes[at].elements);
 
-  /// frames is the length of the scene being edited. One means a still.
-  ///
-  /// The master canvas is as long as the whole sequence, worked out rather
-  /// than stored: it is the thing every scene plays under, so its length is
-  /// not its own to keep and has to follow scenes being added, removed and
-  /// made longer.
+  /// frames is the length of the scene being edited; one means a still. The
+  /// master's is the whole sequence, worked out rather than stored.
   int get frames => editingMaster
       ? sequenceFrames
       : (scenes.isEmpty ? _frames : scenes[at].frames);
@@ -580,10 +488,8 @@ class CanvasDocument {
       ? master!.actions
       : (scenes.isEmpty ? _actions : scenes[at].actions);
 
-  /// scene is the scene being edited -- never the master, which is not one
-  /// of the scenes however much of the editor it is standing in for. Asked
-  /// for the master while it was showing, allScenes answered with it and the
-  /// scene it was covering disappeared out of the list.
+  /// scene is the scene being edited -- never the master, even while the
+  /// master is being edited (allScenes depends on that).
   CanvasScene get scene => scenes.isEmpty
       ? CanvasScene(
           id: "scene1", elements: _elements, frames: _frames, actions: _actions)
@@ -606,15 +512,10 @@ class CanvasDocument {
 
   /// playFrames is how long this document runs for when it is played or
   /// published: the whole sequence where there are scenes, and the one
-  /// scene's own length where there are not.
-  ///
-  /// Asked by the export and by anything that plays the document through. The
-  /// editor's timeline asks [frames] instead, which is the canvas in front of
-  /// the reader -- the two are the same thing until a document has a second
-  /// scene, and then they are exactly not.
+  /// scene's own length where there are not. The editor's timeline asks
+  /// [frames], the canvas in front of the reader, instead.
   int get playFrames => hasScenes ? sequenceFrames : frames;
 
-  /// startOfScene is the frame the sequence reaches [index] on.
   /// offTimeline is whether [clip], on the timeline, has nothing to show at
   /// [frame] of the scene being looked at: before it starts or after it has
   /// finished. A clip on the master runs on the whole run's clock, the way
@@ -626,24 +527,28 @@ class CanvasDocument {
     return clip.momentAt((run - clip.at) / rate) == null;
   }
 
+  /// startOfScene is the frame the sequence reaches scene [index] on.
   int startOfScene(int index) {
-    var reached = 0;
-    for (var i = 0; i < index && i < allScenes.length; i++) {
-      reached += _stepOf(i);
-    }
-    return reached;
+    // Every start, worked out once per document: this is asked inside loops
+    // over the scenes and their elements.
+    var starts = _sceneStarts[this] ??= () {
+      var out = [0];
+      for (var i = 0; i < allScenes.length; i++) {
+        out.add(out.last + _stepOf(i));
+      }
+      return out;
+    }();
+    return starts[index.clamp(0, starts.length - 1)];
   }
 
   /// keepingStarts is this document with scene lengths adjusted so that
-  /// every scene [before] also had starts where it started there.
+  /// every scene also in [before] starts where it did there: a transition
+  /// made longer or shorter is absorbed by the scene before it.
   ///
-  /// Worked front to back, each start put right by changing the scene
-  /// before it -- which is what absorbs a transition made longer or shorter.
-  /// A scene in [fixed] has just been given its length by hand and is left
-  /// alone: the scene after it moves, and the one after that is put back by
-  /// shortening or lengthening the scene between, so the change is taken from
-  /// its neighbour. A scene that cannot give enough -- it would fall below one
-  /// frame -- gives what it can.
+  /// Worked front to back, each start put right by changing the scene before
+  /// it. A scene in [fixed] has just been given its length by hand and is
+  /// left alone, so the change is taken from its neighbour. A scene that
+  /// would fall below one frame gives what it can.
   CanvasDocument keepingStarts(CanvasDocument before,
       {Set<String> fixed = const {}}) {
     var was = <String, int>{
@@ -664,13 +569,9 @@ class CanvasDocument {
   }
 
   /// transitionSounds are the sounds the transitions carry, each as a timed
-  /// sound on the run's own timeline -- where the transition starts, less
-  /// its lead. Made from the transitions every time they are asked for
-  /// rather than kept, so a sound is always where its transition is.
-  ///
-  /// Read by the editor's playback and by the export alongside the master's
-  /// own sounds; never saved, and not editable as clips -- they belong to
-  /// their transitions.
+  /// sound on the run's timeline where the transition starts, less its lead.
+  /// Made afresh on every ask (never saved, not editable as clips), so a
+  /// sound is always where its transition is.
   List<AudioElement> get transitionSounds {
     var list = allScenes;
     if (list.length < 2) return const [];
@@ -707,12 +608,8 @@ class CanvasDocument {
   /// on before the next one starts, how many frames the two scenes share, and
   /// how long the transition between them lasts.
   ///
-  /// One answer, asked by the length of the document, by where each scene
-  /// starts and by what is drawn at a given moment -- see placeInSequence,
-  /// which used to work it out a second time. Two opinions about where scene
-  /// four starts is a canvas that exports differently from the one on screen,
-  /// and they had already drifted: this one counted a transition longer than
-  /// its overlap as taking no time at all.
+  /// The one answer for the document's length, each scene's start and what
+  /// is drawn when (placeInSequence), so the export and the screen agree.
   (int, int, int) sceneStep(int index) {
     var list = allScenes;
     if (index < 0 || index >= list.length) return (0, 0, 0);
@@ -726,10 +623,9 @@ class CanvasDocument {
     // than either scene has to give.
     var held = math.min(over.frames,
         math.min(over.overlap, math.min(scene.frames, list[index + 1].frames)));
-    // This scene, less the frames the next one starts early by, plus whatever
-    // is left of the transition once the sharing has ended -- which is its
-    // own stretch of time, with the scene leaving held on its last frame and
-    // the one arriving not started.
+    // This scene, less the frames the next one starts early by, plus what is
+    // left of the transition after the sharing: its own stretch, the leaving
+    // scene held on its last frame and the arriving one not started.
     return (scene.frames - held + (over.frames - held), held, over.frames);
   }
 
@@ -737,31 +633,22 @@ class CanvasDocument {
   int _stepOf(int index) => sceneStep(index).$1;
 
   /// allScenes is every scene in order, whichever way the document is
-  /// arranged. What the Scenes panel lists and what a whole-document export
-  /// plays through.
+  /// arranged.
   List<CanvasScene> get allScenes => scenes.isEmpty ? [scene] : scenes;
 
-  /// hasScenes is whether this document is more than one canvas. The parts of
-  /// the editor that only exist for scenes -- the counter in the bar, the
-  /// transitions on the timeline -- ask this rather than counting.
+  /// hasScenes is whether this document is more than one canvas.
   bool get hasScenes => scenes.length > 1;
 
-  /// isPages is whether this document is leaves rather than moments.
+  /// isPages is whether this document is pages rather than scenes.
   bool get isPages => kind.isPages;
 
   /// pageCovers is which of the canvases are covers, in order -- what the
   /// numbering and the pairing are both worked out from. See canvas_pages.dart.
   List<PageCover> get pageCovers => [for (var s in allScenes) s.cover];
 
-  /// pageNumberAt is the number printed on one page, or null where none is:
-  /// a cover, or a document that is scenes rather than pages.
-  ///
-  /// Worked out rather than stored. A number written onto a page is right
-  /// until the first time anything is added, removed or dragged.
   /// nameOf is what scene [index] is called: its own name where it has been
-  /// given one, and otherwise its default -- which, for a page, is the number
-  /// printed on it. A front cover that does not count put "1" on the page
-  /// after it while the list still called that page "Page 2".
+  /// given one, and otherwise its default -- for a page, the number printed
+  /// on it.
   String nameOf(int index) {
     var list = allScenes;
     if (index < 0 || index >= list.length) return "";
@@ -774,18 +661,17 @@ class CanvasDocument {
     return scene.saysAt(index, kind);
   }
 
+  /// pageNumberAt is the number printed on page [index], or null for a cover
+  /// or a document of scenes. Worked out, never stored.
   int? pageNumberAt(int index) =>
       isPages ? pageNumberFor(pageCovers, index, pages) : null;
 
   /// pageNumber is the number on the page being edited, which is what a page
   /// number drawn on the master canvas reads. See CounterSource.page.
   ///
-  /// On the master canvas itself it is never null. The master is the place a
-  /// page number is *put*, and a number that is not drawn is an element that
-  /// cannot be found, let alone moved -- which is what happened opening the
-  /// master from a front cover, a page that carries no number at all. So the
-  /// master borrows the first number the document actually prints, and falls
-  /// back to where the numbering starts when it prints none.
+  /// Never null on the master, where page numbers are placed (an undrawn one
+  /// could not be found to move): it borrows the first number the document
+  /// prints, or where the numbering starts.
   int? get pageNumber {
     var here = pageNumberAt(at);
     if (here != null || !editingMaster) return here;
@@ -800,13 +686,8 @@ class CanvasDocument {
   /// which is what a mirrored page number is drawn from. See
   /// CounterElement.mirrored.
   ///
-  /// Never on the master canvas, whichever page was open before it. What is
-  /// on the master is being *placed*, and a mirrored element is drawn on the
-  /// opposite side of the page from the box that is dragged to move it --
-  /// so it jumped away from the pointer, and which way it jumped depended on
-  /// the page somebody happened to leave. The master is placed as a
-  /// right-hand page and the left-hand pages mirror it, which is one answer
-  /// rather than two.
+  /// Never on the master: it is placed as a right-hand page and the left-hand
+  /// pages mirror it, so a mirrored element stays under the pointer.
   bool get pageIsLeftHand => isPages && !editingMaster && pageIsLeft(at);
 
   /// facingAt is the page shown beside the one at [index] while facing pages
@@ -820,12 +701,9 @@ class CanvasDocument {
       isPages && pages.facing ? leftOfSpread(pageCovers, index) : null;
 
   /// spreadOf is the two leaves on screen together with the page at [index],
-  /// left and right, either of them null where that side is empty.
-  ///
-  /// A leaf standing alone still has a side -- the first leaf is a right-hand
-  /// page with nothing to its left -- and that is what lets a transition out
-  /// of it be drawn in the book rather than in a frame of its own. Null
-  /// altogether where facing pages are not being shown.
+  /// left and right, either null where that side is empty (a lone leaf still
+  /// has a side, so a transition out of it is drawn in the book). Null where
+  /// facing pages are not shown.
   (int?, int?)? spreadOf(int index) {
     if (!isPages || !pages.facing) return null;
     var list = allScenes;
@@ -847,49 +725,32 @@ class CanvasDocument {
   }
 
   /// masterScene is the shared canvas when it is switched on, and null
-  /// otherwise -- or on a scene that leaves it off. Asked by the painter,
-  /// which must not draw a master that has been turned off.
+  /// otherwise or on a scene that leaves it off.
   CanvasScene? get masterScene => masterOn && !scene.masterOff ? master : null;
 
-  /// drawnBackground is what is actually behind the canvas being shown.
-  ///
-  /// Three answers in order: the shared canvas's own while the master is
-  /// switched on, then this scene's own, then the document's. So a backdrop
-  /// put on the master comes and goes with it, a scene given its own keeps
-  /// it, and a document that has never been asked the question goes on
-  /// showing the one background it has always had.
+  /// drawnBackground is what is actually behind the canvas being shown: the
+  /// master's own while the master is on, then this scene's own, then the
+  /// document's.
   CanvasBackground get drawnBackground => editingMaster
       ? (master!.background ?? background)
       : (masterScene?.sharedBackground ?? scene.background ?? background);
 
   /// ownBackground is the backdrop this canvas owns: its own where it has
-  /// been given one, and the document's until then.
-  ///
-  /// What the layers list names, because that row answers "what is on this
-  /// canvas" -- a scene with a dot grid of its own has one whether or not the
-  /// shared canvas is covering it today. What the settings panel edits is
-  /// [editedBackground], which is a different question.
+  /// been given one, and the document's until then. What the layers list
+  /// names; the settings panel edits [editedBackground].
   CanvasBackground get ownBackground => editingMaster
       ? (master!.background ?? background)
       : (scene.background ?? background);
 
-  /// editedBackground is the backdrop the settings panel shows and changes,
-  /// which is [drawnBackground]: the one that is actually on screen.
-  ///
-  /// It used to be [ownBackground], leaving the shared canvas's out on the
-  /// grounds that a panel should not offer to edit one canvas's settings from
-  /// another canvas's panel. That is a real objection and it cost more than
-  /// it saved: a backdrop on the shared canvas is drawn in front of every
-  /// scene's, so with one switched on the whole Background panel went dead --
-  /// it showed a background nobody could see, every setting changed that one,
-  /// and the screen never moved. Editing what is in front of you and saying
-  /// whose it is beats editing something invisible in silence. The panel says
-  /// so; see [sharedBackdrop].
+  /// editedBackground is the backdrop the settings panel shows and changes:
+  /// [drawnBackground], the one on screen, even when it is the master's (the
+  /// panel says so: see [sharedBackdrop]). Editing [ownBackground] under a
+  /// master's backdrop would change nothing visible.
   CanvasBackground get editedBackground => drawnBackground;
 
-  /// hasTiming is whether anything is placed in time: a keyframe, or a sound
-  /// or a video on the timeline, in any scene or on the master. What a
-  /// change of frame rate would move.
+  /// hasTiming is whether anything is placed in frames -- a keyframe, or a
+  /// sound or a video on the timeline -- in any scene or on the master: what
+  /// a change of frame rate would move. Clips are in seconds and do not count.
   bool get hasTiming {
     for (var e in [
       for (var scene in allScenes) ...scene.elements,
@@ -907,8 +768,7 @@ class CanvasDocument {
   }
 
   /// sharedBackdrop is whether what is on screen behind this canvas belongs
-  /// to the shared canvas rather than to this one -- which is what the
-  /// settings panel says out loud before offering to change it.
+  /// to the master rather than to this one.
   bool get sharedBackdrop =>
       !editingMaster && masterScene?.sharedBackground != null;
 
@@ -922,17 +782,10 @@ class CanvasDocument {
         background;
   }
 
-  /// settledFrame is the first frame on which everything that arrives has
-  /// finished arriving.
-  ///
-  /// What a canvas opens on. Opening on frame nought shows a canvas whose
-  /// elements have not arrived yet -- which is an empty page, and reads as a
-  /// document that has failed to load rather than one that is about to play.
-  ///
-  /// The end of the last *arrival*, not of the last movement: a canvas whose
-  /// elements arrive and then drift for ten seconds should open showing them,
-  /// not showing where they end up. Anything with no arrival band counts as
-  /// nought, because it was there from the start.
+  /// settledFrame is the end of the last keyframed arrival (reveal band) in
+  /// the scene, not of the last movement: a canvas opens there rather than on
+  /// an empty frame nought. settledFrameOf in render/motion_document.dart
+  /// adds clip arrivals.
   int get settledFrame {
     var last = 0;
     for (var element in scene.elements) {
@@ -945,13 +798,7 @@ class CanvasDocument {
   }
 
   /// defaultTransition is what a scene with no transition of its own uses:
-  /// the master scene's, or a cut.
-  ///
-  /// A cut whatever kind of document this is. Pages had a turn of their own
-  /// for a while; four goes at drawing one all read as something going wrong
-  /// with the page rather than as paper, and a join that has to be explained
-  /// is worse than no join at all. A reader turns the pages of a book, and
-  /// what the editor owes it is the pages.
+  /// the master scene's, or a cut (for pages too).
   SceneTransition get defaultTransition =>
       master?.transition ?? SceneTransition.cut;
 
@@ -962,10 +809,8 @@ class CanvasDocument {
     return list[index].transition ?? defaultTransition;
   }
 
-  /// sceneNamed finds a scene by id or by name, for a button that goes to
-  /// one. By id first: a name can be changed and can be shared by two
-  /// scenes, and an action that quietly went somewhere else after a rename
-  /// would be worse than one that stopped working.
+  /// sceneIndexNamed finds a scene by id or by name, for a button that goes
+  /// to one, or -1. By id first: a name can change or be shared.
   int sceneIndexNamed(String idOrName) {
     var list = allScenes;
     for (var (i, s) in list.indexed) {
@@ -979,29 +824,18 @@ class CanvasDocument {
 
   bool get isAnimated => frames > 1;
 
-  /// durationSeconds is what the timeline reports and what the GIF export
-  /// uses to work out its frame delays.
+  /// durationSeconds is the scene being edited's length in seconds.
   double get durationSeconds => frames / (frameRate <= 0 ? 1 : frameRate);
 
-  /// assetIds is every stored picture this document refers to.
-  ///
-  /// What a sweep of the picture store measures against: anything not named
-  /// by some saved document is a picture nothing can ever show again, and is
-  /// deleted. So anything missed here is a picture that quietly disappears
-  /// between one session and the next.
-  ///
-  /// Which is what happened twice over. It read `elements`, and that is the
-  /// scene being edited rather than all of them, so every picture in every
-  /// other scene -- and on the shared canvas -- was fair game while scene one
-  /// was open. And it knew about a background's own picture but not about the
-  /// ones its rings carry, so an icon vanished on the next restart.
+  /// assetIds is every stored picture this document refers to, in every
+  /// scene and the master (not just [elements]), backgrounds and their rings
+  /// included. The picture-store sweep deletes anything no saved document
+  /// names, so a picture missed here is lost on the next restart.
   Set<String> get assetIds {
     var ids = <String>{};
 
-    /// fromIcons is every picture a set of rings carries: the one an icon is
-    /// drawn as, and the others it may be drawn as instead. See RingPick --
-    /// a picture only ever reached by a roll of the dice is still a picture
-    /// somebody put there.
+    // Every picture a set of rings carries, including the RingPick ones an
+    // icon may be drawn as instead.
     void fromIcons(List<RingIcon> icons) {
       for (var icon in icons) {
         if (icon.asset.isNotEmpty) ids.add(icon.asset);
@@ -1027,8 +861,6 @@ class CanvasDocument {
     }
 
     fromBackground(background);
-    // Every scene, not the one being looked at -- allScenes answers with the
-    // document's own single canvas where there are no scenes.
     for (var one in allScenes) {
       fromElements(one.elements);
       fromBackground(one.background);
@@ -1041,9 +873,8 @@ class CanvasDocument {
   }
 
   /// mediaIds is every stored sound or video this document refers to, on
-  /// every scene and the master -- what a sweep of the media store measures
-  /// against, and what a bundle carries. See [assetIds] for why it is every
-  /// scene and not the one open.
+  /// every scene and the master: what the media-store sweep keeps and what a
+  /// bundle carries. See [assetIds].
   Set<String> get mediaIds => {
         ...background.mediaIds,
         // The clip slots' sounds, kept as the timeline's are.
@@ -1058,51 +889,24 @@ class CanvasDocument {
         ],
       };
 
-  /// hasKeyframes is whether anything in this document moves.
-  ///
-  /// Asks the players as well as the elements, for the same reason
-  /// [lastAnimatedFrame] does: a team's movement lives on its players, so a
-  /// pitch full of runs looks like a still from the outside.
-  bool get hasKeyframes {
-    for (var e in elements) {
-      if (e.track?.isEmpty == false) return true;
-      if (e is TeamElement) {
-        for (var p in e.players) {
-          if (p.track?.isEmpty == false) return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  /// withoutKeyframes is this document with every track taken off.
-  ///
-  /// Paths keep their points. A point is where the curve goes rather than a
-  /// pose, so clearing the animation should leave the routes drawn and empty
-  /// -- re-applying one is a button press, redrawing it is not.
-  CanvasDocument withoutKeyframes() => copyWith(elements: [
-        for (var e in elements)
-          if (e is TeamElement)
-            e.copyWith(players: [
-              for (var p in e.players) p.copyWith(clearTrack: true),
-            ]).withBase(clearTrack: true)
-          else
-            e.withBase(clearTrack: true),
-      ]);
-
-  /// lastAnimatedFrame is the furthest frame any element has a keyframe on.
-  ///
-  /// Asked so the timeline can point out a document whose length is shorter
-  /// than the animation drawn on it -- keyframes past the end are not lost,
-  /// they are simply never reached, and that is confusing enough to be worth
-  /// saying out loud rather than silently trimming somebody's work.
+  /// lastAnimatedFrame is the furthest frame a keyframe, clip or marker of the
+  /// scene is on, so the settings bar can warn of a scene shorter than its
+  /// animation -- its keyframes and its placed clips alike.
   int get lastAnimatedFrame {
     var last = 0;
+    var rate = math.max(1, frameRate);
     for (var e in elements) {
       var f = e.track?.lastFrame ?? 0;
       if (f > last) last = f;
-      // A team's movement is on its players, not on the team, so asking the
-      // element alone would report a pitch full of runs as a still.
+      // And its placed clips, where each ends (pins aside).
+      var m = e.base.motion;
+      for (var p in m.placed) {
+        var c = m.clip(p.clip);
+        if (c == null) continue;
+        var end = ((p.start + (p.length ?? c.span)) * rate).ceil();
+        if (end > last) last = end;
+      }
+      // A team's movement is on its players' tracks.
       if (e is TeamElement) {
         for (var p in e.players) {
           var pf = p.track?.lastFrame ?? 0;
@@ -1117,20 +921,29 @@ class CanvasDocument {
   }
 
   CanvasElement? elementById(String id) {
-    for (var e in elements) {
-      if (e.id == id) return e;
+    var list = elements;
+    if (list.length < 16) {
+      for (var e in list) {
+        if (e.id == id) return e;
+      }
+      return null;
     }
-    return null;
+    // By id, once for each list: asked for over and over while a frame is
+    // drawn. Lists of elements are never changed, only replaced.
+    var byId = _byId[list] ??= () {
+      var out = <String, CanvasElement>{};
+      for (var e in list) {
+        out.putIfAbsent(e.id, () => e);
+      }
+      return out;
+    }();
+    return byId[id];
   }
 
   int indexOf(String id) => elements.indexWhere((e) => e.id == id);
 
-  /// copyWith changes the document, and where it is given elements, a length
-  /// or actions those go to the scene being edited.
-  ///
-  /// That is what keeps every caller working. An edit is still "a document
-  /// with this element replaced"; which canvas it lands on is this file's
-  /// business rather than every panel's.
+  /// copyWith changes the document; elements, a length or actions go to the
+  /// scene being edited (or the master), so callers need not know which.
   CanvasDocument copyWith({
     String? title,
     CanvasSize? size,
@@ -1170,15 +983,13 @@ class CanvasDocument {
         .clamp(0, math.max(0, list.length - 1))
         .toInt();
 
-    // Into the master canvas, when that is the one being edited. Its length
-    // is not its own -- see frames -- so a length written here is dropped
-    // rather than kept and quietly ignored.
-    var onIt = onMaster ?? this.onMaster;
+    // Into the master canvas, when that is the one being edited. A length
+    // written here is dropped: the master's is the sequence's (see frames).
     var shared = clearMaster ? null : (master ?? this.master);
-    if (onIt &&
-        shared != null &&
-        master == null &&
-        (elements != null || actions != null)) {
+    var onIt = (onMaster ?? this.onMaster) &&
+        (masterOn ?? this.masterOn) &&
+        shared != null;
+    if (onIt && master == null && (elements != null || actions != null)) {
       shared = shared.copyWith(elements: elements, actions: actions);
     }
 
@@ -1201,8 +1012,7 @@ class CanvasDocument {
       background: background ?? this.background,
       guides: guides ?? this.guides,
       // An edit meant for the master must not also land on the one scene a
-      // document with no scene list has. It did: the two are held in
-      // different places and both were being written.
+      // document with no scene list has.
       elements: list.isEmpty
           ? (onIt && shared != null ? _elements : (elements ?? _elements))
           : const [],
@@ -1243,12 +1053,8 @@ class CanvasDocument {
   }
 
   /// withScenes is this document as a list of scenes, whichever way it was
-  /// arranged before.
-  ///
-  /// Everything that adds, removes or reorders scenes goes through here, so
-  /// that a document with one scene in its old shape becomes a list the
-  /// moment a second one is wanted -- and nowhere else has to know there were
-  /// two shapes.
+  /// arranged before. Everything that adds, removes or reorders scenes goes
+  /// through here.
   CanvasDocument withScenes(List<CanvasScene> next, {int? at}) {
     if (next.isEmpty) return this;
     return CanvasDocument(
@@ -1283,25 +1089,17 @@ class CanvasDocument {
     );
   }
 
-  /// forShape is this document laid out for another shape of page.
+  /// forShape is this document laid out for another shape of page: the one
+  /// place a shape change goes through, the master included.
   ///
-  /// The one place a shape change goes through. Every element puts away the
-  /// place and size it was showing under the shape being left, and takes out
-  /// the ones belonging to the shape being opened -- or, on a shape nobody
-  /// has worked on yet, a scaled copy of what was just put away. Everything
-  /// else in the editor goes on reading elements the way it always has, which
-  /// is what makes this cheap. See responsive_layout.dart.
-  ///
-  /// The master canvas is laid out with the rest: it is a canvas, and a
-  /// design that is responsive everywhere except the thing drawn under all of
-  /// it is not responsive.
+  /// Every element puts away its live place and size under the shape being
+  /// left and takes out the shape being opened's -- or, on a new shape, a
+  /// scaled copy. See responsive_layout.dart.
   CanvasDocument forShape(CanvasSize next) {
     var from = shapeKey(size), to = shapeKey(next);
     if (from == to) return copyWith(size: next);
 
-    // Worked out per scene, because it is the scene's design that is being
-    // placed: the block it occupies, how much of it the new page can hold,
-    // and where on the new page it sat before. See seedFor.
+    // Seeded per scene, from that scene's design. See seedFor.
     CanvasScene moved(CanvasScene scene) {
       var seed = seedFor(scene.elements, size, next);
       return scene.copyWith(elements: [
@@ -1323,30 +1121,14 @@ class CanvasDocument {
     return withScenes(list);
   }
 
-  /// addScene puts a new empty canvas after [after], or at the end.
-  ///
-  /// With a plain backdrop of its own rather than none. A scene with none
-  /// falls back to the document's, and the document's is whatever the
-  /// background was when there was only one canvas to put it on -- so a new
-  /// scene arrived wearing a backdrop from earlier in the document's life,
-  /// often one nobody could remember choosing and nothing on screen could be
-  /// used to change. Empty means empty.
-  ///
-  /// The scenes already there are untouched: they still have no backdrop of
-  /// their own and still fall back to the document's, so adding a scene does
-  /// not change how any of them looks. And a backdrop on the shared canvas
-  /// still covers this one, which is what the shared canvas is for.
+  /// addScene puts a new empty canvas after [after], or at the end, with a
+  /// plain backdrop of its own: falling back to the document's would give it
+  /// a backdrop from earlier in the document's life. A master's backdrop
+  /// still covers it.
   CanvasDocument addScene({int? after, String name = ""}) {
-    // Every canvas that was relying on the document's backdrop takes a copy
-    // of it first.
-    //
-    // Nothing on screen moves: they were already showing it. What changes is
-    // that the document's own background stops being a live fallback the
-    // moment there is more than one canvas -- so the next scene added is
-    // plain, and the one after that, rather than each of them inheriting
-    // whatever the backdrop happened to be when the document had one canvas
-    // in it. That inheritance is what put a backdrop nobody remembered
-    // choosing behind a new scene.
+    // Every scene relying on the document's backdrop takes a copy of it
+    // first, so nothing on screen changes and the document's backdrop stops
+    // being a live fallback.
     var list = [
       for (var scene in allScenes)
         scene.background == null
@@ -1366,16 +1148,9 @@ class CanvasDocument {
     return withScenes(list, at: to);
   }
 
-  /// scenesFrom is this document holding only scenes [first] to [last], for a
-  /// publish that is meant to be part of it.
-  ///
-  /// A trimmed document rather than a range threaded through every renderer.
-  /// The GIF, the video, the PDF and the bundle all ask the document how long
-  /// it runs for and what is on it at a given moment; handed one that is four
-  /// scenes long, all four publish four scenes without knowing anything new.
-  ///
-  /// The shared canvas, the size, the frame rate and the guides come with it,
-  /// because they are the document's and not any scene's.
+  /// scenesFrom is this document holding only scenes [first] to [last], for
+  /// publishing part of it: a trimmed document, so no exporter needs a range.
+  /// The master, size, frame rate and guides come with it.
   CanvasDocument scenesFrom(int first, int last) {
     var list = allScenes;
     var from = first.clamp(0, list.length - 1).toInt();
@@ -1384,11 +1159,8 @@ class CanvasDocument {
     return withScenes(list.sublist(from, to + 1), at: 0);
   }
 
-  /// duplicateScene copies one, elements and all, under new ids.
-  ///
-  /// New ids for the elements as well as for the scene: two scenes holding
-  /// the same element id would be one element in two places, and editing it
-  /// in one would edit it in the other.
+  /// duplicateScene copies one, elements and all, under new ids: two scenes
+  /// sharing an element id would edit as one element.
   CanvasDocument duplicateScene(int index) {
     var list = [...allScenes];
     if (index < 0 || index >= list.length) return this;
@@ -1402,8 +1174,7 @@ class CanvasDocument {
     return withScenes(list, at: index + 1);
   }
 
-  /// removeScene takes one out. The last one left stays: a document with no
-  /// canvas in it is not a document.
+  /// removeScene takes one out; the last one left stays.
   CanvasDocument removeScene(int index) {
     var list = [...allScenes];
     if (list.length <= 1 || index < 0 || index >= list.length) return this;
@@ -1431,11 +1202,8 @@ class CanvasDocument {
       copyWith(master: next, masterOn: masterOn);
 
   /// withElement replaces the element sharing [element]'s id, or does nothing
-  /// if it has since been deleted.
-  ///
-  /// Doing nothing is deliberate. A settings control that is still holding a
-  /// deleted element -- which happens, because a panel is torn down one frame
-  /// after the delete -- must not put it back.
+  /// if it has since been deleted: a panel torn down a frame after a delete
+  /// must not put the element back.
   CanvasDocument withElement(CanvasElement element) {
     var i = indexOf(element.id);
     if (i < 0) return this;
@@ -1448,12 +1216,8 @@ class CanvasDocument {
       copyWith(elements: [...elements, laidOut(element)]);
 
   /// laidOut is [element] given a layout on every shape this document is
-  /// designed for, seeded from the shape being looked at.
-  ///
-  /// Everything that puts an element on the canvas goes through addElement,
-  /// so this is the one place that has to know: a card added while the 16:9
-  /// is open is on the 4:5 as well, scaled to it, rather than having to be
-  /// built once per shape.
+  /// designed for, seeded from the shape being looked at. Everything that
+  /// adds an element goes through addElement, and so through this.
   CanvasElement laidOut(CanvasElement element) => withLayoutsFor(
         element,
         size,
@@ -1461,18 +1225,12 @@ class CanvasDocument {
         sizeOf: (key) => sizeForShape(key, size),
       );
 
-  /// removeElement takes an element out, and takes the references to it with
-  /// it.
+  /// removeElement takes an element out, and the references to it: a text
+  /// attached to a line, or flowing into a box, that names it. A dangling id
+  /// there would be a setting the panel could neither show nor undo.
   ///
-  /// A text element attached to a line it names, or flowing its overflow into
-  /// a box it names, is holding an id -- and an id that names nothing is a
-  /// setting that cannot be seen or undone: the words fell back to their own
-  /// box on the canvas while the panel still said they were placed by a line,
-  /// and the fields for moving them were not there.
-  ///
-  /// A button's action is deliberately not cleaned up here: an action
-  /// pointing at something that has gone is a button that does nothing, which
-  /// is exactly what deleting its target should leave behind.
+  /// A button's action is deliberately left: pointing at nothing, it does
+  /// nothing, which is what deleting its target should leave.
   CanvasDocument removeElement(String id) => copyWith(elements: [
         for (var e in elements)
           if (e.id != id) _withoutLinksTo(e, id),
@@ -1487,15 +1245,12 @@ class CanvasDocument {
     return copyWith(elements: next);
   }
 
-  /// toJson writes the file.
-  ///
-  /// A document of one scene with no master is written exactly as it was
-  /// before scenes existed: elements, frames and actions at the top level. So
-  /// a canvas made in this build opens in an older one, and -- more to the
-  /// point -- every canvas already saved opens here unchanged. The scene list
-  /// appears only once there is something a single scene cannot say.
+  /// toJson writes the file. A document of one plain scene with no master
+  /// keeps elements, frames and actions at the top level, as before scenes
+  /// existed; the scene list appears only when a single scene cannot say
+  /// something.
   Map<String, dynamic> toJson() {
-    var one = scenes.length <= 1 && master == null;
+    var one = scenes.length <= 1 && master == null && _plain(scene);
     return {
       "version": canvasFormatVersion,
       "title": title,
@@ -1539,9 +1294,8 @@ class CanvasDocument {
         if (masterOn) "masterOn": true,
         if (onMaster) "onMaster": true,
       },
-      // The one scene's own name and settings, which the top-level fields
-      // cannot carry. Written for a single scene as well, so naming the first
-      // scene of a document is not what turns it into a scene list.
+      // The one scene's own name and settings, so naming it does not turn
+      // the document into a scene list.
       if (one && (scene.name.isNotEmpty || scene.holds || scene.custom))
         "scene": {
           if (scene.name.isNotEmpty) "name": scene.name,
@@ -1552,15 +1306,23 @@ class CanvasDocument {
     };
   }
 
+  /// _plain is whether [s] has nothing the top-level fields and the
+  /// "scene" entry cannot carry.
+  static bool _plain(CanvasScene s) =>
+      s.background == null &&
+      !s.backgroundOff &&
+      !s.masterOff &&
+      s.gameSounds.isEmpty &&
+      !s.cover.isCover &&
+      s.camera == null;
+
   String encode() => const JsonEncoder.withIndent("  ").convert(toJson());
 
   factory CanvasDocument.fromJson(Map<String, dynamic> json) {
     var raw = json["elements"];
     var acts = json["actions"];
 
-    // A scene list, where there is one. Everything else -- the page, the
-    // guides, what it will be published as -- belongs to the document and is
-    // read the same way either way.
+    // A scene list, where there is one.
     var sceneList = json["scenes"];
     var scenes = <CanvasScene>[
       if (sceneList is List)
@@ -1601,8 +1363,7 @@ class CanvasDocument {
         jsonInt(json["frames"], defaultFrameCount).clamp(1, maxFrameCount);
 
     if (scenes.isEmpty && (name.isNotEmpty || holds || transition != null)) {
-      // One scene with something to say for itself: held as a list of one, so
-      // there is somewhere to keep it.
+      // One scene with settings of its own: held as a list of one.
       scenes = [
         CanvasScene(
           id: id,
@@ -1632,7 +1393,7 @@ class CanvasDocument {
       actions: scenes.isEmpty ? actions : const [],
       scenes: scenes,
       sceneAt: jsonInt(json["sceneAt"], 0),
-      kind: CanvasKind.fromName(json["kind"] as String?),
+      kind: CanvasKind.fromName(jsonStr(json["kind"])),
       pages: json["pages"] is Map<String, dynamic>
           ? PagesSpec.fromJson(json["pages"] as Map<String, dynamic>)
           : const PagesSpec(),
@@ -1675,7 +1436,10 @@ class CanvasDocument {
           ? CanvasScene.fromJson(json["master"] as Map<String, dynamic>)
           : null,
       masterOn: jsonBool(json["masterOn"], false),
-      onMaster: jsonBool(json["onMaster"], false),
+      // Only where there is a master, switched on, to be on.
+      onMaster: jsonBool(json["onMaster"], false) &&
+          jsonBool(json["masterOn"], false) &&
+          json["master"] is Map<String, dynamic>,
       targets: [
         if (json["targets"] is List)
           for (var t in json["targets"] as List)
@@ -1699,15 +1463,11 @@ class CanvasDocument {
     );
   }
 
-  /// decode reads a saved file, returning null rather than throwing.
-  ///
-  /// A document that will not parse is a document the user still has on disk,
-  /// and the right response is to say so and leave the file alone -- not to
-  /// crash the page it was opened from, and certainly not to overwrite it with
-  /// an empty canvas.
+  /// decode reads a saved file, returning null rather than throwing, so a
+  /// file that will not parse is reported and left alone, never overwritten.
   static CanvasDocument? decode(String text) {
     try {
-      var json = jsonDecode(text);
+      var json = finiteJson(jsonDecode(text));
       if (json is! Map<String, dynamic>) return null;
       return CanvasDocument.fromJson(json);
     } catch (_) {
@@ -1715,6 +1475,26 @@ class CanvasDocument {
     }
   }
 }
+
+/// _byId keeps each list of elements by id: see elementById.
+final Expando<Map<String, CanvasElement>> _byId = Expando("elementsById");
+
+/// _sceneStarts keeps each document's scene starts: see startOfScene.
+final Expando<List<int>> _sceneStarts = Expando("sceneStarts");
+
+/// finiteJson is [json] with every non-finite number taken out (1e999 reads
+/// as infinity): dropped from a map, nought in a list.
+Object? finiteJson(Object? json) => switch (json) {
+      Map m => <String, dynamic>{
+          for (var e in m.entries)
+            if (!(e.value is double && !(e.value as double).isFinite))
+              "${e.key}": finiteJson(e.value),
+        },
+      List l => [
+          for (var x in l) x is double && !x.isFinite ? 0 : finiteJson(x),
+        ],
+      _ => json,
+    };
 
 /// _withoutLinksTo is [e] with any reference to the element [id] dropped.
 CanvasElement _withoutLinksTo(CanvasElement e, String id) {
@@ -1730,12 +1510,9 @@ CanvasElement _withoutLinksTo(CanvasElement e, String id) {
 /// characters replaced.
 bool noLongerMade(Map<String, dynamic> json) => json["kind"] == "character";
 
-/// elementFromJson turns one saved element back into the right subclass.
-///
-/// An unknown kind becomes a plain rectangle rather than being dropped. A
-/// document written by a newer build and opened here has an element in it
-/// somewhere; leaving a visible placeholder where it was is recoverable, and
-/// silently deleting it is not.
+/// elementFromJson turns one saved element back into the right subclass. An
+/// unknown kind (from a newer build) becomes a plain shape, a visible
+/// placeholder, rather than being dropped.
 CanvasElement elementFromJson(Map<String, dynamic> json) {
   var kind = ElementKind.values.firstWhere(
     (k) => k.name == json["kind"],
@@ -1746,10 +1523,8 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
     case ElementKind.text:
       return TextElement.fromJson(json, base);
     case ElementKind.image:
-      // A picture that is a drawing is a Vector element now: drawings and
-      // pictures were one element before they were separated. Its box, its
-      // name and how it arrives come with it; a picture's own settings --
-      // crop, filters, outline -- mean nothing to a drawing.
+      // A saved picture that is a drawing (.svg) is read as a Vector
+      // element, keeping its box, name, fit and arrival.
       if (jsonString(json["asset"], "").endsWith(".svg")) {
         return VectorElement(base,
             assetId: jsonString(json["asset"], ""),
@@ -1791,14 +1566,14 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
     // A stage of its own, from before stages were a kind of background.
     case ElementKind.stage:
       return BackgroundElement.fromStage(json, base);
-    // Never saved by itself -- a background carries it -- but read as what
-    // one would be: a Background element showing it.
     case ElementKind.sheet:
       return SheetElement.fromJson(json, base);
     case ElementKind.camera:
       return CameraElement.fromJson(json, base);
     case ElementKind.object3d:
       return Object3dElement.fromJson(json, base);
+    // Never saved by itself -- a background carries it -- but read as a
+    // Background element showing it.
     case ElementKind.parallax:
       return BackgroundElement(base,
           backdrop: BackdropKind.parallax,

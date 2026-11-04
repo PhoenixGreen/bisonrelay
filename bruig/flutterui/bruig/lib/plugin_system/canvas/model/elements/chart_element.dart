@@ -7,11 +7,8 @@ import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 
-// A chart's data, its animation and its key are each large enough to be read
-// on their own, and each is worked on without the others. They are exported
-// so that "import chart_element.dart" still brings a whole chart -- splitting
-// a model into four files that every caller then has to import four of is a
-// tidier directory and a worse codebase.
+// The chart's data, animation and key live in their own files, exported so
+// that importing chart_element.dart still brings a whole chart.
 export 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/chart_legend.dart';
@@ -21,29 +18,15 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_legend.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 
-// chart_element.dart is a chart as data plus a handful of decisions, drawn
-// from scratch by render/chart_painter.dart.
-//
-// No charting library. Not for lack of one -- it is that everything else on
-// this canvas is a path on a ui.Canvas that exports at any size, animates
-// through the same keyframes and rotates with the same handles, and a widget
-// from a package is none of those. A chart here is 200 lines of trigonometry
-// that behaves exactly like a star or a pitch does, which is worth far more
-// than the features a library would have brought.
+// chart_element.dart is a chart as data plus its settings, drawn from scratch
+// by render/chart_painter.dart. No charting library: a chart is painted on a
+// ui.Canvas like every other element, so it exports at any size, animates and
+// rotates the same way.
 
 /// ChartLabel is a chart's title or description: whether it is shown, and
-/// where.
-///
-/// Whether the place is *used* is [ChartElement.floatingLabels]. A chart lays
-/// its own title out -- stacked at the top, taking the height it needs and
-/// giving the rest to the plot -- which is right until somebody wants the
-/// title down the side or over the corner of the plot, and there is no
-/// arrangement of automatic rules that covers both.
-///
-/// The coordinates are kept either way, which is what makes the switch a
-/// switch rather than a decision: turning it off puts the chart back exactly
-/// as it was, and turning it on again finds the labels where they were
-/// dragged to rather than back at their defaults.
+/// where. The place is used only with [ChartElement.floatingLabels], and is
+/// kept when that is off so turning it on again finds the labels where they
+/// were dragged.
 class ChartLabel {
   final bool show;
 
@@ -107,17 +90,13 @@ class ChartLabel {
       );
 }
 
+/// ChartBody is where the chart itself is drawn within the element's box, as
 /// fractions of the box.
 ///
-/// The whole box, until a label is dragged outside it. The box then grows to
-/// hold the label -- so that the text is inside the selection outline and is
-/// picked up by a marquee, which is what says it belongs to this chart -- and
-/// the body stays exactly where it was, so the plot does not resize under a
-/// drag that was never about the plot.
-///
-/// Resizing the element by its handles scales the body with everything else,
-/// which is the behaviour that was already there and is the one anybody
-/// dragging a corner is expecting.
+/// The whole box, until a floating label is dragged outside it. The box then
+/// grows to hold the label (so a marquee picks it up) and the body is inset
+/// so the plot stays where it was. Resizing by the handles scales the body
+/// with everything else.
 class ChartBody {
   final double x;
   final double y;
@@ -158,20 +137,13 @@ class ChartBody {
 }
 
 /// defaultTitlePlacement and defaultDescriptionPlacement are where a label
-/// goes the first time somebody takes control of it.
-///
-/// Where the chart would have put it, near enough: across the top, title
-/// first and description under it. Both used to land in the same corner, so
-/// placing the second put it exactly over the first -- and since the
-/// description is drawn last, that looked like a description sitting above a
-/// title, which is almost never what anybody means.
+/// goes the first time it floats: across the top, title first and the
+/// description under it.
 const ChartLabel defaultTitlePlacement =
     ChartLabel(x: 0.02, y: 0.02, width: 0.96, height: 0.14);
 
 ChartLabel defaultDescriptionPlacement(ChartLabel title, bool hasTitle) {
-  // Under the title wherever the title is, so the two stay a pair. With no
-  // title to sit under, the description takes the top itself rather than
-  // leaving a band of nothing above it.
+  // Under the title wherever it is; with no title, at the top.
   var top = hasTitle
       ? (title.hasPlace
           ? title.y + title.height
@@ -190,25 +162,12 @@ class ChartElement extends CanvasElement {
   final ChartData data;
 
   /// fromTable is the table on this canvas the numbers were taken from, if
-  /// they were. See [TableLink].
-  ///
-  /// The data above is still the chart's own: this says where it last came
-  /// from, so that refreshing the table can bring the chart with it. A chart
-  /// that read the table on every frame would be a chart that could not be
-  /// adjusted afterwards, and one that forgot where it came from would have
-  /// to be rebuilt by hand every time the table changed.
+  /// they were. See [TableLink]. [data] is still the chart's own copy; this
+  /// lets refreshing the table bring the chart with it.
   final TableLink fromTable;
 
-  /// source is where the chart fetches its own numbers, when it does.
-  ///
-  /// A chart used to have two ways to get data: typed in, or taken from a
-  /// table on the same canvas. The table is still the right answer when both
-  /// are on the page -- one request, one set of figures, and they cannot
-  /// disagree -- but a chart of a chain's history has no table beside it and
-  /// nobody wants four thousand daily rows in one.
-  ///
-  /// The data above is still the chart's own. This says where it came from, so
-  /// that Refresh can go and get it again.
+  /// source is where the chart fetches its own numbers, when it does, so
+  /// Refresh can get them again. [data] is still the chart's own copy.
   final DataSource source;
 
   /// fromSource is which of the fetched columns are the axis and the series,
@@ -235,57 +194,29 @@ class ChartElement extends CanvasElement {
 
   /// floatingLabels puts the title, the description and the key *over* the
   /// chart instead of taking room from it, and lets them be dragged anywhere.
-  ///
-  /// Off to begin with. Stacked above the plot is what a chart looks like and
-  /// is right until somebody wants otherwise; floating is the answer to "I
-  /// want the title in that corner", which is a thing to ask for rather than
-  /// a thing to be given.
-  ///
-  /// On, each of the three sits where it has been put -- or where the chart
-  /// would have put it, until it is moved -- and takes no room from the plot,
-  /// so none of their settings resizes the chart. The coordinates are kept
-  /// when it is switched off again, so the switch goes both ways without
-  /// losing anything.
+  /// Off by default; their places are kept when it is switched off.
   final bool floatingLabels;
 
-  /// descriptionSpec is the description's own type, or null to follow the
-  /// label size -- which is where it started and is what every document saved
-  /// before this had.
+  /// descriptionSpec is the description's own type, or null to follow
+  /// [labelSpec].
   final TextSpec? descriptionSpec;
 
   final String xAxisLabel;
   final String yAxisLabel;
 
-  /// showGrid is the ruled matrix behind the plot. On by default: a bar chart
-  /// without one is a picture of some bars, and reading a value off it means
-  /// guessing.
+  /// showGrid is the ruled grid behind the plot. On by default.
   final bool showGrid;
   final bool showAxes;
 
-  /// showXLabels and showYLabels are the writing along each axis: the tick
-  /// values on one, the category names on the other, and each axis' own title
-  /// under them.
-  ///
-  /// By axis rather than by what is written there, because which of the two
-  /// an axis carries depends on which way the chart is drawn -- on horizontal
-  /// bars the categories run up the side and the values along the bottom.
-  /// "The X labels" means whatever is written along the bottom either way,
-  /// which is what somebody looking at the chart means by it.
-  ///
-  /// It was one switch for all of it, on the grounds that they are read
-  /// together or not at all. Often enough they are not: a bar chart named by
-  /// its categories does not always need the figures up the side as well, and
-  /// a chart of dates wants the dates and nothing else.
+  /// showXLabels and showYLabels are the tick values or category names along
+  /// each axis. By axis rather than by content, since horizontal bars swap
+  /// which axis carries which. The axis titles are [showXTitle] and
+  /// [showYTitle].
   final bool showXLabels;
   final bool showYLabels;
 
-  /// xLabelSize, xLabelColor and the two beside them are that axis' own type,
-  /// or null to be written the way [labelSpec] says.
-  ///
-  /// Only the size and the colour, which are the two things an axis wants
-  /// differently from its neighbour: the dates along the bottom set smaller
-  /// than the figures up the side, or one of the two greyed back so the other
-  /// is what gets read. The font and the weight are the chart's.
+  /// xLabelSize, xLabelColor and the two beside them are that axis' own size
+  /// and colour, or null for [labelSpec]'s. Font and weight are the chart's.
   final double? xLabelSize;
   final Color? xLabelColor;
   final double? yLabelSize;
@@ -296,48 +227,29 @@ class ChartElement extends CanvasElement {
   final double xLabelGap;
   final double yLabelGap;
 
-  /// showXTitle and showYTitle show or hide the two words naming the axes --
-  /// [xAxisLabel] and [yAxisLabel] -- one at a time.
-  ///
-  /// A switch rather than emptying the field, so the words can be taken off a
-  /// chart and put back without being typed again.
-  ///
-  /// The tick values and the category names are a different question and are
-  /// [showAxisLabels]'s. "The labels on the axes" means those; "the X label"
-  /// means the word underneath them, which is this.
+  /// showXTitle and showYTitle show or hide the axis titles, [xAxisLabel] and
+  /// [yAxisLabel], without emptying them. The tick values are [showXLabels]
+  /// and [showYLabels].
   final bool showXTitle;
   final bool showYTitle;
 
   final bool showLegend;
 
-  /// showValues prints each number on its own bar or point, which is what
-  /// makes a chart readable at chat-message size where the axis labels are
-  /// too small to follow.
+  /// showValues prints each number on its own bar or point.
   final bool showValues;
 
   final Color gridColor;
   final Color axisColor;
 
-  /// riseColor and fallColor are a candlestick's two colours: a period that
-  /// closed above where it opened, and one that closed below.
-  ///
-  /// Two colours rather than the series palette, because on this one type the
-  /// colour is not a label for a series -- all four series are one mark -- it
-  /// is the reading. Green up and red down is what every market chart does
-  /// and what everybody looking at one expects; these are settings because
-  /// that convention is reversed in some countries and because a canvas has
-  /// its own palette to sit in.
+  /// riseColor and fallColor are a candlestick's two colours, for a period
+  /// that closed up and one that closed down. Used instead of the series
+  /// colours, since all four series are one mark.
   final Color riseColor;
   final Color fallColor;
 
   /// sliceColors are a pie's, a donut's or a radial bar's colours, one per
-  /// category in order. Empty, or shorter than the categories, and the rest
-  /// come from the series (where there are several) or the palette.
-  ///
-  /// The colours of one series' values, which is what a pie is: there was no
-  /// other way to say the slice for proof of work is amber than to invent a
-  /// second and a third series of noughts for the slices to borrow theirs
-  /// from. See sliceColour.
+  /// category in order. Where it is short, the rest come from the series
+  /// (where there are several) or the palette. See sliceColour.
   final List<Color> sliceColors;
 
   /// titleSpec, labelSpec and valueSpec are the three sizes of type on a
@@ -351,57 +263,30 @@ class ChartElement extends CanvasElement {
   /// legend that carries values. See [ChartNumbers].
   final ChartNumbers numbers;
 
-  /// axisNumbers is how the figures up the side are written, or null for
-  /// "the same as the values".
-  ///
-  /// Null by default, and that is the right default: the two are the same
-  /// numbers and an axis saying 1,500,000 beside a bar saying 1.5M is a chart
-  /// that has changed its mind half way across. But they are read for
-  /// different things -- a value is a reading and wants to be exact, an axis
-  /// is a scale and wants to be round -- so 2.049M on the bar against 2.0M up
-  /// the side is a deliberate and useful pairing rather than a mistake.
+  /// axisNumbers is how the figures up the side are written, or null (the
+  /// default) for the same as [numbers]. Lets a value be exact (2.049M) while
+  /// the axis stays round (2.0M).
   final ChartNumbers? axisNumbers;
 
   /// axisSteps is roughly how many divisions the value axis is ruled into,
-  /// or zero to let the chart decide.
-  ///
-  /// Roughly, because the numbers on an axis have to be round ones: asking
-  /// for seven on a range of 0 to 100 gives eight lines twelve and a half
-  /// apart or five lines twenty apart, and the second is the one anybody can
-  /// read a value off. So this moves the answer rather than fixing it -- ask
-  /// for more and the lines come closer, ask for fewer and they spread out.
-  ///
-  /// On a log axis it means the same thing in decades: how many powers of ten
-  /// are worth labelling before the writing becomes a solid band.
+  /// or zero to let the chart decide. Roughly, because the steps are kept
+  /// round; on a log axis it counts decades.
   final int axisSteps;
 
-  /// logScale draws the value axis by decades rather than evenly.
-  ///
-  /// For the charts where the interesting part is the ratio rather than the
-  /// difference: a coin supply or a hashrate that has grown a thousandfold
-  /// spends most of a linear axis flat along the bottom, and the early years
-  /// -- which are the years something interesting was happening -- are
-  /// unreadable.
-  ///
-  /// Ignored where it cannot mean anything. See [logs].
+  /// logScale asks for the value axis by decades rather than evenly. Ignored
+  /// where it cannot mean anything; see [logs].
   final bool logScale;
 
   /// axisSpec is the type the two axis titles are set in, or null to follow
-  /// the label size -- which is where they started and is what every document
-  /// saved before this had.
+  /// [labelSpec].
   final TextSpec? axisSpec;
 
   /// axisGap is extra room between an axis title and the plot, in document
-  /// units.
-  ///
-  /// Nought by default, which is the layout as it was: the title sits one and
-  /// a half times its own height from the plot, which is close enough to read
-  /// as belonging to it and close enough to look cramped when the chart is
-  /// large. This is the room to push it out.
+  /// units, on top of the usual one and a half title heights.
   final double axisGap;
 
-  /// yMin and yMax pin the value axis. NaN means "work it out from the data",
-  /// which is the default and is what almost every chart wants.
+  /// yMin and yMax pin the value axis, or NaN (the default) to work it out
+  /// from the data.
   final double yMin;
   final double yMax;
 
@@ -409,44 +294,28 @@ class ChartElement extends CanvasElement {
   final double barGap;
   final double barRadius;
 
-  /// barFloor is the least height a bar is drawn at, in pixels, so a reading
-  /// of nought still makes a mark.
-  ///
-  /// A bar of no height has no pixels, which means a measured nought and a
-  /// year nobody has a figure for look identical -- and they are not the same
-  /// fact at all. A sliver says "this was measured, and it was nothing"; a
-  /// blank says "there is nothing to measure". See ChartData.hasValueAt, which
-  /// is the other half of the distinction.
-  ///
-  /// Zero, the default, draws what it always drew. The bars that have a height
-  /// of their own are never shortened to this -- it is a floor, not a size.
+  /// barFloor is the least height a bar is drawn at, in pixels, so a measured
+  /// nought still makes a mark and looks different from a gap (see
+  /// ChartData.hasValueAt). Zero by default.
   final double barFloor;
 
   /// innerRadius is the hole in a donut, as a fraction of the outer radius.
   final double innerRadius;
 
-  /// centreLabel is the words in a donut's hole -- "{total}" in them is the
-  /// slices added up, counting up as they arrive -- or empty for none. A
-  /// donut's hole is where its one number goes: the total, the share that
-  /// matters, the thing the slices are slices of.
+  /// centreLabel is the words in a donut's hole, or empty for none.
+  /// "{total}" in them is the slices added up, counting up as they arrive.
   final String centreLabel;
 
-  /// showPoints marks each reading on a line or an area.
-  ///
-  /// A line says the shape of a series and a dot says where a reading
-  /// actually is, which are different questions -- eleven points joined up
-  /// look like a hundred until the dots are on them. A scatter is all dots
-  /// whatever this says, and so is a chart writing its values, which has to
-  /// put them somewhere.
+  /// showPoints marks each reading on a line or an area. A scatter, and a
+  /// chart writing its values, has dots whatever this says.
   final bool showPoints;
 
   /// pointSize is the radius of those dots, or 0 to take it from the line's
-  /// own weight as they always did.
+  /// weight.
   final double pointSize;
 
-  /// pointColor is what they are drawn in, or nothing for the series' own
-  /// colour -- which is what a dot on a line is unless somebody says
-  /// otherwise.
+  /// pointColor is what they are drawn in, or transparent for the series'
+  /// own colour.
   final Color pointColor;
 
   /// strokeWidth is the line weight for the line, area and radar types.
@@ -519,14 +388,8 @@ class ChartElement extends CanvasElement {
   @override
   ElementKind get kind => ElementKind.chart;
 
-  /// aroundTheChart is this element with its box back round the chart itself.
-  ///
-  /// Dragging a floating label outside the box grows the box to hold it and
-  /// insets the body to keep the chart where it was. Switched off, the label
-  /// goes back into the chart's own arrangement -- and without this the box
-  /// stayed grown, so the chart sat small in the middle of an element with a
-  /// margin of nothing around it, and the switch did not go both ways after
-  /// all.
+  /// aroundTheChart is this element with its box back round the chart itself
+  /// (see [ChartBody]), for when floating labels are switched off.
   ChartElement aroundTheChart() {
     if (body.isWhole) return this;
     var was = body.rectIn(Rect.fromLTWH(x, y, width, height));
@@ -544,24 +407,13 @@ class ChartElement extends CanvasElement {
   TextSpec get axisText => axisSpec ?? labelSpec;
   ChartNumbers get axisFigures => axisNumbers ?? numbers;
 
-  /// logs is whether this chart is actually drawn on a log axis.
-  ///
-  /// The setting is a request; this is the answer. A log axis has nowhere to
-  /// put zero or a negative number -- there is no bottom to it -- so a chart
-  /// with either is drawn linearly however the switch is set. Silently, but
-  /// not secretly: the settings say so, in the one place somebody who has
-  /// just switched it on is looking.
+  /// logs is whether this chart is actually drawn on a log axis: [logScale]
+  /// on a cartesian chart whose numbers a log axis can show (see
+  /// [positiveOnly]). The settings say when it is refused.
   bool get logs => logScale && type.isCartesian && positiveOnly;
 
-  /// showsXTitle and showsYTitle are whether each axis title is actually
-  /// drawn: asked for, not switched off, and with something to say.
-  ///
-  /// showAxisLabels is whether there is any writing on the axes at all, which
-  /// is what the gutters and the air round the plot are kept for.
-  ///
-  /// The titles count. They are two separate switches -- the tick values up
-  /// the side, and the word naming the axis -- and a chart wanting only the
-  /// word is an ordinary thing to ask for.
+  /// showAxisLabels is whether there is any writing on the axes at all, tick
+  /// values or titles, which is what the gutters round the plot are kept for.
   bool get showAxisLabels =>
       showXLabels || showYLabels || showsXTitle || showsYTitle;
 
@@ -577,26 +429,17 @@ class ChartElement extends CanvasElement {
     return spec;
   }
 
-  /// Not under the tick values' switch. It was, on the grounds that both are
-  /// writing on an axis -- which made switching the figures off take the word
-  /// naming the axis with it, and left the switch that asks for the word
-  /// doing nothing at all. The two are separate questions: what the axis is
-  /// measured in, and what it is called.
+  /// showsXTitle and showsYTitle are whether each axis title is actually
+  /// drawn: switched on and with something to say, whatever the tick values'
+  /// switch says.
   bool get showsXTitle => showXTitle && xAxisLabel.isNotEmpty;
   bool get showsYTitle => showYTitle && yAxisLabel.isNotEmpty;
 
   /// positiveOnly is whether a log axis can describe this chart's numbers:
   /// nothing below zero, and something above it.
   ///
-  /// A zero is allowed and a negative is not, which is not the same rule
-  /// twice. A negative number is a reading a log axis genuinely cannot show,
-  /// and drawing one anyway would be a chart that lies. A zero is almost
-  /// always a cell nobody has filled in yet -- adding a row to a chart puts
-  /// one in every series, which is what the row *is* until the numbers
-  /// arrive -- and turning the whole scale off for it meant a log chart
-  /// stopped being one the moment a row was added, and came back only after
-  /// every series had been typed into. The zero sits at the bottom of the
-  /// axis, which is where a reading of nothing belongs.
+  /// Zeros are allowed (drawn at the bottom of the axis), since a newly added
+  /// row is all zeros and should not switch the log scale off.
   bool get positiveOnly {
     var any = false;
     for (var series in data.series) {
@@ -605,8 +448,7 @@ class ChartElement extends CanvasElement {
         if (v > 0) any = true;
       }
     }
-    // A chart with no numbers in it has nothing to scale, and answering yes
-    // would put an empty chart on a log axis ruled from one to ten.
+    // An empty chart has nothing to scale.
     return any;
   }
 
@@ -735,9 +577,8 @@ class ChartElement extends CanvasElement {
           strokeWidth: strokeWidth,
           smooth: smooth);
 
-  /// _copy is copyWith and rebase sharing one body, since a chart has enough
-  /// fields that writing the list out twice is where a dropped field would
-  /// hide.
+  /// _copy is copyWith and rebase sharing one body, so no field can be
+  /// dropped from one of them.
   ChartElement _copy(
     ElementBase newBase, {
     ChartType? type,
@@ -837,9 +678,7 @@ class ChartElement extends CanvasElement {
           axisSteps: axisSteps ?? this.axisSteps,
           logScale: logScale ?? this.logScale,
           numbers: numbers ?? this.numbers,
-          // The flag rather than a null, because null is the value being set:
-          // "the axis follows the values" is a state, and copyWith cannot say
-          // it any other way.
+          // A flag because null is the value being set ("follow the values").
           axisNumbers:
               axisFollowsValues ? null : (axisNumbers ?? this.axisNumbers),
           axisSpec: axisSpec ?? this.axisSpec,
@@ -874,9 +713,7 @@ class ChartElement extends CanvasElement {
           "descBox": descriptionBox.toJson(),
         if (!body.isWhole) "body": body.toJson(),
         if (animation.any) "anim": animation.toJson(),
-        // Kept even with the legend switched off: turning it off and on
-        // again should find it where it was left, not back at the top in a
-        // row.
+        // Kept even with the legend switched off, so it comes back as left.
         if (showLegend || legend.toJson().length > 1)
           "legendSpec": legend.toJson(),
         if (floatingLabels) "floatLabels": true,
@@ -885,8 +722,7 @@ class ChartElement extends CanvasElement {
         if (yAxisLabel.isNotEmpty) "ylabel": yAxisLabel,
         "grid": showGrid,
         "axes": showAxes,
-        // The old key stays the old key while both axes agree, so a chart
-        // saved before the switch was split reads back the same either way.
+        // The older single key while both axes agree.
         if (!showXLabels && !showYLabels) "noAxisLabels": true,
         if (!showXLabels && showYLabels) "noXLabels": true,
         if (!showYLabels && showXLabels) "noYLabels": true,
@@ -919,8 +755,6 @@ class ChartElement extends CanvasElement {
         if (!yMax.isNaN) "ymax": yMax,
         "barGap": barGap,
         "barRadius": barRadius,
-        // Only where it is asked for, so a chart that does not use it saves
-        // the file it always did.
         if (barFloor > 0) "barFloor": barFloor,
         "inner": innerRadius,
         if (centreLabel.isNotEmpty) "centre": centreLabel,
@@ -933,7 +767,7 @@ class ChartElement extends CanvasElement {
 
   factory ChartElement.fromJson(Map<String, dynamic> json, ElementBase b) => ChartElement(
       b,
-      type: ChartType.fromName(json["type"] as String?),
+      type: ChartType.fromName(jsonStr(json["type"])),
       data: jsonSpec(json["data"], ChartData.fromJson, const ChartData()),
       fromTable:
           jsonSpec(json["fromTable"], TableLink.fromJson, const TableLink()),
@@ -988,9 +822,7 @@ class ChartElement extends CanvasElement {
       logScale: jsonBool(json["log"], false),
       numbers: jsonSpec(
           json["numbers"], ChartNumbers.fromJson, const ChartNumbers()),
-      // Null rather than a default when there is nothing saved: null is
-      // the state "the axis follows the values", which is what a chart
-      // saved before either of these existed was doing.
+      // Null when nothing is saved: the axis follows the values.
       axisNumbers: json["axisNumbers"] is Map<String, dynamic>
           ? ChartNumbers.fromJson(json["axisNumbers"] as Map<String, dynamic>)
           : null,
@@ -1027,12 +859,8 @@ class ChartElement extends CanvasElement {
       smooth: jsonBool(json["smooth"], false));
 }
 
-/// ChartSourceMap is which of a fetched source's columns the chart draws.
-///
-/// The same choice [TableLink] makes about a table's columns, made about the
-/// columns a DataSource maps -- and a separate class from it because the two
-/// answer different questions. One is "which table, and which of its
-/// columns"; this is "of what I fetched, what is the axis".
+/// ChartSourceMap is which of a fetched source's columns the chart draws: the
+/// [TableLink] choice, made about a DataSource's columns.
 class ChartSourceMap {
   /// categoryColumn is the column the labels along the axis come from -- the
   /// date, usually.
@@ -1041,22 +869,14 @@ class ChartSourceMap {
   /// valueColumns are the columns that become series, in order.
   final List<int> valueColumns;
 
-  /// maxPoints is how many to keep, or zero for all of them.
-  ///
-  /// A daily series going back to 2016 is four thousand points, and a canvas
-  /// is eight inches wide: drawn in full it is four thousand bars a third of
-  /// a pixel apart, and the labels underneath are a grey smear. Thinning is
-  /// not a summary -- the points kept are real ones, evenly spaced, with the
-  /// most recent always among them.
+  /// maxPoints is how many to keep, or zero for all of them. The points kept
+  /// are real ones, evenly spaced, with the most recent always among them.
+  /// See [thinTo].
   final int maxPoints;
 
   /// interval takes a reading on the dates asked for rather than one point in
-  /// every so many. See [ChartInterval].
-  ///
-  /// It replaces [maxPoints] rather than joining it: they are two answers to
-  /// the same question, and applying both would thin a set of yearly readings
-  /// down to every third year and label them as though they were still
-  /// yearly.
+  /// every so many (see [ChartInterval]). When on, it replaces [maxPoints]
+  /// rather than adding to it.
   final ChartInterval interval;
 
   const ChartSourceMap({
@@ -1080,12 +900,8 @@ class ChartSourceMap {
       );
 
   /// afterMove and afterRemoval keep the drawing pointed at the same columns
-  /// when the columns themselves are rearranged.
-  ///
-  /// Which is the whole reason these are indices rather than names: they are
-  /// cheap and stable until somebody moves a column, at which point the
-  /// numbers have to be carried across or the chart quietly starts drawing
-  /// the date.
+  /// when the columns themselves are rearranged; the map holds indices, so
+  /// they must be carried across.
   ChartSourceMap afterMove(int from, int to) => copyWith(
         categoryColumn: movedIndex(categoryColumn, from, to),
         valueColumns: [
@@ -1121,20 +937,13 @@ class ChartSourceMap {
       );
 }
 
-/// chartDataFromRows turns mapped rows into a chart's numbers.
+/// chartDataFromRows turns mapped rows into a chart's numbers, for both a
+/// table on the canvas and a source of the chart's own. A cell that is not a
+/// number counts as zero, so a wrongly picked column gives an obviously
+/// wrong chart rather than an error.
 ///
-/// Shared by the two ways a chart gets data that it did not have typed into
-/// it -- a table on the canvas, and a source of its own -- because the last
-/// step is the same either way and doing it twice is how two paths that
-/// should agree stop agreeing.
-///
-/// A cell that is not a number counts as zero rather than stopping the whole
-/// thing: a league table has a crest column in it, and picking the wrong one
-/// should give a chart that is obviously wrong rather than an error.
-/// [when] is the date of each body row, for a chart taking a reading on the
-/// dates it was asked for rather than one point in every so many. Null
-/// entries and a missing list both mean "there are no dates here", and the
-/// chart falls back to thinning.
+/// [when] is the date of each body row, for [ChartSourceMap.interval]; without
+/// dates the chart falls back to thinning.
 ChartData chartDataFromRows(
   List<List<String>> rows,
   ChartSourceMap map, {
@@ -1142,28 +951,16 @@ ChartData chartDataFromRows(
   String Function(int column)? nameOf,
   List<DateTime?>? when,
 
-  /// keeping is the series as they stand, so what has been decided about how
-  /// each one *looks* survives the numbers being read again.
-  ///
-  /// A refresh brings new values; it is not somebody asking for their colours
-  /// back. Built without this, every refresh put the palette's own colour
-  /// back, forgot a series told to draw as a line over the bars, and forgot
-  /// how its figures were to be written -- so three settings quietly undid
-  /// themselves twice a week, which reads as the settings not working.
-  ///
-  /// Carried by position, which is what a series is here: the i-th of
-  /// [ChartSourceMap.valueColumns]. The name is *not* carried -- it comes
-  /// from the column, and that is the point of mapping one.
+  /// keeping is the series as they stand, so how each one looks survives a
+  /// refresh. Carried by position (the i-th of [ChartSourceMap.valueColumns]);
+  /// the name is not carried, since it comes from the column.
   List<ChartSeries> keeping = const [],
 }) {
   if (map.valueColumns.isEmpty || rows.isEmpty) return const ChartData();
   var body = headerRow ? rows.skip(1).toList() : rows;
 
-  // Each point is a label and the rows that make it. One row for most charts;
-  // a whole year of them where a reading is the year's transactions added up.
-  // Building both the same way is what keeps the two paths from drifting --
-  // and a reading of one row is only the simplest case of a reading of
-  // several.
+  // Each point is a label and the rows that make it: one row for most charts,
+  // a whole period where a reading combines them.
   var points = <(String, List<List<String>>)>[];
   String labelOf(List<String> row) =>
       map.categoryColumn < row.length ? row[map.categoryColumn] : "";
@@ -1172,9 +969,8 @@ ChartData chartDataFromRows(
   if (dated && map.interval.how.combines) {
     for (var group
         in groupAtIntervals(when.sublist(0, body.length), map.interval)) {
-      // Labelled by the row the period starts on rather than by the mark, so
-      // the axis carries a date out of the data written in the column's own
-      // format -- the same words as every other point on the chart.
+      // Labelled by the period's first row rather than the mark, so the date
+      // is in the column's own format.
       points.add((
         labelOf(body[group.rows.first]),
         [
@@ -1206,24 +1002,22 @@ ChartData chartDataFromRows(
     categories: [for (var (label, _) in points) label],
     series: [
       for (var (i, column) in map.valueColumns.indexed)
-        ChartSeries(
-          name: header(column),
-          color: i < keeping.length
-              ? keeping[i].color
-              : chartPalette[i % chartPalette.length],
-          values: [for (var (_, made) in points) valueIn(made, column)],
-          type: i < keeping.length ? keeping[i].type : null,
-          numbers: i < keeping.length ? keeping[i].numbers : null,
-        ),
+        if (i < keeping.length)
+          keeping[i].copyWith(
+              name: header(column),
+              values: [for (var (_, made) in points) valueIn(made, column)])
+        else
+          ChartSeries(
+            name: header(column),
+            color: chartPalette[i % chartPalette.length],
+            values: [for (var (_, made) in points) valueIn(made, column)],
+          ),
     ],
   );
 }
 
-/// datesIn reads the date of each body row out of the unformatted rows.
-///
-/// [raw] is header-first, like everything else here, and empty when the
-/// source has no date column at all -- in which case there are no dates and
-/// a chart asking for one reading a year falls back to thinning.
+/// datesIn reads the date of each body row out of the unformatted,
+/// header-first rows [raw], or null when there are none.
 List<DateTime?>? datesIn(List<List<String>> raw, int column) {
   if (raw.length < 2 || column < 0) return null;
   var out = <DateTime?>[];
@@ -1236,17 +1030,12 @@ List<DateTime?>? datesIn(List<List<String>> raw, int column) {
   return any ? out : null;
 }
 
-/// thinTo keeps at most [most] rows, evenly spread, ending on the last one.
-///
-/// Ending on the last one is the part that matters: a price chart whose final
-/// point is three weeks old because the arithmetic happened to stop there is
-/// a chart that is quietly wrong about today. Counted backwards from the end
-/// for exactly that reason.
+/// thinTo keeps at most [most] rows, evenly spread from the first to the
+/// last. Always ending on the last matters: otherwise a price chart can be
+/// quietly weeks out of date.
 List<List<String>> thinTo(List<List<String>> rows, int most) {
   if (most <= 0 || rows.length <= most) return rows;
   if (most == 1) return [rows.last];
-  // Spread from the first row to the last inclusive, so the chart still
-  // starts where the history starts and ends where it ends.
   var step = (rows.length - 1) / (most - 1);
   return [
     for (var i = 0; i < most; i++) rows[(i * step).round()],
@@ -1254,13 +1043,7 @@ List<List<String>> thinTo(List<List<String>> rows, int most) {
 }
 
 /// chartDataFromTable is [link] applied to [table]: the chart's numbers taken
-/// from the table's cells.
-///
-/// The table's header row supplies the series names, so a chart of the Points
-/// column is labelled "Points" without anybody typing it. Cells that are not
-/// numbers count as zero rather than stopping the whole thing -- a league
-/// table has a crest column and a form column in it, and picking the wrong one
-/// should give a flat chart that is obviously wrong, not an error.
+/// from the table's cells, with the series named after their columns.
 ChartData chartDataFromTable(TableElement table, TableLink link,
     {List<ChartSeries> keeping = const []}) {
   if (!link.on) return const ChartData();
@@ -1269,9 +1052,7 @@ ChartData chartDataFromTable(TableElement table, TableLink link,
     ChartSourceMap(
         categoryColumn: link.categoryColumn, valueColumns: link.valueColumns),
     headerRow: table.headerRow,
-    // The table's own name for the column, which is not always the header
-    // cell: a hidden heading still has a name, and that is what the series
-    // should be called.
+    // The table's name for the column, which a hidden header row still has.
     nameOf: table.columnName,
     keeping: keeping,
   );

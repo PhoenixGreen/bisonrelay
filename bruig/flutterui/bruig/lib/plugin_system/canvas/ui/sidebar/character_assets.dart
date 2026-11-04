@@ -8,13 +8,13 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-// character_assets.dart is the library's characters in the Assets sidebar:
-// each made once in the Character Studio, placed in a scene with a click.
-// See character_designs.dart.
+// character_assets.dart is the library's characters in the Assets sidebar,
+// made in the Character Studio and placed with a click. See
+// character_designs.dart.
 
-/// CharacterAssetSection lists the library's 3D characters, each as it
-/// was last drawn in the Studio, for a click to place a copy of it in the
-/// middle of the canvas, and a way to make a new one.
+/// CharacterAssetSection lists the library's 3D characters as last drawn in
+/// the Studio, for a click to place a copy in the middle of the canvas, and a
+/// way to make a new one.
 class CharacterAssetSection extends StatelessWidget {
   final CanvasController controller;
 
@@ -25,8 +25,7 @@ class CharacterAssetSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
-        // The panel is as tall as the sidebar gives it, and the list can be
-        // taller: scrolled, not cut off.
+        // Scrolled, not cut off, when the list is taller than the panel.
         key: const ValueKey("characterAssetsScroll"),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Padding(
@@ -64,9 +63,9 @@ class CharacterAssetSection extends StatelessWidget {
       );
 }
 
-/// _Listed reads a library's list once for each change to it, however
-/// often it is built: the sidebar is built again as it is scrolled and
-/// resized, and reading the folder each time held every frame up.
+/// _Listed reads a library's list once per change to it, not per build: the
+/// sidebar rebuilds as it scrolls and resizes, and reading the folder each
+/// time held frames up.
 class _Listed<T> extends StatefulWidget {
   final ValueListenable<int> changes;
   final Future<T> Function() read;
@@ -97,9 +96,8 @@ class _ListedState<T> extends State<_Listed<T>> {
       );
 }
 
-/// Character3dAssetList is the library's 3D characters, each as it was last
-/// drawn in the Studio, for a click to place one in the middle of the
-/// canvas.
+/// Character3dAssetList is the library's 3D characters as last drawn in the
+/// Studio, for a click to place one in the middle of the canvas.
 class Character3dAssetList extends StatelessWidget {
   final void Function(CharacterDesign design) onPlace;
   final Future<List<CharacterDesign>> Function()? designs;

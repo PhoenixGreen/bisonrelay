@@ -1,12 +1,11 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// gltf_pack.dart packs a glTF of several files -- the .gltf itself, its
-// buffers and its pictures, as Poly Haven serves its models -- into one
-// .glb: what the library keeps, and what goes with a canvas when it is
-// sent. Every buffer is joined into the .glb's one binary chunk, each
-// picture laid in it as a buffer view of its own; nothing is decoded or
-// changed, only moved.
+// gltf_pack.dart packs a multi-file glTF (the .gltf, its buffers and its
+// pictures, as Poly Haven serves them) into one .glb, which the library keeps
+// and a sent canvas carries. Buffers are joined into the one binary chunk,
+// each picture a buffer view of its own; nothing is decoded.
 
 /// packGltf is the .gltf [gltf] -- its text -- as a .glb, its files found
 /// by [files]: each by the address the .gltf names it by. Null where a
@@ -56,7 +55,7 @@ Uint8List? packGltf(String gltf, Map<String, Uint8List> files) {
         {
           ...v,
           "buffer": 0,
-          "byteOffset": ((v["byteOffset"] as num?) ?? 0).toInt() +
+          "byteOffset": ((jsonNum(v["byteOffset"])) ?? 0).toInt() +
               (v["buffer"] is int && (v["buffer"] as int) < starts.length
                   ? starts[v["buffer"] as int]
                   : 0),

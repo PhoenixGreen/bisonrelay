@@ -4,16 +4,13 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 
 // vector_cut.dart is the knife: a freehand line drawn through a shape cuts
-// it into pieces. The shape stays one shape -- one fill, one animation, one
-// row in the playlist -- and its runs are shared out among the pieces, each
-// piece a part of its own (see VectorPath.part) that can be picked and moved
-// on its own.
+// it into pieces. The shape stays one shape (one fill, one animation, one
+// playlist row); its runs are shared out among the pieces, each a part of
+// its own (see VectorPath.part) that can be picked and moved alone.
 //
-// Cut along the curves rather than through a flattened copy of them: the
-// shape's own segments are split where the knife crosses them, so a curve
-// stays a curve with two points to edit, and only the cut itself -- the
-// knife's line -- is new. The two sides of a cut are pulled apart by a
-// hairline [gap], so they touch nowhere and overlap nowhere.
+// The shape's own segments are split where the knife crosses them, so curves
+// stay curves; only the cut line is new. The two sides of a cut are pulled
+// apart by a hairline gap so they neither touch nor overlap.
 
 /// _Bez is one segment of a run: a cubic, or a straight line where [line].
 class _Bez {
@@ -89,8 +86,8 @@ List<_Bez> _segments(VectorPath run) {
   return out;
 }
 
-/// _run is [segs], end to end, as a run of points -- closed where [closed],
-/// the last segment then ending where the first starts.
+/// _run is [segs], end to end, as a run of points; when [closed], the last
+/// segment ends where the first starts.
 VectorPath _run(List<_Bez> segs, {required bool closed, int part = 0}) {
   var nodes = <VectorNode>[];
   for (var (i, s) in segs.indexed) {
@@ -103,8 +100,8 @@ VectorPath _run(List<_Bez> segs, {required bool closed, int part = 0}) {
   return VectorPath(nodes, closed: closed, part: part);
 }
 
-/// _node is a point at [at] with the handles of the segment coming into it
-/// and the one going out.
+/// _node is a point at [at] with the handles of the segments into and out
+/// of it.
 VectorNode _node(Offset at, _Bez? into, _Bez? outOf) {
   var inH = into == null || into.line ? Offset.zero : into.c2 - at;
   var outH = outOf == null || outOf.line ? Offset.zero : outOf.c1 - at;
@@ -118,7 +115,7 @@ VectorNode _node(Offset at, _Bez? into, _Bez? outOf) {
       inX: inH.dx, inY: inH.dy, outX: outH.dx, outY: outH.dy, smooth: smooth);
 }
 
-/// _left is the side of [d] a run's filled area is kept on.
+/// _left is [d] turned to the side a run's filled area is kept on.
 Offset _left(Offset d) {
   var l = d.distance;
   return l == 0 ? Offset.zero : Offset(d.dy, -d.dx) / l;
@@ -446,8 +443,8 @@ VectorShape? cutShape(VectorShape shape, List<Offset> knife, double gap) {
   return shape.copyWith(paths: pieces);
 }
 
-/// _alongBy is the place [by] further along [segs] from [c] -- back, where
-/// it is less than nought -- in the same segment-and-distance terms.
+/// _alongBy is the place [by] further along [segs] from [c] (back, where
+/// negative), as a segment number plus distance along it.
 double _alongBy(List<_Bez> segs, double c, double by) {
   var j = c.floor().clamp(0, segs.length - 1);
   var t = c - j;
@@ -456,9 +453,8 @@ double _alongBy(List<_Bez> segs, double c, double by) {
   return (c + by / speed).clamp(j.toDouble(), j + 1.0);
 }
 
-/// _arc is [segs] from [c0] round to [c1] -- each a segment's number and a
-/// distance along it -- carrying on past the end and round from the start
-/// where it [wraps].
+/// _arc is [segs] from [c0] to [c1] (each a segment number plus distance
+/// along it), wrapping past the end to the start where it [wraps].
 List<_Bez> _arc(List<_Bez> segs, double c0, double c1, {required bool wraps}) {
   var n = segs.length;
   var out = <_Bez>[];
@@ -496,8 +492,8 @@ List<Offset> _offsetLine(List<Offset> line, double by) {
   ];
 }
 
-/// simplifiedKnife is a freehand line with the points that add nothing
-/// taken out -- any within [tolerance] of the straight line past them.
+/// simplifiedKnife is a freehand line without the points within
+/// [tolerance] of the straight line past them.
 List<Offset> simplifiedKnife(List<Offset> pts, double tolerance) {
   if (pts.length < 3) return pts;
   var keep = List<bool>.filled(pts.length, false);
@@ -530,7 +526,7 @@ List<Offset> simplifiedKnife(List<Offset> pts, double tolerance) {
   ];
 }
 
-/// partPath is the area -- and lines -- of [shape]'s part [part] alone.
+/// partPath is the areas and lines of [shape]'s part [part] alone.
 Path partPath(VectorShape shape, int part) => VectorShape(
       paths: [
         for (var r in shape.paths)

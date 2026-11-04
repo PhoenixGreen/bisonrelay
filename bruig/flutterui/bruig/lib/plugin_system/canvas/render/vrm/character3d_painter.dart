@@ -139,9 +139,8 @@ Future<(Uint8List, int, int)?> loadDecalPicture(String source) async {
   try {
     var image = store.resolve(id, const BackgroundRemoval());
     // Waited for by looking, not by listening: the store says a picture has
-    // come before it stops counting it as loading, and says nothing at all
-    // of one it could not read -- so a decal waiting to be told waited out
-    // its whole time, and was never drawn.
+    // come before it stops counting it as loading, and says nothing of one it
+    // could not read.
     for (var waited = 0;
         image == null && store.loading && waited < 1000;
         waited++) {

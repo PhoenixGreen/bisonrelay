@@ -11,19 +11,15 @@ import 'package:bruig/plugin_system/canvas/model/midi_effects.dart'
 import 'package:bruig/plugin_system/canvas/model/notation.dart';
 import 'package:flutter/painting.dart';
 
-// sheet_painter.dart engraves a Score -- see notation.dart -- in Bravura,
-// the SMuFL music font: staves, clefs, the time, notes with their stems,
-// flags, dots, sharps and ties, rests, triplets, barlines and bar numbers.
+// sheet_painter.dart engraves a Score (see model/notation.dart) in Bravura,
+// the SMuFL music font.
 //
-// A score is laid out in systems as wide as the element, bars spaced by how
-// long their notes are, and shown a page of them at a time -- as many lines
-// as the element asks for -- turned as it plays: when the playhead comes to
-// a page's last line, the lines above it are already the next page's, so
-// the reader looks ahead, as a half-page turn does.
+// Bars are laid out in systems as wide as the element, spaced by how long
+// their notes are, and shown a page of lines at a time, turned as it plays
+// (see pageLines).
 //
-// Measures are in staff spaces: the gap between two lines. Bravura's em is
-// four of them, a staff's height, so a glyph drawn at four spaces' size is
-// the size it was drawn to be.
+// Measures are in staff spaces, the gap between two lines. Bravura's em is
+// four spaces (a staff's height), so glyphs are drawn at four spaces' size.
 
 /// NoteMark is how a note went when it was practised.
 enum NoteMark { right, wrong, missed }
@@ -151,8 +147,7 @@ void paintSheet(ui.Canvas canvas, Rect bounds, Score score,
   }
   if (current.isNotEmpty) systems.add(_System(current, widths));
 
-  // The page the playhead is on -- and, at its last line, the lines above
-  // already turned to the next page's. See pageLines.
+  // The page the playhead is on. See pageLines.
   var barAt = at == null ? 0 : (at / score.barQuarters).floor();
   var playing = 0;
   for (var (i, s) in systems.indexed) {
@@ -186,9 +181,9 @@ void paintSheet(ui.Canvas canvas, Rect bounds, Score score,
 }
 
 /// pageLines is which system each of a page's [lines] slots shows, top to
-/// bottom, the playhead on system [playing] of [count] -- null where the
-/// score has ended. A page at a time; on a page's last line, the slots
-/// above it already the next page's.
+/// bottom, with the playhead on system [playing] of [count]; null past the
+/// end. While the last line of a page plays, the slots above it already show
+/// the next page's, so the reader can look ahead, as a half-page turn does.
 List<int?> pageLines(int playing, int lines, int count) {
   var first = playing ~/ lines * lines;
   var turned =
@@ -239,8 +234,8 @@ void _paintSystem(ui.Canvas canvas, Score score, _System system, bool first,
     bottoms[staff] = y + 4 * space + i * 10 * space;
   }
   var systemTop = y, systemBottom = bottoms.values.reduce(math.max);
-  // The last line, kept at its own spacing, ends at its final barline:
-  // the staff does not run on past the end of the piece.
+  // The last system keeps its natural spacing and ends at its final
+  // barline rather than running on to the edge.
   var lineEnd = right;
   if (last) {
     var head = space * 0.8 +
@@ -286,7 +281,7 @@ void _paintSystem(ui.Canvas canvas, Score score, _System system, bool first,
     }
     x += space * 3;
   }
-  // Stretched to the width, but for the last, which keeps its spacing.
+  // Stretched to the width, except the last.
   var natural = system.widths.reduce((a, b) => a + b);
   var stretch = last ? 1.0 : math.max(1.0, (right - x) / natural);
 
@@ -736,9 +731,9 @@ void _paintWritten(ui.Canvas canvas, Written item, Staff staff, double x,
   }
 }
 
-/// sheetMarksOf is what practising has marked on [e], where something is
-/// being practised: set by the editor, as vectorSoloOf is. Null -- an
-/// export, a thumbnail -- is a clean score.
+/// sheetMarksOf is what practising has marked on [e], set by the editor
+/// while practising (as vectorSoloOf is). Null, as in an export or a
+/// thumbnail, draws a clean score.
 SheetMarks Function(SheetElement e)? sheetMarksOf;
 
 Score? _score;
@@ -768,8 +763,8 @@ int sheetFifths(InstrumentPart part, int? chosen) {
 }
 
 /// sheetScore is [part] written out in [audio]'s tempo and metre, in the
-/// key of [fifths] -- remembered, since the same part is drawn on every
-/// frame it plays.
+/// key of [fifths]. The last one is cached, since the same part is drawn on
+/// every frame it plays.
 Score sheetScore(InstrumentPart part, AudioSettings audio, {int? fifths}) {
   var key = sheetFifths(part, fifths);
   var metre = "${audio.tempo}|${audio.beatsPerBar}|${audio.beatUnit}|$key";

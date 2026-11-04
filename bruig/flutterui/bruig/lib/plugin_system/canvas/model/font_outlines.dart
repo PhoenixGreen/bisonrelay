@@ -2,18 +2,15 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
 
-// font_outlines.dart reads the shapes of letters out of a font file, which
-// Flutter will draw but will not hand over: a drawing's text is its letters'
-// outlines, so that once it is edited it is points like anything else.
+// font_outlines.dart reads letter outlines out of a font file, which Flutter
+// draws but does not expose, so a drawing's text can be points like any
+// other shape.
 //
-// Both kinds of outline a font carries. TrueType's (the glyf table, curves
-// with one handle) in .ttf files and collections of them; and the Compact
-// Font Format's (CFF, curves with two, as a small program per letter) in
-// .otf files -- Inter, the app's own face, is one. Enough of each to draw
-// any letter of a Latin font: the character map, the advances, the older
-// kerning table, composite letters built of others, and CFF's subroutines.
-// Not hinting, which is for pixels, and not a variable font's other weights:
-// its outlines as they are, the regular.
+// Reads TrueType outlines (glyf, quadratic) in .ttf files and collections,
+// and CFF outlines (cubic, Type 2 charstrings) in .otf files such as Inter:
+// the character map, advances, the old kern table, composite glyphs and CFF
+// subroutines. No hinting, and a variable font gives only its default
+// outlines.
 
 /// GlyphSegment is one stretch of a letter's outline, in the font's own
 /// units with y upward: a straight line where [line], else a curve with two
@@ -141,8 +138,8 @@ class FontFace {
     return "";
   }
 
-  /// glyphFor is the letter drawn for [codepoint], or nought -- the font's
-  /// box for a letter it does not have.
+  /// glyphFor is the glyph for [codepoint], or 0 (the font's missing-glyph
+  /// box).
   int glyphFor(int codepoint) => _cmap(codepoint);
 
   /// advance is how far on the next letter starts after [glyph].
@@ -152,8 +149,8 @@ class FontFace {
     return _d.getUint16(hmtx + 4 * i);
   }
 
-  /// kerning is how much closer -- less than nought -- or further apart
-  /// [left] and [right] sit side by side.
+  /// kerning is the adjustment between [left] and [right] side by side, in
+  /// font units; negative is closer.
   int kerning(int left, int right) => _kern[(left << 16) | right] ?? 0;
 
   /// outline is [glyph]'s outline, in font units with y upward.
@@ -239,8 +236,9 @@ class FontFace {
     return out;
   }
 
-  /// _quadContour is a TrueType run -- points on the line and handles off
-  /// it, a point halfway between any two handles in a row -- as segments.
+  /// _quadContour is a TrueType contour as segments: on-curve points and
+  /// off-curve handles, with an implied on-curve point between two handles
+  /// in a row.
   static GlyphContour _quadContour(List<(Offset, bool)> pts) {
     var n = pts.length;
     // Start on a point on the line: the first that is, or halfway between
@@ -336,8 +334,8 @@ class FontFace {
 String _tag(ByteData d, int at) =>
     String.fromCharCodes([for (var i = 0; i < 4; i++) d.getUint8(at + i)]);
 
-/// _readCmap is the font's character map, as a lookup: the Unicode one,
-/// the full range where it has it.
+/// _readCmap is the font's Unicode character map as a lookup, the
+/// full-range one where there is one.
 int Function(int) _readCmap(ByteData d, int at) {
   var n = d.getUint16(at + 2);
   int? best;

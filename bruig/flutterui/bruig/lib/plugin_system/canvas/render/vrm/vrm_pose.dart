@@ -9,10 +9,9 @@ import 'package:vector_math/vector_math.dart' as vm;
 // (character_move.dart): the hips, spine and head turned; the legs solved
 // to feet planted where the stance puts them; each hand shaped, the thumb
 // closed round a fist; and the arms solved to where the stance has the
-// hands -- worked out from where this body's shoulders, hips and head are,
-// so a stance fits however long its arms and legs are, and kept outside
-// the body. Ported from the Studio's approved prototype. All in the
-// model's own space: up is +y, it faces +z, and its left is +x.
+// hands. Worked out from where this body's shoulders, hips and head are, so
+// a stance fits any build, and kept outside the body. All in the model's
+// own space: up is +y, it faces +z, and its left is +x.
 
 typedef _V = vm.Vector3;
 typedef _Q = vm.Quaternion;
@@ -507,7 +506,7 @@ class VrmPoser {
   /// restWorld is where [b] is at rest, in the scene, once measured.
   _V? restWorld(VrmHumanBone b) => _restWorld[b]?.clone();
 
-  /// What each eased value was last frame.
+  /// _eased is what each eased value was last frame.
   final Map<String, Object> _eased = {};
 
   _V _p(VrmHumanBone b) => _h.modelPosition(b) ?? _V.zero();
@@ -809,10 +808,9 @@ class VrmPoser {
       VrmHumanBone.values.where((b) => b.name == name).firstOrNull;
 
   /// _fingers shapes hand [side] ("left" or "right") as [shape], [amt] of
-  /// the way closed. In the model's space the left hand's fingers lie
-  /// along +x, palm down, so curling toward the palm is a turn of -angle
-  /// about z (and +angle for the right): the prototype's +side*angle was
-  /// for three-vrm's rig, and here bent the fingers back.
+  /// the way closed. In the model's space the left hand's fingers lie along
+  /// +x, palm down, so curling toward the palm is a turn of -angle about z
+  /// (+angle for the right): the opposite sign to three-vrm's rig.
   void _fingers(String side, String shape, double amt) {
     final sh = _hands[shape] ?? _hands["relaxed"]!;
     final s = side == "left" ? 1.0 : -1.0;
@@ -1107,9 +1105,8 @@ class VrmPoser {
     // Hands: each shaped as asked, or as the stance has it.
     for (final (side, k) in const [("left", "L"), ("right", "R")]) {
       final asked = k == "L" ? m.handL : m.handR;
-      // A motion moving this arm shapes its hand as it moves -- a thumb
-      // held up through a walk looked wrong; otherwise as asked, or as the
-      // stance has it.
+      // A motion moving this arm shapes its hand as it moves; otherwise as
+      // asked, or as the stance has it.
       final shape = _ownsArm(own, k) && w > 0.5
           ? mo.handShape[k] ?? "relaxed"
           : asked != "relaxed"

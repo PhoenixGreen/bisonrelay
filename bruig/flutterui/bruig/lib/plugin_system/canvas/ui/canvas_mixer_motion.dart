@@ -2,114 +2,125 @@ part of 'canvas_mixer.dart';
 
 // canvas_mixer_motion.dart is an element's strip in the mixer, beside the
 // sound channels': its animation slots, one per cue row as theirs are, and
-// its layers' faders -- how much each of the three counts.
+// its layers' faders.
 //
-// A slot's triangle launches it, as a sound slot's does; its name picks it
-// into the Animation panel; dragged, it goes to another slot -- this
-// element's, moved; another's, copied -- or onto the timeline, placed. An
-// empty slot pressed stops the element's clips; double-clicked, it offers a
-// ready-made motion to make one in it.
+// A slot's triangle launches it; its name picks it into the Animation
+// panel; dragged, it goes to another slot (this element's: moved; another's:
+// copied) or onto the timeline. An empty slot pressed stops the element's
+// clips; double-clicked, it offers a ready-made motion.
 
-/// _elementStrip is [e]'s strip.
+/// motionStripKey is [id]'s strip's key among the narrow ones (see
+/// CanvasController.narrowStrips): not a channel's.
+String motionStripKey(String id) => "motion:$id";
+
+/// _elementStrip is [e]'s strip: narrow, as a channel's can be, with its
+/// faders named by layer alone.
 Widget _elementStrip(CanvasController controller, MixerLook theme,
-        CanvasElement e, _Bands bands, ScrollController scroll) =>
-    KeyedSubtree(
-        key: ValueKey("motionStrip-${e.id}"),
-        child: _StripFrame(
-          selected: controller.selection.contains(e.id),
-          theme: theme,
-          bands: bands,
-          head: GestureDetector(
-            key: ValueKey("motionStripName-${e.id}"),
-            behavior: HitTestBehavior.opaque,
-            onTap: () => controller.selectOnly(e.id),
-            child: Row(children: [
-              Icon(Icons.animation, size: 11, color: theme.studio.muted),
-              const SizedBox(width: 3),
-              Expanded(
-                child: Text(e.name.isEmpty ? e.id : e.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: theme.studio.text)),
-              ),
-            ]),
-          ),
-          clips: () => _clipColumn(
-            scroll,
-            controller.session.rows,
-            (row) => _MotionSlot(
-                key: ValueKey("motionSlot-${e.id}-$row"),
-                controller: controller,
-                element: e.id,
-                row: row,
-                theme: theme),
-            Tooltip(
-              message: "Stop this element's clips, on the next bar",
-              child: Material(
-                color: theme.studio.inset,
+    CanvasElement e, _Bands bands, ScrollController scroll) {
+  var key = motionStripKey(e.id);
+  var narrow = controller.narrowStrips.contains(key);
+  return KeyedSubtree(
+      key: ValueKey("motionStrip-${e.id}"),
+      child: _StripFrame(
+        narrow: narrow,
+        onNarrow: () => controller.toggleNarrow(key),
+        narrowKey: ValueKey("narrow-$key"),
+        selected: controller.selection.contains(e.id),
+        theme: theme,
+        bands: bands,
+        head: GestureDetector(
+          key: ValueKey("motionStripName-${e.id}"),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => controller.selectOnly(e.id),
+          child: Row(children: [
+            Icon(Icons.animation, size: 11, color: theme.studio.muted),
+            const SizedBox(width: 3),
+            Expanded(
+              child: Text(e.name.isEmpty ? e.id : e.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: theme.studio.text)),
+            ),
+          ]),
+        ),
+        clips: () => _clipColumn(
+          scroll,
+          controller.slotsShown,
+          (row) => _MotionSlot(
+              key: ValueKey("motionSlot-${e.id}-$row"),
+              controller: controller,
+              element: e.id,
+              row: row,
+              theme: theme),
+          Tooltip(
+            message: "Stop this element's clips, on the next bar",
+            child: Material(
+              color: theme.studio.inset,
+              borderRadius: BorderRadius.circular(3),
+              child: InkWell(
+                key: ValueKey("motionStop-${e.id}"),
                 borderRadius: BorderRadius.circular(3),
-                child: InkWell(
-                  key: ValueKey("motionStop-${e.id}"),
-                  borderRadius: BorderRadius.circular(3),
-                  onTap: () => controller.stopMotion(e.id),
-                  child: Center(
-                    child: Icon(Icons.stop,
-                        size: 11,
-                        color: controller.motionPlayer.isOff(e.id)
-                            ? theme.studio.text
-                            : theme.studio.muted),
-                  ),
+                onTap: () => controller.stopMotion(e.id),
+                child: Center(
+                  child: Icon(Icons.stop,
+                      size: 11,
+                      color: controller.motionPlayer.isOff(e.id)
+                          ? theme.studio.text
+                          : theme.studio.muted),
                 ),
               ),
             ),
           ),
-          devices: () => _ElementSoundBand(
-              controller: controller, element: e, theme: theme),
-          mixer: () => Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var layer = 0; layer < motionLayers; layer++) ...[
-                if (layer > 0) const SizedBox(width: 4),
-                Expanded(
-                  child: _LayerFader(
-                    key: ValueKey("layerFader-${e.id}-$layer"),
-                    label: "L${layer + 1}",
-                    value: e.base.motion.weight(layer),
-                    theme: theme,
-                    onChanged: (v) {
-                      controller.beginInteraction();
-                      controller.weighLayer(e.id, layer, v, transient: true);
-                    },
-                    onCommit: controller.endInteraction,
-                  ),
-                ),
-              ],
-            ],
-          ),
-          miniMixer: () => Row(children: [
+        ),
+        devices: () =>
+            _ElementSoundBand(controller: controller, element: e, theme: theme),
+        mixer: () => Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             for (var layer = 0; layer < motionLayers; layer++) ...[
-              if (layer > 0) const SizedBox(width: 3),
+              if (layer > 0) const SizedBox(width: 4),
               Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: e.base.motion.weight(layer),
-                    minHeight: 6,
-                    color: theme.studio.on,
-                    backgroundColor: theme.studio.inset,
-                  ),
+                child: _LayerFader(
+                  key: ValueKey("layerFader-${e.id}-$layer"),
+                  label: "L${layer + 1}",
+                  short: narrow,
+                  value: e.base.motion.weight(layer),
+                  theme: theme,
+                  onChanged: (v) {
+                    controller.beginInteraction();
+                    controller.weighLayer(e.id, layer, v, transient: true);
+                  },
+                  onCommit: controller.endInteraction,
                 ),
               ),
             ],
-          ]),
-        ));
+          ],
+        ),
+        miniMixer: () => Row(children: [
+          for (var layer = 0; layer < motionLayers; layer++) ...[
+            if (layer > 0) const SizedBox(width: 3),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: LinearProgressIndicator(
+                  value: e.base.motion.weight(layer),
+                  minHeight: 6,
+                  color: theme.studio.on,
+                  backgroundColor: theme.studio.inset,
+                ),
+              ),
+            ),
+          ],
+        ]),
+      ));
+}
 
-/// _ElementSoundBand is an element's sound, in its strip's devices band: a
-/// channel of its own to give it, or -- with one -- where that goes: to the
-/// master, or into a return shared with others, as a group bus (Ken).
+/// _ElementSoundBand is an element's sound in its strip's devices band: a
+/// channel of its own to give it, or, with one, where that goes (the master,
+/// or a return shared with others as a group bus).
 class _ElementSoundBand extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;
@@ -153,49 +164,56 @@ class _ElementSoundBand extends StatelessWidget {
     var output = controller.soundOutputOf(id);
     var returns = controller.document.returns;
     var to = returns.where((r) => r.id == output).firstOrNull;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text("Sound goes to", style: small),
-      const SizedBox(height: 2),
-      MenuAnchor(
-        menuChildren: [
+    var menu = MenuAnchor(
+      menuChildren: [
+        MenuItemButton(
+          key: ValueKey("elementSoundOut-$id-master"),
+          onPressed: () => controller.setSoundOutput(id, ""),
+          child: const Text("The master, on its own"),
+        ),
+        for (var r in returns)
           MenuItemButton(
-            key: ValueKey("elementSoundOut-$id-master"),
-            onPressed: () => controller.setSoundOutput(id, ""),
-            child: const Text("The master, on its own"),
+            key: ValueKey("elementSoundOut-$id-${r.id}"),
+            onPressed: () => controller.setSoundOutput(id, r.id),
+            child: Text("${r.name}, shared"),
           ),
-          for (var r in returns)
-            MenuItemButton(
-              key: ValueKey("elementSoundOut-$id-${r.id}"),
-              onPressed: () => controller.setSoundOutput(id, r.id),
-              child: Text("${r.name}, shared"),
-            ),
-        ],
-        builder: (context, menu, _) => Material(
-          color: studio.inset,
+      ],
+      builder: (context, menu, _) => Material(
+        color: studio.inset,
+        borderRadius: BorderRadius.circular(3),
+        child: InkWell(
+          key: ValueKey("elementSoundOut-$id"),
           borderRadius: BorderRadius.circular(3),
-          child: InkWell(
-            key: ValueKey("elementSoundOut-$id"),
-            borderRadius: BorderRadius.circular(3),
-            onTap: () => menu.isOpen ? menu.close() : menu.open(),
-            child: SizedBox(
-              height: _slotH,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Row(children: [
-                  Expanded(
-                    child: Text(to?.name ?? "Master",
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 10, color: studio.text)),
-                  ),
-                  Icon(Icons.arrow_drop_down, size: 12, color: studio.muted),
-                ]),
-              ),
+          onTap: () => menu.isOpen ? menu.close() : menu.open(),
+          child: SizedBox(
+            height: _slotH,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(children: [
+                Expanded(
+                  child: Text(to?.name ?? "Master",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10, color: studio.text)),
+                ),
+                Icon(Icons.arrow_drop_down, size: 12, color: studio.muted),
+              ]),
             ),
           ),
         ),
       ),
-    ]);
+    );
+    // The label only where there is room for it over the menu: a band
+    // squeezed short keeps the menu.
+    return LayoutBuilder(builder: (context, box) {
+      var label = Text("Sound goes to", style: small, maxLines: 1);
+      var labelled = box.maxHeight >=
+          _slotH + 4 + MediaQuery.textScalerOf(context).scale(14);
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (labelled) ...[label, const SizedBox(height: 2)],
+        menu,
+      ]);
+    });
   }
 }
 
@@ -203,6 +221,10 @@ class _ElementSoundBand extends StatelessWidget {
 /// and down; double-clicked, all of it again.
 class _LayerFader extends StatelessWidget {
   final String label;
+
+  /// short is its name alone under it, in a narrow strip: no room for how
+  /// much the layer counts as well.
+  final bool short;
   final double value;
   final MixerLook theme;
   final ValueChanged<double> onChanged;
@@ -214,6 +236,7 @@ class _LayerFader extends StatelessWidget {
     required this.theme,
     required this.onChanged,
     required this.onCommit,
+    this.short = false,
     super.key,
   });
 
@@ -246,7 +269,7 @@ class _LayerFader extends StatelessWidget {
         }),
       ),
       const SizedBox(height: 3),
-      Text("$label ${(value * 100).round()}",
+      Text(short ? label : "$label ${(value * 100).round()}",
           textAlign: TextAlign.center,
           maxLines: 1,
           overflow: TextOverflow.clip,
@@ -501,7 +524,6 @@ class _MotionSlotState extends State<_MotionSlot> {
                 _menuAt = e.localPosition;
                 return;
               }
-              // An empty slot pressed stops the element's clips.
               if (clip == null) c.pressMotionSlot(widget.element, widget.row);
             },
             onPointerUp: (e) {

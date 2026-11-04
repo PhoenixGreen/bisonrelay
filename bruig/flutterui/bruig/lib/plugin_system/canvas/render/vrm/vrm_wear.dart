@@ -193,8 +193,8 @@ bool covers(WearSlot slot, Garment w, BodyGroup g, double t, double x, double y,
   }
 }
 
-/// How far each slot stands off the skin, so what goes on later is over
-/// what went on before.
+/// _layer is how far each slot stands off the skin, so what goes on later
+/// is over what went on before.
 const Map<WearSlot, double> _layer = {
   WearSlot.underwear: 0.0018,
   WearSlot.legwear: 0.0026,

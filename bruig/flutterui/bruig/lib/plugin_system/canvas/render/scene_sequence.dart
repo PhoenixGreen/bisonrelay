@@ -20,14 +20,12 @@ import 'package:flutter/painting.dart';
 // scene_sequence.dart plays a document through: every scene in order, and
 // whatever is drawn between them.
 //
-// One function that everything asking "what does this document look like at
-// this moment" goes through -- the preview, the transport, the export. A
-// second opinion about where scene four starts would be a canvas that
-// exported differently from the one on screen.
+// The preview, the transport and the export all go through it, so an export
+// cannot disagree with the screen about where a scene starts.
 //
-// A transition is drawn as two scenes and an effect, never as a scene with an
-// effect applied: both canvases are real for as long as the transition lasts,
-// which is what lets a cross fade fade and a push push.
+// A transition is drawn as two scenes and an effect, never as one scene with
+// an effect applied: both canvases are real for as long as it lasts, which is
+// what lets a cross fade fade and a push push.
 
 /// SequencePlace is where a moment in the whole document falls: which scene,
 /// which frame of it, and whether a transition is running.
@@ -79,14 +77,8 @@ SequencePlace placeInSequence(CanvasDocument doc, int at) {
 
     // The transition's own stretch of time. It begins where the two scenes
     // start sharing frames -- or at the end of this scene, when they share
-    // none -- and lasts as long as the transition is set to.
-    //
-    // One branch for both. There were two, one for a transition that runs
-    // across the join and one for a transition that runs between the scenes,
-    // and between them was a case neither handled: a transition longer than
-    // its overlap ran for the overlap and the rest of its length was thrown
-    // away, so setting it to twenty frames over an overlap of five played a
-    // five-frame transition.
+    // none -- and lasts its full length even when that is longer than the
+    // overlap.
     var begins = scene.frames - held;
     if (runs > 0 && local >= begins && local < begins + runs) {
       var into = local - begins;
@@ -120,11 +112,10 @@ void paintSequenceFrame(
   int at, {
   CanvasImageSource? images,
 
-  /// backgrounds holds a raster for each canvas on screen, which for the
-  /// length of a transition is the scene leaving and the scene arriving both.
-  /// A cache of one made a backdrop from scratch twice a frame, and a
-  /// generated backdrop is the most expensive thing on a canvas -- which is
-  /// what made a page turn crawl. See ProceduralCache.
+  /// backgrounds holds a raster for each canvas on screen, which during a
+  /// transition is both the scene leaving and the scene arriving: it must
+  /// hold at least two, or a generated backdrop is remade every frame. See
+  /// ProceduralCache.
   ProceduralCache? backgrounds,
 
   /// audioState and videoShow are what the media on screen are doing, so a
@@ -152,9 +143,8 @@ void paintSequenceFrame(
   void drawScene(int index, int frame) {
     var camera = scenes[index].camera;
     var length = math.max(1, scenes[index].frames - 1);
-    // Each scene with its own backdrop -- see CanvasDocument.backgroundOf.
-    // Drawn from the document's own, every scene in the run wore whichever
-    // one was edited last.
+    // Each scene with its own backdrop (CanvasDocument.backgroundOf), not the
+    // document's, which is whichever scene was edited last.
     var shown = doc
         .goToScene(index)
         .copyWith(onMaster: false, background: doc.backgroundOf(index));
@@ -328,9 +318,7 @@ void _seenThrough(ui.Canvas canvas, Rect page, void Function() draw) {
 /// The leaf is a sheet printed on both sides. [front] is its face and
 /// [under] what lies beneath it, both drawn where the leaf lies now; [back]
 /// is its reverse, drawn where it will lie once turned -- the leaf's own
-/// size, to the left of the spine. The four attempts before this one each
-/// had one page moving over another with blank paper or nothing on its
-/// back, and every one of them read as something going wrong with the page.
+/// size, to the left of the spine.
 ///
 /// The bottom outer corner is carried over the spine along a low arc, and
 /// the fold is wherever it has to be for that corner to be where it is: the
@@ -494,10 +482,8 @@ Path _polygon(List<Offset> points) => Path()..addPolygon(points, true);
 /// the neighbour's overhang, then its own contents, clipped to the page.
 ///
 /// The same order the editor and the PDF use, so a picture laid across the
-/// gutter is whole in a spread whichever of the two it was placed on. Drawn
-/// as a whole canvas with the neighbour beside it, the second page's paper
-/// went over the first page's overhang, and a picture across the spread was
-/// cut off at the spine the moment the second page played.
+/// gutter is whole in a spread whichever page it was placed on; drawing the
+/// neighbour as a whole canvas would put this page's paper over its overhang.
 ///
 /// [frameOf] is which frame each leaf is showing -- see paintBookFrame.
 void paintLeaf(
@@ -508,9 +494,7 @@ void paintLeaf(
   CanvasImageSource? images,
   ProceduralCache? backgrounds,
 
-  /// audioState and videoShow are what the media on screen are doing, so a
-  /// document played through shows its videos moving rather than their
-  /// posters. Null in an export. See paintCanvasDocument.
+  /// audioState and videoShow: see paintSequenceFrame.
   AudioState Function(AudioElement)? audioState,
   VideoShow Function(VideoElement)? videoShow,
 }) {
@@ -570,9 +554,7 @@ void paintBookFrame(
   CanvasImageSource? images,
   ProceduralCache? backgrounds,
 
-  /// audioState and videoShow are what the media on screen are doing, so a
-  /// document played through shows its videos moving rather than their
-  /// posters. Null in an export. See paintCanvasDocument.
+  /// audioState and videoShow: see paintSequenceFrame.
   AudioState Function(AudioElement)? audioState,
   VideoShow Function(VideoElement)? videoShow,
 }) {

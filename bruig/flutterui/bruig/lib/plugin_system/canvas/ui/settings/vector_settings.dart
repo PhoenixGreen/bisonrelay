@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
@@ -29,6 +28,8 @@ import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 
 // vector_settings.dart is a drawing's settings: which drawing, how it sits in
 // its box, editing it point by point -- and while it is being edited, how
@@ -96,8 +97,7 @@ List<Widget> vectorSettings(
     VectorElement e,
     SettingsWrite write,
     VoidCallback begin,
-    VoidCallback commit,
-    {bool toolsOnly = false}) {
+    VoidCallback commit) {
   void now(VectorElement next) {
     begin();
     write(next);
@@ -222,9 +222,6 @@ List<Widget> vectorSettings(
         now(next);
       }),
   ];
-  // The tools alone, for a character's Drawing section -- see
-  // character_drawing_settings.dart.
-  if (toolsOnly) return drawing;
   return [
     section(e, "drawing",
         icon: Icons.draw_outlined,
@@ -330,11 +327,9 @@ Widget vectorDrawingControls(
         options: [for (var f in VectorFit.values) (f, f.label)],
         onChanged: (v) => now(e.copyWith(fit: v)),
       ),
-      // One colour over the whole drawing, which keeps it a
-      // reference to its file -- see VectorElement.tint. Before the
-      // drawing is taken apart it is the only way to colour it;
-      // after, its shapes' own colours are, so it is offered only
-      // to take off one already on.
+      // One colour over the whole drawing, which keeps it a reference to
+      // its file (see VectorElement.tint): the only way to colour it before
+      // it is taken apart, and offered after only to take one off.
       if (!e.edited || e.tint != null)
         CanvasColorButton(
           key: const ValueKey("vectorTint"),
@@ -442,7 +437,7 @@ List<Widget> _shapeTiming(CanvasController controller, VectorElement e,
     int picked, void Function(VectorElement) now) {
   var groups = vectorDrawn(e.shapes ?? const <VectorShape>[]);
   var starts = groupStarts(e);
-  var span = vectorArrivalSpan(e)?.$2;
+  var span = vectorArrivalSpan(e, controller.document.frameRate)?.$2;
   var length = span == null || !e.animation.on ? null : span;
   // A change to when a layer comes in: in the timeline's frames, and the
   // arrival fitted round them all again, where there is one -- see
@@ -1422,8 +1417,7 @@ Widget _shapeGroup(
     tooltip: "Ends & corners",
     rule: false,
     // A row for each paint: its colour and what goes with it, and a button
-    // to take it off -- or, off, one to put it on. A switch beside each was
-    // a row of its own in a card, the colour on the next.
+    // to take it off, or put it on.
     row: [
       if (shown.fill != null) ...[
         CanvasColorButton(
@@ -1569,10 +1563,8 @@ Widget _shapeGroup(
 }
 
 /// _PenMeter shows what the pen is telling the app: its pressure as a bar
-/// and a number, and its tilt -- or that no pen reading is arriving, which
-/// is what a mouse, or a tablet the app cannot hear, looks like. It says,
-/// at a glance, whether the pencil is getting the pen's pressure or making
-/// do with speed.
+/// and a number, and its tilt, or that no pen reading is arriving (a mouse,
+/// or a tablet the app cannot hear).
 class _PenMeter extends StatefulWidget {
   const _PenMeter({super.key});
 
@@ -1641,13 +1633,11 @@ class _PenMeterState extends State<_PenMeter> {
   }
 }
 
-/// _animationSection is the drawing's Animation section -- or, with one of
-/// its shapes picked, that shape's: the same controls, setting the shape's
-/// own animation in place of the drawing's. Left alone, a shape animates as
-/// the drawing does; the first change made to it here starts it off as a
-/// copy of the drawing's with that change. When it comes in, and for how
-/// long, stays the playlist's and its lane's, on the drawing's keyframes.
-/// See VectorShape.animation.
+/// _animationSection is the drawing's Animation section or, with a shape
+/// picked, that shape's: the same controls, setting its own animation. Left
+/// alone a shape animates as the drawing does; the first change here starts
+/// it as a copy of the drawing's with that change. When it comes in stays on
+/// the drawing's keyframes. See VectorShape.animation.
 Widget _animationSection(CanvasController controller, VectorElement e,
     int picked, SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   if (!e.edited || picked < 0) {
@@ -1702,8 +1692,7 @@ Widget _animationSection(CanvasController controller, VectorElement e,
               ease: p != shown.preset ? p.wants : null,
               effect: p != shown.preset ? p.effect : null);
   var closes =
-      e.track?.keys.any((k) => k.values.containsKey(KeyframeChannel.close)) ??
-          false;
+      ownSpan(e, MotionKind.leave, controller.document.frameRate) != null;
 
   return elementAnimationSection(
     controller,
@@ -1715,7 +1704,7 @@ Widget _animationSection(CanvasController controller, VectorElement e,
     timing: false,
     arrive: (p) => lay(
         choosing(p, exit: false),
-        p == ElementAnimationPreset.none || vectorArrivalSpan(e) != null,
+        p == ElementAnimationPreset.none || vectorArrivalSpan(e, controller.document.frameRate) != null,
         (fresh) => controller.applyElementAnimation(fresh, p)),
     leave: (p) => lay(
         choosing(p, exit: true),

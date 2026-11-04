@@ -1,14 +1,12 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
-// motion_presets.dart is the ready-made motions: each writes a clip's keys,
-// and after that the clip is only its keys -- changing one makes them the
-// reader's own (MotionClip.edited). Grouped by what they are for, as the
-// Animation panel's Motion device lists them.
+// motion_presets.dart is the ready-made motions. Each writes a clip's keys;
+// after that the clip is only its keys, and editing one sets
+// MotionClip.edited.
 //
-// Places rather than numbers where the motion means a place: a slide in comes
-// from just off the edge, whatever the page's shape and wherever the element
-// has been put.
+// Where a motion means a place it keys a place, not a number: a slide in
+// comes from just off the edge whatever the page's shape.
 
 /// MotionWay is which way a slide goes.
 enum MotionWay {

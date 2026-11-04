@@ -199,7 +199,11 @@ List<Widget> spriteSettings(BuildContext context, CanvasController controller, S
                       var image = controller.images.resolve(e.sheet, const BackgroundRemoval());
                       if (image == null) return;
                       if (await findGrid(image) case (var c, var r)) {
-                        now(e.copyWith(columns: c, rows: r, margin: 0, spacing: 0));
+                        // As it is now: the grid is found in the background.
+                        if (freshOf(controller, e) case var f?) {
+                          now(f.copyWith(
+                              columns: c, rows: r, margin: 0, spacing: 0));
+                        }
                       }
                     },
                   ),
@@ -427,12 +431,10 @@ class BlankSheetMakerState extends State<BlankSheetMaker> {
       );
 }
 
-/// AnimationsEditor is the sprite's animations, as Godot's sprite frames
-/// editor lays them out: the animation picked -- added, named, copied,
-/// taken away -- playing in a preview; its frames in order, each one
-/// moved, copied or taken out with buttons, or added from the sheet;
-/// how fast, and whether it loops. A figure's has directions: frames for
-/// each way it faces.
+/// AnimationsEditor is the sprite's animations, laid out as Godot's sprite
+/// frames editor: the animation picked playing in a preview, its frames in
+/// order (moved, copied, taken out, or added from the sheet), how fast, and
+/// whether it loops. A figure's has frames for each way it faces.
 class AnimationsEditor extends StatefulWidget {
   final CanvasController controller;
   final SpriteElement sprite;
@@ -728,8 +730,8 @@ class AnimationsEditorState extends State<AnimationsEditor> {
             value: e.mirrorSides,
             onChanged: (v) => _now(e.copyWith(mirrorSides: v)),
           ),
-        // Turned the way it goes on the timeline -- a patrol -- and which
-        // way its frames face, for what is mirrored (Ken).
+        // Turned the way it goes on the timeline (a patrol), and which way its
+        // frames face, for what is mirrored.
         CanvasToggle(
           key: const ValueKey("spriteFaceTravel"),
           label: "Turns to face where it goes",
@@ -1070,7 +1072,3 @@ class _SheetPainter extends CustomPainter {
       !identical(old.e, e) || old.image != image || old.k != k || old.lit.length != lit.length;
 }
 
-/// spritePreviewRect is where frame [index] of [e] is drawn in a box
-/// [size] across -- what a tile of it shows.
-Rect spritePreviewRect(SpriteElement e, int index, Size size) =>
-    spriteFit(e.frameRect(index).size, Offset.zero & size);

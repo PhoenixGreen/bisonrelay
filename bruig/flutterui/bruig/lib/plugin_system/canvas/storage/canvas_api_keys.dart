@@ -3,17 +3,11 @@ import 'package:bruig/storage_manager.dart';
 // canvas_api_keys.dart keeps the keys a data source needs, outside the
 // document that uses them.
 //
-// This separation is the whole point of the file. A canvas is a thing people
-// send each other -- as a bundle, into a chat, into the post library -- and a
-// key saved in the document would be a key handed to everybody who received
-// it, from a field the sender had no reason to think of as secret. So the
-// document holds the address and the key lives here, filed under the host it
-// belongs to, on this machine only.
-//
-// Filed by host rather than by canvas, because a key is a fact about a service
-// rather than about a design: three tables pulling three leagues from one API
-// need one key between them, and asking for it three times would be three
-// chances to paste it into the wrong box.
+// A canvas is something people send each other, and a key saved in it would
+// be handed to everybody who received it. So the document holds the address
+// and the key lives here, on this machine only, filed by host rather than by
+// canvas: a key belongs to a service, and several tables using one API need
+// it once.
 
 /// _prefix is the storage key. The host is appended.
 const String _prefix = "canvasApiKey:";
@@ -29,7 +23,7 @@ class CanvasApiKeys {
     await StorageManager.saveString("$_prefix$host", key.trim());
   }
 
-  /// has is whether one has been given, which is what a settings panel shows.
-  /// The key itself is never shown again once it has been entered.
+  /// has is whether one has been given, which is what a settings panel shows:
+  /// the key itself is never shown again once entered.
   static Future<bool> has(String host) async => (await read(host)).isNotEmpty;
 }

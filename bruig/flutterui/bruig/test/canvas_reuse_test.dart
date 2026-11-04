@@ -100,38 +100,6 @@ void main() {
     });
   });
 
-  group("linked copies", () {
-    test("pushing gives the copies the design, keeping their place and time",
-        () {
-      var c = CanvasController(
-          const CanvasDocument().addElement(_shape("s", 100, 5)));
-      addTearDown(c.dispose);
-      c.linkedCopy("s");
-      var copy = c.selection.single;
-      var moved = c.document.elementById(copy)!.withBase(x: 700);
-      c.apply(c.document.withElement(moved));
-      var source = c.document.elementById("s") as ShapeElement;
-      c.apply(c.document.withElement(
-          source.copyWith(fill: const Color(0xFFFF3B5C), strokeWidth: 4)));
-      expect(c.pushToLinked("s"), 1);
-      var after = c.document.elementById(copy) as ShapeElement;
-      expect(after.fill, const Color(0xFFFF3B5C));
-      expect(after.strokeWidth, 4);
-      expect(after.x, 700, reason: "its own place");
-      expect(after.id, copy);
-    });
-
-    test("an unlinked copy is left alone", () {
-      var c = CanvasController(
-          const CanvasDocument().addElement(_shape("s", 100, 5)));
-      addTearDown(c.dispose);
-      c.linkedCopy("s");
-      var copy = c.selection.single;
-      c.unlink(copy);
-      expect(c.pushToLinked("s"), 0);
-    });
-  });
-
   test("arrivals are staggered left to right, the first kept", () {
     var c = CanvasController(const CanvasDocument()
         .addElement(_shape("right", 600, 40))

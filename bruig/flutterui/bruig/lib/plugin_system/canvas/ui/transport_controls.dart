@@ -8,21 +8,17 @@ import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// transport_controls.dart is the pieces of the timeline's control bar that
-// are its own: the boxes it is grouped in, the position, the tap tempo, the
-// small readouts that become a field when pressed, the menus, and the
-// engine's meter. The bar itself is laid out in canvas_timeline.dart.
-//
-// Every number is measured before it is boxed: a box is as wide as the
-// widest thing it can show, so nothing is cut and nothing jumps about as
-// the playhead moves.
+// transport_controls.dart is the timeline control bar's own pieces: the boxes
+// it is grouped in, the position, tap tempo, readouts that become a field when
+// pressed, menus, and the engine meter. The bar is laid out in
+// canvas_timeline.dart. Each box is measured to the widest thing it can show,
+// so nothing is cut and nothing jumps as the playhead moves.
 
 const _figures = [FontFeature.tabularFigures()];
 
-/// fitWidth is how wide [text] is in [style], rounded up -- measured in the
-/// font it will be drawn in: [style] over the text style in force where
-/// [context] is. Measured in the bare default font, a box was sized for
-/// one font and filled in another.
+/// fitWidth is how wide [text] is in [style], rounded up, measured in the
+/// font it will be drawn in: [style] over the text style in force at
+/// [context].
 double fitWidth(BuildContext context, String text, TextStyle style) {
   var painter = TextPainter(
     text: TextSpan(
@@ -382,10 +378,9 @@ class _TransportPositionState extends State<TransportPosition> {
                 contentPadding: EdgeInsets.zero),
             onSubmitted: _go,
           )
-        // Shrunk to fit rather than run over: the box is the bar's height,
-        // and two lines of text at the reader's own text size -- Settings >
-        // Appearance goes to half as big again -- are taller than that. The
-        // lines are held to their size, too, whatever the font's own leading.
+        // Shrunk to fit: two lines at a larger app text size are taller than
+        // the bar. The lines are held to their size whatever the font's
+        // leading.
         : FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
@@ -415,10 +410,9 @@ class _TransportPositionState extends State<TransportPosition> {
           : "Press to read it as "
               "${formats[(_format + 1) % formats.length].label.toLowerCase()}; "
               "double-click to type where to go",
-      // A press reads it the next way at once; a second inside a double
-      // click's time puts the way back and opens the field. Flutter's own
-      // double tap holds every single press back until it is sure, which
-      // made the display slow to answer.
+      // A press reads it the next way at once; a second within a double
+      // click's time puts the way back and opens the field. Not Flutter's
+      // double tap, which holds every press back until it is sure.
       child: GestureDetector(
         key: const ValueKey("transportPosition"),
         onTap: () {

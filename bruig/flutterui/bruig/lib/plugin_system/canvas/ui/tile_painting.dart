@@ -8,23 +8,20 @@ import 'package:bruig/plugin_system/canvas/render/tile_terrain.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/foundation.dart';
 
-// tile_painting.dart is painting a Tile map element on the canvas, as
-// Godot's tile map editor does: a tile picked from a set -- or several, a
-// stamp -- laid in the cells the pen goes over, along a line, over a box,
-// or poured into the cells like the one pressed; rubbed out; or picked up
-// off the map, a box of it dragged out to paint with. A stamp of several
-// is laid whole, repeating from where the stroke began; painted at random,
-// each cell takes one of its tiles, some left empty if asked. The tile to
-// be laid shows faintly under the pointer. Each stroke is one undo.
+// tile_painting.dart is painting a Tile map element on the canvas, as Godot's
+// tile map editor does: a tile, or a stamp of several, laid along the pen's
+// path, a line or a box, or poured into like cells; rubbed out; or picked up
+// off the map. A stamp is laid whole, repeating from where the stroke began;
+// painted at random, each cell takes one of its tiles, some left empty if
+// asked. The tile to be laid shows faintly under the pointer. Each stroke is
+// one undo step.
 //
-// On an objects layer the pen stands things anywhere, not in cells: a
-// stamp put down where it is pressed -- on the grid, or not -- and moved
-// till the pen lifts; one under the pen rubbed out or moved; or a spread of
-// them scattered about where the pen goes, each a little apart.
+// On an objects layer the pen stands things anywhere, not in cells: a stamp put
+// down and moved till the pen lifts, one rubbed out or moved, or a spread
+// scattered where the pen goes.
 //
-// Painted with a terrain in place of tiles, each cell the pen lays takes
-// the terrain, and it and the cells round it the tiles that match -- see
-// tile_terrain.dart.
+// With a terrain in place of tiles, each cell laid takes the terrain, and it
+// and its neighbours the tiles that match: see tile_terrain.dart.
 
 /// TileTool is what painting a map does with the pen.
 enum TileTool {
@@ -60,16 +57,16 @@ class TilePaintSession extends ChangeNotifier {
 
   TileTool tool = TileTool.paint;
 
-  /// stamp is what is laid: one tile, or several -- from the set and
-  /// turned as picked.
+  /// stamp is what is laid: one tile, or several, from the set and turned as
+  /// picked.
   TileStamp stamp = TileStamp.one(TileRef.of(0, 0));
 
   /// brush is the stamp's first tile; set, the stamp is that one tile.
   TileRef get brush => stamp.first;
 
-  /// random lays one of the stamp's tiles in each cell, picked at random,
-  /// in place of the stamp as it is laid out; gaps is how many cells, of
-  /// every one, are left empty.
+  /// random lays one of the stamp's tiles in each cell, picked at random, in
+  /// place of the stamp's layout; gaps is how many cells in every one are left
+  /// empty.
   bool random = false;
   double gaps = 0;
   math.Random rng = math.Random();
@@ -150,7 +147,7 @@ class TilePaintSession extends ChangeNotifier {
   /// laid once, however long the pen stays in it.
   final Set<(int, int)> _laid = {};
 
-  /// _picking is the box being dragged out with the picker.
+  /// _pickFrom is the corner of the box being dragged out with the picker.
   (int, int)? _pickFrom;
 
   /// onObjects is whether the layer painted is an objects layer.
@@ -176,7 +173,7 @@ class TilePaintSession extends ChangeNotifier {
 
   /// objectAt is the top thing on the objects layer under [doc], or null.
   int? objectAt(TileMapElement m, List<TileObject> objects, ui.Offset doc) {
-    // The nearest the reader is drawn last: looked for first.
+    // The nearest the reader is drawn last, so is looked for first.
     var order = [for (var i = 0; i < objects.length; i++) i]
       ..sort((a, b) => objects[b].y.compareTo(objects[a].y));
     for (var i in order) {
@@ -255,8 +252,8 @@ class TilePaintSession extends ChangeNotifier {
     _lay(m, at, at);
   }
 
-  /// _pick takes up the tiles from cell [a] to [b] -- the top one showing
-  /// in each, on whichever layer -- to paint with.
+  /// _pick takes up the tiles from cell [a] to [b] (the top one showing in
+  /// each, on whichever layer) to paint with.
   void _pick(TileMapElement m, (int, int) a, (int, int) b) {
     var shown = <int, int>{};
     for (var l in m.layers) {
@@ -459,9 +456,9 @@ class TilePaintSession extends ChangeNotifier {
     _show(m);
   }
 
-  /// _put lays in cell ([c], [r]) the tile that goes there: the stamp's
-  /// at its place on the stamp's grid from where the stroke began -- none,
-  /// where the stamp has none -- or one at random; or rubs it out.
+  /// _put lays in cell ([c], [r]) the tile that goes there: the stamp's tile at
+  /// its place on the stamp's grid from where the stroke began (none where the
+  /// stamp has none), or one at random; or rubs it out.
   void _put(int c, int r) {
     var k = cellKey(c, r);
     if (tool == TileTool.erase) {
@@ -502,8 +499,8 @@ class TilePaintSession extends ChangeNotifier {
     _shown();
   }
 
-  /// strokeEnd lifts the pen: what was laid kept, as one change -- or the
-  /// box dragged out with the picker taken up.
+  /// strokeEnd lifts the pen: what was laid kept as one change, or the box
+  /// dragged out with the picker taken up.
   void strokeEnd() {
     if (_pickFrom case var from?) {
       _pickFrom = null;
@@ -558,9 +555,9 @@ List<(int, int)> cellsAlong((int, int) a, (int, int) b) {
   return out;
 }
 
-/// floodCells is the cells joined to [start] side by side that hold what
-/// it holds -- the same tile, or nothing -- within [within]: the first and
-/// last column and row. A map goes on for ever; a fill stops at the window.
+/// floodCells is the cells joined side by side to [start] that hold what it
+/// holds (the same tile, or nothing), within [within]: first and last column
+/// and row. A map goes on for ever, so a fill stops at the window.
 Set<int> floodCells(Map<int, int> cells, (int, int) start, (int, int, int, int) within) {
   var (c0, r0, c1, r1) = within;
   var (sc, sr) = start;

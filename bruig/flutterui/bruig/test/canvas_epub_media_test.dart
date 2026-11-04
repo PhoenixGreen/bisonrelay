@@ -18,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/model/web_link.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 // ignore: depend_on_referenced_packages
@@ -507,5 +508,21 @@ void main() {
         expect(stage.getAttribute("data-autoplay"), "true");
       });
     });
+  });
+
+  test("only web and email links are opened or exported", () {
+    expect(
+        webLink(" https://example.com/a "), Uri.parse("https://example.com/a"));
+    expect(webLink("mailto:a@b.c"), isNotNull);
+    for (var bad in [
+      "javascript:alert(1)",
+      "file:///etc/passwd",
+      "smb://x/y",
+      "https://",
+      "page2.xhtml",
+      "bruig://x"
+    ]) {
+      expect(webLink(bad), isNull, reason: bad);
+    }
   });
 }

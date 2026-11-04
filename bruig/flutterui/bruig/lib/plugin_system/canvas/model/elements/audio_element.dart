@@ -10,22 +10,16 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 // to hear it.
 //
 // On the canvas it is an icon, with a mute switch and a volume bar beside it
-// when those are wanted. What plays is a MediaClip -- the same settings a
-// video and a media background will carry. A button can play it too, and a
-// sound that is only ever started by a button can be hidden: hidden is not
-// drawn, and still plays.
+// when wanted. What plays is a MediaClip. A button can play it too, and a
+// hidden one is not drawn but still plays.
 //
-// Where the sound has got to is not in the document. Playing, paused, muted
-// and the volume somebody dragged to are the reader's, the way a running
-// counter's value is -- see CanvasController.audioState. So a published
-// canvas opens with the clip's own volume and silent until pressed (or
-// autoplayed), whatever the author was doing with it at the time.
+// Playing, paused, muted and the dragged volume are the reader's, not the
+// document's (see CanvasController.audioState), so a published canvas opens
+// at the clip's own volume and silent until pressed or autoplayed.
 
 /// AudioGlyph is the icon drawn for the element when no picture is chosen.
-///
-/// Drawn as paths rather than taken from an icon font: the same shapes have
-/// to appear in an exported picture, where no font is guaranteed, and each
-/// shape has a playing, paused and muted form that a font glyph does not.
+/// Drawn as paths rather than from an icon font, so it exports without the
+/// font and has playing, paused and muted forms.
 enum AudioGlyph {
   speaker("Speaker"),
   note("Music note"),
@@ -58,6 +52,7 @@ enum AudioControl {
   }
 }
 
+/// AudioElement is a sound on a canvas; see the top of this file.
 class AudioElement extends CanvasElement {
   final MediaClip clip;
 
@@ -185,7 +180,7 @@ class AudioElement extends CanvasElement {
             ? InstrumentPart.fromJson(json["instrument"] as Map<String, dynamic>)
             : null,
         clip: jsonSpec(json["clip"], MediaClip.fromJson, const MediaClip()),
-        glyph: AudioGlyph.fromName(json["glyph"] as String?),
+        glyph: AudioGlyph.fromName(jsonStr(json["glyph"])),
         picture: jsonString(json["picture"], ""),
         pausedPicture: jsonString(json["pausedPicture"], ""),
         mutedPicture: jsonString(json["mutedPicture"], ""),
@@ -207,9 +202,8 @@ class AudioElement extends CanvasElement {
   }
 }
 
-/// isTimelineSound is whether [e] is a sound that lives on the timeline
-/// rather than on the canvas: timed, and not drawn. It is on a channel, not a
-/// page, so the canvas's own lists and tools leave it alone -- the layers,
-/// select-all, the speaker's settings.
+/// isTimelineSound is whether [e] is a sound that lives on a timeline
+/// channel rather than on the canvas: timed, and not drawn. The canvas's
+/// layers, select-all and speaker settings leave it alone.
 bool isTimelineSound(Object? e) =>
     e is AudioElement && e.clip.timed && !e.visible;

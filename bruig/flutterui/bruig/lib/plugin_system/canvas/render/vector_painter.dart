@@ -3,17 +3,18 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/components/paint_spec.dart';
 
-import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/painting.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 
 // vector_painter.dart draws a Vector element: the file it came from, exactly,
 // until it has been taken apart for editing -- and its shapes after that.
 
 /// _paths remembers each shape's outline. A shape is never changed in place
-/// -- an edit makes a new one -- so its outline is worked out once, rather
-/// than on every frame for every one of what can be thousands of points.
+/// (an edit makes a new one), so its outline is worked out once rather than
+/// every frame.
 final Expando<Path> _paths = Expando<Path>();
 
 Path vectorShapePath(VectorShape shape) => _paths[shape] ??= shape.path;
@@ -26,12 +27,11 @@ final Expando<Path> _lines = Expando<Path>();
 Path vectorLinePath(VectorShape shape) => _lines[shape] ??= _lineOutline(shape);
 
 /// _lineOutline walks each run in short steps, the width blending from one
-/// point's to the next's, and lays a band along it: a four-sided piece from
-/// each step to the next, a disc at each step of a curve so it bends without
-/// gaps, each point's own corner where one segment meets the next, and each
-/// end's own end. Every piece is wound the same way round, so filled
-/// together they are one shape with no double paint where they overlap --
-/// which matters to a line that is half see-through.
+/// point's to the next's, and lays a band along it: a four-sided piece per
+/// step, a disc at each step of a curve so it bends without gaps, each
+/// point's corner and each end's cap. Every piece is wound the same way, so
+/// filled together they are one shape with no double paint where they
+/// overlap, which matters for a half see-through line.
 Path _lineOutline(VectorShape shape) {
   var out = Path()..fillType = PathFillType.nonZero;
   var base = shape.strokeWidth;
@@ -296,8 +296,8 @@ void _paintVector(
     ui.Canvas canvas, Rect box, VectorElement e, CanvasImageSource? images) {
   var shapes = e.shapes;
   if (shapes == null) {
-    // As the file draws itself, which is the only way to be exact about a
-    // drawing nobody has taken apart yet.
+    // As the file draws itself: the only exact way to draw a drawing not yet
+    // taken apart.
     var drawn = images?.resolveVector(e.assetId);
     if (drawn == null) {
       _placeholder(canvas, box);
@@ -335,9 +335,8 @@ void _paintGroup(ui.Canvas canvas, VectorDrawn d, {bool evenHidden = false}) {
   // Hidden from its Layers row: left out, its place in the order kept.
   if (shape.hidden && !evenHidden) return;
   // Tinted or rubbed out, a shape is drawn into a layer of its own for its
-  // tints to be laid on and its rub-outs taken out of -- its own, so what
-  // is drawn over it later is untouched by them. See _paintTints and
-  // _paintErasures.
+  // tints and rub-outs, so what is drawn over it later is untouched. See
+  // _paintTints and _paintErasures.
   var layered = shape.tints.isNotEmpty || shape.erasures.isNotEmpty;
   if (layered) canvas.saveLayer(null, Paint());
   // A fade runs across the shape's own box, as a shape element's does.
@@ -374,11 +373,10 @@ void _paintGroup(ui.Canvas canvas, VectorDrawn d, {bool evenHidden = false}) {
 
 /// naturalTimes is when each of [shapes]' groups comes in, in its own
 /// frames, before the drawing's arrival is fitted round them all: the frame
-/// it starts on, counted from the first, and how many it takes -- its own
-/// length, or [span], the drawing's. With the one before, it starts as that
+/// it starts on, counted from the first, and how many it takes (its own
+/// length, or [span], the drawing's). With the one before, it starts as that
 /// one starts; after it, as that one finishes; after a gap, that many frames
-/// after -- or, a gap less than nought, that many before, overlapping it.
-/// See VectorCue.
+/// after, or before for a negative gap. See VectorCue.
 List<(double, double)> naturalTimes(List<VectorShape> shapes, int span) {
   var out = <(double, double)>[];
   for (var (i, d) in vectorDrawn(shapes).indexed) {
@@ -430,18 +428,10 @@ bool sequenced(List<VectorShape> shapes) {
 }
 
 /// vectorArrivalSpan is where [e]'s arrival starts on the timeline and how
-/// many frames it takes -- the frames of its reveal keyframes -- or null
-/// where it has none.
-(int, int)? vectorArrivalSpan(VectorElement e) {
-  int? from, to;
-  for (var key in e.track?.keys ?? const <Keyframe>[]) {
-    if (!key.values.containsKey(KeyframeChannel.reveal)) continue;
-    from = from == null ? key.frame : math.min(from, key.frame);
-    to = to == null ? key.frame : math.max(to, key.frame);
-  }
-  if (from == null || to == null || to <= from) return null;
-  return (from, to - from);
-}
+/// many frames it takes at [rate], or null where it has none. See
+/// own_motion.dart.
+(int, int)? vectorArrivalSpan(VectorElement e, int rate) =>
+    ownSpan(e, MotionKind.arrive, rate);
 
 /// paintVectorGroup draws [d], one of [e]'s groups, alone, fitted into
 /// [box] as the whole drawing is: what a drawing coming in shape by shape
@@ -490,16 +480,12 @@ Rect vectorGroupBox(Rect box, VectorElement e, VectorDrawn d) {
 /// _paintTints lays the tint brush's strokes over [shapes], each seen only
 /// where the drawing is: on its lines, in its fills, or both.
 ///
-/// The strokes are painted into a layer of their own and that layer is cut
-/// down to the drawing's lines or fills afterwards, so a soft brush fades
-/// into the drawing and an eraser takes tint off without touching the
-/// drawing under it. Strokes in a row that show in the same places share
-/// one cut.
-///
-/// The layer is laid on the drawing's own layer source-atop: it recolours
-/// the drawing, keeping the drawing's own edges. Laid over it, a pixel the
-/// drawing half covers was tinted by half and kept half the colour under
-/// it -- a thin ring of the old colour round everything tinted.
+/// The strokes are painted into a layer of their own, cut down afterwards to
+/// the drawing's lines or fills, so a soft brush fades into the drawing and
+/// an eraser takes tint off without touching it. Strokes in a row that show
+/// in the same places share one cut. The layer is laid on source-atop, so it
+/// recolours the drawing within its own edges; laid over, half-covered edge
+/// pixels would keep a ring of the old colour.
 void _paintTints(
     ui.Canvas canvas, List<VectorShape> shapes, List<VectorTint> tints) {
   // A pixel and a half, in the drawing's units: how far each part's cut
@@ -536,10 +522,9 @@ void _paintTints(
 }
 
 /// _paintErasures takes the eraser's rub-outs out of the drawing's layer:
-/// whatever is under each, or -- for one that rubs out only lines, or only
-/// fills -- that part of it, the rub-out cut down to where the drawing's
-/// lines or fills show before it takes anything out. Rub-outs in a row that
-/// take out the same parts share one cut.
+/// whatever is under each, or, for one that rubs out only lines or only
+/// fills, that part, the rub-out cut down to where those show. Rub-outs in
+/// a row that take out the same parts share one cut.
 void _paintErasures(
     ui.Canvas canvas, List<VectorShape> shapes, List<VectorTint> erasures) {
   var i = 0;
@@ -610,24 +595,20 @@ void _paintTintStroke(ui.Canvas canvas, VectorTint t, Paint paint) {
         ..strokeJoin = StrokeJoin.round);
 }
 
-/// _paintCoverage draws where the drawing shows, solid: its fills, its
-/// lines, or both -- what a tint is cut down to.
-///
-/// Built in the order the drawing is drawn, so it is what is seen: a line
-/// over a fill hides that much of the fill, and a shape over another hides
-/// it. What is not to be tinted is drawn as a cut, taking out whatever it
-/// covers.
+/// _paintCoverage draws where the drawing shows, solid: its fills, its lines,
+/// or both, which is what a tint is cut down to. Built in drawing order, so a
+/// line over a fill hides that much of it; what is not to be tinted is drawn
+/// as a cut.
 void _paintCoverage(ui.Canvas canvas, List<VectorShape> shapes,
     {required bool line, required bool fill, double bleed = 0}) {
   Paint mark(bool keep) => Paint()
     ..color = const Color(0xFF000000)
     ..blendMode = keep ? BlendMode.srcOver : BlendMode.dstOut
     ..isAntiAlias = true;
-  // First each kept part reaching [bleed] past its edges, so its edge
-  // pixels are covered whole; then the parts in order over that, kept or
-  // cut, so the reach survives only off the drawing's edge -- where
-  // source-atop keeps it to the pixels the drawing half covers -- and never
-  // onto a part that is not being tinted.
+  // First each kept part reaching [bleed] past its edges, so its edge pixels
+  // are covered whole; then the parts in order over that, kept or cut, so
+  // the reach survives only off the drawing's edge (where source-atop keeps
+  // it to half-covered pixels) and never onto a part not being tinted.
   var drawn = vectorDrawn(shapes);
   if (bleed > 0) {
     for (var d in drawn) {

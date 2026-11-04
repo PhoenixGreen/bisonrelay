@@ -2,18 +2,15 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 
-// motion_editing.dart is what the timeline, the slots and the Animation panel
-// do to an element's clips: make one, place it, move it, stretch it, cut it,
-// pin it, take it away. Each a change of the element's ElementMotion through
-// the controller, so it is undone as any other change is.
-//
-// A drag is transient until its end, as every drag on the canvas is: the
+// motion_editing.dart is what the timeline, the slots and the Animation
+// panel do to an element's clips: make, place, move, stretch, cut, pin and
+// remove. Each changes the element's ElementMotion through the controller, so
+// it is undone as any change is. A drag is transient until its end: the
 // caller opens the interaction and closes it.
 
 int _seq = 0;
@@ -218,7 +215,8 @@ extension MotionEditing on CanvasController {
           else if (p.startPin == pin || p.endPin == pin)
             () {
               changed = true;
-              var s = times.span(p.id)!;
+              var s = times.span(p.id);
+              if (s == null) return p;
               return p.copyWith(
                 start: s.start,
                 length: () => s.length,
@@ -231,6 +229,18 @@ extension MotionEditing on CanvasController {
       ].whereType<ClipPlacement>().toList();
       if (e.id == element || changed) {
         doc = doc.withElement(e.withBase(motion: m.copyWith(placed: placed)));
+      }
+    }
+    // An element's own arrival or way out taken off the timeline is that
+    // animation gone: its clip, and its setting back to None.
+    var owner = document.elementById(element);
+    var gone = owner?.base.motion.placement(id);
+    var clip = gone == null ? null : owner!.base.motion.clip(gone.clip);
+    if (clip != null &&
+        clip.inside["own"] == true &&
+        (clip.kind == MotionKind.arrive || clip.kind == MotionKind.leave)) {
+      if (doc.elementById(element) case var now?) {
+        doc = doc.withElement(withoutOwnPreset(now, clip.kind));
       }
     }
     apply(doc);
@@ -353,10 +363,3 @@ CanvasDocument everyMotion(
   }
   return next;
 }
-
-/// placedElement is the element [placement] belongs to in [elements].
-CanvasElement? placedElement(
-        Iterable<CanvasElement> elements, String placement) =>
-    elements
-        .where((e) => e.base.motion.placed.any((p) => p.id == placement))
-        .firstOrNull;

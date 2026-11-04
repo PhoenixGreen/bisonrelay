@@ -14,6 +14,8 @@ import 'package:bruig/plugin_system/canvas/model/instrument.dart'
 // the system's own MIDI only: Bluetooth MIDI would ask for Bluetooth, and
 // nothing here needs it.
 
+/// MidiInput is the app's one MIDI keyboard connection: see the file
+/// comment.
 class MidiInput extends ChangeNotifier {
   static final MidiInput shared = MidiInput();
 
@@ -60,7 +62,7 @@ class MidiInput extends ChangeNotifier {
   PushSurface? _push;
 
   /// usePush plays [surface] as a Push: its pads, buttons and encoders
-  /// read through it before anything else. Public for tests.
+  /// are read through it before anything else.
   @visibleForTesting
   void usePush(PushSurface? surface) {
     _push = surface;
@@ -136,8 +138,9 @@ class MidiInput extends ChangeNotifier {
     }
   }
 
-  /// handle reads one MIDI message: a key pressed or let go, on any
-  /// channel, goes to [onNote]; the rest is let pass.
+  /// handle reads one MIDI message, on any channel: keys go to [onNote],
+  /// the sustain pedal to [onSustain], other controllers and pitch bend to
+  /// [onControl]; the rest is ignored.
   @visibleForTesting
   void handle(Uint8List data) {
     if (data.length < 3) return;

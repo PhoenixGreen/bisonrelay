@@ -7,17 +7,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
-// text_parts.dart is "these words, not the others".
-//
-// Its own idea rather than a setting on any one feature, because it is the
-// same question asked by several: colour these words, animate these letters,
-// echo that one. Written once, the answer is the same wherever it is asked
-// and a new feature gets it for nothing; written per feature, it is three
-// range pickers that drift apart.
-//
-// A *list* of parts rather than one range, because one range cannot say
-// "words 1 to 5 in red and 6 to 10 in blue" -- which is the first thing
-// anybody wants after they have coloured one word.
+// text_parts.dart is "these words, not the others": ranges of a text
+// element's words or letters that are coloured, marked or animated
+// differently. Shared by every feature that asks the question, and a list so
+// different ranges can be styled differently.
 
 /// TextUnit is what a part counts in.
 enum TextUnit {
@@ -33,11 +26,8 @@ enum TextUnit {
 
 /// PartLineStyle is what a line drawn under a part looks like.
 ///
-/// The last three are drawn by hand rather than by the stroke: a straight
-/// rule under a word reads as a hyperlink, and what somebody wants under the
-/// word they are selling is the line they would have drawn themselves. Their
-/// wobble comes from the line's own position rather than from a random
-/// number, so a frame exported twice is the same frame twice.
+/// The [drawn] styles wobble. The wobble comes from the line's own position
+/// rather than a random number, so a frame exported twice is the same.
 enum PartLineStyle {
   solid("Solid"),
   dashed("Dashed"),
@@ -51,8 +41,8 @@ enum PartLineStyle {
   final String label;
   const PartLineStyle(this.label);
 
-  /// drawn is whether the style is one of the hand-made ones, which are
-  /// stroked from a wobbling path instead of a straight one.
+  /// drawn is whether the style is stroked along a wobbling path instead of
+  /// a straight one.
   bool get drawn =>
       this == hand || this == marker || this == sketch || this == wavy;
 
@@ -60,26 +50,19 @@ enum PartLineStyle {
       values.firstWhere((s) => s.name == name, orElse: () => solid);
 }
 
-/// PartHighlight is a band behind some of the words.
-///
-/// Its own colour and its own padding for the reason a drawn mark has them:
-/// a band in the colour of the words is a solid block, and one tight around
-/// the letters reads as a mistake where one with a little air reads as a
-/// highlighter. The four sides are kept separately so a band can be given
-/// more room above and below than at the ends, which is what a highlighter
-/// actually looks like.
+/// PartHighlight is a band behind some of the words, with its own colour and
+/// padding on each side.
 class PartHighlight {
   final Color color;
 
   /// fade is the second colour the band runs to, or null for a flat one.
-  /// Chosen in the picker beside [color] -- see GradientSpec.
   final GradientSpec? fade;
   final double padLeft;
   final double padTop;
   final double padRight;
   final double padBottom;
 
-  /// radius rounds the band's corners. A highlighter pen has no corners.
+  /// radius rounds the band's corners.
   final double radius;
 
   const PartHighlight({
@@ -93,7 +76,7 @@ class PartHighlight {
   });
 
   /// evenPad is the one number the four sides share, or null where they
-  /// differ -- which is what the "all sides" field shows.
+  /// differ.
   double? get evenPad =>
       padLeft == padTop && padTop == padRight && padRight == padBottom
           ? padLeft
@@ -159,8 +142,8 @@ class PartUnderline {
 
   final PartLineStyle style;
 
-  /// away is how far under the letters it sits. Nothing puts it where an
-  /// ordinary underline goes; a few pixels drops it clear of the descenders.
+  /// away is how far under the letters it sits; zero is where an ordinary
+  /// underline goes.
   final double away;
 
   const PartUnderline({
@@ -205,31 +188,19 @@ class PartUnderline {
                 (json["fade"] as Map).cast<String, dynamic>())
             : null,
         width: jsonDouble(json["width"], 3).clamp(0.1, 80),
-        style: PartLineStyle.fromName(json["style"] as String?),
+        style: PartLineStyle.fromName(jsonStr(json["style"])),
         away: jsonDouble(json["away"], 2),
       );
 }
 
-/// TextPartAnimation is how one part of the text arrives, and when.
-///
-/// Its own animation rather than the element's pointed at a part, which is
-/// what this was. Pointing the arrival at some of the words meant the rest of
-/// the sentence could not have an arrival of its own, and there was nowhere
-/// to say *when*: the point of animating one word is that it lands after the
-/// line it is in, not with it.
-///
-/// So a text element now plays up to three things in order -- the arrival,
-/// each part's own animation at its own offset, and the exit -- out of one
-/// pair of keyframes on the timeline. The offset is in frames because that is
-/// what the timeline is counted in and what somebody nudging a landing by two
-/// frames is thinking in; the length is in frames for the same reason, and
-/// nothing means "as long as the arrival takes".
+/// TextPartAnimation is how one part of the text arrives, and when: its own
+/// animation, timed in frames from the start of the element's arrival, so a
+/// word can land after (or before) the line it is in.
 class TextPartAnimation {
   final TextAnimationPreset preset;
 
-  /// offset is how many frames after the arrival starts this one does.
-  /// Negative brings it forward, which is how a word lands *before* the line
-  /// it belongs to.
+  /// offset is how many frames after the arrival starts this one does;
+  /// negative brings it forward.
   final int offset;
 
   /// length is how many frames it takes, or 0 for as long as the arrival.
@@ -241,12 +212,9 @@ class TextPartAnimation {
   final TextDrawSpec draw;
   final ChartEase ease;
 
-  /// marks is whether this part's own highlight and underline are drawn on
-  /// rather than simply being there.
-  ///
-  /// Their own question, and their own offset, because the usual thing is a
-  /// word that arrives and *then* gets underlined -- a mark that arrived with
-  /// the word it marks is a mark nobody sees being drawn.
+  /// marks is whether this part's highlight and underline are drawn on
+  /// rather than simply there, with their own timing so a word can arrive
+  /// and then be underlined.
   final bool marks;
   final int markOffset;
   final int markLength;
@@ -267,8 +235,8 @@ class TextPartAnimation {
 
   bool get on => preset != TextAnimationPreset.none;
 
-  /// asAnimation is this as the painter's own kind, so a part is animated by
-  /// exactly the same code as a paragraph rather than by a second copy of it.
+  /// asAnimation is this as a TextAnimation, so a part is animated by the
+  /// same code as a paragraph.
   TextAnimation get asAnimation => TextAnimation(
         preset: preset,
         gap: gap,
@@ -278,12 +246,8 @@ class TextPartAnimation {
         ease: ease,
       );
 
-  /// fromAnimation takes back whatever the settings changed, leaving this
-  /// one's own timing alone.
-  ///
-  /// The pair to asAnimation, and the reason a part offers the same settings
-  /// as the paragraph does: the panel edits one kind of animation, and the
-  /// part keeps its offset and its length either side of that.
+  /// fromAnimation is the reverse of [asAnimation]: it takes back what the
+  /// settings panel changed and keeps this part's own timing.
   TextPartAnimation fromAnimation(TextAnimation a) => copyWith(
         preset: a.preset,
         gap: a.gap,
@@ -336,7 +300,7 @@ class TextPartAnimation {
 
   factory TextPartAnimation.fromJson(Map<String, dynamic> json) =>
       TextPartAnimation(
-        preset: TextAnimationPreset.fromName(json["preset"] as String?),
+        preset: TextAnimationPreset.fromName(jsonStr(json["preset"])),
         offset: jsonInt(json["offset"], 0),
         length: jsonInt(json["length"], 0).clamp(0, 100000),
         gap: jsonDouble(json["gap"], 0.35).clamp(0.0, 4.0),
@@ -347,18 +311,15 @@ class TextPartAnimation {
         draw: json["draw"] is Map<String, dynamic>
             ? TextDrawSpec.fromJson(json["draw"] as Map<String, dynamic>)
             : const TextDrawSpec(),
-        ease: ChartEase.fromName(json["ease"] as String?),
+        ease: ChartEase.fromName(jsonStr(json["ease"])),
         marks: jsonBool(json["marks"], false),
         markOffset: jsonInt(json["markOffset"], 0),
         markLength: jsonInt(json["markLength"], 0).clamp(0, 100000),
       );
 }
 
-/// partsOutline is whether any of [parts] draws its own outline.
-///
-/// Asked before a paragraph is laid out a second time as a stroke: an
-/// element with no outline of its own still needs one built when a part
-/// inside it has asked for one.
+/// partsOutline is whether any of [parts] draws its own outline, in which
+/// case the paragraph needs an outline pass even if the element has none.
 bool partsOutline(List<TextPart> parts) {
   for (var part in parts) {
     if ((part.outlineWidth ?? 0) > 0) return true;
@@ -369,20 +330,14 @@ bool partsOutline(List<TextPart> parts) {
 /// partsFrom is [parts] as they apply to a slice of the text that begins
 /// [words] words in.
 ///
-/// A part counts words from one -- see TextPart -- so a box that draws the
-/// tail of a longer text needs them counted from *its* first word instead.
-/// Anything that ends before the slice begins is dropped; anything that
-/// straddles the start is trimmed to it.
-///
-/// This is what carries a document's markdown through a chain of boxes: the
-/// parts belong to the head's words, and the second box in the chain is
-/// drawing the same words further along.
+/// Used by a box further along a chain, which draws the tail of the head's
+/// text: parts are renumbered from the slice's first word, those ending
+/// before it are dropped and those straddling it trimmed.
 List<TextPart> partsFrom(List<TextPart> parts, int words) {
   if (words <= 0 || parts.isEmpty) return parts;
   var out = <TextPart>[];
   for (var part in parts) {
-    // Only word ranges shift. A part counted in letters cannot be moved by a
-    // number of words, and one is never made by a document.
+    // Only word ranges shift; letter ranges are dropped.
     if (part.unit != TextUnit.words) continue;
     if (!part.toTheEnd && part.to <= words) continue;
     out.add(part.copyWith(
@@ -393,8 +348,7 @@ List<TextPart> partsFrom(List<TextPart> parts, int words) {
   return out;
 }
 
-/// wordsIn counts the words of [text], which is what a slice has to know to
-/// move the parts that belong to it.
+/// wordsIn counts the whitespace-separated words of [text].
 int wordsIn(String text) {
   var words = 0;
   var inWord = false;
@@ -406,12 +360,9 @@ int wordsIn(String text) {
   return words;
 }
 
-/// partsAnimate is whether any of [parts] arrives on its own account, or has
-/// a mark that is drawn on rather than simply being there.
-///
-/// Asked before a still paragraph is drawn the quick way: a part with a
-/// moment of its own means the paragraph has to go through the animator even
-/// when the element's own arrival is over.
+/// partsAnimate is whether any of [parts] has its own arrival or drawn-on
+/// mark, in which case the paragraph must go through the animator even when
+/// the element's own arrival is over.
 bool partsAnimate(List<TextPart> parts) {
   for (var part in parts) {
     if (part.animation.on || part.animation.marks) return true;
@@ -419,12 +370,8 @@ bool partsAnimate(List<TextPart> parts) {
   return false;
 }
 
-/// PartTiming is how far one part has got on this frame: its words, and the
-/// mark drawn on them.
-///
-/// Two numbers rather than one because they are two arrivals -- the word
-/// lands, and then the underline is drawn under it -- and a painter that was
-/// handed one number could only ever have them happen together.
+/// PartTiming is how far one part has got on this frame, 0..1: its words,
+/// and separately the mark drawn on them.
 class PartTiming {
   final double words;
   final double mark;
@@ -436,9 +383,8 @@ class PartTiming {
 /// timingOf is where [part] has got to on [frame].
 ///
 /// [from] is the frame the element's own arrival starts on and [span] how
-/// many frames it takes -- everything a part does is measured from those, so
-/// dragging the arrival's keyframes on the timeline carries the parts with
-/// it rather than leaving them stranded at frame numbers of their own.
+/// many frames it takes. Everything a part does is measured from those, so
+/// moving the arrival carries the parts with it.
 PartTiming timingOf(TextPart part,
     {required int frame, required int from, required int span}) {
   var animation = part.animation;
@@ -456,62 +402,46 @@ PartTiming timingOf(TextPart part,
   );
 }
 
-/// TextPart is a range of the words, and what is different about it.
-///
-/// Counted from one, because "the sixth word" is how somebody says it and
-/// making them say "the fifth" is making them do arithmetic to talk to a
-/// settings panel.
+/// TextPart is a range of the words or letters, and what is different about
+/// it. Counted from one, as the settings panel shows it.
 class TextPart {
   final TextUnit unit;
 
   /// from is the first word or letter, counting from one.
   final int from;
 
-  /// to is the last, counting from one and included -- or zero for "to the
-  /// end", which is what "words ten till the end" needs and what a range with
-  /// a number in it cannot say when the text is edited afterwards.
+  /// to is the last, counting from one and included, or zero for "to the
+  /// end", which stays right when the text is edited.
   final int to;
 
-  /// color is what this part is drawn in, or null to leave it alone.
+  /// color is what this part is drawn in, or null for the element's.
   final Color? color;
 
-  /// weight and italic are the other two things worth changing about a few
-  /// words in a sentence. Null leaves them as the element's own.
+  /// weight and italic override the element's; null leaves them.
   final int? weight;
   final bool? italic;
 
-  /// scale sizes these words against the rest, as a multiplier: 1.6 is a
-  /// heading in a paragraph, 0.7 a piece of small print. Null leaves them the
-  /// element's own size.
+  /// scale sizes these words against the rest, as a multiplier; null is the
+  /// element's size.
   final double? scale;
 
   /// family is the face these words are set in, or null for the element's.
   final String? family;
 
-  /// outlineWidth and outlineColor draw these words in outline, or draw a
-  /// heavier or a different-coloured one than the rest of the paragraph has.
-  ///
-  /// Null for both is "whatever the element says", which is what nearly every
-  /// part wants. A width of zero is a real answer and not the same thing: it
-  /// takes the outline *off* these words in a sentence that otherwise has
-  /// one, which is how a single word is left plain inside an outlined
-  /// headline.
+  /// outlineWidth and outlineColor override the element's outline for these
+  /// words; null is the element's. A width of zero is not null: it takes the
+  /// outline off these words.
   final double? outlineWidth;
   final Color? outlineColor;
 
   /// highlight is a band behind these words, and underline a line under
-  /// them, or null for neither.
-  ///
-  /// Here rather than on the animation because they are a fact about the
-  /// words -- this phrase is highlighted -- and not about an arrival. An
-  /// animation that draws one is the same mark being *drawn*; this is the
-  /// mark being there.
+  /// them, or null for neither. They are always there; [animation]'s marks
+  /// setting draws them on.
   final PartHighlight? highlight;
   final PartUnderline? underline;
 
-  /// animation is how these words arrive, on their own account. See
-  /// TextPartAnimation: none of it happens unless a preset is chosen, and
-  /// then it happens at its own moment rather than with the rest of the line.
+  /// animation is how these words arrive on their own account; nothing
+  /// happens unless a preset is chosen. See TextPartAnimation.
   final TextPartAnimation animation;
 
   const TextPart({
@@ -532,8 +462,7 @@ class TextPart {
 
   bool get toTheEnd => to <= 0;
 
-  /// says is this part in words, for the settings to show without the reader
-  /// having to work it out from three numbers.
+  /// says is this part's range in words, for the settings panel.
   String get says {
     var what = unit == TextUnit.words ? "word" : "letter";
     if (toTheEnd) {
@@ -596,7 +525,7 @@ class TextPart {
       };
 
   factory TextPart.fromJson(Map<String, dynamic> json) => TextPart(
-        unit: TextUnit.fromName(json["unit"] as String?),
+        unit: TextUnit.fromName(jsonStr(json["unit"])),
         from: jsonInt(json["from"], 1).clamp(1, 100000),
         to: jsonInt(json["to"], 0).clamp(0, 100000),
         color: json["color"] == null
@@ -630,16 +559,13 @@ class TextPart {
 /// rangeOf is the characters a part covers, as a start and an end offset into
 /// [text].
 ///
-/// Empty where the part names something that is not there -- word twelve of a
-/// sentence with six in it -- rather than clamping to the last word: a part
-/// that quietly moved to the end would be a part that appeared to work and
-/// coloured the wrong thing.
+/// Null where the part starts past the end of the text, rather than clamping
+/// it onto the wrong words.
 (int, int)? rangeOf(String text, TextPart part) {
   if (text.isEmpty || part.from < 1) return null;
 
   if (part.unit == TextUnit.characters) {
-    // Letters, not code units of whitespace: "the third letter" means the
-    // third one somebody can see.
+    // Letters skip whitespace: the third letter is the third visible one.
     var at = <int>[];
     for (var i = 0; i < text.length; i++) {
       if (text[i].trim().isNotEmpty) at.add(i);
@@ -674,8 +600,7 @@ class TextPart {
 
 /// partAt is the part covering [index], or null.
 ///
-/// The last one wins where two overlap: the list is the reader's own order,
-/// and the thing they added most recently is the thing they are working on.
+/// The last one wins where two overlap.
 TextPart? partAt(String text, List<TextPart> parts, int index) {
   TextPart? found;
   for (var part in parts) {
@@ -686,7 +611,9 @@ TextPart? partAt(String text, List<TextPart> parts, int index) {
   return found;
 }
 
-/// IconPlace is where an icon sits relative to the words.
+/// IconPlace is where an older document's single icon sat relative to the
+/// words; read only to pick the slot it becomes (see _slotForIcon in
+/// text_element.dart).
 enum IconPlace {
   start("Before the text"),
   end("After the text"),
@@ -696,26 +623,18 @@ enum IconPlace {
   final String label;
   const IconPlace(this.label);
 
-  /// beside is whether the icon takes room from the side rather than from
-  /// the top or the bottom, which is the one thing the layout needs to know.
+  /// beside is whether the icon is at the side rather than above or below.
   bool get beside => this == start || this == end;
 
   static IconPlace fromName(String? name) =>
       values.firstWhere((p) => p.name == name, orElse: () => start);
 }
 
-/// TextIcon is a picture set beside, above or below a text element's words.
+/// TextIcon is the picture a picture piece (TextItem.icon) shows.
 ///
-/// Part of the text element rather than a picture element parked next to one,
-/// because that is what it is *for*: a bullet, a logo, a mark that belongs to
-/// the sentence and should move, resize and animate with it. Two elements
-/// dragged into place beside each other come apart the first time either is
-/// touched.
-///
-/// It reuses what a text element already has -- a box, an underline -- rather
-/// than growing its own: an icon in a rounded box with a line under it is the
-/// same rounded box and the same line, and writing them twice would be two
-/// sets of settings that drift.
+/// [place], [gap], [align] and [animate] are from when a text element had a
+/// single icon of its own; they are kept for reading and writing, but only
+/// place and align are used, to pick the slot an old icon becomes.
 class TextIcon {
   final String assetId;
   final IconPlace place;
@@ -723,48 +642,27 @@ class TextIcon {
   /// size is how tall the icon is drawn, in design pixels.
   final double size;
 
-  /// color tints it, or null to draw it in the colours it was drawn in.
-  ///
-  /// A tint rather than a repaint: the picture is cut to its own shape and
-  /// filled, which is what makes a one-colour glyph take the headline's
-  /// colour and is the only thing that can be done to an arbitrary drawing.
+  /// color tints it (the picture cut to its own shape and filled), or null
+  /// to draw it in its own colours.
   final Color? color;
 
-  /// gap is the room between the icon and the words.
-  ///
-  /// Negative overlaps them: the words start back inside the icon's own
-  /// square, which is how a letter sits inside a badge or a headline runs
-  /// across a mark behind it. The overlap stops at the icon's far edge --
-  /// past that the words would be outside the box they belong to -- so the
-  /// useful range is from minus the icon's size upwards. See iconRoom.
+  /// gap was the room between an old icon and the words.
   final double gap;
 
-  /// align is where the icon sits along the edge it is on: the left, the
-  /// middle or the right of an icon above the words; the top, the middle or
-  /// the bottom of one beside them.
+  /// align was where an old icon sat along the edge it was on.
   final TextIconAlign align;
 
-  /// outlineWidth draws the icon's silhouette behind it, in outlineColor --
-  /// the sticker outline, which is the one outline an arbitrary drawing can
-  /// be given without knowing anything about its shape.
+  /// outlineWidth draws the icon's silhouette behind it in outlineColor: a
+  /// sticker outline.
   final double outlineWidth;
   final Color outlineColor;
 
   final BoxSpec box;
 
-  /// underline is a line under the icon, the same kind a part of the text
-  /// carries. Null for none.
+  /// underline is a line under the icon, or null for none.
   final PartUnderline? underline;
 
-  /// animate carries the icon along with the words when the text element
-  /// arrives.
-  ///
-  /// On, because that is what an icon in a text element is for: a bullet or a
-  /// logo that belongs to the sentence. Left behind while the sentence slid
-  /// in, it read as a second element that had been parked next to one -- the
-  /// exact thing this exists to avoid. Off is for the mark that is part of
-  /// the furniture rather than part of the arrival: a corner logo on a title
-  /// card that should stay put while the words land on it.
+  /// animate was whether an old icon moved with the words as they arrived.
   final bool animate;
 
   const TextIcon({
@@ -823,20 +721,19 @@ class TextIcon {
         if (outlineWidth > 0) "oc": colorToJson(outlineColor),
         "box": box.toJson(),
         if (underline != null) "underline": underline!.toJson(),
-        // Written either way, since the default is on: an icon somebody had
-        // told to stay put would have saved nothing and come back moving.
+        // Always written, since the default is true.
         "animate": animate,
       };
 
   factory TextIcon.fromJson(Map<String, dynamic> json) => TextIcon(
         assetId: jsonString(json["assetId"], ""),
-        place: IconPlace.fromName(json["place"] as String?),
+        place: IconPlace.fromName(jsonStr(json["place"])),
         size: jsonDouble(json["size"], 64).clamp(1, 4000),
         color: json["color"] == null
             ? null
             : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
         gap: jsonDouble(json["gap"], 12).clamp(-4000, 4000),
-        align: TextIconAlign.fromName(json["align"] as String?),
+        align: TextIconAlign.fromName(jsonStr(json["align"])),
         outlineWidth: jsonDouble(json["ow"], 0).clamp(0, 200),
         outlineColor: colorFromJson(json["oc"], const Color(0xFF000000)),
         box: json["box"] is Map<String, dynamic>
@@ -849,7 +746,7 @@ class TextIcon {
       );
 }
 
-/// TextIconAlign is where an icon sits along the edge it is on.
+/// TextIconAlign is where an old icon sat along the edge it was on.
 enum TextIconAlign {
   start("Start"),
   middle("Middle"),

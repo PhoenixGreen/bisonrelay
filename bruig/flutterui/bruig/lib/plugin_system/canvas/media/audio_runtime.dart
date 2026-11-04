@@ -17,11 +17,10 @@ import 'package:flutter/foundation.dart';
 // where to where, how it fades, whether it goes round again, and which sounds
 // survive the page being turned.
 //
-// Session state, like a running counter's value -- see CanvasController. The
-// document says how a sound is meant to play; this says how it is playing for
-// the reader in front of it, who may have muted it or dragged the volume down.
-// None of that is written back into the document, so a published canvas opens
-// the way its author set it up whatever the author last did to it.
+// Session state: the document says how a sound is meant to play; this says
+// how it is playing for this reader, who may have muted it or turned it
+// down. None of that is written back, so a published canvas opens the way
+// its author set it up.
 
 /// AudioView is what the element should look like right now.
 class AudioView {
@@ -88,18 +87,16 @@ class _Playing {
 const double declickSeconds = 0.015;
 
 /// glideSeconds is how long a sound on the timeline takes to reach a new
-/// volume: a clip's fade moves its level every frame, and set outright each
-/// time that is a staircase -- heard as a buzz under the fade, and a click
-/// where it cut short the rise a sound starts with.
+/// volume: a fade set outright every frame is a staircase, heard as a buzz,
+/// and cuts short the rise a sound starts with.
 const double glideSeconds = 0.03;
 
 /// driftSeconds is how far a sound on the timeline may be from where the
-/// playhead says before it is moved there. The sound card reports where a
-/// sound has got to in steps of its buffer, so a few hundredths either way
-/// is that reporting and not the sound being out -- and moving a playing
-/// sound is a jump that is heard.
+/// playhead says before it is moved there. Positions are reported in steps
+/// of the buffer, and moving a playing sound is a heard jump.
 const double driftSeconds = 0.3;
 
+/// AudioRuntime plays the open canvas's sounds: see the file comment.
 class AudioRuntime extends ChangeNotifier {
   final AudioEngine engine;
 
@@ -191,9 +188,8 @@ class AudioRuntime extends ChangeNotifier {
     if (!await _ready()) return;
     var font =
         part.sound == InstrumentSound.bank ? await loadSoundBank() : null;
-    // Let go while the bank was being read -- the first press of all can
-    // take a moment -- it is not started at all, rather than started and
-    // never stopped.
+    // Let go while the bank was being read: not started at all, or it
+    // would never be stopped.
     if (_disposed || !down.contains(key)) return;
     engine.noteOn(channel, part, key, velocity, font: font);
   }
@@ -260,8 +256,7 @@ class AudioRuntime extends ChangeNotifier {
   }
 
   /// toggle pauses [e] if it is going and plays it if not. The pause is done
-  /// before this returns: a press that stops a sound one turn of the event
-  /// loop late is a press that reads as missed.
+  /// before this returns, so the press never reads as missed.
   Future<void> toggle(AudioElement e) {
     if (!isPlaying(e.id)) return play(e);
     pause(e.id);
@@ -282,10 +277,9 @@ class AudioRuntime extends ChangeNotifier {
   // The mixer
   // ------------------------------------------------------------------------
 
-  /// _channels is what each mixer channel was last set to, by channel -- the
-  /// element's id -- and _master the master. Kept so that setting the same
-  /// mix again, which happens on every frame the playhead moves, costs a
-  /// comparison rather than two dozen calls into the engine.
+  /// _channels is what each mixer channel was last set to, and _master the
+  /// master, so the same mix set again every frame costs a comparison
+  /// rather than calls into the engine.
   final Map<String, ChannelSound> _channels = {};
 
   /// _routes is the channel each sound plays through -- see setMix.
@@ -304,16 +298,13 @@ class AudioRuntime extends ChangeNotifier {
   /// setMix is the mixer as it stands: a strip for each channel, which of
   /// them are soloed, and the master.
   ///
-  /// Solo is worked in here, as a level of nought for every channel that is
-  /// not soloed while any is. It is the reader's, for listening, not the
-  /// document's: an export plays every channel that is not muted.
+  /// Solo is worked in here, as nought for every channel not soloed while
+  /// any is. It is for listening only: an export plays every unmuted channel.
   ///
-  /// [channels] is keyed by mixer channel, and [routes] says which channel
-  /// each sound plays through, by the sound's element id. One strip per
-  /// channel rather than one per sound: every strip is a bus, and a bus is a
-  /// voice that is always playing, so a strip per sound cost a voice for
-  /// every clip on the timeline whether it was sounding or not. A sound with
-  /// no route plays through the strip of its own id, if there is one.
+  /// [channels] is keyed by mixer channel; [routes] maps a sound's element
+  /// id to its channel. One strip per channel, not per sound: each strip is
+  /// an always-playing bus voice. A sound with no route plays through the
+  /// strip of its own id, if there is one.
   void setMix(Map<String, ChannelMix> channels,
       {Map<String, String> routes = const {},
       Set<String> solo = const {},
@@ -347,6 +338,14 @@ class AudioRuntime extends ChangeNotifier {
       ..clear()
       ..addAll(routes);
     var soloing = solo.any(channels.containsKey);
+    // Channels gone from the canvas are let go of: kept, their strips and
+    // buses ran for as long as the engine lived.
+    for (var key in [..._channels.keys]) {
+      if (channels.containsKey(key)) continue;
+      _channels.remove(key);
+      _channelSignature.remove(key);
+      if (_started) engine.removeChannel(key);
+    }
     for (var entry in channels.entries) {
       var mix = entry.value;
       var silent = mix.mute || (soloing && !solo.contains(entry.key));
@@ -419,16 +418,13 @@ class AudioRuntime extends ChangeNotifier {
   /// playing or held. Null is the playhead outside the sound's span, which is
   /// silence.
   ///
-  /// The sound does not keep time of its own once it is cued. It is moved
-  /// back into step whenever it has drifted more than a few hundredths of a
-  /// second from where it should be, and never moved on to its next file by
-  /// itself -- the next cue says which file it is on.
+  /// A cued sound keeps no time of its own: it is moved back into step once
+  /// it drifts past [driftSeconds], and never moves on to its next file by
+  /// itself; the next cue says which file it is on.
   void cue(AudioElement e, ClipMoment? moment, {required bool playing}) {
     var p = _for(e);
     p.timed = true;
-    // A sound on the timeline is as loud as its document says, every time --
-    // nobody turns it up by hand the way a speaker's reader does. Read once,
-    // when it was first heard, a clip's volume line moved nothing.
+    // Read on every cue, so a clip's volume line is followed.
     p.volume = e.clip.volume;
     p.muted = e.clip.muted;
     if (moment == null) {
@@ -445,9 +441,8 @@ class AudioRuntime extends ChangeNotifier {
     var voice = p.voice;
     var alive = voice != null && engine.alive(voice);
     if (!playing) {
-      // Brought down and stopped, not paused: a pause cuts the sound off
-      // mid-swing, which clicks. Where it should be is worked out again when
-      // the playhead moves, and it starts there again rising from nothing.
+      // Brought down and stopped, not paused: a pause cuts mid-swing and
+      // clicks. It is started afresh, rising from nothing, on the next move.
       if (alive && p.playing) {
         p.generation++;
         _silence(p);
@@ -461,12 +456,8 @@ class AudioRuntime extends ChangeNotifier {
       return;
     }
     if (!p.playing) {
-      // Put right before it is heard again. Held while the playhead was
-      // moved, it kept the place and the level it had -- so playing from
-      // somewhere else, the start of a fade say, sounded a moment of the old
-      // place at the old level before it was moved and turned down: heard as
-      // a spike. Into place, then up from nothing, as a start part way
-      // through is.
+      // Moved into place and silenced before it is heard again, or a moment
+      // of the old place at the old level is heard as a spike.
       if ((engine.position(voice) - moment.time).abs() > 0.02) {
         engine.seek(voice, moment.time);
       }
@@ -651,10 +642,8 @@ class AudioRuntime extends ChangeNotifier {
   }
 
   /// _start plays file [index] of [p]'s list from the start of its range.
-  /// [asked] times how long the file took to open, for a sound on the
-  /// timeline: by then the playhead has gone on, and the sound is started
-  /// where it now is rather than where it was -- started where it was, it
-  /// began behind, and was jumped forward a moment later.
+  /// [asked] times how long the file took to open, so a sound on the
+  /// timeline starts where the playhead has got to, not behind it.
   Future<void> _start(_Playing p, int index,
       {double? from, bool fades = true, Stopwatch? asked}) async {
     var list = p.clip.playlist;
@@ -663,9 +652,8 @@ class AudioRuntime extends ChangeNotifier {
     _silence(p);
     p.index = index.clamp(0, list.length - 1);
     p.starting = true;
-    // Said to be playing from the press, not from when the file has opened:
-    // a speaker that waits half a second to light up reads as a press that
-    // was missed, and gets pressed again -- which is stop.
+    // Playing from the press, not from the open: a speaker slow to light
+    // up gets pressed again, which is stop.
     p.playing = true;
     notifyListeners();
 
@@ -682,8 +670,7 @@ class AudioRuntime extends ChangeNotifier {
     if (generation != p.generation || _disposed) return;
     p.starting = false;
     if (track == null) {
-      // A file that is not there is skipped rather than ending the list: one
-      // missing song is not a reason for the rest of the playlist not to play.
+      // A missing file is skipped rather than ending the list.
       if (p.index < list.length - 1) {
         await _start(p, p.index + 1);
       } else {
@@ -699,9 +686,8 @@ class AudioRuntime extends ChangeNotifier {
       from = math.min(from + asked.elapsedMicroseconds / 1e6, p.end);
     }
     var fadeIn = fades ? p.clip.fadeIn : 0.0;
-    // Started part way through, it rises over a few milliseconds rather than
-    // jumping straight to full: a waveform cut into mid-swing is a click,
-    // which is what pressing play over a sound on the timeline made.
+    // Started part way through, it rises over a few milliseconds: a wave
+    // cut into mid-swing clicks.
     var at = from ?? source.start;
     if (fadeIn <= 0 && at > source.start + 0.001) fadeIn = declickSeconds;
     var voice = engine.play(track,
@@ -751,9 +737,9 @@ class AudioRuntime extends ChangeNotifier {
   /// _heard puts the volume the reader chose onto the sound, unless a fade
   /// is under way -- moving the volume mid-fade would snap it back up.
   ///
-  /// Only when it has changed: it is asked on every frame the playhead moves,
-  /// and set again each time, it cut off the rise a sound starts with. And on
-  /// the timeline by a short glide rather than outright -- see glideSeconds.
+  /// Only when it has changed, since it is asked every frame and setting it
+  /// again cuts off the rise a sound starts with; on the timeline by a
+  /// short glide (see glideSeconds).
   void _heard(_Playing p) {
     var voice = p.voice;
     if (voice == null || p.fadingOut) return;
@@ -763,11 +749,9 @@ class AudioRuntime extends ChangeNotifier {
     engine.volume(voice, to, fade: p.timed ? glideSeconds : 0);
   }
 
-  ///
-  /// Brought down over a few milliseconds and then stopped, where it is
-  /// sounding -- a clip coming to its end, a scene turning, playback stopped.
-  /// Stopped outright, each was a click. [softly] off is for going away
-  /// altogether, when there is no time for the fade to run.
+  /// _silence stops [p]'s voice: brought down over a few milliseconds where
+  /// it is sounding, since stopped outright it clicks. [softly] off is for
+  /// going away altogether, when there is no time for the fade.
   void _silence(_Playing p, {bool softly = true}) {
     var voice = p.voice;
     if (voice != null) {

@@ -23,32 +23,31 @@ import 'package:bruig/plugin_system/canvas/model/session.dart'
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart' show DbReading;
 import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
+import 'package:bruig/plugin_system/canvas/ui/slots_window.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 // canvas_channels.dart is the sound on the timeline, a lane for each channel,
-// laid out against the same frames as the keyframe strip above it.
+// laid out against the same frames as the rows above it.
 //
-// A channel is the sounds on it -- see TimelineChannel. There is always one
-// lane more than there are channels, empty, at the bottom: a sound dropped
-// there, or chosen by clicking it, starts a channel, and when that one fills a
-// new empty lane is under it. A channel with nothing left on it is simply not
-// there any more.
+// A channel is the sounds on it (see TimelineChannel). There is always one
+// empty lane more than there are channels, at the bottom: a sound dropped
+// there, or chosen by clicking it, starts a channel. A channel with nothing
+// left on it is gone.
 //
-// Each channel has a strip at the left: a coloured edge that says what kind
-// of channel it is (green for sound, yellow for a video's), its short name --
-// A1, V1 -- and its full one when it is tall enough, its level as a number,
-// and lock, solo and mute.
+// Each channel has a strip at the left: a coloured edge for its kind (green
+// for sound, yellow for a video's), its short name (A1, V1) and its full one
+// when tall enough, its level as a number, and lock, solo and mute.
 //
 // Each sound is a bar from the frame it starts on to the frame it ends on:
 // one block per file, the fades as slopes, a repeat drawn fainter to the end,
 // and a line across it at its own volume. A bar is dragged along to move it
 // and onto another lane to move it there; its ends are dragged to trim it,
-// the handles at its top corners to fade it, and its line up and down to turn
-// it up or down on its own. With the knife, a click cuts it in two. Taller
-// than a line of text, a lane draws each file's waveform.
+// the handles at its top corners to fade it, and its line up and down to
+// set its volume. With the knife, a click cuts it in two. Taller than a line
+// of text, a lane draws each file's waveform.
 
 /// channelsLaneHeight is a lane as it starts, and the shortest it goes to
 /// while its strip keeps everything on one line.
@@ -90,8 +89,8 @@ Color channelColour(bool video) =>
 class CanvasChannels extends StatefulWidget {
   final CanvasController controller;
 
-  /// view is the frames on screen -- the keyframe strip's, so a sound and a
-  /// keyframe on the same frame are on the same line. See TimelineView.
+  /// view is the frames on screen: the rows', so a sound and a key on the
+  /// same frame line up. See TimelineView.
   final TimelineView view;
 
   /// motionRows is whether the elements' rows are here -- each with its own
@@ -130,10 +129,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   bool _dragging = false;
 
   /// _pressedX and _pressedY are where the press was, on screen. A drag is
-  /// measured from them rather than by adding up the drag's own steps,
-  /// because a drag is only recognised once the pointer has already moved
-  /// some way -- and that first stretch never arrives as a step, so a clip
-  /// dragged twenty frames moved sixteen.
+  /// measured from them rather than by adding up its steps, because the
+  /// stretch before a drag is recognised never arrives as a step.
   double _pressedX = 0, _pressedY = 0;
 
   /// _over is the lane a sound being dragged is over, by channel key --
@@ -340,12 +337,9 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     _pick(lane);
   }
 
-  /// _pick selects [lane]'s sound, where it is one on this canvas, so its
-  /// settings are the ones on screen.
-  ///
-  /// Wherever it is, while every scene plays and any clip can be changed: a
-  /// clip on another canvas is lit as picked, though its settings stay on
-  /// its own canvas. Otherwise only one on this canvas.
+  /// _pick selects [lane]'s sound, so its settings are the ones on screen.
+  /// While every scene plays, a clip on another canvas is lit as picked
+  /// too, though its settings stay on its own canvas.
   void _pick(TimedLane lane) {
     if (_canPick(lane)) controller.pickClip(lane.element.id);
   }
@@ -359,9 +353,9 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   double _snapped(double edge, double frames, double width) {
     var rate = math.max(1, controller.document.frameRate);
     var wanted = edge + frames;
-    // A piece of sound lands on its grid -- the nearest bar, beat or note
-    // the quantise says -- always, as a sequencer's does. Quantise is its own
-    // switch (Off is one of its values), so the snapping magnet is not asked.
+    // A piece of sound always lands on its grid (the nearest bar, beat or
+    // note the quantise says), as a sequencer's does. Quantise has its own
+    // Off, so the snapping magnet is not asked.
     var doc = controller.document;
     if (doc.kind.isAudio) {
       if (doc.audio.gridSeconds() case var grid?) {
@@ -460,8 +454,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
         if (_group.isEmpty) _trackOver(lane, global);
       case _Grip.start:
         // Trimming the front moves the start of the first file's range and
-        // the clip with it, so what is left stays where it was on the
-        // timeline -- the way an editor trims.
+        // the clip with it, so what is left stays where it was, as an editor
+        // trims.
         frames = _snapped(span.from, frames, width);
         var seconds = frames / rate;
         var first = was.playlist.first;
@@ -620,7 +614,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
             children: [
               if (widget.leading case var leading?) leading,
               // Each element's rows, with its own sound's channel under
-              // them (Ken); then the canvas's other channels.
+              // them; then the canvas's other channels.
               for (var e in grouped) ...[
                 if (show != TimelineShow.sound)
                   MotionLanes(controller: controller, view: _view, only: e.id),
@@ -870,7 +864,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                           Border(left: BorderSide(color: accent, width: 3))),
                   child: header)),
       // The slots beside the rows, when they are: a channel's, or room.
-      if (controller.slotsBeside)
+      if (controller.slotsWidth > 0)
         SizedBox(
             width: controller.slotsWidth, child: beside ?? const SizedBox()),
       Expanded(child: lane),
@@ -879,11 +873,9 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     return SizedBox(
       key: _keyFor(channel),
       height: height,
-      // The channel being moved, lit across the whole of it -- its strip and
-      // its lane -- so it is plain which one is going where. Always in a
-      // Stack, lit or not: changing what the row is built from as the drag
-      // began threw away the strip the drag had started on, and with it the
-      // drag.
+      // The channel being moved, lit across its strip and its lane. Always
+      // in a Stack, lit or not: changing what the row is built from as the
+      // drag began would throw away the strip the drag started on.
       child: Stack(children: [
         Positioned.fill(child: row),
         if (moving)
@@ -903,9 +895,9 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   }
 
   /// _playedIn is the frames of this view [channel]'s clips are played in:
-  /// while every scene plays, its own scene's -- the master's, the whole
-  /// run -- so a clip running on past its scene is shaded where it does; one
-  /// scene at a time, the scene's, as it always was.
+  /// while every scene plays, its own scene's (the master's, the whole run),
+  /// so a clip running on past its scene is shaded where it does; one scene
+  /// at a time, the scene's.
   (int?, int?) _playedIn(TimelineChannel channel) {
     var document = controller.document;
     if (!controller.allChannels || !document.hasScenes) {
@@ -920,14 +912,14 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     return (from, from + long);
   }
 
-  /// _addAt makes a new sound from [source] at [frame] on [channel], or on a
-  /// channel of its own.
   /// _placeSlot puts the clip dragged from a slot onto [channel]'s lane at
-  /// [frame] -- its own channel's, or another of its kind.
+  /// [frame]: its own channel's, or another of its kind.
   void _placeSlot(SessionSlotDrag from, int frame, TimelineChannel channel) =>
       controller.placeSessionClip(from.channel, from.row, frame,
           onto: channel.key);
 
+  /// _addAt makes a new sound from [source] at [frame] on [channel], or on a
+  /// channel of its own.
   void _addAt(MediaSource source, int frame, TimelineChannel? channel) {
     // A MIDI file: its notes onto a MIDI channel, or a MIDI channel of its
     // own -- never a silent sound on an audio one.
@@ -948,10 +940,9 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     controller.selectedChannel = key;
   }
 
-  /// _addVideoAt puts the video [asset] on the canvas -- in the middle, its
-  /// own shape -- and on the timeline from [frame], its soundtrack on a lane
-  /// of its own: what "On the timeline" in its settings does, done by
-  /// dropping it there.
+  /// _addVideoAt puts the video [asset] on the canvas, in the middle at its
+  /// own shape, and on the timeline from [frame], its soundtrack on a lane of
+  /// its own: what "On the timeline" in its settings does.
   void _addVideoAt(LibraryAsset asset, int frame, TimelineChannel? channel) {
     var made = elementForAsset(asset, controller.document);
     if (made is! VideoElement) return;
@@ -967,8 +958,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   }
 
   /// _slotsOnly is whether [channel] plays from its sample slots and has
-  /// nothing on the timeline: its lane greyed, saying so (Ken) -- still a
-  /// lane a sound can be dropped on.
+  /// nothing on the timeline: its lane greyed, saying so, but still a lane a
+  /// sound can be dropped on.
   bool _slotsOnly(TimelineChannel channel) =>
       (controller.session.slots[channel.key]?.any((c) => c != null) ?? false) &&
       channel.lanes.every((l) => l.clip.isEmpty || !l.clip.timed);
@@ -993,7 +984,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       // A sound or a video joins the channel it is let go on.
       onWillAcceptWithDetails: (d) => switch (d.data) {
         // A clip from a slot, onto its own kind of channel: placed there,
-        // once through (Ken).
+        // once through.
         SessionSlotDrag from =>
           controller.canMoveClip(from.clip, channel.key) &&
               channel.editable &&
@@ -1676,14 +1667,12 @@ class _EmptyLanePainter extends CustomPainter {
       old.label != label || old.lit != lit || old.colors != colors;
 }
 
-/// _ChannelHeader is a channel's strip at the left of its lane.
-///
-/// A coloured edge for what kind of channel it is; its short name, A1 or V1;
-/// its whole name, once the lane is tall enough to give it a line --
-/// double-clicked to rename it; its level, in decibels, clicked to type one;
-/// and lock, solo and mute. Narrowed, it gives up the reading, then the buttons
-/// one at a time, and is its edge and its short name. Its bottom edge is
-/// dragged to make the lane taller, and a click picks the channel.
+/// _ChannelHeader is a channel's strip at the left of its lane: a coloured
+/// edge for its kind; its short name (A1, V1); its whole name once the lane
+/// is tall enough, double-clicked to rename it; its level in decibels,
+/// clicked to type one; and lock, solo and mute. Narrowed, it gives up the
+/// reading, then the buttons one at a time. Its bottom edge is dragged to
+/// make the lane taller, and a click picks the channel.
 class _ChannelHeader extends StatelessWidget {
   final TimelineChannel channel;
   final String label;
@@ -2076,8 +2065,8 @@ class _EmptyHeader extends StatelessWidget {
           key: const ValueKey("addChannel"),
           onTap: () => menu.isOpen ? menu.close() : menu.open(),
           child: Container(
-            // Less to either side when the column is narrow: the icon alone
-            // is what fits, and eight pixels each side of it did not.
+            // Less to either side when the column is narrow, so the icon
+            // alone fits.
             padding: width < 64
                 ? const EdgeInsets.fromLTRB(4, 3, 2, 3)
                 : const EdgeInsets.fromLTRB(8, 3, 8, 3),
@@ -2168,17 +2157,7 @@ class SessionRowSlots extends StatelessWidget {
   Widget build(BuildContext context) {
     var c = controller;
     var colors = ThemeNotifier.of(context).colors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(3, 3, 2, 3),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        for (var i = 0; i < c.session.rows; i++) ...[
-          if (i > 0) const SizedBox(width: 3),
-          SizedBox(
-              width: CanvasController.slotCellWidth,
-              child: _cell(c, colors, i)),
-        ],
-      ]),
-    );
+    return SlotsWindow(controller: c, cell: (i) => _cell(c, colors, i));
   }
 
   Widget _cell(CanvasController c, ColorScheme colors, int row) {

@@ -13,20 +13,16 @@ import 'package:path/path.dart' as path;
 // element_preset_store.dart keeps the designs somebody has saved.
 //
 // One file per preset in a hidden folder beside the canvases, rather than one
-// file holding all of them: a preset is written and deleted on its own, and a
-// single list is a file that two windows can both rewrite, with the loser's
-// preset gone. The folder's name begins with a dot, which is what keeps it
-// out of the Files panel -- see CanvasStorage.list.
+// list that two windows could both rewrite, losing one's preset. The leading
+// dot keeps the folder out of the Files panel (see CanvasStorage.list).
 
 /// _folderName is where they live, inside the canvas library.
 const _folderName = ".presets";
 
 /// ElementPresetStore is the presets, built in and saved, kept in memory so a
-/// settings panel can draw them without waiting for the disk.
-///
-/// A ChangeNotifier and a single instance, because the panel that lists them
-/// and the button that saves one are in different parts of the tree and both
-/// have to see the same list. Loaded once, on the first look.
+/// settings panel can draw them without waiting for the disk. A single
+/// ChangeNotifier, because the panel that lists them and the button that
+/// saves one are in different parts of the tree. Loaded once, on first look.
 class ElementPresetStore extends ChangeNotifier {
   static final ElementPresetStore instance = ElementPresetStore();
 
@@ -34,11 +30,8 @@ class ElementPresetStore extends ChangeNotifier {
   bool _loaded = false;
   Future<void>? _loading;
 
-  /// presets are the built-in ones first, then whatever has been saved.
-  ///
-  /// Built-ins first because they are the ones that are always there: a list
-  /// whose beginning moves as things are added to it is a list nobody learns
-  /// the shape of.
+  /// presets are the built-in ones first, then whatever has been saved, so
+  /// the start of the list never moves.
   List<ElementPreset> get presets => [...builtinElementPresets, ..._saved];
 
   /// forKind is the presets that make one kind of element.
@@ -48,8 +41,7 @@ class ElementPresetStore extends ChangeNotifier {
       ];
 
   /// loaded says whether the disk has been read yet. A panel drawing before
-  /// it has shows the built-in ones, which is the right thing to show while
-  /// waiting rather than an empty space that fills in.
+  /// it has shows the built-in ones.
   bool get loaded => _loaded;
 
   /// load reads the folder, once. Calling it again while it is reading joins
@@ -88,9 +80,8 @@ class ElementPresetStore extends ChangeNotifier {
   }
 
   /// save keeps [element] under [name], and returns the preset it made.
-  ///
-  /// [madeOn] is the page it was designed on, kept so that it can be sized to
-  /// the page it is dropped on later -- see presetScale.
+  /// [madeOn] is the page it was designed on, so it can be sized to the page
+  /// it is dropped on later (see presetScale).
   Future<ElementPreset?> save(String name, CanvasElement element,
       {Size? madeOn}) async {
     var clean = name.trim();
@@ -102,8 +93,7 @@ class ElementPresetStore extends ChangeNotifier {
       name: clean,
       kind: element.kind,
       // Without its place on the canvas: a preset is dropped where the canvas
-      // decides, and one that carried the coordinates it was saved at would
-      // land off the page of any canvas smaller than the one it came from.
+      // decides, and saved coordinates could land it off a smaller page.
       element: {...element.toJson()}
         ..remove("id")
         ..remove("x")
@@ -156,8 +146,8 @@ class ElementPresetStore extends ChangeNotifier {
     try {
       var dir = Directory(await _dir());
       if (!await dir.exists()) await dir.create(recursive: true);
-      await File(path.join(dir.path, "${preset.id}.json"))
-          .writeAsString(jsonEncode(preset.toJson()), flush: true);
+      await writeWholeText(path.join(dir.path, "${preset.id}.json"),
+          jsonEncode(preset.toJson()));
       return true;
     } catch (exception) {
       debugPrint("Unable to save the preset ${preset.name}: $exception");

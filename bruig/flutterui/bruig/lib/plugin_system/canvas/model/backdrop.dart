@@ -1,13 +1,8 @@
-// backdrop.dart is the choice every background makes first: what kind of
-// picture it is behind everything.
-//
-// A flat generated pattern, as backgrounds have always been; a 3D stage --
-// a floor and a wall seen through a camera, that characters stand on; or
-// parallax scenery, layers that slide at different speeds as the camera pans.
-// The stage was an element of its own once; it is a kind of background now,
-// because a set is the thing a scene is played in front of, and that is
-// what a background is. See StageElement for the stage's own settings, which
-// the background carries the way it carries its picture and its video.
+// backdrop.dart is the choice every background makes first: a flat generated
+// pattern, a 3D stage (a floor and a wall seen through a camera, that
+// characters stand on), or parallax scenery that slides as the camera pans.
+// The stage's own settings are a StageElement the background carries, as it
+// carries its picture and its video.
 
 /// BackdropKind is what a background draws.
 enum BackdropKind {

@@ -6,46 +6,24 @@ import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:flutter/foundation.dart';
 
-// procedural_cache.dart keeps the last generated background as a picture, so
-// the editor draws it once rather than once a frame.
-//
-// A generated background is the most expensive thing on a canvas by a wide
-// margin -- flowWaves, the one under the Banner preset, was the best part of a
-// second a frame before it was made cheaper, and is still a tenth of one --
-// and the editor repaints for everything: a pointer moving over the stage, a
-// dropdown opening, a settings panel rebuilding. Every one of those was
-// waiting on the background being generated again to produce exactly the
-// pixels it produced last time.
-//
-// So it is generated into an image, and while the design and the size hold
-// still that image is what gets drawn. The exporter does not use this: it
-// wants exact pixels at a size of its choosing and renders each frame once
-// anyway.
+// procedural_cache.dart keeps generated backgrounds as pictures, so the
+// editor draws each once rather than once a frame. A generated background is
+// the most expensive thing on a canvas, and the editor repaints for every
+// pointer move and panel rebuild. The exporter does not use this: it wants
+// exact pixels at its own size and renders each frame once anyway.
 
-/// ProceduralCache is a few backgrounds, rasterised.
+/// ProceduralCache is a few backgrounds, rasterised, oldest out first.
 ///
-/// It held exactly one, on the grounds that there is a single canvas open at a
-/// time. That stopped being true twice over: facing pages draw two canvases
-/// side by side, and a transition draws the scene leaving and the scene
-/// arriving together for its whole length. Put through a cache of one, each
-/// of them threw the other's picture away and made it again -- a generated
-/// backdrop is the most expensive thing on a canvas, and doing it two or
-/// three times a frame is what a flicker and a crawling page turn both are.
-///
-/// So: a few, oldest out first. Six, because a page turn puts four leaves on
-/// screen at once -- the spread being left and the spread arriving -- and
-/// the book painter asks for the next spread's two ahead of time so they are
-/// ready when it arrives. It was three, and a turn from page four to five
-/// threw one leaf's backdrop out every frame; while it was being made again
-/// the stand-in was another page's, so the paper flickered between the two
-/// colours. Each of these is megabytes of pixels, so no more than that.
+/// More than one canvas can draw at once: facing pages, both scenes of a
+/// transition, and a page turn's four leaves plus the next spread's two
+/// warmed ahead. Too small a cache makes them evict each other every frame,
+/// which shows as flicker. Each is megabytes, so no more than that.
 class ProceduralCache extends ChangeNotifier {
-  /// _keep is how many are held. See the class comment for why it is six.
+  /// _keep is how many are held: six, for a page turn (see the class doc).
   static const int _keep = 6;
 
-  /// _images is the rasters, least recently asked for first. A LinkedHashMap
-  /// by virtue of being a plain Dart map: re-inserting a key moves it to the
-  /// end, which is the whole of the eviction order.
+  /// _images is the rasters, least recently asked for first: a Dart map
+  /// keeps insertion order, so re-inserting a key moves it to the end.
   final Map<String, ui.Image> _images = {};
 
   /// _making is the keys being rasterised, so a slow generator is not started
@@ -54,28 +32,28 @@ class ProceduralCache extends ChangeNotifier {
 
   bool _disposed = false;
 
-  /// keyFor is what makes two requests the same request: the design, the size
-  /// it is wanted at, -- for a background that moves -- the moment, and which
-  /// of the pictures it uses have arrived.
-  ///
-  /// The pictures matter because they arrive late: a design that carries an
-  /// icon is first drawn without it, while the file is still being read, and
-  /// the drawing that comes back a moment later is a different picture of the
-  /// same design. Left out of the key, the first answer was kept and the icon
-  /// never appeared at all.
-  /// moves is whether [spec] changes from one frame to the next: animated,
-  /// and a style that can be, or with a layer that can. A metal sheet keeps
-  /// the switch from the style it was changed from, and was generated afresh
-  /// every frame for a movement it does not have.
+  /// moves is whether [spec] changes from one frame to the next: animated
+  /// and a style (or visible layer, or grain) that can move. The `animated`
+  /// switch alone is not enough: it survives a change to a still style.
   static bool moves(ProceduralSpec spec) =>
       spec.animated &&
       (spec.style.canAnimate ||
           spec.layers.any((l) => l.visible && l.spec.style.canAnimate) ||
           spec.effects.grainMoves && spec.effects.grain > 0);
 
+  /// _specKey is [spec] written out, memoised per spec object (specs are
+  /// immutable) because it is asked for on every paint.
+  static final Expando<String> _specKeys = Expando("proceduralKey");
+  static String _specKey(ProceduralSpec spec) =>
+      _specKeys[spec] ??= "${spec.toJson()}";
+
+  /// keyFor is what makes two requests the same: the design, the size, the
+  /// moment (for a background that moves), and which of its pictures have
+  /// arrived -- an icon arrives late, and without it in the key the first,
+  /// icon-less raster would be kept for ever.
   static String keyFor(ProceduralSpec spec, ui.Size size, double time,
           [CanvasImageSource? images]) =>
-      "${spec.toJson()}|${size.width.round()}x${size.height.round()}"
+      "${_specKey(spec)}|${size.width.round()}x${size.height.round()}"
       "|${moves(spec) ? time.toStringAsFixed(3) : ""}"
       "|${_ready(spec, images)}";
 
@@ -102,46 +80,30 @@ class ProceduralCache extends ChangeNotifier {
 
   /// imageFor is the picture to draw, or null when there is not one yet.
   ///
-  /// Asking for one that is not ready starts it, and hands back the last one
-  /// while it is being made. The last one is a design or two behind -- for
-  /// the length of one raster -- and that is the better answer: the
-  /// alternative is the caller generating the new design itself, on the frame
-  /// it was asked for and on every frame after it until the raster lands,
-  /// which for an expensive generator is the whole of a drag.
-  ///
-  /// It used to return null there, on the grounds that a late frame is worse
-  /// than an expensive one. That was written when the dearest generator cost
-  /// a tenth of a second; the Metal texture shades a point per pixel, and
-  /// dragging its Roughness slider re-shaded the sheet on every frame of the
-  /// drag. A background one raster out of date is not something anybody can
-  /// see. A canvas that stops moving is.
-  ///
-  /// Only at the size asked for. A picture of the right design at the wrong
-  /// shape is a stretched background, which is something anybody can see.
+  /// Asking for one that is not ready starts it and, when [standIn], hands
+  /// back the most recent raster of the same pixel size while it is made: a
+  /// background one raster out of date is invisible, whereas the caller
+  /// generating it itself every frame until the raster lands stalls a drag
+  /// (the Metal texture shades every pixel). Never a raster of another
+  /// size, which would show as a stretched background.
   ui.Image? imageFor(ProceduralSpec spec, ui.Size size, double time,
       [CanvasImageSource? images, bool make = true, bool standIn = true]) {
-    // A background that moves is a different picture every frame, so caching
-    // it would be a raster per frame plus the drawing -- worse than simply
-    // drawing it.
+    // A moving background is a new picture every frame; caching would only
+    // add a raster to the drawing.
     if (moves(spec)) return null;
     if (size.width < 1 || size.height < 1) return null;
 
     var key = keyFor(spec, size, time, images);
     var held = _images.remove(key);
     if (held != null) {
-      // Back to the end of the queue: asked for is asked for, whether or not
-      // it had to be made.
+      // Back to the end of the queue.
       _images[key] = held;
       return held;
     }
     if (make && !_making.contains(key)) _make(spec, size, time, key, images);
 
-    // A picture of another design at the right size, while this one is being
-    // made. Only at the size asked for: a picture of the right design at the
-    // wrong shape is a stretched background, which is something anybody can
-    // see.
-    // Not for an element: two panels the same size would each show the
-    // other's pattern for a moment.
+    // A stand-in of the same size while this one is made. Not for an
+    // element: two panels the same size would each flash the other's pattern.
     if (!standIn) return null;
     var wide = size.width.round().clamp(1, 8192);
     var high = size.height.round().clamp(1, 8192);
@@ -174,9 +136,7 @@ class ProceduralCache extends ChangeNotifier {
       }
       _images.remove(key)?.dispose();
       _images[key] = image;
-      // The oldest goes once there are more than there is any use for: these
-      // are megabytes each, and a picture of a design nobody is looking at is
-      // a picture nobody wants.
+      // Oldest out once over [_keep].
       while (_images.length > _keep) {
         var oldest = _images.keys.first;
         _images.remove(oldest)?.dispose();
@@ -187,25 +147,22 @@ class ProceduralCache extends ChangeNotifier {
     }
   }
 
-  /// warm starts [spec] being rasterised at [size] if it is not held, without
-  /// drawing anything -- for a backdrop that is about to be needed.
-  ///
-  /// Asked for only when it is needed, the first frame it appears on shows
-  /// the stand-in imageFor hands back, which is some other design's picture.
-  /// Harmless under a drag; during playback it is a page's paper flashing
-  /// the colour of the page before it.
   /// latestFor is the most recent picture made of [spec] at any size, for
-  /// a gesture to stretch while it resizes one: a new one for every size
-  /// it passes through was a whole pattern generated every frame.
+  /// a gesture to stretch while it resizes one rather than generating the
+  /// pattern at every size it passes through.
   ui.Image? latestFor(ProceduralSpec spec) {
     if (moves(spec)) return null;
-    var prefix = "${spec.toJson()}|";
+    var prefix = "${_specKey(spec)}|";
     for (var key in _images.keys.toList().reversed) {
       if (key.startsWith(prefix)) return _images[key];
     }
     return null;
   }
 
+  /// warm starts [spec] being rasterised at [size] if it is not held, for a
+  /// backdrop about to be needed. Otherwise its first frame shows
+  /// [imageFor]'s stand-in, which during playback is a page's paper flashing
+  /// the colour of the page before it.
   void warm(ProceduralSpec spec, ui.Size size, [CanvasImageSource? images]) {
     if (moves(spec) || size.width < 1 || size.height < 1) return;
     var key = keyFor(spec, size, 0, images);

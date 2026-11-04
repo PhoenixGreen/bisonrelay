@@ -3,20 +3,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 // image_look.dart is what a picture is made to look like: a named filter and
 // the two sliders, as colour matrices.
 //
-// Its own file because three things ask for it now -- a picture element, a
-// picture showing through the letters, and a picture behind a box or inside a
-// shape -- and a second copy of a sepia matrix is a second sepia.
+// Shared by picture elements, pictures in letters, and pictures behind boxes
+// or inside shapes.
 
-/// colorMatrix is saturation and brightness as one 4x5 filter.
-///
-/// The luminance weights are the usual perceptual ones -- desaturating with
-/// equal thirds turns a red shirt and a blue shirt into the same grey, which
-/// on a tactics diagram is the whole point of the two colours gone.
 /// presetMatrix is a named look as a colour matrix, or null for none.
-///
-/// Matrices rather than layered draws: one 4x5 matrix is one uniform in the
-/// shader, where each extra effect drawn on top of the last is another
-/// off-screen layer, and a canvas may hold a dozen pictures.
+/// Matrices compose into one colour filter, where layered draws would each
+/// need an off-screen layer.
 List<double>? presetMatrix(ImageFilterPreset filter) {
   const lr = 0.2126, lg = 0.7152, lb = 0.0722;
   switch (filter) {
@@ -37,9 +29,7 @@ List<double>? presetMatrix(ImageFilterPreset filter) {
         0, 0, 0, 1, 0,
       ];
     case ImageFilterPreset.noir:
-      // Grey, then pushed hard about the midpoint: contrast is a gain either
-      // side of 0.5, which as a matrix is a scale and an offset that undoes
-      // half of it.
+      // Grey, then contrast about the midpoint: a scale plus an offset.
       const c = 1.7;
       const o = (1 - c) * 0.5 * 255;
       return [
@@ -70,7 +60,7 @@ List<double>? presetMatrix(ImageFilterPreset filter) {
         0, 0, 0, 1, 0,
       ];
     case ImageFilterPreset.faded:
-      // Lifted blacks and pulled-in whites, which is what a faded print is.
+      // Lifted blacks and pulled-in whites.
       const g = 0.72;
       const lift = 38.0;
       return [
@@ -84,10 +74,8 @@ List<double>? presetMatrix(ImageFilterPreset filter) {
 
 /// combineMatrices multiplies two 4x5 colour matrices, [a] applied first.
 ///
-/// Null in means "no change", and null out means neither did anything -- so a
-/// picture with no filter and no sliders touched gets no colour filter at all
-/// rather than an identity one, which is a shader either way but only one of
-/// them is free.
+/// Null means no change, in and out, so an untouched picture gets no colour
+/// filter at all rather than an identity one.
 List<double>? combineMatrices(List<double>? a, List<double>? b) {
   if (a == null) return b;
   if (b == null) return a;
@@ -106,6 +94,8 @@ List<double>? combineMatrices(List<double>? a, List<double>? b) {
   return out;
 }
 
+/// colorMatrix is saturation and brightness as one 4x5 filter, or null when
+/// both are 1. It uses perceptual luminance weights, not equal thirds.
 List<double>? colorMatrix(double sat, double bri) {
   if (sat == 1 && bri == 1) return null;
   const lr = 0.2126, lg = 0.7152, lb = 0.0722;

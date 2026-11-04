@@ -15,17 +15,13 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
-// stock_import.dart is a stock result being used: fetched, then added the way
-// a file from disk would be -- a picture stored and measured, a video through
-// ffmpeg for its poster and sound, a sound converted if it has to be -- and
-// then credited, so the library says who made it and under what licence.
-//
-// The same road as a file from disk on purpose. A stock video that skipped
-// the poster, or a sound that skipped the measuring, would be an asset that
-// behaved differently for having come from somewhere else.
+// stock_import.dart is a stock result being used: fetched, then added by the
+// same road as a file from disk (a picture stored and measured, a video through
+// ffmpeg for its poster and sound, a sound converted if need be), so it behaves
+// like any other asset, and then credited with its maker and licence.
 
-/// fileNameFor is [title] as something safe to name a file after -- which is
-/// what the import names the asset after, until the credit renames it.
+/// fileNameFor is [title] made safe as a file name, which the asset is named
+/// after until the credit renames it.
 String fileNameFor(String title) {
   var safe = title
       .replaceAll(RegExp(r"[^\w\- ]+"), "")
@@ -36,7 +32,7 @@ String fileNameFor(String title) {
 }
 
 /// fetchStockItem fetches [item] into the library and returns it as an
-/// asset, or null -- having said why -- when it could not be had.
+/// asset, or null (having said why) when it could not be had.
 Future<LibraryAsset?> fetchStockItem(
     BuildContext context, CanvasController controller, StockItem item) async {
   var snacks = SnackBarModel.of(context);
@@ -92,7 +88,7 @@ Future<LibraryAsset?> fetchStockItem(
     switch (item.kind) {
       case AssetKind.picture || AssetKind.vector:
         var bytes = await file.readAsBytes();
-        // A drawing -- an icon library's are -- goes with the drawings,
+        // A drawing (as an icon library's are) goes with the drawings,
         // whatever the library called it.
         if (String.fromCharCodes(bytes.take(4096))
             .toLowerCase()

@@ -3,10 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 // procedural_effects.dart is what is done to a generated background after
 // the pattern is drawn: grain, a glow, softening, scanlines, where the eye is
 // drawn to, where the pattern keeps out of the way, and a colour grade.
-//
-// Every style has them and none of them knows about them, the way the light
-// works -- which is what lifts all of the styles at once instead of one at a
-// time, and what means a new style gets them for nothing.
+// Like the light, they apply to every style without any style knowing.
 
 /// ClearArea is where a background keeps its pattern out of the way, so that
 /// what is put on top of it can be read.
@@ -29,8 +26,7 @@ enum ClearArea {
 
 /// EffectsSpec is the finishing done to a background's pattern.
 ///
-/// All of it off by default -- nought, or none -- so that a document saved
-/// before there were effects is the same picture after.
+/// All of it off by default, so older documents draw the same.
 class EffectsSpec {
   /// opacity is how strongly the pattern is laid over the base colour.
   final double opacity;
@@ -112,7 +108,7 @@ class EffectsSpec {
   bool get grades =>
       hue != 0 || saturation != 0 || contrast != 0 || brightness != 0;
 
-  /// any is whether any of it is on, which is whether it is worth saving.
+  /// any is whether any of it is on.
   bool get any =>
       opacity < 1 ||
       grain > 0 ||
@@ -169,8 +165,7 @@ class EffectsSpec {
         brightness: brightness ?? this.brightness,
       );
 
-  /// toJson writes only what differs from the default: a background with one
-  /// effect on is one number in the document, not twenty.
+  /// toJson writes only what differs from the default.
   Map<String, dynamic> toJson() {
     const d = EffectsSpec();
     return {
@@ -212,7 +207,7 @@ class EffectsSpec {
         focusX: jsonDouble(json["focusX"], 0.5),
         focusY: jsonDouble(json["focusY"], 0.5),
         focusSize: jsonDouble(json["focusSize"], 0.3).clamp(0.0, 2.0),
-        clear: ClearArea.fromName(json["clear"] as String?),
+        clear: ClearArea.fromName(jsonStr(json["clear"])),
         clearSize: jsonDouble(json["clearSize"], 0.4).clamp(0.0, 1.0),
         clearSoftness: jsonDouble(json["clearSoftness"], 0.5).clamp(0.0, 1.0),
         clearAmount: jsonDouble(json["clearAmount"], 1).clamp(0.0, 1.0),

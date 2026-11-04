@@ -8,16 +8,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:flutter/material.dart';
 
 // scene_strip.dart is the row of scenes between the ruler and the keyframes
-// while the timeline plays the whole document: one box per scene, laid on the
-// ruler's own scale, so each scene's frames run along the ruler directly over
-// its box. Zooming and scrolling the timeline zooms and scrolls the scenes
-// with it -- close in, the frame the playhead is on in a scene can be read off
-// the ruler above it.
-//
-// It is also where the scenes are made longer and shorter against each other.
-// The gap between two boxes is a grip: dragged, it moves the join between the
-// two scenes, so what one gains the other gives and the run as a whole stays
-// the same length. The grip after the last box lengthens the last scene alone.
+// while the timeline plays the whole document: a box per scene on the ruler's
+// own scale, so zooming and scrolling the timeline moves the scenes with it.
+// The gap between two boxes is a grip that moves the join between them, so
+// the run's length stays the same; the grip after the last box lengthens the
+// last scene alone.
 
 /// sceneStripLead is the gap between the ruler and the boxes.
 const double sceneStripLead = 4;
@@ -195,11 +190,9 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
               colors),
         ));
       }
-      // The transitions, over the joins: a bar along the bottom of the strip
-      // for the frames each one takes, its right end a grip that makes it
-      // longer or shorter. Scene starts stay where they are -- what the
-      // transition gains is taken from the scene before it -- so nothing
-      // later in the run moves. See CanvasController.setSceneTransition.
+      // The transitions over the joins: a bar for the frames each takes, its
+      // right end a grip. What a transition gains is taken from the scene before
+      // it, so nothing later in the run moves. See setSceneTransition.
       for (var i = 0; i + 1 < scenes.length; i++) {
         var t = document.transitionAfter(i);
         if (!t.on) continue;

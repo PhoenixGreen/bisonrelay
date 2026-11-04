@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
-// table settings.dart is a table's settings.
+// table_settings.dart is a table's settings.
 
 List<Widget> tableSettings(
         BuildContext context,
@@ -22,9 +22,8 @@ List<Widget> tableSettings(
         VoidCallback begin,
         VoidCallback commit) =>
     [
-      // Its own section, like the chart's numbers. The cells are the longest
-      // thing in these settings and the least often changed once they are
-      // right, so they were pushing everything else off the bottom.
+      // Its own section, like the chart's numbers: the cells are long and seldom
+      // changed once right, and pushed everything else off the bottom.
       expanderSection(
         e,
         Icons.table_chart_outlined,
@@ -32,10 +31,8 @@ List<Widget> tableSettings(
           label: "Table",
           remember: "tableCells",
           trailing: "${e.rows.length} rows, ${e.columnCount} columns",
-          // The same Refresh the Data section carries. This is where somebody
-          // is standing when they want the numbers again -- looking at the
-          // cells -- and sending them to another section to press it is
-          // asking them to know which section owns the wire.
+          // The same Refresh the Data section carries, here where somebody
+          // looking at the cells wants the numbers again.
           action:
               sourceRefreshButton(context, controller, e, write, begin, commit),
           initiallyOpen: true,
@@ -68,9 +65,8 @@ List<Widget> tableSettings(
           children: [
             dataSourceSection(context, controller, e, write, begin, commit),
           ]),
-      // Sorting is its own section next to the cells, because it is about the
-      // data rather than about how the table looks -- and because three
-      // columns and their directions is more than a band's worth of controls.
+      // Sorting is its own section beside the cells: it is about the data, not
+      // the look, and too much for a band.
       expanderSection(
         e,
         Icons.sort,
@@ -78,9 +74,7 @@ List<Widget> tableSettings(
           label: "Order",
           remember: "tableSort",
           trailing: _sortSummary(e),
-          // In the heading, so putting a table back in order is one press
-          // without opening anything. It is the only thing this section does
-          // that anybody wants without reading it.
+          // In the heading, so putting a table back in order is one press.
           action: CanvasIconButton(
             key: const ValueKey("tableSortApply"),
             // On the section's heading, level with its arrow.
@@ -155,10 +149,8 @@ List<Widget> tableSettings(
           ],
         ),
       ),
-      // One mechanism for three things that were asked for separately, and
-      // they really are one: a green chip wherever a column says W is a rule
-      // about a column and a word, a highlighted row is a rule about a row,
-      // and a points column set slightly larger is a rule about a column.
+      // One mechanism for three asks: a chip where a column says W (a column and
+      // a word), a highlighted row, a larger points column.
       expanderSection(
         e,
         Icons.auto_awesome_outlined,
@@ -193,11 +185,8 @@ List<Widget> tableSettings(
           ],
         ),
       ),
-      // Everything about how the table looks, in one place and below the
-      // things that are about what it says. Two sets of type controls and a
-      // dozen colour rows are what pushed the data and the order off the
-      // bottom of the panel; a reader setting a table up goes to those first
-      // and comes here once.
+      // Everything about how the table looks, below what it says: somebody
+      // setting a table up goes to the data and the order first.
       expanderSection(
         e,
         Icons.palette_outlined,
@@ -352,11 +341,8 @@ List<Widget> tableSettings(
                 onChanged: (v) => write(e.copyWith(cellPadding: v)),
                 onCommit: commit,
               ),
-              // One figure until somebody wants four. Almost every table wants
-              // the same room on every side, and four fields for that is three
-              // fields of clutter -- but a heading given more room above and
-              // below than beside it is exactly what somebody setting a title
-              // row up asks for.
+              // One figure until somebody wants four: most tables want the same
+              // room on every side, but a title row often wants more above and below.
               CanvasToggle(
                 key: const ValueKey("tableSidedPadding"),
                 label: "Sides",
@@ -419,15 +405,10 @@ List<Widget> tableSettings(
                   onCommit: commit,
                 ),
               ],
-              // How the columns are sized, as a state rather than a button.
-              //
-              // A column width is dragged on the table itself and there was no
-              // way back from it: the moment one edge moved, every column's
-              // width was written down, and a table set up by dragging could
-              // not be put back. Saying it as a state also says what the two
-              // ways back actually are, which a button called "Even" would
-              // not -- a table left alone sizes its columns by what is in
-              // them, which is not the same thing as all of them matching.
+              // How the columns are sized, as a state rather than a button: dragging
+              // an edge writes every column's width, and this is the way back. Sized
+              // by content is not the same as all matching, which a button called
+              // "Even" would hide.
               CanvasDropdown<String>(
                 key: const ValueKey("tableColumnSizing"),
                 label: "Columns",
@@ -534,8 +515,6 @@ String _tableRuleName(TableRule rule) {
 }
 
 /// _tableRuleSettings is one rule: which cells, and what they look like.
-
-/// _tableRuleSettings is one rule: which cells, and what they look like.
 Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
     VoidCallback begin, VoidCallback commit) {
   var rule = e.rules[index];
@@ -559,9 +538,8 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
     // Named for what it does rather than "Rule 3", so a list of them can be
     // read without opening each one.
     label: _tableRuleName(rule),
-    // Remembered like every other section. A rule being worked on used to
-    // shut the moment the element was deselected and selected again, which is
-    // every time anybody looks at the canvas and comes back.
+    // Remembered like every other section, so a rule being worked on stays
+    // open when the element is selected again.
     remember: "tableRule$index",
     children: [
       CanvasControlGroup(label: "Which cells", children: [
@@ -648,9 +626,8 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
               put(rule.copyWith(style: style.copyWith(fontScale: v))),
           onCommit: commit,
         ),
-        // A list, not a number. Weight is nine values and a field scrubbing
-        // through nine hundred of them one pixel at a time was a control that
-        // moved and did nothing until it crossed a boundary.
+        // A list, not a number: weight is nine values, and a scrubbed field
+        // moved through nine hundred doing nothing between them.
         CanvasDropdown<int>(
           label: "Weight",
           value: style.weight,
@@ -701,10 +678,8 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
               put(rule.copyWith(style: style.copyWith(minHeight: v))),
           onCommit: commit,
         ),
-        // Only on a rule about a cell. The pitch is how the whole cell is
-        // laid out, so a rule that names one letter has no business deciding
-        // it for the others -- offered there, setting it on the D respaced
-        // the Ls and Ws beside it.
+        // Only on a rule about a whole cell: the pitch lays out the whole cell,
+        // so a rule naming one letter would respace the others.
         if (rule.match.isEmpty) ...[
           CanvasNumberField(
             label: "Letter width",
@@ -773,9 +748,8 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
           onCommit: commit,
         ),
         const CanvasLineBreak(),
-        // Which edges the border is drawn on. Four buttons rather than a list
-        // of combinations, because "the top and the bottom" is a pair of
-        // decisions and not a named style.
+        // Which edges the border is drawn on: four buttons, since top and
+        // bottom are two decisions, not a named style.
         for (var (at, icon, name) in const [
           (0, Icons.border_top, "Top"),
           (1, Icons.border_right, "Right"),
@@ -825,9 +799,7 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
               ? style.copyWith(clearVerticalAlign: true)
               : style.copyWith(verticalAlign: VerticalAlignSpec.fromName(v))),
         ),
-        // At the foot of the rule it removes. Beside Add it was one button
-        // per rule on one line, which is fine for two rules and is twenty
-        // buttons for twenty.
+        // At the foot of the rule it removes, not one per rule beside Add.
         CanvasIconButton(
           icon: Icons.delete_outline,
           tooltip: "Remove this rule",

@@ -6,23 +6,17 @@ import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_effects.dart'
     show scaleSteps;
 
-// pitch.dart is a voice's pitch: heard (YIN), and moved (PSOLA) -- the
-// Tuner reads the first, Auto-tune does both.
+// pitch.dart detects a voice's pitch (YIN) and moves it (TD-PSOLA). The
+// Tuner uses the first, Auto-tune both.
 //
-// YIN (de Cheveigné and Kawahara, 2002) finds the period a sound repeats
-// at: for each lag, how unlike the sound is to itself that far on, made
-// relative to the lags under it, and the first lag that falls under a
-// threshold is the period. It is right for a voice or an instrument held on
-// a note, and says so with how far under the threshold it went.
+// YIN (de Cheveigné and Kawahara, 2002) takes the period as the first lag
+// whose cumulative-mean-normalised difference falls under a threshold.
 //
-// TD-PSOLA moves a pitch without moving the voice's formants -- the shape
-// of the mouth that makes an "ah" an "ah" -- so a voice moved up is not a
-// chipmunk: two-period slices of the sound, each windowed, are laid down
-// again closer together (higher) or further apart (lower), each still the
-// shape it was.
+// TD-PSOLA shifts pitch without shifting formants, so a voice moved up is
+// not a chipmunk: windowed two-period slices are laid down again closer
+// together (higher) or further apart (lower).
 
-/// PitchReading is what YIN heard: the pitch in Hz, and how sure -- nought
-/// to one -- or no pitch at all, for noise or silence.
+/// PitchReading is what YIN heard: the pitch in Hz and its clarity, 0 to 1.
 typedef PitchReading = ({double hz, double clarity});
 
 /// detectPitch finds [x]'s pitch at [rate] samples a second, between
@@ -103,18 +97,16 @@ double snapNote(double midi, int root, List<int> steps) {
   return best;
 }
 
-/// AutoTune pulls a voice to the nearest note of a key and scale: its pitch
-/// heard as it goes, the correction eased in over the retune time -- at
-/// nought, at once, the robotic sound -- and as much of it as the amount
-/// says, made by PSOLA so the voice stays itself. It hears a little ahead
-/// of what it plays, and lays its slices a little ahead of what it sends
-/// on: [latency] samples late in all, always the same.
+/// AutoTune pulls a voice towards the nearest note of a key and scale by
+/// [_amount], easing the correction in over the retune time (zero gives the
+/// robotic sound). Slices are taken [latency] behind the input and emitted
+/// [_settle] behind where they are laid, a fixed delay of the two together.
 class AutoTune implements DeviceProcessor {
   static const int latency = 1024;
 
-  /// _settle is how far behind what has been laid out it reads: half a
-  /// slice at the lowest pitch heard, so every slice touching a sample is
-  /// down before it goes.
+  /// _settle is how far behind the newest slice output is read: at least
+  /// half a slice at the lowest pitch, so every slice touching a sample is
+  /// laid before it goes out.
   static const int _settle = 1024;
   static const int _size = 8192;
   static const int _window = 2048;
@@ -147,7 +139,7 @@ class AutoTune implements DeviceProcessor {
             : scaleSteps[
                 (d.value("scale").round() - 1).clamp(0, scaleSteps.length - 1)],
         _amount = d.value("amount"),
-        // The retune time as a glide a sample: e to the minus one over it.
+        // Retune time as a per-sample one-pole coefficient.
         _ease = d.value("retune") <= 0
             ? 0
             : math.exp(-1 / (d.value("retune") / 1000 * 48000));
@@ -182,9 +174,9 @@ class AutoTune implements DeviceProcessor {
         _listen();
       }
       _ratio = _ease == 0 ? _target : _target + (_ratio - _target) * _ease;
-      // Lay down every slice due by now: a slice of two periods, from the
-      // input [latency] behind, at a spacing of the period over the ratio --
-      // each turned down by the ratio, as that many more of them overlap.
+      // Lay down every slice due by now: two periods of the input [latency]
+      // behind, spaced the period over the ratio, each scaled by 1/ratio
+      // as that many more overlap.
       while (_synth <= _t) {
         var at = _synth - latency;
         // The input's own marks a period apart: the one nearest.
@@ -205,7 +197,7 @@ class AutoTune implements DeviceProcessor {
         }
         _synth += _period / _ratio;
       }
-      // What is due out now, taken and cleared for the next time round.
+      // Take what is due out now and clear it for the next time round.
       var o = (_t - 1 - _settle) & (_size - 1);
       l[i] = _outL[o];
       r[i] = _outR[o];
@@ -215,8 +207,8 @@ class AutoTune implements DeviceProcessor {
   }
 }
 
-/// PitchListener is a device that changes nothing and only listens -- a tuner,
-/// a spectrum -- its pitch heard for the panel to read.
+/// PitchListener is a device that only listens (a tuner or a spectrum),
+/// keeping the [heard] pitch for the panel to read when [pitch].
 class PitchListener implements DeviceProcessor {
   final Float32List _buffer = Float32List(2048);
   int _at = 0, _since = 0;

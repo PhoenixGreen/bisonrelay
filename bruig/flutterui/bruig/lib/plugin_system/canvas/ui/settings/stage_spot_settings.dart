@@ -84,8 +84,7 @@ List<Widget> stageSpotSettings(
                       now(e.withBase(spot: spot.copyWith(stage: id)));
                       return;
                     }
-                    // Each one put on a stage a step along from the last,
-                    // not on top of it.
+                    // Each one put a step along from the last, not on top of it.
                     final already = doc.elements
                         .where((x) => x.base.spot?.stage == id)
                         .length;

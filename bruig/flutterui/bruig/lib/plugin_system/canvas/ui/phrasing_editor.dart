@@ -11,19 +11,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
-// phrasing_editor.dart is Phrasing: a take's words shaped after it is
-// spoken -- see media/phrasing.dart. Like Melodyne, for speech: each word a
-// block, as high as it is said and as long as it lasts, its rise and fall
-// drawn in it, its loudness a bar under it. Words are picked by clicking
-// -- shift or command for more, or a box dragged round them -- then
-// dragged up or down for their pitch, a right edge along for their length,
-// a bar for their loudness, or set in PhrasingWordPanel. A pinch, or the
-// buttons, zoom in on the time or, with option, the pitch; a click on the
-// ruler puts the playhead where hearing starts.
-//
-// It shows in the Speech device in place of its sections, from the
-// Phrasing button in the device's header: PhrasingLanes where the voices
-// and sections were, PhrasingWordPanel where the feel was.
+// phrasing_editor.dart is Phrasing: a take's words shaped after it is spoken
+// (see media/phrasing.dart), like Melodyne for speech. Each word is a block
+// as high as it is said and as long as it lasts, its rise and fall drawn in
+// it, its loudness a bar under it. Picked words are dragged up or down for
+// pitch, a right edge for length, a bar for loudness, or set in
+// PhrasingWordPanel. Shown in the Speech device in place of its sections,
+// from the Phrasing button in its header.
 
 /// PhrasingLanes are the take's words, as blocks and bars, with what zooms
 /// them and hears them.

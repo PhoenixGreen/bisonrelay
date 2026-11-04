@@ -103,7 +103,7 @@ class FaceMix {
           gazeY: gazeY ?? this.gazeY,
           tilt: tilt ?? this.tilt);
 
-  /// region is [region]'s shapes set to none.
+  /// withoutRegion is this with [region]'s shapes set to none.
   FaceMix withoutRegion(String region) => _copy(w: {
         for (final e in w.entries)
           if (!(faceUnits[region] ?? const []).any((u) => u.$1 == e.key))

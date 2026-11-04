@@ -1,27 +1,23 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 
-// camera_element.dart is a Camera: the part of the page that is shown. Added
-// to a scene, it takes over from the canvas -- what plays, what is exported
-// and what is looked through is its frame, filled out to the page -- and is
-// moved by clips as any element is: pushed in on something, following it,
-// pulled back, shaken (Ken). Without one, the whole page is shown, as it
-// always was.
+// camera_element.dart is a Camera: the part of the page that is shown.
+// Added to a scene, its frame, filled out to the page, is what plays, is
+// exported and is looked through; it is moved by clips as any element is.
+// Without one, the whole page is shown.
 //
-// Its box is the frame, kept to the page's shape: as wide as the page shows
-// all of it, half as wide twice as close. A clip's size is how close it is
-// -- 2 is twice as close -- rather than how big the frame is; its across and
-// down move where it looks, its "on" a place to look at another element.
+// Its box is the frame, kept to the page's shape. A clip's size is how
+// close it is (2 is twice as close) rather than how big the frame is; its
+// across and down move where it looks, its "on" aims it at another element.
 // Never drawn into the picture: on the canvas it is a frame over the page
-// (see StagePainter), and see camera_framing.dart for how it frames.
-
+// (see StagePainter), and cameraFrame in motion_document.dart is how it
+// frames.
 //
-// In a scene on a 3D stage it lives in the scene (Ken): it is the stage's
-// camera wherever it is played, exported or looked through, from its own
-// [view] -- where it stands, its lens, its height -- moved by its clips: a
-// turn orbits round what it looks at, a size dollies it closer, an "on"
-// aims it at what stands there. See camera_3d.dart.
+// In a scene on a 3D stage it is the stage's camera, from its own [view],
+// moved by its clips: a turn orbits round what it looks at, a size dollies
+// it closer, an "on" aims it. See camera_3d.dart.
 
+/// CameraElement is a Camera; see the top of this file.
 class CameraElement extends CanvasElement {
   /// view is where it stands in 3D, or null for the stage's own camera
   /// until it is given one.

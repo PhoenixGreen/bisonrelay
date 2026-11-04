@@ -3,14 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 import 'package:bruig/plugin_system/canvas/model/football_form.dart';
 
-// data_presets.dart is the recipes that fill a DataSource in.
-//
-// A general mapping from JSON to rows is the right machinery and the wrong
-// starting point: nobody opens a design tool wanting to write "standings.0.
-// table" in a text field. A preset is the same mapping, already written, for a
-// source somebody is likely to want -- so the ordinary path is choosing a
-// league from a list, and the paths underneath stay editable for everything
-// else.
+// data_presets.dart is the recipes that fill a DataSource in: the mapping
+// already written for a source somebody is likely to want. The paths stay
+// editable afterwards.
 
 /// DataPreset is one named recipe.
 class DataPreset {
@@ -21,34 +16,19 @@ class DataPreset {
   /// does not fit beside a title and a button.
   final String shortLabel;
 
-  /// note says what the reader has to do for themselves, which for every one
-  /// of these is "get a key".
+  /// note says what the reader has to do for themselves, such as get a key.
   final String note;
 
-  /// rowNames are the things this source has, offered while somebody types a
-  /// row -- the coins, the competitions, whatever the rows *are*.
-  ///
-  /// A list of names rather than of identifiers, because the name is what
-  /// goes in the cell and what a refresh is matched on; see asRowKey. Not
-  /// every one there is: CoinGecko has thousands, and a list of thousands is
-  /// a worse way to find one than typing it. These are the ones somebody
-  /// building a canvas here is likely to want, and anything not on it can
-  /// still be typed.
+  /// rowNames are the things this source has (the coins, say), offered while
+  /// somebody types a row. Names rather than identifiers, because the name is
+  /// what goes in the cell and what a refresh is matched on; see asRowKey. A
+  /// short list of likely ones: anything else can still be typed.
   final List<String> rowNames;
 
-  /// namesAddress is where the source's own list of rows can be had: every
-  /// coin it knows, with the identifier it files each under.
-  ///
-  /// Because [rowNames] and [rowIds] cannot be right. Written out by hand,
-  /// every identifier is a chance to be wrong, and wrong is invisible until
-  /// somebody types a name and the refresh comes back without it -- CoinGecko
-  /// files Firo under "zcoin", because Firo used to be called Zcoin. Asked
-  /// for, the list is the source's own answer and stays right as the source
-  /// changes. Empty for a preset that has no such list.
-  ///
-  /// Fetched on a button rather than on a timer or at startup: it is a
-  /// request to the internet, and this app does not make those unasked. See
-  /// CanvasRowNames.
+  /// namesAddress is where the source's own list of rows can be fetched,
+  /// with the identifier it files each under, since hand-written [rowIds]
+  /// go stale. Empty for a preset that has no such list. Fetched only on a
+  /// button press, never unasked; see CanvasRowNames.
   final String namesAddress;
 
   /// namesId and namesName are where the identifier and the name sit in each
@@ -57,21 +37,13 @@ class DataPreset {
   final String namesName;
 
   /// rowIds is what to ask for when a row says one of those names, for the
-  /// ones where the two differ. Keyed by asRowKey of the name.
-  ///
-  /// A row holds the name somebody reads; an address wants the identifier the
-  /// source files it under. They are the same word often enough that the key
-  /// alone works -- decred is Decred -- and different often enough to matter:
-  /// XRP is ripple. Without this the list would offer names that come back
-  /// empty, which is worse than not offering them.
+  /// ones where the identifier differs from the name (XRP is ripple). Keyed
+  /// by asRowKey of the name.
   final Map<String, String> rowIds;
 
   /// choiceFromRows is whether the choice is a list of things that each
-  /// become a row, so the element's own rows can say what to ask for.
-  ///
-  /// True of the coin comparison and nothing else here: a competition is one
-  /// thing and a chain's series is one thing, and there is no list in the
-  /// table to read either off. See DataSource.fromRows.
+  /// become a row, so the element's own rows can say what to ask for. See
+  /// DataSource.fromRows.
   final bool choiceFromRows;
 
   /// choices are the interchangeable part of the address -- which competition,
@@ -85,32 +57,21 @@ class DataPreset {
   /// matchColumn identifies a row across a refresh. See DataSource.
   final int matchColumn;
 
-  /// hiddenHeaders are the columns whose names this preset wants kept but not
-  /// drawn -- the position and the badge on a league table, both of which need
-  /// a name for the mapping and neither of which wants one written over it.
+  /// hiddenHeaders are the columns whose names are kept for the mapping but
+  /// not drawn, such as a league table's position and badge.
   final List<int> hiddenHeaders;
 
   final List<SourceColumn> columns;
 
-  /// shape is how the response is laid out. See [DataShape]: a league table
-  /// is a list of records, a chain's history is parallel arrays.
+  /// shape is how the response is laid out. See [DataShape].
   final DataShape shape;
 
-  /// columnsFor is the mapping when it depends on which choice was made.
-  ///
-  /// A league table is the same columns whichever competition it is. A chain
-  /// chart is not: the array holding the values is called "price" for one and
-  /// "supply" for the next, and the number in it is in atoms for some and in
-  /// blocks for others. So the choice picks the columns rather than only the
-  /// address.
+  /// columnsFor is the mapping when it depends on which choice was made, as
+  /// for a chain series whose value array is named and scaled per series.
   final List<SourceColumn> Function(String choice)? columnsFor;
 
-  /// tables and charts are which elements this recipe is offered to.
-  ///
-  /// A daily series going back to 2016 is four thousand rows, which is a
-  /// chart and is not a table anybody wants on a canvas. A league table is a
-  /// table, and a chart of it comes from the table beside it rather than from
-  /// a second request -- see [TableLink].
+  /// tables and charts are which elements this recipe is offered to. A chart
+  /// of a table's figures links to the table instead; see [TableLink].
   final bool tables;
   final bool charts;
 
@@ -120,17 +81,12 @@ class DataPreset {
   final int chartCategory;
   final List<int> chartValues;
 
-  /// chartType is the drawing this recipe wants, when it wants a particular
-  /// one.
-  ///
-  /// An OHLC source is four columns that mean one thing, and a chart of them
-  /// as four lines is not what anybody asking for it wanted. Null for every
-  /// other recipe, which leaves the chart drawn however it already was.
+  /// chartType is the drawing this recipe wants (candlesticks for OHLC), or
+  /// null to leave the chart's type alone.
   final ChartType? chartType;
 
-  /// chartPoints is how many points to keep. See [ChartElement] -- four
-  /// thousand daily figures on a chart eight inches wide is four thousand
-  /// bars a third of a pixel apart.
+  /// chartPoints is how many points to keep, so years of daily figures are
+  /// thinned to something legible. Zero keeps them all.
   final int chartPoints;
 
   /// fields is what a record is known to carry, so the mapping can offer a
@@ -138,25 +94,13 @@ class DataPreset {
   final List<String> fields;
 
   /// derived are the paths this preset fills in itself, whatever the response
-  /// said.
-  ///
-  /// So that a column mapped to one of them is known to be a custom field
-  /// even when it carries no template and no spread -- which is how a column
-  /// added by hand, before anybody knew the preset would take an interest in
-  /// it, ends up. Without this such a column is filled in by the preset and
-  /// listed nowhere that explains it, and the settings that lay it out are
-  /// behind a section it does not appear in.
+  /// said, so a column mapped to one is listed as a custom field even with no
+  /// template or spread.
   final List<String> derived;
 
-  /// derive fills in what one request cannot answer.
-  ///
-  /// Given the rows as mapped and a way to fetch more JSON, it returns the
-  /// rows again. A preset owns its own quirks this way -- the panel knows
-  /// only that some sources need a second look -- and the one that needs it
-  /// needs it for a good reason: see footballFormFromResults.
-  ///
-  /// Null for a source that says everything it has to say in one answer,
-  /// which is most of them.
+  /// derive fills in what one request cannot answer: given the rows as
+  /// mapped and a way to fetch more JSON, it returns the rows again. See
+  /// footballFormFromResults. Null for most sources.
   final Future<List<List<String>>> Function(
     List<List<String>> rows,
     DataSource source,
@@ -218,18 +162,12 @@ class DataPreset {
       );
 }
 
-/// footballDataColumns is the league table everybody recognises.
-///
-/// The order is the one every published table uses, and the first column is
-/// deliberately the position: it is what the table's own sort pins in place,
-/// and having it here means a refreshed table already reads 1, 2, 3 without
-/// anybody sorting anything.
+/// footballDataColumns is the league table in the usual published order.
+/// Position comes first, so a refreshed table reads 1, 2, 3 unsorted.
 const List<SourceColumn> footballDataColumns = [
   SourceColumn(header: "Pos", path: "position"),
-  // Named, and hidden on the canvas by TableElement.hiddenHeaders. A column
-  // needs a name for the mapping and the order to refer to it; a column of
-  // badges wants nothing written over them. Kept, so badges chosen by hand
-  // survive a refresh -- see SourceColumn.keep.
+  // Named for the mapping but hidden on the canvas (hiddenHeaders), and kept
+  // so badges chosen by hand survive a refresh.
   SourceColumn(header: "Badge", path: "team.crest", picture: true, keep: true),
   SourceColumn(header: "Team", path: "team.shortName"),
   SourceColumn(header: "Played", path: "playedGames"),
@@ -240,26 +178,15 @@ const List<SourceColumn> footballDataColumns = [
   SourceColumn(header: "Against", path: "goalsAgainst"),
   SourceColumn(header: "GD", path: "goalDifference"),
   SourceColumn(header: "Points", path: "points"),
-  // The form guide. Called custom because on the free plan it is: the field
-  // exists in the response and is null unless the subscription covers trend
-  // data, so it is worked out from the results instead -- see
-  // football_form.dart, and the Custom fields section of a table's Data
-  // settings, which says so.
-  //
-  // Six games rather than the five the paid field would have sent, because
-  // the results it is built from have no such limit. Padded on the left so
-  // the most recent game is in the same place in every row whatever a club
-  // has played, and marked off from the ones before it.
+  // The form guide. "form" is null on the free plan, so it is worked out from
+  // the results instead (football_form.dart), which allows six games rather
+  // than the paid field's five.
   SourceColumn(header: "Custom form", path: "form", spread: 6, divider: "|"),
 ];
 
-/// footballDataFields is every field a standings record carries, for the
-/// mapping's list before a refresh has discovered them.
-///
-/// Taken from the published response rather than guessed: position, the team
-/// four ways, the games, the form, and the eight numbers. The Field dropdown
-/// shows whatever actually arrived once a refresh has happened, which is the
-/// authority; this is what it can offer before one has.
+/// footballDataFields is every field a standings record carries, taken from
+/// the published response, for the Field dropdown before a refresh has
+/// shown what actually arrives.
 const List<String> footballDataFields = [
   "position",
   "team.id",
@@ -278,15 +205,9 @@ const List<String> footballDataFields = [
   "goalDifference",
 ];
 
-/// footballData is football-data.org's standings.
-///
-/// Recommended over the alternatives for one reason above the others: its
-/// standings response is already a league table. Every column below is a field
-/// on the record rather than something to be counted up or joined from a
-/// second call, so the mapping is a list of names and the refresh is one
-/// request. The free tier covers the competitions most people want a table of,
-/// including both English divisions, and rate-limits at ten requests a minute
-/// -- which for a thing a person presses is no limit at all.
+/// footballData is football-data.org's standings. Its response is already a
+/// league table, so a refresh is one request. The free tier rate-limits at
+/// ten requests a minute.
 final DataPreset footballData = DataPreset(
   id: "football-data.org",
   label: "Football league table (football-data.org)",
@@ -295,8 +216,7 @@ final DataPreset footballData = DataPreset(
       "The key is kept on this machine and never saved into the canvas, so a "
       "canvas you send carries the table and not your key.",
   choiceLabel: "Competition",
-  // The free tier's competitions. Codes rather than ids, because a code is
-  // readable in the address bar when something is not working.
+  // The free tier's competitions, by code.
   choices: const [
     ("PL", "Premier League"),
     ("ELC", "Championship"),
@@ -313,12 +233,10 @@ final DataPreset footballData = DataPreset(
   ],
   address: (code) =>
       "https://api.football-data.org/v4/competitions/$code/standings",
-  // The response holds a list of standings -- the whole table, then home and
-  // away for some competitions -- and the first is the one anybody means.
+  // The first standing is the whole table; some competitions add home and
+  // away after it.
   rowsPath: "standings.0.table",
-  // Rows are identified by the team's name across a refresh, so a column the
-  // reader keeps -- their own badges -- follows its club up and down the
-  // table rather than staying where it was put.
+  // The team's name.
   matchColumn: 2,
   hiddenHeaders: const [0, 1],
   fields: footballDataFields,
@@ -328,11 +246,8 @@ final DataPreset footballData = DataPreset(
 );
 
 // ---------------------------------------------------------------------------
-// The chain and market series.
-//
-// Both of these were checked against the live APIs rather than written from
-// documentation, because the shape is the whole of the mapping and there is
-// nothing to be gained by guessing at it.
+// The chain and market series. Their shapes were checked against the live
+// APIs.
 
 /// _DcrChart is one of dcrdata's series: the name in the address, what the
 /// array of values is called, and how to make it readable.
@@ -340,18 +255,15 @@ class _DcrChart {
   final String name;
   final String label;
 
-  /// field is the array the values are in. Every one of these responds with a
-  /// "t" of timestamps and one other array, named for what it holds.
+  /// field is the array the values are in, beside the "t" array of
+  /// timestamps.
   final String field;
 
-  /// divide brings atoms into DCR. The chain counts money in hundred-
-  /// millionths and a chart of two hundred million ticket-atoms is a chart
-  /// with the wrong story on it.
+  /// divide brings atoms into DCR.
   final double divide;
 
-  /// query is what the endpoint needs to answer at all. Most of these bin by
-  /// day when asked to; a few return nothing for bin=day and have to be left
-  /// to the server's own default.
+  /// query is what the endpoint needs to answer at all: a few return nothing
+  /// for bin=day and are left to the server's default.
   final String query;
 
   const _DcrChart(this.name, this.label, this.field,
@@ -376,12 +288,8 @@ const List<_DcrChart> _dcrCharts = [
 _DcrChart _dcrChart(String name) => _dcrCharts.firstWhere((c) => c.name == name,
     orElse: () => _dcrCharts.first);
 
-/// dcrdataChart is Decred's own chain history.
-///
-/// No key, no account, and the numbers are the chain's rather than an
-/// exchange's opinion of it. The response is parallel arrays -- an array of
-/// timestamps and an array of values -- which is why [DataShape.columns]
-/// exists.
+/// dcrdataChart is Decred's own chain history, needing no key. The response
+/// is parallel arrays; see [DataShape.columns].
 final DataPreset dcrdataChart = DataPreset(
   id: "dcrdata.decred.org",
   label: "Decred chain history (dcrdata)",
@@ -399,8 +307,7 @@ final DataPreset dcrdataChart = DataPreset(
   charts: true,
   chartCategory: 0,
   chartValues: const [1],
-  // Daily since 2016 is four thousand points. A chart is read at a glance and
-  // a canvas is eight inches wide.
+  // Daily since 2016 is four thousand points.
   chartPoints: 120,
   fields: const ["t", "supply", "price", "diff", "rate", "count", "fees"],
   columns: const [],
@@ -414,11 +321,8 @@ final DataPreset dcrdataChart = DataPreset(
   },
 );
 
-/// _geckoCoins is the list offered rather than every coin there is.
-///
-/// CoinGecko has thousands, and a dropdown of thousands is a worse way to
-/// choose one than typing its name into the address. These are the ones
-/// somebody building a canvas in this app is likely to want, Decred first.
+/// _geckoCoins is the CoinGecko coins offered by id and name, Decred first:
+/// a short list of likely ones out of thousands.
 const List<(String, String)> _geckoCoins = [
   ("decred", "Decred"),
   ("bitcoin", "Bitcoin"),
@@ -456,9 +360,8 @@ const List<(String, String)> _geckoCoins = [
   ("digibyte", "DigiByte"),
   ("ravencoin", "Ravencoin"),
   ("siacoin", "Siacoin"),
-  // Horizen used to be ZenCash, likewise.
+  // Filed under their old names, ZenCash and Zcoin.
   ("zencash", "Horizen"),
-  // Firo used to be Zcoin, and CoinGecko still files it that way.
   ("zcoin", "Firo"),
   ("beam", "Beam"),
   ("grin", "Grin"),
@@ -555,27 +458,16 @@ List<(String, String)> get geckoCoinsForTest => _geckoCoins;
 /// names a row. See DataPreset.rowNames.
 final List<String> geckoCoinNames = [for (var (_, name) in _geckoCoins) name];
 
-/// geckoCoinIds is what each of those names is filed under.
-///
-/// Built from the one list rather than written out again, so a name and its
-/// identifier cannot drift apart. Most are the name in lower case with
-/// hyphens -- which is what asRowKey makes of them anyway -- and the handful
-/// that are not is the whole reason this exists: XRP is filed as ripple, BNB
-/// as binancecoin, Avalanche as avalanche-2. Suggesting those names without
-/// this would be suggesting coins that cannot be fetched.
+/// geckoCoinIds is what each of those names is filed under, keyed by
+/// asRowKey of the name, for the handful whose id is not that key (XRP is
+/// ripple). Built from the one list so the two cannot drift apart.
 final Map<String, String> geckoCoinIds = {
   for (var (id, name) in _geckoCoins) asRowKey(name): id,
 };
 
-/// coinGeckoPrice is a coin's price history.
-///
-/// Recommended over CoinMarketCap for the reason that decides it: the free
-/// tier here answers with history, and CoinMarketCap's answers with the
-/// latest price only. A chart of one point is not a chart.
-///
-/// The response is a list of two-element arrays -- [when, what] -- so the
-/// paths into a record are "0" and "1". That falls out of the existing walker
-/// rather than needing anything new: a number in a path is a list index.
+/// coinGeckoPrice is a coin's price history. (CoinMarketCap's free tier gives
+/// only the latest price.) Each record is a `[when, price]` pair, so the
+/// paths are the list indices "0" and "1".
 final DataPreset coinGeckoPrice = DataPreset(
   id: "coingecko.price",
   label: "Coin price history (CoinGecko)",
@@ -599,22 +491,15 @@ final DataPreset coinGeckoPrice = DataPreset(
   ],
 );
 
-/// coinGeckoMarkets is several coins side by side, as they stand now.
-///
-/// A list of records, so it maps the ordinary way, and the one preset here
-/// that suits a table as readily as a chart: eight rows of name, price and
-/// market cap is a table somebody would keep.
+/// coinGeckoMarkets is several coins side by side, as they stand now: a list
+/// of records, offered to tables and charts alike.
 final DataPreset coinGeckoMarkets = DataPreset(
   id: "coingecko.markets",
   label: "Coin comparison (CoinGecko)",
-  // The one preset whose choice is a list of rows, so the table can say which
-  // coins it wants instead of picking one of three baskets.
   choiceFromRows: true,
-  // What a row of this source is, for the cell that names one.
   rowNames: geckoCoinNames,
   rowIds: geckoCoinIds,
-  // Every coin CoinGecko knows, with the identifier it files each under. No
-  // key needed, and it is the only way to be right about the awkward ones.
+  // Every coin CoinGecko knows, with its id. No key needed.
   namesAddress: "https://api.coingecko.com/api/v3/coins/list",
   shortLabel: "CoinGecko",
   note: "No key needed. One row per coin, as they stand at the moment it is "
@@ -633,10 +518,8 @@ final DataPreset coinGeckoMarkets = DataPreset(
   matchColumn: 0,
   chartCategory: 0,
   chartValues: const [1],
-  // Everything a markets record carries, so a series can be drawn from any of
-  // it without waiting for a refresh to discover the name. Five of them are
-  // mapped as columns because five is a table somebody would keep; the rest
-  // are one choice away in the series picker.
+  // Everything a markets record carries, so the series picker can offer any
+  // of it before a refresh. Five are mapped as columns.
   fields: const [
     "id",
     "symbol",
@@ -675,10 +558,8 @@ final DataPreset coinGeckoMarkets = DataPreset(
 
 /// coinGeckoCandles is a coin's open, high, low and close.
 ///
-/// The rows are arrays -- [when, open, high, low, close] -- so the paths are
-/// indices, the same way the price history's are. Thirty days at four-hourly
-/// candles is about a hundred and eighty, which is more than a canvas can
-/// draw legibly, so it is thinned like everything else.
+/// The rows are `[when, open, high, low, close]` arrays, so the paths are
+/// indices. Thirty days of four-hour candles (about 180) is thinned to 60.
 final DataPreset coinGeckoCandles = DataPreset(
   id: "coingecko.ohlc",
   label: "Candlesticks (CoinGecko)",
@@ -708,9 +589,8 @@ final DataPreset coinGeckoCandles = DataPreset(
 
 /// dcrdexCandles is Decred's own market, through dcrdata.
 ///
-/// A list of records rather than arrays this time, with the period's start as
-/// an ISO date. The prices are in BTC, which is what the market trades in --
-/// so this is the chart of the DCR/BTC pair and not of a dollar price.
+/// A list of records, with the period's start as an ISO date. Prices are in
+/// BTC: this is the DCR/BTC pair, not a dollar price.
 final DataPreset dcrdexCandles = DataPreset(
   id: "dcrdata.candlestick",
   label: "Decred market candlesticks (dcrdex)",
@@ -741,7 +621,7 @@ final DataPreset dcrdexCandles = DataPreset(
   ],
 );
 
-/// dataPresets is every recipe there is.
+/// dataPresets is every recipe.
 final List<DataPreset> dataPresets = [
   footballData,
   dcrdataChart,

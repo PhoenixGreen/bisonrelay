@@ -9,11 +9,8 @@ import 'package:flutter/painting.dart';
 
 // background_looks.dart is the designed starting points for every style.
 //
-// A style on its own is one picture and a dozen settings, and finding the
-// good versions of it is the work nobody wants to do first. A look is one of
-// those good versions already found: chosen, it is the whole recipe -- the
-// colours, the numbers, the effects -- and every setting is still there to
-// carry on from.
+// A look is a whole recipe (colours, numbers, effects) that every setting
+// can still be changed from.
 
 /// BackgroundLook is one designed version of a style.
 class BackgroundLook {
@@ -27,10 +24,8 @@ List<BackgroundLook> looksFor(ProceduralStyle style) =>
     (_looks ??= _build())[style] ?? const [];
 
 /// withLook is [current] made into [look], keeping what belongs to the
-/// document rather than to the design: how long a run of the movement is,
-/// whether it moves, any pictures the rings were carrying, and the layers
-/// laid over it -- unless the look is itself a stack of layers, when its
-/// own come with it.
+/// document rather than the design: the run length, whether it moves, the
+/// rings' pictures, and the layers over it (unless the look brings its own).
 ProceduralSpec withLook(ProceduralSpec current, BackgroundLook look) {
   var s = look.spec;
   return s.copyWith(
@@ -41,8 +36,6 @@ ProceduralSpec withLook(ProceduralSpec current, BackgroundLook look) {
     pauseAt: current.pauseAt,
     pauseFor: current.pauseFor,
     pauseEase: current.pauseEase,
-    // The layers over it are a design of their own, laid on whatever is
-    // under them.
     layers: s.layers.isNotEmpty ? s.layers : current.layers,
     rings: s.style == ProceduralStyle.rings
         ? s.rings.copyWith(icons: current.rings.icons)
@@ -62,8 +55,7 @@ BackgroundLook? lookMatching(ProceduralSpec spec) {
 
 Map<ProceduralStyle, List<BackgroundLook>>? _looks;
 
-/// _in is a palette by name. A misspelt one is a mistake here rather than
-/// something to recover from, so it is not caught.
+/// _in is a palette by name; a misspelt name throws.
 BackgroundPalette _in(String name) => paletteNamed(name)!;
 
 BackgroundLook _look(

@@ -10,10 +10,8 @@ import 'package:flutter/painting.dart';
 // chart_circular.dart draws the types arranged round a centre: pie, donut,
 // radial bars and radar.
 //
-// They share almost nothing with the cartesian types beyond the animation --
-// no axes, no plot rectangle, no ticks -- which is why they are their own
-// file. What they do share is how far through its arrival each slice is, and
-// that lives in chart_common.dart so the legend can ask the same question.
+// What they share with the legend (slice progress and colour) is in
+// chart_common.dart.
 
 /// paintCircular draws the pie, donut, radial-bar and radar types.
 void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
@@ -37,9 +35,8 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         var sweep = values[i].abs() / total * math.pi * 2;
         var color = sliceColour(e, i);
 
-        // Each slice opens out of the middle in turn. A sweep is handled by
-        // the clip around the whole chart -- see paintChart -- so it is not
-        // one of the cases here.
+        // Each slice opens out of the middle in turn. A sweep is the clip in
+        // paintChart.
         var slice = sliceProgress(e, reveal, i, values.length);
         if (slice.gone) {
           start += sweep;
@@ -140,12 +137,8 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         }
         canvas.drawPath(path, web);
       }
-      // The scale, up the spoke that points at twelve o'clock.
-      //
-      // Not a number at every corner of every shape, which is where these
-      // started: a radar of three series is thirty numbers scattered round a
-      // ring, most of them sitting on a line or on each other. One scale on
-      // one spoke is what the rings already mean, written down.
+      // One scale up the twelve o'clock spoke, not a number at every corner,
+      // which would overlap.
       if (e.showValues) {
         for (var ringIndex = 1; ringIndex <= 4; ringIndex++) {
           var at = spoke(0, ringIndex / 4);
@@ -178,8 +171,7 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       }
 
       for (var s = 0; s < data.series.length; s++) {
-        // A radar has one shape per series, so it is staggered by series and
-        // grows out of the centre -- the only direction a radar has.
+        // One shape per series: staggered by series, grown from the centre.
         var slice = sliceProgress(e, reveal, s, data.series.length);
         if (slice.gone) continue;
 

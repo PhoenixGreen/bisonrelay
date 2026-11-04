@@ -3,12 +3,12 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-// sprite_pixels.dart is a sprite sheet's pixels, held to paint on: a dot or
-// a line of them in a colour -- or cleared -- a run of one colour filled,
-// a colour picked up, a frame copied to another, the sheet made bigger for
-// more frames; and the picture made of them again. What the Sprite
-// element's painter draws with -- see the stage's sprite painting.
+// sprite_pixels.dart is a sprite sheet's pixels, held to paint on: what the
+// Sprite element's pixel painter (ui/sprite_painting.dart) draws with.
 
+/// SpritePixels is a sheet's pixels: dots and lines in a colour or cleared,
+/// runs filled, colours picked up, frames copied, the sheet grown, and the
+/// picture made of them again.
 class SpritePixels {
   final int width;
   final int height;

@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
+import 'package:bruig/plugin_system/canvas/model/web_link.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
@@ -13,14 +14,14 @@ import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
+import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
 // epub_media.dart is a page's sound and video, for an interactive EPUB.
 //
-// A page of an EPUB is its picture with things laid over it, so what can be
-// laid over is laid over, as the reader's own <audio> and <video>, and what
-// cannot is baked:
+// What can be laid over the page picture is, as the reader's own <audio> and
+// <video>; what cannot is baked:
 //
 // - A sound, a speaker to press, a plain video -- one with nothing done to
 //   its picture -- are the reader's own, driven by media.js with the same
@@ -34,9 +35,8 @@ import 'package:path/path.dart' as path;
 //   drawn by a reader, and stays as its poster, which the page's picture
 //   already shows. Put it on the timeline to have it move.
 //
-// Files are converted to what readers play -- AAC for sound, H.264 for video
-// -- which is ffmpeg's job. Without it a book has its pages, its links and no
-// sound.
+// Files are converted by ffmpeg to AAC and H.264. Without it a book has its
+// pages, its links and no sound.
 
 /// EpubPageMedia is what one page adds to the book.
 class EpubPageMedia {
@@ -57,6 +57,8 @@ class EpubPageMedia {
   });
 }
 
+/// EpubMediaBuilder builds each page's media for one book, converting each
+/// file once.
 class EpubMediaBuilder {
   final String? ffmpeg;
   final double scale;
@@ -103,9 +105,8 @@ class EpubMediaBuilder {
       if (used.add(f.href)) files.add(f);
     }
 
-    // Whether the page has buttons of its own for the playhead. It waits for
-    // them if it does, as the canvas does; and starts by itself if not, since
-    // nothing else would ever start it.
+    // A page with playhead buttons waits for them, as the canvas does; one
+    // without starts by itself.
     var driven = elements.any((e) =>
         e is ButtonElement && e.visible && _playheadAct(e.action.kind) != null);
 
@@ -121,8 +122,7 @@ class EpubMediaBuilder {
             e.id,
     };
 
-    // A background video that a reader can play as it is, playing as itself:
-    // going round under the page, as it does on the canvas.
+    // A plain background video plays as itself under the page.
     String? backdropVideo;
     var backVideo = document.backgroundOf(index).video;
     if (backVideo != null &&
@@ -140,8 +140,8 @@ class EpubMediaBuilder {
     // The page as its elements, where anything on it moves.
     EpubStage? stage;
     String? soundtrack;
-    // A keyed video on the timeline is filmed as itself, frame by frame, so
-    // its frames are read the way an export reads them.
+    // A keyed video on the timeline is filmed frame by frame, read the way an
+    // export reads it.
     var keyed = elements.any((e) =>
         e is VideoElement && isTimedMedia(e) && !e.isLink && !plainVideo(e));
     var timeline = keyed && ffmpeg != null
@@ -287,13 +287,15 @@ class EpubMediaBuilder {
           case AudioElement a:
             if (await sound(a) case var m?) media.add(m);
           case VideoElement v when v.isLink:
+            var href = webLink(linkAt(v.link, v.linkStart))?.toString();
+            if (href == null) continue;
             var box = v.look.box.inner(v.bounds);
             links.add(EpubLink(
                 x: box.left * pixels,
                 y: box.top * pixels,
                 width: box.width * pixels,
                 height: box.height * pixels,
-                href: linkAt(v.link, v.linkStart),
+                href: href,
                 element: v.id));
           case VideoElement v:
             if (await film_(v) case var m?) media.add(m);
@@ -306,13 +308,15 @@ class EpubMediaBuilder {
       // Links need no ffmpeg.
       for (var e in elements) {
         if (e is VideoElement && e.isLink) {
+          var href = webLink(linkAt(e.link, e.linkStart))?.toString();
+          if (href == null) continue;
           var box = e.look.box.inner(e.bounds);
           links.add(EpubLink(
               x: box.left * pixels,
               y: box.top * pixels,
               width: box.width * pixels,
               height: box.height * pixels,
-              href: linkAt(e.link, e.linkStart),
+              href: href,
               element: e.id));
         }
       }
@@ -435,7 +439,7 @@ class EpubMediaBuilder {
       var out = path.join(work.path, video ? "out.mp4" : "out.m4a");
       var run = await Process.run(ffmpeg, [
         "-hide_banner", "-loglevel", "error", "-y", //
-        "-i", source,
+        ...ffmpegInput(source),
         if (video) ...[
           "-vf",
           "scale='min(1280,iw)':-2",
@@ -491,7 +495,7 @@ String? _playheadAct(ButtonActionKind kind) => switch (kind) {
       _ => null,
     };
 
-/// plainVideo is whether a reader's own <video> can show [e] as the canvas
+/// plainVideo is whether a reader's own `<video>` can show [e] as the canvas
 /// does: nothing keyed, cut, cropped, filtered, tinted or outlined -- only
 /// fitted to its box, which CSS can do.
 bool plainVideo(VideoElement e) {

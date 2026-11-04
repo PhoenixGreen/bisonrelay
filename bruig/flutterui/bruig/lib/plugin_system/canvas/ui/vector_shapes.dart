@@ -5,9 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 
 // vector_shapes.dart is the shape tool's shapes: boxes, circles, polygons,
-// stars, lines, arrows, marks -- the starting points of a drawing or an
-// icon. Each is made of the same points and handles as anything else in a
-// drawing, so once it is down it is edited like anything else.
+// stars, lines, arrows, marks. Each is made of ordinary points and handles, so
+// once down it is edited like anything else in a drawing.
 
 /// VectorShapeKind is one of the shapes the shape tool draws.
 enum VectorShapeKind {
@@ -46,10 +45,10 @@ enum VectorShapeKind {
 /// length that makes four cubic curves as near a circle as they can be.
 const double kappa = 0.5522847498;
 
-/// shapeOf is [kind] drawn in [box] -- or, for a line or an arrow, from
-/// [from] to [to] -- in the drawing's units. [sides] is a polygon's sides
-/// and a star's points, [inner] a star's inner points as a share of its
-/// outer ones, and [corner] a rounded box's corner radius.
+/// shapeOf is [kind] drawn in [box] (or, for a line or an arrow, from [from]
+/// to [to]) in the drawing's units. [sides] is a polygon's sides and a star's
+/// points, [inner] a star's inner points as a share of its outer ones, and
+/// [corner] a rounded box's corner radius.
 VectorShape shapeOf(
   VectorShapeKind kind,
   Rect box, {
@@ -197,8 +196,8 @@ List<VectorPath> _paths(VectorShapeKind kind, Rect r,
       ];
     case VectorShapeKind.heart:
       // Two lobes and a point, each lobe a pair of curves, drawn in a unit
-      // box and then stretched so the curves themselves -- not the points,
-      // which sit inside them -- fill the box dragged.
+      // box and stretched so the curves (not the points inside them) fill
+      // the box dragged.
       VectorNode n(double x, double y,
               {double ix = 0, double iy = 0, double ox = 0, double oy = 0}) =>
           VectorNode(x, y, inX: ix, inY: iy, outX: ox, outY: oy);
@@ -227,15 +226,14 @@ List<VectorPath> _paths(VectorShapeKind kind, Rect r,
 }
 
 /// _onCircle is the point [turn] of the way round a circle of [radius],
-/// starting at the top and going clockwise -- so a polygon or a star stands
-/// on a side, with a point at the top.
+/// clockwise from the top, so a polygon or star has a point at the top.
 Offset _onCircle(double turn, double radius) {
   var a = -math.pi / 2 + turn * 2 * math.pi;
   return Offset(math.cos(a), math.sin(a)) * radius;
 }
 
-/// _fitted is [points] stretched to fill [box] exactly: a five-sided shape
-/// is not as tall as it is wide, and drawn in a box it should fill the box.
+/// _fitted is [points] stretched to fill [box] exactly (a pentagon is not as
+/// tall as it is wide).
 List<VectorNode> _fitted(Rect box, List<Offset> points) {
   var b = Rect.fromPoints(points.first, points.first);
   for (var p in points) {

@@ -28,13 +28,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 // animation_panel.dart is the Animation panel: the picked clip, laid out as
-// the effects are -- a row of devices side by side, each folding to its
-// title. Clip; Motion, the ready-made motions; Keys, as wide as it is let be
-// and dragged wider (Ken); Inside it, what only this kind of element does;
+// the effects are, a row of devices side by side, each folding to its
+// title. Clip; Motion, the ready-made motions; Keys, as wide as the room
+// allows and dragged wider; Inside, what only this kind of element does;
 // Timing, where it is placed and pinned; Place; and Launch.
 //
-// Every change goes through motion_editing.dart, so it is one undo step --
-// a slider dragged, one step for the whole drag.
+// Every change goes through motion_editing.dart, so it is one undo step: a
+// slider dragged is one step for the whole drag.
 
 /// AnimationPanel is the panel, [height] tall.
 class AnimationPanel extends StatefulWidget {
@@ -61,7 +61,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
   static final Set<String> _folded = {};
 
   /// _keysWidth is how wide the Keys device has been dragged; null, as wide
-  /// as the room the others leave (Ken: as big as it can be).
+  /// as the room the others leave.
   static double? _keysWidth;
 
   /// _keyPicked is the key picked in the Keys device: its property and
@@ -91,29 +91,47 @@ class _AnimationPanelState extends State<AnimationPanel> {
     setState(() {});
   }
 
+  /// _picked is the clip picked -- or, with none, the selected element's
+  /// first: in a slot, else on the timeline.
   (CanvasElement, MotionClip)? get _picked {
     var id = controller.pickedMotion;
-    if (id == null) return null;
+    if (id == null) {
+      var e = controller.selected;
+      if (e == null) return null;
+      var m = e.base.motion;
+      var first = [
+        for (var s in m.slots)
+          if (s.isNotEmpty) s,
+        for (var p in m.placed) p.clip,
+      ].map(m.clip).whereType<MotionClip>().firstOrNull;
+      return first == null ? null : (e, first);
+    }
     for (var e in controller.document.elements) {
       if (e.base.motion.clip(id) case var c?) return (e, c);
     }
     return null;
   }
 
+  /// _pickedId is the id of the clip shown: picked, or the selected
+  /// element's first.
+  String? get _pickedId => _picked?.$2.id;
+
   void _edit(CanvasElement e, MotionClip Function(MotionClip) change,
       {bool live = false}) {
     if (live) {
       controller.beginInteraction();
-      controller.editMotionClip(e.id, controller.pickedMotion!, change,
-          transient: true);
+      controller.editMotionClip(e.id, _pickedId!, change, transient: true);
     } else {
-      controller.editMotionClip(e.id, controller.pickedMotion!, change);
+      controller.editMotionClip(e.id, _pickedId!, change);
     }
   }
 
+  /// _device is one section of the panel: drawn at its text's own size
+  /// whatever the panel's height, scrolling where it is taller than the
+  /// room. [help], when there is any, is behind a "?" in its header.
   Widget _device(
       String id, String title, double width, Widget body, ColorScheme colors,
-      {List<Widget> actions = const []}) {
+      {List<Widget> actions = const [], String? help}) {
     return DeviceFrame(
       key: ValueKey("animDevice-$id"),
       id: "anim-$id",
@@ -124,7 +142,20 @@ class _AnimationPanelState extends State<AnimationPanel> {
           () => _folded.contains(id) ? _folded.remove(id) : _folded.add(id)),
       width: width,
       height: widget.height - 40,
-      actions: actions,
+      drawnHeight: widget.height - 40,
+      actions: [
+        ...actions,
+        if (help != null)
+          Tooltip(
+            message: help,
+            preferBelow: false,
+            constraints: const BoxConstraints(maxWidth: 320),
+            child: Icon(Icons.help_outline,
+                key: ValueKey("animHelp-$id"),
+                size: 15,
+                color: colors.onSurfaceVariant),
+          ),
+      ],
       body: Padding(
         padding: const EdgeInsets.all(8),
         child: SingleChildScrollView(child: body),
@@ -233,11 +264,9 @@ class _AnimationPanelState extends State<AnimationPanel> {
                 6.0 * (others.length + 1) +
                 16;
             // At least half the panel, however many devices there are:
-            // those after it scroll (Ken: as big as it can be).
-            var fill = math.max(
-                380.0,
-                math.max(box.maxWidth / 2 - 8, box.maxWidth - taken) / _scale -
-                    1);
+            // those after it scroll.
+            var fill = math.max(380.0,
+                math.max(box.maxWidth / 2 - 8, box.maxWidth - taken) - 1);
             return ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
@@ -257,12 +286,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
     );
   }
 
-  /// _scale is how the devices are scaled to the panel's height, as
-  /// DeviceFrame scales them.
-  double get _scale => ((widget.height - 40) / deviceHeight).clamp(0.5, 1.5);
-
   double _onScreen(String id, double width) =>
-      (_folded.contains(id) ? deviceFoldedWidth : width) * _scale;
+      _folded.contains(id) ? deviceFoldedWidth : width;
 
   /// _playhead is where in [c] it is playing: from its slot, or the
   /// playhead on the stretch of the timeline picked.
@@ -339,12 +364,11 @@ class _AnimationPanelState extends State<AnimationPanel> {
               value: c.loop,
               onChanged: (v) => _edit(e, (c) => c.copyWith(loop: v)),
             ),
-            if (!c.isSound)
-              Text("Layers add together: one walks while another waves.",
-                  style:
-                      TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
           ]),
-          colors);
+          colors,
+          help: c.isSound
+              ? null
+              : "Layers add together: one walks while another waves.");
 
   Widget _motionDevice(CanvasElement e, MotionClip c, ColorScheme colors) {
     if (c.kind == MotionKind.model) {
@@ -440,15 +464,12 @@ class _AnimationPanelState extends State<AnimationPanel> {
               options: [for (var w in preset.ways) (w, w.label)],
               onChanged: (w) => _edit(e, (c) => preset.onto(c, way: w)),
             ),
-          const SizedBox(height: 6),
-          Text(
-              c.edited
-                  ? "Keys made by hand. Picking a motion replaces them."
-                  : "A ready-made motion writes the keys; change one and they "
-                      "are yours.",
-              style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
         ]),
-        colors);
+        colors,
+        help: c.edited
+            ? "Keys made by hand. Picking a motion replaces them."
+            : "A ready-made motion writes the keys; change one and they "
+                "are yours.");
   }
 
   MotionWay _wayOf(MotionClip c, MotionPreset p) {
@@ -512,13 +533,9 @@ class _AnimationPanelState extends State<AnimationPanel> {
       },
     );
     var side = key == null
-        ? Text(
-            "Click a row to add a key, drag a key to retime it, click one "
-            "to change it. Amber keys are places worked out as it plays.",
-            style: TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant))
+        ? null
         : _keyFields(e, c, picked!.$1, picked.$2, key, colors);
-    // Its right edge is dragged to make it wider (Ken: the keys' timeline
-    // as big as it can be, and resizable).
+    // Its right edge is dragged to make it wider.
     return Stack(children: [
       _device(
           "keys",
@@ -526,10 +543,14 @@ class _AnimationPanelState extends State<AnimationPanel> {
           width,
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(child: editor),
-            const SizedBox(width: 10),
-            SizedBox(width: 200, child: side),
+            if (side != null) ...[
+              const SizedBox(width: 10),
+              SizedBox(width: 200, child: side),
+            ],
           ]),
-          colors),
+          colors,
+          help: "Click a row to add a key, drag a key to retime it, click one "
+              "to change it. Amber keys are places worked out as it plays."),
       if (!_folded.contains("keys"))
         Positioned(
           right: 0,
@@ -542,8 +563,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
               key: const ValueKey("animKeysGrip"),
               behavior: HitTestBehavior.opaque,
               onHorizontalDragUpdate: (d) => setState(() => _keysWidth =
-                  ((_keysWidth ?? width) + d.delta.dx / _scale)
-                      .clamp(380.0, 2400.0)),
+                  ((_keysWidth ?? width) + d.delta.dx).clamp(380.0, 2400.0)),
               // Double-clicked: as wide as there is room for again.
               onDoubleTap: () => setState(() => _keysWidth = null),
             ),
@@ -693,7 +713,6 @@ class _AnimationPanelState extends State<AnimationPanel> {
   /// across the clip; a counter counting; a line bowing; text sliding along
   /// its line.
   Widget _insideDevice(CanvasElement e, MotionClip c, ColorScheme colors) {
-    var hint = TextStyle(fontSize: 11, color: colors.onSurfaceVariant);
     void set(String key, Object? value) => _edit(
         e,
         (c) => c.copyWith(
@@ -751,14 +770,6 @@ class _AnimationPanelState extends State<AnimationPanel> {
               value: c.inside["own"] == true,
               onChanged: (v) => set("own", v),
             ),
-            Text(
-                arriving
-                    ? "Its words, pieces or layers come in as its Animation "
-                        "settings say, across this clip. Before the clip, it "
-                        "is not there yet."
-                    : "It goes as its Animation settings say, across this "
-                        "clip.",
-                style: hint),
             const SizedBox(height: 6),
           ],
           if (e is CounterElement)
@@ -768,7 +779,16 @@ class _AnimationPanelState extends State<AnimationPanel> {
           if (e is TextElement && e.curve != null)
             ...span("slide", "Slides along its line", e.curve!.offset, 1),
         ]),
-        colors);
+        colors,
+        help: !_ownWay(e) ||
+                (c.kind != MotionKind.arrive && c.kind != MotionKind.leave)
+            ? null
+            : arriving
+                ? "Its own arrival: its words, pieces or layers come in as its "
+                    "Animation settings say, across this clip. Before the "
+                    "clip, it is not there yet."
+                : "Its own way out: it goes as its Animation settings say, "
+                    "across this clip.");
   }
 
   Widget _timingDevice(
@@ -865,16 +885,14 @@ class _AnimationPanelState extends State<AnimationPanel> {
             ),
             Text(
                 "${span.start.toStringAsFixed(2)}–${span.end.toStringAsFixed(2)} s · "
-                "${c.loop ? "repeats to fill it" : "retimed to fit: ${span.speed.toStringAsFixed(2)}×"}. "
-                "A pinned end follows what it is pinned to.",
+                "${c.loop ? "repeats to fill it" : "retimed to fit: ${span.speed.toStringAsFixed(2)}×"}",
                 style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
-          ] else
-            Text(
-                "Placed on the timeline, its start and end can be pinned to "
-                "markers, the scene, or another clip's end.",
-                style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
+          ],
         ]),
-        colors);
+        colors,
+        help: "Placed on the timeline, its start and end can be pinned to "
+            "markers, the scene, or another clip's end; a pinned end follows "
+            "what it is pinned to.");
   }
 
   Widget _placeDevice(CanvasElement e, MotionClip c, ColorScheme colors) =>
@@ -915,13 +933,11 @@ class _AnimationPanelState extends State<AnimationPanel> {
                         }));
               },
             ),
-            Text(
-                "From where it is, one clip works on any element, wherever it is "
-                "moved. Off an edge, beside or on another element are worked "
-                "out as it plays.",
-                style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
           ]),
-          colors);
+          colors,
+          help: "From where it is, one clip works on any element, wherever "
+              "it is moved. Off an edge, beside or on another element are "
+              "worked out as it plays.");
 
   Widget _launchDevice(CanvasElement e, MotionClip c, ColorScheme colors) {
     var mates = [
@@ -993,8 +1009,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
               ),
             ]),
           if (c.triggers.isEmpty)
-            Text(
-                "Only from its slot, its cue, the timeline or another clip's Then.",
+            Text("Nothing else",
                 style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
           CanvasDropdown<String>(
             key: const ValueKey("animTriggerAdd"),
@@ -1039,7 +1054,10 @@ class _AnimationPanelState extends State<AnimationPanel> {
             },
           ),
         ]),
-        colors);
+        colors,
+        help: "A press is what pressing its slot does. Also starts when: what "
+            "else launches it, past its slot, its cue, the timeline and "
+            "another clip's Then.");
   }
 
   String _triggerName(ClipTrigger t) {

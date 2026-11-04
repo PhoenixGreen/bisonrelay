@@ -6,33 +6,25 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
 /// ButtonActionKind is what pressing a button does.
 ///
-/// Everything here is about the canvas itself. A published interactive canvas
-/// runs inside a chat message or a page, and a button that could reach outside
-/// it -- run something, read something, call something -- would make opening
-/// somebody's canvas a risk. So the whole vocabulary is: move the playhead,
-/// show or hide something, and one deliberately-confirmed link.
+/// Everything here stays inside the canvas, for safety: a published canvas
+/// runs inside a chat message or a page, and a button that could run, read
+/// or call anything outside it would make opening one a risk. The only way
+/// out is a link the viewer is asked to confirm.
 enum ButtonActionKind {
   goToFrame("Go to frame", "Jump the playhead and hold there"),
   playFrom("Play from frame", "Jump there and start playing"),
   playToFrame("Play to frame", "Play forward and stop on that frame"),
   play("Play", "Start playing from where the playhead is"),
   pause("Pause", "Stop the playhead where it is"),
-  // One button that is both, the way a player's is: playing, it pauses;
-  // paused, it plays.
   togglePlay("Play or pause", "Start playing, or stop where it is"),
   restart("Restart", "Go back to the first frame and play"),
   toggleElement("Show or hide", "Flip another element's visibility"),
   goToScene("Go to a scene", "Show another canvas of this document"),
   openLink("Open a link", "Ask to open a URL in the browser"),
 
-  // A sound on the canvas, named by its element. The sound is an Audio
-  // element rather than a file on the button, so it has one set of settings
-  // -- range, fades, loop, volume -- wherever it is started from, and a
-  // sound only ever started by buttons is simply an Audio element that is
-  // hidden.
-  //
-  // Named "sound" in the saved file because that is what they were first;
-  // a video is played, paused and muted by the same five.
+  // An Audio or Video element on the canvas, named by its id, so it has one
+  // set of settings wherever it is started from. "Sound" in the saved names
+  // covers video too.
   playSound("Play a sound or video", "Start an audio or video element"),
   pauseSound("Pause a sound or video", "Hold it where it is"),
   toggleSound(
@@ -53,7 +45,8 @@ enum ButtonActionKind {
       this == goToFrame || this == playFrom || this == playToFrame;
   bool get needsElement => this == toggleElement || needsSound;
 
-  /// needsSound is whether the element named has to be an Audio element.
+  /// needsSound is whether the element named has to be an Audio or Video
+  /// element.
   bool get needsSound =>
       this == playSound ||
       this == pauseSound ||
@@ -61,10 +54,8 @@ enum ButtonActionKind {
       this == stopSound ||
       this == muteSound;
 
-  /// needsScene is whether the action names a canvas of this document. Named
-  /// rather than numbered where it can be: a scene keeps its id across a
-  /// rename and a reorder, and an action pointing at "the third scene" would
-  /// quietly mean a different one the moment the list was rearranged.
+  /// needsScene is whether the action names a scene of this document, by id
+  /// or name rather than by position, so reordering does not change it.
   bool get needsScene => this == goToScene;
   bool get needsUrl => this == openLink;
 }
@@ -74,11 +65,9 @@ class ButtonAction {
   final ButtonActionKind kind;
   final int frame;
 
-  /// elementId is the target of [ButtonActionKind.toggleElement], and the
-  /// scene of [ButtonActionKind.goToScene] -- an id or a name, whichever was
-  /// chosen. An id that no longer names anything is simply a button that does
-  /// nothing, which is what deleting the thing it pointed at should leave
-  /// behind.
+  /// elementId is the element an element or sound action targets, or the
+  /// scene of [ButtonActionKind.goToScene] (an id or a name). One that no
+  /// longer names anything makes a button that does nothing.
   final String elementId;
 
   final String url;
@@ -111,7 +100,7 @@ class ButtonAction {
       };
 
   factory ButtonAction.fromJson(Map<String, dynamic> json) => ButtonAction(
-        kind: ButtonActionKind.fromName(json["kind"] as String?),
+        kind: ButtonActionKind.fromName(jsonStr(json["kind"])),
         frame: jsonInt(json["frame"], 0),
         elementId: jsonString(json["element"], ""),
         url: jsonString(json["url"], ""),
@@ -119,31 +108,21 @@ class ButtonAction {
 }
 
 /// ButtonElement is a labelled rectangle that does something when pressed.
-///
-/// It is drawn like every other element and is inert in an exported PNG or
-/// GIF -- there is nothing to press in a picture. It is the reason to publish
-/// a canvas as an interactive canvas rather than as an image, and the settings
-/// bar says so when a button is added to a document nobody has published that
-/// way.
+/// Inert in an exported picture or video; only a published interactive
+/// canvas can be pressed.
 class ButtonElement extends CanvasElement {
   final String label;
   final TextSpec textSpec;
   final BoxSpec box;
 
   /// hoverFill and hoverTextColor are what the button becomes under the
-  /// pointer. Transparent means "no change", so a button with no hover styling
-  /// costs nothing and still works.
+  /// pointer. Transparent means no change.
   final Color hoverFill;
   final Color hoverTextColor;
 
   final ButtonAction action;
 
   /// animation is how it arrives and leaves, like any other thing in a box.
-  ///
-  /// A button is inert in a picture and is the reason to publish a canvas as
-  /// an interactive one -- but arriving is not pressing. A button that fades
-  /// in with the panel it belongs to and leaves with it is an ordinary thing
-  /// to want, and it was the one element in a box that could not.
   final ElementAnimation animation;
 
   const ButtonElement(

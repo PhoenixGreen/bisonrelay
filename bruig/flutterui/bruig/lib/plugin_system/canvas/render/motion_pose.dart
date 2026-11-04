@@ -7,7 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 // far it has moved, how big it is, how turned, how faded -- from the clips
 // placed on the timeline, or from the clips its slots are playing.
 //
-// The rules, as the prototype settled them:
+// The rules:
 //
 //  - Layers add. Each layer's pose is worked out alone and added to the
 //    others, scaled by the layer's weight: L1 walks while L2 waves.
@@ -105,8 +105,8 @@ class MotionPose {
                 : {...values, ...p.values},
       );
 
-  /// onto is [pose] -- a keyframe's -- with this added: the clips' moves on
-  /// top of whatever the element's own keyframes already do.
+  /// onto is [pose] (from a legacy keyframe track, or rest) with the clips'
+  /// moves added on top.
   Keyframe onto(Keyframe pose) => isRest
       ? pose
       : pose.copyWith(

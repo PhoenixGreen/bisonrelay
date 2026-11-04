@@ -7,20 +7,11 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 // recent_pictures.dart is the row of pictures already in the store, for
-// putting one on a second canvas without going and finding the file again.
-//
-// The bytes have been shared from the beginning -- two elements naming the
-// same picture have always been one file -- but nothing ever showed what was
-// in there, so the only way to reuse anything was to import it a second time.
-// That used to write a second copy as well; it does not any more, since a
-// picture's name is a hash of its own contents. This is the other half of that:
-// being able to see what is there.
+// putting one on a second canvas without finding the file again. A picture's
+// name is a hash of its contents, so both elements share the one file.
 
-/// showRecentPictures opens the picker and returns the chosen picture's id, or
-/// null if nothing was chosen.
-///
-/// [drawings] shows the drawings -- the Vectors store -- instead of the
-/// pictures.
+/// showRecentPictures opens the picker and returns the chosen picture's id,
+/// or null. [drawings] shows the Vectors store instead of the pictures.
 Future<String?> showRecentPictures(BuildContext context,
         {bool drawings = false}) =>
     showDialog<String>(
@@ -104,10 +95,6 @@ class _RecentPicturesDialogState extends State<_RecentPicturesDialog> {
 }
 
 /// _Thumbnail draws one stored picture.
-///
-/// Through the same image store the canvas itself draws from, so a picture
-/// already on screen costs nothing to show here and one that is not is decoded
-/// once and then shared with the canvas when it is chosen.
 class _Thumbnail extends StatelessWidget {
   final String id;
   final VoidCallback onTap;

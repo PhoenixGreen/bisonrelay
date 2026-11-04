@@ -163,12 +163,15 @@ void main() {
     await sidebar(tester, body: (c) => ScenePresetsPanel(controller: c));
 
     var name = find.text("Title card");
+    var rename = find.byKey(const ValueKey("presetRename"));
     // No pause between them: the second click is counted against the real
-    // clock, so a test that waits for a fake fifty milliseconds is a test
-    // that fails on a loaded machine.
-    await tester.tap(name);
-    await tester.tap(name);
-    await tester.pumpAndSettle();
+    // clock. Even so, a loaded machine can put them too far apart, so the
+    // pair is tried again until it lands.
+    for (var i = 0; i < 5 && rename.evaluate().isEmpty; i++) {
+      await tester.tap(name);
+      await tester.tap(name);
+      await tester.pumpAndSettle();
+    }
 
     expect(find.byKey(const ValueKey("presetRename")), findsOneWidget);
     await tester.enterText(

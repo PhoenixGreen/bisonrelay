@@ -7,18 +7,17 @@ import 'package:bruig/plugin_system/canvas/model/procedural_style_params.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/noise.dart';
 import 'package:flutter/painting.dart';
 
-// blockchain.dart draws the Blockchain style, in five ways: a chain of
-// blocks, a network of nodes, a ledger of lines, a Merkle tree, and a field
-// of blocks seen from above.
+// blockchain.dart draws the Blockchain style, one way per [BlockchainMode]:
+// a chain of blocks, a network of nodes, a ledger of lines, a Merkle tree, a
+// field of blocks seen from above, and a globe.
 //
-// Like every generator, a pure function of the frame, the spec and the time.
-// Every block, node and line is known by a number -- its place in the chain,
-// its cell, its row -- and everything about it comes from hashing that
-// number, so a block keeps its hash as it scrolls across the frame and the
-// same frame is the same picture on every machine.
+// A pure function of the frame, the spec and the time. Every block, node and
+// line is known by a number (its place in the chain, its cell, its row) and
+// everything about it is hashed from that number, so a block keeps its hash
+// as it scrolls and a frame is the same picture on every machine.
 //
-// Main is the structure -- blocks, links, nodes, text -- and Accent is what
-// is happening: the newest block, a confirmation, a transaction in flight.
+// Main is the structure (blocks, links, nodes, text); Accent is what is
+// happening: the newest block, a confirmation, a transaction in flight.
 
 /// paintBlockchain draws [spec] into [rect] at time [t].
 void paintBlockchain(
@@ -45,9 +44,9 @@ double _frac(double v) => v - v.floorToDouble();
 
 /// _mixed is a hash that keeps nearby inputs apart in every argument.
 ///
-/// The shared [hash] adds its inputs before mixing them, so two columns a
-/// fixed seed apart picked out the same rows: every column of a ledger lit
-/// up at the same height. Each input is mixed in on its own here.
+/// The shared [hash] adds its inputs before mixing, so columns a fixed seed
+/// apart pick the same rows (every ledger column lit at one height). Here
+/// each input is mixed in on its own.
 double _mixed(int a, int b, int c) {
   var h = a * 0x9E3779B1;
   h = (h ^ (h >> 15)) + b * 0x85EBCA77;
@@ -84,8 +83,8 @@ final Map<String, TextPainter> _texts = {};
 /// _text draws [s] in a monospaced face, its left edge at [at] -- or, with
 /// [centred], its middle -- and its middle on the line.
 ///
-/// Kept once made, as the glyphs of the rain are: a ledger scrolling is the
-/// same few hundred lines drawn again a little higher every frame.
+/// Painters are cached: a scrolling ledger is the same few hundred lines
+/// drawn a little higher every frame.
 double _text(ui.Canvas canvas, String s, Offset at, double size, Color color,
     {bool centred = false}) {
   if (size < 3 || color.a <= 0.01) return 0;
@@ -118,8 +117,8 @@ double _text(ui.Canvas canvas, String s, Offset at, double size, Color color,
 // Blocks and the links between them
 // --------------------------------------------------------------------------
 
-/// _Block is how one block is drawn: its colours, and how far it stands
-/// out.
+/// _BlockLook is how one block is drawn: its shape, colours, and how far it
+/// stands out.
 class _BlockLook {
   final int shape;
   final double depth;
@@ -134,7 +133,7 @@ class _BlockLook {
       [this.base]);
 }
 
-/// _block draws one block, its front face [face], and returns that face.
+/// _block draws one block with its front face at [face].
 void _block(ui.Canvas canvas, Rect face, _BlockLook look) {
   var stroke = Paint()
     ..style = PaintingStyle.stroke
@@ -252,7 +251,7 @@ void _blockText(
         b * 0.1,
         _a(color, 0.75));
   }
-  // The transactions, as lines of differing length.
+  // The transactions, as bars of differing length.
   var rows = words && b >= 34 ? 3 : 4;
   var top = words && b >= 34 ? face.top + b * 0.55 : face.top + pad;
   var step = (face.bottom - pad - top) / rows;

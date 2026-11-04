@@ -7,78 +7,66 @@ import 'package:path/path.dart' as path;
 
 // canvas_assets.dart keeps the pictures a canvas refers to.
 //
-// A document holds asset ids, never bytes -- see ImageElement. The bytes live
-// once here, in a folder the library listing cannot see, so a canvas with the
-// same badge on it eleven times is one copy of the badge and the document
-// stays a few kilobytes of readable JSON.
-//
-// This is the same arrangement the post library uses for a draft's embeds, and
-// it exists for the same reason: a document that referred to pictures held
-// only in memory came back after a restart with the references intact and
-// nothing behind them.
-//
-// Stored as the raw file bytes rather than as base64. The post library's embed
-// store keeps base64 because that is the form a post carries them in; nothing
-// about a canvas needs text, and base64 is a third larger for no gain.
+// A document holds asset ids, never bytes (see ImageElement). The bytes live
+// once here, so a picture used many times is one copy and the document stays
+// small, readable JSON. The same arrangement as the post library's embeds,
+// but stored as raw bytes rather than base64, which is a third larger and
+// buys a canvas nothing.
 
-/// _dirName is the folder inside the library. The leading dot is what keeps it
-/// out of the library listing, which skips dotted names.
+/// _dirName is the folder inside the library: Pictures, visible, so its
+/// files can be found and used by hand.
 const _dirName = canvasPicturesFolder;
 
-/// _oldDirName is what the folder was called when it was hidden, and is only
-/// ever used to find one left over and move it. See CanvasAssets._migrate.
+/// _oldDirName is what the folder was called when it was hidden, used only to
+/// find one left over and move it. See CanvasAssets._migrate.
 const _oldDirName = ".assets";
 
 /// _idPattern is what an id may look like: sixteen letters and digits, and
-/// optionally a file extension.
+/// optionally a file extension (so the folder's files can be previewed and
+/// opened). Old ids have no extension and still match, since saved documents
+/// point at them.
 ///
-/// The extension is there so the folder can be opened and looked at. Without
-/// one, every picture is a file the operating system cannot preview, name or
-/// open -- which is most of why the store was hard to find and impossible to
-/// reuse anything from by hand.
-///
-/// Old ids have no extension and still match, because they are still the names
-/// of files on disk that saved documents point at.
-///
-/// Checked before an id is ever joined onto a path. These ids are generated
-/// rather than typed, so this is not where an attack would come from -- but an
-/// id that reached here from a saved document is text from disk, and text from
-/// disk becoming part of a path is exactly the shape of a mistake worth
-/// refusing to make.
+/// Checked before an id is ever joined onto a path: an id from a saved
+/// document is text from disk, and text from disk must not become an
+/// arbitrary path.
 final _idPattern = RegExp(r"^[a-zA-Z0-9]{16}(\.[a-z0-9]{1,5})?$");
 
-/// maxAssetBytes bounds one picture.
-///
-/// Generous, because a canvas is a design tool and somebody will legitimately
-/// drop a photograph in -- but bounded, because the whole library is read when
-/// the sidebar opens and one 200MB file would stall it.
+/// sweepGrace is how new a stored file must be for a sweep to leave it,
+/// though nothing names it yet: a bundle's pictures are stored before the
+/// canvas that names them is saved, and another save's sweep can run between.
+const Duration sweepGrace = Duration(minutes: 10);
+
+/// _hashed is an id made from its content: a digest and an extension.
+final _hashed = RegExp(r"^[a-f0-9]{16}\.[a-z0-9]{1,5}$");
+
+/// idMatches is whether [id] starts with the digest of [bytes]: off the UI
+/// isolate for anything big, which a video can be.
+Future<bool> idMatches(String id, List<int> bytes) async {
+  String digest(List<int> b) => sha256.convert(b).toString().substring(0, 16);
+  var d = bytes.length > 4 * 1024 * 1024
+      ? await compute(digest, bytes)
+      : digest(bytes);
+  return id.startsWith("$d.");
+}
+
 /// isMaskId is whether [id] is a subject mask rather than a picture. See
 /// CanvasAssets.saveMask.
 bool isMaskId(String id) => id.endsWith(".mask");
 
+/// maxAssetBytes bounds one picture: generous, since photographs are
+/// dropped in, but bounded, because the whole library is read when the
+/// sidebar opens.
 const int maxAssetBytes = 32 * 1024 * 1024;
 
 /// CanvasAssets reads and writes the pictures.
 class CanvasAssets {
-  /// _dir names the folder, creating it only when something is about to be
-  /// written there.
-  ///
-  /// Reading and sweeping must not create it: they run in the background, and
-  /// a directory conjured up after the library above it has been taken away is
-  /// a directory nobody asked for.
-  /// _migrate moves a store made while the folder was hidden.
-  ///
-  /// Careful rather than clever, because this touches pictures nobody else has
-  /// a copy of and every saved canvas points at them by name:
+  /// _migrate moves a store made while the folder was hidden. Careful,
+  /// because every saved canvas points at these pictures by name:
   ///
   ///  - nothing to move, nothing happens;
-  ///  - both present, nothing happens either. That is a store in a state this
-  ///    cannot reason about, and refusing to guess leaves both folders where
-  ///    they can be seen and sorted out rather than merging them and
-  ///    overwriting one picture with another of the same name.
-  ///  - the move itself is a rename, which is atomic within a directory: it
-  ///    either happened or it did not, and there is no state where half the
-  ///    pictures are in each.
+  ///  - both present, nothing happens either: rather than merge and risk
+  ///    overwriting a picture, both folders are left to be sorted out;
+  ///  - the move itself is a rename, atomic within a directory.
   ///
   /// The names inside are untouched, so every document still resolves.
   static Future<void> _migrate(String library) async {
@@ -89,11 +77,14 @@ class CanvasAssets {
       if (await wanted.exists()) return;
       await old.rename(wanted.path);
     } catch (_) {
-      // A store that cannot be moved is still a store, and refusing to open
-      // Canvas over a folder name would be worse than leaving it where it is.
+      // A store that cannot be moved is still a store: better left where it
+      // is than Canvas refusing to open.
     }
   }
 
+  /// _dir names the folder, creating it only when something is about to be
+  /// written there. Reading and sweeping must not create it: they run in the
+  /// background, possibly after the library above it has been removed.
   static Future<String> _dir({bool create = false}) async {
     var library = await CanvasStorage.libraryDir();
     await _migrate(library);
@@ -107,19 +98,13 @@ class CanvasAssets {
     return path.join(await _dir(create: create), id);
   }
 
-  /// save writes one picture and returns its id, or null when it could not be
-  /// stored.
-  /// save stores a picture and returns the id a document refers to it by.
+  /// save stores a picture and returns the id a document refers to it by, or
+  /// null when it could not be stored.
   ///
-  /// The id is the picture's own content -- the first part of a hash of the
-  /// bytes -- rather than a fresh random name. So dropping the same photograph
-  /// into a second canvas, or into the same one twice, finds the copy that is
-  /// already there instead of writing another beside it, and the two elements
-  /// share one file. That is the reuse the store was always supposed to give
-  /// and never did: every import wrote a new name for identical bytes.
-  ///
-  /// The extension comes from what the bytes actually are rather than from the
-  /// name they arrived under, which may be wrong or missing.
+  /// The id is the start of a hash of the bytes, so the same photograph
+  /// dropped in twice, or into another canvas, finds the copy already there
+  /// and the elements share one file. The extension comes from what the bytes
+  /// are rather than the name they arrived under.
   static Future<String?> save(List<int> bytes) async {
     if (bytes.isEmpty || bytes.length > maxAssetBytes) return null;
 
@@ -130,34 +115,33 @@ class CanvasAssets {
 
     try {
       var handle = File(file);
-      // Already stored, by this canvas or another. Writing it again would be
-      // the same bytes to the same path for nothing.
+      // Already stored, by this canvas or another.
       if (await handle.exists()) return id;
-      await handle.writeAsBytes(bytes, flush: true);
+      await writeWhole(file, bytes);
       return id;
     } catch (_) {
       return null;
     }
   }
 
-  /// saveAs stores a picture under the id it already has.
-  ///
-  /// For a canvas arriving from somewhere else -- see canvas_bundle.dart. The
-  /// ids are the pictures' own content, so [save] would nearly always work out
-  /// the same name; nearly is not good enough for a document whose every
-  /// reference would break, and a canvas made before the ids carried a file
-  /// extension is exactly the case where the two differ.
-  ///
-  /// The id is still checked against [_idPattern] before it is joined onto a
-  /// path, and this one really is text from somebody else's machine.
+  /// saveAs stores a picture under the id it already has, for a canvas
+  /// arriving from somewhere else (see canvas_bundle.dart). [save] would
+  /// nearly always work out the same name, but not for a canvas made before
+  /// ids carried an extension, and every reference depends on it. The id is
+  /// still checked against [_idPattern]: it really is text from somebody
+  /// else's machine.
   static Future<bool> saveAs(String id, List<int> bytes) async {
     if (bytes.isEmpty || bytes.length > maxAssetBytes) return false;
+    // An id that is a hash must be these bytes' hash, or a sender could put
+    // their own picture under the name of one somebody else already uses.
+    // Only the oldest ids, random names, cannot be checked.
+    if (_hashed.hasMatch(id) && !await idMatches(id, bytes)) return false;
     var file = await _pathFor(id, create: true);
     if (file == null) return false;
     try {
       var handle = File(file);
       if (await handle.exists()) return true;
-      await handle.writeAsBytes(bytes, flush: true);
+      await writeWhole(file, bytes);
       return true;
     } catch (exception) {
       debugPrint("Unable to store the picture $id: $exception");
@@ -165,16 +149,14 @@ class CanvasAssets {
     }
   }
 
-  /// _extensionOf sniffs the format from the first few bytes.
-  ///
-  /// From the bytes rather than from the file name it came in under: a
-  /// screenshot saved as ".jpg" that is really a PNG is common enough, and the
-  /// point of the extension is that the operating system can open the file.
   /// extensionForTest is [_extensionOf], which decides what a stored picture
   /// is called and is worth checking without writing files.
   @visibleForTesting
   static String extensionForTest(List<int> bytes) => _extensionOf(bytes);
 
+  /// _extensionOf sniffs the format from the first few bytes rather than the
+  /// file name it came in under (a ".jpg" that is really a PNG is common), so
+  /// the operating system can open the file.
   static String _extensionOf(List<int> bytes) {
     if (bytes.length >= 8 &&
         bytes[0] == 0x89 &&
@@ -202,14 +184,10 @@ class CanvasAssets {
         bytes[11] == 0x50) {
       return ".webp";
     }
-    // A vector, which has no magic number: it is XML, so the only thing to go
-    // on is that it says so somewhere near the top. Checked over the first
-    // few thousand bytes rather than the first few hundred: a file written by
-    // a drawing program opens with an XML declaration, a doctype, a licence
-    // comment and a block of editor metadata, and the tag itself can be most
-    // of a kilobyte in. Sniffed too shallowly, such a file was not a picture
-    // of any kind -- it could not be decoded as a bitmap either -- so it
-    // simply never appeared.
+    // A vector, which has no magic number: it is XML, so look for the tag
+    // near the top. The first few thousand bytes, since a drawing program's
+    // file can open with a declaration, a doctype, a licence comment and
+    // editor metadata before the tag.
     var head = String.fromCharCodes(bytes.take(4096)).toLowerCase();
     if (head.contains("<svg")) return ".svg";
 
@@ -230,28 +208,25 @@ class CanvasAssets {
     }
   }
 
-  /// exists is whether a picture is still in the store, without reading it.
-  ///
-  /// For the picture cache, which asks about every crest on every refresh --
-  /// twenty small reads to answer twenty questions about existence is work for
-  /// nothing, and the answer is a stat call.
-  /// pathOf is where the picture [id] is on disk, or null where it is not.
-  /// saveMask keeps a picture's subject mask -- see ImageMask.subject -- in
-  /// the picture store, under its digest like any picture but with ".mask"
-  /// for its kind, so the lists of pictures to choose from leave it out. It
-  /// is a mask, not something anybody would put on a canvas.
+  /// saveMask keeps a picture's subject mask (see ImageMask.subject) in the
+  /// picture store, under its digest like any picture but with ".mask" for
+  /// its kind, so the lists of pictures to choose from leave it out.
   static Future<String?> saveMask(List<int> bytes) async {
     if (bytes.isEmpty) return null;
     var id = "${sha256.convert(bytes).toString().substring(0, 16)}.mask";
     return await saveAs(id, bytes) ? id : null;
   }
 
+  /// pathOf is where the picture [id] is on disk, or null where it is not.
   static Future<String?> pathOf(String id) async {
     var where = await _pathFor(id);
     if (where == null || !await File(where).exists()) return null;
     return where;
   }
 
+  /// exists is whether a picture is still in the store, without reading it:
+  /// the picture cache asks about every crest on every refresh, and a stat
+  /// call answers it.
   static Future<bool> exists(String id) async {
     var file = await _pathFor(id);
     return file != null && await File(file).exists();
@@ -269,12 +244,8 @@ class CanvasAssets {
     }
   }
 
-  /// stored is every picture in the store, most recently added first.
-  ///
-  /// What the picture store was always missing: a way to use one again. The
-  /// bytes were shared from the beginning, but nothing ever showed what was in
-  /// there, so the only way to put the same badge on a second canvas was to go
-  /// and find the file again.
+  /// stored is every picture in the store, most recently added first, so a
+  /// picture can be used again.
   static Future<List<String>> stored() async {
     try {
       var dir = Directory(await _dir());
@@ -294,15 +265,9 @@ class CanvasAssets {
   }
 
   /// sweepUnused deletes every stored picture no saved canvas refers to.
-  ///
-  /// Called after a canvas is saved or deleted, which are the only two moments
-  /// the answer can change. Nothing called [sweep] at all until now, so a
-  /// picture dropped into a canvas and then deleted stayed on disk for good --
-  /// invisible, unreachable, and counted against nothing.
-  ///
-  /// Failing is not worth reporting. The cost of a missed sweep is some bytes
-  /// nobody can see, and a canvas that had just been saved successfully should
-  /// not raise an error about tidying up afterwards.
+  /// Called after a canvas is saved or deleted, the only moments the answer
+  /// changes. Failing is not reported: a missed sweep costs some unseen bytes,
+  /// and a successful save should not raise an error about tidying.
   static Future<int> sweepUnused() async {
     try {
       return await sweep(await CanvasStorage.liveAssetIds());
@@ -312,12 +277,9 @@ class CanvasAssets {
   }
 
   /// sweep deletes stored pictures that no saved document refers to.
-  ///
   /// [liveIds] has to be every id in the whole library plus whatever is open
-  /// in the editor, because one picture can be referred to from more than one
-  /// canvas -- a document duplicated, or an element copied between two of them
-  /// -- and deleting it while a second document still points at it would break
-  /// that document to tidy up after the first.
+  /// in the editor, since one picture can be referred to from several
+  /// canvases.
   static Future<int> sweep(Set<String> liveIds) async {
     var removed = 0;
     try {
@@ -326,6 +288,10 @@ class CanvasAssets {
         if (entry is! File) continue;
         var id = path.basename(entry.path);
         if (liveIds.contains(id)) continue;
+        if (DateTime.now().difference(await entry.lastModified()) <
+            sweepGrace) {
+          continue;
+        }
         try {
           await entry.delete();
           removed++;

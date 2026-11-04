@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'canvas_store_age.dart';
 
 // canvas_data_source_test.dart is about numbers arriving from somewhere else
 // and becoming a table.
@@ -349,6 +350,24 @@ void main() {
           columns: [SourceColumn(header: "A", path: "a")]));
       expect(result.worked, isFalse);
       expect(result.problem, contains("no file"));
+    });
+
+    test("a folder, or anything but a file, is not read", () async {
+      var result = await loadData(DataSource(
+          kind: DataKind.file,
+          where: dir.path,
+          columns: const [SourceColumn(header: "A", path: "a")]));
+      expect(result.problem, contains("not a file"));
+    });
+
+    test("only files chosen here, or agreed to, are allowed", () async {
+      SharedPreferences.setMockInitialValues({});
+      expect(await DataFiles.allowed("/a/b.json"), isFalse);
+      await DataFiles.allow("/a/b.json");
+      await DataFiles.allow("/c.json");
+      expect(await DataFiles.allowed("/a/b.json"), isTrue);
+      expect(await DataFiles.allowed("/c.json"), isTrue);
+      expect(await DataFiles.allowed("/a"), isFalse);
     });
 
     test("a file that is not JSON says that instead", () async {
@@ -765,6 +784,7 @@ void main() {
       // which is worse than fetching again.
       var id = (await CanvasAssets.save(List.filled(64, 7)))!;
       await CanvasPictureCache.remember("https://crests/70.png", id);
+      await ageStores();
       await CanvasAssets.sweepUnused();
 
       expect(await CanvasAssets.exists(id), isFalse);

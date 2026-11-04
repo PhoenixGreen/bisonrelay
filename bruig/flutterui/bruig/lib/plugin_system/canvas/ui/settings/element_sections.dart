@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/edge_mask.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
@@ -12,13 +11,13 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 
-// element_sections.dart is the sections every element's panel has, whatever
-// else it has: where it is, how it arrives, and the designs saved of its
-// kind. A picture's panel was the first in sections -- see
-// image_sections.dart -- and the rest follow it, so these say the same
-// things the same way in every panel. Each section is remembered open or
-// shut per kind of element: "shape.position", not "position".
+// element_sections.dart is the sections every element's panel has: where it
+// is, how it arrives, and the designs saved of its kind, said the same way in
+// every panel (image_sections.dart set the pattern). Each section is
+// remembered open or shut per kind: "shape.position", not "position".
 
 /// elementKindKey is how [e]'s kind names its sections' remembered state.
 String elementKindKey(CanvasElement e) => e.kind.name;
@@ -113,8 +112,7 @@ List<Widget> elementTimingCards(CanvasController controller, CanvasElement e) =>
     [
       if (controller.cues.isNotEmpty || controller.words.isNotEmpty)
         elementCueCard(controller, e),
-      if (bandsIn(e.base.track)
-          .any((b) => b.channel == KeyframeChannel.reveal))
+      if (ownSpan(e, MotionKind.arrive, controller.document.frameRate) != null)
         elementDimCard(controller, e),
     ];
 
@@ -225,9 +223,8 @@ String boxSummary(BoxSpec b) {
 String typeSummary(TextSpec t) =>
     "${t.fontFamily} · ${shortNumber(t.fontSize)}";
 
-/// expanderSection is a part of a panel that was an expander of its own --
-/// its name, how it is set and the button in its heading -- as a section:
-/// a section is the fold now, and a fold inside a fold is two presses for
+/// expanderSection is an expander (its name, summary and heading button)
+/// shown as a section instead, since a fold inside a fold is two presses for
 /// one thing.
 Widget expanderSection(CanvasElement e, IconData icon, Widget expander,
         {String? summary, List<Widget> extra = const []}) =>
@@ -252,17 +249,6 @@ Widget expanderAsSection(IconData icon, Widget expander,
       action: x.action,
       children: [...x.children, ...extra]);
 }
-
-/// notInCards is [child] outside a sectioned panel, and nothing inside one,
-/// where tiles ask the same question -- an animation's kinds, say.
-Widget notInCards(Widget child) => Builder(
-    builder: (context) =>
-        CanvasCards.on(context) ? const SizedBox.shrink() : child);
-
-/// onlyInCards is [child] inside a sectioned panel, and nothing outside one.
-Widget onlyInCards(Widget child) => Builder(
-    builder: (context) =>
-        CanvasCards.on(context) ? child : const SizedBox.shrink());
 
 /// edgeMaskSection is [mask], the edges of [e]'s box softened and faded --
 /// for a video or a pattern, whose hard rectangle is so often what needs

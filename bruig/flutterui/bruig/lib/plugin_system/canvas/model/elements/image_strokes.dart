@@ -2,16 +2,13 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// image_strokes.dart is brushwork: paint laid on a paint layer, and the
-// retouching done to a picture -- cloning, healing, dodging, burning,
-// blurring.
+// image_strokes.dart is brushwork: paint on a paint layer, and retouching
+// (clone, heal, dodge, burn, blur) done to a picture.
 //
-// Kept as strokes, as a mask's marks are, rather than as pixels: a stroke is
-// a few hundred points, where the pixels it touched are a few hundred
-// thousand, and kept as strokes they are drawn as sharp as the canvas is at
-// whatever size it is exported. A paint layer's strokes are fractions of the
-// picture's frame; a retouching stroke's are fractions of the picture it is
-// on, so it stays on the blemish however the picture is moved or cropped.
+// Kept as strokes rather than pixels: far smaller, and sharp at any export
+// size. A paint stroke's points are fractions of the picture's frame; a
+// retouching stroke's are fractions of the picture it is on, so it stays on
+// the blemish however the picture is moved or cropped.
 
 /// StrokeKind is what a stroke does.
 enum StrokeKind {
@@ -22,8 +19,7 @@ enum StrokeKind {
   /// clone copies the picture from somewhere else onto where it goes.
   clone("Clone"),
 
-  /// heal fills where it goes with the colours round it: a spot, a speck,
-  /// a stray hair gone.
+  /// heal fills where it goes with the colours round it.
   heal("Spot heal"),
 
   /// dodge lightens, burn darkens.
@@ -48,11 +44,8 @@ enum StrokeKind {
   bool get retouches => this != paint && this != erase;
 }
 
-/// BrushTip is the shape of a brush and how the pen drives it: what a stroke
-/// is made of beyond its size, softness, strength and colour.
-///
-/// The default is the round brush every stroke was before there were others,
-/// so a stroke saved without one draws as it always did.
+/// BrushTip is the shape of a brush and how the pen drives it. The default
+/// is the plain round brush, which a stroke saved without a tip draws with.
 class BrushTip {
   /// roundness is how round the tip is: 1 a circle, near 0 a flat nib.
   final double roundness;
@@ -283,7 +276,6 @@ class StrokeMark {
   /// stroke's points plus this are what is copied.
   final Offset source;
 
-  /// tip is the brush's shape and how the pen drives it -- see BrushTip.
   final BrushTip tip;
 
   /// tilt is the pen's lean at each point, across and down, each -1 to 1;
@@ -343,16 +335,7 @@ class StrokeMark {
       };
 
   factory StrokeMark.fromJson(Map<String, dynamic> json) {
-    var flat = json["p"];
-    var points = <Offset>[];
-    if (flat is List) {
-      for (var i = 0; i + 1 < flat.length; i += 2) {
-        var x = flat[i], y = flat[i + 1];
-        if (x is num && y is num) {
-          points.add(Offset(x.toDouble(), y.toDouble()));
-        }
-      }
-    }
+    var points = fractionsFromJson(json["p"]);
     var src = json["src"];
     var rawTilt = json["tl"];
     var tilt = <Offset>[];
@@ -365,7 +348,7 @@ class StrokeMark {
     return StrokeMark(
       tip: BrushTip.fromJson(json["tip"]),
       tilt: tilt,
-      kind: StrokeKind.fromName(json["k"] as String?),
+      kind: StrokeKind.fromName(jsonStr(json["k"])),
       points: points,
       pressure: [
         if (json["pr"] case List raw)

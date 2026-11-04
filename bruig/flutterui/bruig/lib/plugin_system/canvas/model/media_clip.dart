@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonBool, jsonDouble, jsonInt, jsonSpec, jsonString;
+    show jsonBool, jsonDouble, jsonInt, jsonSpec, jsonString, jsonStr;
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart'
     show SpeechLine, SpeechTake;
@@ -9,18 +9,12 @@ import 'package:bruig/plugin_system/canvas/model/surround.dart';
 export 'package:bruig/plugin_system/canvas/model/surround.dart'
     show SoundPlacement, PlaceBy;
 
-// media_clip.dart is what is played: which files, which part of each, how it
-// starts and stops, and whether it goes round again.
+// media_clip.dart is what is played: which files, which part of each, the
+// fades and the loop. Audio and Video elements share it, so play range,
+// fades and playlist have one meaning and one set of controls.
 //
-// One object for every kind of media on a canvas -- the Audio element now,
-// and the Video element and media backgrounds after it -- so that the play
-// range, the fades, the loop and the playlist are one set of settings drawn
-// by one set of controls. Three copies of "start at, end at, fade in, fade
-// out" would be three places for them to disagree about what a fade is.
-//
-// Times are seconds into the file, as doubles. A frame number would tie the
-// play range to the document's frame rate, and a sound does not change length
-// because somebody changed how many frames a second the canvas runs at.
+// Times are seconds into the file, not frames, so changing the canvas's
+// frame rate leaves them alone.
 
 /// MediaLoop is what happens when the end is reached.
 enum MediaLoop {
@@ -38,34 +32,30 @@ enum MediaLoop {
 
 /// MediaSource is one file in a playlist, and the part of it that plays.
 class MediaSource {
-  /// assetId is the file in the media store -- see CanvasMedia. Named by a
-  /// hash of its bytes, so the same recording used twice is stored once.
+  /// assetId is the file in the media store (CanvasMedia), named by a hash
+  /// of its bytes.
   final String assetId;
 
-  /// name is what the file was called when it was added, which is what the
-  /// list shows. The id says nothing to a person.
+  /// name is what the file was called when it was added, for the list.
   final String name;
 
   /// start and end are the play range, in seconds into the file. An end of
-  /// nought means "to the end", which is what a file nobody has trimmed plays.
+  /// nought means "to the end".
   final double start;
   final double end;
 
-  /// length is how long the whole file is, in seconds, when that is known.
-  ///
-  /// Written down when the file is added so that the range fields can say
-  /// what "the end" is without opening the file. Nought when it is not known,
-  /// and nothing depends on it being right: the player asks the file.
+  /// length is how long the whole file is, in seconds, or nought when not
+  /// known. Recorded when the file is added so [span] and the range fields
+  /// need not open the file; the player asks the file itself.
   final double length;
 
-  /// posterId, soundId, width, height and fps are what a *video* file was
-  /// found to be when it was added -- see media_picking.dart.
+  /// posterId, soundId, width, height and fps describe a video file, found
+  /// when it was added (ui/media_picking.dart).
   ///
-  /// The poster is a still from the file, stored as an ordinary picture, so
-  /// an exported image or a bundle opened without ffmpeg still shows
-  /// something that looks like the video. The sound is the file's own audio
-  /// taken out into the audio store, which is what the audio engine plays in
-  /// step with the picture. Empty for a sound, and for a video with no sound.
+  /// The poster is a still stored as an ordinary picture, so an export or a
+  /// bundle opened without ffmpeg still shows the video. The sound is the
+  /// file's audio extracted into the audio store, which the audio engine
+  /// plays in step with the picture. Empty for a sound or a silent video.
   final String posterId;
   final String soundId;
   final int width;
@@ -140,10 +130,9 @@ class MediaSource {
       assetId: jsonString(json["asset"], ""),
       name: jsonString(json["name"], ""),
       start: start,
-      // An end before the start is a range with nothing in it, which reads as
-      // a file that will not play. Taken as "to the end" instead.
+      // An end before the start would play nothing: taken as "to the end".
       end: end > start ? end : 0,
-      length: math.max(0.0, jsonDouble(json["length"], 0)),
+      length: jsonDouble(json["length"], 0).clamp(0.0, 6 * 3600.0),
       posterId: jsonString(json["poster"], ""),
       soundId: jsonString(json["sound"], ""),
       width: jsonInt(json["w"], 0),
@@ -158,17 +147,14 @@ class MediaClip {
   /// playlist is the files, played in order. One file is a playlist of one.
   final List<MediaSource> playlist;
 
-  /// volume is where it starts, nought to one. The reader can move it with
-  /// the element's own control; this is what it opens at.
+  /// volume is the level it opens at (the reader can move it).
   final double volume;
 
   /// muted is whether it opens silent.
   final bool muted;
 
-  /// fadeIn and fadeOut are seconds, at the start and end of each file's
-  /// range. Each file rather than the list as a whole, because a playlist of
-  /// songs that each start at full volume is a playlist that clicks between
-  /// every one of them.
+  /// fadeIn and fadeOut are seconds at the start and end of each file's
+  /// range (each file, not the list, or files would click at every join).
   final double fadeIn;
   final double fadeOut;
 
@@ -178,50 +164,37 @@ class MediaClip {
   /// document does.
   final bool autoplay;
 
-  /// acrossPages is for media on the master: it goes on playing from one
-  /// page or scene to the next rather than stopping at the join.
-  ///
-  /// Only the master can mean it, since only the master is on every page.
-  /// Anywhere else a sound stops when its page is left, which is what the
-  /// page leaving means.
+  /// acrossPages is for media on the master: it plays on from one page or
+  /// scene to the next rather than stopping at the join. Elsewhere it has no
+  /// effect: a sound stops when its page is left.
   final bool acrossPages;
 
   /// timed puts the media on the timeline: it plays with the playhead from
-  /// frame [at] -- scrubbed, paused and exported with everything else --
-  /// rather than on its own clock when somebody presses it.
-  ///
-  /// A frame of the scene it is on, or of the whole run for media on the
-  /// master, which plays under every scene.
+  /// frame [at] (of its scene, or of the whole run on the master) rather
+  /// than on its own clock when pressed.
   final bool timed;
   final int at;
 
-  /// mix is this clip's channel strip on the mixer -- its level, balance,
-  /// EQ and compressor. See mix.dart.
+  /// mix is this clip's channel strip on the mixer. See mix.dart.
   final ChannelMix mix;
 
-  /// channel is the timeline channel a sound is on, and channelName what the
-  /// channel is called. Several sounds share a channel by sharing its id, and
-  /// a channel is only ever the sounds on it -- when the last one goes, so
-  /// does the channel. Empty for media given a lane of its own, which is
-  /// everything made before channels could hold more than one.
+  /// channel is the timeline channel a sound is on, and channelName its
+  /// name. Sounds share a channel by sharing its id; a channel exists only
+  /// while a sound is on it. Empty for media on a lane of its own.
   ///
-  /// The channel's strip -- [mix] -- is kept the same on every sound in it,
-  /// so each plays and exports through the channel's level as it always did.
+  /// The channel's strip ([mix]) is kept identical on every sound in it.
   final String channel;
   final String channelName;
 
-  /// envelope is the clip's volume over time: points of (seconds from the
-  /// clip's start on the timeline, gain from nought to one), joined by
-  /// straight lines and held flat past either end. Empty is one all along.
-  ///
-  /// On top of the fades rather than instead of them, and written by the
-  /// tools rather than drawn by hand: ducking music under a voice is a dip
-  /// at every line, worked out once from the voice's own shape -- see
-  /// duckEnvelope -- so playing it and exporting it are the same sound.
+  /// envelope is the clip's volume over time, on top of the fades: points of
+  /// (seconds from the clip's start, gain nought to one), straight between
+  /// and flat past either end; empty is full volume. Written by tools, such
+  /// as ducking under a voice (duckEnvelope in audio_tools.dart), so play
+  /// and export sound the same.
   final List<GainPoint> envelope;
 
-  /// place is where the sound is heard from, taken from the picture -- see
-  /// SoundPlacement. Off, its channel's own pan says.
+  /// place is where the sound is heard from, taken from the picture; when
+  /// off, the channel's own pan applies.
   final SoundPlacement place;
 
   const MediaClip({
@@ -250,37 +223,31 @@ class MediaClip {
           if (s.assetId.isNotEmpty) s.assetId,
           if (s.soundId.isNotEmpty) s.soundId,
         ],
-        // Its channel's Speech takes: the Vocaliser sings the latest, even
-        // where its clip has been taken off the timeline.
+        // Its channel's Speech takes: the Vocaliser sings the latest even
+        // when its clip is off the timeline.
         for (var t in mix.speech?.takes ?? const <SpeechTake>[]) ...t.ids,
-        // And each line's takes, which the clip is joined from again -- the
-        // take as spoken with each shaped one, which it is made from.
+        // And each line's takes, which the clip is joined from again.
         for (var l in mix.speech?.lines ?? const <SpeechLine>[])
           for (var t in l.takes) ...t.ids,
       };
 
-  /// posterIds is the stills a video's files carry, which are pictures and
-  /// live in the picture store. See MediaSource.posterId.
+  /// posterIds is the video stills, kept in the picture store. See
+  /// MediaSource.posterId.
   Set<String> get posterIds => {
         for (var s in playlist)
           if (s.posterId.isNotEmpty) s.posterId,
       };
 
-  /// runLength is how long the playlist takes to play through once, in
-  /// seconds -- each file's range, one after another. A file whose length is
-  /// not known counts as nothing, because nothing can be placed after it.
+  /// runLength is the playlist's play-through time in seconds. A file of
+  /// unknown length counts as nothing.
   double get runLength => playlist.fold(0.0, (sum, s) => sum + s.span);
 
   /// momentAt is what is playing [seconds] after the clip starts on the
-  /// timeline: which file, where in it, and how far faded in -- or null where
-  /// nothing is, before it starts or after it has finished.
+  /// timeline (file, time in it, gain), or null when nothing is.
   ///
-  /// The one answer to "where is this clip at this frame", for the editor
-  /// following the playhead, the channels drawn under it and the exporter;
-  /// three answers to that would be a video that is somewhere else once it
-  /// has been exported. On the timeline a repeat goes round the whole list,
-  /// whichever repeat was chosen: "each" on its own clock is a file played
-  /// until somebody stops it, and a timeline has no somebody.
+  /// The editor, the channel drawing and the exporter all ask this, so they
+  /// agree. On the timeline any repeat goes round the whole list: "each" is
+  /// for media on its own clock, played until somebody stops it.
   ClipMoment? momentAt(double seconds) {
     var total = runLength;
     if (seconds < 0 || total <= 0) return null;
@@ -372,12 +339,12 @@ class MediaClip {
                 if (s is Map<String, dynamic>) MediaSource.fromJson(s),
             ]
           : const [],
-      // Up to twice: a sound on the timeline can be turned up six decibels.
+      // Up to twice (+6 dB) for a sound on the timeline.
       volume: jsonDouble(json["volume"], 0.8).clamp(0.0, 2.0),
       muted: jsonBool(json["muted"], false),
       fadeIn: math.max(0.0, jsonDouble(json["fadeIn"], 0)),
       fadeOut: math.max(0.0, jsonDouble(json["fadeOut"], 0)),
-      loop: MediaLoop.fromName(json["loop"] as String?),
+      loop: MediaLoop.fromName(jsonStr(json["loop"])),
       autoplay: jsonBool(json["autoplay"], false),
       acrossPages: !jsonBool(json["stopsAtJoin"], false),
       timed: jsonBool(json["timed"], false),
@@ -395,13 +362,13 @@ class MediaClip {
             if (p is List && p.length == 2 && p[0] is num && p[1] is num)
               GainPoint((p[0] as num).toDouble(),
                   (p[1] as num).toDouble().clamp(0.0, 1.0)),
-      ],
+        // In time order, as envelopeAt reads them.
+      ]..sort((a, b) => a.time.compareTo(b.time)),
     );
   }
 }
 
-/// GainPoint is one point of a clip's volume envelope -- see
-/// MediaClip.envelope.
+/// GainPoint is one point of MediaClip.envelope.
 class GainPoint {
   final double time;
   final double gain;

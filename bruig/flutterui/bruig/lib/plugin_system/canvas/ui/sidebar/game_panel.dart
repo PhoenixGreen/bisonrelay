@@ -19,17 +19,12 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// game_panel.dart is the Game tab, there while the canvas is being made into
-// a game -- see CanvasDocument.game and the Make game button in the bar --
-// on one surface: a heading for what is picked, then flat sections divided
-// by a line, each saying in a line how it is set. What a game still lacks is
-// said first, with the button that adds it.
-//
-// With an element picked, what that element does when the game is played:
-// every element is still until it is given something to do. With nothing
-// picked -- or the background -- the game itself: its scenes as a strip,
-// the counts it keeps, its players and their controls. And the game is
-// played from the heading, whichever it is.
+// game_panel.dart is the Game tab, shown while the canvas is being made into a
+// game (see CanvasDocument.game): a heading for what is picked, with Play, then
+// flat sections, each saying in a line how it is set, with what the game still
+// lacks first. With an element picked, what it does in the game (every element
+// is still until given something to do); with nothing or the background
+// picked, the game itself: its scenes, counts, players and controls.
 
 class CanvasGamePanel extends StatelessWidget {
   final CanvasController controller;
@@ -345,8 +340,8 @@ class CanvasGamePanel extends StatelessWidget {
 
   /// _elementSettings are what [e] does when the game is played.
   List<Widget> _elementSettings(CanvasElement e) {
-    // As the rest of the settings do: one undo step a change, however many
-    // writes a drag of it makes.
+    // One undo step a change, however many writes a drag makes, as in the
+    // rest of the settings.
     void write(CanvasElement next) {
       controller.beginInteraction();
       controller.replaceElement(next, transient: true);
@@ -438,7 +433,7 @@ class _StartFromState extends State<_StartFrom> {
     });
     var said = await startGame(widget.controller, _kind,
         allowFetching: prefs.allowFetching);
-    // Said where it is seen: made, this section has gone.
+    // Said in a snackbar: once made, this section has gone.
     snackbar.success(said);
     if (!mounted) return;
     setState(() {

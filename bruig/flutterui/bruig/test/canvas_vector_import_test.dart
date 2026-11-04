@@ -261,4 +261,29 @@ void main() {
         assetId: "0123456789abcdef.svg"));
     expect(doc.mediaIds, contains("0123456789abcdef.svg"));
   });
+
+  group("a drawing someone sent", () {
+    String svg(String body) =>
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">$body</svg>';
+
+    test("a number that will not read ends the path, not the app", () {
+      var read = importSvg(svg('<path d="M0 0 L1 1 @" fill="#000"/>'));
+      expect(read, isNotNull);
+    });
+
+    test("a <use> of itself, or uses multiplying, are bounded", () {
+      expect(importSvg(svg('<g id="a"><use href="#a"/></g>')), isNotNull);
+      var levels = StringBuffer('<rect id="l0" width="1" height="1" '
+          'fill="#000"/>');
+      for (var i = 1; i < 12; i++) {
+        levels.write('<g id="l$i">');
+        for (var j = 0; j < 10; j++) {
+          levels.write('<use href="#l${i - 1}"/>');
+        }
+        levels.write("</g>");
+      }
+      var read = importSvg(svg(levels.toString()))!;
+      expect(read.shapes.length, lessThanOrEqualTo(20000));
+    });
+  });
 }

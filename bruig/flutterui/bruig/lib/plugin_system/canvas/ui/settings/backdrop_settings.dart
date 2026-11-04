@@ -32,12 +32,10 @@ Widget backdropKindPicker(
       ],
     );
 
-/// stageBackdropSettings is a background's settings while it is a stage:
-/// the Pattern layers section with only the choice in it -- there are no
-/// pattern layers on a stage -- then the stage's camera, set and light.
-///
-/// [write] is handed the stage as edited, with its camera's keys on its
-/// track, for the caller to put back where the stage lives.
+/// stageBackdropSettings is a background's settings while it is a stage: the
+/// Pattern layers section holding only the kind picker, then the stage's
+/// camera, set and light. [write] is handed the edited stage, its camera's
+/// keys on its track, to put back where the stage lives.
 List<Widget> stageBackdropSettings(
   BuildContext context,
   CanvasController controller,

@@ -8,32 +8,28 @@ import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 
 // session.dart is the session view's clips: Ableton's grid of clip slots, a
-// column for each channel and a row for each scene. A clip is launched live
-// -- on the next bar -- and loops until another on its channel is launched
-// or it is stopped; a scene launches its whole row at once. What is played
-// can be written onto the timeline, which is how a song is put together
-// from them. See CanvasController.launchClip.
+// column per channel and a row per scene. A clip launches on the next bar
+// and loops until another on its channel launches or it is stopped; a scene
+// launches its whole row. What is played can be recorded onto the timeline.
+// See CanvasController.launchClip.
 //
-// A clip is a sound -- part of a file -- on an audio channel, or notes on a
-// MIDI channel, played by the channel's instrument. Its notes are counted in
-// beats, not seconds, so a change of tempo plays them faster rather than
-// moving them; they are rendered into a file to be played, as a part on the
-// timeline is (see part_render.dart).
+// A clip is part of a sound file on an audio channel, or notes on a MIDI
+// channel. Notes are in beats, so a tempo change plays them faster; they are
+// rendered into a file as a timeline part is (media/synth/part_render.dart).
 
 /// LaunchMode is what a press on a clip does.
 enum LaunchMode {
-  /// trigger plays it, from the next bar, until something stops it.
+  /// trigger plays it from the next bar until something stops it.
   trigger("Trigger", "Press to play it from the next bar"),
 
   /// gate plays it only while it is held down.
   gate("Gate", "Plays while it is held down"),
 
-  /// toggle plays it, and stops it pressed again.
+  /// toggle plays it, and stops it when pressed again.
   toggle("Toggle", "Press to play it, and again to stop it"),
 
-  /// repeat plays it from its start on every launch step -- the clip's
-  /// quantise, or the song's -- while it is held, and stops let go: a
-  /// stutter, a drum roll.
+  /// repeat restarts it on every launch step (the clip's or the song's
+  /// quantise) while it is held: a stutter, a drum roll.
   repeat("Repeat", "Plays it again on every step while it is held");
 
   final String label;
@@ -41,8 +37,8 @@ enum LaunchMode {
   const LaunchMode(this.label, this.hint);
 }
 
-/// FollowAction is what a clip does when it has played -- Ableton's follow
-/// actions: another clip on its channel launched, itself again, or a stop.
+/// FollowAction is what a clip does when it has played, as Ableton's follow
+/// actions.
 enum FollowAction {
   none("Nothing"),
   next("Next clip"),
@@ -58,7 +54,7 @@ enum FollowAction {
   const FollowAction(this.label);
 }
 
-/// WarpMode is how a warped sound is stretched -- see warp.dart.
+/// WarpMode is how a warped sound is stretched. See media/warp.dart.
 enum WarpMode {
   beats("Beats", "Drums and rhythm: cut at its hits, each kept sharp"),
   tones("Tones", "One voice or instrument at a time, with a clear pitch"),
@@ -71,13 +67,12 @@ enum WarpMode {
   const WarpMode(this.label, this.hint);
 }
 
-/// WarpMarker pins a moment of a sound -- [seconds] into what it plays --
-/// to a beat of the clip.
+/// WarpMarker pins a moment of a sound, `seconds` into what it plays, to a
+/// beat of the clip.
 typedef WarpMarker = ({double seconds, double beat});
 
-/// WarpMap is where each moment of a warped sound falls on the clip's
-/// beats: through its start, at nought, and its markers, straight between
-/// them; past the last, at its tempo.
+/// WarpMap maps a warped sound's moments to the clip's beats: straight
+/// between nought and the markers, then at [bpm] past the last.
 class WarpMap {
   final double bpm;
   final List<WarpMarker> points;
@@ -89,8 +84,8 @@ class WarpMap {
     for (var m in [...markers]
       ..sort((a, b) => a.seconds.compareTo(b.seconds))) {
       var last = out.last;
-      // Only forward in both: a marker dragged past its neighbour is not
-      // a sound played backwards.
+      // Markers must move forward in both, or the sound would play
+      // backwards.
       if (m.seconds > last.seconds + 1e-4 && m.beat > last.beat + 1e-4) {
         out.add(m);
       }
@@ -127,22 +122,22 @@ class WarpMap {
   }
 }
 
-/// ClipEnvelope is what an audio clip's envelope changes as it plays: its
-/// gain -- only ever down, from nought (silent) to one (its own gain) -- or
-/// its pan, from nought (left) to one (right).
+/// ClipEnvelope is what an audio clip's envelope changes: gain (nought
+/// silent to one, its own gain; never a boost) or pan (nought left, one
+/// right).
 enum ClipEnvelope {
   gain("Gain", 1),
   pan("Pan", 0.5);
 
   final String label;
 
-  /// rest is its value with no envelope: as the clip is.
+  /// rest is its value with no envelope.
   final double rest;
   const ClipEnvelope(this.label, this.rest);
 }
 
-/// curveAt is [points]' value at [beat]: straight between points, held
-/// before the first and after the last -- or [rest] with none.
+/// curveAt is [points]' value at [beat]: straight between points, held past
+/// either end, or [rest] with none.
 double curveAt(List<ControlPoint> points, double beat, double rest) {
   if (points.isEmpty) return rest;
   if (beat <= points.first.$1) return points.first.$2;
@@ -157,108 +152,99 @@ double curveAt(List<ControlPoint> points, double beat, double rest) {
 /// clipBarChoices are the lengths a clip is offered, in bars.
 const clipBarChoices = [1, 2, 4, 8, 16, 32];
 
+/// SessionClip is one clip in a session slot.
 class SessionClip {
-  /// id is the clip's own, kept through every change, for what is playing
-  /// to be found by.
+  /// id is kept through every change, so what is playing can be found.
   final String id;
   final String name;
 
   /// color is its index in sectionColors.
   final int color;
 
-  /// midi is whether it is notes, for the channel's instrument, rather than
-  /// a sound.
+  /// midi is whether it is notes for the channel's instrument rather than a
+  /// sound.
   final bool midi;
 
-  /// sound is what it plays: for an audio clip, the file and its range; for
-  /// a MIDI clip, its notes rendered -- see [rendered] -- or null until
-  /// they have been.
+  /// sound is what it plays: an audio clip's file and range, or a MIDI
+  /// clip's rendered notes (null until rendered; see [rendered]).
   final MediaSource? sound;
 
-  /// notes are a MIDI clip's, their starts and lengths in beats from the
-  /// clip's start.
+  /// notes are a MIDI clip's notes, in beats from the clip's start.
   final List<MidiNote> notes;
 
-  /// controls are a MIDI clip's controllers' curves, in beats from its
-  /// start -- see MidiControl.
+  /// controls are a MIDI clip's controller curves, in beats from its
+  /// start.
   final Map<MidiControl, List<ControlPoint>> controls;
 
-  /// bars is how long its loop is: it goes round at the end, and a sound
-  /// longer than it is cut there. Not looping, it plays from [start] to the
-  /// loop's end and stops.
+  /// bars is its loop's length; a longer sound is cut there. Not looping,
+  /// it plays from [start] to the loop's end and stops.
   final double bars;
   final bool loop;
   final LaunchMode launch;
 
-  /// start is where it starts playing, and loopStart where its loop starts
-  /// -- both in beats into what it plays. Started before its loop, it plays
-  /// on into it, as Ableton's does.
+  /// start is where it starts playing and loopStart where its loop starts,
+  /// in beats. Started before its loop, it plays on into it, as Ableton's
+  /// does.
   final double start;
   final double loopStart;
 
-  /// gain is how much louder or quieter it is played, in decibels.
+  /// gain is in decibels.
   final double gain;
 
-  /// fade is whether its sound fades in at its start and its loop's, and
-  /// out at its loop's end, a few milliseconds each: no click where a
-  /// sound is cut part way through a wave, as Ableton's Fade.
+  /// fade is a few milliseconds' fade at its start, loop start and loop end,
+  /// so a cut mid-wave does not click (Ableton's Fade).
   final bool fade;
 
-  /// reversedOf is the sound it played before it was reversed -- its own
-  /// file, kept, so Reverse undone gives it back.
+  /// reversedOf is the sound before Reverse, kept so it can be undone.
   final MediaSource? reversedOf;
 
   /// quantise is what its launch waits for, or null for the song's.
   final Quantise? quantise;
 
-  /// legato is whether it takes over from where the clip playing on its
-  /// channel had got to, rather than from its start.
+  /// legato is whether it starts where the clip playing on its channel had
+  /// got to, rather than from its start.
   final bool legato;
 
   /// velocity is how much the launching pad's velocity sets its volume,
-  /// nought to one: nought, none -- as loud played softly as hard; one, a
-  /// pad barely touched barely heard. A click is a full velocity.
+  /// nought (none) to one (fully). A click is full velocity.
   final double velocity;
 
-  /// follow is what happens when it has played for [followBars] -- its
-  /// loop's length, with none.
+  /// follow is what happens when it has played for [followBars] (null: its
+  /// loop's length).
   final FollowAction follow;
   final double? followBars;
 
-  /// warp is whether an audio clip keeps the song's tempo: its sound laid
-  /// on the beats at its own [bpm] -- or, where its [markers] say, moment
-  /// by moment -- and stretched to fit, in [warpMode]. Unwarped, it plays
-  /// at its own speed.
+  /// warp is whether an audio clip follows the song's tempo, its sound laid
+  /// on the beats by [bpm] and [markers] and stretched in [warpMode].
+  /// Unwarped, it plays at its own speed.
   final bool warp;
   final WarpMode warpMode;
 
-  /// bpm is the tempo the sound was played at; nought, not yet known.
+  /// bpm is the sound's own tempo; nought when not yet known.
   final double bpm;
   final List<WarpMarker> markers;
 
-  /// pitch is how far it is moved, in semitones, and cents in hundredths
-  /// of one. Unwarped -- or in Re-pitch -- it is faster or slower with it.
+  /// pitch and cents are its transposition. Unwarped or in Re-pitch, this
+  /// also changes its speed.
   final int pitch;
   final int cents;
 
-  /// warped is its sound warped, rendered at the song's tempo, and
-  /// [warpedFor] what it was rendered from -- see warpSignature.
+  /// warped is its sound rendered at the song's tempo, and [warpedFor] the
+  /// [warpSignature] it was rendered from.
   final MediaSource? warped;
   final String warpedFor;
 
-  /// envelopes are an audio clip's changes as it plays -- see ClipEnvelope
-  /// -- each points of a beat into what it plays and a value, in order. They
-  /// go round with its loop, and are part of what is rendered for it.
+  /// envelopes are an audio clip's [ClipEnvelope] curves, (beat, value) in
+  /// order. They loop with it and are rendered into its sound.
   final Map<ClipEnvelope, List<ControlPoint>> envelopes;
 
-  /// automation is its envelopes of its channel's settings -- the volume,
-  /// a send, a device's knob -- moved while it plays: see ClipAutomation.
-  /// Not rendered into its sound, as gain and pan are; played on the
-  /// channel as it goes.
+  /// automation is its envelopes of channel settings (volume, a send, a
+  /// device knob). Unlike [envelopes] they are not rendered: they move the
+  /// channel as it plays.
   final List<ClipAutomation> automation;
 
-  /// curveOf is the envelope [key] -- a ClipEnvelope's name, or a setting's
-  /// id (see AutomationTarget) -- as its points, a beat and a height.
+  /// curveOf is envelope [key]'s points: [key] is a ClipEnvelope's name or a
+  /// setting's id (see AutomationTarget).
   List<ControlPoint> curveOf(String key) {
     for (var e in ClipEnvelope.values) {
       if (e.name == key) return envelopes[e] ?? const [];
@@ -267,8 +253,8 @@ class SessionClip {
         const [];
   }
 
-  /// withCurve is the clip with envelope [key]'s points [points]: one of
-  /// a setting's made for its first point, and taken away with its last.
+  /// withCurve is the clip with envelope [key] set to [points]. A setting's
+  /// envelope is created with its first point and removed with its last.
   SessionClip withCurve(String key, List<ControlPoint> points) {
     var sorted = [...points]..sort((a, b) => a.$1.compareTo(b.$1));
     for (var e in ClipEnvelope.values) {
@@ -283,14 +269,13 @@ class SessionClip {
     ]);
   }
 
-  /// lengthOf is envelope [key]'s own length in beats, or null for one
-  /// that goes with the clip's loop -- gain and pan always do.
+  /// lengthOf is envelope [key]'s own length in beats, or null when it
+  /// follows the clip's loop (gain and pan always do).
   double? lengthOf(String key) =>
       automation.where((a) => a.target == key).firstOrNull?.length;
 
   /// withLength gives envelope [key] its own [length], or links it to the
-  /// clip's loop with null. A setting's envelope with no points yet is
-  /// made for it.
+  /// clip's loop with null, creating the envelope if needed.
   SessionClip withLength(String key, double? length) {
     if (ClipEnvelope.values.any((e) => e.name == key)) return this;
     var was = automation.where((a) => a.target == key).firstOrNull ??
@@ -302,10 +287,9 @@ class SessionClip {
     ]);
   }
 
-  /// mediaIds is every stored sound it uses: its own, what it was before
-  /// it was reversed, and what was rendered for it -- warped, or a MIDI
-  /// clip's notes played. Left out, the library's tidy after a save
-  /// deleted them, and the clip came back with no sound.
+  /// mediaIds is every stored sound it uses: its own, [reversedOf] and
+  /// [warped]. The library's tidy after a save deletes any sound not
+  /// listed.
   Set<String> get mediaIds => {
         for (var s in [sound, reversedOf, warped])
           if (s != null) ...[
@@ -317,8 +301,8 @@ class SessionClip {
   /// warpMap is where its sound falls on its beats.
   WarpMap get warpMap => WarpMap(bpm, markers);
 
-  /// needsRender is whether it plays a rendered sound -- warped, or moved
-  /// in pitch -- rather than its own.
+  /// needsRender is whether an audio clip plays a rendered sound (warped,
+  /// pitched, faded or enveloped) rather than its own.
   bool get needsRender =>
       !midi &&
       (warp ||
@@ -327,8 +311,8 @@ class SessionClip {
           cents != 0 ||
           envelopes.values.any((e) => e.isNotEmpty));
 
-  /// warpSignature is what its rendered sound is made from, at
-  /// [secondsPerBeat]: when it changes, it is rendered again.
+  /// warpSignature is what its rendered sound is made from at
+  /// [secondsPerBeat]; when it changes, it is rendered again.
   String warpSignature(double secondsPerBeat) => [
         sound?.assetId,
         sound?.start,
@@ -344,12 +328,11 @@ class SessionClip {
             "${e.key.name}=${e.value.map((p) => "${p.$1},${p.$2}").join(";")}",
         if (warp || fade || envelopes.values.any((e) => e.isNotEmpty))
           secondsPerBeat,
-        // Faded where it starts and goes round: made again as they move.
+        // The fades sit at the start and loop points, so those count.
         if (fade) "fade=$start,$loopStart,$bars,$loop",
       ].join(":");
 
-  /// rendered is what [sound] was played from, for a MIDI clip: its
-  /// signature, so it is played again only when that changes.
+  /// rendered is the [signature] a MIDI clip's [sound] was rendered from.
   final String rendered;
 
   const SessionClip({
@@ -463,8 +446,8 @@ class SessionClip {
         automation: automation ?? this.automation,
       );
 
-  /// signature is what a MIDI clip's sound is played from, with [part]'s
-  /// instrument: when it changes, the sound is played again.
+  /// signature is what a MIDI clip's sound is rendered from with [part]'s
+  /// instrument; when it changes, it is rendered again.
   String signature(InstrumentPart part, double secondsPerBeat) =>
       "${part.sound.name}:${part.look.name}:${part.bank}:${part.program}:"
       "${part.effects.where((e) => e.on).join(";")}:"
@@ -472,8 +455,8 @@ class SessionClip {
       "${notes.map((n) => n.toJson().join(",")).join(";")}:"
       "${controls.isEmpty ? "" : controlsToJson(controls)}";
 
-  /// partOf is the clip as a part for [part]'s instrument to play: its notes
-  /// in seconds, at [secondsPerBeat], for the clip's whole length.
+  /// partOf is the clip as a part for [part]'s instrument, its notes in
+  /// seconds at [secondsPerBeat].
   InstrumentPart partOf(InstrumentPart part, double secondsPerBeat) =>
       part.copyWith(notes: [
         for (var n in notes)
@@ -611,14 +594,14 @@ class SessionClip {
 /// defaultSceneCount is how many scenes a grid starts with, unnamed.
 const int defaultSceneCount = 8;
 
-/// SessionGrid is every channel's clip slots, and the scenes -- its rows.
+/// SessionGrid is every channel's clip slots, and the scenes (its rows).
 class SessionGrid {
   /// scenes are the rows' names, top to bottom; "" is unnamed, shown by its
   /// number.
   final List<String> scenes;
 
-  /// slots are each channel's clips by row, by channel key; a list shorter
-  /// than the scenes, or a null in it, is empty slots.
+  /// slots are each channel's clips by row, by channel key; a short list or
+  /// a null is empty slots.
   final Map<String, List<SessionClip?>> slots;
 
   const SessionGrid({
@@ -654,8 +637,8 @@ class SessionGrid {
     return null;
   }
 
-  /// put is the grid with [clip] in [channel]'s slot [row] -- or that slot
-  /// emptied, for null.
+  /// put is the grid with [clip] in [channel]'s slot [row] (null empties
+  /// it).
   SessionGrid put(String channel, int row, SessionClip? clip) {
     if (row < 0) return this;
     var list = [...?slots[channel]];
@@ -679,8 +662,8 @@ class SessionGrid {
         slots: next);
   }
 
-  /// withScene is the grid with a scene added after [after] -- at the end
-  /// for null -- and the clips below it moved down.
+  /// withScene is the grid with a scene added after [after] (at the end for
+  /// null), the clips below moved down.
   SessionGrid withScene({int? after}) {
     var at = after == null ? scenes.length : after + 1;
     return SessionGrid(
@@ -712,18 +695,12 @@ class SessionGrid {
     return SessionGrid(scenes: [...scenes]..[row] = name.trim(), slots: slots);
   }
 
-  /// withoutChannel is the grid with [channel]'s clips gone: the channel is.
-  SessionGrid withoutChannel(String channel) => !slots.containsKey(channel)
-      ? this
-      : SessionGrid(scenes: scenes, slots: {...slots}..remove(channel));
-
-  /// clips is every clip, with its channel and row.
-  /// mediaIds is every stored sound the slots use -- see
-  /// SessionClip.mediaIds -- for the library to keep.
+  /// mediaIds is every stored sound the slots use, for the library to keep.
   Set<String> get mediaIds => {
         for (var (_, _, c) in clips) ...c.mediaIds,
       };
 
+  /// clips is every clip, with its channel and row.
   Iterable<(String, int, SessionClip)> get clips sync* {
     for (var e in slots.entries) {
       for (var (i, c) in e.value.indexed) {
@@ -742,16 +719,20 @@ class SessionGrid {
 
   static SessionGrid fromJson(Object? json) {
     if (json is! Map<String, dynamic>) return const SessionGrid();
+    // Every row is built as a widget, so the count is capped.
+    const most = 256;
     var scenes = [
       if (json["scenes"] case List names)
-        for (var n in names) jsonString(n, ""),
+        for (var n in names.take(most)) jsonString(n, ""),
     ];
     if (scenes.isEmpty) scenes = List.filled(defaultSceneCount, "");
     var slots = <String, List<SessionClip?>>{};
     if (json["slots"] case Map<String, dynamic> m) {
       for (var e in m.entries) {
         if (e.value is! List) continue;
-        var list = [for (var c in e.value as List) SessionClip.fromJson(c)];
+        var list = [
+          for (var c in (e.value as List).take(most)) SessionClip.fromJson(c)
+        ];
         while (list.isNotEmpty && list.last == null) {
           list.removeLast();
         }

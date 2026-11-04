@@ -16,25 +16,22 @@ import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_player.dart'
     show MotionSlotState;
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
+import 'package:bruig/plugin_system/canvas/ui/slots_window.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// motion_lanes.dart is the elements' rows on the timeline: one group for each
-// element with clips -- and the one picked, so a first clip can be made on
-// it -- with a lane for each layer it uses and one more to drop onto, and its
-// own sound's lane under them. The clips placed there are drawn as bars:
-// coloured by what they are for, repeats marked on a loop, the pace on one
-// that was stretched, a dot at an end that is pinned.
+// motion_lanes.dart is the elements' rows on the timeline: a group for each
+// element with clips (and the one picked, so a first clip can be made), a
+// lane for each layer it uses plus one to drop onto, and its own sound's
+// lane under them. Placed clips are bars coloured by what they are for, with
+// a loop's repeats, a stretched one's pace, and a dot on a pinned end.
 //
-// A click opens a clip in the Animation panel. A drag moves it -- along, and
-// onto another of its element's lanes -- and its ends stretch it. With the
-// knife out a click cuts it in two. A double-click on an empty stretch makes
-// a clip there, from the ready-made motions.
-//
-// Laid out as the channels under it are -- the header column, then the
-// frames on the timeline's own view -- since it scrolls with them: see
-// CanvasChannels.leading.
+// A click opens a clip in the Animation panel; a drag moves it, along or onto
+// another lane of its element, and its ends stretch it. With the knife out a
+// click cuts it. A double-click on an empty stretch makes a clip there from
+// the ready-made motions. Laid out as the channels under it are, since it
+// scrolls with them: see CanvasChannels.leading.
 
 /// motionLaneHeight is one lane's height, before the text's size.
 const double motionLaneHeight = 22;
@@ -48,8 +45,7 @@ class MotionSlotDrag {
   const MotionSlotDrag(this.element, this.slot, this.clip);
 }
 
-/// motionKindColours are the clips' colours, by what they are for -- the
-/// prototype's.
+/// motionKindColours are the clips' colours, by what they are for.
 const Map<MotionKind, Color> motionKindColours = {
   MotionKind.arrive: Color(0xFF2BB3A3),
   MotionKind.loop: Color(0xFF8B7CF6),
@@ -435,7 +431,7 @@ class _MotionLanesState extends State<MotionLanes> {
           ]),
         ),
         // Its slots beside its rows, a cue each, when they are.
-        if (controller.slotsBeside)
+        if (controller.slotsWidth > 0)
           SizedBox(
             width: controller.slotsWidth,
             child: Column(children: [
@@ -595,6 +591,24 @@ class _RowSlots extends StatelessWidget {
         ),
         child: Row(children: [
           launch,
+          // Empty: pressed, a new clip in it, opened -- as the mixer's
+          // slots do.
+          if (clip == null)
+            Expanded(
+              child: GestureDetector(
+                key: ValueKey("rowSlotNew-${element.id}-$i"),
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  var id = c.newClip(element.id,
+                      kind: element is CameraElement
+                          ? MotionKind.camera
+                          : MotionKind.action,
+                      slot: i);
+                  c.pickMotion(element.id, id);
+                  c.animationOpen = true;
+                },
+              ),
+            ),
           if (clip != null)
             Expanded(
               child: GestureDetector(
@@ -605,7 +619,7 @@ class _RowSlots extends StatelessWidget {
                   c.animationOpen = true;
                 },
                 child: Text(clip.name.isEmpty ? "Clip" : clip.name,
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 10, height: 1.1, color: ink)),
               ),
@@ -632,15 +646,7 @@ class _RowSlots extends StatelessWidget {
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(3, 3, 2, 3),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        for (var i = 0; i < c.session.rows; i++) ...[
-          if (i > 0) const SizedBox(width: 3),
-          SizedBox(width: CanvasController.slotCellWidth, child: cell(i)),
-        ],
-      ]),
-    );
+    return SlotsWindow(controller: c, cell: cell);
   }
 }
 
@@ -669,6 +675,9 @@ class _LanesPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // A clip starting before the frames shown, zoomed in, is drawn from
+    // where it starts: kept to the lanes, not over the strips beside them.
+    canvas.clipRect(Offset.zero & size);
     var y = 0.0;
     var line = Paint()..color = colors.outlineVariant.withValues(alpha: 0.5);
     for (var e in rows) {
@@ -723,8 +732,8 @@ class _LanesPainter extends CustomPainter {
     }
     canvas.save();
     canvas.clipRRect(r);
-    // A loop's repeats.
-    if (c.loop && c.span > 0) {
+    // A loop's repeats, where they are far enough apart to see.
+    if (c.loop && c.span > 0 && x(s.start + c.span) - x(s.start) >= 3) {
       var tick = Paint()..color = const Color(0x73FFFFFF);
       for (var t = s.start + c.span; t < s.end - 0.01; t += c.span) {
         canvas.drawLine(

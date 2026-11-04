@@ -250,7 +250,7 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
       expect(c.readingOf(c.phrasingTake!), isNotNull);
-      c.shapeWord(1, const WordShape(pitch: 3));
+      c.shapeWords({1: const WordShape(pitch: 3)});
       expect(c.phrasingTake!.shapeOf(1).pitch, 3);
       expect(c.phrasingTake!.needsShaping, isTrue);
       var made = await c.shapedTake("a", 0, 0);

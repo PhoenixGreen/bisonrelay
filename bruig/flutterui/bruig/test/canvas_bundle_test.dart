@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/text_document.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -9,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'canvas_store_age.dart';
 
 // canvas_bundle_test.dart is about a canvas surviving the journey to somebody
 // else's machine.
@@ -78,6 +81,7 @@ void main() {
     // A reader's machine: the same library, with nothing in the store. The
     // sweep takes every picture no saved canvas refers to, and nothing here
     // has been saved.
+    await ageStores();
     await CanvasAssets.sweepUnused();
     expect(await CanvasAssets.load(id), isNull);
 
@@ -139,5 +143,24 @@ void main() {
     });
     expect(await storeBundlePictures(hostile), 0);
     expect(await File("${root.path}/evil.png").exists(), isFalse);
+  });
+
+  test("a received canvas does not read the recipient's documents", () async {
+    var doc = const CanvasDocument(elements: [
+      TextElement(ElementBase(id: "t"),
+          text: "What the sender's document said",
+          document: TextDocumentRef(name: "Diary")),
+    ]);
+    var back = (await unpackCanvas(utf8.encode(doc.encode())))!;
+    var t = back.document.elementById("t") as TextElement;
+    expect(t.document.on, isFalse);
+    expect(t.text, "What the sender's document said");
+  });
+
+  test("a picture just stored is not swept before its canvas is saved",
+      () async {
+    var id = (await CanvasAssets.save(png(5)))!;
+    await CanvasAssets.sweepUnused();
+    expect(await CanvasAssets.load(id), isNotNull);
   });
 }

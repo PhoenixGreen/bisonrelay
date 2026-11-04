@@ -1,10 +1,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-// glb_info.dart reads what a 3D model offers from its file, without drawing
-// it: the animations in a .glb -- each one's name and how long it runs --
-// so its clips can be made, and its slots filled, where nothing can draw in
-// 3D (a test, a machine without the GPU) and before the model is loaded.
+// glb_info.dart reads the animations in a .glb (name and length) without
+// loading the model, so clips can be made where nothing can draw in 3D (a
+// test, a machine without the GPU) and before the model loads.
 
 /// ModelAnimation is one of a model's own animations: its name, and how
 /// long it runs, in seconds.

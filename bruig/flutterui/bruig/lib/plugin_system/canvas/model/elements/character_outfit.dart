@@ -98,16 +98,17 @@ class Garment {
   /// kind is what is made, from [madeKinds].
   final String kind;
 
-  /// The top's cut: sleeves and hem from short to long, the neckline, its
+  /// sleeves, hem, depth and fit are the top's cut: sleeves and hem from short to long, the neckline, its
   /// depth, and how loose.
   final double sleeves, hem, depth, fit;
   final String neckline;
 
-  /// The bottom's: its length, how high the waist, a skirt's flare and
-  /// pleats.
+  /// length, rise, flare and pleats are the bottom's: its length, how high
+  /// the waist, a skirt's flare and pleats.
   final double length, rise, flare, pleats;
 
-  /// Colours, as 0xRRGGBB: the cloth, the pattern on it, a shoe's sole.
+  /// colour, patternColour and sole are 0xRRGGBB: the cloth, the pattern on
+  /// it, a shoe's sole.
   final int colour, patternColour, sole;
   final String pattern;
 
@@ -278,7 +279,8 @@ class CharacterOutfit {
   /// changed is whether [s] is not as designed.
   bool changed(WearSlot s) => this[s] != defaults[s];
 
-  /// The quick changes: everything at once.
+  /// underwearOnly takes every outer piece off at once, making underwear
+  /// where there is none.
   CharacterOutfit underwearOnly({required bool male}) {
     var o = this;
     for (final s in [

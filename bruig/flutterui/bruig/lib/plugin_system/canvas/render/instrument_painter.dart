@@ -4,13 +4,11 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:flutter/painting.dart';
 
-// instrument_painter.dart draws an instrument as the keyboard it is played
-// on: its keys from the lowest to the highest the part says, those
-// sounding lit -- the notes under the playhead, and any held down.
+// instrument_painter.dart draws an instrument as what it is played on
+// (keys, pads, or strings and frets), with the sounding notes lit.
 //
-// The keys are laid out once, in keyboardLayout, and the stage presses the
-// same rectangles the painter drew, as audio_painter.dart does for a
-// speaker's controls.
+// The keys are laid out once, in keyboardLayout, and the stage hit-tests the
+// same rectangles the painter drew, as with audio_painter.dart's controls.
 
 /// KeyRect is one key: where it is, and whether it is a black one.
 typedef KeyRect = ({int key, Rect rect, bool black});
@@ -23,9 +21,9 @@ class KeyboardLayout {
   final List<KeyRect> keys;
   const KeyboardLayout(this.title, this.board, this.keys);
 
-  /// keyAt is the key under [p], a black one before the white under it, or
-  /// null. [depth] is how far down the key it was pressed, nought to one --
-  /// further down, harder.
+  /// keyAt is the key under [p] (a black one before the white under it) and
+  /// how far down the key it was pressed, nought to one; further down is
+  /// harder. Null where there is no key.
   (int, double)? keyAt(Offset p) {
     for (var black in [true, false]) {
       for (var k in keys) {
@@ -37,8 +35,8 @@ class KeyboardLayout {
   }
 }
 
-/// keyboardLayout lays [part]'s keys out inside [bounds] -- or its pads, or
-/// its strings and frets: whatever it is played on, a key a place.
+/// keyboardLayout lays [part]'s keys, pads, or strings and frets out inside
+/// [bounds], one KeyRect per playable place.
 KeyboardLayout keyboardLayout(InstrumentPart part, Rect bounds) {
   var inset = math.min(bounds.width, bounds.height) * 0.04;
   var inner = bounds.deflate(inset);

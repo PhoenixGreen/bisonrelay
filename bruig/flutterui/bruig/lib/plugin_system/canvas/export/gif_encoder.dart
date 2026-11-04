@@ -1,32 +1,12 @@
 import 'dart:typed_data';
 
-// gif_encoder.dart writes an animated GIF.
+// gif_encoder.dart writes an animated GIF89a by hand: there is no
+// Flutter-native encoder, and ffmpeg is absent on most machines.
 //
-// Written out rather than reached for, because there is no Flutter-native GIF
-// encoder and the alternatives were shelling out to ffmpeg -- absent on most
-// machines, and a silent failure for everybody who does not have it -- or
-// adding a dependency for one file's worth of work. GIF89a is a small, fully
-// specified, thirty-year-old format, and the whole of it that matters here is
-// three things: a palette, LZW, and a loop extension.
-//
-// The three pieces, in the order they are hard:
-//
-//   Quantisation  a GIF holds at most 256 colours and a canvas holds
-//                 millions. _medianCut chooses the 256, once for the whole
-//                 animation rather than per frame -- a palette that changed
-//                 between frames makes flat areas crawl, which is far more
-//                 noticeable than any single frame being slightly off.
-//
-//   Dithering     with 256 colours a gradient bands visibly. Floyd-Steinberg
-//                 spreads each pixel's error into its neighbours, trading the
-//                 bands for a fine noise the eye reads as the original. It is
-//                 optional because on flat-coloured work -- a tactics diagram,
-//                 a chart -- it adds noise to something that quantised
-//                 perfectly without it.
-//
-//   LZW           the compression the format specifies. Variable-width codes
-//                 from 9 to 12 bits, with a clear code emitted when the
-//                 dictionary fills. Fiddly, and completely mechanical.
+// One palette is chosen by median cut for the whole animation, since a
+// palette that changes between frames makes flat areas crawl. Floyd-Steinberg
+// dithering is optional: it hides banding in gradients but adds noise to
+// flat-coloured work that quantises perfectly without it.
 
 /// gifMaxColors is what the format allows in one palette.
 const int gifMaxColors = 256;
@@ -37,9 +17,8 @@ class GifFrame {
   final int width;
   final int height;
 
-  /// delayMs is how long this frame is shown. GIF stores it in hundredths of a
-  /// second, so anything finer is rounded on the way out -- which is why the
-  /// exporter warns about frame rates a GIF cannot actually hold.
+  /// delayMs is how long this frame is shown. GIF stores hundredths of a
+  /// second, so anything finer is rounded.
   final int delayMs;
 
   const GifFrame({
@@ -50,10 +29,8 @@ class GifFrame {
   });
 }
 
-/// encodeGif turns frames into a GIF89a file.
-///
-/// [loop] is how many times to repeat: 0 means forever, which is what almost
-/// every animated GIF wants and what the exporter defaults to.
+/// encodeGif turns frames into a GIF89a file. [loop] is how many times it
+/// plays, 0 for forever.
 Uint8List encodeGif(
   List<GifFrame> frames, {
   int loop = 0,
@@ -66,10 +43,8 @@ Uint8List encodeGif(
   var height = frames.first.height;
   var colors = maxColors.clamp(2, gifMaxColors);
 
-  // Any pixel that is not close to opaque becomes the transparent index. GIF
-  // has one bit of alpha and no more, so a soft edge is either kept or cut;
-  // 128 puts the boundary where a half-transparent pixel goes, which is the
-  // least wrong place for it.
+  // GIF has one bit of alpha: any pixel under half opacity becomes the
+  // transparent index.
   var needsTransparency = frames.any((f) {
     for (var i = 3; i < f.rgba.length; i += 4) {
       if (f.rgba[i] < 128) return true;
@@ -77,18 +52,12 @@ Uint8List encodeGif(
     return false;
   });
 
-  // Frames after the first carry only what changed, with everything else left
-  // transparent for the frame underneath to show through. A canvas is mostly
-  // still -- a chart drawing itself on, a word arriving -- so most of most
-  // frames is the frame before it, and writing it again is the whole of why a
-  // twenty-four frame animation of one moving shape came to a hundred and
-  // seventy kilobytes.
-  //
-  // Only where the art itself is opaque. Patching frames onto each other
-  // means each one stays until something is drawn over it, and a see-through
-  // element moving across that would leave a trail of itself. Where there is
-  // real transparency the old behaviour stands: every frame in full, thrown
-  // away before the next.
+  // Frames after the first carry only what changed, the rest transparent so
+  // the frame beneath shows through; a canvas is mostly still, so this is
+  // most of the file's size. Only where the art is opaque: patched frames
+  // stay until drawn over, so a see-through element moving would leave a
+  // trail. With real transparency every frame is written in full and
+  // disposed before the next.
   var differencing = frames.length > 1 && !needsTransparency;
   var spare = needsTransparency || differencing;
 
@@ -119,28 +88,26 @@ Uint8List encodeGif(
     out.addByte(p + 2 < palette.length ? palette[p + 2] : 0);
   }
 
-  // The Netscape application extension, which is how a GIF says "loop". It is
-  // not in the specification; it is what every decoder implements instead.
-  if (frames.length > 1) {
+  // The Netscape extension (not in the specification, but universal) says
+  // "loop". Its count is of repeats after the first play, so once is none.
+  if (frames.length > 1 && loop != 1) {
     out.addByte(0x21);
     out.addByte(0xFF);
     out.addByte(11);
     out.addString("NETSCAPE2.0");
     out.addByte(3);
     out.addByte(1);
-    out.addUint16(loop);
+    out.addUint16(loop <= 0 ? 0 : loop - 1);
     out.addByte(0);
   }
 
-  // Only the frame before, never all of them: a two hundred frame animation
-  // at full size is four hundred megabytes of indices if they are all kept.
+  // Only the frame before is kept, never all of them.
   Uint8List? previous;
 
   for (var frame in frames) {
     var indices = _quantise(frame, lookup, transparentIndex, dither, palette);
 
-    // What to actually write: the whole frame, or the rectangle of it that
-    // differs from the frame before.
+    // The whole frame, or the rectangle that differs from the frame before.
     var left = 0;
     var top = 0;
     var width_ = frame.width;
@@ -150,8 +117,8 @@ Uint8List encodeGif(
     if (differencing && previous != null) {
       var box = _changedBox(previous, indices, frame.width, frame.height);
       if (box == null) {
-        // Nothing moved. One transparent pixel, and the frame underneath
-        // stays exactly as it is for another delay.
+        // Nothing moved: one transparent pixel holds the frame for another
+        // delay.
         left = 0;
         top = 0;
         width_ = 1;
@@ -169,8 +136,8 @@ Uint8List encodeGif(
           var to = y * width_;
           for (var x = 0; x < width_; x++) {
             var value = indices[from + x];
-            // Unchanged pixels inside the rectangle are left see-through as
-            // well, so a diagonal move costs its line rather than its box.
+            // Unchanged pixels inside the rectangle are see-through too, so a
+            // diagonal move costs its line rather than its box.
             payload[to + x] =
                 value == previous[from + x] ? transparentIndex : value;
           }
@@ -182,10 +149,9 @@ Uint8List encodeGif(
     out.addByte(0x21);
     out.addByte(0xF9);
     out.addByte(4);
-    // Disposal 1 (leave in place) while patching frames onto each other, and
-    // 2 (restore to background) where every frame is written in full and
-    // there is transparency -- so a moving see-through element does not
-    // smear across the frames behind it.
+    // Disposal 1 (leave in place) while differencing; 2 (restore to
+    // background) for full frames with transparency, so a moving
+    // see-through element does not smear.
     var disposal = differencing ? 0x05 : (transparentIndex >= 0 ? 0x09 : 0x04);
     out.addByte(disposal);
     out.addUint16((frame.delayMs / 10).round().clamp(1, 65535));
@@ -220,22 +186,12 @@ int _paletteBits(int count) {
 // Quantisation
 // --------------------------------------------------------------------------
 
-/// _medianCut chooses a palette covering every frame.
-///
-/// The classic algorithm: put every colour in one box, then repeatedly split
-/// the box with the widest spread along that widest channel, at its median,
-/// until there are as many boxes as colours wanted. Each box becomes the
-/// average of what is in it.
-///
-/// Median cut rather than a uniform cube or a popularity count, because it
-/// spends its colours where the picture actually has them -- a canvas that is
-/// mostly one green pitch and a few bright shirts gets shades of green *and*
-/// the shirts, where a popularity count would spend all 256 on the grass.
+/// _medianCut chooses a palette covering every frame: the box with the
+/// widest channel spread is split at its median until there are [wanted]
+/// boxes, each becoming the average of its colours. Unlike a popularity
+/// count, it keeps rare bright colours as well as shades of a dominant one.
 Uint8List _medianCut(List<GifFrame> frames, int wanted) {
-  // Sampled rather than exhaustive. A 1280x720 frame is nearly a million
-  // pixels and thirty of them is thirty million; a stride keeps this to tens
-  // of thousands, and a colour that appears in fewer than one pixel in
-  // sixteen was never going to earn a palette entry.
+  // Sampled at a stride, about 20,000 pixels a frame.
   var samples = <int>[];
   for (var frame in frames) {
     var pixels = frame.rgba;
@@ -296,12 +252,9 @@ Uint8List _medianCut(List<GifFrame> frames, int wanted) {
   return palette;
 }
 
-/// _NearestColor maps a colour onto the closest palette entry.
-///
-/// Backed by a 32768-entry cache over the colour cube's top five bits per
-/// channel. Without it this is the slowest thing in the encoder by an order of
-/// magnitude -- a linear scan of 256 entries per pixel, a million pixels a
-/// frame -- and with it almost every lookup is an array read.
+/// _NearestColor maps a colour onto the closest palette entry, cached over
+/// the top five bits per channel: without the cache, a linear scan per
+/// pixel is the encoder's slowest step by far.
 class _NearestColor {
   final Uint8List palette;
   final Int16List _cache = Int16List(1 << 15)..fillRange(0, 1 << 15, -1);
@@ -348,10 +301,8 @@ Uint8List _quantise(GifFrame frame, _NearestColor lookup, int transparentIndex,
     return out;
   }
 
-  // Floyd-Steinberg over a working copy in signed space, because the error
-  // pushed into a neighbour routinely takes it outside 0..255 and clamping it
-  // at every step -- rather than only when it is read -- loses exactly the
-  // error the algorithm exists to carry.
+  // Floyd-Steinberg over a signed working copy, clamped only when read:
+  // clamping the neighbours as error is pushed would lose that error.
   var work = Int32List(width * height * 3);
   for (var i = 0; i < width * height; i++) {
     work[i * 3] = frame.rgba[i * 4];
@@ -398,13 +349,9 @@ Uint8List _quantise(GifFrame frame, _NearestColor lookup, int transparentIndex,
 // LZW
 // --------------------------------------------------------------------------
 
-/// _lzwCompress writes the image data blocks for one frame.
-///
-/// The variable-width LZW the GIF specification defines: codes start one bit
-/// wider than the palette, the dictionary grows as strings are seen, the code
-/// width steps up as it fills, and a clear code resets it when it reaches
-/// 4096. The output is a bit stream packed least-significant-bit first, cut
-/// into sub-blocks of at most 255 bytes.
+/// _lzwCompress writes one frame's image data: GIF's variable-width LZW,
+/// codes up to 12 bits, a clear code when the dictionary reaches 4096,
+/// packed least-significant-bit first into sub-blocks of up to 255 bytes.
 void _lzwCompress(_ByteSink out, Uint8List indices, int minimumCodeSize) {
   out.addByte(minimumCodeSize);
 
@@ -442,8 +389,7 @@ void _lzwCompress(_ByteSink out, Uint8List indices, int minimumCodeSize) {
   var current = indices[0];
   for (var i = 1; i < indices.length; i++) {
     var next = indices[i];
-    // The dictionary is keyed by (prefix code, next byte) packed into one int,
-    // which is what keeps it a plain int map rather than a map of lists.
+    // Keyed by (prefix code, next byte) packed into one int.
     var key = (current << 8) | next;
     var found = dictionary[key];
     if (found != null) {
@@ -500,7 +446,7 @@ class _BlockSink {
   }
 }
 
-/// _ByteSink is a growable byte buffer with the two writes this file needs.
+/// _ByteSink is a growable byte buffer.
 class _ByteSink {
   final BytesBuilder _builder = BytesBuilder(copy: false);
 
@@ -516,13 +462,8 @@ class _ByteSink {
   Uint8List toBytes() => _builder.toBytes();
 }
 
-/// _changedBox is the rectangle two frames differ in, or null where they do
-/// not differ at all.
-///
-/// The bounding box rather than a list of runs: a GIF frame is a rectangle,
-/// so that is the shape the answer has to take. Pixels inside it that did not
-/// change are made see-through by the caller, which is what makes a diagonal
-/// move cost its line rather than its box.
+/// _changedBox is the inclusive rectangle two frames differ in, or null
+/// where they do not differ.
 (int, int, int, int)? _changedBox(
     Uint8List before, Uint8List after, int width, int height) {
   var left = width;

@@ -84,9 +84,9 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
     });
   }
 
-  /// _fetchModel downloads the speech model beside the library, then
-  /// listens. Only with fetching allowed, and never through a proxy -- the
-  /// same rules the stock sites keep.
+  /// _fetchModel downloads the speech model beside the library, then listens.
+  /// Only with fetching allowed and never through a proxy, as for the stock
+  /// sites.
   Future<void> _fetchModel(AudioElement voice) async {
     var allowed = context.read<CanvasPreferences>().allowFetching;
     var proxied = await networkIsProxied();

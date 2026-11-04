@@ -5,14 +5,12 @@ import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart' show dbToGain;
 
-// device_dsp.dart is the devices a chain can hold beside the reverb and the
-// delay: a gate, a swept filter, chorus, flanger, phaser, an auto-pan, three
-// kinds of drive, a bit crusher and a utility. Each reads its settings as
-// it is made, and again when they change -- tuned, as automation moves
-// them -- keeping what it is in the middle of: a delay line, an LFO's
-// phase, a filter's state.
+// device_dsp.dart is the chain devices other than reverb and delay: gate,
+// auto filter, chorus, flanger, phaser, auto-pan, three drives, bit crusher
+// and utility. [Tunable.tune] rereads settings (as automation moves them)
+// without resetting state such as delay lines, LFO phase or filter memory.
 //
-// All at the mix rate, 48kHz, on a block of a channel's two sides.
+// All at the mix rate, 48kHz.
 
 const double _rate = 48000;
 
@@ -38,8 +36,8 @@ class _Lfo {
 }
 
 /// Gate lets a sound through only while it is louder than the threshold:
-/// open in the attack, held open the hold after it falls, closed over the
-/// release -- down to the floor, not always to nothing.
+/// it opens over the attack, stays open for the hold, and closes over the
+/// release down to the floor level.
 class Gate implements DeviceProcessor, Tunable {
   late double _threshold, _attack, _release, _floor;
   late int _hold;
@@ -80,9 +78,8 @@ class Gate implements DeviceProcessor, Tunable {
   }
 }
 
-/// _Svf is a state-variable filter -- the trapezoidal kind, which stays
-/// steady while its frequency is swept -- giving low-, high- and band-pass
-/// at once.
+/// _Svf is a trapezoidal state-variable filter, which stays stable while
+/// its frequency is swept, giving low-, band- and high-pass at once.
 class _Svf {
   double _ic1 = 0, _ic2 = 0;
   double _a1 = 0, _a2 = 0, _a3 = 0, _k = 1;
@@ -157,7 +154,7 @@ class _ModDelay {
   int _at = 0;
   _ModDelay(int size) : _buffer = Float32List(size);
 
-  /// run writes [x], and reads back [delay] samples ago.
+  /// read is the line [delay] samples ago, interpolated.
   double read(double delay) {
     var pos = _at - delay;
     while (pos < 0) {
@@ -174,14 +171,12 @@ class _ModDelay {
   }
 }
 
-/// Chorus and Flanger are one sound mixed with a copy of itself delayed by
-/// a moving amount: a few milliseconds and more for a chorus's thickening,
-/// under a few with feedback for a flanger's sweep. The two sides' LFOs are
-/// a quarter turn apart, for width.
+/// _Modulated is Chorus and Flanger: a sound mixed with a copy of itself
+/// delayed by a moving amount (longer for a chorus, short with feedback for
+/// a flanger). The two sides' LFOs are a quarter turn apart, for width.
 abstract class _Modulated implements DeviceProcessor, Tunable {
-  /// _longest is the longest a chorus's or a flanger's delay goes, in
-  /// milliseconds: the lines are that long whatever they are set to, so a
-  /// setting moved never has to start them again.
+  /// _longest is the longest delay, in milliseconds. The lines are always
+  /// this long, so retuning never has to reallocate them.
   static const double _longest = 40;
 
   late double _base, _swing, _feedback, _mix;
@@ -429,9 +424,8 @@ class BitCrusher implements DeviceProcessor, Tunable {
   }
 }
 
-/// Utility is the plain things: a gain, the stereo width (nought mono, one
-/// as it is, two twice as wide), mono outright, and either side turned
-/// upside down.
+/// Utility is gain, stereo width (0 mono, 1 as is, 2 twice as wide), mono,
+/// and polarity inversion of either side.
 class Utility implements DeviceProcessor, Tunable {
   late double _gain, _width;
   late bool _mono;

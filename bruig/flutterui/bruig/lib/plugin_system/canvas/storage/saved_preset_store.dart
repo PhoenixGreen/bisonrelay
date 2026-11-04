@@ -8,22 +8,17 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
 // saved_preset_store.dart keeps the scenes and the canvases somebody has
-// saved, the same way element_preset_store.dart keeps the elements.
-//
-// One file per preset, in a folder of its own under the presets folder beside
-// the canvases: a preset is written and deleted on its own, and a single list
-// file is one that two windows can both rewrite with the loser's work gone.
+// saved, as element_preset_store.dart keeps the elements: one file per
+// preset, in a folder of its own under the presets folder.
 
 /// presetsFolderName is where every kind of preset lives, inside the canvas
-/// library. It begins with a dot, which is what keeps it out of the Files
-/// panel -- see CanvasStorage.list.
+/// library. The leading dot keeps it out of the Files panel (see
+/// CanvasStorage.list).
 const presetsFolderName = ".presets";
 
 /// SavedPresetStore is one kind's worth of them, kept in memory so a panel
-/// can draw the list without waiting for the disk.
-///
-/// Two instances, one per kind: the scene panel and the canvas panel each
-/// watch their own, and a change to one does not redraw the other.
+/// can draw the list without waiting for the disk. One instance per kind, so
+/// a change to one does not redraw the other's panel.
 class SavedPresetStore extends ChangeNotifier {
   static final SavedPresetStore scenes =
       SavedPresetStore._(SavedPresetKind.scene);
@@ -37,19 +32,6 @@ class SavedPresetStore extends ChangeNotifier {
       SavedPresetStore._(SavedPresetKind.look);
   static final SavedPresetStore paintBrushes =
       SavedPresetStore._(SavedPresetKind.paintBrush);
-  static final SavedPresetStore poses =
-      SavedPresetStore._(SavedPresetKind.pose);
-
-  /// of is the store for a kind, for the code that has one in hand.
-  static SavedPresetStore of(SavedPresetKind kind) => switch (kind) {
-        SavedPresetKind.scene => scenes,
-        SavedPresetKind.canvas => canvases,
-        SavedPresetKind.brush => brushes,
-        SavedPresetKind.pitchView => pitchViews,
-        SavedPresetKind.look => looks,
-        SavedPresetKind.paintBrush => paintBrushes,
-        SavedPresetKind.pose => poses,
-      };
 
   final SavedPresetKind kind;
   SavedPresetStore._(this.kind);
@@ -97,10 +79,8 @@ class SavedPresetStore extends ChangeNotifier {
   }
 
   /// save keeps [data] under [name] and answers with the preset it made.
-  ///
-  /// [data] is copied on the way in. A preset is a copy and not a link: the
-  /// scene it was taken from goes on being edited, and none of that may reach
-  /// what was saved.
+  /// [data] is copied on the way in: a preset is a copy, not a link to the
+  /// scene it came from.
   Future<SavedPreset?> save(String name, Map<String, dynamic> data,
       {Size? madeOn}) async {
     var clean = name.trim();
@@ -163,8 +143,8 @@ class SavedPresetStore extends ChangeNotifier {
     try {
       var dir = Directory(await _dir());
       if (!await dir.exists()) await dir.create(recursive: true);
-      await File(path.join(dir.path, "${preset.id}.json"))
-          .writeAsString(jsonEncode(preset.toJson()), flush: true);
+      await writeWholeText(path.join(dir.path, "${preset.id}.json"),
+          jsonEncode(preset.toJson()));
       return true;
     } catch (exception) {
       debugPrint("Unable to save the preset ${preset.name}: $exception");

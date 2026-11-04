@@ -10,14 +10,9 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_row.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// preset_panels.dart is the saved scenes and the saved elements, as two
-// lists in the Presets sidebar.
-//
-// What a preset does when it is used is the one thing that differs between
-// the three lists, and it follows from what the preset is: an element is
-// added to the canvas being looked at, a scene is added to the document after
-// the one being looked at, and a canvas either starts a new document or gives
-// its scenes to this one. See CanvasController.addScenes.
+// preset_panels.dart is the saved scenes and the saved elements, as two lists
+// in the Presets sidebar. Using one adds it: an element to the canvas in view,
+// a scene after the one in view (see CanvasController.addScenes).
 
 /// ScenePresetsPanel is the scenes somebody has saved.
 class ScenePresetsPanel extends StatefulWidget {
@@ -68,9 +63,8 @@ class _ScenePresetsPanelState extends State<ScenePresetsPanel> {
             name: preset.name,
             icon: Icons.movie_outlined,
             says: _says(preset),
-            // Sized to the page it is arriving on: a scene designed on a
-            // banner and dropped on a square canvas otherwise arrives at the
-            // banner's scale, hanging off the side. See presetScale.
+            // Sized to the page it is arriving on, so a scene made on a banner
+            // does not hang off a square canvas.
             onUse: () =>
                 widget.controller.addScenes(preset.buildScenes(on: _page())),
             onRename: (name) => store.rename(preset, name),
@@ -100,11 +94,8 @@ class ElementPresetsPanel extends StatefulWidget {
 class _ElementPresetsPanelState extends State<ElementPresetsPanel> {
   ElementPresetStore get store => ElementPresetStore.instance;
 
-  /// _kind is the filter: null for all of them.
-  ///
-  /// A list of every preset of every kind is a list nobody can find a chart
-  /// in. The filter offers only the kinds there are presets for, so it is
-  /// never a menu of mostly empty answers.
+  /// _kind is the filter: null for all of them. It offers only the kinds
+  /// there are presets for.
   ElementKind? _kind;
 
   @override
@@ -132,8 +123,8 @@ class _ElementPresetsPanelState extends State<ElementPresetsPanel> {
     var all = store.presets;
     var kinds = <ElementKind>{for (var p in all) p.kind}.toList()
       ..sort((a, b) => a.label.compareTo(b.label));
-    // A filter pointed at a kind that has just lost its last preset would
-    // show an empty list with no way to tell why.
+    // A filter on a kind that has just lost its last preset would show an
+    // empty list with no way to tell why.
     var kind = kinds.contains(_kind) ? _kind : null;
     var showing = [
       for (var p in all)
@@ -170,10 +161,9 @@ class _ElementPresetsPanelState extends State<ElementPresetsPanel> {
             name: preset.name,
             icon: iconForKind(preset.kind),
             says: preset.kind.label,
-            // Sized to the page it is arriving on, and put in the middle of
-            // it: a headline made for a 1920-wide banner arrives 1920 wide
-            // otherwise, which is the "presets come in too big" of the
-            // report. See ElementPreset.buildFor.
+            // Sized to the page and centred on it, so a headline made for a
+            // 1920-wide banner does not arrive 1920 wide. See
+            // ElementPreset.buildFor.
             onUse: () => widget.controller.addElement(preset.buildFor(_page())),
             // The ones that ship with the app are not the reader's to lose.
             onRename:
@@ -190,9 +180,8 @@ class _ElementPresetsPanelState extends State<ElementPresetsPanel> {
 class SavedCanvasPresets extends StatefulWidget {
   final CanvasController controller;
 
-  /// onOpen starts a new document from a preset. What to do about unsaved
-  /// work is the screen's decision, so it is handed up rather than taken
-  /// here.
+  /// onOpen starts a new document from a preset; what to do about unsaved
+  /// work is the screen's decision.
   final void Function(CanvasDocument document) onOpen;
 
   const SavedCanvasPresets(
@@ -240,9 +229,8 @@ class _SavedCanvasPresetsState extends State<SavedCanvasPresets> {
           name: preset.name,
           icon: Icons.dashboard_outlined,
           says: _says(preset),
-          // Tapped, it starts a document of its own -- which is what a whole
-          // canvas is. Its scenes can be added to the document already open
-          // from the menu instead.
+          // Tapped, it starts a document of its own; its menu adds its scenes
+          // to the open one instead.
           onUse: () {
             var document = preset.buildDocument();
             if (document != null) widget.onOpen(document);

@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 // look to start from, then its lines, shading and light, its colour, and the
 // finish of the page. See character_look.dart.
 
-/// The list's id for the Drawing style.
+/// stylePartId is the list's id for the Drawing style.
 const String stylePartId = "style";
 
 /// CharacterLookControls are the Drawing style's settings. [name] is the

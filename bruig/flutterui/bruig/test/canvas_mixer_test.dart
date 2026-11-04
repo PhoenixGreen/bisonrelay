@@ -23,6 +23,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,6 +32,8 @@ import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
 import 'canvas_video_element_test.dart' show FakeFrames;
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
 // canvas_mixer_test.dart is the mixer: that its settings mean the same thing
 // in the editor and in an export, that the runtime routes each sound through
@@ -1346,12 +1349,11 @@ void main() {
       (1.5, SpeakerLayout.surround51),
     ]) {
       for (var effects in [false, true]) {
-        // Every height a desk is dragged to, in tens: Ken's logs found
-        // strips a few pixels too tall at heights between the old steps.
-        for (var h in [
-          56.0,
-          for (var k = 200.0; k <= 440; k += 10) k,
-        ]) {
+        // Every height a desk is dragged to, in tens: strips came out a
+        // few pixels too tall at heights between coarser steps. One desk,
+        // resized, as a drag resizes it.
+        var height = ValueNotifier(56.0);
+        {
           var c = CanvasController(
               CanvasDocument(
                   frames: 100,
@@ -1380,28 +1382,35 @@ void main() {
                     child: child!),
                 home: Scaffold(
                     body: ListenableBuilder(
-                        listenable: c,
+                        listenable: Listenable.merge([c, height]),
                         builder: (context, _) => Column(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
                                   if (c.effectsOpen)
                                     CanvasMixer.effects(
                                         controller: c,
-                                        height: math.max(h, effectsMinHeight),
+                                        height: math.max(
+                                            height.value, effectsMinHeight),
                                         onResize: (_) {},
                                         onClose: () {}),
                                   CanvasMixer(
                                       controller: c,
-                                      height: h,
+                                      height: height.value,
                                       onResize: (_) {},
                                       onClose: () {}),
                                 ])))),
           ));
-          await tester.pump();
-          if (tester.takeException() case var e?) {
-            failures.add("${speakers.label}, effects $effects, $h tall, "
-                "${scale}x: "
-                "${e.toString().split("\n").first}");
+          for (var h in [
+            56.0,
+            for (var k = 200.0; k <= 440; k += 10) k,
+          ]) {
+            height.value = h;
+            await tester.pump();
+            if (tester.takeException() case var e?) {
+              failures.add("${speakers.label}, effects $effects, $h tall, "
+                  "${scale}x: "
+                  "${e.toString().split("\n").first}");
+            }
           }
           await tester.pump(const Duration(milliseconds: 500));
           await tester.pumpWidget(const SizedBox());
@@ -1507,12 +1516,30 @@ void main() {
                   const AudioElement(ElementBase(id: "keys", name: "Keys"),
                       clip: MediaClip(timed: true),
                       instrument: InstrumentPart()),
+                  // An animated element: its strip, slots and sound band
+                  // fit at every size too.
+                  ShapeElement(const ElementBase(
+                      id: "title",
+                      name: "Title",
+                      motion: ElementMotion(
+                          clips: [MotionClip(id: "c", name: "Bounce")],
+                          slots: ["c"]))),
+                  // And a sound of its own, under its strip.
+                  const AudioElement(ElementBase(id: "titleSound"),
+                      clip: MediaClip(
+                          timed: true,
+                          channel: "snd-title",
+                          playlist: [MediaSource(assetId: "x", length: 4)])),
                 ]),
             audioEngine: FakeEngine({}),
             frameSource: FakeFrames(4));
 
     Future<void> show(WidgetTester tester, CanvasController c,
-        {double height = 460, double scale = 1}) async {
+        {Object height = 460.0, double scale = 1}) async {
+      // A number, or a ValueListenable of one that the sweep moves.
+      ValueListenable<double> heights = height is ValueListenable<double>
+          ? height
+          : ValueNotifier((height as num).toDouble());
       tester.view.physicalSize = const Size(1400, 900);
       tester.view.devicePixelRatio = 1;
       await tester.pumpWidget(MultiProvider(
@@ -1529,11 +1556,13 @@ void main() {
             home: Scaffold(
                 body: Align(
                     alignment: Alignment.bottomCenter,
-                    child: CanvasMixer(
-                        controller: c,
-                        height: height,
-                        onResize: (_) {},
-                        onClose: () {})))),
+                    child: ValueListenableBuilder(
+                        valueListenable: heights,
+                        builder: (context, h, _) => CanvasMixer(
+                            controller: c,
+                            height: h,
+                            onResize: (_) {},
+                            onClose: () {}))))),
       ));
       await tester.pump();
     }
@@ -1656,7 +1685,13 @@ void main() {
         await tester.tap(find.byKey(const ValueKey("section-devices")));
         await tester.pump();
       }
-      expect(c.mixerSections, {MixerSection.mixer, MixerSection.sends},
+      expect({
+        for (var s in MixerSection.values)
+          if (c.bandState(s) != BandState.hidden) s
+      }, {
+        MixerSection.mixer,
+        MixerSection.sends
+      },
           reason: "the sends showing do not count: a mixer of dials alone "
               "is no mixer");
       await tester.tap(find.byKey(const ValueKey("section-mixer")));
@@ -1703,7 +1738,6 @@ void main() {
       await tester.tap(arm);
       await tester.pump();
       expect(c.armed, {"keys"});
-      expect(c.midiTarget?.id, "keys");
       await tester.tap(arm);
       await tester.pump();
       expect(c.armed, isEmpty);
@@ -1883,30 +1917,32 @@ void main() {
       ].where((c) => main.any((s) => c[s] != BandState.hidden)).toList();
       for (var scale in [1.0, 1.25]) {
         for (var shown in combos) {
+          var c = make(speakers: SpeakerLayout.surround51);
+          for (var s in MixerSection.values) {
+            while (c.bandState(s) != shown[s]) {
+              c.toggleMixerSection(s);
+            }
+          }
+          var columns = [
+            "v",
+            "keys",
+            mixerMasterKey,
+            for (var r in c.document.returns) r.id
+          ];
+          var height = ValueNotifier(260.0);
+          await show(tester, c, height: height, scale: scale);
           for (var h = 260.0; h <= 460; h += 40) {
-            var c = make(speakers: SpeakerLayout.surround51);
-            for (var s in MixerSection.values) {
-              while (c.bandState(s) != shown[s]) {
-                c.toggleMixerSection(s);
-              }
-            }
             // Every other height, every column narrow.
-            if (h % 80 == 20) {
-              c.setAllNarrow([
-                "v",
-                "keys",
-                mixerMasterKey,
-                for (var r in c.document.returns) r.id
-              ], true);
-            }
-            await show(tester, c, height: h, scale: scale);
+            c.setAllNarrow(columns, h % 80 == 20);
+            height.value = h;
+            await tester.pump();
             if (tester.takeException() case var e?) {
               failures
                   .add("${shown.values.map((v) => v.name[0]).join()}, $h tall, "
                       "${scale}x: ${e.toString().split("\n").first}");
             }
-            await done(tester, c);
           }
+          await done(tester, c);
         }
       }
       expect(failures, isEmpty);

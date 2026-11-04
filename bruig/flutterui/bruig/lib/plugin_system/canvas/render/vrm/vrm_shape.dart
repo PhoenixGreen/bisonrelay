@@ -168,9 +168,6 @@ class Radial extends Deformer {
   String get key => 'r${_k(a)}|${_k(b)}|${bones.join(",")}|$k';
 }
 
-/// Bum pushes the bum back along the line of the body seen from the side:
-/// fuller above or below, rounder, lifted -- and only where the body faces
-/// back.
 /// FootGrow grows a foot by [k] about the floor under its ankle [ankle], so
 /// it stays on the floor and its toes reach further. Longer and wider by all
 /// of [k] up to the ankle, fading over a band just above it, so a boot's
@@ -199,6 +196,9 @@ class FootGrow extends Deformer {
       y <= 0 || y >= ankle.y ? y : y + k * y * (1 - y / ankle.y);
 }
 
+/// Bum pushes the bum back along the line of the body seen from the side:
+/// fuller above or below, rounder, lifted -- and only where the body faces
+/// back.
 class Bum extends Deformer {
   final vm.Vector3 c;
   final double h, w, back, u, size, round, upper, lower, lift, width;
@@ -252,7 +252,7 @@ class Shaped {
   const Shaped(this.positions, this.normals);
 }
 
-/// The VRoid bones the shaping moves.
+/// VroidBone names the VRoid bones the shaping moves.
 abstract final class VroidBone {
   static const head = 'J_Bip_C_Head',
       neck = 'J_Bip_C_Neck',
@@ -1043,8 +1043,7 @@ class VrmShapeRig {
           axes: _v3(1 + 0.25 * V('body.hips'), 1, 1));
       change(VroidBone.lowerLeg(sd), pos: leg);
       // The foot is grown in the mesh (FootGrow), not by its bone: a bone
-      // drawn bigger stretched a boot between the leg and the foot, its
-      // ankle half each.
+      // drawn bigger would stretch a boot between the leg and the foot.
       change(VroidBone.foot(sd), pos: leg);
     }
     // Then the feet back on the floor exactly: the hips go up or down by

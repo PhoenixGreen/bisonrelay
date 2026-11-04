@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -230,6 +231,10 @@ void main() {
         request.response.close();
       });
       kokoroBase = "http://127.0.0.1:${server.port}/";
+      loopbackHttpForTest = true;
+      proxiedForTest = false;
+      addTearDown(() => loopbackHttpForTest = false);
+      addTearDown(() => proxiedForTest = null);
       kokoroDir = () async => root.path;
       String hashOf(String text) =>
           sha256.convert(utf8.encode(text)).toString();

@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/export/epub_media.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
+import 'package:bruig/plugin_system/canvas/model/web_link.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
@@ -14,17 +15,10 @@ import 'package:flutter/foundation.dart';
 
 // document_export.dart is a canvas published as something to read.
 //
-// The three formats are one question asked three ways -- how much of the
-// document survives the trip. A PDF is the pages, exactly, for ever, and
-// nothing else; an EPUB is the pages in a reader that turns them; an
-// interactive EPUB is the same with whatever can be pressed still working.
-// Every one of them is a page at a time, in order, at the size the canvas
-// says, because that is what a document of pages *is*. See CanvasKind.
-//
-// Written for a document of pages, and offered for one -- but nothing here
-// refuses a set of scenes. A deck of slides published as a PDF is a perfectly
-// good thing to want, and the code cannot tell the difference: every canvas
-// in the list is a page either way.
+// A PDF is the pages exactly; an EPUB is the pages in a reader that turns
+// them; an interactive EPUB also keeps what can be pressed, animated or
+// played. Each is one leaf per scene, in order. Written for a document of
+// pages (see CanvasKind) but a set of scenes works the same way.
 
 /// DocumentAs is which of the three.
 enum DocumentAs {
@@ -43,31 +37,17 @@ enum DocumentAs {
   String get mime => this == pdf ? "application/pdf" : epubMime;
 }
 
-/// DocumentProgress reports how far the export has got. A document of forty
-/// pages is forty renders, and a reader watching an unmoving dialog assumes
-/// it has hung.
+/// DocumentProgress reports how far the export has got, a page at a time.
 typedef DocumentProgress = void Function(int done, int total);
 
-/// renderDocumentPage draws one leaf, exactly as the editor shows it.
+/// renderDocumentPage draws leaf [index], exactly as the editor shows it.
 ///
-/// Its own function rather than renderFrame, for two reasons that both come
-/// from this being a *page* rather than a frame.
+/// Not renderFrame, which draws a frame of the sequence rather than a given
+/// scene. And in a spread, the facing leaf's contents are drawn too, clipped
+/// to this page, so an element laid across the gutter is printed on both
+/// halves.
 ///
-/// renderFrame draws the sequence: handed a document of several scenes it
-/// asks paintSequenceFrame where the run has got to, and the scene being
-/// edited has nothing to do with it. Given a document moved to page four and
-/// the default frame, it drew page one -- four times over, which is a book
-/// whose every leaf is its first.
-///
-/// And a spread is two leaves. An element laid across the gutter belongs to
-/// one page and hangs over the other; printed a page at a time it would be
-/// cut at the gutter and the half on the other leaf would be nowhere. So the
-/// facing leaf's contents are drawn into this page as well, clipped to it --
-/// which is what a printed spread is: the left half on one sheet, the right
-/// half on the next, meeting when the book is open.
-///
-/// The caller owns the image and must dispose it. A document of forty pages
-/// held forty of these at once is how a long export runs out of memory.
+/// The caller owns the image and must dispose it.
 Future<ui.Image> renderDocumentPage(
   CanvasDocument document,
   int index, {
@@ -80,10 +60,8 @@ Future<ui.Image> renderDocumentPage(
   var height = math.max(1, (document.size.exportSize.height * asked).round());
   var docSize = document.size.size;
 
-  // This leaf, with its own backdrop. Taken from the document's own, every
-  // page in the book wore whichever backdrop was edited last -- see
-  // CanvasDocument.backgroundOf, which is the same answer paintSequenceFrame
-  // takes for the same reason.
+  // This leaf with its own backdrop (backgroundOf), not the document's,
+  // which is whichever was edited last.
   var page = document.goToScene(index).copyWith(
         onMaster: false,
         background: document.backgroundOf(index),
@@ -96,8 +74,7 @@ Future<ui.Image> renderDocumentPage(
         part: CanvasPaintPart.backdrop, images: images);
 
     // The facing leaf's overhang, between the paper and this page's own
-    // contents -- the order the editor draws them in, so that what was
-    // designed is what is printed.
+    // contents: the editor's order.
     var beside = document.facingAt(index);
     if (beside != null) {
       var onLeft = document.facingIsLeft(index) ?? false;
@@ -114,8 +91,7 @@ Future<ui.Image> renderDocumentPage(
         part: CanvasPaintPart.contents, images: images);
   }
 
-  // Every picture on the leaf, and on the leaf beside it, read before it is
-  // printed -- not the placeholder the editor shows while one loads.
+  // Pictures on both leaves, read rather than their placeholders.
   await drawWhenLoaded(images, draw);
   var recorder = ui.PictureRecorder();
   draw(ui.Canvas(recorder));
@@ -128,12 +104,8 @@ Future<ui.Image> renderDocumentPage(
   }
 }
 
-/// renderDocument writes the whole document as [as].
-///
-/// Every format goes through renderDocumentPage, so a page is the same page
-/// whichever of the three it is printed into. The PDF used to go through
-/// renderPdf, which draws frames of a run rather than leaves of a document
-/// and knows nothing about a spread.
+/// renderDocument writes the whole document as [as]. Every format goes
+/// through renderDocumentPage, so a page is the same in all three.
 Future<CanvasExport?> renderDocument(
   CanvasDocument document, {
   DocumentAs as = DocumentAs.pdf,
@@ -161,19 +133,14 @@ Future<CanvasExport?> renderDocument(
 
     for (var (i, scene) in scenes.indexed) {
       onProgress?.call(i, scenes.length);
-      // Rendered and encoded one at a time, so only one decoded page is alive
-      // at once. The obvious shape -- render them all, then pack them -- is
-      // what makes a long document run out of memory.
+      // One ui.Image alive at a time; each page's encoded bytes are still
+      // held until the file is written.
       ui.Image? image;
       try {
         image =
             await renderDocumentPage(document, i, scale: scale, images: images);
         if (as == DocumentAs.pdf) {
-          // Straight rather than premultiplied: a PDF keeps the colours and
-          // the transparency as two separate images, and separating them out
-          // of premultiplied pixels means dividing the colour back out of its
-          // own alpha, which loses a little of every half-transparent pixel
-          // for nothing.
+          // Straight alpha: see renderPdf.
           var raw = await image.toByteData(
               format: ui.ImageByteFormat.rawStraightRgba);
           if (raw == null) return null;
@@ -183,10 +150,7 @@ Future<CanvasExport?> renderDocument(
         }
         var png = await image.toByteData(format: ui.ImageByteFormat.png);
         if (png == null) return null;
-        // Design units to the page picture's pixels. The hotspots were
-        // placed in design units, which is right only where the picture is
-        // exactly the design's size -- on any other they missed what they
-        // were over.
+        // Design units to the page picture's pixels, for the hotspots.
         var pixels = image.width / document.size.size.width;
         var extra = builder == null
             ? const EpubPageMedia()
@@ -198,9 +162,7 @@ Future<CanvasExport?> renderDocument(
           height: image.height,
           title: document.nameOf(i),
           side: _sideOf(document, covers, i),
-          // The first cover the document marks, and the first page otherwise:
-          // a reader wants a picture for its shelf either way, and the front
-          // of the document is the only honest answer to what it should be.
+          // The front cover the document marks, or else the first page.
           cover: document.isPages
               ? covers[i] == PageCover.front
               : i == 0 && !covers.any((c) => c == PageCover.front),
@@ -227,8 +189,7 @@ Future<CanvasExport?> renderDocument(
     }
 
     if (pages.isEmpty) return null;
-    // A cover was never marked and the document has none: the first page
-    // stands in, so the book has a picture on the shelf.
+    // No cover marked: the first page stands in.
     if (!pages.any((p) => p.cover)) pages[0] = _withCover(pages[0]);
 
     var bytes = writeEpub(
@@ -245,31 +206,22 @@ Future<CanvasExport?> renderDocument(
   }
 }
 
-/// _sideOf is which half of a spread a page belongs on.
-///
-/// Read from the document rather than left to the reader, which cannot know:
-/// it depends on the covers and on where the numbering starts. A document
-/// that is not pages says nothing, and a reader shows one at a time.
+/// _sideOf is which half of a spread a page belongs on. Decided here because
+/// a reader cannot know: it depends on the covers.
 EpubSide _sideOf(CanvasDocument document, List<PageCover> covers, int index) {
   if (!document.isPages || !document.pages.facing) return EpubSide.centre;
   if (covers[index].isCover) return EpubSide.centre;
   return pageIsLeft(index) ? EpubSide.left : EpubSide.right;
 }
 
-/// _linksOn is every button on a page that goes somewhere a book can go.
-///
-/// Two of the nine actions survive being printed into a book: going to
-/// another canvas, which is a link to that page's file, and opening a URL,
-/// which is a link. The other seven are about a playhead, and a book has
-/// none -- a button that played an animation would be a button that does
-/// nothing, and drawing a hotspot over it makes a page look broken rather
-/// than making it work.
+/// _linksOn is every button on a page that goes to another page or opens a
+/// URL. Buttons that play, show or hide are EpubActions: see
+/// EpubMediaBuilder.page.
 List<EpubLink> _linksOn(
     CanvasDocument document, CanvasScene scene, int index, double pixels) {
   var links = <EpubLink>[];
-  // The master's buttons as well as the page's own. They are drawn on every
-  // page, and a Next or a Contents button on the master -- which is where a
-  // book's navigation goes -- was a picture of a button on every one of them.
+  // The master's buttons too: they are drawn on every page, and a book's
+  // navigation lives there.
   for (var element in [
     ...?document.masterScene?.elements,
     ...scene.elements,
@@ -282,7 +234,7 @@ List<EpubLink> _linksOn(
         var to = document.sceneIndexNamed(action.elementId);
         if (to >= 0 && to != index) href = "page$to.xhtml";
       case ButtonActionKind.openLink:
-        if (action.url.trim().isNotEmpty) href = action.url.trim();
+        href = webLink(action.url)?.toString();
       default:
         break;
     }
@@ -314,11 +266,8 @@ EpubPage _withCover(EpubPage page) => EpubPage(
       soundtrack: page.soundtrack,
     );
 
-/// estimateDocumentBytes is roughly how large the file will be.
-///
-/// A page's worth of PNG times the number of pages, which is what every one
-/// of these formats is: the XML round an EPUB is a few kilobytes whatever the
-/// document, and a PDF's structure is smaller still.
+/// estimateDocumentBytes is roughly how large the file will be: a page's
+/// worth of PNG times the number of pages.
 int estimateDocumentBytes(CanvasDocument document, {double scale = 1}) {
   var one = estimateStillBytes(document, scale: scale);
   return one * document.allScenes.length + 4096;

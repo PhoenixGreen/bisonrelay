@@ -2,14 +2,9 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// sheet_element.dart is Sheet music: an instrument's part, engraved -- see
-// notation.dart and sheet_painter.dart -- with the playhead on it as it
-// plays, and practised against: the instrument played along with it, each
-// note marked right or wrong as it goes.
-//
-// It shows the part of the instrument it follows, so a part recorded or
-// read from a MIDI file is a score at once, and its score is played through
-// that instrument's sound.
+// sheet_element.dart is Sheet music: the part of the instrument it follows,
+// engraved (see notation.dart and sheet_painter.dart) with a playhead, and
+// practised against, each note marked right or wrong as it is played.
 
 /// PracticeMode is how a take goes.
 enum PracticeMode {
@@ -42,6 +37,8 @@ enum PracticeHands {
       values.firstWhere((m) => m.name == name, orElse: () => both);
 }
 
+/// SheetElement is a score of one instrument's part, played through that
+/// instrument's sound.
 class SheetElement extends CanvasElement {
   /// follows is the instrument whose part is shown, by element id.
   final String follows;
@@ -54,15 +51,13 @@ class SheetElement extends CanvasElement {
   final PracticeHands hands;
   final double tempo;
 
-  /// key is the key it is written in, as a signature -- sharps up from
-  /// nought, flats down -- or null for one worked out: the Scale effect's,
-  /// where the instrument has one, else heard in its notes. See
-  /// keyFifthsOf.
+  /// key is the key signature (sharps positive, flats negative), or null to
+  /// work it out: the instrument's Scale effect if it has one, else
+  /// keyFifthsOf its notes.
   final int? key;
 
-  /// lines is how many lines of the score -- systems -- show at once, from
-  /// one to eight: a page of them, turned as the playhead comes to its
-  /// last.
+  /// lines is how many systems show at once (1 to 8), turned as a page when
+  /// the playhead reaches the last.
   final int lines;
 
   const SheetElement(
@@ -135,8 +130,8 @@ class SheetElement extends CanvasElement {
               title: jsonString(json["title"], ""),
               paper: colorFromJson(json["paper"], const Color(0xFFFBFAF6)),
               ink: colorFromJson(json["ink"], const Color(0xFF1B1B1B)),
-              mode: PracticeMode.fromName(json["mode"] as String?),
-              hands: PracticeHands.fromName(json["hands"] as String?))
+              mode: PracticeMode.fromName(jsonStr(json["mode"])),
+              hands: PracticeHands.fromName(jsonStr(json["hands"])))
           .copyWith(
               tempo: jsonDouble(json["tempo"], 1),
               key: json["key"] is num ? (json["key"] as num).toInt() : null,

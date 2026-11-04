@@ -10,10 +10,8 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 
 // placement_settings.dart is where a sound is heard from, set on the sound
-// itself: an Audio element's, or a Video's. See SoundPlacement.
-//
-// Its channel follows it, in place of the channel's own pan -- and the
-// strip in the mixer shows where the picture has put it.
+// itself: an Audio element's, or a Video's. See SoundPlacement. Its channel
+// follows it in place of the channel's own pan.
 
 /// placementSummary is how a sound is placed, in a few words.
 String placementSummary(SoundPlacement place) => switch (place.by) {

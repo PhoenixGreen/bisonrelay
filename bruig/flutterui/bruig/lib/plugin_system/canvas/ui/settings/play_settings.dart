@@ -34,8 +34,8 @@ const playIcons = <PlayAs, IconData>{
   PlayAs.hazard: Icons.warning_amber_rounded,
 };
 
-/// playCardLabels are the cards' words: shorter than the labels, which
-/// read in a sentence.
+/// _cardLabels are the cards' words: shorter than the labels, which read
+/// in a sentence.
 const _cardLabels = <PlayAs, String>{
   PlayAs.none: "Still",
   PlayAs.platformer: "Platformer",
@@ -294,11 +294,6 @@ List<(String, String)> gameSoundOptions(CanvasController controller,
       (a.id, "On the canvas · ${a.name.isEmpty ? "a sound" : a.name}"),
   ];
 }
-
-/// gameSoundName is [ref] in a few words, for a summary.
-String gameSoundName(CanvasController controller, String ref) =>
-    gameSoundOptions(controller).where((o) => o.$1 == ref).firstOrNull?.$2 ??
-    "a sound";
 
 /// _controlsLine is how [player] plays, in a line: "Arrows or WASD move ·
 /// Space jumps · E acts".
@@ -590,9 +585,8 @@ class _AreaPainter extends CustomPainter {
   bool shouldRepaint(_AreaPainter old) => old.area != area;
 }
 
-/// _feltAs is [spec] played as [as]: a platformer never yet set moving as
-/// the Normal feel does -- the old default jump fell short of a ledge three
-/// tiles up, and Sky Isles could not be finished (Ken, 2026-10-31).
+/// _feltAs is [spec] played as [as]: a platformer never yet set moving takes
+/// the Normal feel, whose jump reaches a ledge three tiles up.
 PlaySpec _feltAs(PlaySpec spec, PlayAs as) {
   const fresh = PlaySpec();
   var untouched = spec.speed == fresh.speed &&

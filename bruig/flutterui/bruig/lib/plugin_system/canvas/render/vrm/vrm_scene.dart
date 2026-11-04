@@ -71,8 +71,8 @@ class ShapedAvatar {
   final Map<VrmRegion, String> _regionKeys = {};
   CharacterShape? _shape;
 
-  /// The body's mesh node, and its primitives as drawn: the file's, then
-  /// the outlines flutter_vrm adds after them.
+  /// _body is the body's mesh node; its primitives as drawn are the file's,
+  /// then the outlines flutter_vrm adds after them.
   final Node? _body;
 
   /// _byName is every node of the avatar, by name.
@@ -309,8 +309,8 @@ class ShapedAvatar {
         loose: false
       );
     }
-    // The body's own clothes, where they are worn: in its mesh, so missed
-    // before, and arms went through them.
+    // The body's own clothes, where they are worn: they are in its mesh, and
+    // without them arms go through them.
     final o = _dressed ?? CharacterOutfit.asDesigned;
     for (final p in w.body.primitives) {
       if (p.vertices != w.skin) continue;
@@ -917,9 +917,9 @@ class ShapedAvatar {
   CharacterLook? get look => _look;
   CharacterLook? _look;
 
-  /// The colours picked, by what they colour (hair, skin, eyes, brows), as
-  /// 0xRRGGBB; the colour other characters' hair worn here takes; and how
-  /// grey the years have turned the hair.
+  /// _colours are the colours picked, by what they colour (hair, skin, eyes,
+  /// brows), as 0xRRGGBB; _hairAs the colour other characters' hair worn
+  /// here takes; and how grey the years have turned the hair.
   Map<VrmPart, int> _colours = const {};
   int? _hairAs;
   double _grey = 0;
@@ -999,11 +999,10 @@ class ShapedAvatar {
     return out;
   }();
 
-  /// _maskCutouts makes each cut-out material -- cloth and hair whose
-  /// picture's clear parts are cut away -- cut out in the depth it writes
-  /// too. flutter_vrm leaves that off, so the finish, which finds its lines
-  /// in the depth and normals, lined the edges of cloth that is not there:
-  /// below a hem, past a sleeve.
+  /// _maskCutouts makes each cut-out material (cloth and hair whose
+  /// picture's clear parts are cut away) cut out in the depth it writes too.
+  /// flutter_vrm leaves that off, and the finish, which finds its lines in
+  /// depth and normals, would line edges of cloth that is not there.
   void _maskCutouts() {
     for (final (_, m, _) in _materials) {
       final a = m.parameters.assignedValues;
@@ -1036,7 +1035,7 @@ class ShapedAvatar {
         );
       });
 
-  /// _hairAverage is the colour this character's hair is mostly, once its
+  /// hairAverage is the colour this character's hair is mostly, once its
   /// picture has been read.
   int? hairAverage;
 
@@ -1095,8 +1094,8 @@ class ShapedAvatar {
     }
   }
 
-  /// The pictures as read, by their bytes, and as changed, by what was
-  /// changed: kept once made.
+  /// _read are the pictures as read, by their bytes, and _pictures as
+  /// changed, by what was changed: kept once made.
   final Map<Uint8List, Future<(Uint8List, int, int)>> _read = {};
   final Map<String, Texture2D> _pictures = {};
   Future<List<int>?>? _faceColour;
@@ -1547,9 +1546,9 @@ class ShapedAvatar {
   }
 
   /// _overlayMaterial is a material that lays [tex] over the skin, as the
-  /// skin is drawn, where it is not clear, at depth layer [layer]: drawn
-  /// over the surface it lies on at any distance and round any curve,
-  /// which lifting it off the surface alone did not hold.
+  /// skin is drawn, where it is not clear, at depth layer [layer]: drawn over
+  /// the surface it lies on at any distance and round any curve, which
+  /// lifting it off the surface alone does not hold.
   Future<PreprocessedMaterial> _overlayMaterial(Texture2D tex,
       {required int layer}) async {
     final material = await loadFmatMaterial('assets/materials/mtoon_blend.fmat',
@@ -1568,9 +1567,8 @@ class ShapedAvatar {
       ..setVec3('matcap_factor', vm.Vector3.zero())
       ..setVec3('emissive_factor', vm.Vector3.zero());
     material.depthLayer = layer;
-    // Both faces: VRoid's clothes wind their triangles either way, which is
-    // why their own material is drawn from both sides; a decal or paint
-    // cut from them, drawn from one, lost the triangles that faced in.
+    // Both faces: VRoid's clothes wind their triangles either way, so a decal
+    // or paint cut from them, drawn from one side, would lose those facing in.
     material.doubleSided = true;
     return material;
   }
@@ -1651,13 +1649,11 @@ class ShapedAvatar {
 
   Uint32List? _skinTris;
 
-  /// _clothLift is how far over the body's own clothes -- VRoid's, in its
-  /// mesh -- a decal or paint lies: a little more than over clothes made to
-  /// fit. It was 8 mm, for something that hid a decal lying nearer in
-  /// patches; checked again on 2026-11-03 -- three bodies, four looks,
-  /// front, turned and side on, with and without underwear made under the
-  /// clothes -- nothing hides it at 0.9 mm, and at 8 mm a decal floated
-  /// visibly over the buttons and frills it should lie among.
+  /// _clothLift is how far over the body's own clothes (VRoid's, in its
+  /// mesh) a decal or paint lies: a little more than over clothes made to
+  /// fit. Much more (8 mm) and a decal floats visibly over the buttons and
+  /// frills it should lie among; checked across bodies, looks and angles,
+  /// nothing hides it at this lift.
   static const double _clothLift = 0.0012;
 
   Future<void> _decorate(List<CharacterDecal> decals,
@@ -1831,9 +1827,6 @@ class ShapedAvatar {
     return _Worn(key, scene, group, [material, if (outline != null) outline]);
   }
 
-  /// _showOwn shows the body's own top, bottom and shoes where they are
-  /// worn, with their sleeves and trouser legs cut as asked, and hides them
-  /// where they are not.
   /// _setIndices draws [p] with [cut] of its triangles, and says whether
   /// that is a change.
   bool _setIndices(VrmPrimitive p, Uint32List cut) {
@@ -1846,6 +1839,9 @@ class ShapedAvatar {
     return true;
   }
 
+  /// _showOwn shows the body's own top, bottom and shoes where they are
+  /// worn, with their sleeves and trouser legs cut as asked, and hides them
+  /// where they are not.
   void _showOwn(CharacterOutfit o) {
     final mesh = _body?.mesh, w = wardrobe;
     if (mesh == null || w == null) return;

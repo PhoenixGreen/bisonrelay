@@ -9,11 +9,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/play_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// game_counts_settings.dart is the numbers a game keeps -- coins, lives,
-// keys -- in the Game panel with nothing picked: a small card each, saying
-// what it is, what happens when it reaches a number and where it starts,
-// opened to change it. A pickup or a hazard adds to them and takes from
-// them; a Counter element shows one.
+// game_counts_settings.dart is the numbers a game keeps (coins, lives, keys)
+// in the Game panel with nothing picked: a card each, opened to change it.
+// Pickups and hazards change them; a Counter element shows one.
 
 /// _justAdded is the count added last, opened for its name to be given.
 String? _justAdded;

@@ -36,26 +36,14 @@ import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
-// element_factory.dart makes a new element of each kind.
-//
-// One place rather than at each of the two call sites -- the Design Elements
-// panel's tap, and its drag onto the canvas -- because a new chart that came
-// out with sample data one way and empty the other would be a difference
-// nobody could explain.
-//
-// Every new element arrives with something in it. An empty chart, an empty
-// table and a blank text box are all indistinguishable from a bug the first
-// time somebody adds one, and having to type before you can see whether you
-// wanted the thing is the wrong way round. What is put in is deliberately
-// obviously placeholder -- "Text", "Week 1" -- so nobody publishes it by
-// accident.
+// element_factory.dart makes a new element of each kind, in one place for
+// both the Design Elements panel's tap and its drag, so the two never
+// differ. Every new element arrives with something in it, obviously
+// placeholder ("Text", "Week 1"): an empty chart or a blank text box looks
+// like a bug.
 
-/// defaultSizeFor is how big a new element starts, as a fraction of the
-/// document's shorter side.
-///
-/// Sized to the document rather than fixed, so an element dropped on a 400px
-/// canvas is not larger than the canvas and one dropped on a 4000px canvas is
-/// not a speck.
+/// defaultSizeFor is how big a new element starts, sized to the document so
+/// it is neither bigger than a small canvas nor a speck on a large one.
 Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
   var short = document.size.height.toDouble();
   var wide = document.size.width.toDouble();
@@ -153,10 +141,9 @@ CanvasElement newElement(
 
   switch (kind) {
     case ElementKind.text:
-      // Proportions held to begin with, like a picture's -- and for a nearer
-      // reason: holding them scales the type, the spacing and the pieces with
-      // the box, which is what dragging a corner of a card is meant to do.
-      // Let go of, the box changes and what is in it stays the size it was.
+      // Proportions held to begin with, so dragging a corner scales the type,
+      // spacing and pieces with the box, as a card should. Let go of, the box
+      // changes and its contents keep their size.
       return TextElement(base.copyWith(lockAspect: true),
           text: "Text",
           textSpec: TextSpec(
@@ -167,10 +154,8 @@ CanvasElement newElement(
           autoSize: true);
 
     case ElementKind.image:
-      // Proportions locked to begin with. Every element can hold them now, but
-      // a picture is the one that starts wanting to: a photograph dragged out
-      // of its own shape is a photograph that looks wrong, and putting it back
-      // by hand means finding the original numbers.
+      // Proportions locked to begin with: a photograph dragged out of shape
+      // looks wrong.
       return ImageElement(base.copyWith(lockAspect: true));
 
     case ElementKind.vector:
@@ -207,15 +192,9 @@ CanvasElement newElement(
           ));
 
     case ElementKind.counter:
-      // A counter is a counter on a document of pages as much as anywhere
-      // else: a page carrying a countdown or a total is a page like any
-      // other. Turning one into a page number is a switch in its settings --
-      // see positionGroup, which is where it sits so that it is found.
-      //
-      // A hundred, counting up from nothing, written plainly. Every other
-      // element arrives with something obviously placeholder in it; the
-      // placeholder here is the count itself, which is the one thing that
-      // shows what this is the moment it lands.
+      // A hundred, counting up from nothing, written plainly: the count itself
+      // is the placeholder that shows what this is. Making it a page number is
+      // a switch in its settings (see positionGroup).
       return CounterElement(base,
           from: 0,
           to: 100,
@@ -228,9 +207,7 @@ CanvasElement newElement(
           box: BoxSpec(padding: unit * 0.6));
 
     case ElementKind.audio:
-      // Empty, and it says so: the settings open on "Add a sound file", and a
-      // speaker that plays nothing is a speaker that does nothing when
-      // pressed -- which is the one thing worse than a placeholder.
+      // Empty, and it says so: the settings open on "Add a sound file".
       return AudioElement(base,
           box: BoxSpec(
               fill: const Color(0xFF223046),
@@ -238,10 +215,9 @@ CanvasElement newElement(
               padding: size.shortestSide * 0.12));
 
     case ElementKind.video:
-      // No background of its own. A keyed video has to be see-through where
-      // the screen was, and a dark box behind it put the screen straight back
-      // -- the video under it could not be seen. The empty element draws its
-      // own dark ground until a video is in it.
+      // No background of its own: a keyed video must be see-through where the
+      // screen was. The empty element draws its own dark ground until a video
+      // is in it.
       return VideoElement(base.copyWith(lockAspect: true));
 
     case ElementKind.table:
@@ -301,10 +277,8 @@ CanvasElement newElement(
       );
 
     case ElementKind.player:
-      // A team is dropped in at a size that would cover half a pitch, because
-      // that is what a formation is laid out against -- one dropped at the
-      // size of every other element would put eleven players inside a
-      // 200-pixel square, on top of each other.
+      // Sized to cover half a pitch, which a formation is laid out against; at
+      // the usual size eleven players would sit on top of each other.
       var dot = size.height * 0.16;
       var team = TeamElement(
         base.copyWith(name: "Team"),
@@ -358,16 +332,15 @@ CanvasElement newElement(
       return SheetElement(base.copyWith(name: "Sheet music"),
           follows: first?.id ?? "", title: first?.name ?? "");
 
-    // On the whole page, where it shows everything: the frame drawn in
-    // and moved from there. See CameraElement.
     // A box for a model: given one from the library's 3D objects -- see
     // elementForAsset.
     case ElementKind.object3d:
       return Object3dElement(base.copyWith(name: "3D object"));
 
     case ElementKind.camera:
-      // On a 3D stage it stands where the stage's camera is, to be moved
-      // from there: see camera_3d.dart.
+      // On the whole page, where it shows everything, to be drawn in and
+      // moved from there (see CameraElement); on a 3D stage, where the stage's
+      // camera is (see camera_3d.dart).
       var drawn = document.drawnBackground;
       return CameraElement(
           base.copyWith(

@@ -4,19 +4,17 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // stage_element.dart is a 3D stage: a floor and a back wall seen through a
-// camera, that characters stand on.
+// camera, that characters stand on. It is no longer an element of its own:
+// these are the settings a background carries when its backdrop is a stage
+// (see BackgroundElement.staged and backdrop.dart). Drawn by render/stage.
 //
-// It is drawn behind everything as a scene's set -- see render/stage -- and
-// characters placed on it stand at a spot on its floor rather than at a
-// place on the page: the camera decides where on the page that is, how big
-// they are for how far away, and which way round they are seen. Moving the
-// camera moves them all together, which is what makes a stage worth having
-// over a picture behind them.
+// Characters on it stand at a spot on its floor, and the camera decides
+// where on the page that is and how big they are, so moving the camera
+// moves them all together.
 //
-// The camera is keyed like everything else: each of its settings is a
-// channel of the stage's own track (see cameraChannel), so a camera move is
-// two keyframes and the timeline, easing and undo treat it as they treat
-// any other animation.
+// Each camera setting is a "cam." channel on the carrier's track (see
+// cameraChannel). These stay keyframes when tracks are converted to clips
+// (see motion_convert.dart).
 
 /// StageCamera is one camera setting. See render/stage/stage_camera.dart for
 /// what it sees.
@@ -36,8 +34,7 @@ class StageCamera {
   final double lens;
 
   /// tx, ty and tz move what it looks at from a metre above the middle of
-  /// the floor, in metres: across, up and nearer. Panned, or framed on
-  /// something standing on the stage.
+  /// the floor, in metres: across, up and nearer.
   final double tx, ty, tz;
 
   const StageCamera(
@@ -186,6 +183,7 @@ enum StageLight {
       };
 }
 
+/// StageElement is a stage's settings: its camera, floor, wall and light.
 class StageElement extends CanvasElement {
   final StageCamera camera;
   final Color floor;
@@ -223,10 +221,9 @@ class StageElement extends CanvasElement {
       director?.call(this, frame) ?? camera.over(poseAt(frame));
 
   /// director is, while a frame is drawn through a Camera element, what
-  /// it makes of a stage's camera -- set round the drawing, as the
-  /// renderer's other drawing-time state is, and null the rest of the time:
-  /// see directedBy in camera_3d.dart. Editing, the stage is seen through
-  /// its own camera, to be set up by orbiting.
+  /// it makes of a stage's camera: set round the drawing and null the rest
+  /// of the time (see directedBy in camera_3d.dart). While editing, the
+  /// stage is seen through its own camera.
   static StageCamera? Function(StageElement stage, int frame)? director;
 
   /// ownCameraAt is the stage's own camera on [frame], whoever is directing.
@@ -280,11 +277,11 @@ class StageElement extends CanvasElement {
     return StageElement(b,
         camera: StageCamera.fromJson(json["camera"]),
         floor: colorFromJson(json["floor"], d.floor),
-        pattern: FloorPattern.fromName(json["pattern"] as String?),
+        pattern: FloorPattern.fromName(jsonStr(json["pattern"])),
         size: jsonDouble(json["size"], d.size).clamp(1.0, 50.0),
         wall: jsonBool(json["wall"], true),
         wallColor: colorFromJson(json["wallColor"], d.wallColor),
         sky: colorFromJson(json["sky"], d.sky),
-        light: StageLight.fromName(json["light"] as String?));
+        light: StageLight.fromName(jsonStr(json["light"])));
   }
 }

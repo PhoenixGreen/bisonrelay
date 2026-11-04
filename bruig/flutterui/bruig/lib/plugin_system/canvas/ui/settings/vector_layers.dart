@@ -9,13 +9,10 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// vector_layers.dart is a drawing's layers: each shape it draws -- or each
-// run of shapes combined into one -- as a layer, the way a picture's are
-// (see ImageLayersList, which this follows). Shut, a strip that scrolls
-// sideways, front first; opened, a list down the panel, front at the top,
-// with each layer's eye and lock and the picked one's arrows, copy and
-// delete. A layer is picked by pressing it, which opens the drawing; pressed
-// again it is let go, for every shape at once.
+// vector_layers.dart is a drawing's layers: each shape, or each run of
+// shapes combined into one, as a layer, following ImageLayersList. Shut, a
+// strip, front first; opened, a list, front at the top. Pressing a layer
+// picks it and opens the drawing; pressed again it is let go, for every shape.
 
 /// VectorLayersList is [element]'s layers. [onChanged] writes a change to
 /// the drawing as one step.

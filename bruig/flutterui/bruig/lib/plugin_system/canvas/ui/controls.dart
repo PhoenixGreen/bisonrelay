@@ -10,65 +10,41 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
-// controls.dart is the small set of controls the canvas settings bar is built
-// out of.
+// controls.dart is the small set of controls the canvas settings are built
+// out of: each one labelled thing of a fixed height, so a panel of many
+// properties (a chart alone has twenty) stays readable.
 //
-// There are a lot of properties on a canvas -- a chart alone has twenty -- and
-// the only way a bar of them stays readable is if they all look and behave the
-// same. So each control here is one labelled thing of a fixed height, they sit
-// in a wrapping row, and none of them is allowed to be taller than the bar.
-//
-// Every one of them reports continuously while it is being changed, and the
-// callers pass those through as transient edits (see
-// CanvasController.beginInteraction): dragging a slider should show the result
-// as it moves, and should still be one undo step when it stops.
+// Every one reports continuously while it is being changed, and callers pass
+// those through as transient edits (see CanvasController.beginInteraction):
+// a drag shows the result as it moves, and is still one undo step when it
+// stops.
 
-/// controlHeight is what every control in the settings bar stands at.
-///
-/// Deliberately small. The band sits above the canvas and every pixel it takes
-/// is a pixel of the thing being designed, so the controls are as short as
-/// they can be while still being a comfortable click target.
+/// controlHeight is what every control stands at: as short as a comfortable
+/// click target allows.
 const double controlHeight = 27;
 
-/// controlLabelGap is the air between a control's caption and the control.
-///
-/// Three pixels rather than none. A caption sitting directly on the box it
-/// names reads as part of it, which is what made the denser groups -- the
-/// picture's, the border's -- look cramped beside the position row, whose
-/// fields are underlines with room around them.
+/// controlLabelGap is the air between a control's caption and the control,
+/// so the caption does not read as part of the box.
 const double controlLabelGap = 3;
 
 /// controlLabelHeight is the little caption above each control. Everything
-/// that has no caption -- a toggle, an icon button -- is pushed down by
-/// exactly this much so the whole row sits on one baseline.
+/// with no caption (a toggle, an icon button) is pushed down by exactly
+/// this much so the whole row sits on one baseline.
 const double controlLabelHeight = 11;
 
-/// The four gaps the settings panel is spaced with, and the whole of it.
-///
-/// One scale, because the alternative is what this was: a caption seven
-/// pixels over its controls in one group and fourteen in another, a rule with
-/// twelve pixels above it and sixteen below, and four different widths of gap
-/// between two controls on the same line. None of it is far enough out to
-/// name, and all of it together is a panel that reads as having been assembled
-/// rather than laid out.
+/// The gaps the settings panel is spaced with, one scale for all of it.
 ///
 /// canvasControlGap is between two controls on a line, canvasRowGap between
 /// one line of a group and the next, canvasCaptionGap under a group's name,
 /// and canvasGroupGap under every group. A rule between two groups sits in
-/// the middle of a doubled one -- the same above as below, which is the one
-/// people notice.
-///
-/// The group gap is three times the row gap, and it has to be: most panels
-/// have no rules left in them at all, so the gap is the only thing saying
-/// where one group ends. At twice the row gap a run of five groups still read
-/// as one block of controls.
+/// the middle of a doubled one. The group gap is three times the row gap:
+/// with few rules left, the gap is what says where one group ends.
 ///
 /// canvasCaptionedGap is the control gap after a control with a caption over
-/// it. Wider, because the captions are what touch: a colour swatch is
-/// narrower than the word naming it, and at the plain gap "Fill", "Colour"
-/// and "Border" over three swatches read as one word. Bordered buttons and
-/// toggles keep the plain gap, which their borders already separate -- and
-/// which the fixed-width rows of buttons over a data grid are built on.
+/// it: wider, because the captions touch ("Fill", "Colour" and "Border" over
+/// three swatches would read as one word). Bordered buttons and toggles keep
+/// the plain gap, which the fixed-width rows of buttons over a data grid are
+/// built on.
 const double canvasControlGap = 5;
 const double canvasCaptionedGap = 8;
 const double canvasRowGap = 8;
@@ -81,13 +57,12 @@ const double bandGroupHeight = 11 + 5 + controlHeight;
 
 /// CanvasCards marks the settings inside a sectioned panel's section (see
 /// panel_kit.dart), where each group is a card with its name and a "?" over
-/// it, and the controls are a size up and further apart: a panel of sections
-/// is read a section at a time, and has the room.
+/// it, and the controls are a size up and further apart.
 class CanvasCards extends InheritedWidget {
   /// title is the section's own, so a card does not say it a second time.
   final String title;
 
-  /// off is a part of a card drawn at the ordinary size -- a grid of cells
+  /// off is a part of a card drawn at the ordinary size: a grid of cells
   /// with buttons over each column, which has its own measure.
   final bool off;
 
@@ -136,43 +111,27 @@ double nudgeIn(BuildContext context) => CanvasControlScope.isInline(context)
         : controlWithLabelHeight - controlHeight;
 
 /// controlWithLabelHeight is what a captioned control stands at, all in.
-///
-/// One place, because three others were adding the same two numbers up for
-/// themselves -- the keyframe strip's height twice and the timeline's row once
-/// -- and none of them knew when a gap was put between the caption and the
-/// control. The first thing that happened was three pixels of overflow in a
-/// row nobody had touched.
 const double controlWithLabelHeight =
     controlLabelHeight + controlLabelGap + controlHeight;
 
-/// CanvasControlScope says how the controls below it should lay themselves out.
-///
-/// There are two places the same controls appear: the band above the canvas,
-/// where a group is a row and the whole line scrolls sideways, and the Layers
-/// sidebar, where there is no width to scroll and a group has to stack.
-/// Rather than a second set of forty controls, a group asks the scope which it
-/// is in, and every control that sizes itself clamps to what the scope allows.
+/// CanvasControlScope says how the controls below it lay themselves out: a
+/// group in a row on the band, or stacked down a sidebar with no width to
+/// scroll. A group asks the scope which it is in, and every control that
+/// sizes itself clamps to what the scope allows.
 class CanvasControlScope extends InheritedWidget {
-  /// maxWidth is the widest a single control may be. In a sidebar this is what
-  /// stops the chart's data box -- which asks for 260 -- from running off the
-  /// edge, since a control sized past its parent overflows rather than
-  /// shrinking.
+  /// maxWidth is the widest a single control may be: in a sidebar it stops a
+  /// control sized past its parent (the chart's data box asks for 260) from
+  /// overflowing.
   final double maxWidth;
 
-  /// inline puts a control's caption beside it rather than above it.
-  ///
-  /// For the band over the canvas, which is two lines high and was three: a
-  /// caption over every control is a whole line of nine-pixel grey text, and
-  /// in a strip that is already only as tall as the settings on it that line
-  /// is the difference between the canvas starting here and starting an inch
-  /// lower. Down a sidebar the captions belong above, where they line the
-  /// controls up with each other.
+  /// inline puts a control's caption beside it rather than above it: for the
+  /// strip over the canvas, where a line of captions would push the canvas
+  /// down. Down a sidebar the captions belong above.
   final bool inline;
 
   /// hoverCaptions puts a control's caption in its hover text rather than on
-  /// the screen at all: for the timeline's play bar, whose controls are
-  /// known by what is in them -- a frame, a length, a rate -- and whose line
-  /// of captions was a line of height taken from the timeline for them.
+  /// the screen: for the timeline's play bar, whose controls are known by what
+  /// is in them.
   final bool hoverCaptions;
 
   const CanvasControlScope({
@@ -183,9 +142,8 @@ class CanvasControlScope extends InheritedWidget {
     super.key,
   });
 
-  /// isInline is whether captions go beside their controls here -- or
-  /// nowhere on screen, in hover text, which lines up the same way: nothing
-  /// above a control to line the others up under.
+  /// isInline is whether captions go beside their controls here, or nowhere on
+  /// screen, in hover text, which lines up the same way.
   static bool isInline(BuildContext context) {
     var scope = maybeOf(context);
     return (scope?.inline ?? false) || (scope?.hoverCaptions ?? false);
@@ -211,21 +169,13 @@ class CanvasControlScope extends InheritedWidget {
       old.hoverCaptions != hoverCaptions;
 }
 
-/// CanvasLineBreak starts a new line inside a group.
+/// CanvasLineBreak starts a new line inside a group: a child as wide as a
+/// line and no height, which is how a Wrap is told where a line ends, so the
+/// break does not depend on the sidebar's width.
 ///
-/// A group lays its controls out with a Wrap, which fills each line before
-/// starting the next -- so where the break falls depends on how wide the
-/// sidebar happens to be, and six controls that are two different questions
-/// came out as "X Y W" over "H Angle Opacity". This is a child wide enough to
-/// take a whole line and tall enough to take none of it, which is how a Wrap
-/// is told where a line ends.
-///
-/// [gap] puts air between the two lines, for a break that separates two
-/// different questions rather than one long answer. A break of no height
-/// costs nothing and the two lines sit one run apart; a break with a height
-/// is a line of its own, so the air is that height *plus* a run either side.
-/// A few pixels is enough to read as a gap -- see the position group, where
-/// it is what stops "Scale inside" looking like part of the Opacity row.
+/// [gap] puts air between the two lines, for a break between two different
+/// questions. A break with a height is a line of its own, so the air is that
+/// height plus a run either side; a few pixels is enough.
 class CanvasLineBreak extends StatelessWidget {
   final double gap;
   const CanvasLineBreak({this.gap = 0, super.key});
@@ -235,11 +185,8 @@ class CanvasLineBreak extends StatelessWidget {
       SizedBox(width: double.infinity, height: gap);
 }
 
-/// CanvasSeparator is a rule across a row of controls, with air either side.
-///
-/// For a group holding several of the same thing one after another: two
-/// icons' worth of settings with only a line break between them read as one
-/// icon with a great many settings.
+/// CanvasSeparator is a rule across a row of controls, with air either side:
+/// for a group holding several of the same thing one after another.
 class CanvasSeparator extends StatelessWidget {
   const CanvasSeparator({super.key});
 
@@ -255,15 +202,8 @@ class CanvasSeparator extends StatelessWidget {
       );
 }
 
-/// CanvasHint is a question mark that explains a section when it is hovered.
-///
-/// The sidebar's panels each carried a paragraph of explanation above or below
-/// their contents, permanently, taking a fifth of a narrow column to say
-/// something that is read once and never again. Behind a question mark it is
-/// still there for whoever has not read it and costs nothing to whoever has.
-///
-/// Tap as well as hover, because a hint reachable only by hovering is a hint
-/// that does not exist on a touch screen.
+/// CanvasHint is a question mark that explains a section, so the explanation
+/// is there for whoever has not read it and takes no room from whoever has.
 class CanvasHint extends StatefulWidget {
   final String message;
 
@@ -276,9 +216,9 @@ class CanvasHint extends StatefulWidget {
   State<CanvasHint> createState() => _CanvasHintState();
 }
 
-/// The "?" opens on a click, never on a hover: passing over one on the way
-/// to a control beside it put a paragraph over the control, which is the
-/// opposite of help. A click anywhere else, or on the "?" again, shuts it.
+/// The "?" opens on a click, never on a hover, so passing over it does not
+/// put a paragraph over the control beside it. A click anywhere else, or on
+/// the "?" again, shuts it.
 class _CanvasHintState extends State<CanvasHint> {
   final LayerLink _link = LayerLink();
   OverlayEntry? _bubble;
@@ -296,8 +236,8 @@ class _CanvasHintState extends State<CanvasHint> {
   }
 
   /// _bubbleOf is the open "?": what it says, under it, and a click anywhere
-  /// else shutting it. The theme is read here, as it is drawn -- read in the
-  /// click that opened it, it was a lookup from outside the tree.
+  /// else shutting it. The theme is read here, as it is drawn: the click that
+  /// opened it is outside the tree.
   Widget _bubbleOf(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     return Stack(children: [
@@ -391,12 +331,10 @@ class _CanvasHintState extends State<CanvasHint> {
   }
 }
 
-/// CanvasStatus is a line of words a panel says back -- what a button just
-/// did, or what stopped it -- shown on its own line where it can be read.
-///
-/// Not a CanvasHint: that is help, a "?" opened on a click, and a result
-/// tucked behind one is a result nobody sees. "12 cues found" and "whisper
-/// is not installed" were both written there.
+/// CanvasStatus is a line of words a panel says back (what a button just
+/// did, or what stopped it) on its own line where it can be read. Not a
+/// CanvasHint, which is help behind a click: "12 cues found" belongs in
+/// view.
 class CanvasStatus extends StatelessWidget {
   final String message;
   const CanvasStatus(this.message, {super.key});
@@ -412,11 +350,8 @@ class CanvasStatus extends StatelessWidget {
   }
 }
 
-/// CanvasFill marks a control that should grow to help fill its line.
-///
-/// Its own width is the least it will ever be. Everything else about it --
-/// where the line breaks, what it sits beside -- is decided by [CanvasWrap],
-/// which hands out whatever room is left over.
+/// CanvasFill marks a control that should grow to help fill its line. Its
+/// own width is the least it will ever be; [CanvasWrap] decides the rest.
 class CanvasFill extends ParentDataWidget<_CanvasWrapParentData> {
   const CanvasFill({required super.child, super.key});
 
@@ -452,17 +387,11 @@ class _CanvasWrapRestart extends ParentDataWidget<_CanvasWrapParentData> {
   Type get debugTypicalAncestorWidgetClass => _RawCanvasWrap;
 }
 
-/// _GrowRoot is a growable control's outermost box.
-///
-/// It answers "how little will you take" when it is asked loosely, which is
-/// what CanvasWrap packs the lines from, and takes exactly what it is given
-/// when it is asked tightly, which is how the room left over is handed out.
-/// Either way it passes a *tight* width down, so that the [_Stretch] inside
-/// it has a width to fill.
-///
-/// The least it will take is its control's own width or its caption's,
-/// whichever is wider: a caption longer than the box under it is what decides
-/// how much of a row the control needs, and always has been.
+/// _GrowRoot is a growable control's outermost box. Asked loosely it answers
+/// with the least it will take (its control's width or its caption's,
+/// whichever is wider), which CanvasWrap packs the lines from; asked tightly
+/// it takes what it is given. Either way it passes a tight width down, so
+/// the [_Stretch] inside has a width to fill.
 class _GrowRoot extends SingleChildRenderObjectWidget {
   final double min;
 
@@ -584,27 +513,17 @@ Widget canvasSized(
         ? _Stretch(min: min, height: height, child: child)
         : SizedBox(width: min, height: height, child: child);
 
-/// CanvasWrap is a Wrap whose marked children share out the room left over.
+/// CanvasWrap is a Wrap whose marked children share out the room left over,
+/// so a row of boxes grows into a sidebar of whatever width instead of
+/// leaving a ragged margin.
 ///
-/// A sidebar is a column of unknown width that people drag, and a row of
-/// fixed-width boxes in one leaves a ragged margin down the right that gets
-/// wider the wider the panel is. The boxes grow into it instead.
+/// The extra is a per-control amount, the same on every line, rather than
+/// one width for all: a title field stays wider than a number field beside
+/// it, and four number fields on one line and two on the next come out the
+/// same width, so Angle sits under X. The amount is the smallest any line
+/// can afford, so widening never pushes a control off its line.
 ///
-/// The extra is shared as a *per-control amount* rather than by making every
-/// marked control the same width, and that is the part worth keeping: a title
-/// field beside a number field stays the wider of the two, and -- because
-/// every line gets the same amount -- four number fields on one line and two
-/// on the next come out the same width, so Angle sits under X.
-///
-/// The amount is the smallest any line can afford, so widening never pushes a
-/// control off the end of the line it was packed onto. A line with fewer
-/// marked controls than the busiest one therefore stops short of the right
-/// margin, which is what makes the columns line up.
-///
-/// Lines are [canvasRowGap] apart unless told otherwise. They were nought
-/// apart by default, and every wrap written without saying so -- a chart
-/// series' own settings, a path's points -- came out with each line's
-/// captions sitting on the underline of the one above.
+/// Lines are [canvasRowGap] apart unless told otherwise.
 class CanvasWrap extends StatelessWidget {
   final double spacing;
   final double runSpacing;
@@ -622,12 +541,9 @@ class CanvasWrap extends StatelessWidget {
         spacing: spacing,
         runSpacing: runSpacing,
         children: [
-          // Marked here rather than by each control, because the mark is
-          // parent data and has to sit between this and the control -- and
-          // because the scope that goes with it then covers the control and
-          // nothing else. Provided from further up it reached every control
-          // inside every child, including the ones in a data grid's own
-          // Wrap, which is a mark applied to the wrong parent.
+          // Marked here rather than by each control: the mark is parent data and
+          // has to sit between this and the control, and the scope with it then
+          // covers the control alone, not the controls in a child's own Wrap.
           for (var child in children)
             if (child is CanvasGrowable && (child as CanvasGrowable).grow)
               CanvasFill(
@@ -644,17 +560,12 @@ class CanvasWrap extends StatelessWidget {
       );
 }
 
-/// CanvasBlockBreak ends a line and starts the sharing out again.
-///
-/// A line break that also says "what follows is a different piece of panel".
-/// The room left over is shared by the smallest amount any line can afford,
-/// so that the lines of a group come out in the same columns -- and on its
-/// own that meant opening a button at the end of a row could make that row
-/// narrower, because the line it revealed afforded less.
-///
-/// [CanvasMoreGroup] puts one of these in front of what its button reveals.
-/// An ordinary [CanvasLineBreak] does not start a new block, because the
-/// second line of a group is still the same group.
+/// CanvasBlockBreak ends a line and starts the sharing out again: what
+/// follows is a different piece of panel. Without it, a button that reveals
+/// a line could make its own row narrower, because the revealed line
+/// affords less. [CanvasMoreGroup] puts one in front of what its button
+/// reveals; a [CanvasLineBreak] does not, since the second line of a group
+/// is still the same group.
 class CanvasBlockBreak extends StatelessWidget {
   const CanvasBlockBreak({super.key});
 
@@ -671,13 +582,10 @@ abstract interface class CanvasGrowable {
   double get least;
 }
 
-/// _CanvasWrapScope says that a control is inside one of these.
-///
-/// A control only offers to grow where there is a line to grow into. Asked for
-/// its width by anything else -- a dialog, a Column, the band above the canvas
-/// -- it answers with the width it was given and nothing more, because
-/// "however much room there is" in an unknown parent is how a seventy-pixel
-/// field ends up four hundred wide.
+/// _CanvasWrapScope says that a control is inside one of these. A control
+/// only offers to grow where there is a line to grow into: anywhere else it
+/// answers with the width it was given, or a seventy-pixel field could end
+/// up four hundred wide.
 class _CanvasWrapScope extends InheritedWidget {
   const _CanvasWrapScope({required super.child});
 
@@ -746,9 +654,8 @@ class RenderCanvasWrap extends RenderBox
         : constraints.minWidth;
 
     // What each child is when nothing is given to it. A marked child is asked
-    // with no width at all, so that it answers with the least it will take
-    // rather than with the whole line; everything else is asked within the
-    // line, because a line break is a child as wide as one.
+    // with no width at all, so it answers with the least it will take;
+    // everything else within the line, since a line break is as wide as one.
     var kids = <RenderBox>[];
     var fills = <bool>[];
     var restarts = <bool>[];
@@ -763,8 +670,7 @@ class RenderCanvasWrap extends RenderBox
       child = data.nextSibling;
     }
 
-    // Packed greedily, exactly as a Wrap packs: a child that does not fit
-    // what is left starts the next line.
+    // Packed greedily, as a Wrap packs.
     var lines = <List<int>>[];
     var blockAt = <int>{};
     var line = <int>[];
@@ -782,20 +688,14 @@ class RenderCanvasWrap extends RenderBox
     }
     if (line.isNotEmpty) lines.add(line);
 
-    // One amount per block, rather than one for the whole wrap. Taking the
-    // smallest any line can afford is what puts the lines of a group in the
-    // same columns -- and across a block break it is what made opening a
-    // button narrow the row the button sits on, because the line it revealed
-    // afforded less. Settings already on screen moving when something appears
-    // under them is the one thing a reveal must not do.
-    // A line started on purpose -- the first, or one after a break or a
-    // control as wide as the line -- with one control to grow on it fills
-    // the line, and is left out of the sharing: there is no column for it
-    // to keep, and held to what a line of four could afford, a dropdown
-    // alone on its line cut its own words short with the rest of the line
-    // empty beside it. A line that only exists because the one above ran
-    // out of room still shares, so a row of numbers that wraps keeps its
-    // columns -- where the line above has columns to keep.
+    // One amount per block (see CanvasBlockBreak), the smallest any line in
+    // it can afford, so the lines of a group keep the same columns.
+    // A line started on purpose (the first, or one after a break or a
+    // full-width control) with one control to grow on it fills the line and
+    // is left out of the sharing: it has no columns to keep, and a dropdown
+    // alone on its line would otherwise cut its words short. A line that only
+    // exists because the one above ran out of room still shares, so a row of
+    // numbers that wraps keeps its columns.
     bool full(int i) => widths[i] >= width - 0.5;
     var alone = <int>{};
     for (var (at, row) in lines.indexed) {
@@ -856,12 +756,8 @@ class RenderCanvasWrap extends RenderBox
       }
     }
 
-    // A line with nothing tall on it takes no room and costs no gap. The one
-    // thing that makes such a line is a deliberate break -- CanvasLineBreak,
-    // which is as wide as the wrap and no pixels tall -- and counting it as a
-    // line of its own charged the gap twice: two rows the sidebar happened to
-    // wrap sat eight pixels apart, and two the author had separated on purpose
-    // sat sixteen.
+    // A line with nothing tall on it (a CanvasLineBreak) takes no room and
+    // costs no gap, or a deliberate break would be charged the gap twice.
     var y = 0.0;
     var started = false;
     for (var row in lines) {
@@ -907,13 +803,9 @@ class RenderCanvasWrap extends RenderBox
       defaultHitTestChildren(result, position: position);
 }
 
-/// CanvasNoScrollbar is a scroll behaviour with no bar on it.
-///
-/// For the panels people scroll with two fingers rather than by taking hold of
-/// anything: a bar that appears over the right-hand edge of the settings the
-/// moment they move, and fades once they stop, is furniture reporting
-/// something they can already see. The wheel, a trackpad and a dragged finger
-/// all still scroll.
+/// CanvasNoScrollbar is a scroll behaviour with no bar on it, for panels
+/// scrolled with two fingers rather than by taking hold of anything. The
+/// wheel, a trackpad and a dragged finger all still scroll.
 class CanvasNoScrollbar extends ScrollBehavior {
   const CanvasNoScrollbar();
 
@@ -923,76 +815,43 @@ class CanvasNoScrollbar extends ScrollBehavior {
       child;
 }
 
-/// CanvasControlGroup is a labelled cluster of controls with a rule after it.
-///
-/// The rules are what stop a bar of thirty controls reading as one undivided
-/// mass. Groups, not scrolling panels: everything about the selected element
-/// has to be reachable without hunting, because the thing being adjusted is
-/// two inches away and looking at it is the whole activity.
+/// CanvasControlGroup is a labelled cluster of controls with a rule after
+/// it, so a panel of many controls does not read as one mass.
 class CanvasControlGroup extends StatelessWidget {
   final String label;
   final List<Widget> children;
 
-  /// hideCaption drops the caption in a sidebar and keeps it in the band.
-  ///
-  /// For the one group whose name is the element's own. The sidebar already
-  /// heads the settings with that, so the caption underneath said the same
-  /// word a second time; the band has no such heading, so there it is the only
   /// hideCaption drops the group's own name, for a group whose name is
-  /// already said by whatever is above it.
-  ///
-  /// It was called bandOnlyLabel, from when these controls were laid out two
-  /// ways: down the sidebar with a caption over each group, and along a band
-  /// above the canvas where the caption sat to the left instead. The band is
-  /// gone, so "shown only in the band" is no longer a thing that can happen --
-  /// what the flag does now is hide the caption, and it is used where the
-  /// panel's own header has already named the element.
+  /// already said by whatever is above it (the panel's header naming the
+  /// element).
   final bool hideCaption;
 
   /// captionGap is the room between the caption and the controls under it.
-  ///
-  /// The default is what every section heading in the settings panel uses --
-  /// a word or two in small capitals, with its controls close under it. A
-  /// group whose caption is a sentence rather than a name needs more than
-  /// that: read at the same distance, the sentence and the caption of the
-  /// first control under it run together as one paragraph.
+  /// The default suits a name; a caption that is a sentence needs more, or it
+  /// runs into the first control's caption.
   final double captionGap;
 
-  /// rule is the line under the group.
-  ///
-  /// Dropped where the group after it is a continuation rather than a new
-  /// subject -- the axis names under the title and the description, which are
-  /// one heading's worth of settings split over two lines because the second
-  /// line carries a button of its own.
+  /// rule is the line under the group, dropped where the next group is a
+  /// continuation rather than a new subject.
   final bool rule;
 
   /// onRename makes the caption a name that can be changed: double-click it
-  /// and type, which is the gesture that renames a file, a scene and a layer
-  /// everywhere else in this app.
-  ///
-  /// Null for the groups whose caption is a heading rather than a name. A
-  /// heading that could be typed into is a heading somebody will type into by
-  /// accident.
+  /// and type, as a file, a scene and a layer are renamed. Null for captions
+  /// that are headings.
   final ValueChanged<String>? onRename;
 
   /// below goes under the group's own line of controls, inside its gap and
-  /// above its rule. For the settings a button on that line has opened -- see
-  /// CanvasMoreGroup -- which are part of the group and have to sit inside
-  /// it rather than in a group of their own.
+  /// above its rule: for the settings a button on that line has opened (see
+  /// CanvasMoreGroup), which are part of the group.
   final Widget? below;
 
-  /// folded says this group can be shut, and whether it is. Null for the
-  /// groups that are always open, which is most of them.
-  ///
-  /// Shut, the caption stays and the controls go. The caption is what there
-  /// is to press to get them back, so it cannot go with them -- and it is
-  /// what says which group this is, which is the whole of what a shut group
-  /// has left to say. See CanvasFoldingGroup, which remembers the answer.
+  /// folded says this group can be shut, and whether it is; null for groups
+  /// that are always open. Shut, the caption stays (it is what is pressed to
+  /// get them back) and the controls go. See CanvasFoldingGroup, which
+  /// remembers the answer.
   final bool? folded;
 
-  /// onFold is the press on the caption. Required wherever [folded] is set:
-  /// a group that shows a chevron and does not move is worse than one with
-  /// no chevron at all.
+  /// onFold is the press on the caption, required wherever [folded] is set.
   final VoidCallback? onFold;
 
   const CanvasControlGroup({
@@ -1046,9 +905,8 @@ class CanvasControlGroup extends StatelessWidget {
         ]),
       );
     }
-    // Named in a card where there is a "?" to ask about it -- a "?" beside
-    // no name is a question about nothing -- but never with the name of
-    // the section it is in, said twice.
+    // Named in a card where there is a "?" to ask about it, but never with
+    // the name of the section it is in.
     var named = label.isNotEmpty &&
         (!hideCaption || about.isNotEmpty) &&
         label != CanvasCards.titleOf(context);
@@ -1082,13 +940,13 @@ class CanvasControlGroup extends StatelessWidget {
       caption =
           _RenamableCaption(label: label, style: style, onRename: onRename!);
     }
-    // A chevron in front of the words, and the whole caption is the target.
-    // A nine-pixel row of grey capitals is a small thing to hit, and the
-    // chevron alone would be smaller still.
+    // A chevron in front of the words, and the whole caption is the
+    // target.
     if (folded != null) {
       caption = Material(
-        // Its own, so the highlight stays with the control inside a
-        // scrolling list rather than on whatever Material is above it.
+        // Its own Material, so the highlight stays with the control inside a
+        // scrolling list rather than on whatever Material is above it. (The
+        // same holds wherever this file says "Its own Material".)
         type: MaterialType.transparency,
         child: InkWell(
           onTap: onFold,
@@ -1108,8 +966,7 @@ class CanvasControlGroup extends StatelessWidget {
     var shut = folded == true;
 
     // Every "?" in the group goes up on to its heading row, on the right,
-    // as one: a "?" among the controls reads as one of them, and two on a
-    // row are two questions for one answer.
+    // as one.
     var about = [
       if (help != null && help!.isNotEmpty) help!,
       for (var c in children)
@@ -1122,9 +979,7 @@ class CanvasControlGroup extends StatelessWidget {
     var hint = about.isEmpty ? null : CanvasHint(about);
 
     // Along the band the groups sit side by side, so what separates them is
-    // room to the right and a line between them -- not a rule underneath,
-    // which in a Row is an underline drawn across the strip and a dozen
-    // pixels of nothing below every group.
+    // room to the right and a line between them, not a rule underneath.
     if (CanvasControlScope.isInline(context)) {
       return Padding(
         padding: const EdgeInsets.only(right: 4),
@@ -1143,15 +998,9 @@ class CanvasControlGroup extends StatelessWidget {
                         if (!hideCaption) caption,
                         if (hint != null) hint,
                       ])),
-                // Spaced as well as run-spaced. Without it the last control of
-                // one group and the first of the next were touching, which is
-                // what "1280 × 72055.0 KiB" was.
-                //
-                // Centred against each other, because a line of controls is
-                // not all one height -- a switch, a box with a caption beside
-                // it and a readout are three -- and aligned at the top they
-                // sat at three different heights on a strip whose whole job
-                // is to be one line.
+                // Spaced as well as run-spaced, so one group's last control does not
+                // touch the next one's first. Centred, since a switch, a captioned box
+                // and a readout are three heights on a strip that is one line.
                 if (!shut)
                   Wrap(
                     spacing: 4,
@@ -1175,27 +1024,9 @@ class CanvasControlGroup extends StatelessWidget {
     }
 
     return Padding(
-      // The spacing every group gets, and the reason it is here rather than in
-      // each of them: a settings panel where one group breathes and the next
-      // is packed reads as two panels by different hands.
-      //
-      // Every group leaves the same gap under it, and a rule sits in the
-      // middle of a doubled one: with a line, two gaps and the line between
-      // them; without, one gap. Unequal either side, the line reads as
-      // belonging to whichever group it is nearer, which is the opposite of
-      // what a divider is for.
-      //
-      // The gap without a rule used to be the one between two lines of a
-      // group, on the grounds that an unruled group is one the next continues.
-      // That is true of two groups and false of five: a run of them with
-      // nothing between reads as one undivided block, and the rules were the
-      // only thing that had been holding it apart.
-      //
-      // A rule under most groups as well as a gap. Six clusters of small
-      // controls down one narrow column, separated by nine pixels of nothing,
-      // ran together into one field of boxes -- the caption above each was the
-      // only thing saying where one ended, and a caption is nine pixels tall
-      // and grey.
+      // The spacing every group gets, here rather than in each. Every group
+      // leaves the same gap under it, and a rule sits in the middle of a
+      // doubled one, so the line belongs to neither group.
       padding: const EdgeInsets.only(bottom: canvasGroupGap),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1213,9 +1044,7 @@ class CanvasControlGroup extends StatelessWidget {
                   if (hint != null) hint,
                 ])),
           // No spacing between them: each control carries its own right-hand
-          // padding, as it did under the Wrap this replaced. Adding a gap here
-          // as well is four pixels a control, which is what pushed a row that
-          // had been measured to fit onto two lines.
+          // padding.
           if (!shut) CanvasWrap(runSpacing: canvasRowGap, children: controls),
           if (below != null && !shut) below!,
           if (rule) const CanvasGroupRule(),
@@ -1482,11 +1311,9 @@ Widget canvasCardTitle(BuildContext context, String text) => Text(text,
         fontWeight: FontWeight.w600,
         color: ThemeNotifier.of(context).colors.onSurface));
 
-/// CanvasNumberField is a number with a label above it.
-///
-/// Committed on every keystroke that parses, rather than on submit. A field
-/// that only takes effect when focus leaves it means typing a width and seeing
-/// nothing happen, and then wondering whether it took.
+/// CanvasNumberField is a number with a label above it, committed on every
+/// keystroke that parses rather than on submit, so a typed width shows at
+/// once.
 class CanvasNumberField extends StatefulWidget implements CanvasGrowable {
   @override
   double get least => width;
@@ -1499,12 +1326,10 @@ class CanvasNumberField extends StatefulWidget implements CanvasGrowable {
   final double width;
   final String suffix;
 
-  /// step is how far one pixel of a drag on the label moves the number.
-  /// Null is the field's own last digit, which is right wherever the digits
-  /// are the scale -- and wrong where a field is precise but wide, such as a
-  /// ring width in ten-thousandths that runs to a fifth of the page: dragging
-  /// that across at a ten-thousandth a pixel is two thousand pixels of
-  /// travel.
+  /// step is how far one pixel of a drag on the label moves the number. Null
+  /// is the field's own last digit, right where the digits are the scale and
+  /// wrong where a field is precise but wide (a ring width in ten-thousandths
+  /// running to a fifth of the page).
   final double? step;
 
   final ValueChanged<double> onChanged;
@@ -1544,20 +1369,14 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
 
   /// _hold runs while the number is being pressed, _scrubbing is true once it
   /// has been held long enough, and _from and _startX are where the drag
-  /// began -- see _ScrubLabel, which does the same arithmetic.
+  /// began (see _ScrubLabel, which does the same arithmetic). Held rather
+  /// than dragged, because a field's own drag selects text. Here as well as on
+  /// the caption, because a field may have no caption over it (a chart's
+  /// fourth series).
   ///
-  /// Held rather than dragged, because a field's own drag is how text is
-  /// selected and typing an exact number has to go on working. Holding is
-  /// free: nothing else on a text field means anything by it.
-  ///
-  /// It is here as well as on the caption because a caption is written once
-  /// per column -- a chart's fourth series has an Offset field with nothing
-  /// above it, and on the old arrangement that was a number that could only
-  /// be typed.
-  /// Nothing in the hold reaches the panel -- no unfocus, no commit. That is
-  /// what made it temperamental: losing the focus calls onCommit, which closes
-  /// the undo step, which rebuilds the settings panel, which can take this
-  /// field's state away in the middle of its own gesture.
+  /// Nothing in the hold reaches the panel (no unfocus, no commit): losing
+  /// the focus commits, which rebuilds the panel and can take this field's
+  /// state away in the middle of its own gesture.
   Timer? _hold;
   bool _scrubbing = false;
   double _from = 0;
@@ -1579,13 +1398,9 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
   void didUpdateWidget(CanvasNumberField old) {
     super.didUpdateWidget(old);
     // The field is only rewritten from outside while it is not being typed
-    // into. Rewriting it under the cursor moves the caret to the end on every
-    // keystroke, which makes it impossible to edit the middle of a number.
-    //
-    // Being scrubbed counts as not being typed into, and has to be said
-    // explicitly: pressing the field is what gives it the focus in the first
-    // place, so a scrub that started with a press was a number running up and
-    // down on the canvas with the old figure still sitting in the box.
+    // into, or the caret would jump to the end on every keystroke. Being
+    // scrubbed counts as not being typed into: the press that starts a scrub
+    // gives the field the focus.
     if ((_scrubbing || !_focus.hasFocus) && widget.value != old.value) {
       _text.text = _format(widget.value);
     }
@@ -1609,8 +1424,8 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
 
   /// _arrowStep is how far an arrow moves this number, where it is drawn as
   /// a stepper: a fiftieth of a range that is a real range, rounded to the
-  /// field's own precision, or a whole unit -- or a tenth, for a precise
-  /// field -- where the range is only a guard rail.
+  /// field's own precision, or a whole unit (a tenth, for a precise field)
+  /// where the range is only a guard rail.
   double get _arrowStep {
     var digit = math.pow(10, -widget.decimals).toDouble();
     var span = widget.max - widget.min;
@@ -1625,8 +1440,8 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var step = widget.step ?? math.pow(10, -widget.decimals).toDouble();
-    // In a card every number is a stepper -- an arrow either side of a
-    // number dragged sideways -- whoever asked for a field.
+    // In a card every number is a stepper (an arrow either side of a number
+    // dragged sideways), whoever asked for a field.
     if (CanvasCards.on(context) && !CanvasControlScope.isInline(context)) {
       return CanvasStepper(
         name: widget.key is ValueKey<String>
@@ -1669,8 +1484,7 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
         grow: widget.grow,
         child: Listener(
           // Translucent, so a press in the room around the digits counts as a
-          // press on the field: the box is a whole row tall and the words sit
-          // in the middle of it.
+          // press on the field.
           behavior: HitTestBehavior.translucent,
           onPointerDown: (event) {
             _from = widget.value;
@@ -1684,11 +1498,9 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
           onPointerMove: (event) {
             var travelled = event.position.dx - _startX;
             if (!_scrubbing) {
-              // Moved before it was held: that is the field's own drag, which
-              // is how a number is selected to be retyped. The allowance is
-              // generous on purpose -- a hand holding still does not, and a
-              // press that gave up over two pixels of drift is a press that
-              // works sometimes.
+              // Moved before it was held: that is the field's own drag, which selects
+              // the number to retype. The allowance is generous: a hand holding still
+              // drifts.
               if (travelled.abs() > _scrubHoldSlop) {
                 _hold?.cancel();
                 _hold = null;
@@ -1705,11 +1517,9 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
             focusNode: _focus,
             style: const TextStyle(fontSize: 12),
             textAlignVertical: TextAlignVertical.center,
-            // Left and right over the whole box, the same as over the caption
-            // and for the same reason: it is the only thing that says the
-            // number can be dragged. Set on the field rather than in a
-            // MouseRegion around it, because a text field carries a cursor of
-            // its own and the innermost one wins.
+            // Left and right over the whole box, as over the caption: it says the
+            // number can be dragged. On the field rather than a MouseRegion round
+            // it, because a text field's own cursor is innermost and wins.
             mouseCursor: SystemMouseCursors.resizeLeftRight,
             keyboardType: const TextInputType.numberWithOptions(
                 decimal: true, signed: true),
@@ -1739,10 +1549,8 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
 const Duration _scrubHoldDelay = Duration(milliseconds: 350);
 const double _scrubHoldSlop = 14;
 
-/// _scrubbed is where a scrub of [travelled] pixels from [from] has got to.
-///
-/// One pixel of travel moves the number by one step, and shift makes it ten
-/// times finer for the last pixel of a nudge.
+/// _scrubbed is where a scrub of [travelled] pixels from [from] has got to:
+/// one step a pixel, and with shift ten times finer.
 double _scrubbed(double from, double travelled, double step,
     {required double min, required double max}) {
   var fine = HardwareKeyboard.instance.isShiftPressed ? 0.1 : 1.0;
@@ -1751,17 +1559,10 @@ double _scrubbed(double from, double travelled, double step,
 
 /// canvasFieldDecoration is what every field on this panel is drawn with.
 ///
-/// The border is left to the app's own input theme, which draws a line under
-/// the words. Spelled out as a box here it matched the dropdown beside it and
-/// looked wrong everywhere else, and it is not this panel's decision to make.
-///
-/// What is spelled out is the room above and below the words, because that is
-/// what decides how tall the field is *drawn*. A field is given a row's height
-/// to sit in; the decoration is drawn at whatever height its padding adds up
-/// to and sits at the top of that row. With no padding at all -- which is what
-/// the number fields had -- that is eighteen pixels of field in a
-/// twenty-seven pixel row, which is a line sitting nine pixels high of where
-/// the eye expects it, on every number on the panel.
+/// The border is left to the app's own input theme. What is spelled out is
+/// the room above and below the words, which decides how tall the field is
+/// drawn: with no padding it is drawn shorter than its row and sits at the
+/// top of it.
 InputDecoration canvasFieldDecoration(
   ThemeNotifier theme, {
   String hint = "",
@@ -1778,10 +1579,8 @@ InputDecoration canvasFieldDecoration(
     );
 
 /// canvasFieldPadding is the room above and below the words that makes a
-/// field exactly [controlHeight] tall.
-///
-/// A line of text is about a fifth taller than its point size, and the border
-/// takes a pixel at each end.
+/// field exactly [controlHeight] tall: a line of text is about a fifth
+/// taller than its point size, and the border takes a pixel at each end.
 double canvasFieldPadding(double fontSize) =>
     math.max(0, (controlHeight - 2 - fontSize * 1.2) / 2);
 
@@ -1798,8 +1597,7 @@ class CanvasTextField extends StatefulWidget implements CanvasGrowable {
   final ValueChanged<String> onChanged;
   final VoidCallback? onCommit;
 
-  /// grow lets this take some of the room left over on its line; [width] is
-  /// then the least it will be. See CanvasWrap.
+  /// grow: see CanvasNumberField.grow.
   @override
   final bool grow;
 
@@ -1872,10 +1670,9 @@ class _CanvasTextFieldState extends State<CanvasTextField> {
         ),
       );
 
-  /// _bottomInCard sits a field's underline on the foot of its box in a
-  /// card, where a button's or a stepper's box ends. Drawn at its own
-  /// height it sat ten pixels higher, so a button beside it hung below the
-  /// line.
+  /// _bottomInCard sits a field's underline on the foot of its box in a card,
+  /// where a button's or a stepper's box ends, so a button beside it does not
+  /// hang below the line.
   Widget _bottomInCard(BuildContext context, Widget field) =>
       CanvasCards.on(context) && widget.maxLines == 1
           ? Align(alignment: Alignment.bottomLeft, child: field)
@@ -1883,17 +1680,12 @@ class _CanvasTextFieldState extends State<CanvasTextField> {
 }
 
 /// CanvasMoreGroup is a group of settings with the rest of them behind a
-/// button on the end of its first line.
-///
-/// The shape a chart's series list uses, made shareable: the settings anybody
-/// changes are out where they can be seen, and the ones that are set once and
-/// left are one press away. A panel where everything is equally visible is a
-/// panel where nothing is -- which is what these settings had become, twenty
-/// controls deep in sections with no shape to them.
+/// button on the end of its first line: what is changed often is in view,
+/// what is set once is one press away.
 ///
 /// The open state is remembered under [remember] for the run, like a
-/// section's, so a panel that rebuilds -- which it does on every change to the
-/// element -- does not shut what somebody has just opened.
+/// section's, so a panel rebuilt on every change to the element does not
+/// shut what somebody has just opened.
 class CanvasMoreGroup extends StatefulWidget {
   final String label;
   final bool hideCaption;
@@ -1906,13 +1698,12 @@ class CanvasMoreGroup extends StatefulWidget {
   final String? remember;
 
   /// row is what is always shown, and more is what the button reveals. The
-  /// button is drawn at the end of the row, so [row] should be short enough
-  /// to leave space for it.
+  /// button is drawn at the end of the row, so [row] should leave space for
+  /// it.
   final List<Widget> row;
   final List<Widget> more;
 
-  /// tooltip says what is behind the button, which is the only thing that
-  /// tells anybody whether it is worth pressing.
+  /// tooltip says what is behind the button.
   final String tooltip;
 
   /// onRename makes the caption a name that can be typed into. See
@@ -1949,8 +1740,7 @@ class _CanvasMoreGroupState extends State<CanvasMoreGroup> {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    // In a card, everything at once: the section it is in already folds,
-    // and a second thing to open inside it is a setting found twice over.
+    // In a card, everything at once: the section it is in already folds.
     if (CanvasCards.on(context) && !CanvasControlScope.isInline(context)) {
       return CanvasControlGroup(
         label: widget.label,
@@ -1969,17 +1759,9 @@ class _CanvasMoreGroupState extends State<CanvasMoreGroup> {
       hideCaption: widget.hideCaption,
       rule: widget.rule,
       onRename: widget.onRename,
-      // What the button opened, on a ground of its own.
-      //
-      // A tint rather than a line under it, which is what this was. Opened,
-      // these settings run straight into whatever is below them, and a reader
-      // who has scrolled past the button has nothing saying which of the
-      // controls in front of them came out of it -- a line at the foot says
-      // where they stop and nothing says where they start. The ground says
-      // both at once, and says it while the eye is still on the button.
-      //
-      // It is a line of layout of its own as well: what is revealed shares
-      // out the room left over among itself, so opening this cannot narrow
+      // What the button opened, on a ground of its own: a tint says where
+      // the revealed settings start and stop while the eye is still on the
+      // button. It is a line of layout of its own, so opening it cannot narrow
       // the row the button sits on.
       below: !_open
           ? null
@@ -1991,9 +1773,8 @@ class _CanvasMoreGroupState extends State<CanvasMoreGroup> {
                 padding: const EdgeInsets.fromLTRB(canvasMoreInset,
                     canvasMoreInset, canvasMoreInset - 3, canvasMoreInset),
                 decoration: BoxDecoration(
-                  // The ground a boxed section is drawn on, a little stronger:
-                  // this one has to be read against the panel from the corner
-                  // of the eye while the pointer is still on the button.
+                  // The ground a boxed section is drawn on, a little stronger, to be read
+                  // from the corner of the eye.
                   color: theme.colors.surfaceContainerHighest
                       .withValues(alpha: 0.5),
                   border: Border.all(
@@ -2020,12 +1801,9 @@ class _CanvasMoreGroupState extends State<CanvasMoreGroup> {
   }
 }
 
-/// _RenamableCaption is a group's caption that can be typed into.
-///
-/// Double-click and type, which is how a file, a scene and a layer are all
-/// renamed. A single click would be a trap -- these captions sit above
-/// controls people are aiming at -- and a field that is always a field would
-/// make a panel of headings look like a form.
+/// _RenamableCaption is a group's caption that can be typed into:
+/// double-click and type, as a file, a scene and a layer are renamed. Not on
+/// a single click, since these captions sit above controls people aim at.
 class _RenamableCaption extends StatefulWidget {
   final String label;
   final TextStyle style;
@@ -2112,12 +1890,9 @@ class _RenamableCaptionState extends State<_RenamableCaption> {
 /// is drawn on.
 const double canvasMoreInset = 8;
 
-/// CanvasGroupRule is the line between one group of settings and the next.
-///
-/// It keeps the gap above it and the group under it keeps the same gap below,
-/// so the line sits midway between the two things it divides. Nearer one than
-/// the other it reads as belonging to that one, which is the opposite of what
-/// a divider is for.
+/// CanvasGroupRule is the line between one group of settings and the next,
+/// midway between the two: the gap above it is the gap the group under it
+/// keeps below.
 class CanvasGroupRule extends StatelessWidget {
   const CanvasGroupRule({super.key});
 
@@ -2143,38 +1918,28 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   final List<(T, String)> options;
   final double width;
   /// stepped puts an arrow either side to step through the options, as a
-  /// dropdown in a card has, wherever it is: in a floating bar, say.
+  /// dropdown in a card has, wherever it is (in a floating bar, say).
   final bool stepped;
 
   final ValueChanged<T> onChanged;
 
   /// onPreview is told of each option the pointer passes over while the list
-  /// is open, and of null when it closes -- so a choice can be seen on the
+  /// is open, and of null when it closes, so a choice can be seen on the
   /// canvas before it is made. Null for a list nothing is tried from.
   final ValueChanged<T?>? onPreview;
 
-  /// enabled is whether it answers at all.
-  ///
-  /// A control that is drawn and does nothing is worse than one that is not
-  /// drawn -- except where its being there is the only way anybody learns it
-  /// exists, which is what the greyed state is for. See keyframeEasingGroup.
+  /// enabled is whether it answers at all. Greyed rather than hidden where
+  /// being seen is the only way anybody learns it exists.
   final bool enabled;
 
-  /// tight holds the caption to the width of the box under it.
-  ///
-  /// Off by default, because a caption reading "Gives way w..." is worse than
-  /// a row an inch wider nearly everywhere. It is for the controls that are
-  /// sized to the room there is rather than to what they hold: there, the
-  /// caption deciding the width means narrowing the box achieves nothing.
+  /// tight holds the caption to the width of the box under it, for controls
+  /// sized to the room there is rather than to what they hold. Off by
+  /// default: a cut-off caption is worse than a wider row.
   final bool tight;
 
   /// marked are the options drawn as already in use, with a background
-  /// behind them.
-  ///
-  /// For a list that is both a choice and a set: the canvas shapes a document
-  /// is being laid out for are chosen from the same list as the shape being
-  /// looked at, and a second control listing them again is the same set in
-  /// two places.
+  /// behind them: for a list that is both a choice and a set (the shapes a
+  /// document is laid out for, chosen from the list of shapes).
   final Set<T> marked;
 
   /// onRemove puts a cross on each marked option. Null leaves the marks as
@@ -2184,20 +1949,16 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   /// removeTip is what that cross says it will do.
   final String Function(T)? removeTip;
 
-  /// leading draws something before each option's name -- in the list and
-  /// in the closed box: an easing's curve, say. Null draws nothing.
+  /// leading draws something before each option's name, in the list and in
+  /// the closed box (an easing's curve, say). Null draws nothing.
   final Widget Function(T)? leading;
 
   /// groupOf puts a heading in the list above each run of options it gives
   /// the same answer for. Null lists them without headings.
   final String Function(T)? groupOf;
 
-  /// grow lets this take some of the room left over on its line.
-  ///
-  /// [width] is then the least it will be rather than the whole of it. See
-  /// CanvasWrap: the extra is shared out evenly among everything on the line
-  /// that asked for it, and by the same amount on every line, so that a row of
-  /// four fields and a row of two below it come out in the same columns.
+  /// grow lets this take some of the room left over on its line; [width] is
+  /// then the least it will be. See CanvasWrap.
   @override
   final bool grow;
 
@@ -2221,7 +1982,7 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   });
 
   /// _rows is the options in the order the list shows them, with a heading
-  /// -- null in the first place -- before each group.
+  /// (null in the first place) before each group.
   List<(T?, String, bool)> _rows() {
     var group = groupOf;
     if (group == null) return [for (var (v, t) in options) (v, t, false)];
@@ -2236,10 +1997,9 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     return rows;
   }
 
-  /// _menuWidth is how wide the open list needs to be to show every name
-  /// in full -- its picture beside it, where it has one, and a marked
-  /// option's buttons -- never narrower than [width], nor wider than a
-  /// sidebar.
+  /// _menuWidth is how wide the open list needs to be to show every name in
+  /// full (its picture beside it, where it has one, and a marked option's
+  /// buttons), never narrower than [width], nor wider than a sidebar.
   double _menuWidth(BuildContext context) {
     var widest = 0.0;
     for (var (_, text, heading) in _rows()) {
@@ -2261,9 +2021,9 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     return (widest + extra).clamp(width, math.max(width, 420.0));
   }
 
-  /// _cardWidth is how wide a card's dropdown needs to be to show its
-  /// longest name whole between its two arrows -- its picture beside it,
-  /// where it has one -- held to what a sidebar has room for.
+  /// _cardWidth is how wide a card's dropdown needs to be to show its longest
+  /// name whole between its two arrows (its picture beside it, where it has
+  /// one), held to what a sidebar has room for.
   double _cardWidth() {
     var widest = 0.0;
     for (var (_, text, heading) in _rows()) {
@@ -2286,10 +2046,9 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     var name = Text(text, overflow: TextOverflow.ellipsis);
     var lead = leading;
     if (lead == null) return name;
-    // Too narrow for a picture and a name -- a style in a forty-pixel
-    // slot -- it is the picture alone, shrunk to fit, rather than a row
-    // that overruns. The dropdown is always laid out at a width it is
-    // given, never asked how wide it would like to be.
+    // Too narrow for a picture and a name (a style in a forty-pixel slot),
+    // it is the picture alone, shrunk to fit. The dropdown is always laid
+    // out at a width it is given.
     return LayoutBuilder(builder: (context, box) {
       if (box.maxWidth < 72) {
         return FittedBox(
@@ -2305,8 +2064,8 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     });
   }
 
-  /// _step is the option [by] from the one chosen -- the arrows either side
-  /// of a dropdown in a card -- or null at either end.
+  /// _step is the option [by] from the one chosen (the arrows either side of
+  /// a dropdown in a card), or null at either end.
   T? _step(int by) {
     var values = [for (var (v, _) in options) v];
     var at = values.indexOf(value);
@@ -2343,45 +2102,37 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     var card = stepped ||
         CanvasCards.on(context) && !CanvasControlScope.isInline(context);
     // A bare DropdownButton rather than a DropdownButtonFormField, which
-    // is a FormField and keeps its own copy of the value. In a settings
-    // bar the value changes from outside constantly -- a different element
-    // is selected, an undo lands -- and a form field would go on showing
-    // whatever was chosen in it last.
+    // keeps its own copy of the value: here the value changes from outside
+    // (another element selected, an undo) all the time.
     //
-    // Its own Material, because ink -- the splash, and the highlight a
-    // focused control keeps -- is painted by the nearest Material
-    // *ancestor*, in that ancestor's coordinates. Without one here the
-    // nearest was the whole sidebar, so the highlight left behind by
-    // choosing a chart type was drawn at the dropdown's position in the
-    // sidebar and stayed there: a grey box floating over the Add panel
-    // while the settings scrolled underneath it. Painted here it is in
-    // the right place and clipped to the control.
+    // Its own Material, because ink (the splash, and a focused control's
+    // highlight) is painted by the nearest Material ancestor, in its
+    // coordinates: with the sidebar's, the highlight was left floating where
+    // the dropdown had been as the settings scrolled.
     var list = Material(
       type: MaterialType.transparency,
-      // And no highlight at all once the menu has closed. In a settings
-      // panel the focused control is not a thing anybody is tracking, and
-      // a box that stays lit after a choice reads as something still
-      // open.
+      // And no highlight once the menu has closed: a box that stays lit
+      // after a choice reads as something still open.
       child: DropdownButton<T>(
         focusColor: Colors.transparent,
         value: options.any((o) => o.$1 == value) ? value : null,
         isDense: true,
         isExpanded: true,
-        // The open list as wide as its longest name: as wide as the button,
-        // a name longer than the button was cut short while it was being
-        // chosen.
+        // The open list as wide as its longest name, so no name is cut short
+        // while it is being chosen.
         menuWidth: _menuWidth(context),
         underline: const SizedBox.shrink(),
         style: TextStyle(fontSize: 12, color: theme.colors.onSurface),
         iconSize: card ? 0 : 16,
         icon: card ? const SizedBox.shrink() : null,
-        // The closed button shows the name and nothing else. Without
-        // this it draws the chosen item's own widget, which for a
-        // marked option is the background and the cross as well --
-        // a row of controls inside a box an inch wide.
+        // The closed button shows the name and nothing else, not a marked
+        // option's background and cross. Always its own where options are
+        // tried: built from the items, resting the pointer on the closed button
+        // would start a preview nothing ended.
         selectedItemBuilder: marked.isEmpty &&
                 leading == null &&
-                groupOf == null
+                groupOf == null &&
+                onPreview == null
             ? null
             : (context) => [
                   for (var (v, text, heading) in _rows())
@@ -2422,18 +2173,16 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
         ],
         onChanged: enabled
             ? (v) {
-                // Null is a real answer where the type says it is one --
-                // a dropdown of "None, Fade, Slide" is a dropdown whose
-                // first entry is null, and refusing it meant None could
-                // be chosen and nothing happened.
+                // Null is a real answer where the type says it is one: a dropdown of
+                // "None, Fade, Slide" has null first.
                 if (v == null && null is! T) return;
                 onChanged(v as T);
               }
             : null,
       ),
     );
-    // In a card an arrow either side steps through the options, as a
-    // stepper's step through numbers, and the middle opens the whole list.
+    // In a card an arrow either side steps through the options and the
+    // middle opens the whole list.
     var box = card
         ? Container(
             decoration: BoxDecoration(
@@ -2458,8 +2207,7 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
             ]),
           )
         : Container(
-            // Centred in its box: at the top, the words sat high and left a
-            // band of nothing underneath.
+            // Centred in its box, not high with a band of nothing underneath.
             alignment: Alignment.center,
             padding: const EdgeInsets.symmetric(horizontal: 6),
             decoration: BoxDecoration(
@@ -2469,13 +2217,12 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
             child: list,
           );
     // In a card, never narrower than its two arrows and a word between
-    // them: a type panel's Case at fifty pixels was an arrow, an arrow, and
-    // an overflow.
+    // them.
     var least = CanvasControlScope.widthFor(context, width);
-    // And never narrower than its longest name between the arrows, so a
-    // line too short for it wraps rather than cutting the name to "Noth…".
-    // Only in a wrap, which can give it a line of its own; in a fixed row
-    // it keeps the width it was given.
+    // Nor narrower than its longest name between the arrows, so a line too
+    // short for it wraps rather than cutting the name. Only in a wrap,
+    // which can give it a line of its own; in a fixed row it keeps the
+    // width it was given.
     if (card) {
       least = math.max(
           least, grow && _CanvasWrapScope.of(context) ? _cardWidth() : 120.0);
@@ -2496,8 +2243,8 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
 }
 
 /// _Previewed is one option of an open list, telling [onPreview] when the
-/// pointer comes onto it -- and, as the list closes and takes its options
-/// with it, that nothing is being tried any more.
+/// pointer comes onto it and, as the list closes, that nothing is being
+/// tried any more.
 class _Previewed<T> extends StatefulWidget {
   final T value;
   final ValueChanged<T?>? onPreview;
@@ -2514,8 +2261,8 @@ class _PreviewedState<T> extends State<_Previewed<T>> {
   void dispose() {
     var preview = widget.onPreview;
     // After the frame: the list is being taken down, and whatever the
-    // preview changes rebuilds the panel the list was opened from. Every
-    // option says it, and saying it twice changes nothing.
+    // preview changes rebuilds the panel it was opened from. Every option
+    // says it; saying it twice changes nothing.
     if (preview != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => preview(null));
     }
@@ -2533,11 +2280,10 @@ class _PreviewedState<T> extends State<_Previewed<T>> {
   }
 }
 
-/// CanvasSlider is a value with a range -- kept as a name for the places
-/// that ask for one, and drawn as a number to type or scrub, like the rest.
+/// CanvasSlider is a value with a range, drawn as a number to type or scrub
+/// like the rest; kept as a name for the places that ask for one.
 class CanvasSlider extends StatelessWidget implements CanvasGrowable {
-  /// Growable as the number field it is drawn as: a wrap only offers room to
-  /// the controls it can see are growable, and this is the one it sees.
+  /// Growable as the number field it is drawn as, so a wrap sees it.
   @override
   bool get grow => true;
   @override
@@ -2565,9 +2311,7 @@ class CanvasSlider extends StatelessWidget implements CanvasGrowable {
   });
 
   /// Drawn as a number field: typed, or scrubbed by dragging across the
-  /// number or its caption, as every other number in the settings is. A
-  /// slider beside a number that can be dragged was two controls for one
-  /// thing, and the only one of them that could not be typed into.
+  /// number or its caption, as every other number in the settings is.
   @override
   Widget build(BuildContext context) => CanvasNumberField(
         label: label,
@@ -2581,99 +2325,9 @@ class CanvasSlider extends StatelessWidget implements CanvasGrowable {
       );
 }
 
-/// _SliderValue is a slider's number, which can also be typed: a slider is
-/// quick and rough, and a number typed in is exact. Kept to the slider's own
-/// range, and taken when Return is pressed or the field is left.
-class _SliderValue extends StatefulWidget {
-  final double value;
-  final double min;
-  final double max;
-  final int decimals;
-  final Color color;
-  final ValueChanged<double> onChanged;
-
-  const _SliderValue({
-    required this.value,
-    required this.min,
-    required this.max,
-    required this.decimals,
-    required this.color,
-    required this.onChanged,
-  });
-
-  @override
-  State<_SliderValue> createState() => _SliderValueState();
-}
-
-class _SliderValueState extends State<_SliderValue> {
-  final _text = TextEditingController();
-  final _focus = FocusNode();
-
-  String get _shown => widget.decimals == 0
-      ? widget.value.round().toString()
-      : widget.value.toStringAsFixed(widget.decimals);
-
-  @override
-  void initState() {
-    super.initState();
-    _text.text = _shown;
-    _focus.addListener(() {
-      if (!_focus.hasFocus) _take();
-    });
-  }
-
-  @override
-  void didUpdateWidget(_SliderValue old) {
-    super.didUpdateWidget(old);
-    // Not while it is being typed in: the slider's number would overwrite
-    // the one half typed.
-    if (!_focus.hasFocus && _text.text != _shown) _text.text = _shown;
-  }
-
-  void _take() {
-    var v = double.tryParse(_text.text.trim());
-    if (v == null) {
-      _text.text = _shown;
-      return;
-    }
-    v = v.clamp(widget.min, widget.max).toDouble();
-    if (v != widget.value) widget.onChanged(v);
-    _text.text = widget.decimals == 0
-        ? v.round().toString()
-        : v.toStringAsFixed(widget.decimals);
-  }
-
-  @override
-  void dispose() {
-    _text.dispose();
-    _focus.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => TextField(
-        controller: _text,
-        focusNode: _focus,
-        textAlign: TextAlign.right,
-        style: TextStyle(fontSize: 10, color: widget.color),
-        keyboardType:
-            const TextInputType.numberWithOptions(decimal: true, signed: true),
-        decoration: const InputDecoration(
-          isDense: true,
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.zero,
-        ),
-        onSubmitted: (_) => _take(),
-      );
-}
-
-/// CanvasColorButton is a swatch that opens a picker.
-///
-/// A swatch rather than a dropdown of palette slots, unlike the theme editor
-/// next door: a canvas is a picture rather than a part of the app's chrome, so
-/// its colours are not the active theme's and should not be tied to it. What
-/// it does borrow is the theme editor's picker, so the two feel like the same
-/// app.
+/// CanvasColorButton is a swatch that opens a picker. Not a dropdown of
+/// palette slots as in the theme editor: a canvas's colours are a picture's,
+/// not the app theme's. It borrows the theme editor's picker.
 class CanvasColorButton extends StatefulWidget {
   final String label;
   final Color color;
@@ -2681,23 +2335,16 @@ class CanvasColorButton extends StatefulWidget {
   final ValueChanged<Color> onChanged;
 
   /// gradient is the second colour, for the things that can be painted with
-  /// two. Set [onGradientChanged] to offer the picker's Gradient tab; leave
-  /// it null and this is the plain swatch it has always been.
-  ///
-  /// The gradient is set *in the picker*, not beside it. A Fade toggle, a
-  /// second swatch, a Radial toggle and an Angle field next to every colour
-  /// is four controls per colour for something most colours never use.
+  /// two. Set [onGradientChanged] to offer the picker's Gradient tab; null
+  /// leaves a plain swatch. The gradient is set in the picker, not with
+  /// controls beside every colour.
   final GradientSpec? gradient;
   final ValueChanged<GradientSpec?>? onGradientChanged;
 
-  /// labelWidth holds the caption to the swatch's own width, for the rows
-  /// where a swatch has to fit in a known amount of room.
-  ///
-  /// A Column is as wide as its widest child, so a caption longer than the
-  /// thing it names is what decides how much of a line the control takes --
-  /// and a thirty-pixel swatch under the word "Colour" is a fifty-pixel
-  /// column, which is the difference between a row that fits and one that
-  /// wraps.
+  /// labelWidth holds the caption to the swatch's own width, for rows where a
+  /// swatch has to fit in a known amount of room: a Column is as wide as its
+  /// widest child, so "Colour" over a thirty-pixel swatch is a fifty-pixel
+  /// column.
   final double? labelWidth;
 
   const CanvasColorButton({
@@ -2718,16 +2365,11 @@ class CanvasColorButton extends StatefulWidget {
 class _CanvasColorButtonState extends State<CanvasColorButton> {
   /// _pick opens the picker and writes back whatever it answers with.
   ///
-  /// The colour and the fade are written one after the other, and where both
-  /// have moved the second is left until the next frame. They are two
-  /// separate writes to the same element, and a settings panel's controls
-  /// are built from the element as it was when the panel was last laid out
-  /// -- so two writes in one frame are both built on the same stale copy and
-  /// the second undoes the first. Reported as a gradient point's opacity not
-  /// sticking: setting a fade and a colour in one visit to the picker kept
-  /// the fade and threw the colour away. After the frame the panel has been
-  /// rebuilt, and `widget` is the new one, whose callbacks are closed over
-  /// what the first write left.
+  /// Where both the colour and the fade have moved, the second write is left
+  /// until the next frame: the panel's controls are built from the element as
+  /// it was last laid out, so two writes in one frame would both build on the
+  /// same stale copy and the second would undo the first. After the frame
+  /// `widget` is the rebuilt one, closed over what the first write left.
   Future<void> _pick() async {
     var picked = await pickPaint(
       context,
@@ -2766,8 +2408,7 @@ class _CanvasColorButtonState extends State<CanvasColorButton> {
             ? "Choose a colour"
             : "Choose a colour, or two to fade between",
         child: Material(
-          // Its own, so the highlight stays with the control inside a
-          // scrolling list rather than on whatever Material is above it.
+          // Its own Material: see CanvasControlGroup.
           type: MaterialType.transparency,
           child: InkWell(
             borderRadius: BorderRadius.circular(4),
@@ -2778,9 +2419,8 @@ class _CanvasColorButtonState extends State<CanvasColorButton> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(color: theme.colors.outlineVariant),
-                // The checker is what makes a transparent or nearly-transparent
-                // colour distinguishable from a black one, which otherwise look
-                // identical in a swatch on a dark background.
+                // The checker tells a transparent colour from black on a dark
+                // background.
                 color: theme.colors.surface,
               ),
               child: ClipRRect(
@@ -2829,26 +2469,15 @@ class _SwatchPainter extends CustomPainter {
       old.color != color || old.gradient != gradient;
 }
 
-/// CanvasToggle is a switch with a label, for the many booleans.
-/// CanvasChip is a named thing on a line, with a cross to take it off.
-///
-/// For the shapes a document is being laid out for: a row of short names is
-/// how a set is read at a glance, and a dropdown would hide the very thing
-/// the row is there to say.
+/// _MarkedOptions draws a CanvasDropdown's marked options.
 extension _MarkedOptions<T> on CanvasDropdown<T> {
   /// _markedOption is an option that is already in use: a background behind
   /// it, and a cross where it can be given up.
   Widget _markedOption(ThemeNotifier theme, T value, String text) => Builder(
-        // Across the whole row rather than a pill around the words: what is
-        // marked is the row, and a band the width of the text reads as a
-        // label stuck on one.
-        //
-        // A menu item is laid out inside the menu's own side padding, so the
-        // background is drawn wider than the slot it is given and let to
-        // overflow it. The padding is the framework's _kMenuItemPadding,
-        // which is not exported; 16 a side is what it has always been, and
-        // being a few pixels out would show as a band slightly too narrow
-        // rather than as anything broken.
+        // Across the whole row rather than a pill round the words: what is
+        // marked is the row. A menu item is laid out inside the menu's side
+        // padding (the framework's private _kMenuItemPadding, 16 a side), so
+        // the background is drawn wider than its slot and let to overflow.
         builder: (context) => LayoutBuilder(
           builder: (context, constraints) => OverflowBox(
             maxWidth: double.infinity,
@@ -2867,9 +2496,8 @@ extension _MarkedOptions<T> on CanvasDropdown<T> {
                     message: removeTip?.call(value) ?? "Remove",
                     child: InkWell(
                       borderRadius: BorderRadius.circular(10),
-                      // The menu is closed by hand: the cross is inside the row,
-                      // so the row's own tap never runs and the menu would be
-                      // left open over a list that has just changed.
+                      // The menu is closed by hand: the cross is inside the row, so the row's
+                      // own tap never runs and the menu would stay open over a changed list.
                       onTap: () {
                         Navigator.of(context).pop();
                         remove(value);
@@ -2886,6 +2514,8 @@ extension _MarkedOptions<T> on CanvasDropdown<T> {
       );
 }
 
+/// CanvasChip is a named thing on a line, with a cross to take it off: for
+/// the shapes a document is being laid out for, read at a glance as a row.
 class CanvasChip extends StatelessWidget {
   final String label;
 
@@ -2922,8 +2552,7 @@ class CanvasChip extends StatelessWidget {
           Tooltip(
             message: "Stop laying out for $label",
             child: Material(
-              // Its own, so the highlight stays with the control inside a
-              // scrolling list rather than on whatever Material is above it.
+              // Its own Material: see CanvasControlGroup.
               type: MaterialType.transparency,
               child: InkWell(
                 borderRadius: BorderRadius.circular(10),
@@ -2943,6 +2572,7 @@ class CanvasChip extends StatelessWidget {
   }
 }
 
+/// CanvasToggle is a switch with a label, for the many booleans.
 class CanvasToggle extends StatelessWidget {
   final String label;
   final bool value;
@@ -2990,18 +2620,10 @@ class CanvasToggle extends StatelessWidget {
       return _row(context, theme);
     }
     return Padding(
-      // The nudge lines a control with no caption up with the ones that have
-      // them. On the band the captions are beside their controls and there is
-      // nothing above to line up under, so the nudge is what pushed this out
-      // of line with its neighbours.
-      //
-      // The caption *and* the gap under it. The caption alone left this three
-      // pixels high of where it should be, which is not much until it is a
-      // button sitting beside two dropdowns.
+      // The nudge: see CanvasIconButton.
       padding: EdgeInsets.only(right: canvasControlGap, top: nudgeIn(context)),
       child: Material(
-        // Its own, so the highlight stays with the control inside a
-        // scrolling list rather than on whatever Material is above it.
+        // Its own Material: see CanvasControlGroup.
         type: MaterialType.transparency,
         child: InkWell(
           borderRadius: BorderRadius.circular(4),
@@ -3017,12 +2639,9 @@ class CanvasToggle extends StatelessWidget {
                       ? theme.colors.secondaryContainer
                       : theme.colors.outlineVariant),
             ),
-            // No check box beside the word. It was nineteen pixels per switch
-            // saying what the fill already says, on a panel whose switches come
-            // five to a line -- and the difference between five of them fitting
-            // a narrow sidebar and four of them fitting was exactly that.
-            // A label longer than the room -- one carrying a channel's name
-            // -- is shortened, not run off the edge.
+            // No check box beside the word: the fill already says it, and the room
+            // is what lets five switches fit a narrow sidebar's line. A label longer
+            // than the room (one carrying a channel's name) is shortened.
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Flexible(
                 child: Text(label,
@@ -3071,11 +2690,9 @@ class _Switch extends StatelessWidget {
       );
 }
 
-/// CanvasReadout is a caption over something the panel can only tell you.
-///
-/// For the answers that are not settings: which document a text element is
-/// reading, what a chain of boxes is flowing into. A disabled field would say
-/// the same thing while inviting somebody to type in it.
+/// CanvasReadout is a caption over something the panel can only tell you:
+/// which document a text element is reading, what a chain of boxes flows
+/// into. A disabled field would invite typing.
 class CanvasReadout extends StatelessWidget {
   final String label;
   final String value;
@@ -3116,11 +2733,8 @@ class CanvasIconButton extends StatelessWidget {
   final bool active;
 
   /// tight drops the room this button leaves above itself for the caption its
-  /// neighbours have.
-  ///
-  /// Right in a row of captioned controls, wrong anywhere else: on a
-  /// section's heading it put the button half a caption below the words it
-  /// sits beside, and made a closed section taller than the one under it.
+  /// neighbours have: right in a row of captioned controls, wrong on a
+  /// section's heading.
   final bool tight;
 
   const CanvasIconButton({
@@ -3137,24 +2751,17 @@ class CanvasIconButton extends StatelessWidget {
     var theme = ThemeNotifier.of(context);
     var enabled = onPressed != null;
     return Padding(
-      // The nudge lines a control with no caption up with the ones that have
-      // them. On the band the captions are beside their controls and there is
-      // nothing above to line up under, so the nudge is what pushed this out
-      // of line with its neighbours.
-      //
-      // The caption *and* the gap under it. The caption alone left this three
-      // pixels high of where it should be, which is not much until it is a
-      // button sitting beside two dropdowns.
+      // The nudge (the caption and the gap under it) lines a control with no
+      // caption up with the ones that have them. On the band the captions are
+      // beside their controls and there is nothing above to line up under.
       padding: EdgeInsets.only(
           right: CanvasCards.on(context) ? 8 : canvasControlGap,
           top: tight ? 0 : nudgeIn(context)),
-      // No hover text where there is nothing to say: a button whose icon says
-      // it all is quieter without a box of words appearing over it.
+      // No hover text where there is nothing to say.
       child: _maybeTooltip(
         tooltip,
         Material(
-          // Its own, so the highlight stays with the control inside a
-          // scrolling list rather than on whatever Material is above it.
+          // Its own Material: see CanvasControlGroup.
           type: MaterialType.transparency,
           child: InkWell(
             borderRadius: BorderRadius.circular(4),
@@ -3190,29 +2797,14 @@ class CanvasIconButton extends StatelessWidget {
 Widget _maybeTooltip(String message, Widget child) =>
     message.isEmpty ? child : Tooltip(message: message, child: child);
 
-/// _labelled puts a control's own small label above it.
 /// _ScrubLabel is a caption you can drag sideways to change the number under
-/// it.
+/// it. The caption rather than the field, which owns its own drag (that is
+/// how text is selected), so typing an exact number keeps working.
 ///
-/// The label rather than the field itself, and that is not a compromise. A
-/// TextField owns its own drag -- that is how text is selected -- so a scrub
-/// on the field would either fight the selection or take it away, and typing
-/// an exact number has to keep working. The caption above it is doing nothing
-/// else, is already beside the value it belongs to, and can show a
-/// left-and-right cursor to say so.
-///
-/// One pixel of travel moves the number by one of its own last digits: a whole
-/// unit on a field showing whole numbers, a tenth on a field showing tenths.
-///
-/// Not derived from the field's range, which was the first attempt and was
-/// far too coarse. Most of these ranges are guard rails rather than scales --
-/// a player's X is bounded at a hundred thousand so that a typo cannot send
-/// them into the next county, not because the field is a hundred-thousand-wide
-/// dial -- so a step of a four-hundredth of the range was hundreds of pixels
-/// per pixel. The last digit is the increment the field itself says it cares
-/// about, and 1:1 with the pointer is the only ratio nobody has to learn.
-///
-/// Shift makes it ten times finer, for the last pixel of a nudge.
+/// One pixel of travel moves the number by one of its own last digits: a
+/// whole unit on a field of whole numbers, a tenth on one of tenths. Not by
+/// a share of the range, since most ranges are guard rails, not scales.
+/// Shift makes it ten times finer.
 class _ScrubLabel extends StatefulWidget {
   final String label;
   final double value;
@@ -3246,17 +2838,12 @@ class _ScrubLabel extends StatefulWidget {
 
 class _ScrubLabelState extends State<_ScrubLabel> {
   /// _from is the value the drag started at, so the whole gesture is measured
-  /// from one place. Accumulating each small delta instead drifts, and rounding
-  /// to whole pixels on the way makes a slow drag move less than a fast one
-  /// over the same distance.
+  /// from one place: summing small deltas drifts, and rounding them makes a
+  /// slow drag move less than a fast one.
   double _from = 0;
 
-  /// _startX is where the pointer went down, in screen coordinates.
-  ///
-  /// Screen rather than local, and recorded rather than assumed: what arrives
-  /// is the pointer's *position*, not how far it has travelled, so without a
-  /// starting point to subtract the value jumped by wherever in the label it
-  /// was grabbed.
+  /// _startX is where the pointer went down, in screen coordinates: what
+  /// arrives is the pointer's position, not how far it has travelled.
   double _startX = 0;
   bool _dragging = false;
 
@@ -3269,11 +2856,8 @@ class _ScrubLabelState extends State<_ScrubLabel> {
     return MouseRegion(
       cursor: SystemMouseCursors.resizeLeftRight,
       // A Listener rather than a GestureDetector, so the number moves from the
-      // very first pixel. A drag gesture is not recognised until the pointer
-      // has travelled about eighteen pixels, and those eighteen are then gone:
-      // a twenty-five pixel scrub moved the value by seven. Nothing else is
-      // competing for these pointers -- it is a caption -- so there is no
-      // arena to take part in and nothing to be gained by waiting.
+      // first pixel: a drag is only recognised after about eighteen pixels,
+      // which are then lost. Nothing else competes for these pointers.
       child: Listener(
         behavior: HitTestBehavior.opaque,
         onPointerDown: (event) {
@@ -3314,10 +2898,9 @@ class _ScrubLabelState extends State<_ScrubLabel> {
   }
 }
 
-/// _labelled puts a caption above a control.
-///
-/// [scrub] makes that caption a handle: dragging it sideways runs the number
-/// up and down. See _ScrubLabel.
+/// _labelled puts a caption above a control. [scrub] makes that caption a
+/// handle: dragging it sideways runs the number up and down. See
+/// _ScrubLabel.
 Widget _labelled(ThemeNotifier theme, String label, Widget child,
     {Widget? scrub, double? cap}) {
   return Builder(builder: (context) {
@@ -3338,9 +2921,7 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
       overflow: TextOverflow.ellipsis,
     );
 
-    // Beside the control in the band, above it in a sidebar. The caption is
-    // the same words either way; what differs is which direction there is
-    // room in.
+    // Beside the control in the band, above it in a sidebar.
     if (inline) {
       return Padding(
         padding: const EdgeInsets.only(right: 14),
@@ -3349,8 +2930,8 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             if (label.isNotEmpty) ...[
-              // Capped, so a long caption cannot push the control off the
-              // end of a strip that is already scrolling sideways.
+              // Capped, so a long caption cannot push the control off the end of a
+              // strip that is already scrolling sideways.
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 96),
                 child: scrub ?? caption,
@@ -3372,8 +2953,8 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // As wide as its words, not held to its control's: in a card
-            // there is the room, and "Col..." over a swatch said nothing.
+            // As wide as its words, not held to its control's: in a card there is
+            // the room.
             SizedBox(
                 height: cardLabelHeight,
                 child: Text(label,
@@ -3397,12 +2978,9 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
           if (scrub != null)
             scrub
           else
-            // Held to the width of the control it names, where the caller
-            // has asked for that. A Column is as wide as its widest child,
-            // so a caption longer than its control is what decides how much
-            // of a row the control takes -- a dropdown narrowed to seventy
-            // pixels still took a hundred and thirty, because that is how
-            // wide "Gives way with" is.
+            // Held to the width of the control it names, where the caller has asked
+            // for that: a Column is as wide as its widest child, so a long caption
+            // would decide the control's width.
             SizedBox(height: controlLabelHeight, width: cap, child: caption),
           const SizedBox(height: controlLabelGap),
           child,
@@ -3412,55 +2990,34 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
   });
 }
 
-/// CanvasExpander is a control that opens to reveal a list.
-///
-/// Its own thing rather than Flutter's ExpansionTile, which is built for a
-/// Material list and brings a tile's height, its own dividers and an animation
-/// that all look wrong in a settings column. This is a heading you can press.
-///
-/// It exists for one case: a football team's squad is eleven rows of four
-/// fields, which is far more than any other element's settings put together,
-/// and having it permanently open would mean scrolling past a team sheet to
-/// reach the colours every time.
+/// CanvasExpander is a heading that opens to reveal a list. Not
+/// ExpansionTile, whose tile height, dividers and animation are a Material
+/// list's. For long lists such as a football team's squad (eleven rows of
+/// four fields), which should not sit open above the colours.
 class CanvasExpander extends StatefulWidget {
   final String label;
 
-  /// trailing is shown beside the label when closed -- a count, usually, so
-  /// the heading says how much is behind it.
-  ///
-  /// Ellipsised rather than allowed to push the heading wide. It is a summary,
-  /// and a summary that overflowed the panel by a hundred pixels is what a
-  /// preset with a long name did the first time one existed.
+  /// trailing is shown beside the label when closed (a count, usually), and
+  /// ellipsised rather than pushing the heading wide.
   final String? trailing;
 
   /// action is a button on the right of the heading, which works whether the
-  /// section is open or shut.
-  ///
-  /// For the one thing a section does that somebody wants without reading it:
-  /// refreshing a table's data, putting its rows back in order. Opening a
-  /// section, finding a button, pressing it and closing the section again is
-  /// four actions for one, every time.
+  /// section is open or shut: refreshing a table's data, putting its rows
+  /// back in order.
   final Widget? action;
 
   final List<Widget> children;
 
-  /// initiallyOpen is false for the squad list. Somebody opening a team's
+  /// initiallyOpen is false for the squad list: somebody opening a team's
   /// settings is usually there for the colours or the formation.
   final bool initiallyOpen;
 
-  /// remember names where this section's open state is kept, or null to let
-  /// it start closed every time.
-  ///
-  /// Kept in memory as well as on disk, and that is the point rather than an
-  /// optimisation: the settings panel is rebuilt from scratch whenever the
-  /// selection changes, and a fresh State reads a stored preference
-  /// asynchronously -- so a section opened, deselected and selected again was
-  /// shut for as long as it took the answer to come back off disk, which is
-  /// every time anybody looked.
+  /// remember names where this section's open state is kept (see
+  /// _rememberedSections), or null to start closed every time.
   final String? remember;
 
-  /// flat draws the children and nothing else -- no heading, always open --
-  /// for a section that already sits inside a section of its own.
+  /// flat draws the children and nothing else (no heading, always open), for
+  /// a section already inside a section of its own.
   final bool flat;
 
   const CanvasExpander({
@@ -3479,18 +3036,10 @@ class CanvasExpander extends StatefulWidget {
 }
 
 /// _rememberedSections is every named section's open state, for this run of
-/// the app.
-///
-/// In memory as well as on disk, and that is the point rather than an
-/// optimisation: a settings panel is rebuilt from scratch whenever the
-/// selection changes, and a fresh State reads a stored preference
-/// asynchronously -- so a section opened, deselected and selected again was
-/// shut for as long as it took the answer to come back off disk, which is
-/// every time anybody looked.
-///
-/// Shared by [CanvasExpander] and [CanvasFoldingGroup], which are the same
-/// question -- is this part of the panel open -- asked of two shapes of
-/// heading.
+/// the app. In memory as well as on disk because a settings panel is rebuilt
+/// whenever the selection changes, and a fresh State reading the disk
+/// asynchronously would show the section shut until the answer came back.
+/// Shared by [CanvasExpander] and [CanvasFoldingGroup].
 final Map<String, bool> _rememberedSections = {};
 
 /// _restoreSection reads a section's state off disk into the map, and tells
@@ -3510,8 +3059,7 @@ void _keepSection(String? key, bool open) {
 }
 
 /// rememberedSection, restoreSection and keepSection are the same memory for
-/// the panel sections in panel_kit.dart, which are a third shape of the same
-/// question.
+/// the panel sections in panel_kit.dart.
 bool? rememberedSection(String key) => _rememberedSections[key];
 Future<void> restoreSection(String key, ValueChanged<bool> then) =>
     _restoreSection(key, then);
@@ -3547,8 +3095,8 @@ class _CanvasExpanderState extends State<CanvasExpander> {
         children: widget.children,
       );
     }
-    // In a section, a card that folds: its name -- and how it is set --
-    // to press, and what it holds under it.
+    // In a section, a card that folds: its name (and how it is set) to
+    // press, and what it holds under it.
     if (CanvasCards.on(context) && !CanvasControlScope.isInline(context)) {
       var muted = theme.colors.onSurfaceVariant;
       return canvasCard(context,
@@ -3600,20 +3148,14 @@ class _CanvasExpanderState extends State<CanvasExpander> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Two layouts, chosen by whether there is a width to fill.
-        //
-        // Down the sidebar there is, and the action belongs hard against the
-        // right edge with the summary taking whatever is left -- a button
-        // floating just after the text looks like part of the text. Along the
-        // settings band there is not: it is a horizontal scroller offering
-        // unbounded width, where an Expanded is not a layout that looks wrong
-        // but an assertion, because a child cannot fill a space of unknown
-        // size. So the heading shrink-wraps there instead.
+        // Two layouts, by whether there is a width to fill. Down the sidebar the
+        // action goes hard against the right edge with the summary taking what
+        // is left. Along the band, a horizontal scroller with unbounded width,
+        // an Expanded asserts, so the heading shrink-wraps.
         LayoutBuilder(builder: (context, constraints) {
           var fills = constraints.maxWidth.isFinite;
           Widget heading = Material(
-            // Its own, so the highlight stays with the control inside a
-            // scrolling list rather than on whatever Material is above it.
+            // Its own Material: see CanvasControlGroup.
             type: MaterialType.transparency,
             child: InkWell(
               onTap: _toggle,
@@ -3624,10 +3166,8 @@ class _CanvasExpanderState extends State<CanvasExpander> {
                   Icon(_open ? Icons.expand_more : Icons.chevron_right,
                       size: 16, color: theme.colors.onSurfaceVariant),
                   const SizedBox(width: 3),
-                  // The name shrinks before the summary does, and both clip. A
-                  // heading carrying a button as well is wider than a narrow
-                  // sidebar for several of these, and a Text that cannot shrink
-                  // overflows however flexible everything beside it is.
+                  // The name shrinks before the summary does, and both clip: a Text that
+                  // cannot shrink overflows however flexible everything beside it is.
                   Flexible(
                     child: Text(
                       widget.label.toUpperCase(),
@@ -3685,19 +3225,11 @@ class _CanvasExpanderState extends State<CanvasExpander> {
   }
 }
 
-/// isTypingInAField is whether the keyboard currently belongs to a text field.
-///
-/// The canvas and the timeline both claim the arrow keys and the space bar --
-/// one to nudge and scrub, the other to play. Both do it from a [Focus] that
-/// wraps their whole subtree, and that is *below* the app's own Shortcuts
-/// widget in the tree, so their handlers run first: a key pressed while typing
-/// in one of their own number fields was scrubbing the timeline instead of
-/// moving the caret, and the space bar was starting playback instead of
-/// typing a space.
-///
-/// Asking the focus manager rather than tracking it per field, because the
-/// field that has focus may belong to the settings band, the sidebar or a
-/// dialog, none of which the timeline knows about.
+/// isTypingInAField is whether the keyboard currently belongs to a text
+/// field. The canvas and the timeline claim the arrows and the space bar
+/// from a Focus below the app's own Shortcuts, so their handlers run first
+/// and must step aside while somebody types. Asks the focus manager, since
+/// the field may be in the band, the sidebar or a dialog.
 bool isTypingInAField() {
   var context = FocusManager.instance.primaryFocus?.context;
   if (context == null) return false;
@@ -3706,18 +3238,9 @@ bool isTypingInAField() {
 }
 
 /// CanvasKeyframeDot is the little diamond beside a setting that can be
-/// animated.
-///
-/// It says two things at once: that the setting *can* hold a keyframe, and
-/// whether there is one on the frame being looked at. Pressing it adds or
-/// removes one.
-///
-/// A keyframe on this canvas is a whole pose -- where the element is, how big,
-/// how turned, how faded -- rather than one channel per property, so every dot
-/// on an element's row lights up together and pressing any of them adds the
-/// same keyframe. That is a real limitation and the tooltip says so; the
-/// alternative is four tracks per element and four rows of marks on a strip
-/// that has room for one.
+/// animated: lit where a keyframe sits on the frame being looked at, and
+/// pressed to add or remove one. What the keyframe holds (a whole pose, or
+/// one value) is the caller's: see valueDot in settings_shared.dart.
 class CanvasKeyframeDot extends StatelessWidget {
   /// on is whether a keyframe sits on the current frame.
   final bool on;
@@ -3741,16 +3264,12 @@ class CanvasKeyframeDot extends StatelessWidget {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     return Padding(
-      // The nudge lines a control with no caption up with the ones that have
-      // them. On the band the captions are beside their controls and there is
-      // nothing above to line up under, so the nudge is what pushed this out
-      // of line with its neighbours.
+      // The nudge: see CanvasIconButton.
       padding: EdgeInsets.only(right: canvasControlGap, top: nudgeIn(context)),
       child: Tooltip(
         message: tooltip,
         child: Material(
-          // Its own, so the highlight stays with the control inside a
-          // scrolling list rather than on whatever Material is above it.
+          // Its own Material: see CanvasControlGroup.
           type: MaterialType.transparency,
           child: InkWell(
             borderRadius: BorderRadius.circular(4),
@@ -3775,14 +3294,9 @@ class CanvasKeyframeDot extends StatelessWidget {
   }
 }
 
-/// CanvasGridCell is a text field with no caption over it.
-///
-/// Its own widget rather than CanvasTextField because that one carries a
-/// label above it and a fixed width, and a grid of forty of those would be a
-/// grid of forty captions.
-///
-/// Shared by the chart's numbers and the table's cells, which are the same
-/// control asked for twice.
+/// CanvasGridCell is a text field with no caption over it, for the chart's
+/// numbers and the table's cells: a grid of CanvasTextFields would be a grid
+/// of captions.
 class CanvasGridCell extends StatefulWidget {
   final String value;
   final ValueChanged<String> onChanged;
@@ -3791,14 +3305,10 @@ class CanvasGridCell extends StatefulWidget {
   final bool dense;
   final String hint;
 
-  /// suggestions are what this cell is likely to hold, offered as soon as
-  /// somebody starts typing.
-  ///
-  /// For a cell whose content is a *name the source knows* rather than free
-  /// text: the coins a comparison can ask for, and whatever the next source
-  /// with a list of rows turns out to have. Typing is still typing -- the
-  /// list narrows what is shown and refuses nothing -- because the list is
-  /// never every name there is. See DataPreset.rowNames.
+  /// suggestions are what this cell is likely to hold, offered as somebody
+  /// types: for a cell holding a name the source knows (the coins a comparison
+  /// can ask for). The list narrows what is shown and refuses nothing. See
+  /// DataPreset.rowNames.
   final List<String> suggestions;
 
   const CanvasGridCell({
@@ -3832,8 +3342,8 @@ class CanvasGridCellState extends State<CanvasGridCell> {
   @override
   void didUpdateWidget(CanvasGridCell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Only while it is not being typed in. Rewriting the text under the cursor
-    // is how an editor eats a keystroke and moves the caret to the end.
+    // Only while it is not being typed in: rewriting the text under the
+    // cursor eats a keystroke and moves the caret to the end.
     if (!_focus.hasFocus && widget.value != _text.text) {
       _text.text = widget.value;
     }
@@ -3851,9 +3361,8 @@ class CanvasGridCellState extends State<CanvasGridCell> {
     if (widget.suggestions.isEmpty) return _field(context);
     var theme = ThemeNotifier.of(context);
     // RawAutocomplete rather than Autocomplete, so the cell keeps its own
-    // controller and focus node: those are what make it stop rewriting itself
-    // under the cursor and commit when it loses focus, and an Autocomplete
-    // would bring a second pair of its own.
+    // controller and focus node, which stop it rewriting itself under the
+    // cursor and commit when it loses focus.
     return RawAutocomplete<String>(
       textEditingController: _text,
       focusNode: _focus,
@@ -3861,8 +3370,7 @@ class CanvasGridCellState extends State<CanvasGridCell> {
         var typed = value.text.trim().toLowerCase();
         if (typed.isEmpty) return const Iterable<String>.empty();
         // What is being typed, wherever it appears in the name: "cash" finds
-        // Bitcoin Cash. An exact match offers nothing -- the answer is
-        // already in the cell.
+        // Bitcoin Cash. An exact match offers nothing.
         var found = [
           for (var name in widget.suggestions)
             if (name.toLowerCase().contains(typed)) name,
@@ -3915,10 +3423,9 @@ class CanvasGridCellState extends State<CanvasGridCell> {
         maxLines: widget.multiline ? null : 1,
         minLines: null,
         style: TextStyle(fontSize: widget.dense ? 11 : 12),
-        // Centred on one line, top on several. A cell is given the row's
-        // height, which is more than one line of eleven-point text needs, so
-        // top-aligned left the words sitting high in their box -- visibly out
-        // of line with the dropdown beside them in a series row.
+        // Centred on one line, top on several: a cell is given the row's
+        // height, and top-aligned one line sits high beside the dropdown in a
+        // series row.
         textAlignVertical:
             widget.multiline ? TextAlignVertical.top : TextAlignVertical.center,
         decoration: canvasFieldDecoration(ThemeNotifier.of(context),
@@ -3928,19 +3435,12 @@ class CanvasGridCellState extends State<CanvasGridCell> {
 }
 
 /// CanvasWatch rebuilds only when the part of a listenable it cares about
-/// actually changes.
+/// changes: the canvas controller notifies on every pixel of a drag, and
+/// most of the sidebar does not change on most of those.
 ///
-/// A ListenableBuilder rebuilds on every notification, and the canvas
-/// controller notifies on every pixel of a drag. Most of the sidebar does not
-/// change on most of those: a layer list shows names and order, and neither
-/// moves when an element does. Watching a small value instead means the
-/// difference between a list rebuilt sixty times a second and one rebuilt when
-/// it has something new to say.
-///
-/// [select] must be cheap and must be a *value* -- a string, a number, a
-/// record -- because it runs on every notification and is compared with ==.
-/// Returning a list or a map would compare by identity and never match, which
-/// is a rebuild every time wearing a disguise.
+/// [select] must be cheap and must be a value (a string, a number, a
+/// record), because it runs on every notification and is compared with ==:
+/// a list or a map compares by identity and would rebuild every time.
 class CanvasWatch<T> extends StatefulWidget {
   final Listenable listenable;
   final T Function() select;
@@ -3992,17 +3492,10 @@ class _CanvasWatchState<T> extends State<CanvasWatch<T>> {
   Widget build(BuildContext context) => widget.builder(context, _value);
 }
 
-/// CanvasFoldingGroup is a control group that can be shut.
-///
-/// The same group as [CanvasControlGroup] -- the caption, the rule, the same
-/// layout in a sidebar and in a strip -- with a chevron on the caption and
-/// the controls put away behind it. For a panel that is five groups of
-/// switches set up once and then left alone: shutting the three you are not
-/// using is what turns a strip that scrolls sideways into one that fits.
-///
-/// [remember] names where the answer is kept, so a group shut stays shut
-/// across a rebuild and across a restart -- the same store CanvasExpander
-/// uses, because it is the same question.
+/// CanvasFoldingGroup is a [CanvasControlGroup] that can be shut: a chevron
+/// on the caption, the controls put away behind it. [remember] names where
+/// the answer is kept, so a group shut stays shut across a rebuild and a
+/// restart (see _rememberedSections).
 class CanvasFoldingGroup extends StatefulWidget {
   final String label;
   final List<Widget> children;
@@ -4011,8 +3504,7 @@ class CanvasFoldingGroup extends StatefulWidget {
   final String remember;
 
   /// startShut is what a group nobody has touched does. False: a panel that
-  /// opens with everything put away is a panel that has to be opened five
-  /// times before it says anything.
+  /// opens with everything put away says nothing until it is opened.
   final bool startShut;
 
   final bool rule;

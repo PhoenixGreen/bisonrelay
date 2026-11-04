@@ -19,7 +19,8 @@ class StudioFinishPass extends CustomRenderPass {
   final gpu.Shader shader;
   CharacterLook look;
 
-  /// pixelRatio is the screen's, so lines are as thick on every screen.
+  /// pixelRatio is pixels to each of the picture's points, so lines keep
+  /// their thickness at any scale.
   double pixelRatio;
 
   /// paper is whether the look's paper is drawn behind the figure: not on
@@ -76,8 +77,7 @@ class StudioFinishPass extends CustomRenderPass {
 }
 
 /// finishUniforms are [l]'s dials as the finish's Finish block holds them:
-/// eight vec4s.
-/// With no [paper], the figure is drawn alone, clear round it.
+/// eight vec4s. With no [paper], the figure is drawn alone, clear round it.
 Float32List finishUniforms(CharacterLook l, double px, {bool paper = true}) {
   final on = l.lineStyle != "none";
   final pencil = l.lineStyle == "pencil";
@@ -122,7 +122,7 @@ vm.Vector3 lightDirection(CharacterLook l) {
   return -at.normalized();
 }
 
-/// shadowTints are the shadow colours a look's shadowTint names.
+/// _tints are the shadow colours a look's shadowTint names.
 const Map<String, (double, double, double)> _tints = {
   "neutral": (0.62, 0.62, 0.66),
   "warm": (0.78, 0.6, 0.6),

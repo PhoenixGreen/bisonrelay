@@ -13,22 +13,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
-/// RemovalMode is how an image's background is taken out.
-///
-/// Three methods rather than one, because "remove the background" is three
-/// different problems wearing the same name and none of the three is right
-/// for the other two's pictures:
-///
-///  - a logo or a screenshot has one flat colour behind it, which is what
-///    [chromaKey] and [cornerFlood] are for;
-///  - a chart or a scan is dark on light, which is [luminance];
-///  - a photograph of a person is none of the above, and no amount of
-///    threshold tuning makes it one. There is deliberately no control here
-///    pretending otherwise.
-///
-/// All three run on the raw pixels in Dart. Nothing is uploaded anywhere, and
-/// nothing needs a model -- a canvas is edited offline like everything else in
-/// this app.
+/// RemovalMode is how an image's background is taken out: [chromaKey] and
+/// [cornerFlood] for a flat colour behind a logo or screenshot, [luminance]
+/// for dark on light (a chart, a scan), [learn] for a photograph. All run on
+/// the raw pixels in Dart, offline, with no model.
 enum RemovalMode {
   none("None", "Leave the image as it is"),
   chromaKey("Colour key", "Remove everything close to one chosen colour"),
@@ -36,8 +24,7 @@ enum RemovalMode {
       "Remove the connected region touching the picture's edges"),
   luminance("By brightness", "Remove everything above or below a brightness"),
 
-  /// learn is the one to reach for on a photograph. See
-  /// BackgroundRemoval.hints.
+  /// learn works from marked examples. See BackgroundRemoval.hints.
   learn("Show it what to remove",
       "Mark some background and some subject, and it works out the rest");
 
@@ -51,12 +38,9 @@ enum RemovalMode {
       );
 }
 
-/// ImageFit is how the picture sits in its box.
-///
-/// Our own three values rather than Flutter's BoxFit, so that the model layer
-/// imports nothing from Flutter beyond dart:ui and stays testable without a
-/// binding. render/ maps them; there is no reason for a saved document to
-/// depend on somebody else's enum.
+/// ImageFit is how the picture sits in its box. Our own enum rather than
+/// BoxFit, so the model needs only dart:ui and a saved document does not
+/// depend on another library's names; render/ maps them.
 enum ImageFit {
   cover("Cover"),
   contain("Show whole"),
@@ -69,57 +53,31 @@ enum ImageFit {
       values.firstWhere((f) => f.name == name, orElse: () => ImageFit.cover);
 }
 
-/// BackgroundRemoval is the recipe, never the result.
+/// RemovalStroke is one sweep of the background-removal brush.
 ///
-/// Stored as settings rather than as a cut-out bitmap, for the same reason a
-/// procedural background is a seed: the original picture stays whole, the
-/// tolerance can be nudged a week later, and the document does not grow a
-/// second copy of every image. The cut-out is recomputed when the settings
-/// change and cached in memory for as long as they do not.
-/// RemovalStroke is one sweep of the retouching brush.
-///
-/// Points are fractions of the picture's own width and height, not canvas
-/// coordinates, so a stroke stays on the shoulder it was painted on when the
-/// element is later resized, refitted or recropped. The radius is a fraction
-/// of the picture's shorter side for the same reason.
-///
-/// This is the part of background removal that always works. Every automatic
-/// method has photographs it cannot do -- a subject whose outline is as soft
-/// as what is behind it has no edge to find, and no threshold separates a
-/// white shirt from a bright highlight when the two touch -- and on those the
-/// brush is not a refinement, it is the tool.
+/// Points are fractions of the picture's own width and height, and the
+/// radius a fraction of its shorter side, so a stroke stays put when the
+/// element is resized, refitted or recropped.
 class RemovalStroke {
   final List<Offset> points;
   final double radius;
 
   /// hardness is how abruptly the stroke stops at its own edge: 1 is a disc
   /// with a cut edge, lower fades out towards the rim.
-  ///
-  /// A hard brush is the wrong tool for a photograph. Everything in one has a
-  /// soft boundary -- hair most of all -- and a cut-out with a hard edge reads
-  /// as a sticker whatever else is right about it.
   final double hardness;
 
-  /// fill makes the stroke a boundary rather than a mark.
-  ///
-  /// Draw a rough line around the subject, let go, and everything the picture's
-  /// own edge can reach without crossing that line goes. It is the tool for the
-  /// job the brush was being asked to do and is bad at -- taking out a large,
-  /// awkward, many-coloured area -- because it does not care what colour any of
-  /// it is. Only where the line is.
+  /// fill makes the stroke a boundary rather than a mark: everything the
+  /// picture's own edge can reach without crossing it goes, whatever its
+  /// colour.
   final bool fill;
 
   /// fillInside takes what the boundary encloses rather than what surrounds
   /// it -- for cutting a hole out of something rather than cutting it free.
   final bool fillInside;
 
-  /// snap makes the stroke cling to what is already in the picture.
-  ///
-  /// Zero paints the whole disc. Above zero, the dab spreads outwards from
-  /// where the pointer is only through pixels close in colour to the one under
-  /// it, so brushing along a shoulder takes the sky and stops at the coat
-  /// without the pointer having to trace the line. It is the difference
-  /// between painting a mask and pointing at what should go.
+  /// snap makes the stroke cling to what is in the picture. Zero paints the
+  /// whole disc; above zero, a dab spreads from the pointer only through
+  /// pixels close in colour to the one under it.
   final double snap;
 
   /// keep is true for a stroke that puts the picture back and false for one
@@ -147,9 +105,7 @@ class RemovalStroke {
       );
 
   Map<String, dynamic> toJson() => {
-        // Flat pairs rather than a list of objects: a stroke is hundreds of
-        // points and {"x":..,"y":..} triples the size of a saved canvas for
-        // nothing a reader of the file would thank us for.
+        // Flat pairs: a stroke is hundreds of points.
         "p": [
           for (var p in points) ...[p.dx, p.dy]
         ],
@@ -162,16 +118,7 @@ class RemovalStroke {
       };
 
   factory RemovalStroke.fromJson(Map<String, dynamic> json) {
-    var flat = json["p"];
-    var points = <Offset>[];
-    if (flat is List) {
-      for (var i = 0; i + 1 < flat.length; i += 2) {
-        var x = flat[i], y = flat[i + 1];
-        if (x is num && y is num) {
-          points.add(Offset(x.toDouble(), y.toDouble()));
-        }
-      }
-    }
+    var points = fractionsFromJson(json["p"]);
     return RemovalStroke(
       points: points,
       radius: jsonDouble(json["r"], 0.05),
@@ -184,6 +131,10 @@ class RemovalStroke {
   }
 }
 
+/// BackgroundRemoval is the recipe, never the result: settings rather than
+/// a cut-out bitmap, so the original stays whole, the settings can be changed
+/// later, and the document holds no second copy. The cut-out is recomputed
+/// when the settings change and cached in memory (see [cacheKey]).
 class BackgroundRemoval {
   final RemovalMode mode;
 
@@ -205,38 +156,19 @@ class BackgroundRemoval {
   /// been kept.
   final bool invert;
 
-  /// hints are the marks that teach [RemovalMode.learn] what is what.
-  ///
-  /// A stroke with keep false is an example of background; keep true is an
-  /// example of subject. Nothing is removed where they are drawn -- they are
-  /// evidence rather than instructions, which is what separates them from
-  /// [strokes].
-  ///
-  /// This exists because the three settings above cannot be dialled in on a
-  /// real photograph. Every one of them asks the reader to guess a number that
-  /// stands for a property of the picture they cannot see: how far apart two
-  /// colours are, how sharply an edge changes. Marking two areas asks instead
-  /// for the one thing they can see perfectly well -- which part is the
-  /// background -- and lets the arithmetic work backwards from that.
+  /// hints are the marks that teach [RemovalMode.learn] what is what: keep
+  /// false marks background, keep true subject. Unlike [strokes] they remove
+  /// nothing themselves; they are examples.
   final List<RemovalStroke> hints;
 
-  /// strokes are the retouching brush's marks. See [RemovalStroke].
-  ///
-  /// Applied after whatever the automatic method did, so a stroke is always
-  /// the last word: the reader can put back a hand it ate and take out a patch
-  /// it missed without either changing the settings or losing the other.
+  /// strokes are the brush's marks, applied after the automatic method so a
+  /// stroke always has the last word.
   final List<RemovalStroke> strokes;
 
   /// edge is how sharp a change has to be to stop the flood, for
-  /// [RemovalMode.cornerFlood].
-  ///
-  /// This is the control that does the work on a photograph, and [tolerance]
-  /// is the one that stops it running away. A background is usually smooth --
-  /// out of focus, or a wall, or a sky -- while the subject has a crisp
-  /// outline, so "keep going while the picture changes gently, stop where it
-  /// changes suddenly" separates the two far better than any judgement about
-  /// colour can. Low values stop at the faintest change; high values push
-  /// through soft edges and eventually through the subject's own.
+  /// [RemovalMode.cornerFlood]; [tolerance] stops it running away. It works
+  /// because backgrounds are usually smooth and subjects have crisp outlines.
+  /// Low values stop at the faintest change.
   final double edge;
 
   const BackgroundRemoval({
@@ -251,13 +183,11 @@ class BackgroundRemoval {
     this.invert = false,
   });
 
-  /// active is whether anything is being taken out at all -- by a method, or
-  /// by the brush on its own. The brush alone is a legitimate way to use this:
-  /// on a picture no automatic method can do, the reader paints the background
-  /// out by hand and never touches the dropdown.
+  /// active is whether anything is being taken out, by a method or by the
+  /// brush alone.
   bool get active => mode != RemovalMode.none || strokes.isNotEmpty;
 
-  /// backgroundHints and subjectHints are the two sides of the evidence.
+  /// backgroundHints and subjectHints split [hints] by side.
   Iterable<RemovalStroke> get backgroundHints => hints.where((h) => !h.keep);
   Iterable<RemovalStroke> get subjectHints => hints.where((h) => h.keep);
 
@@ -284,24 +214,16 @@ class BackgroundRemoval {
         hints: hints ?? this.hints,
       );
 
-  /// cacheKey identifies a cut-out. Two elements with the same picture and
-  /// the same settings share one, which matters on a canvas built from a
-  /// dozen copies of the same badge.
-  /// cacheKey identifies the *result*, so two elements asking for the same
-  /// treatment of the same picture share one copy of it.
-  ///
-  /// The brush has to be in here. Left out, a stroke changed nothing on screen
-  /// -- the store would hand back the picture it had already made and go on
-  /// doing so however much was painted. The strokes are summarised by their
-  /// count and their last point rather than in full: a key holding every point
-  /// of every stroke would be longer than the document.
+  /// cacheKey identifies the cut-out, so elements giving the same picture
+  /// the same treatment share one. The brush marks must be in it or a new
+  /// stroke would change nothing on screen; see [_marksKey].
   String cacheKey(String assetId) => "$assetId|${mode.name}|"
       "${colorToJson(keyColor)}|$tolerance|$softness|$threshold|$invert|$edge|"
       "${_marksKey(strokes)}|${_marksKey(hints)}";
 
-  /// _marksKey summarises a list of brush marks for the cache key: how many
-  /// there are, and how far the last one has got. A key holding every point of
-  /// every stroke would be longer than the document.
+  /// _marksKey summarises brush marks by their count and how far the last
+  /// one has got: a key holding every point would be longer than the
+  /// document.
   static String _marksKey(List<RemovalStroke> marks) => marks.isEmpty
       ? "0"
       : "${marks.length}:${marks.last.points.length}:"
@@ -323,7 +245,7 @@ class BackgroundRemoval {
 
   factory BackgroundRemoval.fromJson(Map<String, dynamic> json) =>
       BackgroundRemoval(
-        mode: RemovalMode.fromName(json["mode"] as String?),
+        mode: RemovalMode.fromName(jsonStr(json["mode"])),
         keyColor: colorFromJson(json["key"]),
         tolerance: jsonDouble(json["tol"], 0.12).clamp(0.0, 1.0),
         softness: jsonDouble(json["soft"], 0.04).clamp(0.0, 1.0),
@@ -344,12 +266,8 @@ class BackgroundRemoval {
       );
 }
 
-/// ImageFilter is a look applied to the whole picture.
-///
-/// Presets rather than a pile of sliders, because these are the handful of
-/// looks anybody actually reaches for and each is one colour matrix -- the
-/// sliders for hue, contrast and the rest are already there as tint,
-/// saturation and brightness for when a preset is not enough.
+/// ImageFilterPreset is a look applied to the whole picture, each one
+/// colour matrix; finer control is in tint, saturation and brightness.
 enum ImageFilterPreset {
   none("None"),
   greyscale("Greyscale"),
@@ -369,11 +287,8 @@ enum ImageFilterPreset {
       );
 }
 
-/// OverlayBlend is how an overlay colour is laid over the picture.
-///
-/// Our own names rather than Flutter's BlendMode, for the reason every other
-/// enum here is: a saved document must not depend on the index or the spelling
-/// of a value in somebody else's library.
+/// OverlayBlend is how an overlay colour is laid over the picture. Our own
+/// names, so a saved document does not depend on BlendMode's.
 enum OverlayBlend {
   none("None", BlendMode.dstIn),
   wash("Wash", BlendMode.srcOver),
@@ -395,14 +310,8 @@ enum OverlayBlend {
       );
 }
 
-/// OutlineStyle is where an outline sits relative to the shape it traces.
-///
-/// Not solid/dashed/dotted. Those are the choices for a border around a box,
-/// where there is a path to walk; what is being traced here is the edge of an
-/// alpha channel -- a silhouette with holes in it and hair round the top --
-/// and it has no path anybody could put dashes along. What does vary, and
-/// what a cut-out actually needs, is which side of that edge the band falls
-/// on and how hard it is.
+/// OutlineStyle is where an outline sits relative to the edge it traces.
+/// Not dashes: the edge is an alpha channel's, with no path to dash along.
 enum OutlineStyle {
   outside("Outside", "The band sits outside the subject"),
   centred("Centred", "Half outside the edge and half in"),
@@ -419,17 +328,9 @@ enum OutlineStyle {
       );
 }
 
-/// ImageOutline is a line traced around whatever is left of a picture.
-///
-/// The sticker look, and the reason to want it is legibility rather than
-/// decoration: a subject cut out of a photograph and dropped on a busy canvas
-/// has nothing separating it from what is behind it, and a dark player on a
-/// dark background reads as a smudge until something draws the boundary.
-///
-/// It traces the alpha channel, so it needs no help from the removal that
-/// produced it and does not care which method or how many brush strokes got
-/// there. On a picture with nothing taken out it traces the rectangle, which
-/// is a border and is a perfectly reasonable thing to ask for too.
+/// ImageOutline is a line traced round whatever is left of a picture (the
+/// sticker look). It traces the alpha channel, so on a picture with nothing
+/// taken out it is a border round the rectangle.
 class ImageOutline {
   final Color color;
 
@@ -450,8 +351,7 @@ class ImageOutline {
     this.feather = 0,
   });
 
-  /// on is whether it draws anything. A width of zero is the default and the
-  /// off switch: there is no separate toggle to get out of step with it.
+  /// on is whether it draws anything; a width of zero is the off switch.
   bool get on => width > 0 && color.a > 0;
 
   ImageOutline copyWith({
@@ -477,16 +377,13 @@ class ImageOutline {
   factory ImageOutline.fromJson(Map<String, dynamic> json) => ImageOutline(
         color: colorFromJson(json["c"]),
         width: jsonDouble(json["w"], 0).clamp(0.0, 400.0),
-        style: OutlineStyle.fromName(json["s"] as String?),
+        style: OutlineStyle.fromName(jsonStr(json["s"])),
         feather: jsonDouble(json["f"], 0).clamp(0.0, 1.0),
       );
 }
 
-/// ImageCrop is which part of the picture is shown, in fractions of it.
-///
-/// Fractions rather than pixels, so a crop survives the picture being swapped
-/// for a larger copy of the same thing -- and so the same crop means the same
-/// framing whatever the source happens to be.
+/// ImageCrop is which part of the picture is shown, in fractions of it so a
+/// crop survives the picture being swapped for a larger copy.
 class ImageCrop {
   final double left;
   final double top;
@@ -529,39 +426,20 @@ class ImageCrop {
       );
 }
 
-/// ImageFraming is where the picture sits inside its frame, and how much of
-/// it is shown.
+/// ImageFraming is where the picture sits inside its frame and how much of
+/// it is shown, for [ImageFit.cover] only. A covering picture has slack in
+/// one direction; [x] and [y] spend it (0 left or top, 1 right or bottom),
+/// and [zoom] above 1 scales up to make slack where there was none.
 ///
-/// It only means anything when the picture fills the frame -- see
-/// [ImageFit.cover]. A picture that fills a frame it is not the same shape as
-/// has slack in one direction, and something has to decide which part of it is
-/// given away; covering on its own always takes it off both ends equally, so a
-/// portrait in a wide frame is cropped to the subject's chest whatever the
-/// picture is of. [x] and [y] spend that slack, 0 for the left or top edge and
-/// 1 for the right or bottom.
-///
-/// [zoom] then makes slack where there was none. At 1 the picture is as small
-/// as it can be and still fill the frame, which is what covering has always
-/// done; above that it is scaled up and correspondingly less of it is shown,
-/// so a face can be brought up to fill a frame the photograph was never
-/// composed for.
-///
-/// This is deliberately not [ImageCrop]. A crop is a decision about the
-/// picture -- these are the same pixels however the element is resized -- and
-/// framing is a decision about the frame, which has to be re-spent every time
-/// the frame changes shape. Kept as fractions of the slack rather than as a
-/// rectangle, a reframed picture survives its element being dragged from
-/// square to wide without the subject sliding out of shot.
+/// Not [ImageCrop]: a crop is about the picture's pixels, framing about the
+/// frame. Kept as fractions of the slack, a reframed picture survives its
+/// element changing shape without the subject sliding out of shot.
 class ImageFraming {
-  /// x and y are how the slack is spent, 0.5 being the middle -- which is what
-  /// covering did before there was anything to say otherwise, and is why an
-  /// untouched picture looks exactly as it always has.
+  /// x and y are how the slack is spent, 0.5 being the middle.
   final double x;
   final double y;
 
-  /// zoom is 1 for "just filling the frame". Capped at 8, past which a
-  /// photograph is a handful of pixels and the reader has lost the picture
-  /// rather than framed it.
+  /// zoom is 1 for just filling the frame, capped at 8.
   final double zoom;
 
   const ImageFraming({this.x = 0.5, this.y = 0.5, this.zoom = 1});
@@ -583,10 +461,10 @@ class ImageFraming {
       );
 }
 
-/// driftedFraming is [framing] [t] of the way through a drift -- [preset],
-/// one of the Drift loops -- that moves [amount] of the picture: how much
-/// closer a zoom ends, or how much closer a pan is held to have room to
-/// move across. The frame stays put; the picture moves inside it.
+/// driftedFraming is [framing] [t] of the way through the Drift loop
+/// [preset], which moves [amount] of the picture: how much closer a zoom
+/// ends, or how much a pan is zoomed to have room to cross. The frame stays
+/// put; the picture moves inside it.
 ImageFraming driftedFraming(
     ImageFraming framing, LoopPreset preset, double amount, double t) {
   t = t.clamp(0.0, 1.0);
@@ -610,13 +488,12 @@ ImageFraming driftedFraming(
   };
 }
 
-/// driftPerStrength is how much of the picture a drift moves at a loop's
-/// strength of 1: fifteen per cent, the documentary's slow creep.
+/// driftPerStrength is how much of the picture a drift moves at a loop
+/// strength of 1.
 const double driftPerStrength = 0.15;
 
-/// _driftAsLoop is [animation] given the drift a picture saved before drifts
-/// were loops had -- {"kind": "zoomIn", "amount": 0.15} -- as its loop,
-/// where it has no loop of its own.
+/// _driftAsLoop reads an older save's "drift" ({"kind": "zoomIn", "amount":
+/// 0.15}) into [animation] as a loop, where it has no loop of its own.
 ElementAnimation _driftAsLoop(ElementAnimation animation, Object? drift) {
   if (drift is! Map<String, dynamic> || animation.loop.on) return animation;
   var preset = switch (drift["kind"]) {
@@ -636,84 +513,61 @@ ElementAnimation _driftAsLoop(ElementAnimation animation, Object? drift) {
               driftPerStrength));
 }
 
-/// ImageElement is a picture on the canvas.
-///
-/// It holds an [assetId], not the bytes. The bytes live once in the canvas
-/// asset store beside the document (see storage/canvas_assets.dart), exactly
-/// as the post library keeps a draft's embeds beside the draft -- so a canvas
-/// with the same logo on it eight times is one copy of the logo, and a saved
-/// document stays a small readable file.
+/// ImageElement is a picture on the canvas. It holds an [assetId], not the
+/// bytes, which live once in the canvas asset store beside the document (see
+/// storage/canvas_assets.dart).
 class ImageElement extends CanvasElement {
   final String assetId;
   final ImageFit fit;
   final BoxSpec box;
   final BackgroundRemoval removal;
 
-  /// tint multiplies the image's colours. Transparent means no tint, which is
-  /// the normal case.
+  /// tint multiplies the image's colours; transparent is none.
   final Color tint;
 
-  /// saturation and brightness are 1 for "as it came in".
+  /// saturation and brightness are 1 for unchanged.
   final double saturation;
   final double brightness;
 
-  /// crop is which part of the picture is shown. See [ImageCrop].
   final ImageCrop crop;
-
-  /// framing is where that part sits inside the frame, and how far in. See
-  /// [ImageFraming].
   final ImageFraming framing;
-
-  /// warp bends the picture by a grid of points over it. See ImageWarp.
   final ImageWarp warp;
 
-  /// frame is a shape the picture is cut to -- a circle, a star, a speech
-  /// bubble. Null leaves it rectangular.
-  ///
-  /// The shape is the one every other element draws, so a picture can be cut
-  /// to anything a shape element can be, and a shape added later is a frame
-  /// for free.
+  /// frame is the shape the picture is cut to (any a shape element can
+  /// draw), or null for a rectangle.
   final ShapeKind? frame;
 
   final ImageFilterPreset filter;
 
-  /// outline traces what is left of the picture. See [ImageOutline].
   final ImageOutline outline;
 
-  /// overlay is a colour laid over the picture, and blend is how. Together
-  /// they are the difference between a photograph and a photograph that goes
-  /// with the rest of the design.
+  /// overlay is a colour laid over the picture, and [blend] is how.
   final Color overlay;
 
   final OverlayBlend blend;
 
-  /// animation is how the picture arrives and leaves. See ElementAnimation.
   final ElementAnimation animation;
 
-  /// layers are what the picture is composited from, back to front. See
-  /// image_layers.dart: the fields above are the base layer, and an element
-  /// with no layers is the base layer alone -- which is every picture there
-  /// was before there were layers, and every one that is still just a
-  /// picture.
+  /// layers are what the picture is composited from, back to front (see
+  /// image_layers.dart). The fields above are the base layer; with no
+  /// layers, the base layer is drawn alone.
   final List<ImageLayer> layers;
 
-  /// mask is what of the picture is shown. See image_mask.dart. Applied after
-  /// [removal], which keys out flat colours for logos and scans.
+  /// mask is what of the picture is shown, applied after [removal]. See
+  /// image_mask.dart.
   final ImageMask mask;
 
-  /// retouch is the cloning, healing, dodging, burning and blurring done to
-  /// the picture, in order -- under its mask. See image_strokes.dart.
+  /// retouch is the retouching strokes done to the picture, in order, under
+  /// its mask. See image_strokes.dart.
   final List<StrokeMark> retouch;
 
-  /// scaleContent makes resizing the picture's frame scale its layers with
-  /// it. Off, the frame is resized round them: each stays its size, where it
-  /// is on the page -- see keptInPlace.
+  /// scaleContent makes resizing the frame scale its layers with it. Off,
+  /// the frame is resized round them and each stays where it is on the page
+  /// (see keptInPlace).
   final bool scaleContent;
 
-  /// clip cuts everything in the picture to its frame: a picture cut to a
-  /// circle, a rounded card. Off, nothing is cut -- a stroke painted past the
-  /// frame, a layer dragged out of it, a shadow -- and the frame grows to take
-  /// in what is drawn past it. See grownToFit.
+  /// clip cuts everything in the picture to its frame. Off, nothing is cut
+  /// and the frame grows to take in what is drawn past it (see grownToFit).
   final bool clip;
 
   const ImageElement(
@@ -747,21 +601,14 @@ class ImageElement extends CanvasElement {
   @override
   Set<String> get assetIds => {
         if (assetId.isNotEmpty) assetId,
-        // And whatever its frame is painted with. See BoxSpec.assetIds.
         ...box.assetIds,
-        // And every picture layered over it.
         for (var layer in layers) ...?layer.look?.assetIds,
-        // And the subject its mask was found to have, which is a picture in
-        // the store like any other.
+        // The mask's subject is a stored picture too.
         if (mask.subject.isNotEmpty) mask.subject,
       };
 
-  /// stack is every layer, back to front, the base layer among them.
-  ///
-  /// Always has exactly one base layer, wherever it was put: a stack read
-  /// from a file that lost it (or never had one) gets it back at the bottom,
-  /// because the base layer is the element's own picture and cannot be
-  /// deleted out from under it.
+  /// stack is every layer, back to front, with exactly one base layer: if
+  /// [layers] has none or several, one is put at the bottom.
   List<ImageLayer> get stack {
     if (layers.isEmpty) return const [ImageLayer.base];
     var bases = layers.where((l) => l.isBase).length;
@@ -775,11 +622,9 @@ class ImageElement extends CanvasElement {
     return [base, ...others];
   }
 
-  /// layered is whether there is more to draw than the base picture, drawn
-  /// as it always was.
+  /// layered is whether there is more to draw than the plain base picture.
   bool get layered => layers.any((l) => !l.plain);
 
-  /// layerById is the layer [id], or null.
   ImageLayer? layerById(String id) {
     for (var l in stack) {
       if (l.id == id) return l;
@@ -787,33 +632,19 @@ class ImageElement extends CanvasElement {
     return null;
   }
 
-  /// withLayers is this element with [next] as its stack.
   ImageElement withLayers(List<ImageLayer> next) => copyWith(layers: next);
 
   /// withLayer is this element with the layer [id] changed by [edit].
   ImageElement withLayer(String id, ImageLayer Function(ImageLayer) edit) =>
       withLayers([for (var l in stack) l.id == id ? edit(l) : l]);
 
-  /// croppedTo is this element with [next] as its crop and its own box
-  /// trimmed to match, so the picture that is left stays exactly where it was
-  /// on the canvas.
+  /// croppedTo is this element with [next] as its crop and its box trimmed
+  /// to match, so what is left of the picture stays where it was on the
+  /// canvas. A crop alone would refit the rest to the same box: a zoom.
   ///
-  /// What a crop means to anybody using one: the left edge moves in and takes
-  /// that strip of picture with it. Written as the crop alone it meant "show
-  /// less of the picture in the same box", so the rest was re-fitted to fill
-  /// the frame and the whole picture appeared to zoom -- reported as "some
-  /// kind of strange zoom which is very hard to control".
-  ///
-  /// The arithmetic is the frame's, not the picture's: the box shows
-  /// [crop.width] of the picture across its own width, so a strip of the
-  /// picture is worth that much of the box.
-  ///
-  /// With layers, what is trimmed is the base picture's own place in the
-  /// frame, not the frame: the frame holds the layers too, and trimmed it
-  /// kept the picture where it was on the page -- the crop then blew what
-  /// was left up to fill it, which is a zoom. [flipX] and [flipY] are a
-  /// picture layer's mirror, whose left is on the right; the base picture's
-  /// is its own layer's.
+  /// With layers, the base layer's place is trimmed, not the frame, which
+  /// holds the other layers too. [flipX] and [flipY] say a mirrored layer's
+  /// left is on its right; for the base picture its own layer's are used.
   ImageElement croppedTo(ImageCrop next,
       {bool flipX = false, bool flipY = false}) {
     var was = crop;
@@ -840,8 +671,8 @@ class ImageElement extends CanvasElement {
     var trimmed = Rect.fromLTRB(
         box.left + inL, box.top + inT, box.right - inR, box.bottom - inB);
 
-    // Never inside out, and never so small it cannot be grabbed again: 8
-    // canvas units, which in a layer's place is the same share of the frame.
+    // Never inside out, and never too small to grab: 8 canvas units, or
+    // the same in a layer's units.
     var least = base == null
         ? 8.0
         : 8.0 * layerUnits / math.max(1e-9, math.min(width, height));
@@ -861,10 +692,9 @@ class ImageElement extends CanvasElement {
   }
 
   /// withProportionsKept is this picture with its proportions held as it is
-  /// resized, or let go. Let go, a picture that covered its box is
-  /// stretched to it instead, so pulling a side squashes it rather than
-  /// trimming it. Held again, its fit is left as it is: a stretched picture
-  /// in a box of its own proportions is drawn the same either way.
+  /// resized, or let go. Let go, a covering picture becomes stretched, so
+  /// pulling a side squashes it rather than trimming it. Held again, the fit
+  /// is left alone.
   ImageElement withProportionsKept(bool keep) {
     var next = withBase(lockAspect: keep) as ImageElement;
     if (!keep && fit == ImageFit.cover) {
@@ -873,9 +703,8 @@ class ImageElement extends CanvasElement {
     return next;
   }
 
-  /// hasImage is whether there is anything to draw. An element with no
-  /// picture yet is drawn as a placeholder rather than as nothing, so it can
-  /// still be selected and given one.
+  /// hasImage is whether there is a picture; without one a placeholder is
+  /// drawn so it can still be selected.
   bool get hasImage => assetId.isNotEmpty;
 
   @override
@@ -973,8 +802,7 @@ class ImageElement extends CanvasElement {
         if (blend != OverlayBlend.none) "overlay": colorToJson(overlay),
         if (blend != OverlayBlend.none) "blend": blend.name,
         if (animation.any) "anim": animation.toJson(),
-        // Only where there is more than the base picture: a picture with no
-        // layers is written exactly as one was before layers existed.
+        // Only when layered, so a plain picture saves without layers.
         if (layered) "layers": [for (var l in stack) l.toJson()],
         if (!mask.empty) "mask": mask.toJson(),
         if (retouch.isNotEmpty) "retouch": [for (var s in retouch) s.toJson()],
@@ -984,16 +812,13 @@ class ImageElement extends CanvasElement {
 
   factory ImageElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
       ImageElement(
-          // Proportions used to be a picture's own setting, on by default, and
-          // are now every element's, off by default. A document saved before
-          // that has no "aspect" key at all, and its pictures were locked
-          // unless they said otherwise -- so they are given that back rather
-          // than quietly becoming stretchable.
+          // A save with no "aspect" key predates element-wide proportions,
+          // when pictures were locked unless "lockAspect" said otherwise.
           json.containsKey("aspect")
               ? b
               : b.copyWith(lockAspect: jsonBool(json["lockAspect"], true)),
           assetId: jsonString(json["asset"], ""),
-          fit: ImageFit.fromName(json["fit"] as String?),
+          fit: ImageFit.fromName(jsonStr(json["fit"])),
           box: jsonSpec(
               json["box"], BoxSpec.fromJson, const BoxSpec(padding: 0)),
           removal: jsonSpec(json["removal"], BackgroundRemoval.fromJson,
@@ -1006,13 +831,13 @@ class ImageElement extends CanvasElement {
               json["framing"], ImageFraming.fromJson, const ImageFraming()),
           warp: jsonSpec(json["warp"], ImageWarp.fromJson, const ImageWarp()),
           frame: json["frame"] is String
-              ? ShapeKind.fromName(json["frame"] as String?)
+              ? ShapeKind.fromName(jsonStr(json["frame"]))
               : null,
-          filter: ImageFilterPreset.fromName(json["filter"] as String?),
+          filter: ImageFilterPreset.fromName(jsonStr(json["filter"])),
           outline: jsonSpec(
               json["outline"], ImageOutline.fromJson, const ImageOutline()),
           overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
-          blend: OverlayBlend.fromName(json["blend"] as String?),
+          blend: OverlayBlend.fromName(jsonStr(json["blend"])),
           animation: _driftAsLoop(
               jsonSpec(json["anim"], ElementAnimation.fromJson,
                   const ElementAnimation()),
@@ -1034,9 +859,8 @@ class ImageElement extends CanvasElement {
                       const BoxSpec(padding: 0))));
 
   /// grownToFit is this picture with its frame grown to take in everything
-  /// drawn in it -- its pictures, its paint -- each kept where it is on the
-  /// page. Never smaller: a frame that shrank whenever a stroke was taken
-  /// back would move under the pointer. Unchanged when it clips.
+  /// drawn in it, each layer kept where it is on the page. Never smaller (a
+  /// shrinking frame would move under the pointer); unchanged when it clips.
   ImageElement grownToFit() {
     if (clip || !layered) return this;
     var inner = box.inner(bounds);
@@ -1054,8 +878,7 @@ class ImageElement extends CanvasElement {
   }
 
   /// fittedToContent is this picture with its frame exactly round what is
-  /// drawn in it -- smaller as well as larger -- everything kept where it is
-  /// on the page.
+  /// drawn in it, smaller or larger, everything kept where it is.
   ImageElement fittedToContent() {
     if (!layered) return this;
     var inner = box.inner(bounds);
@@ -1064,9 +887,8 @@ class ImageElement extends CanvasElement {
     return _framedTo(content, inner);
   }
 
-  /// _framedTo is this picture with its inner frame, now [inner], made [to]
-  /// -- the padding round it kept -- and every layer where it was on the
-  /// page, turned picture or not.
+  /// _framedTo is this picture with its inner frame, now [inner], made [to],
+  /// padding kept and every layer where it was on the page.
   ImageElement _framedTo(Rect to, Rect inner) {
     var b = bounds;
     var next = Rect.fromLTRB(
@@ -1082,9 +904,8 @@ class ImageElement extends CanvasElement {
             width: next.width,
             height: next.height)));
     if (rotation == 0) return resized;
-    // Turned, a picture turns about its middle, and the middle has moved:
-    // the whole of it is carried back by what that moved everything on the
-    // page, so the layers stay where they were seen.
+    // A turned picture turns about its middle, which has moved: shift it
+    // back by the difference so the layers stay where they were seen.
     var moved = next.center - b.center;
     var t = rotation * math.pi / 180;
     var turned = Offset(moved.dx * math.cos(t) - moved.dy * math.sin(t),
@@ -1095,19 +916,14 @@ class ImageElement extends CanvasElement {
   }
 }
 
-/// _clippedBefore is whether a picture saved before it could be told to
-/// clip did: one cut to a shape or with rounded corners, so those look as
-/// they did. Every other one draws what runs past its frame.
+/// _clippedBefore is the clip default for a save with no "clip" key: on for
+/// a picture cut to a shape or with rounded corners.
 bool _clippedBefore(ShapeKind? frame, BoxSpec box) =>
     frame != null || box.isRounded;
 
-/// fitToPicture gives an element the proportions of the picture in it.
-///
-/// The picture is contained rather than covered: the box shrinks to the
-/// picture's shape inside the space it already had, keeping its centre, and
-/// never grows. Growing is the tempting version -- keep the width, work out
-/// the height -- and it puts a tall photograph's bottom half off the bottom of
-/// the canvas, which is a worse first impression than a small picture.
+/// fitToPicture gives an element the proportions of the picture in it. The
+/// box shrinks to the picture's shape within the space it had, keeping its
+/// centre; it never grows, which could push a tall photograph off the canvas.
 ImageElement fitToPicture(ImageElement e, Size picture) {
   if (picture.width <= 0 || picture.height <= 0) return e;
   var box = e.base;
@@ -1127,8 +943,7 @@ ImageElement fitToPicture(ImageElement e, Size picture) {
     width: width,
     height: height,
   )) as ImageElement;
-  // The frame took the new picture's shape for the picture: it fills it,
-  // whatever the layers round it did.
+  // The frame took the picture's shape, so the base layer fills it.
   return fitted.layered
       ? fitted.withLayer(baseLayerId, (l) => l.copyWith(clearBasePlace: true))
       : fitted;

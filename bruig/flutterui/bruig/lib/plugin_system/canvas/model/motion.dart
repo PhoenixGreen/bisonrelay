@@ -1,25 +1,21 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// motion.dart is how an element moves: its clips. A clip is a small piece of
-// animation that belongs to one element -- an arrival, a loop, a way out, an
-// action -- made of keys, played from a slot, a cue or a trigger, or placed
-// on the timeline.
+// motion.dart is how an element moves: its clips. A clip is a piece of
+// animation belonging to one element (an arrival, a loop, a way out, an
+// action) made of keys, played from a slot, a cue or a trigger, or placed on
+// the timeline.
 //
-// It replaces three things that grew up separately: keyframes on a track,
-// the ready-made arrive/leave/loop presets, and the keyframe settings on the
-// timeline bar. A preset now only writes a clip's keys; after that the clip
-// is its keys. See render/motion_pose.dart for what an element looks like
-// at a moment, and the prototype these rules were settled in
-// (https://claude.ai/artifact/63vgUVykmP1Ezx82gvUJhd).
+// Clips are the animation model. Legacy keyframe tracks are converted to
+// clips when a canvas opens (motion_convert.dart); a preset only writes a
+// clip's keys (motion_presets.dart). render/motion_pose.dart works out what
+// an element looks like at a moment.
 //
-// Times inside a clip are seconds from its start. Places on the timeline are
-// seconds from the scene's start: the frame rate is a property of the
-// picture, and a clip retimed to a new frame rate should not change speed.
+// Times in a clip are seconds from its start, and on the timeline seconds
+// from the scene's start, so changing the frame rate changes no speeds.
 
-/// MotionProp is one thing a clip's keys move. Each is relative to the
-/// element as it is set -- moved by, sized by, turned by -- so one clip works
-/// on any element, wherever it has been put.
+/// MotionProp is one thing a clip's keys move, relative to the element as
+/// set (moved by, sized by, turned by), so one clip works on any element.
 enum MotionProp {
   x("Across", 0),
   y("Down", 0),
@@ -37,24 +33,23 @@ enum MotionProp {
       values.where((p) => p.name == name).firstOrNull;
 }
 
-/// MotionPlaceKind is a place a key can name instead of a number: worked out
-/// as the clip plays, so it holds when the page changes shape or the things
-/// it names have moved.
+/// MotionPlaceKind is a place a key can name instead of a number, worked out
+/// as the clip plays so it holds when the page or its target moves.
 enum MotionPlaceKind {
-  /// offLeft and its fellows are just past an edge of the page, the element
-  /// wholly out of sight.
+  /// offLeft and its fellows are just past an edge, the element wholly out
+  /// of sight.
   offLeft("Off the left edge"),
   offRight("Off the right edge"),
   offTop("Above the page"),
   offBottom("Below the page"),
 
-  /// beside is next to another element, on the side it is on; ground is
-  /// standing on the same ground as it -- their bottoms level.
+  /// beside is next to another element, on the side it is on; ground puts
+  /// their bottoms level.
   beside("Beside"),
   ground("On the ground of"),
 
-  /// on is where another element is drawn now, moving: what a camera that
-  /// follows somebody looks at.
+  /// on is where another element is drawn now, as it moves: what a
+  /// following camera looks at.
   on("On");
 
   final String label;
@@ -118,8 +113,8 @@ class MotionPlace extends MotionValue {
   int get hashCode => Object.hash(kind, target);
 }
 
-/// MotionKey is one key: where a property is at [t] seconds into the clip,
-/// and how it gets there from the key before.
+/// MotionKey is where a property is at [t] seconds into the clip, and the
+/// easing from the key before.
 class MotionKey {
   final double t;
   final MotionValue value;
@@ -139,7 +134,7 @@ class MotionKey {
   static MotionKey fromJson(Map json, double rest) => MotionKey(
         jsonDouble(json["t"], 0).clamp(0.0, 3600.0),
         MotionValue.fromJson(json["v"], rest),
-        ease: KeyframeEasing.fromName(json["ease"] as String?),
+        ease: KeyframeEasing.fromName(jsonStr(json["ease"])),
       );
 
   @override
@@ -154,16 +149,16 @@ class MotionKey {
 }
 
 /// MotionKind is what a clip is for. It sets the clip's colour, the presets
-/// offered for it, and what it does before it starts and after it ends --
-/// an arrival waits at its first frame, a way out stays gone.
+/// offered, and its default holds before and after (an arrival waits at its
+/// first frame, a way out stays gone).
 enum MotionKind {
   arrive("Arriving", ClipHold.first, ClipHold.rest),
   loop("Looping", ClipHold.rest, ClipHold.rest),
   leave("Leaving", ClipHold.rest, ClipHold.last),
   action("Action", ClipHold.rest, ClipHold.rest),
 
-  /// model is a 3D model's own animation, read from its file: its keys are
-  /// in the model; the clip says which, and when.
+  /// model is a 3D model's own animation: the keys are in the model file;
+  /// the clip says which, and when.
   model("From the model", ClipHold.rest, ClipHold.rest),
 
   /// camera is a Camera element's move: where it looks and how near.
@@ -181,8 +176,8 @@ enum MotionKind {
       values.firstWhere((k) => k.name == name, orElse: () => action);
 }
 
-/// ClipHold is what a clip does outside the time it plays: nothing -- the
-/// element as it is -- or hold its first or last frame.
+/// ClipHold is what a clip does outside the time it plays: nothing, or hold
+/// its first or last frame.
 enum ClipHold {
   rest("As it is"),
   first("Holds its first frame"),
@@ -196,8 +191,7 @@ enum ClipHold {
 }
 
 /// ClipLaunch is what a press on a clip's slot does, as the audio slots'
-/// LaunchMode: start it; play it while held; start or stop it; repeat it
-/// while held.
+/// LaunchMode.
 enum ClipLaunch {
   trigger("Starts it"),
   gate("Plays while held"),
@@ -226,8 +220,8 @@ enum ClipThen {
       values.firstWhere((t) => t.name == name, orElse: () => nothing);
 }
 
-/// ClipTriggerKind is what else starts a clip, beside its slot: in a
-/// published interactive canvas, in a game, and in the editor's Try it.
+/// ClipTriggerKind is what else starts a clip besides its slot, in a
+/// published interactive canvas, a game, or the editor's Try it.
 enum ClipTriggerKind {
   sceneStarts("The scene starts"),
   clicked("Clicked"),
@@ -244,8 +238,8 @@ enum ClipTriggerKind {
       values.where((t) => t.name == name).firstOrNull;
 }
 
-/// ClipTrigger is one: its kind, and what it names -- an element clicked, a
-/// key, a clip, a marker, a count -- with a number for a count.
+/// ClipTrigger is one trigger: its kind, the element, key, clip, marker or
+/// count it names, and [amount] for a count.
 class ClipTrigger {
   final ClipTriggerKind kind;
   final String target;
@@ -278,13 +272,13 @@ class ClipTrigger {
   int get hashCode => Object.hash(kind, target, amount);
 }
 
-/// motionLayers is how many layers an element's motion has: clips on
-/// different layers play together, their moves added. A layer is how an
-/// element floats while it slides in, or waves while it walks.
+/// motionLayers is how many layers an element's motion has. Clips on
+/// different layers play together, their moves added (floating while
+/// sliding in).
 const int motionLayers = 3;
 
-/// soundLayer is the lane an element's own sound plays on: after its motion
-/// layers, in its group on the timeline.
+/// soundLayer is the lane an element's own sound plays on, after its motion
+/// layers.
 const int soundLayer = motionLayers;
 
 /// MotionClip is one clip. Immutable.
@@ -293,13 +287,13 @@ class MotionClip {
   final String name;
   final MotionKind kind;
 
-  /// preset is the ready-made motion the keys were written by, until a key
-  /// is changed by hand -- then [edited].
+  /// preset is the ready-made motion that wrote the keys; [edited] once a
+  /// key is changed by hand.
   final String preset;
   final bool edited;
 
-  /// length is the clip's own length, in seconds, and speed how fast it is
-  /// played from a slot: on the timeline its place sets its pace.
+  /// length is the clip's own length in seconds, and speed how fast it plays
+  /// from a slot (on the timeline its placement sets its pace).
   final double length;
   final double speed;
   final bool loop;
@@ -311,29 +305,29 @@ class MotionClip {
   final ClipHold before;
   final ClipHold after;
 
-  /// absolute writes its across and down keys as places on the page rather
-  /// than as moves from where the element is.
+  /// absolute makes its across and down keys page positions rather than
+  /// moves from where the element is.
   final bool absolute;
 
   final Map<MotionProp, List<MotionKey>> keys;
 
   final ClipLaunch launch;
 
-  /// quantise is what a launch waits for: null the timeline's own setting,
+  /// quantise is what a launch waits for: null for the timeline's setting,
   /// else "off", "beat" or "bar".
   final String? quantise;
   final ClipThen then;
 
-  /// thenClip is the clip [then] plays, by id, when it is [ClipThen.play].
+  /// thenClip is the clip id [ClipThen.play] plays.
   final String thenClip;
   final List<ClipTrigger> triggers;
 
-  /// inside is what only this kind of element does in a clip -- a text's
-  /// words one after another, a character's face, a model's animation by
-  /// name -- kept as its own settings rather than as keys.
+  /// inside is settings only this kind of element has in a clip (a text's
+  /// words, a character's face, a model's animation by name), kept as
+  /// settings rather than keys. See [insideAt].
   final Map<String, dynamic> inside;
 
-  /// sound is the sound a sound clip plays: an asset id.
+  /// sound is a sound clip's asset id.
   final String sound;
 
   const MotionClip({
@@ -381,7 +375,7 @@ class MotionClip {
 
   bool get isSound => kind == MotionKind.sound;
 
-  /// span is how long it plays from a slot, at its own speed.
+  /// span is how long it plays from a slot, at [speed].
   double get span => length / (speed <= 0 ? 1 : speed);
 
   MotionClip copyWith({
@@ -429,8 +423,7 @@ class MotionClip {
         sound: sound ?? this.sound,
       );
 
-  /// retimed is this clip [length] seconds long, its keys spread or
-  /// squeezed with it.
+  /// retimed is this clip [length] seconds long, its keys scaled with it.
   MotionClip retimed(double length) {
     var to = length.clamp(0.02, 3600.0);
     var f = to / this.length;
@@ -519,7 +512,7 @@ class MotionClip {
 /// or end, a marker, or the end of another placed clip.
 enum PinKind { sceneStart, sceneEnd, marker, after }
 
-/// ClipPin is one: its kind, and the marker or placed clip it names.
+/// ClipPin is a pin: its kind, and the marker or placement it names.
 class ClipPin {
   final PinKind kind;
   final String target;
@@ -543,11 +536,9 @@ class ClipPin {
   int get hashCode => Object.hash(kind, target);
 }
 
-/// ClipPlacement is a clip placed on the timeline: on which layer, from when,
-/// for how long, and which stretch of the clip -- a clip cut in two is two
-/// placements of it, each playing its own part.
-///
-/// A one-shot fills its place by being retimed; a loop, by repeating.
+/// ClipPlacement is a clip placed on the timeline: layer, start, length and
+/// the stretch of the clip it plays (a clip cut in two is two placements).
+/// A one-shot fills its place by being retimed; a loop by repeating.
 class ClipPlacement {
   final String id;
   final String clip;
@@ -556,12 +547,12 @@ class ClipPlacement {
   /// start is seconds from the scene's start, unless [startPin] says.
   final double start;
 
-  /// length is how long it lasts, in seconds; null is the clip's own span
-  /// (from [from] to [to] at its speed) -- unless [endPin] says.
+  /// length is how long it lasts in seconds, unless [endPin] says; null is
+  /// the clip's own span from [from] to [to].
   final double? length;
 
-  /// from and to are the stretch of the clip it plays, seconds into it;
-  /// [to] null is the clip's end.
+  /// from and to are the stretch of the clip it plays, in seconds; [to] null
+  /// is the clip's end.
   final double from;
   final double? to;
 
@@ -634,16 +625,16 @@ class ClipPlacement {
   }
 }
 
-/// markerKey is how a marker is named for a pin: its own id, or -- one made
-/// without one -- the one it is read back with.
+/// markerKey is how a pin names a marker: its id, or `m<frame>` for one made
+/// without an id.
 String markerKey(TimelineAction a) => a.id.isNotEmpty ? a.id : "m${a.frame}";
 
 /// math0 keeps a time from going before the scene's start.
 double math0(double v) => v < 0 ? 0 : v;
 
-/// InsideChannel is what a clip can do that only some kinds of element do,
-/// as the renderer's channels have it: an element's own arrival and way
-/// out, a counter's count, a line's bow, text sliding along its line.
+/// InsideChannel is a renderer channel only some elements have: their own
+/// arrival and way out, a counter's count, a line's bow, text sliding along
+/// its line.
 enum InsideChannel {
   reveal("reveal"),
   close("close"),
@@ -656,16 +647,15 @@ enum InsideChannel {
   const InsideChannel(this.channel);
 }
 
-/// insideAt is what [c]'s Inside it settings come to [t] seconds in: a
-/// value for each of the renderer's channels it sets. Its own arrival runs
-/// from nought to all of it across the clip, its way out likewise; a count,
-/// a bow and a slide go from where they are set to start to where they are
-/// set to end.
+/// insideAt is [c]'s [MotionClip.inside] settings at [t] seconds in, as a
+/// value for each renderer channel they set. An own arrival or way out runs
+/// nought to one across the clip; a count, bow or slide from its set start
+/// to its set end.
 Map<String, double> insideAt(MotionClip c, double t) {
   var inside = c.inside;
   if (inside.isEmpty) return const {};
   var p = c.length <= 0 ? 1.0 : (t / c.length).clamp(0.0, 1.0);
-  // Eased as it says -- a keyframe's stretch, converted, keeps its easing.
+  // A converted keyframe stretch keeps its easing.
   if (inside["ease"] case String ease) {
     p = KeyframeEasing.fromName(ease).apply(p);
   }
@@ -682,31 +672,25 @@ Map<String, double> insideAt(MotionClip c, double t) {
   return out;
 }
 
-/// clipSlots is how many slots an element's strip has at the least: it has
-/// one per cue row, as many as the mixer has.
-const int clipSlots = 4;
-
-/// maxClipSlots is the most read back: a cue row each.
+/// maxClipSlots caps the slots read back (one per cue row).
 const int maxClipSlots = 256;
 
-/// ElementMotion is all of an element's motion: its clips, which are in its
-/// slots, where they are placed on the timeline, and how much each layer
-/// counts. On ElementBase.motion. Immutable.
+/// ElementMotion is all of an element's motion (ElementBase.motion): its
+/// clips, its slots, its placements and its layer weights. Immutable.
 class ElementMotion {
   final List<MotionClip> clips;
 
-  /// slots are the clips in the element's slots, by id, one per cue row;
-  /// "" an empty slot. A clip need not be in a slot: one made on the
-  /// timeline has none until it is dragged into one.
+  /// slots are the clip ids in the element's slots, one per cue row; "" is
+  /// empty. A clip need not be in a slot.
   final List<String> slots;
   final List<ClipPlacement> placed;
 
-  /// weights are how much each layer counts, 0 to 1: the layer faders on
-  /// the element's strip.
+  /// weights are each layer's weight, 0 to 1: the layer faders on the
+  /// element's strip.
   final List<double> weights;
 
-  /// output is the sound channel an element's own sound goes into, by its
-  /// name, or "" its own lane in its group.
+  /// output is the sound channel the element's own sound goes into, by
+  /// name, or "" for its own lane.
   final String output;
 
   const ElementMotion({
@@ -733,8 +717,8 @@ class ElementMotion {
   double weight(int layer) =>
       layer >= 0 && layer < weights.length ? weights[layer] : 1;
 
-  /// hasSound is whether any of its clips is a sound: its group has a
-  /// sound lane, and its strip a sound fader.
+  /// hasSound is whether any clip is a sound, giving it a sound lane and
+  /// fader.
   bool get hasSound => clips.any((c) => c.isSound);
 
   ElementMotion copyWith({
@@ -752,8 +736,38 @@ class ElementMotion {
         output: output ?? this.output,
       );
 
-  /// withClip is this with [c] added, or put in place of the clip it
-  /// replaces.
+  /// renamedFor is this for a copy, element [id]: fresh placement ids, with
+  /// its own pins following. Two elements sharing a placement id would play
+  /// each other's timing.
+  ElementMotion renamedFor(String id) {
+    if (placed.isEmpty) return this;
+    var names = {
+      for (var (i, p) in placed.indexed) p.id: "$id-p$i",
+    };
+    ClipPin? moved(ClipPin? pin) => pin != null &&
+            pin.kind == PinKind.after &&
+            names.containsKey(pin.target)
+        ? ClipPin(PinKind.after, target: names[pin.target]!)
+        : pin;
+    return copyWith(placed: [
+      for (var p in placed)
+        p.copyWith(
+            id: names[p.id],
+            startPin: () => moved(p.startPin),
+            endPin: () => moved(p.endPin)),
+    ]);
+  }
+
+  /// shiftedBy is this with every placement not pinned at its start moved
+  /// [seconds] later: what moving a word cue does to what is tied to it.
+  ElementMotion shiftedBy(double seconds) => placed.isEmpty
+      ? this
+      : copyWith(placed: [
+          for (var p in placed)
+            p.startPin == null ? p.copyWith(start: p.start + seconds) : p,
+        ]);
+
+  /// withClip is this with [c] added, or replacing the clip with its id.
   ElementMotion withClip(MotionClip c) => copyWith(
       clips: clips.any((x) => x.id == c.id)
           ? [for (var x in clips) x.id == c.id ? c : x]
@@ -772,13 +786,12 @@ class ElementMotion {
     return copyWith(slots: next);
   }
 
-  /// withCueAt is this with an empty slot put in at cue row [at], those
-  /// under it moved down a row with their cues.
+  /// withCueAt is this with an empty slot inserted at cue row [at].
   ElementMotion withCueAt(int at) =>
       slots.length <= at ? this : copyWith(slots: [...slots]..insert(at, ""));
 
-  /// withoutCue is this with cue row [row] taken away, the slots under it
-  /// moved up. The clip in it goes too, unless it is on the timeline.
+  /// withoutCue is this with cue row [row] removed. Its clip goes too unless
+  /// it is in another slot or on the timeline.
   ElementMotion withoutCue(int row) {
     if (slots.length <= row) return this;
     var gone = slots[row];
@@ -794,19 +807,12 @@ class ElementMotion {
     ]);
   }
 
-  /// withPlacement is this with [p] added, or put in place of the one with
-  /// its id.
+  /// withPlacement is this with [p] added, or replacing the one with its
+  /// id.
   ElementMotion withPlacement(ClipPlacement p) => copyWith(placed: [
         for (var x in placed)
           if (x.id != p.id) x,
         p,
-      ]);
-
-  /// withoutPlacement takes [id] off the timeline. Whatever was pinned to
-  /// its end keeps the time it had: see [MotionTimes.unpinned].
-  ElementMotion withoutPlacement(String id) => copyWith(placed: [
-        for (var x in placed)
-          if (x.id != id) x
       ]);
 
   Map<String, dynamic> toJson() => {
@@ -851,9 +857,9 @@ class ElementMotion {
   }
 }
 
-/// MotionTimes resolves where placed clips are: their pins followed, through
-/// other placements, markers and the scene's ends. One per scene, for every
-/// element's placements at once, since a pin can name another element's.
+/// MotionTimes resolves where placed clips are, following their pins. One
+/// per scene, for every element at once, since a pin can name another
+/// element's placement.
 class MotionTimes {
   /// sceneEnd is the scene's length, in seconds.
   final double sceneEnd;
@@ -872,8 +878,8 @@ class MotionTimes {
     required this.placements,
   });
 
-  /// span is where [id] plays, its pins followed. A pin that goes round in
-  /// a circle stops where it comes back to itself.
+  /// span is where [id] plays, its pins followed. A circular pin chain
+  /// stops where it returns to itself.
   ClipSpan? span(String id) => _span(id, {});
 
   ClipSpan? _span(String id, Set<String> seen) {
@@ -890,7 +896,9 @@ class MotionTimes {
           PinKind.sceneStart => 0,
           PinKind.sceneEnd => sceneEnd,
           PinKind.marker => markers[pin!.target],
-          PinKind.after => _span(pin!.target, seen)?.end,
+          // A very long pin chain is cut off before the stack runs out.
+          PinKind.after =>
+            seen.length > 64 ? null : _span(pin!.target, seen)?.end,
         };
     var from = p.from.clamp(0.0, c.length);
     var to = (p.to ?? c.length).clamp(from, c.length);
@@ -913,8 +921,8 @@ class ClipSpan {
 
   double get length => end - start;
 
-  /// clipTime is where in [c] it is at [t] on the timeline: within the
-  /// stretch it plays, going round for a loop.
+  /// clipTime is where in [c] it is at [t] on the timeline, wrapping for a
+  /// loop.
   double clipTime(MotionClip c, double t) {
     var u = (t - start) * speed;
     if (c.loop) {
@@ -925,13 +933,13 @@ class ClipSpan {
   }
 }
 
-/// revealsIn is whether [c] plays its element's arrival: whatever arrives
-/// a piece at a time -- words, layers, shapes -- is timed across it.
+/// revealsIn is whether [c] plays its element's arrival, across which
+/// piece-by-piece arrivals (words, layers, shapes) are timed.
 bool revealsIn(MotionClip c) =>
     (c.inside["own"] == true && c.kind == MotionKind.arrive) ||
     c.inside["reveal"] is List;
 
-/// revealFrom and revealTo name, in a pose's values, where the clip that
-/// plays an element's arrival starts and ends -- in seconds from a clip, in
-/// frames once on a keyframe pose: what its pieces are timed against.
+/// revealFrom and revealTo are pose value keys for where the arrival clip
+/// starts and ends (seconds from a clip, frames on a keyframe pose), which
+/// its pieces are timed against.
 const String revealFrom = "@revealFrom", revealTo = "@revealTo";

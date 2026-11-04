@@ -4,40 +4,22 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // procedural_light.dart is the light thrown across a generated background.
 //
-// Every style here is a flat field: a grid, a scatter, a set of marks, lit the
-// same from edge to edge. That is what makes a generated background read as
-// wallpaper rather than as a place -- and a single light is the cheapest thing
-// there is that fixes it. A pool of warm light low on the left turns a plain
-// gradient into a room; the same field of dots with a hard white spot on it
-// turns into a stage.
-//
-// It is drawn over the finished pattern rather than being something each
-// generator knows about, which is why it works on all of them and why adding
-// a style does not mean writing lighting code again.
+// It is drawn over the finished pattern rather than known to each generator,
+// so it works on every style and a new style needs no lighting code.
 
-/// LightSpec is one light over a background.
-///
-/// A spotlight for now -- the light that has somewhere it is coming from, as
-/// against an ambient wash, which is what the pattern's own brightness already
-/// is. More kinds would be more of these, which is why what a light is told is
-/// gathered here rather than spread across [ProceduralSpec] as seven more
-/// fields that mean nothing to the other styles.
+/// LightSpec is one light (a spotlight) over a background.
 class LightSpec {
-  /// on is whether there is a light at all. Off by default: an unasked-for
-  /// light on every background in the app would change every one of them.
+  /// on is whether there is a light at all. Off by default.
   final bool on;
 
-  /// color is the light itself, not the surface. A warm light on a cold
-  /// ground is most of what makes this worth having.
+  /// color is the colour of the light itself, not the surface.
   final Color color;
 
-  /// brightness is how strong it is. Past one it burns towards white, which
-  /// is what an overexposed light does and what a hot spot on metal needs.
+  /// brightness is how strong it is. Past one it burns towards white.
   final double brightness;
 
-  /// size is the pool's radius as a fraction of the longer side, so a light
-  /// set on a banner is in the same place and the same size when the same
-  /// document is exported at four times the width.
+  /// size is the pool's radius as a fraction of the longer side, so it holds
+  /// at any export width.
   final double size;
 
   /// falloff is how sharply the light stops: 0 is a pool that fades all the
@@ -45,27 +27,20 @@ class LightSpec {
   final double falloff;
 
   /// x and y are where it is, from 0 at the left and top to 1 at the right
-  /// and bottom. A fraction rather than pixels for the same reason [size] is
-  /// one.
+  /// and bottom.
   final double x;
   final double y;
 
-  /// direction is which way the light is thrown, in degrees off a compass --
-  /// 0 up the page, 90 to the right -- the same way every other direction in
-  /// a canvas is read.
-  ///
-  /// It means nothing on its own, which is what [reach] is for: a light shone
-  /// straight at a surface lands as a circle whichever way it was pointed,
-  /// and only a raking one has a direction you can see.
+  /// direction is which way the light is thrown, as a compass bearing in
+  /// degrees (0 up the page, 90 to the right). It shows only with [reach]: a
+  /// light shone straight on lands as a circle whichever way it points.
   final double direction;
 
   /// reach is how far the light rakes: 0 is straight on and lands as a round
   /// pool, 1 is almost along the surface and throws a long one.
   ///
-  /// The pool is thrown *forward* from where the light is rather than growing
-  /// both ways, so moving [x] and [y] moves the near edge of the light and
-  /// not its middle. That is what makes a light at the top of the frame with
-  /// a reach on it look like it is coming in from off the page.
+  /// The pool is thrown forward from [x], [y] rather than growing both ways,
+  /// so those place the near edge of the light, not its middle.
   final double reach;
 
   const LightSpec({
@@ -128,18 +103,10 @@ class LightSpec {
       );
 }
 
-/// MetalSpec is what the Metal texture background can be told.
+/// MetalSpec is the Metal texture background's own settings.
 ///
-/// Its own settings rather than the five every generator shares, for the same
-/// reason a set of rings has its own: "more" and "bigger" are not the
-/// questions anybody has about a sheet of metal. The questions are how coarse
-/// the brushing is, how far the rust has got, how badly it has been knocked
-/// about, and whether it is polished or dull -- and none of those is density.
-///
-/// The colours come from the ones every style already has: the base colour is
-/// the metal, the main colour is the sheen along the brushing, and the accent
-/// is the rust. So a brass plate and a galvanised panel are the same four
-/// numbers with different swatches.
+/// The colours are the shared ones: the base colour is the metal, the main
+/// colour the sheen along the brushing, and the accent the rust.
 class MetalSpec {
   /// roughness is how coarse the brushing is: 0 is a poured, almost glassy
   /// sheet and 1 is heavily ground.
@@ -151,9 +118,8 @@ class MetalSpec {
   /// damage is the knocks: scratches across the grain and dents in it.
   final double damage;
 
-  /// shine is polished against matt. It is the width and the strength of the
-  /// highlight along the sheet -- a mirror has a narrow hard one, a
-  /// bead-blasted panel has almost none.
+  /// shine is polished against matt: the width and strength of the highlight
+  /// along the sheet.
   final double shine;
 
   const MetalSpec({

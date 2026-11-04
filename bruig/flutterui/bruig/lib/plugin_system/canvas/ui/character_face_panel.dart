@@ -3,12 +3,12 @@ import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// character_face_panel.dart is the new Character Studio's Face step: the
-// face's parts down the left -- its expression, where it looks, each region
-// of it, its blush, and what it does by itself -- and the open part's
-// settings on the right. See character_face.dart.
+// character_face_panel.dart is the Character Studio's Face step: the face's
+// parts down the left (expression, where it looks, each region, blush, and
+// what it does by itself) and the open part's settings on the right. See
+// character_face.dart.
 
-/// The Face step's parts: their ids, names, groups, and what each says.
+/// faceParts is the Face step's parts: id, name, group and what each says.
 const List<(String id, String name, String group, String says)> faceParts = [
   (
     "expressions",
@@ -329,7 +329,7 @@ class _CharacterFaceControlsState extends State<CharacterFaceControls> {
 }
 
 /// resetFacePart is [f] with part [id] put back as the expression it was
-/// started from has it -- or, for the expressions, Neutral again.
+/// started from has it, or, for the expressions, Neutral again.
 CharacterFace resetFacePart(CharacterFace f, String id) {
   final from = f.expressions[f.name] ?? const FaceMix();
   var m = f.mix;

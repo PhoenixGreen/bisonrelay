@@ -22,16 +22,12 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-// mixer_plugins.dart is a strip's effects as devices in a chain: the
-// Channel EQ and Compressor a person who has mixed in Logic already knows,
-// a limiter, and meters, side by side in the mixer in the order the sound
-// goes through them -- as a device chain in Ableton is. Each folds down to
-// its switch, its name and a meter.
-//
-// A device keeps its own look whatever the app's theme -- the dark EQ, the
-// silver compressor -- as a hardware unit does, so its colours are its own
-// rather than the theme's. Each is drawn at one height, deviceHeight, and
-// scaled to the room the chain has, never laid out again.
+// mixer_plugins.dart is a strip's effects as devices in a chain, as in
+// Ableton: the Channel EQ and Compressor as Logic has them, a limiter and
+// meters, in the order the sound goes through them. Each folds to its
+// switch, its name and a meter. A device keeps its own colours whatever the
+// app's theme, as a hardware unit does, and is drawn at deviceHeight and
+// scaled to the chain's room, never laid out again.
 
 /// dragPointers are what may drag a value -- a fader, a dial, a knob: the
 /// mouse, a finger, a pen; never the trackpad. A drag recognizer takes a
@@ -109,9 +105,12 @@ class DeviceFrame extends StatelessWidget {
   final VoidCallback onFold;
 
   /// width is the device's width open, before scaling; height the room the
-  /// chain gives it.
+  /// chain gives it; drawnHeight the height it is drawn at and scaled from
+  /// (deviceHeight for a unit, whose dials keep their places; the room
+  /// itself for a form, which keeps its text's size and scrolls).
   final double width;
   final double height;
+  final double drawnHeight;
   final Widget body;
   final Widget foldedBody;
   final List<Widget> actions;
@@ -126,6 +125,7 @@ class DeviceFrame extends StatelessWidget {
     required this.height,
     required this.body,
     required this.foldedBody,
+    this.drawnHeight = deviceHeight,
     this.on,
     this.onPower,
     this.powerKey,
@@ -135,7 +135,7 @@ class DeviceFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var scale = (height / deviceHeight).clamp(0.5, 1.5);
+    var scale = (height / drawnHeight).clamp(0.5, 1.5);
     var w = folded ? deviceFoldedWidth : width;
     var header = Container(
       height: 28,
@@ -202,7 +202,7 @@ class DeviceFrame extends StatelessWidget {
         fit: BoxFit.fill,
         child: SizedBox(
           width: w,
-          height: deviceHeight,
+          height: drawnHeight,
           child: Container(
             decoration: skin.body,
             foregroundDecoration: BoxDecoration(
@@ -476,9 +476,7 @@ mixin _Metered<T extends StatefulWidget>
   }
 }
 
-// ---------------------------------------------------------------------------
-// Channel EQ
-// ---------------------------------------------------------------------------
+// ---- Channel EQ
 
 /// eqBandColour is each band's colour: its button, its handle and its own
 /// curve. Red at the bottom through to magenta at the top, as Logic has
@@ -1133,9 +1131,7 @@ class _GainSlider extends CustomPainter {
   bool shouldRepaint(_GainSlider old) => old.db != db;
 }
 
-// ---------------------------------------------------------------------------
-// Compressor
-// ---------------------------------------------------------------------------
+// ---- Compressor
 
 const _silverInk = Color(0xFF2B2F36);
 const _silverDim = Color(0xFF6A707A);
@@ -1748,9 +1744,7 @@ class _ReductionBar extends CustomPainter {
   bool shouldRepaint(_ReductionBar old) => old.reduced != reduced;
 }
 
-// ---------------------------------------------------------------------------
-// Meters and the limiter
-// ---------------------------------------------------------------------------
+// ---- Meters and the limiter
 
 /// MeterDevice is a strip's level as it leaves -- the channel's after its
 /// fader, or the master's, which is what is heard -- each side with its
@@ -1965,9 +1959,7 @@ class LimiterDevice extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Ducking
-// ---------------------------------------------------------------------------
+// ---- Ducking
 
 /// DuckDevice is a channel turning the others down while it is heard -- see
 /// Ducking -- as a unit beside the compressor: the shape of the dip on its
@@ -2570,9 +2562,7 @@ class AddDeviceSlot extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// A MIDI channel's devices: where its notes come from, and its MIDI effects
-// ---------------------------------------------------------------------------
+// ---- A MIDI channel's devices: where its notes come from, and its MIDI effects
 
 /// MidiInDevice is a MIDI channel's In: which keyboard it takes notes from,
 /// and when it plays them -- see MidiMonitor. First in its chain.
@@ -2877,9 +2867,7 @@ class AddMidiEffectSlot extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// The devices that only listen: a tuner, a spectrum
-// ---------------------------------------------------------------------------
+// ---- The devices that only listen: a tuner, a spectrum
 
 /// ListenerDevice is a Tuner or a Spectrum on strip [owner]: what it hears,
 /// drawn a few times a second, changing nothing.

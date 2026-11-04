@@ -11,18 +11,15 @@ import 'package:flutter/painting.dart';
 
 // table_painter.dart draws a TableElement.
 //
-// Columns are sized by their contents unless the element says otherwise,
-// because equal columns waste half a table whose first column is "Q1" and
-// whose second is "Average possession in the opposition half". The measuring
-// is capped so one very long cell cannot squeeze every other column to
-// nothing, which is the failure mode of every content-sized table.
+// Columns are sized by their contents unless the element gives fractions.
+// The measuring is capped so one very long cell cannot squeeze every other
+// column to nothing.
 
 /// paintTable draws [e] filling [rect].
 ///
-/// [images] is where a cell holding a picture gets it from. Null draws those
-/// cells as nothing rather than as their own asset id, which is the right
-/// answer while a picture is still loading and the only answer in a context
-/// with no store at all.
+/// [images] is where a cell holding a picture gets it from; without it (or
+/// while loading) such cells get the missing-picture mark, never their asset
+/// id as text.
 void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
     {CanvasImageSource? images}) {
   if (rect.width <= 4 || rect.height <= 4 || e.rows.isEmpty) {
@@ -41,9 +38,8 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
   canvas.save();
   canvas.clipRRect(outer);
 
-  // Both fills are shaded across the whole table, not across the band or the
-  // cell being filled: a table that fades should fade once from top to
-  // bottom, not restart on every row.
+  // Both fills are shaded across the whole table, so a fade runs once top to
+  // bottom rather than restarting on every row.
   var cellPaint = PaintSpec(e.cellFill, gradient: e.cellFade);
   var headerPaint = PaintSpec(e.headerFill, gradient: e.headerFade);
   var header = headerPaint.shaderFor(rect);
@@ -54,8 +50,7 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
     canvas.drawRect(rect, cellPaint.into(Paint(), rect));
   }
 
-  // Row fills first, so the grid and the text land on top of them rather than
-  // being covered by the next row's zebra tint.
+  // Row fills first, so the grid and text land on top of them.
   var y = rect.top;
   for (var r = 0; r < e.rows.length; r++) {
     var h = heights[r];
@@ -73,12 +68,7 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
     y += h;
   }
 
-  // The header column's fill, down the first column.
-  //
-  // It had none: the switch changed the type in column one and nothing else,
-  // so on a table whose header type and cell type had been made to match it
-  // did nothing anybody could see. The header *row* has had a fill all along,
-  // and a header column is the same idea turned ninety degrees.
+  // The header column's fill, down the first column, as the header row has.
   if (e.headerColumn && headerPaint.shows && widths.isNotEmpty) {
     var top = rect.top + (e.headerRow ? heights.first : 0);
     canvas.drawRect(
@@ -87,12 +77,8 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
   }
 
   // A rule with no word to look for is drawn as one box around everything it
-  // picks out, rather than a box per cell.
-  //
-  // A rule naming a row is a band across the table; one naming a column is a
-  // band down it; one naming both is the cell where they cross. Per cell, a
-  // column border came out as a border round each of its cells, which is a
-  // stack of boxes rather than a column with a line round it.
+  // picks out, not a box per cell: a row is a band across, a column a band
+  // down, both the cell where they cross.
   for (var rule in e.rules) {
     if (!rule.banded || !rule.style.paintsBox) continue;
     var box = _bandFor(e, rule, rect, widths, heights, cols);
@@ -109,23 +95,17 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       var isHeader = (e.headerRow && r == 0) || (e.headerColumn && c == 0);
       var spec = isHeader ? e.headerSpec : e.cellSpec;
 
-      // A picture, if the cell names one. Fitted inside the cell's padding
-      // and centred, so a column of badges lines up whatever shape each of
-      // them happens to be.
+      // A picture, if the cell names one: inside the cell's padding and
+      // centred, so a column of badges lines up whatever their shapes.
       var asset = TableElement.pictureIn(e.cell(r, c));
       if (asset != null) {
-        // Its share of the cell, inside the cell's own padding. A badge that
-        // touches the rules either side of it reads as a mistake.
         var cell = Rect.fromLTWH(x, y, w, h).deflateSides(e);
         var scale = e.pictureScale.clamp(0.05, 1.0);
         var box = Rect.fromCenter(
             center: cell.center,
             width: cell.width * scale,
             height: cell.height * scale);
-        // A vector first, and kept as one: a badge drawn from its own
-        // drawing is sharp at any export scale and costs no bitmap at all,
-        // which is the difference between a squad of twenty-two badges and
-        // twenty-two half-megabyte images.
+        // A vector first: sharp at any export scale and no bitmap to hold.
         var vector = images?.resolveVector(asset);
         if (vector != null) {
           _paintCellVector(canvas, vector, box);
@@ -134,10 +114,8 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
           if (image != null) {
             _paintCellImage(canvas, image, box);
           } else {
-            // Nothing to draw yet, or nothing to draw ever. Marked rather
-            // than left blank: a cell that names a picture and shows nothing
-            // is indistinguishable from a cell that was never told about one,
-            // which is a fault that cannot be told from a typo.
+            // Not arrived, or never will. Marked rather than blank, so a
+            // missing picture can be told from an empty cell.
             _paintMissingPicture(canvas, box, e);
           }
         }
@@ -145,9 +123,8 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
         continue;
       }
 
-      // Everything the rules say about this cell, asked once. Four questions
-      // used to walk every rule and search the text again -- see
-      // TableCellLook.
+      // Everything the rules say about this cell, worked out once (see
+      // TableCellLook).
       var look = e.lookAt(r, c);
       var style = look.style;
       if (style != null) {
@@ -164,61 +141,39 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
           );
         }
       }
-      // The table's own padding, and whatever a rule adds on top of it.
-      // Alignment is unusable without the second: pushed left or right the
-      // words sit against the edge, and the table's padding is one number for
-      // every cell in it.
-      // Every side, not two of them. The padding was the words' margin left
-      // and right and nothing at all above or below: at any setting the
-      // writing sat hard against the rule over it, which is not what a
-      // control called Padding says it does.
+      // The table's padding on all four sides, plus whatever a rule adds
+      // (without which a rule's left or right alignment sits on the edge).
       var extra = style?.textPad ?? 0;
       var left = e.leftPad + extra, right = e.rightPad + extra;
       var top = e.topPad + extra, bottom = e.bottomPad + extra;
       var textBox = Rect.fromLTWH(x + left, y + top,
           math.max(1, w - left - right), math.max(1, h - top - bottom));
 
-      // A header kept but not shown -- see TableElement.hiddenHeaders. The
-      // cell's background, its rules and its share of the width all still
-      // happen; it is only the writing that is left out, which is what makes a
-      // column of badges nameable without the name appearing over them.
+      // A header kept but not shown (TableElement.hiddenHeaders): background,
+      // rules and width still apply; only the writing is left out.
       if (!e.shows(r, c)) {
         x += w;
         continue;
       }
 
-      // A chip round the word, drawn before the word itself.
-      //
-      // Fitted to the words rather than to the cell, because the thing
-      // anybody asks for by naming a word is a green box behind the W and not
-      // a green cell with a W in it. A rule about a whole column has no word
-      // and is a band above; one that has been told to fill takes the cell.
-      // Every rule that names a word, each drawing its own chips in its own
-      // colours.
-      //
-      // Not the merged style: a form guide has a rule for W, one for D and
-      // one for L, and merging them gave every chip in the cell the last
-      // rule's background -- and only that rule's chips were drawn at all, so
-      // a row reading "D L W" showed one letter marked and two bare.
+      // Chips round the words, drawn before the words. Each word rule draws
+      // its own chips in its own style, not the merged style, so "D L W"
+      // with a rule per letter gets three colours.
       var slots = _slotsIn(e.cell(r, c), spec, textBox, style?.letterWidth ?? 0,
           style?.letterSpacing ?? 0);
       _paintChips(canvas, look, e.cell(r, c), spec, textBox,
           Rect.fromLTWH(x, y, w, h), slots);
 
-      // On a fixed pitch, if a rule asked for one: each character in a slot
-      // of its own, so a W and an L land in the same places and the boxes
-      // round them line up.
+      // On a fixed pitch, if a rule asked for one: a slot per character, so
+      // the boxes round them line up.
       if (slots != null) {
         _paintSlots(canvas, look, e.cell(r, c), spec, slots);
         x += w;
         continue;
       }
 
-      // Where the rules describe parts of the cell -- the dashes one size and
-      // the letters another -- the cell is one paragraph of differently
-      // styled stretches. Painted as pieces one after another it would have
-      // to be positioned by adding up widths, and a line laid out that way is
-      // a line that will not centre.
+      // Where rules style parts of the cell, it is laid out as one paragraph
+      // of styled runs, so the line still aligns as a whole.
       var runs = _runsOf(look, e.cell(r, c), spec);
       if (runs != null) {
         paintRunsInBox(canvas, runs, spec, textBox, clip: true);
@@ -226,10 +181,7 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
         continue;
       }
 
-      // The spec's own vertical alignment, not the middle regardless. It was
-      // forced here, so the Vertical setting on a table's type did nothing at
-      // all -- and a table of one-line cells does want the middle, which is
-      // why it is the default rather than an override.
+      // The spec's own vertical alignment (middle is its default, not forced).
       paintTextInBox(
         canvas,
         e.cell(r, c),
@@ -292,11 +244,8 @@ void _paintCellImage(ui.Canvas canvas, ui.Image image, Rect box) {
       Paint()..filterQuality = FilterQuality.high);
 }
 
-/// _paintMissingPicture is the mark left where a picture has not arrived.
-///
-/// A frame with a corner cut off, at the size the picture would have been --
-/// small, grey, and unmistakably not a photograph. It says "there is meant to
-/// be something here", which a blank cell does not.
+/// _paintMissingPicture is the mark left where a picture has not arrived: a
+/// rounded frame crossed corner to corner, in the grid colour.
 void _paintMissingPicture(ui.Canvas canvas, Rect box, TableElement e) {
   var side = math.min(box.width, box.height) * 0.7;
   if (side < 6) return;
@@ -327,9 +276,6 @@ void _paintCellVector(ui.Canvas canvas, CanvasVector vector, Rect box) {
   canvas.restore();
 }
 
-/// _bandedHere is whether every rule touching this cell was already drawn as
-/// a band -- so the band is not drawn again, once per cell, with a border
-/// between each.
 /// _bandFor is the rectangle a banded rule covers: every cell it picks out,
 /// taken together.
 Rect? _bandFor(TableElement e, TableRule rule, Rect rect, List<double> widths,
@@ -347,8 +293,7 @@ Rect? _bandFor(TableElement e, TableRule rule, Rect rect, List<double> widths,
   }
   if (fromY == null || toY == null) return null;
 
-  // Every column the rule names, taken together -- so a rule about columns
-  // two to four is one band three columns wide rather than three bands.
+  // Every column the rule names, taken together into one band.
   var left = rect.left;
   double? fromX, toX;
   for (var c = 0; c < cols; c++) {
@@ -363,14 +308,9 @@ Rect? _bandFor(TableElement e, TableRule rule, Rect rect, List<double> widths,
   return Rect.fromLTRB(fromX, fromY, toX, toY);
 }
 
-/// _paintChips draws the boxes for every rule that names a word in this cell.
-///
-/// Each with its own style, and every occurrence of each: a form guide has a
-/// rule per result, and a cell reading "D L W" wants three boxes in three
-/// colours rather than one.
-///
-/// Off the words' own glyph boxes rather than a guess from the character
-/// count, since a W and a full stop are not the same width -- see textRunBox.
+/// _paintChips draws the boxes for every rule that names a word in this cell,
+/// each in its own style, at every occurrence. Hugging boxes come from the
+/// glyph boxes (textRunBox), or the slots on a fixed pitch.
 void _paintChips(ui.Canvas canvas, TableCellLook look, String text,
     TextSpec spec, Rect textBox, Rect cell, List<Rect>? slots) {
   for (var (rule, runs) in look.words) {
@@ -379,9 +319,7 @@ void _paintChips(ui.Canvas canvas, TableCellLook look, String text,
     for (var (from, to) in runs) {
       var box = !rule.style.hug
           ? cell
-          // On a fixed pitch the box is the slots themselves, which is the
-          // point of the pitch: the letters are already in line, so the boxes
-          // round them are too.
+          // On a fixed pitch the box is the slots themselves.
           : (slots != null
               ? _slotSpan(slots, from, to)
               : (textRunBox(text, spec, textBox, from, to) ??
@@ -393,11 +331,8 @@ void _paintChips(ui.Canvas canvas, TableCellLook look, String text,
 }
 
 /// _slotsIn is one rectangle per character when a rule asked for a fixed
-/// pitch, and null when it did not.
-///
-/// A W is wider than an L, so however carefully the spacing is set the boxes
-/// round a row of letters come out at different places -- lining them up by
-/// eye is a job that cannot be finished. A slot each makes it arithmetic.
+/// pitch ([width] > 0), and null when it did not. Slots are what line up the
+/// boxes round letters of different widths.
 List<Rect>? _slotsIn(
     String text, TextSpec spec, Rect box, double width, double gap) {
   if (width <= 0 || text.isEmpty) return null;
@@ -410,10 +345,7 @@ List<Rect>? _slotsIn(
     _ => box.left,
   };
 
-  // As tall as the letters, not as tall as the row. A slot the height of the
-  // cell made every chip a full-height bar, so the one number was setting the
-  // width and the height at once -- and there was no way to ask for a square
-  // one. Min height is what makes a slot taller than its letters.
+  // As tall as the letters, not the row; min height makes a chip taller.
   var height = math.min(
       box.height, layoutText(text, spec, maxWidth: double.infinity).height);
   var top = switch (spec.verticalAlign) {
@@ -441,10 +373,7 @@ Rect? _slotSpan(List<Rect> slots, int from, int to) {
 /// _paintSlots draws each character in the middle of its own slot, moved by
 /// whatever nudge the rule that claims it asks for.
 ///
-/// The nudge moves the *letter*, not the box. The boxes are the slots, and
-/// the slots being in line is the whole point of a fixed pitch -- moving one
-/// of them to centre a letter would take that letter's box out of the row it
-/// was put there to join.
+/// The nudge moves the letter, not its box, so the slots stay in line.
 void _paintSlots(ui.Canvas canvas, TableCellLook look, String text,
     TextSpec spec, List<Rect> slots) {
   var centred = spec.copyWith(
@@ -458,9 +387,7 @@ void _paintSlots(ui.Canvas canvas, TableCellLook look, String text,
     var nudge = rule == null
         ? Offset.zero
         : Offset(rule.style.nudgeX, rule.style.nudgeY);
-    // Each character in the type its own rule asks for. A rule that names a
-    // word describes that word: setting a size on the dashes used to resize
-    // the letters beside them.
+    // Each character in the type its own rule asks for.
     paintTextInBox(canvas, text[i], _typed(centred, _typeAt(look, i)),
         nudge == Offset.zero ? slots[i] : slots[i].shift(nudge));
   }
@@ -526,17 +453,13 @@ Rect _wordsIn(String text, TextSpec spec, Rect box) {
 /// _paintStyleBox fills and outlines one rule's box.
 void _paintStyleBox(ui.Canvas canvas, Rect cell, TableCellStyle style,
     {bool hug = false}) {
-  // Padding round a chip, and an inset inside a band. The same number, and it
-  // has to work both ways round: a box drawn round the letters and then
-  // *shrunk* by three is a box smaller than the letters, which is a chip
-  // nobody can see because the letters are sitting on top of it.
+  // The one inset number is padding outward round a chip and an inset
+  // inward inside a band.
   var box = hug
       ? cell.inflate(style.inset.clamp(0.0, 200.0))
       : cell.inflate(-style.inset.clamp(-200.0, cell.shortestSide / 2));
 
-  // A minimum, so a row of chips is a row of chips. Hugging the letters
-  // exactly is right for one box and wrong for a set of them: a W is wider
-  // than an L, so a form guide came out as three different sizes.
+  // A minimum size, so chips round letters of different widths match.
   if (hug && (style.minWidth > 0 || style.minHeight > 0)) {
     box = Rect.fromCenter(
       center: box.center,
@@ -558,9 +481,8 @@ void _paintStyleBox(ui.Canvas canvas, Rect cell, TableCellStyle style,
     ..strokeWidth = style.borderWidth
     ..color = style.borderColor;
 
-  // All four sides is a rounded rectangle; anything else is the lines that
-  // were asked for. A rounded corner belongs to two sides at once, so there
-  // is no honest way to round one when only one of them is drawn.
+  // All four sides is a rounded rectangle; anything else is straight lines,
+  // since a rounded corner belongs to two sides.
   if (style.allSides) {
     canvas.drawRRect(
         RRect.fromRectAndRadius(
@@ -600,24 +522,14 @@ void _placeholder(ui.Canvas canvas, Rect rect, TableElement e) {
       clip: true);
 }
 
-/// tableColumnWidths is where a table's columns actually fall.
-///
-/// Public because the stage has to put a grip on each divider, and a grip
-/// that worked out the widths for itself would be a grip that drifted off the
-/// line it is meant to be on the moment either calculation changed.
+/// tableColumnWidths is where a table's columns fall. Public so the stage's
+/// divider grips use this calculation rather than a second one that drifts.
 List<double> tableColumnWidths(TableElement e, Rect rect) =>
     _columnWidths(e, rect, e.columnCount);
 
-/// _measured remembers the last content-sized answer.
-///
-/// Measuring means laying out every cell of the table -- two hundred of them
-/// on a league table -- and the answer only changes when the table's contents,
-/// its type or its width do. Recomputing it per frame was half the cost of
-/// drawing one, and a canvas plays at twelve frames a second.
-///
-/// One entry, because one table is being looked at: a second element pushes
-/// the first out and measures again, which is exactly as expensive as having
-/// no cache at all rather than worse.
+// The last content-sized answer, for one element at one width. Measuring lays
+// out every cell, so it is not done per frame; a second table just measures
+// again.
 TableElement? _measuredOf;
 double _measuredWidth = 0;
 List<double>? _measured;
@@ -656,8 +568,7 @@ List<double> _columnWidths(TableElement e, Rect rect, int cols) {
   }
 
   var sum = natural.fold<double>(0, (t, v) => t + v);
-  // Scaled to fill the element exactly, whether the natural widths came to
-  // more than there is room for or less.
+  // Scaled to fill the element exactly.
   var out = sum <= 0
       ? List.filled(cols, rect.width / cols)
       : [for (var w in natural) rect.width * w / sum];
@@ -678,9 +589,8 @@ extension on Rect {
       );
 }
 
-/// tableRowHeights is where a table's rows fall, for the same reason
-/// tableColumnWidths is public: the stage has to put an editor exactly over a
-/// cell, and a second calculation would be a second answer.
+/// tableRowHeights is where a table's rows fall, public for the stage's cell
+/// editor (see [tableColumnWidths]).
 List<double> tableRowHeights(TableElement e, Rect rect) => _rowHeights(e, rect);
 
 /// _rowHeights splits the height evenly, giving the header its extra share.

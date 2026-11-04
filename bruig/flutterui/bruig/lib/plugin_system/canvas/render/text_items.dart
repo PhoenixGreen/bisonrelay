@@ -10,21 +10,13 @@ import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/material.dart';
 
 // text_items.dart is where a text element's extra pieces are laid out, and
-// the one answer to that question.
-//
-// Asked of the same function by the painter and by the stage, because the
-// stage has to hit-test exactly what was drawn: an item is clicked to type
-// into it, and a second opinion about where it is is a click that lands on
-// the wrong words. The same arrangement chartLegendRects has.
+// the one answer to that question: the painter and the stage both ask it, so
+// a click hits exactly what was drawn (as with chartLegendRects).
 
 /// textItemRects is where each of [e]'s items is drawn, in the element's own
-/// coordinates and in the element's own order.
-///
-/// Items in the same slot stack in the order they were added: down from the
-/// top for a top slot, up from the bottom for a bottom one, and about the
-/// middle for a middle one. Nine slots is enough places for a card, and two
-/// items in one slot drawn over each other would be a card with a mistake in
-/// it that the panel could not explain.
+/// coordinates and in the element's own order. Items in the same slot stack
+/// in the order they were added: down from the top for a top slot, up from
+/// the bottom for a bottom one, and about the middle for a middle one.
 List<Rect> textItemRects(TextElement e, Rect bounds) =>
     _blockRects(e, bounds).skip(1).toList();
 
@@ -37,11 +29,8 @@ Rect? textBodyRect(TextElement e, Rect bounds) {
 }
 
 /// bodyIsBlock is whether the element's own words are one of the blocks in a
-/// slot rather than the paragraph filling the box.
-///
-/// Not while they are set as something other than one block in this box: on a
-/// line they have no box, in columns they are several blocks, and flowing on
-/// into another box they are one paragraph across two of them.
+/// slot rather than the paragraph filling the box. Not when they are set
+/// along a line, in columns, or flowing on into another box.
 bool bodyIsBlock(TextElement e) =>
     e.slot != null &&
     e.curve == null &&
@@ -50,8 +39,7 @@ bool bodyIsBlock(TextElement e) =>
     e.text.isNotEmpty;
 
 /// _blockRects is every block this element draws: the element's own words
-/// first -- whether or not they are in a slot, so that the answer is always
-/// the same shape -- and then the pieces.
+/// first, whether or not they are in a slot, and then the pieces.
 List<Rect> _blockRects(TextElement e, Rect bounds) {
   var body = bodyIsBlock(e);
   if (e.items.isEmpty && !body) {
@@ -83,11 +71,10 @@ List<Rect> _blockRects(TextElement e, Rect bounds) {
 
     var sizes = [for (var i in mine) sizeOf(i)];
 
-    // The stack's own height: every piece, and the room between each of them
-    // and the one before. The first piece's room is not in it -- that is the
-    // distance from the *edge* the slot holds the stack to, and it is applied
-    // to the stack rather than inside it, so that it means something at the
-    // bottom of the box as well as at the top. See TextItem.gap.
+    // The stack's own height: every piece, and the room between each and the
+    // one before. The first piece's room is the distance from the edge the
+    // slot holds the stack to, applied to the stack rather than inside it,
+    // so it works at the bottom of the box too. See TextItem.gap.
     var lead = leadOf(mine.first);
     var total = sizes.first.height;
     for (var (n, i) in mine.indexed) {
@@ -108,8 +95,8 @@ List<Rect> _blockRects(TextElement e, Rect bounds) {
         TextAlignSpec.left => inner.left + side,
         TextAlignSpec.center => inner.center.dx - size.width / 2 + side,
         TextAlignSpec.right => inner.right - size.width - side,
-        // Justified words fill the line they are on, so there is nothing to
-        // hold to an edge: it reads as left, which is what it looks like.
+        // Justified words fill their line, so there is no edge to hold to:
+        // it reads as left.
         TextAlignSpec.justify => inner.left + side,
       };
       out[i] = Rect.fromLTWH(left, top, size.width, size.height);
@@ -126,14 +113,11 @@ Size _sizeOfText(String text, TextSpec spec, double maxWidth) {
   return Size(math.min(painter.width, maxWidth), painter.height);
 }
 
-/// _sizeOf is how much room one piece takes, given the width it has.
-///
-/// A picture is a square of its own size; words are however tall they come
-/// out at the width they are given.
+/// _sizeOf is how much room one piece takes, given the width it has: a
+/// picture is a square of its own size; words are as tall as they come out.
 Size _sizeOf(TextItem item, double maxWidth) {
   // The room the background takes is the piece's too: the words are drawn
-  // inside it, so a chip with ten pixels of padding is twenty wider and
-  // twenty taller than the words in it.
+  // inside it, padding and all.
   var pad = item.box.pad;
   var inside = math.max(1.0, maxWidth - pad.left - pad.right);
 
@@ -150,13 +134,8 @@ Size _sizeOf(TextItem item, double maxWidth) {
 }
 
 /// paintTextItems draws them, after the element's own paragraph and inside
-/// the same box.
-///
-/// They arrive with the element rather than each on its own account: a card
-/// is one thing arriving, and four pieces of writing fading in one after
-/// another out of the same pair of keyframes is a card that reads as four
-/// elements again. A piece that wants a moment of its own can be given one
-/// when there is a reason to.
+/// the same box. They arrive with the element rather than each on its own,
+/// since a card is one thing arriving.
 void paintTextItems(
   ui.Canvas canvas,
   Rect bounds,
@@ -189,8 +168,8 @@ void paintTextItems(
     }
     if (item.text.isEmpty) continue;
     // The slot decides how the words sit, so the item's own alignment is not
-    // asked: a piece held to the right-hand edge is set ragged-left inside
-    // its own rectangle, and its rectangle is only as wide as it is.
+    // asked: a piece held to the right-hand edge is set ragged-left inside a
+    // rectangle only as wide as it is.
     paintTextInBox(
       canvas,
       item.text,

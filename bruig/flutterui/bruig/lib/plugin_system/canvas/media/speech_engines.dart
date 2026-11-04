@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:bruig/plugin_system/canvas/media/mix/decode.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart' show mixRate;
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 
@@ -10,9 +9,8 @@ import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 // voices (qwen_speech.dart).
 //
 // Our own voices speak the script a piece at a time (see parseScript), and
-// the pieces are put end to end here as one take at the mix's rate: the
-// words as the engine says them, a pause as silence. Each word is kept with
-// its time, spread across its stretch by length.
+// the pieces are put end to end here as one take at the mix's rate, a pause
+// as silence. Word times come from speech_timing.dart.
 
 /// SpeechVoice is a voice an engine can speak in.
 class SpeechVoice {
@@ -32,6 +30,8 @@ class SpeechVoice {
 class SpokenAudio {
   final Float32List l, r;
   final List<TimedWord> words;
+
+  /// exact is as SpeechTake.exact: the word times are not estimated.
   final bool exact;
   const SpokenAudio(this.l, this.r, this.words, {this.exact = false});
 
@@ -86,6 +86,7 @@ class SpeechStop {
   }
 }
 
+/// SpeechEngine is one engine our own voices are spoken by.
 abstract class SpeechEngine {
   /// stopper is Stop, for what this engine is speaking now: an engine
   /// that runs a program ends it, and one that cannot be stopped part way
@@ -126,9 +127,6 @@ bool speechRunsOn(double seconds, int words, double speed) {
   return seconds > expected * 2.2 + 1.5 || seconds < expected * 0.35;
 }
 
-/// decodeFile reads [file] whole through the mix engine's decoder.
-(Float32List, Float32List)? decodeFile(String file) => readWhole(file);
-
 // ---------------------------------------------------------------------------
 // Putting a take together
 // ---------------------------------------------------------------------------
@@ -154,6 +152,7 @@ SpokenAudio assembleTake(
   return SpokenAudio(l, r, words, exact: exact);
 }
 
+/// silence is a piece of [seconds] of quiet, for [assembleTake].
 (Float32List, Float32List, List<TimedWord>) silence(double seconds) {
   var n = (seconds * mixRate).round();
   return (Float32List(n), Float32List(n), const []);

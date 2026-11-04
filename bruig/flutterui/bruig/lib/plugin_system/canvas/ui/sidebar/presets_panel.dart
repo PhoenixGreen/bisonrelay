@@ -9,27 +9,18 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_panels.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// presets_panel.dart is the Presets sidebar: the canvases, scenes and
-// elements you can start from.
+// presets_panel.dart is the Presets sidebar: the canvases, scenes and elements
+// to start from, as three lists in one panel stack (as design_panel.dart is).
 //
-// Three lists in one column rather than one list, and a stack rather than
-// tabs, for the reason the Design sidebar is one -- see design_panel.dart. A
-// canvas is chosen once at the beginning; an element preset is reached for
-// again and again while the work happens, and a tab is a place you have to
-// leave to get back to what you were doing.
-//
-// Each one shows a real thumbnail of itself, drawn by the same renderer that
-// draws the canvas -- not a stored picture. That is worth the few milliseconds
-// it costs: the thumbnail cannot go stale, a preset changed in code shows its
-// change immediately, and nothing has to ship a set of PNGs that have to be
-// regenerated whenever a colour moves.
+// Each preview is drawn by the canvas renderer from the preset itself rather
+// than a stored picture, so it cannot go stale.
 
 /// CanvasPresetsSidebar is the three lists, stacked.
 class CanvasPresetsSidebar extends StatelessWidget {
   final CanvasController controller;
 
   /// onChoose starts a new document from a preset. What to do about unsaved
-  /// work is the screen's decision, not this sidebar's.
+  /// work is the screen's decision.
   final void Function(CanvasPreset? preset, CanvasDocument document) onChoose;
 
   const CanvasPresetsSidebar(
@@ -76,8 +67,8 @@ class CanvasPresetsSidebar extends StatelessWidget {
 class CanvasPresetsPanel extends StatefulWidget {
   final CanvasController controller;
 
-  /// onChoose is called with a fresh document built from the preset. What to
-  /// do about unsaved work is the screen's decision, not this panel's.
+  /// onChoose is called with a fresh document built from the preset; see
+  /// CanvasPresetsSidebar.onChoose.
   final void Function(CanvasPreset? preset, CanvasDocument document) onChoose;
 
   const CanvasPresetsPanel(
@@ -88,14 +79,11 @@ class CanvasPresetsPanel extends StatefulWidget {
 }
 
 class _CanvasPresetsPanelState extends State<CanvasPresetsPanel> {
-  /// _thumbnails holds one built document per preset, for drawing the
-  /// previews.
+  /// _thumbnails holds one built document per preset, for the previews.
   ///
-  /// Built once rather than on every rebuild, because building the football
-  /// preset lays out twenty-two players and the panel rebuilds whenever the
-  /// sidebar does. They are never edited, so one copy is safe to share between
-  /// every paint -- what the tap hands over is a *newly built* document, so
-  /// the preview and the working copy are never the same object.
+  /// Built once, because some presets are costly to build (football lays out
+  /// twenty-two players). Never edited, so safe to share: a tap hands over a
+  /// newly built document, never this one.
   late final Map<String, CanvasDocument> _thumbnails = {
     for (var preset in builtinPresets) preset.id: preset.build(),
   };
@@ -110,9 +98,8 @@ class _CanvasPresetsPanelState extends State<CanvasPresetsPanel> {
               preview: _thumbnails[preset.id],
               onTap: () => widget.onChoose(preset, preset.build()),
             ),
-          // Whatever has been saved, under what ships with the app: the
-          // built-in ones are always there, and a list whose beginning moves
-          // as things are added to it is one nobody learns the shape of.
+          // Saved ones under the built-in ones, so the start of the list never
+          // moves.
           SavedCanvasPresets(
             controller: widget.controller,
             onOpen: (document) => widget.onChoose(null, document),
@@ -138,8 +125,8 @@ class _PresetCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
-        // Its own, inside the list: on the sidebar's the highlight spilled
-        // over the other sections and stayed put when the list scrolled.
+        // Its own Material inside the list: the sidebar's let the highlight
+        // spill over other sections and stay put when the list scrolled.
         type: MaterialType.transparency,
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
@@ -191,11 +178,8 @@ class _PresetCard extends StatelessWidget {
   }
 }
 
-/// _PreviewPainter draws a whole document scaled into a thumbnail.
-///
-/// Letterboxed rather than cropped, so a preset's shape is part of what the
-/// preview tells you -- a 9:16 preset should look tall in the list rather than
-/// looking like a 16:9 one with its sides cut off.
+/// _PreviewPainter draws a whole document scaled into a thumbnail,
+/// letterboxed rather than cropped so the preset's shape shows.
 class _PreviewPainter extends CustomPainter {
   final CanvasDocument document;
   const _PreviewPainter(this.document);

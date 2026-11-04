@@ -3,21 +3,12 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:flutter/painting.dart';
 
-// chart_common.dart is the handful of things both halves of the chart painter
-// need.
-//
-// A chart is drawn by one of two quite different painters -- see
-// chart_cartesian.dart and chart_circular.dart -- and neither is the natural
-// home for these. How far through its own animation one item is, what colour
-// it takes and how a number is written are decisions that have to come out
-// the same on a pie and on a bar chart, and the legend has to agree with both
-// or its swatches quietly stop matching the picture.
+// chart_common.dart is what chart_cartesian.dart, chart_circular.dart and the
+// legend in chart_painter.dart must agree on: item progress, colours and
+// number formats.
 
 /// SliceProgress is what one item of a circular chart is doing: how big it
 /// is, and how solid.
-///
-/// One little object rather than two doubles, because every circular type
-/// needs both and the branches that use them are already long enough.
 class SliceProgress {
   final double size;
   final double alpha;
@@ -49,11 +40,8 @@ SliceProgress sliceProgress(
   }
 }
 
-/// sliceColour is what the i-th value of a circular chart is drawn in.
-///
-/// Shared with the painter deliberately. A legend whose swatches were worked
-/// out separately would be a legend that quietly stopped matching the chart
-/// the first time either changed.
+/// sliceColour is what the i-th value of a circular chart is drawn in, for
+/// the painter and the legend alike.
 Color sliceColour(ChartElement e, int i) {
   if (i >= 0 && i < e.sliceColors.length) return e.sliceColors[i];
   var series = e.data.series;
@@ -63,11 +51,8 @@ Color sliceColour(ChartElement e, int i) {
   return chartPalette[i % chartPalette.length];
 }
 
-/// barsTakeColours is whether [e] is bars of one series, whose bars can each
-/// be given a colour of their own -- the slice colours, which are the colours
-/// of one series' values whatever shape they are drawn in. A pie had them;
-/// a bar chart of three machines in their three colours needed two series of
-/// noughts stacked under the real one to say the same thing.
+/// barsTakeColours is whether [e] is bars of one series, which can take a
+/// colour per bar from the slice colours.
 bool barsTakeColours(ChartElement e) =>
     (e.type == ChartType.bar || e.type == ChartType.horizontalBar) &&
     e.data.series.length == 1;
@@ -82,20 +67,15 @@ Color barColour(ChartElement e, int i) =>
 /// seriesShader is the gradient a series is drawn with across [area], or null
 /// where it is one colour.
 ///
-/// One definition, because the bars, the area under a line and the line
-/// itself all ask: a gradient that ran one way on the bars and another on the
-/// line over them would be two gradients wearing one setting. [alpha] is
-/// whatever the arrival has done to it, applied to both ends so a series
-/// fading in fades as a whole.
+/// Shared by bars, areas and lines so they agree. [alpha] is the arrival's
+/// fade, applied to both ends.
 ui.Shader? seriesShader(ChartSeries series, Rect area, {double alpha = 1}) =>
     series.paint.shaderFor(area, alpha: alpha);
 
 /// underShader is the colour to give a paint that has been handed a shader.
 ///
-/// Opaque, always: a paint's own alpha multiplies whatever its shader draws,
-/// so leaving the flat colour on a paint that is being drawn with a fade
-/// applies that alpha twice -- once in the ramp and again over the top of it.
-/// The flat colour is what is used when there is no shader to draw instead.
+/// Opaque when there is a shader: a paint's alpha multiplies its shader, so
+/// a faded flat colour would apply the fade twice. Otherwise [flat].
 ui.Color underShader(ui.Color flat, ui.Shader? shader) =>
     shader == null ? flat : const ui.Color(0xFF000000);
 
@@ -106,31 +86,18 @@ bool colouredByValue(ChartType type) =>
     type == ChartType.donut ||
     type == ChartType.radialBar;
 
-/// formatTick prints a value the way the chart writes them: on a bar, on a
-/// point, in a legend that carries values.
-///
-/// Through the element rather than as a bare function, because how a number
-/// is written is a setting -- and the places a chart writes one have to
-/// agree with each other. See ChartNumbers.
+/// formatTick prints a value in the chart's number style (ChartNumbers).
 String formatTick(ChartElement e, double v) => e.numbers.format(v);
 
 /// formatSeries prints a value belonging to series [s], which may write its
 /// numbers differently from the rest of the chart.
 ///
-/// A price beside a market cap is two series four orders of magnitude apart,
-/// and one style across both writes either "0.0B" against the price or eleven
-/// digits against the cap. Where a series says nothing, it is the chart's own
-/// style -- which is every series on almost every chart. See
-/// ChartSeries.numbers.
+/// Falls back to the chart's style. See ChartSeries.numbers.
 String formatSeries(ChartElement e, int s, double v) {
   var series = s >= 0 && s < e.data.series.length ? e.data.series[s] : null;
   return (series?.numbers ?? e.numbers).format(v);
 }
 
-/// formatAxis prints a figure up the side.
-///
-/// Its own function because it is its own setting, or rather it is the same
-/// one until somebody says otherwise: a value is a reading and wants to be
-/// exact, an axis is a scale and wants to be round, so 2.049M on the bar
-/// against 2.0M on the axis is a deliberate pairing.
+/// formatAxis prints a value-axis figure, in ChartElement.axisFigures (the
+/// chart's number style unless the axis has its own).
 String formatAxis(ChartElement e, double v) => e.axisFigures.format(v);

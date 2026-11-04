@@ -13,14 +13,12 @@ import 'package:flutter/painting.dart';
 // edge_cleaning.dart is a picture with the background's colour taken out of
 // the edge its mask leaves -- see MaskRefine.decontaminate and matting.dart.
 //
-// The one part of a mask that cannot be drawn by the compositor: it moves
-// colours by what is near them, which is pixel work. So it is done once, off
-// the main thread, for the picture as its mask is, and kept; the painter asks
-// for it and draws the picture as it is until it arrives.
+// It is pixel work, so it runs off the main thread once per picture and mask
+// and is kept; the painter draws the picture uncleaned until it arrives.
 
 /// CleansEdges is a picture source that can hand back a picture with its
-/// edge colours cleaned. A separate face from CanvasImageSource, so the
-/// sources that never clean -- a test's, a thumbnail's -- need not say so.
+/// edge colours cleaned. Separate from CanvasImageSource so sources that
+/// never clean need not implement it.
 abstract class CleansEdges {
   /// cleaned is [picture] -- [look]'s picture as decoded -- with its edge
   /// cleaned as [look]'s mask says, or null while that is being worked out.
@@ -38,9 +36,7 @@ String _keyOf(ImageElement look) {
   return "${look.assetId}|${look.removal.cacheKey(look.assetId)}|$key";
 }
 
-/// _side is the longest a cleaned picture is made at. The cleaning is a
-/// matter of colour at an edge, and an edge's colour needs no camera's
-/// worth of pixels.
+/// _side is the longest side a cleaned picture is made at.
 const int _side = 2000;
 
 /// EdgeCleaner keeps cleaned pictures for a picture store, and makes them.
@@ -72,10 +68,8 @@ class EdgeCleaner {
     var key = _keyOf(look);
     var made = _made[key];
     if (made != null) return made;
-    // A moment's wait, so dragging a slider asks once at the end rather than
-    // at every step -- restarted only when what is asked for changes. The
-    // painter asks on every frame it draws, and a wait restarted by every
-    // ask never ended while anything on the canvas was moving.
+    // Debounced, so a slider drag asks once at the end. The wait restarts
+    // only when the key changes: the painter asks every frame.
     if (!_working.contains(key) && _waitingFor[look.assetId] != key) {
       _waiting.remove(look.assetId)?.cancel();
       _waitingFor[look.assetId] = key;
@@ -126,13 +120,11 @@ class EdgeCleaner {
       }
       _made[key] = image;
       _order.add(key);
-      // The cleaning it replaces is let go of, unless it is still kept to
-      // be drawn again: left to the collector, each was two thousand pixels
-      // across of memory nothing could reach.
+      // Dispose the cleaning it replaces, unless still cached.
       var was = _last[look.assetId];
       _last[look.assetId] = image;
       if (was != null && !_made.values.contains(was)) was.dispose();
-      // A handful kept: a slider dragged back to where it was is instant.
+      // A few kept, so returning a slider to a past value is instant.
       while (_order.length > 6) {
         var old = _order.removeAt(0);
         var gone = _made.remove(old);
@@ -140,7 +132,7 @@ class EdgeCleaner {
       }
       onReady();
     } catch (_) {
-      // Left as it is: the picture is drawn uncleaned, which is what it was.
+      // The picture stays uncleaned.
     } finally {
       _working.remove(key);
     }

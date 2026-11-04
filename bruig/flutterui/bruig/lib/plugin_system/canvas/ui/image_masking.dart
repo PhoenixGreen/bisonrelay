@@ -122,8 +122,7 @@ class LayerPicture {
     var px = Offset(f.dx * size.width, f.dy * size.height);
     var local = Offset(dst.left + (px.dx - src.left) / src.width * dst.width,
         dst.top + (px.dy - src.top) / src.height * dst.height);
-    // A picture -- a layer's or the base -- mirrored in its place is
-    // mirrored back, so a stroke lands on the pixels under the pointer.
+    // Mirrored back, as in toPicture.
     if (!layer.framed) {
       var r = space.rect;
       if (layer.flipX) local = Offset(r.left + r.right - local.dx, local.dy);
@@ -152,12 +151,12 @@ class SubjectFinder {
   static const _channel = MethodChannel("bruig/vision");
   static bool? _available;
 
-  /// available is whether this machine can find a subject: macOS 14 or
-  /// later. Asked once.
-  /// known is the answer [available] has already had, if it has had one --
-  /// for drawing the button straight away rather than a frame later.
+  /// known is the answer [available] has already had, if any, for drawing
+  /// the button straight away rather than a frame later.
   static bool? get known => _available;
 
+  /// available is whether this machine can find a subject: macOS 14 or
+  /// later. Asked once.
   static Future<bool> available() async {
     var known = _available;
     if (known != null) return known;
@@ -200,7 +199,7 @@ Future<ui.Image> decodeMask(Uint8List bytes) async {
   return frame.image;
 }
 
-/// _subjectAlpha reads a grey mask as alpha, as image_mask_painter does.
+/// _greyToAlpha reads a grey mask as alpha, as image_mask_painter does.
 const _greyToAlpha = ColorFilter.matrix([
   0, 0, 0, 0, 255, //
   0, 0, 0, 0, 255, //
@@ -289,10 +288,8 @@ Future<Uint8List> _pixelsOf(int w, int h, void Function(ui.Canvas) draw,
   }
 }
 
-/// _maskSide is the longest a mask made by cutting is kept at. A subject
-/// found by the operating system is the picture's own size; one cut here is
-/// no sharper than the cut, and a camera's twelve megapixels of it is a
-/// slow file for nothing.
+/// _maskSide is the longest a mask made by cutting is kept at: one cut here
+/// is no sharper than the cut, and twelve megapixels of it is a slow file.
 const int _maskSide = 3000;
 
 Size _maskSizeFor(Size picture) {
@@ -353,15 +350,10 @@ Future<Uint8List?> _cutInto(SegmentJob job, Size size, Rect region,
 }
 
 /// quickSelectMask is [mask] with what a quick-select stroke along [stroke]
-/// (fractions of [picture]) found added to it -- or, with [subtract], taken
-/// out of it -- as a grey PNG: the new subject, with every mark the old mask
-/// had worked into it.
-///
-/// The cut is made round the stroke only, a little more than the stroke's
-/// reach either way, as every quick-select brush works: what is brushed is
-/// grown to the edges near it, not to the whole picture. A picture whose
-/// mask is empty starts with nothing kept, so the first stroke keeps what it
-/// went over and its like and nothing else.
+/// (fractions of [picture]) found added to it, or with [subtract] taken
+/// out, as a grey PNG with the old mask's marks worked in. The cut is made
+/// round the stroke only, as every quick-select brush works; a picture whose
+/// mask is empty starts with nothing kept.
 Future<Uint8List?> quickSelectMask(ui.Image picture, ImageMask mask,
     ui.Image? subject, List<Offset> stroke, double radius,
     {required bool subtract}) async {
@@ -460,12 +452,11 @@ Future<Uint8List?> quickSelectMask(ui.Image picture, ImageMask mask,
   });
 }
 
-/// guessSubjectMask finds a picture's subject by colour and edge alone, for
-/// a machine whose operating system cannot: the picture's border taken to
-/// be background and its middle to be the subject, and the cut left to work
-/// out where between the two the edge is -- or, given [at], the subject
-/// taken to be what is there. Rougher than the operating system's, and
-/// meant to be finished with the brush.
+/// guessSubjectMask finds a picture's subject by colour and edge alone, where
+/// the operating system cannot: its border taken as background and its
+/// middle (or what is at [at]) as subject, the cut finding the edge between.
+/// Rougher than the operating system's, and meant to be finished with the
+/// brush.
 Future<Uint8List?> guessSubjectMask(ui.Image picture, {Offset? at}) async {
   var size = Size(picture.width.toDouble(), picture.height.toDouble());
   var k = math.min(1.0, math.sqrt(90000 / (size.width * size.height)));

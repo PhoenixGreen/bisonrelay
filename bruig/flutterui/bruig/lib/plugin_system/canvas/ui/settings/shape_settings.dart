@@ -11,7 +11,7 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
-// shape settings.dart is a shape's settings.
+// shape_settings.dart is a shape's settings.
 
 List<Widget> shapeSettings(
     BuildContext context,

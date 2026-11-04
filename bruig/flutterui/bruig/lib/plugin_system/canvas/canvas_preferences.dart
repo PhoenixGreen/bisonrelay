@@ -10,18 +10,12 @@ import 'package:flutter/painting.dart';
 // canvas_preferences.dart is what the reader has decided about the Canvas
 // feature: whether it exists at all, and where the editor was left.
 //
-// Off by default. Canvas is a whole page and a whole navigation item for
-// something most readers of a messaging app will never open, and a feature
-// that costs a nav slot has to be asked for. Turning it on is one switch in
-// Settings > Plugins.
-//
-// It is not gated on a plugin capability, unlike the writing tools next door,
-// and the difference is real rather than a shortcut: the writing tools consume
-// a service some plugin has to provide -- a dictionary, a rule set -- and are
-// meaningless without a provider. Canvas provides and consumes nothing. It is
-// entirely the app's own code, like notes, so the thing that decides whether
-// it is here is a preference rather than an installed module.
+// Off by default: it costs a nav slot most readers of a messaging app will
+// never use. It is a preference, not a plugin capability as the writing tools
+// are, because Canvas consumes no service a plugin provides; it is the app's
+// own code, like notes.
 
+/// CanvasPreferences is the Canvas feature's saved settings.
 class CanvasPreferences extends ChangeNotifier {
   static const _enabledKey = "canvasEnabled";
   static const _panelKey = "canvasSidebarPanel";
@@ -37,9 +31,7 @@ class CanvasPreferences extends ChangeNotifier {
   static const _elevenLabsKeyKey = "canvasElevenLabsKey";
   static const _publishKey = "canvasPublish";
   static const _timelineHeightKey = "canvasTimelineHeight";
-  static const _drawBarWidthKey = "canvasDrawBarWidth";
   static const _keyframesShownKey = "canvasKeyframesShown";
-  static const _scenesShownKey = "canvasScenesShown";
   static const _cuesShownKey = "canvasCuesShown";
   static const _studioLookKey = "canvasStudioLook";
   static const _mixEngineKey = "canvasMixEngine";
@@ -56,49 +48,30 @@ class CanvasPreferences extends ChangeNotifier {
   bool get enabled => _enabled;
   bool _enabled = false;
 
-  /// panel is which sidebar tab was last open, as an index into CanvasPanel.
-  /// Stored as an int so that adding a panel does not invalidate it, and read
-  /// back with a bounds check for the same reason.
+  /// panel is which sidebar tab was last open, as an index into CanvasPanel;
+  /// readers bounds-check it.
   int get panel => _panel;
   int _panel = 0;
 
   /// lastFolder and lastName are the canvas that was open when the page was
-  /// last left, so returning to Canvas returns to what you were doing rather
-  /// than to a blank page.
+  /// last left, reopened on return.
   String get lastFolder => _lastFolder;
   String _lastFolder = "";
 
   String get lastName => _lastName;
   String _lastName = "";
 
-  /// allowFetching is whether a table or a chart may go and get its data over
-  /// the internet.
-  ///
-  /// Off, and a decision rather than a default. Nothing else in this app's
-  /// interface opens a connection of its own: everything goes out through the
-  /// daemon, which is what the proxy setting in Settings applies to. A fetch
-  /// from here does not, so on a machine set up to reach the network only
-  /// through Tor it would be the one connection that did not -- and the
-  /// address it connected to would learn who was asking.
-  ///
-  /// That is a fair trade for somebody who wants a live league table on a
-  /// machine with no proxy set, and it is not a trade anybody should make
-  /// without being told. So the switch says so, and the file source next to it
-  /// does the same job with no connection at all.
+  /// allowFetching is whether a table or a chart may fetch its data over the
+  /// internet. Off by default for privacy: the fetch does not go through the
+  /// daemon, so the proxy setting (Tor, say) does not apply and the address
+  /// learns who is asking. A file source does the same job offline.
   bool get allowFetching => _allowFetching;
   bool _allowFetching = false;
 
   /// fit is how the canvas is framed -- the whole of it, or the full width.
-  ///
-  /// A preference rather than a property of the document, because it is about
-  /// the reader's screen rather than about the design: the same canvas wants
-  /// the whole frame on a wide monitor and the width on a laptop, and it is
-  /// the same canvas either way. So it survives opening a different one, which
-  /// is the whole point -- choosing it again for every canvas is choosing it
-  /// several times a session.
-  ///
-  /// Stored as the enum's name so that adding or reordering the fits does not
-  /// silently change what an old preference means.
+  /// A preference, not part of the document, because it is about the
+  /// reader's screen. Stored as the enum's name so reordering the fits does
+  /// not change an old preference.
   String get fit => _fit;
   String _fit = "";
 
@@ -116,12 +89,7 @@ class CanvasPreferences extends ChangeNotifier {
   }
 
   /// timeline is whether the transport and the strip under the canvas are
-  /// showing.
-  ///
-  /// Off to begin with, and then whatever it was left as. Most canvases are
-  /// still designs and a strip of animation controls under one is a strip of
-  /// room taken from the page -- and somebody who does animate turns it on
-  /// once rather than on every visit.
+  /// showing. Off to begin with, then as it was left.
   bool get timeline => _timeline;
   bool _timeline = false;
 
@@ -132,12 +100,8 @@ class CanvasPreferences extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// filesFolder is the folder the Files panel is looking at.
-  ///
-  /// Kept because being put back at the top of the library every time is
-  /// being made to walk back into the folder you were working in -- which is
-  /// how the writing library behaves, and it is the better of the two.
-  /// Cleared when the folder it names has gone.
+  /// filesFolder is the folder the Files panel is looking at, kept between
+  /// visits as the writing library does. Cleared when the folder has gone.
   String get filesFolder => _filesFolder;
   String _filesFolder = "";
 
@@ -148,8 +112,7 @@ class CanvasPreferences extends ChangeNotifier {
   }
 
   /// timelineHeight is how tall the timeline was dragged to, or nought for
-  /// its least: room for the channels under the keyframe strip is kept
-  /// between visits, like which panels are open.
+  /// its least.
   double get timelineHeight => _timelineHeight;
   double _timelineHeight = 0;
 
@@ -159,11 +122,9 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_timelineHeightKey, value.toStringAsFixed(1));
   }
 
-  /// menuHidden is whether the app's menu -- its sidebar and its header --
-  /// is put away while the canvas is open, for the canvas to have the
-  /// room: the Bison Relay logo toggles it, and while it is away sits at
-  /// the start of the canvas's own bar. The canvas's alone; the rest of
-  /// the app is as it was.
+  /// menuHidden is whether the app's sidebar and header are put away while
+  /// the canvas is open. The Bison Relay logo toggles it, and sits at the
+  /// start of the canvas's own bar while the menu is away.
   bool get menuHidden => _menuHidden;
   bool _menuHidden = false;
   set menuHidden(bool value) {
@@ -173,10 +134,9 @@ class CanvasPreferences extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// mixerBands is how each of the mixer's bands was left -- clips,
-  /// devices, mixer: shown, minimised or hidden, by name -- and
-  /// returnsShown whether the returns were: put back as they were at the
-  /// next visit. Empty for as they start.
+  /// mixerBands is how each of the mixer's bands was left (shown, minimised
+  /// or hidden, by name), and returnsShown whether the returns were. Empty
+  /// for as they start.
   List<String> get mixerBands => _mixerBands;
   List<String> _mixerBands = const [];
   set mixerBands(List<String> value) {
@@ -222,9 +182,8 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_panelsKey, json);
   }
 
-  /// canvasView is how the canvas saved as [key] -- "folder/name" -- was
-  /// last looked at: its channels' heights, its narrow strips, the
-  /// timeline's zoom. See CanvasController.canvasView.
+  /// canvasView is how the canvas saved as [key] ("folder/name") was last
+  /// looked at. See CanvasController.canvasView.
   Map<String, dynamic>? canvasView(String key) => _canvasViews[key];
   Map<String, Map<String, dynamic>> _canvasViews = {};
 
@@ -236,7 +195,7 @@ class CanvasPreferences extends ChangeNotifier {
     if (_canvasViews[key] != null && jsonEncode(_canvasViews[key]) == json) {
       return;
     }
-    // The latest last, the oldest dropped past the few kept.
+    // Re-inserted so the map runs oldest first; the oldest are dropped.
     _canvasViews.remove(key);
     _canvasViews[key] = view;
     while (_canvasViews.length > _viewsKept) {
@@ -245,36 +204,15 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_canvasViewsKey, jsonEncode(_canvasViews));
   }
 
-  /// drawBarWidth is how wide a sketched character's bar over the canvas
-  /// was dragged to, or nought for its usual width -- see
-  /// character_draw_bar.dart. One width, whatever tool is in hand.
-  double get drawBarWidth => _drawBarWidth;
-  double _drawBarWidth = 0;
-
-  set drawBarWidth(double value) {
-    if (_drawBarWidth == value) return;
-    _drawBarWidth = value;
-    StorageManager.saveString(_drawBarWidthKey, value.toStringAsFixed(1));
-    notifyListeners();
-  }
-
-  /// keyframesShown, scenesShown and cuesShown are which of the timeline's
-  /// rows were showing -- the keyframes, the scenes, the cues on the ruler --
-  /// kept between visits, like the timeline itself. All shown to begin with.
+  /// keyframesShown and cuesShown are which of the timeline's rows
+  /// (keyframes, cues on the ruler) were showing. All shown to
+  /// begin with.
   bool get keyframesShown => _keyframesShown;
   bool _keyframesShown = true;
   set keyframesShown(bool value) {
     if (_keyframesShown == value) return;
     _keyframesShown = value;
     StorageManager.saveBool(_keyframesShownKey, value);
-  }
-
-  bool get scenesShown => _scenesShown;
-  bool _scenesShown = true;
-  set scenesShown(bool value) {
-    if (_scenesShown == value) return;
-    _scenesShown = value;
-    StorageManager.saveBool(_scenesShownKey, value);
   }
 
   bool get cuesShown => _cuesShown;
@@ -333,10 +271,8 @@ class CanvasPreferences extends ChangeNotifier {
   }
 
   /// publish is how the publish sheet was last set when something was
-  /// published with it -- what, as what, where, and every setting for each --
-  /// so that the next one opens as the last was left rather than on Image
-  /// every time. Kept as the sheet writes it; the sheet reads back only what
-  /// it still recognises.
+  /// published, so the next one opens the same way. Kept as the sheet writes
+  /// it; the sheet reads back only what it still recognises.
   Map<String, dynamic> get publish => _publish;
   Map<String, dynamic> _publish = const {};
 
@@ -345,10 +281,8 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_publishKey, jsonEncode(value));
   }
 
-  /// load reads what was saved. Called once at startup; until it returns the
-  /// defaults are in force, which is the right way round -- a nav item that
-  /// appeared a moment after the window opened would be worse than one that
-  /// was simply there.
+  /// load reads what was saved, once at startup; the defaults are in force
+  /// until it returns.
   Future<void> load() async {
     _enabled = await StorageManager.readBool(_enabledKey, defaultVal: false);
     _panel = int.tryParse(await StorageManager.readString(_panelKey)) ?? 0;
@@ -359,21 +293,16 @@ class CanvasPreferences extends ChangeNotifier {
     _fit = await StorageManager.readString(_fitKey);
     _timeline = await StorageManager.readBool(_timelineKey, defaultVal: false);
     _filesFolder = await StorageManager.readString(_filesFolderKey);
-    // The Speech device spoke with ElevenLabs once, with the reader's own
-    // API key kept here: the engine is gone, and the key with it.
+    // A stored ElevenLabs API key from a removed engine: delete it.
     if (await StorageManager.exists(_elevenLabsKeyKey)) {
       await StorageManager.deleteData(_elevenLabsKeyKey);
     }
     _keyframesShown =
         await StorageManager.readBool(_keyframesShownKey, defaultVal: true);
-    _scenesShown =
-        await StorageManager.readBool(_scenesShownKey, defaultVal: true);
     _cuesShown = await StorageManager.readBool(_cuesShownKey, defaultVal: true);
     _timelineHeight =
         double.tryParse(await StorageManager.readString(_timelineHeightKey)) ??
             0;
-    _drawBarWidth =
-        double.tryParse(await StorageManager.readString(_drawBarWidthKey)) ?? 0;
     _menuHidden = await StorageManager.readBool(_menuHiddenKey);
     var bands = await StorageManager.readString(_mixerBandsKey);
     _mixerBands = bands.isEmpty ? const [] : bands.split(",");
@@ -438,14 +367,12 @@ class CanvasPreferences extends ChangeNotifier {
     if (_panel == value) return;
     _panel = value;
     StorageManager.saveString(_panelKey, "$value");
-    // Deliberately not notifying. Which tab is open is the sidebar's own
-    // state, already redrawn by whatever changed it; notifying from here would
-    // rebuild the navigation and the whole page for a tab click.
+    // Deliberately not notifying: the sidebar has already redrawn, and a
+    // notify would rebuild the navigation and the whole page.
   }
 
-  /// pendingOpen is a canvas to open the next time the Canvas page shows --
-  /// one opened from Files, put in the library and the page gone to. Not
-  /// kept between runs: it is a request, made and met in a moment.
+  /// pendingOpen is a canvas to open the next time the Canvas page shows,
+  /// such as one opened from Files. Not saved.
   (String folder, String name)? pendingOpen;
 
   /// remember records which canvas is open, so it can be reopened next time.

@@ -4,27 +4,17 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
-// image_silhouette.dart is where a picture actually is, as opposed to where its
-// box is.
+// image_silhouette.dart is where a picture's ink is, as opposed to its box,
+// so text can wrap round a cut-out rather than its rectangle.
 //
-// A photograph fills its rectangle and the two are the same thing. A cut-out
-// -- a badge, a player, anything with its background taken out -- does not,
-// and the difference is most of the picture: text set around such a thing's
-// box keeps a wide empty margin round nothing, which is exactly what wrapping
-// is supposed to stop.
-//
-// The shape is kept as a profile rather than as a path: for each of a few
-// hundred rows, how far in from the left the picture starts and how far in
-// from the right it ends. That is all a line of text needs -- it asks "what
-// room is there between these two heights" and nothing else -- and it is one
-// pass over the pixels rather than an edge trace.
+// The shape is a profile, not a path: per row band, where the ink starts and
+// ends. That is all a line of text asks, and it is one pass over the pixels.
 
-/// ImageOutline is the leftmost and rightmost ink on each of [rows] bands of a
-/// picture, as fractions of its width.
+/// ImageSilhouette is the leftmost and rightmost ink on each of [rows] bands
+/// of a picture, as fractions of its width.
 class ImageSilhouette {
-  /// left and right are 0..1 across the picture. A row with nothing on it has
-  /// left greater than right, which is how "no ink here" is said without a
-  /// second list of flags.
+  /// left and right are 0..1 across the picture. An empty row has left
+  /// greater than right.
   final Float32List left;
   final Float32List right;
   final int rows;
@@ -35,8 +25,7 @@ class ImageSilhouette {
   /// drawn in.
   ///
   /// [dst] is where the picture is on the canvas and [src] the part of it
-  /// being shown -- a crop and a cover fit both mean the two are not the same
-  /// picture -- so the rows this looks at are the rows actually on screen.
+  /// shown (after crop and fit), so only on-screen rows count.
   (double, double)? spanIn(
       Rect dst, Rect src, Size image, double top, double bottom) {
     if (dst.width <= 0 || dst.height <= 0 || image.height <= 0) return null;
@@ -76,10 +65,8 @@ class ImageSilhouette {
 
 /// silhouetteOf reads a decoded picture's alpha and builds its profile.
 ///
-/// Rows rather than pixels: [rows] bands over the height, each keeping the
-/// leftmost and rightmost pixel that is not see-through. A hundred and
-/// twenty-eight of them is finer than any line of type can ask about and
-/// costs one pass over the bytes.
+/// [rows] bands over the height, each keeping the leftmost and rightmost
+/// non-transparent pixel.
 Future<ImageSilhouette?> silhouetteOf(ui.Image image, {int rows = 128}) async {
   var data = await image.toByteData();
   if (data == null) return null;
@@ -95,9 +82,7 @@ Future<ImageSilhouette?> silhouetteOf(ui.Image image, {int rows = 128}) async {
   for (var y = 0; y < height; y++) {
     var row = (y * rows ~/ height).clamp(0, rows - 1);
     var at = y * width * 4;
-    // From each end inwards, stopping as soon as both have found ink: the
-    // interesting rows are the ones with a little on them, and those are the
-    // ones this leaves early on.
+    // From each end inwards, stopping at the first ink.
     var from = -1;
     for (var x = 0; x < width; x++) {
       if (bytes[at + x * 4 + 3] > 8) {

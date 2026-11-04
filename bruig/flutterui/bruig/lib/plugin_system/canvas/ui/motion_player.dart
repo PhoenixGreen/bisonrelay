@@ -8,18 +8,15 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
 
 // motion_player.dart is the elements' slots played live: a clip launched
-// from a slot, a cue, a trigger or another clip's Then, as the audio slots
-// are -- see the session in canvas_controller.dart, whose clock it keeps.
+// from a slot, a cue, a trigger or another clip's Then, keeping the clock of
+// the session in canvas_controller.dart.
 //
-// An element launched leaves its timeline, as an Ableton track does: it is
-// drawn from what its slots play until Back to the timeline, its clips
-// stopped or not. Each of its layers plays one clip at a time; a clip
-// launched on a layer starts from wherever the last one left it (the carry),
-// and a clip that ends holds its last frame or goes back to where it began,
-// as it says.
-//
-// Pure: given the document, the frame and the clock's seconds, by the
-// controller. The renderer reads it as a LiveMotion.
+// A launched element leaves its timeline, as an Ableton track does, and is
+// drawn from its slots until Back to the timeline. Each layer plays one clip
+// at a time; a clip launched on a layer starts from wherever the last left it
+// (the carry), and one that ends holds its last frame or goes back to where
+// it began, as it says. Pure: the controller hands it the document, the frame
+// and the clock; the renderer reads it as a LiveMotion.
 
 /// MotionSlotState is how an element's slot is doing, for its strip.
 enum MotionSlotState { empty, stopped, queued, playing, stopping }
@@ -172,8 +169,9 @@ class MotionPlayer implements LiveMotion {
   void stop(String element, {int? layer, required double at}) {
     var p = _of[element];
     if (p == null) return;
+    var only = layer?.clamp(0, motionLayers - 1);
     for (var (i, l) in p.layers.indexed) {
-      if (layer != null && i != layer) continue;
+      if (only != null && i != only) continue;
       // A launch still waiting is called off; what plays stops at [at].
       if (l.next case var n? when n.isNotEmpty) l.next = null;
       if (l.play != null && !l.play!.ended) {

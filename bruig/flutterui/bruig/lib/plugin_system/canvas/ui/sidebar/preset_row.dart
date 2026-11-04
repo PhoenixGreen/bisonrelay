@@ -2,18 +2,12 @@ import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// preset_row.dart is one saved thing in the Presets sidebar.
-//
-// The same row whichever list it is in -- an element, a scene, a whole canvas
-// -- because the things you do to one are the same three: use it, rename it,
-// throw it away. A second row shape per list would be three places to keep a
-// rename working.
+// preset_row.dart is one saved thing in the Presets sidebar: the same row for
+// an element, a scene or a canvas, since all three are used, renamed and
+// deleted alike.
 
-/// askForPresetName asks what to call one, with [initial] filled in.
-///
-/// Shared by everything that saves a preset -- an element's settings, a
-/// scene's menu, a canvas in the Files list -- so that all three ask the same
-/// question in the same words.
+/// askForPresetName asks what to call one, with [initial] filled in. Shared by
+/// everything that saves a preset, so all ask in the same words.
 Future<String?> askForPresetName(BuildContext context, String title,
     {String initial = ""}) {
   var text = TextEditingController(text: initial);
@@ -53,8 +47,8 @@ class PresetRow extends StatefulWidget {
   /// onUse is the tap: add it, or start from it.
   final VoidCallback onUse;
 
-  /// onRename is null for a preset that is not the reader's to rename --
-  /// the ones that ship with the app.
+  /// onRename is null for a preset that is not the reader's to rename (the
+  /// ones that ship with the app).
   final ValueChanged<String>? onRename;
 
   /// onDelete is null for the same ones.
@@ -88,11 +82,9 @@ class _PresetRowState extends State<PresetRow> {
   bool _renaming = false;
   final TextEditingController _name = TextEditingController();
 
-  /// _clicks counts the second click of a pair on the name.
-  ///
-  /// Counted by hand rather than through a double-tap recognizer: one sits in
-  /// the gesture arena and holds back the press that uses the preset and the
-  /// one that opens its menu. See DoubleClick.
+  /// _clicks counts the second click of a pair on the name, by hand rather
+  /// than with a double-tap recognizer, which would hold back the presses that
+  /// use the preset and open its menu. See DoubleClick.
   final DoubleClick _clicks = DoubleClick();
 
   @override
@@ -203,8 +195,7 @@ class _PresetRowState extends State<PresetRow> {
                             onTapOutside: (_) => _commit(),
                           )
                         : Listener(
-                            // Double-clicked to rename, counted by hand. See
-                            // _clicked.
+                            // Double-clicked to rename; see _clicks.
                             onPointerDown: (_) => _clicked(),
                             child: Text(widget.name,
                                 overflow: TextOverflow.ellipsis,

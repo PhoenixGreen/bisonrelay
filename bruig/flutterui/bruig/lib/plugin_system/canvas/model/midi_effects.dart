@@ -4,19 +4,17 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonBool, jsonDouble;
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 
-// midi_effects.dart is what a MIDI channel does to its notes before its
-// instrument plays them, as Ableton's MIDI effects do: a chord built on each
-// note, the notes kept to a scale, a held chord played as an arpeggio, the
-// velocities squeezed or roughened.
+// midi_effects.dart is a MIDI channel's effects (chord, scale, arpeggiator,
+// velocity), applied to notes before its instrument plays them, as Ableton's
+// MIDI effects are.
 //
-// They act on the notes, not on the sound, so the same chain is used twice:
-// on the notes of a part or a clip, before they are played into a file (see
-// applyMidiEffects), and on the keys played live, as they are pressed (see
-// liveKeys and Arpeggio). What is recorded is what was played, before them --
-// so changing an effect changes the recording too, as it does in Ableton.
+// The same chain runs on a part's or clip's notes before rendering
+// ([applyMidiEffects]) and on keys played live ([liveKeys], [Arpeggio]).
+// Recordings keep the notes before the effects, so changing an effect
+// changes the recording too.
 
-/// MidiParam is one setting of a MIDI effect: a number, or -- with
-/// [choices] -- one of a list, stored as its index.
+/// MidiParam is one setting of a MIDI effect: a number, or one of [choices]
+/// stored as its index.
 class MidiParam {
   final String id;
   final String label;
@@ -80,7 +78,8 @@ const noteNames = [
   "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B", //
 ];
 
-/// arpRates are the arpeggiator's steps, each as a share of a whole note.
+/// arpRateNames and arpRates are the arpeggiator's step lengths, as a share
+/// of a whole note.
 const arpRateNames = ["1/4", "1/8", "1/8 T", "1/16", "1/16 T", "1/32"];
 const arpRates = [1 / 4, 1 / 8, 1 / 12, 1 / 16, 1 / 24, 1 / 32];
 const arpStyleNames = [
@@ -176,9 +175,8 @@ class MidiEffect {
       "${kind.name}:$on:${[for (var p in kind.params) value(p.id)].join(",")}";
 }
 
-/// liveKeys is what one key pressed sounds as, through every effect but
-/// the arpeggiator -- which plays over time, and so is not one note's: a
-/// chord's keys, each kept to the scale, at the velocity the chain gives.
+/// liveKeys is the keys and velocities one pressed key sounds as, through
+/// every effect but the arpeggiator (which plays over time).
 List<(int, int)> liveKeys(List<MidiEffect> effects, int key, int velocity,
     {math.Random? random}) {
   var out = [(key, velocity)];
@@ -213,8 +211,7 @@ int _toScale(MidiEffect e, int key) {
   var root = e.choice("root");
   var steps = scaleSteps[e.choice("scale").clamp(0, scaleSteps.length - 1)];
   var rel = (key - root) % 12;
-  // Down to the nearest note of the scale: a key between two is the one
-  // under it, as Ableton's Scale does by default.
+  // A key between two scale notes goes down, as Ableton's Scale does.
   var best = steps.lastWhere((s) => s <= rel, orElse: () => steps.first);
   return key - rel + best;
 }
@@ -241,8 +238,7 @@ double arpStepSeconds(MidiEffect arp, double secondsPerBeat) =>
     4 *
     secondsPerBeat;
 
-/// Arpeggio is the order an arpeggiator plays held keys in: asked for the
-/// next key, step by step.
+/// Arpeggio steps through held keys in an arpeggiator's order.
 class Arpeggio {
   final MidiEffect arp;
   final math.Random random;
@@ -284,10 +280,9 @@ class Arpeggio {
   void reset() => _step = 0;
 }
 
-/// applyMidiEffects is [notes] -- starts and lengths in seconds -- as the
-/// chain plays them: for a part or a clip, before its instrument plays it
-/// into a file. [secondsPerBeat] times the arpeggiator. The random parts
-/// are seeded, so the same notes always make the same file.
+/// applyMidiEffects is [notes] (in seconds) through the chain, before
+/// rendering. [secondsPerBeat] times the arpeggiator. The random parts are
+/// seeded, so the same notes always make the same file.
 List<MidiNote> applyMidiEffects(
     List<MidiNote> notes, List<MidiEffect> effects, double secondsPerBeat) {
   if (notes.isEmpty || !effects.any((e) => e.on)) return notes;
@@ -306,10 +301,9 @@ List<MidiNote> applyMidiEffects(
   var player = Arpeggio(arp, random: random);
   var end = out.map((n) => n.end).reduce(math.max);
   var played = <MidiNote>[];
-  // Held as pressed: by when each started.
   var byStart = [...out]..sort((a, b) => a.start.compareTo(b.start));
   List<int>? was;
-  // From the first note, on the step grid from nought, as the transport's.
+  // On the step grid counted from nought, as the transport's is.
   var t = (byStart.first.start / step).floor() * step;
   for (; t < end - 1e-6; t += step) {
     var held = [

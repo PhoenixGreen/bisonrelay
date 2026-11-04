@@ -4,12 +4,10 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:flutter/scheduler.dart';
 
-// canvas_perf.dart is a log of what drawing the canvas costs, for finding
-// where it is slow on a real machine -- where the graphics card does work a
-// test cannot time. Off unless the app is built with
-// --dart-define=CANVAS_PERF_LOG=<file>, and then a line a second: frames
-// drawn and how long their building and their drawing took, and how often
-// the costly things happened.
+// canvas_perf.dart logs what drawing the canvas costs on a real machine,
+// where GPU work cannot be timed by a test. Off unless built with
+// --dart-define=CANVAS_PERF_LOG=<file>; then one line a second of frame
+// build and raster times and counts of the costly steps.
 
 /// CanvasPerf counts and times the costly parts of drawing the canvas.
 class CanvasPerf {

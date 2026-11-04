@@ -6,12 +6,11 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 // text_document.dart is a text element whose words come from the Writing
 // library rather than from the canvas.
 //
-// The words are *copied* into the element rather than read at drawing time.
-// That is the whole design: a canvas has to draw the same on a machine that
-// has never seen the library, an export runs with no file system to consult,
-// and a painter cannot wait for a disk. So the document is read when the
-// canvas is open and the text it produced is saved with the element -- and
-// the reference is kept beside it so it can be read again when it changes.
+// The words are *copied* into the element rather than read at drawing time:
+// a canvas must draw the same on a machine without the library, and a
+// painter cannot wait for a disk. The document is read while the canvas is
+// open, its text saved with the element, and the reference kept so it can
+// be read again when it changes.
 
 /// MarkdownKind is a piece of markdown a document-backed element honours.
 enum MarkdownKind {
@@ -24,14 +23,12 @@ enum MarkdownKind {
 
   final String label;
 
-  /// The look each one has until it is given another: a heading is bigger and
-  /// heavier, a link is blue and underlined. Chosen to be what somebody would
-  /// have set by hand, so the switch on its own is already useful.
+  /// scale, weight, slanted, underlined and color are each kind's default
+  /// look, used until a MarkdownLook overrides it.
   final double scale;
   final int? weight;
 
-  /// slanted rather than italic, because a value of this enum is called
-  /// italic and the two cannot share a name.
+  /// slanted is italic; named so because a value of this enum is italic.
   final bool slanted;
   final bool underlined;
   final Color? color;
@@ -44,22 +41,16 @@ enum MarkdownKind {
       this.color});
 }
 
-/// MarkdownLook is how one piece of markdown is drawn.
+/// MarkdownLook is whether one kind of markdown is honoured and how it is
+/// drawn.
 ///
-/// Its own type rather than a switch, because "honour the headings" is only
-/// half the question: a poster's heading is a different size, weight, face
-/// and colour from a report's, and the alternative to saying so here is a
-/// document whose headings can only ever look like the one thing this code
-/// happened to choose.
-///
-/// Everything but [on] is an override: null means the element's own, so a
-/// look that has been switched on and left alone follows the type settings
-/// and picks up a change to them.
+/// Everything but [on] is an override; null falls back to the kind's
+/// default or the element's own type settings.
 class MarkdownLook {
   final bool on;
 
-  /// scale is the size against the element's own, or null for the kind's own
-  /// idea of it -- 1.8 for a first-level heading, 1 for bold.
+  /// scale is the size against the element's own, or null for the kind's
+  /// default (MarkdownKind.scale).
   final double? scale;
   final Color? color;
   final int? weight;
@@ -77,8 +68,7 @@ class MarkdownLook {
     this.family,
   });
 
-  /// partFor is this look as a run of styled words -- see TextPart, which is
-  /// the one way anything in a text element says "these words, not those".
+  /// partFor is this look as a TextPart over words [from]..[to].
   TextPart partFor(MarkdownKind kind, int from, int to) => TextPart(
         from: from,
         to: to,
@@ -143,18 +133,14 @@ class MarkdownLook {
 /// MarkdownAllow is which pieces of markdown a document-backed element
 /// honours, and how each of them is drawn.
 ///
-/// Each on its own, because the answer really is per piece: a poster wants
-/// the bold and none of the headings, and a report wants the headings and
-/// none of the links. Everything not allowed is *stripped* rather than left
-/// as written -- a headline reading "## Title" is not markdown being ignored,
-/// it is markdown showing.
+/// Each kind is allowed separately. Marks not allowed are *stripped* rather
+/// than left showing as written.
 class MarkdownAllow {
   final Map<MarkdownKind, MarkdownLook> looks;
 
   const MarkdownAllow({this.looks = const {}});
 
-  /// lookFor is how [kind] is drawn, which is its own default until something
-  /// has been said about it.
+  /// lookFor is how [kind] is drawn: the default look until one is set.
   MarkdownLook lookFor(MarkdownKind kind) =>
       looks[kind] ?? const MarkdownLook();
 
@@ -180,8 +166,7 @@ class MarkdownAllow {
         looks[kind] = MarkdownLook.fromJson(mine);
       }
     }
-    // Read what the switches used to be, so a canvas saved when this was six
-    // booleans opens with those switches where they were left.
+    // Older documents saved six booleans; read those too.
     const was = {
       "h1": MarkdownKind.heading1,
       "h2": MarkdownKind.heading2,
@@ -207,20 +192,14 @@ class TextDocumentRef {
   final String name;
 
   /// markdown is whether the document's formatting is honoured at all. Off,
-  /// the words arrive as plain text and every mark is stripped -- which is
-  /// what a poster wants: all of the styling comes from the element.
+  /// every mark is stripped and the element's own styling applies.
   final bool markdown;
 
   final MarkdownAllow allow;
 
   /// wasText is what the element said before the document took the words
-  /// over, and what it says again when the document is taken away.
-  ///
-  /// Kept here rather than on the element because it exists only while a
-  /// document does: it is part of what "reading a document" means, and it
-  /// goes when the reference goes. Without it, turning the switch off left
-  /// somebody's headline reading a paragraph of their own document with no
-  /// way back to what they had typed.
+  /// over, restored when the document is taken away. Lives here because it
+  /// exists only while a document does.
   final String wasText;
 
   const TextDocumentRef({
@@ -274,20 +253,18 @@ class TextDocumentRef {
 /// readDocument turns a markdown file into the words a text element draws and
 /// the parts that style them.
 ///
-/// A deliberately small subset -- two heading levels, bold, italic, underline
-/// and links -- because a canvas is not a document viewer. Everything else is
-/// stripped: block quotes, code fences, images and lists lose their marks and
-/// keep their words, so what lands in a headline is the headline.
+/// A deliberately small subset: two heading levels, bold, italic, underline
+/// and links. Quotes and lists lose their marks and keep their words; code
+/// fence lines are dropped.
 ///
-/// [markdown] off strips every mark and returns no parts at all, which is the
-/// plain-text case and the default. See MarkdownAllow.
+/// [markdown] off strips every mark and returns no parts (the default). See
+/// MarkdownAllow.
 (String, List<TextPart>) readDocument(String raw,
     {bool markdown = false, MarkdownAllow allow = const MarkdownAllow()}) {
   var out = StringBuffer();
   var parts = <TextPart>[];
 
-  /// words counts what has been written so far, because a part is a range of
-  /// *words* -- see TextPart -- and the reader is walking characters.
+  // words counts the words written so far, since parts are word ranges.
   var words = 0;
   var inWord = false;
 
@@ -300,7 +277,7 @@ class TextDocumentRef {
     }
   }
 
-  /// styled writes [text] and records a part covering the words it added.
+  // styled writes text and records a part covering the words it added.
   void styled(String text, TextPart Function(int from, int to) make) {
     var from = words + 1;
     write(text);
@@ -313,9 +290,8 @@ class TextDocumentRef {
       inWord = false;
     }
 
-    // The block marks, taken off the front of the line. A heading is a part
-    // covering the whole line, so it is bigger and heavier than what is
-    // around it; a quote or a list keeps its words and loses its mark.
+    // Block marks, taken off the front of the line. A heading becomes a part
+    // covering the whole line.
     var heading = 0;
     var text = line;
     if (text.startsWith("## ")) {

@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/kenney_tiles.dart' show packTiles;
 import 'package:path/path.dart' as path;
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // tiled_maps.dart is a Tile map to and from Tiled's own files -- a map as
 // .tmx or .tmj, its tilesets in it or beside it as .tsx or .tsj -- the
@@ -88,6 +89,7 @@ Future<TiledRead?> readTiledMap(String text, {required bool json, required Futur
       continue;
     }
     var cells = <int, int>{};
+    if (l.width <= 0) continue;
     for (var (i, gid) in l.data.indexed) {
       if (refOf(gid) case var t?) cells[cellKey(l.x + i % l.width, l.y + i ~/ l.width)] = t.word;
     }
@@ -349,14 +351,24 @@ class _Tileset {
   /// the tileset's own file -- not the map's.
   _Tileset withDir(String dir) => _Tileset(firstGid,
       name: name,
-      image: image.isEmpty ? "" : path.normalize(path.join(dir, image)),
+      image: _picture(dir, image),
       tileW: tileW,
       tileH: tileH,
       margin: margin,
       spacing: spacing,
-      images: {for (var e in images.entries) e.key: path.normalize(path.join(dir, e.value))},
+      images: {for (var e in images.entries) e.key: _picture(dir, e.value)},
       frames: frames,
       wangs: wangs);
+
+  /// _picture is [name] counted from [dir], or empty where it is not a
+  /// picture beside the map: a map from somebody else naming
+  /// /Users/them/anything would otherwise copy that file into the canvas.
+  static String _picture(String dir, String name) {
+    const pictures = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"};
+    if (name.isEmpty || path.isAbsolute(name) || name.contains(":")) return "";
+    if (!pictures.contains(path.extension(name).toLowerCase())) return "";
+    return path.normalize(path.join(dir, name));
+  }
 
   Map<int, TileAnimation> animations(Map<int, int>? at) => {
         for (var e in frames.entries)
@@ -464,12 +476,12 @@ _Map? _fromJson(String text) {
     for (var l in raw.whereType<Map>()) {
       switch (l["type"]) {
         case "tilelayer":
-          layers.add(_Layer(l["name"] as String? ?? "Layer", n(l["width"], 1),
-              _gids(l["data"], l["encoding"] as String? ?? "csv", l["compression"] as String?),
+          layers.add(_Layer(jsonStr(l["name"]) ?? "Layer", n(l["width"], 1),
+              _gids(l["data"], jsonStr(l["encoding"]) ?? "csv", jsonStr(l["compression"])),
               x: n(l["x"], 0),
               y: n(l["y"], 0),
               visible: l["visible"] != false,
-              opacity: (l["opacity"] as num?)?.toDouble() ?? 1,
+              opacity: (jsonNum(l["opacity"]))?.toDouble() ?? 1,
               tint: l["tintcolor"] == null ? null : _colour(l["tintcolor"] as String, const ui.Color(0xFFFFFFFF)),
               solid: [
                 if (l["properties"] case List props)
@@ -477,19 +489,19 @@ _Map? _fromJson(String text) {
                     if (_solidNames.contains(p["name"]) && (p["value"] == true || p["value"] == "true")) p,
               ].isNotEmpty));
         case "objectgroup":
-          layers.add(_Layer(l["name"] as String? ?? "Objects", 0, const [],
+          layers.add(_Layer(jsonStr(l["name"]) ?? "Objects", 0, const [],
               objects: [
                 for (var o in (l["objects"] as List? ?? const []).whereType<Map>())
                   (
                     gid: n(o["gid"], 0),
-                    x: (o["x"] as num? ?? 0).toDouble(),
-                    y: (o["y"] as num? ?? 0).toDouble(),
-                    w: (o["width"] as num? ?? 0).toDouble(),
-                    h: (o["height"] as num? ?? 0).toDouble()
+                    x: (jsonNum(o["x"]) ?? 0).toDouble(),
+                    y: (jsonNum(o["y"]) ?? 0).toDouble(),
+                    w: (jsonNum(o["width"]) ?? 0).toDouble(),
+                    h: (jsonNum(o["height"]) ?? 0).toDouble()
                   ),
               ],
               visible: l["visible"] != false,
-              opacity: (l["opacity"] as num?)?.toDouble() ?? 1));
+              opacity: (jsonNum(l["opacity"]))?.toDouble() ?? 1));
         case "group":
           read(l["layers"] as List? ?? const []);
       }
@@ -517,8 +529,8 @@ _Tileset _tilesetJson(Object? t, int firstGid) {
     }
   }
   return _Tileset(firstGid,
-      name: t["name"] as String? ?? "",
-      image: t["image"] as String? ?? "",
+      name: jsonStr(t["name"]) ?? "",
+      image: jsonStr(t["image"]) ?? "",
       tileW: n(t["tilewidth"], 16),
       tileH: n(t["tileheight"], 16),
       margin: n(t["margin"], 0),
@@ -528,11 +540,11 @@ _Tileset _tilesetJson(Object? t, int firstGid) {
       wangs: [
         for (var w in (t["wangsets"] as List? ?? const []).whereType<Map>())
           _Wang(
-              w["name"] as String? ?? "Terrains",
-              _mode(w["type"] as String?),
+              jsonStr(w["name"]) ?? "Terrains",
+              _mode(jsonStr(w["type"])),
               [
                 for (var c in (w["colors"] as List? ?? const []).whereType<Map>())
-                  (c["name"] as String? ?? "Terrain", _colour(c["color"] as String?, const ui.Color(0xFF888888)), n(c["tile"], -1)),
+                  (jsonStr(c["name"]) ?? "Terrain", _colour(jsonStr(c["color"]), const ui.Color(0xFF888888)), n(c["tile"], -1)),
               ],
               {
                 for (var wt in (w["wangtiles"] as List? ?? const []).whereType<Map>())

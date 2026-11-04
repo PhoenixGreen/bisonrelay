@@ -3,12 +3,9 @@ import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// document_picking.dart is choosing a document from the Writing library.
-//
-// A list rather than a file dialog: these are the user's own documents in the
-// app's own library, and a system file picker would open on some folder deep
-// in the application support directory with the .md files sitting in it under
-// their internal names.
+// document_picking.dart is choosing a document from the Writing library. A
+// list rather than a file dialog: a system picker would open deep in the
+// application support folder, on .md files under their internal names.
 
 /// pickLibraryDocument asks which document a text element should read, and
 /// returns a reference to it -- or null if the reader changed their mind.
@@ -27,8 +24,7 @@ Future<TextDocumentRef?> pickLibraryDocument(BuildContext context) async {
       }
     }
   } catch (_) {
-    // An unreadable library is an empty one here: the dialog says there is
-    // nothing to choose and the reader is no worse off than with an error.
+    // An unreadable library is shown as an empty one, not as an error.
   }
 
   if (!context.mounted) return null;

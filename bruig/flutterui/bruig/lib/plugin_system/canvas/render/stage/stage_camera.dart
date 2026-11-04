@@ -11,10 +11,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 // towards where the camera starts. The camera always looks at a point a
 // metre above the middle of the floor -- about a person's chest, unless it
 // is panned away -- from some distance away, swung round it ([yaw]) and
-// raised above it ([pitch]).
-// That is the whole of a camera a reader needs to set: where from, how far,
-// how wide a lens. A free camera with its own aim is more to learn and
-// mostly gets lost.
+// raised above it ([pitch]). Where from, how far and how wide a lens is all
+// there is to set: a free camera with its own aim is easily lost.
 
 /// _target is the point a camera looks at: a metre above the middle of
 /// the floor.
@@ -152,14 +150,6 @@ class StageView {
     var side = v.dot(_right), ahead = v.dot(_forward);
     var angle = math.atan2(side, ahead) * 180 / math.pi;
     return (angle, math.sqrt(v.dot(v)));
-  }
-
-  /// lookingDown is how far down the camera looks to see [x], [y], [z], in
-  /// degrees: the angle from level to the line from its eye -- negative
-  /// looking up.
-  double lookingDown(double x, double y, double z) {
-    var dx = x - _eye.x, dz = z - _eye.z;
-    return math.atan2(_eye.y - y, math.sqrt(dx * dx + dz * dz)) * 180 / math.pi;
   }
 
   /// scaleAt is how many page units one metre is at [depth].

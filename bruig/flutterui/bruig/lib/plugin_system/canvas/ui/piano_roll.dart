@@ -16,20 +16,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 // piano_roll.dart is the piano roll: a MIDI clip's notes, or a MIDI
-// channel's part, drawn on a grid of keys and beats to be drawn and edited,
-// with a lane under them for each note's velocity or a controller's curve.
-// It opens in the effects panel, in place of the chain -- see
-// CanvasController.openPianoRoll -- as Ableton's clip view opens under its
-// session.
+// channel's part, on a grid of keys and beats, with a lane under them for
+// each note's velocity or a controller's curve. It opens in the effects
+// panel in place of the chain (see CanvasController.openPianoRoll), as
+// Ableton's clip view does.
 //
-// A press on the grid draws a note (or picks one), a drag draws a longer
-// one or moves or stretches the notes picked, a right-click takes one out.
-// The ruler over the grid holds the playhead: dragged, it is where Play
-// starts and where notes copied are pasted.
-//
-// Everything is in beats here; the controller turns a part's seconds into
-// beats and back (rollContent, setRollContent). A drag is one change to
-// undo, however far it goes.
+// A press on the grid draws a note (or picks one), a drag draws a longer one
+// or moves or stretches those picked, a right-click takes one out. The ruler
+// holds the playhead: where Play starts and a paste lands. Everything here
+// is in beats; the controller converts a part's seconds (rollContent,
+// setRollContent). A drag is one change to undo.
 
 /// rollGrids are the grids a piano roll snaps to, in beats.
 const rollGrids = <(String, double)>[
@@ -606,16 +602,14 @@ class _PianoRollState extends State<PianoRoll> {
                                   scrollDirection: Axis.horizontal,
                                   child: GestureDetector(
                                     key: const ValueKey("rollGrid"),
-                                    // Pressed and dragged, never swiped past:
-                                    // two fingers on a trackpad scroll, and
-                                    // drew notes as they went.
+                                    // Pressed and dragged, never swiped past: two fingers on
+                                    // a trackpad would draw notes as they scrolled.
                                     supportedDevices: dragPointers,
                                     behavior: HitTestBehavior.opaque,
                                     onTapUp: (d) => _tapGrid(
                                         d.localPosition, content, keys),
-                                    // Right-clicked, a note is taken out. Not a
-                                    // double-click: waiting for a second click
-                                    // held back every note drawn.
+                                    // Right-clicked, a note is taken out: a double-click would
+                                    // hold back every note drawn while it waited.
                                     onSecondaryTapUp: (d) {
                                       var hit = _hit(
                                           d.localPosition, content.notes, keys);
@@ -661,10 +655,8 @@ class _PianoRollState extends State<PianoRoll> {
                             ]),
                       ),
                     ),
-                    // The lanes: velocity, or a controller -- each chosen in
-                    // its panel at the left, where a second is added, or
-                    // the lanes folded away; their edge above them dragged
-                    // to make them taller or shorter.
+                    // The lanes: velocity, or a controller, each chosen in its
+                    // panel at the left; the edge above them drags their height.
                     if (showLanes && open) ...[
                       _laneEdge(look, laneH, tallest),
                       for (var (i, lane) in _lanes.indexed)
@@ -1252,9 +1244,7 @@ class _PianoRollState extends State<PianoRoll> {
       b == b.roundToDouble() ? "${b.round()}" : b.toStringAsFixed(2);
 }
 
-// ---------------------------------------------------------------------------
-// The painters
-// ---------------------------------------------------------------------------
+// ---- The painters
 
 const _noteNames = [
   "C",

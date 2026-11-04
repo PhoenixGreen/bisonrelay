@@ -2,10 +2,8 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 
-// note_tools.dart is the clip editor's Notes tools -- Ableton's pitch and
-// time utilities: each takes a clip's notes and which of them are picked
-// (all of them, with none picked) and answers the notes changed. Starts and
-// lengths are in beats.
+// note_tools.dart is the clip editor's Notes tools (Ableton's pitch and time
+// utilities). Starts and lengths are in beats.
 
 /// NoteTool is one of the tools, with what its button says.
 enum NoteTool {
@@ -28,11 +26,10 @@ enum NoteTool {
   const NoteTool(this.label);
 }
 
-/// applyNoteTool is [notes] after [tool], on those at [picked] -- or all of
-/// them, with none picked. [scale] is the root and steps a note is fitted
-/// to; [grid] the beats Quantise moves notes onto; [loopEnd] where Legato's
-/// last note is held to; [seed] Humanise's dice, so a press does the same
-/// each time it is tested.
+/// applyNoteTool is [notes] after [tool], on those at [picked] (all of them,
+/// with none picked). [scale] is the root and steps Fit to scale uses; [grid]
+/// the beats Quantise moves onto; [loopEnd] where Legato holds the last note
+/// to; [seed] seeds Humanise so a test gets the same result.
 List<MidiNote> applyNoteTool(
   NoteTool tool,
   List<MidiNote> notes,
@@ -74,7 +71,6 @@ List<MidiNote> applyNoteTool(
         return n;
       });
     case NoteTool.invert:
-      // Upside down: the highest the lowest.
       var hi = chosen.map((n) => n.key).reduce(math.max);
       var lo = chosen.map((n) => n.key).reduce(math.min);
       return each((n, _) => n.copyWith(key: hi + lo - n.key));

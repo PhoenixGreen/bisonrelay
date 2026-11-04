@@ -9,19 +9,30 @@ import 'package:path/path.dart' as path;
 // canvas_media.dart keeps the sounds and videos canvases play, beside the
 // pictures.
 //
-// The same arrangement as the picture store -- see canvas_assets.dart: one
-// copy of each file, named by a hash of its bytes, in a folder the library
-// listing leaves out, swept of anything no saved canvas names. Two
-// differences, both because these files are big:
-//
-// - A file is hashed and copied as a stream, never read into memory whole.
-//   A forty-minute recording is hundreds of megabytes, and the picture
-//   store's "read the bytes, hash the bytes" would hold all of them at once.
-// - The player is handed a path rather than bytes. SoLoud and ffmpeg both
-//   read files, and giving them one is what lets them read only what they
-//   need.
+// The same arrangement as the picture store (canvas_assets.dart): one copy
+// of each file, named by a hash of its bytes, swept of anything no saved
+// canvas names. Two differences, both because these files are big: a file is
+// hashed and copied as a stream, never read into memory whole; and the
+// player (SoLoud, ffmpeg) is handed a path rather than bytes, so it reads
+// only what it needs.
 
-/// MediaKind is which of the two folders a file belongs in.
+/// isPlaylist is whether [bytes] are a playlist or a list of other files
+/// (m3u, ffconcat, xml, ini-like) rather than a sound or a film: text that
+/// would have ffmpeg read files the sender names. Media is never text, but
+/// AMR, which begins "#!AMR", is let through.
+bool isPlaylist(List<int> bytes) {
+  var i = 0;
+  if (bytes.length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB) i = 3;
+  while (i < bytes.length && " \t\r\n".codeUnits.contains(bytes[i])) {
+    i++;
+  }
+  if (i >= bytes.length) return true;
+  var head = String.fromCharCodes(bytes.skip(i).take(8));
+  if (head.startsWith("#!AMR")) return false;
+  return "#<[".contains(head[0]) || head.startsWith("ffconcat");
+}
+
+/// MediaKind is which store folder a file belongs in.
 enum MediaKind {
   audio(canvasAudioFolder, 512 * 1024 * 1024),
   video(canvasVideoFolder, 4 * 1024 * 1024 * 1024),
@@ -36,9 +47,8 @@ enum MediaKind {
 
   final String folder;
 
-  /// maxBytes bounds one file. Generous, because a store that refuses a
-  /// real recording is a store that does not work; bounded, because a
-  /// canvas is sent to people and somebody will try to add a film.
+  /// maxBytes bounds one file: generous enough for a real recording, bounded
+  /// because a canvas is sent to people.
   final int maxBytes;
   const MediaKind(this.folder, this.maxBytes);
 }
@@ -141,8 +151,7 @@ class CanvasMedia {
       if (await File(target).exists()) return id;
 
       // Copied under a temporary name and moved into place, so a copy that
-      // fails halfway does not leave a truncated file under a real id --
-      // which would be a sound that plays its first half forever after.
+      // fails halfway never leaves a truncated file under a real id.
       var partial = "$target.part";
       await source.copy(partial);
       await File(partial).rename(target);
@@ -158,13 +167,18 @@ class CanvasMedia {
   static Future<bool> saveBytes(
       MediaKind kind, String id, List<int> bytes) async {
     if (bytes.isEmpty || bytes.length > kind.maxBytes) return false;
+    // Named by its digest, so it must be what the name says -- see saveAs.
+    if (!await idMatches(id, bytes)) return false;
+    if ((kind == MediaKind.audio || kind == MediaKind.video) &&
+        isPlaylist(bytes)) {
+      return false;
+    }
     var target = await pathFor(kind, id, create: true);
     if (target == null) return false;
     try {
       var file = File(target);
       if (await file.exists()) return true;
-      await File("$target.part").writeAsBytes(bytes, flush: true);
-      await File("$target.part").rename(target);
+      await writeWhole(target, bytes);
       return true;
     } catch (exception) {
       debugPrint("Unable to store $id: $exception");
@@ -214,7 +228,8 @@ class CanvasMedia {
     }
   }
 
-  /// sweep deletes every file in [kind]'s store that [liveIds] does not name.
+  /// sweep deletes every file in [kind]'s store that [liveIds] does not name,
+  /// except those newer than [sweepGrace].
   static Future<int> sweep(MediaKind kind, Set<String> liveIds) async {
     var removed = 0;
     try {
@@ -223,6 +238,10 @@ class CanvasMedia {
         if (entry is! File) continue;
         var id = path.basename(entry.path);
         if (liveIds.contains(id)) continue;
+        if (DateTime.now().difference(await entry.lastModified()) <
+            sweepGrace) {
+          continue;
+        }
         try {
           await entry.delete();
           removed++;
@@ -236,12 +255,10 @@ class CanvasMedia {
     return removed;
   }
 
-  /// sweepUnused sweeps both stores against every saved canvas, and against
-  /// [open] -- the canvas being worked on, which may never have been saved.
-  ///
-  /// Without it, a sound added to a canvas nobody has named yet is a file no
-  /// saved canvas mentions, and the first save of any other canvas deleted it
-  /// out from under the one it was added to.
+  /// sweepUnused sweeps the stores against every saved canvas, and against
+  /// [open], the canvas being worked on, which may never have been saved:
+  /// otherwise a sound added to an unnamed canvas would be deleted by the
+  /// first save of any other.
   static Future<int> sweepUnused({Set<String> open = const {}}) async {
     try {
       var live = {...await CanvasStorage.liveMediaIds(), ...open};

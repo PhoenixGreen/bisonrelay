@@ -6,32 +6,18 @@ import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
 
 // epub_writer.dart writes a document of pages as an EPUB.
 //
-// Fixed layout, one picture to a page. A canvas is a design rather than a
-// piece of prose: its words are placed, its columns are where somebody put
-// them, and a reader reflowing it into a phone-shaped column would be
-// throwing away the whole of the work. So every page is declared
-// pre-paginated at its own size, and what an e-reader does is show it whole
-// and turn it -- which is what a document of pages is for.
-//
-// Written by hand rather than through a package, for the reason the GIF
-// encoder is: an EPUB is a zip with a handful of XML files in it, all of them
-// short, and the shape of those files is the whole of the format. A
-// dependency for this would be a dependency for four templates.
+// Fixed layout, one picture to a page: a canvas is a design, and reflowing
+// it would throw the design away, so every page is declared pre-paginated at
+// its own size. Written by hand because an EPUB is a zip of a few short XML
+// files.
 
 /// EpubSide is which half of a spread a page belongs on, for a reader showing
-/// two at a time.
-///
-/// Said per page rather than worked out by the reader, because the reader
-/// cannot know: it depends on the covers and on where the numbering starts,
-/// and a reader left to guess puts the whole document on the wrong side of
-/// the spine from the first unnumbered page onwards.
+/// two at a time. Said per page because a reader cannot work it out: it
+/// depends on the covers.
 enum EpubSide { left, right, centre }
 
-/// EpubLink is a rectangle on a page that goes somewhere when it is pressed.
-///
-/// In page units, with the origin at the top left -- the same space the
-/// canvas itself is laid out in, so a button's own bounds can be handed
-/// straight over.
+/// EpubLink is a rectangle on a page that goes somewhere when it is pressed,
+/// in the page picture's pixels from the top left.
 class EpubLink {
   final double x;
   final double y;
@@ -55,8 +41,6 @@ class EpubLink {
   });
 }
 
-/// EpubPage is one leaf: a picture, its size, and anything on it that can be
-/// pressed.
 /// EpubFile is a file the book carries besides its pages: a sound, a video.
 class EpubFile {
   /// href is where it is, relative to the pages -- "media/…".
@@ -68,10 +52,8 @@ class EpubFile {
 
 /// EpubMedia is a sound or a video on a page, played by the page's script.
 ///
-/// A sound has no size unless it can be pressed; a video is placed where it
-/// was on the canvas. Everything about how it plays -- the files in order,
-/// the part of each, repeat, fades, where it starts -- is written onto the
-/// element for media.js to read, so the one script serves every page.
+/// A sound has no size unless it can be pressed. How it plays is written onto
+/// the HTML element for media.js to read, so one script serves every page.
 class EpubMedia {
   final String id;
   final bool video;
@@ -105,21 +87,16 @@ class EpubMedia {
   final String? poster;
 
   /// radius is a speaker's corners, in pixels, for the ring that shows it is
-  /// playing. Only a sound gets the ring: a speaker drawn in a picture cannot
-  /// light up by itself, and a video plainly is playing -- ringed, its
-  /// rectangle came out as an oval over the picture.
+  /// playing. Only a sound gets the ring.
   final double radius;
 
   /// playButton draws the canvas's big play button over a video while it is
-  /// stopped. The canvas draws it into the page's picture, and the video laid
-  /// over the picture covers it -- so without its own, a video with no
-  /// controls showed no sign of being something to press.
+  /// stopped: the one in the page picture is covered by the video.
   final bool playButton;
 
   /// at is the frame of the page's playhead it starts on, for a video on the
-  /// timeline of a page laid out as layers: it follows the playhead rather
-  /// than being played by itself, silent -- its sound is in the page's
-  /// soundtrack. Null for one that plays on its own clock.
+  /// timeline of a page laid out as layers: it follows the playhead, silent
+  /// (its sound is in the page's soundtrack). Null for one on its own clock.
   final int? at;
 
   /// spans are how long each file's range plays, in seconds, for [at]: what
@@ -127,8 +104,7 @@ class EpubMedia {
   final List<double> spans;
 
   /// element is the element it was made from, so that on a page laid out as
-  /// layers it sits in the element's layer -- above what is under it, below
-  /// what is over it, and moving with it.
+  /// layers it sits and moves in the element's layer.
   final String? element;
 
   const EpubMedia({
@@ -188,6 +164,8 @@ class EpubAction {
   });
 }
 
+/// EpubPage is one leaf: a picture, its size, and anything on it that can be
+/// pressed or played.
 class EpubPage {
   final Uint8List png;
   final int width;
@@ -219,8 +197,7 @@ class EpubPage {
   final String? soundtrack;
 
   /// plays is whether the page has sound or video for media.js to run, and
-  /// scripted whether it is declared so -- which a page with links has always
-  /// been, as the place where what they drive is written.
+  /// scripted whether it needs media.js at all.
   bool get plays => media.isNotEmpty;
   bool get scripted =>
       plays || links.isNotEmpty || actions.isNotEmpty || stage != null;
@@ -242,8 +219,7 @@ class EpubPage {
 }
 
 /// filmTarget is what a playhead button on a page aims at: the page's
-/// playhead. Named "film" in the book's script for the films pages used to
-/// be; the name is only a name.
+/// playhead, named "film" in media.js.
 const String filmTarget = "film";
 
 /// epubMime is what an EPUB is, and what goes in the archive's first entry.
@@ -251,10 +227,8 @@ const String epubMime = "application/epub+zip";
 
 /// writeEpub packs the pages into the bytes of an .epub file.
 ///
-/// [interactive] adds the hotspots and declares the document scripted. The
-/// difference between the two kinds of EPUB this app writes is exactly that:
-/// the plain one is pages to read, and the interactive one is pages whose
-/// buttons go somewhere. Both are fixed layout, because both are this canvas.
+/// [interactive] adds the links, media, presses and layers, and media.js for
+/// the pages that need it. Without it the book is pictures only.
 Uint8List writeEpub({
   required List<EpubPage> pages,
   required String title,
@@ -269,22 +243,19 @@ Uint8List writeEpub({
   var id = identifier ?? "urn:uuid:${_uuidFrom(title, pages.length)}";
   var archive = Archive();
 
-  // The mimetype first and uncompressed, which is not a convention: a reader
-  // identifies an EPUB by finding these exact bytes at a fixed offset in the
-  // file, and a deflated first entry puts them somewhere else.
+  // The mimetype first and uncompressed: a reader identifies an EPUB by these
+  // exact bytes at a fixed offset.
   var mime = ascii.encode(epubMime);
   archive.addFile(ArchiveFile("mimetype", mime.length, mime)
     ..compression = CompressionType.none);
 
   _add(archive, "META-INF/container.xml", _container);
-  // Apple Books reads its own options beside the container: without them it
-  // opens a fixed-layout book as though it might be a flowing one, and shows
-  // a stretched picture of the cover while it decides.
+  // Without these Apple Books opens a fixed-layout book as if it might flow,
+  // showing a stretched cover while it decides.
   _add(archive, "META-INF/com.apple.ibooks.display-options.xml",
       _appleOptions(interactive));
 
-  // Each file once, however many pages play it: the same song under ten
-  // pages is one song in the book.
+  // Each file once, however many pages play it.
   var carried = <String, EpubFile>{};
   for (var page in pages) {
     if (!interactive) break;
@@ -304,8 +275,7 @@ Uint8List writeEpub({
   for (var (i, page) in pages.indexed) {
     _add(archive, "OEBPS/page$i.xhtml", _pageXhtml(i, page, interactive));
     archive.addFile(ArchiveFile("OEBPS/page$i.png", page.png.length, page.png)
-      // Already deflated inside the PNG. Deflating it again costs the time
-      // and gives back a file a shade larger.
+      // Already deflated inside the PNG.
       ..compression = CompressionType.none);
   }
 
@@ -343,10 +313,7 @@ ${interactive ? '    <option name="interactive">true</option>\n' : ''}  </platfo
 ''';
 
 /// _pageXhtml is one leaf: a picture filling a viewport of its own size.
-///
-/// The viewport is what makes a fixed-layout page fixed. Without it a reader
-/// has no idea how large the page is meant to be and falls back to reflowing
-/// it, which for a design is the one thing that must not happen.
+/// Without the viewport a reader falls back to reflowing the page.
 String _pageXhtml(int index, EpubPage page, bool interactive) {
   String box(double x, double y, double w, double h, [double turn = 0]) =>
       "left:${_px(x)};top:${_px(y)};width:${_px(w)};height:${_px(h)}"
@@ -613,9 +580,6 @@ String _spriteTag(EpubSprite s, String kind, bool shown,
     '<img src="${_attr(s.href)}" alt="" '
     'style="left:${_px(-s.sx)};top:${_px(-s.sy)}"/></span>';
 
-/// _nav is the contents, which EPUB 3 requires whether or not anybody wants
-/// one. Hidden, because a document of designed pages has a contents list only
-/// if its author drew one.
 /// _inBook is whether [href] is another page of this book rather than a web
 /// address.
 bool _inBook(String href) =>
@@ -1027,6 +991,8 @@ const String _mediaScript = r"""(function () {
 })();
 """;
 
+/// _nav is the contents, which EPUB 3 requires. Hidden: a document of
+/// designed pages has a contents list only if its author drew one.
 String _nav(List<EpubPage> pages) {
   var items = [
     for (var (i, page) in pages.indexed)
@@ -1070,9 +1036,7 @@ String _opf(List<EpubPage> pages, String title, String author, String id,
       '<item id="script" href="media.js" media-type="application/javascript"/>',
   ].join("\n    ");
 
-  // Which side of the spine each page belongs on. A fixed-layout reader
-  // showing two at a time has no way to work this out: it depends on the
-  // covers and on where the numbering starts.
+  // Which side of the spine each page belongs on: see EpubSide.
   var spine = [
     for (var (i, page) in pages.indexed)
       '<itemref idref="page$i"${switch (page.side) {
@@ -1116,12 +1080,9 @@ String _text(String s) =>
 
 String _attr(String s) => _text(s).replaceAll('"', "&quot;");
 
-/// _uuidFrom makes a stable identifier out of what the book is, so that the
-/// same document exported twice is the same book rather than two.
-///
-/// Not a random one: a reader keeps somebody's place by identifier, and a new
-/// one on every export is a document that loses its bookmarks each time it is
-/// sent.
+/// _uuidFrom makes a stable identifier out of what the book is, so the same
+/// document exported twice keeps its bookmarks: a reader keeps a place by
+/// identifier.
 String _uuidFrom(String title, int pages) {
   var seed = "$title/$pages";
   var hash = 0x811c9dc5;

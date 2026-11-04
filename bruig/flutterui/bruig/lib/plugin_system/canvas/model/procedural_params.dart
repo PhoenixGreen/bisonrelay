@@ -1,26 +1,18 @@
-// procedural_params.dart is the settings a background style has of its own.
+// procedural_params.dart is the settings a background style has of its own,
+// beyond the ones every style shares. Each style lists its own (see
+// procedural_style_params.dart) and the settings panel draws whatever is
+// listed.
 //
-// Six numbers shared by twenty styles was the trouble with them: "density"
-// and "size" are not what anybody wants to say about a circuit board or a
-// chain of blocks. The questions worth asking are the style's own -- how
-// thick the traces are, whether the blocks are cubes -- so each style lists
-// its own here, and the settings panel draws whatever is listed.
-//
-// A table rather than a class per style, which is what the pitch, the rings
-// and the metal have. Those are big enough to be worth one; most styles have
-// four or five numbers and a choice, and a table is what lets the panel, the
-// saving and the looks all handle every one of them the same way.
+// A table rather than a class per style (only the rings and the metal have
+// one), so the panel, saving and looks handle every style the same way.
 
 /// StyleParam is one setting a style has of its own.
 ///
-/// Every value is held as a number, choices and switches too: a choice is
-/// the index of what was chosen, and a switch is nought or one. That is what
-/// lets a look be written as a map of numbers and a document carry them as
-/// one.
+/// Every value is a number, so looks and documents carry them as one map: a
+/// choice is the index chosen, a switch is nought or one.
 class StyleParam {
-  /// id is what it is saved under. Styles that ask the same question use the
-  /// same one -- a line's weight is a line's weight -- so it survives moving
-  /// between them.
+  /// id is what it is saved under. Styles with the same setting share an id,
+  /// so the value survives switching between them.
   final String id;
   final String label;
   final double min;
@@ -42,8 +34,8 @@ class StyleParam {
   /// listed for it: a cube's depth means nothing when the blocks are flat.
   final Map<String, List<int>> onlyWhen;
 
-  /// sets is, for a choice, other settings each answer puts in place when it
-  /// is chosen -- a preset for them, which they can then be changed from.
+  /// sets is, for a choice, the other settings each answer puts in place
+  /// when chosen, as a starting point.
   final Map<int, Map<String, double>> sets;
 
   const StyleParam(

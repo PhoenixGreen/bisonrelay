@@ -36,11 +36,14 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Path;
 import 'package:flutter/services.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'canvas_panel_helpers.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
 // canvas_vector_editing_test.dart is a drawing edited point by point: where
 // its points are on the canvas, what a press takes hold of, the edits, the
@@ -1891,7 +1894,7 @@ void main() {
 
     test("drawings in the pictures move out, and are found either way",
         () async {
-      var id = "0123456789abcdef.svg";
+      var id = "${sha256.convert(svg.codeUnits).toString().substring(0, 16)}.svg";
       await CanvasAssets.saveAs(id, svg.codeUnits);
       expect(await CanvasMedia.existingPath(MediaKind.vector, id),
           contains("Pictures"),
@@ -3084,7 +3087,7 @@ void main() {
       await tester.dragFrom(at(2, 1), at(12, 1) - at(2, 1));
       await tester.pumpAndSettle();
       expect(now().shapes![1].cue, VectorCue.after);
-      expect(vectorArrivalSpan(now()), (0, 14),
+      expect(vectorArrivalSpan(now(), 24), (0, 14),
           reason: "the arrival fitted round both again: ten, then four");
       c.undo();
       expect(now().shapes![1].cue, VectorCue.together,
@@ -3176,7 +3179,7 @@ void main() {
           track: e.track!.withoutFrame(10).withKey(const Keyframe(
               frame: 20,
               values: {KeyframeChannel.reveal: 1}))) as VectorElement;
-      expect(cueTimes(longer.shapes!, vectorArrivalSpan(longer)!.$2),
+      expect(cueTimes(longer.shapes!, vectorArrivalSpan(longer, 24)!.$2),
           [(0, 10), (10, 10)]);
     });
 
@@ -3187,18 +3190,16 @@ void main() {
       VectorElement now() => c.document.elementById("v") as VectorElement;
       // After the first, in the timeline's frames: ten, then ten more.
       c.retimeShapes(now(), (b) => withCue(b, 1, cue: VectorCue.after));
-      expect(vectorArrivalSpan(now()), (0, 20));
+      expect(vectorArrivalSpan(now(), 24), (0, 20));
       expect(cueTimes(now().shapes!, 20), [(0, 10), (10, 10)]);
-      // Squeezed by its keyframe, then a gap added: in the frames shown.
-      c.replaceElement(now().withBase(
-          track: now().track!.withoutFrame(20).withKey(
-              const Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}))));
+      // Squeezed on the timeline, then a gap added: in the frames shown.
+      c.replaceElement(withOwnSpan(now(), MotionKind.arrive, 0, 10, 24));
       c.retimeShapes(now(), (b) => withCue(b, 1, cue: VectorCue.gap, gap: 2));
-      expect(cueTimes(now().shapes!, vectorArrivalSpan(now())!.$2),
+      expect(cueTimes(now().shapes!, vectorArrivalSpan(now(), 24)!.$2),
           [(0, 5), (7, 5)]);
-      expect(vectorArrivalSpan(now()), (0, 12));
+      expect(vectorArrivalSpan(now(), 24), (0, 12));
       c.undo();
-      expect(vectorArrivalSpan(now()), (0, 10), reason: "one undo step");
+      expect(vectorArrivalSpan(now(), 24), (0, 10), reason: "one undo step");
     });
   });
 

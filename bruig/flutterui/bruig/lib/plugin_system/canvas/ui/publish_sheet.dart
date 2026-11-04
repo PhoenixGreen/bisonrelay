@@ -29,24 +29,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 // publish_sheet.dart is the Publish button's dialog: what to make, and where
-// to send it.
-//
-// Two questions in one sheet, deliberately. "Publish as a GIF" and "publish
-// into a chat" are not independent -- a GIF at 2400px is not going into a chat
-// message, and the sheet has to be able to say so before anything is rendered.
-// Splitting them into two steps would mean finding that out on the second one.
-//
-// Everything is estimated until Publish is pressed, and the estimate is
-// labelled as one. Rendering a 200-frame GIF to find out how big it is takes
-// as long as publishing it.
+// to send it, in one sheet because the two are not independent (a 2400px GIF
+// is not going into a chat message), and the sheet has to say so before
+// anything is rendered. Everything is an estimate until Publish is pressed:
+// rendering a 200-frame GIF to measure it takes as long as publishing it.
 
-/// PublishAs is what to make.
-///
-/// In order of how much of the canvas survives: a picture of one frame, a
-/// picture of all of them, or the canvas itself. The last is the cheapest and
-/// the most capable and is still last, because it is the one that needs the
-/// reader on the other end to have Bison Relay -- an image is what can be
-/// shown to anyone.
+/// PublishAs is what to make, in order of how much of the canvas survives:
+/// a picture of one frame, a picture of all of them, or the canvas itself.
+/// The last is still last because only it needs Bison Relay on the other
+/// end; an image can be shown to anyone.
 enum PublishAs {
   image("Image", "A single frame as a PNG, a JPEG or a PDF"),
   animation("Animation", "Every frame as an animated GIF"),
@@ -54,9 +45,8 @@ enum PublishAs {
   // The sound alone: the timeline mixed, as a video's soundtrack is. See
   // audio_export.dart.
   audio("Audio", "The sound alone, mixed: a WAV, FLAC, MP3, AAC or Opus file"),
-  // A document rather than a picture of one: every canvas is a page, in
-  // order, in something made for reading rather than for looking at. See
-  // document_export.dart.
+  // A document rather than a picture of one: every canvas a page, in
+  // order. See document_export.dart.
   document("Document", "Every page as a PDF or an EPUB, to read and to print"),
   interactive(
       "Interactive canvas",
@@ -68,11 +58,8 @@ enum PublishAs {
   const PublishAs(this.label, this.description);
 }
 
-/// PublishScenes is how much of a document with several canvases goes.
-///
-/// Offered only where there is more than one: on a single-canvas document the
-/// three choices are the same choice, and a control whose options are all the
-/// same answer is a control that has to be read before it can be ignored.
+/// PublishScenes is how much of a document with several canvases goes,
+/// offered only where there is more than one.
 enum PublishScenes {
   all("All scenes", "The whole document, in order"),
   one("One scene", "Just the one, as if it were the whole document"),
@@ -83,13 +70,10 @@ enum PublishScenes {
   const PublishScenes(this.label, this.description);
 }
 
-/// PublishTo is where it goes.
-///
-/// Four destinations rather than one save dialog, because three of them are
-/// things Bison Relay can do that a file cannot: a canvas in a chat, a canvas
-/// a post can embed, a canvas somebody can fetch from Files. Saving to disk is
-/// the one that leaves the app, and it is first because it is the one that
-/// always works -- the other three each need something set up.
+/// PublishTo is where it goes: a file, or three things Bison Relay can do
+/// that a file cannot (a canvas in a chat, one a post can embed, one somebody
+/// can fetch from Files). Saving to disk is first because it always works;
+/// the others each need something set up.
 enum PublishTo {
   file("Save to a file", Icons.download_outlined),
   chat("Send to a chat", Icons.chat_outlined),
@@ -101,12 +85,10 @@ enum PublishTo {
   const PublishTo(this.label, this.icon);
 }
 
-/// showPublishSheet opens the dialog for [document].
-///
-/// [folder] and [name] are where the canvas is saved, and are what the publish
-/// record is keyed on -- an unsaved canvas can still be published, it just
-/// cannot be updated afterwards, because there is nothing to hang the record
-/// on. The sheet says so rather than refusing.
+/// showPublishSheet opens the dialog for [document]. [folder] and [name] are
+/// where the canvas is saved and what the publish record is keyed on: an
+/// unsaved canvas can be published but not updated afterwards, and the sheet
+/// says so.
 Future<void> showPublishSheet(
   BuildContext context, {
   required CanvasDocument document,
@@ -126,9 +108,7 @@ Future<void> showPublishSheet(
       ),
     );
 
-/// _PublishSheet is the dialog itself. Private: everything outside goes
-/// through showPublishSheet, so there is one way to open it and one place the
-/// arguments it needs are listed.
+/// _PublishSheet is the dialog itself, opened only through showPublishSheet.
 class _PublishSheet extends StatefulWidget {
   final CanvasDocument document;
   final CanvasImageSource? images;
@@ -156,32 +136,23 @@ class _PublishSheetState extends State<_PublishSheet> {
   DocumentAs _documentAs = DocumentAs.pdf;
   PublishTo _to = PublishTo.file;
 
-  // The still settings, then the animation's. Kept side by side rather than
-  // in one settings object per kind, because switching between Image and
-  // Animation and back has to find both exactly as they were left -- somebody
-  // comparing the two sizes does that several times in a row.
+  // The still settings, then the animation's, kept side by side so
+  // switching between Image and Animation and back finds both as left.
   EmbedFormat _format = EmbedFormat.png;
   int _quality = 85;
   double _scale = 1;
 
   /// _pdf is whether the still is a page rather than a picture, and on what
-  /// size of paper.
-  ///
-  /// Its own flag beside the format rather than a fourth EmbedFormat, because
-  /// EmbedFormat is the app's own list of what a *picture attached to a post*
-  /// may be, and a PDF is not one of those. Adding it there would offer PDF
-  /// everywhere a photograph is compressed.
+  /// size of paper. A flag beside the format rather than a fourth EmbedFormat,
+  /// which is the app's list of what a picture attached to a post may be.
   bool _pdf = false;
   PdfPaper _paper = PdfPaper.canvas;
   PdfOrientation _orientation = PdfOrientation.auto;
 
-  /// _everyShape is whether to publish the canvas at every shape it is being
-  /// designed for rather than only the one on screen.
-  ///
-  /// Offered for a file and for a chat, which are the two destinations that
-  /// can hold several: the library and Files keep one publish record per
-  /// canvas, so three shapes there would be three things claiming to be the
-  /// same publication. See CanvasDocument.targets.
+  /// _everyShape is whether to publish the canvas at every shape it is
+  /// designed for rather than only the one on screen. Offered for a file and a
+  /// chat only: the library and Files keep one publish record per canvas. See
+  /// CanvasDocument.targets.
   bool _everyShape = false;
 
   bool _dither = true;
@@ -196,9 +167,8 @@ class _PublishSheetState extends State<_PublishSheet> {
 
   /// _sound is how sound is written: a sound file's format, and for every
   /// kind with sound in it the bitrate, rate and depth. See AudioOptions.
-  /// Starts from the document's own -- see AudioSettings.export, set in
-  /// the canvas's Audio settings -- rather than from the last publish of
-  /// some other canvas.
+  /// Starts from the document's own (AudioSettings.export), not from the last
+  /// publish of some other canvas.
   late AudioOptions _sound = widget.document.audio.export;
 
   /// _needsFfmpeg is whether what is being made is made by ffmpeg.
@@ -215,11 +185,9 @@ class _PublishSheetState extends State<_PublishSheet> {
   bool _ffmpeg = false;
 
   /// _scenes is how much of a document with several canvases is published,
-  /// and _first and _last are which ones -- held as indexes, shown counting
-  /// from one.
-  ///
-  /// _last is only read for a range. Kept while a single scene is chosen so
-  /// that going back to a range finds the pair as it was left.
+  /// and _first and _last which ones, as indexes shown counting from one.
+  /// _last is kept while a single scene is chosen, so a range comes back as
+  /// it was.
   PublishScenes _scenes = PublishScenes.all;
   late int _first = widget.document.at;
   late int _last = widget.document.at;
@@ -228,12 +196,9 @@ class _PublishSheetState extends State<_PublishSheet> {
   String _caption = "";
 
   /// _document is what is actually published: the whole thing, or the scenes
-  /// that were chosen.
-  ///
-  /// A trimmed document rather than a range handed to each renderer. The GIF,
-  /// the video, the PDF, the estimate and the bundle all ask the document how
-  /// long it runs for and what is on it at a given moment -- handed a shorter
-  /// one they all do the right thing, and none of them learns a new argument.
+  /// chosen. A trimmed document rather than a range handed to each renderer:
+  /// the GIF, the video, the PDF, the estimate and the bundle all do the right
+  /// thing with a shorter one.
   CanvasDocument get _document {
     var mix = widget.document.masterMix;
     var document = mix.normalise == _toTarget && mix.target == _target
@@ -264,22 +229,13 @@ class _PublishSheetState extends State<_PublishSheet> {
         "${(frames / rate).toStringAsFixed(1)} seconds.";
   }
 
-  /// _onePicture is whether what is being made holds exactly one canvas.
-  ///
-  /// A PNG or a JPEG does and always will, so the question it is asked is
-  /// "which one" rather than "how many" -- one dropdown instead of a
-  /// three-way choice whose other two answers it cannot honour. A PDF holds a
-  /// page per scene, an animation and a video hold every frame of them, and
-  /// the canvas itself carries the lot.
+  /// _onePicture is whether what is being made holds exactly one canvas: a
+  /// PNG or a JPEG, which asks "which one" rather than "how many".
   bool get _onePicture => _as == PublishAs.image && !_pdf;
 
-  /// _frame is which frame is taken.
-  ///
-  /// The one the reader was looking at, where it is in the document being
-  /// published. Publishing the scene somebody is on should give the moment
-  /// they are looking at rather than the start of it -- and the whole
-  /// document's frame number means nothing to a document trimmed down to one
-  /// scene, so it is moved into that scene's own count.
+  /// _frame is which frame is taken: the one the reader was looking at, where
+  /// it is in the document being published, moved into a trimmed scene's own
+  /// count.
   int get _frame {
     var document = widget.document;
     if (!document.hasScenes || _scenes == PublishScenes.all && !_onePicture) {
@@ -294,25 +250,21 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// makes Publish say Update and puts an Unpublish button in the corner.
   PublishRecord _record = const PublishRecord();
 
-  /// _busy disables every control while a render is running. A GIF takes long
-  /// enough that a second press is a real possibility, and it would render the
-  /// whole thing twice and publish whichever finished last.
+  /// _busy disables every control while a render is running, so a second
+  /// press does not render it all twice.
   bool _busy = false;
   String _progress = "";
 
-  /// _canRecord is whether there is anywhere to keep [_record]. The record is
-  /// filed under the canvas's folder and name, so a canvas that has never been
-  /// saved can be published but not updated afterwards.
+  /// _canRecord is whether there is anywhere to keep [_record], which is
+  /// filed under the canvas's folder and name.
   bool get _canRecord => widget.name != null;
 
   @override
   void initState() {
     super.initState();
-    // As it was last published with, and Image the first time. An animated
-    // document used to open on Animation, on the grounds that an animated
-    // thing wants to be one -- but a GIF is the most expensive thing this
-    // sheet makes, and opening on it means the first size anybody sees is the
-    // biggest one, for a canvas they may well have wanted a picture of.
+    // As it was last published with, and Image the first time: a GIF is the
+    // most expensive thing this sheet makes, and should not be the first size
+    // anybody sees.
     _restore();
     _loadRecord();
     _measurePictures();
@@ -333,9 +285,8 @@ class _PublishSheetState extends State<_PublishSheet> {
     }
   }
 
-  /// _settings is how the sheet is set, as it is remembered. Not which scenes
-  /// or which chat, or the caption: those belong to the canvas and the
-  /// moment, and would be wrong on the next one.
+  /// _settings is how the sheet is set, as it is remembered: not which scenes,
+  /// which chat or the caption, which belong to the canvas and the moment.
   Map<String, dynamic> get _settings => {
         "as": _as.name,
         "document": _documentAs.name,
@@ -389,11 +340,9 @@ class _PublishSheetState extends State<_PublishSheet> {
     if (loudnessTargets.any((t) => t.$1 == target)) _target = target;
   }
 
-  /// _loadRecord reads what this canvas published before, if anything.
-  ///
-  /// Not awaited by initState -- the sheet opens immediately and fills this in
-  /// when it arrives, which is a button that changes from Publish to Update a
-  /// moment later rather than a dialog that takes a moment to appear.
+  /// _loadRecord reads what this canvas published before, if anything. Not
+  /// awaited by initState: the button changes from Publish to Update a moment
+  /// later rather than the dialog taking a moment to appear.
   Future<void> _loadRecord() async {
     if (!_canRecord) return;
     var record = await PublishRecords.read(widget.folder ?? "", widget.name!);
@@ -408,27 +357,22 @@ class _PublishSheetState extends State<_PublishSheet> {
       (widget.document.title.isEmpty ? "Canvas" : widget.document.title);
 
   int get _estimate => switch (_as) {
-        // A PDF is the same rendered frame with a page wrapped round it, and
-        // its pixels are deflated rather than PNG-compressed -- close enough
-        // to the same size that a second guess would be a second thing to get
-        // wrong.
+        // A PDF is the same rendered frame with a page round it, its pixels
+        // deflated rather than PNG-compressed: close enough to the same size.
         PublishAs.image => estimateStillBytes(_document, scale: _scale),
         PublishAs.animation => estimateAnimationBytes(_document, scale: _scale),
         PublishAs.video => estimateVideoBytes(_document,
             scale: _scale, format: _videoFormat, quality: _videoQuality),
         PublishAs.audio => estimateAudioBytes(_document, _sound),
-        // An interactive canvas is the document itself, which is a known
-        // quantity rather than an estimate -- so this one is exact, and the
-        // label below says so. The pictures are added at their stored size,
-        // which is what the bundle will carry: they go in without being
-        // deflated again, being compressed already.
         PublishAs.document => estimateDocumentBytes(_document, scale: _scale),
+        // An interactive canvas is the document itself, so this one is exact
+        // and the label says so; its pictures and media go in at their stored
+        // size, being compressed already.
         PublishAs.interactive => _document.encode().length + _pictureBytes,
       };
 
-  /// _pictureBytes is what the canvas's pictures weigh, which is nearly all
-  /// of a bundle. Measured once when the sheet opens rather than per build:
-  /// it is a read of every picture in the canvas.
+  /// _pictureBytes is what the canvas's pictures weigh, nearly all of a
+  /// bundle: measured once when the sheet opens, being a read of each.
   int _pictureBytes = 0;
 
   Future<void> _measurePictures() async {
@@ -436,9 +380,8 @@ class _PublishSheetState extends State<_PublishSheet> {
     for (var id in _document.assetIds) {
       total += (await CanvasAssets.load(id))?.length ?? 0;
     }
-    // And its sounds and videos, which a bundle carries too -- and which,
-    // for anything with a video in it, are most of what it weighs. Left out,
-    // the estimate promised a small file and a chat was sent a large one.
+    // And its sounds and videos, which a bundle carries too and which are
+    // most of what anything with a video in it weighs.
     for (var id in _document.mediaIds) {
       var file = await CanvasMedia.existingPath(CanvasMedia.kindOf(id), id);
       if (file != null) total += await File(file).length();
@@ -446,9 +389,8 @@ class _PublishSheetState extends State<_PublishSheet> {
     if (mounted) setState(() => _pictureBytes = total);
   }
 
-  /// _tooBigForChat is the one warning the sheet gives before anything is
-  /// rendered, because it is the one failure that would otherwise happen after
-  /// a long wait and produce nothing.
+  /// _tooBigForChat is the one warning given before anything is rendered: the
+  /// one failure that would otherwise come after a long wait.
   bool get _tooBigForChat {
     if (_to != PublishTo.chat) return false;
     // Base64 is four bytes of text for every three of data, and the markup
@@ -456,13 +398,10 @@ class _PublishSheetState extends State<_PublishSheet> {
     return _estimate * 4 / 3 > 900000;
   }
 
-  /// _render makes the bytes, and is the only slow thing here.
-  ///
-  /// Both raster paths go through export/canvas_export.dart, which is also
-  /// what the embed and the thumbnail use -- so what is published is the same
-  /// picture the canvas draws, at a different size. Only the GIF reports
-  /// progress, because it is the only one where there is any to report: a
-  /// still is one frame and is done before a progress line could be read.
+  /// _render makes the bytes, and is the only slow thing here. Both raster
+  /// paths go through export/canvas_export.dart, as the embed and the thumbnail
+  /// do, so what is published is the picture the canvas draws. Only the GIF
+  /// reports progress: a still is done before a progress line could be read.
   Future<CanvasExport?> _render({CanvasDocument? of}) async {
     var document = of ?? _document;
     switch (_as) {
@@ -530,16 +469,12 @@ class _PublishSheetState extends State<_PublishSheet> {
           },
         );
       case PublishAs.interactive:
-        // Nothing is rendered: the canvas goes as itself. It is declared as
-        // the canvas's size all the same, because whatever receives it lays
-        // out a box before it has anything to put in it.
-        //
-        // With its pictures when it has any -- see canvas_bundle.dart. Without
-        // them the file opened on somebody else's machine with a grey
-        // placeholder where every photograph had been, because the ids in it
-        // pointed at a store only the sender had. A canvas with no pictures
-        // stays the plain readable JSON it has always been.
-        if (document.assetIds.isEmpty) {
+        // Nothing is rendered: the canvas goes as itself, declared at the canvas's
+        // size because a receiver lays out a box before it has anything to put in
+        // it. With its pictures and media, when it has any (see canvas_bundle.dart),
+        // since their ids point at a store only the sender has; with none it stays
+        // plain JSON.
+        if (document.assetIds.isEmpty && document.mediaIds.isEmpty) {
           return CanvasExport(
             utf8.encode(document.encode()),
             "application/json",
@@ -556,17 +491,10 @@ class _PublishSheetState extends State<_PublishSheet> {
     }
   }
 
-  /// _publish renders and then sends, and reports the result itself.
-  ///
-  /// The snackbar is taken before the first await. Reading it afterwards means
-  /// reaching for an InheritedWidget through a context whose element may have
-  /// been unmounted by a render that took a minute, which is the exception
-  /// nobody sees until a slow publish is cancelled.
-  ///
-  /// Every branch below re-checks mounted after its own await for the same
-  /// reason, and the finally clears _busy however it ends -- an error that
-  /// left the sheet disabled would be a dialog that can only be closed by
-  /// cancelling.
+  /// _publish renders and then sends, and reports the result itself. The
+  /// snackbar is taken before the first await: after a long render the context
+  /// may be unmounted. Every branch re-checks mounted after its own await, and
+  /// the finally clears _busy however it ends.
   Future<void> _publish() async {
     var snackbar = SnackBarModel.of(context);
     // Remembered as it is published, so the next canvas opens the sheet the
@@ -578,18 +506,17 @@ class _PublishSheetState extends State<_PublishSheet> {
     });
 
     try {
-      // The encoder is the likeliest thing to have gone wrong on a video, and
-      // "unable to render" would send somebody looking at their canvas rather
-      // than at their machine.
+      // The encoder is the likeliest thing to have gone wrong on a video:
+      // "unable to render" would send somebody to their canvas, not their
+      // machine.
       if (_needsFfmpeg) {
         setState(() => _progress = _as == PublishAs.audio
             ? "Mixing the sound…"
             : "Encoding the video…");
       }
       // Every shape it is laid out for, each rendered from the document laid
-      // out for that shape -- see CanvasDocument.forShape. The one on screen
-      // is in the list like any other, and comes out the same as it would on
-      // its own.
+      // out for that shape (see CanvasDocument.forShape), the one on screen
+      // among them.
       if (_everyShape && _canPublishEveryShape) {
         await _publishEveryShape(snackbar);
         return;
@@ -608,8 +535,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         case PublishTo.file:
           var written = await saveToDisk(export, _suggestedName);
           if (!mounted) return;
-          // A cancelled save dialog is not a failure and must not be reported
-          // as one -- the reader knows they cancelled.
+          // A cancelled save dialog is not a failure.
           if (written != null) snackbar.success("Saved to $written.");
 
         case PublishTo.chat:
@@ -667,11 +593,9 @@ class _PublishSheetState extends State<_PublishSheet> {
       widget.document.targets.length > 1 &&
       (_to == PublishTo.file || _to == PublishTo.chat);
 
-  /// _publishEveryShape renders the canvas once per shape and sends the lot.
-  ///
-  /// A folder asked for once for files, and one message per shape for a chat.
-  /// Reported as a set: "three of three", so a shape that failed to render is
-  /// not a silent gap in what was meant to be a matching set.
+  /// _publishEveryShape renders the canvas once per shape and sends the lot:
+  /// one folder asked for, or one chat message per shape, reported as a set
+  /// ("three of three") so a failed shape is not a silent gap.
   Future<void> _publishEveryShape(SnackBarModel snackbar) async {
     var here = widget.document.size;
     var made = <({String tag, CanvasExport export})>[];
@@ -723,23 +647,18 @@ class _PublishSheetState extends State<_PublishSheet> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  /// _remember keeps what a publish produced, both on screen and on disk.
-  ///
-  /// On screen always, so the button says Update immediately; on disk only
-  /// when there is a canvas to file it against. An unsaved canvas that has
-  /// just been shared still shows its Unpublish button for as long as the
-  /// sheet is open, which is the honest thing -- the share exists.
+  /// _remember keeps what a publish produced: on screen always, so the button
+  /// says Update at once (and an unsaved canvas just shared shows Unpublish
+  /// while the sheet is open); on disk only where there is a canvas to file it
+  /// against.
   Future<void> _remember(PublishRecord record) async {
     setState(() => _record = record);
     if (!_canRecord) return;
     await PublishRecords.write(widget.folder ?? "", widget.name!, record);
   }
 
-  /// _unpublish takes back what was published to the chosen destination.
-  ///
-  /// Only the two that can be taken back. A file that has been saved and a
-  /// message that has been sent are gone from here, and offering to undo them
-  /// would be a button that lies.
+  /// _unpublish takes back what was published to the chosen destination: only
+  /// the two that can be taken back, not a saved file or a sent message.
   Future<void> _unpublish() async {
     var snackbar = SnackBarModel.of(context);
     setState(() => _busy = true);
@@ -765,10 +684,8 @@ class _PublishSheetState extends State<_PublishSheet> {
         _ => false,
       };
 
-  /// The sheet is one scrolling column in a fixed-width dialog rather than a
-  /// page of its own. It is a decision with an answer, taken in the middle of
-  /// working on a canvas, and a full-screen route would lose sight of the
-  /// thing being published.
+  /// The sheet is one scrolling column in a fixed-width dialog, not a route of
+  /// its own, so the canvas being published stays in sight.
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
@@ -782,18 +699,11 @@ class _PublishSheetState extends State<_PublishSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // The two questions in order, with the settings for the first
-              // between them: what it is, then how big and in what format,
-              // then where it goes. Anything that would go wrong -- a
-              // one-frame animation, an unsaved canvas, a chat message too
-              // large to send -- is said where the choice that caused it is,
-              // rather than collected into one list at the bottom.
-              // A dropdown rather than four rows. The four descriptions are
-              // worth reading once and then never again, and a sheet that
-              // spends a quarter of its height restating them is a sheet you
-              // scroll past to reach the settings. The one that is chosen
-              // keeps its description underneath, where it is about the
-              // choice actually made.
+              // The two questions in order, with the settings for the first between
+              // them: what it is, how big and in what format, then where it goes.
+              // Anything that would go wrong is said where the choice that caused it
+              // is. A dropdown rather than four rows: only the chosen one keeps its
+              // description underneath.
               _dropdown<PublishAs>(
                 theme,
                 "Publish as",
@@ -804,9 +714,8 @@ class _PublishSheetState extends State<_PublishSheet> {
                 _busy ? (_) {} : (v) => setState(() => _as = v),
               ),
               _note(theme, _as.description),
-              // Said where the choice is rather than after a long wait: a
-              // video with no encoder to make it cannot be published, and the
-              // button below says so too.
+              // Said where the choice is rather than after a long wait: a video
+              // with no encoder cannot be published.
               if (_needsFfmpeg && !_ffmpeg)
                 _warning(theme, ffmpegHelp),
               if ((_as == PublishAs.animation || _as == PublishAs.video) &&
@@ -870,11 +779,9 @@ class _PublishSheetState extends State<_PublishSheet> {
                     "This is likely to be too large for one message. Reduce "
                     "the scale, or publish as a JPEG."),
               const Divider(height: 24),
-              // The size line, which is the whole reason the sheet estimates
-              // anything. It is what a reader checks before pressing a button
-              // that may take a minute, and it changes as the scale and the
-              // format do -- so the effect of each setting can be seen without
-              // publishing anything.
+              // The size line, the reason the sheet estimates anything: checked before
+              // a press that may take a minute, and changing as the scale and format
+              // do.
               Row(children: [
                 Icon(Icons.data_usage,
                     size: 15, color: theme.colors.onSurfaceVariant),
@@ -932,20 +839,10 @@ class _PublishSheetState extends State<_PublishSheet> {
     );
   }
 
-  /// _formatControls is the settings for whatever is being made.
-  ///
-  /// A branch per kind rather than every control shown and some of them
-  /// disabled: quality means nothing to a GIF and dithering means nothing to
-  /// a PNG, and a greyed-out row still reads as a setting somebody is failing
-  /// to reach.
-  /// _sceneControls choose how much of a document with several canvases goes.
-  ///
-  /// Nothing at all on a document with one: three choices that all mean the
-  /// same thing is a control somebody has to read before they can ignore it.
-  ///
-  /// Under "Publish as" rather than beside the destination, because it is
-  /// part of what is being made -- a range of scenes is a different animation,
-  /// not a different place to send the same one.
+  /// _sceneControls choose how much of a document with several canvases goes:
+  /// nothing on a document with one. Under "Publish as" rather than beside the
+  /// destination: a range of scenes is a different thing made, not a different
+  /// place to send it.
   List<Widget> _sceneControls(ThemeNotifier theme) {
     var document = widget.document;
     if (!document.hasScenes) return const [];
@@ -959,10 +856,7 @@ class _PublishSheetState extends State<_PublishSheet> {
     }
 
     // A still is one canvas whatever happens, so the only question worth
-    // asking is which one. It used to be asked nothing at all and always
-    // publish the first, which is the wrong end of "this choice cannot be
-    // honoured": a picture of scene four is a perfectly ordinary thing to
-    // want.
+    // asking is which one.
     if (_onePicture) {
       return [
         const SizedBox(height: 10),
@@ -999,9 +893,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                 [for (var i = 0; i < count; i++) (i, name(i))],
                 (v) => setState(() {
                   _first = v;
-                  // A range that runs backwards is not a range. The far end
-                  // follows rather than refusing, which is what somebody
-                  // moving the first past the second means.
+                  // A range that runs backwards is not a range: the far end follows.
                   if (_last < _first) _last = _first;
                 }),
               ),
@@ -1023,15 +915,17 @@ class _PublishSheetState extends State<_PublishSheet> {
     ];
   }
 
+  /// _formatControls is the settings for whatever is being made: a branch per
+  /// kind rather than every control shown and some disabled, since a greyed-out
+  /// row still reads as a setting somebody is failing to reach.
   List<Widget> _formatControls(ThemeNotifier theme) {
     switch (_as) {
       case PublishAs.image:
         return [
           Row(children: [
             Expanded(
-              // One list rather than a format and a "make it a PDF" switch:
-              // they are three answers to one question, and a reader choosing
-              // what to make should see all three at once.
+              // One list rather than a format and a "make it a PDF" switch: three
+              // answers to one question, seen at once.
               child: _dropdown<String>(
                   theme,
                   "Format",
@@ -1069,9 +963,8 @@ class _PublishSheetState extends State<_PublishSheet> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                // Only a sheet of paper has a second way up. A page cut to the
-                // canvas is the canvas's shape, and offering to turn it would
-                // be a control that does nothing.
+                // Only a sheet of paper has a second way up: a page cut to the
+                // canvas is the canvas's shape.
                 child: _paper.turns
                     ? _dropdown<PdfOrientation>(
                         theme,
@@ -1143,8 +1036,7 @@ class _PublishSheetState extends State<_PublishSheet> {
             ),
           ]),
           // playFrames and the document being published, not the canvas in
-          // front of the reader: with several scenes the run is all of them
-          // end to end, and with a scene chosen it is only that one.
+          // front of the reader: all the scenes end to end, or the one chosen.
           _note(theme, _runNote()),
         ];
 
@@ -1212,10 +1104,8 @@ class _PublishSheetState extends State<_PublishSheet> {
                       _paper,
                       [for (var p in PdfPaper.values) (p, p.label)],
                       (v) => setState(() => _paper = v))
-                  // A book's page is the canvas and nothing else: an EPUB is
-                  // laid out at the size the design says and the reader fits
-                  // it to whatever it is being read on. Offering A4 here
-                  // would be offering a sheet of paper to a screen.
+                  // A book's page is the canvas and nothing else: an EPUB is laid out
+                  // at the design's size and the reader fits it to the screen.
                   : const SizedBox(),
             ),
             const SizedBox(width: 12),
@@ -1257,7 +1147,8 @@ class _PublishSheetState extends State<_PublishSheet> {
 
       case PublishAs.interactive:
         return [
-          Txt.S(widget.document.assetIds.isEmpty
+          Txt.S(widget.document.assetIds.isEmpty &&
+                  widget.document.mediaIds.isEmpty
               ? "The canvas is published as itself: whoever opens it can play "
                   "the animation, press its buttons and move anything you "
                   "have not locked. Nothing is rendered, so it stays small "
@@ -1375,9 +1266,8 @@ class _PublishSheetState extends State<_PublishSheet> {
     ];
   }
 
-  /// _pageLabel is the sheet's size in inches, which is the only unit a page
-  /// means anything in. Worth saying: a canvas laid out at 1280 pixels is a
-  /// thirteen-inch page, which surprises people.
+  /// _pageLabel is the sheet's size in inches, the only unit a page means
+  /// anything in: a canvas laid out at 1280 pixels is a thirteen-inch page.
   String _pageLabel() {
     var page =
         pageFor(_paper, widget.document.size.size, orientation: _orientation);
@@ -1385,12 +1275,9 @@ class _PublishSheetState extends State<_PublishSheet> {
         "${(page.height / 72).toStringAsFixed(1)} inches";
   }
 
-  /// _scaleField is shared by the still and the animation, and is multiples of
-  /// the canvas rather than a pixel width.
-  ///
-  /// The canvas has a size of its own that the reader chose, so "double" is a
-  /// thing they can picture; a box wanting a number in pixels is a sum they
-  /// have to do first, against a size they would have to go and look up.
+  /// _scaleField is shared by the still and the animation, in multiples of
+  /// the canvas rather than a pixel width: "double" can be pictured, a pixel
+  /// width is a sum against a size to look up.
   Widget _scaleField(ThemeNotifier theme) => _dropdown<double>(
       theme,
       "Size",
@@ -1406,10 +1293,9 @@ class _PublishSheetState extends State<_PublishSheet> {
   List<Widget> _chatControls(ThemeNotifier theme) {
     var client = context.watch<ClientModel>();
     var chats = client.activeChats.sorted;
-    // Defaulted here rather than in initState, because the chat list is not
-    // available until this runs. Assigned without setState on purpose: the
-    // dropdown below is about to draw this very value, so there is nothing
-    // stale to rebuild -- and a setState during build would be an error.
+    // Defaulted here, since the chat list is not available until this runs,
+    // and without setState on purpose: the dropdown below draws this very
+    // value, and a setState during build is an error.
     if (_chat == null && chats.isNotEmpty) _chat = chats.first;
 
     return [
@@ -1434,12 +1320,9 @@ class _PublishSheetState extends State<_PublishSheet> {
     ];
   }
 
-  /// _option is one choice in either list.
-  ///
-  /// Written out rather than using RadioListTile, whose groupValue and
-  /// onChanged were deprecated in favour of a RadioGroup ancestor -- which
-  /// would mean wrapping two unrelated lists in two inherited widgets for a
-  /// row that is a circle, a label and a tap.
+  /// _option is one choice in either list, written out rather than a
+  /// RadioListTile, whose groupValue and onChanged are deprecated in favour of
+  /// a RadioGroup ancestor.
   Widget _option(
     ThemeNotifier theme, {
     required bool selected,
@@ -1485,11 +1368,9 @@ class _PublishSheetState extends State<_PublishSheet> {
         ),
       );
 
-  /// _dropdown is a labelled choice.
-  ///
-  /// A bare DropdownButton rather than a DropdownButtonFormField, which keeps
-  /// its own copy of the value and would go on showing whatever was chosen in
-  /// it even after this dialog's state changed underneath.
+  /// _dropdown is a labelled choice: a bare DropdownButton, since a
+  /// DropdownButtonFormField keeps its own copy of the value and goes stale
+  /// when this dialog's state changes underneath it.
   Widget _dropdown<T>(
     ThemeNotifier theme,
     String label,
@@ -1520,10 +1401,9 @@ class _PublishSheetState extends State<_PublishSheet> {
       ]);
 
   // The rest are the sheet's own small pieces: a section heading, a quiet
-  // line of explanation, a warning in the theme's tertiary colour, and a
-  // slider with its value beside it. Local rather than from ui/controls.dart,
-  // which is built for the sidebar's narrow bands and looks wrong at a
-  // dialog's width.
+  // line of explanation, a warning, and a slider with its value beside it.
+  // Local rather than from ui/controls.dart, which is built for the
+  // sidebar's narrow bands.
 
   Widget _heading(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 2),
@@ -1539,19 +1419,10 @@ class _PublishSheetState extends State<_PublishSheet> {
                 TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant)),
       );
 
-  /// _warning is the one thing on this sheet somebody has to read.
-  ///
-  /// Drawn in the error colour on a tint of it, rather than as coloured text
-  /// on the dialog. It was tertiary, which is not an accent in this app at all
-  /// -- see the theming system, where tertiary is the *background* of a
-  /// settings panel and is 0xFF232030 in the dark theme. Dark grey text on a
-  /// dark grey sheet: the warning was drawn every time and could not be read
-  /// once, which is worse than not drawing it, because the button it explains
-  /// is disabled and nothing says why.
-  ///
-  /// The band is what makes it independent of the palette. Whatever the reader
-  /// has chosen, error contrasts with surface and the tint is made from the
-  /// same colour, so the two cannot come out the same as each other.
+  /// _warning is the one thing on this sheet somebody has to read: drawn in
+  /// the error colour on a tint of it, a band that contrasts whatever the
+  /// palette. Not tertiary, which is a panel background in this app and made
+  /// the warning unreadable.
   Widget _warning(ThemeNotifier theme, String text) => Padding(
         padding: const EdgeInsets.only(top: 8),
         child: Container(

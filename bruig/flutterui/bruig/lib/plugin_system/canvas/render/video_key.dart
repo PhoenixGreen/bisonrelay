@@ -7,13 +7,10 @@ import 'package:flutter/painting.dart';
 
 // video_key.dart takes the green out of a video frame, on the GPU.
 //
-// The shader is chroma_key.frag. It is run into an image of the frame's own
-// size, and that keyed image is what the picture painter draws -- so the
-// crop, the framing, the filter and the overlay all apply to the keyed
-// picture exactly as they would to a photograph with its background removed.
-//
-// Keyed images are kept for a few calls, since the painter asks again on
-// every repaint and a paused video, or a poster, is the same frame each time.
+// The shader (chroma_key.frag) is run into an image of the frame's own size,
+// and the picture painter draws that, so crop, framing, filter and overlay
+// apply as to a cut-out photograph. Keyed images are kept for a few calls:
+// the painter asks on every repaint, and a paused video is the same frame.
 
 class VideoKey {
   static ui.FragmentProgram? _program;

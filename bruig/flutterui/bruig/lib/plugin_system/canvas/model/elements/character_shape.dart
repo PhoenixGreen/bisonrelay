@@ -280,7 +280,8 @@ class ShapeColour extends ShapeControl {
   const ShapeColour(this.key, this.label, this.palette);
 }
 
-/// The colours offered for hair, skin and eyes, as 0xRRGGBB.
+/// hairPalette, skinPalette and eyePalette are the colours offered, as
+/// 0xRRGGBB.
 const List<int> hairPalette = [
   0x17120f, 0x3f2a1e, 0x6a4128, 0x9a6e45, 0xddbb7c, 0xede3c9, //
   0x9c9a98, 0x8a3b22, 0x5a2e5e, 0x1f6f75, 0xd978a0, 0x4a6fd0,
@@ -381,8 +382,8 @@ class ShapePart {
       this.id, this.group, this.name, this.says, this.frame, this.controls);
 }
 
-/// The kind of figure: how many heads tall, how big its eyes, how long its
-/// limbs.
+/// figureShapes are the kinds of figure: how many heads tall, how big its
+/// eyes, how long its limbs.
 const Map<String, Map<String, double>> figureShapes = {
   "As made": {},
   "Realistic": {

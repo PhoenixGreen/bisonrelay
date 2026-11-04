@@ -6,27 +6,15 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
-// player_element.dart is a whole team on the pitch, not one player.
-//
-// It started as one dot per element and that was the wrong grain. Setting up a
-// match meant adding twenty-two elements, typing twenty-two numbers, and then
-// changing the shirt colour twenty-two times -- and the layer list was
-// twenty-two rows deep before anything else had been drawn. Worse, the one
-// thing anybody actually wants to say ("play a 4-3-3") could not be said at
-// all, because no element knew about any other.
-//
-// One element per team turns all of that into one control each: a sport, a
-// formation, one set of colours, one dot size. The players inside it are rows
-// in a list rather than elements in the document, so a team drags, rotates,
-// scales and animates as a unit, and a player is still individually movable,
-// nameable, hideable and orderable within it.
+// player_element.dart is a whole team on the pitch, not one player: one
+// element with a sport, a formation, one kit and one token size. Players are
+// rows in its list rather than elements, so the team moves, turns, scales and
+// animates as a unit while each player can still be moved, named, hidden and
+// reordered within it.
 
-/// TeamSport is which game the team is set up for.
-///
-/// It decides the squad size, which formations are on offer, whether the
-/// first player is a goalkeeper in a different shirt, and the size of the
-/// half a formation is laid out in -- in metres, from the sport's own laws,
-/// like the pitches. The names are what documents saved.
+/// TeamSport is which game the team is set up for: squad size, formations,
+/// whether the first player is a goalkeeper, and the size in metres of the
+/// half a formation is laid out in. The names are saved in documents.
 enum TeamSport {
   football("Football", 11, true, 52.5, 68),
   futsal("Futsal", 5, true, 20, 20),
@@ -60,8 +48,7 @@ enum TeamSport {
       .firstWhere((s) => s.name == name, orElse: () => TeamSport.football);
 
   /// tokenMetres is how big a player's token is drawn on a pitch of this
-  /// sport, in metres: big enough to read, small enough not to cover the
-  /// markings round it.
+  /// sport, in metres.
   double get tokenMetres => switch (this) {
         football || rugbyUnion || rugbyLeague => 3.2,
         hockey => 2.8,
@@ -72,8 +59,8 @@ enum TeamSport {
         tennis => 0.9,
       };
 
-  /// ballSize is the ball against a player's token: drawn larger than life,
-  /// as a diagram's ball always is, or it is a speck nobody can find.
+  /// ballSize is the ball's size against a player's token, larger than life
+  /// so it can be seen.
   double get ballSize => switch (this) {
         tennis => 0.4,
         hockey => 0.36,
@@ -103,13 +90,8 @@ enum TeamSport {
       ];
 }
 
-/// FormationSpread is how far up the pitch a formation is drawn.
-///
-/// The same eleven positions mean two different pictures. A tactics board
-/// showing a shape at kick-off wants the whole team inside its own half; one
-/// showing the shape in possession wants the front players over the halfway
-/// line, where they would actually be. Both are drawn from the same table --
-/// the difference is only what the metres are divided by.
+/// FormationSpread is how far up the pitch a formation is drawn: the same
+/// table of metres, divided by a different length.
 enum FormationSpread {
   /// attacking uses the real metres, so a 4-4-2's strikers stand about
   /// fifteen metres inside the opposition half. Positions run past 1.
@@ -143,12 +125,9 @@ const _f442Roles = [
   "ST"
 ];
 
-/// TeamFormation is a starting shape.
-///
-/// The positions are (metres up the pitch from the team's own goal line,
-/// metres across from the near touchline), goalkeeper first. They are
-/// converted to fractions of the element's own box when applied, so a team
-/// element sized to its half of the pitch puts everybody on the right line.
+/// TeamFormation is a starting shape: positions in (metres up from the
+/// team's own goal line, metres across from the near touchline), goalkeeper
+/// first, converted to fractions of the element's box when applied.
 enum TeamFormation {
   f442("4-4-2", TeamSport.football, roles: _f442Roles, [
     (5.5, 34),
@@ -794,9 +773,8 @@ enum TeamFormation {
     "31"
   ]),
 
-  /// custom is what any formation becomes once a player has been moved. It
-  /// holds no positions of its own -- choosing it changes nothing, which is
-  /// the point: it is a label for "these are yours now", not an instruction.
+  /// custom holds no positions: choosing it leaves the players where they
+  /// are.
   custom("Custom", TeamSport.football, []);
 
   final String label;
@@ -805,13 +783,12 @@ enum TeamFormation {
   /// metres is (up the pitch, across it), goalkeeper first.
   final List<(double, double)> metres;
 
-  /// roles names each position, for naming a squad by where they play.
-  /// Empty where the sport's own names are not worth more than a number.
+  /// roles names each position, for naming a squad by where they play;
+  /// empty where there are none worth using.
   final List<String> roles;
 
-  /// numbers are the shirt numbers that go with the positions, where the
-  /// sport numbers by position or a blank sheet would look wrong with 1 to
-  /// 11. Empty for one to however many.
+  /// numbers are the shirt numbers for the positions, where 1 upwards would
+  /// look wrong; empty for 1 upwards.
   final List<String> numbers;
 
   const TeamFormation(this.label, this.sport, this.metres,
@@ -823,24 +800,16 @@ enum TeamFormation {
       );
 
   /// spots places this formation, as fractions of a team's own box.
-  ///
-  /// [mirrored] turns the team round to attack the other way, which is how the
-  /// away side ends up facing the home side rather than both running at the
-  /// same goal.
-  ///
-  /// Both axes flip, not just the one along the pitch. Turning a team round is
-  /// a half turn, and flipping only the length leaves the right back on the
-  /// left touchline -- a shape that is a 4-4-2 in outline and wrong in every
-  /// detail anybody would notice.
-  ///
-  /// [spread] chooses the denominator, and nothing else. Two pictures of one
-  /// shape; see [FormationSpread].
+  /// [mirrored] turns the team round to attack the other way: both axes flip,
+  /// since flipping only the length would put the right back on the left.
+  /// [spread] chooses only the length divided by; see [FormationSpread].
   List<(double, double)> spots({
     bool mirrored = false,
     FormationSpread spread = FormationSpread.attacking,
   }) {
-    var along =
-        spread == FormationSpread.ownHalf ? _deepest * 1.06 : sport.halfLength;
+    var along = spread == FormationSpread.ownHalf && _deepest > 0
+        ? _deepest * 1.06
+        : sport.halfLength;
     var wide = sport.width;
     return [
       for (var (up, across) in metres)
@@ -850,46 +819,34 @@ enum TeamFormation {
     ];
   }
 
-  /// _deepest is how far up the pitch this formation's furthest player stands,
-  /// which is what [FormationSpread.ownHalf] scales against. The 6% on top
-  /// keeps that player off the halfway line rather than standing on it.
+  /// _deepest is how far up the pitch the furthest player stands, which
+  /// [FormationSpread.ownHalf] scales against (plus 6%, to keep them off the
+  /// halfway line).
   double get _deepest =>
       metres.fold(0.0, (most, m) => m.$1 > most ? m.$1 : most);
 }
 
-/// PlayerSpot is one player: who they are, where they stand, and the two
-/// switches every layer has.
-///
-/// Positions are fractions of the team element's box rather than canvas
-/// coordinates, which is what makes the team a real transform: moving it moves
-/// everybody, and resizing it spreads or compresses the shape without anybody
-/// having to be dragged.
+/// PlayerSpot is one player (or the ball): who they are and where they
+/// stand, as fractions of the team's box, so moving or resizing the team
+/// carries the whole shape.
 class PlayerSpot {
   final String number;
   final String name;
 
-  /// dx and dy are 0..1 within the team's box. Not clamped -- a player pulled
-  /// slightly outside the box is a player who has made a run, and snapping
-  /// them back to the edge would be the tool arguing with the diagram.
+  /// dx and dy are 0..1 within the team's box, not clamped: a player may
+  /// stand outside it.
   final double dx;
   final double dy;
 
-  /// locked keeps a player where they are while the rest of the team is being
-  /// arranged. hidden takes them off without losing their number and name.
+  /// locked keeps a player where they are; hidden takes them off without
+  /// losing their number and name.
   final bool locked;
   final bool hidden;
 
-  /// track is this player's own animation, or null when they do not move.
-  ///
-  /// Per player, not per team, because that is the whole point of a tactics
-  /// diagram: the ball goes wide, the full back overlaps, the winger comes
-  /// inside and everybody else holds their line. A team-wide track can only
-  /// move all eleven together, which is the one movement no move ever is.
-  ///
-  /// The same [ElementTrack] an element uses, so a player's keyframes ease,
-  /// interpolate and export exactly as everything else does. Its dx and dy are
-  /// in design units on top of the player's resting position, the same as an
-  /// element's are on top of its own.
+  /// track is this player's own run, or null when they do not move: an
+  /// [ElementTrack] whose dx and dy are design units on top of the resting
+  /// position. Player tracks are not converted to clips (see
+  /// motion_convert.dart).
   final ElementTrack? track;
 
   /// photo is a picture of the player, by asset, shown in the token where
@@ -901,15 +858,13 @@ class PlayerSpot {
   final bool captain;
   final bool highlight;
 
-  /// ball makes this the ball rather than a player: the same in every way a
-  /// player can be moved -- dragged, keyframed, sent along a path -- and left
-  /// out of formations, numbering and names. Kept last in the list, so it is
-  /// drawn over the players and the keeper is still the first of them.
+  /// ball makes this the ball: moved like a player but left out of
+  /// formations, numbering and names. Kept last in the list, so it is drawn
+  /// over the players and the keeper stays first.
   final bool ball;
 
-  /// role is where the player plays -- GK, CB, Fly-half -- put there by the
-  /// formation and kept through any change after it. Shown in place of the
-  /// name where the team shows positions. See TeamElement.namesByPosition.
+  /// role is where the player plays (GK, CB, Fly-half), set by the
+  /// formation. Shown in place of the name with TeamElement.namesByPosition.
   final String role;
 
   /// crop is the part of the team's photo that is this player, or null for
@@ -1004,21 +959,17 @@ class PlayerSpot {
   }
 }
 
-/// PhotoCrop is a circle on a picture: its middle as fractions of the
-/// picture's width and height, its radius as a fraction of its width, and
-/// how far it is turned, in degrees -- the part of a team photo that is one
-/// player's face.
-///
-/// The radius is null until this player's circle has been sized on its own:
-/// until then it is the team's default -- see TeamElement.photoCropSize --
-/// so changing the default changes every circle nobody has sized.
+/// PhotoCrop is the circle on a team photo that is one player's face: its
+/// middle as fractions of the picture, its radius as a fraction of its width,
+/// and its turn in degrees. The radius is null until sized on its own, so it
+/// follows TeamElement.photoCropSize.
 class PhotoCrop {
   final double x, y, turn;
   final double? radius;
   const PhotoCrop({this.x = 0.5, this.y = 0.5, this.radius, this.turn = 0});
 
   /// size is the radius, or a tenth of the picture's width where there is
-  /// none -- which a crop from TeamElement.cropOf always has.
+  /// none (a crop from TeamElement.cropOf always has one).
   double get size => radius ?? 0.1;
 
   PhotoCrop copyWith(
@@ -1033,9 +984,9 @@ class PhotoCrop {
           radius: clearRadius ? null : (radius ?? this.radius),
           turn: turn ?? this.turn);
 
-  /// grid is where [count] faces are guessed to be on a picture [aspect]
-  /// times as wide as it is high, before anybody has moved them: a squad
-  /// photo's rows, left to right and top to bottom.
+  /// grid is where face [index] of [count] is guessed to be on a picture
+  /// [aspect] times as wide as high: a squad photo's rows, left to right and
+  /// top to bottom.
   static PhotoCrop grid(int index, int count, double aspect) {
     var n = math.max(1, count);
     var cols = math.max(1, (math.sqrt(n * aspect)).round());
@@ -1148,7 +1099,7 @@ class BallLook {
       };
 
   factory BallLook.fromJson(Map<String, dynamic> json) => BallLook(
-        style: BallStyle.fromName(json["style"] as String?),
+        style: BallStyle.fromName(jsonStr(json["style"])),
         color: colorFromJson(json["color"], const Color(0xFFF7F7F7)),
         second: colorFromJson(json["second"], const Color(0xFF161616)),
         size: jsonDouble(json["size"], 1),
@@ -1173,11 +1124,8 @@ class BallLook {
       Object.hash(style, color, second, size, shadow, outline, trail);
 }
 
-/// LabelPosition is where a player's name sits relative to the dot.
-///
-/// Four sides plus off. It is one setting for the whole team: on a pitch of
-/// twenty-two, per-player label sides were twenty-two controls to answer a
-/// question almost nobody asks differently for one player than for the next.
+/// LabelPosition is where players' names sit relative to their tokens, one
+/// setting for the whole team.
 enum LabelPosition {
   above("Above"),
   below("Below"),
@@ -1239,63 +1187,46 @@ enum NameStyle {
 /// canvas's own background.
 const String teamLinkBackground = "background";
 
-/// TeamElement is a team of numbered dots.
+/// TeamElement is a team of player tokens.
 class TeamElement extends CanvasElement {
   final TeamSport sport;
   final TeamFormation formation;
 
-  /// mirrored turns the team round. Kept as a field rather than baked into the
-  /// positions so that changing formation on an away side stays mirrored
-  /// instead of turning them round to attack their own goal.
+  /// mirrored turns the team round. A field rather than baked into the
+  /// positions, so changing formation keeps it.
   final bool mirrored;
 
-  /// spread is how far up the pitch the formation is drawn. Kept for the same
-  /// reason as [mirrored]: changing the shape must not quietly change which of
-  /// the two pictures is being shown.
+  /// spread is how far up the pitch the formation is drawn, kept across
+  /// formation changes like [mirrored].
   final FormationSpread spread;
 
-  /// frameLocked pins the team's own box while leaving the players free.
-  ///
-  /// Separate from the layer lock, which stops everything. A pitch is set up
-  /// once and then worked on for an hour, and in that hour every drag is a
-  /// player -- but a drag that starts a few pixels off a dot takes hold of the
-  /// team instead and slides all eleven, which is both easy to do and easy not
-  /// to notice until the shape is wrong. Locking the frame makes that
-  /// impossible without giving up the ability to move anybody.
+  /// frameLocked pins the team's own box while leaving the players free, so
+  /// a drag just off a token cannot slide the whole team. The layer lock
+  /// stops everything.
   final bool frameLocked;
 
-  /// players is the squad, goalkeeper first and then in the formation's own
-  /// order. The list order is also the paint order, which is what Bring
-  /// forward and Send to back move a player through.
+  /// players is the squad, goalkeeper first, then in the formation's order.
+  /// The list order is the paint order.
   final List<PlayerSpot> players;
 
-  /// keeperColor fills the first player; playerColor fills the rest. One
-  /// exception rather than a per-player colour, because the keeper being in a
-  /// different shirt is a rule of the game and everything else is a team kit.
+  /// keeperColor fills the first player where the sport has a keeper;
+  /// playerColor fills the rest.
   final Color keeperColor;
   final Color playerColor;
 
-  /// outlineColor rings every dot, keeper included. A team of one colour on a
-  /// green pitch needs the ring to read at all, and two teams in similar kits
-  /// need it more.
+  /// outlineColor rings every token, keeper included.
   final Color outlineColor;
 
   final double dotWidth;
   final double dotHeight;
 
-  /// lockDotAspect keeps the two above equal, which is on to begin with: a
-  /// player marker is a circle, and an oval is almost always somebody having
-  /// dragged one field without meaning to.
+  /// lockDotAspect keeps [dotWidth] and [dotHeight] equal; on by default.
   final bool lockDotAspect;
 
   final double ringWidth;
 
-  /// labelSpec is the type for the number *and* the name.
-  ///
-  /// One spec, deliberately. They were two, and every change to a team's
-  /// lettering had to be made twice in two panels that looked identical -- and
-  /// the two drifted, so a team's names ended up in a different face from its
-  /// numbers without anybody having chosen that.
+  /// labelSpec is the type for both the number and the name, so the two
+  /// cannot drift apart.
   final TextSpec labelSpec;
 
   final LabelPosition namePosition;
@@ -1312,11 +1243,8 @@ class TeamElement extends CanvasElement {
 
   /// link is the pitch the team stands on: [teamLinkBackground] for the
   /// canvas's own background, a background element's id, or empty for none.
-  ///
-  /// Linked, the players are kept in the pitch's own metres -- the team's
-  /// half of it -- and drawn wherever the pitch puts them, so moving,
-  /// turning, zooming or tilting the pitch carries the team with it. The
-  /// team's own box then means nothing and is not dragged.
+  /// Linked, players are kept in the pitch's metres (the team's half) and
+  /// follow the pitch's camera; the team's own box is not dragged.
   final String link;
 
   /// secondaryColor is the kit's second colour, and kitPattern how the two
@@ -1339,20 +1267,18 @@ class TeamElement extends CanvasElement {
   final bool showRuns;
 
   /// namesByPosition shows each player's position rather than their name,
-  /// without losing the name: turned off again, the names are back.
+  /// without losing the name.
   final bool namesByPosition;
 
-  /// ballLook is the design of the team's ball.
   final BallLook ballLook;
 
-  /// teamPhoto is one picture of the whole squad, by asset: a player in a
-  /// portrait with no photo of their own shows their part of it -- the circle
-  /// their PlayerSpot.crop marks on it.
+  /// teamPhoto is one picture of the whole squad, by asset: a portrait
+  /// player with no photo of their own shows their circle of it (see
+  /// cropOf).
   final String teamPhoto;
 
-  /// photoCropSize is the radius every player's circle on the team photo
-  /// starts at, as a fraction of its width -- null for a guess from the
-  /// photo's rows. A circle sized on its own keeps its own size.
+  /// photoCropSize is the default radius of the circles on the team photo,
+  /// as a fraction of its width, or null for a guess from the photo's rows.
   final double? photoCropSize;
 
   const TeamElement(
@@ -1391,11 +1317,9 @@ class TeamElement extends CanvasElement {
   });
 
   /// cropOf is the part of the team photo that is player [i], on a photo
-  /// [aspect] times as wide as it is high: their own crop where it has been
-  /// set, and their place in a squad photo's rows where it has not.
-  ///
-  /// Always with a radius: the player's own, else the team's default, else
-  /// the guess.
+  /// [aspect] times as wide as high: their own crop, else the guessed grid
+  /// place. Always with a radius: their own, the team's default, or the
+  /// guess.
   PhotoCrop cropOf(int i, double aspect) {
     var people = players.where((p) => !p.ball).length;
     var guess = PhotoCrop.grid(i, people, aspect);
@@ -1433,20 +1357,17 @@ class TeamElement extends CanvasElement {
   double radiusOf(PlayerSpot spot) =>
       spot.ball ? dotRadius * sport.ballSize * ballLook.size : dotRadius;
 
-  /// dotRadius is half the smaller side, so a team whose dots have been pulled
-  /// out of square still draws circles rather than eggs.
+  /// dotRadius is half the smaller of [dotWidth] and [dotHeight], so tokens
+  /// stay circles.
   double get dotRadius => (dotWidth < dotHeight ? dotWidth : dotHeight) / 2;
 
   /// centreOf is where a player stands at rest, in document coordinates.
   Offset centreOf(PlayerSpot spot) =>
       Offset(x + spot.dx * width, y + spot.dy * height);
 
-  /// centreAt is where a player is on [frame], which is their resting position
-  /// plus whatever their own track says.
-  ///
-  /// The renderer, the hit test and the settings all ask this rather than
-  /// working it out again, so a player being dragged, a player being drawn and
-  /// a player being clicked can never disagree about where they are.
+  /// centreAt is where a player is on [frame]: their resting position plus
+  /// their own track. The renderer, hit test and settings all use this so
+  /// they cannot disagree.
   Offset centreAt(PlayerSpot spot, int frame) {
     var rest = centreOf(spot);
     var track = spot.track;
@@ -1456,12 +1377,7 @@ class TeamElement extends CanvasElement {
   }
 
   /// withFormation lays the squad out in [next], keeping each player's number
-  /// and name.
-  ///
-  /// Keeping them is the whole reason this is not "delete the team and make a
-  /// new one": a manager trying 4-3-3 against 4-4-2 is moving the same eleven
-  /// people, and losing their names on the way would make the comparison
-  /// useless.
+  /// and name unless [fresh].
   TeamElement withFormation(TeamFormation next,
       {bool? mirror, FormationSpread? spread, bool fresh = false}) {
     var flip = mirror ?? mirrored;
@@ -1470,8 +1386,7 @@ class TeamElement extends CanvasElement {
       return copyWith(formation: next, mirrored: flip, spread: how);
     }
     var spots = next.spots(mirrored: flip, spread: how);
-    // The ball is not in the formation: it keeps its place, and its place at
-    // the end of the list.
+    // The ball is not in the formation: it keeps its place, last in the list.
     var people = [
       for (var p in players)
         if (!p.ball) p
@@ -1513,13 +1428,9 @@ class TeamElement extends CanvasElement {
     ]);
   }
 
-  /// withSport is the team set up for [next]: its first formation, with
-  /// the squad numbered afresh -- a rugby fifteen is not a football eleven
-  /// with four more.
-  ///
-  /// A team turned round to attack the other way starts in the sport's
-  /// defensive shape where it has one -- a zone, a defence -- so two sides
-  /// set up for the same game face each other rather than both attacking.
+  /// withSport is the team set up for [next] in its first formation, the
+  /// squad numbered afresh. A mirrored team starts in the sport's defensive
+  /// shape where it has one, so two sides face each other.
   TeamElement withSport(TeamSport next) {
     var forms = next.formations;
     var start = mirrored
@@ -1532,18 +1443,16 @@ class TeamElement extends CanvasElement {
     return copyWith(sport: next).withFormation(start, fresh: true);
   }
 
-  /// linkedTo is the team standing on a pitch of [pitch]: linked by
-  /// [link], set up for the sport played on it if it was set up for another,
-  /// and its tokens sized for it -- [reference] being how many pixels a
-  /// metre is on that pitch drawn flat.
+  /// linkedTo is the team standing on a pitch of [pitch]: linked by [link],
+  /// switched to that pitch's sport, and its tokens sized for it, with
+  /// [reference] the pixels per metre on that pitch drawn flat.
   TeamElement linkedTo(String link,
       {required PitchSport pitch, required double reference, Rect? area}) {
     var game = TeamSport.forPitch(pitch);
     var team = sport == game ? this : withSport(game);
     var dot = game.tokenMetres * reference;
-    // Its box is the pitch's, with no turn of its own: nothing draws by it
-    // any more, but whatever asks where the team is -- an export laying the
-    // page out element by element -- asks it.
+    // Its box is the pitch's, unturned: nothing draws by it, but whatever
+    // asks where the team is (an export laying out the page) reads it.
     if (area != null) {
       team = team.withBase(
           x: area.left,
@@ -1584,9 +1493,8 @@ class TeamElement extends CanvasElement {
     return copyWith(players: next);
   }
 
-  /// movePlayer reorders one player, which is what Bring forward and Send to
-  /// back do -- the list order is the paint order, so a player moved to the
-  /// end is drawn over everybody they overlap.
+  /// movePlayer reorders one player (Bring forward, Send to back): the list
+  /// order is the paint order.
   TeamElement movePlayer(int from, int to) {
     if (from < 0 || from >= players.length) return this;
     var clamped = to.clamp(0, players.length - 1);
@@ -1736,10 +1644,10 @@ class TeamElement extends CanvasElement {
   factory TeamElement.fromJson(Map<String, dynamic> json, ElementBase b) {
     var raw = json["players"];
     return TeamElement(b,
-        sport: TeamSport.fromName(json["sport"] as String?),
-        formation: TeamFormation.fromName(json["formation"] as String?),
+        sport: TeamSport.fromName(jsonStr(json["sport"])),
+        formation: TeamFormation.fromName(jsonStr(json["formation"])),
         mirrored: jsonBool(json["mirrored"], false),
-        spread: FormationSpread.fromName(json["spread"] as String?),
+        spread: FormationSpread.fromName(jsonStr(json["spread"])),
         frameLocked: jsonBool(json["frameLocked"], false),
         players: [
           if (raw is List)
@@ -1755,7 +1663,7 @@ class TeamElement extends CanvasElement {
         ringWidth: jsonDouble(json["ring"], 2.4),
         labelSpec: jsonSpec(json["labelSpec"], TextSpec.fromJson,
             const TextSpec(fontSize: 15, weight: 700)),
-        namePosition: LabelPosition.fromName(json["namePos"] as String?),
+        namePosition: LabelPosition.fromName(jsonStr(json["namePos"])),
         nameGap: jsonDouble(json["nameGap"], 5),
         labelRotation: jsonDouble(json["labelRot"], 0),
         showNumbers: jsonBool(json["showNumbers"], true),
@@ -1763,11 +1671,11 @@ class TeamElement extends CanvasElement {
         link: jsonString(json["link"], ""),
         secondaryColor:
             colorFromJson(json["secondary"], const Color(0xFFFFFFFF)),
-        kitPattern: KitPattern.fromName(json["kit"] as String?),
-        tokenStyle: TokenStyle.fromName(json["token"] as String?),
+        kitPattern: KitPattern.fromName(jsonStr(json["kit"])),
+        tokenStyle: TokenStyle.fromName(jsonStr(json["token"])),
         faces: jsonBool(json["faces"], true),
         shadow: jsonBool(json["shadow"], false),
-        nameStyle: NameStyle.fromName(json["nameStyle"] as String?),
+        nameStyle: NameStyle.fromName(jsonStr(json["nameStyle"])),
         showRuns: jsonBool(json["runs"], false),
         namesByPosition: jsonBool(json["positions"], false),
         ballLook: json["ballLook"] is Map<String, dynamic>

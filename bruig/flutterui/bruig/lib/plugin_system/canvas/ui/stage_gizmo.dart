@@ -8,24 +8,21 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/material.dart';
 
-// stage_gizmo.dart is the handle drawn on an element standing on a 3D
-// stage while it is selected: arrows along the stage's three ways and a
-// square across its floor to move it, a ring on the floor to turn it, and a
-// box on a stem to grow and shrink it -- whichever of the three the bar's
-// 3D tool asks for (StageTool).
+// stage_gizmo.dart is the handle drawn on a selected element standing on a 3D
+// stage: arrows along the stage's three axes and a square across its floor to
+// move it, a ring on the floor to turn it, and a box on a stem to scale it, as
+// the bar's 3D tool says (StageTool).
 //
-// It is drawn through the stage's own camera, so its arrows run the way
-// the floor does however the camera is turned, and it is the same size on
-// screen however far off the element is. Dragging a part works out the
-// element's new spot from where the drag started, never step by step, so a
-// slow drag and a fast one end in the same place.
+// Drawn through the stage's own camera, so the arrows follow the floor however
+// the camera turns, at a fixed size on screen. A drag works out the new spot
+// from where it started, never step by step, so slow and fast drags end alike.
 
 /// GizmoPart is a part of the gizmo that can be taken hold of.
 enum GizmoPart { x, y, z, floor, turn, scale }
 
-/// gizmoColours are the parts' colours: the three ways as a 3D program
-/// draws them -- across red, up green, nearer blue -- and the floor square
-/// and the scale box amber.
+/// gizmoColours are the parts' colours: the axes as 3D programs draw them
+/// (across red, up green, nearer blue), and the floor square and scale box
+/// amber.
 const Map<GizmoPart, Color> gizmoColours = {
   GizmoPart.x: Color(0xFFE0484D),
   GizmoPart.y: Color(0xFF3AA35C),
@@ -44,12 +41,12 @@ class StageGizmo {
   final Staged at;
   final StageTool tool;
 
-  /// length is how long its arrows are, in metres: as long as a fixed
-  /// stretch of the screen at the distance it is from the camera.
+  /// length is how long its arrows are, in metres: a fixed stretch of the
+  /// screen at its distance from the camera.
   final double length;
 
-  /// body is whether it is on a 3D character, which is as tall as it was
-  /// made and so is not scaled.
+  /// body is whether it is on a 3D character, which keeps the height it was
+  /// made at and so is not scaled.
   final bool body;
 
   StageGizmo._(this.at, this.tool, this.length, this.body);
@@ -57,9 +54,9 @@ class StageGizmo {
   /// onScreen is how long its arrows are on screen, in screen pixels.
   static const double onScreen = 84;
 
-  /// of is the gizmo on [e], standing where [at] says, for [tool] -- with
-  /// [pageScale] screen pixels to a page unit, so it is drawn the same
-  /// size at any zoom. Null where the camera cannot see its foot.
+  /// of is the gizmo on [e], standing where [at] says, for [tool], with
+  /// [pageScale] screen pixels to a page unit so it is the same size at any
+  /// zoom. Null where the camera cannot see its foot.
   static StageGizmo? of(
       CanvasElement e, Staged at, StageTool tool, double pageScale) {
     var (x, y, z) = _footOf(at);
@@ -177,8 +174,8 @@ class StageGizmo {
       }
     }
     if (best != null) return best;
-    // And near the square's edges: from a camera looking along the floor
-    // it is a sliver, and the sliver is still meant.
+    // And near the square's edges: seen along the floor it is a sliver,
+    // still meant to be caught.
     for (var k = 0; k < sq.length; k++) {
       if (_toSegment(page, sq[k], sq[(k + 1) % sq.length]) <= reach * 0.6) {
         return GizmoPart.floor;
@@ -203,19 +200,18 @@ class StageGizmo {
     return (p - (a + ab * t)).distance;
   }
 
-  /// dragged is the spot [part] dragged from [from] to [to] -- page points
-  /// -- puts it on, from where it stood when the drag began. [pageScale]
-  /// is screen pixels to a page unit; with [step] above nought it moves in
-  /// steps of that many metres, and with [turn] turns in steps of that
-  /// many degrees.
+  /// dragged is the spot that dragging [part] from [from] to [to] (page points)
+  /// puts it on, from where it stood when the drag began. [pageScale] is screen
+  /// pixels to a page unit; [step] above nought moves in steps of that many
+  /// metres, and [turn] turns in steps of that many degrees.
   StageSpot dragged(GizmoPart part, Offset from, Offset to,
       {double pageScale = 1, double step = 0, double turn = 0}) {
     var spot = at.spot;
     double snap(double v) => step > 0 ? (v / step).roundToDouble() * step : v;
     switch (part) {
       case GizmoPart.x || GizmoPart.y || GizmoPart.z:
-        // Along the arrow as it is seen: how far the pointer went along it,
-        // in the arrow's own metres.
+        // Along the arrow as seen: how far the pointer went along it, in the
+        // arrow's own metres.
         var along = tip(part) - centre;
         var len = along.distanceSquared;
         if (len < 1e-9) return spot;

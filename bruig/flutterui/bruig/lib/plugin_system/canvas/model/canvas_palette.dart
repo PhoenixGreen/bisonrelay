@@ -4,17 +4,13 @@ import 'dart:ui' show Color;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 
-// canvas_palette.dart is one colour changed everywhere a document uses it:
-// shapes, words, charts, tables, backgrounds, transitions -- the saved
-// colours' Replace everywhere. See CanvasController.replaceColour.
-//
-// The colours stay where they always were, on each element as a plain
-// colour, and are changed where they are. That keeps every painter, every
-// export and every document ever saved exactly as it was.
+// canvas_palette.dart is one colour changed everywhere a document uses it,
+// by walking the document's JSON (the saved colours' Replace everywhere; see
+// CanvasController.replaceColour), and reading the colours a canvas already
+// uses. Colours stay plain values on each element.
 
 /// _notColours are keys whose numbers are never colours, however much they
 /// look like one: frames, lengths, counts, a chart's numbers, a counter's.
-/// A colour is a large integer, and so is thirty million atoms.
 const _notColours = {
   "frame",
   "frames",
@@ -60,8 +56,7 @@ const _notColours = {
 int _rgb(int argb) => argb & 0xFFFFFF;
 
 /// _looksLikeColour is whether [v] could be a colour at all: an integer with
-/// some opacity in it. A colour with none is invisible, and nothing is lost
-/// by leaving it alone.
+/// some opacity in it.
 bool _looksLikeColour(Object? v) =>
     v is int && v >= 0x01000000 && v <= 0xFFFFFFFF;
 
@@ -84,8 +79,7 @@ Object? _walk(Object? json, int Function(int) visit, {bool skip = false}) {
 
 /// recoloured is [json] -- a whole document's -- with every use of [from]
 /// made [to]. A use is any colour with [from]'s red, green and blue,
-/// whatever its opacity: a shade drawn in the brand blue at half strength
-/// is the brand blue too, and keeps its half.
+/// whatever its opacity, which is kept.
 Map<String, dynamic> recoloured(
     Map<String, dynamic> json, Color from, Color to) {
   var old = _rgb(colorToJson(from));
@@ -97,9 +91,7 @@ Map<String, dynamic> recoloured(
 
 /// CanvasColours is what a canvas is already dressed in: the [ground]
 /// behind it, the [ink] its words are in, and the [accent] its shapes and
-/// headings stand out in. For an element that should look like it belongs
-/// -- a table dropped on to a design -- rather than arrive in a look of its
-/// own.
+/// headings stand out in, so a new element such as a table can match.
 class CanvasColours {
   final Color ground;
   final Color ink;
@@ -148,8 +140,8 @@ double _saturation(Color c) {
 }
 
 /// tableInColours is [e] dressed in [colours]: its header band in the
-/// accent, its words in the ink, its rules and stripes faint ink -- the
-/// sizes, rules and everything else as they were.
+/// accent, its words in the ink, its rules and stripes faint ink; nothing
+/// else changes.
 TableElement tableInColours(TableElement e, CanvasColours colours) {
   var onAccent = colours.accent.computeLuminance() > 0.4
       ? const Color(0xFF111418)

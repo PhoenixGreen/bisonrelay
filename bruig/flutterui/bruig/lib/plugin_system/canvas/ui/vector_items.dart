@@ -5,20 +5,19 @@ import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_cut.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 
-// vector_items.dart is what the select shapes tool picks: a whole shape --
-// with whatever is combined into it -- or one piece of a shape the knife
-// has cut. Each is moved, sized and turned by a box round it, as an element
-// is, and lined up with the others by the align tool. See VectorItem.
+// vector_items.dart is what the select shapes tool picks: a whole shape (with
+// whatever is combined into it) or one piece of a shape the knife has cut, each
+// moved, sized and turned by a box round it and lined up by the align tool.
 
-/// VectorItem is one thing the select shapes tool picks: shape [shape] --
-/// the first of its run of combined shapes, where it is whole -- and, where
-/// it has been cut, which of its pieces.
+/// VectorItem is one thing the select shapes tool picks: shape [shape] (the
+/// first of its run of combined shapes, where it is whole) and, where it has
+/// been cut, which of its pieces.
 typedef VectorItem = ({int shape, int part});
 
 /// _cut is whether [s] is in pieces, each its own item.
 bool _cut(VectorShape s) => partsOf(s).length > 1;
 
-/// itemRuns is every shape the item moves and, for each, which of its runs:
+/// _itemRuns is every shape the item moves and, for each, which of its runs:
 /// all of a whole shape's group, or one piece of a cut one.
 List<(int, bool Function(VectorPath))> _itemRuns(
     VectorElement e, VectorItem item) {
@@ -69,8 +68,8 @@ Rect? itemsExtent(VectorElement e, Iterable<VectorItem> items) {
   return box;
 }
 
-/// withItemsMapped is [e] with [items] moved as [point] says -- and their
-/// handles, which are directions rather than places, as [vector] says.
+/// withItemsMapped is [e] with [items] moved as [point] says, and their
+/// handles (directions, not places) as [vector] says.
 VectorElement withItemsMapped(VectorElement e, Iterable<VectorItem> items,
     Offset Function(Offset) point, Offset Function(Offset) vector,
     {double width = 1}) {
@@ -132,9 +131,9 @@ VectorElement withItemsTurned(VectorElement e, Iterable<VectorItem> items,
   return withItemsMapped(e, items, (p) => centre + turn(p - centre), turn);
 }
 
-/// withItemsAligned lines [items] up as [how] says -- each by its box, to
-/// the edge or middle of the box round them all, or spread evenly between
-/// the outermost two by their middles.
+/// withItemsAligned lines [items] up as [how] says: each by its box, to the
+/// edge or middle of the box round them all, or spread evenly between the
+/// outermost two by their middles.
 VectorElement withItemsAligned(
     VectorElement e, List<VectorItem> items, VectorAlign how) {
   var boxes = <(VectorItem, Rect)>[

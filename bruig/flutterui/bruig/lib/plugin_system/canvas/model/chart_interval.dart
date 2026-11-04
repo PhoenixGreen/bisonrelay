@@ -3,17 +3,9 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // chart_interval.dart is how often a chart takes a reading from a series that
-// runs on time.
-//
-// Thinning a series evenly -- keep one point in thirty -- gives a readable
-// chart and a meaningless axis: the labels land wherever the arithmetic put
-// them, so a ten-year chart is read against "Mar 17, Nov 19, Jul 22". What
-// somebody actually wants is one point a year, on a date they choose, so the
-// axis says 2017, 2018, 2019 and each reading is comparable with the one
-// before it.
-//
-// This is the choosing, not the drawing. It answers "which of these rows",
-// and everything about how the result looks is the chart's own business.
+// runs on time: one a year on a chosen date, say, rather than one point in
+// thirty, so the axis lands on meaningful dates. It chooses rows only; the
+// chart does the drawing.
 
 /// IntervalUnit is how far apart the readings are.
 enum IntervalUnit {
@@ -30,10 +22,8 @@ enum IntervalUnit {
   static IntervalUnit fromName(String? name) =>
       values.firstWhere((u) => u.name == name, orElse: () => none);
 
-  /// days is roughly how long one is, which is only used to decide whether a
-  /// row is near enough to a mark to stand for it. Roughly is the right word
-  /// and the right precision: months are not all the same length and it does
-  /// not matter here.
+  /// days is roughly how long one is, used only to decide whether a row is
+  /// near enough to a mark to stand for it.
   double get days => switch (this) {
         none => 0,
         day => 1,
@@ -43,23 +33,17 @@ enum IntervalUnit {
         year => 365.25,
       };
 
-  /// hasMonth and hasDay are which parts of the anchor mean anything. A
-  /// monthly reading has a day of the month and no month; a weekly one has a
-  /// day of the week and neither.
+  /// hasMonth, hasDay and hasWeekday are which parts of the anchor mean
+  /// anything for this unit.
   bool get hasMonth => this == year;
   bool get hasDay => this == month || this == quarter || this == year;
   bool get hasWeekday => this == week;
 }
 
 /// IntervalPick is what a reading is made of: one of the rows in the period,
-/// or all of them combined.
-///
-/// Which of these is right is a fact about the series and not about the
-/// chart, and there is no way to tell from the numbers. Transactions a day
-/// added up over a year is the year's transactions, which is exactly what
-/// somebody charting them wants; the seconds between blocks added up over a
-/// year is a number that means nothing at all. So it is asked rather than
-/// guessed.
+/// or all of them combined. It is asked rather than guessed: adding up daily
+/// transactions makes sense, adding up block times does not, and the numbers
+/// cannot tell the two apart.
 enum IntervalPick {
   nearest("The reading on that date"),
   total("Added up"),
@@ -70,9 +54,8 @@ enum IntervalPick {
   final String label;
   const IntervalPick(this.label);
 
-  /// combines is whether a reading is made of the whole period rather than of
-  /// one row in it, which is the difference between the two ways rows are
-  /// chosen. See [pickAtIntervals] and [groupAtIntervals].
+  /// combines is whether a reading is made of the whole period
+  /// ([groupAtIntervals]) rather than one row in it ([pickAtIntervals]).
   bool get combines => this != nearest;
 
   static IntervalPick fromName(String? name) =>
@@ -104,14 +87,9 @@ class IntervalGroup {
   const IntervalGroup(this.at, this.rows);
 }
 
-/// ChartInterval is the choosing: how often, and measured from when.
-///
-/// The anchor is the part that is easy to leave out and is the whole point of
-/// the feature. "One a year" starting from whenever the data happens to begin
-/// is a chart whose readings are a year apart and land on no date in
-/// particular; "one a year on 7 February" is a set of readings that can be
-/// compared, and is what somebody charting a season, a financial year or an
-/// anniversary is asking for.
+/// ChartInterval is how often readings are taken, and the anchor date they
+/// are measured from ("one a year on 7 February"), whatever date the data
+/// begins on.
 class ChartInterval {
   final IntervalUnit unit;
 
@@ -158,26 +136,19 @@ class ChartInterval {
         how: how ?? this.how,
       );
 
-  /// marks is every reading date between [first] and [last] inclusive.
-  ///
-  /// Walked from an anchor rather than from the first datum, so the dates are
-  /// the ones asked for: 7 February of each year, whatever day the series
-  /// happens to start on. The walk begins at or before [first] so that a
-  /// series starting a fortnight after the anchor still has a reading near
-  /// its beginning.
+  /// marks is every reading date from the anchor at or before [first] up to
+  /// [last], so a series starting a fortnight after the anchor still has a
+  /// reading near its beginning.
   List<DateTime> marks(DateTime first, DateTime last) {
     if (!on || last.isBefore(first)) return const [];
     var step = every < 1 ? 1 : every;
     var at = _anchorFor(first);
-    // Back one step if the anchor has already passed the start, so the first
-    // mark is not inside the series.
     while (at.isAfter(first)) {
       at = _step(at, -step);
     }
 
     var out = <DateTime>[];
-    // A cap rather than a while(true): a daily interval over twenty years is
-    // seven thousand marks, and a chart is a few inches wide.
+    // Capped: more marks than this cannot be drawn apart anyway.
     for (var i = 0; i < 4000; i++) {
       if (at.isAfter(last)) break;
       out.add(at);
@@ -215,12 +186,9 @@ class ChartInterval {
   /// following one begins.
   DateTime next(DateTime at) => _step(at, every < 1 ? 1 : every);
 
-  /// _step moves a mark on by [by] units, keeping the anchor's day.
-  ///
-  /// Through the year and month numbers rather than by adding days, because a
-  /// month is not a fixed number of them and a year is not either -- adding
-  /// 365 days repeatedly walks the anniversary backwards through the calendar
-  /// one day every four years.
+  /// _step moves a mark on by [by] units, keeping the anchor's day. Months and
+  /// years step through the calendar numbers, not by adding days, so the
+  /// anniversary does not drift.
   DateTime _step(DateTime at, int by) {
     switch (unit) {
       case IntervalUnit.none:
@@ -260,27 +228,21 @@ class ChartInterval {
       };
 
   factory ChartInterval.fromJson(Map<String, dynamic> json) => ChartInterval(
-        unit: IntervalUnit.fromName(json["unit"] as String?),
+        unit: IntervalUnit.fromName(jsonStr(json["unit"])),
         every: jsonInt(json["every"], 1).clamp(1, 99),
         month: jsonInt(json["month"], 1).clamp(1, 12),
         day: jsonInt(json["day"], 1).clamp(1, 31),
         weekday: jsonInt(json["weekday"], DateTime.monday).clamp(1, 7),
-        how: IntervalPick.fromName(json["how"] as String?),
+        how: IntervalPick.fromName(jsonStr(json["how"])),
       );
 }
 
-/// groupAtIntervals is which rows *make up* each reading.
+/// groupAtIntervals is which rows *make up* each reading: a period runs from
+/// its mark up to the next. Deliberately unlike [pickAtIntervals], which takes
+/// the nearest row from either side.
 ///
-/// A period runs from its mark to the next one -- the year beginning on the
-/// seventh of February -- which is the only sensible thing to add up. That is
-/// deliberately not the rule [pickAtIntervals] uses: a reading *on* a date is
-/// the row nearest it from either side, and the row three days before the
-/// seventh of February is the answer to "what was it on the seventh", while
-/// belonging to the year before for the purpose of adding one up.
-///
-/// Periods with nothing in them are left out rather than drawn as zero: a
-/// chart with a bar of nothing for a year it has no figures for says the
-/// chain stopped, which is a different claim from having no data.
+/// Empty periods are left out rather than drawn as zero, since zero would
+/// claim a value where there is no data.
 List<IntervalGroup> groupAtIntervals(
     List<DateTime?> when, ChartInterval interval) {
   if (!interval.on) return const [];
@@ -308,13 +270,9 @@ List<IntervalGroup> groupAtIntervals(
   return out;
 }
 
-/// pickAtIntervals is which rows stand for the readings.
-///
-/// For each mark, the row nearest it -- and none where the nearest row is
-/// more than half an interval away, because a chart that draws a point for a
-/// year it has no data for is a chart telling a lie about the gap. The same
-/// row is never used twice: a series that stops half way through has fewer
-/// readings, not the same reading over and over.
+/// pickAtIntervals is which rows stand for the readings: for each mark, the
+/// nearest unused row, and none where that is more than half an interval
+/// away, so a gap in the data stays a gap.
 List<int> pickAtIntervals(List<DateTime?> when, ChartInterval interval) {
   if (!interval.on) return [for (var i = 0; i < when.length; i++) i];
 

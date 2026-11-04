@@ -1,5 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonDouble;
+    show jsonDouble, jsonStr;
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 
 // play.dart is a canvas played as a game: what each element does when it is
@@ -156,7 +156,7 @@ class PlaySpec {
   factory PlaySpec.fromJson(Object? json) {
     if (json is! Map) return const PlaySpec();
     return const PlaySpec().copyWith(
-      as: PlayAs.fromName(json["as"] as String?),
+      as: PlayAs.fromName(jsonStr(json["as"])),
       speed: jsonDouble(json["speed"], 320),
       jump: jsonDouble(json["jump"], 180),
       gravity: jsonDouble(json["gravity"], 2200),
@@ -277,8 +277,8 @@ enum PlayFeel {
 }
 
 /// GameDoes is something that happens in a game: a count added to or taken
-/// from, another scene -- a chosen one, or the next: levels one after
-/// another -- the game started again or ended.
+/// from, a move to a chosen or the next scene, or the game restarted or
+/// ended.
 enum GameDoes {
   nothing("Nothing"),
   add("Add to a count"),
@@ -307,9 +307,8 @@ enum GameDoes {
 }
 
 /// GameEffect is one thing that happens: [does], to the count [count] by
-/// [amount], to the scene [scene], or to the element [element] -- each by
-/// its id, as a button keeps its own, so moving the scenes about does not
-/// point it at another.
+/// [amount], to the scene [scene], or to the element [element]. Each is held
+/// by id, so reordering scenes does not retarget it.
 class GameEffect {
   final GameDoes does;
   final String count;
@@ -356,7 +355,7 @@ class GameEffect {
   factory GameEffect.fromJson(Object? json) {
     if (json is! Map) return const GameEffect();
     return GameEffect(
-        does: GameDoes.fromName(json["does"] as String?),
+        does: GameDoes.fromName(jsonStr(json["does"])),
         count: json["count"] is String ? json["count"] as String : "",
         amount: json["amount"] is num
             ? (json["amount"] as num).toInt().clamp(1, 1000000)
@@ -510,7 +509,7 @@ class ControlAction {
 // The keys, by LogicalKeyboardKey id, the defaults are pressed by.
 const int _left = 0x100000302, _right = 0x100000303;
 const int _up = 0x100000304, _down = 0x100000301;
-const int _space = 0x20;
+const int _space = 0x20, _enter = 0x10000000d;
 int _letter(String c) => c.codeUnitAt(0);
 
 /// defaultControls are a game's usual six: move four ways, jump, act -- on
@@ -532,11 +531,24 @@ final List<ControlAction> defaultControls = [
   ControlAction("act", "Action", keys: [_letter("e")], pad: const [PadInput.x]),
 ];
 
+/// sharedDefaultControls are the first player's usual controls when a
+/// second shares the keyboard: the arrows, Space to jump and Enter to act,
+/// leaving WASD, F and E to the second.
+final List<ControlAction> sharedDefaultControls = [
+  for (var a in defaultControls)
+    a.copyWith(
+        keys: a.id == "act"
+            ? const [_enter]
+            : [
+                for (var k in a.keys)
+                  if (k > 0xFF || k == _space) k
+              ]),
+];
+
 /// defaultControlsFor is player [player]'s usual controls: the first
-/// player's are [defaultControls]; the second's WASD with F to jump and E
-/// to act -- one keyboard shared -- and the third's and fourth's a
-/// controller's alone. Every player's controller buttons are the same: each
-/// has a controller of its own.
+/// player's are [defaultControls], the second's WASD with F to jump and E to
+/// act, and the third's and fourth's controller only. Controller buttons are
+/// the same for all: each player has their own controller.
 List<ControlAction> defaultControlsFor(int player) {
   if (player <= 1) return defaultControls;
   if (player == 2) {

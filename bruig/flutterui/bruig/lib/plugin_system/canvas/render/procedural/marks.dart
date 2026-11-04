@@ -1,22 +1,20 @@
 part of 'generators.dart';
 
-// marks.dart is the new kinds the Organic and Graphic & comic styles were
-// given: filled terrain, soft fire and embers, halftone dots that are not
-// circles, parallel speed lines, shaded hatching, drips and spray.
-//
-// The styles themselves are still in generators.dart, each drawing what it
-// always drew by default and handing over to one of these when asked.
+// marks.dart is the extra kinds of mark the Organic and Graphic & comic
+// styles can draw: terrain, soft fire and embers, non-round halftone dots,
+// parallel speed lines, shaded hatching, drips, spray, splashes and
+// watercolour. The styles themselves are in generators.dart and call these
+// when the matching kind is chosen.
 
-/// _terrain fills the bands between contour lines, low ground in the base
-/// colour rising through the main colour to the accent at the peaks -- the
-/// colours of a relief map.
+/// _terrain fills the bands between contour lines like a relief map:
+/// background at the lowest, through foreground, to accent at the peaks.
 void _terrain(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
     List<List<double>> field, int cols, int rows, double cell, int levels) {
-  // The field's own grid, so each corner is a value already worked out.
+  // The field's own grid, so each corner samples an existing value.
   var area = Rect.fromLTWH(rect.left, rect.top, cols * cell, rows * cell);
   _colourGrid(canvas, area, cols, rows, (u, v) {
     var f = field[(v * rows).round()][(u * cols).round()];
-    // Stepped, so that each band is one colour, as a printed map is.
+    // Stepped, so each band is one colour.
     var band = (f * levels).floor() / levels;
     var c = band < 0.5
         ? Color.lerp(spec.background, spec.foreground, band * 2)!
@@ -25,9 +23,9 @@ void _terrain(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
   });
 }
 
-/// _screenDot is one dot of a halftone screen that is not a circle: a
-/// square or a diamond turned to the screen, or a short bar -- which, side
-/// by side, are the lines of a line screen.
+/// _screenDot is one non-round halftone dot turned to the screen: [shape] 1
+/// is a square, 2 a diamond, anything else a bar the width of its cell
+/// (side by side, a line screen).
 void _screenDot(ui.Canvas canvas, Offset p, double size, double step, int shape,
     double cos, double sin, Paint paint) {
   Offset turned(double x, double y) =>
@@ -41,28 +39,25 @@ void _screenDot(ui.Canvas canvas, Offset p, double size, double step, int shape,
       var h = size * 1.2;
       corners = [turned(0, -h), turned(h, 0), turned(0, h), turned(-h, 0)];
     default:
-      // A bar the full width of its cell, as thick as the ink is heavy.
       var w = step / 2 + 0.5, h = size * 0.8;
       corners = [turned(-w, -h), turned(w, -h), turned(w, h), turned(-w, h)];
   }
   canvas.drawPath(Path()..addPolygon(corners, true), paint);
 }
 
-/// _parallelLines is speed lines that all run one way: a streak of motion
-/// across the frame rather than a burst out of a point.
+/// _parallelLines is speed lines that all run one way, rather than a burst
+/// out of a point.
 void _parallelLines(
     ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var count = (12 + spec.density * 90).round();
   var paint = Paint();
-  // Turned by the pattern's own rotation like everything else; across the
-  // frame by default.
+  // Horizontal here; the pattern's own rotation turns them.
   for (var i = 0; i < count; i++) {
     var y = rect.top + hash(spec.seed + 3, i, 0) * rect.height;
     var thick = rect.height *
         (0.002 + hash(spec.seed + 5, i, 1) * 0.012 * (0.4 + spec.variation));
     var len = rect.width * (0.25 + hash(spec.seed + 7, i, 2) * 0.6);
-    // Each streak travelling at its own pace, coming round again once it is
-    // off the far side.
+    // Each streak at its own pace, wrapping once off the far side.
     var speed = 0.2 + hash(spec.seed + 9, i, 3) * 0.6;
     var x0 = hash(spec.seed + 11, i, 4) + (spec.animated ? t * speed : 0);
     x0 = (x0 - x0.floorToDouble()) * (rect.width + len) - len;
@@ -82,9 +77,8 @@ void _parallelLines(
   }
 }
 
-/// _hatchLine is one stroke of hatching drawn by hand: wavering a little
-/// where it is asked to, and -- shaded -- laid only where the tone is dark
-/// enough for this pass of strokes to be there.
+/// _hatchLine is one hand-drawn stroke of hatching, wavering by [wobble]
+/// and, when [shaded], laid only where the tone is dark enough for [pass].
 void _hatchLine(
     ui.Canvas canvas,
     Rect rect,
@@ -101,9 +95,8 @@ void _hatchLine(
     int seed,
     Paint paint) {
   var pieces = math.max(4, (half * 2 / (step * 1.5)).ceil());
-  // Each pass of strokes is only laid where the tone is darker than the
-  // last: the first everywhere but the lightest places, the third only in
-  // the deepest shadow. Which is how hatching makes a tone at all.
+  // Each later pass needs a darker tone, so the third pass lands only in
+  // the deepest shadow: that is how hatching makes a tone.
   var threshold = 0.35 + pass * 0.15;
   Path? run;
   var path = Path();
@@ -144,9 +137,8 @@ void _hatchLine(
         ..style = PaintingStyle.stroke);
 }
 
-/// _drips is paint running down from the top edge: a wet band along the
-/// top, and runs of it hanging down at different lengths, each ending in a
-/// drop.
+/// _drips is paint running down from the top edge: a wet band, and runs of
+/// different lengths hanging from it, each ending in a drop.
 void _drips(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var unit = _unit(rect, spec);
   var runs = (6 + spec.density * 40).round();
@@ -157,7 +149,6 @@ void _drips(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var seed = spec.seed + layer * 101;
     var top = rect.top + (layer == 0 ? 0 : band * 0.4);
     var depth = layer == 0 ? band : band * 0.55;
-    // The band along the top, its lower edge wavering.
     var edge = Path()..moveTo(rect.left, top);
     var steps = 40;
     for (var k = 0; k <= steps; k++) {
@@ -173,8 +164,7 @@ void _drips(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       var x = rect.left + hash(seed, i, 1) * rect.width;
       var w = unit * (0.25 + hash(seed, i, 2) * 0.9 * (0.4 + spec.variation));
       var full = rect.height * (0.08 + hash(seed, i, 3) * 0.7);
-      // Still running, where it moves: each run creeps down to its full
-      // length over a few seconds and stays there.
+      // Animated, each run creeps down to its full length and stays there.
       var grown = spec.animated
           ? (t * (0.15 + hash(seed, i, 4) * 0.3)).clamp(0.0, 1.0)
           : 1.0;
@@ -189,8 +179,8 @@ void _drips(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   }
 }
 
-/// _spray is paint from an airbrush: clouds of fine specks, thick in the
-/// middle of each and thinning out to nothing.
+/// _spray is airbrushed paint: clouds of fine specks, thick in the middle
+/// and thinning out.
 void _spray(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var unit = _unit(rect, spec);
   var clouds = (2 + spec.density * 10).round();
@@ -203,8 +193,8 @@ void _spray(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var specks = (r * r / (unit * unit) * 45).round().clamp(80, 12000);
     var points = Float32List(specks * 2);
     for (var k = 0; k < specks; k++) {
-      // Gathered towards the middle: the square of a random number is
-      // small far more often than it is large.
+      // Gathered towards the middle: a power above 1 of a random number is
+      // small more often than large.
       var d = r * math.pow(rnd.next(), 1.6 - spec.variation * 0.6);
       var a = rnd.next() * math.pi * 2;
       points[k * 2] = centre.dx + math.cos(a) * d;
@@ -220,9 +210,9 @@ void _spray(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   }
 }
 
-/// _softFire is fire as light rather than as shapes: tongues filled from a
-/// hot core at the bottom, through the main colour, to nothing at the tips,
-/// laid over one another additively and softened.
+/// _softFire is fire as light rather than shapes: tongues graded from an
+/// accent core through foreground to nothing at the tips, added together
+/// and blurred.
 void _softFire(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var noise = ValueNoise(spec.seed);
   var tongues = (6 + spec.density * 30).round();
@@ -236,7 +226,6 @@ void _softFire(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var x = rect.left +
         (i + 0.5) / tongues * rect.width +
         hashRange(spec.seed + 3, i, 0, -1, 1) * rect.width / tongues;
-    // Flickering: a tongue's height swells and falls of its own accord.
     var flicker =
         0.8 + 0.2 * math.sin(t * (3 + hash(spec.seed + 4, i, 0) * 4) + i * 1.3);
     var height = rect.height *
@@ -276,8 +265,7 @@ void _softFire(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   canvas.restore();
 }
 
-/// _embers is sparks rising from the fire, each drifting as it climbs and
-/// fading out before it reaches the top.
+/// _embers is sparks rising and drifting, fading out before the top.
 void _embers(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var many = (spec.p("embers") * 80).round();
   var unit = _unit(rect, spec);
@@ -306,8 +294,8 @@ void _embers(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   }
 }
 
-/// _smoothClosed is a closed curve passing smoothly through [pts]: a
-/// Catmull-Rom spline, turned into the cubic curves a Path takes.
+/// _smoothClosed is a closed Catmull-Rom curve through [pts], as cubics.
+/// Fewer than three points gives an empty path.
 Path _smoothClosed(List<Offset> pts) {
   var path = Path();
   var n = pts.length;
@@ -322,9 +310,8 @@ Path _smoothClosed(List<Offset> pts) {
   return path..close();
 }
 
-/// _splash is paint thrown hard at a wall: a smooth body, spikes shot out
-/// from it with drops pinching off their tips, teardrops flung further, and
-/// a fine mist round it all.
+/// _splash is paint thrown at a wall: a smooth body, spikes with drops off
+/// their tips, teardrops flung further, and a fine mist.
 void _splash(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var unit = _unit(rect, spec);
   var splats = (1 + spec.density * 9).round();
@@ -340,7 +327,7 @@ void _splash(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       ..isAntiAlias = true;
     var wild = 0.4 + spec.variation;
 
-    // The body: lumpy, but smooth -- liquid has no corners.
+    // The body: lumpy but smooth.
     const around = 28;
     var body = [
       for (var i = 0; i < around; i++)
@@ -354,8 +341,6 @@ void _splash(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     ];
     canvas.drawPath(_smoothClosed(body), paint);
 
-    // The spikes: tapering from the edge of the body to a point, and some
-    // with a drop pinched off the end.
     var spikes = (6 + wild * 12).round();
     for (var i = 0; i < spikes; i++) {
       var a = hash(seed, i, 7) * math.pi * 2;
@@ -407,7 +392,7 @@ void _splash(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       canvas.restore();
     }
 
-    // And the mist: specks too small to have a shape.
+    // The mist.
     var mist = (40 + wild * 160).round();
     var points = Float32List(mist * 2);
     for (var i = 0; i < mist; i++) {
@@ -426,9 +411,8 @@ void _splash(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   }
 }
 
-/// _watercolour is washes of paint on paper: each a few thin layers that
-/// do not quite line up, darker at the edges where the pigment gathered as
-/// it dried.
+/// _watercolour is washes on paper: each four thin layers slightly out of
+/// line, darker at the edges where the pigment gathered.
 void _watercolour(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var unit = _unit(rect, spec);
   var short = math.min(rect.width, rect.height);
@@ -439,9 +423,8 @@ void _watercolour(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var c = Offset(rect.left + hash(seed, 1, 0) * rect.width,
         rect.top + hash(seed, 2, 0) * rect.height);
     var r = short * (0.12 + hash(seed, 3, 0) * 0.2) * (unit / (short * 0.05));
-    // Each wash one paint or the other, with a little of the second run
-    // into it -- as colours bleed on wet paper. Mixed half and half they
-    // are mud.
+    // Mostly one colour with at most a quarter of the other: half and half
+    // is mud.
     var pick = hash(seed, 4, 0);
     var colour = pick < 0.55
         ? Color.lerp(spec.foreground, spec.accent, pick * 0.25)!
@@ -466,7 +449,7 @@ void _watercolour(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       var a = spec.intensity * 0.14;
       var tint = colour;
       canvas.drawPath(path, Paint()..color = _fade(tint, a));
-      // The edge, where the pigment collected as it dried.
+      // The darker edge.
       canvas.drawPath(
           path,
           Paint()
@@ -474,7 +457,7 @@ void _watercolour(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
             ..strokeWidth = math.max(1.0, r * 0.018)
             ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.01)
             ..color = _fade(tint, a * 2.2));
-      // And the grain of the pigment settling into the paper.
+      // Pigment grain, on the first layer only.
       if (layer == 0) {
         canvas.save();
         canvas.clipPath(path);

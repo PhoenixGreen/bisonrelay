@@ -6,12 +6,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'dart:math' as math;
 
-/// ShapeKind is which outline a shape element draws.
-///
-/// One element with a dropdown rather than one element per shape, because
-/// changing your mind about whether the callout is a circle or a rounded
-/// rectangle should not mean deleting it and losing its position, its colour
-/// and its place in the animation.
+/// ShapeKind is which outline a shape element draws. One element with a
+/// choice of outline, so changing it keeps everything else.
 enum ShapeKind {
   rectangle("Rectangle"),
   square("Square"),
@@ -36,15 +32,13 @@ enum ShapeKind {
       );
 
   /// isRegular means the shape only makes sense in a square box, so the
-  /// resize handles keep the aspect. A "circle" dragged into an oval is an
-  /// ellipse, and there is already an ellipse.
+  /// resize handles keep the aspect.
   bool get isRegular => this == ShapeKind.square || this == ShapeKind.circle;
 
   /// hasPoints is whether the point count control applies.
   bool get hasPoints => this == ShapeKind.star;
 
-  /// hasCorners is whether rounding the corners means anything. A circle has
-  /// none to round, and a field that does nothing is worse than no field.
+  /// hasCorners is whether rounding the corners means anything.
   bool get hasCorners =>
       this == ShapeKind.rectangle ||
       this == ShapeKind.square ||
@@ -85,19 +79,13 @@ enum BubbleTail {
 }
 
 /// SpeechBubbleSpec is everything about a speech bubble that a rectangle is
-/// not.
-///
-/// Its own object rather than six more fields on the element, for the same
-/// reason a text element's columns are: every one of them is meaningless
-/// unless the shape is a bubble, and grouping them is what lets the settings
-/// show them only then.
+/// not, grouped so the settings show it only for a bubble.
 class SpeechBubbleSpec {
   final BubbleBody body;
   final BubbleTail tail;
 
   /// tailAngle is where the tail leaves the bubble, in degrees clockwise from
-  /// the right-hand side -- so it travels all the way around rather than being
-  /// stuck at the bottom-left, which is where it used to be nailed.
+  /// the right-hand side.
   final double tailAngle;
 
   /// tailLength is how far the tail reaches past the bubble, as a fraction of
@@ -105,8 +93,7 @@ class SpeechBubbleSpec {
   final double tailLength;
 
   /// tailWidth is how wide the tail is where it meets the bubble, as the same
-  /// kind of fraction. Long and thin or short and fat are both bubbles people
-  /// draw.
+  /// kind of fraction.
   final double tailWidth;
 
   /// curl bends a curved tail. Ignored by the others.
@@ -149,8 +136,8 @@ class SpeechBubbleSpec {
 
   factory SpeechBubbleSpec.fromJson(Map<String, dynamic> json) =>
       SpeechBubbleSpec(
-        body: BubbleBody.fromName(json["body"] as String?),
-        tail: BubbleTail.fromName(json["tail"] as String?),
+        body: BubbleBody.fromName(jsonStr(json["body"])),
+        tail: BubbleTail.fromName(jsonStr(json["tail"])),
         tailAngle: jsonDouble(json["angle"], 115),
         tailLength: jsonDouble(json["length"], 0.45).clamp(0.0, 2.0),
         tailWidth: jsonDouble(json["width"], 0.32).clamp(0.02, 2.0),
@@ -165,19 +152,14 @@ class ShapeElement extends CanvasElement {
   final Color fill;
 
   /// painted is a picture or a pattern inside the shape instead of a flat
-  /// colour, cut to the shape's own outline.
-  ///
-  /// The same spec the letters and a box are painted with -- see TextFill --
-  /// because it is the same question asked of a third shape.
+  /// colour, cut to the shape's own outline: the same TextFill the letters
+  /// and a box are painted with.
   final TextFill painted;
   final Color strokeColor;
 
   /// fillFade and strokeFade are the second colours, when the fill or the
-  /// outline fades to one. Null for the flat ones, which is most of them.
-  ///
-  /// Set in the picker beside the colour itself rather than in settings of
-  /// their own -- see GradientSpec. That is why they have no on/off flag:
-  /// there either is a second colour or there is not.
+  /// outline fades to one, or null for flat. Set in the colour picker; see
+  /// GradientSpec.
   final GradientSpec? fillFade;
   final GradientSpec? strokeFade;
   final double strokeWidth;
@@ -187,28 +169,17 @@ class ShapeElement extends CanvasElement {
   final double cornerRadius;
 
   /// radTL, radTR, radBR and radBL are the corners that have been given their
-  /// own rounding, or null for "whatever [cornerRadius] says".
-  ///
-  /// The same shape a box's corners take, and the same [Corners] underneath,
-  /// so a rectangle shape and a picture's frame round themselves by one piece
-  /// of code. See BoxSpec.
+  /// own rounding, or null for "whatever [cornerRadius] says". The same
+  /// [Corners] a BoxSpec uses.
   final double? radTL;
   final double? radTR;
   final double? radBR;
   final double? radBL;
 
   /// padding is the room kept between the shape's edge and its label, and
-  /// padL..padB are the sides that have been given their own.
-  ///
-  /// Room inside rather than room around: a shape's label is words, and words
-  /// reflow into whatever is left -- unlike a picture, which has to keep its
-  /// proportions and would crop. See grownForPadding, which is the other
-  /// answer for the other case.
-  ///
-  /// Zero means the shape decides for itself, which is what it always did: a
-  /// circle needs more inset than a rectangle, a triangle more again, and
-  /// those fractions are the sensible default nobody should have to set. See
-  /// labelRoom.
+  /// padL..padB are the sides that have been given their own. Room inside,
+  /// since words reflow (a picture grows instead; see grownForPadding).
+  /// Zero lets the shape choose its own inset; see labelRoom.
   final double padding;
   final double? padL;
   final double? padT;
@@ -220,17 +191,14 @@ class ShapeElement extends CanvasElement {
   final int points;
   final double innerRatio;
 
-  /// text is the label inside. Empty is the normal case, and drawing nothing
-  /// costs nothing.
+  /// text is the label inside, usually empty.
   final String text;
   final TextSpec textSpec;
 
   /// bubble is read only when [shape] is a speech bubble.
   final SpeechBubbleSpec bubble;
 
-  /// animation is how the shape arrives and leaves. See ElementAnimation --
-  /// the same two keyframes a chart and a headline use, so they can arrive
-  /// together.
+  /// animation is how the shape arrives and leaves. See ElementAnimation.
   final ElementAnimation animation;
 
   const ShapeElement(
@@ -336,9 +304,7 @@ class ShapeElement extends CanvasElement {
     ElementAnimation? animation,
 
     /// clearCorners and clearRoom take the four overrides as given, nulls
-    /// and all, rather than filling a null with what was there before. What
-    /// "set all four corners to one number" needs: through the ordinary
-    /// copyWith the three that had their own would have survived it.
+    /// and all, so "set all four corners to one number" can clear them.
     bool clearCorners = false,
     bool clearRoom = false,
   }) =>
@@ -396,7 +362,7 @@ class ShapeElement extends CanvasElement {
 
   factory ShapeElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
       ShapeElement(b,
-          shape: ShapeKind.fromName(json["shape"] as String?),
+          shape: ShapeKind.fromName(jsonStr(json["shape"])),
           fill: colorFromJson(json["fill"], const Color(0xFF3D7EFF)),
           painted: json["painted"] is Map
               ? TextFill.fromJson((json["painted"] as Map).cast<String,

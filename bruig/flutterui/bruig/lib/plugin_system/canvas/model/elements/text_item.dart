@@ -1,27 +1,20 @@
+import 'dart:convert';
+
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
-// text_item.dart is the extra pieces of writing a text element carries
-// besides its own paragraph.
+// text_item.dart is the extra pieces (items) a text element carries besides
+// its own paragraph: words or pictures held to a slot of its box, so a card's
+// number, title and small print are one element.
 //
-// A card is four pieces of writing in one rectangle: a number over a title,
-// a line of small print under it, and a name against the right-hand edge.
-// Built out of elements that was four elements and a shape to hold them, all
-// of which had to be moved together, kept in step and re-made for the next
-// card. Built out of one element it is one thing to place, one box to draw
-// the rule down the side of, and one thing to animate.
-//
-// An item is not a *part*: a part is a run of the element's own sentence --
-// see TextPart -- and lives inside the paragraph's own layout. An item is a
-// separate string in a place of its own.
+// An item is not a *part*: a part (TextPart) is a run of the element's own
+// sentence inside the paragraph's layout; an item is a separate string or
+// picture in a place of its own.
 
 /// TextSlot is where an item sits in the box: three across by three down.
-///
-/// Slots rather than coordinates. A card wants its number in the top left and
-/// its name against the right-hand edge, and it wants them to stay there when
-/// the box is resized -- which is what a place expressed as a corner does and
-/// what a pair of numbers does not.
+/// Slots rather than coordinates, so items stay held to their edge when the
+/// box is resized.
 enum TextSlot {
   topLeft("Top left"),
   topCentre("Top centre"),
@@ -39,8 +32,7 @@ enum TextSlot {
   static TextSlot fromName(String? name) =>
       values.firstWhere((s) => s.name == name, orElse: () => TextSlot.topLeft);
 
-  /// across and down are the slot taken apart: which edge it is held to
-  /// sideways, and which one it is held to vertically.
+  /// across and down are the slot's horizontal and vertical alignment.
   TextAlignSpec get across => switch (this) {
         TextSlot.topLeft ||
         TextSlot.middleLeft ||
@@ -66,102 +58,56 @@ enum TextSlot {
       };
 }
 
-/// TextItem is one of those extra pieces: what it says, how it is set, and
-/// which of the nine slots it is in.
+/// _plainBox is an item's box as it is when nothing has been set.
+final String _plainBox = jsonEncode(const BoxSpec(padding: 0).toJson());
+
+/// TextItem is one extra piece of a text element: what it says (or the
+/// picture it is), how it is set, and which of the nine slots it is in.
 class TextItem {
-  /// id is its own, and survives being edited.
-  ///
-  /// The canvas is where the words are typed -- click an item and type into
-  /// it, the same gesture that opens the element's own paragraph -- and the
-  /// editor has to know which item it is holding open across the rebuild that
-  /// every keystroke causes. A position in the list would not do: moving an
-  /// item would move the editor onto a different one.
+  /// id is its own and survives edits, so the on-canvas editor keeps hold of
+  /// the right item across rebuilds and reorders.
   final String id;
 
   final String text;
 
-  /// name is what the panel calls this piece, where somebody has named it.
-  ///
-  /// The row is captioned with what the piece *says* otherwise, which is the
-  /// right answer for words and no answer at all for a picture -- every
-  /// picture piece said "Picture", so a card with three of them had three
-  /// rows called the same thing. A name is how you find the one you meant.
+  /// name is what the panel calls this piece, where somebody has named it;
+  /// otherwise the row shows what it says (see [says]).
   final String name;
 
-  /// spec is how this piece is set. Its own from top to bottom rather than
-  /// the element's with overrides: the number and the title of a card have
-  /// nothing in common but the box they are in.
-  ///
-  /// The slot decides how it is aligned, so [TextSpec.align] and
+  /// spec is how this piece is set: its own, not the element's with
+  /// overrides. The slot decides alignment, so [TextSpec.align] and
   /// [TextSpec.verticalAlign] are not read here -- see textItemRects.
   final TextSpec spec;
 
   final TextSlot slot;
 
-  /// icon is the picture this piece is, where it is a picture rather than
-  /// words. Null for words, which is what most pieces are.
-  ///
-  /// The same thing in the same list, because a picture in a corner of a box
-  /// and a word in a corner of a box are the same question: what, and where.
-  /// They were two features -- an icon had a place of its own, an alignment
-  /// of its own and a gap of its own, none of which was the ones the words
-  /// used -- and the one that could do less had the whole section.
+  /// icon is the picture this piece is, or null for words.
   final TextIcon? icon;
 
-  /// gap is the room between this piece and whatever is before it, in design
-  /// units: the piece above it in its slot, or -- for the first piece in a
-  /// slot -- the edge of the box the slot holds it to.
+  /// gap is the room, in design units, between this piece and what is before
+  /// it: the piece before it in its slot's stack, or for the first piece the
+  /// box edge the slot holds it to (the top edge for a top slot, the bottom
+  /// for a bottom one).
   ///
-  /// Which edge depends on the slot, and that is the point: at the top it is
-  /// the room above the stack, at the bottom the room below it. It used to be
-  /// "the room above" in every slot, which made it do nothing at all on the
-  /// first piece of a bottom stack -- the stack is pinned by its bottom, so
-  /// room above the top of it moves nothing. Reported as "the gap only works
-  /// for the second piece".
-  ///
-  /// What it buys is a *constant* distance. Two pieces in different slots are
-  /// held to different corners of the box, so the space between them is
-  /// whatever is left of the box -- which is the box's to decide, and a card
-  /// made taller pulls them apart. Two pieces in the same slot are a stack:
-  /// they sit one under the other in the order they were added, as far apart
-  /// as their gaps say and no further, and the stack as a whole is what the
-  /// slot holds to its corner.
-  ///
-  /// So a card whose number, title and note must keep their spacing puts all
-  /// three in one slot; a card whose pieces belong in the corners puts them
-  /// in three.
+  /// Pieces in one slot are a stack in the order added, kept exactly their
+  /// gaps apart however the box is resized; pieces in different slots move
+  /// apart as the box grows.
   final double gap;
 
-  /// box is what is drawn behind this piece: a colour, its corners and the
-  /// room between it and the words inside it.
-  ///
-  /// The same spec every other box on a canvas uses -- see BoxSpec -- so a
-  /// chip behind a number is rounded and padded by the same two settings a
-  /// card is, and each corner and each side can be set on its own where the
-  /// even ones are not enough.
-  ///
-  /// Empty by default, which draws nothing: the fill is transparent and the
-  /// padding is nought, so a piece with no background takes exactly the room
-  /// its words take.
+  /// box is what is drawn behind this piece (see BoxSpec). The default is
+  /// transparent with no padding, so it takes exactly the room its words do.
   final BoxSpec box;
 
   /// side is the room this piece keeps from the edge its slot holds it to
-  /// sideways: to the right of a piece held to the left, to the left of one
-  /// held to the right, and rightwards for one in the middle.
-  ///
-  /// One number rather than a left and a right, because it already goes both
-  /// ways -- a piece held to the left and moved by minus ten is ten further
-  /// left, which is the only thing a Left field could have said. Four of
-  /// them, one per side, was four fields saying what two say.
+  /// sideways: rightwards for a left or middle slot, leftwards for a right
+  /// one. Negative moves it the other way.
   final double side;
 
-  /// hidden is a piece left out of the drawing while it stays in its place:
-  /// the eye on its row in the Layers. What is under it in its slot does not
-  /// move up, as a picture's hidden layer moves nothing either.
+  /// hidden leaves the piece out of the drawing while it keeps its place:
+  /// the pieces after it in its slot do not move up.
   final bool hidden;
 
-  /// locked is a piece the canvas will not open for typing: the lock on its
-  /// row in the Layers, kept as it is while the others are worked on.
+  /// locked is a piece the canvas will not open for typing.
   final bool locked;
 
   const TextItem({
@@ -181,11 +127,6 @@ class TextItem {
   /// isIcon is whether this piece is a picture.
   bool get isIcon => icon != null;
 
-  /// fresh is a new item, in [slot], set the way [like] is.
-  ///
-  /// Started from the element's own type rather than from nothing, because
-  /// the piece being added nearly always belongs with what is already there:
-  /// a caption under a headline is the headline's face, smaller and quieter.
   /// freshIcon is a new picture piece, waiting for a picture to be chosen.
   factory TextItem.freshIcon(TextSlot slot) => TextItem(
         id: newElementId(),
@@ -193,6 +134,8 @@ class TextItem {
         icon: const TextIcon(size: 48),
       );
 
+  /// fresh is a new item in [slot], in [like]'s face at a smaller, regular
+  /// weight, since an added piece usually belongs with the element's type.
   factory TextItem.fresh(TextSlot slot, TextSpec like) => TextItem(
         id: newElementId(),
         text: "Text",
@@ -229,11 +172,8 @@ class TextItem {
         locked: locked ?? this.locked,
       );
 
-  /// scaledBy is this piece at [by] times the size: its type, the room it
-  /// keeps, and whatever is behind it.
-  ///
-  /// The slot is untouched -- it is a corner of the box, which does not
-  /// change size -- and so is what it says.
+  /// scaledBy is this piece at [by] times the size: its type, picture, box
+  /// and spacing. The slot and text are unchanged.
   TextItem scaledBy(double by) => copyWith(
         spec: spec.scaledBy(by),
         icon: icon?.copyWith(
@@ -243,8 +183,8 @@ class TextItem {
         side: side * by,
       );
 
-  /// says is what the settings panel calls this item: its own words, cut
-  /// short, or the slot it is in when it has none yet.
+  /// says is what the settings panel calls this item: its name, "Picture",
+  /// its first line cut short, or its slot when it has no words yet.
   String get says {
     if (name.trim().isNotEmpty) return name.trim();
     if (isIcon) return "Picture";
@@ -261,8 +201,7 @@ class TextItem {
         if (gap != 0) "gap": gap,
         if (side != 0) "side": side,
         if (icon != null) "icon": icon!.toJson(),
-        if (box.fill.a > 0 || box.hasBorder || box.padding != 0)
-          "box": box.toJson(),
+        if (jsonEncode(box.toJson()) != _plainBox) "box": box.toJson(),
         "spec": spec.toJson(),
         if (hidden) "hid": true,
         if (locked) "lock": true,
@@ -274,12 +213,11 @@ class TextItem {
             : newElementId(),
         text: json["t"] is String ? json["t"] as String : "",
         name: json["name"] is String ? json["name"] as String : "",
-        slot: TextSlot.fromName(json["slot"] as String?),
+        slot: TextSlot.fromName(jsonStr(json["slot"])),
         gap: json["gap"] is num
             ? (json["gap"] as num).toDouble().clamp(-400.0, 400.0)
             : 0,
-        // gapL and gapR are what the four-sided version wrote, for the day
-        // that one existed.
+        // gapL and gapR are older keys for the same room.
         side: _side(json["side"]) ??
             _side(json["gapL"]) ??
             _side(json["gapR"]) ??

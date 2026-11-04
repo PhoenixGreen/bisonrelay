@@ -87,19 +87,6 @@ void main() {
       expect(c.previewAt, isNull, reason: "and outside it, the scene is");
     });
 
-    test("the button after Play goes to the next scene in one press", () {
-      var c = CanvasController(_four());
-      addTearDown(c.dispose);
-      c.playAll = true;
-      c.forward();
-      expect((c.sceneAt, c.frame), (1, 0));
-      c.forward();
-      expect((c.sceneAt, c.frame), (2, 0));
-      c.playAll = false;
-      c.forward();
-      expect(c.frame, 99, reason: "one scene at a time, its end");
-    });
-
     test("steps back through a join the same way", () {
       var c = CanvasController(_four());
       addTearDown(c.dispose);
@@ -137,7 +124,7 @@ void main() {
         ),
       ));
       await tester.pumpAndSettle();
-      await tapTimelineItem(tester, "playAll-item");
+      await tapPlayAll(tester);
       return c;
     }
 

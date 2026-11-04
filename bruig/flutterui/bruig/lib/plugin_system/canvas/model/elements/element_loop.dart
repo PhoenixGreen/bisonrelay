@@ -2,14 +2,13 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/components/paint_spec.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 
 // element_loop.dart is an element's loop: a motion it goes on repeating --
 // after it has arrived, or on its own -- until the scene ends, or for so
-// many times. Part of the same Animation section an element's arrival and
-// exit are; a third thing it can do, not a second animation system.
+// many times. A third thing beside its arrival and exit.
 
 /// LoopFamily is a kind of loop, as the Animation section groups them.
 enum LoopFamily {
@@ -18,9 +17,9 @@ enum LoopFamily {
   line("Line"),
   effect("Effects"),
 
-  /// drift is a picture moving slowly inside its frame -- the documentary's
-  /// pan and zoom over a still -- once, across the loop's span. For
-  /// pictures only: see LoopFamily.forElement.
+  /// drift is a picture moving slowly inside its frame -- a pan and zoom over
+  /// a still -- once, across the loop's span. Offered for pictures only (see
+  /// the loop settings in settings_shared.dart).
   drift("Drift");
 
   final String label;
@@ -97,8 +96,8 @@ enum LoopPreset {
   /// glitch breaks into torn, colour-split slices in short bursts.
   glitch("Glitch bursts", LoopFamily.effect),
 
-  /// The drifts: the picture moved inside its frame, the frame staying put,
-  /// once from the loop's start to its end -- closer, further, or across.
+  /// The drifts: the picture moved inside its still frame, once from the
+  /// loop's start to its end.
   driftIn("Zoom in", LoopFamily.drift),
   driftOut("Zoom out", LoopFamily.drift),
   driftLeft("Pan left", LoopFamily.drift),
@@ -255,11 +254,9 @@ class ElementLoop {
   }
 
   /// driftAt is how far through a drift is at [frame], eased -- 0 before
-  /// it starts, 1 once it has ended, where it stays -- or null for a loop
-  /// that is not one. Once across the whole span: its cycle, rest and
-  /// repeats are a going-round's, and a drift does not go round.
-  /// [frame] may fall between frames, for a drift drawn smoothly while the
-  /// editor plays -- see betweenFrames.
+  /// it starts, 1 once it has ended -- or null for a loop that is not one.
+  /// Once across the whole span, ignoring cycle, rest and repeats. [frame]
+  /// may fall between frames while the editor plays; see betweenFrames.
   double? driftAt(num frame, {int? arrived, required int last}) {
     if (!on || !preset.drifts) return null;
     var start = from ?? arrived ?? 0;
@@ -294,14 +291,14 @@ class ElementLoop {
       };
 
   factory ElementLoop.fromJson(Map<String, dynamic> json) => ElementLoop(
-        preset: LoopPreset.fromName(json["preset"] as String?),
+        preset: LoopPreset.fromName(jsonStr(json["preset"])),
         cycle: math.max(1, jsonInt(json["cycle"], 24)),
         gap: math.max(0, jsonInt(json["gap"], 0)),
         repeats: math.max(0, jsonInt(json["repeats"], 0)),
         strength: jsonDouble(json["strength"], 1).clamp(0.0, 5.0),
         ease: json["ease"] == null
             ? ChartEase.linear
-            : ChartEase.fromName(json["ease"] as String?),
+            : ChartEase.fromName(jsonStr(json["ease"])),
         colour: json["colour"] == null
             ? const PaintSpec(Color(0xFFFFFFFF))
             : PaintSpec.fromJson(json["colour"], const Color(0xFFFFFFFF)),
@@ -415,13 +412,6 @@ LoopPose _motion(LoopPreset preset, double p, double s) {
   }
 }
 
-/// arrivalEnd is the frame [element]'s arrival finishes on -- its last
-/// reveal keyframe -- or null with none.
-int? arrivalEnd(CanvasElement element) {
-  int? end;
-  for (var key in element.track?.keys ?? const <Keyframe>[]) {
-    if (!key.values.containsKey(KeyframeChannel.reveal)) continue;
-    end = end == null ? key.frame : math.max(end, key.frame);
-  }
-  return end;
-}
+/// arrivalEnd is the frame [element]'s arrival finishes on, at [rate]
+/// frames a second, or null with none. See own_motion.dart.
+int? arrivalEnd(CanvasElement element, int rate) => ownEnd(element, rate);

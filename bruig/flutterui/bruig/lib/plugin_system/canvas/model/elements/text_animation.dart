@@ -5,19 +5,13 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 
-// text_animation.dart is how a text element arrives.
+// text_animation.dart is how a text element arrives: a closed set of
+// presets, built like a chart's (ChartAnimation's ease and stagger are reused,
+// not copied), with the length set on the timeline rather than here.
 //
-// Built the same way a chart's is -- a closed set of presets, two settings,
-// and a pair of keyframes on the element's own track so the length is dragged
-// on the timeline like everything else. See ChartAnimation, whose ease and
-// stagger are reused here rather than copied: a bounce is a bounce.
-//
-// The presets are not thirty separate animations. Each is a *scope* -- the
-// whole block, a line, a word, a letter -- and a *motion*, and most of the
-// list is one of half a dozen motions at a different scope. "Letters" and
-// "Words" are the same fade and rise applied to smaller pieces, and writing
-// them as one mechanism is what makes them consistent with each other rather
-// than thirty things that each drift.
+// Each preset is a scope (block, line, word, letter) and a motion, so most of
+// the list is a handful of motions at different scopes; "Letters" and "Words"
+// stay consistent because they are one mechanism.
 
 /// TextAnimationScope is what moves independently.
 enum TextAnimationScope {
@@ -29,9 +23,6 @@ enum TextAnimationScope {
 }
 
 /// TextAnimationFamily groups the presets in the settings.
-///
-/// The list is long enough that a flat one is unreadable; grouped, the
-/// question is "what kind of arrival" and then "which one".
 enum TextAnimationFamily {
   fade("Fade"),
   slide("Slide"),
@@ -48,12 +39,10 @@ enum TextAnimationFamily {
   const TextAnimationFamily(this.label);
 }
 
-/// TextMotion is what one piece actually does between nothing and arrived.
+/// TextMotion is what one piece does between nothing and arrived.
 ///
-/// The mechanisms, as opposed to the names people choose from. A preset is
-/// one of these with its numbers set, and the painter knows only these -- so
-/// adding a name to the list costs a row in a table rather than a branch in
-/// the drawing.
+/// The painter knows only these; a preset is one with its numbers set, so a
+/// new preset is a row in a table rather than a branch in the drawing.
 enum TextMotion {
   /// fade is opacity alone.
   fade,
@@ -96,19 +85,13 @@ enum TextMotion {
   /// highlight sweeps a band behind it.
   highlight,
 
-  /// strokeOn draws the type's outline onto words that are already there.
-  ///
-  /// The words are not hidden and nothing is filled in afterwards: what
-  /// happens is that the outline arrives, drawn along the line like a pen.
-  /// See TextDrawStart for the other way round, where they fade in with it.
+  /// strokeOn draws the type's outline, like a pen, onto words that are
+  /// already there. See TextDrawStart for fading the words in with it.
   strokeOn,
 
-  /// trail is an arrival that leaves copies of itself behind it.
-  ///
-  /// The piece comes in from an offset the way a slide does, and the copies
-  /// are strung out along the way it came, thinning as it settles until only
-  /// the words are left. Where an echo *keeps* its copies, a trail spends
-  /// them: what it draws is speed, not a stack.
+  /// trail comes in from an offset like a slide, with copies strung out
+  /// behind it that thin away as it settles. An echo keeps its copies; a
+  /// trail spends them.
   trail,
 
   /// mosaic resolves out of blocks: the piece is drawn coarse and comes into
@@ -119,38 +102,21 @@ enum TextMotion {
   /// each other, settling into register as it arrives.
   glitch,
 
-  /// pieces cuts the piece into a grid of tiles, each of which arrives from
-  /// somewhere of its own.
-  ///
-  /// One motion for both halves of what somebody asks for as two: tiles
-  /// coming together is a thing being built, and the same tiles going the
-  /// other way is a thing being destroyed. Which one it is depends on how far
-  /// they are thrown and how much they turn -- see EffectSpec -- and on
-  /// whether it is the arrival or the exit, since an exit is the arrival
-  /// played backwards.
+  /// pieces cuts the piece into a grid of tiles, each arriving from somewhere
+  /// of its own. Built up or broken apart is the same motion: it depends on
+  /// how far they are thrown and turn (see EffectSpec) and on whether it is
+  /// the arrival or the exit, which is the arrival played backwards.
   pieces,
 
-  /// echo repeats the words, fading, in a direction.
-  ///
-  /// A look as much as an arrival: the copies stay when it is over, which is
-  /// what the reference somebody sent looked like -- a word with four
-  /// quieter copies of itself under it. What it animates is the copies
-  /// fanning out from the words, nearest first.
+  /// echo repeats the words, fading, in a direction. The copies fan out
+  /// from the words, nearest first, and stay when it is over.
   echo;
 
-  /// keeps is whether the motion leaves something behind when it is over.
-  ///
-  /// The drawn ones do: an underline that is taken away the moment it
-  /// finishes being drawn is not an underline, it is a flicker. Everything
-  /// else ends with the words exactly as they would have been without any
-  /// animation at all, which is what lets the still drawing take over.
-  ///
-  /// strokeOn is one of them, and treating it as an arrival instead is what
-  /// made it strange to use: it hid the words and wrote them on, so choosing
-  /// it on a headline that was meant to sit there and be outlined turned the
-  /// whole element -- the words, the marks under them, everything -- into a
-  /// wipe. It is a mark drawn *on* words that are already there, like the
-  /// other two, and [TextDrawStart] says so.
+  /// keeps is whether the motion leaves something behind when it is over:
+  /// the drawn marks and an echo's copies. Everything else ends with the
+  /// words as they would be without animation, which lets the still drawing
+  /// take over. strokeOn is a mark drawn on words already there, not an
+  /// arrival that hides them; see [TextDrawStart].
   bool get keeps =>
       this == TextMotion.underline ||
       this == TextMotion.highlight ||
@@ -159,10 +125,8 @@ enum TextMotion {
 
   /// cuts is whether the motion draws the thing more than once -- in tiles,
   /// in slices, or through a filter -- rather than moving it as a whole.
-  ///
-  /// These cannot go through applyMotion, which sets a transform up and hands
-  /// back: they need whatever is being animated to be *drawable*, again and
-  /// again, so they take the drawing as a closure. See paintCutEffect.
+  /// These cannot go through applyMotion, which only sets a transform: they
+  /// take the drawing as a closure. See paintCutEffect.
   bool get cuts =>
       this == TextMotion.mosaic ||
       this == TextMotion.glitch ||
@@ -170,12 +134,8 @@ enum TextMotion {
 }
 
 /// MotionSpec is a motion with its numbers: the whole of what applyMotion
-/// needs to know.
-///
-/// Pulled out of the preset so that the same eighteen movements can drive
-/// something that is not text. Nothing here has ever been about words -- a
-/// motion is "move this box" -- but it could only be reached through
-/// TextAnimationPreset, so a shape or a picture had no way to fade in.
+/// needs to know. Separate from the preset so shapes and pictures use the
+/// same motions as text.
 class MotionSpec {
   final TextMotion motion;
 
@@ -207,10 +167,7 @@ class MotionSpec {
 }
 
 /// EffectSpec is how a cutting motion cuts: how many pieces, how far they are
-/// thrown, how much they turn.
-///
-/// The same three numbers answer for all of them, which is why they are one
-/// spec rather than three: a mosaic's blocks, a glitch's slices and a
+/// thrown, how much they turn. A mosaic's blocks, a glitch's slices and a
 /// shatter's tiles are the same cut read three ways.
 class EffectSpec {
   /// pieces is how many across the element is cut: 1 is not cut at all, 24 is
@@ -230,9 +187,8 @@ class EffectSpec {
   /// fraction of the whole. 0 moves them all together.
   final double stagger;
 
-  /// seed decides which piece goes where. The same seed is the same scatter
-  /// on every machine and at every export size -- a drawing routine that
-  /// consulted a random number would scatter differently on every frame.
+  /// seed decides which piece goes where, so the scatter is the same on
+  /// every frame, machine and export size.
   final int seed;
 
   const EffectSpec({
@@ -486,21 +442,13 @@ enum TextAnimationPreset {
   final bool scrambled;
 
   /// effect is how a cutting preset cuts, where it is one: Build up and
-  /// Break apart are the same motion and differ only in these numbers.
-  ///
-  /// The preset's own, the way [wants] is the preset's own curve: choosing it
-  /// writes these into the animation and then leaves them alone, so they are
-  /// a starting point rather than a setting that cannot be changed.
+  /// Break apart are the same motion and differ only in these numbers. Like
+  /// [wants], a starting point written in when the preset is chosen.
   final EffectSpec? effect;
 
   /// wants is the easing the preset was designed around, or null where it
-  /// does not care.
-  ///
-  /// A bounce is not a movement, it is a *curve*: the same rise, eased so it
-  /// overshoots and settles. Played with the ordinary ease-out it is a slide
-  /// with a misleading name, which is exactly what it looked like. Chosen,
-  /// the preset sets the End curve to this -- and leaves it alone afterwards,
-  /// so it is a starting point rather than a setting that cannot be changed.
+  /// does not care: a bounce is a rise eased to overshoot and settle.
+  /// Choosing the preset sets the End curve to this and then leaves it alone.
   final ChartEase? wants;
 
   const TextAnimationPreset(
@@ -551,12 +499,8 @@ enum TextAnimationPreset {
 /// TextDrawStart is what the words themselves do while something is being
 /// drawn on them.
 enum TextDrawStart {
-  /// showText leaves the words where they are and draws only the mark, which
-  /// is what an underline being drawn under a finished sentence looks like.
-  ///
-  /// The default, and it was not even an option: a draw preset hid the words
-  /// until the first frame was over, so a highlight sweeping across a
-  /// headline began with no headline.
+  /// showText leaves the words where they are and draws only the mark: an
+  /// underline drawn under a finished sentence. The default.
   showText("Already there"),
 
   /// fadeText brings the words in with the mark.
@@ -570,30 +514,22 @@ enum TextDrawStart {
 }
 
 /// TextDrawSpec is what a drawn mark looks like: an underline's line, a
-/// highlight's band.
-///
-/// Its own colour, because a highlight in the colour of the words it is
-/// behind is a solid block, and its own padding, because a band tight around
-/// the letters reads as a mistake where one with a little air reads as a
-/// highlighter.
+/// highlight's band. It has its own colour, since a band in the words' own
+/// colour is a solid block, and its own padding.
 class TextDrawSpec {
   /// color is the mark's own, or null to take the text's.
   final Color? color;
 
   final TextDrawStart start;
 
-  /// The four sides, kept separately so a band can be given more room above
-  /// and below than at the ends -- which is what a highlighter actually
-  /// looks like. The settings offer one field that writes all four and the
-  /// four on their own.
+  /// The four sides are kept apart so a band can have more room above and
+  /// below than at the ends.
   final double padLeft;
   final double padTop;
   final double padRight;
   final double padBottom;
 
-  /// radius rounds the band's corners, as a part's own highlight can be
-  /// rounded. A highlighter pen has no corners, and a drawn band with square
-  /// ones next to a part's rounded band is the same mark drawn two ways.
+  /// radius rounds the band's corners, as a part's own highlight can be.
   final double radius;
 
   const TextDrawSpec({
@@ -657,7 +593,7 @@ class TextDrawSpec {
         color: json["color"] == null
             ? null
             : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
-        start: TextDrawStart.fromName(json["start"] as String?),
+        start: TextDrawStart.fromName(jsonStr(json["start"])),
         padLeft: jsonDouble(json["l"], 0),
         padTop: jsonDouble(json["t"], 0),
         padRight: jsonDouble(json["r"], 0),
@@ -666,11 +602,8 @@ class TextDrawSpec {
       );
 }
 
-/// TextEchoSpec is how the copies of an echo are arranged.
-///
-/// The three numbers that decide what it looks like: how many, how far apart,
-/// and how much quieter each one is than the one before. The reference is
-/// five copies a line apart, each about a third fainter.
+/// TextEchoSpec is how the copies of an echo or trail are arranged: how
+/// many, how far apart, and how much quieter each is than the one before.
 class TextEchoSpec {
   /// copies is how many there are, not counting the words themselves.
   final int copies;
@@ -689,13 +622,9 @@ class TextEchoSpec {
   /// copies the same size. Below 1 the trail recedes.
   final double shrink;
 
-  /// resolve sends the copies on their way instead of leaving them there.
-  ///
-  /// An echo is a look: the copies fan out and stay, which is the reference
-  /// somebody sent. Resolved, it is an *arrival*: they fan out over the first
-  /// half, carry on in the direction they were headed over the second, and
-  /// are gone by the end -- leaving the words alone on the page. The same
-  /// eight directions, either as a look or as a way in.
+  /// resolve sends the copies on their way instead of leaving them: they fan
+  /// out over the first half and carry on out of sight over the second,
+  /// leaving the words alone, so the echo is an arrival rather than a look.
   final bool resolve;
 
   const TextEchoSpec({
@@ -738,9 +667,8 @@ class TextEchoSpec {
       );
 }
 
-/// TextAnimation is the preset, the stagger and the ease -- and, as with a
-/// chart, no duration: the length is the gap between two keyframes on the
-/// timeline.
+/// TextAnimation is the preset, the stagger and the ease. As with a chart's,
+/// the length is not here: it is where the arrival sits on the timeline.
 class TextAnimation {
   final TextAnimationPreset preset;
 
@@ -766,29 +694,15 @@ class TextAnimation {
   final EffectSpec effect;
 
   /// scale is where a growing preset starts from, as a fraction: 0.6 arrives
-  /// from a little small, 0 from nothing, 2 from twice the size.
-  ///
-  /// A number rather than three presets with three fixed numbers, which is
-  /// what "Scale in" and "Zoom in" were -- the same motion at 0.6 and at 0.1,
-  /// near enough alike to be a puzzle rather than a choice. Above one it
-  /// arrives too large and settles; on the way *out* the same number is where
-  /// it goes, so 2.5 carries the words off the screen and 0 shrinks them to
-  /// nothing.
-  ///
-  /// Zero means "use the preset's own", so a preset chosen and left alone
-  /// looks the way it is named.
+  /// a little small, 2 from twice the size and settles. On the way out it is
+  /// where the words go. Zero means the preset's own number (see [scaleFor]).
   final double scale;
 
   final ChartEase ease;
 
-  /// length is how many frames the arrival takes, or 0 for the usual two
-  /// seconds.
-  ///
-  /// A setting rather than a reading: the keyframes on the timeline are where
-  /// the animation actually is, and this is what a new one is laid down with.
-  /// Dragging those keyframes does not write back here -- the number somebody
-  /// typed is what they asked for, and a field that changed itself every time
-  /// the timeline was nudged would be a setting that could not be relied on.
+  /// length is how many frames a new arrival is laid down with, or 0 for the
+  /// usual two seconds. The timeline is where the arrival actually is;
+  /// dragging it there deliberately does not write back here.
   final int length;
 
   /// flipOrder is set on the copy the painter draws the way out with, and is
@@ -796,8 +710,8 @@ class TextAnimation {
   final bool flipOrder;
 
   /// direction and strength turn and size a moving arrival, as a shape's do
-  /// -- see ElementAnimation.specFor; exitDirection and exitStrength the
-  /// same for the way out, its own.
+  /// (see ElementAnimation.specFor); exitDirection and exitStrength do the
+  /// same for the way out.
   final AnimationDirection? direction;
   final double strength;
   final AnimationDirection? exitDirection;
@@ -965,11 +879,8 @@ class TextAnimation {
       );
 
   /// progressAt is how far piece [index] of [count] has got when the whole
-  /// animation is [reveal] through.
-  ///
-  /// The same arithmetic a chart staggers its bars with, and deliberately the
-  /// same function: two staggers that meant slightly different things would
-  /// be a chart and a headline on one canvas that do not line up.
+  /// animation is [reveal] through. Deliberately the chart's own stagger, so
+  /// a chart and a headline on one canvas line up.
   double progressAt(double reveal, int index, int count) => staggeredProgress(
         reveal,
         index,
@@ -1001,8 +912,8 @@ class TextAnimation {
       };
 
   factory TextAnimation.fromJson(Map<String, dynamic> json) => TextAnimation(
-        preset: TextAnimationPreset.fromName(json["preset"] as String?),
-        exit: TextAnimationPreset.fromName(json["exit"] as String?),
+        preset: TextAnimationPreset.fromName(jsonStr(json["preset"])),
+        exit: TextAnimationPreset.fromName(jsonStr(json["exit"])),
         exitInOrder: jsonBool(json["exitOrder"], false),
         gap: jsonDouble(json["gap"], 0.35).clamp(0.0, 4.0),
         scale: jsonDouble(json["scale"], 0).clamp(0.0, 8.0),
@@ -1015,12 +926,12 @@ class TextAnimation {
         effect: json["effect"] is Map<String, dynamic>
             ? EffectSpec.fromJson(json["effect"] as Map<String, dynamic>)
             : const EffectSpec(),
-        ease: ChartEase.fromName(json["ease"] as String?),
+        ease: ChartEase.fromName(jsonStr(json["ease"])),
         length: jsonInt(json["length"], 0).clamp(0, 100000),
-        direction: AnimationDirection.fromName(json["direction"] as String?),
+        direction: AnimationDirection.fromName(jsonStr(json["direction"])),
         strength: jsonDouble(json["strength"], 1).clamp(0.0, 10.0),
         exitDirection:
-            AnimationDirection.fromName(json["exitDirection"] as String?),
+            AnimationDirection.fromName(jsonStr(json["exitDirection"])),
         exitStrength: jsonDouble(json["exitStrength"], 1).clamp(0.0, 10.0),
         loop: json["loop"] is Map<String, dynamic>
             ? ElementLoop.fromJson(json["loop"] as Map<String, dynamic>)

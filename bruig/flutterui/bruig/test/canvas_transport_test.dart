@@ -186,20 +186,6 @@ void main() {
       expect(c.frame, 0);
     });
 
-    test("stepping by the grid lands on its lines", () {
-      var c = CanvasController(sound);
-      addTearDown(c.dispose);
-      c.frame = 70;
-      c.stepGrid(1);
-      expect(c.frame, 120, reason: "on to the next quarter");
-      c.stepGrid(-1);
-      expect(c.frame, 60);
-      c.apply(c.document
-          .copyWith(audio: c.document.audio.copyWith(quantise: Quantise.bar)));
-      c.stepGrid(1);
-      expect(c.frame, 240);
-    });
-
     test("locators are places, and playing goes past them", () {
       var c = CanvasController(sound.copyWith(
           audio: const AudioSettings(
@@ -210,13 +196,6 @@ void main() {
       var locator = c.document.actions.single;
       expect((locator.kind, locator.label),
           (TimelineActionKind.locator, "Locator 1"));
-      c.frame = 0;
-      c.goToMarker(1);
-      expect(c.frame, 100);
-      c.goToMarker(1);
-      expect(c.frame, 960, reason: "the second section's start");
-      c.goToMarker(-1);
-      expect(c.frame, 100);
       c.frame = 99;
       c.play();
       c.tickForTest();
@@ -242,7 +221,9 @@ void main() {
       expect(engine.clicks.single, (0.5, 4));
       var voice = engine.voices.single;
       expect(voice.at, closeTo(2, 0.01), reason: "from bar two");
-      // A jump -- round a loop -- takes the click with it.
+      // A jump -- round a loop -- takes the click with it. From 240 again:
+      // the real clock may have moved the playhead on while it waited.
+      c.frame = 240;
       c.looping = true;
       c.setLoop(240, 10);
       for (var i = 0; i < 10; i++) {

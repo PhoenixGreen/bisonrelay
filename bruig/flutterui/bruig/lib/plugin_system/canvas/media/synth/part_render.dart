@@ -7,23 +7,24 @@ import 'package:bruig/plugin_system/canvas/media/synth/sampler.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
-// part_render.dart plays an instrument's part into sound -- once, ahead of
-// time -- and keeps the sound bank it is played with.
+// part_render.dart renders an instrument's part to sound ahead of time,
+// and fetches the sound bank it is played with.
 //
-// The bank is MuseScore General (MIT; see its licence, which goes with what
-// is made from it), downloaded when it is first asked for, to the Canvas
-// library's "soundbanks" folder. Until it is there, the piano of our own
-// plays.
+// The bank is MuseScore General (MIT; its licence goes with what is made
+// from it), downloaded on first use to the Canvas library's soundbanks
+// folder. Until then the built-in piano plays.
 
 /// soundBankUrl is where the bank comes from: MuseScore's own mirror.
 const soundBankUrl =
     "https://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General/"
     "MuseScore_General.sf2";
 
-/// soundBankBytes is how big it is, for saying so before it is fetched.
+/// soundBankBytes is the bank's exact size: shown before fetching, and
+/// checked to tell a complete download.
 const soundBankBytes = 215614036;
 
 /// soundBankPath is where the bank is kept, whether or not it is there.
@@ -39,17 +40,17 @@ Future<bool> soundBankReady() async {
 /// downloadSoundBank fetches the bank, telling [progress] how much of it
 /// has arrived, nought to one. True once it is there.
 Future<bool> downloadSoundBank({void Function(double share)? progress}) async {
+  if (await networkIsProxied()) return false;
   var target = await soundBankPath();
   var partial = File("$target.part");
-  var client = HttpClient();
+  var client = canvasHttpClient();
   try {
     await Directory(path.dirname(target)).create(recursive: true);
-    var request = await client.getUrl(Uri.parse(soundBankUrl));
-    var response = await request.close();
-    if (response.statusCode != 200) return false;
+    var response = await canvasGet(client, Uri.parse(soundBankUrl));
+    if (response?.statusCode != 200) return false;
     var sink = partial.openWrite();
     var got = 0;
-    await for (var chunk in response) {
+    await for (var chunk in response!.timeout(const Duration(seconds: 60))) {
       sink.add(chunk);
       got += chunk.length;
       progress?.call(math.min(1.0, got / soundBankBytes));
@@ -75,9 +76,8 @@ Future<bool> downloadSoundBank({void Function(double share)? progress}) async {
 SoundFont? _loaded;
 String? _loadedFrom;
 
-/// loadSoundBank is the bank, read -- once, and kept: two hundred megabytes
-/// is read in a fraction of a second, but not every time a key is pressed.
-/// Null where it has not been downloaded, or cannot be read.
+/// loadSoundBank is the bank, read once and kept. Null where it has not
+/// been downloaded or cannot be read.
 Future<SoundFont?> loadSoundBank() async {
   var at = await soundBankPath();
   if (_loaded != null && _loadedFrom == at) return _loaded;
@@ -92,8 +92,8 @@ Future<SoundFont?> loadSoundBank() async {
   }
 }
 
-/// renderPart is [part] played on [font] -- or, with none, the piano of our
-/// own -- as 48kHz stereo: every note starting and stopping on its own
+/// renderPart is [part] played on [font] (or, with none, the built-in
+/// piano) as 48kHz stereo, every note starting and stopping on its own
 /// sample.
 (Float32List, Float32List) renderPart(InstrumentPart part, SoundFont? font) {
   var total = (part.length * mixRate).ceil();
@@ -104,8 +104,8 @@ Future<SoundFont?> loadSoundBank() async {
       bank: part.bank,
       program: part.program,
       look: part.look);
-  // Every press and every let-go, in order; a let-go before a press at the
-  // same moment, so a note played again straight away sounds again.
+  // Note-offs sort before note-ons at the same moment, so a note played
+  // again straight away sounds again.
   var events = <(int, bool, MidiNote)>[
     for (var n in part.notes) ...[
       ((n.start * mixRate).round(), true, n),
@@ -120,8 +120,8 @@ Future<SoundFont?> loadSoundBank() async {
   var at = 0;
   var curves = part.controls.entries.where((e) => e.value.isNotEmpty).toList();
   while (at < total) {
-    // The controllers where their curves are now, before this block's
-    // presses: a pedal down at a note's start holds it.
+    // Controllers are set before this block's notes, so a pedal down at a
+    // note's start holds it.
     for (var e in curves) {
       sampler.control(e.key, controlAt(e.value, at / mixRate, e.key.rest));
     }
@@ -141,9 +141,8 @@ Future<SoundFont?> loadSoundBank() async {
   return (l, r);
 }
 
-/// partWav is [part] played -- see renderPart -- as the bytes of a 16-bit
-/// stereo WAV, in an isolate. The bank, where the part asks for it, is read
-/// there from [bankPath].
+/// partWav is [renderPart] as a 16-bit stereo WAV, run in an isolate,
+/// which reads the bank from [bankPath] where the part uses it.
 Future<Uint8List> partWav(InstrumentPart part, {String? bankPath}) =>
     Isolate.run(() async {
       SoundFont? font;
@@ -156,8 +155,8 @@ Future<Uint8List> partWav(InstrumentPart part, {String? bankPath}) =>
       return wav16(l, r);
     });
 
-/// wav16 is [l] and [r] as a 16-bit stereo WAV at the mix rate, any peak
-/// over full scale held to it.
+/// wav16 is [l] and [r] as a 16-bit stereo WAV at the mix rate, clipped at
+/// full scale.
 Uint8List wav16(Float32List l, Float32List r) {
   var frames = l.length;
   var b = ByteData(44 + frames * 4);

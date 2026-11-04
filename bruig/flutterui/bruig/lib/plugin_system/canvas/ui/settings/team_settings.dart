@@ -9,15 +9,11 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/team_photo_editor.dart';
 
-// team settings.dart is a team's settings.
+// team_settings.dart is a team's settings.
 
-/// teamSettings is a whole team's controls.
-///
-/// Ordered the way a team is actually set up: which game, what shape, who is
-/// in it, what colour they are, and how big the dots are. The squad list is
-/// behind an expander because eleven rows of four fields is more than every
-/// other element's settings put together, and somebody opening a team is
-/// usually there for the formation or the kit.
+/// teamSettings is a whole team's controls, in the order a team is set up:
+/// game, shape, who is in it, colour, dot size. The squad list is behind an
+/// expander: eleven rows of four fields outweighs every other setting.
 List<Widget> teamSettings(
     BuildContext context,
     CanvasController controller,
@@ -207,9 +203,8 @@ List<Widget> teamSettings(
               color: e.outlineColor,
               onChanged: (c) => now(e.copyWith(outlineColor: c)),
             ),
-            // The element's own opacity rather than a second one of the team's. Two
-            // opacities multiplying together is a control that appears not to work
-            // whenever the other one is down.
+            // The element's own opacity, not a second one: two multiplying make a
+            // control that seems not to work whenever the other is down.
             CanvasNumberField(
               label: "Opacity",
               decimals: 2,
@@ -234,9 +229,7 @@ List<Widget> teamSettings(
               width: 56,
               onChanged: (v) {
                 begin();
-                // Locked, the two move together, which is what keeps a player marker
-                // a circle. An oval is almost always somebody having dragged one
-                // field without meaning to.
+                // Locked, the two move together, keeping a player marker a circle.
                 write(e.copyWith(
                     dotWidth: v, dotHeight: e.lockDotAspect ? v : e.dotHeight));
               },
@@ -365,11 +358,8 @@ List<Widget> teamSettings(
   ];
 }
 
-/// _squadList is the team sheet: one row per player, goalkeeper first.
-///
-/// The coordinates are shown and edited in canvas units rather than as the
-/// fractions they are stored as, because "where is he" is a question about the
-/// pitch, not about the element's box.
+/// _squadList is the team sheet: one row per player, goalkeeper first, its
+/// coordinates in canvas units rather than the fractions stored.
 Widget _squadList(
         BuildContext context,
         CanvasController controller,
@@ -403,9 +393,8 @@ Widget _squadList(
                   commit: commit,
                 ),
               ),
-            // At the ordinary size, as a grid of cells is: a squad is
-            // eleven rows of the same few fields, and card-sized they were
-            // three ragged lines a player.
+            // At the ordinary size, as a grid of cells is: card-sized, a squad
+            // was three ragged lines a player.
             for (var i = 0; i < e.players.length; i++)
               CanvasCards.none(_PlayerRow(
                 key: ValueKey("player-$i-${e.id}"),
@@ -528,11 +517,8 @@ Widget _ballGroup(TeamElement e, void Function(TeamElement) now,
   ]);
 }
 
-/// _PlayerRow is one line of the team sheet.
-///
-/// A widget rather than a function so each row's fields keep their own state
-/// across the rebuild that every keystroke causes; as plain builders, typing
-/// in one player's name rebuilt all eleven and moved the caret.
+/// _PlayerRow is one line of the team sheet: a widget, so its fields keep
+/// their state (and the caret) across the rebuild every keystroke causes.
 class _PlayerRow extends StatelessWidget {
   final CanvasController controller;
   final TeamElement team;
@@ -712,13 +698,6 @@ class _PlayerRow extends StatelessWidget {
     );
   }
 }
-
-/// _pathSettings is a curve, and what travels along it.
-///
-/// The follower is chosen from a flat list of everything on the canvas plus
-/// every player of every team, because "which player runs this" is the
-/// question this feature exists to answer and making it a two-step choice --
-/// pick a team, then pick a row -- would be two dropdowns for one decision.
 
 /// _pitchDropdown is which pitch the team stands on: none, the canvas's
 /// background where it is a pitch, or a pitch background element.

@@ -9,18 +9,10 @@ import 'package:flutter/material.dart';
 
 // picture_options_dialog.dart decides how big a picture on a canvas is going
 // to be: how wide to scale it, how hard to compress it, what to encode it as.
-//
-// The controls are the app's own -- the same widget a post's embedded picture
-// and a site's picture use -- rather than a second set written for here. They
-// ask the same question of the same pipeline, and when two doors into one
-// pipeline have their own controls, the answer to "why is this one bigger"
-// depends on which door you came in through.
-//
-// It replaces showCompressScreen, which the canvas used and which offers a
-// single quality slider and no say over the width or the format. The width is
-// usually the setting that matters: scaling a 4000-pixel photograph down to
-// 1600 throws away most of the file before any compression happens, and
-// compressing without it spends effort on detail nobody will see.
+// The controls are the app's own, shared with a post's embedded picture and a
+// site's, so the one pipeline answers the same way from every door. The width
+// usually matters most: scaling 4000 pixels down to 1600 throws away most of
+// the file before any compression happens.
 
 /// showCanvasPictureOptions offers the size choices for one picture and
 /// returns the bytes to store, or null if it was cancelled.
@@ -46,14 +38,9 @@ class _PictureOptionsDialog extends StatefulWidget {
 }
 
 class _PictureOptionsDialogState extends State<_PictureOptionsDialog> {
-  /// _options are remembered between pictures, for the same reason the site's
-  /// are: somebody who has decided their canvases' pictures should be 1600
-  /// wide has decided it for their canvases, not for this one file.
-  ///
-  /// The default keeps the encoding alone. A canvas may be exported at four
-  /// thousand pixels for a poster, so the picture in it is not obviously too
-  /// big for anything -- and quietly re-encoding what somebody has just chosen
-  /// is a decision this is here to hand back to them.
+  /// _options are remembered between pictures: a width chosen for one canvas
+  /// picture is meant for them all. The default scales to 1600 wide but keeps
+  /// the encoding, leaving any re-encoding for the user to choose.
   static EmbedOptions _options = const EmbedOptions(maxWidth: 1600);
 
   PreparedEmbed? _prepared;
@@ -68,15 +55,22 @@ class _PictureOptionsDialogState extends State<_PictureOptionsDialog> {
   /// _prepare applies the current options, so the size shown is the size that
   /// will be stored rather than an estimate of it.
   void _prepare() async {
-    if (_preparing) return;
+    if (_preparing) {
+      _again = true;
+      return;
+    }
     setState(() => _preparing = true);
-    var out = await prepareEmbed(widget.original, widget.mime, _options);
-    if (!mounted) return;
-    setState(() {
+    do {
+      _again = false;
+      var out = await prepareEmbed(widget.original, widget.mime, _options);
+      if (!mounted) return;
       _prepared = out;
-      _preparing = false;
-    });
+    } while (_again);
+    setState(() => _preparing = false);
   }
+
+  /// _again is whether the options changed while they were being applied.
+  bool _again = false;
 
   void _setOptions(EmbedOptions next) {
     _options = next;
@@ -124,11 +118,12 @@ class _PictureOptionsDialogState extends State<_PictureOptionsDialog> {
       actions: [
         CancelButton(onPressed: () => Navigator.of(context).pop()),
         OutlinedButton(
-          // Whatever the options produced, falling back to the original if
-          // the work has not finished: pressing Use is not a reason to be
-          // made to wait, and the original is always valid.
-          onPressed: () =>
-              Navigator.of(context).pop(_prepared?.data ?? widget.original),
+          // What the options make, once it is worked out: bytes from the
+          // options as they were would be stored under the ones chosen.
+          onPressed: _preparing
+              ? null
+              : () =>
+                  Navigator.of(context).pop(_prepared?.data ?? widget.original),
           child: const Text("Use"),
         ),
       ],

@@ -54,9 +54,12 @@ import 'package:flutter/services.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_data.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'canvas_panel_helpers.dart';
 import 'canvas_timeline_menus.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
 // canvas_editor_test.dart builds the controls and uses them.
 //
@@ -1292,30 +1295,6 @@ void main() {
     // The pose bar's toggle on the play bar: the bar control was removed for
     // the clips system.
 
-    testWidgets("the pose bar carries the keyframe's controls", (tester) async {
-      var document = const CanvasDocument(frames: 20);
-      var element = newElement(ElementKind.shape, document);
-      var controller = CanvasController(document.addElement(element));
-      addTearDown(controller.dispose);
-      controller.selectOnly(element.id);
-      await pump(tester, CanvasKeyframeBar(controller: controller));
-
-      // Opened on a frame with no keyframe it would otherwise be blank, which
-      // reads as broken rather than as empty.
-      expect(find.textContaining("No keyframe on this frame"), findsOneWidget);
-
-      controller.setKeyframe(element.id, const Keyframe(frame: 0));
-      await tester.pumpAndSettle();
-      expect(find.text("Easing"), findsOneWidget);
-
-      await tester.tap(find.text("Linear").first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("Ease in-out").last);
-      await tester.pumpAndSettle();
-      expect(controller.document.elements.single.track!.keyAt(0)!.easing,
-          KeyframeEasing.easeInOut);
-    });
-
     // Auto-keyframe from the transport: the bar control was removed for the
     // clips system.
 
@@ -1375,15 +1354,12 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       var prefs = CanvasPreferences();
       addTearDown(prefs.dispose);
-      expect([prefs.keyframesShown, prefs.scenesShown, prefs.cuesShown],
-          [true, true, true]);
+      expect([prefs.keyframesShown, prefs.cuesShown], [true, true]);
       prefs.keyframesShown = false;
-      prefs.scenesShown = false;
       var back = CanvasPreferences();
       addTearDown(back.dispose);
       await back.load();
-      expect([back.keyframesShown, back.scenesShown, back.cuesShown],
-          [false, false, true]);
+      expect([back.keyframesShown, back.cuesShown], [false, true]);
 
       // Handed to the page's controller as it opens, without a word to
       // anyone listening: that runs while the page is being built.
@@ -1391,12 +1367,8 @@ void main() {
       addTearDown(c.dispose);
       var told = 0;
       c.addListener(() => told++);
-      c.restoreShown(
-          keyframes: back.keyframesShown,
-          scenes: back.scenesShown,
-          cues: back.cuesShown);
-      expect(
-          [c.keyframesShown, c.scenesShown, c.cuesShown], [false, false, true]);
+      c.restoreShown(keyframes: back.keyframesShown, cues: back.cuesShown);
+      expect([c.keyframesShown, c.cuesShown], [false, true]);
       expect(told, 0);
     });
   });
@@ -1581,18 +1553,6 @@ void main() {
     // and adding and removing one with it): the bar control was removed for
     // the clips system. The points are still on the strip; see the drag below.
 
-    testWidgets("the pose bar is a message for a path", (tester) async {
-      var (controller, _) = withPath();
-      addTearDown(controller.dispose);
-      controller.frame = 15;
-
-      // The pose bar is a message for a path: easing, fade, scale and turn all
-      // belong to the follower rather than to the point, so offering them here
-      // would be four controls that quietly do nothing.
-      await pump(tester, CanvasKeyframeBar(controller: controller));
-      expect(find.textContaining("No point on this frame"), findsOneWidget);
-    });
-
     testWidgets("a point drags along the strip to retime it", (tester) async {
       var (controller, _) = withPath();
       addTearDown(controller.dispose);
@@ -1634,9 +1594,12 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly("c");
       controller.frame = 4;
-      controller.applyChartAnimation(
-          controller.document.elementById("c") as ChartElement,
-          ChartAnimationPreset.grow);
+      // A pair of arrival keyframes, as a canvas not yet converted has.
+      controller.replaceElement(controller.document.elementById("c")!.withBase(
+              track: ElementTrack(const [
+            Keyframe(frame: 4, values: {KeyframeChannel.reveal: 0}),
+            Keyframe(frame: 16, values: {KeyframeChannel.reveal: 1}),
+          ])));
 
       await pump(tester, CanvasTimeline(controller: controller));
       var before = bandsIn(controller.document.elementById("c")!.track).single;
@@ -1671,9 +1634,12 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly("c");
       controller.frame = 0;
-      controller.applyChartAnimation(
-          controller.document.elementById("c") as ChartElement,
-          ChartAnimationPreset.grow);
+      // A pair of arrival keyframes, as a canvas not yet converted has.
+      controller.replaceElement(controller.document.elementById("c")!.withBase(
+              track: ElementTrack(const [
+            Keyframe(frame: 4, values: {KeyframeChannel.reveal: 0}),
+            Keyframe(frame: 16, values: {KeyframeChannel.reveal: 1}),
+          ])));
 
       await pump(tester, CanvasTimeline(controller: controller));
       var before = bandsIn(controller.document.elementById("c")!.track).single;
@@ -1715,176 +1681,6 @@ void main() {
       expect(after.nodes.map((n) => n.frame).toList(), [0, 10, 20],
           reason: "nothing was retimed");
     });
-  });
-
-  group("clearing keyframes", () {
-    /// pitch is a team with a run on one player, plus a shape with its own
-    /// animation -- two channels, so "this one" and "all of them" can be told
-    /// apart.
-    (CanvasController, TeamElement, CanvasElement) pitch() {
-      var team = TeamElement(
-        const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 300),
-      ).withFormation(TeamFormation.f442);
-      var shape =
-          ShapeElement(const ElementBase(id: "s", width: 40, height: 40));
-      var controller = CanvasController(
-          const CanvasDocument(frames: 30).addElement(team).addElement(shape));
-
-      controller.setPlayerKeyframe("t", 6, const Keyframe(frame: 0));
-      controller.setPlayerKeyframe("t", 6, const Keyframe(frame: 12, dx: 50));
-      controller.setPlayerKeyframe("t", 2, const Keyframe(frame: 4, dy: 20));
-      controller.setKeyframe("s", const Keyframe(frame: 8, dx: 30));
-      return (controller, team, shape);
-    }
-
-    TeamElement teamOf(CanvasController c) =>
-        c.document.elements.whereType<TeamElement>().single;
-
-    // The bar's Clear Channel and Clear All buttons were removed for the
-    // clips system; what they called is still the controller's, and is
-    // checked here directly. (Whether either button was enabled -- with
-    // nothing to clear, or on a path's points -- went with the buttons.)
-    test("clear channel takes one player's run and nobody else's", () {
-      var (controller, _, _) = pitch();
-      addTearDown(controller.dispose);
-      controller.clearPlayerKeyframes("t", 6);
-
-      expect(teamOf(controller).players[6].track, isNull);
-      expect(teamOf(controller).players[2].track, isNotNull,
-          reason: "the other player kept his");
-      expect(controller.document.elementById("s")!.track, isNotNull,
-          reason: "and so did the shape");
-    });
-
-    test("clear channel works on a plain element too", () {
-      var (controller, _, shape) = pitch();
-      addTearDown(controller.dispose);
-      controller.clearElementKeyframes(shape.id);
-
-      expect(controller.document.elementById("s")!.track, isNull);
-      expect(teamOf(controller).players[6].track, isNotNull);
-    });
-
-    test("clear all empties every channel at once", () {
-      var (controller, _, _) = pitch();
-      addTearDown(controller.dispose);
-
-      expect(controller.document.hasKeyframes, isTrue);
-      controller.clearAllKeyframes();
-
-      expect(controller.document.hasKeyframes, isFalse);
-      expect(teamOf(controller).players[6].track, isNull);
-      expect(teamOf(controller).players[2].track, isNull);
-      expect(controller.document.elementById("s")!.track, isNull);
-    });
-
-    test("clear all is one undo step", () {
-      // A single decision, and unpicking it element by element is not
-      // something anybody would want to do twenty-two times.
-      var (controller, _, _) = pitch();
-      addTearDown(controller.dispose);
-
-      controller.clearAllKeyframes();
-      controller.undo();
-
-      expect(controller.document.hasKeyframes, isTrue);
-      expect(teamOf(controller).players[6].track, isNotNull);
-      expect(controller.document.elementById("s")!.track, isNotNull);
-    });
-
-    test("clearing the whole document leaves paths their points", () {
-      // Re-applying a route is a button press; redrawing it is not.
-      var path = PathElement(
-        const ElementBase(id: "p", width: 200, height: 200),
-        nodes: const [
-          PathNode(x: 0, y: 0, frame: 0),
-          PathNode(x: 1, y: 1, frame: 10),
-        ],
-        follow: const PathFollow(elementId: "s"),
-      );
-      var shape =
-          ShapeElement(const ElementBase(id: "s", width: 20, height: 20));
-      var controller = CanvasController(
-          const CanvasDocument(frames: 30).addElement(shape).addElement(path));
-      addTearDown(controller.dispose);
-
-      controller.applyPathFollow(
-          controller.document.elements.whereType<PathElement>().single);
-      expect(controller.document.hasKeyframes, isTrue);
-
-      controller.clearAllKeyframes();
-      expect(controller.document.hasKeyframes, isFalse);
-      expect(
-          controller.document.elements
-              .whereType<PathElement>()
-              .single
-              .nodes
-              .length,
-          2);
-    });
-
-    test("clearing a path's keyframes leaves it its points", () {
-      // What the strip's clear button used to be kept from: a route's points
-      // are not keyframes, and clearing its element must not take them.
-      var path = PathElement(
-        const ElementBase(id: "p", width: 200, height: 200),
-        nodes: const [
-          PathNode(x: 0, y: 0, frame: 0),
-          PathNode(x: 1, y: 1, frame: 10),
-        ],
-      );
-      var controller =
-          CanvasController(const CanvasDocument(frames: 30).addElement(path));
-      addTearDown(controller.dispose);
-
-      controller.clearElementKeyframes("p");
-      expect(
-          controller.document.elements
-              .whereType<PathElement>()
-              .single
-              .nodes
-              .length,
-          2);
-    });
-  });
-
-  group("a follower's row on the strip", () {
-    (CanvasController, TeamElement) followed() {
-      var team = TeamElement(
-        const ElementBase(
-            id: "t", name: "Home", x: 0, y: 0, width: 400, height: 300),
-      ).withFormation(TeamFormation.f442);
-      var path = PathElement(
-        const ElementBase(
-            id: "p", name: "Run", x: 0, y: 0, width: 400, height: 300),
-        nodes: const [
-          PathNode(x: 0, y: 0, frame: 0),
-          PathNode(x: 1, y: 1, frame: 12),
-        ],
-        follow: const PathFollow(elementId: "t", playerIndex: 0),
-      );
-      var controller = CanvasController(
-          const CanvasDocument(frames: 30).addElement(team).addElement(path));
-      controller.applyPathFollow(path);
-      return (controller, team);
-    }
-
-    // A follower's diamond and clear button saying "Following a path": the
-    // bar controls were removed for the clips system.
-
-    testWidgets("the pose bar says where the timing lives", (tester) async {
-      var (controller, _) = followed();
-      addTearDown(controller.dispose);
-      controller.selectOnly("t");
-      controller.focusedPlayer = 0;
-      await pump(tester, CanvasKeyframeBar(controller: controller));
-
-      expect(find.textContaining("is following Run"), findsOneWidget);
-      expect(find.text("Easing"), findsNothing);
-    });
-
-    // Another player's own diamond on the bar: the bar control was removed
-    // for the clips system.
   });
 
   group("the area outside the canvas", () {
@@ -4884,7 +4680,10 @@ void main() {
     ChartElement chartIn(CanvasController controller) =>
         controller.document.elements.single as ChartElement;
 
-    test("choosing a preset lays a keyframe at each end of it", () {
+    (int, int)? arrival(CanvasController c) =>
+        ownSpan(chartIn(c), MotionKind.arrive, c.document.frameRate);
+
+    test("choosing a preset lays its arrival on the timeline", () {
       // One gesture, because it is one decision. A preset with nothing
       // pinning the reveal channel draws exactly what a still chart draws, so
       // applying it separately from keying it would be asking somebody to
@@ -4897,12 +4696,8 @@ void main() {
       var after = chartIn(controller);
       expect(after.animation.preset, ChartAnimationPreset.grow);
 
-      var keys = after.track!.keys;
-      expect(keys.length, 2);
-      expect(keys.first.values[KeyframeChannel.reveal], 0);
-      expect(keys.last.values[KeyframeChannel.reveal], 1);
-      expect(keys.last.frame, greaterThan(keys.first.frame),
-          reason: "the gap between them is the length of the animation");
+      var (_, took) = arrival(controller)!;
+      expect(took, greaterThan(0), reason: "a clip as long as the animation");
     });
 
     test("a still document is given frames to play it in", () {
@@ -4914,7 +4709,7 @@ void main() {
       controller.applyChartAnimation(chart, ChartAnimationPreset.wipe);
 
       expect(controller.document.isAnimated, isTrue);
-      expect(chartIn(controller).track!.keys.length, 2);
+      expect(arrival(controller), isNotNull);
     });
 
     test("it starts from where the reader is looking", () {
@@ -4924,7 +4719,7 @@ void main() {
 
       controller.applyChartAnimation(chart, ChartAnimationPreset.grow);
 
-      expect(chartIn(controller).track!.keys.first.frame, 20,
+      expect(arrival(controller)!.$1, 20,
           reason: "rather than jumping the playhead back to the start");
     });
 
@@ -4942,18 +4737,15 @@ void main() {
 
       controller.applyChartAnimation(
           chartIn(controller), ChartAnimationPreset.grow);
-      var withBoth = chartIn(controller).track!.keys;
-      expect(withBoth.where((k) => k.values.containsKey("reveal")).length, 2,
+      expect(arrival(controller), isNotNull);
+      expect(chartIn(controller).track!.keys.first.dx, -40,
           reason: "the arrival is laid beside the pose, not over it");
-      expect(withBoth.first.dx, -40,
-          reason: "and a keyframe that holds both holds both");
 
       controller.applyChartAnimation(
           chartIn(controller), ChartAnimationPreset.none);
-      var left = chartIn(controller).track!.keys;
-      expect(left.where((k) => k.values.containsKey("reveal")), isEmpty,
-          reason: "only the arrival is taken away");
-      expect(left.first.dx, -40, reason: "the pose is untouched");
+      expect(arrival(controller), isNull, reason: "the arrival is taken away");
+      expect(chartIn(controller).track!.keys.first.dx, -40,
+          reason: "the pose is untouched");
     });
 
     test("trying another preset leaves the timing where it was put", () {
@@ -4977,14 +4769,15 @@ void main() {
       var (controller, chart) = build(frames: 24);
       addTearDown(controller.dispose);
       controller.applyChartAnimation(chart, ChartAnimationPreset.grow);
-      expect(chartIn(controller).track, isNotNull);
+      expect(arrival(controller), isNotNull);
 
       controller.applyChartAnimation(
           chartIn(controller), ChartAnimationPreset.none);
 
       expect(chartIn(controller).animation.on, isFalse);
-      expect(chartIn(controller).track, isNull,
-          reason: "no animation left, so no empty track in the saved file");
+      expect(arrival(controller), isNull);
+      expect(chartIn(controller).base.motion.clips, isEmpty,
+          reason: "no animation left, so no empty clip in the saved file");
     });
 
     test("it is one undo step", () {
@@ -5813,8 +5606,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets("choosing one applies it and lays the keyframes",
-        (tester) async {
+    testWidgets("choosing one applies it and lays its arrival", (tester) async {
       // The same gesture a chart's animation is chosen with: a preset with
       // nothing pinning the reveal channel draws exactly what a still element
       // draws, and asking somebody to key a channel they have never heard of
@@ -5840,7 +5632,7 @@ void main() {
 
       var after = controller.document.elements.single as TextElement;
       expect(after.animation.preset.family, TextAnimationFamily.sequential);
-      expect(after.track, isNotNull,
+      expect(ownSpan(after, MotionKind.arrive, 12), isNotNull,
           reason: "and it has a length on the timeline");
 
       // Then which one, out of that family alone.
@@ -6209,6 +6001,7 @@ void main() {
         "supply": [168720623595120, 169504574718296, 170288525841472],
       }));
 
+      SharedPreferences.setMockInitialValues({});
       var controller = await panel(
         tester,
         source: dcrdataChart
@@ -6225,6 +6018,11 @@ void main() {
       await tester.ensureVisible(refresh);
       await tester.pumpAndSettle();
       await tester.tap(refresh);
+      await idle(tester);
+      // A path not chosen here is asked about first: the canvas may be
+      // someone else's.
+      expect(chartIn(controller).data.isEmpty, isTrue);
+      await tester.tap(find.text("Read it"));
       await idle(tester);
 
       var data = chartIn(controller).data;
@@ -6244,6 +6042,8 @@ void main() {
         "supply": [100000000, 200000000],
         "count": [7, 9],
       }));
+      SharedPreferences.setMockInitialValues({});
+      await DataFiles.allow(file.path);
 
       var controller = await panel(
         tester,

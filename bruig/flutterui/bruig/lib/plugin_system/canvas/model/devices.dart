@@ -1,14 +1,13 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonBool, jsonDouble;
+    show jsonBool, jsonDouble, jsonStr;
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 
 // devices.dart is the effects a channel's chain can hold beyond its strip --
 // a reverb, a delay -- and the returns they usually live on.
 //
 // A device is a kind and its settings by name, each a number with a range
-// and a default: the processors in media/mix/dsp.dart read them, the panel
-// draws a knob for each, and a setting a later device adds needs nothing
-// more than a line in its table.
+// and a default: the processors in media/mix/dsp.dart read them and the panel
+// draws a knob for each.
 
 /// DeviceParam is one setting of a device: its name in the file, what it is
 /// called on the knob, its range and its default, and how it is shown.
@@ -88,7 +87,7 @@ bool paramShown(MixDevice device, DeviceParam p) => switch ((device.kind, p.id))
       _ => true,
     };
 
-/// listens is whether [kind] only listens -- a tuner, a spectrum -- and
+/// listensOnly is whether [kind] only listens -- a tuner, a spectrum -- and
 /// changes nothing it is given.
 bool listensOnly(DeviceKind kind) =>
     kind == DeviceKind.tuner || kind == DeviceKind.spectrum;
@@ -274,7 +273,7 @@ class MixDevice {
 
   static MixDevice? fromJson(Object? json) {
     if (json is! Map) return null;
-    var kind = DeviceKind.fromName(json["kind"] as String?);
+    var kind = DeviceKind.fromName(jsonStr(json["kind"]));
     if (kind == null) return null;
     var raw = json["values"];
     return MixDevice(kind,
@@ -364,11 +363,11 @@ String returnLetter(int index) =>
     index < 26 ? String.fromCharCode(65 + index) : "R${index + 1}";
 
 /// defaultReturns are the two every document starts with: a reverb and a
-/// delay, the two sends nearly every mix uses.
+/// delay.
 const List<ReturnChannel> defaultReturns = [
   ReturnChannel("returnA", name: "Reverb", devices: [MixDevice(DeviceKind.reverb)]),
   ReturnChannel("returnB", name: "Delay", devices: [MixDevice(DeviceKind.delay)]),
 ];
 
-/// maxReturns is as many returns as a document has.
+/// maxReturns is the most returns a document can have.
 const int maxReturns = 8;

@@ -12,26 +12,19 @@ import 'package:flutter/painting.dart';
 
 // text_flow.dart runs one piece of text through a line of boxes.
 //
-// The words belong to the head of the chain. Every box after it draws the part
-// that would not fit in the one before, so making a box smaller pushes words
-// down the line and making it bigger pulls them back -- which is what a chain
-// of boxes is for.
-//
-// Worked out at drawing time rather than stored, and deliberately: where the
-// words break depends on the box's width, its height, its type, its columns
-// and its padding, all of which change while somebody is dragging a handle.
-// A stored answer would be wrong for the whole of that drag.
+// The words belong to the head of the chain; every box after it draws what
+// would not fit in the one before. Worked out at drawing time rather than
+// stored, because where the words break depends on the box's size, type,
+// columns and padding, all of which change during a drag.
 
 /// TextFlow is one box's share of a chain.
 class TextFlow {
   /// text is what this box draws -- the whole of it for a box on its own.
   final String text;
 
-  /// overflows is whether there are words this box could not show.
-  ///
-  /// What turns the overflow grip red, and the reason it is worth computing
-  /// even for a box with nothing after it: hidden text with no sign that it
-  /// is hidden is the thing people lose work to.
+  /// overflows is whether there are words this box could not show: what
+  /// turns the overflow grip red, worked out even for a box with nothing
+  /// after it, so hidden text is never silent.
   final bool overflows;
 
   /// receiving is whether these words came from another box.
@@ -42,21 +35,13 @@ class TextFlow {
   final String head;
 
   /// parts are the styled runs that apply to the words this box draws,
-  /// counted from its own first word.
-  ///
-  /// The head's, moved: a document's markdown belongs to the whole text, and
-  /// the second box in a chain is drawing that text further along. Without
-  /// this a chain showed the headings and the bold of the first box only, and
-  /// the rest arrived as plain words.
+  /// counted from its own first word: the head's, moved, so later boxes keep
+  /// the document's headings and bold.
   final List<TextPart> parts;
 
-  /// tidyStart is whether a blank line at the top of this box -- or of one of
-  /// its columns -- is passed over.
-  ///
-  /// The head of the chain's answer, for every box in it. The words are one
-  /// paragraph flowing through several boxes, and how it is broken is a fact
-  /// about the words rather than about each box it lands in: two boxes that
-  /// disagreed would tidy the top of one column and not the next.
+  /// tidyStart is whether a blank line at the top of this box, or of one of
+  /// its columns, is passed over. The head's answer, for every box in the
+  /// chain, so all its columns are tidied alike.
   final bool tidyStart;
 
   const TextFlow({
@@ -69,12 +54,9 @@ class TextFlow {
   });
 }
 
-/// flowFor is what [e] actually draws.
-///
-/// [inner] is the room the words have -- the element's box less its padding
-/// and whatever an icon has taken -- and [spec] the type they are drawn in.
-/// Both are the *drawn* values, so a box in a chain and the painter agree
-/// about where the words break.
+/// flowFor is what [e] actually draws. [inner] is the room the words have
+/// (the box less its padding and any icon) and [spec] the type; both are the
+/// *drawn* values, so the chain and the painter agree where words break.
 TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
     {int frame = 0, CanvasImageSource? images}) {
   var mine = e.displayText;
@@ -97,10 +79,8 @@ TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
   var text = head.displayText;
 
   // Walk the chain from the head, each box taking what fits and passing the
-  // rest on. The boxes are different widths and different types, so there is
-  // nothing to do but lay each one out in turn.
-  // How the words are broken is the head's business, for every box the chain
-  // passes through.
+  // rest on; the boxes differ in width and type, so each is laid out in turn.
+  // How the words are broken is the head's business for every box.
   var tidy = head.columns.noBlankStart;
 
   var at = 0;
@@ -136,10 +116,9 @@ TextFlow flowFor(TextElement e, CanvasDocument? doc, Rect inner, TextSpec spec,
   );
 }
 
-/// wouldLoop is whether pointing [from] at [to] would make a ring of boxes.
-///
-/// A ring has no first box, so there is nowhere to start reading and no way
-/// to say what any box in it should show. Refused rather than resolved.
+/// wouldLoop is whether pointing [from] at [to] would make a ring of boxes,
+/// which has no first box to start reading from. Refused rather than
+/// resolved.
 bool wouldLoop(TextElement from, String to, CanvasDocument doc) {
   if (to == from.id) return true;
   var seen = <String>{from.id};
@@ -168,9 +147,8 @@ bool _isTarget(TextElement e, CanvasDocument doc) =>
 
 /// _chainTo is every box from the head of the chain up to and including [e].
 List<TextElement> _chainTo(TextElement e, CanvasDocument doc) {
-  // Back to the head first. The guard is not paranoia: a document written by
-  // a build that allowed a ring, or edited by hand, would otherwise hang the
-  // painter rather than draw something wrong.
+  // Back to the head first. The guard is needed: a document with a ring
+  // (from an older build, or edited by hand) would otherwise hang the painter.
   var head = e;
   var seen = <String>{e.id};
   while (true) {
@@ -194,18 +172,14 @@ List<TextElement> _chainTo(TextElement e, CanvasDocument doc) {
 /// _roomOf is where a box's words go: its bounds, less its padding.
 Rect _roomOf(TextElement e) => e.box.inner(e.bounds);
 
-/// _specOf is the type a box draws in.
-///
-/// Its own, and not the fitted one: Fit to box sizes the type so that
-/// everything fits, which is the opposite of what a box that passes its
-/// overflow on is for.
+/// _specOf is the type a box draws in: its own, not the fitted one, since
+/// Fit to box sizes type so everything fits, the opposite of passing the
+/// overflow on.
 TextSpec _specOf(TextElement e) => e.textSpec;
 
-/// _blankRun is how many characters of empty lines [text] opens with.
-///
-/// What a box that must not start on a blank line skips: the gap between two
-/// paragraphs is a line like any other, and a box that begins with one begins
-/// with an empty row and its words sitting lower than the box beside it.
+/// _blankRun is how many characters of empty lines [text] opens with: what a
+/// box that must not start on a blank line skips, so its words do not sit
+/// lower than the box beside it.
 int _blankRun(String text) {
   var at = 0;
   while (at < text.length) {
@@ -222,10 +196,9 @@ int _consumed(String text, TextElement e, Rect inner, TextSpec spec,
     {bool tidy = false, List<WrapShape> blocked = const []}) {
   if (text.isEmpty || inner.width <= 0 || inner.height <= 0) return 0;
 
-  // Wrapped, the room a box has is not its rectangle: it is what is left of
-  // it once the things in the way are taken out. Measured the same way it is
-  // drawn -- see layoutWrapped -- so what the grip says and what is on the
-  // canvas cannot disagree.
+  // Wrapped, the room a box has is what is left once the things in the way
+  // are taken out. Measured as it is drawn (see layoutWrapped), so the grip
+  // and the canvas agree.
   if (e.wrap.on &&
       blocked.isNotEmpty &&
       wrapFits(text, spec, inner, blocked, e.wrap)) {
@@ -257,9 +230,8 @@ int _consumed(String text, TextElement e, Rect inner, TextSpec spec,
       .offset;
   if (end <= 0) return 0;
 
-  // Whitespace at the break belongs to the line that broke, not to the one
-  // that starts after it -- a box beginning with a space is a box with a
-  // crooked first line.
+  // Whitespace at the break belongs to the line that broke, or the next box
+  // starts with a crooked first line.
   while (end < text.length && text[end].trim().isEmpty && text[end] != "\n") {
     end++;
   }

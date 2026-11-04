@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:archive/archive.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // sprite_builder.dart is a figure built from Kenney's modular character
 // pack -- a head, a body, arms, legs, a face, hair and clothes, each a piece
@@ -10,7 +11,7 @@ import 'package:archive/archive.dart';
 // each piece laid on a skeleton, the left side the right side mirrored, and
 // the arms and legs turned about the shoulder and the hip. Posed through an
 // animation's frames -- standing, walking, running, jumping, waving -- it is
-// drawn into a sprite sheet. See the Sprite element's builder.
+// drawn into a sprite sheet. See ui/settings/sprite_builder_settings.dart.
 
 /// ModularParts is the pack's pieces, found by their names: every choice
 /// there is of each, and the pieces read as they are wanted.
@@ -101,7 +102,7 @@ class ModularParts {
     }
   }
 
-  /// first is the first choice of [options], by name.
+  /// firstOf is the first choice of [options], by name.
   static String firstOf(Iterable<String> options) => (options.toList()..sort()).first;
 
   /// standard is a figure of the first of everything.
@@ -332,7 +333,7 @@ class ModularAnimation {
         _cycle = null,
         _keys = keys;
 
-  /// frames is its poses, drawn in [count] frames, [motion] times as big.
+  /// framesOf is its poses, drawn in [count] frames, [motion] times as big.
   List<ModularPose> framesOf({int? count, double motion = 1}) {
     var n = math.max(count ?? this.count, _cycle == null ? 2 : 1);
     if (_cycle case var at?) {
@@ -371,9 +372,9 @@ class ModularTuning {
 
   static ModularTuning fromJson(dynamic j) => j is Map
       ? ModularTuning(
-          frames: (j["frames"] as num?)?.toInt(),
-          fps: (j["fps"] as num?)?.toDouble(),
-          motion: (j["motion"] as num?)?.toDouble() ?? 1)
+          frames: (jsonNum(j["frames"]))?.toInt(),
+          fps: (jsonNum(j["fps"]))?.toDouble(),
+          motion: (jsonNum(j["motion"]))?.toDouble() ?? 1)
       : const ModularTuning();
 }
 
@@ -499,11 +500,6 @@ const ui.Offset _hipIn = ui.Offset(33, 8);
 const ui.Offset _ankleIn = ui.Offset(62, 156);
 const ui.Offset _kneeIn = ui.Offset(48, 82);
 
-/// modularHeight is how tall a standing figure is, in the pack's pixels,
-/// hair to shoes, and modularWidth how wide, arms out.
-const double modularHeight = 640;
-const double modularWidth = 470;
-
 /// paintModular draws the figure [look] in [pose] with its feet on [floor]
 /// -- the middle of its bottom -- [scale] times the pack's own size, from
 /// [parts]' pieces, read already: see [modularPieces].
@@ -548,14 +544,12 @@ void paintModular(ui.Canvas canvas, Map<String, ui.Image?> pieces, ModularParts 
   }
 
   var skin = look.skin;
-  // Legs, the trouser legs over them, and shoes at their ends. Turned
-  // outwards is a leg swung out from the hip: the right's angle as it is,
-  // the left's mirrored.
-  // A leg is drawn in two: the thigh from the hip, shortened as much as the
-  // knee is bent towards the viewer, and the shin from the knee -- hanging
-  // straighter the more it is bent, as a sitting figure's do. A shortened
-  // thigh is its knee end only, not the whole of it squashed: squashed, the
-  // trousers' edge at the hip smears.
+  // Legs, the trouser legs over them, and shoes at their ends; the left's
+  // angle is the right's mirrored. A leg is drawn in two: the thigh from the
+  // hip, shortened as much as the knee is bent towards the viewer, and the
+  // shin from the knee, hanging straighter the more it is bent. A shortened
+  // thigh is cut at its knee end, not squashed: squashed, the trousers' edge
+  // at the hip smears.
   void limb(ui.Image? img, ui.Offset pivot, ui.Offset hip, double angle, double shin, double knee, bool mirror) {
     if (img == null) return;
     var w = img.width.toDouble(), h = img.height.toDouble();
@@ -669,9 +663,8 @@ const ui.Size modularCell = ui.Size(560, 760);
 
 /// modularSheet draws [look] through [animations] -- a row each, a frame
 /// to a cell [cellHeight] pixels tall, each standing on its cell's floor --
-/// and is the sheet, and how many cells across and down.
-/// Each is drawn as [tuning] has it, by name: in so many frames, its
-/// motion so big.
+/// and is the sheet, and how many cells across and down. Each is drawn as
+/// [tuning] has it, by name: in so many frames, its motion so big.
 Future<(ui.Image, int, int)> modularSheet(
     ModularParts parts, ModularLook look, List<ModularAnimation> animations, int cellHeight,
     {Map<String, ModularTuning> tuning = const {}}) async {

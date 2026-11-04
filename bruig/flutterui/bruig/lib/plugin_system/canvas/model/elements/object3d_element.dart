@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/glb_info.dart';
 // box; its own animations, read from the file, are its clips: "From the
 // model", in its slots, played, placed and layered as any clip is.
 
+/// Object3dElement is a 3D object; see the top of this file.
 class Object3dElement extends CanvasElement {
   /// assetId is the model in the library's store, or "" for none yet.
   final String assetId;

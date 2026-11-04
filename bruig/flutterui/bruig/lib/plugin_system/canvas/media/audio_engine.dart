@@ -15,11 +15,9 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 
 // audio_engine.dart is the one place a canvas touches a sound card.
 //
-// Everything that decides *what* plays -- the playlist, the range, the fades,
-// the loop, which page a sound belongs to -- is in audio_runtime.dart and
-// speaks to this interface. So the rules can be tested against a fake engine
-// with a clock the test moves, and SoLoud is the only thing that has to be
-// run on a real machine to be trusted.
+// What plays (playlist, range, fades, loop, page) is decided in
+// audio_runtime.dart, which speaks to this interface, so those rules can be
+// tested against a fake engine with a test-driven clock.
 
 /// AudioTrack is a file the engine has opened, and AudioVoice one playing of
 /// it. Opaque: only the engine that made one knows what is inside.
@@ -80,10 +78,9 @@ class MasterSound {
 }
 
 /// busLevels splits a strip's level on each side into what SoLoud takes:
-/// a volume, which may be over one -- a fader above nought -- and a pan for
-/// each side, which may not. The louder side is the volume, and each side a
-/// share of it. Passing the levels as the pan, as was done, threw for any
-/// fader above nought, and the throw lost the strip's EQ and compressor too.
+/// a volume, which may be over one (a fader above nought), and a pan for
+/// each side, which may not: SoLoud throws for a pan over one, losing the
+/// strip's EQ and compressor too.
 (double, double, double) busLevels(double left, double right) {
   var loud = math.max(left, right);
   if (loud <= 0) return (0, 1, 1);
@@ -106,17 +103,11 @@ class MasterSound {
 /// releaseAudioAfterHotRestart lets go of a sound engine the program left
 /// running before a hot restart, as the app starts.
 ///
-/// A hot restart starts the Dart program again but not the native engine,
-/// which keeps the old program's callbacks -- gone with it -- until it is
-/// next started. Anything that has it call one stops the VM: "Callback
-/// invoked after it has been deleted". A sound device changing (the app's
-/// calls choose their microphone and speakers as it starts) did; and so did
-/// tearing the engine down, which tells the old program of every sound it
-/// stops before it forgets the old program's callbacks. So they are
-/// forgotten first, here -- by the engine's own function for it, which the
-/// package does not offer from Dart -- and only then, if it is running, is
-/// it torn down. Debug builds only: nothing else restarts the program under
-/// the engine.
+/// A hot restart keeps the native engine and its callbacks into the old,
+/// gone program; any call into one (a device change, or deinit itself)
+/// stops the VM with "Callback invoked after it has been deleted". So the
+/// callbacks are forgotten first, by a native function the package has no
+/// Dart binding for, and only then is the engine torn down. Debug only.
 void releaseAudioAfterHotRestart() {
   if (!kDebugMode) return;
   try {
@@ -136,6 +127,7 @@ void releaseAudioAfterHotRestart() {
   }
 }
 
+/// AudioEngine is the sound card, as audio_runtime.dart drives it.
 abstract class AudioEngine {
   /// start makes the engine ready, returning false where there is no sound to
   /// be had -- no device, or a library that would not load. Asked before
@@ -180,6 +172,10 @@ abstract class AudioEngine {
 
   /// setChannel makes or changes the mixer channel called [key].
   void setChannel(String key, ChannelSound sound);
+
+  /// removeChannel lets go of channel [key], gone from the canvas: its
+  /// strip no longer runs, and its sounds play on the master.
+  void removeChannel(String key) {}
 
   /// setMaster is the master strip, over everything.
   void setMaster(MasterSound sound);
@@ -265,17 +261,7 @@ class _SoLoudVoice extends AudioVoice {
   _SoLoudVoice(this.handle);
 }
 
-/// _busMetering switches level-gathering on for one mixing bus.
-///
-/// Looked up by hand. A bus's meter reads nothing until this has been called
-/// for it, and flutter_soloud 4.1 exports the native function but leaves its
-/// Dart binding commented out -- so every channel meter sat at the bottom
-/// while the master, which has a binding, moved. The library is opened the
-/// way the package opens it, which hands back the one already loaded. Null
-/// where it cannot be found, and the meters simply stay still.
-/// _busSpectrum reads a bus's FFT -- looked up by hand for the same reason
-/// as _busMetering: the native function is exported and the package has no
-/// Dart call for it.
+/// _busSpectrum reads a bus's FFT, looked up by hand as _busMetering is.
 final ffi.Pointer<ffi.Float> Function(int busId)? _busSpectrum = () {
   try {
     var lib = Platform.isLinux || Platform.isAndroid
@@ -290,6 +276,11 @@ final ffi.Pointer<ffi.Float> Function(int busId)? _busSpectrum = () {
   }
 }();
 
+/// _busMetering switches level-gathering on for one mixing bus; its meter
+/// reads nothing until then. Looked up by hand: flutter_soloud 4.1 exports
+/// the native function but has no Dart binding for it. Opening the library
+/// as the package does hands back the one already loaded. Null where it
+/// cannot be found, and the channel meters stay still.
 final void Function(int busId, bool enable)? _busMetering = () {
   try {
     var lib = Platform.isLinux || Platform.isAndroid
@@ -306,10 +297,9 @@ final void Function(int busId, bool enable)? _busMetering = () {
 }();
 
 /// soloudBufferFrames is the sound card's period, in frames, SoLoud is
-/// started with -- by whichever engine starts it first. SoLoud's own 2048,
-/// three periods deep, is some 140 ms between a sound asked for and heard:
-/// a coin picked up was heard a beat late (Ken). 512 is a twelfth of a
-/// second all told, and still steady.
+/// started with, by whichever engine starts it first. SoLoud's own 2048,
+/// three periods deep, is some 140 ms of latency, audibly late for a game
+/// sound; 512 is a twelfth of a second all told, and still steady.
 const int soloudBufferFrames = 512;
 
 /// SoLoudAudioEngine plays through flutter_soloud.
@@ -392,14 +382,11 @@ class SoLoudAudioEngine implements AudioEngine {
   /// _roomForBuses raises SoLoud's active voice limit so that [buses] buses
   /// and [_soundRoom] sounds all fit inside it.
   ///
-  /// A bus is a voice that is always playing, and SoLoud only hands mixing
-  /// buffers to as many voices as the limit allows (sixteen to begin with).
-  /// With more buses than that, one of them is mixed with no buffer at all
-  /// and the audio thread writes through a null pointer -- the whole app
-  /// goes down the moment play is pressed. A bus is made per timed sound, so
-  /// a narrated video with a couple of dozen effects is well past sixteen.
-  /// Raised in steps rather than one at a time: every change reallocates
-  /// SoLoud's buffers.
+  /// A bus is a voice that is always playing, and SoLoud only gives mixing
+  /// buffers to as many voices as the limit (sixteen at first): past it the
+  /// audio thread writes through a null pointer and the app crashes. A bus
+  /// is made per timed sound. Raised in steps of 32, since every change
+  /// reallocates SoLoud's buffers.
   void _roomForBuses(int buses) {
     var want = buses + _soundRoom;
     if (want <= _soloud.getMaxActiveVoiceCount()) return;
@@ -408,11 +395,29 @@ class SoLoudAudioEngine implements AudioEngine {
   }
 
   @override
+  void removeChannel(String key) {
+    var bus = _buses.remove(key);
+    _metered.remove(key);
+    if (bus == null || !_soloud.isInitialized) return;
+    try {
+      bus.dispose();
+    } catch (exception) {
+      debugPrint("Unable to let go of the channel $key: $exception");
+    }
+  }
+
+  /// _mostBuses is as many buses as SoLoud's voice limit -- under 1024 --
+  /// holds with room for the sounds. A channel past it plays on the master
+  /// rather than crashing the audio thread.
+  static const _mostBuses = 1000 - _soundRoom;
+
+  @override
   void setChannel(String key, ChannelSound sound) {
     if (!_soloud.isInitialized) return;
     try {
       var bus = _buses[key];
       if (bus == null) {
+        if (_buses.length >= _mostBuses) return;
         _roomForBuses(_buses.length + 1);
         bus = Bus(name: key);
         bus.playOnEngine();
@@ -532,11 +537,9 @@ class SoLoudAudioEngine implements AudioEngine {
   static const _masterKey = "\u0000master";
 
   /// _arrange switches [filters] on and off so that those running are
-  /// [want], in that order. SoLoud runs a strip's filters in the order they
-  /// were switched on, so one switched on later lands after the rest --
-  /// after the limiter, even. Anything out of place is switched off and on
-  /// again behind those already right. Returns those switched on here,
-  /// which need setting up afresh.
+  /// [want], in that order: SoLoud runs filters in the order they were
+  /// switched on (see reorderSteps). Returns those switched on here, which
+  /// need setting up afresh.
   Set<String> _arrange(
       String key,
       List<String> want,
@@ -770,10 +773,10 @@ class SoLoudAudioEngine implements AudioEngine {
     if (_soloud.getIsValidVoiceHandle(handle)) unawaited(_soloud.stop(handle));
   }
 
-  /// _bufferSeconds is how much sound SoLoud mixes at a time: the default
-  /// 2048 frames at 44.1 kHz. A fade and a scheduled stop are only looked
-  /// at once a buffer, and the level is ramped across the buffer toward
-  /// wherever the fade has got by then.
+  /// _bufferSeconds is the most sound SoLoud mixes at a time: its default
+  /// 2048 frames at 44.1 kHz (started at soloudBufferFrames it is less, so
+  /// this errs long). Fades and scheduled stops are looked at once a buffer,
+  /// the level ramped across it.
   static const double _bufferSeconds = 2048 / 44100;
 
   @override
@@ -781,12 +784,9 @@ class SoLoudAudioEngine implements AudioEngine {
     var handle = (voice as _SoLoudVoice).handle;
     if (!_soloud.getIsValidVoiceHandle(handle)) return;
     _soloud.fadeVolume(handle, 0, _duration(fade));
-    // Stopped two buffers after the fade is due to end, not as it ends. The
-    // stop is acted on at the start of a buffer, and a fade shorter than a
-    // buffer has only been ramped part of the way down by then -- so a stop
-    // timed with it cut the sound off at that level, which is the click it
-    // was there to prevent. Two buffers on, a whole buffer has ramped it to
-    // nothing first; in between it is silent.
+    // Stopped two buffers after the fade ends: a stop acts at a buffer's
+    // start, when a short fade may be only part way down, which clicks.
+    // Two buffers on, a whole buffer has ramped it to nothing.
     _soloud.scheduleStop(handle, _duration(fade + 2 * _bufferSeconds));
   }
 

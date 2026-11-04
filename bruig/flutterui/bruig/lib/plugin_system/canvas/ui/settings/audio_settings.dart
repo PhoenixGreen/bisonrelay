@@ -16,12 +16,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/placement_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/instrument_settings.dart';
 import 'package:flutter/material.dart';
 
-// audio_settings.dart is an Audio element's settings.
-//
-// In the order one is set up: the sound itself, how it plays, what the reader
-// can do to it, and only then what the speaker looks like. The playlist is
-// first because an Audio element with nothing in it does nothing at all, and
-// the one thing the panel has to make obvious is where the sound goes in.
+// audio_settings.dart is an Audio element's settings, in the order one is set
+// up: the sound (first, since an empty Audio element does nothing), how it
+// plays, what the reader can do to it, then what the speaker looks like.
 
 List<Widget> audioSettings(
   BuildContext context,
@@ -428,11 +425,8 @@ List<Widget> audioSettings(
 }
 
 /// _fitted is [e] made wide enough for the controls it has, or square again
-/// when it has none beside the icon.
-///
-/// Worked out from the layout's own proportions -- see audioParts -- so a
-/// volume bar turned on arrives at a width it can be used at, rather than as
-/// a sliver the reader then has to find the handle to widen.
+/// when it has none beside the icon. Worked out from the layout's own
+/// proportions (see audioParts) so a volume bar arrives at a usable width.
 AudioElement _fitted(AudioElement e) {
   var pad = e.box.pad;
   var side = math.max(1.0, e.height - pad.top - pad.bottom);

@@ -17,17 +17,13 @@ typedef PitchOrbit = ({
 });
 
 /// PitchOrbitPad moves a pitch's camera with one gesture instead of four
-/// numbers: drag to go round the pitch and up and down over it, as an orbit
-/// does in any 3D program.
+/// numbers, drawing the pitch as the camera sees it.
 ///
 /// - Drag: left and right turns, up and down tilts.
 /// - Shift-drag, or drag with the right button: left and right tilts to the
 ///   side, up and down is the perspective.
 /// - Scroll or pinch: zoom.
 /// - Double-click: back to flat, straight down.
-///
-/// It draws the pitch as the camera sees it, so what the drag is doing can be
-/// seen at the size of a thumb as well as on the canvas.
 class PitchOrbitPad extends StatefulWidget {
   final PitchOrbit value;
   final VoidCallback onBegin;

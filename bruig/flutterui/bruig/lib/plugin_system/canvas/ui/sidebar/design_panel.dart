@@ -11,19 +11,10 @@ import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
 import 'package:flutter/material.dart';
 
-// design_panel.dart is the three things you use to build a canvas, in one
-// column: what you can add, what is already there, and the settings of
-// whichever of it is selected.
-//
-// They were three tabs, and the cost of that was paid on every element: add
-// one from the first tab, change it on the third, look for it on the second.
-// Two of the three ended up carrying copies of the settings just to shorten
-// the journey, which is how you can tell tabs were the wrong shape -- the
-// work does not divide the way the tabs did.
-//
-// A stack rather than a fixed split, so the arrangement is the reader's:
-// each panel opens, closes, takes the height it is given and sits where it is
-// put, and all of that is remembered. See panel_stack.dart.
+// design_panel.dart is the three things used to build a canvas, in one
+// column: what can be added, what is already there, and the settings of the
+// selection. A panel stack (components/panel_stack.dart), so each panel
+// opens, shuts, resizes and moves, and all of that is remembered.
 
 class CanvasDesignPanel extends StatefulWidget {
   final CanvasController controller;
@@ -38,17 +29,10 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
 
   /// The three bodies, built once and handed to the stack unchanged.
   ///
-  /// This is the whole of what keeps the panel quick. The stack rebuilds
-  /// whenever a heading changes -- the layer count, the name of what is
-  /// selected -- and every notification from the controller is one of those:
-  /// it notifies on every pixel of a drag. Rebuilt with it, all three bodies
-  /// were laid out sixty times a second, and the settings alone are twenty or
-  /// thirty text fields.
-  ///
-  /// Handed the same widget instance twice, Flutter leaves that subtree
-  /// alone. So each body decides for itself when to rebuild -- the layers and
-  /// the settings listen for what they show, and the palette of things to add
-  /// does not listen at all, because nothing about the document changes it.
+  /// The stack rebuilds whenever a heading changes, which is every controller
+  /// notification (one per pixel of a drag). Handed the same widget instance,
+  /// Flutter leaves the subtree alone, so each body listens for what it shows
+  /// and rebuilds itself.
   late Widget _add;
   late Widget _scenes;
   late Widget _structure;
@@ -69,10 +53,8 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   @override
   void didUpdateWidget(CanvasDesignPanel old) {
     super.didUpdateWidget(old);
-    // Built once, but once *per controller*. Holding the first one's bodies
-    // after being handed a second would leave the whole column bound to a
-    // document nobody is looking at any more -- a panel that is cheap because
-    // it is stale is not cheap, it is broken.
+    // Built once per controller: keeping the old bodies would leave the column
+    // bound to a document nobody is looking at.
     if (old.controller != widget.controller) _makeBodies();
   }
 
@@ -91,10 +73,8 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        // The headings, and only the headings: two of the three say something
-        // about the document. A panel whose name is out of date is worse than
-        // one with no name.
-        // And the settings' layout, which its heading's icon shows.
+        // The headings only (two of them describe the document), and the
+        // settings' layout, which its heading's icon shows.
         listenable: Listenable.merge([controller, settingsAsMenu]),
         builder: (context, _) => _stack(context),
       );
@@ -110,12 +90,9 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
                 "where you want it.",
             body: _add,
           ),
-          // Between what can be added and what is on this canvas, because
-          // that is the order the questions come in: which canvas am I on,
-          // then what is on it.
-          // A piece of sound has its structure where a document of scenes
-          // has its scenes: the sections it is laid out in, along the one
-          // timeline.
+          // Between what can be added and what is on the canvas: which canvas,
+          // then what is on it. A sound document shows its sections here
+          // instead of scenes.
           if (controller.document.kind.isAudio)
             StackPanel(
               id: "structure",
@@ -132,9 +109,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
           else
             StackPanel(
               id: "scenes",
-              // Named for what this document's canvases are. The panel, the
-              // list and the buttons all say the same word, which comes from
-              // one place -- see CanvasKind.many.
+              // Named for this document's kind of canvas; see CanvasKind.manyCap.
               label: controller.document.kind.manyCap,
               icon: controller.document.isPages
                   ? Icons.menu_book_outlined
@@ -149,15 +124,11 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
                       "covers, which takes them out of the numbering."
                   : "The canvases this document plays through, in order. Drag "
                       "one up or down to change when it plays.",
-              // Shut to begin with: most documents are one canvas, and a list
-              // with one row in it is a hole in a column that has three other
-              // panels wanting the room.
+              // Shut to begin with: most documents are one canvas.
               startsOpen: false,
               body: _scenes,
             ),
-          // Only where there is another scene to give way to: with one
-          // canvas the whole panel would be settings about an event that
-          // cannot happen.
+          // Only where there is another scene to give way to.
           if (controller.document.hasScenes)
             StackPanel(
               id: "transitions",
@@ -171,9 +142,8 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
             id: "layers",
             label: "Layers",
             icon: Icons.layers_outlined,
-            // The count on the heading rather than inside the list, so a shut
-            // panel still says how much is behind it. One more than the
-            // elements, because the background is a layer too.
+            // On the heading so a shut panel still says how much is behind it. One
+            // more than the elements, because the background is a layer too.
             trailing: "${controller.document.elements.length + 1}",
             body: _layers,
           ),
@@ -187,13 +157,11 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
           ),
           StackPanel(
             id: "settings",
-            // Named for what is selected. The settings no longer head
-            // themselves with the element's name, so this is what says what is
-            // being edited -- and "Image settings" is a more useful heading
-            // than a phrase that is true of everything.
+            // Named for what is selected ("Image settings"): the settings do not
+            // head themselves with the element's name.
             label: elementSettingsTitle(controller),
-            // The icon switches the layout: sections down the panel, or a
-            // menu of them across the top with one shown at a time.
+            // The icon switches the layout: sections down the panel, or a menu of
+            // them across the top with one shown at a time.
             icon: settingsAsMenu.value ? Icons.view_week_outlined : Icons.tune,
             onIcon: toggleSettingsLayout,
             iconTooltip: settingsAsMenu.value
@@ -206,12 +174,9 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
       );
 }
 
-/// _SettingsBody is the settings of whatever is selected.
-///
-/// Its own widget so that it can be built once and handed to the stack, and
-/// so that its listener is its own: it is by far the most expensive thing in
-/// this column, and it must not be rebuilt because a heading elsewhere
-/// changed.
+/// _SettingsBody is the settings of whatever is selected: its own widget with
+/// its own listener, because it is the most expensive body in the column and
+/// must not rebuild when a heading elsewhere changes.
 class _SettingsBody extends StatefulWidget {
   final CanvasController controller;
   const _SettingsBody({required this.controller});
@@ -223,20 +188,12 @@ class _SettingsBody extends StatefulWidget {
 class _SettingsBodyState extends State<_SettingsBody> {
   CanvasController get controller => widget.controller;
 
-  /// _scroll keeps the column where it was.
-  ///
-  /// Held here rather than left to the scroll view, and remembered *per
-  /// element*: selecting another element and coming back rebuilt this from
-  /// scratch and put the column back at the top, so anybody working on the
-  /// animation section at the bottom of a text element's settings had to
-  /// scroll down to it again every time they clicked on the canvas.
+  /// _scroll keeps the column where it was, remembered per element, so
+  /// clicking between elements does not put the settings back at the top.
   final ScrollController _scroll = ScrollController();
 
-  /// _at is where each element's settings were left, by element id.
-  ///
-  /// A map rather than one number: the panels are different lengths, so one
-  /// remembered offset would put a short element's settings somewhere they do
-  /// not reach.
+  /// _at is where each element's settings were left, by element id (the panels
+  /// are different lengths, so one offset would not do).
   static final Map<String, double> _at = {};
 
   /// _showing is whose settings are on screen, so the offset is filed under
@@ -271,8 +228,8 @@ class _SettingsBodyState extends State<_SettingsBody> {
     _remember();
     _showing = id;
 
-    // After the frame: the new element's settings are a different height and
-    // there is nothing to scroll to until they have been laid out.
+    // After the frame: the new settings are a different height and must be
+    // laid out before they can be scrolled.
     var wanted = id == null ? 0.0 : (_at[id] ?? 0);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scroll.hasClients) return;
@@ -283,35 +240,20 @@ class _SettingsBodyState extends State<_SettingsBody> {
   @override
   Widget build(BuildContext context) => CanvasWatch<int>(
         listenable: controller,
-        // Every change except the ones about the view. See
-        // CanvasController.revision, which counts them the safe way round: a
-        // notification moves it unless it has been deliberately marked as
-        // being about the zoom, the pan, the frame's shape or the tool in
-        // hand -- none of which these controls show, and all of which used to
-        // lay out twenty or thirty text fields for nothing.
-        //
-        // Keyed on that alone, rather than on a list of what the settings
-        // happen to read. That list was tried and it was wrong within the
-        // hour: these controls also show the retouching brush, its size, its
-        // hardness, whether a stroke is waiting -- none of it in the document.
-        // A key that has to name everything is a key that goes stale the next
-        // time somebody adds a control.
+        // Every change except view-only ones (zoom, pan, frame shape, tool):
+        // see CanvasController.revision. Keyed on that rather than a list of
+        // what the settings read, because such a list goes stale as soon as a
+        // control shows something outside the document (the retouch brush, its
+        // size, a waiting stroke).
         select: () => controller.revision,
         builder: (context, _) => ScrollConfiguration(
-          // No bar down the edge. These settings are scrolled with two fingers
-          // rather than by taking hold of anything, and a bar that appears the
-          // moment they move and fades once they stop is furniture reporting
-          // something already plain.
+          // No scroll bar: these settings are scrolled with two fingers, and a
+          // bar that flashes on each scroll adds nothing.
           behavior: const CanvasNoScrollbar(),
           child: SingleChildScrollView(
             controller: _scroll,
-            // A clear gap under the header, and twice what it was. It is a
-            // coloured band, and the first thing under it is a row of numbers
-            // with captions a third the height of the header's own words --
-            // close up they read as the header's second line rather than as
-            // the first setting.
-            // Half that again since: with the settings as a menu, the bar
-            // under the header said the rest.
+            // A gap under the header so the first row of small captions does not
+            // read as the header's second line.
             padding: EdgeInsets.fromLTRB(
                 8, (canvasGroupGap + canvasRowGap) / 2, 8, canvasGroupGap - 4),
             child: CanvasControlScope(

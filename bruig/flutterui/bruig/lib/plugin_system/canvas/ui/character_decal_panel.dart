@@ -6,12 +6,12 @@ import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// character_decal_panel.dart is the new Character Studio's decals: pictures
-// and vectors from the canvas library laid on the skin or the clothes -- a
-// tattoo, a brand on a shirt -- placed on a part of the body, sized, turned
-// and drawn as printed, tattooed, faded or in one ink. See character_decal.dart.
+// character_decal_panel.dart is the Character Studio's decals: pictures and
+// vectors from the canvas library laid on the skin or the clothes (a tattoo,
+// a brand on a shirt), placed on a part of the body, sized, turned and drawn
+// as printed, tattooed, faded or in one ink. See character_decal.dart.
 
-/// The list's id for the decals.
+/// decalsPartId is the list's id for the decals.
 const String decalsPartId = "decals";
 
 /// CharacterDecalControls are the decals: the library's pictures and
@@ -97,8 +97,8 @@ class CharacterDecalControls extends StatelessWidget {
                       style: TextStyle(
                           fontSize: 12, color: colors.onSurfaceVariant));
                 }
-                // Six and a half rows at most, scrolled: a long library
-                // would push the decal's own settings off the panel.
+                // Six and a half rows at most, scrolled, so a long library does not
+                // push the decal's own settings off the panel.
                 return ConstrainedBox(
                   key: const ValueKey("decalLibrary"),
                   constraints: const BoxConstraints(maxHeight: 6.5 * 58),
@@ -229,8 +229,8 @@ class CharacterDecalControls extends StatelessWidget {
 }
 
 /// _Scrolled scrolls [child] with a scrollbar that shares its controller:
-/// a Scrollbar left to find one fell back on a primary controller that no
-/// list had, and asserted as the list was dragged.
+/// a Scrollbar left to find one falls back on a primary controller no list
+/// has, and asserts when the list is dragged.
 class _Scrolled extends StatefulWidget {
   final Widget child;
   const _Scrolled({required this.child});

@@ -39,19 +39,19 @@ import 'package:flutter_scene/scene.dart' hide Material;
 import 'package:flutter_vrm/flutter_vrm.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
-// character_studio_3d.dart is the new Character Studio, laid out as its
-// approved prototype: a bar of steps along the top (Character base, Face,
-// Move, Test), the parts down the left, the character on a page in the
-// middle with the views over it, and the open part's settings on the right.
-// It takes the whole page, in place of the canvas, as the old Studio does.
+// character_studio_3d.dart is the Character Studio: a bar of steps along the
+// top (Character base, Face, Move, Test), the parts down the left, the
+// character on a page in the middle with the views over it, and the open
+// part's settings on the right. It takes the whole page, in place of the
+// canvas.
 //
-// The character is drawn in 3D with Flutter GPU, from one of the four VRoid
+// The character is drawn in 3D with Flutter GPU, from one of the VRoid
 // bodies (vroid_assets.dart), shaped (vrm_shape.dart) and dressed
 // (vrm_wear.dart). The Test step tries it in a scene, with the settings a
 // 3D character has on the canvas (character3d_settings.dart) and a timeline
 // to play them on.
 
-/// The bodies, by the names the page gives them.
+/// studioBodyNames is the bodies, by the names the page gives them.
 const Map<String, String> studioBodyNames = {
   "Vivi": "Vivi",
   "Victoria_Rubin": "Victoria",
@@ -74,8 +74,8 @@ enum StudioView {
 
 /// CharacterStudio3D is the whole page.
 class CharacterStudio3D extends StatefulWidget {
-  /// onDone goes back to the canvas, with the character as it was kept --
-  /// or null where there was nothing to keep -- and what the Test step left
+  /// onDone goes back to the canvas with the character as it was kept (null
+  /// where there was nothing to keep) and what the Test step left
   /// [performance] as, where it was changed.
   final void Function(CharacterDesign? kept, CharacterPerformance? performance)
       onDone;
@@ -88,8 +88,8 @@ class CharacterStudio3D extends StatefulWidget {
   /// opened for none, and the Test step's changes are not kept.
   final CharacterPerformance? performance;
 
-  /// gpuReady stands in for whether this app can draw in 3D, for tests,
-  /// which run without Flutter GPU; designs for the library's characters.
+  /// gpuReady stands in for whether this app can draw in 3D, and designs for
+  /// the library's characters, for tests, which run without Flutter GPU.
   final Future<bool>? gpuReady;
   final Future<List<CharacterDesign>> Function()? designs;
   const CharacterStudio3D(
@@ -296,8 +296,8 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
 
   /// _done keeps the character in the library, and goes back to the canvas.
   Future<void> _done() async {
-    // The scene's settings, kept where they were changed for a character
-    // on the canvas.
+    // The scene's settings, kept where they were changed for a character on
+    // the canvas.
     final perf = widget.performance != null && _perf != widget.performance
         ? _perf
         : null;
@@ -313,14 +313,15 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
     widget.onDone(d, perf);
   }
 
-  /// _openDesign opens a saved character to change it, or with null starts a new
-  /// one.
+  /// _openDesign opens a saved character to change it, or with null starts a
+  /// new one.
   void _openDesign(CharacterDesign? d) => setState(() => _take(d));
 
   void _take(CharacterDesign? d) {
-    // A character with no id is one read from a canvas that could not be:
-    // kept, it is a new one.
-    _designId = d == null || d.id.isEmpty ? null : d.id;
+    // A character with no id (read from a canvas that could not give it one)
+    // or an id that cannot name its files (a received canvas's, say) is kept
+    // as a new one.
+    _designId = d == null || !CharacterDesigns.isId(d.id) ? null : d.id;
     _title.text = d?.name ?? "";
     if (d != null) _id = d.body;
     _shape = d?.shape ?? const CharacterShape();
@@ -850,15 +851,15 @@ class _Stage extends StatefulWidget {
   final CharacterFace face;
   final ({String text, int n})? line;
 
-  /// move is how it stands; with [onMove], its dots are on the stage to
-  /// drag -- the hands, feet and hips moved, the head turned. [playing] is
-  /// whether its motion plays.
+  /// move is how it stands; with [onMove], its dots are on the stage to drag
+  /// (the hands, feet and hips moved, the head turned). [playing] is whether
+  /// its motion plays.
   final CharacterMove move;
   final bool playing;
   final ValueChanged<CharacterMove>? onMove;
 
   /// performance is what it does in a scene, played to [clock]'s time in
-  /// seconds -- the Test step's -- which runs on while [clockRuns], until
+  /// seconds (the Test step's), which runs on while [clockRuns] until
   /// [clockEnd], then calls [onClockEnd]. Null for as designed.
   final CharacterPerformance? performance;
   final ValueNotifier<double>? clock;
@@ -927,9 +928,8 @@ class _StageState extends State<_Stage> {
   /// pointer, as far as the view is from it.
   void _panBy(Offset delta) {
     final forward = (_camera.target - _camera.position).normalized();
-    // forward × up is the screen's left in flutter_scene's view: see
-    // _hitAt. The view moves the other way to the pointer, so the
-    // character follows it.
+    // forward × up is the screen's left in flutter_scene's view: see _view.
+    // The view moves the other way to the pointer, so the character follows.
     final left = forward.cross(vm.Vector3(0, 1, 0)).normalized();
     final up = left.cross(forward).normalized();
     final k = _distance * 0.0012;
@@ -939,8 +939,8 @@ class _StageState extends State<_Stage> {
   // ---------------------------------------------------------------------
   // Touch up: a drag shapes the body under the pointer.
 
-  /// _before are the strokes from before the one being drawn, _stroke: a
-  /// shaping stroke, or a paint stroke, _painted.
+  /// _before is the strokes from before the one being drawn, [_stroke];
+  /// _paintBefore and [_painted] the same for paint strokes.
   List<SculptStroke>? _before;
   SculptStroke? _stroke;
   List<PaintStroke>? _paintBefore;
@@ -964,9 +964,9 @@ class _StageState extends State<_Stage> {
   }
 
   /// _view is the camera's frame: which way it looks, the screen's left and
-  /// up, how wide it sees, and the stage's size. forward × up is the
-  /// screen's left in flutter_scene's view, as a stroke aimed at one arm
-  /// landing on the other showed.
+  /// up, how wide it sees, and the stage's size. forward × up is the screen's
+  /// left in flutter_scene's view (a stroke aimed at one arm would otherwise
+  /// land on the other).
   ({vm.Vector3 f, vm.Vector3 left, vm.Vector3 up, double t, Size size})?
       _view() {
     final box = context.findRenderObject() as RenderBox?;
@@ -1033,10 +1033,10 @@ class _StageState extends State<_Stage> {
     _moveAtStart = widget.move;
   }
 
-  /// _dotTo carries the dot being dragged to [global] on the screen: on a
+  /// _dotTo carries the dot being dragged to [global] on the screen, on a
   /// plane facing the camera through where it started. The hands, feet and
-  /// hips move by as much, in the body's own space -- and the pose keeps
-  /// them where a body can be. The head turns toward it instead.
+  /// hips move by as much, in the body's own space, and the pose keeps them
+  /// where a body can be; the head turns toward it instead.
   void _dotTo(Offset global) {
     final k = _dragging, from = _dragFrom, m0 = _moveAtStart;
     final onMove = widget.onMove;
@@ -1334,9 +1334,9 @@ class _StageState extends State<_Stage> {
     return Stack(children: [
       Positioned.fill(
         child: Listener(
-          // A drag with shift held moves the view rather than turning it;
-          // so does one with the right or middle button, which the gesture
-          // below never sees.
+          // A drag with shift held moves the view rather than turning it; so does
+          // one with the right or middle button, which the gesture below never
+          // sees.
           onPointerDown: (e) =>
               _panning = HardwareKeyboard.instance.isShiftPressed,
           onPointerMove: (e) {
@@ -1384,8 +1384,8 @@ class _StageState extends State<_Stage> {
             },
             child: ColoredBox(
               color: Color(0xff000000 | widget.look.paperColour),
-              // Drawn once there is a body to draw: an empty scene is a
-              // blank frame flutter_scene warns of.
+              // Drawn once there is a body: an empty scene is a blank frame
+              // flutter_scene warns of.
               child: _character.avatar == null
                   ? const SizedBox.expand()
                   // Its shadow on the ground under it, drawn before it.
@@ -1422,7 +1422,7 @@ class _StageState extends State<_Stage> {
                           color: k == "hips"
                               ? colors.primary
                               : k == "head"
-                                  // Not tertiary: a panel fill, lost on one.
+                                  // Not tertiary, which is a panel fill.
                                   ? const Color(0xff3aa66b)
                                   : colors.secondary,
                           border: Border.all(color: Colors.white, width: 2),

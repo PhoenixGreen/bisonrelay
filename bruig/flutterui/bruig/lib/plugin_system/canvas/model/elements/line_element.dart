@@ -5,12 +5,25 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 
-/// LineCapStyle is what a line's ends used to be: the stroke's cap and its
-/// decoration in one enum.
-///
-/// Kept only so documents saved before the two were separated still open. New
-/// documents write [LineStrokeCap] and [LineEnd]; see LineElement.fromJson,
-/// which maps each of these onto the pair it meant.
+/// legacyCap is an older file's single "cap" (see LineCapStyle) as the
+/// stroke's cap and its two ends.
+(LineStrokeCap, LineEnd, LineEnd) legacyCap(Object? cap) =>
+    switch (LineCapStyle.fromName(jsonStr(cap))) {
+      LineCapStyle.round => (LineStrokeCap.round, LineEnd.none, LineEnd.none),
+      LineCapStyle.square => (LineStrokeCap.square, LineEnd.none, LineEnd.none),
+      LineCapStyle.arrow => (LineStrokeCap.flat, LineEnd.none, LineEnd.arrow),
+      LineCapStyle.arrowBoth => (
+          LineStrokeCap.flat,
+          LineEnd.arrow,
+          LineEnd.arrow
+        ),
+      LineCapStyle.dot => (LineStrokeCap.round, LineEnd.circle, LineEnd.circle),
+      _ => (LineStrokeCap.flat, LineEnd.none, LineEnd.none),
+    };
+
+/// LineCapStyle is an older file's single "cap": the stroke's cap and its
+/// decoration in one. Read only; LineElement.fromJson maps it onto
+/// [LineStrokeCap] and [LineEnd].
 enum LineCapStyle {
   flat,
   round,
@@ -27,11 +40,8 @@ enum LineCapStyle {
   }
 }
 
-/// LineStrokeCap is how the stroke itself finishes.
-///
-/// Only the three things a stroke can do, unlike the enum above: what is drawn
-/// *at* the end is a separate decision now, because "round end" and "arrow"
-/// are not alternatives -- a line can want both.
+/// LineStrokeCap is how the stroke itself finishes. What is drawn at the end
+/// is [LineEnd], separately, since a line can want a round end and an arrow.
 enum LineStrokeCap {
   flat("Flat", StrokeCap.butt),
   round("Round", StrokeCap.round),
@@ -53,7 +63,6 @@ const double lineSliver = 0.01;
 
 /// snapLineAngle is [moving] swung about [fixed] onto the nearest multiple of
 /// 45 degrees, when it is within [within] degrees of it or [always] is set.
-/// What makes a line dragged roughly flat come out exactly flat.
 Offset snapLineAngle(Offset fixed, Offset moving,
     {bool always = false, double within = 4}) {
   var d = moving - fixed;
@@ -68,11 +77,7 @@ Offset snapLineAngle(Offset fixed, Offset moving,
   return fixed + Offset(c, sn) * d.distance;
 }
 
-/// LineEnd is what is drawn at one end of a line.
-///
-/// Per end rather than one setting for both, because the two ends of an arrow
-/// almost never want the same thing: a run off the ball starts at a dot and
-/// finishes in an arrowhead, and a measurement has a bar at each end.
+/// LineEnd is what is drawn at one end of a line, set for each end.
 enum LineEnd {
   none("None"),
   arrow("Arrow"),
@@ -96,7 +101,7 @@ enum LineEnd {
       this == arrow || this == openArrow || this == hollowArrow;
 
   /// reach is how far this decoration extends from the line's end, as a
-  /// multiple of the stroke width. What the selection box has to allow for.
+  /// multiple of the stroke width, for the selection box to allow for.
   double get reach => switch (this) {
         LineEnd.none => 0,
         LineEnd.bar => 1.6,
@@ -107,16 +112,9 @@ enum LineEnd {
       };
 
   /// cover is how much of the line this decoration sits on top of, as a
-  /// multiple of the stroke width -- so the stroke can be cut back to exactly
-  /// where the decoration begins.
-  ///
-  /// Every end needs this, not only the pointed ones. A hollow circle or a
-  /// hollow diamond is a ring with the line running visibly through the middle
-  /// of it otherwise, which is the "you can see the end of the line through
-  /// it" fault; a solid one hides the overlap but still has the stroke poking
-  /// out along its length wherever the shape is narrower than the line is
-  /// wide. A bar is the exception: it crosses the line and the line should
-  /// reach it.
+  /// multiple of the stroke width, so the stroke is cut back to where the
+  /// decoration begins. Otherwise the line shows through a hollow end or
+  /// pokes out beside a solid one. A bar crosses the line, which reaches it.
   double get cover => switch (this) {
         LineEnd.none || LineEnd.bar => 0,
         LineEnd.circle || LineEnd.hollowCircle => 1.2,
@@ -127,12 +125,9 @@ enum LineEnd {
       };
 }
 
-/// LineElement is a stroke from one corner of its box to the other.
-///
-/// A box rather than two endpoints, so that a line resizes, rotates and
-/// animates through exactly the same handles as everything else. The endpoints
-/// are the box's own corners, chosen by [flipped], which is what lets a line
-/// run either way across the same rectangle.
+/// LineElement is a stroke from one corner of its box to the other, so it
+/// resizes, rotates and animates through the same handles as everything
+/// else. [flipped] chooses which pair of corners.
 class LineElement extends CanvasElement {
   final Color color;
 
@@ -142,17 +137,13 @@ class LineElement extends CanvasElement {
   final double strokeWidth;
 
   /// cap is how the stroke finishes, and startEnd/endEnd are what is drawn at
-  /// each end. Three settings where there was one; see [LineCapStyle].
+  /// each end.
   final LineStrokeCap cap;
   final LineEnd startEnd;
   final LineEnd endEnd;
 
-  /// endSize scales whatever is drawn at the ends.
-  ///
-  /// One setting for both, because the two ends of a line are drawn at the
-  /// same weight in every diagram anybody draws -- and because it is a
-  /// multiple of the stroke width rather than a length, an arrow stays in
-  /// proportion when the line is made thicker.
+  /// endSize scales whatever is drawn at both ends. A multiple of the stroke
+  /// width, so an arrow stays in proportion when the line thickens.
   final double endSize;
 
   /// dash is the on/off length in design units. Zero draws a solid line.
@@ -166,9 +157,7 @@ class LineElement extends CanvasElement {
   /// top-left to bottom-right.
   final bool flipped;
 
-  /// animation is how it arrives and leaves. See ElementAnimation -- the same
-  /// two keyframes a chart and a headline use, so everything on the canvas can
-  /// be dragged to arrive together.
+  /// animation is how it arrives and leaves. See ElementAnimation.
   final ElementAnimation animation;
 
   const LineElement(
@@ -203,14 +192,9 @@ class LineElement extends CanvasElement {
 
   /// withEnds is this line drawn from [a] to [b].
   ///
-  /// A line runs corner to corner of its box, so a level one is a box with no
-  /// height -- and nothing with no height is drawn at all. It gets
-  /// [lineSliver] instead: too little to see as a slope, enough to be drawn.
-  /// Before this, every level line was a box at least a few pixels tall and
-  /// so ran gently downhill.
-  ///
-  /// The box always runs left to right, so a line drawn right to left has
-  /// its ends' decorations swapped to keep the arrow where it was.
+  /// A level line would be a box with no height, which is not drawn, so it
+  /// gets [lineSliver]: too little to see as a slope. The box always runs
+  /// left to right, so a line drawn right to left has its ends swapped.
   LineElement withEnds(Offset a, Offset b) {
     var backwards = b.dx < a.dx || (b.dx == a.dx && b.dy < a.dy);
     var from = backwards ? b : a, to = backwards ? a : b;
@@ -295,22 +279,7 @@ class LineElement extends CanvasElement {
       };
 
   factory LineElement.fromJson(Map<String, dynamic> json, ElementBase b) {
-    // A document saved before the stroke's cap and the ends' decorations were
-    // separated has one "cap" holding both. Each old value maps onto the pair
-    // it actually meant.
-    var old = LineCapStyle.fromName(json["cap"] as String?);
-    var (oldCap, oldStart, oldEnd) = switch (old) {
-      LineCapStyle.round => (LineStrokeCap.round, LineEnd.none, LineEnd.none),
-      LineCapStyle.square => (LineStrokeCap.square, LineEnd.none, LineEnd.none),
-      LineCapStyle.arrow => (LineStrokeCap.flat, LineEnd.none, LineEnd.arrow),
-      LineCapStyle.arrowBoth => (
-          LineStrokeCap.flat,
-          LineEnd.arrow,
-          LineEnd.arrow
-        ),
-      LineCapStyle.dot => (LineStrokeCap.round, LineEnd.circle, LineEnd.circle),
-      _ => (LineStrokeCap.flat, LineEnd.none, LineEnd.none),
-    };
+    var (oldCap, oldStart, oldEnd) = legacyCap(json["cap"]);
 
     return LineElement(b,
         color: colorFromJson(json["color"]),
@@ -320,16 +289,16 @@ class LineElement extends CanvasElement {
             : null,
         strokeWidth: jsonDouble(json["sw"], 4),
         cap: json["strokeCap"] is String
-            ? LineStrokeCap.fromName(json["strokeCap"] as String?)
+            ? LineStrokeCap.fromName(jsonStr(json["strokeCap"]))
             : oldCap,
         startEnd: json.containsKey("startEnd") || json.containsKey("strokeCap")
-            ? LineEnd.fromName(json["startEnd"] as String?)
+            ? LineEnd.fromName(jsonStr(json["startEnd"]))
             : oldStart,
         endEnd: json.containsKey("endEnd") || json.containsKey("strokeCap")
-            ? LineEnd.fromName(json["endEnd"] as String?)
+            ? LineEnd.fromName(jsonStr(json["endEnd"]))
             : oldEnd,
         endSize: jsonDouble(json["endSize"], 1),
-        dash: jsonDouble(json["dash"], 0),
+        dash: jsonDouble(json["dash"], 0).clamp(0.0, 400.0),
         curvature: jsonDouble(json["curve"], 0),
         flipped: jsonBool(json["flipped"], false),
         animation: jsonSpec(

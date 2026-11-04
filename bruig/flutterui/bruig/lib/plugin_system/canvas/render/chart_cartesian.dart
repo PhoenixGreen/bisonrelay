@@ -11,15 +11,9 @@ import 'package:flutter/painting.dart';
 // chart_cartesian.dart draws every chart type that has an x and a y axis:
 // bars, grouped and stacked bars, horizontal bars, lines, areas and scatter.
 //
-// The part worth reading twice is the value axis. Its range is chosen to end
-// on round numbers -- see _niceRange -- because an axis running to 8.3714 is
-// not readable at any size, and a chart on a canvas is going to be looked at
-// rather than hovered over.
-//
-// Everything else here is measurement: the plot rectangle is what is left
-// once the axis titles, the tick labels and the category names have taken the
-// room they actually need, never a guessed margin, so a chart with long
-// category names and a chart with none both use the space they have.
+// The value axis ends on round numbers (see _niceRange). The plot rectangle
+// is what is left once the axis titles, tick labels and category names have
+// taken the room they measure, never a guessed margin.
 
 /// _ValueRange is the axis and its ticks, worked out together.
 class _ValueRange {
@@ -36,12 +30,8 @@ class _ValueRange {
 
   /// fraction is where [v] sits along the axis, 0 at the bottom.
   ///
-  /// Zero and everything below it sits *at* the bottom of a log axis rather
-  /// than off it: there is no such place, and the alternative is an infinity
-  /// travelling into a rectangle and taking the frame with it. Nothing on a
-  /// log chart is ever zero -- see ChartElement.logs, which is what refuses
-  /// the whole scale when something is -- but a bar's base is asked for as
-  /// fraction(0) whatever the data holds.
+  /// On a log axis zero and below sit at the bottom rather than at minus
+  /// infinity: a bar's base is asked for as fraction(0) whatever the data.
   double fraction(double v) {
     if (!log) return (v - min) / span;
     if (v <= 0 || min <= 0 || max <= min) return 0;
@@ -52,14 +42,9 @@ class _ValueRange {
 /// _stepFor is the roundest step that rules [lo]..[hi] into about [want]
 /// lines.
 ///
-/// Searched rather than worked out, because the two requirements pull against
-/// each other: the lines have to land on numbers somebody can read, and there
-/// has to be about the number of them that was asked for. Rounding the step
-/// to the nearest 1, 2, 2.5 or 5 answers the first and ignores the second --
-/// half the numbers anybody types give back the answer they already had. This
-/// tries every round step near the right size and keeps whichever comes
-/// closest to the count, preferring the larger where two are equally close:
-/// given a choice, fewer and rounder.
+/// Searched rather than rounded: rounding to 1, 2, 2.5 or 5 lands on readable
+/// numbers but ignores the count asked for. This tries every round step near
+/// the right size and keeps the one closest to the count.
 double _stepFor(double lo, double hi, int want) {
   var span = hi - lo;
   if (span <= 0 || !span.isFinite) return 1;
@@ -67,8 +52,7 @@ double _stepFor(double lo, double hi, int want) {
   var mag =
       math.pow(10, (math.log(span / lines) / math.ln10).floor()).toDouble();
 
-  // More multiples than the walk allows, because 3, 4 and 6 are perfectly
-  // readable steps -- 0, 30, 60, 90 is an axis anybody can read -- and
+  // More multiples than _niceRange's walk: 3, 4 and 6 read well too, and
   // without them there is nothing between 2.5 and 5.
   const nice = [1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0];
   double? best;
@@ -81,17 +65,11 @@ double _stepFor(double lo, double hi, int want) {
       var max = (hi / step).ceil() * step;
       var count = ((max - min) / step).round() + 1;
       if (count < 2 || count > 200) continue;
-      // Nearest to what was asked, *and* fitting the numbers. A big step can
-      // always hit a small count by running the axis far past the data --
-      // two lines over a range of a hundred by ruling it to a thousand --
-      // which answers the question asked and ruins the chart. The room it
-      // wastes counts against it heavily enough that an axis which fits
-      // beats one that is nearer the number.
+      // A big step can hit a small count by running the axis far past the
+      // data, so the wasted room is weighted to beat nearness to the count.
       var waste = (max - min) / span - 1;
       var score = (count - lines).abs() + math.max(0.0, waste) * 6;
-      // A tie goes to the finer step: asked for more lines than the round
-      // numbers can give exactly, somebody would rather have one too many
-      // than one too few.
+      // A tie goes to the finer step: one line too many beats one too few.
       if (score < bestScore ||
           (score == bestScore && step < (best ?? double.infinity))) {
         best = step;
@@ -104,10 +82,8 @@ double _stepFor(double lo, double hi, int want) {
 
 /// _logRange picks an axis by decades: 1, 10, 100, 1000.
 ///
-/// The ends are pushed out to whole powers of ten, which is what makes the
-/// labels readable and the gridlines mean something -- each line is ten times
-/// the one below it. Within a single decade that would be one gridline, so a
-/// narrow range is ruled at 1, 2 and 5 of each instead.
+/// The ends are pushed out to whole powers of ten. A range of two decades or
+/// fewer is also ruled at 2 and 5 of each.
 _ValueRange _logRange(double lo, double hi, {int want = 0}) {
   if (!lo.isFinite || !hi.isFinite || lo <= 0 || hi <= 0) {
     return _niceRange(lo, hi);
@@ -118,11 +94,9 @@ _ValueRange _logRange(double lo, double hi, {int want = 0}) {
 
   var decades = (math.log(high / low) / math.ln10).round();
   var ticks = <double>[];
-  // Every decade below four of them; every second, then every fifth, above
-  // that, so a chart spanning eight decades is not a solid band of writing.
-  // Asked for a number of divisions, every so many decades is the closest a
-  // log axis can come to it: the lines are powers of ten and there is nothing
-  // between them to move. Nought is the chart's own judgement.
+  // Every decade up to six, then every second, then every fifth. Asked for a
+  // number of divisions ([want] > 0), every so many decades is the nearest a
+  // log axis can come.
   var every = want > 0
       ? math.max(1, (decades / math.max(1, want)).round())
       : (decades <= 6 ? 1 : (decades <= 12 ? 2 : 5));
@@ -130,8 +104,7 @@ _ValueRange _logRange(double lo, double hi, {int want = 0}) {
     if (i % every != 0 && i != decades) continue;
     var at = low * math.pow(10, i);
     if (decades <= 2) {
-      // Room for the intermediate lines, and a single decade needs them or
-      // the chart has a gridline at each end and nothing between.
+      // Without these a single decade has a line at each end and none between.
       for (var m in const [1, 2, 5]) {
         var v = at * m;
         if (v <= high) ticks.add(v.toDouble());
@@ -144,12 +117,8 @@ _ValueRange _logRange(double lo, double hi, {int want = 0}) {
   return _ValueRange(low, high, ticks, log: true);
 }
 
-/// axisTicksForTest is the value axis a chart would be ruled with: the
-/// numbers the gridlines are drawn at.
-///
-/// A seam, like legendEntriesForTest. What is being asked is arithmetic --
-/// how many lines, and at what round numbers -- and reading it off a picture
-/// would be counting rows of pixels to check a division.
+/// axisTicksForTest is the numbers a chart's value-axis gridlines are drawn
+/// at. A test seam, like legendEntriesForTest.
 @visibleForTesting
 List<double> axisTicksForTest(double lo, double hi,
         {int want = 0, bool log = false, bool fromZero = true}) =>
@@ -160,17 +129,11 @@ List<double> axisTicksForTest(double lo, double hi,
 
 /// _niceRange picks an axis that ends on round numbers.
 ///
-/// The standard "nice numbers" walk: take the rough step the data implies,
-/// round it up to the next 1, 2, 2.5 or 5 times a power of ten, then push the
-/// ends of the axis out to multiples of it. The alternative -- running the
-/// axis from the smallest value to the largest -- gives labels like 3.7, 5.4,
-/// 7.1, which nobody can read a value off.
+/// The standard "nice numbers" walk: round the rough step up to 1, 2, 2.5 or
+/// 5 times a power of ten, then push the ends out to multiples of it.
 ///
-/// [fromZero] is what a bar chart needs and a candlestick chart must not
-/// have: a bar is read as a length and one drawn from 12 to 16 on an axis
-/// starting at 12 says four times what it means, while a price forced down to
-/// zero is a flat line along the top with the whole month in a tenth of the
-/// plot.
+/// [fromZero] is for types read as lengths (bars); a candlestick chart is read
+/// as positions and must not be dragged down to zero.
 _ValueRange _niceRange(double lo, double hi,
     {int target = 5, int want = 0, bool fromZero = true}) {
   if (!lo.isFinite || !hi.isFinite || lo == hi) {
@@ -182,8 +145,8 @@ _ValueRange _niceRange(double lo, double hi,
     if (lo > 0) lo = 0; // Bars must start from zero or they lie about ratios.
     if (hi < 0) hi = 0;
   } else if (hi > lo) {
-    // A tenth of the range as air above and below, so the highest wick is not
-    // drawn along the top edge of the plot.
+    // A tenth of the range as air above and below the highest and lowest
+    // wicks.
     var air = (hi - lo) * 0.1;
     lo -= air;
     hi += air;
@@ -203,16 +166,19 @@ _ValueRange _niceRange(double lo, double hi,
                       : 10) *
       mag;
 
-  // Asked for a particular number of lines, the walk above is too coarse to
-  // answer with: it rounds the step to 1, 2, 2.5 or 5 times a power of ten,
-  // and over 0 to 100 that means five lines, six, seven, eight and nine all
-  // come out as the same six. Asked, it searches instead -- see _stepFor.
+  // The walk is too coarse to hit a requested count (over 0..100, five to
+  // nine lines all come out as six), so a request searches. See _stepFor.
   if (want > 0) step = _stepFor(lo, hi, want);
 
   var min = (lo / step).floor() * step;
   var max = (hi / step).ceil() * step;
+  // Counted rather than stepped: a step too small to change a large value
+  // would never reach the top.
+  var count = (max - min) / step;
+  if (!count.isFinite || count > 1000) return _ValueRange(lo, hi, [lo, hi]);
   var ticks = <double>[];
-  for (var v = min; v <= max + step * 0.001; v += step) {
+  for (var i = 0; i <= count.round(); i++) {
+    var v = min + i * step;
     ticks.add(v.abs() < step * 1e-9 ? 0 : v);
   }
   return _ValueRange(min, max, ticks);
@@ -224,16 +190,9 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
   var data = e.data;
   var horizontal = e.type == ChartType.horizontalBar;
 
-  // The range covers every series, or their running totals when stacked.
-  //
-  // Starting at zero for the types that are read as lengths, and starting
-  // nowhere for the one that is read as a position: seeded with zero, the
-  // smallest price on a candlestick chart could never be above it, and a
-  // month of trading between 12 and 16 was drawn as a smudge along the top of
-  // an axis that began at nothing.
-  //
-  // A log axis takes its bottom from the data too, whatever the type: there
-  // is no zero on one to start from.
+  // The range covers every visible series, or their running totals when
+  // stacked. It is seeded with zero only for types read as lengths; candles
+  // and log axes take their bottom from the data.
   var fromZero = e.type.startsAtZero && !e.logs;
   var lo = fromZero ? 0.0 : double.infinity;
   var hi = fromZero ? 0.0 : double.negativeInfinity;
@@ -243,8 +202,7 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
       for (var s = 0; s < data.series.length; s++) {
         if (data.series[s].hidden) continue;
         var v = data.valueAt(s, i);
-        // A gap adds nothing to the pile it is missing from.
-        if (v.isNaN) continue;
+        if (v.isNaN) continue; // A gap adds nothing.
         v >= 0 ? pos += v : neg += v;
       }
       hi = math.max(hi, pos);
@@ -252,20 +210,14 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
     }
   } else {
     for (var s in data.series) {
-      // A series nobody is looking at does not get to decide how tall the
-      // axis is. That is the point of switching one off: isolating a pot
-      // worth two hundred thousand against a stream worth five hundred should
-      // actually show the pot.
+      // A hidden series does not size the axis, so hiding a large one shows
+      // the small ones.
       if (s.hidden) continue;
       for (var v in s.values) {
-        // A log axis takes its bottom from the smallest number it can
-        // describe. Seeded with a zero -- which a row nobody has filled in
-        // yet puts in every series -- the range falls back to a linear one
-        // and the scale quietly stops being a log scale. The zeros are still
-        // drawn; they sit on the floor. See _ValueRange.fraction.
+        // A zero would make _logRange fall back to linear. Zeros are still
+        // drawn, on the floor (see _ValueRange.fraction).
         if (e.logs && v <= 0) continue;
-        // A cell nobody filled in is not a number the axis has to reach.
-        if (v.isNaN) continue;
+        if (v.isNaN) continue; // An empty cell.
         lo = math.min(lo, v);
         hi = math.max(hi, v);
       }
@@ -282,15 +234,13 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
         log: range.log);
   }
 
-  // Which axis carries what depends on which way the chart is drawn: on
-  // horizontal bars the categories run up the side and the values along the
-  // bottom. The switches and the type are the axis', not the writing's, so
-  // "the X labels" means whatever is written along the bottom either way.
+  // On horizontal bars the categories run up the side and the values along
+  // the bottom. The label switches and type belong to the axis, so "X labels"
+  // means whatever is written along the bottom either way.
   var sideSpec = e.yLabels, bottomSpec = e.xLabels;
   var sideOn = e.showYLabels, bottomOn = e.showXLabels;
 
-  // Reserve room by measuring, not by guessing: the value labels are as wide
-  // as the widest of them and no wider.
+  // The value labels' gutter is as wide as the widest of them.
   var valueGutter = 0.0;
   var valueSide = horizontal ? bottomOn : sideOn;
   var valueSpec = horizontal ? bottomSpec : sideSpec;
@@ -303,23 +253,15 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
         math.max(0, valueGutter + valueSpec.fontSize * 0.5 + e.yLabelGap);
   }
 
-  // No writing, no gutters. Switching one axis' labels off and keeping the
-  // room they took would be a chart with a margin of nothing down that side.
-  // The gaps are the user's: more air between the values and the chart, or
-  // less. The gutter grows with them, and never past nothing.
+  // No labels, no gutter: room kept for switched-off labels pushes the chart
+  // off centre. The user's label gaps widen or narrow each gutter, never
+  // below nothing.
   var categoryGutter =
       bottomOn ? math.max(0.0, bottomSpec.fontSize * 1.6 + e.xLabelGap) : 0.0;
-  // The axis titles have their own type and their own distance from the plot:
-  // one and a half times their height to sit against it, plus whatever room
-  // has been asked for to push them out. A title an inch clear of the plot is
-  // a layout decision and the chart cannot make it -- how much air a design
-  // wants is not a thing a drawing routine knows.
+  // An axis title sits 1.5 times its height from the plot, plus axisGap.
   var axisSpec = e.axisText;
   var axisTitleGutter = axisSpec.fontSize * 1.5 + math.max(0, e.axisGap);
 
-  // No writing, no gutter. Room kept for labels that are switched off is a
-  // margin of nothing down one side, which looks like a chart that has been
-  // pushed off centre.
   var left = area.left +
       (horizontal
           ? (sideOn
@@ -330,19 +272,13 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
               : 0.0)
           : valueGutter) +
       (e.showsYTitle ? axisTitleGutter : 0);
-  // The title's own switch, not whether anybody has typed one. A chart with a
-  // name for its x axis and the titles switched off kept the room the title
-  // would have taken, which is a strip of nothing along the bottom -- and the
-  // strip is what made the element's box sit away from the chart in it.
+  // Room follows the title's switch, not whether a title has been typed.
   var bottom =
       area.bottom - categoryGutter - (e.showsXTitle ? axisTitleGutter : 0);
 
-  // The air over the top tick and past the last category, so neither is cut
-  // in half by the edge. Only where there are labels to cut: with them off it
-  // is a margin around nothing, and the box the chart is aligned and snapped
-  // by is the box it is drawn in.
-  // The air over the top tick belongs to the axis the ticks are written on,
-  // and the air past the last category to the one the categories are on.
+  // Air over the top label and past the last one so the edge does not cut
+  // them, kept only while that axis has labels: otherwise the chart fills
+  // the box it is aligned and snapped by.
   var topAir = sideOn ? sideSpec.fontSize : 0.0;
   var rightAir = bottomOn ? bottomSpec.fontSize : 0.0;
   var plot = Rect.fromLTRB(
@@ -355,29 +291,20 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
         categoryGutter, axisTitleGutter);
   }
 
-  // Split by how each series is drawn rather than by what the chart is, so a
-  // set of bars can have a line over it. A series with no type of its own is
-  // drawn as the chart is, which is every series until somebody says
-  // otherwise.
+  // Split by how each series is drawn, so bars can have a line over them. A
+  // series with no type of its own is drawn as the chart's type.
   var bars = <int>[];
   var lines = <int>[];
   var plainBarTaken = false;
   for (var i = 0; i < data.series.length; i++) {
     var series = data.series[i];
-    // Switched off from the key. It keeps its place in the table and its
-    // entry in the key -- there has to be something to press to bring it
-    // back -- and is simply not among the things drawn.
+    // Hidden from the key: it keeps its key entry, so it can be shown again.
     if (series.hidden) continue;
     var kind = series.typeIn(e.type);
     if (kind.isBar) {
-      // "Bars" means one bar per category, so a chart set to it draws its
-      // first series and no more -- that is the whole difference between it
-      // and "Grouped bars", and letting it quietly group as well would make
-      // choosing between them do nothing.
-      //
-      // A series with a type of its own is exempt. Asking for bars over a
-      // line chart is asking for those bars specifically, not for the chart's
-      // idea of how many series it draws.
+      // "Bars" draws one bar per category (the first untyped series); that is
+      // what separates it from "Grouped bars". A series with its own type is
+      // always drawn.
       if (e.type == ChartType.bar && series.type == null) {
         if (plainBarTaken) continue;
         plainBarTaken = true;
@@ -388,15 +315,10 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
     }
   }
 
-  // Bars first. A line drawn under a bar is a line nobody can see, and the
-  // reason for putting the two on one pair of axes is to read the line
-  // against the bars.
+  // Bars, then candles, then lines, so lines are never hidden under them.
   if (bars.isNotEmpty) {
     _bars(canvas, plot, range, e, horizontal, bars, reveal, seriesReveal);
   }
-  // Candles under the lines for the same reason bars are: the point of
-  // putting a moving average over a price chart is to read the line against
-  // the candles.
   if (e.type.isCandles) _candles(canvas, plot, range, e, reveal);
   if (lines.isNotEmpty) {
     _lines(canvas, plot, range, e, lines, reveal, seriesReveal);
@@ -451,8 +373,7 @@ void _axisLabels(
   double categoryGutter,
   double axisTitleGutter,
 ) {
-  // The ticks are written on whichever axis carries the values, and the
-  // category names on the other one, each in that axis' own type.
+  // Ticks go on the value axis and names on the other, each in its axis' type.
   var tickSpec = horizontal ? e.xLabels : e.yLabels;
   var nameSpec = horizontal ? e.yLabels : e.xLabels;
   var showTicks = horizontal ? e.showXLabels : e.showYLabels;
@@ -522,9 +443,8 @@ void _axisLabels(
     }
   }
 
-  // The titles are set in their own type -- see ChartElement.axisSpec -- so
-  // making the writing on the axes smaller does not shrink the words naming
-  // them with it.
+  // Titles have their own type (ChartElement.axisText), separate from the
+  // tick labels.
   var titleSpec = e.axisText;
   if (e.showsXTitle) {
     paintTextInBox(
@@ -538,8 +458,7 @@ void _axisLabels(
             plot.left, area.bottom - axisTitleGutter, plot.right, area.bottom));
   }
   if (e.showsYTitle) {
-    // Turned on its side against the axis, which is where a value-axis title
-    // belongs and the only way it fits without eating a third of the plot.
+    // Turned on its side against the axis.
     canvas.save();
     canvas.translate(area.left + axisTitleGutter * 0.5, plot.center.dy);
     canvas.rotate(-math.pi / 2);
@@ -558,15 +477,9 @@ void _axisLabels(
 
 /// _candles draws the open, high, low and close of each period as one mark.
 ///
-/// A thin wick from the low to the high with a body between the open and the
-/// close over it, coloured by whether the period closed up or down. The four
-/// numbers come from four series -- see ChartData.ohlcAt -- so a candlestick
-/// chart is fed exactly like every other type: four columns mapped, or four
-/// columns pasted.
-///
-/// A period that opened and closed at the same price has a body of no height,
-/// which is drawn as a line rather than as nothing: it is a real reading, and
-/// on a quiet day it is most of them.
+/// A wick from low to high and a body from open to close, coloured by whether
+/// the period closed up or down. The four numbers come from four series (see
+/// ChartData.ohlcAt). A body of no height is drawn as a line, not nothing.
 void _candles(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     double reveal) {
   var slots = e.data.categories.length;
@@ -574,8 +487,7 @@ void _candles(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
 
   var slotSize = plot.width / slots;
   var bodyWidth = math.max(1.0, slotSize * (1 - e.barGap.clamp(0.0, 0.9)));
-  // The wick is a fraction of the body rather than a fixed width, so a chart
-  // of two hundred candles does not become a solid block of wicks.
+  // A fraction of the body, so hundreds of candles do not merge into wicks.
   var wickWidth = math.max(1.0, math.min(bodyWidth * 0.18, e.strokeWidth));
 
   double y(double v) => plot.bottom - plot.height * range.fraction(v);
@@ -598,8 +510,8 @@ void _candles(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         case ChartAnimationPreset.popIn:
         case ChartAnimationPreset.random:
         case ChartAnimationPreset.drawOn:
-          // About its own middle. A candle growing out of the axis would
-          // travel through prices the period never traded at.
+          // About its own middle: grown from the axis it would pass through
+          // prices the period never traded at.
           arrived = p.clamp(0.0, 1.0);
         case ChartAnimationPreset.none:
         case ChartAnimationPreset.wipe:
@@ -635,8 +547,7 @@ void _candles(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         RRect.fromRectAndRadius(body, Radius.circular(math.max(0, r))), paint);
 
     if (e.showValues) {
-      // The close, and only the close. Four numbers over every candle is a
-      // wall of digits; the close is the one a price chart is read for.
+      // Only the close is written.
       paintTextInBox(
           canvas,
           formatSeries(e, 0, ohlc.close),
@@ -654,10 +565,8 @@ void _candles(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
 
 /// _bars draws the bar types, for the series in [which].
 ///
-/// [which] rather than every series, because a chart may be a set of bars with
-/// a line over it -- see paintCartesian. It is also what decides whether the bars
-/// are side by side: two bar series share a slot however the chart's own type
-/// is set, since drawing them on top of each other would hide one of them.
+/// [which] are the bar series (see paintCartesian). Two or more share a slot
+/// side by side, unless the chart is a stacked type.
 void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     bool horizontal, List<int> which, double reveal,
     [List<double>? seriesReveal]) {
@@ -674,9 +583,8 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
   var barSize = barSpan / seriesCount;
   var zero = range.fraction(0).clamp(0.0, 1.0);
 
-  // The backgrounds first, all of them, so one wider than its bar sits under
-  // the bar beside it rather than over it. Drawn whole from the start: a
-  // track is there to be filled, and it is the bar that arrives into it.
+  // Every backdrop first, so one wider than its bar sits under its
+  // neighbour. Backdrops are drawn whole; only the bars animate.
   for (var at = 0; at < which.length; at++) {
     var back = data.series[which[at]].backdrop;
     if (back == null || !back.on) continue;
@@ -687,8 +595,8 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       ChartBackdropGrow.right => thick - across,
       _ => (thick - across) / 2,
     };
-    // Along the bars: up from the axis, down from the far edge, or about
-    // the middle -- as a share of the plot's length that way.
+    // Along the bars: from the axis, the far edge or the middle, as a share
+    // of the plot's length.
     var length = horizontal ? plot.width : plot.height;
     var long = length * back.height;
     var from = switch (back.grow) {
@@ -733,9 +641,7 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       var s = which[at];
       var series = data.series[s];
       var v = data.valueAt(s, i);
-      // No bar at all where there is no reading. A pot that did not exist in
-      // 2019 and one that held nothing in 2019 are different facts, and a bar
-      // of no height says the second about both.
+      // No bar where there is no reading: an empty cell is not a zero.
       if (v.isNaN) continue;
 
       double from, to;
@@ -750,14 +656,8 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       }
 
       var lo = math.min(from, to), hi = math.max(from, to);
-      // A reading of nought still makes a mark, where the chart asks for one.
-      // A bar of no height has no pixels, so a measured nought and a year
-      // nobody has a figure for looked identical -- and Dash's budget, which
-      // is never retained and so is nought every year by design, drew nothing
-      // at all where the whole point was to show that it was nought.
-      //
-      // Grown from the baseline in the direction the bar would have gone, so
-      // a floor on a chart with negative readings pushes down rather than up.
+      // barFloor gives a zero reading a visible mark, so it differs from an
+      // empty cell. It grows the way the bar would, so negatives push down.
       if (e.barFloor > 0) {
         var span = horizontal ? plot.width : plot.height;
         var least = span <= 0 ? 0.0 : e.barFloor / span;
@@ -781,31 +681,24 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
             grouped ? barSize : barSpan, plot.height * (hi - lo));
       }
 
-      // Where this bar has got to. Staggered by category rather than by
-      // series, which is what "one bar after another, left to right" means --
-      // grouped bars in the same slot arrive together, as a group.
-      // A bar of its own colour, where the bars take them -- see
-      // barsTakeColours -- and is then drawn flat: the series' gradient is a
-      // ramp of the series' colour, not of this one.
+      // A bar with its own colour (see barsTakeColours) is drawn flat: the
+      // series' gradient is a ramp of the series' colour.
       var ownColour = barsTakeColours(e) && i < e.sliceColors.length;
       var colour = ownColour ? barColour(e, i) : series.color;
       var arrived = 1.0;
       if (e.animation.on && (reveal < 1 || seriesReveal != null)) {
-        // This series' own place in the animation, which is the whole of it
-        // unless it has been shifted. See ChartSeries.delay.
+        // Staggered by category, so grouped bars arrive together. The
+        // series' own reveal allows for ChartSeries.delay.
         var p = e.animation
             .progressAt(_revealOf(seriesReveal, s, reveal), i, slots);
         if (p <= 0) continue;
         switch (e.animation.preset) {
           case ChartAnimationPreset.fadeIn:
-            // Fading, not growing. The number is already its full self and
-            // counting it up would say something the bar does not.
             colour = colour.withValues(alpha: colour.a * p.clamp(0.0, 1.0));
           case ChartAnimationPreset.popIn:
           case ChartAnimationPreset.random:
             arrived = p;
-            // About its own centre, so it springs where it stands rather than
-            // sliding in from the axis.
+            // About its own centre, not from the axis.
             bar = Rect.fromCenter(
                 center: bar.center,
                 width: bar.width * p,
@@ -813,8 +706,7 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
           case ChartAnimationPreset.grow:
           case ChartAnimationPreset.drawOn:
             arrived = p;
-            // Out of the axis. An overshoot goes past the true height and
-            // settles back, which is the whole reason the ease is a setting.
+            // Out of the axis; an overshooting ease passes the true height.
             bar = horizontal
                 ? Rect.fromLTWH(bar.left, bar.top, bar.width * p, bar.height)
                 : Rect.fromLTWH(bar.left, bar.bottom - bar.height * p,
@@ -826,21 +718,14 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         }
       }
 
-      // A year worked out rather than looked up is drawn faint. The weight
-      // of the mark is how certain the figure is, which is a thing a chart
-      // can say without a word of explanation -- and the alternative, a
-      // footnote naming the estimated years, is a footnote nobody reads
-      // against the bar they are looking at.
+      // An estimated figure is drawn faint.
       if (data.isEstimated(i)) {
         colour = colour.withValues(alpha: colour.a * estimatedFade);
       }
 
       var r = math.min(
           series.cornerOn(e.barRadius), math.min(bar.width, bar.height) / 2);
-      // Across the bar rather than across the plot: a gradient set on a
-      // series is a gradient on each of its bars, which is what a chart of
-      // bars fading into the background looks like. Across the plot they
-      // would each be a different flat colour.
+      // The series gradient runs across each bar, not across the plot.
       var barShader = ownColour
           ? null
           : seriesShader(series, bar,
@@ -848,17 +733,13 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       canvas.drawRRect(
           RRect.fromRectAndRadius(bar, Radius.circular(math.max(0, r))),
           Paint()
-            // Opaque under a shader: the ramp already carries the arrival's
-            // fade, and a paint's alpha would apply it a second time. See
-            // underShader.
+            // See underShader: the ramp already carries the fade.
             ..color = underShader(colour, barShader)
             ..shader = barShader);
 
       if (e.showValues && v != 0) {
-        // Counting up with the bar. Clamped to the real value even when the
-        // curve overshoots: a bar may stand a little proud of its mark for a
-        // moment and be read as a flourish, and a number that says 21 where
-        // the data says 20 is simply wrong.
+        // Counts up with the bar, clamped so an overshoot never shows a number
+        // larger than the data.
         var label = formatTick(e, v * arrived.clamp(0.0, 1.0));
         var box = horizontal
             ? Rect.fromLTWH(
@@ -882,8 +763,8 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
 
 /// _lines draws the line, area and scatter types, for the series in [which].
 ///
-/// Each of them by its *own* type rather than by the chart's, so one series
-/// can be an area and the next a scatter over the same axes.
+/// Each series is drawn by its own type, so one can be an area and the next a
+/// scatter.
 void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     List<int> which, double reveal,
     [List<double>? seriesReveal]) {
@@ -891,8 +772,7 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
   var n = data.categories.length;
   if (n == 0) return;
 
-  // Points sit in the middle of their slot, not on the axis ends, so a line
-  // chart and a bar chart of the same numbers line up with each other.
+  // Points sit mid-slot so lines line up with bars.
   double xAt(int i) => plot.left + plot.width * (n == 1 ? 0.5 : (i + 0.5) / n);
   double yAt(double v) =>
       plot.bottom - plot.height * range.fraction(v).clamp(-0.2, 1.2);
@@ -906,10 +786,8 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     var s = which[at];
     var series = data.series[s];
     var kind = series.typeIn(e.type);
-    // A cell nobody filled in is a hole in the line, not a reading of nought.
-    // The points stay a full-length list so that a row and its dot and its
-    // written value keep the same index; what says whether each one is there
-    // is [present], and every step below asks it.
+    // An empty cell is a hole in the line. [points] stays full length so
+    // indexes match the rows; [present] says which are real.
     var present = [for (var i = 0; i < n; i++) data.hasValueAt(s, i)];
     var points = [
       for (var i = 0; i < n; i++)
@@ -917,14 +795,8 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     ];
     if (points.isEmpty || !present.contains(true)) continue;
 
-    // A line is staggered by *series*, not by point: the points of one line
-    // are one movement, and drawing them in turn is what "draw on" already
-    // does along the length of it.
-    //
-    // A scattered cloud is the exception, and Random is the preset for it:
-    // there every dot is its own item and they are counted across the series
-    // as well as along them, so two series fill in together rather than one
-    // after the other.
+    // Lines are staggered by series. The exception is a scatter under a
+    // scrambling preset, where each dot is its own item across all series.
     var perPoint = animation.preset.scrambles && kind == ChartType.scatter;
     var mine = _revealOf(seriesReveal, s, reveal);
     var progress = animating && !perPoint
@@ -932,11 +804,8 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         : 1.0;
     if (animating && !perPoint && progress <= 0) continue;
 
-    // Where the readings actually sit, kept before the presets that lift a
-    // line up out of the baseline replace them. The band is drawn between two
-    // settled lines -- its other edge is worked out from the figures and has
-    // never been lifted, so a band built from moving points was a shape with
-    // one edge in mid-air.
+    // The settled points, before a preset lifts them: a band is drawn between
+    // two settled lines, since its other edge is never lifted.
     var seated = points;
 
     var alpha = 1.0;
@@ -947,9 +816,8 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         case ChartAnimationPreset.grow:
         case ChartAnimationPreset.popIn:
         case ChartAnimationPreset.random:
-          // Up out of the baseline, so a line arrives the way the bars beside
-          // it do. A scattered cloud never gets here -- it is dealt dot by dot
-          // below.
+          // Up out of the baseline, like the bars. A per-point scatter is
+          // handled dot by dot below.
           points = [
             for (var point in points)
               Offset(
@@ -965,14 +833,10 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     var colour = alpha >= 1
         ? series.color
         : series.color.withValues(alpha: series.color.a * alpha);
-    // This series' own thickness where it has been given one, so a line laid
-    // over a set of bars can be heavy enough to read against them without
-    // every other line on the chart thickening with it.
     var weight = series.widthOn(e.strokeWidth);
 
-    // The runs of consecutive readings. A line drawn straight across a year
-    // nobody has a figure for is a line claiming a figure, so each run is its
-    // own path -- and a run of one has no line at all, only its dot.
+    // Runs of consecutive readings, each its own path, so no line crosses a
+    // gap. A run of one is only a dot.
     var runs = <List<int>>[];
     for (var i = 0; i < n; i++) {
       if (!present[i]) continue;
@@ -982,12 +846,9 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
 
     if (kind != ChartType.scatter) {
       var smooth = series.smoothOn(e.smooth) && kind.usesSmooth;
-      // path is the whole line, which is what the area under it is closed
-      // from and what the drawing-on measures along. Where the chart marks
-      // its estimates the stroke is split in two -- the stretches either end
-      // of which was worked out rather than looked up are drawn as dashes --
-      // and where it does not, solid is the whole line and the split costs
-      // nothing.
+      // path is the whole line: the area is closed from it and drawing-on
+      // measures along it. The stroke is split into solid and dashed: when
+      // the data marks estimates, a stretch touching one is dashed.
       var path = Path();
       var solid = Path();
       var dashed = Path();
@@ -997,59 +858,37 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         var pts = [for (var i in run) points[i]];
         path.addPath(_linePath(pts, smooth), Offset.zero);
         for (var k = 0; k < run.length - 1; k++) {
-          // Either end: a stretch running into an estimated year is as
-          // uncertain as the year itself.
           var soft = marks &&
               (data.isEstimated(run[k]) || data.isEstimated(run[k + 1]));
           (soft ? dashed : solid)
               .addPath(_segmentPath(pts, k, smooth), Offset.zero);
         }
       }
-      // Traced from its start rather than grown from the axis: the line is
-      // cut short at the point it has reached, and the area under it with it.
-      //
-      // How far it has got, as a place on the canvas rather than as a
-      // fraction of each piece. The styled strokes are one path per stretch
-      // -- that is how a run of dashes is told from the solid part either
-      // side of it -- and trimming each of those by the fraction drew a
-      // fraction of every stretch at once: a dotted line that appeared whole
-      // and faint and then filled in, rather than one drawn on from its
-      // start. Clipping to the tip draws exactly what has been reached.
-      // What has a reading, before the drawing has had its say about what has
-      // been reached yet. The band is built from this: its shape only knows
-      // about whole readings, so a band cut off at a line's tip jumped
-      // forward one category at a time under lines that were moving smoothly.
+      // Which points have readings, before drawing-on hides the ones not yet
+      // reached. The band is built from this, and fades in instead (see
+      // _bandFade).
       var whole = [...present];
 
       var drawnTo = double.infinity;
       if (animating &&
           animation.preset == ChartAnimationPreset.drawOn &&
           progress < 1) {
+        // Drawn on from the start: the line is cut at its tip. The styled
+        // strokes are one path per stretch, so they are clipped at drawnTo
+        // below rather than each trimmed by the fraction.
         path = _trimmed(path, progress);
         drawnTo = _lastX(path);
-        // A point the line has not reached yet is not there yet, which is the
-        // same thing as a point with no reading as far as the dots and the
-        // written values are concerned. Marked rather than dropped, so that
-        // every point keeps the index of the row it came from.
+        // A point not reached yet gets no dot or value.
         for (var i = 0; i < n; i++) {
           if (points[i].dx > drawnTo) present[i] = false;
         }
       }
       var shader = seriesShader(series, plot, alpha: alpha);
 
-      // The space between this line and the next one, where it has been asked
-      // for: a budget against what was paid out of it, a high against a low.
-      // Fading from this series' colour into the next one's, so the band says
-      // which two lines it belongs to without a third colour to explain --
-      // and drawn before either of them, because a band is the ground they
-      // stand on.
+      // The band between this line and the next drawn one, shaded from this
+      // series' colour to the next's, and drawn under both lines.
       if (series.band) {
         var next = _nextDrawn(data, s);
-        // A wash between two lines arrives when they have. Faded in over the
-        // last of whichever of the pair is slower rather than drawn on: a
-        // band has no direction of its own -- it is the ground between two
-        // things that do -- and one that filled in with the first line was a
-        // shape with one edge and nothing on the other.
         var settled = !animating
             ? 1.0
             : _bandFade(
@@ -1062,9 +901,7 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         if (next >= 0 && settled > 0) {
           var pair = _bandPath(
             data, next, seated, whole, n, xAt, yAt, double.infinity,
-            // Each edge curved the way the line along it is curved. Drawn as
-            // chords while the lines bowed away from them, the band stood
-            // clear of its own edges everywhere between two readings.
+            // Each edge curved as its line is.
             series.smoothOn(e.smooth) && kind.usesSmooth,
             data.series[next].smoothOn(e.smooth) &&
                 data.series[next].typeIn(e.type).usesSmooth,
@@ -1085,10 +922,8 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       }
 
       if (kind == ChartType.area) {
-        // Closed at the line's own tip rather than at the last point it has
-        // passed. Using the last *data* point left the fill's right edge
-        // standing still while the line ran on ahead of it, so the area
-        // caught up in jumps -- one jump per category.
+        // Closed at the line's tip, not its last reached point, so the fill
+        // keeps pace with the line rather than jumping per category.
         var drawn = [
           for (var i = 0; i < n; i++)
             if (present[i]) points[i]
@@ -1099,8 +934,7 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
           ..lineTo(tip.dx, plot.bottom)
           ..lineTo(drawn.first.dx, plot.bottom)
           ..close();
-        // The series' own gradient where it has one; otherwise the fade
-        // into nothing that is what an area chart has always been.
+        // The series' gradient, or a fade to nothing.
         canvas.drawPath(
             fill,
             Paint()
@@ -1117,13 +951,10 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
         ..color = underShader(colour, shader)
-        // Across the plot, so the line changes colour along its length
-        // rather than each segment being its own gradient.
+        // Across the plot, not per segment.
         ..shader = shader;
-      // The series' own style -- a stroke, a run of dashes, a run of dots --
-      // which is a different statement from the dashes that mark an estimated
-      // year. A dotted series stays dotted across an estimated stretch, and
-      // the faintness carries the estimate on its own.
+      // The series' own line style. A dashed or dotted series keeps its
+      // pattern over an estimated stretch; faintness alone marks the estimate.
       var pattern = series.lineStyle.pattern;
       if (!marks && pattern == null) {
         canvas.drawPath(path, stroke);
@@ -1131,22 +962,20 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         var clipped = drawnTo.isFinite;
         if (clipped) {
           canvas.save();
-          // Generous above and below, and hard at the tip: the only edge that
-          // means anything here is how far along the line has got.
+          // Only the tip edge matters; the others are generous.
           canvas.clipRect(Rect.fromLTRB(plot.left - weight * 2,
               plot.top - plot.height, drawnTo, plot.bottom + plot.height));
         }
         canvas.drawPath(
             pattern == null ? solid : _dashed(solid, weight, pattern), stroke);
-        // Dashed *and* faint, the same two things the bars say: how certain
-        // the figure is, said in the weight of the mark.
+        // Estimated stretches: dashed and faint.
         canvas.drawPath(
             _dashed(dashed, weight, pattern ?? estimatedDash),
             Paint()
               ..style = PaintingStyle.stroke
               ..strokeWidth = weight
-              // Round for a dot, which is a dash of almost no length and is
-              // nothing at all without one. See ChartLineStyle.pattern.
+              // Round, or a dot (a dash of almost no length) is invisible.
+              // See ChartLineStyle.pattern.
               ..strokeCap = pattern == null ? StrokeCap.butt : StrokeCap.round
               ..strokeJoin = StrokeJoin.round
               ..color = underShader(
@@ -1157,16 +986,12 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       }
     }
 
-    // A scatter is all dots; a chart writing its values has to put them
-    // somewhere; and a line or an area marks its readings where it is asked
-    // to. Eleven points joined up look like a hundred until the dots are on
-    // them.
+    // Dots for a scatter, for written values, and where points are on.
     if (kind == ChartType.scatter ||
         e.showValues ||
         series.pointsOn(e.showPoints)) {
       for (var i = 0; i < points.length; i++) {
         if (!present[i]) continue;
-        // Each dot's own arrival, when they are being dealt one at a time.
         var dot = perPoint
             ? animation.progressAt(mine, at * n + i, which.length * n)
             : progress;
@@ -1175,13 +1000,10 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         var swelling = animating &&
             (animation.preset == ChartAnimationPreset.popIn ||
                 animation.preset == ChartAnimationPreset.random);
-        // The size asked for, or the line's own weight as it always was.
         var size = series.pointSizeOn(e.pointSize);
         var radius = size > 0 ? size : weight * 1.4;
-        // And the colour asked for, or the series' -- which is what a dot on
-        // a line is unless somebody says otherwise. Whatever the arrival has
-        // done to the line is done to the dot as well, so the two come on
-        // together.
+        // The point colour, or the series'. Either takes the line's arrival
+        // fade, so dot and line come on together.
         var dotPaint = series.pointColorOn(e.pointColor);
         var dotColour = dotPaint.a > 0
             ? dotPaint.withValues(
@@ -1197,9 +1019,8 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
                       alpha: dotColour.a * dot.clamp(0.0, 1.0))
                   : dotColour);
         if (e.showValues) {
-          // Counting up only where the point itself is growing. Drawn on, a
-          // point that has been passed is at its full value and saying
-          // otherwise would contradict the line running through it.
+          // Counts up only while the point itself grows; drawn on, a passed
+          // point shows its full value.
           var shown = swelling ||
                   (animating &&
                       !perPoint &&
@@ -1222,23 +1043,16 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
   }
 }
 
-/// estimatedFade is how much of its colour a mark keeps where the figure
-/// behind it was worked out rather than looked up.
-///
-/// A third, which is enough to read as the same series and not enough to be
-/// mistaken for a sourced one. See ChartData.estimated.
+/// estimatedFade is the share of its alpha a mark keeps where its figure is
+/// estimated. See ChartData.isEstimated.
 const double estimatedFade = 0.34;
 
 /// estimatedDash is the on-off pattern an estimated stretch of line is drawn
 /// with, in multiples of the line's own weight.
 const List<double> estimatedDash = [2.2, 1.8];
 
-/// _nextDrawn is the series after [s] that is actually on the chart, or -1.
-///
-/// Past the hidden ones, because a band between a line and something nobody
-/// can see is a shape with one visible edge -- and switching a series off
-/// from the key should take its band with it rather than leave the band
-/// hanging off the line above.
+/// _nextDrawn is the first series after [s] that is not hidden, or -1. A band
+/// never ends on a hidden series.
 int _nextDrawn(ChartData data, int s) {
   for (var i = s + 1; i < data.series.length; i++) {
     if (!data.series[i].hidden) return i;
@@ -1248,22 +1062,15 @@ int _nextDrawn(ChartData data, int s) {
 
 /// _bandFade is how much of the band between two lines is showing.
 ///
-/// Nought until both of its edges are three quarters of the way on, then in
-/// over what is left of the slower of the two, so the wash is complete
-/// exactly when the lines it lies between are.
-///
-/// It used to be drawn on with the first of its lines, clipped to that line's
-/// tip. That is what "glitchy" meant: the shape is built out of whole
-/// readings, so it stepped forward a category at a time under a line moving
-/// smoothly -- and for half the animation it was a band with one edge, the
-/// other line not having been drawn yet.
+/// Nought until both edges are three quarters on, then fading in over the
+/// rest of the slower one, so it completes with its lines. Faded rather than
+/// drawn on because the band is built from whole readings and would step a
+/// category at a time.
 double _bandFade(double mine, double other, ChartElement e, List<int> which,
     int at, int next) {
   var animation = e.animation;
   var here = animation.progressAt(mine, at, which.length);
-  // The other edge need not be one of the lines in this pass: a band between
-  // a line and a set of bars is drawn the same way, and the bars arrive with
-  // the chart rather than in this stagger.
+  // The other edge may be bars, which are not in this stagger.
   var there = which.indexOf(next);
   var theirs =
       there < 0 ? 1.0 : animation.progressAt(other, there, which.length);
@@ -1272,18 +1079,14 @@ double _bandFade(double mine, double other, ChartElement e, List<int> which,
   return least <= from ? 0 : ((least - from) / (1 - from)).clamp(0.0, 1.0);
 }
 
-/// _revealOf is how far through its own arrival series [s] is.
-///
-/// The chart's own answer for every series that has not been offset, and for
-/// every chart on which none has -- which is nearly all of them.
+/// _revealOf is how far through its own arrival series [s] is: its entry in
+/// [seriesReveal] when there is one, else the chart's [reveal].
 double _revealOf(List<double>? seriesReveal, int s, double reveal) =>
     seriesReveal != null && s < seriesReveal.length ? seriesReveal[s] : reveal;
 
 /// _bandPath is the closed shape between one line and the next.
 ///
-/// Only across the run where both of them have a reading. A band over a year
-/// one of the two has no figure for would be a claim about a distance between
-/// a number and nothing.
+/// Only across runs where both have a reading.
 Path? _bandPath(
   ChartData data,
   int other,
@@ -1305,11 +1108,8 @@ Path? _bandPath(
       run = [];
       return;
     }
-    // Both edges through the same function the lines themselves are drawn
-    // with, so the shape is bounded by the curves rather than by the chords
-    // between the readings. extendWithPath rather than a second subpath: it
-    // joins the end of the top edge to the start of the bottom one, which is
-    // the right-hand end of the band.
+    // Both edges through _linePath, so the band follows the curves.
+    // extendWithPath joins the top edge's end to the bottom's start.
     var top = _linePath([for (var i in run) points[i]], topSmooth);
     var bottom = _linePath([
       for (var i in run.reversed) Offset(xAt(i), yAt(data.valueAt(other, i)))
@@ -1336,9 +1136,8 @@ Path? _bandPath(
 /// _segmentPath is the one stretch from `points[i]` to `points[i + 1]`, drawn
 /// exactly as [_linePath] would draw it.
 ///
-/// The same control points, so that splitting a smoothed line into solid and
-/// dashed stretches does not change its shape: a curve through its
-/// neighbours, cut where the certainty changes rather than re-fitted.
+/// The same control points, so splitting a smoothed line into solid and
+/// dashed stretches does not change its shape.
 Path _segmentPath(List<Offset> points, int i, bool smooth) {
   var p1 = points[i], p2 = points[i + 1];
   var path = Path()..moveTo(p1.dx, p1.dy);
@@ -1372,8 +1171,7 @@ Path _dashed(Path path, double weight, [List<double> pattern = estimatedDash]) {
   return out;
 }
 
-/// _trimmed is the first [fraction] of a path, by length. What draws a line on
-/// rather than growing it out of the axis.
+/// _trimmed is the first [fraction] of a path, by length.
 Path _trimmed(Path path, double fraction) {
   var out = Path();
   for (var metric in path.computeMetrics()) {
@@ -1384,16 +1182,12 @@ Path _trimmed(Path path, double fraction) {
   return out;
 }
 
-/// _lastX is how far along the drawn part has got, which is what decides
-/// which of the line's points have arrived and may be dotted or labelled.
+/// _lastX is the right edge of the drawn part, which decides which points
+/// have arrived.
 double _lastX(Path path) => path.getBounds().right;
 
-/// _pathEnd is where a path actually stops.
-///
-/// Off the metrics rather than off the bounding box, which is the same thing
-/// only for a line that runs left to right and never comes back -- and a
-/// smoothed line overshoots its own points, so even that one is not quite
-/// true.
+/// _pathEnd is where a path stops, from its metrics: a smoothed line can
+/// overshoot, so the bounding box is not the same.
 Offset? _pathEnd(Path path) {
   Offset? out;
   for (var metric in path.computeMetrics()) {
@@ -1405,9 +1199,8 @@ Offset? _pathEnd(Path path) {
 
 /// _linePath joins the points, optionally through a Catmull-Rom style smooth.
 ///
-/// The control points are a fraction of the gap to each neighbour, which keeps
-/// the curve from overshooting past a peak -- overshoot on a chart is not a
-/// style choice, it draws a value that is not in the data.
+/// The control points are a sixth of the gap between neighbours, which keeps
+/// overshoot past a peak small.
 Path _linePath(List<Offset> points, bool smooth) {
   var path = Path()..moveTo(points.first.dx, points.first.dy);
   if (!smooth || points.length < 3) {

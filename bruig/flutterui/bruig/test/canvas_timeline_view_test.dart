@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/ui/scene_strip.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
@@ -244,21 +245,17 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("the scene strip is hidden beside it", (tester) async {
+    testWidgets(
+        "every scene playing, the scenes are the first row over the channels,"
+        " with the keyframes shown or hidden", (tester) async {
       var c = await show(tester,
           document: const CanvasDocument(frameRate: 10, scenes: [
             CanvasScene(id: "a", frames: 50),
             CanvasScene(id: "b", frames: 50),
           ]));
+      expect(find.byKey(const ValueKey("sceneStripLabel")), findsNothing);
       c.playAll = true;
       await tester.pump();
-      var button = find.byKey(const ValueKey("scenesShown"));
-      expect(
-          tester.getCenter(button).dx,
-          lessThan(tester
-              .getCenter(find.byKey(const ValueKey("timelineZoomIn")))
-              .dx));
-      expect(find.byKey(const ValueKey("sceneStripLabel")), findsOneWidget);
       List joins() => [
             for (var w
                 in tester.widgetList<CustomPaint>(find.byType(CustomPaint)))
@@ -266,20 +263,21 @@ void main() {
                 ...(w.painter as dynamic).sceneStarts as List,
           ];
       expect(joins(), hasLength(2), reason: "a join on the ruler per scene");
-      await tester.tap(button);
-      await tester.pump();
-      expect(c.scenesShown, isFalse);
-      expect(find.byKey(const ValueKey("sceneStripLabel")), findsNothing);
-      expect(joins(), hasLength(1), reason: "the joins go with the strip");
-      await tester.tap(button);
-      await tester.pump();
-      expect(find.byKey(const ValueKey("sceneStripLabel")), findsOneWidget);
-      // One scene at a time, there is no strip, and nothing to hide.
+      for (var keys in [true, false]) {
+        c.keyframesShown = keys;
+        await tester.pump();
+        var strip = tester.getRect(find.byType(CanvasSceneStrip));
+        var frames =
+            tester.getRect(find.byKey(const ValueKey("keyframeStrip")));
+        expect(frames.bottom - strip.bottom, lessThan(8),
+            reason: "the scenes are the bottom of the strip, over the "
+                "channels (keyframes shown: $keys)");
+        expect(find.byKey(const ValueKey("sceneStripLabel")), findsOneWidget);
+      }
       c.playAll = false;
       await tester.pump();
-      await tester.tap(button);
-      await tester.pump();
-      expect(c.scenesShown, isTrue);
+      expect(find.byType(CanvasSceneStrip), findsNothing);
+      expect(joins(), hasLength(1));
       expect(tester.takeException(), isNull);
     });
 

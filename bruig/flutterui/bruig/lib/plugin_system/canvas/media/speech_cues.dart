@@ -66,10 +66,8 @@ Float32List? readWav16(ByteData b) {
 }
 
 /// softly is [voice] said softly: [by] as loud. Neither engine can
-/// whisper, and a whisper made of their voices afterwards -- hiss through
-/// the voice's shape -- was heard as a vocoder (Ken, 2026-10-31), so a
-/// whisper is a voice said low: the expressive voices told to speak so as
-/// well, our own only quieter. The Vocoder is in the effects, for a
-/// whisper of that kind.
+/// whisper, and hiss shaped by the voice sounds like a vocoder, so a
+/// whisper is the voice said low (the expressive voices are also told to
+/// speak softly). The Vocoder effect is there for the other kind.
 Float32List softly(Float32List voice, {required double by}) =>
     Float32List.fromList([for (var v in voice) v * by]);

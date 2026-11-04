@@ -14,6 +14,10 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/kenney_packs.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/kenney_tiles.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
+import 'dart:math' as math;
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
 // game_ready.dart is what a game still lacks, said as a list -- each thing
 // with the one press that adds it -- and the games to start from: a
@@ -169,11 +173,13 @@ List<GameCheck> gameChecks(CanvasController c) {
 typedef LoopJump = ({int scene, CanvasElement element, int from, int to});
 
 /// loopJumps are the elements in [doc] that jump each time their scene's
-/// timeline loops -- a patrol that does not end where it began (Ken, Sky
-/// Isles) -- from a Loop back to its target, or from the end to the start.
+/// timeline loops (a patrol that does not end where it began), from a Loop
+/// back to its target, or from the end to the start -- moved by its clips
+/// or its keyframes.
 List<LoopJump> loopJumps(CanvasDocument doc) {
   var out = <LoopJump>[];
   for (var (i, scene) in doc.allScenes.indexed) {
+    var seen = doc.hasScenes ? doc.copyWith(sceneAt: i) : doc;
     var loop = scene.actions
         .where((a) =>
             a.kind == TimelineActionKind.loop &&
@@ -185,8 +191,10 @@ List<LoopJump> loopJumps(CanvasDocument doc) {
     if (from <= to) continue;
     for (var e in scene.elements) {
       var track = e.track;
-      if (track == null || !track.posesAnything) continue;
-      var a = track.at(from), b = track.at(to);
+      if ((track == null || !track.posesAnything) && e.base.motion.isEmpty) {
+        continue;
+      }
+      var a = poseWithMotion(e, from, seen), b = poseWithMotion(e, to, seen);
       if ((a.dx - b.dx).abs() > 1 ||
           (a.dy - b.dy).abs() > 1 ||
           (a.scale - b.scale).abs() > 0.01 ||
@@ -199,30 +207,68 @@ List<LoopJump> loopJumps(CanvasDocument doc) {
   return out;
 }
 
-/// closeLoops gives each of [jumps] a keyframe where its timeline loops
-/// from, posed as it is where the loop goes to: round, it comes back where
-/// it was. One undo step.
+/// closeLoops brings each of [jumps] back round to where it was when its
+/// timeline loops. Moved by keyframes, it gets a key where the loop goes
+/// from, posed as where it goes to. Moved by clips, it gets a short clip
+/// that carries it back over the last half second before the loop. One
+/// undo step.
 void closeLoops(CanvasController c, List<LoopJump> jumps) {
   var doc = c.document;
+  var rate = math.max(1, doc.frameRate);
   for (var (i, scene) in doc.allScenes.indexed) {
     var here = {
       for (var j in jumps)
         if (j.scene == i) j.element.id: j
     };
     if (here.isEmpty) continue;
+    var seen = doc.hasScenes ? doc.copyWith(sceneAt: i) : doc;
     doc = doc.withScene(
         i,
         scene.copyWith(elements: [
           for (var e in scene.elements)
-            if (here[e.id] case var j? when e.track != null)
-              e.rebase(e.base.copyWith(
-                  track: e.track!
-                      .withKey(e.track!.at(j.to).copyWith(frame: j.from))))
+            if (here[e.id] case var j?)
+              e.base.motion.isEmpty
+                  ? e.rebase(e.base.copyWith(
+                      track: e.track!
+                          .withKey(e.track!.at(j.to).copyWith(frame: j.from))))
+                  : _comesBack(e, j, seen, rate)
             else
               e,
         ]));
   }
   c.apply(doc);
+}
+
+/// _comesBack is [e] with a clip that moves it, over the half second before
+/// its loop, by however far it is from where the loop goes back to: layers
+/// add, so on a layer of its own it closes the gap and nothing else.
+CanvasElement _comesBack(
+    CanvasElement e, LoopJump j, CanvasDocument seen, int rate) {
+  var a = poseWithMotion(e, j.from, seen), b = poseWithMotion(e, j.to, seen);
+  var took = math.min(rate / 2, (j.from - j.to) / 2) / rate;
+  var start = j.from / rate - took;
+  var m = e.base.motion;
+  var layer = freeLayer(m, start, j.from / rate);
+  var id = freeId(m, "${e.id}-back");
+  List<MotionKey> keys(double by) => [
+        const MotionKey(0, MotionNumber(0)),
+        MotionKey(took, MotionNumber(by), ease: KeyframeEasing.easeInOut),
+      ];
+  var clip = MotionClip.ofKind(id, MotionKind.action,
+      name: "Comes back",
+      layer: layer,
+      length: took,
+      keys: {
+        if ((b.dx - a.dx).abs() > 1e-6) MotionProp.x: keys(b.dx - a.dx),
+        if ((b.dy - a.dy).abs() > 1e-6) MotionProp.y: keys(b.dy - a.dy),
+        if ((b.rotate - a.rotate).abs() > 1e-6)
+          MotionProp.turn: keys(b.rotate - a.rotate),
+      }).copyWith(before: ClipHold.rest, after: ClipHold.last);
+  return e.withBase(
+      motion: m.withClip(clip).copyWith(placed: [
+    ...m.placed,
+    ClipPlacement(id: freeId(m, "$id-p"), clip: id, layer: layer, start: start),
+  ]));
 }
 
 String _and(List<String> names) => names.length <= 1
@@ -406,9 +452,10 @@ enum GameStarter {
   const GameStarter(this.label, this.says);
 }
 
-/// startGame lays [kind] out on this scene, one undo step, with Kenney's
-/// pictures where his platformer pack is kept or can be fetched -- plain
-/// shapes where it cannot. What it says back is how it went.
+/// startGame lays [kind] out on this scene, with Kenney's pictures where his
+/// platformer pack is kept or can be fetched, plain shapes where not; the
+/// counts on screen follow as a second undo step. What it says back is how
+/// it went.
 Future<String> startGame(CanvasController c, GameStarter kind,
     {required bool allowFetching}) async {
   var doc = c.document;

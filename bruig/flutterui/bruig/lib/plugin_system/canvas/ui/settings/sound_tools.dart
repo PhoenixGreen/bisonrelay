@@ -17,9 +17,8 @@ class CanvasSoundTools extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // A volume shape written on the clip by an older ducking tool. The
-    // mixer's Duck slot does that job now, and the two together would duck
-    // it twice.
+    // A volume shape left by the retired ducking tool: the mixer's Duck slot
+    // does that job now, and the two together would duck it twice.
     if (e.clip.envelope.isEmpty) return const SizedBox.shrink();
     return CanvasControlGroup(
       key: const ValueKey("soundTools"),

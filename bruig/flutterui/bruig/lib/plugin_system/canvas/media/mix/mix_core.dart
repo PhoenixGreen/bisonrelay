@@ -7,25 +7,22 @@ import 'package:bruig/plugin_system/canvas/media/mix/mix_graph.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 
-// mix_core.dart is the editor's mixer: the sounds playing, each on its
-// channel, each channel through its strip, all of them through the master --
-// rendered a block at a time for whatever is listening, which is the sound
-// card in the editor and a test's own loop in the tests.
+// mix_core.dart is the editor's mixer: the voices playing, each on its
+// channel through its strip and the master, rendered a block at a time.
 //
-// It knows nothing of SoLoud or of time passing. It is asked for the next
-// block and makes it; the engine around it (dart_audio_engine.dart) decides
-// when to ask, and how far ahead of what is being heard to stay.
+// It knows nothing of SoLoud or of time passing: dart_audio_engine.dart
+// decides when to ask for a block and how far ahead to stay.
 
 /// CoreVoice is one sound playing.
 class CoreVoice {
   final TrackSource track;
   String? channel;
 
-  /// frame is where the next block will be read from, in the file.
+  /// frame is where the next block will be read from in the track.
   int frame;
 
-  /// since is where it was last started or moved to: no earlier than this
-  /// has been heard since, whatever is still on its way to the speakers.
+  /// since is where it was last started or moved to: a floor for the heard
+  /// position while earlier audio is still on its way to the speakers.
   int since;
 
   double _gain;
@@ -35,18 +32,17 @@ class CoreVoice {
   bool alive = true;
   bool _stopAtSilence = false;
 
-  /// wait is how many frames are still to be rendered before it starts: a
-  /// clip launched on the next bar starts on it to the frame, not on
-  /// whichever block the bar fell in.
+  /// wait is how many frames are still to be rendered before it starts, so
+  /// a clip launched on the next bar starts on that exact frame.
   int wait = 0;
 
-  /// loopFrom and loopTo are where it goes round, in the file: at loopTo
-  /// back to loopFrom. Past the file's end, to loopTo, is silence -- a clip
-  /// longer than its sound. Null for once through.
+  /// loopFrom and loopTo are the loop, in track frames; past the track's
+  /// end up to loopTo is silence (a clip longer than its sound). Null for
+  /// once through.
   int? loopFrom, loopTo;
 
-  /// endIn is how many frames more it plays before it is stopped, with a
-  /// short fade -- a clip stopped on the next bar. Null for no end set.
+  /// endIn is how many frames more it plays before it is stopped with a
+  /// short fade (a clip stopped on the next bar). Null for no end set.
   int? endIn;
 
   CoreVoice._(this.track, this.channel, this.frame, double volume)
@@ -60,8 +56,7 @@ class CoreVoice {
 class MixCore {
   final List<CoreVoice> _voices = [];
 
-  /// graph is the routing: channels, sends, returns, master. See
-  /// mix_graph.dart.
+  /// graph is the routing: channels, sends, returns, master.
   final MixGraph graph = MixGraph();
 
   /// _recent are the last [spectrumSize] samples of each channel, each
@@ -91,7 +86,7 @@ class MixCore {
     return v;
   }
 
-  /// _endFade is how long a voice stopped at a time set fades for: long
+  /// _endFade is the fade, in frames, of a voice stopped by [stopIn]: long
   /// enough not to click, short enough to end on the bar.
   static const int _endFade = 220;
 
@@ -106,8 +101,8 @@ class MixCore {
     v.endIn = frames - v.wait;
   }
 
-  /// volume moves [v] to [to] over [fade] seconds -- in a straight line,
-  /// as SoLoud's faders do, so a fade sounds as it did.
+  /// volume moves [v] to [to] over [fade] seconds, linearly, matching
+  /// SoLoud's faders.
   void volume(CoreVoice v, double to, {double fade = 0}) {
     v._target = to;
     var frames = (fade * mixRate).round();
@@ -139,6 +134,8 @@ class MixCore {
   }
 
   void setChannel(String key, ChannelMix mix) => graph.setChannel(key, mix);
+
+  void removeChannel(String key) => graph.removeChannel(key);
 
   void setReturns(List<ReturnChannel> returns) => graph.setReturns(returns);
 
@@ -202,9 +199,8 @@ class MixCore {
   }
 
   /// _read reads [want] frames of [v] into the start of _tl and _tr, going
-  /// round its loop -- and through the silence past its file's end, to the
-  /// loop's end -- returning how many it read: fewer at the end of a voice
-  /// that does not loop.
+  /// round its loop, and returns how many it read: fewer only at the end of
+  /// a voice that does not loop.
   int _read(CoreVoice v, int want) {
     var to = v.loopTo, from = v.loopFrom;
     if (to == null || from == null) {
@@ -258,9 +254,8 @@ class MixCore {
     }
   }
 
-  /// spectrum is [channel]'s -- or the master's -- last moment of sound as
-  /// [spectrumSize] / 2 magnitudes from nothing to half the rate, nought to
-  /// about one.
+  /// spectrum is the latest [spectrumSize] / 2 magnitudes (0 to about 1,
+  /// up to half the rate) of [channel], or of the master.
   Float32List? spectrum([String? channel]) {
     var x = _recent[channel ?? ""];
     if (x == null) return null;

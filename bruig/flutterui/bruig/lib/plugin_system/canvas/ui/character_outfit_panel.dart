@@ -3,10 +3,9 @@ import 'package:bruig/plugin_system/canvas/ui/character_shape_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_controls.dart';
 import 'package:flutter/material.dart';
 
-// character_outfit_panel.dart is the clothes' side of the new Character
-// Studio's Character base step: the whole outfit's quick changes, and each
-// piece -- the body's own, none, or one made to fit, with its cut, colour
-// and pattern.
+// character_outfit_panel.dart is the clothes' side of the Character Studio's
+// Character base step: the whole outfit's quick changes, and each piece (the
+// body's own, none, or one made to fit, with its cut, colour and pattern).
 
 /// CharacterOutfitControls are the settings of [part]: the outfit, or one
 /// piece of it (see wearPartId).
@@ -15,7 +14,7 @@ class CharacterOutfitControls extends StatelessWidget {
   final CharacterOutfit outfit;
   final ValueChanged<CharacterOutfit> onChanged;
 
-  /// bodyName is whose body it is ("Vivi"), and own the pieces that body
+  /// bodyName is whose body it is ("Vivi"); [own] is the pieces that body
   /// comes with.
   final String bodyName;
   final Set<WearSlot> own;

@@ -1,40 +1,28 @@
+import 'dart:math' as math;
+
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
-// counter_element.dart is a number that counts.
-//
-// Two things in one element, and deliberately: a number that counts from one
-// value to another across the timeline, and -- with the keyframes switched
-// off -- a number that counts in real time. The first is a figure animating
-// up in a video; the second is a clock, a stopwatch, a countdown or a
-// metronome on an interactive canvas. They are the same element because they
-// are the same thing to look at and to style: a formatted number with words
-// either side of it in a box, and the only difference is where the number
-// comes from.
-//
-// The number is not text. A text element with "100" typed in it cannot count,
-// cannot be counted from, and has no idea what a thousands separator is -- and
-// the whole reason to reach for this is that "1,240,000" and "1.24M" and
-// "20:41" are the same number written three ways.
+// counter_element.dart is a number that counts: either across the timeline
+// (a figure animating up in a video) or, with [CounterElement.keyed] off, in
+// real time (a clock, stopwatch, countdown or metronome). One element because
+// both are a formatted number with words either side in a box; only where the
+// number comes from differs. The number is a value, not text, so it can be
+// formatted with separators or as a time.
 
-/// CounterSeparator is how the digits are grouped and punctuated.
-///
-/// The grouping and the point are one setting rather than two because they
-/// are one decision -- a number written 1.234,56 is not a number written
-/// 1,234.56 with a different point, it is a different convention -- and
-/// because the two time formats are not grouping at all.
+/// CounterSeparator is how the digits are grouped and punctuated. Grouping
+/// and decimal point are one setting because they are one convention
+/// (1.234,56 vs 1,234.56), and the time formats are not grouping at all.
 enum CounterSeparator {
-  none("None", "1234.5"),
+  none("1234.5", "None"),
   comma("1,234.5", "Thousands in commas"),
   dot("1.234,5", "Thousands in points"),
   space("1 234,5", "Thousands in spaces"),
 
-  /// minutes and hours are the counter as a duration rather than as a
-  /// quantity: the value is counted in seconds and written in the parts a
-  /// clock is written in.
+  /// minutes and hours write the value as a duration in seconds.
   minutes("1:57", "Minutes and seconds"),
   hours("1:57:03", "Hours, minutes and seconds");
 
@@ -43,8 +31,7 @@ enum CounterSeparator {
   const CounterSeparator(this.label, this.description);
 
   /// isTime is whether the value is a number of seconds rather than a
-  /// quantity, which changes what the decimals mean and what counting by one
-  /// looks like.
+  /// quantity.
   bool get isTime => this == minutes || this == hours;
 
   static CounterSeparator fromName(String? name) => values.firstWhere(
@@ -53,36 +40,28 @@ enum CounterSeparator {
       );
 }
 
-/// CounterSource is where a live counter's number comes from when the
-/// keyframes are off.
-///
-/// Only when they are off: with keyframes on, the number is whatever the
-/// timeline says at this frame and none of this applies.
+/// CounterSource is where a live counter's number comes from. A keyed
+/// counter (see [CounterElement.keyed]) reads the timeline instead, except
+/// for [game], which is always live.
 enum CounterSource {
-  /// run counts from the start value towards the end value at [rate] a
-  /// second, which is a countdown, a stopwatch and a metronome depending on
-  /// which way round the two ends are and how fast it goes.
+  /// run counts from the start value towards the end at the element's rate
+  /// a second: a countdown, stopwatch or metronome depending on the ends and
+  /// the rate.
   run("Counts", "From the start value to the end at a rate you set"),
 
-  /// clock is the time of day, in seconds since midnight. Written with the
-  /// Minutes or Hours separator it is a clock; written plain it is a number
-  /// nobody wants, which is why choosing it sets the separator.
+  /// clock is the time of day in seconds since midnight; choosing it sets a
+  /// time separator, since plain it is meaningless.
   clock("The time", "The time of day on the reader's own clock"),
 
   /// page is the number of the page this is drawn on, for a document of
-  /// pages. See CanvasDocument.pageNumber.
-  ///
-  /// A counter rather than a setting of its own, because a page number is a
-  /// number set in type somewhere on the page -- which is what this element
-  /// already is, with the face, the size, the colour, the box and the
-  /// placement it has always had. Put one on the master canvas and every page
-  /// wears it.
+  /// pages (see CanvasDocument.pageNumberAt). Put one on the master canvas
+  /// and every page wears it.
   page("The page number",
       "The number of the page it is drawn on, for a document of pages"),
 
-  /// game is one of the numbers a game keeps -- coins, lives -- where the
-  /// game has got it to, or its start while the game is not being played.
-  /// See CounterElement.gameCount and GameCount.
+  /// game is one of the numbers a game keeps (coins, lives), or its start
+  /// value while the game is not being played. See CounterElement.gameCount
+  /// and GameCount.
   game("A game count", "One of the numbers the game keeps: coins, lives");
 
   final String label;
@@ -113,11 +92,7 @@ enum CounterButton {
 
 /// CounterElement is the element itself.
 class CounterElement extends CanvasElement {
-  /// from and to are the two ends of the count.
-  ///
-  /// Either way round: 100 to 1 is a countdown, and a counter whose ends are
-  /// the same is a number that sits still, which is a perfectly good thing to
-  /// want from a clock.
+  /// from and to are the two ends of the count, either way round.
   final double from;
   final double to;
 
@@ -126,76 +101,48 @@ class CounterElement extends CanvasElement {
   final int decimals;
   final CounterSeparator separator;
 
-  /// before and after are the words either side of the number: a currency in
-  /// front, a unit behind. Their own strings rather than part of the number's
-  /// text because they do not count -- "£" stays put while the figures move.
+  /// before and after are the words either side of the number (a currency,
+  /// a unit), kept apart because they do not count.
   final String before;
   final String after;
 
-  /// gap is the space between the number and the words either side of it, in
-  /// the number's own ems.
-  ///
-  /// In ems rather than pixels so that it holds when the type is shrunk to
-  /// fit: a fixed gap set for sixty-point figures is a chasm beside
-  /// twenty-point ones. Nought is the words against the number, which is
-  /// right for a currency in front and wrong for a unit behind -- so it is a
-  /// setting rather than a rule.
+  /// gap is the space between the number and the words either side, in the
+  /// number's ems so it holds when [fit] shrinks the type.
   final double gap;
 
-  /// loose lets the words be placed anywhere in the box instead of sitting on
-  /// the number's line, and [beforeAt] and [afterAt] are where they go: a
-  /// fraction of the box from its middle, so -0.5 is the left or top edge and
-  /// 0.5 the right or bottom.
-  ///
-  /// Off is one line, which is what a counter is. On is for the designs that
-  /// are not: a currency tucked into a corner, a unit hanging under the
-  /// figures.
+  /// loose lets the words be placed anywhere in the box instead of on the
+  /// number's line, at [beforeAt] and [afterAt]: fractions of the box from
+  /// its middle, so -0.5 is the left or top edge and 0.5 the right or bottom.
   final bool loose;
   final Offset beforeAt;
   final Offset afterAt;
 
-  /// numberSpec is the number's own type and [affixSpec] is the words'.
-  ///
-  /// Two, because the point of putting "bpm" after a figure is that it is
-  /// smaller and quieter than the figure. One spec for both made the unit as
-  /// loud as the number, which is the one thing nobody wants.
+  /// numberSpec is the number's type and [affixSpec] the words', usually
+  /// smaller.
   final TextSpec numberSpec;
   final TextSpec affixSpec;
 
-  /// numberStyle and wordStyle are the document's named text styles the
-  /// number and the words are set in, or empty for their own type -- see
-  /// CanvasDocument.textStyles. A video's figures are all one face at one
-  /// size; set in a style, they change together when it does.
+  /// numberStyle and wordStyle are the document's named text styles (see
+  /// CanvasDocument.textStyles) the number and words are set in, or empty
+  /// for their own specs.
   final String numberStyle;
   final String wordStyle;
 
   /// box is the background, border, radius and padding round the whole thing.
   final BoxSpec box;
 
-  /// fit shrinks the type until the whole count fits the box.
-  ///
-  /// On by default, and this is the element that needs it: the width of the
-  /// number changes as it counts. A counter set to look right at 42 clips at
-  /// 1,234,567, and the first anybody knows about it is the frame where that
-  /// happens. The size is chosen from the *widest* value the count will ever
-  /// reach rather than from the one showing, so the figures do not change
-  /// size as they go.
+  /// fit shrinks the type until the whole count fits the box. The size is
+  /// chosen from the widest value the count will reach, not the one showing,
+  /// so the figures do not change size as they count.
   final bool fit;
 
-  /// keyed is whether the number is read off the timeline.
-  ///
-  /// On, the count is keyframes: the start value pinned at one frame, the end
-  /// at another, and any number of points in between whose values may be
-  /// higher or lower than either end. Off, the counter runs in real time and
-  /// the buttons below mean something -- which is the whole reason this is a
-  /// switch rather than two elements. A clock is a counter nobody keyframed.
+  /// keyed is whether the number is read off the timeline (its count clips,
+  /// or a legacy track's keys). Off, the counter runs in real time and the
+  /// buttons work.
   final bool keyed;
 
-  /// source, rate and loop are the live counter's own settings.
-  ///
-  /// rate is in units a second: sixty on a counter written as minutes is a
-  /// stopwatch, one is a seconds counter, and a hundred and twenty with a
-  /// short loop is a metronome.
+  /// source, rate and loop are the live counter's settings; rate is in
+  /// units a second.
   final CounterSource source;
   final double rate;
   final bool loop;
@@ -203,27 +150,18 @@ class CounterElement extends CanvasElement {
   /// gameCount is the game count shown, by id, for [CounterSource.game].
   final String gameCount;
 
-  /// mirrored puts a page number on the outside edge of the leaf.
-  ///
-  /// A printed page number sits away from the spine, which means the same
-  /// element has to be at one side of a right-hand page and at the other
-  /// side of a left-hand one. Drawn mirrored about the middle of the page
-  /// rather than moved by a distance somebody types, so that the two sides
-  /// of a spread match however the number is placed -- and so that a number
-  /// already in the middle stays in the middle, because the mirror of the
-  /// centre is the centre.
-  ///
-  /// Only read for a page number, and only on a left-hand leaf. See
-  /// CanvasDocument.pageIsLeft.
+  /// mirrored puts a page number on the outside edge of the leaf: on a
+  /// left-hand leaf it is drawn mirrored about the page's middle, so both
+  /// sides of a spread match and a centred number stays centred. Only read
+  /// for a page number on a left-hand leaf; see pageIsLeft in
+  /// canvas_pages.dart.
   final bool mirrored;
 
-  /// running is whether a live counter is counting before anybody presses
-  /// anything. A clock on a page should be going when the page opens; a
-  /// stopwatch should not.
+  /// running is whether a live counter is counting before anything is
+  /// pressed: true for a clock, false for a stopwatch.
   final bool running;
 
-  /// buttons are the controls drawn under the number, in this order. Empty
-  /// for the counters that are a display rather than an instrument.
+  /// buttons are the controls drawn under the number, in this order.
   final List<CounterButton> buttons;
 
   /// buttonSpec and buttonBox are how those controls are drawn.
@@ -231,22 +169,16 @@ class CounterElement extends CanvasElement {
   final BoxSpec buttonBox;
 
   /// looseButtons lets the buttons be placed anywhere in the box instead of
-  /// sitting in a row along the bottom, and [buttonAt] is where each of them
-  /// goes -- a fraction of the box from its middle, like [beforeAt].
-  ///
-  /// A row along the bottom is what a set of controls is, and a counter whose
-  /// Start sits under the figures with its Reset out at the corner is a
-  /// design decision the row cannot express.
+  /// in a row along the bottom, each at [buttonAt]: a fraction of the box
+  /// from its middle, like [beforeAt].
   final bool looseButtons;
   final List<Offset> buttonAt;
 
-  /// buttonSize is how big a freely placed button is, as a fraction of the
-  /// box. Sitting in the row they share the width and take the height the
-  /// label needs; placed by hand they have no row to take it from.
+  /// buttonSize is a loose button's size as a fraction of the box; in the
+  /// row, buttons share the width and size to their labels.
   final Size buttonSize;
 
-  /// animation is how the whole element arrives and leaves, the same as every
-  /// other element's.
+  /// animation is how the whole element arrives and leaves.
   final ElementAnimation animation;
 
   const CounterElement(
@@ -294,48 +226,36 @@ class CounterElement extends CanvasElement {
   @override
   ElementKind get kind => ElementKind.counter;
 
-  /// span is how far the count travels, which is what a fraction of it means.
+  /// span is how far the count travels.
   double get span => to - from;
 
-  /// valueAtFraction is the number [t] of the way through the count, for the
-  /// callers that have a fraction rather than a keyframed value.
+  /// valueAtFraction is the number [t] of the way through the count.
   double valueAtFraction(double t) => from + span * t.clamp(0.0, 1.0);
 
-  /// format writes [value] the way this counter is set up to write it.
+  /// format writes [value] with this counter's decimals and separator.
   String format(double value) => formatCounter(value, decimals, separator);
 
-  /// text is the whole line: the words in front, the number, the words after.
+  /// textFor is the whole line: words before, the number, words after.
   String textFor(double value) => "$before${format(value)}$after";
 
-  /// placedButton is where button [i] sits when the buttons are placed by
-  /// hand, as a fraction of the box from its middle.
-  ///
-  /// Spread down the middle for the ones nobody has placed yet, so switching
-  /// the setting on gives three buttons in three different places rather than
-  /// three stacked on one another.
+  /// placedButton is where loose button [i] sits, as a fraction of the box
+  /// from its middle. Unplaced ones are spread down the middle so they do not
+  /// stack on one another.
   Offset placedButton(int i) {
     if (i < buttonAt.length) return buttonAt[i];
     var count = buttons.isEmpty ? 1 : buttons.length;
     return Offset(0, 0.3 - (count - 1 - i) * 0.18);
   }
 
-  /// live is whether this counter runs in real time, which is what the
-  /// buttons are for and what makes it an instrument rather than a picture.
-  ///
-  /// A page number is neither: it does not run and it is not keyed, it is
-  /// read off the page it happens to be drawn on. See CounterSource.page.
-  ///
-  /// A game's count is always live: it is where the game has got to, never a
-  /// number keyed on the timeline -- left keyed, as a new counter starts, a
-  /// HUD's coins sat at nought however many were taken.
+  /// live is whether this counter runs in real time. A page number never
+  /// does (it is read off its page); a game count always does, whatever
+  /// [keyed] says, since a new counter starts keyed.
   bool get live =>
       source == CounterSource.game || (!keyed && source != CounterSource.page);
 
-  /// isPageNumber is the question the renderer and the settings both ask.
+  /// isPageNumber is whether this shows the number of its page.
   bool get isPageNumber => source == CounterSource.page;
 
-  /// assetIds is the pictures its boxes are painted with. See
-  /// BoxSpec.assetIds.
   @override
   Set<String> get assetIds => {...box.assetIds, ...buttonBox.assetIds};
 
@@ -360,9 +280,7 @@ class CounterElement extends CanvasElement {
       keyed: keyed,
       source: source,
       gameCount: gameCount,
-      // Every move and every resize comes through rebase. Left out here, the
-      // mirror switched itself off the first time the number was dragged --
-      // which looked like a setting that would not stay on.
+      // Every move and resize comes through rebase, so every field must too.
       mirrored: mirrored,
       rate: rate,
       loop: loop,
@@ -482,7 +400,7 @@ class CounterElement extends CanvasElement {
         from: jsonDouble(json["from"], 0),
         to: jsonDouble(json["to"], 100),
         decimals: jsonInt(json["decimals"], 0).clamp(0, 8),
-        separator: CounterSeparator.fromName(json["sep"] as String?),
+        separator: CounterSeparator.fromName(jsonStr(json["sep"])),
         before: jsonString(json["before"], ""),
         after: jsonString(json["after"], ""),
         gap: jsonDouble(json["gap"], 0),
@@ -505,7 +423,7 @@ class CounterElement extends CanvasElement {
             jsonSpec(json["box"], BoxSpec.fromJson, const BoxSpec(padding: 16)),
         fit: !jsonBool(json["noFit"], false),
         keyed: !jsonBool(json["live"], false),
-        source: CounterSource.fromName(json["source"] as String?),
+        source: CounterSource.fromName(jsonStr(json["source"])),
         gameCount:
             json["gameCount"] is String ? json["gameCount"] as String : "",
         mirrored: jsonBool(json["mirrored"], false),
@@ -547,23 +465,18 @@ class CounterElement extends CanvasElement {
   }
 }
 
-/// _offsetFromJson reads a placement, which is saved as a pair.
 Offset _offsetFromJson(dynamic raw) => raw is List && raw.length == 2
     ? Offset(jsonDouble(raw[0], 0), jsonDouble(raw[1], 0))
     : Offset.zero;
 
-/// formatCounter writes a number the way a counter writes it.
-///
-/// A free function rather than a method so that the settings panel can show
-/// what a choice looks like without building an element to ask.
+/// formatCounter writes a number the way a counter writes it. A free
+/// function so the settings panel can preview a choice without an element.
 String formatCounter(double value, int decimals, CounterSeparator separator) {
   var places = decimals.clamp(0, 8);
   if (separator.isTime) return _asTime(value, places, separator);
 
-  // Rounded once, here, and then taken apart as a string. Working out the
-  // whole part and the fraction separately gets 1.999 at two places wrong:
-  // the whole part is 1 and the fraction rounds to 00, which writes 1.00 for
-  // a number that is two.
+  // Rounded once, then taken apart as a string: rounding the whole part and
+  // fraction separately writes 1.999 at two places as 1.00.
   var negative = value < 0;
   var text = value.abs().toStringAsFixed(places);
   var point = text.indexOf(".");
@@ -592,17 +505,17 @@ String _grouped(String digits, String mark) {
   return out.toString();
 }
 
-/// _asTime writes a number of seconds as a clock reads it.
-///
-/// The minutes and the seconds are always two figures where something comes
-/// before them and never padded where nothing does -- 1:57, not 01:57, and
-/// 1:02:05 rather than 1:2:5. A clock that loses its leading nought once a
-/// minute is a clock that flickers.
+/// _asTime writes a number of seconds as a clock reads it: a field is
+/// padded to two figures only when something comes before it (1:57, 1:02:05).
 String _asTime(double value, int places, CounterSeparator separator) {
   var negative = value < 0;
-  var total = value.abs();
-  var whole = total.floor();
-  var fraction = total - whole;
+  // Whole seconds as a clock shows them; with figures after the point,
+  // rounded to those first, so 59.999 to two places is 1:00.00, not 0:59.00.
+  var scale = math.pow(10, places).toInt();
+  var ticks =
+      places > 0 ? (value.abs() * scale).round() : value.abs().floor() * scale;
+  var whole = ticks ~/ scale;
+  var fraction = ticks % scale;
 
   var seconds = whole % 60;
   var minutes = (whole ~/ 60);
@@ -617,26 +530,14 @@ String _asTime(double value, int places, CounterSeparator separator) {
   }
   out.write(":");
   out.write(seconds.toString().padLeft(2, "0"));
-  if (places > 0) {
-    var tail = fraction.toStringAsFixed(places);
-    // toStringAsFixed can round a fraction up to "1.00"; the whole second it
-    // carries has already been counted above, so only the figures after the
-    // point are taken.
-    out.write(".${tail.substring(2)}");
-  }
+  if (places > 0) out.write(".${fraction.toString().padLeft(places, "0")}");
   return negative ? "-$out" : out.toString();
 }
 
-/// stackedWithMaster is a page's elements with the master's under them --
-/// all but its page numbers, which go over them.
-///
-/// Under, because what the master carries is what every page stands on: a
-/// frame, a logo, a rule. But a page number under the page was a number a
-/// picture laid across the page covered: the first page of a book whose
-/// opening spread was one photograph had none. The order the renderer draws
-/// in and the order an EPUB's layers are stacked in, so the two agree.
-///
-/// [over], all of the master over the page: a game's HUD.
+/// stackedWithMaster is a page's elements with the master's under them,
+/// except its page numbers, which go over so a full-page picture cannot hide
+/// them. Both the renderer and the EPUB layers use this order. With [over],
+/// all of the master goes over the page (a game's HUD).
 List<CanvasElement> stackedWithMaster(
         List<CanvasElement> master, List<CanvasElement> page,
         {bool over = false}) =>

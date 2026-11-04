@@ -1,26 +1,19 @@
 import 'dart:math' as math;
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// canvas_animation.dart is how an element changes over the length of a
-// document, and what the timeline does when playback reaches a frame.
+// canvas_animation.dart is keyframe tracks and the timeline's markers.
 //
-// The model is keyframes, not a script. A track is a sparse list of "at frame
-// N this element is *here*, this big, this transparent", and everything
-// between two of them is interpolated. That is the only model that lets the
-// same document be scrubbed backwards, exported frame by frame, and replayed
-// inside a published interactive canvas -- all three need to ask "what does
-// frame 37 look like" without having played frames 0 to 36 first.
+// Tracks are the legacy animation model: clips (motion.dart) replace them,
+// and motion_convert.dart turns tracks into clips when a canvas opens. Tracks
+// remain for what a clip cannot say -- backgrounds, stages, scenery, teams --
+// and Keyframe is still the pose type the clip system produces.
 //
-// Deliberately absent: a per-property track. One keyframe holds every animated
-// property at once, so a keyframe is a *pose*. Per-property tracks are more
-// expressive and are what a real animation tool has; they are also four
-// timelines to read instead of one, and this is a tool for moving a footballer
-// across a pitch.
+// A track is a sparse list of poses, each holding every animated property at
+// once, interpolated between, so any frame can be asked for without playing
+// the ones before it.
 
 /// KeyframeEasing is the shape of the interpolation between two keyframes.
-///
-/// Named for what it eases rather than plainly `Easing`, which Material also
-/// defines -- any file importing both would otherwise have to prefix one of
-/// them at every single use.
+/// (Not `Easing`, which Material also defines.)
 enum KeyframeEasing {
   linear("Linear"),
   easeIn("Ease in"),
@@ -28,20 +21,12 @@ enum KeyframeEasing {
   easeInOut("Ease in-out"),
 
   /// overshoot, bounce and spring go past the value they are travelling to
-  /// and come back.
-  ///
-  /// The same three a chart's items can arrive on -- see ChartEase -- because
-  /// they are the same question asked of a different thing, and a reader who
-  /// has met Bounce on a chart should not find a keyframe cannot do it. They
-  /// leave 0..1 on the way, which is exactly the point: a counter that runs
-  /// past its number and settles reads as a number landing, and a pose that
-  /// does it reads as weight.
+  /// and come back, leaving 0..1 on the way. The same three as ChartEase.
   overshoot("Overshoot"),
   bounce("Bounce"),
   spring("Spring"),
 
   /// hold does not interpolate at all: the pose snaps at the next keyframe.
-  /// What a cut is, and what "show this, then that" needs.
   hold("Hold");
 
   final String label;
@@ -62,9 +47,8 @@ enum KeyframeEasing {
       case KeyframeEasing.easeInOut:
         return t < 0.5 ? 2 * t * t : 1 - math.pow(-2 * t + 2, 2) / 2;
       case KeyframeEasing.overshoot:
-        // The standard back-out: one overshoot and a settle, no wobble.
-        // Pinned at the ends, because the arithmetic leaves a hair of
-        // rounding there and a keyframe has to be reached exactly.
+        // The standard back-out. Pinned at the ends, where the arithmetic
+        // leaves a hair of rounding and a keyframe has to be reached exactly.
         if (t <= 0) return 0;
         if (t >= 1) return 1;
         const c = 1.70158;
@@ -75,9 +59,7 @@ enum KeyframeEasing {
         if (t >= 1) return 1;
         return bounceOut(t);
       case KeyframeEasing.spring:
-        // A decaying oscillation: three visible swings before it settles,
-        // which is enough to read as a spring and few enough to stop being
-        // charming the fourth time it happens.
+        // A decaying oscillation: three visible swings before it settles.
         if (t <= 0) return 0;
         if (t >= 1) return 1;
         var decay = math.pow(2, -9 * t).toDouble();
@@ -90,11 +72,8 @@ enum KeyframeEasing {
 
 /// Keyframe is one pose: where an element is at one frame.
 ///
-/// The offsets are *relative to the element's own resting position*, not
-/// absolute coordinates. That is what makes an animation survive the element
-/// being dragged somewhere else afterwards -- a fade that was written for a
-/// title still fades the title after the title has been moved, rather than
-/// dragging it back to where it was when the keyframe was made.
+/// The offsets are relative to the element's own resting position, so an
+/// animation survives the element being moved afterwards.
 class Keyframe {
   final int frame;
 
@@ -102,7 +81,7 @@ class Keyframe {
   final double dx;
   final double dy;
 
-  /// scale multiplies the element's size about its centre.
+  /// scale multiplies the element's size about its anchor.
   final double scale;
 
   /// rotate adds to the element's own rotation, in degrees.
@@ -114,17 +93,10 @@ class Keyframe {
   /// easing is how to get *from* this keyframe to the next one.
   final KeyframeEasing easing;
 
-  /// values are the extra properties this keyframe pins, by name.
-  ///
-  /// The five fields above are the pose every element has -- where it is, how
-  /// big, how turned, how faded. This is for the ones only some elements have:
-  /// how far along a line a caption has slid, how far a line is bowed. They
-  /// are absolute values rather than offsets, because unlike a position they
-  /// have no meaningful "resting" state to be an offset from.
-  ///
-  /// A map rather than a field per property, so a new animatable setting is a
-  /// name and two call sites instead of a change to the file format. Keys are
-  /// the constants in [KeyframeChannel].
+  /// values are the extra properties this keyframe pins, by name: the ones
+  /// only some elements have (how far a caption has slid, how far a line is
+  /// bowed). Absolute values, not offsets, as they have no resting state.
+  /// Keys are the constants in [KeyframeChannel].
   final Map<String, double> values;
 
   const Keyframe({
@@ -138,22 +110,14 @@ class Keyframe {
     this.values = const {},
   });
 
-  /// posesElement is whether this keyframe says anything about *where* the
-  /// element is -- moved, resized, turned or faded.
-  ///
-  /// A keyframe that says none of those is still a real keyframe: a chart's
-  /// animation preset lays two that carry nothing but how much of the chart
-  /// has been drawn, and a caption sliding along a line is the same. The
-  /// difference matters because "this element has been animated" is the
-  /// question a drag asks before deciding whether it is posing or moving --
-  /// see CanvasController.posesRatherThanMoves -- and a chart that has only
-  /// been told how to arrive has not been animated *in space* at all.
+  /// posesElement is whether this keyframe moves, resizes, turns or fades
+  /// the element. One that carries only [values] (how much of a chart is
+  /// drawn, say) does not.
   bool get posesElement =>
       dx != 0 || dy != 0 || scale != 1 || rotate != 0 || opacity != 1;
 
-  /// movesElement is whether this keyframe puts the element somewhere else
-  /// -- moved, resized or turned. Not faded: a fade is not a place, and an
-  /// element that only fades is still where it was put. See
+  /// movesElement is whether this keyframe moves, resizes or turns the
+  /// element; unlike [posesElement], not a fade. See
   /// ElementTrack.posesAnything.
   bool get movesElement => dx != 0 || dy != 0 || scale != 1 || rotate != 0;
 
@@ -182,15 +146,9 @@ class Keyframe {
         values: values ?? this.values,
       );
 
-  /// lerp is this pose blended towards [other] by [t], already eased.
-  /// withValue is this keyframe with one extra property pinned.
-  /// differsFrom is whether anything about this keyframe and [other] is not
-  /// the same: where the element sits, how big it is, which way round, how
-  /// visible, or any of the extra channels either of them pins.
-  ///
-  /// What decides whether a stretch between two marks gets a bar. Two
-  /// keyframes that say the same thing are a hold by another name, and a bar
-  /// over them would be claiming something happens there.
+  /// differsFrom is whether this keyframe's pose or any channel both pin
+  /// differs from [other]'s: whether the stretch between them gets a bar on
+  /// the timeline.
   bool differsFrom(Keyframe other) {
     if (dx != other.dx ||
         dy != other.dy ||
@@ -199,11 +157,8 @@ class Keyframe {
         opacity != other.opacity) {
       return true;
     }
-    // Only the channels *both* of them pin. A channel one carries and the
-    // other does not is not a change: the missing one holds whatever was set
-    // before it -- see ElementTrack._withHeldValues -- so the end of an
-    // arrival and the start of an exit are two keyframes with nothing
-    // happening between them, which is exactly what they look like.
+    // Only the channels both pin: a missing one holds the value set before
+    // it (see ElementTrack._withHeldValues), so it is not a change.
     for (var channel in values.keys) {
       if (!other.values.containsKey(channel)) continue;
       if (values[channel] != other.values[channel]) return true;
@@ -211,12 +166,14 @@ class Keyframe {
     return false;
   }
 
+  /// withValue is this keyframe with one extra property pinned.
   Keyframe withValue(String key, double value) =>
       copyWith(values: {...values, key: value});
 
   Keyframe withoutValue(String key) =>
       copyWith(values: {...values}..remove(key));
 
+  /// lerp is this pose blended towards [other] by [t], already eased.
   Keyframe lerp(Keyframe other, double t) => Keyframe(
         frame: frame,
         dx: dx + (other.dx - dx) * t,
@@ -225,10 +182,8 @@ class Keyframe {
         rotate: rotate + (other.rotate - rotate) * t,
         opacity: opacity + (other.opacity - opacity) * t,
         easing: easing,
-        // A property only one end pins is held rather than interpolated
-        // towards nothing: there is no second value to move to, and guessing
-        // one -- zero, say -- would send a slide back to the start of its line
-        // the moment it stopped being keyed.
+        // A property only one end pins is held, not interpolated towards a
+        // guessed value.
         values: {
           for (var key in {...values.keys, ...other.values.keys})
             key: values.containsKey(key) && other.values.containsKey(key)
@@ -257,13 +212,13 @@ class Keyframe {
       };
 
   factory Keyframe.fromJson(Map<String, dynamic> json) => Keyframe(
-        frame: (json["f"] as num?)?.toInt() ?? 0,
-        dx: (json["dx"] as num?)?.toDouble() ?? 0,
-        dy: (json["dy"] as num?)?.toDouble() ?? 0,
-        scale: (json["s"] as num?)?.toDouble() ?? 1,
-        rotate: (json["r"] as num?)?.toDouble() ?? 0,
-        opacity: (json["o"] as num?)?.toDouble() ?? 1,
-        easing: KeyframeEasing.fromName(json["e"] as String?),
+        frame: (jsonNum(json["f"]))?.toInt() ?? 0,
+        dx: (jsonNum(json["dx"]))?.toDouble() ?? 0,
+        dy: (jsonNum(json["dy"]))?.toDouble() ?? 0,
+        scale: (jsonNum(json["s"]))?.toDouble() ?? 1,
+        rotate: (jsonNum(json["r"]))?.toDouble() ?? 0,
+        opacity: (jsonNum(json["o"]))?.toDouble() ?? 1,
+        easing: KeyframeEasing.fromName(jsonStr(json["e"])),
         values: {
           if (json["v"] case Map<String, dynamic> raw)
             for (var entry in raw.entries)
@@ -273,12 +228,8 @@ class Keyframe {
       );
 }
 
-/// ElementTrack is one element's keyframes, kept sorted by frame.
-///
-/// Sorted on construction rather than on read, because it is read once per
-/// element per frame -- sixty times a second during playback, and once per
-/// exported frame -- and sorted whenever the user adds a keyframe, which is
-/// as often as they press a button.
+/// ElementTrack is one element's keyframes, sorted by frame on construction
+/// (it is read every frame, written rarely).
 class ElementTrack {
   final List<Keyframe> keys;
 
@@ -290,44 +241,26 @@ class ElementTrack {
 
   bool get isEmpty => keys.isEmpty;
 
-  /// posesAnything is whether this track is about where the element is --
-  /// whether a drag of it is a movement being animated, recorded as a pose,
-  /// rather than the element being put somewhere else.
+  /// posesAnything is whether a drag of the element records a pose rather
+  /// than moving it.
   ///
-  /// True if any keyframe moves, sizes or turns the element. Movement on the
-  /// timeline is its own kind of animation, and only it: an arrival, an
-  /// exit, a loop, a count, a fade or a dim all play wherever the element is
-  /// put, which is what makes them worth having -- the element can be moved
-  /// or replaced and they come with it. Counted as posing, a fade laid by
-  /// "Dim the others" made every later drag write a keyframe nobody had
-  /// asked for, and the element crept away from where it had been put.
-  ///
-  /// And true of a track that is nothing but resting keyframes -- pinned by
-  /// hand with Add Keyframe, before anything has moved. That is the ordinary
-  /// way to start a movement: pin the start, then pose at a later frame. A
-  /// resting keyframe beside channels or fades is not that; it is the start
-  /// of the fade, or the frame an arrival was laid on.
+  /// True if any keyframe moves, sizes or turns the element; not for fades or
+  /// channels, which play wherever the element is put (counted, every drag
+  /// after a "Dim the others" fade wrote a keyframe). Also true of a track of
+  /// nothing but resting keyframes, the usual way to start a movement: pin
+  /// the start, then pose at a later frame.
   bool get posesAnything =>
       keys.any((k) => k.movesElement) ||
       (keys.isNotEmpty &&
           keys.every((k) => k.values.isEmpty && !k.posesElement));
 
-  /// at returns the pose for [frame].
-  ///
-  /// Before the first keyframe the first pose holds; after the last, the last
-  /// does. Holding rather than extrapolating is the only behaviour that does
-  /// not surprise: an element that fades in over frames 0-10 should stay
-  /// visible for the rest of the document, not carry on getting brighter.
+  /// at returns the pose for [frame]. Before the first keyframe the first
+  /// pose holds, and after the last the last does; nothing extrapolates.
   Keyframe at(int frame) => _withHeldValues(frame, _poseAt(frame));
 
   /// _withHeldValues fills in any extra channel this frame's pose does not
-  /// name itself, from the last keyframe that did.
-  ///
-  /// A channel is pinned only on the keyframes that mention it, so a caption
-  /// keyed to slide at frames 0 and 10 has nothing to say at frame 20 -- and
-  /// without this it would snap back to the element's own resting slide the
-  /// instant playback passed the last key that mentioned it. Held is what
-  /// every other property here does; this makes the extra ones agree.
+  /// name itself, from the last keyframe that did, so channels hold past
+  /// their last key as the pose does.
   Keyframe _withHeldValues(int frame, Keyframe pose) {
     if (keys.isEmpty) return pose;
     var held = <String, double>{};
@@ -356,8 +289,7 @@ class ElementTrack {
     return keys.last;
   }
 
-  /// keyAt is the keyframe standing exactly on [frame], if there is one. What
-  /// the timeline asks to decide whether adding a keyframe here replaces one.
+  /// keyAt is the keyframe standing exactly on [frame], if there is one.
   Keyframe? keyAt(int frame) {
     for (var k in keys) {
       if (k.frame == frame) return k;
@@ -366,31 +298,18 @@ class ElementTrack {
   }
 
   /// seededFor is this track with a resting pose at frame 0, when it is empty
-  /// and [frame] is not the start.
-  ///
-  /// A track with one keyframe on it holds that pose at every frame -- before
-  /// the first key the first key applies, which is the right rule and the
-  /// wrong outcome here. Recording a drag at frame 12 onto an empty track
-  /// would put the element in its new place for the whole document, and read
-  /// as the drag having simply moved it. Seeding the start turns the same
-  /// gesture into what it looked like: from where it was, to where it was put.
-  ///
-  /// Only when the track is empty. A second key is the author placing poses
-  /// deliberately, and inserting one they did not ask for would be the tool
-  /// overwriting their first frame.
+  /// and [frame] is not the start. Without it, a drag recorded at frame 12
+  /// onto an empty track would be one key, held for the whole document.
   ElementTrack seededFor(int frame) =>
       keys.isEmpty && frame > 0 ? withKey(const Keyframe(frame: 0)) : this;
 
   /// restingAt is a new keyframe for [frame] that changes nothing: the pose
-  /// the track already gives there, with no channels of its own.
+  /// the track already gives there, with no channels of its own, and the
+  /// easing of the stretch it splits.
   ///
-  /// What a keyframe laid down for some other reason -- the two ends of an
-  /// arrival or an exit -- has to start from. A pose is not held from one key
-  /// to the next the way a channel is: a key that says nothing about where
-  /// the element is means its resting place. Started from rest, the ends of
-  /// an exit laid after a hand-made move dragged the element back to where
-  /// it began before it left. Inside a stretch it keeps that stretch's
-  /// easing, so the stretch it splits travels as it did.
+  /// A keyframe laid for another reason (the ends of an arrival or an exit)
+  /// starts from this, not from rest: a pose is not held between keys as a
+  /// channel is, so a rest key would drag a moved element back.
   Keyframe restingAt(int frame) {
     var pose = _poseAt(frame);
     var easing = KeyframeEasing.linear;
@@ -415,9 +334,7 @@ class ElementTrack {
   ElementTrack withoutFrame(int frame) =>
       ElementTrack(keys.where((k) => k.frame != frame).toList());
 
-  /// lastFrame is where this track stops changing. The document uses the
-  /// largest across its elements to warn that its length is too short to show
-  /// everything that was drawn.
+  /// lastFrame is where this track stops changing.
   int get lastFrame => keys.isEmpty ? 0 : keys.last.frame;
 
   Map<String, dynamic> toJson() =>
@@ -439,8 +356,8 @@ enum TimelineActionKind {
   loop("Loop back", "Jump back to the target frame and carry on"),
   jump("Jump to", "Jump forward or back to the target frame once"),
   pause("Pause", "Hold for a moment, then carry on"),
-  // A place, not an instruction: playback carries on past it. A player that
-  // does not know the kind skips it (see media.js), which is the same thing.
+  // A place, not an instruction: playback carries on past it, as a player
+  // that does not know the kind does anyway.
   locator("Locator", "A named place on the ruler to jump to");
 
   final String label;
@@ -453,17 +370,12 @@ enum TimelineActionKind {
       );
 }
 
-/// TimelineAction is a marker on the timeline.
-///
-/// These are what turn a linear animation into something a reader can be
-/// walked through: a play that stops after the first movement, a button that
-/// runs the next phase, a loop that keeps a background alive underneath. A
-/// published interactive canvas obeys them; an exported GIF flattens them,
-/// because a GIF has no way to wait for a click.
+/// TimelineAction is a marker on the timeline. A published interactive
+/// canvas obeys them; an exported file plays straight through.
 class TimelineAction {
   /// id names the marker for what is pinned to it -- a clip that starts or
-  /// ends there follows it when it is moved. Kept in the file; a marker
-  /// from before ids is named by where it was first read.
+  /// ends there follows it when it is moved. A marker saved without one is
+  /// named by its frame when read.
   final String id;
 
   final int frame;
@@ -479,9 +391,8 @@ class TimelineAction {
   /// holdFrames is how long [TimelineActionKind.pause] waits.
   final int holdFrames;
 
-  /// label is a word or two beside the flag -- "Chorus", "Page 2" -- and
-  /// showLabel whether it is drawn there. A note to whoever is editing; it
-  /// does nothing when the canvas plays.
+  /// label is a word or two beside the flag, a note for the editor, and
+  /// showLabel whether it is drawn there.
   final String label;
   final bool showLabel;
 
@@ -540,35 +451,25 @@ class TimelineAction {
   factory TimelineAction.fromJson(Map<String, dynamic> json) => TimelineAction(
         id: json["id"] is String && (json["id"] as String).isNotEmpty
             ? json["id"] as String
-            : "m${(json["f"] as num?)?.toInt() ?? 0}",
-        frame: (json["f"] as num?)?.toInt() ?? 0,
-        kind: TimelineActionKind.fromName(json["kind"] as String?),
-        target: (json["target"] as num?)?.toInt() ?? 0,
-        repeats: (json["repeats"] as num?)?.toInt() ?? 0,
-        holdFrames: (json["hold"] as num?)?.toInt() ?? 12,
+            : "m${(jsonNum(json["f"]))?.toInt() ?? 0}",
+        frame: (jsonNum(json["f"]))?.toInt() ?? 0,
+        kind: TimelineActionKind.fromName(jsonStr(json["kind"])),
+        target: (jsonNum(json["target"]))?.toInt() ?? 0,
+        repeats: (jsonNum(json["repeats"]))?.toInt() ?? 0,
+        holdFrames: (jsonNum(json["hold"]))?.toInt() ?? 12,
         label: json["label"] is String ? json["label"] as String : "",
         showLabel: json["hideLabel"] != true,
         waitsFor: json["waitsFor"] is String ? json["waitsFor"] as String : "",
       );
 }
 
-/// KeyframeChannel names the extra properties a keyframe can pin.
-///
-/// Constants rather than free strings, because the name is written in one
-/// place and read in another and a typo between the two is an animation that
-/// silently does nothing.
 /// KeyframeBand is two keyframes that belong together: the start and the end
-/// of one movement.
-///
-/// A chart's entrance is a pair, and so is its exit. Naming the pair is what
-/// lets the timeline draw them joined and drag them as one -- two marks that
-/// are meaningless apart, shown as two marks that can be separated by
-/// accident, is a way to lose an animation without noticing.
+/// of one movement, drawn joined on the timeline and dragged as one.
 class KeyframeBand {
   final int from;
   final int to;
 
-  /// channel is what the pair pins -- see [KeyframeChannel]. Kept so the
+  /// channel is what the pair pins -- see [KeyframeChannel] -- so the
   /// timeline can colour an entrance and an exit differently.
   final String channel;
 
@@ -578,25 +479,15 @@ class KeyframeBand {
   bool get real => to > from;
 }
 
-/// bandsIn is every pair of keyframes in [track] that belong together.
-///
-/// A channel pinned by two or more keys is one band, running from the first
-/// of them to the last. Only the channels that are actually a movement with
-/// two ends: an element that is simply keyframed in four places is four
-/// poses, not two bands, and joining them up would be inventing a
-/// relationship the reader never asked for.
+/// bandsIn is every bar the timeline draws over [track]: one per arrival or
+/// exit channel from its first key to its last, then one for each other
+/// stretch in which something changes.
 List<KeyframeBand> bandsIn(ElementTrack? track) {
   if (track == null) return const [];
   var out = <KeyframeBand>[];
 
-  // An arrival and an exit first. Each is a *pair* that means nothing apart,
-  // so it is one bar from the first of them to the last however many frames
-  // lie between -- which is what lets the timeline drag the whole animation
-  // as one thing.
-  //
-  // Unless it is held at the start: then it does not arrive over the stretch,
-  // it snaps at the end of it, and a bar saying "drawing on over here" would
-  // be describing something that does not happen.
+  // An arrival and an exit first, unless held at the start: then it snaps
+  // at the end and nothing happens over the stretch.
   for (var channel in const [KeyframeChannel.reveal, KeyframeChannel.close]) {
     var carried = [
       for (var key in track.keys)
@@ -607,27 +498,16 @@ List<KeyframeBand> bandsIn(ElementTrack? track) {
     out.add(KeyframeBand(carried.first.frame, carried.last.frame, channel));
   }
 
-  // Then every other stretch where something actually changes.
-  //
-  // The bar is read as "something happens between these two marks", so it is
-  // drawn wherever something does: a pose moving, a number counting, a
-  // caption sliding along its line. It used to be drawn only for the two
-  // channels a preset lays down, which meant keyframes laid by hand -- most
-  // of the keyframes on most canvases -- had nothing between them at all.
-  //
-  // Two stretches get none. One whose ends read the same, because nothing
-  // happens there and a bar over it would be saying something untrue; and one
-  // that holds, because easing belongs to the keyframe a stretch leaves and a
-  // held one does not travel -- it stays exactly as it is and steps at the far
-  // end. Ease, hold, ease, hold is a bar, a gap, a bar.
+  // Then every other stretch where something changes. None for one whose
+  // ends read the same, or one that leaves a held key (it steps at the far
+  // end rather than travelling).
   var claimed = {for (var band in out) "${band.from}:${band.to}"};
   var keys = [...track.keys]..sort((a, b) => a.frame - b.frame);
   for (var i = 0; i + 1 < keys.length; i++) {
     var from = keys[i], to = keys[i + 1];
     if (from.easing == KeyframeEasing.hold) continue;
     if (!from.differsFrom(to)) continue;
-    // Not a second bar over a stretch an arrival already claims: one thing
-    // happening is one bar.
+    // Not a second bar over a stretch an arrival already claims.
     if (claimed.contains("${from.frame}:${to.frame}")) continue;
     out.add(KeyframeBand(from.frame, to.frame, KeyframeChannel.pose));
   }
@@ -635,6 +515,8 @@ List<KeyframeBand> bandsIn(ElementTrack? track) {
   return out;
 }
 
+/// KeyframeChannel names the extra properties a keyframe can pin, as
+/// constants so the writer and the reader cannot disagree on a spelling.
 class KeyframeChannel {
   KeyframeChannel._();
 
@@ -642,40 +524,23 @@ class KeyframeChannel {
   /// TextOnCurve.offset holds.
   static const String slide = "slide";
 
-  /// reveal is how much of a chart has been drawn, 0 to 1.
-  ///
-  /// One channel for the whole chart rather than one per bar. What each bar is
-  /// doing at a given moment is worked out from this and the chart's own
-  /// animation settings -- see ChartAnimation -- because a chart of forty bars
-  /// would otherwise be forty channels on one keyframe, and moving the end of
-  /// the animation would mean moving forty of them.
+  /// reveal is how much of a chart has been drawn, 0 to 1: one channel for
+  /// the whole chart, each bar's share worked out by ChartAnimation.
   static const String reveal = "reveal";
 
-  /// close is how far through leaving a chart is, 0 to 1.
-  ///
-  /// A channel of its own rather than running [reveal] back down to zero,
-  /// because the two ends of a chart can be different animations -- grow in,
-  /// fade out -- and a single number going up and then down does not say
-  /// which of them is being drawn. With this, the pair of keyframes the
-  /// playhead is between is the answer.
+  /// close is how far through leaving a chart is, 0 to 1. Separate from
+  /// [reveal] because the arrival and the exit can be different animations.
   static const String close = "close";
 
   /// bow is how far a line element is curved, as LineElement.curvature holds.
   static const String bow = "bow";
 
-  /// pose is not a channel anybody pins: it is what a bar over an ordinary
-  /// stretch is about -- the element itself moving, growing, turning or
-  /// fading between two keyframes somebody laid by hand.
+  /// pose is not a channel anybody pins: it labels a bar over an ordinary
+  /// stretch where the element itself moves, grows, turns or fades.
   static const String pose = "pose";
 
-  /// count is the number a counter is showing.
-  ///
-  /// The value itself rather than a fraction of the way from the start to the
-  /// end, which is what makes a point in the middle of a count worth having:
-  /// a counter running from 0 to 100 can pass through 140 and come back, and
-  /// a fraction cannot say that. The two ends are keyframes on this channel
-  /// like any other, so moving them is moving keyframes and needs nothing of
-  /// its own on the timeline.
+  /// count is the number a counter is showing: the value itself, not a
+  /// fraction, so a count can pass its end and come back.
   static const String count = "count";
 }
 

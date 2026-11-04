@@ -239,9 +239,11 @@ void main() {
     await idle(tester);
 
     await tester.tap(find.byKey(const ValueKey("stock-pixabayPictures-1")));
-    for (var i = 0; i < 6; i++) {
-      await idle(tester);
+    // Until it is on the canvas, however long a loaded machine takes.
+    for (var i = 0; i < 100 && c.document.elements.isEmpty; i++) {
+      await idle(tester, 5);
     }
+    await idle(tester);
     expect(fake.downloads, 1);
     var image = c.document.elements.single as ImageElement;
     expect(image.name, "Red fox");

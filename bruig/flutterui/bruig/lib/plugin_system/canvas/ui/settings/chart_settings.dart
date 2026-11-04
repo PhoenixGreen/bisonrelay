@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
-// chart settings.dart is a chart's settings.
+// chart_settings.dart is a chart's settings.
 
 List<Widget> chartSettings(
     BuildContext context,
@@ -30,14 +30,9 @@ List<Widget> chartSettings(
   void writeData(ChartData data) => write(e.copyWith(data: data));
 
   /// labelControls is the shared shape of the title's and the description's
-  /// settings: the words, a switch, and -- once it has been moved off the
-  /// chart's own arrangement -- where it sits.
-  ///
-  /// Placing is a button rather than a mode. A chart lays its title out at the
-  /// top and gives the rest to the plot, which is right until somebody wants
-  /// it somewhere else, and there is no set of automatic rules that covers
-  /// both. So the label is either the chart's to place or the reader's, and
-  /// the button says which.
+  /// settings: the words, a switch, and, once it has been moved off the
+  /// chart's own arrangement, where it sits. Whether the chart or the reader
+  /// places the label is a switch, not a mode: no automatic rule covers both.
   List<Widget> labelControls(
     String name,
     String text,
@@ -49,10 +44,8 @@ List<Widget> chartSettings(
     ChartElement Function(double) withSize,
   ) =>
       [
-        // The name is the empty field's own placeholder rather than a caption
-        // over it. A caption saying "Title" above a field saying "Chart
-        // title" is the word twice and a line of panel for the second one,
-        // and in a section already called Labels it is the third.
+        // The name is the empty field's placeholder, not a caption over it: in a
+        // section called Labels a caption would be the word a third time.
         CanvasTextField(
           label: "",
           value: text,
@@ -68,10 +61,8 @@ List<Widget> chartSettings(
         ),
         if (box.show)
           CanvasNumberField(
-            // Named after which label it is. There are four Size fields in
-            // this section now -- the title's, the description's, and one per
-            // axis -- and finding one by counting is finding a different one
-            // the next time a field is added.
+            // Named after which label it is: there are four Size fields in this
+            // section, and a key found by counting finds another when one is added.
             key: ValueKey("chart${name}Size"),
             label: "Size",
             min: 4,
@@ -85,19 +76,13 @@ List<Widget> chartSettings(
             },
             onCommit: commit,
           ),
-        // No button of its own to place it. There was one, and it was a
-        // second switch saying the same thing as "Over the chart" -- a label
-        // that floats is a label that sits where it is put, and a label that
-        // does not is one the chart arranges. One switch, three labels.
-        //
-        // The words and the switches, then where it sits. Four coordinates
-        // sharing a line with a text field and two buttons is four numbers
-        // nobody can scan.
+        // No button of its own to place it: "Over the chart" is the one switch
+        // for all three labels. The words and the switches, then where it sits:
+        // four coordinates on a line with a text field cannot be scanned.
         if (box.show && e.floatingLabels) const CanvasLineBreak(),
         if (box.show && e.floatingLabels)
-          // Against the place it is drawn in, which is its own once it has
-          // been dragged and the chart's idea of one until then -- otherwise
-          // the fields read NaN on a label nobody has moved yet.
+          // Against the place it is drawn in: its own once dragged, the chart's
+          // until then, so the fields never read NaN on a label not yet moved.
           for (var (label, value, apply)
               in <(String, double, ChartLabel Function(double))>[
             (
@@ -157,18 +142,15 @@ List<Widget> chartSettings(
           boxed(
             context,
             CanvasExpander(
-              // "Table", because that is what is in it: the numbers, laid out in
-              // rows and columns, with the drawing they are drawn as above them and
-              // the way that drawing looks below.
+              // "Table", because that is what is in it: the numbers in rows and
+              // columns, with the drawing above them and its look below.
               label: "Table",
               remember: "chartData",
               flat: true,
               trailing: "${e.data.categories.length} rows, "
                   "${e.data.series.length} series",
-              // The same Refresh the Data source section carries. This is where
-              // somebody is standing when they want the numbers again -- looking at
-              // them -- and sending them to another section to press it is asking
-              // them to know which section owns the wire.
+              // The same Refresh the Data source section carries, here where somebody
+              // looking at the numbers wants them again.
               action: sourceRefreshButton(
                   context, controller, e, write, begin, commit),
               initiallyOpen: true,
@@ -176,16 +158,14 @@ List<Widget> chartSettings(
                 ChartDataEditor(
                   data: e.data,
                   chartType: e.type,
-                  // The numbers alone. What each column is called, what colour it
-                  // is and how it is drawn are the section under this one: a table
-                  // holding both was the longest thing in the panel and the first
-                  // thing anybody met.
+                  // The numbers alone: what each column is called and how it is drawn
+                  // is the section under this one.
                   showSeries: false,
                   animated: e.animation.on,
                   elementId: e.base.id,
-                  // How the chart draws where a series has not been told
-                  // otherwise. The series that leads its kind of drawing writes
-                  // this back, so the rest of that kind follow it.
+                  // How the chart draws where a series has not been told otherwise.
+                  // The series leading its kind of drawing writes this back, so the
+                  // rest of that kind follow it.
                   style: ChartStyleDefaults(
                     width: e.strokeWidth,
                     gap: e.barGap,
@@ -214,23 +194,20 @@ List<Widget> chartSettings(
                     writeData(data);
                   },
                   onCommit: commit,
-                  // Where each series comes from, said against the series rather
-                  // than in the Data source section: the grid is where somebody is
-                  // looking when they wonder. Only the columns the mapping already
-                  // has -- reaching a field it has not is a bigger question and
-                  // belongs where the mapping is.
-                  // What the source has, where the chart's rows are what it is
-                  // asked for: typing a coin offers the coins.
+                  // Where each series comes from, said against the series, where
+                  // somebody looking at the grid wonders. Only the columns the mapping
+                  // already has: reaching a new field belongs where the mapping is.
+                  // Where the chart's rows are what the source is asked for, typing a
+                  // coin offers the coins.
                   names: e.source.fromRows
                       ? CanvasRowNames.suggestionsFor(
                           presetById(e.source.preset))
                       : const [],
                   sourceColumns: e.source.on ? e.source.columns : const [],
                   boundTo: e.fromSource.valueColumns,
-                  // What the preset says a record carries, so the list is the whole
-                  // of what the source has rather than the handful somebody has
-                  // mapped -- a coin comparison maps five columns out of twenty
-                  // fields. A refresh can only add to it; see _fieldNames.
+                  // What the preset says a record carries, so the list is the whole of
+                  // what the source has, not only what is mapped. A refresh can only
+                  // add to it; see _fieldNames.
                   sourceFields: e.source.on
                       ? presetById(e.source.preset)?.fields ?? const []
                       : const [],
@@ -245,17 +222,12 @@ List<Widget> chartSettings(
             ),
           ),
           // What each column of the table is: its name, how it is drawn, its
-          // colour. Under the numbers rather than inside the box with them --
-          // "are these the right figures" and "how should this one look" are two
-          // questions, and one box holding both was the longest thing in the panel.
-          //
-          // Not a section of its own either. It is one line per series and most
-          // charts have one: a heading that has to be opened to find three controls
-          // is a heading that hides them.,
+          // colour. Under the numbers rather than with them ("are these the right
+          // figures" and "how should this one look" are two questions), and not a
+          // section: most charts have one series, and a heading would hide it.
           CanvasControlGroup(
               label: "Series",
-              // The grid under it is the next thing about the same drawing, not a
-              // new subject.
+              // The grid under it is the same drawing, not a new subject.
               rule: false,
               children: [
                 ChartDataEditor(
@@ -287,14 +259,10 @@ List<Widget> chartSettings(
                       pointColor: style.pointColor,
                     ));
                   },
-                  // The first series' "Drawn as" is the chart's own type. There was a
-                  // Type dropdown three sections above as well, saying the same thing
-                  // in a second place: a one-series chart has one answer to "what is
-                  // this drawn as", and two controls for it that could disagree.
-                  //
-                  // The series is put back to following the chart in the same write, so
-                  // that a series pinned to bars does not stay bars when the chart is
-                  // changed under it.
+                  // The first series' "Drawn as" is the chart's own type: one control,
+                  // not two that could disagree. The series is put back to following the
+                  // chart in the same write, so a series pinned to bars does not stay
+                  // bars when the chart is changed under it.
                   onChartType: (type) => now(e.copyWith(
                     type: type,
                     data: ChartData(
@@ -311,33 +279,25 @@ List<Widget> chartSettings(
                   },
                   onCommit: commit,
                 ),
-                // Said here rather than left to be discovered. Grouped and stacked bars
-                // draw exactly what plain bars draw until there is a second series to
-                // group or stack, so choosing one on a one-series chart looks like the
-                // setting doing nothing at all.
+                // Said here: grouped and stacked bars draw what plain bars do until
+                // there is a second series, which looks like the setting doing nothing.
                 if (e.type.needsMultipleSeries && e.data.series.length < 2)
                   const CanvasHint(
                       "Grouped and stacked bars need more than one series -- with one "
                       "they draw exactly what plain bars draw. Add a second series with "
                       "the button beside the table."),
-                // Four series, not one, and named rather than counted where the names
-                // say which is which. Said here because a candlestick chart with three
-                // series draws nothing at all, which reads as broken.
+                // Four series, named where the names say which is which: a candlestick
+                // chart with three draws nothing, which reads as broken.
                 if (e.type.needsFourSeries && e.data.series.length < 4)
                   const CanvasHint(
                       "Candlesticks need four series — the open, the high, the low and "
                       "the close. Name them and the order does not matter; unnamed, "
                       "the first four are taken in that order. CoinGecko's OHLC preset "
                       "under Data source fills all four in."),
-                // Bars, Lines and Points used to be groups of chart settings of their
-                // own. They are on the series now, behind each series' own button,
-                // because a chart of bars with a line over it made them groups that
-                // were each about half of the chart and said nothing about which half.
-                //
-                // Candlesticks are the exception, and stay. A candlestick's four series
-                // are the open, high, low and close of one drawing, so the colour is
-                // the reading rather than a label for a series, and there is no "the
-                // series that is drawn as bars" to put the bodies behind.
+                // Bars, Lines and Points settings are on each series, behind its own
+                // button: a chart of bars with a line over it has a half for each.
+                // Candlesticks stay here: their four series are the open, high, low
+                // and close of one drawing, so the colour is the reading.
                 if (e.type.isCandles) ...[
                   const CanvasLineBreak(),
                   CanvasColorButton(
@@ -374,12 +334,10 @@ List<Widget> chartSettings(
                   ),
                 ],
               ]),
-          // What the chart rules itself with. Gathered rather than scattered: the
-          // grid, the axes and the scale are one question -- how is this chart
-          // measured -- and they were down the middle of a group called "Axes and
-          // values" with the axis titles above them and the legend below.,
-          // And a bar chart of one series, whose bars are its values just as
-          // a pie's slices are -- see barsTakeColours.
+          // What the chart rules itself with: the grid, the axes and the scale
+          // are one question, how this chart is measured. And a bar chart of one
+          // series, whose bars are its values as a pie's slices are: see
+          // barsTakeColours.
           if ((e.type.isCircular || barsTakeColours(e)) &&
               e.data.categories.isNotEmpty)
             CanvasControlGroup(
@@ -403,9 +361,9 @@ List<Widget> chartSettings(
                       ])),
                     ),
                 ]),
-          // How a number is written, wherever this chart writes one. Its own line
-          // under the grid's and not behind its button: a pie rules nothing and
-          // still writes numbers on its slices.,
+          // How a number is written, wherever this chart writes one: its own line,
+          // not behind the grid's button, since a pie rules nothing but still
+          // writes numbers on its slices.
         ]),
     if (!e.type.isCircular)
       section(e, "grid",
@@ -434,9 +392,8 @@ List<Widget> chartSettings(
                     value: e.logScale,
                     onChanged: (v) => now(e.copyWith(logScale: v)),
                   ),
-                  // The numbers written on the bars themselves. They belong to
-                  // neither axis, so they sit with the rest of what is drawn on the
-                  // plot rather than with the words around it.
+                  // The numbers written on the bars themselves: they belong to neither
+                  // axis, so they sit with what is drawn on the plot.
                   CanvasToggle(
                     label: "Values",
                     value: e.showValues,
@@ -445,8 +402,7 @@ List<Widget> chartSettings(
                 ],
                 more: [
                   // How finely the value axis is ruled. Zero is the chart's own
-                  // judgement, which is right until somebody wants the gridlines
-                  // closer together or a taller chart ruled less often.
+                  // judgement.
                   CanvasNumberField(
                     key: const ValueKey("chartAxisSteps"),
                     label: "Lines",
@@ -461,9 +417,7 @@ List<Widget> chartSettings(
                     },
                     onCommit: commit,
                   ),
-                  // The colour the rules are drawn in, behind the same button. It was
-                  // in a section called Style, two headings away from the switch it
-                  // belongs to.
+                  // The colour the rules are drawn in, behind the switch it belongs to.
                   CanvasColorButton(
                     key: const ValueKey("chartGridColour"),
                     label: "Colour",
@@ -474,9 +428,8 @@ List<Widget> chartSettings(
                 ],
               ),
             // The title and the description, one line each, with the rest of what
-            // each of them can be on the line below it. Everything on one level was
-            // twenty controls of equal weight, where the title somebody came to type
-            // sat between a colour and a gap.,
+            // each can be on the line below: the title somebody came to type is
+            // not lost among twenty controls of equal weight.
           ]),
     section(e, "words",
         icon: Icons.title,
@@ -485,9 +438,8 @@ List<Widget> chartSettings(
         children: [
           CanvasControlGroup(
               label: "Title, description and labels",
-              // No line under it. What follows is the same heading's second line --
-              // the two words naming the axes -- split off only because it carries
-              // a button of its own.
+              // No line under it: what follows is the same heading's second line,
+              // split off only because it carries a button of its own.
               rule: false,
               children: [
                 ...labelControls(
@@ -501,13 +453,9 @@ List<Widget> chartSettings(
                     (v) => e.copyWith(
                         titleSpec: e.titleSpec.copyWith(fontSize: v))),
                 const CanvasLineBreak(),
-                // Under the title, not on top of it. A description above a title
-                // is almost never what anybody means, and two labels placed at
-                // the same corner is what that looked like.
-                //
-                // Its own size, not the label size it starts at. Sharing meant
-                // making the description bigger made the numbers up the side of
-                // the chart bigger with it.
+                // Under the title, not on top of it. Its own size, not the label size
+                // it starts at, so a bigger description does not enlarge the numbers
+                // up the side.
                 ...labelControls(
                     "Description",
                     e.description,
@@ -520,24 +468,20 @@ List<Widget> chartSettings(
                         descriptionSpec:
                             e.descriptionText.copyWith(fontSize: v))),
               ]),
-          // The two words naming the axes, each with the switch that shows it
-          // beside it. Everything about how the writing on the axes looks --
-          // its colour, its size, the gap it keeps -- is behind the button.,
+          // The two words naming the axes, each with the switch that shows it;
+          // how the axis writing looks is behind the button.
           if (!e.type.isCircular)
             CanvasMoreGroup(
               label: "X and Y labels",
-              // Under the title and the description, with no caption of its own
-              // and no rule after it: the writing on the chart is one run of lines,
-              // not four groups.
+              // Under the title and the description, with no caption and no rule
+              // after it: the writing on the chart is one run of lines.
               hideCaption: true,
               rule: false,
               remember: "chartAxisLabelsMore",
               tooltip: "How the writing on the axes looks",
               row: [
                 // The axis name is the empty field's placeholder, and the
-                // switch beside it is named after the axis rather than
-                // "Show" -- two fields and two switches all reading "Show"
-                // is four controls telling you nothing about which is which.
+                // switch beside it is named after the axis, not "Show".
                 CanvasTextField(
                   label: "",
                   hint: "X label",
@@ -548,9 +492,8 @@ List<Widget> chartSettings(
                   onChanged: (v) => write(e.copyWith(xAxisLabel: v)),
                   onCommit: commit,
                 ),
-                // A switch rather than emptying the field, so a chart can be
-                // shown without its axis titles and have them back without
-                // anybody typing them again.
+                // A switch rather than emptying the field, so the titles come
+                // back without being typed again.
                 CanvasToggle(
                   key: const ValueKey("chartShowXTitle"),
                   label: "X",
@@ -561,8 +504,7 @@ List<Widget> chartSettings(
                   label: "",
                   hint: "Y label",
                   value: e.yAxisLabel,
-                  // Narrow, so the two fields, their two switches and the button
-                  // stay on one line in a sidebar somebody has pulled in.
+                  // Narrow, as above.
                   width: 72,
                   onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
                   onCommit: commit,
@@ -575,12 +517,9 @@ List<Widget> chartSettings(
                 ),
               ],
               more: [
-                // The two words naming the axes have their own size and their
-                // own distance from the plot. Their own size, because making
-                // the figures up the side smaller used to shrink the words
-                // with them; their own distance, because how much air a design
-                // wants around them is a layout decision and not one a drawing
-                // routine can make.
+                // The axis titles have their own size, so smaller figures up the
+                // side do not shrink them, and their own distance from the plot,
+                // which is the design's choice.
                 CanvasColorButton(
                   key: const ValueKey("chartAxisTitleColour"),
                   label: "Titles",
@@ -628,9 +567,7 @@ List<Widget> chartSettings(
                   onCommit: commit,
                 ),
                 const CanvasLineBreak(),
-                // One switch each for the tick values. It was one for both, on
-                // the grounds that they are read together or not at all --
-                // often enough they are not: a bar chart named by its
+                // One switch each for the tick values: a bar chart named by its
                 // categories does not always want the figures up the side.
                 CanvasToggle(
                   key: const ValueKey("chartShowXLabels"),
@@ -642,9 +579,8 @@ List<Widget> chartSettings(
                   CanvasNumberField(
                     key: const ValueKey("chartXLabelSize"),
                     label: "Size",
-                    // What it is actually written at, so the field is never a
-                    // bare nought that has to be decoded. It takes the label
-                    // size until it is given one of its own.
+                    // What it is actually written at, so the field is never a bare
+                    // nought. It takes the label size until it is given its own.
                     value: e.xLabels.fontSize,
                     min: 4,
                     max: 200,
@@ -703,11 +639,9 @@ List<Widget> chartSettings(
                     },
                     onCommit: commit,
                   ),
-                  // How far the values sit from the chart: more to push them
-                  // out, below nothing to draw them in.
+                  // How far the values sit from the chart, as above.
                   CanvasNumberField(
                     key: const ValueKey("chartYLabelGap"),
-                    // Not "Gap": the animation section has one of its own.
                     label: "Distance",
                     value: e.yLabelGap,
                     min: -40,
@@ -731,9 +665,8 @@ List<Widget> chartSettings(
               ],
             ),
           // A pie's slices are one series' values, so their colours are the
-          // categories' rather than the series' -- a button each, in the order the
-          // slices are drawn.,
-          // A donut's hole: how big, and what is written in it.
+          // categories', a button each in the order the slices are drawn. And a
+          // donut's hole: how big, and what is written in it.
           if (e.type == ChartType.donut)
             CanvasControlGroup(
                 key: const ValueKey("chartDonutHole"),
@@ -779,9 +712,8 @@ List<Widget> chartSettings(
                     value: e.showValues,
                     onChanged: (v) => now(e.copyWith(showValues: v)),
                   ),
-                // Rings a few pixels thick have nowhere to write a number and no axis
-                // to read one against, so theirs go in the key -- which is no use with
-                // the key switched off.
+                // Rings a few pixels thick have nowhere to write a number and no axis,
+                // so theirs go in the key, which is no use with the key off.
                 if (e.type == ChartType.radialBar &&
                     !(e.showLegend && e.legend.values))
                   const CanvasHint(
@@ -789,9 +721,7 @@ List<Widget> chartSettings(
                       "read one against, so its values go in the legend. Switch the "
                       "legend on, and its values with it, to see them."),
                 // The example beside each name is what a million looks like in it,
-                // because these are far easier to tell apart by their answers than
-                // by their names -- which is also why it needs no caption. A box
-                // reading "In full — 1,000,000.00" has said what it is for.
+                // since these are told apart by their answers; hence no caption.
                 CanvasDropdown<NumberStyle>(
                   label: "",
                   value: e.numbers.style,
@@ -800,15 +730,9 @@ List<Widget> chartSettings(
                     for (var style in NumberStyle.values)
                       (
                         style,
-                        // What a million would actually look like *as this chart
-                        // is set*, rather than a fixed example. Listed as a fixed
-                        // one, "Millions — 1.0M" reads as the only thing millions
-                        // can be, and the places beside it look like something
-                        // else's setting -- which is exactly how somebody with
-                        // 1.00M in mind concludes they cannot have it.
-                        //
-                        // Automatic keeps its own, because what it does is vary:
-                        // one example would be a promise it does not make.
+                        // What a million looks like as this chart is set, not a fixed example:
+                        // a fixed "Millions — 1.0M" reads as the only thing millions can be.
+                        // Automatic keeps its own, since what it does varies.
                         style == NumberStyle.automatic
                             ? "${style.label} — ${style.example}"
                             : "${style.label} — "
@@ -856,8 +780,7 @@ List<Widget> chartSettings(
                   },
                   onCommit: commit,
                 ),
-                // Automatic decides its own, so a box saying "1" under it would
-                // be a control that does nothing.
+                // Automatic decides its own places.
                 if (e.numbers.style != NumberStyle.automatic) ...[
                   CanvasNumberField(
                     label: "Decimal places",
@@ -873,10 +796,9 @@ List<Widget> chartSettings(
                     },
                     onCommit: commit,
                   ),
-                  // The axis reads the same as the values until somebody says
-                  // otherwise, because they are the same numbers. Said otherwise,
-                  // it is the usual pairing: an exact reading on the bar, a round
-                  // number on the scale.
+                  // The axis reads the same as the values until told otherwise; the
+                  // usual pairing then is an exact reading on the bar, a round number on
+                  // the scale.
                   CanvasToggle(
                     label: "Axis the same",
                     value: e.axisNumbers == null,
@@ -932,26 +854,22 @@ List<Widget> chartSettings(
                 ],
               ]),
           // Where the key goes, and whether the words on the chart take room from
-          // it. Below the numbers because it is the last thing anybody sets: what
-          // the chart says, then how it is measured, then how it is written, then
-          // where the key for all of it sits.,
+          // it: the last thing set, after what the chart says, how it is measured
+          // and how it is written.
           CanvasMoreGroup(
             label: "Legend",
             hideCaption: true,
             remember: "chartLegendMore",
             tooltip: "The key's own settings",
             row: [
-              // The one switch for all three of them. Taking room is what made
-              // every one of their settings a setting that resized the chart.
+              // The one switch for all three: taking room is what makes each of
+              // their settings resize the chart.
               CanvasToggle(
                 label: "Over the chart",
                 value: e.floatingLabels,
-                // Switched off, the box goes back round the chart. Dragging a
-                // floating label outside it grew the box to hold the label and
-                // inset the chart to keep it where it was -- and left like that
-                // the chart sat small in the middle of an element with a margin
-                // of nothing round it, so the switch did not go both ways after
-                // all.
+                // Switched off, the box goes back round the chart: a floating label
+                // dragged outside grew the box and inset the chart, and left so the
+                // chart would sit small in a margin of nothing.
                 onChanged: (v) => now(v
                     ? e.copyWith(floatingLabels: true)
                     : e.copyWith(floatingLabels: false).aroundTheChart()),
@@ -1015,9 +933,8 @@ List<Widget> chartSettings(
                   },
                   onCommit: commit,
                 ),
-                // The colour of everything written in the label type -- the
-                // legend, a pie's slice names. It lives here because the legend
-                // is where most of that writing is.
+                // The colour of everything written in the label type (the legend, a
+                // pie's slice names), here because the legend holds most of it.
                 CanvasColorButton(
                   key: const ValueKey("chartFigureColour"),
                   label: "Figures",
@@ -1039,9 +956,8 @@ List<Widget> chartSettings(
                   },
                 ),
                 const CanvasLineBreak(),
-                // Its own switch, not the chart's. A bar chart may want numbers
-                // on its bars and a key without them, and a radial bar has
-                // nowhere to put a number except the key.
+                // Its own switch, not the chart's: a bar chart may want numbers on its
+                // bars and a key without, and a radial bar has nowhere else for them.
                 CanvasToggle(
                   label: "Values",
                   value: e.legend.values,
@@ -1088,11 +1004,10 @@ List<Widget> chartSettings(
 }
 
 /// _chartAnimationCards is a chart's animation laid out as every element's
-/// is -- see elementAnimationSection: how it comes in and how it goes out,
-/// each a line of tiles with the chosen kind's own settings in a card under
-/// it, and no card at all while None is chosen; then its loop, and the
-/// easing of the keyframe the playhead is on. Pressing the kind chosen
-/// again shuts its card or opens it.
+/// is (see elementAnimationSection): how it comes in and goes out, each a
+/// line of tiles with the chosen kind's settings in a card under it, then
+/// its loop and the easing of the keyframe under the playhead. Pressing the
+/// kind chosen again shuts its card or opens it.
 Widget _chartAnimationCards(CanvasController controller, ChartElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var a = e.animation;
@@ -1200,11 +1115,9 @@ Widget _chartAnimationCards(CanvasController controller, ChartElement e,
           rule: false,
           children: timing(),
         ),
-      // The way out, using the same presets played backwards: a second list
-      // of "fade out, shrink away, unwipe" would be this list reversed and
-      // two lists to keep in step. Offered whether or not anything arrives:
-      // a chart there from the first frame that leaves at the end is an
-      // ordinary thing to want.
+      // The way out, the same presets played backwards rather than a second
+      // list to keep in step. Offered whether or not anything arrives: a chart
+      // there from the first frame may still leave at the end.
       _chartPresetTiles(e, leaving: true, chosen: a.exit, onPick: (p) {
         if (p != ChartAnimationPreset.none && a.exit == p) {
           controller.toggleCard("chartLeave");

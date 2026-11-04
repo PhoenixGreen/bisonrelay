@@ -5,19 +5,9 @@ import 'package:bruig/plugin_system/canvas/ui/data_editor_shell.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// table_data_editor.dart is a table's cells, in either of the two forms
-// anybody wants them in.
-//
-// The same arrangement as the chart's numbers next door, and deliberately the
-// same: pasted text is the fast way in and a bad way to change one cell in the
-// middle of sixty, and a reader who has learnt one of these should not have to
-// learn the other. What differs is only what a cell holds -- words rather than
-// numbers -- and that a table has no series, so its first row is a row like
-// any other.
-//
-// It is as wide as the sidebar and as tall as it has been dragged, because a
-// table crammed into a 280-pixel control with two visible lines is a table
-// nobody can read.
+// table_data_editor.dart is a table's cells, as a grid or as pasted text,
+// arranged like the chart's numbers editor so one teaches the other. A table
+// has no series, so its first row is a row like any other.
 
 class TableDataEditor extends StatefulWidget {
   final List<List<String>> rows;
@@ -31,8 +21,8 @@ class TableDataEditor extends StatefulWidget {
   final VoidCallback onCommit;
 
   /// names are what the cells of [namesColumn] are likely to hold, offered as
-  /// somebody types one -- the coins a comparison can ask for, say. Empty for
-  /// a table of free text, which is most of them.
+  /// somebody types (the coins a comparison can ask for, say). Empty for free
+  /// text.
   final List<String> names;
   final int namesColumn;
 
@@ -60,8 +50,8 @@ class _TableDataEditorState extends State<TableDataEditor> {
     widget.onCommit();
   }
 
-  /// _rectangular is [rows] with every row padded to the widest, which is what
-  /// a grid needs to draw and what a paste routinely is not.
+  /// _rectangular is [rows] with every row padded to the widest, as the grid
+  /// needs and a paste often is not.
   List<List<String>> get _rectangular {
     var width = columns;
     return [
@@ -93,12 +83,8 @@ class _TableDataEditorState extends State<TableDataEditor> {
     _write(next);
   }
 
-  /// _moveRow and _moveColumn shuffle one along by [by].
-  ///
-  /// Buttons rather than dragging the rows about. A row added at the end and
-  /// wanted second is one press away either way, and a drag inside a grid of
-  /// text fields is a gesture that has to be told apart from selecting text
-  /// in one of them.
+  /// _moveRow and _moveColumn shuffle one along by [by]: buttons rather than
+  /// dragging, which a grid of text fields would confuse with selecting text.
   void _moveRow(int row, int by) {
     var next = _rectangular;
     var to = row + by;
@@ -111,10 +97,8 @@ class _TableDataEditorState extends State<TableDataEditor> {
   void _moveColumn(int col, int by) {
     var to = col + by;
     if (to < 0 || to >= columns) return;
-    // Taken out and put back, which is the only ordering that is right in
-    // both directions. Inserting first and then removing has to know whether
-    // the insertion shifted the thing being removed, and getting that wrong
-    // leaves the row exactly as it was -- a button that does nothing.
+    // Taken out and put back, which is right in both directions without
+    // working out whether an insertion shifted the one being removed.
     _write([
       for (var row in _rectangular)
         [...row]
@@ -129,8 +113,8 @@ class _TableDataEditorState extends State<TableDataEditor> {
     ]);
   }
 
-  // At the ordinary size inside a card: a grid with buttons over each
-  // column has its own measure, and card-sized buttons overran it.
+  // At the ordinary size inside a card: card-sized buttons overran the
+  // columns.
   @override
   Widget build(BuildContext context) =>
       CanvasCards.none(Builder(builder: _build));
@@ -139,10 +123,9 @@ class _TableDataEditorState extends State<TableDataEditor> {
         remember: "canvasTableData",
         // Per table, for the same reason a chart's is per chart.
         scope: widget.elementId,
-        // Tall enough for the rows there are, with room to spare: a cell and
-        // the gap under it is about thirty, and the buttons along the foot
-        // are another forty. Erring high on purpose -- a little slack at the
-        // bottom is nothing, and a little short is the scrollbar back.
+        // Tall enough for the rows, erring high: a row is about thirty and the
+        // buttons along the foot about forty, and a little short brings the
+        // scrollbar back.
         wanted: widget.rows.length * 32 + 48,
         gridTooltip: "Edit the cells in a grid",
         textTooltip: "Edit the cells as pasted text",
@@ -191,8 +174,7 @@ class _TableDataEditorState extends State<TableDataEditor> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // A row of crosses over the columns, since a column is removed by
-            // the column and not from a list of names somewhere else.
+            // A row of crosses over the columns: a column is removed by the column.
             Row(children: [
               for (var c = 0; c < columns; c++)
                 SizedBox(
@@ -229,8 +211,7 @@ class _TableDataEditorState extends State<TableDataEditor> {
                         child: CanvasGridCell(
                           value: grid[r][c],
                           dense: true,
-                          // Only the column that names a row, and not its
-                          // heading: the heading is the column's own name.
+                          // Only the column that names a row, and not its heading.
                           suggestions: c == widget.namesColumn && r > 0
                               ? widget.names
                               : const [],

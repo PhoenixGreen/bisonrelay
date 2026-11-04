@@ -13,29 +13,58 @@ import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
 
 // motion_document.dart joins clips to a document: where every placed clip in
 // the scene plays, worked out once per scene, and an element's pose with its
-// clips' moves on top of its own keyframes. See motion.dart and
-// motion_pose.dart.
+// clips' moves on top of any legacy keyframe track it kept (see
+// model/motion_convert.dart). See motion.dart and motion_pose.dart.
 
-/// _times keeps each scene's resolved placements, by its list of elements --
-/// a new list is a changed scene, so a stale answer is never given.
-final Expando<MotionTimes> _times = Expando("motionTimes");
+/// _times keeps each scene's resolved placements, by its list of
+/// elements, with what else they were worked out from: the scene's length,
+/// rate and markers, and the master's elements.
+final Expando<(int, int, Object, Object?, MotionTimes)> _times =
+    Expando("motionTimes");
 
-/// motionTimesOf is where every placed clip among [doc]'s elements plays.
+/// motionTimesOf is where every placed clip among [doc]'s elements plays --
+/// and the master's, which play under the scene.
 MotionTimes motionTimesOf(CanvasDocument doc) {
   var elements = doc.elements;
-  if (_times[elements] case var known?) return known;
+  var master = doc.editingMaster ? null : doc.masterScene?.elements;
+  if (_times[elements] case (var f, var r, var a, var m, var known)
+      when f == doc.frames &&
+          r == doc.frameRate &&
+          identical(a, doc.actions) &&
+          identical(m, master)) {
+    return known;
+  }
   var rate = math.max(1, doc.frameRate);
   var times = MotionTimes(
     sceneEnd: doc.frames / rate,
     markers: {for (var a in doc.actions) markerKey(a): a.frame / rate},
     placements: {
-      for (var e in elements)
+      for (var e in [...?master, ...elements])
         for (var p in e.base.motion.placed)
           if (e.base.motion.clip(p.clip) case var c?) p.id: (p, c),
     },
   );
-  _times[elements] = times;
+  _times[elements] = (doc.frames, doc.frameRate, doc.actions, master, times);
   return times;
+}
+
+/// settledFrameOf is the frame [doc] opens on: everything arrived, by its
+/// keyframes or by the clips that play its arrivals.
+int settledFrameOf(CanvasDocument doc) {
+  var last = doc.settledFrame;
+  var times = motionTimesOf(doc);
+  var rate = math.max(1, doc.frameRate);
+  for (var e in doc.elements) {
+    var m = e.base.motion;
+    for (var p in m.placed) {
+      var c = m.clip(p.clip);
+      if (c == null || !(c.kind == MotionKind.arrive || revealsIn(c))) continue;
+      if (times.span(p.id) case var s?) {
+        last = math.max(last, (s.end * rate).ceil());
+      }
+    }
+  }
+  return last.clamp(0, math.max(0, doc.frames - 1)).toInt();
 }
 
 /// boxOf is [e]'s box as it is set.
@@ -76,10 +105,9 @@ MotionPose motionPoseIn(CanvasDocument doc, CanvasElement e, int frame,
       replaces: motion.clips.any((c) => c.kind == MotionKind.camera));
 }
 
-/// LiveMotion is the elements playing from their slots at this moment --
-/// see motion_player.dart: what each is playing, on [clock]. Handed to the
-/// renderer by whoever is running it, as a counter's value is: an export
-/// has nothing playing, and is drawn from the timeline alone.
+/// LiveMotion is what each element is playing from its slots at this moment,
+/// on [clock] (see ui/motion_player.dart). Handed to the renderer by whoever
+/// runs it; an export has nothing playing and is drawn from the timeline.
 abstract class LiveMotion {
   double get clock;
 
@@ -88,9 +116,9 @@ abstract class LiveMotion {
   MotionLive? of(String element);
 }
 
-/// poseWithMotion is [e]'s pose on [frame]: its own keyframes', with its
-/// clips' moves on top -- from its slots where [live] has it off its
-/// timeline. Without [doc] -- a lone element drawn -- its keyframes alone.
+/// poseWithMotion is [e]'s pose on [frame]: its track's, if it kept one, with
+/// its clips' moves on top -- from its slots where [live] has it off its
+/// timeline. Without [doc] (a lone element drawn), its track alone.
 Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
     {LiveMotion? live}) {
   var pose = e.track?.at(frame) ?? Keyframe.rest;
@@ -110,9 +138,8 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
   return moved;
 }
 
-/// MovedElement is where an element is with its clips' moves on it: the
-/// selection box, the handles and the hit-test have to agree with what is
-/// drawn -- the boundsAt lesson, again, for clips.
+/// MovedElement is where an element is with its clips' moves on it, so the
+/// selection box, the handles and the hit-test agree with what is drawn.
 extension MovedElement on CanvasElement {
   /// movedBoundsAt is boundsAt with [doc]'s placed clips moving it too. A
   /// camera's is the frame it shows: closer, smaller.

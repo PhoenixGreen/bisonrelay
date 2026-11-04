@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
+import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 
 // speech_downloads.dart is how our own voices arrive: a list of files, each
 // pinned to its size and SHA-256, fetched once into a folder of the library
@@ -38,8 +39,12 @@ Future<int> pinnedMissing(String dir, List<PinnedFile> files) async {
 /// once all are there. [stop] is asked between pieces, to give up.
 Future<String?> downloadPinned(String dir, List<PinnedFile> files,
     {void Function(double share)? progress, bool Function()? stop}) async {
+  if (await networkIsProxied()) {
+    return "This app reaches the network through a proxy, which this "
+        "download cannot use.";
+  }
   await Directory(dir).create(recursive: true);
-  var client = HttpClient();
+  var client = canvasHttpClient();
   var done = 0;
   try {
     var total = files.fold(0, (n, f) => n + f.bytes);
@@ -52,17 +57,18 @@ Future<String?> downloadPinned(String dir, List<PinnedFile> files,
         continue;
       }
       var partial = File("${target.path}.part");
-      var response = await (await client.getUrl(Uri.parse(f.url))).close();
-      if (response.statusCode != 200) {
+      var response = await canvasGet(client, Uri.parse(f.url));
+      if (response?.statusCode != 200) {
         return "The voices could not be downloaded "
-            "(${response.statusCode}).";
+            "(${response?.statusCode ?? "no answer"}).";
       }
       var sink = partial.openWrite();
       var hashed = AccumulatorSink<Digest>();
       var hash = sha256.startChunkedConversion(hashed);
       var got = 0;
       try {
-        await for (var chunk in response) {
+        await for (var chunk
+            in response!.timeout(const Duration(seconds: 60))) {
           if (stop?.call() ?? false) {
             await sink.close();
             await partial.delete();

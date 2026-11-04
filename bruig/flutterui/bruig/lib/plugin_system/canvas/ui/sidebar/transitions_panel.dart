@@ -7,38 +7,19 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/transition_sound.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 
-// transitions_panel.dart is how one scene gives way to the next.
-//
-// A panel in the sidebar rather than a line over the timeline. It was a line:
-// a dozen controls laid out sideways in a strip four hundred pixels wide,
-// which meant scrolling sideways to reach half of them and scrolling back to
-// see what the first ones said. These are settings, and settings belong in
-// the column the other settings are in -- laid out down the page, where a
-// dozen of them is a list rather than a corridor.
-//
-// It edits one thing: the transition after the scene showing. On the master
-// canvas it edits the default instead -- the one every scene without a
-// transition of its own uses -- which is what makes the master the place
-// where the look of the whole sequence is decided.
+// transitions_panel.dart is how one scene gives way to the next: the settings
+// of the transition after the scene showing, laid out down the sidebar. On the
+// master canvas it edits the default, used by every scene without a transition
+// of its own.
 
 /// _started is [value] changed to another kind, set up the way that kind
-/// looks best.
-///
-/// One set of settings cannot suit two dozen transitions -- six is a
-/// sensible number of blinds and a poor number of halftone dots -- so
-/// changing kind starts from what the new one wants rather than from
-/// whatever the last one left behind. Its colour is carried over, because
-/// that is a decision about the design rather than about the transition, and
-/// somebody who has chosen a pink transition means the next one to be pink
-/// too.
+/// looks best: one set of settings cannot suit every kind (six suits blinds
+/// but not halftone dots). The colour is carried over, as a design choice.
 SceneTransition _started(SceneTransition value, SceneTransitionKind kind) =>
     SceneTransition.bestFor(kind).copyWith(color: value.color);
 
-/// _looks is whether a transition has anything to say about how it looks.
-///
-/// A slide has a direction and nothing else; a cut has none of it. Asked
-/// before the group is built so an empty heading and a rule under it are not
-/// what somebody gets for choosing a plain one.
+/// _looks is whether a transition has anything to say about how it looks,
+/// so a plain one gets no empty heading.
 bool _looks(SceneTransition value) {
   var kind = value.kind;
   return kind.takesColour ||
@@ -55,7 +36,7 @@ class CanvasTransitionsPanel extends StatelessWidget {
   final CanvasController controller;
 
   /// onPreview plays the transition on the canvas. Null where there is
-  /// nothing to play -- the last scene gives way to nothing.
+  /// nothing to play (the last scene gives way to nothing).
   final VoidCallback? onPreview;
 
   const CanvasTransitionsPanel({
@@ -67,11 +48,8 @@ class CanvasTransitionsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: controller,
-        // The panel's own width, because the top row sizes itself to it. The
-        // two names and the two buttons beside them are one question -- what
-        // this transition is, and what it looks like -- and a Wrap that
-        // breaks them apart puts the buttons on a line of their own with the
-        // whole width of the panel to the right of them.
+        // The panel's own width, which the top row sizes itself to, so the two
+        // names and their two buttons stay on one line.
         builder: (context, _) => LayoutBuilder(
           builder: (context, room) => _body(context, room.maxWidth),
         ),
@@ -99,19 +77,10 @@ class CanvasTransitionsPanel extends StatelessWidget {
 
     var last = !master && index >= scenes.length - 1;
 
-    // How much of the line the two names may take. The buttons are each as
-    // wide as a control is tall, and every control on the line keeps a gap to
-    // its right; what is left is shared between the two dropdowns, the second
-    // wider than the first because "Fade through a colour" is a longer thing
-    // to say than "Fade". Each still has a floor: past that the name in it is
-    // an ellipsis, and three letters and a dot is not a setting anybody can
-    // read.
-    //
-    // Counted from the panel's own constants rather than written out as a
-    // number. It was 70 for two buttons and their gaps, which stopped being
-    // true the day those gaps were put on one scale with the rest -- and what
-    // it looked like was the second button on a line of its own with the
-    // width of the panel to the right of it.
+    // The line's room left for the two dropdowns, after the two buttons
+    // (each as wide as a control is tall) and every control's gap, counted
+    // from the panel's constants so it follows them. The second dropdown is
+    // wider, for names like "Fade through a colour".
     var free = room -
         16 -
         2 * (controlHeight + canvasControlGap) -
@@ -120,11 +89,8 @@ class CanvasTransitionsPanel extends StatelessWidget {
     var family = (free * 0.42).clamp(62.0, 128.0);
     var which = (free * 0.58).clamp(80.0, 168.0);
 
-    // Laid out the way the settings panel beside it is: the same scope, the
-    // same width, the same gap under the header. Lifted from the line over
-    // the timeline, these controls kept that line's arrangement -- captions
-    // beside their controls and packed in tight, which is right for a strip
-    // and wrong for a column.
+    // Laid out as the settings panel is: the same scope, width and gap
+    // under the header.
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
       child: CanvasControlScope(
@@ -136,16 +102,13 @@ class CanvasTransitionsPanel extends StatelessWidget {
               label: master
                   ? "Every scene, unless it says otherwise"
                   : "After ${document.nameOf(index)}",
-              // A sentence rather than a section's name, so it is given the
-              // room a sentence needs -- close under it, it and the caption
-              // of the control below read as one run of text.
+              // A sentence rather than a section name, so it gets more room before
+              // the next caption.
               captionGap: 14,
               children: [
-                // The family first, then the one. Two dozen names in a single
-                // list is a wall nobody reads to the end of; asked in two
-                // steps the question is "what sort of change" and then
-                // "which one". Choosing a family applies the first of its
-                // kinds, so the canvas shows something at once.
+                // The family first, then the kind, rather than two dozen names in one
+                // list. Choosing a family applies its first kind, so the canvas shows
+                // something at once.
                 CanvasDropdown<SceneTransitionFamily>(
                   key: const ValueKey("transitionFamily"),
                   label: "Gives way with",
@@ -176,10 +139,7 @@ class CanvasTransitionsPanel extends StatelessWidget {
                     ],
                     onChanged: (v) => write(_started(value, v)),
                   ),
-                // Back to the beginning. Beside the preview because they are
-                // the two ways out of a transition that has been fiddled
-                // with past the point of remembering what it was: one says
-                // what the fiddling did, the other undoes all of it.
+                // Back to the beginning, beside the preview.
                 CanvasIconButton(
                   key: const ValueKey("resetTransition"),
                   icon: Icons.restart_alt,
@@ -187,9 +147,7 @@ class CanvasTransitionsPanel extends StatelessWidget {
                       "transition looks best at",
                   onPressed: () => write(SceneTransition.bestFor(value.kind)),
                 ),
-                // Beside the two names rather than at the foot of the panel:
-                // the settings under it are for fiddling with, and this is
-                // the button that says what the fiddling did.
+                // Beside the two names rather than at the foot of the panel.
                 CanvasIconButton(
                   key: const ValueKey("previewTransition"),
                   icon: Icons.play_circle_outline,
@@ -200,11 +158,7 @@ class CanvasTransitionsPanel extends StatelessWidget {
                 ),
               ],
             ),
-            // How long it takes, kept apart from what it looks like. One
-            // group of ten controls is what this panel was, and ten small
-            // boxes wrapped into a block read as a field of boxes -- the
-            // settings panel beside it splits the same number into Colours,
-            // Amount and Movement, and that is the whole difference.
+            // How long it takes, in a group apart from how it looks.
             if (value.on)
               CanvasControlGroup(label: "How long", children: [
                 CanvasNumberField(
@@ -237,8 +191,7 @@ class CanvasTransitionsPanel extends StatelessWidget {
                   onChanged: (v) => write(value.copyWith(ease: v)),
                 ),
               ]),
-            // What it looks like: a colour, a direction, a shape, how many of
-            // them, how soft the edge is. Only the ones the kind uses.
+            // What it looks like: only the settings the kind uses.
             if (value.on && _looks(value))
               CanvasControlGroup(label: "What it looks like", children: [
                 if (value.kind.takesColour)
@@ -247,29 +200,22 @@ class CanvasTransitionsPanel extends StatelessWidget {
                     color: value.color,
                     onChanged: (c) => write(value.copyWith(color: c)),
                   ),
-                // What the overlay kinds need, and only the ones that need
-                // it: a direction, a shape, how many bars, how soft the
-                // edge is.
+                // What the overlay kinds need: a direction, a shape, how many bars,
+                // how soft the edge is.
                 if (value.kind.takesWay)
                   CanvasDropdown<SceneTransitionWay>(
                     key: const ValueKey("transitionWay"),
                     label: "Which way",
-                    // The way it is pointed, or the first one this kind has
-                    // if it is pointed somewhere this kind does not go. A
-                    // transition set up before barn doors became an axis
-                    // holds one pointing right, and a dropdown whose value
-                    // is not in its own list shows nothing at all -- which
-                    // is a setting that looks like it has not been set.
+                    // The way it points, or this kind's first way if the saved one is not
+                    // in its list (older barn doors point right): a dropdown whose value
+                    // is not among its options shows nothing.
                     value: SceneTransitionWay.waysFor(value.kind)
                             .contains(value.way)
                         ? value.way
                         : SceneTransitionWay.waysFor(value.kind).first,
                     width: 128,
-                    // The ways this kind actually has, said the way this
-                    // kind says them. Barn doors have an axis and not four
-                    // directions -- "to the left" and "to the right" opened
-                    // the same doors -- and the shapes can stay where they
-                    // are instead of travelling.
+                    // The ways this kind has, in its own words: barn doors have an axis,
+                    // not four directions, and shapes can stay put instead of travelling.
                     options: [
                       for (var w in SceneTransitionWay.waysFor(value.kind))
                         (w, w.saysFor(value.kind))
@@ -356,9 +302,8 @@ class CanvasTransitionsPanel extends StatelessWidget {
                 onChanged: write,
                 onEvery: (t) => controller.soundEveryTransition(t),
               ),
-            // Where this transition came from. Not on the shared canvas,
-            // where the transition being edited *is* the one every scene
-            // comes from.
+            // Where this transition came from. Not on the shared canvas, whose
+            // transition is the default every scene comes from.
             if (!master)
               CanvasControlGroup(label: "Where it comes from", children: [
                 CanvasToggle(

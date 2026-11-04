@@ -14,21 +14,18 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // canvas_library.dart is the pictures, videos and sounds somebody has added,
-// as a library they can see, use again and clear out -- the Assets sidebar.
+// as a library they can see, use again and clear out: the Assets sidebar.
 //
-// The files themselves are where they always were: content-addressed, in the
-// Pictures, Videos and Audio folders. What this adds is a list of which of
-// them are *assets*, with the names they were added under -- a hash says
-// nothing to a person -- and, for a video, the poster and the soundtrack that
-// came with it, which are files too but are not things anybody added.
+// The files stay content-addressed in the Pictures, Videos and Audio folders.
+// This adds a list of which of them are *assets*, with the names they were
+// added under, and for a video the poster and soundtrack that came with it.
 //
-// An asset stays until it is removed from the sidebar. Before this, a file no
-// saved canvas used was deleted on the next save, so a picture added and not
-// used yet was gone by the time anybody went looking for it. The tidy-up is
-// kept for what is not an asset: a poster whose video has gone, a crest a
-// table no longer shows.
+// An asset stays until it is removed from the sidebar, even if no canvas
+// uses it yet. The tidy-up is for what is not an asset: a poster whose video
+// has gone, a crest a table no longer shows.
 
 /// AssetKind is which of the three sections an asset is in.
 enum AssetKind {
@@ -189,9 +186,9 @@ class LibraryAsset {
       // drawing.
       kind: path.extension(id) == ".svg"
           ? AssetKind.vector
-          : AssetKind.fromName(json["kind"] as String?),
+          : AssetKind.fromName(jsonStr(json["kind"])),
       name: json["name"] is String ? json["name"] as String : id,
-      added: DateTime.tryParse(json["added"] as String? ?? "") ??
+      added: DateTime.tryParse(jsonStr(json["added"]) ?? "") ??
           DateTime.fromMillisecondsSinceEpoch(0),
       width: n("w").toInt(),
       height: n("h").toInt(),
@@ -292,16 +289,20 @@ class CanvasLibrary {
       ]..sort((a, b) => b.added.compareTo(a.added));
       return out;
     } catch (exception) {
+      // Kept aside before anything writes over it: the next add would
+      // otherwise save a library of one.
       debugPrint("Unable to read the canvas library: $exception");
+      try {
+        await file.rename("${file.path}.unreadable");
+      } catch (_) {}
       return const [];
     }
   }
 
   static Future<void> _write(List<LibraryAsset> assets) async {
     var file = await _path();
-    var tmp = File("${file.path}.tmp");
-    await tmp.writeAsString(jsonEncode([for (var a in assets) a.toJson()]));
-    await tmp.rename(file.path);
+    await writeWholeText(
+        file.path, jsonEncode([for (var a in assets) a.toJson()]));
   }
 
   /// add puts [asset] in the library, or renames it where it is there already.
@@ -588,8 +589,8 @@ class CanvasLibrary {
         added: await when(await CanvasAssets.pathOf(id)),
       ));
     }
-    // The models with them: what the old characters were made of, which
-    // somebody imported, are 3D objects now.
+    // The models with them: 3D files imported for the old characters are 3D
+    // objects now.
     for (var kind in [
       MediaKind.audio,
       MediaKind.video,

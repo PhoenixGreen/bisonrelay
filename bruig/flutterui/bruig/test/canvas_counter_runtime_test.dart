@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
 // canvas_counter_runtime_test.dart is where a counter's number comes from.
 //
@@ -235,7 +237,7 @@ void main() {
           ElementAnimationPreset.fadeUp);
     });
 
-    test("and choosing a preset lays the keyframes that run it", () {
+    test("and choosing a preset lays the arrival that runs it", () {
       var controller = _with(const CounterElement(_base));
       addTearDown(controller.dispose);
       controller.applyElementAnimation(
@@ -243,8 +245,9 @@ void main() {
 
       var e = _counterIn(controller);
       expect(e.animation.preset, ElementAnimationPreset.fadeUp);
-      expect(e.track?.keys.length ?? 0, greaterThanOrEqualTo(2),
-          reason: "an arrival is a pair of keyframes");
+      expect(ownSpan(e, MotionKind.arrive, controller.document.frameRate),
+          isNotNull,
+          reason: "an arrival on the timeline");
     });
   });
 

@@ -14,21 +14,16 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
-// mix_render.dart renders the timeline's sound -- every stretch placed by
-// ExportMedia.sounds -- through the mix, into a WAV file: each channel's
-// stretches summed and played through its strip once, the channels summed
-// into the master, the master brought to its loudness target where it is
-// asked to be, and limited. ffmpeg only decodes the files going in and
-// encodes the one coming out; the mixing is dsp.dart's, the same arithmetic
-// the editor plays.
+// mix_render.dart renders the timeline's sound (the stretches placed by
+// ExportMedia.sounds) through the mix graph into a WAV file, normalised to
+// the master's loudness target where asked, and limited. ffmpeg only
+// decodes the inputs; the mixing is dsp.dart's, as in the editor.
 //
-// Run in an isolate: it is a few seconds of arithmetic for a few minutes of
-// sound, and the window should not stop while it happens.
+// It runs in an isolate: minutes of sound take seconds of arithmetic.
 
 /// renderMixWav writes [sounds] mixed through [master] to [out], [seconds]
-/// long: a 48kHz float WAV of every one of [speakers] -- or, [fold], their
-/// fold-down to two, for a file that can carry no more. False where nothing
-/// could be decoded.
+/// long, as a 48kHz float WAV of every one of [speakers], or their stereo
+/// fold-down when [fold]. False where nothing could be decoded.
 Future<bool> renderMixWav(List<ExportSound> sounds, MasterMix master,
         {required double seconds,
         required String ffmpeg,
@@ -41,7 +36,7 @@ Future<bool> renderMixWav(List<ExportSound> sounds, MasterMix master,
 
 const int _block = 4096;
 
-/// _Stretch is one stretch decoded, with what it is played at.
+/// _Stretch is one decoded stretch and where it starts, in frames.
 class _Stretch {
   final ExportSound sound;
   final Float32List l, r;
@@ -61,14 +56,14 @@ Future<bool> _render(
     SpeakerLayout speakers,
     bool fold) async {
   var total = math.max(0, (seconds * mixRate).round());
-  // Each stretch decoded once, and grouped by the channel it plays through.
+  // Stretches grouped by the channel they play through.
   var channels = <String, List<_Stretch>>{};
   var strips = <String, ChannelMix>{};
   var places = <String, List<(double, Heard)>>{};
   var clocks = <String, double>{};
   var decodedAny = false;
-  // A muted channel a vocoder takes its carrier from is still decoded:
-  // unheard itself, it is heard through the vocoder.
+  // A muted channel that is a vocoder's carrier is still decoded: it is
+  // heard through the vocoder.
   var carriers = {
     for (var s in sounds)
       for (var d in s.mix.devices)
@@ -77,9 +72,14 @@ Future<bool> _render(
       for (var d in r.devices)
         if (d.sidechain case var c?) c,
   };
+  // A loop's repeats are the same stretch, decoded once and shared.
+  var decoded = <(String, double, double?), (Float32List, Float32List)?>{};
   for (var (i, s) in sounds.indexed) {
     if (s.mix.mute && !carriers.contains(s.channel)) continue;
-    var pcm = await _decode(ffmpeg, s);
+    var stretch = (s.path, s.from, s.length);
+    var pcm = decoded.containsKey(stretch)
+        ? decoded[stretch]
+        : decoded[stretch] = await _decode(ffmpeg, s);
     if (pcm == null) continue;
     decodedAny = true;
     var key = s.channel.isNotEmpty ? s.channel : "#$i";
@@ -92,12 +92,12 @@ Future<bool> _render(
   if (!decodedAny) return false;
   var written = fold ? 2 : speakers.channels;
 
-  // A first pass to hear how loud it comes out, where a target is asked
-  // for; then the pass that is kept, at the gain that reaches it.
+  // With a loudness target, a first pass measures the mix and the kept pass
+  // applies the gain that reaches it.
   var normalise = 0.0;
   if (master.normalise) {
-    // Measured as it will be written: every speaker, weighted as BS.1770
-    // says, or the two it is folded down to.
+    // Measured as it will be written: every speaker, BS.1770-weighted, or
+    // the fold-down pair.
     var weights = fold ? const [1.0, 1.0] : loudnessWeights(speakers);
     var meter = SpeakerLoudness(weights);
     _pass(channels, strips, places, clocks, master, returns, total, 0, speakers,
@@ -106,8 +106,7 @@ Future<bool> _render(
     var heard = meter.integrated;
     if (heard.isFinite) normalise = (master.target - heard).clamp(-30.0, 30.0);
   }
-  // Block by block onto the disk: a long mix held whole is hundreds of
-  // megabytes nobody needs at once.
+  // Written block by block: a long mix held whole is hundreds of megabytes.
   var file = File(out).openSync(mode: FileMode.write);
   try {
     file.writeFromSync(wavHeader(total, written));
@@ -128,9 +127,8 @@ Future<bool> _render(
   return true;
 }
 
-/// _pass runs the whole mix once, block by block, through the one routing
-/// there is -- see mix_graph.dart -- handing each finished block of the
-/// master to [take].
+/// _pass runs the whole mix once through a [MixGraph], handing each
+/// finished block to [take].
 void _pass(
     Map<String, List<_Stretch>> channels,
     Map<String, ChannelMix> strips,
@@ -148,22 +146,20 @@ void _pass(
     ..setSpeakers(speakers)
     ..setReturns(returns)
     ..setMaster(master, normaliseDb: normaliseDb);
-  // Each from where its lanes start it, not glided to there from its own
-  // settings over the first block.
+  // Start each channel at its automation's first values, so the first block
+  // does not ramp from the static settings.
   for (var key in channels.keys) {
     graph.setChannel(key, automatedAt(strips[key]!, -(clocks[key] ?? 0)));
   }
   var ml = Float32List(_block), mr = Float32List(_block);
   for (var at = 0; at < total; at += _block) {
     var n = math.min(_block, total - at);
-    // Where each placed channel is heard from, at the middle of the block:
-    // the graph glides to it over the block.
+    // Placement is sampled at the block's middle; the graph ramps to it.
     var middle = (at + n / 2) / mixRate;
     for (var e in places.entries) {
       graph.setPlacement(e.key, heardOn(e.value, middle));
     }
-    // Each automated channel as its lanes have it there: retuned, not made
-    // again -- see MixGraph.setChannel.
+    // Automated channels are retuned in place (see MixGraph.setChannel).
     for (var e in strips.entries) {
       if (e.value.automation.isEmpty) continue;
       graph.setChannel(
@@ -182,9 +178,8 @@ void _pass(
   }
 }
 
-/// heardOn is where a placed sound is heard from at [seconds], from its
-/// [points] -- each (seconds, where), in order: the last at or before it,
-/// or the first.
+/// heardOn is the last of [points], (seconds, where) in time order, at or
+/// before [seconds], or the first.
 Heard? heardOn(List<(double, Heard)> points, double seconds) {
   if (points.isEmpty) return null;
   var lo = 0, hi = points.length - 1;
@@ -220,14 +215,13 @@ void _addStretch(_Stretch s, int at, int n, Float32List l, Float32List r) {
   }
 }
 
-/// _decode is [s]'s part of its file as 48kHz stereo -- see ffmpegDecode.
+/// _decode is [s]'s part of its file as 48kHz stereo.
 Future<(Float32List, Float32List)?> _decode(String ffmpeg, ExportSound s) =>
     ffmpegDecode(ffmpeg, s.path, from: s.from, length: s.length);
 
 /// wavHeader is the header of a 32-bit float WAV of [frames] in
-/// [channels]. More than two is WAVE_FORMAT_EXTENSIBLE, with the speakers
-/// named in its channel mask -- ffmpeg's 5.1 (FL FR FC LFE BL BR) and 7.1
-/// (and SL SR) -- so whatever reads it knows which is which.
+/// [channels]. More than two is WAVE_FORMAT_EXTENSIBLE with a channel mask
+/// for ffmpeg's 5.1 (FL FR FC LFE BL BR) or 7.1 (plus SL SR).
 @visibleForTesting
 Uint8List wavHeader(int frames, [int channels = 2]) {
   var extensible = channels > 2;

@@ -60,19 +60,12 @@ import 'package:bruig/plugin_system/canvas/ui/settings/team_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/text_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/text_settings.dart';
 
-// element_settings.dart is the controls for whichever element is selected.
-//
-// One function per element kind, each returning the groups that go into the
-// settings bar. They are grouped by what somebody is thinking about rather
-// than by which class the field is declared on -- so a text element's colour
-// sits with its outline and its shadow under "Colour", not with its font size
-// under "Type", even though all four are fields of the same TextSpec.
-//
-// Every control writes a transient edit and commits on release, so dragging a
-// slider updates the canvas continuously and lands as one undo step. That
-// pairing is why almost every control here passes both onChanged and
-// onCommit; a control that only did the first would make an undo history
-// forty steps long for one adjustment.
+// element_settings.dart is the controls for whichever element is selected,
+// grouped by what somebody is thinking about rather than by which class holds
+// the field: a text's colour sits with its outline and shadow under Colour,
+// not with its font size under Type. Every control writes a transient edit
+// and commits on release, so a drag is one undo step: hence onChanged and
+// onCommit on almost every control.
 
 /// elementSettings is the groups for [element].
 List<Widget> elementSettings(
@@ -80,11 +73,9 @@ List<Widget> elementSettings(
   CanvasController controller,
   CanvasElement element,
 ) {
-  // Opening the undo step here rather than leaving it to each control.
-  // beginInteraction is idempotent, and forgetting it is silent: a transient
-  // edit made outside an interaction is never pushed onto the history, so the
-  // control works and is simply not undoable. With forty controls in this
-  // file, doing it once is the only way it stays true.
+  // The undo step is opened here, not by each control: beginInteraction is
+  // idempotent, and a transient edit made outside an interaction is silently
+  // never put on the history.
   void write(CanvasElement next) {
     controller.beginInteraction();
     controller.replaceElement(next, transient: true);
@@ -113,12 +104,10 @@ List<Widget> elementSettings(
   return [
     CanvasSections(
       key: const ValueKey("elementSections"),
-      // A drawing's layers over its sections, as a picture's are -- once it
-      // has been taken apart into shapes to have any.
+      // Layers over the sections, as a picture's are: a text's own words and the
+      // pieces added to its box, or a drawing's shapes once it has been taken
+      // apart into them.
       parts: element is TextElement
-          // A text's layers -- its own words, and every piece of writing or
-          // picture added to its box -- over its sections, as a picture's
-          // are.
           ? TextLayersList(
               key: const ValueKey("textLayersList"),
               controller: controller,
