@@ -9,6 +9,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/model/play.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -71,6 +73,32 @@ void main() {
       expect(find.byKey(ValueKey("animHelp-$id")), findsOneWidget, reason: id);
     }
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      "a game's count is offered as a trigger, at any change or a number",
+      (tester) async {
+    var (c, clip) = await pump(tester);
+    c.apply(c.document
+        .copyWith(game: true, counts: const [GameCount("coins", "Coins")]));
+    // Wide enough for the Launch section to be built.
+    tester.view.physicalSize = const Size(4000, 900);
+    await tester.pumpAndSettle();
+    tester
+        .widget<CanvasDropdown<String>>(
+            find.byKey(const ValueKey("animTriggerAdd")))
+        .onChanged("count:coins");
+    await tester.pumpAndSettle();
+    var t = c.motionOf("a").clip(clip)!.triggers.single;
+    expect((t.kind, t.target, t.amount), (ClipTriggerKind.count, "coins", 0));
+    expect(find.text("Coins changes"), findsOneWidget);
+    tester
+        .widget<CanvasNumberField>(
+            find.byKey(const ValueKey("animTriggerAmount-0")))
+        .onChanged(3);
+    await tester.pumpAndSettle();
+    expect(c.motionOf("a").clip(clip)!.triggers.single.amount, 3);
+    expect(find.text("Coins reaches 3"), findsOneWidget);
   });
 
   testWidgets("nothing picked, it says how to pick something", (tester) async {

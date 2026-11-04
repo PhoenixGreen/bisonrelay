@@ -58,12 +58,17 @@ extension CanvasSession on CanvasController {
 
   /// fireMotionTrigger starts the clips that start on [kind] of [target]:
   /// a click, a key, the scene starting.
-  void fireMotionTrigger(ClipTriggerKind kind, [String target = ""]) {
-    var any = _document.elements.any((e) =>
+  void fireMotionTrigger(ClipTriggerKind kind,
+      [String target = "", double? value]) {
+    // The scene's elements, and a game's HUD on the master over them.
+    var any = [
+      ..._document.elements,
+      if (!_document.editingMaster) ...?_document.masterScene?.elements,
+    ].any((e) =>
         e.base.motion.clips.any((c) => c.triggers.any((t) => t.kind == kind)));
     if (!any) return;
     var at = playing || gaming ? _sessionNow : _sessionStart();
-    motionPlayer.fire(_document, _frame, kind, target, at);
+    motionPlayer.fire(_document, _frame, kind, target, at, value: value);
     _motionStep();
     notifyListeners();
   }

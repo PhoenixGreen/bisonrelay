@@ -69,10 +69,13 @@ extension CanvasGame on CanvasController {
       // And the sounds the scene it starts on asks for -- after Play, which
       // stops slots playing on their own.
       _gameSceneSounds();
+      _gameMotionStart();
     } else {
       // The game's slots stop with it, at once rather than on the next bar,
       // while it is still a game on its own clock.
       _haltClips();
+      // Its elements' slots too: back on their timelines.
+      motionPlayer.clear();
       for (var id in _gameSounded) {
         audio.stop(id);
       }
@@ -133,7 +136,10 @@ extension CanvasGame on CanvasController {
       _applyMix();
     }
     if (_gamePaused) return;
-    run.step(_document, _frame, dt);
+    // The elements' slots on the game's clock, before the bodies move
+    // against where they have got to.
+    if (motionPlayer.offTimeline) _motionStep();
+    run.step(_document, _frame, dt, live: liveMotion);
     // What the game asked for: a sound, another scene, the end.
     var asked = [...run.events];
     run.events.clear();
@@ -152,17 +158,29 @@ extension CanvasGame on CanvasController {
         frame = 0;
         run.newScene();
         _gameSceneSounds();
+        _gameMotionStart();
       }
       if (event.restart && _document.gameStart.isNotEmpty) {
         _gameScene(run, _document.gameStart);
       }
-      if (event.press case var id?) _gamePress(run, id);
+      if (event.press case var id?) {
+        _gamePress(run, id);
+        // Pressed in a game is clicked: its clips that start on that.
+        fireMotionTrigger(ClipTriggerKind.clicked, id);
+      }
+      if (event.touched case var id?) {
+        fireMotionTrigger(ClipTriggerKind.touched, id);
+      }
+      if (event.counted case (var id, var value)) {
+        fireMotionTrigger(ClipTriggerKind.count, id, value.toDouble());
+      }
       if (event.stop) {
         gaming = false;
         return;
       }
     }
-    _gameView = spoken(run.view(_document, frame: _frame));
+    _gameView =
+        spoken(run.view(_document, frame: _frame, playing: _touchClipPlaying));
     notifyListeners();
   }
 
@@ -229,6 +247,26 @@ extension CanvasGame on CanvasController {
     frame = 0;
     run.newScene();
     _gameSceneSounds();
+    _gameMotionStart();
+  }
+
+  /// _touchClipPlaying is whether [id] is playing a clip a touch started --
+  /// a coin's pop -- for which a pickup taken stays in view.
+  bool _touchClipPlaying(String id) {
+    var e = _document.elementById(id);
+    if (e == null) return false;
+    var onTouch = {
+      for (var c in e.base.motion.clips)
+        if (c.triggers.any((t) => t.kind == ClipTriggerKind.touched)) c.id,
+    };
+    return onTouch.isNotEmpty && motionPlayer.isPlaying(id, only: onTouch);
+  }
+
+  /// _gameMotionStart is a scene beginning in a game: its elements' slots
+  /// cleared, and the clips that start with the scene started.
+  void _gameMotionStart() {
+    motionPlayer.clear();
+    fireMotionTrigger(ClipTriggerKind.sceneStarts);
   }
 
   /// gameSound plays what a game asks for by [ref] -- see gameSoundOf: a
@@ -422,6 +460,10 @@ extension CanvasGame on CanvasController {
         .any((p) => _document.controlsFor(p).any((a) => a.keys.contains(id)));
     if (event is KeyDownEvent || event is KeyRepeatEvent) {
       run.input.keys.add(id);
+      // The clips that start on this key.
+      if (event is KeyDownEvent) {
+        fireMotionTrigger(ClipTriggerKind.key, motionKeyName(event.logicalKey));
+      }
     } else if (event is KeyUpEvent) {
       run.input.keys.remove(id);
     }

@@ -16,6 +16,8 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_player.dart'
+    show motionKeyName;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
@@ -154,13 +156,7 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
   /// _key is a key pressed while it plays: the clips that start on it.
   KeyEventResult _key(CanvasController c, KeyEvent e) {
     if (e is! KeyDownEvent) return KeyEventResult.ignored;
-    var k = e.logicalKey;
-    var name = k == LogicalKeyboardKey.space
-        ? "Space"
-        : k == LogicalKeyboardKey.enter
-            ? "Enter"
-            : k.keyLabel.toUpperCase();
-    c.fireMotionTrigger(ClipTriggerKind.key, name);
+    c.fireMotionTrigger(ClipTriggerKind.key, motionKeyName(e.logicalKey));
     return KeyEventResult.ignored;
   }
 

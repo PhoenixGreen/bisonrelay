@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 
 // motion_player.dart is the elements' slots played live: a clip launched
 // from a slot, a cue, a trigger or another clip's Then, keeping the clock of
@@ -78,6 +79,28 @@ class _Playing {
       carry: [for (var l in layers) l.carry]);
 }
 
+/// motionKeyName is [k] as a clip's "Key pressed" trigger names it: Space,
+/// Enter, or the key's own letter.
+String motionKeyName(LogicalKeyboardKey k) => k == LogicalKeyboardKey.space
+    ? "Space"
+    : k == LogicalKeyboardKey.enter
+        ? "Enter"
+        : k.keyLabel.toUpperCase();
+
+/// _elementIn is [id] among [doc]'s elements, or the master's drawn with
+/// them -- a game's HUD plays its clips as a scene's elements do.
+CanvasElement? _elementIn(CanvasDocument doc, String id) =>
+    doc.elementById(id) ??
+    (doc.editingMaster
+        ? null
+        : doc.masterScene?.elements.where((e) => e.id == id).firstOrNull);
+
+/// _elementsOf are [doc]'s elements, and the master's drawn with them.
+Iterable<CanvasElement> _elementsOf(CanvasDocument doc) => [
+      ...doc.elements,
+      if (!doc.editingMaster) ...?doc.masterScene?.elements,
+    ];
+
 class MotionPlayer implements LiveMotion {
   final Map<String, _Playing> _of = {};
   final List<MotionPlayed> _log = [];
@@ -126,7 +149,7 @@ class MotionPlayer implements LiveMotion {
   /// timeline has it on [frame].
   void launch(
       CanvasDocument doc, int frame, String element, String clip, double at) {
-    var e = doc.elementById(element);
+    var e = _elementIn(doc, element);
     var c = e?.base.motion.clip(clip);
     if (e == null || c == null || c.isSound || c.kind == MotionKind.model) {
       return;
@@ -141,7 +164,7 @@ class MotionPlayer implements LiveMotion {
   /// started, or, toggled on a clip playing, stopped.
   void press(
       CanvasDocument doc, int frame, String element, String clip, double at) {
-    var c = doc.elementById(element)?.base.motion.clip(clip);
+    var c = _elementIn(doc, element)?.base.motion.clip(clip);
     if (c == null) return;
     var state = slotState(element, c);
     if (c.launch == ClipLaunch.toggle &&
@@ -160,7 +183,7 @@ class MotionPlayer implements LiveMotion {
   void release(CanvasDocument doc, String element, String clip, double now) {
     var p = _of[element];
     if (p == null || !p.held.remove(clip)) return;
-    var c = doc.elementById(element)?.base.motion.clip(clip);
+    var c = _elementIn(doc, element)?.base.motion.clip(clip);
     if (c?.launch == ClipLaunch.gate) stop(element, layer: c!.layer, at: now);
   }
 
@@ -200,18 +223,39 @@ class MotionPlayer implements LiveMotion {
     }
   }
 
+  /// isPlaying is whether [element] has a clip playing, or about to --
+  /// one of [only], where they are given.
+  bool isPlaying(String element, {Set<String>? only}) =>
+      _of[element]?.layers.any((l) =>
+          (l.next != null &&
+              l.next!.isNotEmpty &&
+              (only?.contains(l.next) ?? true)) ||
+          (l.play != null &&
+              !l.play!.ended &&
+              (only?.contains(l.play!.clip) ?? true))) ??
+      false;
+
   /// leave sends [element] back to its timeline; clear, every element.
   void leave(String element) => _of.remove(element);
   void clear() => _of.clear();
 
   /// fire launches every clip that starts on [kind] -- of [target], where it
-  /// names one -- at [at].
+  /// names one -- at [at]. A touch with no target is the clip's own element
+  /// touched: [target] is the element a player touched. A count's trigger
+  /// starts on any change of it, or, with an amount, as [value] reaches it.
   void fire(CanvasDocument doc, int frame, ClipTriggerKind kind, String target,
-      double at) {
-    for (var e in doc.elements) {
+      double at,
+      {double? value}) {
+    bool counted(ClipTrigger t) =>
+        kind != ClipTriggerKind.count || t.amount == 0 || t.amount == value;
+    for (var e in _elementsOf(doc)) {
       for (var c in e.base.motion.clips) {
         if (c.triggers.any((t) =>
-            t.kind == kind && (t.target.isEmpty || t.target == target))) {
+            t.kind == kind &&
+            counted(t) &&
+            (t.target.isEmpty
+                ? kind != ClipTriggerKind.touched || e.id == target
+                : t.target == target))) {
           launch(doc, frame, e.id, c.id, at);
         }
       }
@@ -230,7 +274,7 @@ class MotionPlayer implements LiveMotion {
     MotionScene? scene;
     for (var id in [..._of.keys]) {
       var p = _of[id]!;
-      var e = doc.elementById(id);
+      var e = _elementIn(doc, id);
       if (e == null) {
         _of.remove(id);
         continue;
@@ -248,6 +292,9 @@ class MotionPlayer implements LiveMotion {
           var here =
               livePose(motion, p.live, i, at, box, scene, replaces: replaces);
           var was = l.play == null ? null : motion.clip(l.play!.clip);
+          // Started again while it plays: from where it started, not from
+          // part way through itself -- a bump over a bump would end bigger.
+          var again = was != null && !l.play!.ended && was.id == next;
           _close(l, was, at);
           if (next.isEmpty) {
             if (was != null && !l.play!.ended && was.after == ClipHold.last) {
@@ -255,7 +302,7 @@ class MotionPlayer implements LiveMotion {
             }
             l.play = null;
           } else {
-            l.carry = here;
+            if (!again) l.carry = here;
             l.play = LivePlay(next, at);
             if (recording) {
               var c = motion.clip(next);

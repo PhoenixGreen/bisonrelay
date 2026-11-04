@@ -1096,6 +1096,27 @@ class _AnimationPanelState extends State<AnimationPanel> {
                 child: Text(_triggerName(t),
                     style: TextStyle(fontSize: 12, color: colors.onSurface)),
               ),
+              // A count's: any change, or as it reaches a number.
+              if (t.kind == ClipTriggerKind.count)
+                CanvasNumberField(
+                  key: ValueKey("animTriggerAmount-$i"),
+                  label: "At (0: any)",
+                  value: t.amount,
+                  min: 0,
+                  max: 9999,
+                  decimals: 0,
+                  width: 56,
+                  onChanged: (v) => _edit(
+                      e,
+                      (c) => c.copyWith(triggers: [
+                            for (var (j, x) in c.triggers.indexed)
+                              j == i
+                                  ? ClipTrigger(x.kind,
+                                      target: x.target,
+                                      amount: v.roundToDouble())
+                                  : x,
+                          ])),
+                ),
               IconButton(
                 key: ValueKey("animTriggerRemove-$i"),
                 visualDensity: VisualDensity.compact,
@@ -1134,6 +1155,12 @@ class _AnimationPanelState extends State<AnimationPanel> {
                       "When ${x.name} ends"
                     ),
               (ClipTriggerKind.touched.name, ClipTriggerKind.touched.label),
+              // A game's counts: a score, lives.
+              for (var n in controller.document.counts)
+                (
+                  "${ClipTriggerKind.count.name}:${n.id}",
+                  "${n.name.isEmpty ? n.id : n.name} changes"
+                ),
             ],
             onChanged: (v) {
               if (v.isEmpty) return;
@@ -1174,7 +1201,13 @@ class _AnimationPanelState extends State<AnimationPanel> {
       ClipTriggerKind.clipEnds => "When ${name(t.target)} ends",
       ClipTriggerKind.marker => "Reaching a marker",
       ClipTriggerKind.touched => "A player touches it",
-      ClipTriggerKind.count => "A count reaches ${t.amount.round()}",
+      ClipTriggerKind.count => switch (controller.document.counts
+            .where((n) => n.id == t.target)
+            .firstOrNull) {
+          var n? when t.amount == 0 => "${n.name} changes",
+          var n? => "${n.name} reaches ${t.amount.round()}",
+          null => "A count reaches ${t.amount.round()}",
+        },
     };
   }
 }

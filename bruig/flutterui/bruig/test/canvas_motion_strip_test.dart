@@ -328,6 +328,20 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets("an element's strip is picked by a press anywhere on it",
+      (tester) async {
+    var c = await pumpBoth(tester);
+    c.clearSelection();
+    c.selectedChannel = "x";
+    await frames(tester);
+    var strip = tester.getRect(find.byKey(const ValueKey("motionStrip-a")));
+    // Below its slots: the faders' band, not its name.
+    await tester.tapAt(Offset(strip.center.dx, strip.bottom - 40));
+    await frames(tester);
+    expect(c.selection, {"a"});
+    expect(c.selectedChannel, isNull, reason: "the channel's pick moves off");
+  });
+
   testWidgets("an element's strip narrows as a channel's does", (tester) async {
     var c = await pumpBoth(tester);
     var strip = find.byKey(const ValueKey("motionStrip-a"));

@@ -19,103 +19,115 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
     CanvasElement e, _Bands bands, ScrollController scroll) {
   var key = motionStripKey(e.id);
   var narrow = controller.narrowStrips.contains(key);
+  // Pressed anywhere, as a channel's strip is: the element picked, and no
+  // channel with it.
+  void pick() {
+    if (!(controller.selection.length == 1 &&
+        controller.selection.first == e.id)) {
+      controller.selectOnly(e.id);
+    }
+    controller.selectedChannel = null;
+  }
+
   return KeyedSubtree(
       key: ValueKey("motionStrip-${e.id}"),
-      child: _StripFrame(
-        narrow: narrow,
-        onNarrow: () => controller.toggleNarrow(key),
-        narrowKey: ValueKey("narrow-$key"),
-        selected: controller.selection.contains(e.id),
-        theme: theme,
-        bands: bands,
-        head: GestureDetector(
-          key: ValueKey("motionStripName-${e.id}"),
-          behavior: HitTestBehavior.opaque,
-          onTap: () => controller.selectOnly(e.id),
-          child: Row(children: [
-            Icon(Icons.animation, size: 11, color: theme.studio.muted),
-            const SizedBox(width: 3),
-            Expanded(
-              child: Text(e.name.isEmpty ? e.id : e.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: theme.studio.text)),
+      child: Listener(
+          onPointerDown: (_) => pick(),
+          child: _StripFrame(
+            narrow: narrow,
+            onNarrow: () => controller.toggleNarrow(key),
+            narrowKey: ValueKey("narrow-$key"),
+            selected: controller.selection.contains(e.id),
+            theme: theme,
+            bands: bands,
+            head: GestureDetector(
+              key: ValueKey("motionStripName-${e.id}"),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => controller.selectOnly(e.id),
+              child: Row(children: [
+                Icon(Icons.animation, size: 11, color: theme.studio.muted),
+                const SizedBox(width: 3),
+                Expanded(
+                  child: Text(e.name.isEmpty ? e.id : e.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: theme.studio.text)),
+                ),
+              ]),
             ),
-          ]),
-        ),
-        clips: () => _clipColumn(
-          scroll,
-          controller.slotsShown,
-          (row) => _MotionSlot(
-              key: ValueKey("motionSlot-${e.id}-$row"),
-              controller: controller,
-              element: e.id,
-              row: row,
-              theme: theme),
-          Tooltip(
-            message: "Stop this element's clips, on the next bar",
-            child: Material(
-              color: theme.studio.inset,
-              borderRadius: BorderRadius.circular(3),
-              child: InkWell(
-                key: ValueKey("motionStop-${e.id}"),
-                borderRadius: BorderRadius.circular(3),
-                onTap: () => controller.stopMotion(e.id),
-                child: Center(
-                  child: Icon(Icons.stop,
-                      size: 11,
-                      color: controller.motionPlayer.isOff(e.id)
-                          ? theme.studio.text
-                          : theme.studio.muted),
+            clips: () => _clipColumn(
+              scroll,
+              controller.slotsShown,
+              (row) => _MotionSlot(
+                  key: ValueKey("motionSlot-${e.id}-$row"),
+                  controller: controller,
+                  element: e.id,
+                  row: row,
+                  theme: theme),
+              Tooltip(
+                message: "Stop this element's clips, on the next bar",
+                child: Material(
+                  color: theme.studio.inset,
+                  borderRadius: BorderRadius.circular(3),
+                  child: InkWell(
+                    key: ValueKey("motionStop-${e.id}"),
+                    borderRadius: BorderRadius.circular(3),
+                    onTap: () => controller.stopMotion(e.id),
+                    child: Center(
+                      child: Icon(Icons.stop,
+                          size: 11,
+                          color: controller.motionPlayer.isOff(e.id)
+                              ? theme.studio.text
+                              : theme.studio.muted),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-        devices: () =>
-            _ElementSoundBand(controller: controller, element: e, theme: theme),
-        mixer: () => Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var layer = 0; layer < motionLayers; layer++) ...[
-              if (layer > 0) const SizedBox(width: 4),
-              Expanded(
-                child: _LayerFader(
-                  key: ValueKey("layerFader-${e.id}-$layer"),
-                  label: "L${layer + 1}",
-                  short: narrow,
-                  value: e.base.motion.weight(layer),
-                  theme: theme,
-                  onChanged: (v) {
-                    controller.beginInteraction();
-                    controller.weighLayer(e.id, layer, v, transient: true);
-                  },
-                  onCommit: controller.endInteraction,
-                ),
-              ),
-            ],
-          ],
-        ),
-        miniMixer: () => Row(children: [
-          for (var layer = 0; layer < motionLayers; layer++) ...[
-            if (layer > 0) const SizedBox(width: 3),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: LinearProgressIndicator(
-                  value: e.base.motion.weight(layer),
-                  minHeight: 6,
-                  color: theme.studio.on,
-                  backgroundColor: theme.studio.inset,
-                ),
-              ),
+            devices: () => _ElementSoundBand(
+                controller: controller, element: e, theme: theme),
+            mixer: () => Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var layer = 0; layer < motionLayers; layer++) ...[
+                  if (layer > 0) const SizedBox(width: 4),
+                  Expanded(
+                    child: _LayerFader(
+                      key: ValueKey("layerFader-${e.id}-$layer"),
+                      label: "L${layer + 1}",
+                      short: narrow,
+                      value: e.base.motion.weight(layer),
+                      theme: theme,
+                      onChanged: (v) {
+                        controller.beginInteraction();
+                        controller.weighLayer(e.id, layer, v, transient: true);
+                      },
+                      onCommit: controller.endInteraction,
+                    ),
+                  ),
+                ],
+              ],
             ),
-          ],
-        ]),
-      ));
+            miniMixer: () => Row(children: [
+              for (var layer = 0; layer < motionLayers; layer++) ...[
+                if (layer > 0) const SizedBox(width: 3),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      value: e.base.motion.weight(layer),
+                      minHeight: 6,
+                      color: theme.studio.on,
+                      backgroundColor: theme.studio.inset,
+                    ),
+                  ),
+                ),
+              ],
+            ]),
+          )));
 }
 
 /// _ElementSoundBand is an element's sound in its strip's devices band: a

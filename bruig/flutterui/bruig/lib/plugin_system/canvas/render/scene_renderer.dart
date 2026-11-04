@@ -925,9 +925,19 @@ void paintElement(
             frameRate: frameRate,
             images: images,
             editing: editing,
-            // Turned the way its clips move it, not only its keyframes.
+            // Turned the way its clips move it, not only its keyframes --
+            // played live from its slots, on their clock: a frame before is
+            // a frame's time before.
             dxAt: e.faceTravel && !e.base.motion.isEmpty && document != null
-                ? (f) => poseWithMotion(e, f, document, live: liveMotion).dx
+                ? switch (liveMotion) {
+                    var live? when live.of(e.id) != null => (f) =>
+                        poseWithMotion(e, frame, document,
+                                live: liveShifted(
+                                    live, (f - frame) / math.max(1, frameRate)))
+                            .dx,
+                    _ => (f) =>
+                        poseWithMotion(e, f, document, live: liveMotion).dx,
+                  }
                 : null);
       case TileMapElement e:
         // Its figures are drawn among the things stood on it, by their

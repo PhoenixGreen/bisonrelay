@@ -116,6 +116,24 @@ abstract class LiveMotion {
   MotionLive? of(String element);
 }
 
+/// liveShifted is [live] seen [seconds] later (earlier, negative): what is
+/// playing the same, its clock moved. For asking where something live was a
+/// moment ago, as the frames before this one ask of the timeline.
+LiveMotion liveShifted(LiveMotion live, double seconds) =>
+    _ShiftedLive(live, seconds);
+
+class _ShiftedLive implements LiveMotion {
+  final LiveMotion live;
+  final double by;
+  _ShiftedLive(this.live, this.by);
+
+  @override
+  double get clock => live.clock + by;
+
+  @override
+  MotionLive? of(String element) => live.of(element);
+}
+
 /// poseWithMotion is [e]'s pose on [frame]: its track's, if it kept one, with
 /// its clips' moves on top -- from its slots where [live] has it off its
 /// timeline. Without [doc] (a lone element drawn), its track alone.

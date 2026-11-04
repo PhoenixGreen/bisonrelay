@@ -10,7 +10,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_performance.
 import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:flutter/foundation.dart';
 import 'package:gamepads/gamepads.dart';
 
@@ -18,6 +20,10 @@ import 'package:gamepads/gamepads.dart';
 // as the document's actions, each played element moved by them a step at a
 // time (falling and landing on what is solid), the view following the
 // player, and the canvas as it now looks, for the stage to draw.
+//
+// What is not played moves as its clips move it -- placed on the timeline,
+// or launched live from its slots (see motion_player.dart) -- and is solid,
+// touched and pressed where they have it.
 //
 // Nothing here is written into the document: stopped, everything is where
 // it was put.
@@ -194,19 +200,35 @@ class GameRun extends ChangeNotifier {
   /// sixty times a second.
   final Map<String, (List<TileLayer>, Rect, List<Rect>)> _ground = {};
 
-  List<Rect> _groundOf(TileMapElement map, int frame) {
-    var box = map.boundsAt(frame);
+  List<Rect> _groundOf(TileMapElement map, Rect box) {
     if (_ground[map.id] case (var layers, var at, var boxes)
         when identical(layers, map.layers) && at == box) {
       return boxes;
     }
-    var boxes = tileGround(map, frame);
+    var boxes = tileGround(map, 0, at: box);
     _ground[map.id] = (map.layers, box, boxes);
     return boxes;
   }
 
-  /// step moves everything played in [doc] on by [dt] seconds, on [frame].
-  void step(CanvasDocument doc, int frame, double dt) {
+  /// _live is what plays live from the slots on this step (see
+  /// motion_player.dart), or null.
+  LiveMotion? _live;
+
+  /// _boxOf is where [e] is on [frame]: moved by its clips -- on the
+  /// timeline, or live -- as well as its keyframes.
+  Rect _boxOf(CanvasDocument doc, CanvasElement e, int frame) =>
+      e.base.motion.isEmpty
+          ? e.boundsAt(frame)
+          : e.movedBoundsAt(frame, doc, live: _live);
+
+  /// _movesLive is whether [e] is moved by clips launched from its slots,
+  /// on their own clock rather than the timeline's.
+  bool _movesLive(CanvasElement e) => _live?.of(e.id) != null;
+
+  /// step moves everything played in [doc] on by [dt] seconds, on [frame],
+  /// with [live] what plays from the slots.
+  void step(CanvasDocument doc, int frame, double dt, {LiveMotion? live}) {
+    _live = live;
     if (!_started) _begin(doc);
     clock += dt;
     // Each player's controls. One keyboard is shared: the first player's keys
@@ -238,21 +260,26 @@ class GameRun extends ChangeNotifier {
 
     var solids = [
       for (var e in doc.elements)
-        if (e.base.play.as == PlayAs.solid && shown(e)) e.boundsAt(frame),
+        if (e.base.play.as == PlayAs.solid && shown(e)) _boxOf(doc, e, frame),
       // A tile map's solid layers: the tiles are the ground.
       for (var e in doc.elements)
-        if (e is TileMapElement && shown(e)) ..._groundOf(e, frame),
+        if (e is TileMapElement && shown(e))
+          ..._groundOf(e, _boxOf(doc, e, frame)),
     ];
-    // A moving solid (a platform on the timeline) carries what stands on it.
-    // Only while the timeline goes on a frame or two: not as it loops back to
-    // its start, or jumps.
+    // A moving solid (a platform moved by keyframes or clips) carries what
+    // stands on it. On the timeline, only while it goes on a frame or two:
+    // not as it loops back to its start, or jumps. Live, on the slots' own
+    // clock, always.
     var onward =
         _frameWas != null && frame >= _frameWas! && frame - _frameWas! <= 2;
     _frameWas = frame;
     var moving = {
       for (var e in doc.elements)
-        if (e.base.play.as == PlayAs.solid && shown(e) && e.track != null)
-          e.id: e.boundsAt(frame),
+        if (e.base.play.as == PlayAs.solid &&
+            shown(e) &&
+            (e.track != null || !e.base.motion.isEmpty) &&
+            (onward || _movesLive(e)))
+          e.id: _boxOf(doc, e, frame),
     };
     var page = doc.size.rect;
     // The ground under everything: the canvas's bottom edge.
@@ -269,7 +296,7 @@ class GameRun extends ChangeNotifier {
       var box = e.boundsAt(frame);
       switch (spec.as) {
         case PlayAs.platformer:
-          if (body.onGround && onward) _ride(body, box, moving);
+          if (body.onGround) _ride(body, box, moving);
           body.velocity =
               Offset(dx * spec.speed, body.velocity.dy + spec.gravity * dt);
           if (pressedBy(p, "jump") && body.onGround) {
@@ -387,7 +414,7 @@ class GameRun extends ChangeNotifier {
       if (spec.pressedBy.isEmpty || !shown(e) || !pressed(spec.pressedBy)) {
         continue;
       }
-      var near = e.boundsAt(frame).inflate(spec.reach);
+      var near = _boxOf(doc, e, frame).inflate(spec.reach);
       if (spec.reach > 0 && !players.any((p) => p.overlaps(near))) continue;
       events.add(GameEvent(press: e.id));
     }
@@ -425,12 +452,19 @@ class GameRun extends ChangeNotifier {
     camera = Offset.zero;
   }
 
-  /// _touches does what each pickup or hazard a player starts to touch does.
+  /// _touches does what each pickup or hazard a player starts to touch does,
+  /// and starts the clips of whatever it touches that start on a touch.
   void _touches(CanvasDocument doc, int frame) {
     var things = [
       for (var e in doc.elements)
-        if (e.base.play.as.touched && !gone.contains(e.id) && shown(e)) e,
+        if ((e.base.play.as.touched || _startsOnTouch(e)) &&
+            !gone.contains(e.id) &&
+            shown(e))
+          e,
     ];
+    var boxes = {
+      for (var t in things) t.id: _touchOf(t, _boxOf(doc, t, frame))
+    };
     var now = <(String, String)>{};
     for (var e in doc.elements) {
       var spec = e.base.play;
@@ -439,14 +473,13 @@ class GameRun extends ChangeNotifier {
       if (body == null) continue;
       var box = _touchOf(e, e.boundsAt(frame).shift(body.at));
       for (var t in things) {
-        if (gone.contains(t.id) ||
-            !box.overlaps(_touchOf(t, t.boundsAt(frame)))) {
-          continue;
-        }
+        if (gone.contains(t.id) || !box.overlaps(boxes[t.id]!)) continue;
         var key = (e.id, t.id);
         now.add(key);
         if (_touching.contains(key)) continue;
+        if (_startsOnTouch(t)) events.add(GameEvent(touched: t.id));
         var touched = t.base.play;
+        if (!touched.as.touched) continue;
         if (touched.sound.isNotEmpty)
           events.add(GameEvent(sound: touched.sound));
         if (touched.as == PlayAs.pickup && !touched.stays) gone.add(t.id);
@@ -465,6 +498,11 @@ class GameRun extends ChangeNotifier {
 
   Rect _touchOf(CanvasElement e, Rect box) => gameTouchArea(e, box);
 
+  /// _startsOnTouch is whether [e] has a clip that starts when a player
+  /// touches it.
+  static bool _startsOnTouch(CanvasElement e) => e.base.motion.clips
+      .any((c) => c.triggers.any((t) => t.kind == ClipTriggerKind.touched));
+
   /// _do does [effect], and, where a count it changes reaches its number,
   /// what that count then does, once.
   void _do(CanvasDocument doc, GameEffect effect, [int depth = 0]) {
@@ -480,6 +518,7 @@ class GameRun extends ChangeNotifier {
         var next = was +
             (effect.does == GameDoes.add ? effect.amount : -effect.amount);
         counts[count.id] = next;
+        events.add(GameEvent(counted: (count.id, next)));
         if (count.reach case var at?) {
           var reached = effect.does == GameDoes.add
               ? was < at && next >= at
@@ -537,11 +576,13 @@ class GameRun extends ChangeNotifier {
   /// view is [doc] as the game has it now: each played element moved, a
   /// sprite walking, standing or jumping the way it faces, everything but
   /// the backgrounds seen from the camera, and the parallax moved with it.
-  CanvasDocument view(CanvasDocument doc, {int frame = 0}) {
+  CanvasDocument view(CanvasDocument doc,
+      {int frame = 0, bool Function(String id)? playing}) {
     var shifted = <CanvasElement>[];
     for (var e in doc.elements) {
-      // A pickup taken is gone until the game starts again.
-      if (gone.contains(e.id)) continue;
+      // A pickup taken is gone until the game starts again -- once a clip
+      // it started (a coin's pop) has played.
+      if (gone.contains(e.id) && !(playing?.call(e.id) ?? false)) continue;
       if (e is BackgroundElement) {
         shifted.add(_withCamera(e));
         continue;
@@ -718,6 +759,13 @@ class GameEvent {
   final bool next;
   final bool restart;
   final String? press;
+
+  /// touched is an element a player has started to touch, whose clips
+  /// start on a touch.
+  final String? touched;
+
+  /// counted is a count changed, by id, and where it has got to.
+  final (String, int)? counted;
   final bool stop;
   const GameEvent(
       {this.sound,
@@ -725,6 +773,8 @@ class GameEvent {
       this.next = false,
       this.restart = false,
       this.press,
+      this.touched,
+      this.counted,
       this.stop = false});
 }
 
@@ -739,7 +789,10 @@ Rect gameTouchArea(CanvasElement e, Rect box) =>
 /// one box, so a player walking along it never catches on a seam. A solid
 /// layer is taken to move with the rest of the map: its parallax is not
 /// followed.
-List<Rect> tileGround(TileMapElement map, int frame) {
+///
+/// [at] is where the map is, where it is not where its keyframes put it: as
+/// its clips have it.
+List<Rect> tileGround(TileMapElement map, int frame, {Rect? at}) {
   var rows = <int, Set<int>>{};
   var (c0, r0, c1, r1) = map.window;
   for (var l in map.layers) {
@@ -750,7 +803,7 @@ List<Rect> tileGround(TileMapElement map, int frame) {
       (rows[r] ??= {}).add(c);
     }
   }
-  var shift = map.boundsAt(frame).topLeft - map.bounds.topLeft;
+  var shift = (at ?? map.boundsAt(frame)).topLeft - map.bounds.topLeft;
   var out = <Rect>[];
   for (var MapEntry(key: r, value: set) in rows.entries) {
     var cols = set.toList()..sort();
