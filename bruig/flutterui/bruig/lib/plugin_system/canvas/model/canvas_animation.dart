@@ -461,6 +461,11 @@ enum TimelineActionKind {
 /// published interactive canvas obeys them; an exported GIF flattens them,
 /// because a GIF has no way to wait for a click.
 class TimelineAction {
+  /// id names the marker for what is pinned to it -- a clip that starts or
+  /// ends there follows it when it is moved. Kept in the file; a marker
+  /// from before ids is named by where it was first read.
+  final String id;
+
   final int frame;
   final TimelineActionKind kind;
 
@@ -486,6 +491,7 @@ class TimelineAction {
   final String waitsFor;
 
   const TimelineAction({
+    this.id = "",
     required this.frame,
     required this.kind,
     this.target = 0,
@@ -497,6 +503,7 @@ class TimelineAction {
   });
 
   TimelineAction copyWith({
+    String? id,
     int? frame,
     TimelineActionKind? kind,
     int? target,
@@ -507,6 +514,7 @@ class TimelineAction {
     String? waitsFor,
   }) =>
       TimelineAction(
+        id: id ?? this.id,
         frame: frame ?? this.frame,
         kind: kind ?? this.kind,
         target: target ?? this.target,
@@ -518,6 +526,7 @@ class TimelineAction {
       );
 
   Map<String, dynamic> toJson() => {
+        if (id.isNotEmpty) "id": id,
         "f": frame,
         "kind": kind.name,
         if (target != 0) "target": target,
@@ -529,6 +538,9 @@ class TimelineAction {
       };
 
   factory TimelineAction.fromJson(Map<String, dynamic> json) => TimelineAction(
+        id: json["id"] is String && (json["id"] as String).isNotEmpty
+            ? json["id"] as String
+            : "m${(json["f"] as num?)?.toInt() ?? 0}",
         frame: (json["f"] as num?)?.toInt() ?? 0,
         kind: TimelineActionKind.fromName(json["kind"] as String?),
         target: (json["target"] as num?)?.toInt() ?? 0,

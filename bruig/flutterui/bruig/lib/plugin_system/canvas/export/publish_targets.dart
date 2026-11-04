@@ -6,7 +6,6 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
-import 'package:bruig/plugin_system/canvas/export/game_publish.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_record.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/writing_tools/post_library/embed_store.dart';
@@ -63,8 +62,6 @@ String extensionFor(String mime) => switch (mime) {
       epubMime => ".epub",
       "application/json" => ".bcanvas",
       bundleMime => ".bcanvas",
-      // A game is a canvas bundle too: opened from a file, it is a canvas.
-      gameMime => ".bcanvas",
       _ => ".bin",
     };
 
@@ -76,8 +73,7 @@ String extensionFor(String mime) => switch (mime) {
 /// message sent to somebody else has to carry its picture with it -- a
 /// reference points at a store only this client has.
 String embedMarkupFor(CanvasExport export) =>
-    "--embed[type=${export.mime},data=${base64Encode(export.data)}"
-    "${export.embedExtras}]--";
+    "--embed[type=${export.mime},data=${base64Encode(export.data)}]--";
 
 /// saveToDisk asks where to put the file and writes it there.
 ///
@@ -192,8 +188,7 @@ Future<PublishRecord?> publishToLibrary(
     var id = existing.embedId.isNotEmpty ? existing.embedId : _newEmbedId();
     await EmbedStore.save(id, base64Encode(export.data));
 
-    var content = "--embed[type=${export.mime},data=[content $id]"
-        "${export.embedExtras}]--\n";
+    var content = "--embed[type=${export.mime},data=[content $id]]--\n";
     var written = await PostStorage.write(publishedFolderName, clean, content);
     if (written == null) return null;
 

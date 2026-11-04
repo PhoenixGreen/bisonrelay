@@ -73,9 +73,6 @@ export 'package:bruig/plugin_system/canvas/canvas_nav.dart';
 export 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 export 'package:bruig/plugin_system/canvas/canvas_settings.dart';
 export 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart';
-// A published game, drawn in a post or a page: see game_embed.dart.
-export 'package:bruig/plugin_system/canvas/ui/game_embed.dart'
-    show canvasMarkdownExtensions;
 // A canvas file played where Files previews one: see canvas_file_player.dart.
 export 'package:bruig/plugin_system/canvas/ui/canvas_file_player.dart'
     show CanvasFilePlayer, openCanvasFile;

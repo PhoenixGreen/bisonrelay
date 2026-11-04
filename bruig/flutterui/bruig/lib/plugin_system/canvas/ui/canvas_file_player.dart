@@ -11,15 +11,13 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart';
-import 'package:bruig/plugin_system/canvas/ui/game_embed.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
 // canvas_file_player.dart is a canvas file -- a .bcanvas, sent, shared or
 // downloaded -- played where Files previews a PDF or a video (Ken): its
-// animation run through every scene, with play, pause and start again; or,
-// a game, its first frame and Play, played as a game in a post is. Its
+// animation run through every scene, with play, pause and start again. Its
 // pictures and sounds are stored as they are when one is opened from Files
 // into the library, for it to be drawn and heard by.
 
@@ -171,7 +169,6 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
     var page = c.document.size.size;
     var aspect =
         page.width <= 0 || page.height <= 0 ? 16 / 9 : page.width / page.height;
-    var game = c.document.game;
     return Column(children: [
       Expanded(
         child: Center(
@@ -183,9 +180,7 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
               LayoutBuilder(
                 builder: (context, box) => GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTapUp: game
-                      ? null
-                      : (d) => _press(c, d.localPosition, box.biggest),
+                  onTapUp: (d) => _press(c, d.localPosition, box.biggest),
                   child: ListenableBuilder(
                     listenable: c,
                     builder: (context, _) => CustomPaint(
@@ -194,53 +189,28 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
                   ),
                 ),
               ),
-              // A game: Play, and it is played as a game in a post is.
-              if (game)
-                ColoredBox(
-                  color: const Color(0x55101114),
-                  child: Center(
-                    child: FilledButton.icon(
-                      key: const ValueKey("canvasFilePlayGame"),
-                      style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF30A46C),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 26, vertical: 14)),
-                      onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                              fullscreenDialog: true,
-                              builder: (_) =>
-                                  GamePlayer(document: c.document))),
-                      icon: const Icon(Icons.play_arrow),
-                      label: const Text("Play",
-                          style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w700)),
-                    ),
-                  ),
-                ),
             ]),
           ),
         ),
       ),
-      if (!game)
-        ListenableBuilder(
-          listenable: c,
-          builder: (context, _) =>
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            IconButton(
-              key: const ValueKey("canvasFilePlay"),
-              icon: Icon(c.playing ? Icons.pause : Icons.play_arrow),
-              tooltip: c.playing ? "Pause" : "Play",
-              onPressed: () => c.playing ? c.pause() : c.play(),
-            ),
-            IconButton(
-              key: const ValueKey("canvasFileAgain"),
-              icon: const Icon(Icons.replay),
-              tooltip: "From the start",
-              onPressed: _again,
-            ),
-          ]),
-        ),
+      ListenableBuilder(
+        listenable: c,
+        builder: (context, _) =>
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          IconButton(
+            key: const ValueKey("canvasFilePlay"),
+            icon: Icon(c.playing ? Icons.pause : Icons.play_arrow),
+            tooltip: c.playing ? "Pause" : "Play",
+            onPressed: () => c.playing ? c.pause() : c.play(),
+          ),
+          IconButton(
+            key: const ValueKey("canvasFileAgain"),
+            icon: const Icon(Icons.replay),
+            tooltip: "From the start",
+            onPressed: _again,
+          ),
+        ]),
+      ),
     ]);
   }
 }

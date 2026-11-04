@@ -14,15 +14,12 @@ import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/document_export.dart';
-import 'package:bruig/plugin_system/canvas/export/game_publish.dart';
 import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_record.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_targets.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/play_settings.dart'
-    show gameControlsLine;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
@@ -64,13 +61,7 @@ enum PublishAs {
   interactive(
       "Interactive canvas",
       "The canvas itself, with its pictures, sounds and videos, to open, "
-          "play and edit again"),
-  // A game, played: the canvas carried in the page, with a cover and Play.
-  // Offered only for a game. See game_publish.dart.
-  game(
-      "Game",
-      "Played in Bison Relay by the same engine it was made in: the canvas "
-          "and its pictures and sounds, carried in the page");
+          "play and edit again");
 
   final String label;
   final String description;
@@ -159,9 +150,6 @@ class _PublishSheet extends StatefulWidget {
 
 class _PublishSheetState extends State<_PublishSheet> {
   PublishAs _as = PublishAs.image;
-
-  /// _game is what a game published as one carries besides itself.
-  GamePublishOptions _game = const GamePublishOptions();
 
   /// _documentAs is which sort of document, once Document is what is being
   /// made. See DocumentAs.
@@ -350,10 +338,6 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// moment, and would be wrong on the next one.
   Map<String, dynamic> get _settings => {
         "as": _as.name,
-        "gameHowTo": _game.howTo,
-        "gameHud": _game.hud,
-        "gameBest": _game.best,
-        "gameOpen": _game.open,
         "document": _documentAs.name,
         "to": _to.name,
         "format": _format.name,
@@ -386,13 +370,6 @@ class _PublishSheetState extends State<_PublishSheet> {
     num number(String key, num fallback) =>
         saved[key] is num ? saved[key] as num : fallback;
     _as = pick(PublishAs.values, "as", _as);
-    // Game only for a game.
-    if (_as == PublishAs.game && !widget.document.game) _as = PublishAs.image;
-    _game = GamePublishOptions(
-        howTo: flag("gameHowTo", _game.howTo),
-        hud: flag("gameHud", _game.hud),
-        best: flag("gameBest", _game.best),
-        open: flag("gameOpen", _game.open));
     _documentAs = pick(DocumentAs.values, "document", _documentAs);
     _to = pick(PublishTo.values, "to", _to);
     _format = pick(EmbedFormat.values, "format", _format);
@@ -447,8 +424,6 @@ class _PublishSheetState extends State<_PublishSheet> {
         // deflated again, being compressed already.
         PublishAs.document => estimateDocumentBytes(_document, scale: _scale),
         PublishAs.interactive => _document.encode().length + _pictureBytes,
-        // The bundle, and a cover of a few tens of kilobytes beside it.
-        PublishAs.game => _document.encode().length + _pictureBytes + 60000,
       };
 
   /// _pictureBytes is what the canvas's pictures weigh, which is nearly all
@@ -578,21 +553,6 @@ class _PublishSheetState extends State<_PublishSheet> {
           width: widget.document.size.exportWidth,
           height: widget.document.size.exportHeight,
         );
-      case PublishAs.game:
-        var export = await exportGame(document, _game, images: widget.images);
-        // How to play, said on its cover in the game's own keys.
-        return _game.howTo
-            ? CanvasExport(export.data, export.mime,
-                width: export.width,
-                height: export.height,
-                cover: export.cover,
-                params: {
-                  ...export.params,
-                  "keys": Uri.encodeComponent(
-                      "${gameControlsLine(document.controlsFor(1))} · or a "
-                      "controller"),
-                })
-            : export;
     }
   }
 
@@ -839,9 +799,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                 "Publish as",
                 _as,
                 [
-                  for (var o in PublishAs.values)
-                    if (o != PublishAs.game || widget.document.game)
-                      (o, o.label),
+                  for (var o in PublishAs.values) (o, o.label),
                 ],
                 _busy ? (_) {} : (v) => setState(() => _as = v),
               ),
@@ -1313,55 +1271,6 @@ class _PublishSheetState extends State<_PublishSheet> {
                   "move anything you have not locked."),
         ];
 
-      case PublishAs.game:
-        Widget toggle(String key, String label, String says, bool value,
-                GamePublishOptions Function(bool v) next) =>
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Row(children: [
-                Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(label,
-                            style: TextStyle(
-                                fontSize: 13, color: theme.colors.onSurface)),
-                        Text(says,
-                            style: TextStyle(
-                                fontSize: 11.5,
-                                color: theme.colors.onSurfaceVariant)),
-                      ]),
-                ),
-                Switch(
-                  key: ValueKey("publishGame-$key"),
-                  value: value,
-                  onChanged:
-                      _busy ? null : (v) => setState(() => _game = next(v)),
-                ),
-              ]),
-            );
-        var pictures = widget.document.assetIds.length;
-        var sounds = widget.document.mediaIds.length;
-        return [
-          toggle("howTo", "Say how to play", "The keys and a controller, on its cover",
-              _game.howTo, (v) => _game.copyWith(howTo: v)),
-          toggle("hud", "Its HUD", "The Counters showing its counts, over every level",
-              _game.hud, (v) => _game.copyWith(hud: v)),
-          toggle("best", "Remember a best",
-              "Each reader's best, kept on their own machine", _game.best,
-              (v) => _game.copyWith(best: v)),
-          toggle("open", "Let readers open it",
-              "A copy into their own Canvas, to see how it is made", _game.open,
-              (v) => _game.copyWith(open: v)),
-          const SizedBox(height: 4),
-          Txt.S("${widget.document.allScenes.length} "
-              "scene${widget.document.allScenes.length == 1 ? "" : "s"} · "
-              "$pictures picture${pictures == 1 ? "" : "s"} · "
-              "$sounds sound${sounds == 1 ? "" : "s"}. The reader sees its "
-              "first frame with Play, and plays it as it plays here: the same "
-              "physics, pictures and sounds. Nothing to edit, and links in it "
-              "are not followed while it plays. Read in Bison Relay only."),
-        ];
     }
   }
 

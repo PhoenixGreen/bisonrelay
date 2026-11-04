@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/character3d_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/parallax_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -647,7 +648,8 @@ void paintElement(
   /// background element is drawn from as the canvas's own background is.
   ProceduralCache? backgrounds,
 }) {
-  var pose = element.track?.at(frame) ?? Keyframe.rest;
+  // Its own keyframes, and its clips' moves on top. See motion_document.dart.
+  var pose = poseWithMotion(element, frame, document);
   var outer = poseOutside ? Keyframe.rest : pose;
   var alpha = (element.opacity * outer.opacity).clamp(0.0, 1.0);
   // A way out with no exit chosen fades rather than doing nothing. The

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
 
 // canvas_element.dart is what everything on a canvas has in common, and
@@ -250,6 +251,10 @@ class ElementBase {
   /// stage_spot.dart.
   final StageSpot? spot;
 
+  /// motion is how it moves: its clips, its slots, where they are placed on
+  /// the timeline. See motion.dart.
+  final ElementMotion motion;
+
   const ElementBase({
     required this.id,
     this.name = "",
@@ -277,6 +282,7 @@ class ElementBase {
     this.link = "",
     this.play = const PlaySpec(),
     this.spot,
+    this.motion = ElementMotion.none,
   });
 
   ElementBase copyWith({
@@ -309,10 +315,12 @@ class ElementBase {
     PlaySpec? play,
     StageSpot? spot,
     bool clearSpot = false,
+    ElementMotion? motion,
   }) =>
       ElementBase(
         play: play ?? this.play,
         spot: clearSpot ? null : (spot ?? this.spot),
+        motion: motion ?? this.motion,
         id: id ?? this.id,
         name: name ?? this.name,
         x: x ?? this.x,
@@ -371,6 +379,7 @@ class ElementBase {
       link: _s(json["link"], ""),
       play: PlaySpec.fromJson(json["play"]),
       spot: StageSpot.fromJson(json["spot"]),
+      motion: ElementMotion.fromJson(json["motion"]),
       layouts: {
         if (json["layouts"] is Map)
           for (var e in (json["layouts"] as Map).entries)
@@ -413,6 +422,7 @@ class ElementBase {
         if (link.isNotEmpty) "link": link,
         if (!play.isNone) "play": play.toJson(),
         if (spot != null) "spot": spot!.toJson(),
+        if (!motion.isEmpty) "motion": motion.toJson(),
         if (layouts.isNotEmpty)
           "layouts": {
             for (var e in layouts.entries) e.key: e.value.toJson(),
@@ -837,10 +847,12 @@ abstract class CanvasElement {
     String? link,
     StageSpot? spot,
     bool clearSpot = false,
+    ElementMotion? motion,
   }) =>
       rebase(base.copyWith(
         spot: spot,
         clearSpot: clearSpot,
+        motion: motion,
         name: name,
         x: x,
         y: y,

@@ -256,13 +256,8 @@ Future<void> runMainApp(Config cfg) async {
       // rather than any particular plugin -- see lib/plugin_system.
       ChangeNotifierProxyProvider<PluginManagerModel, MarkdownAreaModel>(
         create: (c) => MarkdownAreaModel(cfg.dbRoot),
-        update: (c, plugins, mk) => mk!
-          ..setPluginExtensions([
-            ...linkPreviewExtensions(plugins),
-            // Canvas is no plugin, but draws its published games the
-            // same way: see game_embed.dart.
-            ...canvasMarkdownExtensions(),
-          ]),
+        update: (c, plugins, mk) =>
+            mk!..setPluginExtensions(linkPreviewExtensions(plugins)),
       ),
       ChangeNotifierProxyProvider<PluginManagerModel, SpellcheckCapability>(
         // The user's own overrides -- ignored words, disabled checks -- are

@@ -18,7 +18,8 @@ import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
 // canvas_file_player_test.dart is a canvas file previewed in Files, as a
-// PDF is: played, or -- a game -- offered to be played (Ken, 2026-11-01).
+// PDF is: played, with play, pause and start again (Ken, 2026-11-01). A
+// game is previewed as any canvas is: games are no longer published.
 
 void main() {
   test("what is shared is written beside downloads and the library", () async {
@@ -82,7 +83,6 @@ void main() {
           ]));
       await show(tester, file);
       expect(find.byKey(const ValueKey("canvasFileView")), findsOneWidget);
-      expect(find.byKey(const ValueKey("canvasFilePlayGame")), findsNothing);
       await tester.tap(find.byKey(const ValueKey("canvasFilePlay")));
       await tester.pump();
       expect(find.byIcon(Icons.pause), findsOneWidget, reason: "playing");
@@ -127,15 +127,14 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("a game is offered with Play", (tester) async {
+    testWidgets("a game is played as any canvas is", (tester) async {
       var file = await write(
           tester,
           CanvasDocument(game: true, elements: [
             ShapeElement(const ElementBase(id: "a", width: 100, height: 100)),
           ]));
       await show(tester, file);
-      expect(find.byKey(const ValueKey("canvasFilePlayGame")), findsOneWidget);
-      expect(find.byKey(const ValueKey("canvasFilePlay")), findsNothing);
+      expect(find.byKey(const ValueKey("canvasFilePlay")), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       expect(tester.takeException(), isNull);
     });
