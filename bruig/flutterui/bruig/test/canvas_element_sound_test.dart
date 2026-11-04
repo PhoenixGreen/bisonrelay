@@ -163,4 +163,37 @@ void main() {
     await tester.pump();
     expect(c.timelineShow, TimelineShow.everything);
   });
+
+  testWidgets("side by side: every row has its slots, the lanes still level",
+      (tester) async {
+    var c = await pumpBoth(tester);
+    var before =
+        tester.getRect(find.byKey(const ValueKey("motionLanesPaint-a"))).left;
+    await tester.tap(find.byKey(const ValueKey("slotsToggle")));
+    await tester.pump();
+    // The element's slots, and a channel's, a cue each.
+    expect(find.byKey(const ValueKey("rowSlot-a-0")), findsOneWidget);
+    expect(find.byKey(const ValueKey("rowClip-m-0")), findsOneWidget);
+    expect(find.byKey(ValueKey("rowClip-${elementSoundKey("a")}-7")),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey("cueLaunch-0")), findsOneWidget);
+    // The lanes moved over by the slots, every row alike.
+    var lanes =
+        tester.getRect(find.byKey(const ValueKey("motionLanesPaint-a"))).left;
+    expect(lanes - before, closeTo(c.slotsWidth, 1));
+    var cue = tester.getRect(find.byKey(const ValueKey("cueLaunch-0")));
+    var slot = tester.getRect(find.byKey(const ValueKey("rowSlot-a-0")));
+    expect(cue.left, closeTo(slot.left - 3, 4), reason: "over its column");
+    expect(tester.takeException(), isNull);
+  });
+
+  test("the effects take the Animation panel's place, however opened", () {
+    var c = make();
+    addTearDown(c.dispose);
+    c.animationOpen = true;
+    c.openEffects(elementSoundKey("a"));
+    expect((c.animationOpen, c.effectsOpen), (false, true));
+    c.animationOpen = true;
+    expect((c.animationOpen, c.effectsOpen), (true, false));
+  });
 }

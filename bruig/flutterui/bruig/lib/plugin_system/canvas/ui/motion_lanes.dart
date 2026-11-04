@@ -416,10 +416,7 @@ class _MotionLanesState extends State<MotionLanes> {
                             style: label),
                       ),
                     ),
-                    if (controller.slotsBeside)
-                      _RowSlots(controller: controller, element: e)
-                    else if (!_folded.contains(e.id) &&
-                        controller.headerWidth > 90)
+                    if (!_folded.contains(e.id) && controller.headerWidth > 90)
                       Padding(
                         padding: const EdgeInsets.only(right: 4),
                         child: Column(children: [
@@ -437,6 +434,17 @@ class _MotionLanesState extends State<MotionLanes> {
               ),
           ]),
         ),
+        // Its slots beside its rows, a cue each, when they are.
+        if (controller.slotsBeside)
+          SizedBox(
+            width: controller.slotsWidth,
+            child: Column(children: [
+              for (var e in rows)
+                SizedBox(
+                    height: _rowHeight(e),
+                    child: _RowSlots(controller: controller, element: e)),
+            ]),
+          ),
         Expanded(
           child: LayoutBuilder(builder: (context, constraints) {
             var width = constraints.maxWidth;
@@ -540,65 +548,71 @@ class _MotionLanesState extends State<MotionLanes> {
   }
 }
 
-/// _RowSlots are an element's slots beside its rows, as many as fit: a
-/// square each, in its clip's colour. Pressed, it launches; double-clicked,
-/// it opens in the Animation panel; dragged, it goes onto the timeline or
-/// into a strip's slot. An empty one pressed stops the element's clips.
+/// _RowSlots are an element's slots beside its rows, a cue each, as on its
+/// strip in the mixer: its triangle launches it -- an empty one stops the
+/// element's clips; its name, clicked, opens it in the Animation panel;
+/// dragged, it goes onto the timeline or into another slot.
 class _RowSlots extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;
   const _RowSlots({required this.controller, required this.element});
-
-  static const double _size = 14;
 
   @override
   Widget build(BuildContext context) {
     var c = controller;
     var colors = ThemeNotifier.of(context).colors;
     var m = element.base.motion;
-    var count = ((c.headerWidth - 18 - 56) / (_size + 2))
-        .floor()
-        .clamp(0, c.session.rows);
-    Widget square(int i) {
+    Widget cell(int i) {
       var clip = m.slot(i);
       var state = c.motionSlotState(element.id, i);
       var lit = state == MotionSlotState.playing ||
           state == MotionSlotState.stopping ||
           state == MotionSlotState.queued;
-      var box = Container(
-        width: _size,
-        height: _size,
-        decoration: BoxDecoration(
-          color: clip == null
-              ? null
-              : motionKindColours[clip.kind]!.withValues(alpha: lit ? 1 : 0.4),
-          borderRadius: BorderRadius.circular(2),
-          border: Border.all(
-              color: lit ? colors.onSurface : colors.outlineVariant,
-              width: lit ? 1.5 : 1),
-        ),
-        child: lit && clip != null
-            ? const Icon(Icons.play_arrow, size: 10, color: Color(0xFF0E0F12))
-            : null,
-      );
-      var pressed = Listener(
+      var ink = lit ? const Color(0xFF0E0F12) : colors.onSurface;
+      var launch = Listener(
         key: ValueKey("rowSlot-${element.id}-$i"),
         behavior: HitTestBehavior.opaque,
         onPointerDown: (_) => c.pressMotionSlot(element.id, i),
         onPointerUp: (_) {
           if (clip != null) c.releaseMotionClip(element.id, clip.id);
         },
-        child: GestureDetector(
-          onDoubleTap: clip == null
-              ? null
-              : () {
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Icon(clip == null ? Icons.stop : Icons.play_arrow,
+              size: 11, color: clip == null ? colors.onSurfaceVariant : ink),
+        ),
+      );
+      var box = Container(
+        decoration: BoxDecoration(
+          color: clip == null
+              ? colors.surfaceContainerHigh
+              : motionKindColours[clip.kind]!.withValues(alpha: lit ? 1 : 0.45),
+          borderRadius: BorderRadius.circular(3),
+          border: Border.all(
+              color: c.pickedMotion != null && c.pickedMotion == clip?.id
+                  ? colors.onSurface
+                  : colors.outlineVariant.withValues(alpha: 0.6)),
+        ),
+        child: Row(children: [
+          launch,
+          if (clip != null)
+            Expanded(
+              child: GestureDetector(
+                key: ValueKey("rowSlotName-${element.id}-$i"),
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
                   c.pickMotion(element.id, clip.id);
                   c.animationOpen = true;
                 },
-          child: box,
-        ),
+                child: Text(clip.name.isEmpty ? "Clip" : clip.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10, height: 1.1, color: ink)),
+              ),
+            ),
+        ]),
       );
-      if (clip == null) return pressed;
+      if (clip == null) return box;
       return Draggable<Object>(
         data: MotionSlotDrag(element.id, i, clip.id),
         dragAnchorStrategy: pointerDragAnchorStrategy,
@@ -614,16 +628,16 @@ class _RowSlots extends StatelessWidget {
                     color: Color(0xFF0E0F12))),
           ),
         ),
-        child: pressed,
+        child: box,
       );
     }
 
     return Padding(
-      padding: const EdgeInsets.only(right: 4),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        for (var i = 0; i < count; i++) ...[
-          if (i > 0) const SizedBox(width: 2),
-          square(i),
+      padding: const EdgeInsets.fromLTRB(3, 3, 2, 3),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (var i = 0; i < c.session.rows; i++) ...[
+          if (i > 0) const SizedBox(width: 3),
+          SizedBox(width: CanvasController.slotCellWidth, child: cell(i)),
         ],
       ]),
     );

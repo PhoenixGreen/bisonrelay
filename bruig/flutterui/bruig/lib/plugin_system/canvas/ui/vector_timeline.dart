@@ -134,7 +134,7 @@ class _VectorShapeLanesState extends State<VectorShapeLanes> {
       height: height,
       child: Row(children: [
         SizedBox(
-          width: controller.headerWidth,
+          width: controller.leftWidth,
           child: Column(children: [
             for (var g in shown)
               SizedBox(

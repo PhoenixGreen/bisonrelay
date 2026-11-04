@@ -472,7 +472,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   /// _laneWidth is the width the frames are laid across: the body, less its
   /// padding and the strip column.
   double _laneWidth(double bodyWidth) =>
-      math.max(1, bodyWidth - 20 - controller.headerWidth);
+      math.max(1, bodyWidth - 20 - controller.leftWidth);
 
   /// _onSignal is the wheel: with Ctrl or Cmd it zooms about the pointer;
   /// sideways -- or with Shift, or anywhere over the keyframe strip -- it
@@ -500,7 +500,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     GestureBinding.instance.pointerSignalResolver.register(event, (e) {
       var d = (e as PointerScrollEvent).scrollDelta;
       if (zoom) {
-        var x = local.dx - 10 - controller.headerWidth;
+        var x = local.dx - 10 - controller.leftWidth;
         var around = _viewNow.first + _viewNow.framesPer(x, width);
         _setView(_viewNow.zoomed(math.exp(-d.dy / 300), around, frames));
       } else {
@@ -521,7 +521,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     var width = _laneWidth(bodyWidth);
     var next = _viewNow;
     if ((event.scale - _pinch).abs() > 0.001) {
-      var x = event.localPosition.dx - 10 - controller.headerWidth;
+      var x = event.localPosition.dx - 10 - controller.leftWidth;
       var around = next.first + next.framesPer(x, width);
       next = next.zoomed(event.scale / _pinch, around, frames);
       _pinch = event.scale;
@@ -877,7 +877,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
           Positioned(
             // On the strips' side of the line only: over the lanes it covered
             // the fade handle of a sound starting on frame one.
-            left: 10 + controller.headerWidth - 5,
+            left: 10 + controller.leftWidth - 5,
             top: _stripTop,
             bottom: _barBelow
                 ? _stripPadBottom +
@@ -932,6 +932,50 @@ class CanvasTimelineState extends State<CanvasTimeline> {
 
   /// _stripHeader is the column beside the keyframe strip, the width of the
   /// channels' strips under it: the zoom, and what each row of marks is.
+  /// _cueLaunches is a launch for each cue over the slots beside the rows:
+  /// the whole row, every element's and channel's, from the next bar.
+  Widget _cueLaunches(ThemeNotifier theme) {
+    var colors = theme.colors;
+    return Container(
+      width: controller.slotsWidth,
+      padding: const EdgeInsets.fromLTRB(3, 4, 2, 4),
+      decoration: BoxDecoration(
+          border: Border(right: BorderSide(color: colors.outlineVariant))),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (var i = 0; i < controller.session.rows; i++) ...[
+          if (i > 0) const SizedBox(width: 3),
+          SizedBox(
+            width: CanvasController.slotCellWidth,
+            height: 20,
+            child: Material(
+              color: controller.sceneLaunched == i
+                  ? colors.primaryContainer
+                  : colors.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(3),
+              child: InkWell(
+                key: ValueKey("cueLaunch-$i"),
+                borderRadius: BorderRadius.circular(3),
+                onTap: () => controller.launchScene(i),
+                child: Row(children: [
+                  Icon(Icons.play_arrow, size: 12, color: colors.onSurface),
+                  Expanded(
+                    child: Text(
+                        controller.session.scenes[i].isEmpty
+                            ? "${i + 1}"
+                            : controller.session.scenes[i],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 10.5, color: colors.onSurface)),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
+
   Widget _stripHeader(ThemeNotifier theme, String? target) {
     var colors = theme.colors;
     var muted = TextStyle(fontSize: 10, color: colors.onSurfaceVariant);
@@ -1795,6 +1839,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                           color: theme.colors.outline.withValues(alpha: 0.8)))),
               child: Row(children: [
                 _stripHeader(theme, target),
+                // Over the slots beside the rows: a launch for each cue.
+                if (controller.slotsBeside) _cueLaunches(theme),
                 Expanded(
                     child: LayoutBuilder(
                   builder: (context, constraints) => Stack(children: [
@@ -2174,7 +2220,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
           SizedBox(
             height: _scrollbarHeight,
             child: Row(children: [
-              SizedBox(width: controller.headerWidth),
+              SizedBox(width: controller.leftWidth),
               Expanded(
                 child: _TimelineScrollbar(
                   key: const ValueKey("timelineScrollbar"),

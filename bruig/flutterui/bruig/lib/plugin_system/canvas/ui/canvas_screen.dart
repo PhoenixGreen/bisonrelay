@@ -1142,7 +1142,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
                     // effects at the bottom -- so a strip and the chain it
                     // opens read top to bottom. Each is resized by the grip
                     // along its own top.
-                    if (_controller.animationOpen)
+                    // One detail panel: the Animation panel or the
+                    // effects, never both.
+                    if (_controller.animationOpen && !_controller.effectsOpen)
                       Positioned(
                         bottom: _shown && _keyframesOpen && !_controller.playing
                             ? keyframeBarHeight

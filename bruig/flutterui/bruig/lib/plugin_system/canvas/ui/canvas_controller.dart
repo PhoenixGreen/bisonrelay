@@ -1074,6 +1074,16 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
+  /// slotCellWidth is a slot beside the rows: its launch and its name.
+  static const double slotCellWidth = 72;
+
+  /// slotsWidth is the slots beside the rows, a cue each, or nought with
+  /// them put away; leftWidth everything left of the lanes -- the strips
+  /// and the slots -- which is where the time starts.
+  double get slotsWidth =>
+      _slotsBeside ? session.rows * (slotCellWidth + 3) + 5 : 0;
+  double get leftWidth => headerWidth + slotsWidth;
+
   /// canvasSnap is the bar's Snap: the page's snap switch on a page, and
   /// on a 3D stage the stage's own, which starts off -- both in the Grid
   /// and guides settings. Not [snapping], which is the timeline's.
@@ -11127,7 +11137,10 @@ class CanvasController extends ChangeNotifier {
       case "smallest":
         _mixerOpen = _mixerMinimised = _mixerSmallest = true;
     }
-    if (state["effects"] == true) _effectsOpen = true;
+    if (state["effects"] == true) {
+      _effectsOpen = true;
+      _animationOpen = false;
+    }
     if (state["folded"] case List folded) {
       foldedDevices
         ..clear()
@@ -11242,6 +11255,8 @@ class CanvasController extends ChangeNotifier {
     }
     _effectsOf = key;
     _effectsOpen = true;
+    // One detail panel: the effects in the Animation panel's place.
+    _animationOpen = false;
     notifyListeners();
   }
 
@@ -11318,6 +11333,8 @@ class CanvasController extends ChangeNotifier {
     _clipCursor = 0;
     _effectsOf = channel;
     _effectsOpen = true;
+    // One detail panel: the effects in the Animation panel's place.
+    _animationOpen = false;
     _pianoRollShown = false;
     _clipEditorShown = true;
     // First in the strip: scrolled to.
@@ -11793,6 +11810,8 @@ class CanvasController extends ChangeNotifier {
     _pianoRoll = PianoRollTarget(channel, row);
     _effectsOf = channel;
     _effectsOpen = true;
+    // One detail panel: the effects in the Animation panel's place.
+    _animationOpen = false;
     _pianoRollShown = true;
     _clipEditorShown = false;
     _effectsFocus = "roll";
@@ -13772,6 +13791,8 @@ class CanvasController extends ChangeNotifier {
   void _openSoundDesk() {
     _mixerOpen = true;
     _effectsOpen = true;
+    // One detail panel: the effects in the Animation panel's place.
+    _animationOpen = false;
   }
 
   /// _autosave is the pending write, if any.

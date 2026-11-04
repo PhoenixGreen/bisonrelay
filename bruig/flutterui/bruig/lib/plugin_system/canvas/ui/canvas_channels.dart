@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart'
     show isMidiId;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
+    show sectionColors;
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart'
     show MotionLanes, motionRowsOf;
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart'
@@ -293,8 +295,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       var origin = row.localToGlobal(Offset.zero);
       var top = origin.dy, bottom = origin.dy + row.size.height;
       if (bottom < box.top || top > box.bottom) continue;
-      var left = origin.dx + controller.headerWidth;
-      var width = row.size.width - controller.headerWidth;
+      var left = origin.dx + controller.leftWidth;
+      var width = row.size.width - controller.leftWidth;
       for (var lane in channel.lanes) {
         var span = _span(lane);
         var a = left + _view.xOf(span.from, width);
@@ -665,6 +667,9 @@ class _CanvasChannelsState extends State<CanvasChannels> {
         _row(channel.key, _heightOf(channel.key), width,
             moving: channel.key == _moving,
             accent: owned ? theme.colors.primary : null,
+            beside: controller.slotsBeside
+                ? SessionRowSlots(controller: controller, channel: channel.key)
+                : null,
             header: _ChannelHeader(
               key: ValueKey("channelStrip-${channel.key}"),
               channel: channel,
@@ -726,7 +731,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
               height: automationLaneHeight,
               child: Row(children: [
                 SizedBox(
-                    width: width,
+                    width: controller.leftWidth,
                     child: AutomationLaneHeader(
                         controller: controller,
                         channel: channel,
@@ -745,7 +750,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
             height: automationAddHeight,
             child: Row(children: [
               SizedBox(
-                  width: width,
+                  width: controller.leftWidth,
                   child: AutomationAddRow(
                       controller: controller, channel: channel)),
               const Expanded(child: SizedBox()),
@@ -849,7 +854,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       {required Widget header,
       required Widget lane,
       bool moving = false,
-      Color? accent}) {
+      Color? accent,
+      Widget? beside}) {
     var row = Row(children: [
       // An element's own sound: the element's stripe down its left, drawn
       // over the strip so nothing in it moves.
@@ -863,6 +869,10 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                       border:
                           Border(left: BorderSide(color: accent, width: 3))),
                   child: header)),
+      // The slots beside the rows, when they are: a channel's, or room.
+      if (controller.slotsBeside)
+        SizedBox(
+            width: controller.slotsWidth, child: beside ?? const SizedBox()),
       Expanded(child: lane),
     ]);
     var colors = ThemeNotifier.of(context).colors;
@@ -1140,7 +1150,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   /// _frameIn is the frame under [global] across lane [channel]'s frames.
   int _frameIn(String channel, Offset global) {
     var box = _keyFor(channel).currentContext?.findRenderObject();
-    var width = controller.headerWidth;
+    var width = controller.leftWidth;
     if (box is! RenderBox || box.size.width <= width) return controller.frame;
     var x = box.globalToLocal(global).dx - width;
     return _view.frameAt(x, box.size.width - width, controller.timelineReach);
@@ -2141,6 +2151,86 @@ class _StripButton extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     color: ink)),
       ),
+    );
+  }
+}
+
+/// SessionRowSlots are a channel's clip slots beside its row on the
+/// timeline, a cue each, as on its strip in the mixer: pressed, launched --
+/// an empty one stops the channel; dragged, onto a lane.
+class SessionRowSlots extends StatelessWidget {
+  final CanvasController controller;
+  final String channel;
+  const SessionRowSlots(
+      {required this.controller, required this.channel, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var c = controller;
+    var colors = ThemeNotifier.of(context).colors;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(3, 3, 2, 3),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (var i = 0; i < c.session.rows; i++) ...[
+          if (i > 0) const SizedBox(width: 3),
+          SizedBox(
+              width: CanvasController.slotCellWidth,
+              child: _cell(c, colors, i)),
+        ],
+      ]),
+    );
+  }
+
+  Widget _cell(CanvasController c, ColorScheme colors, int row) {
+    var clip = c.session.at(channel, row);
+    var state = c.clipState(channel, row);
+    var lit = state == ClipState.playing ||
+        state == ClipState.stopping ||
+        state == ClipState.queued;
+    var ink = lit ? const Color(0xFF0E0F12) : colors.onSurface;
+    var cell = Listener(
+      key: ValueKey("rowClip-$channel-$row"),
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (_) => c.pressClip(channel, row),
+      onPointerUp: (_) => c.releaseClip(channel, row),
+      child: Container(
+        decoration: BoxDecoration(
+          color: clip == null
+              ? colors.surfaceContainerHigh
+              : Color(sectionColors[clip.color % sectionColors.length])
+                  .withValues(alpha: lit ? 1 : 0.45),
+          borderRadius: BorderRadius.circular(3),
+          border:
+              Border.all(color: colors.outlineVariant.withValues(alpha: 0.6)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: clip == null
+            ? null
+            : Row(children: [
+                Icon(Icons.play_arrow, size: 11, color: ink),
+                Expanded(
+                  child: Text(clip.name.isEmpty ? "Clip" : clip.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10, color: ink)),
+                ),
+              ]),
+      ),
+    );
+    if (clip == null) return cell;
+    return Draggable<Object>(
+      data: SessionSlotDrag(channel, row, clip),
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      feedback: Material(
+        color: Color(sectionColors[clip.color % sectionColors.length]),
+        borderRadius: BorderRadius.circular(3),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          child: Text(clip.name.isEmpty ? "Clip" : clip.name,
+              style: const TextStyle(fontSize: 10, color: Color(0xFF0E0F12))),
+        ),
+      ),
+      child: cell,
     );
   }
 }

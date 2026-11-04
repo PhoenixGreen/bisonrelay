@@ -139,7 +139,7 @@ class _ImageLayerLanesState extends State<ImageLayerLanes> {
       height: height,
       child: Row(children: [
         SizedBox(
-          width: controller.headerWidth,
+          width: controller.leftWidth,
           child: Column(children: [
             for (var i in shown)
               SizedBox(
