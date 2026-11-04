@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/model/gltf_pack.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_api_keys.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
@@ -33,8 +35,9 @@ class StockKeys {
       CanvasApiKeys.read("${s.keyHost}#secret");
 
   static Future<bool> has(StockSource s) async =>
-      (await key(s)).isNotEmpty &&
-      (!s.needsSecret || (await secret(s)).isNotEmpty);
+      !s.needsKey ||
+      ((await key(s)).isNotEmpty &&
+          (!s.needsSecret || (await secret(s)).isNotEmpty));
 
   static Future<void> save(StockSource s, String key,
       [String secret = ""]) async {
@@ -119,6 +122,7 @@ class StockClient {
     if (!await StockKeys.has(source)) {
       return StockPage.failed("Add your ${source.from} key first.");
     }
+    if (source == StockSource.polyHaven) return _polyHaven(q);
 
     var request = requestFor(q, key: await StockKeys.key(source));
     var text = await _cached(request.cacheKey);
@@ -145,6 +149,117 @@ class StockClient {
       debugPrint("Unreadable ${source.from} answer: $exception");
       return StockPage.failed("${source.from} answered with something "
           "that could not be read.");
+    }
+  }
+
+  /// polyHavenAgent is who asks Poly Haven, as its API asks every app to
+  /// say: the app's name.
+  static const polyHavenAgent = "BisonRelay-Canvas/1.0";
+  static const _polyHavenHeaders = {"User-Agent": polyHavenAgent};
+
+  /// _jsonOf is [uri]'s answer read, kept as searches are -- or null.
+  Future<Object?> _jsonOf(Uri uri) async {
+    var key = uri.toString();
+    var text = await _cached(key);
+    if (text == null) {
+      var (status, body) = await getText(uri, _polyHavenHeaders);
+      if (status != 200) return null;
+      text = body;
+      await _remember(key, text);
+    }
+    try {
+      return jsonDecode(text);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// _polyHaven is a page of Poly Haven's models: its catalogue of them,
+  /// in the order its search puts them -- or, searching for nothing, the
+  /// most downloaded first. See polyHavenPage.
+  Future<StockPage> _polyHaven(StockQuery q) async {
+    var catalogue = await _jsonOf(
+        Uri.https("api.polyhaven.com", "/assets", {"t": "models"}));
+    if (catalogue is! Map<String, dynamic>) {
+      return const StockPage.failed("Poly Haven could not be reached.");
+    }
+    List<String>? slugs;
+    if (q.text.trim().isNotEmpty) {
+      var found = await _jsonOf(requestFor(q, key: "").uri);
+      if (found is! Map || found["results"] is! List) {
+        return const StockPage.failed("Poly Haven's search could not be read.");
+      }
+      slugs = [
+        for (var r in found["results"] as List)
+          if (r is Map && r["slug"] is String) r["slug"] as String
+      ];
+    }
+    return polyHavenPage(catalogue, slugs, page: q.page);
+  }
+
+  /// fetchPolyHavenModel saves Poly Haven's model [slug] to [to] as a .glb:
+  /// its glTF at the smallest size it comes in, with every file it needs,
+  /// packed into one -- see packGltf. Whether it could.
+  Future<bool> fetchPolyHavenModel(String slug, File to,
+      {required int maxBytes,
+      required bool allowFetching,
+      required bool proxied}) async {
+    if (refusal(allowFetching: allowFetching, proxied: proxied) != null) {
+      return false;
+    }
+    var files = await _jsonOf(Uri.https("api.polyhaven.com", "/files/$slug"));
+    if (files is! Map || files["gltf"] is! Map) return false;
+    var sizes = files["gltf"] as Map;
+    var size = ["1k", "2k", "4k"].where(sizes.containsKey).firstOrNull ??
+        sizes.keys.whereType<String>().firstOrNull;
+    var entry = size == null ? null : sizes[size];
+    if (entry is! Map || entry["gltf"] is! Map) return false;
+    var gltf = entry["gltf"] as Map;
+    if (gltf["url"] is! String) return false;
+    var include = gltf["include"] is Map ? gltf["include"] as Map : const {};
+    var total = (gltf["size"] as num? ?? 0) +
+        include.values.fold<num>(
+            0, (a, f) => a + (f is Map ? (f["size"] as num? ?? 0) : 0));
+    if (total > maxBytes) return false;
+    var (status, text) =
+        await getText(Uri.parse(gltf["url"] as String), _polyHavenHeaders);
+    if (status != 200) return false;
+    var got = <String, Uint8List>{};
+    for (var e in include.entries) {
+      if (e.key is! String || e.value is! Map || e.value["url"] is! String) {
+        continue;
+      }
+      var bytes = await _bytesOf(Uri.parse(e.value["url"] as String), maxBytes);
+      if (bytes == null) return false;
+      got[e.key as String] = bytes;
+    }
+    var packed = packGltf(text, got);
+    if (packed == null) return false;
+    await to.writeAsBytes(packed);
+    return true;
+  }
+
+  /// _bytesOf is [uri] read whole, or null: refused, failed or larger than
+  /// [maxBytes].
+  Future<Uint8List?> _bytesOf(Uri uri, int maxBytes) async {
+    if (!uri.isScheme("https")) return null;
+    var client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      var request = await client.getUrl(uri);
+      _polyHavenHeaders.forEach(request.headers.set);
+      var response = await request.close();
+      if (response.statusCode != 200) return null;
+      var out = BytesBuilder(copy: false);
+      await for (var chunk in response) {
+        out.add(chunk);
+        if (out.length > maxBytes) return null;
+      }
+      return out.toBytes();
+    } catch (exception) {
+      debugPrint("Stock download failed: $exception");
+      return null;
+    } finally {
+      client.close(force: true);
     }
   }
 

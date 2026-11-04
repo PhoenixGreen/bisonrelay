@@ -92,9 +92,10 @@ class ModelScene extends ChangeNotifier {
     var fit = radius / math.sin(fov / 2) / math.min(1.0, aspect);
     var distance = fit / math.max(0.05, zoom);
     var a = turn * math.pi / 180, b = tilt * math.pi / 180;
+    // A glTF model faces +z: seen from in front at turn nought.
     var eye = _centre +
         vm.Vector3(math.sin(a) * math.cos(b), math.sin(b),
-                -math.cos(a) * math.cos(b)) *
+                math.cos(a) * math.cos(b)) *
             distance;
     var camera = PerspectiveCamera(
         fovRadiansY: fov,
@@ -127,8 +128,10 @@ class ModelScene extends ChangeNotifier {
         vm.Vector3(-v.$1, v.$2, v.$3);
     var scale = height / math.max(0.001, _size.y);
     var feet = vm.Vector3(_centre.x, _centre.y - _size.y / 2, _centre.z);
+    // Facing nought, towards the camera, as a glTF model already does;
+    // turned the other way round, for the mirror.
     node.localTransform = vm.Matrix4.translation(toScene((x, lift, z)))
-      ..rotateY((facing * math.pi / 180) - math.pi)
+      ..rotateY(-facing * math.pi / 180)
       ..scaleByDouble(scale, scale, scale, 1)
       ..translateByVector3(-feet);
     _pose(plays);

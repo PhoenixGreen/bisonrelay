@@ -49,6 +49,16 @@ enum StockSource {
     keyHost: "api.jamendo.com",
     keyPage: "https://devportal.jamendo.com/",
     from: "Jamendo",
+  ),
+
+  /// polyHaven is Poly Haven's 3D models: CC0, and no key -- see
+  /// polyHavenPage and fetchPolyHavenModel.
+  polyHaven(
+    label: "Poly Haven models",
+    kind: AssetKind.model,
+    keyHost: "",
+    keyPage: "https://polyhaven.com/models",
+    from: "Poly Haven",
   );
 
   final String label;
@@ -78,6 +88,10 @@ enum StockSource {
   /// signs every request with a key and a secret; the rest take a key alone.
   bool get needsSecret => this == nounProject;
 
+  /// needsKey is whether a search needs a key of its own: Poly Haven's is
+  /// open to all.
+  bool get needsKey => this != polyHaven;
+
   /// needsText is whether a search must say what it is looking for. The
   /// others show what is popular when asked for nothing in particular.
   bool get needsText => this == nounProject;
@@ -95,6 +109,9 @@ enum StockSource {
             "commercial use.",
         jamendo => "From Jamendo. Creative Commons music, most of it for "
             "non-commercial use only; each track keeps its licence.",
+        // Poly Haven asks for this credit wherever its live API is used.
+        polyHaven => "Powered by Poly Haven. Its models are CC0: free for "
+            "any use, no credit needed -- though it is appreciated.",
       };
 
   static StockSource fromName(String? name) =>
@@ -237,6 +254,7 @@ List<StockFilter> filtersFor(StockSource source) => switch (source) {
             ("releasedate_desc", "Newest"),
           ]),
         ],
+      StockSource.polyHaven => const [],
     };
 
 /// pageSize is how many results a search asks for at a time.
@@ -374,6 +392,13 @@ StockRequest requestFor(StockQuery q, {required String key}) {
         ...chosen(["fuzzytags", "vocalinstrumental", "speed"]),
         "audioformat": "mp32",
         "include": "licenses musicinfo",
+      }));
+    // Its search names the models; what they are is in its catalogue --
+    // see StockClient._polyHaven.
+    case StockSource.polyHaven:
+      return StockRequest(Uri.https("api.polyhaven.com", "/search", {
+        "q": text,
+        "t": "models",
       }));
   }
 }
@@ -675,5 +700,41 @@ StockPage parseStock(StockQuery q, Object? json) {
         ));
       }
       return StockPage(items, more: results.length >= stockPageSize);
+    case StockSource.polyHaven:
+      throw StateError("Poly Haven pages are made by polyHavenPage");
   }
+}
+
+/// polyHavenPage is page [page] of Poly Haven's models: those [slugs] name,
+/// in order, as [catalogue] -- its list of every model, by slug -- has them.
+/// With no slugs, the most downloaded first.
+StockPage polyHavenPage(Map<String, dynamic> catalogue, List<String>? slugs,
+    {int page = 1}) {
+  var order = slugs ??
+      ([...catalogue.keys]..sort((a, b) => _i(catalogue[b], ["download_count"])
+          .compareTo(_i(catalogue[a], ["download_count"]))));
+  var known = [
+    for (var s in order)
+      if (catalogue[s] is Map) s
+  ];
+  var from = (page - 1) * stockPageSize;
+  var shown = known.skip(from).take(stockPageSize);
+  return StockPage([
+    for (var slug in shown)
+      StockItem(
+        source: StockSource.polyHaven,
+        id: slug,
+        title: _s(catalogue[slug], ["name"]).isEmpty
+            ? slug
+            : _s(catalogue[slug], ["name"]),
+        author: [
+          if (_at<Map>(catalogue[slug], ["authors"]) case var a?) ...a.keys,
+        ].join(", "),
+        license: "CC0",
+        licenseUrl: "https://polyhaven.com/license",
+        page: "https://polyhaven.com/a/$slug",
+        thumb: _s(catalogue[slug], ["thumbnail_url"]),
+        media: "polyhaven:$slug",
+      ),
+  ], more: from + stockPageSize < known.length);
 }

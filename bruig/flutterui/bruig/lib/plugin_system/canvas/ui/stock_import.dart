@@ -67,16 +67,22 @@ Future<LibraryAsset?> fetchStockItem(
   try {
     scratch = await Directory.systemTemp.createTemp("canvas-stock");
     var file = File(path.join(scratch.path, "$name$ext"));
-    var got = await StockClient.instance.download(item.media, file,
-        maxBytes: switch (item.kind) {
-          AssetKind.picture => maxAssetBytes,
-          AssetKind.vector => MediaKind.vector.maxBytes,
-          AssetKind.video => MediaKind.video.maxBytes,
-          AssetKind.audio => MediaKind.audio.maxBytes,
-          AssetKind.model => MediaKind.model.maxBytes,
-        },
-        allowFetching: allowFetching,
-        proxied: proxied);
+    // Poly Haven's models are several files, packed into one as they come.
+    var got = item.source == StockSource.polyHaven
+        ? await StockClient.instance.fetchPolyHavenModel(item.id, file,
+            maxBytes: MediaKind.model.maxBytes,
+            allowFetching: allowFetching,
+            proxied: proxied)
+        : await StockClient.instance.download(item.media, file,
+            maxBytes: switch (item.kind) {
+              AssetKind.picture => maxAssetBytes,
+              AssetKind.vector => MediaKind.vector.maxBytes,
+              AssetKind.video => MediaKind.video.maxBytes,
+              AssetKind.audio => MediaKind.audio.maxBytes,
+              AssetKind.model => MediaKind.model.maxBytes,
+            },
+            allowFetching: allowFetching,
+            proxied: proxied);
     if (!got) {
       report("${item.title} could not be fetched from ${item.source.from}.");
       return null;
