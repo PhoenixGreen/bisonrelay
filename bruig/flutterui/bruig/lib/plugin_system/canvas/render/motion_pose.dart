@@ -70,6 +70,16 @@ class MotionPose {
       opacity == 1 &&
       values.isEmpty;
 
+  /// withValues is this setting [more] of the renderer's channels as well.
+  MotionPose withValues(Map<String, double> more) => MotionPose(
+      dx: dx,
+      dy: dy,
+      scale: scale,
+      turn: turn,
+      opacity: opacity,
+      sources: sources,
+      values: {...values, ...more});
+
   MotionPose withSources(List<MotionSource> s) => MotionPose(
       dx: dx,
       dy: dy,
@@ -237,11 +247,11 @@ MotionPose layerPose(ElementMotion motion, int layer, double t, Rect self,
           (p, c, s),
   ]..sort((a, b) => a.$3.start.compareTo(b.$3.start));
   MotionPose? held;
-  (MotionClip, double)? active;
+  (MotionClip, double, ClipSpan)? active;
   for (var (n, (_, c, s)) in mine.indexed) {
     if (t < s.start) {
       if (n == 0 && c.before == ClipHold.first && active == null) {
-        active = (c, s.from);
+        active = (c, s.from, s);
       }
       continue;
     }
@@ -249,15 +259,22 @@ MotionPose layerPose(ElementMotion motion, int layer, double t, Rect self,
       if (c.after == ClipHold.last) {
         held = clipPose(c, c.loop ? s.from : s.to, self, scene,
             from: replaces || held == null ? MotionPose.rest : held);
+        if (revealsIn(c)) {
+          held = held.withValues({revealFrom: s.start, revealTo: s.end});
+        }
       }
       continue;
     }
-    active = (c, s.clipTime(c, t));
+    active = (c, s.clipTime(c, t), s);
   }
-  if (active case (var c, var ct)) {
+  if (active case (var c, var ct, var s)) {
     var base = replaces || held == null ? MotionPose.rest : held;
-    return clipPose(c, ct, self, scene, from: base)
+    var pose = clipPose(c, ct, self, scene, from: base)
         .withSources([MotionSource(c, ct, layer)]);
+    // Its pieces timed across the clip that plays its arrival.
+    return revealsIn(c)
+        ? pose.withValues({revealFrom: s.start, revealTo: s.end})
+        : pose;
   }
   return held ?? MotionPose.rest;
 }

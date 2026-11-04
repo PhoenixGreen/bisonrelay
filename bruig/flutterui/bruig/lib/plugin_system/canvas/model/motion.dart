@@ -665,16 +665,16 @@ Map<String, double> insideAt(MotionClip c, double t) {
   var inside = c.inside;
   if (inside.isEmpty) return const {};
   var p = c.length <= 0 ? 1.0 : (t / c.length).clamp(0.0, 1.0);
+  // Eased as it says -- a keyframe's stretch, converted, keeps its easing.
+  if (inside["ease"] case String ease) {
+    p = KeyframeEasing.fromName(ease).apply(p);
+  }
   var out = <String, double>{};
   if (inside["own"] == true) {
     if (c.kind == MotionKind.arrive) out[InsideChannel.reveal.channel] = p;
     if (c.kind == MotionKind.leave) out[InsideChannel.close.channel] = p;
   }
-  for (var ch in const [
-    InsideChannel.count,
-    InsideChannel.bow,
-    InsideChannel.slide
-  ]) {
+  for (var ch in InsideChannel.values) {
     if (inside[ch.name] case [num from, num to]) {
       out[ch.channel] = from + (to - from) * p;
     }
@@ -924,3 +924,14 @@ class ClipSpan {
     return (from + u).clamp(from, to);
   }
 }
+
+/// revealsIn is whether [c] plays its element's arrival: whatever arrives
+/// a piece at a time -- words, layers, shapes -- is timed across it.
+bool revealsIn(MotionClip c) =>
+    (c.inside["own"] == true && c.kind == MotionKind.arrive) ||
+    c.inside["reveal"] is List;
+
+/// revealFrom and revealTo name, in a pose's values, where the clip that
+/// plays an element's arrival starts and ends -- in seconds from a clip, in
+/// frames once on a keyframe pose: what its pieces are timed against.
+const String revealFrom = "@revealFrom", revealTo = "@revealTo";

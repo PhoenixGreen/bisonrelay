@@ -94,8 +94,18 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
   var pose = e.track?.at(frame) ?? Keyframe.rest;
   if (doc == null || e.base.motion.isEmpty) return pose;
   var off = live?.of(e.id);
-  return motionPoseIn(doc, e, frame, live: off, clock: live?.clock ?? 0)
+  var moved = motionPoseIn(doc, e, frame, live: off, clock: live?.clock ?? 0)
       .onto(pose);
+  // The stretch its arrival plays over, in this document's frames.
+  if (moved.values[revealFrom] case var from?) {
+    var rate = math.max(1, doc.frameRate);
+    moved = moved.copyWith(values: {
+      ...moved.values,
+      revealFrom: from * rate,
+      revealTo: (moved.values[revealTo] ?? from) * rate,
+    });
+  }
+  return moved;
 }
 
 /// MovedElement is where an element is with its clips' moves on it: the

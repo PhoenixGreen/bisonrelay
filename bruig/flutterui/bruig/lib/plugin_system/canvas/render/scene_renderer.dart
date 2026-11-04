@@ -3,6 +3,8 @@ import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/motion.dart'
+    show revealFrom, revealTo;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
@@ -1298,6 +1300,25 @@ void _paintTextBody(
   return (animation, reveal);
 }
 
+/// _arrivalFrames is the stretch [e]'s arrival plays over: the frames of
+/// its arrival's keyframes, or of the clip playing it (see revealsIn) --
+/// what its words, layers and shapes are timed against.
+(int?, int?) _arrivalFrames(CanvasElement e, Keyframe pose) {
+  int? from, to;
+  for (var key in e.track?.keys ?? const <Keyframe>[]) {
+    if (!key.values.containsKey(KeyframeChannel.reveal)) continue;
+    from = from == null ? key.frame : math.min(from, key.frame);
+    to = to == null ? key.frame : math.max(to, key.frame);
+  }
+  if (from == null) {
+    if (pose.values[revealFrom] case var a?) {
+      from = a.round();
+      to = (pose.values[revealTo] ?? a).round();
+    }
+  }
+  return (from, to);
+}
+
 /// _partTimings is where each of [e]'s parts has got to on [frame].
 ///
 /// Measured from the element's own arrival -- the two keyframes the timeline
@@ -1317,13 +1338,7 @@ List<PartTiming> _partTimings(TextElement e, int frame, Keyframe pose) {
   var closing = (pose.values[KeyframeChannel.close] ?? 0) > 0;
   if (closing) return [for (var _ in parts) PartTiming.there];
 
-  int? from;
-  int? to;
-  for (var key in e.track?.keys ?? const <Keyframe>[]) {
-    if (!key.values.containsKey(KeyframeChannel.reveal)) continue;
-    from = from == null ? key.frame : math.min(from, key.frame);
-    to = to == null ? key.frame : math.max(to, key.frame);
-  }
+  var (from, to) = _arrivalFrames(e, pose);
   // No arrival to measure against -- one keyframe, or none. A part with an
   // animation of its own has nothing to be early or late for, so it simply
   // follows the element: an offset needs two keyframes to be an offset from.
@@ -1847,12 +1862,7 @@ _LayerArrive? _layerByLayer(ImageElement e, Keyframe pose) {
   if ((pose.values[KeyframeChannel.close] ?? 0) > 0) return null;
   var stack = e.stack;
   if (!layersSequenced(stack)) return null;
-  int? from, to;
-  for (var key in e.track?.keys ?? const <Keyframe>[]) {
-    if (!key.values.containsKey(KeyframeChannel.reveal)) continue;
-    from = from == null ? key.frame : math.min(from, key.frame);
-    to = to == null ? key.frame : math.max(to, key.frame);
-  }
+  var (from, to) = _arrivalFrames(e, pose);
   if (from == null || to == null || to <= from) return null;
   var span = to - from;
   var times = layerTimes(stack, span);
@@ -3262,7 +3272,16 @@ bool _shapeByShape(VectorElement e, Keyframe pose) {
   if (shapes == null || shapes.isEmpty) return false;
   if (_ownShapes(e)) return true;
   if ((pose.values[KeyframeChannel.close] ?? 0) > 0) return false;
-  return e.animation.on && sequenced(shapes) && vectorArrivalSpan(e) != null;
+  return e.animation.on && sequenced(shapes) && _vectorArrival(e, pose) != null;
+}
+
+/// _vectorArrival is where a drawing's arrival starts and how many frames
+/// it takes: its arrival's keyframes', or the clip's playing it.
+(int, int)? _vectorArrival(VectorElement e, Keyframe pose) {
+  if (vectorArrivalSpan(e) case var span?) return span;
+  var (from, to) = _arrivalFrames(e, pose);
+  if (from == null || to == null || to <= from) return null;
+  return (from, to - from);
 }
 
 /// _paintVectorInTurn draws a drawing a shape at a time: each shape, with
@@ -3275,7 +3294,7 @@ bool _shapeByShape(VectorElement e, Keyframe pose) {
 void _paintVectorInTurn(ui.Canvas canvas, Rect bounds, VectorElement e,
     Keyframe pose, int frame, int last) {
   var shapes = e.shapes!;
-  var arrival = vectorArrivalSpan(e);
+  var arrival = _vectorArrival(e, pose);
   var times = arrival == null ? null : cueTimes(shapes, arrival.$2);
   var own = _ownShapes(e);
   var leaving = (pose.values[KeyframeChannel.close] ?? 0) > 0;

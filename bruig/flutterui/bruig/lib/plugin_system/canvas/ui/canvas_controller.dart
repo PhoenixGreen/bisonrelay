@@ -133,6 +133,8 @@ import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_convert.dart'
+    show TracksConverted, convertTracks, hasTracks;
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart'
     show motionId, everyMotion;
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
@@ -13705,8 +13707,32 @@ class CanvasController extends ChangeNotifier {
     _pan = const Offset2(0, 0);
     // A piece of sound opens on what it is made with.
     if (document.kind.isAudio) _openSoundDesk();
+    _convertKeyframes();
     notifyListeners();
     unawaited(_repairSlots());
+  }
+
+  /// _convertKeyframes makes an old canvas's keyframes into clips, as it is
+  /// opened -- one change, so one Undo puts them back -- and keeps what it
+  /// did for the screen to say so: see takeConversion. See
+  /// motion_convert.dart.
+  void _convertKeyframes() {
+    _conversion = null;
+    if (!hasTracks(_document)) return;
+    var done = convertTracks(_document);
+    if (done.converted == 0) return;
+    apply(done.document);
+    _conversion = done;
+  }
+
+  TracksConverted? _conversion;
+
+  /// takeConversion is what opening this canvas converted, once: the screen
+  /// says so, with an Undo.
+  TracksConverted? takeConversion() {
+    var done = _conversion;
+    _conversion = null;
+    return done;
   }
 
   /// _repairSlots makes again the reversed sounds the clip slots lost: an

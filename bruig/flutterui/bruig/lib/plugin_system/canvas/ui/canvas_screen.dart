@@ -540,6 +540,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     var document = await CanvasStorage.load(prefs.lastFolder, prefs.lastName);
     if (!mounted || document == null) return;
     _controller.load(document, folder: prefs.lastFolder, name: prefs.lastName);
+    _sayConverted();
   }
 
   /// _onSelectionChanged redraws the screen only when the *selection* moves.
@@ -692,6 +693,24 @@ class _CanvasScreenState extends State<CanvasScreen> {
         confirm: "Discard");
   }
 
+  /// _sayConverted says, once, that an old canvas's keyframes were made
+  /// into clips as it opened, with an Undo that puts them back.
+  void _sayConverted() {
+    var done = _controller.takeConversion();
+    if (done == null || !mounted) return;
+    var n = done.converted;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+      key: const ValueKey("convertedNotice"),
+      duration: const Duration(seconds: 12),
+      content: Text("This canvas's keyframes are clips now: "
+          "${n == 1 ? "one element's" : "$n elements'"} animation, on the "
+          "timeline as it was"
+          "${done.kept > 0 ? " (${done.kept} kept as keyframes)" : ""}."),
+      action:
+          SnackBarAction(label: "Undo", onPressed: () => _controller.undo()),
+    ));
+  }
+
   Future<void> _open(String folder, String name) async {
     var snackbar = SnackBarModel.of(context);
     if (!await _confirmDiscard()) return;
@@ -703,6 +722,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       return;
     }
     _controller.load(document, folder: folder, name: name);
+    _sayConverted();
     if (mounted) {
       Provider.of<CanvasPreferences>(context, listen: false)
           .remember(folder, name);
@@ -761,6 +781,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       CanvasPreset? preset, CanvasDocument document) async {
     if (!await _confirmDiscard()) return;
     _controller.load(document);
+    _sayConverted();
     if (mounted) {
       Provider.of<CanvasPreferences>(context, listen: false).remember("", "");
       // Straight to the elements tab, because the next thing anybody does
