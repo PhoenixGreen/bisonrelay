@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
@@ -51,6 +52,10 @@ class CanvasSceneStrip extends StatefulWidget {
 
 class _CanvasSceneStripState extends State<CanvasSceneStrip> {
   CanvasController get controller => widget.controller;
+
+  /// _double counts a box's clicks: one opens the scene, a second opens
+  /// its transition and camera in the Animation panel.
+  final DoubleClick _double = DoubleClick();
 
   /// _held is the grip being dragged: the scene before it, how long that
   /// scene and the next were when the drag began, and frames per pixel at
@@ -250,7 +255,10 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
     return GestureDetector(
       key: ValueKey("sceneBox$index"),
       behavior: HitTestBehavior.opaque,
-      onTap: () => _open(index),
+      onTap: () {
+        _open(index);
+        if (_double.isSecond(index)) controller.pickScene(index);
+      },
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(

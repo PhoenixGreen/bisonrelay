@@ -826,6 +826,30 @@ class CanvasController extends ChangeNotifier {
     }
     _pickedMotion = clip;
     _pickedPlacement = clip == null ? null : placement;
+    _pickedScene = null;
+    _notifyView();
+  }
+
+  int? _pickedScene;
+  Set<String> _pickedSceneWith = const {};
+
+  /// pickedScene is the scene the Animation panel shows, by index -- the
+  /// transition after it, and its camera -- picked by a double click on its
+  /// box on the timeline. It gives way to a clip picked, or to anything
+  /// selected after it.
+  int? get pickedScene {
+    var i = _pickedScene;
+    if (i == null || i >= _document.allScenes.length) return null;
+    return setEquals(_selection, _pickedSceneWith) ? i : null;
+  }
+
+  /// pickScene opens [index] in the Animation panel.
+  void pickScene(int index) {
+    _pickedScene = index;
+    _pickedSceneWith = {..._selection};
+    _pickedMotion = _pickedPlacement = null;
+    _animationOpen = true;
+    effectsOpen = false;
     _notifyView();
   }
 

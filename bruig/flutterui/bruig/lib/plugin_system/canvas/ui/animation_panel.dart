@@ -22,6 +22,8 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
+import 'package:bruig/plugin_system/canvas/ui/scene_transition_parts.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/camera_section.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -188,7 +190,101 @@ class _AnimationPanelState extends State<AnimationPanel> {
     ]);
   }
 
+  /// _sceneBody is a scene picked from the timeline: the transition after
+  /// it, part by part, and its camera.
+  Widget _sceneBody(BuildContext context, int index) {
+    var colors = ThemeNotifier.of(context).colors;
+    var document = controller.document;
+    var target = SceneTransitionTarget(controller, index);
+    var master = target.master;
+    var hint = TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant);
+    Widget part(TransitionPart p, String id, String title, double width,
+            {String? help}) =>
+        _device(
+            id,
+            title,
+            width,
+            SceneTransitionPart(
+              target: target,
+              part: p,
+              onPreview: () => controller.previewTransitionAfter(index),
+            ),
+            colors,
+            help: help);
+    var parts = [
+      part(TransitionPart.choice, "sceneTransition", "Transition", 240,
+          help: "How this ${document.kind.one} gives way to the next. On the "
+              "master ${document.kind.one}, the one every "
+              "${document.kind.one} starts from."),
+      if (target.shows(TransitionPart.timing))
+        part(TransitionPart.timing, "sceneTiming", "How long", 180),
+      if (target.shows(TransitionPart.looks))
+        part(TransitionPart.looks, "sceneLooks", "What it looks like", 220),
+      if (target.shows(TransitionPart.sound))
+        part(TransitionPart.sound, "sceneSound", "Sound", 280),
+      if (target.shows(TransitionPart.source))
+        part(TransitionPart.source, "sceneSource", "Where it comes from", 220,
+            help: "Off, this ${document.kind.one} uses the transition set on "
+                "the master ${document.kind.one}, and changing that one "
+                "changes it here. On, it keeps its own whatever the master "
+                "says."),
+      // Its slow move: the one being edited, which a double click has
+      // opened.
+      if (!master && document.at == index)
+        _device("sceneCamera", "Camera", 240,
+            CanvasCameraSection(controller: controller), colors),
+    ];
+    var next = index + 1 < document.allScenes.length
+        ? "gives way to ${document.nameOf(index + 1)}"
+        : "the last: gives way to nothing";
+    return Container(
+      key: const ValueKey("animationPanel"),
+      height: widget.height,
+      color: colors.surfaceContainerLow,
+      child: Column(children: [
+        SizedBox(
+          height: 32,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(children: [
+              Icon(Icons.movie_outlined, size: 14, color: colors.primary),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                    master
+                        ? "Every ${document.kind.one}"
+                        : document.nameOf(index),
+                    key: const ValueKey("animSceneTitle"),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, color: colors.onSurface)),
+              ),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(master ? "unless one says otherwise" : next,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: hint),
+              ),
+            ]),
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+            children: [
+              for (var w in parts) ...[w, const SizedBox(width: 6)],
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+
   Widget _body(BuildContext context) {
+    if (controller.pickedScene case var scene?) {
+      return _sceneBody(context, scene);
+    }
     var colors = ThemeNotifier.of(context).colors;
     var picked = _picked;
     var hint = TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant);
@@ -200,7 +296,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
         alignment: Alignment.center,
         child: Text(
             "Pick a slot, a clip on the timeline or an element to see its "
-            "animation here.",
+            "animation here -- or double-click a scene on the timeline for "
+            "its transition.",
             style: hint),
       );
     }

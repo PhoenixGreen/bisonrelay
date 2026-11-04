@@ -6,7 +6,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/structure_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/transitions_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/vocal_cues_panel.dart';
 import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
 import 'package:flutter/material.dart';
@@ -36,7 +36,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   late Widget _add;
   late Widget _scenes;
   late Widget _structure;
-  late Widget _transitions;
+  late Widget _cues;
   late Widget _layers;
   late Widget _settings;
 
@@ -62,11 +62,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
     _add = CanvasElementsPanel(controller: controller);
     _scenes = CanvasScenesPanel(controller: controller);
     _structure = CanvasStructurePanel(controller: controller);
-    _transitions = CanvasTransitionsPanel(
-      controller: controller,
-      onPreview: () =>
-          controller.previewTransitionAfter(controller.document.at),
-    );
+    _cues = CanvasVocalCuesPanel(controller: controller);
     _layers = CanvasLayersPanel(controller: controller);
     _settings = _SettingsBody(controller: controller);
   }
@@ -128,16 +124,20 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
               startsOpen: false,
               body: _scenes,
             ),
-          // Only where there is another scene to give way to.
-          if (controller.document.hasScenes)
-            StackPanel(
-              id: "transitions",
-              label: "Transition",
-              icon: Icons.compare_arrows,
-              hint: "How the scene showing gives way to the next one. On the "
-                  "master canvas this is the one every scene starts from.",
-              body: _transitions,
-            ),
+          StackPanel(
+            id: "vocalCues",
+            label: "Vocal cues",
+            icon: Icons.record_voice_over_outlined,
+            trailing: controller.document.cues.isEmpty
+                ? null
+                : "${controller.document.cues.length}",
+            hint: "Named moments a voice-over's lines start on, for elements "
+                "to be timed against. A scene's transition is in the "
+                "Animation panel: double-click the scene on the timeline.",
+            // Shut to begin with, as the scenes are: opened, remembered.
+            startsOpen: false,
+            body: _cues,
+          ),
           StackPanel(
             id: "layers",
             label: "Layers",

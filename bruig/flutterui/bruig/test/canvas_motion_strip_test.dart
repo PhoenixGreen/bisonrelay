@@ -195,6 +195,39 @@ void main() {
     expect(c.headerWidth, lessThan(header), reason: "and the strips theirs");
   });
 
+  testWidgets("the channel-height button sizes every element's rows too",
+      (tester) async {
+    var c = await pumpBoth(tester);
+    double row() =>
+        tester.getSize(find.byKey(const ValueKey("motionRow-a"))).height;
+    Future<void> next() async {
+      await tester.tap(find.byKey(const ValueKey("timelineLaneHeight")));
+      await frames(tester);
+    }
+
+    // Small: folded to one line, however many layers it has.
+    expect(c.laneSize, 0);
+    var small = row();
+    expect(find.byIcon(Icons.chevron_right), findsWidgets);
+    await next();
+    var medium = row();
+    expect(medium, greaterThan(small), reason: "opened");
+    await next();
+    var large = row();
+    expect(large, greaterThan(medium), reason: "its lanes taller");
+    // One folded by hand, then the button: all alike again.
+    await tester.tap(find.byKey(const ValueKey("motionFold-a")));
+    await frames(tester);
+    expect(row(), lessThan(large), reason: "one line, at the large size");
+    await next();
+    expect(c.laneSize, 0);
+    expect(row(), small);
+    await next();
+    expect(row(), medium,
+        reason: "the one folded by hand opened with the rest");
+    expect(tester.takeException(), isNull);
+  });
+
   test("slots start at two, and one more shows as the last fills", () {
     var c = make();
     addTearDown(c.dispose);

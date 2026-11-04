@@ -125,9 +125,15 @@ class _MotionLanesState extends State<MotionLanes> {
           if (widget.only == null || e.id == widget.only) e
       ];
 
-  /// _folded are the elements whose rows are folded to one, by id. For the
+  /// _flipped are the elements whose rows were folded or opened by hand,
+  /// against what the channel-height button says (small: every row folded
+  /// to one); pressed again, the button puts them all back. By id, for the
   /// session.
-  static final Set<String> _folded = {};
+  static final Set<String> _flipped = {};
+  static int _flippedAt = -1;
+
+  bool _isFolded(CanvasElement e) =>
+      (controller.laneSize == 0) != _flipped.contains(e.id);
 
   _Hit? _press;
   double _pressSeconds = 0;
@@ -136,8 +142,11 @@ class _MotionLanesState extends State<MotionLanes> {
   bool _unpinned = false;
 
   double get _scale => math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
-  double get _lane => motionLaneHeight * _scale;
-  double _rowHeight(CanvasElement e) => _folded.contains(e.id)
+
+  /// _lane is one layer's lane: taller at the button's largest.
+  double get _lane =>
+      motionLaneHeight * _scale * (controller.laneSize == 2 ? 1.6 : 1);
+  double _rowHeight(CanvasElement e) => _isFolded(e)
       ? _lane + 4
       : math.max(_lane * 1.6, motionLanesOf(e).length * _lane) + 4;
 
@@ -161,7 +170,7 @@ class _MotionLanesState extends State<MotionLanes> {
     for (var e in _rows) {
       var h = _rowHeight(e);
       if (local.dy >= y && local.dy < y + h) {
-        var folded = _folded.contains(e.id);
+        var folded = _isFolded(e);
         var lanes = motionLanesOf(e, folded: folded);
         var row = folded ? -1 : ((local.dy - y - 2) / _lane).floor();
         var layer = folded
@@ -356,6 +365,10 @@ class _MotionLanesState extends State<MotionLanes> {
 
   @override
   Widget build(BuildContext context) {
+    if (_flippedAt != controller.laneSize) {
+      _flippedAt = controller.laneSize;
+      _flipped.clear();
+    }
     var rows = _rows;
     if (rows.isEmpty) return const SizedBox.shrink();
     var theme = ThemeNotifier.of(context);
@@ -389,14 +402,14 @@ class _MotionLanesState extends State<MotionLanes> {
                   child: Row(children: [
                     InkWell(
                       key: ValueKey("motionFold-${e.id}"),
-                      onTap: () => setState(() => _folded.contains(e.id)
-                          ? _folded.remove(e.id)
-                          : _folded.add(e.id)),
+                      onTap: () => setState(() => _flipped.contains(e.id)
+                          ? _flipped.remove(e.id)
+                          : _flipped.add(e.id)),
                       child: SizedBox(
                         width: 18,
                         height: _lane,
                         child: Icon(
-                            _folded.contains(e.id)
+                            _isFolded(e)
                                 ? Icons.chevron_right
                                 : Icons.expand_more,
                             size: 14,
@@ -412,7 +425,7 @@ class _MotionLanesState extends State<MotionLanes> {
                             style: label),
                       ),
                     ),
-                    if (!_folded.contains(e.id) && controller.headerWidth > 90)
+                    if (!_isFolded(e) && controller.headerWidth > 90)
                       Padding(
                         padding: const EdgeInsets.only(right: 4),
                         child: Column(children: [
@@ -529,7 +542,10 @@ class _MotionLanesState extends State<MotionLanes> {
               size: Size(width, height),
               painter: _LanesPainter(
                 rows: rows,
-                folded: _folded,
+                folded: {
+                  for (var e in rows)
+                    if (_isFolded(e)) e.id
+                },
                 lane: _lane,
                 rowHeight: _rowHeight,
                 times: motionTimesOf(controller.document),

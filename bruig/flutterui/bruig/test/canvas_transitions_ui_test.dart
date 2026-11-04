@@ -4,15 +4,16 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/transitions_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// canvas_transitions_ui_test.dart is the line that says how a scene gives way
-// to the next one.
+// canvas_transitions_ui_test.dart is how a scene gives way to the next one,
+// in the Animation panel: a scene double-clicked on the timeline opens its
+// transition there, part by part.
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -30,6 +31,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
+    controller.pickScene(controller.document.at);
     await tester.pumpWidget(MultiProvider(
       providers: [
         ChangeNotifierProvider<ThemeNotifier>(
@@ -40,12 +42,11 @@ void main() {
       ],
       child: MaterialApp(
         home: Scaffold(
-          body: SizedBox(
-            width: width,
-            child: CanvasTransitionsPanel(
-              controller: controller,
-              onPreview: () =>
-                  controller.previewTransitionAfter(controller.document.at),
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: width,
+              child: AnimationPanel(controller: controller, height: 360),
             ),
           ),
         ),
@@ -60,7 +61,8 @@ void main() {
     var controller = await bar(tester);
     expect(
         controller.document.transitionAfter(0).kind, SceneTransitionKind.cut);
-    expect(find.text("AFTER SCENE 1"), findsOneWidget);
+    expect(find.text("Scene 1"), findsOneWidget);
+    expect(find.text("gives way to Scene 2"), findsOneWidget);
 
     // The family first, then the one: two dozen names in a single list is a
     // wall nobody reads to the end of. Choosing a family applies the first of
@@ -124,7 +126,9 @@ void main() {
     var controller = await bar(tester);
     controller.showMaster();
     await tester.pumpAndSettle();
-    expect(find.text("EVERY SCENE, UNLESS IT SAYS OTHERWISE"), findsOneWidget);
+    expect(find.text("Every scene"), findsOneWidget);
+    expect(find.byKey(const ValueKey("transitionCustom")), findsNothing,
+        reason: "it is where every other one comes from");
 
     await tester.tap(find.byKey(const ValueKey("transitionFamily")));
     await tester.pumpAndSettle();
@@ -229,73 +233,6 @@ void main() {
         reason: "and it puts the shared canvas back when it is done");
   });
 
-  testWidgets("is laid out like the panel beside it", (tester) async {
-    // Lifted from the line over the timeline, these controls kept that line's
-    // arrangement: captions beside their controls and packed in tight, which
-    // is right for a strip and wrong for a column.
-    await bar(tester);
-
-    // Something with settings to lay out: a cut has none.
-    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Overlay").last);
-    await tester.pumpAndSettle();
-
-    // A control's own caption sits above it, as it does in the settings
-    // panel. In the strip it sat beside it, which is what packed a dozen
-    // controls into four hundred pixels.
-    var caption = tester.getRect(find.text("Frames"));
-    // The box itself rather than the control around it: the control is the
-    // caption and the box together, so its own top says nothing about which
-    // of the two is on top.
-    var field = tester.getRect(find.descendant(
-        of: find.byKey(const ValueKey("transitionFrames")),
-        matching: find.byType(EditableText)));
-    expect(caption.bottom, lessThanOrEqualTo(field.top + 1),
-        reason: "caption at ${caption.bottom}, its field at ${field.top}");
-    expect((caption.left - field.left).abs(), lessThan(14),
-        reason: "and starts at the same edge, give or take the box's own "
-            "padding");
-
-    // Plain groups, with the rule and the room the panel's own groups have --
-    // no box round each section. A boxed section indents everything inside it
-    // by the box's own padding, so what says there is no box is where the
-    // controls start: hard against the panel's edge.
-    var panel = tester.getRect(find.byType(CanvasTransitionsPanel));
-    var firstControl = tester.getRect(find.text("Gives way with"));
-    expect(firstControl.left - panel.left, lessThan(12),
-        reason: "controls start at the panel's own edge: "
-            "${firstControl.left - panel.left}");
-
-    // A button with no caption of its own sits level with the controls that
-    // have one, rather than three pixels high of them: the nudge that lines
-    // it up allowed for the caption and not for the gap under it, which is
-    // nothing at all until the button is in a row with two dropdowns.
-    var play = tester.getRect(find.descendant(
-        of: find.byKey(const ValueKey("previewTransition")),
-        matching: find.byType(Icon)));
-    var box = tester.getRect(find.descendant(
-        of: find.byKey(const ValueKey("transitionKind")),
-        matching: find.byType(Container)));
-    expect((play.center.dy - box.center.dy).abs(), lessThan(1.5),
-        reason: "the button's middle at ${play.center.dy}, the dropdown "
-            "beside it at ${box.center.dy}");
-
-    // And the panel's own heading is a sentence, so it is given the room one
-    // needs: close under it, it and the caption below read as one paragraph.
-    var heading = tester.getRect(find.textContaining("AFTER "));
-    var under = tester.getRect(find.text("Gives way with"));
-    expect(under.top - heading.bottom, greaterThan(10),
-        reason: "${under.top - heading.bottom} between them");
-
-    // And it scrolls the way a column does. The line it came from scrolled
-    // sideways, which is how a dozen controls ended up somewhere off the end
-    // of a four-hundred-pixel strip.
-    var scroll = tester.widget<SingleChildScrollView>(
-        find.byType(SingleChildScrollView).first);
-    expect(scroll.scrollDirection, Axis.vertical);
-  });
-
   testWidgets("choosing a kind starts it where that kind looks best",
       (tester) async {
     // One set of settings cannot suit two dozen transitions: six is a
@@ -355,36 +292,6 @@ void main() {
     expect(back.frames, SceneTransition.bestFor(kind).frames);
   });
 
-  testWidgets("the top row holds together in a narrow sidebar", (tester) async {
-    // What this transition is, which one it is, play it, put it back: one
-    // question and the two answers to it. The names were a fixed width, so
-    // in a narrow sidebar the buttons were pushed onto a line of their own
-    // with the whole width of the panel to the right of them.
-    var controller = await bar(tester, width: 250);
-
-    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Overlay").last);
-    await tester.pumpAndSettle();
-    expect(controller.document.transitionAfter(0).on, isTrue);
-
-    // Against the first of the two names, not the second: the two names
-    // wrapping apart from each other is the same fault one step earlier.
-    var names = tester.getRect(find.byKey(const ValueKey("transitionFamily")));
-    for (var button in [
-      "transitionKind",
-      "resetTransition",
-      "previewTransition"
-    ]) {
-      var box = tester.getRect(find.byKey(ValueKey(button)));
-      expect(box.center.dy, closeTo(names.center.dy, 6),
-          reason: "$button is on its own line: ${box.center.dy} against "
-              "${names.center.dy}");
-      expect(box.right, lessThanOrEqualTo(250),
-          reason: "$button runs off the edge of the panel");
-    }
-  });
-
   testWidgets("barn doors come up with a direction already chosen",
       (tester) async {
     // They open on an axis rather than in four directions, and "to the
@@ -410,11 +317,10 @@ void main() {
         find.text(doors.way.saysFor(SceneTransitionKind.barn)), findsOneWidget);
   });
 
-  testWidgets("its settings are laid out in sections", (tester) async {
-    // One group of a dozen controls is what this panel was, and a dozen
-    // small boxes wrapped into a block reads as a field of boxes. The
-    // settings panel beside it splits the same number into Colours, Amount
-    // and Movement, and that is the whole of the difference between the two.
+  testWidgets("its settings are the panel's sections, as a clip's are",
+      (tester) async {
+    // Only the sections a transition has: a cut has no length, look or
+    // sound.
     await bar(tester);
 
     await tester.tap(find.byKey(const ValueKey("transitionFamily")));
@@ -422,8 +328,16 @@ void main() {
     await tester.tap(find.text("Overlay").last);
     await tester.pumpAndSettle();
 
-    expect(find.text("HOW LONG"), findsOneWidget);
-    expect(find.text("WHAT IT LOOKS LIKE"), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey("animDevice-sceneTiming")), findsOneWidget);
+    expect(find.byKey(const ValueKey("animDevice-sceneLooks")), findsOneWidget);
+    expect(find.byKey(const ValueKey("animDevice-sceneSound")), findsOneWidget);
+    // Each control's caption above it, as in the clip's sections.
+    var caption = tester.getRect(find.text("Frames"));
+    var field = tester.getRect(find.descendant(
+        of: find.byKey(const ValueKey("transitionFrames")),
+        matching: find.byType(EditableText)));
+    expect(caption.bottom, lessThanOrEqualTo(field.top + 1));
 
     // And no empty heading with a rule under it where a transition has
     // nothing to say about how it looks.
@@ -437,8 +351,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text("A cut").last);
     await tester.pumpAndSettle();
-    expect(find.text("HOW LONG"), findsNothing);
-    expect(find.text("WHAT IT LOOKS LIKE"), findsNothing);
+    expect(find.byKey(const ValueKey("animDevice-sceneTiming")), findsNothing);
+    expect(find.byKey(const ValueKey("animDevice-sceneLooks")), findsNothing);
   });
 
   testWidgets("the ways offered are the ones the kind has", (tester) async {
@@ -480,11 +394,10 @@ void main() {
         controller.document.transitionAfter(0).way, SceneTransitionWay.inPlace);
   });
 
-  testWidgets("with one scene the panel is not offered at all", (tester) async {
-    // A whole panel of settings about an event that cannot happen. The
-    // transition settings live in the sidebar now, beside the other panels --
-    // a dozen controls laid out sideways over the timeline meant scrolling to
-    // reach half of them and scrolling back to see what the first ones said.
+  testWidgets("the sidebar has the vocal cues, with one scene or many",
+      (tester) async {
+    // The transition left for the Animation panel; what stayed is the cues,
+    // which a single scene has as much as many.
     var controller = CanvasController(const CanvasDocument());
     addTearDown(controller.dispose);
 
@@ -507,18 +420,22 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
+    expect(find.text("VOCAL CUES"), findsOneWidget);
     expect(find.text("TRANSITION"), findsNothing);
 
     controller.addScene();
     await tester.pumpAndSettle();
-    expect(find.text("TRANSITION"), findsOneWidget,
-        reason: "and it is there as soon as there is a scene after this one");
+    expect(find.text("VOCAL CUES"), findsOneWidget);
+    expect(find.text("TRANSITION"), findsNothing);
+    expect(find.byKey(const ValueKey("transitionFamily")), findsNothing);
   });
 
   testWidgets("and the last scene has nothing to give way to", (tester) async {
     var controller = await bar(tester);
     controller.goToScene(1);
+    controller.pickScene(1);
     await tester.pumpAndSettle();
+    expect(find.text("the last: gives way to nothing"), findsOneWidget);
 
     var button = tester.widget<InkWell>(find.descendant(
         of: find.byKey(const ValueKey("previewTransition")),

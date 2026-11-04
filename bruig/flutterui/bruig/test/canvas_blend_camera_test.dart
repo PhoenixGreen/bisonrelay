@@ -14,7 +14,7 @@ import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/camera_section.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/transitions_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -139,10 +139,12 @@ void main() {
       expect(back.toX, 0.4);
     });
 
-    testWidgets("the panel sets a push in", (tester) async {
+    testWidgets("the Animation panel, a scene picked, sets a push in",
+        (tester) async {
       var c = CanvasController(scene(null));
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(600, 2400);
+      c.pickScene(0);
+      tester.view.physicalSize = const Size(1600, 600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
       await tester.pumpWidget(MultiProvider(
@@ -153,8 +155,9 @@ void main() {
         ],
         child: MaterialApp(
             home: Scaffold(
-                body: SizedBox(
-                    width: 280, child: CanvasTransitionsPanel(controller: c)))),
+                body: Align(
+                    alignment: Alignment.topLeft,
+                    child: AnimationPanel(controller: c, height: 360)))),
       ));
       await tester.pumpAndSettle();
       tester

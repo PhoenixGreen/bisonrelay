@@ -13,7 +13,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/transitions_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/vocal_cues_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
@@ -155,7 +155,7 @@ void main() {
       child: MaterialApp(
           home: Scaffold(
               body: SizedBox(
-                  width: 280, child: CanvasTransitionsPanel(controller: c)))),
+                  width: 280, child: CanvasVocalCuesPanel(controller: c)))),
     ));
     await tester.pumpAndSettle();
     // The cues are shown on the ruler, or not, from the end of this line.

@@ -2,6 +2,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -144,6 +145,41 @@ void main() {
     await tester.pumpAndSettle();
     expect(c.sceneAt, 1);
     expect(c.frame, closeTo(20, 1));
+  });
+
+  testWidgets(
+      "a double click on a box opens its transition in the Animation panel",
+      (tester) async {
+    var c = await show(tester);
+    await tapPlayAll(tester);
+    await tester.tap(find.byKey(const ValueKey("sceneBox1")));
+    await tester.pump();
+    expect(c.sceneAt, 1);
+    expect(c.pickedScene, isNull, reason: "one click opens the scene alone");
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.tap(find.byKey(const ValueKey("sceneBox1")));
+    await tester.pump(const Duration(milliseconds: 20));
+    await tester.tap(find.byKey(const ValueKey("sceneBox1")));
+    await tester.pump();
+    expect(c.pickedScene, 1);
+    expect(c.animationOpen, isTrue);
+    expect(c.effectsOpen, isFalse);
+  });
+
+  test("a scene in the Animation panel gives way to a clip or a selection", () {
+    var c = CanvasController(CanvasDocument(scenes: [
+      const CanvasScene(id: "a", frames: 10),
+      const CanvasScene(id: "b", frames: 10),
+    ]));
+    addTearDown(c.dispose);
+    c.pickScene(0);
+    expect(c.pickedScene, 0);
+    c.pickMotion(null, null);
+    expect(c.pickedScene, isNull, reason: "a clip picked");
+    c.pickScene(1);
+    c.addElement(ShapeElement(const ElementBase(id: "e")));
+    c.selectOnly("e");
+    expect(c.pickedScene, isNull, reason: "something selected");
   });
 
   testWidgets("a click on a box opens its scene", (tester) async {

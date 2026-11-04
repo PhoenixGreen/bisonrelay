@@ -3474,12 +3474,13 @@ void main() {
       // One handle each. The name is the switch, so it cannot also be the
       // grip -- a panel that moved when you tried to open it would be a panel
       // you could not open.
-      // One per panel: Add, Scenes, Layers, Colour and the settings.
-      expect(find.byType(Draggable<PanelDrag>), findsNWidgets(5),
+      // One per panel: Add, Scenes, Vocal cues, Layers, Colour and the
+      // settings.
+      expect(find.byType(Draggable<PanelDrag>), findsNWidgets(6),
           reason: "and carried as their own type, not as the plain strings "
               "the layer list drags -- otherwise a panel could be dropped on "
               "a layer");
-      expect(find.byIcon(Icons.drag_indicator), findsNWidgets(5));
+      expect(find.byIcon(Icons.drag_indicator), findsNWidgets(6));
     });
 
     testWidgets("the boundaries are the grips, and the top has none",
@@ -3497,8 +3498,8 @@ void main() {
               matching: find.byWidgetPredicate((w) =>
                   w is MouseRegion &&
                   w.cursor == SystemMouseCursors.resizeUpDown)),
-          findsNWidgets(4),
-          reason: "five panels have four boundaries, and the top of the "
+          findsNWidgets(5),
+          reason: "six panels have five boundaries, and the top of the "
               "first is not one of them");
     });
 
@@ -3511,7 +3512,7 @@ void main() {
       await panel(tester);
       var handles =
           tester.widgetList<Widget>(find.byIcon(Icons.drag_indicator)).length;
-      expect(handles, 5);
+      expect(handles, 6);
 
       var rights = [
         for (var i = 0; i < handles; i++)
@@ -6512,7 +6513,7 @@ void main() {
       expect(find.text("ADD"), findsOneWidget);
       expect(find.text("LAYERS"), findsOneWidget);
       // One header fewer, which is the room the tabbing bought.
-      expect(find.byType(DragTarget<PanelDrag>).evaluate().length, lessThan(7),
+      expect(find.byType(DragTarget<PanelDrag>).evaluate().length, lessThan(8),
           reason: "one place fewer than there are panels, and the tabs are "
               "targets too");
       // And the one dropped is the one showing.
@@ -6651,27 +6652,21 @@ void main() {
       // Saved with those two as one place: "add+layers".
       var saved = await StorageManager.readString("canvasDesign.order");
       expect(saved, contains("+"));
-      expect(saved.split(",").length, 4,
+      expect(saved.split(",").length, 5,
           reason: "one place fewer than there are panels: $saved");
     });
 
-    testWidgets("a panel that comes and goes keeps its place", (tester) async {
-      // The transition settings are there only while there is a scene to give
-      // way to. Filtered out of the arrangement on the way in -- it is not a
-      // panel yet when the column is built -- it came back at the end of the
-      // column however it had been arranged, which is a place nobody put it.
+    testWidgets("the vocal cues keep their place, with one scene or many",
+        (tester) async {
+      // Where the transition panel was, which came and went with the scenes:
+      // the cues are there for one scene as for many, where they were put.
       SharedPreferences.setMockInitialValues({});
       await StorageManager.saveString(
-          "canvasDesign.order", "transitions,add,layers,scenes,settings");
+          "canvasDesign.order", "vocalCues,add,layers,scenes,settings");
 
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
       await pump(tester, CanvasDesignPanel(controller: controller));
-      await tester.pumpAndSettle();
-      expect(find.text("TRANSITION"), findsNothing,
-          reason: "one scene has nothing to give way to");
-
-      controller.addScene();
       await tester.pumpAndSettle();
 
       double topOf(String name) => tester
@@ -6679,8 +6674,11 @@ void main() {
               of: find.text(name),
               matching: find.byType(DragTarget<PanelDrag>)))
           .top;
-      expect(topOf("TRANSITION"), lessThan(topOf("ADD")),
-          reason: "back at the top, where the arrangement left it");
+      expect(topOf("VOCAL CUES"), lessThan(topOf("ADD")));
+      controller.addScene();
+      await tester.pumpAndSettle();
+      expect(topOf("VOCAL CUES"), lessThan(topOf("ADD")),
+          reason: "still at the top, where the arrangement left it");
     });
 
     testWidgets("and an arrangement saved before tabs existed still reads",
