@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_timeline_menus.dart';
 
 // canvas_scene_timing_test.dart is time across the scenes of a run: stepping
 // through a join, transitions sized on the scene strip without moving the
@@ -136,8 +137,7 @@ void main() {
         ),
       ));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey("playAll")));
-      await tester.pumpAndSettle();
+      await tapTimelineItem(tester, "playAll-item");
       return c;
     }
 

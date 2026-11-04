@@ -23,7 +23,7 @@ MotionTimes motionTimesOf(CanvasDocument doc) {
   var rate = math.max(1, doc.frameRate);
   var times = MotionTimes(
     sceneEnd: doc.frames / rate,
-    markers: {for (var a in doc.actions) a.id: a.frame / rate},
+    markers: {for (var a in doc.actions) markerKey(a): a.frame / rate},
     placements: {
       for (var e in elements)
         for (var p in e.base.motion.placed)
@@ -79,4 +79,23 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc) {
   var pose = e.track?.at(frame) ?? Keyframe.rest;
   if (doc == null || e.base.motion.isEmpty) return pose;
   return motionPoseIn(doc, e, frame).onto(pose);
+}
+
+/// MovedElement is where an element is with its clips' moves on it: the
+/// selection box, the handles and the hit-test have to agree with what is
+/// drawn -- the boundsAt lesson, again, for clips.
+extension MovedElement on CanvasElement {
+  /// movedBoundsAt is boundsAt with [doc]'s placed clips moving it too.
+  Rect movedBoundsAt(int frame, CanvasDocument doc) => base.motion.isEmpty
+      ? boundsAt(frame)
+      : boundsWith(poseWithMotion(this, frame, doc));
+
+  /// movedRotationAt is rotationAt with the clips' turn added.
+  double movedRotationAt(int frame, CanvasDocument doc) => base.motion.isEmpty
+      ? rotationAt(frame)
+      : rotation + poseWithMotion(this, frame, doc).rotate;
+
+  /// movedFrameAt is frameAt with the clips' turn added.
+  BoxFrame movedFrameAt(int frame, CanvasDocument doc) =>
+      BoxFrame(movedRotationAt(frame, doc), base.skewX, base.skewY);
 }

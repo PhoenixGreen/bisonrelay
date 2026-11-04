@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_timeline_menus.dart';
 
 // canvas_transport_test.dart is the timeline's control bar: where the
 // playhead is said three ways and read back, tap tempo, the loop, Stop,
@@ -298,26 +299,23 @@ void main() {
       addTearDown(c.dispose);
       c.frame = 1050;
       await show(tester, c);
+      // On the bar: what is pressed while working.
       for (var key in [
-        "tapTempo",
-        "audioTempo",
-        "audioSignature",
-        "metronome",
-        "audioQuantise",
         "stopPlaying",
         "loop",
-        "follow",
-        "stepBack",
-        "keysMenu",
-        "addLocator",
+        "record",
+        "timingMenu",
+        "markerMenu",
+        "timelineMore",
         "effectsToggle",
         "mixerToggle",
       ]) {
         expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
       }
-      expect(find.byKey(const ValueKey("canvasFrames")), findsNothing);
-      expect(find.byKey(const ValueKey("prevKeyframe")), findsNothing,
-          reason: "folded into Keys");
+      // Behind the readout, not on the bar.
+      for (var key in ["audioTempo", "follow", "keysMenu", "addLocator"]) {
+        expect(find.byKey(ValueKey(key)), findsNothing, reason: key);
+      }
       expect(within("transportPosition", "5. 2. 3"), findsOneWidget);
       // Pressed, the next way of saying it.
       await tester.tap(find.byKey(const ValueKey("transportPosition")));
@@ -327,12 +325,27 @@ void main() {
       expect(within("mixerToggle", "Mixer"), findsOneWidget);
       expect(within("effectsToggle", "Effects"), findsOneWidget);
 
+      // The readout's menu: tempo, metre, quantise -- and no frames.
+      await openTiming(tester);
+      for (var key in [
+        "tapTempo",
+        "audioTempo",
+        "audioSignature",
+        "metronome",
+        "audioQuantise",
+      ]) {
+        expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
+      }
+      expect(find.byKey(const ValueKey("canvasFrames")), findsNothing);
       await tester.tap(find.byKey(const ValueKey("metronome")));
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(c.metronome, isTrue);
-      await tester.tap(find.byKey(const ValueKey("stepOn")));
-      await tester.pump();
-      expect(c.frame, 1080);
+      expect(find.byKey(const ValueKey("lit-metronome")), findsOneWidget,
+          reason: "turned on, it is lit on the bar");
+      await closeTiming(tester);
+      // Stepping by the grid: the bar control was removed for the clips system.
+
+      await openMarker(tester);
       await tester.tap(find.byKey(const ValueKey("addLocator")));
       await tester.pumpAndSettle();
       expect(c.document.actions.single.kind, TimelineActionKind.locator);
@@ -345,21 +358,26 @@ void main() {
       addTearDown(c.dispose);
       c.frame = 287;
       await show(tester, c);
-      for (var key in [
-        "canvasFrames",
-        "canvasFrameRate",
-        "prevKeyframe",
-        "nextKeyframe",
-        "previousFrame",
-        "addAction",
-        "loop",
-      ]) {
-        expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
-      }
-      for (var key in ["audioTempo", "metronome", "keysMenu", "addLocator"]) {
+      expect(find.byKey(const ValueKey("loop")), findsOneWidget);
+      // The keyframe and frame stepping buttons were removed from the bar for
+      // the clips system.
+      for (var key in ["prevKeyframe", "nextKeyframe", "previousFrame"]) {
         expect(find.byKey(ValueKey(key)), findsNothing, reason: key);
       }
       expect(within("transportPosition", "288 / 600"), findsOneWidget);
+
+      await openTiming(tester);
+      for (var key in ["canvasFrames", "canvasFrameRate"]) {
+        expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
+      }
+      for (var key in ["audioTempo", "metronome"]) {
+        expect(find.byKey(ValueKey(key)), findsNothing, reason: key);
+      }
+      await closeTiming(tester);
+
+      await openMarker(tester);
+      expect(find.byKey(const ValueKey("addAction")), findsOneWidget);
+      expect(find.byKey(const ValueKey("addLocator")), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
@@ -370,22 +388,23 @@ void main() {
       await tester.tap(find.byKey(const ValueKey("loop")));
       await tester.pump();
       expect((c.looping, c.loopRange), (true, (0, 960)));
+      await openTiming(tester);
       expect(within("loopLength", "4. 0. 0"), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey("loopFrom")));
       await tester.pumpAndSettle();
-      await tester.enterText(
-          find.byKey(const ValueKey("loopFromField")), "3");
+      await tester.enterText(find.byKey(const ValueKey("loopFromField")), "3");
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
       expect(c.loopRange, (480, 960));
+      await closeTiming(tester);
 
       // The brace's end, dragged a bar on, snaps to the grid.
       var strip = tester.getRect(find.byKey(const ValueKey("keyframeStrip")));
       double xOf(int frame) =>
           strip.left + (frame + 0.5) / c.document.frames * strip.width;
-      await tester.dragFrom(Offset(xOf(1440), strip.top + 3),
-          Offset(xOf(1680) - xOf(1440), 0));
+      await tester.dragFrom(
+          Offset(xOf(1440), strip.top + 3), Offset(xOf(1680) - xOf(1440), 0));
       await tester.pumpAndSettle();
       var (from, length) = c.loopRange;
       expect(from, 480);
@@ -404,9 +423,11 @@ void main() {
       var c = CanvasController(sound);
       addTearDown(c.dispose);
       await show(tester, c);
-      await tester.tap(find.byKey(const ValueKey("follow")));
-      await tester.pump();
+      expect(find.byKey(const ValueKey("lit-follow")), findsOneWidget,
+          reason: "on to begin with, and lit on the bar");
+      await tapTimelineItem(tester, "follow-item");
       expect(c.followPlayhead, isFalse);
+      expect(find.byKey(const ValueKey("lit-follow")), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
@@ -508,6 +529,7 @@ void main() {
       c.looping = true;
       c.setLoop(maxFrameCount - 2000, 1990);
       await show(tester, c);
+      await openTiming(tester);
       for (var key in ["transportPosition", "loopFrom", "loopLength"]) {
         var box = tester.getRect(find.byKey(ValueKey(key)));
         for (var text in tester.widgetList<Text>(find.descendant(

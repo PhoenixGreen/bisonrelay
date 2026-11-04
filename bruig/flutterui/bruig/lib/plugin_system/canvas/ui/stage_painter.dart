@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -997,7 +998,7 @@ class StagePainter extends CustomPainter {
 
     for (var element in chosenOutlines(document, selection, frame)) {
       // Its box as it is laid on the page, turned and slanted.
-      var box = element.boundsAt(frame);
+      var box = element.movedBoundsAt(frame, document);
       var corners =
           BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
               .corners(box);
@@ -1025,7 +1026,7 @@ class StagePainter extends CustomPainter {
       if (selection.contains(element.id)) continue;
 
       // Its box as it is laid on the page, turned and slanted.
-      var box = element.boundsAt(frame);
+      var box = element.movedBoundsAt(frame, document);
       var corners =
           BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
               .corners(box);

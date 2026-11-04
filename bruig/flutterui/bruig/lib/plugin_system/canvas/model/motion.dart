@@ -634,6 +634,10 @@ class ClipPlacement {
   }
 }
 
+/// markerKey is how a marker is named for a pin: its own id, or -- one made
+/// without one -- the one it is read back with.
+String markerKey(TimelineAction a) => a.id.isNotEmpty ? a.id : "m${a.frame}";
+
 /// math0 keeps a time from going before the scene's start.
 double math0(double v) => v < 0 ? 0 : v;
 

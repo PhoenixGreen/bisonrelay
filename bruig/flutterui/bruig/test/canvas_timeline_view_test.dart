@@ -27,6 +27,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_timeline_menus.dart';
 
 // canvas_timeline_view_test.dart is the timeline as one piece: a view of the
 // frames shared by the keyframe strip and the channels, zoomed and scrolled;
@@ -140,29 +141,19 @@ void main() {
         (tester) async {
       var c = await show(tester,
           elements: [channel("a", "Music"), channel("b", "Voice")]);
-      var scrubbing = find.byKey(const ValueKey("trackpadScrolls"));
       var effects = find.byKey(const ValueKey("effectsToggle"));
       var mixer = find.byKey(const ValueKey("mixerToggle"));
-      // Scrubbing, then the effects, then the mixer.
+      // The mixer with the timeline at the bar's start, the effects with the
+      // Animation panel at its end.
       expect(tester.getCenter(effects).dx,
-          greaterThan(tester.getCenter(scrubbing).dx));
-      expect(tester.getCenter(mixer).dx,
-          greaterThan(tester.getCenter(effects).dx));
+          greaterThan(tester.getCenter(mixer).dx));
 
       await tester.tap(mixer);
       await tester.pump();
       expect(c.mixerOpen, isTrue);
       expect(c.mixerMinimised, isFalse);
       expect(c.effectsOpen, isFalse, reason: "two panels, two buttons");
-      // Ken: shown, then minimised, then smallest -- the meters alone --
-      // then hidden.
-      await tester.tap(mixer);
-      await tester.pump();
-      expect(c.mixerOpen, isTrue);
-      expect((c.mixerMinimised, c.mixerSmallest), (true, false));
-      await tester.tap(mixer);
-      await tester.pump();
-      expect((c.mixerMinimised, c.mixerSmallest), (true, true));
+      // A plain on and off: pressed again, hidden.
       await tester.tap(mixer);
       await tester.pump();
       expect(c.mixerOpen, isFalse);
@@ -412,6 +403,7 @@ void main() {
     // it sat a caption's height lower, the caption no longer being there.
     testWidgets("the seconds sit level with the rate", (tester) async {
       await show(tester);
+      await openTiming(tester);
       var rate = tester.getRect(find.byKey(const ValueKey("canvasFrameRate")));
       var seconds = tester.getRect(find.text("10.0s"));
       expect(seconds.center.dy, closeTo(rate.center.dy, 3));
@@ -420,8 +412,7 @@ void main() {
     testWidgets("the wheel over the play bar leaves the frames alone",
         (tester) async {
       var c = await show(tester);
-      await tester.tap(find.byKey(const ValueKey("trackpadScrolls")));
-      await tester.pump();
+      await tapTimelineItem(tester, "trackpadScrolls-item");
       c.frame = 0;
       await tester.tap(find.byKey(const ValueKey("timelineZoomIn")));
       await tester.pump();
@@ -457,8 +448,7 @@ void main() {
       await tester.pump();
       expect(await frameAtEnd(tester, c), end, reason: "not scrolled");
 
-      await tester.tap(find.byKey(const ValueKey("trackpadScrolls")));
-      await tester.pump();
+      await tapTimelineItem(tester, "trackpadScrolls-item");
       await tester.sendEventToBinding(mouse.hover(at));
       await tester.sendEventToBinding(mouse.scroll(const Offset(0, 300)));
       await tester.pump();
@@ -702,8 +692,7 @@ void main() {
       expect(sounds.last.clip.channel, "1");
     });
 
-    test("a master's sound, copied from a scene, pastes onto the master",
-        () {
+    test("a master's sound, copied from a scene, pastes onto the master", () {
       var c = CanvasController(
           CanvasDocument(
             frameRate: 10,
@@ -947,8 +936,7 @@ void main() {
       expect(sounds, hasLength(2));
       expect(sounds.last.clip.at, 30);
 
-      await tester.tap(find.byKey(const ValueKey("toolKnife")));
-      await tester.pump();
+      await tapTimelineItem(tester, "toolKnifeItem");
       // A quarter of the way along a two-hundred-frame view is frame 50.
       await tester.tapAt(Offset(lane.left + lane.width / 4, lane.center.dy));
       await tester.pump();
@@ -1264,8 +1252,8 @@ void main() {
       expect(c.frame, c.document.actions.single.frame,
           reason: "the playhead goes with it, so its settings are showing");
 
+      await openMarker(tester);
       var label = find.byKey(const ValueKey("actionLabel"));
-      await tester.ensureVisible(label);
       await tester.enterText(
           find.descendant(of: label, matching: find.byType(TextField)),
           "Chorus");
@@ -1300,7 +1288,7 @@ void main() {
       expect(tester.getSize(find.byType(CanvasTimeline)).height,
           closeTo(timelineCollapsedHeight, 0.5));
       expect(find.byKey(const ValueKey("keyframeStrip")), findsNothing);
-      expect(find.byKey(const ValueKey("toFirstFrame")), findsOneWidget,
+      expect(find.byKey(const ValueKey("play")), findsOneWidget,
           reason: "the play bar is all there is");
     });
   });

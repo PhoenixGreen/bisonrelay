@@ -1375,6 +1375,10 @@ LineElement _bowed(LineElement e, Keyframe pose) {
 /// this, because a box drawn somewhere other than the thing it belongs to is
 /// worse than no box: it invites dragging empty space.
 Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame) {
+  // With its clips' moves on it: see movedBoundsAt.
+  Rect moved() => doc == null
+      ? element.boundsAt(frame)
+      : element.movedBoundsAt(frame, doc);
   // Where the stage's camera puts something standing on it.
   if (element.base.spot != null && doc != null) {
     if (stagedIn(doc, element, frame) case var at?) return at.box;
@@ -1388,16 +1392,16 @@ Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame) {
       // No letters placed -- an empty string, or a slide that has carried them
       // off the end of the line -- so there is nothing to draw a box around
       // except the line itself.
-      return box ?? _boundsOfPoints(curve) ?? element.boundsAt(frame);
+      return box ?? _boundsOfPoints(curve) ?? moved();
     }
-    return element.boundsAt(frame);
+    return moved();
   }
 
   if (element is LineElement || element is PathElement) {
     var host = element is LineElement ? lineWithPose(element, frame) : element;
     var curve = curveOfElement(host);
     var box = _boundsOfPoints(curve);
-    if (box == null) return element.boundsAt(frame);
+    if (box == null) return moved();
     // Room for the stroke itself, which is centred on the path, and for
     // whatever is drawn at the ends -- an arrowhead reaches three and a half
     // stroke widths past the point the line stops at, and a box that ignored
@@ -1414,7 +1418,7 @@ Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame) {
     return box.inflate(math.max(width, 1) * math.max(ends, 1.5));
   }
 
-  return element.boundsAt(frame);
+  return moved();
 }
 
 Rect? _boundsOfPoints(List<Offset>? points) {

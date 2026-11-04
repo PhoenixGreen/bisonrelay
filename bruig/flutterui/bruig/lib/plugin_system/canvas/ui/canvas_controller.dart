@@ -992,6 +992,57 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
+  // ------------------------------------------------------------ clips
+  // What is picked of an element's clips, and which panels show them. The
+  // editing itself is in motion_editing.dart.
+
+  String? _pickedMotion;
+  String? _pickedPlacement;
+
+  /// pickedMotion is the clip the Animation panel shows, by id: picked from
+  /// a slot, or from the timeline -- then [pickedPlacement] is the place.
+  String? get pickedMotion => _pickedMotion;
+  String? get pickedPlacement => _pickedPlacement;
+
+  /// pickMotion picks [clip] of [element], and where it was placed if picked
+  /// from the timeline. Null clears it.
+  void pickMotion(String? element, String? clip, {String? placement}) {
+    if (element != null && !(_selection.length == 1 &&
+        _selection.first == element)) {
+      _selection
+        ..clear()
+        ..add(element);
+    }
+    _pickedMotion = clip;
+    _pickedPlacement = clip == null ? null : placement;
+    _notifyView();
+  }
+
+  bool _animationOpen = false;
+
+  /// animationOpen is whether the Animation panel is out: the detail area
+  /// shows it, or the effects -- never both.
+  bool get animationOpen => _animationOpen;
+
+  set animationOpen(bool value) {
+    if (_animationOpen == value) return;
+    _animationOpen = value;
+    if (value) effectsOpen = false;
+    _notifyView();
+  }
+
+  bool _rowsShown = true;
+
+  /// rowsShown is the timeline's Timeline button: its rows, or the play bar
+  /// alone.
+  bool get rowsShown => _rowsShown;
+
+  set rowsShown(bool value) {
+    if (_rowsShown == value) return;
+    _rowsShown = value;
+    _notifyView();
+  }
+
   /// canvasSnap is the bar's Snap: the page's snap switch on a page, and
   /// on a 3D stage the stage's own, which starts off -- both in the Grid
   /// and guides settings. Not [snapping], which is the timeline's.
@@ -10971,6 +11022,8 @@ class CanvasController extends ChangeNotifier {
   set effectsOpen(bool open) {
     if (open == _effectsOpen) return;
     _effectsOpen = open;
+    // The detail area shows the effects or the animation, never both.
+    if (open) _animationOpen = false;
     notifyListeners();
   }
 

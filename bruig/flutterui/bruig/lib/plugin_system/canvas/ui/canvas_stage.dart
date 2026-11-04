@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/instrument_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_camera.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
@@ -801,7 +802,7 @@ class CanvasStageState extends State<CanvasStage>
     for (var e in document.elements) {
       // Sounds are kept off the canvas, and a backdrop fills the page.
       if (e is AudioElement || e is BackgroundElement) continue;
-      reach = reach.expandToInclude(e.boundsAt(frame));
+      reach = reach.expandToInclude(e.movedBoundsAt(frame, document));
     }
     return reach == page ? null : reach;
   }
@@ -1144,7 +1145,7 @@ class CanvasStageState extends State<CanvasStage>
   /// _rotationOfSelection is the single selected element's rotation, or zero
   /// when several are chosen.
   double get _rotationOfSelection => _chosen.length == 1
-      ? _chosen.first.rotationAt(controller.frame) * math.pi / 180
+      ? _chosen.first.movedRotationAt(controller.frame, controller.document) * math.pi / 180
       : 0;
 
   /// _skewOfSelection is the single selected element's slant, in degrees,
@@ -1243,10 +1244,10 @@ class CanvasStageState extends State<CanvasStage>
     // Against where it is on this frame, for the same reason the selection box
     // is: an animated element clicked at frame 20 has to be hit where it is
     // drawn, not where it started.
-    var box = e.boundsAt(controller.frame);
+    var box = e.movedBoundsAt(controller.frame, controller.document);
     // Back into its own upright box: turned and slanted, it is hit where it
     // is drawn. See BoxFrame.
-    var shape = e.frameAt(controller.frame);
+    var shape = e.movedFrameAt(controller.frame, controller.document);
     var local = point;
     if (!shape.upright) local = box.center + shape.invert(point - box.center);
     if (!box.contains(local)) return false;
@@ -1382,7 +1383,7 @@ class CanvasStageState extends State<CanvasStage>
     var from = _flowFrom == null ? null : document.elementById(_flowFrom!);
     if (at == null || from == null) return null;
     return FlowLine(
-        _toStage(_flowPointOf(from.boundsAt(controller.frame), top: false)),
+        _toStage(_flowPointOf(from.movedBoundsAt(controller.frame, controller.document), top: false)),
         at);
   }
 
@@ -1416,8 +1417,8 @@ class CanvasStageState extends State<CanvasStage>
       var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds),
           frame: controller.frame);
       out.add(FlowLine(
-        _toStage(_flowPointOf(e.boundsAt(controller.frame), top: false)),
-        _toStage(_flowPointOf(into.boundsAt(controller.frame), top: true)),
+        _toStage(_flowPointOf(e.movedBoundsAt(controller.frame, controller.document), top: false)),
+        _toStage(_flowPointOf(into.movedBoundsAt(controller.frame, controller.document), top: true)),
         overflowing: flow.overflows,
       ));
     }
@@ -1480,7 +1481,7 @@ class CanvasStageState extends State<CanvasStage>
   TextElement? _looseTextPiece(Offset doc) {
     var owner = _textPieceOwner(doc);
     if (owner == null) return null;
-    return owner.boundsAt(controller.frame).contains(doc) ? null : owner;
+    return owner.movedBoundsAt(controller.frame, controller.document).contains(doc) ? null : owner;
   }
 
   /// _textItemAt is which of a text element's extra pieces a document point
@@ -1490,7 +1491,7 @@ class CanvasStageState extends State<CanvasStage>
   /// seen -- see textItemRects.
   TextItem? _textItemAt(TextElement e, Offset doc) {
     if (e.items.isEmpty) return null;
-    var bounds = e.boundsAt(controller.frame);
+    var bounds = e.movedBoundsAt(controller.frame, controller.document);
     var rects = textItemRects(e, bounds);
     // Backwards: the last one drawn is the one on top, and two pieces put in
     // the same slot overlap only where one of them was dragged there.
@@ -1652,7 +1653,7 @@ class CanvasStageState extends State<CanvasStage>
     _legendHold = null;
     var current = document.elementById(e.id);
     if (current is! ChartElement || current.locked) return;
-    var bounds = current.boundsAt(controller.frame);
+    var bounds = current.movedBoundsAt(controller.frame, controller.document);
     if (bounds.width <= 0 || bounds.height <= 0) return;
     var block = chartLegendBlock(current, bounds);
     if (block.isEmpty) return;
@@ -1679,7 +1680,7 @@ class CanvasStageState extends State<CanvasStage>
   /// _audioPartAt is which of a speaker's controls a document point is on, or
   /// null for none. The same rectangles the painter drew -- see audioParts.
   AudioControl? _audioPartAt(AudioElement e, Offset doc) {
-    var parts = audioParts(e, e.boundsAt(controller.frame));
+    var parts = audioParts(e, e.movedBoundsAt(controller.frame, controller.document));
     if (parts.volume case var v? when v.contains(doc)) {
       return AudioControl.volume;
     }
@@ -1708,7 +1709,7 @@ class CanvasStageState extends State<CanvasStage>
   /// rectangles the painter drew. A link answers anywhere on it: pressing it
   /// is the one thing there is to do.
   VideoPart? _videoPartAt(VideoElement e, Offset doc) =>
-      videoPartAt(videoParts(e, e.boundsAt(controller.frame)), doc,
+      videoPartAt(videoParts(e, e.movedBoundsAt(controller.frame, controller.document)), doc,
           clickable:
               e.isLink || (e.has(VideoControl.clickToggle) && !e.clip.timed));
 
@@ -1727,7 +1728,7 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   void _pressVideo(VideoElement e, VideoPart part, Offset doc) {
-    var parts = videoParts(e, e.boundsAt(controller.frame));
+    var parts = videoParts(e, e.movedBoundsAt(controller.frame, controller.document));
     var along = switch (part) {
       VideoPart.track => alongBar(parts.track!, doc.dx),
       VideoPart.volume => alongBar(parts.volume!, doc.dx),
@@ -1742,7 +1743,7 @@ class CanvasStageState extends State<CanvasStage>
   void _pressAudio(AudioElement e, AudioControl part, Offset doc) {
     double? volume;
     if (part == AudioControl.volume) {
-      var bar = audioParts(e, e.boundsAt(controller.frame)).volume;
+      var bar = audioParts(e, e.movedBoundsAt(controller.frame, controller.document)).volume;
       if (bar != null) volume = volumeAt(bar, doc.dx);
     }
     controller.pressAudio(e, part, volume: volume);
@@ -2198,7 +2199,7 @@ class CanvasStageState extends State<CanvasStage>
     var chart = controller.selected;
     if (chart is ChartElement && !chart.locked) {
       var grab = chartLabelGrabAt(
-          chart, chart.boundsAt(controller.frame), doc, _docSlop);
+          chart, chart.movedBoundsAt(controller.frame, controller.document), doc, _docSlop);
       if (grab != null) {
         // A placed key is both the thing that moves and the row of switches,
         // so the press is armed here too and which of the two happened is
@@ -2224,7 +2225,7 @@ class CanvasStageState extends State<CanvasStage>
     var table = controller.selected;
     if (table is TableElement && !table.locked) {
       var divider =
-          tableColumnAt(table, table.boundsAt(controller.frame), doc, _docSlop);
+          tableColumnAt(table, table.movedBoundsAt(controller.frame, controller.document), doc, _docSlop);
       if (divider != null) {
         _columnGrab = divider;
         _mode = _DragMode.tableColumn;
@@ -2309,7 +2310,7 @@ class CanvasStageState extends State<CanvasStage>
         controller.selection.length == 1 &&
         controller.selection.first == element.id) {
       var keys =
-          keyboardLayout(element.instrument!, element.boundsAt(controller.frame));
+          keyboardLayout(element.instrument!, element.movedBoundsAt(controller.frame, controller.document));
       if (keys.keyAt(doc) case (var key, var depth)?) {
         controller.noteOn(element, key, velocity: (50 + depth * 77).round());
         _keyDown = (element, key);
@@ -2430,7 +2431,7 @@ class CanvasStageState extends State<CanvasStage>
         controller.selection.first == element.id &&
         _pressedAt != Offset.zero &&
         DateTime.now().difference(_lastClickAt) < _doubleClickWindow) {
-      var at = tableCellAt(element, element.boundsAt(controller.frame), doc);
+      var at = tableCellAt(element, element.movedBoundsAt(controller.frame, controller.document), doc);
       if (at != null) {
         setState(() => _editingCell = (element.id, at.$1, at.$2));
         _mode = _DragMode.none;
@@ -3890,7 +3891,7 @@ class CanvasStageState extends State<CanvasStage>
     var image = controller.images.original(picture.assetId);
     if (image == null) return;
 
-    var inner = picture.box.inner(picture.boundsAt(controller.frame));
+    var inner = picture.box.inner(picture.movedBoundsAt(controller.frame, controller.document));
     var size = Size(image.width.toDouble(), image.height.toDouble());
     var placement = placeImage(size, inner, picture.fit,
         crop: picture.crop, framing: picture.framing);
@@ -4714,7 +4715,7 @@ class CanvasStageState extends State<CanvasStage>
   /// longer the whole of it once the frame has grown round a layer or a
   /// stroke.
   Rect _framingRect(ImageElement e) {
-    var inner = e.box.inner(e.boundsAt(controller.frame));
+    var inner = e.box.inner(e.movedBoundsAt(controller.frame, controller.document));
     if (!e.layered) return inner;
     var base =
         e.stack.firstWhere((l) => l.isBase, orElse: () => ImageLayer.base);
@@ -4731,8 +4732,8 @@ class CanvasStageState extends State<CanvasStage>
       var base =
           e.stack.firstWhere((l) => l.isBase, orElse: () => ImageLayer.base);
       return StageFraming(image, placement.whole, placement.wholeDst,
-          _framingRect(e), e.rotationAt(controller.frame) * math.pi / 180,
-          pivot: e.boundsAt(controller.frame).center,
+          _framingRect(e), e.movedRotationAt(controller.frame, controller.document) * math.pi / 180,
+          pivot: e.movedBoundsAt(controller.frame, controller.document).center,
           flipX: base.flipX,
           flipY: base.flipY);
     }
@@ -4876,7 +4877,7 @@ class CanvasStageState extends State<CanvasStage>
       // Undone by the element's own rotation, so a tilted picture moves the
       // way the pointer does rather than along its own diagonal.
       var travel = doc - _dragStart;
-      var a = -e.rotationAt(controller.frame) * math.pi / 180;
+      var a = -e.movedRotationAt(controller.frame, controller.document) * math.pi / 180;
       if (a != 0) {
         travel = Offset(travel.dx * math.cos(a) - travel.dy * math.sin(a),
             travel.dx * math.sin(a) + travel.dy * math.cos(a));
@@ -4910,7 +4911,7 @@ class CanvasStageState extends State<CanvasStage>
     if (id == null || _preview == null) return null;
     var picture = document.elementById(id);
     if (picture is! ImageElement) return null;
-    var inner = picture.box.inner(picture.boundsAt(controller.frame));
+    var inner = picture.box.inner(picture.movedBoundsAt(controller.frame, controller.document));
     var size = Size(_preview!.width.toDouble(), _preview!.height.toDouble());
     return placeImage(size, inner, picture.fit,
         crop: picture.crop, framing: picture.framing);
@@ -5180,7 +5181,7 @@ class CanvasStageState extends State<CanvasStage>
     // the element leapt out from under the pointer the instant it moved.
     _startPosed = {
       for (var e in controller.selectedElements)
-        e.id: e.boundsAt(controller.frame),
+        e.id: e.movedBoundsAt(controller.frame, controller.document),
     };
     // The box the handles are on, which for a line or a path is bigger than
     // the element's own -- see _visualBounds. A resize is expressed against
@@ -5200,7 +5201,7 @@ class CanvasStageState extends State<CanvasStage>
   List<Rect> _selectedChartLabels() {
     var element = controller.selected;
     if (element is! ChartElement || !controller.showHelpers) return const [];
-    return chartLabelPlaces(element, element.boundsAt(controller.frame))
+    return chartLabelPlaces(element, element.movedBoundsAt(controller.frame, controller.document))
         .values
         .where((r) => !r.isEmpty)
         .toList();
@@ -5214,7 +5215,7 @@ class CanvasStageState extends State<CanvasStage>
     if (element is! TableElement || element.locked || !controller.showHelpers) {
       return const [];
     }
-    var bounds = element.boundsAt(controller.frame);
+    var bounds = element.movedBoundsAt(controller.frame, controller.document);
     return [
       for (var x in tableColumnDividers(element, bounds))
         (x, bounds.top, bounds.bottom),
@@ -5236,7 +5237,7 @@ class CanvasStageState extends State<CanvasStage>
   void _applyPart(Offset doc, {required bool chartLabel}) {
     var element = controller.selected;
     if (element == null) return;
-    var bounds = element.boundsAt(controller.frame);
+    var bounds = element.movedBoundsAt(controller.frame, controller.document);
     CanvasElement? next;
     if (chartLabel) {
       var grab = _labelGrab;
@@ -7012,7 +7013,7 @@ class CanvasStageState extends State<CanvasStage>
     return [
       for (var e in document.elements)
         if (e.visible && e.base.play.as != PlayAs.none)
-          gameTouchArea(e, e.boundsAt(frame)),
+          gameTouchArea(e, e.movedBoundsAt(frame, document)),
     ];
   }
 
@@ -7030,7 +7031,7 @@ class CanvasStageState extends State<CanvasStage>
     if (element is! TableElement) return null;
 
     var box =
-        tableCellRect(element, element.boundsAt(controller.frame), row, col);
+        tableCellRect(element, element.movedBoundsAt(controller.frame, controller.document), row, col);
     var topLeft = _toStage(box.topLeft);
     return Positioned(
       left: topLeft.dx,
@@ -7121,7 +7122,7 @@ class CanvasStageState extends State<CanvasStage>
   /// _itemEditorBoxFor is the rectangle an item's editor opens in: where the
   /// piece is drawn, with room to type into.
   Rect _itemEditorBoxFor(TextElement element, int at) {
-    var bounds = element.boundsAt(controller.frame);
+    var bounds = element.movedBoundsAt(controller.frame, controller.document);
     var rect = textItemRects(element, bounds)[at];
     var item = element.items[at];
     var inner = element.box.inner(bounds);
@@ -7167,7 +7168,7 @@ class CanvasStageState extends State<CanvasStage>
     // into a title moved it to the middle of the card for as long as the
     // editor was open. See TextElement.slot.
     if (bodyIsBlock(element)) {
-      var bounds = element.boundsAt(controller.frame);
+      var bounds = element.movedBoundsAt(controller.frame, controller.document);
       var rect = textBodyRect(element, bounds);
       if (rect != null) {
         return _grownForTyping(

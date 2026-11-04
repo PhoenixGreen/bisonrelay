@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_timeline_menus.dart';
 
 // canvas_scene_strip_test.dart is the row of scenes between the ruler and the
 // keyframes while Play runs the whole document: there only then, a box per
@@ -53,10 +54,8 @@ void main() {
 
   List<int> lengths(CanvasController c) => [for (var s in c.scenes) s.frames];
 
-  Future<void> playAll(WidgetTester tester) async {
-    await tester.tap(find.byKey(const ValueKey("playAll")));
-    await tester.pumpAndSettle();
-  }
+  Future<void> playAll(WidgetTester tester) =>
+      tapTimelineItem(tester, "playAll-item");
 
   Rect rectOf(WidgetTester tester, String key) =>
       tester.getRect(find.byKey(ValueKey(key)));
@@ -423,8 +422,7 @@ void main() {
         ),
       ));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey("playAll")));
-      await tester.pumpAndSettle();
+      await tapTimelineItem(tester, "playAll-item");
 
       var three = c.timelineChannels.firstWhere((ch) => ch.sceneLabel == "S3");
       // On its label, clear of its buttons.
@@ -537,8 +535,7 @@ void main() {
           greaterThanOrEqualTo(24),
           reason: "the zoom buttons are big enough to hit");
 
-      await tester.tap(find.byKey(const ValueKey("playAll")));
-      await tester.pumpAndSettle();
+      await tapTimelineItem(tester, "playAll-item");
       Finder strip(String id) => find.byKey(ValueKey(
           "channelStrip-${c.timelineChannels.firstWhere((ch) => ch.first.element.id == id).key}"));
       expect(strip("c"), findsOneWidget, reason: "every scene's channels");

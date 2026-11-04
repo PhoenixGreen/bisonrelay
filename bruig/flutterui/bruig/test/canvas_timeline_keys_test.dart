@@ -225,38 +225,7 @@ void main() {
     });
   });
 
-  group("stepping between keyframes", () {
-    testWidgets("goes to the next one and the one before", (tester) async {
-      var (controller, _) = await strip(tester, [5, 18, 30]);
-      controller.frame = 0;
-      await tester.pumpAndSettle();
-
-      await tester.ensureVisible(find.byKey(const ValueKey("nextKeyframe")));
-      await tester.tap(find.byKey(const ValueKey("nextKeyframe")));
-      await tester.pumpAndSettle();
-      expect(controller.frame, 5);
-
-      await tester.ensureVisible(find.byKey(const ValueKey("nextKeyframe")));
-      await tester.tap(find.byKey(const ValueKey("nextKeyframe")));
-      await tester.pumpAndSettle();
-      expect(controller.frame, 18);
-
-      await tester.ensureVisible(find.byKey(const ValueKey("prevKeyframe")));
-      await tester.tap(find.byKey(const ValueKey("prevKeyframe")));
-      await tester.pumpAndSettle();
-      expect(controller.frame, 5);
-    });
-
-    testWidgets("and stays put at either end", (tester) async {
-      var (controller, _) = await strip(tester, [5]);
-      controller.frame = 5;
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.byKey(const ValueKey("nextKeyframe")));
-      await tester.tap(find.byKey(const ValueKey("nextKeyframe")));
-      await tester.pumpAndSettle();
-      expect(controller.frame, 5, reason: "there is no next one");
-    });
-  });
+  // Stepping between keyframes: the bar control was removed for the clips system.
 
   group("a counter's bars on the strip", () {
     testWidgets("are there, and clicking one takes both of its marks",

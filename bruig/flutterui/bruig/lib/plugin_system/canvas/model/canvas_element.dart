@@ -687,8 +687,12 @@ abstract class CanvasElement {
   ///
   /// The transform matches the painter's, in the painter's order: the pose's
   /// shift in document space, then the scale about the centre it has moved to.
-  Rect boundsAt(int frame) {
-    var pose = poseAt(frame);
+  Rect boundsAt(int frame) => boundsWith(poseAt(frame));
+
+  /// boundsWith is where the element is posed as [pose] -- its keyframes'
+  /// pose, or that with its clips' moves on top: see movedBoundsAt in
+  /// motion_document.dart, which everything beside it on the stage uses.
+  Rect boundsWith(Keyframe pose) {
     var box = bounds.shift(Offset(pose.dx, pose.dy));
     if (pose.scale == 1) return box;
     // Grown about the anchor, which stays where it is.

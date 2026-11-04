@@ -779,11 +779,14 @@ void main() {
   });
 
   group("the paint brushes", () {
-    Future<void> idle(WidgetTester tester) async {
-      for (var i = 0; i < 40; i++) {
+    // Real file I/O: given time until [done] -- up to two seconds, as a
+    // full run's load can make a save slow -- or a fixed while without it.
+    Future<void> idle(WidgetTester tester, {bool Function()? done}) async {
+      for (var i = 0; i < (done == null ? 40 : 500); i++) {
         await tester.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 4)));
         await tester.pump();
+        if (i >= 40 && (done?.call() ?? true)) break;
       }
       await tester.pumpAndSettle();
     }
@@ -839,7 +842,8 @@ void main() {
 
       // Kept, it is among the brushes, and picked.
       await tapKey(tester, "paintBrushSave");
-      await idle(tester);
+      await idle(tester,
+          done: () => SavedPresetStore.paintBrushes.presets.isNotEmpty);
       expect(SavedPresetStore.paintBrushes.presets, hasLength(1));
       var kept = SavedPresetStore.paintBrushes.presets.single;
       expect(c.paintBrush, kept.id);
@@ -849,7 +853,8 @@ void main() {
       expect(c.paintTip.roundness, closeTo(0.2, 1e-9));
 
       await tapKey(tester, "paintBrushDelete");
-      await idle(tester);
+      await idle(tester,
+          done: () => SavedPresetStore.paintBrushes.presets.isEmpty);
       expect(SavedPresetStore.paintBrushes.presets, isEmpty);
       expect(c.paintBrush, "round");
       expect(tester.takeException(), isNull);

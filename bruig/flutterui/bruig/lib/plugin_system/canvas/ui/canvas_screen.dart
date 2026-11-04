@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/ui/image_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_tool_hint.dart';
+import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
@@ -193,6 +194,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
   bool get _mixerFixed =>
       _controller.mixerMinimised || _controller.mixerSmallest;
 
+  /// _detailOpen is the detail area open: the Animation panel or the
+  /// effects, which take turns in the one place.
+  bool get _detailOpen => _controller.effectsOpen || _controller.animationOpen;
+
   /// _stack is the panels under the canvas, top to bottom, sized as one --
   /// see panel_heights.dart: each as it was set, its least, and whether it
   /// is fixed -- a bar, or the mixer minimised. The same stack with the
@@ -201,7 +206,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   List<(_Stacked, double, double, bool)> get _stack => [
         if (_controller.mixerOpen)
           (_Stacked.mixer, _mixerShown, _mixerLeast, _mixerFixed),
-        if (_controller.effectsOpen)
+        if (_detailOpen)
           (_Stacked.effects, _effectsHeight, effectsMinHeight, false),
         if (_shown && _keyframesOpen && !_controller.playing)
           (_Stacked.keyframes, keyframeBarHeight, keyframeBarHeight, true),
@@ -224,7 +229,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     var room = math.max(0.0, _pageSeen - _topSeen);
     // Put away, there is no canvas to keep in view.
     if (!_shown) return room;
-    var covered = _controller.mixerOpen || _controller.effectsOpen;
+    var covered = _controller.mixerOpen || _detailOpen;
     return math.max(0.0, room - (covered ? 0 : canvasLeast));
   }
 
@@ -944,7 +949,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   Widget _canvasAway(ThemeNotifier theme) => ColoredBox(
         key: const ValueKey("canvasAway"),
         color: theme.colors.surface,
-        child: _controller.mixerOpen || _controller.effectsOpen
+        child: _controller.mixerOpen || _detailOpen
             ? const SizedBox.expand()
             : Center(
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1116,6 +1121,19 @@ class _CanvasScreenState extends State<CanvasScreen> {
                     // effects at the bottom -- so a strip and the chain it
                     // opens read top to bottom. Each is resized by the grip
                     // along its own top.
+                    if (_controller.animationOpen)
+                      Positioned(
+                        bottom: _shown && _keyframesOpen && !_controller.playing
+                            ? keyframeBarHeight
+                            : 0,
+                        left: 0,
+                        right: 0,
+                        child: AnimationPanel(
+                          controller: _controller,
+                          height: shown[_Stacked.effects] ?? _effectsHeight,
+                          onResize: (h) => _resizeStacked(_Stacked.effects, h),
+                        ),
+                      ),
                     if (_controller.effectsOpen)
                       Positioned(
                         bottom: _shown && _keyframesOpen && !_controller.playing
@@ -1136,7 +1154,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                             (_shown && _keyframesOpen && !_controller.playing
                                     ? keyframeBarHeight
                                     : 0) +
-                                (_controller.effectsOpen
+                                (_detailOpen
                                     ? shown[_Stacked.effects] ?? _effectsHeight
                                     : 0),
                         left: 0,

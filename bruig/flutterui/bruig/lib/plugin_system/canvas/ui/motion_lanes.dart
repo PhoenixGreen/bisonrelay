@@ -1,0 +1,551 @@
+import 'dart:math' as math;
+
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+// motion_lanes.dart is the elements' rows on the timeline: one group for each
+// element with clips -- and the one picked, so a first clip can be made on
+// it -- with a lane for each layer it uses and one more to drop onto, and its
+// own sound's lane under them. The clips placed there are drawn as bars:
+// coloured by what they are for, repeats marked on a loop, the pace on one
+// that was stretched, a dot at an end that is pinned.
+//
+// A click opens a clip in the Animation panel. A drag moves it -- along, and
+// onto another of its element's lanes -- and its ends stretch it. With the
+// knife out a click cuts it in two. A double-click on an empty stretch makes
+// a clip there, from the ready-made motions.
+//
+// Laid out as the channels under it are -- the header column, then the
+// frames on the timeline's own view -- since it scrolls with them: see
+// CanvasChannels.leading.
+
+/// motionLaneHeight is one lane's height, before the text's size.
+const double motionLaneHeight = 22;
+
+/// motionKindColours are the clips' colours, by what they are for -- the
+/// prototype's.
+const Map<MotionKind, Color> motionKindColours = {
+  MotionKind.arrive: Color(0xFF2BB3A3),
+  MotionKind.loop: Color(0xFF8B7CF6),
+  MotionKind.leave: Color(0xFFE5677D),
+  MotionKind.action: Color(0xFFE3A21A),
+  MotionKind.model: Color(0xFF4F8FE6),
+  MotionKind.camera: Color(0xFFD06AD8),
+  MotionKind.sound: Color(0xFF3F9F6B),
+};
+
+/// motionRowsOf are the elements that have rows: those with clips, and the
+/// one picked. Not the sound channels, which have their own lanes.
+List<CanvasElement> motionRowsOf(CanvasController c) => [
+      for (var e in c.document.elements)
+        if (!(e is AudioElement && e.clip.timed) &&
+            (!e.base.motion.isEmpty || c.selection.contains(e.id)))
+          e,
+    ];
+
+/// motionLanesOf are [e]'s lanes, top to bottom: its motion layers in use
+/// and one more, and its sound's lane where it has sound. Folded, none.
+List<int> motionLanesOf(CanvasElement e, {bool folded = false}) {
+  if (folded) return const [];
+  var m = e.base.motion;
+  var used = {
+    for (var p in m.placed)
+      if (p.layer < motionLayers) p.layer
+  };
+  var top = used.isEmpty ? 0 : used.reduce(math.max) + 1;
+  return [
+    for (var l = 0; l <= math.min(top, motionLayers - 1); l++) l,
+    if (m.hasSound) soundLayer,
+  ];
+}
+
+class MotionLanes extends StatefulWidget {
+  final CanvasController controller;
+  final TimelineView view;
+
+  const MotionLanes({required this.controller, required this.view, super.key});
+
+  @override
+  State<MotionLanes> createState() => _MotionLanesState();
+}
+
+enum _Grip { start, end, bar }
+
+/// _Hit is what a press landed on: an element's lane, and the placed clip
+/// there and which part of it, if any.
+typedef _Hit = ({
+  CanvasElement element,
+  int layer,
+  ClipPlacement? placement,
+  _Grip? grip,
+});
+
+class _MotionLanesState extends State<MotionLanes> {
+  CanvasController get controller => widget.controller;
+
+  /// _folded are the elements whose rows are folded to one, by id. For the
+  /// session.
+  static final Set<String> _folded = {};
+
+  _Hit? _press;
+  double _pressSeconds = 0;
+  ClipSpan? _pressSpan;
+  bool _dragged = false;
+  bool _unpinned = false;
+
+  double get _scale => math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
+  double get _lane => motionLaneHeight * _scale;
+  double _rowHeight(CanvasElement e) => _folded.contains(e.id)
+      ? _lane + 4
+      : math.max(_lane * 1.6, motionLanesOf(e).length * _lane) + 4;
+
+  int get _fps => math.max(1, controller.document.frameRate);
+  double _x(double seconds, double width) =>
+      widget.view.xOf(seconds * _fps, width);
+  double _seconds(double x, double width) =>
+      widget.view.frameAt(x, width, 1 << 30) / _fps;
+
+  /// _snap is [s] on the timeline's beat grid -- a half beat -- unless Alt
+  /// is held; where the canvas has no tempo, a frame.
+  double _snap(double s) {
+    if (HardwareKeyboard.instance.isAltPressed) return s;
+    var spb = controller.document.audio.secondsPerBeat;
+    var step = spb > 0 ? spb / 2 : 1 / _fps;
+    return (s / step).round() * step;
+  }
+
+  _Hit? _hit(Offset local, double width) {
+    var y = 0.0;
+    for (var e in motionRowsOf(controller)) {
+      var h = _rowHeight(e);
+      if (local.dy >= y && local.dy < y + h) {
+        var folded = _folded.contains(e.id);
+        var lanes = motionLanesOf(e, folded: folded);
+        var row = folded ? -1 : ((local.dy - y - 2) / _lane).floor();
+        var layer = folded
+            ? -1
+            : row >= 0 && row < lanes.length
+                ? lanes[row]
+                : (lanes.isEmpty ? 0 : lanes.last);
+        var times = motionTimesOf(controller.document);
+        for (var p in e.base.motion.placed.reversed) {
+          if (!folded && p.layer != layer) continue;
+          var s = times.span(p.id);
+          if (s == null) continue;
+          var from = _x(s.start, width), to = _x(s.end, width);
+          const reach = 6.0;
+          if (local.dx < from - reach || local.dx > to + reach) continue;
+          var grip = (local.dx - to).abs() <= reach
+              ? _Grip.end
+              : (local.dx - from).abs() <= reach
+                  ? _Grip.start
+                  : _Grip.bar;
+          return (element: e, layer: p.layer, placement: p, grip: grip);
+        }
+        return (
+          element: e,
+          layer: layer < 0 ? 0 : layer,
+          placement: null,
+          grip: null
+        );
+      }
+      y += h;
+    }
+    return null;
+  }
+
+  void _open(CanvasElement e, ClipPlacement p) {
+    controller.pickMotion(e.id, p.clip, placement: p.id);
+    var c = e.base.motion.clip(p.clip);
+    if (c != null && c.isSound) {
+      controller.effectsOpen = true;
+    } else {
+      controller.animationOpen = true;
+    }
+  }
+
+  void _down(Offset local, double width) {
+    var hit = _hit(local, width);
+    _press = hit;
+    _dragged = false;
+    _unpinned = false;
+    _pressSeconds = _seconds(local.dx, width);
+    _pressSpan =
+        hit?.placement == null ? null : controller.spanOf(hit!.placement!.id);
+  }
+
+  void _tap(Offset local, double width) {
+    var hit = _hit(local, width);
+    if (hit == null) return;
+    if (hit.placement case var p?) {
+      if (controller.timelineTool == TimelineTool.knife) {
+        controller.cutPlacement(
+            hit.element.id, p.id, _snap(_seconds(local.dx, width)));
+        return;
+      }
+      _open(hit.element, p);
+    } else {
+      controller.pickMotion(hit.element.id, null);
+    }
+  }
+
+  void _drag(Offset local, double width) {
+    var hit = _press, span = _pressSpan;
+    if (hit == null || span == null || hit.placement == null) return;
+    if (controller.timelineTool == TimelineTool.knife) return;
+    var p = hit.placement!;
+    if (!_dragged) {
+      _dragged = true;
+      controller.pause();
+      controller.beginInteraction();
+    }
+    var now = _seconds(local.dx, width);
+    var by = now - _pressSeconds;
+    switch (hit.grip) {
+      case _Grip.end:
+        controller.stretchPlacement(hit.element.id, p.id,
+            end: _snap(math.max(span.start + 0.05, span.end + by)),
+            transient: true);
+      case _Grip.start:
+        controller.stretchPlacement(hit.element.id, p.id,
+            start: _snap(span.start + by), transient: true);
+      default:
+        var over = _hit(local, width);
+        var layer = over != null &&
+                over.element.id == hit.element.id &&
+                (over.layer == soundLayer) == (p.layer == soundLayer)
+            ? over.layer
+            : null;
+        if (controller.movePlacement(
+            hit.element.id, p.id, _snap(span.start + by),
+            layer: layer, transient: true)) {
+          _unpinned = true;
+        }
+    }
+  }
+
+  void _up() {
+    if (_dragged) {
+      controller.endInteraction();
+      if (_unpinned && mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+            content: Text("Moved by hand, it let go of what it was pinned "
+                "to: it stays where it was put. Pin it again in Timing.")));
+      }
+    }
+    _press = null;
+    _dragged = false;
+  }
+
+  Future<void> _make(Offset local, Offset global, double width) async {
+    var hit = _hit(local, width);
+    if (hit == null || hit.placement != null) return;
+    var e = hit.element;
+    var seconds = math.max(0.0, _snap(_seconds(local.dx, width)));
+    var sound = hit.layer == soundLayer;
+    var presets = [
+      for (var p in motionPresets)
+        if (p.kind != MotionKind.camera) p
+    ];
+    var picked = await showMenu<Object>(
+      context: context,
+      position:
+          RelativeRect.fromLTRB(global.dx, global.dy, global.dx, global.dy),
+      items: [
+        if (!sound)
+          for (var kind in const [
+            MotionKind.arrive,
+            MotionKind.loop,
+            MotionKind.leave,
+            MotionKind.action
+          ]) ...[
+            PopupMenuItem<Object>(
+                enabled: false,
+                height: 26,
+                child: Text(kind.label.toUpperCase(),
+                    style: const TextStyle(fontSize: 10, letterSpacing: 0.8))),
+            for (var p in presets)
+              if (p.kind == kind)
+                PopupMenuItem<Object>(
+                    key: ValueKey("makeMotion-${p.name}"),
+                    value: p,
+                    height: 30,
+                    child: Text(p.name)),
+          ],
+        PopupMenuItem<Object>(
+            key: const ValueKey("makeMotion-empty"),
+            value: sound ? MotionKind.sound : MotionKind.action,
+            height: 30,
+            child:
+                Text(sound ? "An empty sound clip" : "Empty: keys of my own")),
+      ],
+    );
+    if (picked == null || !mounted) return;
+    var others = [
+      for (var o in controller.document.elements)
+        if (o.id != e.id) o.id
+    ];
+    String clip;
+    controller.beginInteraction();
+    if (picked is MotionPreset) {
+      clip = controller.newClip(e.id,
+          preset: picked,
+          layer: hit.layer,
+          target: picked.aims && others.isNotEmpty ? others.first : "");
+    } else {
+      clip = controller.newClip(e.id,
+          kind: picked as MotionKind, layer: hit.layer);
+    }
+    var placed =
+        controller.placeClip(e.id, clip, seconds: seconds, layer: hit.layer);
+    controller.endInteraction();
+    var now = controller.document.elementById(e.id);
+    var p = now?.base.motion.placement(placed);
+    if (now != null && p != null) _open(now, p);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var rows = motionRowsOf(controller);
+    if (rows.isEmpty) return const SizedBox.shrink();
+    var theme = ThemeNotifier.of(context);
+    var colors = theme.colors;
+    var height = rows.fold(0.0, (a, e) => a + _rowHeight(e));
+    var label = TextStyle(
+        fontSize: 11, color: colors.onSurface, fontWeight: FontWeight.w600);
+    var small = TextStyle(fontSize: 9.5, color: colors.onSurfaceVariant);
+    return SizedBox(
+      key: const ValueKey("motionLanes"),
+      height: height,
+      child: Row(children: [
+        SizedBox(
+          width: controller.headerWidth,
+          child: Column(children: [
+            for (var e in rows)
+              SizedBox(
+                key: ValueKey("motionRow-${e.id}"),
+                height: _rowHeight(e),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: controller.selection.contains(e.id)
+                        ? colors.secondaryContainer.withValues(alpha: 0.35)
+                        : null,
+                    border: Border(
+                        left: BorderSide(color: colors.primary, width: 3),
+                        bottom: BorderSide(
+                            color:
+                                colors.outlineVariant.withValues(alpha: 0.5))),
+                  ),
+                  child: Row(children: [
+                    InkWell(
+                      key: ValueKey("motionFold-${e.id}"),
+                      onTap: () => setState(() => _folded.contains(e.id)
+                          ? _folded.remove(e.id)
+                          : _folded.add(e.id)),
+                      child: SizedBox(
+                        width: 18,
+                        height: _lane,
+                        child: Icon(
+                            _folded.contains(e.id)
+                                ? Icons.chevron_right
+                                : Icons.expand_more,
+                            size: 14,
+                            color: colors.onSurfaceVariant),
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => controller.selectOnly(e.id),
+                        child: Text(e.name.isEmpty ? e.id : e.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: label),
+                      ),
+                    ),
+                    if (!_folded.contains(e.id) && controller.headerWidth > 90)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Column(children: [
+                          for (var l in motionLanesOf(e))
+                            SizedBox(
+                                height: _lane,
+                                child: Center(
+                                    child: Text(
+                                        l == soundLayer ? "♪" : "L${l + 1}",
+                                        style: small))),
+                        ]),
+                      ),
+                  ]),
+                ),
+              ),
+          ]),
+        ),
+        Expanded(
+          child: LayoutBuilder(builder: (context, constraints) {
+            var width = constraints.maxWidth;
+            return GestureDetector(
+              supportedDevices: timelinePointers,
+              behavior: HitTestBehavior.opaque,
+              onTapUp: (d) => _tap(d.localPosition, width),
+              onDoubleTapDown: (d) =>
+                  _make(d.localPosition, d.globalPosition, width),
+              onDoubleTap: () {},
+              onHorizontalDragDown: (d) => _down(d.localPosition, width),
+              onHorizontalDragUpdate: (d) => _drag(d.localPosition, width),
+              onHorizontalDragEnd: (_) => _up(),
+              onHorizontalDragCancel: _up,
+              child: MouseRegion(
+                cursor: controller.timelineTool == TimelineTool.knife
+                    ? SystemMouseCursors.precise
+                    : SystemMouseCursors.basic,
+                child: CustomPaint(
+                  key: const ValueKey("motionLanesPaint"),
+                  size: Size(width, height),
+                  painter: _LanesPainter(
+                    rows: rows,
+                    folded: _folded,
+                    lane: _lane,
+                    rowHeight: _rowHeight,
+                    times: motionTimesOf(controller.document),
+                    x: (s) => _x(s, width),
+                    picked: controller.pickedPlacement,
+                    colors: colors,
+                    textScaler: MediaQuery.textScalerOf(context),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ]),
+    );
+  }
+}
+
+class _LanesPainter extends CustomPainter {
+  final List<CanvasElement> rows;
+  final Set<String> folded;
+  final double lane;
+  final double Function(CanvasElement) rowHeight;
+  final MotionTimes times;
+  final double Function(double seconds) x;
+  final String? picked;
+  final ColorScheme colors;
+  final TextScaler textScaler;
+
+  _LanesPainter({
+    required this.rows,
+    required this.folded,
+    required this.lane,
+    required this.rowHeight,
+    required this.times,
+    required this.x,
+    required this.picked,
+    required this.colors,
+    required this.textScaler,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var y = 0.0;
+    var line = Paint()..color = colors.outlineVariant.withValues(alpha: 0.5);
+    for (var e in rows) {
+      var h = rowHeight(e);
+      var isFolded = folded.contains(e.id);
+      var lanes = motionLanesOf(e, folded: isFolded);
+      canvas.drawLine(
+          Offset(0, y + h - 0.5), Offset(size.width, y + h - 0.5), line);
+      // The lanes' own lines, faint; the sound's lane tinted.
+      for (var (i, l) in lanes.indexed) {
+        var top = y + 2 + i * lane;
+        if (l == soundLayer) {
+          canvas.drawRect(Rect.fromLTWH(0, top, size.width, lane),
+              Paint()..color = const Color(0x143F9F6B));
+        } else if (i > 0) {
+          canvas.drawLine(Offset(0, top), Offset(size.width, top),
+              Paint()..color = colors.outlineVariant.withValues(alpha: 0.2));
+        }
+      }
+      var m = e.base.motion;
+      for (var p in m.placed) {
+        var c = m.clip(p.clip);
+        var s = times.span(p.id);
+        if (c == null || s == null) continue;
+        var row = isFolded ? 0 : lanes.indexOf(p.layer);
+        if (row < 0) continue;
+        var top = y + 2 + row * lane + 1;
+        var rect = Rect.fromLTRB(
+            x(s.start),
+            top,
+            math.max(x(s.end), x(s.start) + 6),
+            top + (isFolded ? lane : lane - 2));
+        if (rect.right < 0 || rect.left > size.width) continue;
+        _clip(canvas, rect, c, p, s);
+      }
+      y += h;
+    }
+  }
+
+  void _clip(
+      Canvas canvas, Rect rect, MotionClip c, ClipPlacement p, ClipSpan s) {
+    var colour = motionKindColours[c.kind]!;
+    var r = RRect.fromRectAndRadius(rect, const Radius.circular(4));
+    canvas.drawRRect(r, Paint()..color = colour);
+    if (p.id == picked) {
+      canvas.drawRRect(
+          r.inflate(1.5),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..color = colors.onSurface);
+    }
+    canvas.save();
+    canvas.clipRRect(r);
+    // A loop's repeats.
+    if (c.loop && c.span > 0) {
+      var tick = Paint()..color = const Color(0x73FFFFFF);
+      for (var t = s.start + c.span; t < s.end - 0.01; t += c.span) {
+        canvas.drawLine(
+            Offset(x(t), rect.top + 3), Offset(x(t), rect.bottom - 3), tick);
+      }
+    }
+    var name = c.name.isEmpty ? c.kind.label : c.name;
+    var pace = !c.loop && !c.isSound && (s.speed - c.speed).abs() > 0.02
+        ? "  ${s.speed.toStringAsFixed(2)}×"
+        : "";
+    var tp = TextPainter(
+      text: TextSpan(
+          text: "$name$pace",
+          style: const TextStyle(
+              fontSize: 10.5,
+              color: Colors.white,
+              fontWeight: FontWeight.w600)),
+      textDirection: TextDirection.ltr,
+      textScaler: textScaler,
+      maxLines: 1,
+    )..layout();
+    var left = rect.left + (p.startPin != null ? 12 : 6);
+    tp.paint(canvas, Offset(left, rect.center.dy - tp.height / 2));
+    canvas.restore();
+    // A dot at each pinned end.
+    var dot = Paint()..color = Colors.white;
+    if (p.startPin != null) {
+      canvas.drawCircle(Offset(rect.left + 5, rect.top + 5), 3, dot);
+    }
+    if (p.endPin != null) {
+      canvas.drawCircle(Offset(rect.right - 5, rect.top + 5), 3, dot);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_LanesPainter old) => true;
+}
