@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart'
     show isMidiId;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/model/session.dart'
+    show SessionSlotDrag;
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart' show DbReading;
 import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
@@ -838,6 +840,12 @@ class _CanvasChannelsState extends State<CanvasChannels> {
 
   /// _addAt makes a new sound from [source] at [frame] on [channel], or on a
   /// channel of its own.
+  /// _placeSlot puts the clip dragged from a slot onto [channel]'s lane at
+  /// [frame] -- its own channel's, or another of its kind.
+  void _placeSlot(SessionSlotDrag from, int frame, TimelineChannel channel) =>
+      controller.placeSessionClip(from.channel, from.row, frame,
+          onto: channel.key);
+
   void _addAt(MediaSource source, int frame, TimelineChannel? channel) {
     // A MIDI file: its notes onto a MIDI channel, or a MIDI channel of its
     // own -- never a silent sound on an audio one.
@@ -901,17 +909,28 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     return DragTarget<Object>(
       key: ValueKey("lane-${channel.key}"),
       // A sound or a video joins the channel it is let go on.
-      onWillAcceptWithDetails: (d) =>
-          (droppedKind(d.data) == AssetKind.video ||
-              droppedKind(d.data) == AssetKind.audio) &&
-          // A MIDI file only onto a MIDI channel; a sound only onto one
-          // that is not.
-          (d.data is LibraryAsset && isMidiId((d.data as LibraryAsset).id)) ==
-              controller.instrumentChannel(channel.key) &&
-          channel.editable &&
-          !channel.locked,
+      onWillAcceptWithDetails: (d) => switch (d.data) {
+        // A clip from a slot, onto its own kind of channel: placed there,
+        // once through (Ken).
+        SessionSlotDrag from =>
+          controller.canMoveClip(from.clip, channel.key) &&
+              channel.editable &&
+              !channel.locked,
+        _ => (droppedKind(d.data) == AssetKind.video ||
+                droppedKind(d.data) == AssetKind.audio) &&
+            // A MIDI file only onto a MIDI channel; a sound only onto one
+            // that is not.
+            (d.data is LibraryAsset && isMidiId((d.data as LibraryAsset).id)) ==
+                controller.instrumentChannel(channel.key) &&
+            channel.editable &&
+            !channel.locked,
+      },
       onAcceptWithDetails: (d) async {
         var at = _frameIn(channel.key, d.offset);
+        if (d.data case SessionSlotDrag from) {
+          _placeSlot(from, at, channel);
+          return;
+        }
         var asset = await droppedAsset(d.data);
         if (asset == null) return;
         asset.kind == AssetKind.video

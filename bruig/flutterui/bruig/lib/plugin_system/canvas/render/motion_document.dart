@@ -72,13 +72,28 @@ MotionPose motionPoseIn(CanvasDocument doc, CanvasElement e, int frame,
       replaces: motion.clips.any((c) => c.kind == MotionKind.camera));
 }
 
+/// LiveMotion is the elements playing from their slots at this moment --
+/// see motion_player.dart: what each is playing, on [clock]. Handed to the
+/// renderer by whoever is running it, as a counter's value is: an export
+/// has nothing playing, and is drawn from the timeline alone.
+abstract class LiveMotion {
+  double get clock;
+
+  /// of is what [element] is playing from its slots, or null for an
+  /// element on its timeline.
+  MotionLive? of(String element);
+}
+
 /// poseWithMotion is [e]'s pose on [frame]: its own keyframes', with its
-/// clips' moves on top. Without [doc] -- a lone element drawn -- its
-/// keyframes alone.
-Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc) {
+/// clips' moves on top -- from its slots where [live] has it off its
+/// timeline. Without [doc] -- a lone element drawn -- its keyframes alone.
+Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
+    {LiveMotion? live}) {
   var pose = e.track?.at(frame) ?? Keyframe.rest;
   if (doc == null || e.base.motion.isEmpty) return pose;
-  return motionPoseIn(doc, e, frame).onto(pose);
+  var off = live?.of(e.id);
+  return motionPoseIn(doc, e, frame, live: off, clock: live?.clock ?? 0)
+      .onto(pose);
 }
 
 /// MovedElement is where an element is with its clips' moves on it: the
@@ -86,16 +101,18 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc) {
 /// drawn -- the boundsAt lesson, again, for clips.
 extension MovedElement on CanvasElement {
   /// movedBoundsAt is boundsAt with [doc]'s placed clips moving it too.
-  Rect movedBoundsAt(int frame, CanvasDocument doc) => base.motion.isEmpty
-      ? boundsAt(frame)
-      : boundsWith(poseWithMotion(this, frame, doc));
+  Rect movedBoundsAt(int frame, CanvasDocument doc, {LiveMotion? live}) =>
+      base.motion.isEmpty
+          ? boundsAt(frame)
+          : boundsWith(poseWithMotion(this, frame, doc, live: live));
 
   /// movedRotationAt is rotationAt with the clips' turn added.
-  double movedRotationAt(int frame, CanvasDocument doc) => base.motion.isEmpty
-      ? rotationAt(frame)
-      : rotation + poseWithMotion(this, frame, doc).rotate;
+  double movedRotationAt(int frame, CanvasDocument doc, {LiveMotion? live}) =>
+      base.motion.isEmpty
+          ? rotationAt(frame)
+          : rotation + poseWithMotion(this, frame, doc, live: live).rotate;
 
   /// movedFrameAt is frameAt with the clips' turn added.
-  BoxFrame movedFrameAt(int frame, CanvasDocument doc) =>
-      BoxFrame(movedRotationAt(frame, doc), base.skewX, base.skewY);
+  BoxFrame movedFrameAt(int frame, CanvasDocument doc, {LiveMotion? live}) =>
+      BoxFrame(movedRotationAt(frame, doc, live: live), base.skewX, base.skewY);
 }

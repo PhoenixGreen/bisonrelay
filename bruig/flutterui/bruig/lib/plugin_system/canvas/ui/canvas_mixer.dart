@@ -5,7 +5,16 @@ import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
     show sectionColors;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show newElementId;
+    show CanvasElement, newElementId;
+import 'package:bruig/plugin_system/canvas/model/motion.dart'
+    show MotionClip, MotionKind, motionLayers;
+import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
+    show MotionPreset, presetsFor;
+import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart'
+    show MotionSlotDrag, motionKindColours, motionRowsOf;
+import 'package:bruig/plugin_system/canvas/ui/motion_player.dart'
+    show MotionSlotState;
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart'
@@ -35,6 +44,7 @@ import 'package:flutter/services.dart' show HardwareKeyboard;
 import 'package:flutter/scheduler.dart';
 
 part 'canvas_mixer_strips.dart';
+part 'canvas_mixer_motion.dart';
 
 // canvas_mixer.dart is the mixer: a strip for each sound on the timeline and
 // a master strip, floated over the canvas from a button at the end of the
@@ -553,6 +563,15 @@ class _CanvasMixerState extends State<CanvasMixer>
                           padding: const EdgeInsets.only(right: 8),
                           child: _channelStrip(theme, lane, i, bands),
                         ),
+                      // The elements' strips, after the sounds': their
+                      // animation slots on the same cue rows.
+                      if (!widget.embedded && !widget.effects)
+                        for (var e in motionRowsOf(controller))
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: _elementStrip(controller, theme, e, bands,
+                                _clipScrolls.of("motion:${e.id}")),
+                          ),
                     ],
                   ),
           ),

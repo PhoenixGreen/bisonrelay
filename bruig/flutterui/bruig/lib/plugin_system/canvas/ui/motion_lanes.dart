@@ -7,6 +7,8 @@ import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_player.dart'
+    show MotionSlotState;
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -30,6 +32,15 @@ import 'package:flutter/services.dart';
 
 /// motionLaneHeight is one lane's height, before the text's size.
 const double motionLaneHeight = 22;
+
+/// MotionSlotDrag is a clip dragged from an element's slot: to another
+/// slot, or onto the timeline.
+class MotionSlotDrag {
+  final String element;
+  final int slot;
+  final String clip;
+  const MotionSlotDrag(this.element, this.slot, this.clip);
+}
 
 /// motionKindColours are the clips' colours, by what they are for -- the
 /// prototype's.
@@ -371,7 +382,10 @@ class _MotionLanesState extends State<MotionLanes> {
                             style: label),
                       ),
                     ),
-                    if (!_folded.contains(e.id) && controller.headerWidth > 90)
+                    if (controller.slotsBeside)
+                      _RowSlots(controller: controller, element: e)
+                    else if (!_folded.contains(e.id) &&
+                        controller.headerWidth > 90)
                       Padding(
                         padding: const EdgeInsets.only(right: 4),
                         child: Column(children: [
@@ -392,40 +406,176 @@ class _MotionLanesState extends State<MotionLanes> {
         Expanded(
           child: LayoutBuilder(builder: (context, constraints) {
             var width = constraints.maxWidth;
-            return GestureDetector(
-              supportedDevices: timelinePointers,
-              behavior: HitTestBehavior.opaque,
-              onTapUp: (d) => _tap(d.localPosition, width),
-              onDoubleTapDown: (d) =>
-                  _make(d.localPosition, d.globalPosition, width),
-              onDoubleTap: () {},
-              onHorizontalDragDown: (d) => _down(d.localPosition, width),
-              onHorizontalDragUpdate: (d) => _drag(d.localPosition, width),
-              onHorizontalDragEnd: (_) => _up(),
-              onHorizontalDragCancel: _up,
-              child: MouseRegion(
-                cursor: controller.timelineTool == TimelineTool.knife
-                    ? SystemMouseCursors.precise
-                    : SystemMouseCursors.basic,
-                child: CustomPaint(
-                  key: const ValueKey("motionLanesPaint"),
-                  size: Size(width, height),
-                  painter: _LanesPainter(
-                    rows: rows,
-                    folded: _folded,
-                    lane: _lane,
-                    rowHeight: _rowHeight,
-                    times: motionTimesOf(controller.document),
-                    x: (s) => _x(s, width),
-                    picked: controller.pickedPlacement,
-                    colors: colors,
-                    textScaler: MediaQuery.textScalerOf(context),
-                  ),
-                ),
-              ),
+            // A clip dragged from a slot -- in the mixer, or beside the
+            // rows -- let go on a row: placed there, on the lane it is let
+            // go on. Another element's, copied to this one first.
+            return DragTarget<Object>(
+              onWillAcceptWithDetails: (d) => d.data is MotionSlotDrag,
+              onAcceptWithDetails: (d) {
+                var box = context.findRenderObject() as RenderBox?;
+                if (box == null || d.data is! MotionSlotDrag) return;
+                _dropped(d.data as MotionSlotDrag, box.globalToLocal(d.offset),
+                    width);
+              },
+              builder: (context, over, _) =>
+                  _lanes(over.isNotEmpty, rows, height, width, colors),
             );
           }),
         ),
+      ]),
+    );
+  }
+
+  void _dropped(MotionSlotDrag drag, Offset local, double width) {
+    var hit = _hit(local, width);
+    if (hit == null) return;
+    var into = hit.element.id;
+    var seconds = math.max(0.0, _snap(_seconds(local.dx, width)));
+    controller.beginInteraction();
+    var clip = into == drag.element
+        ? drag.clip
+        : controller.copyClipTo(drag.element, drag.clip, into);
+    if (clip == null) {
+      controller.endInteraction();
+      return;
+    }
+    var c = controller.motionOf(into).clip(clip);
+    var layer =
+        c == null || c.isSound || hit.layer == soundLayer ? null : hit.layer;
+    var placed =
+        controller.placeClip(into, clip, seconds: seconds, layer: layer);
+    controller.endInteraction();
+    var now = controller.document.elementById(into);
+    var p = now?.base.motion.placement(placed);
+    if (now != null && p != null) _open(now, p);
+  }
+
+  Widget _lanes(bool over, List<CanvasElement> rows, double height,
+      double width, ColorScheme colors) {
+    return DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+            border: over ? Border.all(color: colors.primary, width: 2) : null),
+        child: GestureDetector(
+          supportedDevices: timelinePointers,
+          behavior: HitTestBehavior.opaque,
+          onTapUp: (d) => _tap(d.localPosition, width),
+          onDoubleTapDown: (d) =>
+              _make(d.localPosition, d.globalPosition, width),
+          onDoubleTap: () {},
+          onHorizontalDragDown: (d) => _down(d.localPosition, width),
+          onHorizontalDragUpdate: (d) => _drag(d.localPosition, width),
+          onHorizontalDragEnd: (_) => _up(),
+          onHorizontalDragCancel: _up,
+          child: MouseRegion(
+            cursor: controller.timelineTool == TimelineTool.knife
+                ? SystemMouseCursors.precise
+                : SystemMouseCursors.basic,
+            child: CustomPaint(
+              key: const ValueKey("motionLanesPaint"),
+              size: Size(width, height),
+              painter: _LanesPainter(
+                rows: rows,
+                folded: _folded,
+                lane: _lane,
+                rowHeight: _rowHeight,
+                times: motionTimesOf(controller.document),
+                x: (s) => _x(s, width),
+                picked: controller.pickedPlacement,
+                colors: colors,
+                textScaler: MediaQuery.textScalerOf(context),
+              ),
+            ),
+          ),
+        ));
+  }
+}
+
+/// _RowSlots are an element's slots beside its rows, as many as fit: a
+/// square each, in its clip's colour. Pressed, it launches; double-clicked,
+/// it opens in the Animation panel; dragged, it goes onto the timeline or
+/// into a strip's slot. An empty one pressed stops the element's clips.
+class _RowSlots extends StatelessWidget {
+  final CanvasController controller;
+  final CanvasElement element;
+  const _RowSlots({required this.controller, required this.element});
+
+  static const double _size = 14;
+
+  @override
+  Widget build(BuildContext context) {
+    var c = controller;
+    var colors = ThemeNotifier.of(context).colors;
+    var m = element.base.motion;
+    var count = ((c.headerWidth - 18 - 56) / (_size + 2))
+        .floor()
+        .clamp(0, c.session.rows);
+    Widget square(int i) {
+      var clip = m.slot(i);
+      var state = c.motionSlotState(element.id, i);
+      var lit = state == MotionSlotState.playing ||
+          state == MotionSlotState.stopping ||
+          state == MotionSlotState.queued;
+      var box = Container(
+        width: _size,
+        height: _size,
+        decoration: BoxDecoration(
+          color: clip == null
+              ? null
+              : motionKindColours[clip.kind]!.withValues(alpha: lit ? 1 : 0.4),
+          borderRadius: BorderRadius.circular(2),
+          border: Border.all(
+              color: lit ? colors.onSurface : colors.outlineVariant,
+              width: lit ? 1.5 : 1),
+        ),
+        child: lit && clip != null
+            ? const Icon(Icons.play_arrow, size: 10, color: Color(0xFF0E0F12))
+            : null,
+      );
+      var pressed = Listener(
+        key: ValueKey("rowSlot-${element.id}-$i"),
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (_) => c.pressMotionSlot(element.id, i),
+        onPointerUp: (_) {
+          if (clip != null) c.releaseMotionClip(element.id, clip.id);
+        },
+        child: GestureDetector(
+          onDoubleTap: clip == null
+              ? null
+              : () {
+                  c.pickMotion(element.id, clip.id);
+                  c.animationOpen = true;
+                },
+          child: box,
+        ),
+      );
+      if (clip == null) return pressed;
+      return Draggable<Object>(
+        data: MotionSlotDrag(element.id, i, clip.id),
+        dragAnchorStrategy: pointerDragAnchorStrategy,
+        feedback: Material(
+          color: motionKindColours[clip.kind],
+          borderRadius: BorderRadius.circular(3),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            child: Text(clip.name,
+                style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0E0F12))),
+          ),
+        ),
+        child: pressed,
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        for (var i = 0; i < count; i++) ...[
+          if (i > 0) const SizedBox(width: 2),
+          square(i),
+        ],
       ]),
     );
   }

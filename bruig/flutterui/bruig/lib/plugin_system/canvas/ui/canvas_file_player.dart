@@ -4,6 +4,10 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart'
+    show ClipTriggerKind;
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show MovedElement;
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
@@ -12,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
@@ -130,7 +135,28 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
     c.pause();
     if (c.document.hasScenes) c.goToScene(0);
     c.frame = 0;
+    c.backToTimeline();
+    _start(c);
+  }
+
+  /// _start plays it, and the clips that start with the scene start.
+  void _start(CanvasController c) {
+    var fromTop = c.frame == 0;
     c.play();
+    if (fromTop) c.fireMotionTrigger(ClipTriggerKind.sceneStarts);
+  }
+
+  /// _key is a key pressed while it plays: the clips that start on it.
+  KeyEventResult _key(CanvasController c, KeyEvent e) {
+    if (e is! KeyDownEvent) return KeyEventResult.ignored;
+    var k = e.logicalKey;
+    var name = k == LogicalKeyboardKey.space
+        ? "Space"
+        : k == LogicalKeyboardKey.enter
+            ? "Enter"
+            : k.keyLabel.toUpperCase();
+    c.fireMotionTrigger(ClipTriggerKind.key, name);
+    return KeyEventResult.ignored;
   }
 
   /// _press is a click at [at] in a view [size] big: the button there does
@@ -142,11 +168,21 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
     if (size.width <= 0 || size.height <= 0) return;
     var p = Offset(
         at.dx / size.width * page.width, at.dy / size.height * page.height);
+    var clicked = false;
     for (var e in [
       ...doc.elements.reversed,
       ...?doc.masterScene?.elements.reversed,
     ]) {
-      if (!e.visible || !e.boundsAt(c.frame).contains(p)) continue;
+      if (!e.visible ||
+          !e.movedBoundsAt(c.frame, doc, live: c.liveMotion).contains(p)) {
+        continue;
+      }
+      // Clips that start when it is clicked, whatever else it does: the
+      // top one's, the one the reader sees.
+      if (!clicked) {
+        clicked = true;
+        c.fireMotionTrigger(ClipTriggerKind.clicked, e.id);
+      }
       switch (e) {
         case ButtonElement b:
           c.runButtonAction(b.action);
@@ -178,14 +214,18 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
               // Its buttons and speakers pressed, as a reader presses them;
               // a link is not followed from a preview.
               LayoutBuilder(
-                builder: (context, box) => GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTapUp: (d) => _press(c, d.localPosition, box.biggest),
-                  child: ListenableBuilder(
-                    listenable: c,
-                    builder: (context, _) => CustomPaint(
-                        key: const ValueKey("canvasFileView"),
-                        painter: _PlayedPainter(c)),
+                builder: (context, box) => Focus(
+                  autofocus: true,
+                  onKeyEvent: (_, e) => _key(c, e),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapUp: (d) => _press(c, d.localPosition, box.biggest),
+                    child: ListenableBuilder(
+                      listenable: c,
+                      builder: (context, _) => CustomPaint(
+                          key: const ValueKey("canvasFileView"),
+                          painter: _PlayedPainter(c)),
+                    ),
                   ),
                 ),
               ),
@@ -201,7 +241,7 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
             key: const ValueKey("canvasFilePlay"),
             icon: Icon(c.playing ? Icons.pause : Icons.play_arrow),
             tooltip: c.playing ? "Pause" : "Play",
-            onPressed: () => c.playing ? c.pause() : c.play(),
+            onPressed: () => c.playing ? c.pause() : _start(c),
           ),
           IconButton(
             key: const ValueKey("canvasFileAgain"),
@@ -230,7 +270,10 @@ class _PlayedPainter extends CustomPainter {
     canvas.clipRect(Offset.zero & size);
     canvas.scale(size.width / page.width, size.height / page.height);
     paintCanvasDocument(canvas, doc,
-        frame: c.frame, images: c.images, counterValue: c.counterValue);
+        frame: c.frame,
+        images: c.images,
+        counterValue: c.counterValue,
+        liveMotion: c.liveMotion);
     canvas.restore();
   }
 

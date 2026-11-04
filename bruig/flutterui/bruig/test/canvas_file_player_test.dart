@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_file_player.dart';
 import 'package:bruig/screens/manage_content/file_preview.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
@@ -123,6 +125,41 @@ void main() {
               .elementById("door")!
               .visible,
           isFalse);
+      await tester.pumpWidget(const SizedBox());
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("a clip that starts on a click starts when it is clicked",
+        (tester) async {
+      var hop = MotionClip.ofKind("hop", MotionKind.action, name: "Hop")
+          .copyWith(quantise: () => "off", triggers: const [
+        ClipTrigger(ClipTriggerKind.clicked, target: "a")
+      ], keys: {
+        MotionProp.y: const [
+          MotionKey(0, MotionNumber(0)),
+          MotionKey(1, MotionNumber(-50)),
+        ],
+      });
+      var file = await write(
+          tester,
+          CanvasDocument(frames: 60, elements: [
+            ShapeElement(ElementBase(
+                id: "a",
+                x: 540,
+                y: 260,
+                width: 200,
+                height: 200,
+                motion: ElementMotion(clips: [hop]))),
+          ]));
+      await show(tester, file);
+      var player = tester.state(find.byType(CanvasFilePlayer));
+      CanvasController c = (player as dynamic).controllerForTest;
+      expect(c.motionPlayer.isOff("a"), isFalse);
+      await tester.tapAt(
+          tester.getCenter(find.byKey(const ValueKey("canvasFileView"))));
+      await tester.pump();
+      expect(c.motionPlayer.isOff("a"), isTrue, reason: "hopping");
+      c.pause();
       await tester.pumpWidget(const SizedBox());
       expect(tester.takeException(), isNull);
     });

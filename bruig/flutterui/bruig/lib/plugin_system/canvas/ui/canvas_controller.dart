@@ -132,6 +132,13 @@ import 'package:bruig/plugin_system/canvas/model/elements/background_element.dar
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart'
+    show motionId, everyMotion;
+import 'package:bruig/plugin_system/canvas/model/motion.dart'
+    show ClipTriggerKind;
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show LiveMotion;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart'
     show HardwareKeyboard, KeyDownEvent, KeyEvent, KeyRepeatEvent, KeyUpEvent, LogicalKeyboardKey;
@@ -1040,6 +1047,17 @@ class CanvasController extends ChangeNotifier {
   set rowsShown(bool value) {
     if (_rowsShown == value) return;
     _rowsShown = value;
+    _notifyView();
+  }
+
+  bool _slotsBeside = false;
+
+  /// slotsBeside is the bar's slots button: each element's slots beside its
+  /// rows on the timeline, as well as on its strip in the mixer.
+  bool get slotsBeside => _slotsBeside;
+  set slotsBeside(bool value) {
+    if (_slotsBeside == value) return;
+    _slotsBeside = value;
     _notifyView();
   }
 
@@ -5840,6 +5858,15 @@ class CanvasController extends ChangeNotifier {
       if (_clipChannels.isNotEmpty || _clipRecord != null) {
         _sessionStep(_sessionNow);
       }
+      // The elements' slots: painted again as they play, a frame at a time.
+      if (motionPlayer.playing) {
+        _motionStep();
+        var at = (_sessionNow * rate).floor();
+        if (at != _motionPainted) {
+          _motionPainted = at;
+          _notifyView();
+        }
+      }
       // The clips' envelopes of their channels' settings, moving.
       if (_clipChannels.isNotEmpty) _applyMix();
       return;
@@ -5863,6 +5890,7 @@ class CanvasController extends ChangeNotifier {
       if (!gaming && (_clipChannels.isNotEmpty || _clipRecord != null)) {
         _sessionStep(_sessionNow);
       }
+      if (!gaming && motionPlayer.offTimeline) _motionStep();
     }
   }
 
@@ -5947,6 +5975,15 @@ class CanvasController extends ChangeNotifier {
     // Not a game's: its sounds go on through a Stop on its timeline -- the
     // title waiting for a jump -- and stop when the game does.
     if (!gaming) _haltClips();
+    // The elements' slots: playing only them, back to the timeline; over
+    // the timeline, stopped where they are, off it until Back.
+    if (!gaming && motionPlayer.offTimeline) {
+      if (_sessionOnly) {
+        motionPlayer.clear();
+      } else {
+        motionPlayer.halt(_document, _frame, _sessionNow);
+      }
+    }
     if (_recording) {
       _recording = false;
       _keepTake();
@@ -7066,8 +7103,16 @@ class CanvasController extends ChangeNotifier {
       }
     }
     _take.clear();
-    if (_taken.isEmpty && _clipLog.isEmpty && _controlTake.isEmpty) return;
+    var moved = motionPlayer.takeLog(_document, _sessionNow);
+    if (_taken.isEmpty &&
+        _clipLog.isEmpty &&
+        _controlTake.isEmpty &&
+        moved.isEmpty) {
+      return;
+    }
     var next = _writeClipLog(_document);
+    // What the elements' slots played, as clips on their rows.
+    next = writeMotionTakes(next, moved, () => motionId("p"));
     // The controllers moved, into each part's curves: over the stretch
     // recorded, what was there before is replaced.
     for (var e in _controlTake.entries) {
@@ -7099,6 +7144,88 @@ class CanvasController extends ChangeNotifier {
     }
     _taken.clear();
     apply(next);
+  }
+
+  // ------------------------------------------------------------------------
+  // The elements' slots: their clips launched live -- see motion_player.dart
+  // ------------------------------------------------------------------------
+
+  /// motionPlayer is what the elements' slots are playing.
+  final MotionPlayer motionPlayer = MotionPlayer();
+
+  /// _motionPainted is the frame of the slots' clock last painted, playing
+  /// only the slots.
+  int _motionPainted = -1;
+
+  /// liveMotion is what the renderer draws the elements off their
+  /// timelines from: null with every one on it.
+  LiveMotion? get liveMotion => motionPlayer.offTimeline ? motionPlayer : null;
+
+  /// motionTick goes up as the slots play on, for the stage to paint.
+  int get motionTick => motionPlayer.revision;
+
+  /// pressMotionSlot is slot [slot] of [element] pressed: its clip launched
+  /// as it says -- on the next bar, or what it waits for -- or, empty, the
+  /// element's clips stopped.
+  void pressMotionSlot(String element, int slot) {
+    var clip = _document.elementById(element)?.base.motion.slot(slot);
+    if (clip == null) {
+      stopMotion(element);
+      return;
+    }
+    pressMotionClip(element, clip.id);
+  }
+
+  /// pressMotionClip is [clip] of [element] launched, as its slot would.
+  void pressMotionClip(String element, String clip) {
+    var c = _document.elementById(element)?.base.motion.clip(clip);
+    if (c == null) return;
+    var at = _launchTime(c.quantise == null ? null : Quantise.fromName(c.quantise));
+    motionPlayer.press(_document, _frame, element, clip, at);
+    _motionStep();
+    notifyListeners();
+  }
+
+  /// releaseMotionClip is its slot let go: a gate stops.
+  void releaseMotionClip(String element, String clip) {
+    motionPlayer.release(_document, element, clip, _sessionNow);
+    _motionStep();
+    notifyListeners();
+  }
+
+  /// stopMotion stops what [element]'s slots play, on the next bar.
+  void stopMotion(String element) {
+    if (!motionPlayer.isOff(element)) return;
+    motionPlayer.stop(element,
+        at: playing ? _nextLaunch(_sessionNow) : _sessionNow);
+    _motionStep();
+    notifyListeners();
+  }
+
+  /// motionSlotState is how slot [slot] of [element] is doing.
+  MotionSlotState motionSlotState(String element, int slot) =>
+      motionPlayer.slotState(
+          element, _document.elementById(element)?.base.motion.slot(slot));
+
+  /// fireMotionTrigger starts the clips that start on [kind] of [target]:
+  /// a click, a key, the scene starting.
+  void fireMotionTrigger(ClipTriggerKind kind, [String target = ""]) {
+    var any = _document.elements.any((e) => e.base.motion.clips
+        .any((c) => c.triggers.any((t) => t.kind == kind)));
+    if (!any) return;
+    var at = playing || gaming ? _sessionNow : _sessionStart();
+    motionPlayer.fire(_document, _frame, kind, target, at);
+    _motionStep();
+    notifyListeners();
+  }
+
+  void _motionStep() {
+    if (!motionPlayer.offTimeline) return;
+    var events = motionPlayer.step(_document, _frame, _sessionNow,
+        recording: _recording && !_sessionOnly);
+    for (var e in events) {
+      if (e is MotionBack) motionPlayer.leave(e.element);
+    }
   }
 
   // ------------------------------------------------------------------------
@@ -7169,7 +7296,8 @@ class CanvasController extends ChangeNotifier {
   /// offTimeline is whether what is heard is not the timeline: only the
   /// slots playing, or a channel left for its slots -- what Back to the
   /// timeline lights for.
-  bool get offTimeline => _sessionOnly || _offTimeline.isNotEmpty;
+  bool get offTimeline =>
+      _sessionOnly || _offTimeline.isNotEmpty || motionPlayer.offTimeline;
 
   /// backToTimeline goes back to the timeline: playing only the slots, they
   /// stop; a channel that left it for its slots plays it again.
@@ -7178,7 +7306,13 @@ class CanvasController extends ChangeNotifier {
       pause();
       return;
     }
-    if (_offTimeline.isEmpty) return;
+    // Elements off their timelines for their slots: back on them.
+    var moved = motionPlayer.offTimeline;
+    motionPlayer.clear();
+    if (_offTimeline.isEmpty) {
+      if (moved) notifyListeners();
+      return;
+    }
     for (var key in [..._offTimeline]) {
       if (_clipChannels[key]?.now != null) stopChannelClips(key);
     }
@@ -7393,6 +7527,15 @@ class CanvasController extends ChangeNotifier {
         _stopChannelAt(c.key, at);
       }
     }
+    // The cue's row of every element's slots, too. An element with nothing
+    // in it goes on as it is: a picture has no reason to stop moving
+    // because a cue has nothing new for it.
+    for (var e in _document.elements) {
+      if (e.base.motion.slot(row) case var clip?) {
+        motionPlayer.launch(_document, _frame, e.id, clip.id, at);
+      }
+    }
+    _motionStep();
     _sceneLaunched = row;
     notifyListeners();
   }
@@ -7417,6 +7560,8 @@ class CanvasController extends ChangeNotifier {
     for (var key in [..._clipChannels.keys]) {
       _stopChannelAt(key, at);
     }
+    motionPlayer.stopAll(at);
+    _motionStep();
     if (_clipRecord != null) _endClipRecord();
     notifyListeners();
   }
@@ -7959,8 +8104,13 @@ class CanvasController extends ChangeNotifier {
 
   /// addClipScene, removeClipScene and renameClipScene change the session
   /// grid's rows -- not the canvas's own scenes.
-  void addClipScene({int? after}) =>
-      apply(_document.copyWith(session: session.withScene(after: after)));
+  void addClipScene({int? after}) {
+    var at = after == null ? session.rows : after + 1;
+    // The elements' slots move down with the cues under it.
+    apply(everyMotion(
+        _document.copyWith(session: session.withScene(after: after)),
+        (m) => m.withCueAt(at)));
+  }
 
   void removeClipScene(int row) {
     for (var key in [..._clipChannels.keys]) {
@@ -7969,7 +8119,15 @@ class CanvasController extends ChangeNotifier {
         _stopChannelAt(key, _sessionNow);
       }
     }
-    apply(_document.copyWith(session: session.withoutScene(row)));
+    if (session.rows <= 1) return;
+    for (var e in _document.elements) {
+      if (e.base.motion.slot(row) case var clip?) {
+        motionPlayer.stop(e.id, layer: clip.layer, at: _sessionNow);
+      }
+    }
+    apply(everyMotion(
+        _document.copyWith(session: session.withoutScene(row)),
+        (m) => m.withoutCue(row)));
   }
 
   void renameClipScene(int row, String name) =>
@@ -8046,6 +8204,25 @@ class CanvasController extends ChangeNotifier {
   /// the timeline: an audio clip as its sound, round as many times as it
   /// went, on its channel; a MIDI clip's notes into its channel's part.
   /// Part of the take: one change with it.
+  /// placeSessionClip puts slot [row] of [channel] onto its lane -- or
+  /// [onto]'s, another channel of its kind -- at [frame], as it would be had
+  /// it been launched there with Record on: once through, its length long.
+  void placeSessionClip(String channel, int row, int frame, {String? onto}) {
+    var clip = session.at(channel, row);
+    if (clip == null) return;
+    var from = math.max(0, frame) / math.max(1, _document.frameRate);
+    var length = math.max(0.05, clip.bars * _document.audio.secondsPerBar);
+    var kept = [..._clipLog];
+    _clipLog
+      ..clear()
+      ..add(_ClipPlayed(onto ?? channel, clip, from, from + length));
+    var next = _writeClipLog(_document);
+    _clipLog
+      ..clear()
+      ..addAll(kept);
+    apply(next);
+  }
+
   CanvasDocument _writeClipLog(CanvasDocument doc) {
     if (_clipLog.isEmpty) return doc;
     var rate = math.max(1, doc.frameRate);
@@ -13482,6 +13659,7 @@ class CanvasController extends ChangeNotifier {
     this.folder = folder;
     this.name = name;
     _offTimeline.clear();
+    motionPlayer.clear();
     _selectedSlot = null;
     _selection = {};
     _backgroundSelected = false;

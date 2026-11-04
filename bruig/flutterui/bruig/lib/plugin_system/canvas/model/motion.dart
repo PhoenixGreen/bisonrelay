@@ -641,8 +641,12 @@ String markerKey(TimelineAction a) => a.id.isNotEmpty ? a.id : "m${a.frame}";
 /// math0 keeps a time from going before the scene's start.
 double math0(double v) => v < 0 ? 0 : v;
 
-/// clipSlots is how many slots an element's strip has: one per cue row.
+/// clipSlots is how many slots an element's strip has at the least: it has
+/// one per cue row, as many as the mixer has.
 const int clipSlots = 4;
+
+/// maxClipSlots is the most read back: a cue row each.
+const int maxClipSlots = 256;
 
 /// ElementMotion is all of an element's motion: its clips, which are in its
 /// slots, where they are placed on the timeline, and how much each layer
@@ -727,6 +731,28 @@ class ElementMotion {
     return copyWith(slots: next);
   }
 
+  /// withCueAt is this with an empty slot put in at cue row [at], those
+  /// under it moved down a row with their cues.
+  ElementMotion withCueAt(int at) =>
+      slots.length <= at ? this : copyWith(slots: [...slots]..insert(at, ""));
+
+  /// withoutCue is this with cue row [row] taken away, the slots under it
+  /// moved up. The clip in it goes too, unless it is on the timeline.
+  ElementMotion withoutCue(int row) {
+    if (slots.length <= row) return this;
+    var gone = slots[row];
+    var next = copyWith(slots: [...slots]..removeAt(row));
+    if (gone.isEmpty ||
+        next.slots.contains(gone) ||
+        placed.any((p) => p.clip == gone)) {
+      return next;
+    }
+    return next.copyWith(clips: [
+      for (var c in clips)
+        if (c.id != gone) c
+    ]);
+  }
+
   /// withPlacement is this with [p] added, or put in place of the one with
   /// its id.
   ElementMotion withPlacement(ClipPlacement p) => copyWith(placed: [
@@ -762,7 +788,7 @@ class ElementMotion {
       clips: clips,
       slots: [
         if (json["slots"] case List raw)
-          for (var s in raw.take(clipSlots))
+          for (var s in raw.take(maxClipSlots))
             s is String && ids.contains(s) ? s : "",
       ],
       placed: [

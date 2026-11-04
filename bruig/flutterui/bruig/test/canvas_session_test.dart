@@ -253,6 +253,29 @@ void main() {
       expect(c.session.at("a", 0), isNull, reason: "one undoable change");
     });
 
+    // Ken: a slot dragged onto the timeline is placed there.
+    test("a slot put on its lane plays there once through, its length", () {
+      var c = make([sound("a")]);
+      addTearDown(c.dispose);
+      c.clipFromSound("a", 0, c.soundsOf("a").single);
+      c.placeSessionClip("a", 0, 240);
+      var placed = c.document.elements
+          .whereType<AudioElement>()
+          .where((e) => e.clip.channel == "a" && e.clip.at == 240)
+          .single;
+      expect(placed.clip.timed, isTrue);
+      expect(
+          placed.clip.playlist.single.end - placed.clip.playlist.single.start,
+          closeTo(8, 0.01),
+          reason: "four bars of two seconds");
+      c.undo();
+      expect(
+          c.document.elements
+              .whereType<AudioElement>()
+              .where((e) => e.clip.at == 240),
+          isEmpty);
+    });
+
     test("with nothing playing, a launch starts the transport, at once",
         () async {
       var c = make([sound("a")]);

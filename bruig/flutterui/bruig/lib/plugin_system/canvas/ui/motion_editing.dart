@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
@@ -89,10 +90,12 @@ extension MotionEditing on CanvasController {
     if (c == null || c.kind == MotionKind.model) return null;
     var id = motionId("c");
     var m = motionOf(to).withClip(c.copyWith(id: id, triggers: const []));
-    var free = [for (var i = 0; i < clipSlots; i++) i]
-        .where((i) => m.slot(i) == null)
-        .firstOrNull;
-    if (free != null) m = m.inSlot(free, id);
+    // Its first empty slot: there is always one, past the last.
+    var free = 0;
+    while (m.slot(free) != null) {
+      free++;
+    }
+    m = m.inSlot(free, id);
     setMotion(to, m);
     return id;
   }
@@ -280,6 +283,48 @@ extension MotionEditing on CanvasController {
     setMotion(element, m.withClip(change(c)), transient: transient);
   }
 
+  /// moveMotionSlot moves the clip in slot [from] of [element] to slot [to]
+  /// of [into] -- swapping with what is there, on the same element -- or,
+  /// with [copy] or onto another element, puts a copy of it there. Whether
+  /// anything moved.
+  bool moveMotionSlot(String element, int from, String into, int to,
+      {bool copy = false}) {
+    var m = motionOf(element);
+    var c = m.slot(from);
+    if (c == null || (element == into && from == to)) return false;
+    if (element == into && !copy) {
+      var there = m.slots.length > to ? m.slots[to] : "";
+      setMotion(element, m.inSlot(to, c.id).inSlot(from, there));
+      return true;
+    }
+    if (c.kind == MotionKind.model && element != into) return false;
+    var id = motionId("c");
+    var target = element == into ? m : motionOf(into);
+    setMotion(
+        into,
+        target
+            .withClip(
+                c.copyWith(id: id, triggers: element == into ? null : const []))
+            .inSlot(to, id));
+    return true;
+  }
+
+  /// clearMotionSlot empties slot [slot] of [element]: the clip stays,
+  /// where it is on the timeline, unless it is nowhere else -- then it goes.
+  void clearMotionSlot(String element, int slot) {
+    var m = motionOf(element);
+    var c = m.slot(slot);
+    if (c == null) return;
+    var next = m.inSlot(slot, "");
+    if (!next.slots.contains(c.id) && !next.placed.any((p) => p.clip == c.id)) {
+      next = next.copyWith(clips: [
+        for (var x in next.clips)
+          if (x.id != c.id) x
+      ]);
+    }
+    setMotion(element, next);
+  }
+
   /// weighLayer sets how much [layer] of [element] counts, 0 to 1.
   void weighLayer(String element, int layer, double weight,
       {bool transient = false}) {
@@ -291,6 +336,22 @@ extension MotionEditing on CanvasController {
     w[layer] = weight.clamp(0.0, 1.0);
     setMotion(element, m.copyWith(weights: w), transient: transient);
   }
+}
+
+/// everyMotion is [doc] with [change] made to every element's motion that
+/// has any: cue rows put in or taken away, for one.
+CanvasDocument everyMotion(
+    CanvasDocument doc, ElementMotion Function(ElementMotion m) change) {
+  var next = doc;
+  for (var e in doc.elements) {
+    var m = e.base.motion;
+    if (m.isEmpty) continue;
+    var changed = change(m);
+    if (!identical(changed, m)) {
+      next = next.withElement(e.withBase(motion: changed));
+    }
+  }
+  return next;
 }
 
 /// placedElement is the element [placement] belongs to in [elements].

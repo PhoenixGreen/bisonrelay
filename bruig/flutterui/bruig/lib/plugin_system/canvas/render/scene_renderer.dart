@@ -216,6 +216,10 @@ void paintCanvasDocument(
   /// which of its buttons is lit -- see paintElement. Null in an export,
   /// where nothing is running.
   double Function(CounterElement)? counterValue,
+
+  /// liveMotion is the elements playing from their slots -- see
+  /// motion_player.dart. Null in an export, which draws the timeline.
+  LiveMotion? liveMotion,
   int Function(CounterElement)? counterPressed,
   bool Function(CounterElement)? counterRunning,
 
@@ -305,6 +309,7 @@ void paintCanvasDocument(
           skipElement: skipElement,
           skipTextItem: skipTextItem,
           counterValue: counterValue,
+          liveMotion: liveMotion,
           counterPressed: counterPressed,
           counterRunning: counterRunning,
           audioState: audioState,
@@ -339,6 +344,7 @@ void paintCanvasDocument(
       skipElement: skipElement,
       skipTextItem: skipTextItem,
       counterValue: counterValue,
+      liveMotion: liveMotion,
       counterPressed: counterPressed,
       counterRunning: counterRunning,
       audioState: audioState,
@@ -367,6 +373,10 @@ void _paintScene(
   String? skipElement,
   String? skipTextItem,
   double Function(CounterElement)? counterValue,
+
+  /// liveMotion is the elements playing from their slots -- see
+  /// motion_player.dart. Null in an export, which draws the timeline.
+  LiveMotion? liveMotion,
   int Function(CounterElement)? counterPressed,
   bool Function(CounterElement)? counterRunning,
 
@@ -417,6 +427,7 @@ void _paintScene(
         document: doc,
         skipTextItem: skipTextItem,
         counterValue: counterValue,
+        liveMotion: liveMotion,
         counterPressed: counterPressed,
         counterRunning: counterRunning,
         audioState: audioState,
@@ -626,6 +637,10 @@ void paintElement(
   /// canvas knows, and an exported frame has nobody to ask. Null means
   /// nobody is running anything, which is what an export is.
   double Function(CounterElement)? counterValue,
+
+  /// liveMotion is the elements playing from their slots -- see
+  /// motion_player.dart. Null in an export, which draws the timeline.
+  LiveMotion? liveMotion,
   int Function(CounterElement)? counterPressed,
   bool Function(CounterElement)? counterRunning,
 
@@ -649,7 +664,7 @@ void paintElement(
   ProceduralCache? backgrounds,
 }) {
   // Its own keyframes, and its clips' moves on top. See motion_document.dart.
-  var pose = poseWithMotion(element, frame, document);
+  var pose = poseWithMotion(element, frame, document, live: liveMotion);
   var outer = poseOutside ? Keyframe.rest : pose;
   var alpha = (element.opacity * outer.opacity).clamp(0.0, 1.0);
   // A way out with no exit chosen fades rather than doing nothing. The
@@ -731,6 +746,7 @@ void paintElement(
             skipTextItem: skipTextItem,
             document: document,
             counterValue: counterValue,
+            liveMotion: liveMotion,
             counterPressed: counterPressed,
             counterRunning: counterRunning,
             audioState: audioState,
@@ -1374,11 +1390,12 @@ LineElement _bowed(LineElement e, Keyframe pose) {
 /// The selection outline, the handles and the on-canvas text editor all use
 /// this, because a box drawn somewhere other than the thing it belongs to is
 /// worse than no box: it invites dragging empty space.
-Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame) {
+Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame,
+    {LiveMotion? live}) {
   // With its clips' moves on it: see movedBoundsAt.
   Rect moved() => doc == null
       ? element.boundsAt(frame)
-      : element.movedBoundsAt(frame, doc);
+      : element.movedBoundsAt(frame, doc, live: live);
   // Where the stage's camera puts something standing on it.
   if (element.base.spot != null && doc != null) {
     if (stagedIn(doc, element, frame) case var at?) return at.box;

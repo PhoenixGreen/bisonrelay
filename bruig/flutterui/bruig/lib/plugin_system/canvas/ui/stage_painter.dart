@@ -150,6 +150,11 @@ class StagePainter extends CustomPainter {
   /// counter has got to is session state and not design -- see
   /// CanvasController.counterValue.
   final double Function(CounterElement)? counterValue;
+
+  /// liveMotion is the elements playing from their slots, and motionTick
+  /// goes up as they play on -- see CanvasController.liveMotion.
+  final LiveMotion? liveMotion;
+  final int motionTick;
   final int Function(CounterElement)? counterPressed;
   final bool Function(CounterElement)? counterRunning;
 
@@ -401,6 +406,8 @@ class StagePainter extends CustomPainter {
     required this.images,
     required this.hoveredButton,
     this.counterValue,
+    this.liveMotion,
+    this.motionTick = 0,
     this.counterPressed,
     this.counterRunning,
     this.counterTick = 0,
@@ -735,6 +742,7 @@ class StagePainter extends CustomPainter {
         skipElement: editingItem == null ? editingText : null,
         skipTextItem: editingItem,
         counterValue: counterValue,
+        liveMotion: liveMotion,
         counterPressed: counterPressed,
         counterRunning: counterRunning,
         audioState: audioState,
@@ -998,7 +1006,7 @@ class StagePainter extends CustomPainter {
 
     for (var element in chosenOutlines(document, selection, frame)) {
       // Its box as it is laid on the page, turned and slanted.
-      var box = element.movedBoundsAt(frame, document);
+      var box = element.movedBoundsAt(frame, document, live: liveMotion);
       var corners =
           BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
               .corners(box);
@@ -1026,7 +1034,7 @@ class StagePainter extends CustomPainter {
       if (selection.contains(element.id)) continue;
 
       // Its box as it is laid on the page, turned and slanted.
-      var box = element.movedBoundsAt(frame, document);
+      var box = element.movedBoundsAt(frame, document, live: liveMotion);
       var corners =
           BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
               .corners(box);
@@ -1743,6 +1751,7 @@ class StagePainter extends CustomPainter {
       !identical(old.framing, framing) ||
       old.document != document ||
       old.frame != frame ||
+      old.motionTick != motionTick ||
       old.previewAt != previewAt ||
       old.previewing != previewing ||
       !listEquals(old.anchors, anchors) ||

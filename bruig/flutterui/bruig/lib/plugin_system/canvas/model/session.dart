@@ -765,3 +765,12 @@ class SessionGrid {
     return SessionGrid(scenes: scenes, slots: slots);
   }
 }
+
+/// SessionSlotDrag is a clip being dragged from its slot: to another slot,
+/// or onto its channel's lane on the timeline.
+class SessionSlotDrag {
+  final String channel;
+  final int row;
+  final SessionClip clip;
+  const SessionSlotDrag(this.channel, this.row, this.clip);
+}

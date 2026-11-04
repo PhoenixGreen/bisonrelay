@@ -1413,6 +1413,16 @@ class CanvasTimelineState extends State<CanvasTimeline> {
               : "The mixer: every element's and channel's strip",
           controller.mixerOpen,
           () => controller.mixerOpen = !controller.mixerOpen),
+      // The slots beside the rows: an icon, no word (Ken).
+      TransportButton(
+        key: const ValueKey("slotsToggle"),
+        icon: Icons.view_column_outlined,
+        tooltip: controller.slotsBeside
+            ? "Put the slots beside the rows away"
+            : "Each element's slots, beside its rows",
+        on: controller.slotsBeside,
+        onPressed: () => controller.slotsBeside = !controller.slotsBeside,
+      ),
     ]);
     var back = controller.offTimeline || controller.anyOverridden;
     Widget transportMin() => TransportGroup(children: [

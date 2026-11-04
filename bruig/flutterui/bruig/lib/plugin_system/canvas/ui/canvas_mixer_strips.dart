@@ -1771,13 +1771,13 @@ class _ClipSlotState extends State<_ClipSlot> {
     var picked = c.selectedSlot == (widget.channel, widget.row);
     return DragTarget<Object>(
       onWillAcceptWithDetails: (d) => switch (d.data) {
-        _SlotDrag from => c.canMoveClip(from.clip, widget.channel) &&
+        SessionSlotDrag from => c.canMoveClip(from.clip, widget.channel) &&
             (from.channel, from.row) != (widget.channel, widget.row),
         var other => droppedKind(other) == AssetKind.audio &&
             (other is LibraryAsset && isMidiId(other.id)) == midiChannel,
       },
       onAcceptWithDetails: (d) async {
-        if (d.data case _SlotDrag from) {
+        if (d.data case SessionSlotDrag from) {
           c.moveClip(from.channel, from.row, widget.channel, widget.row,
               copy: HardwareKeyboard.instance.isAltPressed);
           return;
@@ -1846,7 +1846,7 @@ class _ClipSlotState extends State<_ClipSlot> {
   /// shown in the clip editor, where that is open; double-clicked, the
   /// editor opened on it; dragged, the clip moved to another slot.
   Widget _named(SessionClip clip, Widget name) {
-    var from = _SlotDrag(widget.channel, widget.row, clip);
+    var from = SessionSlotDrag(widget.channel, widget.row, clip);
     return Draggable<Object>(
       key: ValueKey("clipDrag-${widget.channel}-${widget.row}"),
       data: from,
@@ -1873,14 +1873,6 @@ class _ClipSlotState extends State<_ClipSlot> {
       ),
     );
   }
-}
-
-/// _SlotDrag is a clip being dragged from its slot to another.
-class _SlotDrag {
-  final String channel;
-  final int row;
-  final SessionClip clip;
-  const _SlotDrag(this.channel, this.row, this.clip);
 }
 
 /// _menuClick is whether [e] asks for a slot's menu: the right button, or
@@ -1947,7 +1939,7 @@ class _SceneBand extends StatelessWidget {
         ),
         const SizedBox(width: 3),
         Tooltip(
-          message: "Add a scene: a row of clips to launch together",
+          message: "Add a cue: a row of clips to launch together",
           child: Material(
             color: studio.inset,
             borderRadius: BorderRadius.circular(3),
@@ -2028,7 +2020,7 @@ class _SceneSlotState extends State<_SceneSlot> {
         MenuItemButton(
           key: const ValueKey("sceneInsert"),
           onPressed: () => c.addClipScene(after: widget.row),
-          child: const Text("Add a scene below"),
+          child: const Text("Add a cue below"),
         ),
         MenuItemButton(
           key: const ValueKey("sceneDelete"),
@@ -2038,8 +2030,8 @@ class _SceneSlotState extends State<_SceneSlot> {
         ),
       ],
       child: Tooltip(
-        message: "Scene $name: launch every channel's clip in this row "
-            "together, from the next bar. Right-click to rename it.",
+        message: "Cue $name: launch every channel's and element's clip in "
+            "this row together, from the next bar. Right-click to rename it.",
         waitDuration: const Duration(milliseconds: 600),
         child: Listener(
           onPointerDown: (e) {

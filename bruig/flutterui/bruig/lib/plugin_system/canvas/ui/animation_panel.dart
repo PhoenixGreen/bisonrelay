@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
+    show Quantise;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
@@ -755,11 +757,11 @@ class _AnimationPanelState extends State<AnimationPanel> {
             label: "Waits for",
             value: c.quantise ?? "",
             width: 200,
-            options: const [
+            // The audio slots' grid: a bar, a beat, finer, or nothing.
+            options: [
               ("", "The timeline's setting"),
-              ("off", "Nothing"),
-              ("beat", "The next beat"),
-              ("bar", "The next bar"),
+              for (var q in Quantise.values)
+                (q.name, q == Quantise.off ? "Nothing" : "The next ${q.label}"),
             ],
             onChanged: (q) => _edit(
                 e, (c) => c.copyWith(quantise: () => q.isEmpty ? null : q)),
