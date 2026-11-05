@@ -18,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/ui/motion_player.dart'
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/slots_window.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline_columns.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -448,9 +449,9 @@ class _MotionLanesState extends State<MotionLanes> {
           ]),
         ),
         // Its slots beside its rows, a cue each, when they are.
-        if (controller.slotsWidth > 0)
+        if (slotsWidthIn(context, controller) > 0)
           SizedBox(
-            width: controller.slotsWidth,
+            width: slotsWidthIn(context, controller),
             child: Column(children: [
               for (var e in rows)
                 SizedBox(
@@ -458,38 +459,43 @@ class _MotionLanesState extends State<MotionLanes> {
                     child: _RowSlots(controller: controller, element: e)),
             ]),
           ),
-        Expanded(
-          child: LayoutBuilder(builder: (context, constraints) {
-            var width = constraints.maxWidth;
-            // A clip dragged from a slot -- in the mixer, or beside the
-            // rows -- let go on a row: placed there, on the lane it is let
-            // go on. Another element's, copied to this one first.
-            return DragTarget<Object>(
-              // A sound let go on its rows: on its own channel, there.
-              onWillAcceptWithDetails: (d) =>
-                  d.data is MotionSlotDrag ||
-                  droppedKind(d.data) == AssetKind.audio,
-              onAcceptWithDetails: (d) async {
-                var box = context.findRenderObject() as RenderBox?;
-                if (box == null) return;
-                var local = box.globalToLocal(d.offset);
-                if (d.data case MotionSlotDrag drag) {
-                  _dropped(drag, local, width);
-                  return;
-                }
-                var hit = _hit(local, width);
-                var asset = await droppedAsset(d.data);
-                if (hit == null || asset == null || !mounted) return;
-                var frame =
-                    (math.max(0.0, _snap(_seconds(local.dx, width))) * _fps)
-                        .round();
-                controller.addElementSound(hit.element.id, asset.source, frame);
-              },
-              builder: (context, over, _) =>
-                  _lanes(over.isNotEmpty, rows, height, width, colors),
-            );
-          }),
-        ),
+        // The frames, unless this is the slots shown alone.
+        if (!lanesIn(context))
+          const Spacer()
+        else
+          Expanded(
+            child: LayoutBuilder(builder: (context, constraints) {
+              var width = constraints.maxWidth;
+              // A clip dragged from a slot -- in the mixer, or beside the
+              // rows -- let go on a row: placed there, on the lane it is let
+              // go on. Another element's, copied to this one first.
+              return DragTarget<Object>(
+                // A sound let go on its rows: on its own channel, there.
+                onWillAcceptWithDetails: (d) =>
+                    d.data is MotionSlotDrag ||
+                    droppedKind(d.data) == AssetKind.audio,
+                onAcceptWithDetails: (d) async {
+                  var box = context.findRenderObject() as RenderBox?;
+                  if (box == null) return;
+                  var local = box.globalToLocal(d.offset);
+                  if (d.data case MotionSlotDrag drag) {
+                    _dropped(drag, local, width);
+                    return;
+                  }
+                  var hit = _hit(local, width);
+                  var asset = await droppedAsset(d.data);
+                  if (hit == null || asset == null || !mounted) return;
+                  var frame =
+                      (math.max(0.0, _snap(_seconds(local.dx, width))) * _fps)
+                          .round();
+                  controller.addElementSound(
+                      hit.element.id, asset.source, frame);
+                },
+                builder: (context, over, _) =>
+                    _lanes(over.isNotEmpty, rows, height, width, colors),
+              );
+            }),
+          ),
       ]),
     );
   }

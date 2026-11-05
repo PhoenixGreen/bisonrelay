@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline_columns.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -41,39 +42,44 @@ class SlotsWindow extends StatelessWidget {
 /// slotsScroller is [child] in the slots' column, laid out as wide as it
 /// wants: clipped to the column, moved along by the slots' scroll, and
 /// scrolling it with the wheel or the trackpad, sideways.
-Widget slotsScroller(CanvasController c, Widget child) => Listener(
-      onPointerSignal: (event) {
-        if (event is! PointerScrollEvent) return;
-        var d = event.scrollDelta;
-        var sideways =
-            HardwareKeyboard.instance.isShiftPressed || d.dx.abs() > d.dy.abs();
-        if (!sideways) return;
-        // Taken here, before the timeline's own: see CanvasTimeline.
-        GestureBinding.instance.pointerSignalResolver.register(event, (e) {
-          var d = (e as PointerScrollEvent).scrollDelta;
-          c.scrollSlots(d.dx != 0 ? d.dx : d.dy);
-        });
-      },
-      onPointerPanZoomUpdate: (event) {
-        var pan = event.panDelta;
-        if (pan.dx.abs() > pan.dy.abs()) c.scrollSlots(-pan.dx);
-      },
-      child: ClipRect(
-        // The row moved inside the box rather than the box moved: a slot
-        // scrolled into view is still in the box's bounds to be pressed.
-        child: OverflowBox(
-          alignment: Alignment.topLeft,
-          minWidth: 0,
-          maxWidth: double.infinity,
-          child: ValueListenableBuilder<double>(
-            valueListenable: c.slotsScroll,
-            builder: (context, offset, child) {
-              var most = math.max(0.0, c.slotsContent - c.slotsWidth);
-              return Transform.translate(
-                  offset: Offset(-math.min(offset, most), 0), child: child);
-            },
-            child: child,
+Widget slotsScroller(CanvasController c, Widget child) => Builder(
+    builder: (context) => Listener(
+          onPointerSignal: (event) {
+            if (event is! PointerScrollEvent) return;
+            var d = event.scrollDelta;
+            var sideways = HardwareKeyboard.instance.isShiftPressed ||
+                d.dx.abs() > d.dy.abs();
+            if (!sideways) return;
+            // Taken here, before the timeline's own: see CanvasTimeline.
+            GestureBinding.instance.pointerSignalResolver.register(event, (e) {
+              var d = (e as PointerScrollEvent).scrollDelta;
+              c.scrollSlots(d.dx != 0 ? d.dx : d.dy,
+                  shown: slotsWidthNow(context, c));
+            });
+          },
+          onPointerPanZoomUpdate: (event) {
+            var pan = event.panDelta;
+            if (pan.dx.abs() > pan.dy.abs()) {
+              c.scrollSlots(-pan.dx, shown: slotsWidthNow(context, c));
+            }
+          },
+          child: ClipRect(
+            // The row moved inside the box rather than the box moved: a slot
+            // scrolled into view is still in the box's bounds to be pressed.
+            child: OverflowBox(
+              alignment: Alignment.topLeft,
+              minWidth: 0,
+              maxWidth: double.infinity,
+              child: ValueListenableBuilder<double>(
+                valueListenable: c.slotsScroll,
+                builder: (context, offset, child) {
+                  var most =
+                      math.max(0.0, c.slotsContent - slotsWidthIn(context, c));
+                  return Transform.translate(
+                      offset: Offset(-math.min(offset, most), 0), child: child);
+                },
+                child: child,
+              ),
+            ),
           ),
-        ),
-      ),
-    );
+        ));

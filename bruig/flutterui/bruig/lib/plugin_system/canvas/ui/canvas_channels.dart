@@ -25,6 +25,7 @@ import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/slots_window.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline_columns.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -292,8 +293,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       var origin = row.localToGlobal(Offset.zero);
       var top = origin.dy, bottom = origin.dy + row.size.height;
       if (bottom < box.top || top > box.bottom) continue;
-      var left = origin.dx + controller.leftWidth;
-      var width = row.size.width - controller.leftWidth;
+      var left = origin.dx + leftWidthNow(context, controller);
+      var width = row.size.width - leftWidthNow(context, controller);
       for (var lane in channel.lanes) {
         var span = _span(lane);
         var a = left + _view.xOf(span.from, width);
@@ -725,7 +726,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
               height: automationLaneHeight,
               child: Row(children: [
                 SizedBox(
-                    width: controller.leftWidth,
+                    width: leftWidthIn(context, controller),
                     child: AutomationLaneHeader(
                         controller: controller,
                         channel: channel,
@@ -744,7 +745,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
             height: automationAddHeight,
             child: Row(children: [
               SizedBox(
-                  width: controller.leftWidth,
+                  width: leftWidthIn(context, controller),
                   child: AutomationAddRow(
                       controller: controller, channel: channel)),
               const Expanded(child: SizedBox()),
@@ -864,10 +865,12 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                           Border(left: BorderSide(color: accent, width: 3))),
                   child: header)),
       // The slots beside the rows, when they are: a channel's, or room.
-      if (controller.slotsWidth > 0)
+      if (slotsWidthIn(context, controller) > 0)
         SizedBox(
-            width: controller.slotsWidth, child: beside ?? const SizedBox()),
-      Expanded(child: lane),
+            width: slotsWidthIn(context, controller),
+            child: beside ?? const SizedBox()),
+      // The frames, unless this is the slots shown alone.
+      Expanded(child: lanesIn(context) ? lane : const SizedBox()),
     ]);
     var colors = ThemeNotifier.of(context).colors;
     return SizedBox(
@@ -1141,7 +1144,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   /// _frameIn is the frame under [global] across lane [channel]'s frames.
   int _frameIn(String channel, Offset global) {
     var box = _keyFor(channel).currentContext?.findRenderObject();
-    var width = controller.leftWidth;
+    var width = leftWidthNow(context, controller);
     if (box is! RenderBox || box.size.width <= width) return controller.frame;
     var x = box.globalToLocal(global).dx - width;
     return _view.frameAt(x, box.size.width - width, controller.timelineReach);

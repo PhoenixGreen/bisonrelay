@@ -3,66 +3,16 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
-import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_panels.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
-// presets_panel.dart is the Presets sidebar: the canvases, scenes and elements
-// to start from, as three lists in one panel stack (as design_panel.dart is).
+// presets_panel.dart is the canvases to start from, with a preview each: a
+// part of the Presets panel (see presets_library.dart).
 //
 // Each preview is drawn by the canvas renderer from the preset itself rather
 // than a stored picture, so it cannot go stale.
-
-/// CanvasPresetsSidebar is the three lists, stacked.
-class CanvasPresetsSidebar extends StatelessWidget {
-  final CanvasController controller;
-
-  /// onChoose starts a new document from a preset. What to do about unsaved
-  /// work is the screen's decision.
-  final void Function(CanvasPreset? preset, CanvasDocument document) onChoose;
-
-  const CanvasPresetsSidebar(
-      {required this.controller, required this.onChoose, super.key});
-
-  @override
-  Widget build(BuildContext context) => PanelStack(
-        storageKey: "canvasPresets",
-        panels: [
-          StackPanel(
-            id: "canvases",
-            label: "Canvas",
-            icon: Icons.dashboard_outlined,
-            hint: "A whole document to start from. Tap one to begin a new "
-                "canvas, or use its menu to add its scenes to the canvas "
-                "already open.",
-            body: CanvasPresetsPanel(
-              controller: controller,
-              onChoose: onChoose,
-            ),
-          ),
-          StackPanel(
-            id: "scenes",
-            label: "Scene",
-            icon: Icons.movie_outlined,
-            hint: "Saved scenes. Tap one to add it to this document, after "
-                "the scene being looked at.",
-            startsOpen: false,
-            body: ScenePresetsPanel(controller: controller),
-          ),
-          StackPanel(
-            id: "elements",
-            label: "Element",
-            icon: Icons.category_outlined,
-            hint: "Saved elements, and the ones that ship with the app. Tap "
-                "one to put it on the canvas being looked at.",
-            startsOpen: false,
-            body: ElementPresetsPanel(controller: controller),
-          ),
-        ],
-      );
-}
 
 class CanvasPresetsPanel extends StatefulWidget {
   final CanvasController controller;
@@ -71,8 +21,23 @@ class CanvasPresetsPanel extends StatefulWidget {
   /// CanvasPresetsSidebar.onChoose.
   final void Function(CanvasPreset? preset, CanvasDocument document) onChoose;
 
+  /// query keeps only the presets whose names have it in them.
+  final String query;
+
+  /// embedded is the list inside another: see ScenePresetsPanel.embedded.
+  final bool embedded;
+
+  /// only keeps only the built-in presets with these ids, and leaves the
+  /// saved ones out; all of them where not given.
+  final Set<String>? only;
+
   const CanvasPresetsPanel(
-      {required this.controller, required this.onChoose, super.key});
+      {required this.controller,
+      required this.onChoose,
+      this.query = "",
+      this.embedded = false,
+      this.only,
+      super.key});
 
   @override
   State<CanvasPresetsPanel> createState() => _CanvasPresetsPanelState();
@@ -89,21 +54,25 @@ class _CanvasPresetsPanelState extends State<CanvasPresetsPanel> {
   };
 
   @override
-  Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.fromLTRB(8, 10, 8, 16),
+  Widget build(BuildContext context) => presetList(
+        embedded: widget.embedded,
         children: [
           for (var preset in builtinPresets)
-            _PresetCard(
-              preset: preset,
-              preview: _thumbnails[preset.id],
-              onTap: () => widget.onChoose(preset, preset.build()),
-            ),
+            if ((widget.only == null || widget.only!.contains(preset.id)) &&
+                presetMatches(preset.label, widget.query))
+              _PresetCard(
+                preset: preset,
+                preview: _thumbnails[preset.id],
+                onTap: () => widget.onChoose(preset, preset.build()),
+              ),
           // Saved ones under the built-in ones, so the start of the list never
           // moves.
-          SavedCanvasPresets(
-            controller: widget.controller,
-            onOpen: (document) => widget.onChoose(null, document),
-          ),
+          if (widget.only == null)
+            SavedCanvasPresets(
+              controller: widget.controller,
+              query: widget.query,
+              onOpen: (document) => widget.onChoose(null, document),
+            ),
         ],
       );
 }

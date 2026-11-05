@@ -71,6 +71,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_text.dart';
+import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/font_files.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
@@ -850,33 +851,268 @@ class CanvasController extends ChangeNotifier {
     _pickedSceneWith = {..._selection};
     _pickedMotion = _pickedPlacement = null;
     _animationOpen = true;
-    effectsOpen = false;
+    _dockOpening(DockPanel.animation);
     _notifyView();
   }
 
   bool _animationOpen = false;
 
-  /// animationOpen is whether the Animation panel is out: the detail area
-  /// shows it, or the effects -- never both.
+  /// animationOpen is whether the Animation panel is out, in its place
+  /// under the canvas (see dock).
   bool get animationOpen => _animationOpen;
 
   set animationOpen(bool value) {
     if (_animationOpen == value) return;
     _animationOpen = value;
-    if (value) effectsOpen = false;
+    if (value) _dockOpening(DockPanel.animation);
     _notifyView();
   }
 
   bool _rowsShown = true;
 
-  /// rowsShown is the timeline's Timeline button: its rows, or the play bar
-  /// alone.
+  /// rowsShown is the Timeline panel: the timeline's rows, under the play
+  /// bar, in their place (see dock).
   bool get rowsShown => _rowsShown;
 
   set rowsShown(bool value) {
     if (_rowsShown == value) return;
     _rowsShown = value;
+    if (value) _dockOpening(DockPanel.timeline);
     _notifyView();
+  }
+
+  bool _barBelow = false;
+
+  /// barBelow is whether the play bar is under the panels rather than over
+  /// them: the reader's choice, kept by the play bar (see CanvasPlayBar).
+  bool get barBelow => _barBelow;
+  set barBelow(bool value) {
+    if (_barBelow == value) return;
+    _barBelow = value;
+    _notifyView();
+  }
+
+  bool _trackpadScrolls = false;
+
+  /// trackpadScrolls is whether a sideways swipe or the wheel moves the
+  /// timeline along. Off unless asked for: somebody swiping up and down
+  /// through the channels would find the frames sliding under them.
+  bool get trackpadScrolls => _trackpadScrolls;
+  set trackpadScrolls(bool value) {
+    if (_trackpadScrolls == value) return;
+    _trackpadScrolls = value;
+    _notifyView();
+  }
+
+  /// timelineZoomAsked counts the times the play bar's menu has asked the
+  /// timeline to zoom, by timelineZoomFactor (nought: to the whole scene).
+  /// The timeline takes each up as it sees it; with none open, it is
+  /// dropped.
+  int timelineZoomAsked = 0;
+  double timelineZoomFactor = 1;
+
+  void askTimelineZoom(double factor) {
+    timelineZoomFactor = factor;
+    timelineZoomAsked++;
+    _notifyView();
+  }
+
+  // ------------------------------------------------------------------------
+  // The panels under the canvas: see dock_layout.dart
+  // ------------------------------------------------------------------------
+
+  DockLayout _dock = const DockLayout();
+
+  /// dock is where each panel under the canvas opens, how many places there
+  /// are and how they are switched: the reader's, kept by the screen in the
+  /// preferences. Changed, each place is left showing one panel at most.
+  DockLayout get dock => _dock;
+
+  set dock(DockLayout next) {
+    if (next == _dock) return;
+    _dock = next;
+    _dockSettle();
+    _notifyView();
+  }
+
+  /// restoreDock puts back [layout] without telling anyone, as the screen
+  /// opens.
+  void restoreDock(DockLayout layout) {
+    _dock = layout;
+    _dockSettle();
+  }
+
+  /// dockOpen is whether [panel] is open, in its place.
+  bool dockOpen(DockPanel panel) => switch (panel) {
+        DockPanel.timeline => _rowsShown,
+        DockPanel.slots => _slotsBeside,
+        DockPanel.mixer => _mixerOpen,
+        DockPanel.animation => _animationOpen,
+        DockPanel.effects => _effectsOpen,
+      };
+
+  /// setDockOpen opens or closes [panel]: opened, whatever else was showing
+  /// in its place gives way.
+  void setDockOpen(DockPanel panel, bool open) {
+    switch (panel) {
+      case DockPanel.timeline:
+        rowsShown = open;
+      case DockPanel.slots:
+        slotsBeside = open;
+      case DockPanel.mixer:
+        mixerOpen = open;
+      case DockPanel.animation:
+        animationOpen = open;
+      case DockPanel.effects:
+        if (open) {
+          openEffects(effectsChannel);
+        } else {
+          effectsOpen = false;
+        }
+    }
+  }
+
+  /// toggleDock is [panel]'s button: open it, or close it if it is open.
+  /// [beside] opens it on the left, beside main, where there is a left.
+  void toggleDock(DockPanel panel, {bool beside = false}) {
+    if (beside && _dock.places != DockPlaces.one) {
+      if (_dock.homeOf(panel) != DockPlace.left) {
+        _dock = _dock.withHome(panel, DockPlace.left);
+        _dockSettle();
+      }
+      setDockOpen(panel, true);
+      _notifyView();
+      return;
+    }
+    setDockOpen(panel, !dockOpen(panel));
+  }
+
+  /// moveDockPanel has [panel] open in [place] from now on, and opens it
+  /// there.
+  void moveDockPanel(DockPanel panel, DockPlace place) {
+    if (!_dock.placesShown.contains(place)) return;
+    _dock = _dock.withHome(panel, place);
+    _dockSettle();
+    setDockOpen(panel, true);
+    _notifyView();
+  }
+
+  /// dockShownIn is the panel showing in [place], or null.
+  DockPanel? dockShownIn(DockPlace place) {
+    for (var panel in DockPanel.values) {
+      if (dockOpen(panel) && _dock.placeOf(panel) == place) return panel;
+    }
+    return null;
+  }
+
+  /// dockArrangement is the layout last chosen, while nothing has been
+  /// changed since; null otherwise.
+  String? get dockArrangement => _arrangementChosen;
+  String? _arrangementChosen;
+
+  /// arrange shows [layout]: the panel it names in each place, and nothing
+  /// else. With one place, its own one panel.
+  void arrange(DockArrangement layout) {
+    var homes = {..._dock.homes, ...layout.homes};
+    Map<DockPlace, DockPanel> shown;
+    if (_dock.places == DockPlaces.one) {
+      var one = layout.one ??
+          layout.shown[DockPlace.main] ??
+          layout.shown[DockPlace.left] ??
+          layout.shown[DockPlace.above];
+      shown = {if (one != null) DockPlace.main: one};
+    } else {
+      shown = _dock.places == DockPlaces.three || layout.fallback == null
+          ? layout.shown
+          : layout.fallback!;
+      for (var e in shown.entries) {
+        if (_dock.placesShown.contains(e.key)) homes[e.value] = e.key;
+      }
+      if (_dock.places != DockPlaces.three) {
+        shown = {
+          for (var e in shown.entries)
+            if (e.key != DockPlace.above) e.key: e.value
+        };
+      }
+    }
+    _dock = _dock.copyWith(homes: homes);
+    for (var panel in DockPanel.values) {
+      _setDockRaw(panel, shown.containsValue(panel));
+    }
+    _arrangementChosen = layout.name;
+    _notifyView();
+  }
+
+  /// saveArrangement keeps what is showing now as a layout of the reader's
+  /// own, called [name].
+  DockArrangement saveArrangement(String name) {
+    var layout = DockArrangement(
+      name,
+      shown: {
+        for (var place in _dock.placesShown)
+          if (dockShownIn(place) case var panel?) place: panel
+      },
+      homes: {..._dock.homes},
+      one: dockShownIn(DockPlace.main),
+    );
+    var saved = [
+      ..._dock.saved.where((a) => a.name != name),
+      layout,
+    ];
+    _dock = _dock.copyWith(
+        saved: saved.length > maxSavedArrangements
+            ? saved.sublist(saved.length - maxSavedArrangements)
+            : saved);
+    _arrangementChosen = name;
+    _notifyView();
+    return layout;
+  }
+
+  /// removeArrangement forgets the reader's layout called [name].
+  void removeArrangement(String name) {
+    _dock = _dock.copyWith(
+        saved: [..._dock.saved.where((a) => a.name != name)]);
+    if (_arrangementChosen == name) _arrangementChosen = null;
+    _notifyView();
+  }
+
+  /// _dockOpening is [panel] opening: whatever else is showing in its place
+  /// closes, without telling anyone (the caller does).
+  void _dockOpening(DockPanel panel) {
+    var place = _dock.placeOf(panel);
+    for (var other in DockPanel.values) {
+      if (other != panel && dockOpen(other) && _dock.placeOf(other) == place) {
+        _setDockRaw(other, false);
+      }
+    }
+    _arrangementChosen = null;
+  }
+
+  /// _dockSettle leaves each place showing one panel at most, after the
+  /// places or the homes change: the first open one, in the buttons' order.
+  void _dockSettle() {
+    var taken = <DockPlace>{};
+    for (var panel in DockPanel.values) {
+      if (!dockOpen(panel)) continue;
+      if (!taken.add(_dock.placeOf(panel))) _setDockRaw(panel, false);
+    }
+  }
+
+  /// _setDockRaw opens or closes [panel] and nothing else.
+  void _setDockRaw(DockPanel panel, bool open) {
+    switch (panel) {
+      case DockPanel.timeline:
+        _rowsShown = open;
+      case DockPanel.slots:
+        _slotsBeside = open;
+      case DockPanel.mixer:
+        _mixerOpen = open;
+        if (!open) _mixerMinimised = _mixerSmallest = false;
+      case DockPanel.animation:
+        _animationOpen = open;
+      case DockPanel.effects:
+        _effectsOpen = open;
+    }
   }
 
   TimelineShow _timelineShow = TimelineShow.everything;
@@ -892,18 +1128,24 @@ class CanvasController extends ChangeNotifier {
 
   bool _slotsBeside = false;
 
-  /// slotsBeside is the bar's slots button: each element's slots beside its
-  /// rows on the timeline, as well as on its strip in the mixer.
+  /// slotsBeside is the Slots panel: each element's and channel's slots, in
+  /// their place (see dock) -- beside the timeline's rows, lined up with
+  /// them, when the slots are on the left and the timeline in main.
   bool get slotsBeside => _slotsBeside;
   set slotsBeside(bool value) {
     if (_slotsBeside == value) return;
     _slotsBeside = value;
+    if (value) _dockOpening(DockPanel.slots);
     _notifyView();
   }
 
-  /// mixerBeside is the mixer in the slots' place, left of the timeline's
-  /// rows: the mixer and the slots both on.
-  bool get mixerBeside => _mixerOpen && _slotsBeside;
+  /// slotsWithRows is the slots open beside the timeline's rows: the two
+  /// drawn as one, a row of slots level with each row of the timeline.
+  bool get slotsWithRows =>
+      _slotsBeside &&
+      _rowsShown &&
+      _dock.placeOf(DockPanel.slots) == DockPlace.left &&
+      _dock.placeOf(DockPanel.timeline) == DockPlace.main;
 
   /// slotCellWidth and slotCellHeight are a slot beside the rows: one size
   /// however wide the column or tall the row.
@@ -985,10 +1227,12 @@ class CanvasController extends ChangeNotifier {
   /// slots and nothing else.
   final ValueNotifier<double> slotsScroll = ValueNotifier(0);
 
-  /// scrollSlots scrolls the slots beside the rows by [by] pixels.
-  void scrollSlots(double by) {
+  /// scrollSlots scrolls the slots by [by] pixels, as far as there is more
+  /// of them than the [shown] column (the slots beside the rows', unless
+  /// given) shows.
+  void scrollSlots(double by, {double? shown}) {
     slotsScroll.value = (slotsScroll.value + by)
-        .clamp(0.0, math.max(0.0, slotsContent - slotsWidth))
+        .clamp(0.0, math.max(0.0, slotsContent - (shown ?? slotsWidth)))
         .toDouble();
   }
 
@@ -998,9 +1242,8 @@ class CanvasController extends ChangeNotifier {
   /// them put away or the mixer in their place; leftWidth everything left
   /// of the lanes -- the strips and the slots -- which is where the time
   /// starts.
-  double get slotsWidth => _slotsBeside && !_mixerOpen
-      ? math.min(_slotsColumn, slotsContent)
-      : 0;
+  double get slotsWidth =>
+      slotsWithRows ? math.min(_slotsColumn, slotsContent) : 0;
   double get leftWidth => headerWidth + slotsWidth;
 
   /// canvasSnap is the bar's Snap: the page's snap switch on a page, and

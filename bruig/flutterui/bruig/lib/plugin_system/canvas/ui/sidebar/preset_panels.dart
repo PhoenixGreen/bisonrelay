@@ -17,7 +17,19 @@ import 'package:flutter/material.dart';
 /// ScenePresetsPanel is the scenes somebody has saved.
 class ScenePresetsPanel extends StatefulWidget {
   final CanvasController controller;
-  const ScenePresetsPanel({required this.controller, super.key});
+
+  /// query keeps only the presets whose names have it in them.
+  final String query;
+
+  /// embedded is the list inside another (see CanvasPresetsLibrary): laid
+  /// out at its own height, not scrolling, and silent when empty.
+  final bool embedded;
+
+  const ScenePresetsPanel(
+      {required this.controller,
+      this.query = "",
+      this.embedded = false,
+      super.key});
 
   @override
   State<ScenePresetsPanel> createState() => _ScenePresetsPanelState();
@@ -48,11 +60,14 @@ class _ScenePresetsPanelState extends State<ScenePresetsPanel> {
 
   @override
   Widget build(BuildContext context) {
-    var presets = store.presets;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+    var presets = [
+      for (var p in store.presets)
+        if (presetMatches(p.name, widget.query)) p
+    ];
+    return presetList(
+      embedded: widget.embedded,
       children: [
-        if (presets.isEmpty)
+        if (presets.isEmpty && !widget.embedded)
           const CanvasHint(
               "Nothing saved yet. A scene is saved from its own menu in "
               "Design › Scenes, and arrives here as a copy: editing the "
@@ -85,7 +100,22 @@ class _ScenePresetsPanelState extends State<ScenePresetsPanel> {
 /// ship with the app.
 class ElementPresetsPanel extends StatefulWidget {
   final CanvasController controller;
-  const ElementPresetsPanel({required this.controller, super.key});
+
+  /// query keeps only the presets whose names have it in them.
+  final String query;
+
+  /// embedded is the list inside another: see ScenePresetsPanel.embedded.
+  final bool embedded;
+
+  /// kinds keeps only presets of these kinds, where given.
+  final Set<ElementKind>? kinds;
+
+  const ElementPresetsPanel(
+      {required this.controller,
+      this.query = "",
+      this.embedded = false,
+      this.kinds,
+      super.key});
 
   @override
   State<ElementPresetsPanel> createState() => _ElementPresetsPanelState();
@@ -120,7 +150,12 @@ class _ElementPresetsPanelState extends State<ElementPresetsPanel> {
 
   @override
   Widget build(BuildContext context) {
-    var all = store.presets;
+    var all = [
+      for (var p in store.presets)
+        if ((widget.kinds == null || widget.kinds!.contains(p.kind)) &&
+            presetMatches(p.name, widget.query))
+          p
+    ];
     var kinds = <ElementKind>{for (var p in all) p.kind}.toList()
       ..sort((a, b) => a.label.compareTo(b.label));
     // A filter on a kind that has just lost its last preset would show an
@@ -131,10 +166,10 @@ class _ElementPresetsPanelState extends State<ElementPresetsPanel> {
         if (kind == null || p.kind == kind) p
     ];
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+    return presetList(
+      embedded: widget.embedded,
       children: [
-        if (kinds.length > 1)
+        if (kinds.length > 1 && widget.kinds == null)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: CanvasDropdown<String>(
@@ -151,7 +186,7 @@ class _ElementPresetsPanelState extends State<ElementPresetsPanel> {
                   : ElementKind.values.firstWhere((k) => k.name == v)),
             ),
           ),
-        if (showing.isEmpty)
+        if (showing.isEmpty && !widget.embedded)
           const CanvasHint(
               "Nothing saved yet. Any element can be saved from the Presets "
               "line at the top of its settings, and arrives here as a copy."),
@@ -184,8 +219,14 @@ class SavedCanvasPresets extends StatefulWidget {
   /// work is the screen's decision.
   final void Function(CanvasDocument document) onOpen;
 
+  /// query keeps only the presets whose names have it in them.
+  final String query;
+
   const SavedCanvasPresets(
-      {required this.controller, required this.onOpen, super.key});
+      {required this.controller,
+      required this.onOpen,
+      this.query = "",
+      super.key});
 
   @override
   State<SavedCanvasPresets> createState() => _SavedCanvasPresetsState();
@@ -216,7 +257,10 @@ class _SavedCanvasPresetsState extends State<SavedCanvasPresets> {
 
   @override
   Widget build(BuildContext context) {
-    var presets = store.presets;
+    var presets = [
+      for (var p in store.presets)
+        if (presetMatches(p.name, widget.query)) p
+    ];
     if (presets.isEmpty) return const SizedBox.shrink();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const Padding(
@@ -250,6 +294,25 @@ class _SavedCanvasPresetsState extends State<SavedCanvasPresets> {
     return scenes == 1 ? "1 scene" : "$scenes scenes";
   }
 }
+
+/// presetMatches is whether a preset called [name] is one [query] asks for:
+/// every word of it somewhere in the name, whatever the case.
+bool presetMatches(String name, String query) {
+  var words = query.toLowerCase().split(RegExp(r"\s+"))
+    ..removeWhere((w) => w.isEmpty);
+  var lower = name.toLowerCase();
+  return words.every(lower.contains);
+}
+
+/// presetList is a list of presets: scrolling on its own, or, [embedded] in
+/// another list, as tall as it is.
+Widget presetList({required bool embedded, required List<Widget> children}) =>
+    embedded
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch, children: children)
+        : ListView(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+            children: children);
 
 /// CanvasSubHeading is a quieter heading inside a panel, for the line between
 /// what ships with the app and what has been saved.

@@ -12,8 +12,8 @@ import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_panels.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_library.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -101,7 +101,7 @@ void main() {
             width: 320,
             height: 900,
             child: body?.call(controller) ??
-                CanvasPresetsSidebar(
+                CanvasPresetsLibrary(
                     controller: controller, onChoose: (_, __) {}),
           ),
         ),
@@ -111,12 +111,56 @@ void main() {
     return controller;
   }
 
-  testWidgets("the sidebar is three lists, in the order the work happens",
+  testWidgets("the presets are one list, in the order the work happens",
       (tester) async {
     await sidebar(tester);
-    expect(find.text("CANVAS"), findsOneWidget);
-    expect(find.text("SCENE"), findsOneWidget);
-    expect(find.text("ELEMENT"), findsOneWidget);
+    var canvas = tester.getTopLeft(find.text("CANVAS"));
+    var list = find
+        .descendant(
+            of: find.byKey(const ValueKey("presetsLibrary")),
+            matching: find.byType(Scrollable))
+        .first;
+    await tester.scrollUntilVisible(find.text("SCENE"), 300, scrollable: list);
+    var scene = tester.getTopLeft(find.text("SCENE"));
+    await tester.scrollUntilVisible(find.text("ELEMENT"), 300,
+        scrollable: list);
+    var element = tester.getTopLeft(find.text("ELEMENT"));
+    expect(element.dy, greaterThan(scene.dy - 1e-6),
+        reason: "scenes, then elements, after the canvases");
+    expect(canvas.dy, lessThan(300), reason: "the canvases first");
+  });
+
+  testWidgets("a chip narrows it to one kind, and the search to a name",
+      (tester) async {
+    await tester.runAsync(() => SavedPresetStore.scenes.save("Title card",
+        const CanvasScene(id: "s", name: "Title", elements: []).toJson()));
+    await sidebar(tester);
+    await tester.tap(find.byKey(const ValueKey("presetFilter-scene")));
+    await tester.pumpAndSettle();
+    expect(find.text("CANVAS"), findsNothing);
+    expect(find.text("Title card"), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey("presetSearch")), "zzz");
+    await tester.pumpAndSettle();
+    expect(find.text("Title card"), findsNothing);
+    await tester.enterText(find.byKey(const ValueKey("presetSearch")), "title");
+    await tester.pumpAndSettle();
+    expect(find.text("Title card"), findsOneWidget);
+    // Back to everything, for the tests after this one.
+    await tester.enterText(find.byKey(const ValueKey("presetSearch")), "");
+    await tester.tap(find.byKey(const ValueKey("presetFilter-all")));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets("football: the pitch canvas and the pitch's views",
+      (tester) async {
+    await sidebar(tester);
+    await tester.tap(find.byKey(const ValueKey("presetFilter-football")));
+    await tester.pumpAndSettle();
+    expect(find.text("Football pitch"), findsOneWidget);
+    expect(find.text("PITCH VIEWS"), findsOneWidget);
+    expect(find.text("SCENE"), findsNothing);
+    await tester.tap(find.byKey(const ValueKey("presetFilter-all")));
+    await tester.pumpAndSettle();
   });
 
   testWidgets("a saved scene is added after the scene being looked at",

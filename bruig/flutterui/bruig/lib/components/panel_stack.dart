@@ -49,6 +49,14 @@ class PanelDrag {
   const PanelDrag(this.id);
 }
 
+/// PanelAction is one line of a panel's own menu: what it says, and what it
+/// does (null for a line that is only there to say something).
+class PanelAction {
+  final String label;
+  final VoidCallback? onPressed;
+  const PanelAction(this.label, this.onPressed);
+}
+
 /// StackPanel is one panel: what it is called, and what is in it.
 class StackPanel {
   /// id names this panel in storage and identifies it while it is being
@@ -88,6 +96,10 @@ class StackPanel {
   /// it shows changes rather than when its neighbour's heading does.
   final Widget body;
 
+  /// menu is the panel's own menu, behind a ⋯ on its band: moving it to
+  /// another column, say, or taking it away. None where empty.
+  final List<PanelAction> menu;
+
   const StackPanel({
     required this.id,
     required this.label,
@@ -98,6 +110,7 @@ class StackPanel {
     this.startsOpen = true,
     this.onIcon,
     this.iconTooltip,
+    this.menu = const [],
   });
 }
 
@@ -760,8 +773,30 @@ class _PanelStackState extends State<PanelStack> {
               if (panel.hint != null) PanelHint(panel.hint!),
             ]),
           ),
+          if (panel.menu.isNotEmpty) _menu(theme, panel),
           _handle(theme, panel),
         ]),
+      );
+
+  /// _menu is the panel's own menu, behind a ⋯ beside its handle.
+  Widget _menu(ThemeNotifier theme, StackPanel panel) => PopupMenuButton<int>(
+        key: ValueKey("panelMenu:${panel.id}"),
+        tooltip: "${panel.label}: move or hide",
+        padding: EdgeInsets.zero,
+        iconSize: 15,
+        icon: Icon(Icons.more_horiz,
+            size: 15, color: theme.colors.onSurfaceVariant),
+        itemBuilder: (context) => [
+          for (var (i, action) in panel.menu.indexed)
+            PopupMenuItem<int>(
+              key: ValueKey("panelMenu:${panel.id}:$i"),
+              value: i,
+              enabled: action.onPressed != null,
+              height: 34,
+              child: Text(action.label, style: const TextStyle(fontSize: 12.5)),
+            ),
+        ],
+        onSelected: (i) => panel.menu[i].onPressed?.call(),
       );
 
   /// _tabs is the band of a place holding several: one tab each, and nothing

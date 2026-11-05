@@ -395,6 +395,8 @@ extension CanvasTools on CanvasController {
     if (!open) {
       _mixerMinimised = false;
       _mixerSmallest = false;
+    } else {
+      _dockOpening(DockPanel.mixer);
     }
     notifyListeners();
   }
@@ -437,6 +439,9 @@ extension CanvasTools on CanvasController {
                     ? "minimised"
                     : "shown",
         "effects": _effectsOpen,
+        "rows": _rowsShown,
+        "slots": _slotsBeside,
+        "animation": _animationOpen,
         "folded": [...foldedDevices]..sort(),
         "laneSize": _laneSize,
         "header": _headerWidth,
@@ -453,10 +458,12 @@ extension CanvasTools on CanvasController {
       case "smallest":
         _mixerOpen = _mixerMinimised = _mixerSmallest = true;
     }
-    if (state["effects"] == true) {
-      _effectsOpen = true;
-      _animationOpen = false;
-    }
+    if (state["effects"] == true) _effectsOpen = true;
+    if (state["rows"] case bool rows) _rowsShown = rows;
+    if (state["slots"] == true) _slotsBeside = true;
+    if (state["animation"] == true) _animationOpen = true;
+    // As many as fit their places.
+    _dockSettle();
     if (state["folded"] case List folded) {
       foldedDevices
         ..clear()
@@ -542,8 +549,7 @@ extension CanvasTools on CanvasController {
   set effectsOpen(bool open) {
     if (open == _effectsOpen) return;
     _effectsOpen = open;
-    // The detail area shows the effects or the animation, never both.
-    if (open) _animationOpen = false;
+    if (open) _dockOpening(DockPanel.effects);
     notifyListeners();
   }
 
@@ -564,8 +570,7 @@ extension CanvasTools on CanvasController {
     }
     _effectsOf = key;
     _effectsOpen = true;
-    // One detail panel: the effects in the Animation panel's place.
-    _animationOpen = false;
+    _dockOpening(DockPanel.effects);
     notifyListeners();
   }
 

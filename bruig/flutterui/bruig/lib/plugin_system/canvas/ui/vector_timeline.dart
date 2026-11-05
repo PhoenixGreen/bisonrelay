@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline_columns.dart';
 import 'package:flutter/material.dart';
 
 // vector_timeline.dart is a drawing's shapes on the timeline: a lane each, with
@@ -132,7 +133,7 @@ class _VectorShapeLanesState extends State<VectorShapeLanes> {
       height: height,
       child: Row(children: [
         SizedBox(
-          width: controller.leftWidth,
+          width: leftWidthIn(context, controller),
           child: Column(children: [
             for (var g in shown)
               SizedBox(

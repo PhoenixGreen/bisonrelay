@@ -287,7 +287,7 @@ void main() {
         "record",
         "timingMenu",
         "markerMenu",
-        "timelineMore",
+        "playBarSettings",
         "effectsToggle",
         "mixerToggle",
       ]) {

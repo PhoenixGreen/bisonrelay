@@ -12,8 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/character_assets.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/stock_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -25,9 +24,23 @@ import 'package:flutter_svg/flutter_svg.dart';
 // channel, for a sound); its name is double-clicked to rename it. Assets leave
 // the library only from here: see CanvasLibrary.
 
-class CanvasAssetsPanel extends StatelessWidget {
+class CanvasAssetsPanel extends StatefulWidget {
   final CanvasController controller;
   const CanvasAssetsPanel({required this.controller, super.key});
+
+  @override
+  State<CanvasAssetsPanel> createState() => _CanvasAssetsPanelState();
+}
+
+class _CanvasAssetsPanelState extends State<CanvasAssetsPanel> {
+  CanvasController get controller => widget.controller;
+  late final SidebarPanelBodies _bodies = SidebarPanelBodies(
+    controller: controller,
+    onOpen: (_, __) async {},
+    onPublish: (_, __) {},
+    onNew: (_, __) async {},
+    onChoosePreset: (_, __) {},
+  );
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<int>(
@@ -35,66 +48,23 @@ class CanvasAssetsPanel extends StatelessWidget {
         builder: (context, _, __) => PanelStack(
           storageKey: "canvasAssets",
           panels: [
-            for (var kind in AssetKind.values)
-              StackPanel(
-                id: kind.name,
-                // 3D objects start shut, as a heading until somebody has models.
-                startsOpen: kind != AssetKind.model,
-                label: kind.label,
-                icon: _iconOf(kind),
-                hint: switch (kind) {
-                  AssetKind.picture ||
-                  AssetKind.video ||
-                  AssetKind.vector =>
-                    "Click one to put it "
-                        "in the middle of the canvas, or drag it where you want "
-                        "it. Double-click a name to rename it.",
-                  AssetKind.audio => "Click one for a speaker in the middle "
-                      "of the canvas, or drag it onto a channel on the "
-                      "timeline to play it there. Double-click a name to "
-                      "rename it.",
-                  AssetKind.model => "Click one to put it in the middle of "
-                      "the canvas, or drag it where you want it: its own "
-                      "animations are in its slots. .glb files.",
-                },
-                // Keyed by kind: panels sharing a row become tabs, and without a key
-                // one section's state is handed each tab's kind in turn.
-                body: AssetSection(
-                    key: ValueKey("assets-${kind.name}"),
-                    controller: controller,
-                    kind: kind),
-              ),
-            StackPanel(
-              id: "characters",
-              label: "Characters",
-              icon: Icons.person_outline,
-              hint: "The characters made in the Character Studio. Click one "
-                  "to place a copy in the middle of the canvas: change it in "
-                  "the Studio and every copy follows.",
-              // Shut until wanted, as Stock is.
-              startsOpen: false,
-              body: CharacterAssetSection(
-                  key: const ValueKey("assets-characters"),
-                  controller: controller),
-            ),
-            StackPanel(
-              id: "stock",
-              label: "Stock",
-              icon: Icons.travel_explore,
-              hint: "Search Pixabay, the Noun Project, Freesound and Jamendo "
-                  "with keys of your own. A result is only a preview until it "
-                  "is used: click it onto the canvas, drag it, or add it to "
-                  "the library with its +. It keeps who made it and its "
-                  "licence.",
-              // Shut until wanted: it is empty until somebody searches.
-              startsOpen: false,
-              body: StockPanel(
-                  key: const ValueKey("assets-stock"), controller: controller),
-            ),
+            for (var id in assetPanelIds)
+              canvasSidebarPanel(id, controller, _bodies.body(id))!,
           ],
         ),
       );
 }
+
+/// assetPanelIds are the Assets column's panels, in order.
+const assetPanelIds = [
+  "picture",
+  "video",
+  "audio",
+  "vector",
+  "model",
+  "characters",
+  "stock",
+];
 
 /// audioTypeOf is what kind of file stored sound [id] is: ".mid", ".mp3".
 String audioTypeOf(String id) {
@@ -111,7 +81,8 @@ String audioTypeLabel(String type) => switch (type) {
       _ => type.substring(1).toUpperCase(),
     };
 
-IconData _iconOf(AssetKind kind) => switch (kind) {
+/// assetKindIcon is the icon of [kind]'s panel and its rows.
+IconData assetKindIcon(AssetKind kind) => switch (kind) {
       AssetKind.picture => Icons.image_outlined,
       AssetKind.video => Icons.movie_outlined,
       AssetKind.audio => Icons.music_note_outlined,
@@ -386,7 +357,7 @@ class _Still extends StatelessWidget {
         height: height,
         color: theme.colors.surfaceContainerHighest,
         child: still.isEmpty
-            ? Icon(isMidiId(asset.id) ? Icons.piano : _iconOf(asset.kind),
+            ? Icon(isMidiId(asset.id) ? Icons.piano : assetKindIcon(asset.kind),
                 size: height * 0.5, color: theme.colors.onSurfaceVariant)
             : AssetThumb(id: still),
       ),

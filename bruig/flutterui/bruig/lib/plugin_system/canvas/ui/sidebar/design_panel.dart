@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/structure_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/vocal_cues_panel.dart';
 import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
 import 'package:flutter/material.dart';
 
 // design_panel.dart is the three things used to build a canvas, in one
@@ -39,6 +40,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   late Widget _cues;
   late Widget _layers;
   late Widget _settings;
+  late Widget _colour;
 
   @override
   void initState() {
@@ -72,7 +74,8 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
     _structure = CanvasStructurePanel(controller: controller);
     _cues = CanvasVocalCuesPanel(controller: controller);
     _layers = CanvasLayersPanel(controller: controller);
-    _settings = _SettingsBody(controller: controller);
+    _settings = SettingsPanelBody(controller: controller);
+    _colour = ColourPanel(controller: controller);
   }
 
   @override
@@ -86,114 +89,43 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   Widget _stack(BuildContext context) => PanelStack(
         storageKey: "canvasDesign",
         panels: [
-          StackPanel(
-            id: "add",
-            label: "Add",
-            icon: Icons.category_outlined,
-            hint: "Click to add one in the middle of the canvas, or drag it "
-                "where you want it.",
-            body: _add,
-          ),
-          // Between what can be added and what is on the canvas: which canvas,
-          // then what is on it. A sound document shows its sections here
-          // instead of scenes.
-          if (controller.document.kind.isAudio)
-            StackPanel(
-              id: "structure",
-              label: "Structure",
-              icon: Icons.view_week_outlined,
-              trailing: controller.document.audio.sections.isEmpty
-                  ? null
-                  : "${controller.document.audio.sections.length}",
-              hint: "The sections this piece is laid out in, in order, each "
-                  "so many bars long: an intro, a verse, a chorus. A sound "
-                  "plays on from one section into the next.",
-              body: _structure,
-            )
-          else
-            StackPanel(
-              id: "scenes",
-              // Named for this document's kind of canvas; see CanvasKind.manyCap.
-              label: controller.document.kind.manyCap,
-              icon: controller.document.isPages
-                  ? Icons.menu_book_outlined
-                  : Icons.movie_outlined,
-              trailing: controller.document.hasScenes
-                  ? "${controller.document.at + 1}/"
-                      "${controller.document.allScenes.length}"
-                  : null,
-              hint: controller.document.isPages
-                  ? "The leaves of this document, in order. Drag one up or "
-                      "down to move it. The first and last can be marked as "
-                      "covers, which takes them out of the numbering."
-                  : "The canvases this document plays through, in order. Drag "
-                      "one up or down to change when it plays.",
-              // Shut to begin with: most documents are one canvas.
-              startsOpen: false,
-              body: _scenes,
-            ),
-          StackPanel(
-            id: "vocalCues",
-            label: "Vocal cues",
-            icon: Icons.record_voice_over_outlined,
-            trailing: controller.document.cues.isEmpty
-                ? null
-                : "${controller.document.cues.length}",
-            hint: "Named moments a voice-over's lines start on, for elements "
-                "to be timed against. A scene's transition is in the "
-                "Animation panel: double-click the scene on the timeline.",
-            // Shut to begin with, as the scenes are: opened, remembered.
-            startsOpen: false,
-            body: _cues,
-          ),
-          StackPanel(
-            id: "layers",
-            label: "Layers",
-            icon: Icons.layers_outlined,
-            // On the heading so a shut panel still says how much is behind it. One
-            // more than the elements, because the background is a layer too.
-            trailing: "${controller.document.elements.length + 1}",
-            body: _layers,
-          ),
-          StackPanel(
-            id: "colour",
-            label: "Colour",
-            icon: Icons.palette_outlined,
-            // Shut to begin with: opened, the column remembers it open.
-            startsOpen: false,
-            body: ColourPanel(controller: controller),
-          ),
-          StackPanel(
-            id: "settings",
-            // Named for what is selected ("Image settings"): the settings do not
-            // head themselves with the element's name.
-            label: elementSettingsTitle(controller),
-            // The icon switches the layout: sections down the panel, or a menu of
-            // them across the top with one shown at a time.
-            icon: settingsAsMenu.value ? Icons.view_week_outlined : Icons.tune,
-            onIcon: toggleSettingsLayout,
-            iconTooltip: settingsAsMenu.value
-                ? "Show the settings as sections"
-                : "Show the settings as a menu",
-            hint: elementSettingsHint,
-            body: _settings,
-          ),
+          for (var id in designPanelIds)
+            canvasSidebarPanel(id, controller, _body(id))!,
         ],
       );
+
+  Widget _body(String id) => switch (id) {
+        "add" => _add,
+        "scenes" => controller.document.kind.isAudio ? _structure : _scenes,
+        "vocalCues" => _cues,
+        "layers" => _layers,
+        "colour" => _colour,
+        _ => _settings,
+      };
 }
 
-/// _SettingsBody is the settings of whatever is selected: its own widget with
+/// designPanelIds are the Design column's panels, in order.
+const designPanelIds = [
+  "add",
+  "scenes",
+  "vocalCues",
+  "layers",
+  "colour",
+  "settings",
+];
+
+/// SettingsPanelBody is the settings of whatever is selected: its own widget with
 /// its own listener, because it is the most expensive body in the column and
 /// must not rebuild when a heading elsewhere changes.
-class _SettingsBody extends StatefulWidget {
+class SettingsPanelBody extends StatefulWidget {
   final CanvasController controller;
-  const _SettingsBody({required this.controller});
+  const SettingsPanelBody({required this.controller, super.key});
 
   @override
-  State<_SettingsBody> createState() => _SettingsBodyState();
+  State<SettingsPanelBody> createState() => _SettingsBodyState();
 }
 
-class _SettingsBodyState extends State<_SettingsBody> {
+class _SettingsBodyState extends State<SettingsPanelBody> {
   CanvasController get controller => widget.controller;
 
   /// _scroll keeps the column where it was, remembered per element, so

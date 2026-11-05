@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // What the timeline, the slots and the Animation panel do to an element's
@@ -107,14 +108,18 @@ void main() {
         reason: "a model's own animation stays with it");
   });
 
-  test("the detail area shows the animation or the effects", () {
+  test("the animation and the effects side by side, or by turns in a place",
+      () {
     var c = make();
     addTearDown(c.dispose);
     c.animationOpen = true;
     c.effectsOpen = true;
-    expect((c.animationOpen, c.effectsOpen), (false, true));
-    c.animationOpen = true;
+    expect((c.animationOpen, c.effectsOpen), (true, true),
+        reason: "the Animation panel on the left, the effects in main");
+    c.moveDockPanel(DockPanel.animation, DockPlace.main);
     expect((c.animationOpen, c.effectsOpen), (true, false));
+    c.effectsOpen = true;
+    expect((c.animationOpen, c.effectsOpen), (false, true));
   });
 
   test("moved by a clip, its box is where it is drawn", () {

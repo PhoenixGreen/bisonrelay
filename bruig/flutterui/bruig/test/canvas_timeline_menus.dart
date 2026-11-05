@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 // canvas_timeline_menus.dart opens the timeline play bar's menus for tests.
 // The bar keeps only what is pressed while working: the options, tools and
-// view live behind its ⋯ button (timelineMore), the length, rate, tempo and
+// view live behind its settings button (playBarSettings), the length, rate, tempo and
 // loop behind the readout's arrow (timingMenu), and a marker's settings
 // behind the flag (markerMenu).
 
@@ -20,20 +20,41 @@ Future<void> settleMenu(WidgetTester tester, {bool settle = true}) async {
   }
 }
 
-/// openMore opens the play bar's ⋯ menu.
+/// openMore opens the play bar's settings, unless they are open already:
+/// a switch pressed in them leaves them open, to be seen.
 Future<void> openMore(WidgetTester tester, {bool settle = true}) async {
-  var button = find.byKey(const ValueKey("timelineMore"));
+  if (find
+      .byKey(const ValueKey("playBarSettingsPanel"))
+      .evaluate()
+      .isNotEmpty) {
+    return;
+  }
+  var button = find.byKey(const ValueKey("playBarSettings"));
   await tester.ensureVisible(button);
   await tester.tap(button);
   await settleMenu(tester, settle: settle);
 }
 
-/// tapTimelineItem opens the ⋯ menu and presses the item [key] in it, such
-/// as "snap-item" or "toolKnifeItem". The menu closes.
+/// tapTimelineItem opens the play bar's settings and presses the item [key]
+/// in them, such as "snap-item" or "toolKnifeItem".
 Future<void> tapTimelineItem(WidgetTester tester, String key,
     {bool settle = true}) async {
   await openMore(tester, settle: settle);
+  await tester.ensureVisible(find.byKey(ValueKey(key)));
   await tester.tap(find.byKey(ValueKey(key)));
+  await settleMenu(tester, settle: settle);
+  await closeMore(tester, settle: settle);
+}
+
+/// closeMore closes the play bar's settings if they are open, by a click
+/// away from them, in the window's empty top corner: not by their button,
+/// which the open panel can cover, nor Escape, which the timeline hears too
+/// and puts the knife down with.
+Future<void> closeMore(WidgetTester tester, {bool settle = true}) async {
+  if (find.byKey(const ValueKey("playBarSettingsPanel")).evaluate().isEmpty) {
+    return;
+  }
+  await tester.tapAt(const Offset(1, 1));
   await settleMenu(tester, settle: settle);
 }
 

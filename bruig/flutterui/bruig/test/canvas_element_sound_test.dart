@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -193,10 +194,12 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test("the effects take the Animation panel's place, however opened", () {
+  test(
+      "sharing a place, the effects take the Animation panel's, however "
+      "opened", () {
     var c = make();
     addTearDown(c.dispose);
-    c.animationOpen = true;
+    c.moveDockPanel(DockPanel.animation, DockPlace.main);
     c.openEffects(elementSoundKey("a"));
     expect((c.animationOpen, c.effectsOpen), (false, true));
     c.animationOpen = true;

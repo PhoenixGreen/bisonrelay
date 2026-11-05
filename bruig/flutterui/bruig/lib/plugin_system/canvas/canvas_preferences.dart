@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/media/mix/dart_audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/storage_manager.dart';
+import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
+import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
@@ -44,6 +46,12 @@ class CanvasPreferences extends ChangeNotifier {
   static const _effectsHeightKey = "canvasEffectsHeight";
   static const _panelsKey = "canvasPanels";
   static const _canvasViewsKey = "canvasViews";
+  static const _dockKey = "canvasDock";
+  static const _sidebarsKey = "canvasSidebars";
+  static const _sidebarAboveWidthKey = "canvasSidebarAboveWidth";
+  static const _dockLowerKey = "canvasDockLower";
+  static const _dockAboveKey = "canvasDockAbove";
+  static const _dockLeftKey = "canvasDockLeft";
 
   /// enabled is whether the Canvas section exists.
   bool get enabled => _enabled;
@@ -199,6 +207,65 @@ class CanvasPreferences extends ChangeNotifier {
     _saveSoon(_effectsHeightKey, value.toStringAsFixed(1));
   }
 
+  /// sidebars is how the sidebar is set out: shown or not and how, its
+  /// sidebars and their panels. See sidebar_layout.dart.
+  SidebarLayout get sidebars => _sidebars;
+  SidebarLayout _sidebars = const SidebarLayout();
+  set sidebars(SidebarLayout value) {
+    var json = jsonEncode(value.toJson());
+    if (json == jsonEncode(_sidebars.toJson())) return;
+    _sidebars = value;
+    StorageManager.saveString(_sidebarsKey, json);
+  }
+
+  /// sidebarAboveWidth is how wide the sidebar is sitting above the panels
+  /// under the canvas; nought until dragged.
+  double get sidebarAboveWidth => _sidebarAboveWidth;
+  double _sidebarAboveWidth = 0;
+  set sidebarAboveWidth(double value) {
+    if (_sidebarAboveWidth == value) return;
+    _sidebarAboveWidth = value;
+    _saveSoon(_sidebarAboveWidthKey, value.toStringAsFixed(1));
+  }
+
+  /// dock is where the panels under the canvas open, how many places there
+  /// are, how they are switched and the reader's own layouts. See
+  /// dock_layout.dart.
+  DockLayout get dock => _dock;
+  DockLayout _dock = const DockLayout();
+  set dock(DockLayout value) {
+    if (value == _dock) return;
+    _dock = value;
+    StorageManager.saveString(_dockKey, jsonEncode(value.toJson()));
+  }
+
+  /// dockLower and dockAbove are how tall the bottom places and the one
+  /// above them are, and dockLeft how wide the left place is; nought until
+  /// set.
+  double get dockLower => _dockLower;
+  double _dockLower = 0;
+  set dockLower(double value) {
+    if (_dockLower == value) return;
+    _dockLower = value;
+    _saveSoon(_dockLowerKey, value.toStringAsFixed(1));
+  }
+
+  double get dockAbove => _dockAbove;
+  double _dockAbove = 0;
+  set dockAbove(double value) {
+    if (_dockAbove == value) return;
+    _dockAbove = value;
+    _saveSoon(_dockAboveKey, value.toStringAsFixed(1));
+  }
+
+  double get dockLeft => _dockLeft;
+  double _dockLeft = 0;
+  set dockLeft(double value) {
+    if (_dockLeft == value) return;
+    _dockLeft = value;
+    _saveSoon(_dockLeftKey, value.toStringAsFixed(1));
+  }
+
   /// panels is how the panels under the canvas were left, whatever canvas
   /// is open -- see CanvasController.panelState. Empty for as they start.
   Map<String, dynamic> get panels => _panels;
@@ -338,6 +405,35 @@ class CanvasPreferences extends ChangeNotifier {
         await StorageManager.readBool(_returnsShownKey, defaultVal: true);
     _mixerHeight =
         double.tryParse(await StorageManager.readString(_mixerHeightKey)) ?? 0;
+    try {
+      _dock = DockLayout.fromJson(
+          jsonDecode(await StorageManager.readString(_dockKey)));
+    } catch (_) {
+      // Nothing kept yet: the panels open where they start.
+    }
+    var sidebars = await StorageManager.readString(_sidebarsKey);
+    if (sidebars.isNotEmpty) {
+      try {
+        _sidebars = SidebarLayout.fromJson(jsonDecode(sidebars));
+      } catch (_) {
+        // Unreadable: the sidebars as they start.
+      }
+    } else {
+      // Kept before the sidebars could be set out: on the tab last open.
+      const tabs = ["files", "files", "design", "assets", "game"];
+      _sidebars = SidebarLayout(
+          current:
+              _panel >= 0 && _panel < tabs.length ? tabs[_panel] : "files");
+    }
+    _sidebarAboveWidth = double.tryParse(
+            await StorageManager.readString(_sidebarAboveWidthKey)) ??
+        0;
+    _dockLower =
+        double.tryParse(await StorageManager.readString(_dockLowerKey)) ?? 0;
+    _dockAbove =
+        double.tryParse(await StorageManager.readString(_dockAboveKey)) ?? 0;
+    _dockLeft =
+        double.tryParse(await StorageManager.readString(_dockLeftKey)) ?? 0;
     _effectsHeight =
         double.tryParse(await StorageManager.readString(_effectsHeightKey)) ??
             0;

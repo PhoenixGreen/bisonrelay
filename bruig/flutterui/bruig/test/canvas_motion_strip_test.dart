@@ -289,50 +289,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-      "with the mixer on, it sits left of the rows, in the slots' place",
-      (tester) async {
-    tester.view.physicalSize = const Size(1400, 900);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    var c = make();
-    addTearDown(c.dispose);
-    c.slotsBeside = true;
-    c.mixerOpen = true;
-    expect(c.mixerBeside, isTrue);
-    expect(c.slotsWidth, 0, reason: "no slots beside the rows");
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: CanvasTimeline(
-                      controller: c, height: 420, mixerBeside: true)))),
-    ));
-    await frames(tester);
-    var mixer = tester.getRect(find.byKey(const ValueKey("mixerBeside")));
-    var strip = tester.getRect(find.byKey(const ValueKey("keyframeStrip")));
-    var bar = tester.getRect(find.byKey(const ValueKey("play")));
-    expect(mixer.right, lessThan(strip.left));
-    expect(mixer.top, greaterThan(bar.bottom), reason: "under the play bar");
-    expect(find.byKey(const ValueKey("motionStrip-a")), findsOneWidget);
-    expect(find.byKey(const ValueKey("rowSlot-a-0")), findsNothing);
-    await tester.drag(
-        find.byKey(const ValueKey("mixerBesideGrip")), const Offset(80, 0));
-    await frames(tester);
-    expect(tester.getRect(find.byKey(const ValueKey("mixerBeside"))).width,
-        closeTo(mixer.width + 80, 1));
-    expect(tester.getRect(find.byKey(const ValueKey("keyframeStrip"))).left,
-        closeTo(strip.left + 80, 1),
-        reason: "the time moves over for it");
-    expect(tester.takeException(), isNull);
-  });
-
   testWidgets("an element's strip is picked by a press anywhere on it",
       (tester) async {
     var c = await pumpBoth(tester);

@@ -45,7 +45,6 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/components/panel_stack.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -60,6 +59,9 @@ import 'canvas_panel_helpers.dart';
 import 'canvas_timeline_menus.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/sidebar_layout.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/sidebar_panels.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_library.dart';
 
 // canvas_editor_test.dart builds the controls and uses them.
 //
@@ -343,18 +345,25 @@ void main() {
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
 
-      var hidden = 0;
+      SidebarLayout? laid;
       await pump(
           tester,
-          CanvasSidebarShell(
-            panel: CanvasPanel.files,
-            onPanelChanged: (_) {},
-            onHide: () => hidden++,
-            child: const SizedBox(),
+          CanvasSidebar(
+            controller: controller,
+            layout: const SidebarLayout(current: "design"),
+            onLayout: (l) => laid = l,
+            bodies: SidebarPanelBodies(
+              controller: controller,
+              onOpen: (_, __) async {},
+              onPublish: (_, __) {},
+              onNew: (_, __) async {},
+              onChoosePreset: (_, __) {},
+            ),
+            onCustomise: () {},
           ));
       await tester.tap(find.byTooltip("Hide the sidebar"));
       await tester.pumpAndSettle();
-      expect(hidden, 1);
+      expect(laid?.mode, SidebarMode.hidden);
 
       // While it is showing, the band carries no restore control.
       await pump(tester, bar(controller));
@@ -3296,23 +3305,26 @@ void main() {
       expect(find.text(hint), findsOneWidget);
     });
 
-    testWidgets("so do the presets, on each of the three lists",
-        (tester) async {
+    testWidgets("so do the presets, in their one panel", (tester) async {
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
-      await pump(tester,
-          CanvasPresetsSidebar(controller: controller, onChoose: (_, __) {}));
-
-      // Three panels in a stack now, like the Design sidebar: a canvas to
-      // start from, a scene to add, an element to drop on.
-      for (var heading in ["CANVAS", "SCENE", "ELEMENT"]) {
-        expect(find.text(heading), findsOneWidget, reason: heading);
+      await pump(
+          tester,
+          PanelStack(storageKey: "presetsHint", panels: [
+            canvasSidebarPanel(
+                "presets",
+                controller,
+                CanvasPresetsLibrary(
+                    controller: controller, onChoose: (_, __) {}))!,
+          ]));
+      // One list of every kind now, under the files: a canvas to start
+      // from, a scene to add, an element to drop on, and the rest.
+      for (var kind in ["canvas", "scene", "element", "football"]) {
+        expect(find.byKey(ValueKey("presetFilter-$kind")), findsOneWidget,
+            reason: kind);
       }
       expect(
-          shown(tester),
-          contains("A whole document to start from. Tap one to begin a new "
-              "canvas, or use its menu to add its scenes to the canvas "
-              "already open."));
+          shown(tester), contains(startsWith("Everything there is to start")));
     });
 
     testWidgets("and the element settings, on their panel's own header",

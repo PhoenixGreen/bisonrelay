@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline_columns.dart';
 import 'package:flutter/material.dart';
 
 // image_timeline.dart is a picture's layers on the timeline, as
@@ -136,7 +137,7 @@ class _ImageLayerLanesState extends State<ImageLayerLanes> {
       height: height,
       child: Row(children: [
         SizedBox(
-          width: controller.leftWidth,
+          width: leftWidthIn(context, controller),
           child: Column(children: [
             for (var i in shown)
               SizedBox(
