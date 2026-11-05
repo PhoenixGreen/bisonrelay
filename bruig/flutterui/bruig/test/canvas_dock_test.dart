@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dock.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -368,6 +370,56 @@ void main() {
       }
       expect(tester.takeException(), isNull);
       await closeMore(tester);
+    });
+
+    testWidgets("a timeline squeezed below its rows is cut off, not spilled",
+        (tester) async {
+      tester.view.physicalSize = const Size(1600, 600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      // Half a pixel short of its rows, it is still drawn rather than
+      // folded to its bar: the height that spilled. And with two scenes
+      // run together, the scenes' strip over the rows too.
+      var one = CanvasController(const CanvasDocument(frames: 48),
+          audioEngine: FakeEngine(const {}));
+      addTearDown(one.dispose);
+      var two = CanvasController(
+          const CanvasDocument(frames: 48, scenes: [
+            CanvasScene(id: "one"),
+            CanvasScene(id: "two"),
+          ]),
+          audioEngine: FakeEngine(const {}));
+      addTearDown(two.dispose);
+      two.playAll = true;
+      for (var (c, h, bar) in [
+        (one, 85.5, false),
+        (two, 85.5, false),
+        (two, 90.0, false),
+        (one, 60.0, false),
+        (one, 90.0, true)
+      ]) {
+        await tester.pumpWidget(MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ThemeNotifier>(
+                create: (c) => ThemeNotifier(doLoad: false)),
+            ChangeNotifierProvider<SnackBarModel>(
+                create: (c) => SnackBarModel()),
+            ChangeNotifierProvider<CanvasPreferences>(
+                create: (c) => CanvasPreferences()),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.bottomCenter,
+                child: CanvasTimeline(
+                    controller: c, height: h, onResize: (_) {}, showBar: bar),
+              ),
+            ),
+          ),
+        ));
+        await tester.pump();
+        expect(tester.takeException(), isNull, reason: "at $h");
+      }
     });
 
     testWidgets("the Chain switches between its sound and its motion",

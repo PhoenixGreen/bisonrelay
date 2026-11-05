@@ -1518,17 +1518,37 @@ class CanvasTimelineState extends State<CanvasTimeline> {
         border: Border(
             top: BorderSide(color: theme.colors.outlineVariant, width: 1)),
       ),
-      child: Column(children: [
-        if (_barAbove) ...[
-          bar,
-          if (!_collapsed) const SizedBox(height: _stripGap),
-        ],
-        ...rows,
-        if (_barBelow) ...[
-          if (!_collapsed) const SizedBox(height: _stripGap),
-          bar,
-        ],
-      ]),
+      // Squeezed shorter than its fixed rows (the strip, the scroll bar,
+      // a play bar of its own) by the panels around it, it is laid out at
+      // that least and cut off at the bottom, rather than overflowing.
+      child: LayoutBuilder(builder: (context, box) {
+        var least = (_collapsed ? 0.0 : _keysRoom - 1 + _sceneGap) +
+            (!_collapsed && !widget.slotsOnly ? _scrollbarHeight : 0) +
+            (_barAbove || _barBelow
+                ? _transportHeight + (_collapsed ? 0 : _stripGap)
+                : 0);
+        var tall = math.max(box.maxHeight, least);
+        var column = Column(children: [
+          if (_barAbove) ...[
+            bar,
+            if (!_collapsed) const SizedBox(height: _stripGap),
+          ],
+          ...rows,
+          if (_barBelow) ...[
+            if (!_collapsed) const SizedBox(height: _stripGap),
+            bar,
+          ],
+        ]);
+        if (tall <= box.maxHeight) return column;
+        return ClipRect(
+          child: OverflowBox(
+            alignment: Alignment.topCenter,
+            minHeight: tall,
+            maxHeight: tall,
+            child: column,
+          ),
+        );
+      }),
     );
   }
 

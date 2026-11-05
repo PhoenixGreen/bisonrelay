@@ -19,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
     show automationColour;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/device_screens.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -78,6 +79,20 @@ class DeviceSkin {
     ink: _silverInk,
     dim: _silverDim,
   );
+
+  /// studio is the Chain's card, in the studio palette: a raised header, the
+  /// body a shade under it, and its text and labels.
+  static DeviceSkin studio(StudioColors s) => DeviceSkin(
+        body: BoxDecoration(
+            gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: const [0, 0.12],
+                colors: [Color.lerp(s.raised, s.strip, 0.4)!, s.strip])),
+        header: Color.lerp(s.raised, s.strip, 0.2)!,
+        ink: s.text,
+        dim: s.muted,
+      );
 
   /// themed is the app's own colours, for the devices that are settings
   /// rather than a unit: ducking and loudness.
@@ -1719,10 +1734,20 @@ class _Knob extends StatelessWidget {
   /// device, where the room is the knob's.
   final bool reading;
 
+  /// accent, given, draws it as the Chain's cards have it: a dark knob with
+  /// its arc in [accent], filled from the middle for a setting that goes
+  /// both ways (see [bipolar]); [ink] its label's and reading's colour.
+  final Color? accent;
+  final Color ink;
+  final bool bipolar;
+
   const _Knob({
     this.automated = false,
     this.held = false,
     this.reading = true,
+    this.accent,
+    this.ink = _silverInk,
+    this.bipolar = false,
     required this.label,
     required this.text,
     required this.value,
@@ -1750,10 +1775,10 @@ class _Knob extends StatelessWidget {
                     color: held ? const Color(0xFF7D838D) : automationColour),
               ),
             Text(label,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: _silverInk)),
+                    color: accent == null ? ink : ink.withValues(alpha: 0.7))),
           ]),
           const SizedBox(height: 4),
           _Dragged(
@@ -1764,15 +1789,16 @@ class _Knob extends StatelessWidget {
             onCommit: onCommit,
             child: CustomPaint(
                 size: Size.square(size),
-                painter: _KnobFace(range.toUnit(value))),
+                painter: _KnobFace(range.toUnit(value),
+                    accent: accent, from: bipolar ? range.toUnit(0) : 0)),
           ),
           if (reading) ...[
             const SizedBox(height: 4),
             Text(text,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 10,
-                    fontFeatures: [FontFeature.tabularFigures()],
-                    color: _silverInk)),
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    color: ink)),
           ],
         ],
       );
@@ -1783,10 +1809,15 @@ const _sweepStart = math.pi * 0.75, _sweep = math.pi * 1.5;
 
 class _KnobFace extends CustomPainter {
   final double unit;
-  _KnobFace(this.unit);
+
+  /// accent and from: see _Knob.accent and _Knob.bipolar.
+  final Color? accent;
+  final double from;
+  _KnobFace(this.unit, {this.accent, this.from = 0});
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (accent != null) return _dark(canvas, size, accent!);
     var c = size.center(Offset.zero);
     var r = size.width / 2;
     var ring = Rect.fromCircle(center: c, radius: r - 2);
@@ -1831,8 +1862,65 @@ class _KnobFace extends CustomPainter {
           ..color = _silverInk);
   }
 
+  /// _dark is the Chain's knob: a dark track, the arc in its accent from
+  /// [from] to its value, a dark body and a light pointer.
+  void _dark(Canvas canvas, Size size, Color accent) {
+    var c = size.center(Offset.zero);
+    var r = size.width / 2;
+    var ring = Rect.fromCircle(center: c, radius: r - 2);
+    var stroke = math.max(2.5, size.width * 0.1);
+    canvas.drawArc(
+        ring,
+        _sweepStart,
+        _sweep,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke
+          ..strokeCap = StrokeCap.round
+          ..color = const Color(0xFF2C2843));
+    var a0 = _sweepStart + _sweep * from.clamp(0.0, 1.0),
+        a1 = _sweepStart + _sweep * unit;
+    if ((a1 - a0).abs() > 0.01) {
+      canvas.drawArc(
+          ring,
+          math.min(a0, a1),
+          (a1 - a0).abs(),
+          false,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = stroke
+            ..strokeCap = StrokeCap.round
+            ..color = accent);
+    }
+    var body = r - stroke - 2;
+    canvas.drawCircle(
+        c,
+        body,
+        Paint()
+          ..shader = const RadialGradient(
+                  center: Alignment(-0.2, -0.36),
+                  colors: [Color(0xFF46405F), Color(0xFF211D33)])
+              .createShader(Rect.fromCircle(center: c, radius: body)));
+    canvas.drawCircle(
+        c,
+        body,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = const Color(0xFF3E3958));
+    canvas.drawLine(
+        c + Offset(math.cos(a1), math.sin(a1)) * body * 0.15,
+        c + Offset(math.cos(a1), math.sin(a1)) * body * 0.85,
+        Paint()
+          ..strokeWidth = 2
+          ..strokeCap = StrokeCap.round
+          ..color = const Color(0xFFF3F0F8));
+  }
+
   @override
-  bool shouldRepaint(_KnobFace old) => old.unit != unit;
+  bool shouldRepaint(_KnobFace old) =>
+      old.unit != unit || old.accent != accent || old.from != from;
 }
 
 /// _VuNeedle is the gain-reduction meter: a needle at rest on the right,
@@ -2619,6 +2707,8 @@ class ParamDevice extends StatelessWidget {
             deviceIdAt(devices, index), device.kind, p.id)
         .id;
     var (icon, accent) = deviceGroupLook(device.kind.group);
+    var look = MixerLook.of(context);
+    var skin = DeviceSkin.studio(look.studio);
     // Only a channel's strip measures between its devices: see
     // CanvasController.deviceLevels.
     var isChannel = controller.timelineChannels.any((c) => c.key == owner);
@@ -2640,6 +2730,9 @@ class ParamDevice extends StatelessWidget {
                   _ => 28,
                 },
                 reading: tier != DeviceTier.small,
+                accent: accent,
+                ink: skin.ink,
+                bipolar: p.min < 0 && p.max > 0,
                 onChanged: (v, {transient = false}) =>
                     write(device.withValue(p.id, v), transient: transient),
                 onCommit: controller.endInteraction,
@@ -2651,7 +2744,7 @@ class ParamDevice extends StatelessWidget {
     return DeviceFrame(
       id: deviceKey(deviceIdAt(devices, index)),
       title: device.kind.label,
-      skin: DeviceSkin.silver,
+      skin: skin,
       on: device.on,
       onPower: (v) => write(device.switched(v)),
       powerKey: ValueKey("devicePower-$index"),
@@ -2680,7 +2773,7 @@ class ParamDevice extends StatelessWidget {
         child: RotatedBox(
           quarterTurns: 3,
           child: Text(device.kind.label,
-              style: const TextStyle(fontSize: 11, color: _silverInk)),
+              style: TextStyle(fontSize: 11, color: skin.ink)),
         ),
       ),
       body: Padding(
@@ -2694,14 +2787,14 @@ class ParamDevice extends StatelessWidget {
       ),
       // Laid out for its height: its levels over its knobs.
       controls: knobs,
-      display: isChannel
-          ? DeviceLevels(
-              key: ValueKey("deviceLevels-$index"),
-              controller: controller,
-              channel: owner,
-              index: index,
-              accent: accent)
-          : null,
+      display: DeviceLevels(
+          key: ValueKey("deviceLevels-$index"),
+          controller: controller,
+          channel: isChannel ? owner : null,
+          index: index,
+          device: device,
+          accent: accent,
+          back: look.studio.display),
       summary: [
         for (var p in params.where((p) => paramShown(device, p)).take(2))
           "${p.label} ${p.reading(device.value(p.id))}"
@@ -2723,7 +2816,7 @@ class ParamDevice extends StatelessWidget {
     ];
     var chosen =
         channels.any((c) => c.key == device.source) ? device.source : null;
-    const ink = TextStyle(fontSize: 11, color: _silverInk);
+    var ink = TextStyle(fontSize: 11, color: look.studio.text);
     return SizedBox(
       width: 104,
       child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -2735,7 +2828,7 @@ class ParamDevice extends StatelessWidget {
           isDense: true,
           value: chosen,
           style: ink,
-          iconEnabledColor: _silverInk,
+          iconEnabledColor: look.studio.text,
           dropdownColor: look.colors.surfaceContainerHigh,
           hint: Text(channels.isEmpty ? "No other channel" : "A channel",
               style: ink, overflow: TextOverflow.ellipsis),
@@ -3416,20 +3509,30 @@ class _SpectrumPainter extends CustomPainter {
   bool shouldRepaint(_SpectrumPainter old) => true;
 }
 
-/// DeviceLevels is a device's display where it has no picture of its own:
-/// how loud the sound is going into it and coming out of it, over the last
-/// few seconds, and what it changes the level by. Read between the devices
-/// of [channel]'s strip -- see CanvasController.deviceLevels.
+/// DeviceLevels is a device's screen: its own picture (see
+/// device_screens.dart), moving with the sound, or where it has none how
+/// loud the sound is going into it and coming out of it over the last few
+/// seconds. What it changes the level by is read between the devices of
+/// [channel]'s strip -- see CanvasController.deviceLevels -- and is not
+/// shown for a strip that is not a channel's (null).
 class DeviceLevels extends StatefulWidget {
   final CanvasController controller;
-  final String channel;
+  final String? channel;
   final int index;
+
+  /// device is what it draws: see hasScreen.
+  final MixDevice? device;
   final Color accent;
+
+  /// back is the display's background: the studio palette's Display.
+  final Color back;
   const DeviceLevels(
       {required this.controller,
       required this.channel,
       required this.index,
       required this.accent,
+      this.device,
+      this.back = const Color(0xFF110F22),
       super.key});
 
   @override
@@ -3446,9 +3549,15 @@ class _DeviceLevelsState extends State<DeviceLevels>
   @override
   CanvasController get meteredBy => widget.controller;
 
+  /// _t is how long it has been moving, for a screen's LFO.
+  double _t = 0;
+
   @override
   void tick() {
-    var taps = widget.controller.deviceLevels(widget.channel);
+    _t += 0.033;
+    var channel = widget.channel;
+    if (channel == null) return;
+    var taps = widget.controller.deviceLevels(channel);
     var i = widget.index;
     if (i + 1 >= taps.length) return;
     double db((double, double) p) => gainToDb(math.max(p.$1, p.$2));
@@ -3457,17 +3566,40 @@ class _DeviceLevelsState extends State<DeviceLevels>
   }
 
   @override
-  Widget build(BuildContext context) => CustomPaint(
-        painter: _LevelsPainter(List.of(_history), _length, widget.accent),
+  Widget build(BuildContext context) {
+    var device = widget.device;
+    if (device != null && hasScreen(device.kind)) {
+      var last = _history.lastOrNull;
+      var sounding = last != null && last.$1 > -80 && last.$2 > -80;
+      return CustomPaint(
+        painter: DeviceScreenPainter(
+            device,
+            ScreenMoment(
+                t: _t,
+                live: widget.controller.playing,
+                level: last == null
+                    ? 0
+                    : ((last.$1 + 60) / 60).clamp(0.0, 1.0).toDouble(),
+                change: sounding ? last.$2 - last.$1 : null),
+            widget.accent,
+            widget.back),
         child: const SizedBox.expand(),
       );
+    }
+    return CustomPaint(
+      painter: _LevelsPainter(
+          List.of(_history), _length, widget.accent, widget.back),
+      child: const SizedBox.expand(),
+    );
+  }
 }
 
 class _LevelsPainter extends CustomPainter {
   final List<(double, double)> history;
   final int length;
   final Color accent;
-  _LevelsPainter(this.history, this.length, this.accent);
+  final Color back;
+  _LevelsPainter(this.history, this.length, this.accent, this.back);
 
   /// _y is where [db] sits, nought at the top to minus sixty at the bottom.
   static double _y(double db, double h) =>
@@ -3476,9 +3608,8 @@ class _LevelsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     var w = size.width, h = size.height;
-    canvas.drawRect(
-        Offset.zero & size, Paint()..color = const Color(0xFF110F22));
-    var grid = Paint()..color = const Color(0xFF221F38);
+    canvas.drawRect(Offset.zero & size, Paint()..color = back);
+    var grid = Paint()..color = Color.lerp(back, Colors.white, 0.07)!;
     for (var db in [-12.0, -24.0, -36.0, -48.0]) {
       canvas.drawRect(Rect.fromLTWH(0, _y(db, h), w, 1), grid);
     }
