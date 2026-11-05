@@ -329,7 +329,10 @@ void main() {
     test("a background's picture is not forgotten", () async {
       var behind = (await CanvasAssets.save(List.filled(64, 11)))!;
       await CanvasStorage.save("", "Backdrop",
-          CanvasDocument(background: CanvasBackground(imageAssetId: behind)));
+          CanvasDocument(
+              background: CanvasBackground(
+                  picture: ImageElement(const ElementBase(id: "p"),
+                      assetId: behind))));
 
       await ageStores();
       await CanvasAssets.sweepUnused();
@@ -383,31 +386,6 @@ void main() {
       expect(id, endsWith(".png"));
     });
 
-    test("a picture stored before any of this still loads", () async {
-      // Old ids are random and have no extension, and every saved canvas
-      // points at them by name.
-      var library = await CanvasStorage.libraryDir();
-      var pictures = Directory(path.join(library, "Pictures"));
-      await pictures.create(recursive: true);
-      await File(path.join(pictures.path, "abcdefghijklmnop"))
-          .writeAsBytes(png());
-
-      expect(await CanvasAssets.load("abcdefghijklmnop"), isNotNull);
-    });
-
-    test("a store left in the hidden folder is moved, names intact", () async {
-      // The names inside are untouched, so every document still resolves.
-      var library = await CanvasStorage.libraryDir();
-      var old = Directory(path.join(library, ".assets"));
-      await old.create(recursive: true);
-      await File(path.join(old.path, "qrstuvwxyzabcdef")).writeAsBytes(png());
-
-      // Asking for anything triggers the move.
-      expect(await CanvasAssets.load("qrstuvwxyzabcdef"), isNotNull);
-      expect(await Directory(path.join(library, "Pictures")).exists(), isTrue);
-      expect(await old.exists(), isFalse);
-    });
-
     test("the pictures folder is not offered as a canvas folder", () async {
       // It is a real, visible folder now so that it can be opened and looked
       // at -- which means the listing has to leave it out by name.
@@ -417,11 +395,10 @@ void main() {
     });
 
     test("no folder the app keeps its own things in is offered", () async {
-      // What is downloaded -- the sculpted body, voices, the sound bank, the
-      // VRoid characters -- lives beside the documents, and is not one of
-      // their folders.
+      // What is downloaded -- voices, the sound bank, the VRoid characters --
+      // lives beside the documents, and is not one of their folders.
       var library = await CanvasStorage.libraryDir();
-      for (var f in ["Human", "voices", "soundbanks", "VRoid", "Models", "Characters", "Audio", "Videos", "Vectors"]) {
+      for (var f in ["voices", "soundbanks", "VRoid", "Models", "Audio", "Videos", "Vectors"]) {
         await Directory(path.join(library, f)).create(recursive: true);
       }
       expect(await CanvasStorage.createFolder("Mine"), isTrue);
@@ -433,7 +410,7 @@ void main() {
       expect(await CanvasStorage.createFolder("Voices"), isFalse, reason: "not even in another case");
       expect(await CanvasStorage.createFolder("VRoid"), isFalse);
       expect(await CanvasStorage.createFolder("Mine"), isTrue);
-      expect(await CanvasStorage.renameFolder("Mine", "Human"), isFalse);
+      expect(await CanvasStorage.renameFolder("Mine", "Models"), isFalse);
       expect(await CanvasStorage.pathFor("voices", "Song"), isNull, reason: "a canvas is not saved among the voices");
       expect(await CanvasStorage.pathFor("Mine", "Song"), isNotNull);
     });

@@ -675,12 +675,6 @@ String clipLength(double seconds) {
   return "${s ~/ 60}:${(s % 60).toString().padLeft(2, "0")}";
 }
 
-/// _isSvg is whether [bytes] read as an SVG file.
-bool _isSvg(Uint8List bytes) =>
-    String.fromCharCodes(bytes.take(4096).where((b) => b < 128))
-        .toLowerCase()
-        .contains("<svg");
-
 /// AssetThumb is a stored picture, small: read once and kept while the
 /// sidebar is open, so scrolling does not read it again.
 class AssetThumb extends StatefulWidget {
@@ -709,8 +703,7 @@ class _AssetThumbState extends State<AssetThumb> {
   Future<void> _read() async {
     var bytes = _cache[widget.id];
     if (bytes == null) {
-      // A drawing is in the Vectors store, a picture in the pictures; older
-      // drawings may still be in the pictures.
+      // A drawing is in the Vectors store, a picture in the pictures.
       var read = await CanvasMedia.load(MediaKind.vector, widget.id) ??
           await CanvasAssets.load(widget.id);
       if (read == null) return;
@@ -730,8 +723,7 @@ class _AssetThumbState extends State<AssetThumb> {
   Widget build(BuildContext context) {
     var bytes = _bytes;
     if (bytes == null) return const SizedBox.expand();
-    // By what it is, not by its name: an old drawing's id has no extension.
-    if (widget.id.endsWith(".svg") || _isSvg(bytes)) {
+    if (widget.id.endsWith(".svg")) {
       return SvgPicture.memory(bytes, fit: BoxFit.contain);
     }
     return Image.memory(bytes,

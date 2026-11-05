@@ -38,7 +38,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
@@ -96,11 +95,6 @@ const int maxSequenceFrames = maxFrameCount * 100;
 class CanvasBackground {
   final ProceduralSpec spec;
 
-  /// imageAssetId and imageFit are the legacy picture field, from before
-  /// [picture]. Still read; never written once the picture has been edited.
-  final String imageAssetId;
-  final ImageFit imageFit;
-
   /// picture, video and sound are what a background can carry besides its
   /// pattern, each an element so the element's controls and painter serve it
   /// too. Each is stretched to the page when drawn, whatever box it was saved
@@ -128,8 +122,6 @@ class CanvasBackground {
 
   const CanvasBackground({
     this.spec = const ProceduralSpec(),
-    this.imageAssetId = "",
-    this.imageFit = ImageFit.cover,
     this.picture,
     this.video,
     this.sound,
@@ -164,13 +156,10 @@ class CanvasBackground {
         height: rect.height) as StageElement;
   }
 
-  /// shownPicture is the picture to draw: the one with settings, or the one
-  /// saved before there were any.
+  /// shownPicture is the picture to draw: [picture], once it has one.
   ImageElement? get shownPicture {
     if (picture case var p? when p.hasImage) return p;
-    if (imageAssetId.isEmpty) return null;
-    return ImageElement(const ElementBase(id: "backgroundPicture"),
-        assetId: imageAssetId, fit: imageFit);
+    return null;
   }
 
   bool get isImage => shownPicture != null;
@@ -196,8 +185,6 @@ class CanvasBackground {
 
   CanvasBackground copyWith({
     ProceduralSpec? spec,
-    String? imageAssetId,
-    ImageFit? imageFit,
     ImageElement? picture,
     VideoElement? video,
     AudioElement? sound,
@@ -215,11 +202,6 @@ class CanvasBackground {
         stage: stage ?? this.stage,
         parallax: parallax ?? this.parallax,
         spec: spec ?? this.spec,
-        // A picture edited with settings replaces the old bare one for good.
-        imageAssetId: picture != null || clearPicture
-            ? ""
-            : imageAssetId ?? this.imageAssetId,
-        imageFit: imageFit ?? this.imageFit,
         picture: clearPicture ? null : picture ?? this.picture,
         video: clearVideo ? null : video ?? this.video,
         sound: clearSound ? null : sound ?? this.sound,
@@ -228,8 +210,6 @@ class CanvasBackground {
 
   Map<String, dynamic> toJson() => {
         "spec": spec.toJson(),
-        if (imageAssetId.isNotEmpty) "image": imageAssetId,
-        if (imageAssetId.isNotEmpty) "fit": imageFit.name,
         if (picture != null) "picture": picture!.toJson(),
         if (video != null) "video": video!.toJson(),
         if (sound != null) "sound": sound!.toJson(),
@@ -244,32 +224,16 @@ class CanvasBackground {
         raw is Map<String, dynamic> && elementFromJson(raw) is T
             ? elementFromJson(raw) as T
             : null;
-    // A saved "picture" that is a drawing (an .svg) is read as the drawing:
-    // as a picture it would come back as nothing.
-    var image = jsonString(json["image"], "");
-    var drawing = element<VectorElement>(json["drawing"]) ??
-        element<VectorElement>(json["picture"]) ??
-        (image.endsWith(".svg")
-            ? VectorElement(const ElementBase(id: "backgroundDrawing"),
-                assetId: image,
-                fit: json["fit"] == "stretch"
-                    ? VectorFit.stretch
-                    : json["fit"] == "contain"
-                        ? VectorFit.contain
-                        : VectorFit.cover)
-            : null);
     return CanvasBackground(
       spec: jsonSpec(
           json["spec"], ProceduralSpec.fromJson, const ProceduralSpec()),
-      imageAssetId: image.endsWith(".svg") ? "" : image,
-      imageFit: ImageFit.fromName(jsonStr(json["fit"])),
       picture: element<ImageElement>(json["picture"]),
       video: element<VideoElement>(json["video"]),
       sound: element<AudioElement>(json["sound"]),
-      drawing: drawing,
+      drawing: element<VectorElement>(json["drawing"]),
       backdrop: BackdropKind.fromName(jsonStr(json["backdrop"])),
-      // Read as a stage directly: elementFromJson would turn a saved stage
-      // into a Background element.
+      // Read as a stage directly: elementFromJson reads no stage of its own,
+      // only one inside a Background element.
       stage: json["stage"] is Map<String, dynamic>
           ? StageElement.fromJson(
               json["stage"] as Map<String, dynamic>,
@@ -780,21 +744,6 @@ class CanvasDocument {
     return masterScene?.sharedBackground ??
         list[index].background ??
         background;
-  }
-
-  /// settledFrame is the end of the last keyframed arrival (reveal band) in
-  /// the scene, not of the last movement: a canvas opens there rather than on
-  /// an empty frame nought. settledFrameOf in render/motion_document.dart
-  /// adds clip arrivals.
-  int get settledFrame {
-    var last = 0;
-    for (var element in scene.elements) {
-      for (var band in bandsIn(element.base.track)) {
-        if (band.channel != KeyframeChannel.reveal) continue;
-        if (band.to > last) last = band.to;
-      }
-    }
-    return last.clamp(0, math.max(0, frames - 1)).toInt();
   }
 
   /// defaultTransition is what a scene with no transition of its own uses:
@@ -1349,8 +1298,7 @@ class CanvasDocument {
     var elements = raw is List
         ? [
             for (var e in raw)
-              if (e is Map<String, dynamic> && !noLongerMade(e))
-                elementFromJson(e),
+              if (e is Map<String, dynamic>) elementFromJson(e),
           ]
         : const <CanvasElement>[];
     var actions = acts is List
@@ -1505,11 +1453,6 @@ CanvasElement _withoutLinksTo(CanvasElement e, String id) {
   return next;
 }
 
-/// noLongerMade is whether saved element [json] is of a kind no longer made,
-/// and left out when it is read: the old drawn characters, which the 3D
-/// characters replaced.
-bool noLongerMade(Map<String, dynamic> json) => json["kind"] == "character";
-
 /// elementFromJson turns one saved element back into the right subclass. An
 /// unknown kind (from a newer build) becomes a plain shape, a visible
 /// placeholder, rather than being dropped.
@@ -1523,19 +1466,6 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
     case ElementKind.text:
       return TextElement.fromJson(json, base);
     case ElementKind.image:
-      // A saved picture that is a drawing (.svg) is read as a Vector
-      // element, keeping its box, name, fit and arrival.
-      if (jsonString(json["asset"], "").endsWith(".svg")) {
-        return VectorElement(base,
-            assetId: jsonString(json["asset"], ""),
-            fit: switch (json["fit"]) {
-              "stretch" => VectorFit.stretch,
-              "contain" => VectorFit.contain,
-              _ => VectorFit.cover,
-            },
-            animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
-                const ElementAnimation()));
-      }
       return ImageElement.fromJson(json, base);
     case ElementKind.shape:
       return ShapeElement.fromJson(json, base);
@@ -1563,21 +1493,17 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return VectorElement.fromJson(json, base);
     case ElementKind.character3d:
       return Character3dElement.fromJson(json, base);
-    // A stage of its own, from before stages were a kind of background.
-    case ElementKind.stage:
-      return BackgroundElement.fromStage(json, base);
     case ElementKind.sheet:
       return SheetElement.fromJson(json, base);
     case ElementKind.camera:
       return CameraElement.fromJson(json, base);
     case ElementKind.object3d:
       return Object3dElement.fromJson(json, base);
-    // Never saved by itself -- a background carries it -- but read as a
-    // Background element showing it.
+    // Never saved by themselves -- a background carries them -- so read as
+    // an unknown kind is: a placeholder shape.
+    case ElementKind.stage:
     case ElementKind.parallax:
-      return BackgroundElement(base,
-          backdrop: BackdropKind.parallax,
-          parallax: ParallaxElement.fromJson(json, const ElementBase(id: "")));
+      return ShapeElement.fromJson(json, base);
     case ElementKind.sprite:
       return SpriteElement.fromJson(json, base);
     case ElementKind.tileMap:

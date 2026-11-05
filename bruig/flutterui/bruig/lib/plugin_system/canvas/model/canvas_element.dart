@@ -361,8 +361,6 @@ class ElementBase {
         if (opacity != 1) "opacity": opacity,
         if (!visible) "visible": false,
         if (locked) "locked": true,
-        // Written even when false: absence means "saved before elements had
-        // this", which ImageElement.fromJson reads as locked.
         "aspect": lockAspect,
         if (anchorX != 0.5) "ax": anchorX,
         if (anchorY != 0.5) "ay": anchorY,

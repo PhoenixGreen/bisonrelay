@@ -222,28 +222,6 @@ void main() {
       expect(e.edited, isFalse);
     });
 
-    test("a picture that was a drawing opens as a Vector element", () {
-      var e = elementFromJson({
-        "kind": "image",
-        "id": "p",
-        "x": 1,
-        "y": 2,
-        "w": 30,
-        "h": 40,
-        "asset": "0123456789abcdef.svg",
-        "fit": "stretch",
-      });
-      expect(e, isA<VectorElement>());
-      var v = e as VectorElement;
-      expect(v.assetId, "0123456789abcdef.svg");
-      expect(v.fit, VectorFit.stretch);
-      expect(v.id, "p");
-      var picture = elementFromJson(
-          {"kind": "image", "id": "q", "asset": "0123456789abcdef.png"});
-      expect(picture, isNot(isA<VectorElement>()),
-          reason: "a photograph stays a picture");
-    });
-
     test("fitted into its box, kept in proportion or stretched", () {
       var e = VectorElement(const ElementBase(id: "v"),
           viewBox: const Rect.fromLTWH(0, 0, 100, 50));

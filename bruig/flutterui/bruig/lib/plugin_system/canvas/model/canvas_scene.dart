@@ -761,8 +761,7 @@ class CanvasScene {
       elements: elements is List
           ? [
               for (var e in elements)
-                if (e is Map<String, dynamic> && !noLongerMade(e))
-                  elementFromJson(e),
+                if (e is Map<String, dynamic>) elementFromJson(e),
             ]
           : const [],
       frames:

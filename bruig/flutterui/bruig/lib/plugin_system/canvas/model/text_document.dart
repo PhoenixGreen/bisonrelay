@@ -166,20 +166,6 @@ class MarkdownAllow {
         looks[kind] = MarkdownLook.fromJson(mine);
       }
     }
-    // Older documents saved six booleans; read those too.
-    const was = {
-      "h1": MarkdownKind.heading1,
-      "h2": MarkdownKind.heading2,
-      "b": MarkdownKind.bold,
-      "i": MarkdownKind.italic,
-      "u": MarkdownKind.underline,
-      "a": MarkdownKind.link,
-    };
-    for (var entry in was.entries) {
-      if (json[entry.key] == false) {
-        looks[entry.value] = const MarkdownLook(on: false);
-      }
-    }
     return MarkdownAllow(looks: looks);
   }
 }

@@ -409,9 +409,7 @@ class ChartSeries {
       numbers: json["numbers"] is Map<String, dynamic>
           ? ChartNumbers.fromJson(json["numbers"] as Map<String, dynamic>)
           : null,
-      // Older files carry an "on" flag; one saved off is no gradient.
-      gradient: json["gradient"] is Map<String, dynamic> &&
-              (json["gradient"] as Map<String, dynamic>)["on"] != false
+      gradient: json["gradient"] is Map<String, dynamic>
           ? GradientSpec.fromJson(json["gradient"] as Map<String, dynamic>)
           : null,
       hidden: json["off"] == true,

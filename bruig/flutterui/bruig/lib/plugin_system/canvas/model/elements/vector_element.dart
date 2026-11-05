@@ -4,7 +4,6 @@ import 'package:bruig/components/paint_spec.dart';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
     show ImageCrop;
 
@@ -161,24 +160,6 @@ class VectorNode {
         cap: _pick(StrokeCap.values, json.length > 8 ? json[8] : null),
         join: _pick(StrokeJoin.values, json.length > 9 ? json[9] : null));
   }
-}
-
-/// _withLegacyStrokes hands tints and rub-outs saved on the whole drawing
-/// (older documents) to the shapes each lies over.
-List<VectorShape> _withLegacyStrokes(
-    List<VectorShape> shapes, List<VectorTint> tints, List<VectorTint> rubs) {
-  if (tints.isEmpty && rubs.isEmpty) return shapes;
-  return [
-    for (var s in shapes)
-      (() {
-        var b = s.path.getBounds().inflate(s.strokeWidth / 2);
-        bool over(VectorTint t) => t.bounds.overlaps(b);
-        return s.copyWith(
-          tints: [...s.tints, ...tints.where(over)],
-          erasures: [...s.erasures, ...rubs.where(over)],
-        );
-      })(),
-  ];
 }
 
 /// _strokes reads a list of tint strokes or rub-outs.
@@ -478,24 +459,6 @@ class VectorShape {
     return first == null ? t.origin : first.nodes.first.point + t.fromFirst;
   }
 
-  /// _animationFromJson reads a shape's own animation, or the older separate
-  /// "arrive" and "loop" keys.
-  static ElementAnimation? _animationFromJson(Map<String, dynamic> json) {
-    if (json["anim"] case Map<String, dynamic> own) {
-      return ElementAnimation.fromJson(own);
-    }
-    var arrive = json["arrive"], loop = json["loop"];
-    if (arrive is! Map<String, dynamic> && loop is! Map<String, dynamic>) {
-      return null;
-    }
-    var a = arrive is Map<String, dynamic>
-        ? ElementAnimation.fromJson(arrive)
-        : const ElementAnimation();
-    return loop is Map<String, dynamic>
-        ? a.copyWith(loop: ElementLoop.fromJson(loop))
-        : a;
-  }
-
   static VectorShape? fromJson(Object? json) {
     if (json is! Map<String, dynamic>) return null;
     var raw = json["p"];
@@ -530,19 +493,18 @@ class VectorShape {
       text: json["text"] is Map<String, dynamic>
           ? VectorText.fromJson(json["text"] as Map<String, dynamic>)
           : null,
-      animation: _animationFromJson(json),
+      animation: json["anim"] is Map<String, dynamic>
+          ? ElementAnimation.fromJson(json["anim"] as Map<String, dynamic>)
+          : null,
       hidden: json["hid"] == true,
       locked: json["lock"] == true,
       origin: json["from"] is String ? json["from"] as String : null,
-      // Without "animOwn" (older documents) an own animation owns every part.
       owns: json["animOwn"] is List
           ? {
               for (var n in json["animOwn"] as List)
                 ...ShapeAnimationPart.values.where((p) => p.name == n),
             }
-          : _animationFromJson(json) == null
-              ? const {}
-              : ShapeAnimationPart.values.toSet(),
+          : const {},
     );
   }
 }
@@ -889,13 +851,8 @@ class VectorElement extends CanvasElement {
     return copyWith(shapes: list);
   }
 
-  /// An extensionless id is still in the picture store (see
-  /// CanvasMedia.migrateVectors); an .svg id is the Vectors store's, so it
-  /// is a media id instead.
-  @override
-  Set<String> get assetIds =>
-      assetId.isNotEmpty && !assetId.endsWith(".svg") ? {assetId} : const {};
-
+  /// The drawing's file is in the Vectors store, so it is a media id rather
+  /// than a picture's.
   @override
   Set<String> get mediaIds => assetId.endsWith(".svg") ? {assetId} : const {};
 
@@ -927,11 +884,10 @@ class VectorElement extends CanvasElement {
                 (vb[3] as num).toDouble())
             : Rect.zero,
         shapes: raw is List
-            ? _withLegacyStrokes([
+            ? [
                 for (var s in raw)
                   if (VectorShape.fromJson(s) case var shape?) shape,
-              ], _strokes(json["tints"]),
-                _strokes(json["erasures"], erase: true))
+              ]
             : null,
         fit: VectorFit.fromName(jsonStr(json["fit"])),
         handleColor: colorFromJson(json["handle"], defaultHandleColor),

@@ -105,11 +105,11 @@ void main() {
       expect(ElementMotion.none.toJson(), isEmpty);
     });
 
-    test("a marker keeps an id, and one from before ids is given one", () {
-      var a = TimelineAction.fromJson({"f": 48, "kind": "stop"});
-      expect(a.id, "m48");
+    test("a marker keeps its id", () {
+      const a =
+          TimelineAction(id: "m1", frame: 48, kind: TimelineActionKind.stop);
       var b = TimelineAction.fromJson(a.copyWith(frame: 60).toJson());
-      expect(b.id, "m48", reason: "moved, it is still the same marker");
+      expect(b.id, "m1", reason: "moved, it is still the same marker");
     });
 
     test("a retimed clip takes its keys with it", () {

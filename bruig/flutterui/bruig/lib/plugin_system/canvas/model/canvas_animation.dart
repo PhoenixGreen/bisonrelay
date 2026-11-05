@@ -374,8 +374,7 @@ enum TimelineActionKind {
 /// canvas obeys them; an exported file plays straight through.
 class TimelineAction {
   /// id names the marker for what is pinned to it -- a clip that starts or
-  /// ends there follows it when it is moved. A marker saved without one is
-  /// named by its frame when read.
+  /// ends there follows it when it is moved.
   final String id;
 
   final int frame;
@@ -449,9 +448,7 @@ class TimelineAction {
       };
 
   factory TimelineAction.fromJson(Map<String, dynamic> json) => TimelineAction(
-        id: json["id"] is String && (json["id"] as String).isNotEmpty
-            ? json["id"] as String
-            : "m${(jsonNum(json["f"]))?.toInt() ?? 0}",
+        id: json["id"] is String ? json["id"] as String : "",
         frame: (jsonNum(json["f"]))?.toInt() ?? 0,
         kind: TimelineActionKind.fromName(jsonStr(json["kind"])),
         target: (jsonNum(json["target"]))?.toInt() ?? 0,
@@ -469,49 +466,26 @@ class KeyframeBand {
   final int from;
   final int to;
 
-  /// channel is what the pair pins -- see [KeyframeChannel] -- so the
-  /// timeline can colour an entrance and an exit differently.
-  final String channel;
-
-  const KeyframeBand(this.from, this.to, this.channel);
+  const KeyframeBand(this.from, this.to);
 
   int get length => to - from;
   bool get real => to > from;
 }
 
-/// bandsIn is every bar the timeline draws over [track]: one per arrival or
-/// exit channel from its first key to its last, then one for each other
-/// stretch in which something changes.
+/// bandsIn is every bar the timeline draws over [track]: one for each
+/// stretch in which something changes. None for one whose ends read the
+/// same, or one that leaves a held key (it steps at the far end rather than
+/// travelling).
 List<KeyframeBand> bandsIn(ElementTrack? track) {
   if (track == null) return const [];
   var out = <KeyframeBand>[];
-
-  // An arrival and an exit first, unless held at the start: then it snaps
-  // at the end and nothing happens over the stretch.
-  for (var channel in const [KeyframeChannel.reveal, KeyframeChannel.close]) {
-    var carried = [
-      for (var key in track.keys)
-        if (key.values.containsKey(channel)) key,
-    ]..sort((a, b) => a.frame - b.frame);
-    if (carried.length < 2) continue;
-    if (carried.first.easing == KeyframeEasing.hold) continue;
-    out.add(KeyframeBand(carried.first.frame, carried.last.frame, channel));
-  }
-
-  // Then every other stretch where something changes. None for one whose
-  // ends read the same, or one that leaves a held key (it steps at the far
-  // end rather than travelling).
-  var claimed = {for (var band in out) "${band.from}:${band.to}"};
   var keys = [...track.keys]..sort((a, b) => a.frame - b.frame);
   for (var i = 0; i + 1 < keys.length; i++) {
     var from = keys[i], to = keys[i + 1];
     if (from.easing == KeyframeEasing.hold) continue;
     if (!from.differsFrom(to)) continue;
-    // Not a second bar over a stretch an arrival already claims.
-    if (claimed.contains("${from.frame}:${to.frame}")) continue;
-    out.add(KeyframeBand(from.frame, to.frame, KeyframeChannel.pose));
+    out.add(KeyframeBand(from.frame, to.frame));
   }
-
   return out;
 }
 

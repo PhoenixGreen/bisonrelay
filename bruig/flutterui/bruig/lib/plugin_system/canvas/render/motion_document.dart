@@ -48,10 +48,10 @@ MotionTimes motionTimesOf(CanvasDocument doc) {
   return times;
 }
 
-/// settledFrameOf is the frame [doc] opens on: everything arrived, by its
-/// keyframes or by the clips that play its arrivals.
+/// settledFrameOf is the frame [doc] opens on: everything arrived, by the
+/// clips that play its arrivals.
 int settledFrameOf(CanvasDocument doc) {
-  var last = doc.settledFrame;
+  var last = 0;
   var times = motionTimesOf(doc);
   var rate = math.max(1, doc.frameRate);
   for (var e in doc.elements) {

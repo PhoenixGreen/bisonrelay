@@ -5,8 +5,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_file.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
@@ -37,18 +35,6 @@ void main() {
       var gone = withoutOwn(again, MotionKind.arrive);
       expect(ownSpan(gone, MotionKind.arrive, 24), isNull);
       expect(gone.base.motion.isEmpty, isTrue);
-    });
-
-    test("an old canvas's keyframes are read the same until converted", () {
-      var old = box("a",
-          track: ElementTrack(const [
-            Keyframe(frame: 6, values: {KeyframeChannel.reveal: 0}),
-            Keyframe(frame: 18, values: {KeyframeChannel.reveal: 1}),
-          ]));
-      expect(ownSpan(old, MotionKind.arrive, 12), (6, 12));
-      var converted = convertElement(old, 12)!;
-      expect(ownSpan(converted, MotionKind.arrive, 12), (6, 12),
-          reason: "and the clip it becomes says the same");
     });
 
     test("staggered with others, its clip moves", () {
@@ -147,16 +133,6 @@ void main() {
     } on FormatException {
       // As good an answer.
     }
-  });
-
-  test("an old path's single cap is read as a line's is", () {
-    var path = elementFromJson(const {
-      "kind": "path",
-      "id": "p",
-      "cap": "arrowBoth",
-      "nodes": [],
-    }) as PathElement;
-    expect((path.startEnd, path.endEnd), (LineEnd.arrow, LineEnd.arrow));
   });
 
   test("a preset on an element keeps its arrival as a clip", () {

@@ -468,10 +468,7 @@ double _backgroundWeight(ProceduralStyle style) => switch (style) {
       ProceduralStyle.circuit ||
       ProceduralStyle.blockchain =>
         0.30,
-      ProceduralStyle.ledGrid ||
-      ProceduralStyle.rain ||
-      ProceduralStyle.symbolField =>
-        0.45,
+      ProceduralStyle.rain => 0.45,
       // Noise in every pixel, by design.
       ProceduralStyle.metal || ProceduralStyle.surface => 0.55,
     };

@@ -255,8 +255,6 @@ void main() {
     await _show(tester, CanvasDesignPanel(controller: c), settle: false);
     expect(find.byKey(const ValueKey("strip-music")), findsOneWidget,
         reason: "its channel's mixer");
-    expect(find.byKey(const ValueKey("soundTools")), findsNothing,
-        reason: "nothing to clear: fitting is the timeline's cut and fade");
   });
 
   group("the camera", () {

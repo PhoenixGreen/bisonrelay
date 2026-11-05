@@ -11,7 +11,6 @@ import 'package:bruig/plugin_system/canvas/ui/settings/media_timeline_settings.d
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/sound_tools.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/placement_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/instrument_settings.dart';
 import 'package:flutter/material.dart';
@@ -273,9 +272,6 @@ List<Widget> audioSettings(
                 "mixerSection-${clip.channel.isEmpty ? e.id : clip.channel}"),
             controller: controller,
             channel: clip.channel.isEmpty ? e.id : clip.channel),
-      // What can be done to a sound on the timeline as a whole.
-      if (background && clip.timed)
-        CanvasSoundTools(controller: controller, e: e),
     ];
   }
   var files = list.length;

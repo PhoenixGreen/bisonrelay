@@ -336,11 +336,8 @@ class ElementAnimation {
         if (loop.on) "loop": loop.toJson(),
         if (direction != null) "direction": direction!.name,
         if (strength != 1) "strength": strength,
-        // Written wherever the arrival has its own, even when the way out
-        // has none: fromJson reads a missing one as the arrival's.
-        if (direction != null || exitDirection != null)
-          "exitDirection": exitDirection?.name,
-        if (strength != 1 || exitStrength != 1) "exitStrength": exitStrength,
+        if (exitDirection != null) "exitDirection": exitDirection!.name,
+        if (exitStrength != 1) "exitStrength": exitStrength,
       };
 
   factory ElementAnimation.fromJson(Map<String, dynamic> json) =>
@@ -358,12 +355,9 @@ class ElementAnimation {
             : const ElementLoop(),
         direction: AnimationDirection.fromName(jsonStr(json["direction"])),
         strength: jsonDouble(json["strength"], 1).clamp(0.0, 10.0),
-        // Older files have none: the way out takes the arrival's.
-        exitDirection: json.containsKey("exitDirection")
-            ? AnimationDirection.fromName(jsonStr(json["exitDirection"]))
-            : AnimationDirection.fromName(jsonStr(json["direction"])),
-        exitStrength: jsonDouble(json["exitStrength"] ?? json["strength"], 1)
-            .clamp(0.0, 10.0),
+        exitDirection:
+            AnimationDirection.fromName(jsonStr(json["exitDirection"])),
+        exitStrength: jsonDouble(json["exitStrength"], 1).clamp(0.0, 10.0),
       );
 
   @override

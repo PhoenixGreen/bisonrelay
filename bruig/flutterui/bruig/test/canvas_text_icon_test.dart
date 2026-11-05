@@ -472,42 +472,5 @@ void main() {
       // And an element with no picture writes none.
       expect(_headline().toJson().containsKey("items"), isFalse);
     });
-
-    test("an older document's icon opens as a piece", () {
-      // An icon was a feature of its own, with a place and an alignment that
-      // were nobody else's. The two of them add up to one of the nine slots.
-      TextElement opened(Map<String, dynamic> icon) => elementFromJson({
-            "kind": "text",
-            "id": "t",
-            "w": 400.0,
-            "h": 120.0,
-            "text": "Headline",
-            "icon": icon,
-          }) as TextElement;
-
-      var start = opened({"assetId": "a", "size": 40.0});
-      expect(start.items.single.icon!.assetId, "a");
-      expect(start.items.single.icon!.size, 40);
-      expect(start.items.single.slot, TextSlot.middleLeft,
-          reason: "before the words, lined up with the middle of them");
-
-      expect(
-          opened({"assetId": "a", "place": "end", "align": "end"})
-              .items
-              .single
-              .slot,
-          TextSlot.bottomRight);
-      expect(opened({"assetId": "a", "place": "over"}).items.single.slot,
-          TextSlot.topCentre);
-      expect(
-          opened({"assetId": "a", "place": "under", "align": "start"})
-              .items
-              .single
-              .slot,
-          TextSlot.bottomLeft);
-
-      // An icon that was never given a picture is not a piece at all.
-      expect(opened({"size": 40.0}).items, isEmpty);
-    });
   });
 }

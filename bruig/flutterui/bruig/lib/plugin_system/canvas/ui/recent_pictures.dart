@@ -37,11 +37,9 @@ class _RecentPicturesDialogState extends State<_RecentPicturesDialog> {
     super.initState();
     var read = widget.drawings
         ? CanvasMedia.stored(MediaKind.vector)
-        // A drawing not yet moved out of the pictures is a drawing, and is
-        // offered with them, not here.
         : CanvasAssets.stored().then((ids) => [
               for (var id in ids)
-                if (!id.endsWith(".svg") && !isMaskId(id)) id
+                if (!isMaskId(id)) id
             ]);
     read.then((ids) {
       if (mounted) setState(() => _ids = ids);

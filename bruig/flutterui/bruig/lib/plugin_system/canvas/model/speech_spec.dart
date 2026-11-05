@@ -201,11 +201,8 @@ class SpeechLine {
     if (json is! Map<String, dynamic>) return null;
     var text = jsonString(json["text"], "");
     if (text.isEmpty) return null;
-    // Older files have "takes" in order rather than "slots".
     var slots = <SpeechTake?>[
       if (json["slots"] case List list)
-        for (var t in list.take(speechSlots)) SpeechTake.fromJson(t)
-      else if (json["takes"] case List list)
         for (var t in list.take(speechSlots)) SpeechTake.fromJson(t),
     ];
     var chosen = json["chosen"] is int ? json["chosen"] as int : -1;
@@ -770,14 +767,12 @@ class SpeechSpec {
 
   static SpeechSpec fromJson(Object? json) {
     if (json is! Map<String, dynamic>) return const SpeechSpec();
-    // An ElevenLabs ("cloud") voice id means nothing to our engines.
-    var gone = json["engine"] == "cloud";
     return const SpeechSpec().copyWith(
       engine: SpeechEngineKind.values
           .where((e) => e.name == json["engine"])
           .firstOrNull,
-      voice: gone ? "" : jsonString(json["voice"], ""),
-      voiceName: gone ? "" : jsonString(json["voiceName"], ""),
+      voice: jsonString(json["voice"], ""),
+      voiceName: jsonString(json["voiceName"], ""),
       script: jsonString(json["script"], ""),
       speed: jsonDouble(json["speed"], 1),
       expression: jsonDouble(json["expression"], 0.6),

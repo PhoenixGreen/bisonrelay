@@ -65,13 +65,6 @@ void main() {
         reason: 'nothing kept for as designed');
   });
 
-  test('an expression kept before performances is its feeling', () {
-    final j = _element().toJson()..["expression"] = "Happy";
-    final e = Character3dElement.fromJson(j, _element().base);
-    expect(e.performance.feeling, "Happy");
-    expect(e.wearing(null).performance.feeling, isNull);
-  });
-
   test('what cannot be read is left as made, or kept to its range', () {
     final p = CharacterPerformance.fromJson({
       "wearing": "A ball gown",

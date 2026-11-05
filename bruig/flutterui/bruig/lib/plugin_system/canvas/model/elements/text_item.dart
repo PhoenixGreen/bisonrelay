@@ -217,11 +217,7 @@ class TextItem {
         gap: json["gap"] is num
             ? (json["gap"] as num).toDouble().clamp(-400.0, 400.0)
             : 0,
-        // gapL and gapR are older keys for the same room.
-        side: _side(json["side"]) ??
-            _side(json["gapL"]) ??
-            _side(json["gapR"]) ??
-            0,
+        side: _side(json["side"]) ?? 0,
         box: json["box"] is Map<String, dynamic>
             ? BoxSpec.fromJson((json["box"] as Map).cast<String, dynamic>())
             : const BoxSpec(padding: 0),

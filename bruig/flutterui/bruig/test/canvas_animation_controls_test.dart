@@ -10,6 +10,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/render/element_effects.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -39,19 +41,8 @@ VectorElement drawing(
     ElementAnimation animation = const ElementAnimation(),
     int from = 0,
     int to = 20}) {
-  return VectorElement(
-      ElementBase(
-          id: "v",
-          x: 100,
-          y: 100,
-          width: 40.0 * count,
-          height: 40,
-          track: animation.on
-              ? ElementTrack([
-                  Keyframe(frame: from, values: {KeyframeChannel.reveal: 0}),
-                  Keyframe(frame: to, values: {KeyframeChannel.reveal: 1}),
-                ])
-              : null),
+  var e = VectorElement(
+      ElementBase(id: "v", x: 100, y: 100, width: 40.0 * count, height: 40),
       viewBox: Rect.fromLTWH(0, 0, 40.0 * count, 40),
       shapes: [
         for (var i = 0; i < count; i++)
@@ -59,6 +50,10 @@ VectorElement drawing(
               fill: const Color(0xFF0000FF)),
       ],
       animation: animation);
+  return animation.on
+      ? withOwnSpan(e, MotionKind.arrive, from, to, defaultFrameRate)
+          as VectorElement
+      : e;
 }
 
 Widget panel(CanvasController c) => MultiProvider(
@@ -153,16 +148,6 @@ void main() {
       var again = ElementAnimation.fromJson(
           jsonDecode(jsonEncode(inOnly.toJson())) as Map<String, dynamic>);
       expect(again.exitDirection, isNull);
-      // Kept before they were told apart: the way out as it was, the
-      // arrival's.
-      var old = ElementAnimation.fromJson(const {
-        "preset": "slideLeft",
-        "exit": "slideLeft",
-        "direction": "below",
-        "strength": 1.5,
-      });
-      expect(old.exitDirection, AnimationDirection.below);
-      expect(old.exitStrength, 1.5);
     });
 
     test("kept with the element", () {
@@ -209,7 +194,7 @@ void main() {
   });
 
   group("timing and preview", () {
-    test("Delay and Length move the arrival's keyframes", () {
+    test("Delay and Length move the arrival", () {
       var c = CanvasController(const CanvasDocument()
           .copyWith(frames: 60)
           .addElement(drawing(
@@ -584,7 +569,6 @@ void main() {
         reason: "which one, under the kinds");
     expect(find.byKey(const ValueKey("elementAnimationExit")), findsOneWidget);
     expect(find.byType(Slider), findsNothing, reason: "numbers to scrub");
-    expect(find.byKey(const ValueKey("elementKeyframeEasing")), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

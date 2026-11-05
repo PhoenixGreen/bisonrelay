@@ -14,9 +14,9 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 //
 // An element's moves (across, down, size, turn, fade) become one clip from
 // its first keyframe to its last, holding its first pose before and its last
-// after as a track does. Its other keyed values (reveal, close, count, bow,
-// slide) become a clip for each stretch between two keyframes naming them,
-// on a layer per group, easing as the stretch did.
+// after as a track does. Its other keyed values (count, bow, slide) become
+// a clip for each stretch between two keyframes naming them, on a layer per
+// group, easing as the stretch did.
 //
 // Left as tracks, and still played: backgrounds, stages, scenery, players
 // (a team's runs), and any track keying something a clip cannot say.
@@ -33,7 +33,6 @@ class TracksConverted {
 /// _groups are the keyed values a clip can say; each group's stretches share
 /// one layer.
 const _groups = [
-  ["reveal", "close"],
   ["count"],
   ["bow"],
   ["slide"],
@@ -169,18 +168,9 @@ CanvasElement? convertElement(CanvasElement e, int rate) {
     }
     for (var (i, (fa, fb, va, vb, ease, ch)) in all.indexed) {
       var length = math.max(0.05, sec(fb - fa));
-      // A full 0-to-1 reveal or close is the element's own arrival or exit.
-      var own = va == 0 && vb == 1 && (ch == "reveal" || ch == "close");
-      var kind = ch == "reveal"
-          ? MotionKind.arrive
-          : ch == "close"
-              ? MotionKind.leave
-              : MotionKind.action;
-      var clip = MotionClip.ofKind(id("c"), kind,
+      var clip = MotionClip.ofKind(id("c"), MotionKind.action,
               layer: layer,
               name: switch (ch) {
-                "reveal" => "Arrives",
-                "close" => "Leaves",
                 "count" => "Counts",
                 "bow" => "Bows",
                 _ => "Slides",
@@ -190,7 +180,7 @@ CanvasElement? convertElement(CanvasElement e, int rate) {
         before: i == 0 ? ClipHold.first : ClipHold.rest,
         after: ClipHold.last,
         inside: {
-          if (own) "own": true else ch: [va, vb],
+          ch: [va, vb],
           if (ease != KeyframeEasing.linear) "ease": ease.name,
         },
       );

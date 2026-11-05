@@ -30,10 +30,8 @@ enum ProceduralStyle {
   flowWaves("Flow waves", "Ribbons of light bent through a flow field"),
   bokeh("Bokeh", "Soft out-of-focus discs of light"),
   starfield("Starfield", "Scattered points of light, brightest in the middle"),
-  ledGrid("LED grid", "A dot-matrix wall of lit and unlit cells"),
   circuit("Circuit", "Right-angled traces with pads at the corners"),
   rain("Symbol rain", "Columns of falling glyphs, brightest at the head"),
-  symbolField("Symbol field", "Scattered glyphs at varying size and angle"),
   rings("Rings", "Concentric rings radiating from a point"),
   blockchain("Blockchain",
       "Chained blocks, a node network, a ledger, a Merkle tree or a field of blocks"),
@@ -66,11 +64,9 @@ enum ProceduralStyle {
         dotGrid ||
         lineGrid ||
         hexGrid ||
-        ledGrid ||
         circuit ||
         blockchain ||
-        rain ||
-        symbolField =>
+        rain =>
           StyleFamily.tech,
         contours || flames => StyleFamily.organic,
         halftone || speedLines || crosshatch || splatter => StyleFamily.graphic,
@@ -86,14 +82,8 @@ enum ProceduralStyle {
         orElse: () => ProceduralStyle.plain,
       );
 
-  /// hidden is whether it has been folded into another style and is no
-  /// longer offered. A saved document naming it is moved onto the style that
-  /// took it in (see _moved).
-  bool get hidden => this == ledGrid || this == symbolField;
-
   /// usesGlyphs is whether the settings bar shows the glyph set.
-  bool get usesGlyphs =>
-      this == ProceduralStyle.rain || this == ProceduralStyle.symbolField;
+  bool get usesGlyphs => this == ProceduralStyle.rain;
 
   /// canAnimate is whether the style changes as the frame advances.
   bool get canAnimate => switch (this) {
@@ -454,21 +444,14 @@ class ProceduralSpec {
             if (param.clamped(v) != param.initial) param.id: param.clamped(v),
       };
 
-  factory ProceduralSpec.fromJson(Map<String, dynamic> json) =>
-      _moved(ProceduralSpec._fromJson(json));
-
-  /// _moved is [spec] with a style that has been folded into another moved
-  /// onto that one, drawn the way it was.
-  static ProceduralSpec _moved(ProceduralSpec spec) => switch (spec.style) {
-        ProceduralStyle.ledGrid => spec.copyWith(
-            style: ProceduralStyle.dotGrid,
-            params: {...spec.params, "dotKind": 1}),
-        ProceduralStyle.symbolField => spec.copyWith(
-            style: ProceduralStyle.rain, params: {...spec.params, "mode": 1}),
-        ProceduralStyle.pitch =>
-          spec.copyWith(params: pitchCameraParams(spec.params)),
-        _ => spec,
-      };
+  /// A pitch's camera settings are left out where they are its View's (the
+  /// writer drops a setting at its initial value), so they are filled back
+  /// in from the View here.
+  factory ProceduralSpec.fromJson(Map<String, dynamic> json) {
+    var spec = ProceduralSpec._fromJson(json);
+    if (spec.style != ProceduralStyle.pitch) return spec;
+    return spec.copyWith(params: pitchCameraParams(spec.params));
+  }
 
   factory ProceduralSpec._fromJson(Map<String, dynamic> json) => ProceduralSpec(
         style: ProceduralStyle.fromName(jsonString(json["style"], "")),
@@ -476,7 +459,10 @@ class ProceduralSpec {
         background: colorFromJson(json["bg"], const Color(0xFF0B0F14)),
         foreground: colorFromJson(json["fg"], const Color(0xFF2FE08A)),
         accent: colorFromJson(json["accent"], const Color(0xFFDFFFF0)),
-        gradient: _fadeFromJson(json),
+        gradient: json["gradient"] is Map
+            ? GradientSpec.fromJson(
+                (json["gradient"] as Map).cast<String, dynamic>())
+            : null,
         foregroundFade: json["fgFade"] is Map
             ? GradientSpec.fromJson(
                 (json["fgFade"] as Map).cast<String, dynamic>())
@@ -494,10 +480,7 @@ class ProceduralSpec {
         animated: jsonBool(json["animated"], false),
         speed: jsonDouble(json["speed"], 1).clamp(-100.0, 100.0),
         passFrames: jsonInt(json["passFrames"], 120).clamp(1, 100000),
-        // Older documents saved a "loop" switch; not looping is one run.
-        loopTimes:
-            jsonInt(json["loopTimes"], jsonBool(json["loop"], true) ? 0 : 1)
-                .clamp(0, 100000),
+        loopTimes: jsonInt(json["loopTimes"], 0).clamp(0, 100000),
         loopGap: jsonInt(json["loopGap"], 0).clamp(0, 100000),
         pauseAt: jsonInt(json["pauseAt"], 0).clamp(0, 100000),
         pauseFor: jsonInt(json["pauseFor"], 0).clamp(0, 100000),
@@ -535,21 +518,4 @@ class ProceduralSpec {
               ]
             : const [],
       );
-}
-
-/// _fadeFromJson reads the background's second colour in either saved shape.
-///
-/// The old shape was a flag, a colour and an angle measured from left to
-/// right; angles are now compass bearings, a quarter turn round, so the old
-/// angle gets 90 added to keep pointing the same way.
-GradientSpec? _fadeFromJson(Map<String, dynamic> json) {
-  var raw = json["gradient"];
-  if (raw is Map) {
-    return GradientSpec.fromJson(raw.cast<String, dynamic>());
-  }
-  if (raw != true) return null;
-  return GradientSpec(
-    to: colorFromJson(json["gradientTo"], const Color(0xFF16202B)),
-    angle: jsonDouble(json["gradientAngle"], 90) + 90,
-  );
 }

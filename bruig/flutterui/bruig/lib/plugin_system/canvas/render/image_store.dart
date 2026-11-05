@@ -414,10 +414,7 @@ class CanvasImageStore extends ChangeNotifier
 
   Future<void> _loadVector(String assetId, String key) async {
     try {
-      // The Vectors store first, then the pictures, where an .svg added
-      // before the two were separated still is.
-      var bytes = await CanvasMedia.load(MediaKind.vector, assetId) ??
-          await CanvasAssets.load(assetId);
+      var bytes = await CanvasMedia.load(MediaKind.vector, assetId);
       if (bytes == null || !_looksLikeSvg(Uint8List.fromList(bytes))) {
         _failed.add(key);
         return;

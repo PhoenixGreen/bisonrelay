@@ -84,8 +84,7 @@ Future<List<int>> _pixel(
 const _box = ElementBase(id: "i", x: 0, y: 0, width: 100, height: 100);
 
 void main() {
-  test("a background layer saved as dodge comes back as colour dodge", () {
-    expect(LayerBlend.fromName("dodge"), LayerBlend.colorDodge);
+  test("a layer's blend is read by its name, and an unknown one is normal", () {
     expect(LayerBlend.fromName("colorDodge"), LayerBlend.colorDodge);
     expect(LayerBlend.fromName("nonsense"), LayerBlend.normal);
   });
@@ -115,11 +114,6 @@ void main() {
     var back = ImageLayer.fromJson(l.toJson())!;
     expect(back.flipX, isTrue);
     expect(back.effects.single.kind, EffectKind.dropShadow);
-    // And a flip saved the old way is still read.
-    var old = l.copyWith(effects: const []).toJson()
-      ..remove("flipX")
-      ..["fx"] = true;
-    expect(ImageLayer.fromJson(old)!.flipX, isTrue);
   });
 
   group("saving", () {

@@ -2014,9 +2014,7 @@ class CanvasController extends ChangeNotifier {
     var next = without.isRest && without.frame != 0
         ? track.withoutFrame(_frame)
         : track.withKey(without);
-    // And whatever it was half of: an arrival is a pair. See
-    // withoutHalfAnimations.
-    replaceElement(withoutHalfAnimations(element, next));
+    replaceElement(withTrackOrNone(element, next));
   }
 
   /// lipSync gives [e] the mouths for what is said on [voice]: from the
@@ -3382,7 +3380,6 @@ class CanvasController extends ChangeNotifier {
     _convertKeyframes();
     _frame = settledFrameOf(_document);
     notifyListeners();
-    unawaited(_repairSlots());
   }
 
   /// _convertKeyframes makes an old canvas's keyframes into clips, as it is
@@ -3406,37 +3403,6 @@ class CanvasController extends ChangeNotifier {
     var done = _conversion;
     _conversion = null;
     return done;
-  }
-
-  /// _repairSlots makes again the reversed sounds the clip slots lost to an
-  /// earlier library tidy that missed sounds only a slot used (see
-  /// SessionClip.mediaIds), from their originals.
-  Future<void> _repairSlots() async {
-    for (var (_, _, clip) in [...session.clips]) {
-      var sound = clip.sound, original = clip.reversedOf;
-      if (sound == null || original == null || _disposed) continue;
-      if (await CanvasMedia.existingPath(MediaKind.audio, sound.assetId) !=
-          null) {
-        continue;
-      }
-      if (await CanvasMedia.existingPath(MediaKind.audio, original.assetId) ==
-          null) {
-        continue;
-      }
-      var audio = await clipAudio(original.assetId);
-      if (audio == null || _disposed) continue;
-      var id = await _keepSound(await _reversedWavAway(audio.$1, audio.$2));
-      if (id == null || _disposed) continue;
-      // Not a change to undo: the clip is as it was, its file made again.
-      if (session.find(clip.id) case (var ch, var row)?) {
-        var now = session.at(ch, row)!;
-        apply(
-            _document.copyWith(
-                session: session.put(ch, row,
-                    now.copyWith(sound: now.sound!.copyWith(assetId: id)))),
-            transient: true);
-      }
-    }
   }
 
   /// _openSoundDesk opens the mixer and the effects: what an audio document

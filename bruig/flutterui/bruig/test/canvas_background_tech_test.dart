@@ -2,7 +2,6 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_style_params.dart';
-import 'package:bruig/plugin_system/canvas/presets/background_looks.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
@@ -42,45 +41,6 @@ const _dark = ProceduralSpec(
 );
 
 void main() {
-  group("styles folded into others", () {
-    testWidgets("an LED wall saved on its own opens as a dot grid, unchanged",
-        (tester) async {
-      var old = _dark.copyWith(style: ProceduralStyle.ledGrid);
-      var json = old.toJson();
-      expect(json["style"], "ledGrid");
-      var opened = ProceduralSpec.fromJson(json);
-      expect(opened.style, ProceduralStyle.dotGrid);
-      expect(opened.choice("dotKind"), 1);
-      late List<int> before, after;
-      await tester.runAsync(() async {
-        before = await _pixels(old);
-        after = await _pixels(opened);
-      });
-      expect(after, before);
-    });
-
-    testWidgets("a symbol field opens as rain that scatters, unchanged",
-        (tester) async {
-      var old = _dark.copyWith(style: ProceduralStyle.symbolField);
-      var opened = ProceduralSpec.fromJson(old.toJson());
-      expect(opened.style, ProceduralStyle.rain);
-      expect(opened.choice("mode"), 1);
-      late List<int> before, after;
-      await tester.runAsync(() async {
-        before = await _pixels(old);
-        after = await _pixels(opened);
-      });
-      expect(after, before);
-    });
-
-    test("are no longer offered, and have no looks of their own", () {
-      expect(ProceduralStyle.ledGrid.hidden, isTrue);
-      expect(ProceduralStyle.symbolField.hidden, isTrue);
-      expect(looksFor(ProceduralStyle.ledGrid), isEmpty);
-      expect(looksFor(ProceduralStyle.symbolField), isEmpty);
-    });
-  });
-
   group("the line grid", () {
     testWidgets("laid as a floor, draws nothing above its horizon",
         (tester) async {

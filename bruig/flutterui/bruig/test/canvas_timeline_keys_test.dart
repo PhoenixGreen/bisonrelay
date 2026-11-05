@@ -129,10 +129,10 @@ void main() {
       var (controller, paint) = await strip(tester, []);
       var element = controller.document.elements.single;
       controller.frame = 6;
-      controller.setValueKey(element, KeyframeChannel.reveal, 0);
+      controller.setValueKey(element, KeyframeChannel.slide, 0);
       controller.frame = 18;
       controller.setValueKey(
-          controller.document.elements.single, KeyframeChannel.reveal, 1);
+          controller.document.elements.single, KeyframeChannel.slide, 1);
       await tester.pumpAndSettle();
 
       // The middle of the bar, on the mark row and clear of both ends.
@@ -151,10 +151,10 @@ void main() {
       var (controller, paint) = await strip(tester, []);
       var element = controller.document.elements.single;
       controller.frame = 6;
-      controller.setValueKey(element, KeyframeChannel.reveal, 0);
+      controller.setValueKey(element, KeyframeChannel.slide, 0);
       controller.frame = 18;
       controller.setValueKey(
-          controller.document.elements.single, KeyframeChannel.reveal, 1);
+          controller.document.elements.single, KeyframeChannel.slide, 1);
       controller.frame = 30;
       await tester.pumpAndSettle();
 
@@ -358,13 +358,13 @@ void main() {
 
     test("but a channel only one of them pins is not a change", () {
       // A channel the other does not carry holds whatever was set before it,
-      // so the end of an arrival and the start of an exit have nothing
-      // happening between them -- which is what they look like.
+      // so the end of a slide and the start of a bow have nothing happening
+      // between them -- which is what they look like.
       var track = ElementTrack(const [
-        Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
-        Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
-        Keyframe(frame: 30, values: {KeyframeChannel.close: 0}),
-        Keyframe(frame: 47, values: {KeyframeChannel.close: 1}),
+        Keyframe(frame: 0, values: {KeyframeChannel.slide: 0}),
+        Keyframe(frame: 10, values: {KeyframeChannel.slide: 1}),
+        Keyframe(frame: 30, values: {KeyframeChannel.bow: 0}),
+        Keyframe(frame: 47, values: {KeyframeChannel.bow: 1}),
       ]);
       var bands = bandsIn(track);
       expect([
@@ -372,31 +372,7 @@ void main() {
       ], [
         [0, 10],
         [30, 47],
-      ], reason: "the arrival and the exit, and nothing in the gap");
-    });
-
-    test("and an arrival held at the start has no bar either", () {
-      // It does not arrive over the stretch, it snaps at the end of it.
-      var track = ElementTrack([
-        const Keyframe(
-            frame: 0,
-            easing: KeyframeEasing.hold,
-            values: {KeyframeChannel.reveal: 0}),
-        const Keyframe(frame: 24, values: {KeyframeChannel.reveal: 1}),
-      ]);
-      expect(bandsIn(track), isEmpty);
-    });
-
-    test("and an arrival is still one bar however many keyframes follow it",
-        () {
-      // A pair means nothing apart, so it stays one bar from the first to the
-      // last -- which is not the same rule, and deliberately.
-      var track = ElementTrack([
-        const Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
-        const Keyframe(frame: 24, values: {KeyframeChannel.reveal: 1}),
-      ]);
-      expect(bandsIn(track), hasLength(1));
-      expect(bandsIn(track).single.channel, KeyframeChannel.reveal);
+      ], reason: "the slide and the bow, and nothing in the gap");
     });
   });
 }

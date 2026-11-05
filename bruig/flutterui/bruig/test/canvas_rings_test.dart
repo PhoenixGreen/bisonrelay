@@ -1117,33 +1117,6 @@ void main() {
     expect(leftOver, 0, reason: "a roughened set left a ring on the page");
   });
 
-  test("a movement written before there were runs is read as one run", () {
-    // The switch it used to be saved with. Not looping meant one run and
-    // then hold, which is one time.
-    var once = ProceduralSpec.fromJson({
-      "style": "rings",
-      "animated": true,
-      "loop": false,
-      "passFrames": 90,
-    });
-    expect(once.loopTimes, 1);
-    expect(once.inRuns, isTrue);
-    expect(once.passFrames, 90);
-    // And one that did loop still goes round for ever.
-    var forever = ProceduralSpec.fromJson(
-        {"style": "rings", "animated": true, "loop": true});
-    expect(forever.loopTimes, 0);
-    expect(forever.inRuns, isFalse);
-    // A number that was written wins over the old switch.
-    var counted = ProceduralSpec.fromJson({
-      "style": "rings",
-      "animated": true,
-      "loop": false,
-      "loopTimes": 3,
-    });
-    expect(counted.loopTimes, 3);
-  });
-
   testWidgets("the width drags at a thousandth, and shrink says which end",
       (tester) async {
     var spec = _spec(rings: const RingSpec(width: 0.05));

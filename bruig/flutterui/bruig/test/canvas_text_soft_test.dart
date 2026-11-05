@@ -110,26 +110,6 @@ void main() {
       expect((at.dx - words.dx).abs(), lessThan(8));
       expect((at.dy - words.dy).abs(), lessThan(8));
     });
-
-    testWidgets("and an older document keeps the shadow it had",
-        (tester) async {
-      // Saved as a dx and a dy before the light had a direction. Read back as
-      // the angle and the distance that put it in the same place.
-      var old = TextSpec.fromJson(const {
-        "font": "Inter",
-        "size": 48.0,
-        "sb": 6.0,
-        "sx": 3.0,
-        "sy": 4.0,
-      });
-      expect(old.shadowDistance, closeTo(5, 0.01));
-      expect(old.shadowOffset.dx, closeTo(3, 0.01));
-      expect(old.shadowOffset.dy, closeTo(4, 0.01));
-      // And writes itself back out the new way, without the old keys.
-      var written = old.toJson();
-      expect(written["sd"], closeTo(5, 0.01));
-      expect(written.containsKey("sx"), isFalse);
-    });
   });
 
   group("the glow", () {

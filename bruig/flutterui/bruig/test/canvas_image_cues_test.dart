@@ -7,7 +7,6 @@ import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -25,6 +24,8 @@ import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -152,17 +153,10 @@ void main() {
       }
     }
 
-    ImageElement arriving(VectorCue cue) => ImageElement(
-          ElementBase(
-              id: "i",
-              x: 0,
-              y: 0,
-              width: 100,
-              height: 100,
-              track: ElementTrack(const [
-                Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
-                Keyframe(frame: 30, values: {KeyframeChannel.reveal: 1}),
-              ])),
+    /// arriving comes in over the first 30 frames, by its own arrival clip.
+    ImageElement arriving(VectorCue cue) => withOwnSpan(
+        ImageElement(
+          const ElementBase(id: "i", x: 0, y: 0, width: 100, height: 100),
           assetId: "red",
           fit: ImageFit.stretch,
           animation:
@@ -171,7 +165,11 @@ void main() {
             ImageLayer.base,
             _picture("blue").copyWith(cue: cue),
           ],
-        );
+        ),
+        MotionKind.arrive,
+        0,
+        30,
+        defaultFrameRate) as ImageElement;
 
     test("the layer over comes in after the one under it", () async {
       var e = arriving(VectorCue.after);

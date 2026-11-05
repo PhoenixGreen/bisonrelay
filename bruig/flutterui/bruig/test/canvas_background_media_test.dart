@@ -85,28 +85,6 @@ void main() {
   });
 
   group("what it saves", () {
-    // A background could hold a bare picture before it could hold one with
-    // settings, and a canvas saved then has to open with it.
-    test("an old background picture still reads, and gives way to a new one",
-        () {
-      var old = CanvasBackground.fromJson({
-        "spec": const ProceduralSpec().toJson(),
-        "image": "old.png",
-        "fit": ImageFit.contain.name,
-      });
-      expect(old.shownPicture!.assetId, "old.png");
-      expect(old.shownPicture!.fit, ImageFit.contain);
-
-      var edited = old.copyWith(
-          picture: const ImageElement(ElementBase(id: "p"),
-              assetId: "new.png", saturation: 0.5));
-      expect(edited.shownPicture!.assetId, "new.png");
-      expect(edited.imageAssetId, isEmpty,
-          reason: "the old one is gone for good");
-      var back = CanvasBackground.fromJson(edited.toJson());
-      expect(back.shownPicture!.saturation, 0.5);
-    });
-
     test("a video and a sound read back as the elements they are", () {
       var bg = withVideo("v").copyWith(sound: withSound("s").sound);
       var back = CanvasBackground.fromJson(bg.toJson());

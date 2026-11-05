@@ -5,41 +5,6 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 
-/// legacyCap is an older file's single "cap" (see LineCapStyle) as the
-/// stroke's cap and its two ends.
-(LineStrokeCap, LineEnd, LineEnd) legacyCap(Object? cap) =>
-    switch (LineCapStyle.fromName(jsonStr(cap))) {
-      LineCapStyle.round => (LineStrokeCap.round, LineEnd.none, LineEnd.none),
-      LineCapStyle.square => (LineStrokeCap.square, LineEnd.none, LineEnd.none),
-      LineCapStyle.arrow => (LineStrokeCap.flat, LineEnd.none, LineEnd.arrow),
-      LineCapStyle.arrowBoth => (
-          LineStrokeCap.flat,
-          LineEnd.arrow,
-          LineEnd.arrow
-        ),
-      LineCapStyle.dot => (LineStrokeCap.round, LineEnd.circle, LineEnd.circle),
-      _ => (LineStrokeCap.flat, LineEnd.none, LineEnd.none),
-    };
-
-/// LineCapStyle is an older file's single "cap": the stroke's cap and its
-/// decoration in one. Read only; LineElement.fromJson maps it onto
-/// [LineStrokeCap] and [LineEnd].
-enum LineCapStyle {
-  flat,
-  round,
-  square,
-  arrow,
-  arrowBoth,
-  dot;
-
-  static LineCapStyle? fromName(String? name) {
-    for (var v in values) {
-      if (v.name == name) return v;
-    }
-    return null;
-  }
-}
-
 /// LineStrokeCap is how the stroke itself finishes. What is drawn at the end
 /// is [LineEnd], separately, since a line can want a round end and an arrow.
 enum LineStrokeCap {
@@ -278,30 +243,21 @@ class LineElement extends CanvasElement {
         if (animation.any) "anim": animation.toJson(),
       };
 
-  factory LineElement.fromJson(Map<String, dynamic> json, ElementBase b) {
-    var (oldCap, oldStart, oldEnd) = legacyCap(json["cap"]);
-
-    return LineElement(b,
-        color: colorFromJson(json["color"]),
-        fade: json["fade"] is Map
-            ? GradientSpec.fromJson(
-                (json["fade"] as Map).cast<String, dynamic>())
-            : null,
-        strokeWidth: jsonDouble(json["sw"], 4),
-        cap: json["strokeCap"] is String
-            ? LineStrokeCap.fromName(jsonStr(json["strokeCap"]))
-            : oldCap,
-        startEnd: json.containsKey("startEnd") || json.containsKey("strokeCap")
-            ? LineEnd.fromName(jsonStr(json["startEnd"]))
-            : oldStart,
-        endEnd: json.containsKey("endEnd") || json.containsKey("strokeCap")
-            ? LineEnd.fromName(jsonStr(json["endEnd"]))
-            : oldEnd,
-        endSize: jsonDouble(json["endSize"], 1),
-        dash: jsonDouble(json["dash"], 0).clamp(0.0, 400.0),
-        curvature: jsonDouble(json["curve"], 0),
-        flipped: jsonBool(json["flipped"], false),
-        animation: jsonSpec(
-            json["anim"], ElementAnimation.fromJson, const ElementAnimation()));
-  }
+  factory LineElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
+      LineElement(b,
+          color: colorFromJson(json["color"]),
+          fade: json["fade"] is Map
+              ? GradientSpec.fromJson(
+                  (json["fade"] as Map).cast<String, dynamic>())
+              : null,
+          strokeWidth: jsonDouble(json["sw"], 4),
+          cap: LineStrokeCap.fromName(jsonStr(json["strokeCap"])),
+          startEnd: LineEnd.fromName(jsonStr(json["startEnd"])),
+          endEnd: LineEnd.fromName(jsonStr(json["endEnd"])),
+          endSize: jsonDouble(json["endSize"], 1),
+          dash: jsonDouble(json["dash"], 0).clamp(0.0, 400.0),
+          curvature: jsonDouble(json["curve"], 0),
+          flipped: jsonBool(json["flipped"], false),
+          animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
+              const ElementAnimation()));
 }

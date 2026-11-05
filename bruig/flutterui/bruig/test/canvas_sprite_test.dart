@@ -177,13 +177,6 @@ void main() {
     expect((back.width, back.height), (e.width, e.height));
     expect((back.sheetW, back.sheetH), (64, 32));
     expect(e.width, isNot(64));
-    // Saved before the sheet's size had keys of its own: read from "w".
-    var old = e.toJson()
-      ..remove("sheetW")
-      ..remove("sheetH")
-      ..["w"] = 64
-      ..["h"] = 32;
-    expect((elementFromJson(old) as SpriteElement).sheetW, 64);
     var made = newElement(ElementKind.sprite, const CanvasDocument());
     expect(made, isA<SpriteElement>());
     expect((made as SpriteElement).hasSheet, isFalse);

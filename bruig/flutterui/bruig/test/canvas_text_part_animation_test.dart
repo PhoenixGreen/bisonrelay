@@ -1,6 +1,5 @@
 import 'dart:ui' as ui;
 
-import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -13,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'canvas_arrival_fixture.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
@@ -29,6 +30,9 @@ import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 const _line = "You come across an idea";
 const _black = 0x000000FF;
 
+/// _rate is the frame rate the elements are drawn and timed at.
+const _rate = 12;
+
 /// _ink draws [element] on [frame] and counts the pixels of each colour.
 Future<Map<int, int>> _ink(TextElement element, int frame,
     {Rect? within}) async {
@@ -37,7 +41,7 @@ Future<Map<int, int>> _ink(TextElement element, int frame,
     background: const CanvasBackground(),
     elements: [element],
     frames: 48,
-    frameRate: 12,
+    frameRate: _rate,
   );
   var recorder = ui.PictureRecorder();
   var canvas = ui.Canvas(recorder);
@@ -96,17 +100,17 @@ TextElement _headline({
       preset: TextAnimationPreset.fadeIn, ease: ChartEase.linear),
   String text = _line,
 }) =>
-    TextElement(
-      const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 90),
-      text: text,
-      textSpec: const TextSpec(fontSize: 26, color: Color(0xFFFFFFFF)),
-      parts: parts,
-      animation: animation,
-    ).withBase(
-        track: ElementTrack([
-      const Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
-      const Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
-    ])) as TextElement;
+    arrivingOver(
+        TextElement(
+          const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 90),
+          text: text,
+          textSpec: const TextSpec(fontSize: 26, color: Color(0xFFFFFFFF)),
+          parts: parts,
+          animation: animation,
+        ),
+        from: 0,
+        to: 10,
+        rate: _rate);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -249,27 +253,26 @@ void main() {
       // Drawn outside the animation, as it was, an underline stayed behind on
       // an empty canvas after the sentence it belonged to had left.
       const green = 0x00FF00FF;
-      var marked = TextElement(
-        const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 90),
-        text: _line,
-        textSpec: const TextSpec(fontSize: 26, color: Color(0xFFFFFFFF)),
-        parts: const [
-          TextPart(
-              from: 2,
-              to: 4,
-              underline: PartUnderline(color: Color(0xFF00FF00), width: 4)),
-        ],
-        animation: const TextAnimation(
-            preset: TextAnimationPreset.fadeIn,
-            exit: TextAnimationPreset.fadeIn,
-            ease: ChartEase.linear),
-      ).withBase(
-          track: ElementTrack([
-        const Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
-        const Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
-        const Keyframe(frame: 20, values: {KeyframeChannel.close: 0}),
-        const Keyframe(frame: 30, values: {KeyframeChannel.close: 1}),
-      ])) as TextElement;
+      var marked = arrivingOver(
+          TextElement(
+            const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 90),
+            text: _line,
+            textSpec: const TextSpec(fontSize: 26, color: Color(0xFFFFFFFF)),
+            parts: const [
+              TextPart(
+                  from: 2,
+                  to: 4,
+                  underline: PartUnderline(color: Color(0xFF00FF00), width: 4)),
+            ],
+            animation: const TextAnimation(
+                preset: TextAnimationPreset.fadeIn,
+                exit: TextAnimationPreset.fadeIn,
+                ease: ChartEase.linear),
+          ),
+          from: 0,
+          to: 10,
+          leaves: (20, 30),
+          rate: _rate);
 
       late int there;
       late int arriving;
@@ -619,7 +622,8 @@ void main() {
 
   group("the way out", () {
     // An arrival over frames 0 to 10, and an exit over 20 to 30.
-    TextElement leaving({required bool partly}) => TextElement(
+    TextElement leaving({required bool partly}) => arrivingOver(
+        TextElement(
           const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 90),
           text: _line,
           textSpec: const TextSpec(fontSize: 26, color: Color(0xFFFFFFFF)),
@@ -637,13 +641,11 @@ void main() {
               preset: TextAnimationPreset.fadeIn,
               exit: TextAnimationPreset.fadeIn,
               ease: ChartEase.linear),
-        ).withBase(
-            track: ElementTrack([
-          const Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
-          const Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
-          const Keyframe(frame: 20, values: {KeyframeChannel.close: 0}),
-          const Keyframe(frame: 30, values: {KeyframeChannel.close: 1}),
-        ])) as TextElement;
+        ),
+        from: 0,
+        to: 10,
+        leaves: (20, 30),
+        rate: _rate);
 
     testWidgets("takes the parts with it", (tester) async {
       // A part has a moment of its own on the way in. On the way out the
@@ -706,28 +708,6 @@ void main() {
           TextEchoSpec.fromJson(const TextEchoSpec(resolve: true).toJson())
               .resolve,
           isTrue);
-    });
-  });
-
-  group("an old document", () {
-    test("opens with its pointed animation on the part it pointed at", () {
-      // The arrival used to be able to name one part and happen to that
-      // instead of to the paragraph. Read back unchanged, such a document
-      // would open with the animation apparently applied to everything.
-      var json = {
-        "kind": "text",
-        "id": "t",
-        "text": _line,
-        "animation": {"preset": "echoDown", "part": 1, "gap": 0.5},
-        "parts": [
-          {"from": 1, "to": 2},
-          {"from": 5, "to": 5},
-        ],
-      };
-      var back = elementFromJson(json) as TextElement;
-      expect(back.parts[1].animation.preset, TextAnimationPreset.echoDown);
-      expect(back.parts[1].animation.gap, 0.5);
-      expect(back.parts[0].animation.on, isFalse);
     });
   });
 }

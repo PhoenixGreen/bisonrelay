@@ -55,11 +55,6 @@ enum MediaKind {
 
 final _idPattern = RegExp(r"^[a-f0-9]{16}\.[a-z0-9]{2,5}$");
 
-/// _pictureIdPattern is a picture store id: what a drawing moved out of the
-/// pictures keeps, so the documents naming it still find it. See
-/// CanvasAssets and migrateVectors.
-final _pictureIdPattern = RegExp(r"^[A-Za-z0-9]{16}(\.[a-z0-9]{2,5})?$");
-
 /// playableAudio is what the audio engine can open as it is. Anything else is
 /// converted on the way in -- see media_import.dart.
 const playableAudio = {".mp3", ".wav", ".ogg", ".opus", ".flac"};
@@ -82,54 +77,18 @@ class CanvasMedia {
   /// document naming "../../something" names nothing.
   static bool isId(String id) => _idPattern.hasMatch(id);
 
-  static bool _isIdFor(MediaKind kind, String id) =>
-      isId(id) || (kind == MediaKind.vector && _pictureIdPattern.hasMatch(id));
-
   /// pathFor is where [id] is kept, whether or not it is there yet.
   static Future<String?> pathFor(MediaKind kind, String id,
       {bool create = false}) async {
-    if (!_isIdFor(kind, id)) return null;
+    if (!isId(id)) return null;
     return path.join(await _dir(kind, create: create), id);
   }
 
   /// existingPath is [pathFor] for a file that is actually there.
-  ///
-  /// A drawing not yet moved out of the pictures is found there: one added
-  /// before the two were separated, or an extensionless id that cannot be
-  /// told for a drawing without opening it. See migrateVectors.
   static Future<String?> existingPath(MediaKind kind, String id) async {
     var file = await pathFor(kind, id);
     if (file != null && await File(file).exists()) return file;
-    if (kind == MediaKind.vector) return CanvasAssets.pathOf(id);
     return null;
-  }
-
-  /// migrateVectors moves the drawings out of the pictures and into their
-  /// own store, keeping their ids -- so every saved canvas naming one still
-  /// finds it. Only ids that say they are drawings (".svg") are moved; an
-  /// old id with no extension stays where it is and is still found there.
-  /// Safe to run again: nothing to move, nothing happens.
-  static Future<int> migrateVectors() async {
-    var moved = 0;
-    try {
-      for (var id in await CanvasAssets.stored()) {
-        if (path.extension(id) != ".svg") continue;
-        var from = await CanvasAssets.pathOf(id);
-        var to = await pathFor(MediaKind.vector, id, create: true);
-        if (from == null || to == null) continue;
-        try {
-          if (await File(to).exists()) {
-            await File(from).delete();
-          } else {
-            await File(from).rename(to);
-          }
-          moved++;
-        } catch (_) {
-          // Left where it is, and still found there.
-        }
-      }
-    } catch (_) {}
-    return moved;
   }
 
   /// saveFile copies [sourcePath] into the store and returns its id, or null
@@ -220,7 +179,7 @@ class CanvasMedia {
       var dir = Directory(await _dir(kind));
       return [
         await for (var entry in dir.list(followLinks: false))
-          if (entry is File && _isIdFor(kind, path.basename(entry.path)))
+          if (entry is File && isId(path.basename(entry.path)))
             path.basename(entry.path),
       ];
     } catch (_) {

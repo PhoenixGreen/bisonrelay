@@ -133,13 +133,4 @@ class BackgroundElement extends CanvasElement {
               ? ParallaxElement.fromJson(json["parallax"] as Map<String, dynamic>,
                   const ElementBase(id: ""))
               : null);
-
-  /// fromStage reads an older file's stage element as a background showing
-  /// it, with the same place, id (so characters still stand on it) and
-  /// camera keys.
-  factory BackgroundElement.fromStage(
-          Map<String, dynamic> json, ElementBase b) =>
-      BackgroundElement(b,
-          backdrop: BackdropKind.stage,
-          stage: StageElement.fromJson(json, const ElementBase(id: "")));
 }

@@ -4,8 +4,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
-import 'package:bruig/plugin_system/canvas/model/motion.dart'
-    show revealFrom, revealTo;
 import 'package:bruig/plugin_system/canvas/model/motion_convert.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -63,27 +61,6 @@ void main() {
     same(before, c.document, "a");
     var clip = c.document.elementById("a")!.base.motion.clips.single;
     expect(clip.name, "Keyframes");
-  });
-
-  test("an arrival and a way out are the element's own, in their stretches",
-      () {
-    var before = doc([
-      shape("a", const [
-        Keyframe(frame: 0, values: {"reveal": 0}),
-        Keyframe(frame: 24, values: {"reveal": 1}),
-        Keyframe(
-            frame: 60, values: {"close": 0}, easing: KeyframeEasing.easeIn),
-        Keyframe(frame: 84, values: {"close": 1}),
-      ]),
-    ]);
-    var c = convertTracks(before);
-    same(before, c.document, "a");
-    var clips = c.document.elementById("a")!.base.motion.clips;
-    expect([for (var x in clips) (x.name, x.inside["own"])],
-        [("Arrives", true), ("Leaves", true)]);
-    // Its words, layers and shapes timed across the same stretch as before.
-    var pose = poseWithMotion(c.document.elementById("a")!, 12, c.document);
-    expect((pose.values[revealFrom], pose.values[revealTo]), (0, 24));
   });
 
   test("a count through a middle value, and a move with it", () {

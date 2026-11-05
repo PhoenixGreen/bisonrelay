@@ -50,8 +50,8 @@ class ExportSound {
   final ChannelMix mix;
   final String channel;
 
-  /// envelope is the clip's volume envelope, in seconds from the start of
-  /// this stretch -- see MediaClip.envelope.
+  /// envelope is the stretch's volume envelope (its channel's ducking), in
+  /// seconds from the start of this stretch.
   final List<GainPoint> envelope;
 
   /// place is where the sound is heard from over the export, for a placed
@@ -346,15 +346,12 @@ class ExportMedia {
                     clip.channel.isNotEmpty ? clip.channel : p.element.id,
                 clock: p.start / _rate,
                 place: place,
-                envelope: multiplyEnvelopes(
-                  [for (var g in clip.envelope) GainPoint(g.time - t, g.gain)],
-                  // The run's ducking, from where this stretch starts.
-                  [
-                    for (var g in ducks[_channelOf(p.element, clip)] ??
-                        const <GainPoint>[])
-                      GainPoint(g.time - (begins + t), g.gain),
-                  ],
-                ),
+                // The run's ducking, from where this stretch starts.
+                envelope: [
+                  for (var g in ducks[_channelOf(p.element, clip)] ??
+                      const <GainPoint>[])
+                    GainPoint(g.time - (begins + t), g.gain),
+                ],
               ));
             }
           }

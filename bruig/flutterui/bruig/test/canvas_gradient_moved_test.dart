@@ -15,43 +15,10 @@ import 'package:flutter_test/flutter_test.dart';
 //
 // Two things had grown a gradient of their own: a chart series (Fade, To,
 // Radial, Angle beside the swatch) and a procedural background (Gradient, To,
-// Angle). Both now set it where the colour is set. What has to survive the
-// move is every document already saved in the old shape -- including the
-// procedural angle, which was measured clockwise from left-to-right and is
-// now read off a compass like every other direction in a canvas.
+// Angle). Both now set it where the colour is set.
 
 void main() {
-  group("a background saved before the move", () {
-    test("still fades, and still points the way it did", () {
-      // 90 the old way was top to bottom. 180 on a compass is the same.
-      var back = ProceduralSpec.fromJson({
-        "style": "rain",
-        "bg": 0xFF0B0F14,
-        "gradient": true,
-        "gradientTo": 0xFF1B2530,
-        "gradientAngle": 90,
-      });
-      expect(back.gradient, isNotNull);
-      expect(back.gradient!.to, const Color(0xFF1B2530));
-      expect(back.gradient!.angle, 180);
-    });
-
-    test("a flag saved switched off is no gradient at all", () {
-      var back = ProceduralSpec.fromJson({
-        "style": "rain",
-        "gradient": false,
-        "gradientTo": 0xFF1B2530,
-      });
-      expect(back.gradient, isNull,
-          reason: "an off gradient is one nobody wanted, not a black fade");
-    });
-
-    test("and one saved with no gradient key has none", () {
-      expect(ProceduralSpec.fromJson({"style": "rain"}).gradient, isNull);
-    });
-  });
-
-  group("a background saved after it", () {
+  group("a background's gradient", () {
     test("round trips through the new shape", () {
       const spec = ProceduralSpec(
         style: ProceduralStyle.rain,
@@ -59,6 +26,10 @@ void main() {
       );
       var back = ProceduralSpec.fromJson(spec.toJson());
       expect(back.gradient, spec.gradient);
+    });
+
+    test("one saved with no gradient key has none", () {
+      expect(ProceduralSpec.fromJson({"style": "rain"}).gradient, isNull);
     });
 
     test("costs nothing when it is flat", () {
@@ -73,30 +44,6 @@ void main() {
       );
       expect(spec.copyWith(flatBackground: true).gradient, isNull);
       expect(spec.copyWith(seed: 4).gradient, isNotNull);
-    });
-  });
-
-  group("a series saved before the move", () {
-    test("keeps its second colour", () {
-      var series = ChartSeries.fromJson({
-        "name": "s",
-        "color": 0xFF3D7EFF,
-        "values": [1.0],
-        "gradient": {"on": true, "to": 0xFFFF3DAA, "angle": 90},
-      }, 0);
-      expect(series.gradient!.to, const Color(0xFFFF3DAA));
-      expect(series.gradient!.angle, 90,
-          reason: "a series' angle was already read off a compass");
-    });
-
-    test("and one saved switched off comes back as one colour", () {
-      var series = ChartSeries.fromJson({
-        "name": "s",
-        "color": 0xFF3D7EFF,
-        "values": [1.0],
-        "gradient": {"on": false, "to": 0xFFFF3DAA},
-      }, 0);
-      expect(series.gradient, isNull);
     });
   });
 

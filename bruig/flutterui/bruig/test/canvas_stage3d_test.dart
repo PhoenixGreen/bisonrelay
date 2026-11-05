@@ -111,30 +111,6 @@ void main() {
       expect(c.document.elements.first,
           isA<BackgroundElement>().having((b) => b.isStage, "isStage", true));
     });
-
-    test("a stage saved as an element of its own opens as a background", () {
-      var keys = ElementTrack([
-        Keyframe(frame: 0).withValue(cameraChannel("distance"), 4),
-        Keyframe(frame: 20).withValue(cameraChannel("distance"), 12),
-      ]);
-      var old = StageElement(
-          ElementBase(
-              id: "st", name: "Set", x: 10, y: 20, width: 600, height: 400,
-              track: keys),
-          camera: const StageCamera(yaw: 30),
-          pattern: FloorPattern.boards,
-          light: StageLight.night);
-      var opened = elementFromJson(old.toJson()) as BackgroundElement;
-      expect(opened.isStage, isTrue);
-      expect((opened.id, opened.name, opened.bounds),
-          ("st", "Set", const Rect.fromLTWH(10, 20, 600, 400)));
-      expect(opened.staged.toJson(), old.toJson(),
-          reason: "the same stage, camera keys and all");
-      expect(opened.staged.cameraAt(10).distance, closeTo(8, 1e-9));
-      var els = [opened, who("a")];
-      expect(staged(els[1], els, 0), isNotNull,
-          reason: "a character on it still stands on it");
-    });
   });
 
   group("standing on a stage", () {

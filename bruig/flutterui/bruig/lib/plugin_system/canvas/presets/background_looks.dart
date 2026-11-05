@@ -887,7 +887,14 @@ Map<ProceduralStyle, List<BackgroundLook>> _single() {
           main: const Color(0xFFFFFFFF),
           accent: const Color(0xFF1D428A),
           vignette: 0.2,
-          params: const {"view": 2, "surround": 1, "tilt": 0.6}),
+          params: const {
+            "view": 2,
+            "surround": 1,
+            "tiltV": 48.4,
+            "tiltH": 0,
+            "turn": 0,
+            "perspective": 0.96,
+          }),
       _look("Tennis", at("pitch"), "Ocean",
           sport: PitchSport.tennis,
           base: const Color(0xFF3C638E),
@@ -931,7 +938,14 @@ Map<ProceduralStyle, List<BackgroundLook>> _single() {
           main: const Color(0xFFFFFFFF),
           accent: const Color(0xFF1D3F87),
           vignette: 0.15,
-          params: const {"view": 2, "surround": 1, "tilt": 0.6}),
+          params: const {
+            "view": 2,
+            "surround": 1,
+            "tiltV": 48.4,
+            "tiltH": 0,
+            "turn": 0,
+            "perspective": 0.96,
+          }),
     ],
   };
 }

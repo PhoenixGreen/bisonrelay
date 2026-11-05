@@ -422,15 +422,6 @@ void main() {
           reason: "it does not go round");
     });
 
-    test("a picture saved with a drift of its own comes back with the loop",
-        () {
-      var json = const ImageElement(_box, assetId: "halves").toJson()
-        ..["drift"] = {"kind": "panLeft", "amount": 0.3};
-      var back = elementFromJson(json) as ImageElement;
-      expect(back.animation.loop.preset, LoopPreset.driftLeft);
-      expect(back.animation.loop.strength, closeTo(2, 1e-9));
-    });
-
     test("a spot retouched away stays away when gone over again", () async {
       // Grey, with a dark band across the middle: the thing taken out.
       var picture = await _picture(40, 40,

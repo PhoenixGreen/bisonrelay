@@ -492,27 +492,6 @@ ImageFraming driftedFraming(
 /// strength of 1.
 const double driftPerStrength = 0.15;
 
-/// _driftAsLoop reads an older save's "drift" ({"kind": "zoomIn", "amount":
-/// 0.15}) into [animation] as a loop, where it has no loop of its own.
-ElementAnimation _driftAsLoop(ElementAnimation animation, Object? drift) {
-  if (drift is! Map<String, dynamic> || animation.loop.on) return animation;
-  var preset = switch (drift["kind"]) {
-    "zoomIn" => LoopPreset.driftIn,
-    "zoomOut" => LoopPreset.driftOut,
-    "panLeft" => LoopPreset.driftLeft,
-    "panRight" => LoopPreset.driftRight,
-    "panUp" => LoopPreset.driftUp,
-    "panDown" => LoopPreset.driftDown,
-    _ => LoopPreset.none,
-  };
-  if (preset == LoopPreset.none) return animation;
-  return animation.copyWith(
-      loop: ElementLoop(
-          preset: preset,
-          strength: jsonDouble(drift["amount"], driftPerStrength) /
-              driftPerStrength));
-}
-
 /// ImageElement is a picture on the canvas. It holds an [assetId], not the
 /// bytes, which live once in the canvas asset store beside the document (see
 /// storage/canvas_assets.dart).
@@ -811,12 +790,7 @@ class ImageElement extends CanvasElement {
       };
 
   factory ImageElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
-      ImageElement(
-          // A save with no "aspect" key predates element-wide proportions,
-          // when pictures were locked unless "lockAspect" said otherwise.
-          json.containsKey("aspect")
-              ? b
-              : b.copyWith(lockAspect: jsonBool(json["lockAspect"], true)),
+      ImageElement(b,
           assetId: jsonString(json["asset"], ""),
           fit: ImageFit.fromName(jsonStr(json["fit"])),
           box: jsonSpec(
@@ -838,10 +812,8 @@ class ImageElement extends CanvasElement {
               json["outline"], ImageOutline.fromJson, const ImageOutline()),
           overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
           blend: OverlayBlend.fromName(jsonStr(json["blend"])),
-          animation: _driftAsLoop(
-              jsonSpec(json["anim"], ElementAnimation.fromJson,
-                  const ElementAnimation()),
-              json["drift"]),
+          animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
+              const ElementAnimation()),
           layers: [
             if (json["layers"] case List raw)
               for (var l in raw)

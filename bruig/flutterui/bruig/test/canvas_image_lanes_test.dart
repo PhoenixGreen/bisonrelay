@@ -1,4 +1,3 @@
-import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
@@ -10,6 +9,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -18,21 +19,18 @@ import 'package:flutter_test/flutter_test.dart';
 
 final _top = ImageLayer.picture("blue", const Rect.fromLTWH(0, 0, 500, 500));
 
-ImageElement _picture() => ImageElement(
-      ElementBase(
-          id: "i",
-          x: 0,
-          y: 0,
-          width: 100,
-          height: 100,
-          track: ElementTrack(const [
-            Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
-            Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
-          ])),
+/// _picture arrives over its first ten frames, by its own arrival clip.
+ImageElement _picture() => withOwnSpan(
+    ImageElement(
+      const ElementBase(id: "i", x: 0, y: 0, width: 100, height: 100),
       assetId: "red",
       animation: const ElementAnimation(preset: ElementAnimationPreset.fadeIn),
       layers: [ImageLayer.base, _top],
-    );
+    ),
+    MotionKind.arrive,
+    0,
+    10,
+    defaultFrameRate) as ImageElement;
 
 void main() {
   group("timing by frames", () {

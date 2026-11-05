@@ -186,13 +186,6 @@ class MediaClip {
   final String channel;
   final String channelName;
 
-  /// envelope is the clip's volume over time, on top of the fades: points of
-  /// (seconds from the clip's start, gain nought to one), straight between
-  /// and flat past either end; empty is full volume. Written by tools, such
-  /// as ducking under a voice (duckEnvelope in audio_tools.dart), so play
-  /// and export sound the same.
-  final List<GainPoint> envelope;
-
   /// place is where the sound is heard from, taken from the picture; when
   /// off, the channel's own pan applies.
   final SoundPlacement place;
@@ -212,7 +205,6 @@ class MediaClip {
     this.mix = const ChannelMix(),
     this.channel = "",
     this.channelName = "",
-    this.envelope = const [],
   });
 
   bool get isEmpty => playlist.every((s) => s.assetId.isEmpty);
@@ -251,7 +243,6 @@ class MediaClip {
   ClipMoment? momentAt(double seconds) {
     var total = runLength;
     if (seconds < 0 || total <= 0) return null;
-    var shaped = envelopeAt(envelope, seconds);
     if (seconds >= total) {
       if (loop == MediaLoop.none) return null;
       seconds %= total;
@@ -265,8 +256,7 @@ class MediaClip {
         var gain = 1.0;
         if (fadeIn > 0) gain = math.min(gain, into / fadeIn);
         if (fadeOut > 0) gain = math.min(gain, (span - into) / fadeOut);
-        return ClipMoment(
-            i, source.start + into, (gain * shaped).clamp(0.0, 1.0));
+        return ClipMoment(i, source.start + into, gain.clamp(0.0, 1.0));
       }
       from += span;
     }
@@ -287,7 +277,6 @@ class MediaClip {
     ChannelMix? mix,
     String? channel,
     String? channelName,
-    List<GainPoint>? envelope,
     SoundPlacement? place,
   }) =>
       MediaClip(
@@ -305,7 +294,6 @@ class MediaClip {
         mix: mix ?? this.mix,
         channel: channel ?? this.channel,
         channelName: channelName ?? this.channelName,
-        envelope: envelope ?? this.envelope,
       );
 
   Map<String, dynamic> toJson() => {
@@ -324,10 +312,6 @@ class MediaClip {
         if (channel.isNotEmpty) "channel": channel,
         if (channelName.isNotEmpty) "channelName": channelName,
         if (!place.isOff) "place": place.toJson(),
-        if (envelope.isNotEmpty)
-          "envelope": [
-            for (var p in envelope) [p.time, p.gain]
-          ],
       };
 
   factory MediaClip.fromJson(Map<String, dynamic> json) {
@@ -356,19 +340,12 @@ class MediaClip {
       place: json["place"] is Map<String, dynamic>
           ? SoundPlacement.fromJson(json["place"] as Map<String, dynamic>)
           : const SoundPlacement(),
-      envelope: [
-        if (json["envelope"] is List)
-          for (var p in json["envelope"] as List)
-            if (p is List && p.length == 2 && p[0] is num && p[1] is num)
-              GainPoint((p[0] as num).toDouble(),
-                  (p[1] as num).toDouble().clamp(0.0, 1.0)),
-        // In time order, as envelopeAt reads them.
-      ]..sort((a, b) => a.time.compareTo(b.time)),
     );
   }
 }
 
-/// GainPoint is one point of MediaClip.envelope.
+/// GainPoint is one point of a volume envelope: seconds, and a gain nought
+/// to one.
 class GainPoint {
   final double time;
   final double gain;

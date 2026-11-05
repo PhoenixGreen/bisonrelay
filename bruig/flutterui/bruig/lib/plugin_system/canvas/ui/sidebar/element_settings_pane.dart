@@ -118,8 +118,6 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
       // laid over it.
       onReset: () => controller.setBackground(CanvasBackground(
           picture: showing.picture,
-          imageAssetId: showing.imageAssetId,
-          imageFit: showing.imageFit,
           video: showing.video,
           sound: showing.sound,
           stage: showing.stage)),

@@ -288,11 +288,7 @@ class VideoElement extends CanvasElement {
         linkStart: jsonDouble(json["linkStart"], 0),
         key: jsonSpec(json["key"], ChromaKey.fromJson, const ChromaKey()),
         look: look is Map<String, dynamic>
-            ? ImageElement.fromJson(
-                // "aspect" present, so the decoder does not apply the old
-                // pictures-lock-their-proportions rule to a look.
-                {...look, "aspect": true},
-                const ElementBase(id: ""))
+            ? ImageElement.fromJson(look, const ElementBase(id: ""))
             : const ImageElement(ElementBase(id: "")),
         controls: raw is List
             ? [

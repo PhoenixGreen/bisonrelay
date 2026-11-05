@@ -34,9 +34,6 @@ enum LayerBlend {
   bool get lightens =>
       this == screen || this == add || this == lighten || this == colorDodge;
 
-  static LayerBlend fromName(String? name) => switch (name) {
-        // A background layer's dodge, saved before there was one list.
-        "dodge" => colorDodge,
-        _ => values.firstWhere((b) => b.name == name, orElse: () => normal),
-      };
+  static LayerBlend fromName(String? name) =>
+      values.firstWhere((b) => b.name == name, orElse: () => normal);
 }

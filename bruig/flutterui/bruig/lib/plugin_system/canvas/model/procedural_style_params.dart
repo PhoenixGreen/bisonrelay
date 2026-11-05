@@ -148,7 +148,6 @@ const _led = {
 };
 
 const List<StyleParam> dotGridParams = [
-  // LED wall was a style of its own (see ProceduralStyle.hidden).
   StyleParam.choice("dotKind", "Kind", ["Dots", "LED wall"]),
   StyleParam.choice(
       "dotShape", "Shape", ["Circle", "Square", "Diamond", "Cross"],
@@ -203,7 +202,6 @@ const _rainOnly = {
 };
 
 const List<StyleParam> rainParams = [
-  // Symbol field was a style of its own (see ProceduralStyle.hidden).
   StyleParam.choice("mode", "Kind", ["Rain", "Field"]),
   StyleParam.choice("glyphFont", "Font", ["System", "Mono", "Serif"]),
   StyleParam("trail", "Trail",
@@ -561,23 +559,10 @@ const List<StyleParam> metalParams = [
 
 /// pitchCameraParams is [params] with the pitch's camera settings filled in
 /// from its View where they have not been set.
-///
-/// Older pitches saved only the view and, as fractions, tilt and turn; they
-/// are read here so they look as they did.
 Map<String, double> pitchCameraParams(Map<String, double> params) {
   if (params.containsKey("tiltV")) return params;
   var view = (params["view"] ?? 0).round().clamp(0, 3);
   if (view == 0) return params;
   var preset = pitchParams.firstWhere((p) => p.id == "view").sets[view]!;
-  var out = {...params, ...preset};
-  if (params.containsKey("tilt") || params.containsKey("spin")) {
-    var tilt = params["tilt"] ?? 0.5, spin = params["spin"] ?? 0;
-    var iso = view == 1;
-    out["tiltV"] = iso ? 90 - (24 + tilt * 30) : 90 - (14 + tilt * 46);
-    out["turn"] = preset["turn"]! + spin;
-    out["perspective"] = iso ? 0 : 0.96;
-  }
-  out.remove("tilt");
-  out.remove("spin");
-  return out;
+  return {...params, ...preset};
 }

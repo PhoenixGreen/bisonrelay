@@ -251,14 +251,6 @@ class TextFill {
       );
 }
 
-/// _angleOf is the light's direction that throws a shadow at [dx], [dy] --
-/// the inverse of TextSpec.shadowOffset, for reading an older document.
-double _angleOf(double dx, double dy) {
-  if (dx == 0 && dy == 0) return 315;
-  var degrees = math.atan2(-dx, dy) * 180 / math.pi;
-  return degrees < 0 ? degrees + 360 : degrees;
-}
-
 /// TextSpec is one set of type decisions.
 class TextSpec {
   final String fontFamily;
@@ -464,15 +456,8 @@ class TextSpec {
         outlineColor: colorFromJson(json["oc"], const Color(0xFF000000)),
         shadowBlur: jsonDouble(json["sb"], 0),
         shadowColor: colorFromJson(json["sc"], const Color(0x80000000)),
-        // Older documents wrote the shadow as sx/sy; read those as the angle
-        // and distance they describe.
-        shadowAngle: json["sa"] != null
-            ? jsonDouble(json["sa"], 315)
-            : _angleOf(jsonDouble(json["sx"], 0), jsonDouble(json["sy"], 0)),
-        shadowDistance: json["sd"] != null
-            ? jsonDouble(json["sd"], 0)
-            : Offset(jsonDouble(json["sx"], 0), jsonDouble(json["sy"], 0))
-                .distance,
+        shadowAngle: jsonDouble(json["sa"], 315),
+        shadowDistance: jsonDouble(json["sd"], 0),
         glowBlur: jsonDouble(json["gb"], 0),
         glowColor: colorFromJson(json["gc"], const Color(0xFFFFFFFF)),
       );

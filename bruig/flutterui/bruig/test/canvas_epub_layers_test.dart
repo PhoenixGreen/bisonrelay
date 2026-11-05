@@ -34,6 +34,8 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'canvas_arrival_fixture.dart';
 import 'package:path/path.dart' as path;
 // ignore: depend_on_referenced_packages
 import 'package:xml/xml.dart';
@@ -277,19 +279,17 @@ void main() {
   testWidgets("moved and arriving by clips, it is animated just the same",
       (tester) async {
     CanvasElement clipped(CanvasElement e) => convertElement(e, 12)!;
-    var wiping = ShapeElement(
-      ElementBase(
-          id: "w",
-          x: 100,
-          y: 40,
-          width: 120,
-          height: 80,
-          track: arriving(0, 6)),
-      fill: const Color(0xFF00AA00),
-      animation: const ElementAnimation(preset: ElementAnimationPreset.wipe),
-    );
-    var bytes =
-        await publish(tester, book([clipped(sliding()), clipped(wiping)]));
+    var wiping = arrivingOver(
+        ShapeElement(
+          const ElementBase(id: "w", x: 100, y: 40, width: 120, height: 80),
+          fill: const Color(0xFF00AA00),
+          animation:
+              const ElementAnimation(preset: ElementAnimationPreset.wipe),
+        ),
+        from: 0,
+        to: 6,
+        rate: 12);
+    var bytes = await publish(tester, book([clipped(sliding()), wiping]));
     var page = pageOf(bytes, 0);
     expect(keyframes(byId(page, "l-dot")!).length, greaterThan(2),
         reason: "the slide is played by the reader");

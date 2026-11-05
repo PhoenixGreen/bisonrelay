@@ -502,16 +502,6 @@ void main() {
       }
       expect(bottom, greaterThan(top));
     });
-
-    test("a pitch saved with the old tilt and turn keeps its camera", () {
-      var old = ProceduralSpec.fromJson({
-        ..._pitch.toJson(),
-        "params": {"view": 2, "tilt": 0.5, "spin": 10},
-      });
-      expect(old.params["tiltV"], closeTo(90 - (14 + 0.5 * 46), 1e-9));
-      expect(old.params["turn"], 10);
-      expect(old.params.containsKey("tilt"), isFalse);
-    });
   });
 
   group("metal finishes", () {

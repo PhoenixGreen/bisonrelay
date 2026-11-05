@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
@@ -472,7 +473,8 @@ void main() {
     // Random() walked in draw order. Without this, an exported frame would not
     // match the one on screen.
     const spec = ProceduralSpec(
-      style: ProceduralStyle.ledGrid,
+      style: ProceduralStyle.dotGrid,
+      params: {"dotKind": 1},
       seed: 99,
       density: 0.8,
       intensity: 1,
@@ -493,7 +495,8 @@ void main() {
       size: CanvasSize(ratio: CanvasRatio.square, width: 80),
       background: CanvasBackground(
           spec: ProceduralSpec(
-              style: ProceduralStyle.ledGrid,
+              style: ProceduralStyle.dotGrid,
+              params: {"dotKind": 1},
               seed: 1,
               density: 0.8,
               vignette: 0)),
@@ -502,7 +505,8 @@ void main() {
       size: CanvasSize(ratio: CanvasRatio.square, width: 80),
       background: CanvasBackground(
           spec: ProceduralSpec(
-              style: ProceduralStyle.ledGrid,
+              style: ProceduralStyle.dotGrid,
+              params: {"dotKind": 1},
               seed: 2,
               density: 0.8,
               vignette: 0)),
@@ -650,33 +654,7 @@ void main() {
       expect(back.cap, LineStrokeCap.round);
     });
 
-    test("a document saved before the split still opens", () {
-      // One "cap" used to mean both the stroke's cap and its decoration. Each
-      // old value maps onto the pair it actually meant.
-      LineElement load(String cap) => LineElement.fromJson(
-            {"cap": cap, "sw": 4.0},
-            const ElementBase(id: "l"),
-          );
-
-      expect(load("arrow").endEnd, LineEnd.arrow);
-      expect(load("arrow").startEnd, LineEnd.none);
-      expect(load("arrow").cap, LineStrokeCap.flat);
-
-      expect(load("arrowBoth").startEnd, LineEnd.arrow);
-      expect(load("arrowBoth").endEnd, LineEnd.arrow);
-
-      expect(load("dot").startEnd, LineEnd.circle);
-      expect(load("dot").endEnd, LineEnd.circle);
-      expect(load("dot").cap, LineStrokeCap.round);
-
-      expect(load("round").cap, LineStrokeCap.round);
-      expect(load("round").endEnd, LineEnd.none,
-          reason: "a round cap was never a decoration");
-    });
-
-    test("a new document with no ends does not read as an old one", () {
-      // The migration keys off the absence of the new fields, so a line that
-      // deliberately has no decorations must still say so.
+    test("a line with no ends still has none when read back", () {
       var plain = line(start: LineEnd.none, end: LineEnd.none);
       var back =
           CanvasDocument.decode(CanvasDocument(elements: [plain]).encode())!
@@ -684,6 +662,23 @@ void main() {
               .single as LineElement;
       expect(back.startEnd, LineEnd.none);
       expect(back.endEnd, LineEnd.none);
+    });
+
+    test("a path keeps the arrow it starts with through a round trip", () {
+      // The writer leaves out an end that is the path's default arrow, so
+      // reading must take no "endEnd" as that arrow, not as no end.
+      var path = PathElement(
+        const ElementBase(id: "p", width: 100, height: 100),
+        nodes: const [PathNode(x: 0, y: 0), PathNode(x: 1, y: 1)],
+      );
+      expect(path.endEnd, LineEnd.arrow);
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [path]).encode())!
+              .elements
+              .single as PathElement;
+      expect(back.endEnd, LineEnd.arrow);
+      expect(back.startEnd, LineEnd.none);
+      expect(back.cap, path.cap);
     });
 
     testWidgets("an arrowhead sits behind the tip, along the line",
@@ -1228,24 +1223,6 @@ void main() {
                 .single;
         expect(back.keepsAspect, locked, reason: "locked: $locked");
       }
-    });
-
-    test("a picture saved before the lock moved keeps its proportions", () {
-      // It was a picture's own setting, on unless it said otherwise, so a
-      // document with no "aspect" key at all must not quietly become
-      // stretchable.
-      var old = {
-        "kind": "image",
-        "id": "i",
-        "w": 100.0,
-        "h": 100.0,
-        "asset": "",
-      };
-      expect(elementFromJson(old).keepsAspect, isTrue);
-
-      // And one that did say otherwise is left as it was.
-      expect(
-          elementFromJson({...old, "lockAspect": false}).keepsAspect, isFalse);
     });
   });
 
@@ -2630,13 +2607,6 @@ void _tableTests() {
       expect([0, 1, 2].map(rubbish.matchesRow), [false, false, false]);
     });
 
-    test("a row number saved before the range language still works", () {
-      var back =
-          TableRule.fromJson({"row": 2, "style": const <String, dynamic>{}});
-      expect(back.rows, "2");
-      expect(back.matchesRow(1), isTrue);
-    });
-
     test("a column is one band, the same as a row", () async {
       // Per cell, a column border came out as a border round each of its
       // cells: a stack of boxes rather than a column with a line round it.
@@ -2973,12 +2943,7 @@ void _tableTests() {
       expect(runs, 2);
     });
 
-    test("a rule saved before whole words still matches how it did", () {
-      // "loose" is what the two-way version wrote.
-      expect(
-          TableRule.fromJson({"match": "W", "loose": true, "style": const {}})
-              .how,
-          TableMatch.anywhere);
+    test("a rule saved with no way of matching matches the whole cell", () {
       expect(TableRule.fromJson({"match": "W", "style": const {}}).how,
           TableMatch.cell);
     });

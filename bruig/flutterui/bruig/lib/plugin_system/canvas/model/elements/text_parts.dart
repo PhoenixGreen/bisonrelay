@@ -611,33 +611,9 @@ TextPart? partAt(String text, List<TextPart> parts, int index) {
   return found;
 }
 
-/// IconPlace is where an older document's single icon sat relative to the
-/// words; read only to pick the slot it becomes (see _slotForIcon in
-/// text_element.dart).
-enum IconPlace {
-  start("Before the text"),
-  end("After the text"),
-  over("Above the text"),
-  under("Below the text");
-
-  final String label;
-  const IconPlace(this.label);
-
-  /// beside is whether the icon is at the side rather than above or below.
-  bool get beside => this == start || this == end;
-
-  static IconPlace fromName(String? name) =>
-      values.firstWhere((p) => p.name == name, orElse: () => start);
-}
-
 /// TextIcon is the picture a picture piece (TextItem.icon) shows.
-///
-/// [place], [gap], [align] and [animate] are from when a text element had a
-/// single icon of its own; they are kept for reading and writing, but only
-/// place and align are used, to pick the slot an old icon becomes.
 class TextIcon {
   final String assetId;
-  final IconPlace place;
 
   /// size is how tall the icon is drawn, in design pixels.
   final double size;
@@ -645,12 +621,6 @@ class TextIcon {
   /// color tints it (the picture cut to its own shape and filled), or null
   /// to draw it in its own colours.
   final Color? color;
-
-  /// gap was the room between an old icon and the words.
-  final double gap;
-
-  /// align was where an old icon sat along the edge it was on.
-  final TextIconAlign align;
 
   /// outlineWidth draws the icon's silhouette behind it in outlineColor: a
   /// sticker outline.
@@ -662,78 +632,55 @@ class TextIcon {
   /// underline is a line under the icon, or null for none.
   final PartUnderline? underline;
 
-  /// animate was whether an old icon moved with the words as they arrived.
-  final bool animate;
-
   const TextIcon({
     this.assetId = "",
-    this.place = IconPlace.start,
     this.size = 64,
     this.color,
-    this.gap = 12,
-    this.align = TextIconAlign.middle,
     this.outlineWidth = 0,
     this.outlineColor = const Color(0xFF000000),
     this.box = const BoxSpec(padding: 0),
     this.underline,
-    this.animate = true,
   });
 
   bool get on => assetId.isNotEmpty;
 
   TextIcon copyWith({
     String? assetId,
-    IconPlace? place,
     double? size,
     Color? color,
     bool clearColor = false,
-    double? gap,
-    TextIconAlign? align,
     double? outlineWidth,
     Color? outlineColor,
     BoxSpec? box,
     PartUnderline? underline,
     bool clearUnderline = false,
-    bool? animate,
   }) =>
       TextIcon(
         assetId: assetId ?? this.assetId,
-        place: place ?? this.place,
         size: size ?? this.size,
         color: clearColor ? null : (color ?? this.color),
-        gap: gap ?? this.gap,
-        align: align ?? this.align,
         outlineWidth: outlineWidth ?? this.outlineWidth,
         outlineColor: outlineColor ?? this.outlineColor,
         box: box ?? this.box,
         underline: clearUnderline ? null : (underline ?? this.underline),
-        animate: animate ?? this.animate,
       );
 
   Map<String, dynamic> toJson() => {
         "assetId": assetId,
-        if (place != IconPlace.start) "place": place.name,
         "size": size,
         if (color != null) "color": colorToJson(color!),
-        "gap": gap,
-        if (align != TextIconAlign.middle) "align": align.name,
         if (outlineWidth > 0) "ow": outlineWidth,
         if (outlineWidth > 0) "oc": colorToJson(outlineColor),
         "box": box.toJson(),
         if (underline != null) "underline": underline!.toJson(),
-        // Always written, since the default is true.
-        "animate": animate,
       };
 
   factory TextIcon.fromJson(Map<String, dynamic> json) => TextIcon(
         assetId: jsonString(json["assetId"], ""),
-        place: IconPlace.fromName(jsonStr(json["place"])),
         size: jsonDouble(json["size"], 64).clamp(1, 4000),
         color: json["color"] == null
             ? null
             : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
-        gap: jsonDouble(json["gap"], 12).clamp(-4000, 4000),
-        align: TextIconAlign.fromName(jsonStr(json["align"])),
         outlineWidth: jsonDouble(json["ow"], 0).clamp(0, 200),
         outlineColor: colorFromJson(json["oc"], const Color(0xFF000000)),
         box: json["box"] is Map<String, dynamic>
@@ -742,19 +689,5 @@ class TextIcon {
         underline: json["underline"] is Map<String, dynamic>
             ? PartUnderline.fromJson(json["underline"] as Map<String, dynamic>)
             : null,
-        animate: jsonBool(json["animate"], true),
       );
-}
-
-/// TextIconAlign is where an old icon sat along the edge it was on.
-enum TextIconAlign {
-  start("Start"),
-  middle("Middle"),
-  end("End");
-
-  final String label;
-  const TextIconAlign(this.label);
-
-  static TextIconAlign fromName(String? name) =>
-      values.firstWhere((a) => a.name == name, orElse: () => middle);
 }

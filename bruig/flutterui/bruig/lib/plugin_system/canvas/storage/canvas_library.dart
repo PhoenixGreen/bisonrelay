@@ -182,11 +182,7 @@ class LibraryAsset {
     String text(String key) => json[key] is String ? json[key] as String : "";
     return LibraryAsset(
       id: id,
-      // A drawing listed as a picture before the two were separated is a
-      // drawing.
-      kind: path.extension(id) == ".svg"
-          ? AssetKind.vector
-          : AssetKind.fromName(jsonStr(json["kind"])),
+      kind: AssetKind.fromName(jsonStr(json["kind"])),
       name: json["name"] is String ? json["name"] as String : id,
       added: DateTime.tryParse(jsonStr(json["added"]) ?? "") ??
           DateTime.fromMillisecondsSinceEpoch(0),
@@ -263,15 +259,7 @@ class CanvasLibrary {
     ];
   }
 
-  /// _movedVectors is whether this session has moved the drawings out of the
-  /// pictures yet -- once, before the library is first read.
-  static bool _movedVectors = false;
-
   static Future<List<LibraryAsset>> _read() async {
-    if (!_movedVectors) {
-      _movedVectors = true;
-      await CanvasMedia.migrateVectors();
-    }
     var file = await _path();
     if (!await file.exists()) {
       // The first time: whatever is already stored joins the library, named
@@ -607,7 +595,7 @@ class CanvasLibrary {
 
     var pictures = 0;
     for (var id in await CanvasAssets.stored()) {
-      if (extras.contains(id) || path.extension(id) == ".svg" || isMaskId(id)) {
+      if (extras.contains(id) || isMaskId(id)) {
         continue;
       }
       var name = names[id];
@@ -652,6 +640,5 @@ class CanvasLibrary {
     _pending = Future.value();
     _tidying = null;
     _tidied = null;
-    _movedVectors = false;
   }
 }

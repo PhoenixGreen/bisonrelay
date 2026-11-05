@@ -2,7 +2,6 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
@@ -465,17 +464,22 @@ class TextElement extends CanvasElement {
               json["textSpec"], TextSpec.fromJson, const TextSpec()),
           box: jsonSpec(json["box"], BoxSpec.fromJson, const BoxSpec()),
           autoSize: jsonBool(json["autoSize"], false),
-          animation: _animatesPart(
-                  json)
-              ? const TextAnimation()
-              : jsonSpec(json["animation"], TextAnimation.fromJson,
-                  const TextAnimation()),
+          animation: jsonSpec(json["animation"], TextAnimation.fromJson,
+              const TextAnimation()),
           slot: json[
                   "slot"] is String
               ? TextSlot.fromName(jsonStr(json["slot"]))
               : null,
-          items: _itemsFromJson(json),
-          parts: _partsFromJson(json),
+          items: [
+            if (json["items"] case List raw)
+              for (var i in raw)
+                if (i is Map<String, dynamic>) TextItem.fromJson(i),
+          ],
+          parts: [
+            if (json["parts"] case List raw)
+              for (var p in raw)
+                if (p is Map<String, dynamic>) TextPart.fromJson(p),
+          ],
           highlight:
               json["highlight"] is Map<String,
                       dynamic>
@@ -511,92 +515,4 @@ class TextElement extends CanvasElement {
           curve: json["curve"] is Map<String, dynamic>
               ? TextOnCurve.fromJson(json["curve"] as Map<String, dynamic>)
               : null);
-}
-
-/// _itemsFromJson reads the pieces, and turns an older document's single
-/// icon into one, in the slot its place and alignment add up to. A piece
-/// sits over the box rather than pushing the words along as the icon did.
-List<TextItem> _itemsFromJson(Map<String, dynamic> json) {
-  var items = [
-    if (json["items"] case List raw)
-      for (var i in raw)
-        if (i is Map<String, dynamic>) TextItem.fromJson(i),
-  ];
-  if (json["icon"] case Map<String, dynamic> raw) {
-    var icon = TextIcon.fromJson(raw);
-    if (icon.on) {
-      items.add(TextItem(
-        id: newElementId(),
-        slot: _slotForIcon(icon),
-        icon: icon,
-        gap: 0,
-      ));
-    }
-  }
-  return items;
-}
-
-/// _slotForIcon is the corner an old icon's place and alignment add up to.
-/// Beside the words the place is the side and the alignment how far down;
-/// above or below them, the other way round.
-TextSlot _slotForIcon(TextIcon icon) {
-  if (icon.place.beside) {
-    var left = icon.place == IconPlace.start;
-    return switch (icon.align) {
-      TextIconAlign.start => left ? TextSlot.topLeft : TextSlot.topRight,
-      TextIconAlign.middle => left ? TextSlot.middleLeft : TextSlot.middleRight,
-      TextIconAlign.end => left ? TextSlot.bottomLeft : TextSlot.bottomRight,
-    };
-  }
-  var over = icon.place == IconPlace.over;
-  return switch (icon.align) {
-    TextIconAlign.start => over ? TextSlot.topLeft : TextSlot.bottomLeft,
-    TextIconAlign.middle => over ? TextSlot.topCentre : TextSlot.bottomCentre,
-    TextIconAlign.end => over ? TextSlot.topRight : TextSlot.bottomRight,
-  };
-}
-
-/// _animatesPart is whether [json]'s animation is an old one of a single
-/// part: moved onto the part by [_partsFromJson].
-bool _animatesPart(Map<String, dynamic> json) {
-  var animation = json["animation"];
-  if (animation is! Map<String, dynamic>) return false;
-  var at = jsonInt(animation["part"], -1);
-  var parts = json["parts"];
-  return at >= 0 &&
-      parts is List &&
-      at < parts.length &&
-      TextAnimationPreset.fromName(jsonStr(animation["preset"])) !=
-          TextAnimationPreset.none;
-}
-
-/// _partsFromJson reads the parts, and moves an older document's arrival
-/// that named one part onto that part's own animation; otherwise it would
-/// open applied to the whole paragraph.
-List<TextPart> _partsFromJson(Map<String, dynamic> json) {
-  var parts = [
-    if (json["parts"] case List raw)
-      for (var p in raw)
-        if (p is Map<String, dynamic>) TextPart.fromJson(p),
-  ];
-
-  var animation = json["animation"];
-  if (animation is! Map<String, dynamic>) return parts;
-  var at = jsonInt(animation["part"], -1);
-  if (at < 0 || at >= parts.length) return parts;
-  var preset = TextAnimationPreset.fromName(jsonStr(animation["preset"]));
-  if (preset == TextAnimationPreset.none) return parts;
-
-  return [
-    for (var (i, part) in parts.indexed)
-      if (i != at)
-        part
-      else
-        part.copyWith(
-            animation: part.animation.copyWith(
-                preset: preset,
-                gap: jsonDouble(animation["gap"], 0.35),
-                scale: jsonDouble(animation["scale"], 0),
-                ease: ChartEase.fromName(jsonStr(animation["ease"])))),
-  ];
 }

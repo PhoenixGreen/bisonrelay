@@ -7,7 +7,6 @@ import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -15,7 +14,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/svg_import.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
-import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -36,8 +34,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Path;
 import 'package:flutter/services.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'canvas_arrival_fixture.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1892,30 +1891,6 @@ void main() {
               "${Platform.pathSeparator}"));
       expect(CanvasMedia.kindOf(id), MediaKind.vector);
     });
-
-    test("drawings in the pictures move out, and are found either way",
-        () async {
-      var id = "${sha256.convert(svg.codeUnits).toString().substring(0, 16)}.svg";
-      await CanvasAssets.saveAs(id, svg.codeUnits);
-      expect(await CanvasMedia.existingPath(MediaKind.vector, id),
-          contains("Pictures"),
-          reason: "found among the pictures before it is moved");
-      expect(await CanvasMedia.migrateVectors(), 1);
-      expect(await CanvasAssets.pathOf(id), isNull);
-      expect(await CanvasMedia.existingPath(MediaKind.vector, id),
-          contains("Vectors"));
-      expect(await CanvasMedia.migrateVectors(), 0, reason: "once is enough");
-    });
-
-    test("a drawing listed as a picture is listed as a drawing", () {
-      var a = LibraryAsset.fromJson({
-        "id": "0123456789abcdef.svg",
-        "kind": "picture",
-        "name": "Logo",
-        "added": DateTime(2026).toIso8601String(),
-      })!;
-      expect(a.kind, AssetKind.vector);
-    });
   });
   group("more edits", () {
     test("several points moved", () {
@@ -2733,21 +2708,6 @@ void main() {
           tintsOf(tinted).single.points.first.dx + 5);
     });
 
-    test("tints kept for the whole drawing, before, go to its shapes", () {
-      var json =
-          drawing('$square<path d="M0 95 L5 95" stroke="black"/>').toJson();
-      json["tints"] = [
-        {
-          "p": [30, 50, 70, 50],
-          "c": 0xFFFF0000,
-          "w": 4,
-        }
-      ];
-      var e = elementFromJson(json) as VectorElement;
-      expect(e.shapes!.first.tints, hasLength(1), reason: "under it");
-      expect(e.shapes!.last.tints, isEmpty, reason: "nowhere near it");
-    });
-
     test("a drawing saved mid-edit opens with its box round it", () {
       // The box 100 square, but a line drawn out past it to (150, 50).
       var stale = drawing('<path d="M10 50 L150 50" stroke="black"/>');
@@ -2838,20 +2798,18 @@ void main() {
       var e = drawing('<path d="M0 0 L50 0 L50 100 L0 100 Z" fill="red"/>'
           '<path d="M50 0 L100 0 L100 100 L50 100 Z" fill="blue"/>');
       e = withCue(e, 1, cue: VectorCue.after);
-      e = e
-          .copyWith(
-              animation:
-                  const ElementAnimation(preset: ElementAnimationPreset.fadeIn))
-          .withBase(
-              x: 0,
-              y: 0,
-              track: ElementTrack(const [
-                Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
-                Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
-              ])) as VectorElement;
+      e = arrivingOver(
+          e
+              .copyWith(
+                  animation: const ElementAnimation(
+                      preset: ElementAnimationPreset.fadeIn))
+              .withBase(x: 0, y: 0) as VectorElement,
+          from: 0,
+          to: 10);
       Future<(double, double)> at(int frame) async {
         var rec = PictureRecorder();
-        paintElement(Canvas(rec), e, frame);
+        paintElement(Canvas(rec), e, frame,
+            document: CanvasDocument(elements: [e]));
         var img = await rec.endRecording().toImage(100, 100);
         var px = (await img.toByteData())!.buffer.asUint8List();
         double alpha(int x) => px[(50 * 100 + x) * 4 + 3] / 255;
@@ -3032,16 +2990,14 @@ void main() {
   group("the shapes on the timeline", () {
     testWidgets("a lane each: picked by a click, retimed by a drag",
         (tester) async {
-      var e = drawing('$square'
-              '<path d="M10 10 L20 10 L20 20 Z" fill="blue"/>')
-          .copyWith(
-              animation:
-                  const ElementAnimation(preset: ElementAnimationPreset.fadeIn))
-          .withBase(
-              track: ElementTrack(const [
-            Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
-            Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
-          ])) as VectorElement;
+      var e = arrivingOver(
+          drawing('$square'
+                  '<path d="M10 10 L20 10 L20 20 Z" fill="blue"/>')
+              .copyWith(
+                  animation: const ElementAnimation(
+                      preset: ElementAnimationPreset.fadeIn)),
+          from: 0,
+          to: 10);
       var c = CanvasController(
           const CanvasDocument().copyWith(frames: 100).addElement(e));
       addTearDown(c.dispose);
@@ -3101,15 +3057,13 @@ void main() {
     testWidgets("hidden at first; the toggle shows the shape picked, then all",
         (tester) async {
       SharedPreferences.setMockInitialValues({});
-      var e = (drawing('$square<path d="M10 10 L20 10 L20 20 Z" fill="blue"/>')
-          .copyWith(
-              animation:
-                  const ElementAnimation(preset: ElementAnimationPreset.fadeIn))
-          .withBase(
-              track: ElementTrack(const [
-            Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
-            Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
-          ])) as VectorElement);
+      var e = arrivingOver(
+          drawing('$square<path d="M10 10 L20 10 L20 20 Z" fill="blue"/>')
+              .copyWith(
+                  animation: const ElementAnimation(
+                      preset: ElementAnimationPreset.fadeIn)),
+          from: 0,
+          to: 10);
       var c = CanvasController(
           const CanvasDocument().copyWith(frames: 40).addElement(e));
       addTearDown(c.dispose);
@@ -3161,25 +3115,22 @@ void main() {
   });
 
   group("the arrival covers every shape", () {
-    VectorElement animated() => (drawing('$square'
-            '<path d="M10 10 L20 10 L20 20 Z" fill="blue"/>')
-        .copyWith(
-            animation:
-                const ElementAnimation(preset: ElementAnimationPreset.fadeIn))
-        .withBase(
-            track: ElementTrack(const [
-          Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
-          Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
-        ])) as VectorElement);
+    VectorElement animated() => arrivingOver(
+        drawing('$square'
+                '<path d="M10 10 L20 10 L20 20 Z" fill="blue"/>')
+            .copyWith(
+                animation: const ElementAnimation(
+                    preset: ElementAnimationPreset.fadeIn)),
+        from: 0,
+        to: 10,
+        rate: 24);
 
-    test("its keyframes stretch every shape's timing alike", () {
+    test("its arrival stretched stretches every shape's timing alike", () {
       var e = withCue(animated(), 1, cue: VectorCue.after);
       expect(cueTimes(e.shapes!, 10), [(0, 5), (5, 5)]);
-      // The last keyframe dragged out to frame 20: twice as long, all of it.
-      var longer = e.withBase(
-          track: e.track!.withoutFrame(10).withKey(const Keyframe(
-              frame: 20,
-              values: {KeyframeChannel.reveal: 1}))) as VectorElement;
+      // The arrival dragged out to frame 20: twice as long, all of it.
+      var longer =
+          withOwnSpan(e, MotionKind.arrive, 0, 20, 24) as VectorElement;
       expect(cueTimes(longer.shapes!, vectorArrivalSpan(longer, 24)!.$2),
           [(0, 10), (10, 10)]);
     });
@@ -3296,24 +3247,6 @@ void main() {
   });
 
   group("a background drawing", () {
-    test("a background picture that was a drawing is the drawing now", () {
-      var bg = CanvasBackground.fromJson({
-        "picture": {
-          "kind": "image",
-          "id": "p",
-          "asset": "0123456789abcdef.svg",
-          "fit": "cover"
-        },
-      });
-      expect(bg.picture, isNull);
-      expect(bg.drawing?.assetId, "0123456789abcdef.svg");
-      expect(bg.drawing?.fit, VectorFit.cover);
-      var old = CanvasBackground.fromJson(
-          {"image": "fedcba9876543210.svg", "fit": "contain"});
-      expect(old.imageAssetId, isEmpty);
-      expect(old.drawing?.fit, VectorFit.contain);
-    });
-
     test("is saved, and keeps its file", () {
       var bg = CanvasBackground(
           drawing: const VectorElement(ElementBase(id: "d"),

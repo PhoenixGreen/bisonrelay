@@ -453,9 +453,8 @@ class SpriteElement extends CanvasElement {
       b,
       sheet: jsonStr(json["sheet"]) ?? "",
       sheetName: jsonStr(json["sheetName"]) ?? "",
-      // Older saves keep the sheet's size in "w" and "h".
-      sheetW: jsonDouble(json["sheetW"] ?? json["w"], 1).round().clamp(1, 1 << 15),
-      sheetH: jsonDouble(json["sheetH"] ?? json["h"], 1).round().clamp(1, 1 << 15),
+      sheetW: jsonDouble(json["sheetW"], 1).round().clamp(1, 1 << 15),
+      sheetH: jsonDouble(json["sheetH"], 1).round().clamp(1, 1 << 15),
       columns: jsonDouble(json["cols"], 1).round().clamp(1, 512),
       rows: jsonDouble(json["rows"], 1).round().clamp(1, 512),
       margin: jsonDouble(json["margin"], 0),

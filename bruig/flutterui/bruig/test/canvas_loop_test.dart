@@ -19,6 +19,8 @@ import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -223,23 +225,8 @@ void main() {
           .copyWith(
               animation: own,
               owns: own == null ? null : ShapeAnimationPart.values.toSet());
-      return VectorElement(
-          ElementBase(
-              id: "v",
-              x: 100,
-              y: 100,
-              width: 100,
-              height: 40,
-              track: ElementTrack([
-                if (animation.on) ...const [
-                  Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
-                  Keyframe(frame: 20, values: {KeyframeChannel.reveal: 1}),
-                ],
-                if (animation.closes) ...const [
-                  Keyframe(frame: 30, values: {KeyframeChannel.close: 0}),
-                  Keyframe(frame: 40, values: {KeyframeChannel.close: 1}),
-                ],
-              ])),
+      CanvasElement e = VectorElement(
+          const ElementBase(id: "v", x: 100, y: 100, width: 100, height: 40),
           viewBox: const Rect.fromLTWH(0, 0, 100, 40),
           shapes: [
             shapeOf(VectorShapeKind.box, const Rect.fromLTWH(0, 0, 40, 40),
@@ -247,12 +234,20 @@ void main() {
             second,
           ],
           animation: animation);
+      if (animation.on) {
+        e = withOwnSpan(e, MotionKind.arrive, 0, 20, defaultFrameRate);
+      }
+      if (animation.closes) {
+        e = withOwnSpan(e, MotionKind.leave, 30, 40, defaultFrameRate);
+      }
+      return e as VectorElement;
     }
 
     Future<List<int>> draw(VectorElement e, int frame) async {
       var rec = PictureRecorder();
       paintElement(Canvas(rec), e, frame,
-          document: const CanvasDocument().copyWith(frames: 120));
+          document:
+              const CanvasDocument().copyWith(frames: 120, elements: [e]));
       var img = await rec.endRecording().toImage(240, 240);
       return (await img.toByteData())!.buffer.asUint8List();
     }
@@ -268,7 +263,7 @@ void main() {
     const floating = ElementLoop(preset: LoopPreset.float, cycle: 40);
     const fading = ElementAnimation(preset: ElementAnimationPreset.fadeIn);
 
-    test("kept with the shape -- and read from the two it was kept as", () {
+    test("kept with the shape", () {
       var e = pair(
           own: const ElementAnimation(
               preset: ElementAnimationPreset.fadeUp,
@@ -279,14 +274,6 @@ void main() {
           as VectorElement;
       expect(back.shapes![1].animation, e.shapes![1].animation);
       expect(back.shapes![0].animation, isNull, reason: "as the drawing");
-
-      var before = VectorShape.fromJson({
-        "p": [],
-        "arrive": {"preset": "fadeUp", "ease": "linear"},
-        "loop": {"preset": "pulse"},
-      })!;
-      expect(before.animation?.preset, ElementAnimationPreset.fadeUp);
-      expect(before.animation?.loop.preset, LoopPreset.pulse);
     });
 
     test("a shape loops on its own, about its own box", () async {
@@ -347,29 +334,6 @@ void main() {
       var back = elementFromJson(jsonDecode(jsonEncode(with_(fading).toJson()))
           as Map<String, dynamic>) as VectorElement;
       expect(back.shapes![1].owns, {ShapeAnimationPart.looping});
-    });
-
-    test("the drawing's keyframe easing paces shapes coming in in turn",
-        () async {
-      VectorElement turned(KeyframeEasing easing) {
-        var e = pair(animation: fading);
-        return e.copyWith(shapes: [
-          e.shapes!.first,
-          e.shapes![1].copyWith(cue: VectorCue.after),
-        ]).withBase(
-            track: ElementTrack([
-          Keyframe(
-              frame: 0,
-              values: const {KeyframeChannel.reveal: 0},
-              easing: easing),
-          const Keyframe(frame: 20, values: {KeyframeChannel.reveal: 1}),
-        ])) as VectorElement;
-      }
-
-      // Eased in, the first shape is less far in a quarter of the way.
-      var linear = await draw(turned(KeyframeEasing.linear), 5);
-      var eased = await draw(turned(KeyframeEasing.easeIn), 5);
-      expect(alphaAt(eased, 120), lessThan(alphaAt(linear, 120)));
     });
 
     test("a shape leaves its own way, or as the drawing does", () async {

@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
@@ -16,34 +18,36 @@ import 'package:provider/provider.dart';
 // canvas_dim_others_test.dart is one point of an argument taking the light
 // as it arrives, and the points before it stepping back to let it.
 
-/// _arriving is a shape that fades in from [from] over ten frames.
-ShapeElement _arriving(String id, int from, {int? leaves}) => ShapeElement(
-      ElementBase(
-          id: id,
-          track: ElementTrack([
-            Keyframe(frame: from, values: const {KeyframeChannel.reveal: 0}),
-            Keyframe(
-                frame: from + 10, values: const {KeyframeChannel.reveal: 1}),
-            if (leaves != null) ...[
-              Keyframe(frame: leaves, values: const {KeyframeChannel.close: 0}),
-              Keyframe(
-                  frame: leaves + 10, values: const {KeyframeChannel.close: 1}),
-            ],
-          ])),
-      animation: const ElementAnimation(
-          preset: ElementAnimationPreset.fadeIn,
-          exit: ElementAnimationPreset.fadeIn),
-    );
+/// _arriving is a shape that fades in from [from] over ten frames, by its
+/// own arrival clip -- and out from [leaves], if it is given.
+CanvasElement _arriving(String id, int from, {int? leaves}) {
+  CanvasElement e = ShapeElement(
+    ElementBase(id: id),
+    animation: const ElementAnimation(
+        preset: ElementAnimationPreset.fadeIn,
+        exit: ElementAnimationPreset.fadeIn),
+  );
+  e = withOwnSpan(e, MotionKind.arrive, from, from + 10, _rate);
+  if (leaves != null) {
+    e = withOwnSpan(e, MotionKind.leave, leaves, leaves + 10, _rate);
+  }
+  return e;
+}
 
-CanvasController _beats() => CanvasController(CanvasDocument(frames: 200)
-    .addElement(_arriving("first", 0))
-    .addElement(_arriving("gone", 0, leaves: 15))
-    .addElement(_arriving("second", 40))
-    .addElement(_arriving("third", 80))
-    .addElement(_arriving("later", 120)));
+/// _rate is the canvas's frame rate, which the arrivals are timed in.
+const _rate = 24;
+
+CanvasController _beats() =>
+    CanvasController(CanvasDocument(frames: 200, frameRate: _rate)
+        .addElement(_arriving("first", 0))
+        .addElement(_arriving("gone", 0, leaves: 15))
+        .addElement(_arriving("second", 40))
+        .addElement(_arriving("third", 80))
+        .addElement(_arriving("later", 120)));
 
 ElementTrack _track(CanvasController c, String id) =>
-    c.document.elements.firstWhere((e) => e.id == id).base.track!;
+    c.document.elements.firstWhere((e) => e.id == id).base.track ??
+    ElementTrack.empty;
 
 void main() {
   setUpAll(() => CanvasSection.openAll = true);
@@ -73,14 +77,14 @@ void main() {
   });
 
   test("its own arrival and exit go on working", () {
-    // The keyframes the dimming lays sit among the arrival's; the arrival
-    // still runs from nothing to all of it before the dimming begins.
+    // The keyframes the dimming lays leave the arrival's clip as it was; the
+    // element is fully there when its arrival ends, before the dimming.
     var c = _beats();
     addTearDown(c.dispose);
     c.dimOthers("third");
-    var second = _track(c, "second");
-    expect(second.at(45).values[KeyframeChannel.reveal], closeTo(0.5, 0.01));
-    expect(second.at(50).opacity, 1);
+    var second = c.document.elementById("second")!;
+    expect(ownSpan(second, MotionKind.arrive, _rate), (40, 10));
+    expect(_track(c, "second").at(50).opacity, 1);
   });
 
   testWidgets("the button in the Animation section dims the others",

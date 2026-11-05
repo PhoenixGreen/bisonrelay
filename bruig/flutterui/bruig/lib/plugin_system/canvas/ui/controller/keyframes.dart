@@ -532,7 +532,7 @@ extension CanvasKeyframes on CanvasController {
     var track = element?.track;
     if (element == null || track == null) return;
 
-    replaceElement(withoutHalfAnimations(element, track.withoutFrame(frame)));
+    replaceElement(withTrackOrNone(element, track.withoutFrame(frame)));
   }
 
   /// setKeyframeEasing writes how the element travels *out* of a keyframe.
@@ -603,56 +603,10 @@ extension CanvasKeyframes on CanvasController {
             : was.copyWith(exit: ElementAnimationPreset.none));
   }
 
-  /// withoutHalfAnimations takes away any arrival or exit that has lost one
-  /// of its two keyframes, and turns the setting back to None. An animation
-  /// is a pair; an orphan left on the timeline would show nothing, and the
-  /// next preset would be laid out against it.
-  CanvasElement withoutHalfAnimations(
-      CanvasElement element, ElementTrack next) {
-    var lost = <String>{};
-    for (var channel in [KeyframeChannel.reveal, KeyframeChannel.close]) {
-      var count = 0;
-      for (var key in next.keys) {
-        if (key.values.containsKey(channel)) count++;
-      }
-      if (count > 0 && count < 2) lost.add(channel);
-    }
-
-    for (var channel in lost) {
-      for (var key in next.keys) {
-        if (!key.values.containsKey(channel)) continue;
-        var without = key.withoutValue(channel);
-        next = without.isRest && without.frame != 0
-            ? next.withoutFrame(key.frame)
-            : next.withKey(without);
-      }
-    }
-
-    var out = element;
-    if (out is TextElement) {
-      out = out.copyWith(
-          animation: out.animation.copyWith(
-        preset: lost.contains(KeyframeChannel.reveal)
-            ? TextAnimationPreset.none
-            : null,
-        exit: lost.contains(KeyframeChannel.close)
-            ? TextAnimationPreset.none
-            : null,
-      ));
-    } else if (out is ChartElement) {
-      out = out.copyWith(
-          animation: out.animation.copyWith(
-        preset: lost.contains(KeyframeChannel.reveal)
-            ? ChartAnimationPreset.none
-            : null,
-        exit: lost.contains(KeyframeChannel.close)
-            ? ChartAnimationPreset.none
-            : null,
-      ));
-    }
-
-    return next.isEmpty
-        ? out.withBase(clearTrack: true)
-        : out.withBase(track: next);
-  }
+  /// withTrackOrNone is [element] keeping [next] as its keyframes -- or
+  /// none at all once [next] is empty, so no empty track is saved.
+  CanvasElement withTrackOrNone(CanvasElement element, ElementTrack next) =>
+      next.isEmpty
+          ? element.withBase(clearTrack: true)
+          : element.withBase(track: next);
 }

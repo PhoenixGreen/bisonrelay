@@ -261,14 +261,10 @@ void _patternLayer(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t,
         _bokeh(canvas, area, s, t);
       case ProceduralStyle.starfield:
         _starfield(canvas, area, s, t);
-      case ProceduralStyle.ledGrid:
-        _ledGrid(canvas, area, s, t);
       case ProceduralStyle.circuit:
         _circuit(canvas, area, s, t);
       case ProceduralStyle.rain:
         _rain(canvas, area, s, t);
-      case ProceduralStyle.symbolField:
-        _symbolField(canvas, area, s, t);
       case ProceduralStyle.blockchain:
         paintBlockchain(canvas, area, s, t);
       case ProceduralStyle.rings:

@@ -503,21 +503,16 @@ class PathElement extends CanvasElement {
                 (json["fade"] as Map).cast<String, dynamic>())
             : null,
         strokeWidth: jsonDouble(json["sw"], 3),
-        // An older file's single "cap", mapped as a line's is.
         cap: json["strokeCap"] is String
             ? LineStrokeCap.fromName(jsonStr(json["strokeCap"]))
-            : json["cap"] is String
-                ? legacyCap(json["cap"]).$1
-                : LineStrokeCap.round,
-        startEnd: json["startEnd"] == null && json["cap"] is String
-            ? legacyCap(json["cap"]).$2
-            : LineEnd.fromName(jsonStr(json["startEnd"])),
+            : LineStrokeCap.round,
+        startEnd: LineEnd.fromName(jsonStr(json["startEnd"])),
         endSize: jsonDouble(json["endSize"], 1),
-        endEnd: json.containsKey("endEnd") || json.containsKey("strokeCap")
+        // The writer leaves the end out when it is the arrow a path starts
+        // with, so no "endEnd" is an arrow.
+        endEnd: json.containsKey("endEnd")
             ? LineEnd.fromName(jsonStr(json["endEnd"]))
-            : json["cap"] is String
-                ? legacyCap(json["cap"]).$3
-                : LineEnd.arrow,
+            : LineEnd.arrow,
         dash: jsonDouble(json["dash"], 0).clamp(0.0, 200.0),
         closed: jsonBool(json["closed"], false),
         guide: jsonBool(json["guide"], false),

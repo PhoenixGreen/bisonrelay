@@ -158,11 +158,7 @@ class Character3dElement extends CanvasElement {
           turn: jsonDouble(json["turn"], 0).clamp(-1.0, 1.0),
           tilt: jsonDouble(json["tilt"], 0).clamp(-0.5, 1.0),
           zoom: jsonDouble(json["zoom"], 1).clamp(0.5, 3.0),
-          // An expression kept before performances is its feeling.
-          performance: CharacterPerformance.fromJson(json["performance"],
-              feeling: json["expression"] is String
-                  ? json["expression"] as String
-                  : null),
+          performance: CharacterPerformance.fromJson(json["performance"]),
           animation: jsonSpec(json["animation"], ElementAnimation.fromJson,
               const ElementAnimation()));
 }

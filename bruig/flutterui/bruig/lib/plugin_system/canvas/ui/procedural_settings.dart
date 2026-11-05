@@ -2141,7 +2141,7 @@ Widget patternStyleDropdown({
       options: [
         for (var f in StyleFamily.values)
           for (var s in ProceduralStyle.values)
-            if (s.family == f && (!s.hidden || s == spec.style)) (s, s.label),
+            if (s.family == f) (s, s.label),
       ],
       groupOf: (s) => s.family.label,
       leading: (s) => ProceduralThumb(styleThumbSpec(s)),

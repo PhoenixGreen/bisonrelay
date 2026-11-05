@@ -36,13 +36,9 @@ const canvasVideoFolder = "Videos";
 /// picture is not. See VectorElement.
 const canvasVectorFolder = "Vectors";
 
-/// canvasModelFolder, canvasCharacterFolder and canvasHumanFolder are where
-/// the old characters kept their imported 3D models, their library and their
-/// sculpted body. Nothing is kept there now, but a library that has them is
-/// not to show them as folders of canvases.
+/// canvasModelFolder is where imported 3D models live -- .glb and .gltf
+/// files. See CanvasMedia.
 const canvasModelFolder = "Models";
-const canvasCharacterFolder = "Characters";
-const canvasHumanFolder = "Human";
 
 /// canvasVoicesFolder, canvasSoundBankFolder and the rest are the folders
 /// things are downloaded to, the first time they are wanted: the voices
@@ -66,8 +62,6 @@ final _appFolders = {
     canvasVideoFolder,
     canvasVectorFolder,
     canvasModelFolder,
-    canvasCharacterFolder,
-    canvasHumanFolder,
     canvasVoicesFolder,
     canvasSoundBankFolder,
     canvasVroidFolder,

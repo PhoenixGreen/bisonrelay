@@ -439,16 +439,9 @@ class TableRule {
 
   factory TableRule.fromJson(Map<String, dynamic> json) => TableRule(
         column: jsonString(json["col"], ""),
-        // Older files wrote a single row number as "row".
-        rows: jsonString(json["rows"],
-            json["row"] is num ? "${(json["row"] as num).toInt()}" : ""),
+        rows: jsonString(json["rows"], ""),
         match: jsonString(json["match"], ""),
-        // Older files wrote "loose" for anywhere.
-        how: json["how"] is String
-            ? TableMatch.fromName(jsonStr(json["how"]))
-            : (jsonBool(json["loose"], false)
-                ? TableMatch.anywhere
-                : TableMatch.cell),
+        how: TableMatch.fromName(jsonStr(json["how"])),
         style: jsonSpec(
             json["style"], TableCellStyle.fromJson, const TableCellStyle()),
       );

@@ -160,14 +160,6 @@ void main() {
       // The expressive voices: no stress, nor a slower stretch mid-line.
       expect(SpeechEngineKind.expressive.cues,
           isNot(anyOf(contains(SpeechCue.stress), contains(SpeechCue.slow))));
-      // A spec from before: the computer's voices are gone, and it opens
-      // on our own; ElevenLabs too, its voice with it.
-      expect(SpeechSpec.fromJson({"engine": "system", "pitch": 3}).engine,
-          SpeechEngineKind.local);
-      var gone = SpeechSpec.fromJson(
-          {"engine": "cloud", "voice": "21m00", "voiceName": "Rachel"});
-      expect((gone.engine, gone.voice, gone.voiceName),
-          (SpeechEngineKind.local, "", ""));
     });
   });
 
@@ -613,15 +605,6 @@ esac
       expect([for (var i = 0; i < 3; i++) back.slot(i)?.assetId],
           ["a.wav", null, "c.wav"]);
       expect((back.chosen, back.slot(2)!.saved), (2, true));
-      // From before there were slots: its takes, A on.
-      var old = SpeechLine.fromJson({
-        "text": "x",
-        "takes": [a.toJson(), c.toJson()],
-        "chosen": 1
-      })!;
-      expect([for (var i = 0; i < 3; i++) old.slot(i)?.assetId],
-          ["a.wav", "c.wav", null]);
-      expect(old.chosen, 1);
       // Said another way, its words the same: its slots stay.
       var typed = scriptLines("[sad] x", [line]);
       expect(typed.single.slot(0)?.assetId, "a.wav");

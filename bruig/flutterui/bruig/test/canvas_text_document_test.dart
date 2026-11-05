@@ -163,7 +163,7 @@ Some **bold** and *italic* and a [link](https://example.com).
       expect(text, "Title", reason: "stripped, not shown");
     });
 
-    test("the looks survive being saved, and an old file still reads", () {
+    test("the looks survive being saved", () {
       var allow = const MarkdownAllow()
           .withLook(MarkdownKind.bold, const MarkdownLook(scale: 1.2))
           .withLook(MarkdownKind.link, const MarkdownLook(on: false));
@@ -171,12 +171,6 @@ Some **bold** and *italic* and a [link](https://example.com).
       expect(back.lookFor(MarkdownKind.bold).scale, 1.2);
       expect(back.allows(MarkdownKind.link), isFalse);
       expect(back.allows(MarkdownKind.bold), isTrue);
-
-      // Saved when this was six switches.
-      var old = MarkdownAllow.fromJson({"b": false, "h2": false});
-      expect(old.allows(MarkdownKind.bold), isFalse);
-      expect(old.allows(MarkdownKind.heading2), isFalse);
-      expect(old.allows(MarkdownKind.heading1), isTrue);
     });
 
     test("it remembers the words the document took over", () {

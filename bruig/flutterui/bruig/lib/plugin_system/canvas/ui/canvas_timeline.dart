@@ -2923,16 +2923,13 @@ class _TimelinePainter extends CustomPainter {
   }
 
   /// _paintBands draws the bar between each pair: translucent, so the ruler's
-  /// ticks under it still show where the animation starts. The entrance and
-  /// the exit are different colours.
+  /// ticks under it still show where the animation starts.
   void _paintBands(Canvas canvas, {required double y}) {
+    var colour = colors.primary;
     for (var band in bands) {
       if (!band.real) continue;
       var from = xFor(band.from);
       var to = xFor(band.to);
-      var colour = band.channel == KeyframeChannel.close
-          ? colors.secondary
-          : colors.primary;
       canvas.drawRRect(
         RRect.fromRectAndRadius(
             Rect.fromLTRB(from, y - 5, to, y + 5), const Radius.circular(5)),
@@ -2986,11 +2983,7 @@ class _TimelinePainter extends CustomPainter {
   static bool _sameBands(List<KeyframeBand> a, List<KeyframeBand> b) {
     if (a.length != b.length) return false;
     for (var i = 0; i < a.length; i++) {
-      if (a[i].from != b[i].from ||
-          a[i].to != b[i].to ||
-          a[i].channel != b[i].channel) {
-        return false;
-      }
+      if (a[i].from != b[i].from || a[i].to != b[i].to) return false;
     }
     return true;
   }

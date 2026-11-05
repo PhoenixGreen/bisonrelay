@@ -31,7 +31,7 @@ import 'canvas_panel_helpers.dart';
 // clicked, and the mask's own settings in the panel.
 
 const _viewport = Size(800, 600);
-const _asset = "picturepicture01";
+const _asset = "0123456789abcdef";
 
 Future<ui.Image> _solid(int w, int h) {
   var pixels = Uint8List(w * h * 4);

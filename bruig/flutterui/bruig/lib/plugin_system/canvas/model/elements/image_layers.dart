@@ -320,8 +320,7 @@ class ImageLayer {
         if (blend != LayerBlend.normal) "blend": blend.name,
         if (clip) "clip": true,
         if (look case var l?) "look": l.toJson(),
-        // Not "fx": that key is the effects'. fromJson still reads an old
-        // boolean "fx" as flipX.
+        // Not "fx": that key is the effects'.
         if (flipX) "flipX": true,
         if (flipY) "fy": true,
         if (kind == LayerKind.fill) "fill": fill.toJson(),
@@ -358,7 +357,7 @@ class ImageLayer {
       blend: LayerBlend.fromName(jsonStr(json["blend"])),
       clip: jsonBool(json["clip"], false),
       look: look,
-      flipX: jsonBool(json["flipX"], false) || json["fx"] == true,
+      flipX: jsonBool(json["flipX"], false),
       flipY: jsonBool(json["fy"], false),
       fill: PaintSpec.fromJson(json["fill"], const Color(0xFF000000)),
       adjust: jsonSpec(

@@ -7,36 +7,13 @@ import 'package:bruig/plugin_system/canvas/export/mix_render.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 // canvas_sound_tools_test.dart is the timeline's sound tools: a volume
-// envelope on a clip, ducking music under a voice, and the sound a
-// transition carries.
-
-AudioElement _clip(String id, String asset, double length,
-        {int at = 0,
-        String channel = "",
-        List<GainPoint> envelope = const []}) =>
-    AudioElement(ElementBase(id: id, visible: false),
-        clip: MediaClip(
-            timed: true,
-            at: at,
-            volume: 1,
-            channel: channel,
-            channelName: channel,
-            envelope: envelope,
-            playlist: [MediaSource(assetId: asset, length: length)]));
+// envelope, ducking music under a voice, and the sound a transition carries.
 
 void main() {
   group("the envelope", () {
@@ -53,16 +30,6 @@ void main() {
       expect(envelopeAt(dip, 1.5), closeTo(0.6, 1e-9));
       expect(envelopeAt(dip, 2.5), 0.2);
       expect(envelopeAt(dip, 9), 1);
-    });
-
-    test("is a clip's gain, on top of its fades, and is saved", () {
-      var clip = const MediaClip(
-          envelope: dip, playlist: [MediaSource(assetId: "a", length: 10)]);
-      expect(clip.momentAt(2.5)!.gain, closeTo(0.2, 1e-9));
-      var faded = clip.copyWith(fadeIn: 5);
-      expect(faded.momentAt(2.5)!.gain, closeTo(0.1, 1e-9),
-          reason: "half way through a five second fade, and the dip");
-      expect(MediaClip.fromJson(clip.toJson()).envelope, dip);
     });
 
     test("an export plays it, as the mix renders it", () async {
@@ -181,43 +148,5 @@ void main() {
       expect(c.document.transitionSounds, hasLength(2),
           reason: "the default's scene and the one with its own");
     });
-  });
-
-  testWidgets("a sound with a volume shape can be put back to an even level",
-      (tester) async {
-    var doc = CanvasDocument(frameRate: 10, frames: 600, elements: [
-      _clip("song", "s.mp3", 100,
-          channel: "music",
-          envelope: const [GainPoint(1, 1), GainPoint(2, 0.3)]),
-      _clip("vo", "v.mp3", 30, channel: "voice"),
-    ]);
-    var c = CanvasController(doc);
-    addTearDown(c.dispose);
-    c.selectOnly("song");
-    tester.view.physicalSize = const Size(1400, 1600);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child:
-          MaterialApp(home: Scaffold(body: CanvasDesignPanel(controller: c))),
-    ));
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(find.byKey(const ValueKey("soundFit")), findsNothing,
-        reason: "fitting is the timeline's cut and fade");
-    await tester.ensureVisible(find.byKey(const ValueKey("soundEven")));
-    await tester.tap(find.byKey(const ValueKey("soundEven")));
-    await tester.pump(const Duration(milliseconds: 100));
-    var song =
-        c.document.elements.firstWhere((e) => e.id == "song") as AudioElement;
-    expect(song.clip.envelope, isEmpty);
-    expect(find.byKey(const ValueKey("soundTools")), findsNothing,
-        reason: "with nothing to clear, there are no tools");
   });
 }

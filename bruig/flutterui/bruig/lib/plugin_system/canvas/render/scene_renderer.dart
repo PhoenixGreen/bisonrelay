@@ -1196,22 +1196,13 @@ void _paintTextBody(
 }
 
 /// _arrivalFrames is the stretch [e]'s arrival plays over -- the clip
-/// playing it (see revealsIn), or a legacy track's reveal keyframes -- which
-/// its words, layers and shapes are timed against.
+/// playing it (see revealsIn) -- which its words, layers and shapes are
+/// timed against.
 (int?, int?) _arrivalFrames(CanvasElement e, Keyframe pose) {
-  int? from, to;
-  for (var key in e.track?.keys ?? const <Keyframe>[]) {
-    if (!key.values.containsKey(KeyframeChannel.reveal)) continue;
-    from = from == null ? key.frame : math.min(from, key.frame);
-    to = to == null ? key.frame : math.max(to, key.frame);
+  if (pose.values[revealFrom] case var a?) {
+    return (a.round(), (pose.values[revealTo] ?? a).round());
   }
-  if (from == null) {
-    if (pose.values[revealFrom] case var a?) {
-      from = a.round();
-      to = (pose.values[revealTo] ?? a).round();
-    }
-  }
-  return (from, to);
+  return (null, null);
 }
 
 /// _partTimings is where each of [e]'s parts has got to on [frame].
@@ -3048,8 +3039,7 @@ bool _shapeByShape(VectorElement e, Keyframe pose) {
 }
 
 /// _vectorArrival is where a drawing's arrival starts and how many frames
-/// it takes: a legacy track's reveal keyframes (vectorArrivalSpan), else
-/// the stretch _arrivalFrames finds.
+/// it takes: the stretch _arrivalFrames finds.
 (int, int)? _vectorArrival(VectorElement e, Keyframe pose) {
   var (from, to) = _arrivalFrames(e, pose);
   if (from == null || to == null || to <= from) return null;
