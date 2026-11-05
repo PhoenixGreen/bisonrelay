@@ -105,6 +105,7 @@ extension CanvasPlayback on CanvasController {
       _loopCounts.clear();
       _startTimer();
       notifyListeners();
+      if (_frame == 0) _sceneBegins();
       return;
     }
 
@@ -112,6 +113,9 @@ extension CanvasPlayback on CanvasController {
     _loopCounts.clear();
     _startTimer();
     notifyListeners();
+    // From the top, the scene starts: what starts with it starts, as it
+    // will for whoever the canvas is sent to.
+    if (_frame == 0) _sceneBegins();
   }
 
   void _startTimer() {
@@ -292,6 +296,7 @@ extension CanvasPlayback on CanvasController {
       return;
     }
     pause();
+    _triggeredBack();
     var (scene, frame) = from;
     if (scene != _document.at && scene < _document.allScenes.length) {
       goToScene(scene);
@@ -495,6 +500,7 @@ extension CanvasPlayback on CanvasController {
 
   void stop() {
     pause();
+    _triggeredBack();
     stopPreview();
     stopAudio();
     frame = 0;
@@ -556,6 +562,12 @@ extension CanvasPlayback on CanvasController {
       }
       _syncTimeline();
       _notifyPlayhead(turned);
+      // The next scene begun: the last one's elements are not on it, and
+      // what starts with this one starts.
+      if (turned) {
+        _triggeredBack();
+        _sceneBegins();
+      }
       return;
     }
 

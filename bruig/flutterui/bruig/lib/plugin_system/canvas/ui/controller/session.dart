@@ -68,8 +68,44 @@ extension CanvasSession on CanvasController {
         e.base.motion.clips.any((c) => c.triggers.any((t) => t.kind == kind)));
     if (!any) return;
     var at = playing || gaming ? _sessionNow : _sessionStart();
+    var wasOff = {
+      for (var e in _elementsWithClips())
+        if (motionPlayer.isOff(e)) e,
+    };
     motionPlayer.fire(_document, _frame, kind, target, at, value: value);
+    for (var e in _elementsWithClips()) {
+      if (!wasOff.contains(e) && motionPlayer.isOff(e)) _triggeredOff.add(e);
+    }
     _motionStep();
+    notifyListeners();
+  }
+
+  /// _elementsWithClips are the ids of the scene's elements that have clips,
+  /// and of the master's drawn over them.
+  Iterable<String> _elementsWithClips() => [
+        for (var e in [
+          ..._document.elements,
+          if (!_document.editingMaster) ...?_document.masterScene?.elements,
+        ])
+          if (e.base.motion.clips.isNotEmpty) e.id,
+      ];
+
+  /// _sceneBegins is a scene starting under the editor's Play, as it does
+  /// in a published canvas: the clips that start with the scene start. Not
+  /// in a game, which starts its scenes itself (see _gameMotionStart), nor
+  /// while practising a part.
+  void _sceneBegins() {
+    if (gaming || _practice != null) return;
+    fireMotionTrigger(ClipTriggerKind.sceneStarts);
+  }
+
+  /// _triggeredBack puts what triggers took off the timeline back on it.
+  void _triggeredBack() {
+    if (_triggeredOff.isEmpty) return;
+    for (var e in _triggeredOff) {
+      motionPlayer.leave(e);
+    }
+    _triggeredOff.clear();
     notifyListeners();
   }
 
@@ -132,6 +168,7 @@ extension CanvasSession on CanvasController {
     // Elements off their timelines for their slots: back on them.
     var moved = motionPlayer.offTimeline;
     motionPlayer.clear();
+    _triggeredOff.clear();
     if (_offTimeline.isEmpty) {
       if (moved) notifyListeners();
       return;

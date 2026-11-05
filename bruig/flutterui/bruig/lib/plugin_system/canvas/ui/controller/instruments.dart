@@ -97,6 +97,7 @@ extension CanvasInstruments on CanvasController {
     _endWait();
     if (playing) pause();
     motionPlayer.clear();
+    _triggeredOff.clear();
     stopHearing();
     _counterTimer?.cancel();
     _counterTimer = null;

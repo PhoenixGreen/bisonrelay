@@ -146,12 +146,9 @@ class _CanvasFilePlayerState extends State<CanvasFilePlayer> {
     _start(c);
   }
 
-  /// _start plays it, and the clips that start with the scene start.
-  void _start(CanvasController c) {
-    var fromTop = c.frame == 0;
-    c.play();
-    if (fromTop) c.fireMotionTrigger(ClipTriggerKind.sceneStarts);
-  }
+  /// _start plays it: from the top, Play starts the clips that start with
+  /// the scene, as the editor's does.
+  void _start(CanvasController c) => c.play();
 
   /// _key is a key pressed while it plays: the clips that start on it.
   KeyEventResult _key(CanvasController c, KeyEvent e) {

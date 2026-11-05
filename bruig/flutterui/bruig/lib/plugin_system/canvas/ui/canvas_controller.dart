@@ -2756,6 +2756,12 @@ class CanvasController extends ChangeNotifier {
   /// only the slots.
   int _motionPainted = -1;
 
+  /// _triggeredOff are the elements a trigger -- the scene starting, a
+  /// click, a key -- took off their timelines while this Play ran. Stop
+  /// puts them back, so the next Play starts as the canvas does; what was
+  /// launched from a slot stays off until Back, as it always has.
+  final Set<String> _triggeredOff = {};
+
   // ------------------------------------------------------------------------
   // The session view: clips launched live
   // ------------------------------------------------------------------------
