@@ -1069,7 +1069,11 @@ void main() {
       ));
       await tester.pump();
       var chain = find.byKey(const ValueKey("effectsChain"));
-      var tips = find.descendant(of: chain, matching: find.byType(Tooltip));
+      // The EQ's fold arrow: a device's own tooltip, not a meter's.
+      var tips = find.descendant(
+          of: chain,
+          matching: find.byWidgetPredicate(
+              (w) => w is Tooltip && w.message == "Fold Channel EQ"));
       expect(tips, findsWidgets);
       var mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       await mouse.addPointer(location: Offset.zero);
@@ -1141,9 +1145,11 @@ void main() {
         ),
       ));
       await tester.pump();
+      // The EQ's fold arrow: a device's own tooltip, not a meter's.
       var tips = find.descendant(
           of: find.byKey(const ValueKey("effectsChain")),
-          matching: find.byType(Tooltip));
+          matching: find.byWidgetPredicate(
+              (w) => w is Tooltip && w.message == "Fold Channel EQ"));
       var mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       await mouse.addPointer(location: Offset.zero);
       addTearDown(mouse.removePointer);

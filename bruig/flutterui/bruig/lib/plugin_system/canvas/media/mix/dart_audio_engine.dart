@@ -565,6 +565,23 @@ class DartAudioEngine implements AudioEngine {
   }
 
   @override
+  List<(double, double)> deviceLevels(String channel) {
+    if (!_remote) {
+      core.graph.tapped.add(channel);
+      return core.graph.tapsOf(channel);
+    }
+    _watch("taps", channel);
+    return _snap.taps[channel] ?? const [];
+  }
+
+  @override
+  double reduction(String channel) {
+    if (!_remote) return core.graph.reductionOf(channel);
+    _watch("taps", channel);
+    return _snap.reductions[channel] ?? 0;
+  }
+
+  @override
   Float32List? spectrum([String? channel]) {
     if (!_remote) return core.spectrum(channel);
     _watch("spectrum", channel);

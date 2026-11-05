@@ -411,6 +411,14 @@ class AudioRuntime extends ChangeNotifier {
   (double, double) levels([String? channel]) =>
       _started ? engine.levels(channel) : (0, 0);
 
+  /// deviceLevels is [channel]'s levels at each step of its strip -- see
+  /// AudioEngine.deviceLevels.
+  List<(double, double)> deviceLevels(String channel) =>
+      _started ? engine.deviceLevels(channel) : const [];
+
+  /// reduction is [channel]'s compressor's reduction now, in decibels.
+  double reduction(String channel) => _started ? engine.reduction(channel) : 0;
+
   /// spectrum is what [channel], or the master, is playing now -- see
   /// AudioEngine.spectrum.
   Float32List? spectrum([String? channel]) =>

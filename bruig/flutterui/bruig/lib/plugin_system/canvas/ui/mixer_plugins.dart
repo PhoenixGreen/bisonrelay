@@ -89,6 +89,65 @@ class DeviceSkin {
       );
 }
 
+/// DeviceTier is how much a device shows at the height the chain gives it:
+/// everything when tall, less as the panel is made shorter -- the knobs on
+/// one row, then only a line saying what it is set to. See DeviceFrame.
+enum DeviceTier {
+  large,
+  medium,
+  small,
+  strip;
+
+  static DeviceTier of(double height) => height > 300
+      ? large
+      : height > 205
+          ? medium
+          : height > 120
+              ? small
+              : strip;
+}
+
+/// deviceGroupLook is a family of devices' mark: its icon in a device's bar
+/// and the colour of the stripe along its top.
+(IconData, Color) deviceGroupLook(DeviceGroup group) => switch (group) {
+      DeviceGroup.space => (Icons.blur_circular, const Color(0xFF6FA8E8)),
+      DeviceGroup.dynamics => (Icons.compress, const Color(0xFFE0A84F)),
+      DeviceGroup.filter => (
+          Icons.filter_alt_outlined,
+          const Color(0xFF5CC6B8)
+        ),
+      DeviceGroup.modulation => (Icons.waves, const Color(0xFFB98AE8)),
+      DeviceGroup.drive => (Icons.whatshot_outlined, const Color(0xFFE07A5F)),
+      DeviceGroup.pitch => (Icons.music_note, const Color(0xFFE57AA8)),
+      DeviceGroup.utility => (Icons.tune, const Color(0xFFA7A3B8)),
+    };
+
+/// deviceMoveButtons are the arrows in a device's bar that move it a place
+/// along strip [owner]'s chain, keyed deviceLeft-[index] and
+/// deviceRight-[index]; an arrow that has nowhere to go is greyed out.
+List<Widget> deviceMoveButtons(
+    CanvasController c, String owner, int index, Color ink) {
+  var devices = c.devicesOf(owner);
+  if (index >= devices.length || devices.length < 2) return const [];
+  var id = deviceIdAt(devices, index), name = devices[index].kind.label;
+  Widget arrow(int by, IconData icon, String side) => IconButton(
+        key: ValueKey("device${by < 0 ? "Left" : "Right"}-$index"),
+        tooltip: "Move the ${name.toLowerCase()} $side",
+        iconSize: 14,
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+        padding: EdgeInsets.zero,
+        icon: Icon(icon, color: ink),
+        onPressed: index + by < 0 || index + by >= devices.length
+            ? null
+            : () => c.moveDevice(owner, id, by),
+      );
+  return [
+    arrow(-1, Icons.chevron_left, "left"),
+    arrow(1, Icons.chevron_right, "right"),
+  ];
+}
+
 /// DeviceFrame is one device in the chain: a bar along the top with its
 /// fold arrow, its power switch and its name, and under it the device -- or,
 /// folded, its name down the side and [folded], a meter or a reading.
@@ -116,6 +175,22 @@ class DeviceFrame extends StatelessWidget {
   final Widget foldedBody;
   final List<Widget> actions;
 
+  /// controls, given, lays the device out for its height rather than
+  /// scaling it (see DeviceTier): [display] over its knobs -- the knobs
+  /// [controls] gives for the tier -- with [footer] under them when tall,
+  /// and only [summary] when short. [body] is then not used.
+  final List<Widget> Function(DeviceTier tier)? controls;
+
+  /// display is what the device is doing, drawn over its knobs: it takes
+  /// the height left over.
+  final Widget? display;
+  final List<Widget> footer;
+  final String summary;
+
+  /// icon and accent are its family's mark: see deviceGroupLook.
+  final IconData? icon;
+  final Color? accent;
+
   const DeviceFrame({
     required this.id,
     required this.title,
@@ -131,11 +206,18 @@ class DeviceFrame extends StatelessWidget {
     this.onPower,
     this.powerKey,
     this.actions = const [],
+    this.controls,
+    this.display,
+    this.footer = const [],
+    this.summary = "",
+    this.icon,
+    this.accent,
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (controls != null) return _tiered(context);
     var scale = (height / drawnHeight).clamp(0.5, 1.5);
     var w = folded ? deviceFoldedWidth : width;
     var header = Container(
@@ -215,6 +297,164 @@ class DeviceFrame extends StatelessWidget {
               child: Column(children: [header, Expanded(child: inside)]),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  /// _tiered is the device laid out for [height]: see DeviceTier.
+  Widget _tiered(BuildContext context) {
+    var tier = DeviceTier.of(height);
+    var short = tier == DeviceTier.small || tier == DeviceTier.strip;
+    var barHeight = short ? 24.0 : 28.0;
+    var w = folded
+        ? deviceFoldedWidth
+        : tier == DeviceTier.strip
+            ? math.min(width, 170.0)
+            : width;
+    var header = Container(
+      height: barHeight,
+      color: skin.header,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(children: [
+        Tooltip(
+          message: folded ? "Open $title" : "Fold $title",
+          child: GestureDetector(
+            key: ValueKey("deviceFold-$id"),
+            behavior: HitTestBehavior.opaque,
+            onTap: onFold,
+            child: SizedBox(
+              width: 20,
+              height: barHeight,
+              child: Icon(folded ? Icons.arrow_right : Icons.arrow_drop_down,
+                  size: 18, color: headerInk),
+            ),
+          ),
+        ),
+        if (on != null) ...[
+          _Power(on: on!, onPower: onPower!, powerKey: powerKey),
+          const SizedBox(width: 6),
+        ],
+        if (!folded && icon != null && tier != DeviceTier.strip) ...[
+          Icon(icon, size: 14, color: accent ?? headerInk),
+          const SizedBox(width: 5),
+        ],
+        if (!folded)
+          Expanded(
+            child: Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: short ? 11 : 12,
+                    fontWeight: FontWeight.w600,
+                    color: headerInk)),
+          ),
+        // A strip is too narrow for its buttons: its ⋯ and the chain's
+        // arrows are for a taller panel.
+        if (!folded && tier != DeviceTier.strip) ...actions,
+      ]),
+    );
+    Widget inside;
+    if (folded) {
+      inside = Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        RotatedBox(
+          quarterTurns: 3,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: skin.ink)),
+          ),
+        ),
+        Expanded(
+            child: Padding(
+                padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
+                child: foldedBody)),
+      ]);
+    } else if (tier == DeviceTier.strip) {
+      inside = Padding(
+        key: ValueKey("deviceSummary-$id"),
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+        child: Text(summary,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                fontSize: 10.5,
+                height: 1.35,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                color: skin.ink)),
+      );
+    } else {
+      var knobs = controls!(tier);
+      var row = tier == DeviceTier.small
+          ? SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                for (var (i, k) in knobs.indexed) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  k,
+                ],
+              ]),
+            )
+          : Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 12,
+              runSpacing: 8,
+              children: knobs);
+      inside = LayoutBuilder(builder: (context, box) {
+        // The knobs, as much of them as fits under the display's least;
+        // they scroll rather than spill where even that is too much.
+        var most = math.max(0.0, box.maxHeight - (display == null ? 0 : 40));
+        var below = ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: most),
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(6, short ? 4 : 8, 6, short ? 4 : 6),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                row,
+                if (tier == DeviceTier.large && footer.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(children: footer),
+                ],
+              ]),
+            ),
+          ),
+        );
+        return Column(children: [
+          if (display != null)
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(7, short ? 5 : 7, 7, 0),
+                child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6), child: display),
+              ),
+            ),
+          below,
+          if (display == null) const Spacer(),
+        ]);
+      });
+    }
+    return SizedBox(
+      key: ValueKey("device-$id"),
+      width: w,
+      height: height,
+      child: Container(
+        decoration: skin.body,
+        foregroundDecoration: BoxDecoration(
+            border: Border.all(color: Colors.black38),
+            borderRadius: BorderRadius.circular(6)),
+        clipBehavior: Clip.antiAlias,
+        child: Material(
+          type: MaterialType.transparency,
+          child: Column(children: [
+            if (accent != null && !folded) Container(height: 2, color: accent),
+            header,
+            Expanded(child: inside),
+          ]),
         ),
       ),
     );
@@ -1214,8 +1454,18 @@ class _CompDeviceState extends State<CompDevice>
   void tick() {
     _input = strip.levelDb;
     var comp = strip.comp;
-    var reduction =
-        comp.on && _input > -60 ? _input - comp.reducedDb(_input) : 0.0;
+    // What the compressor is really taking off, from an engine that can
+    // measure inside a strip; worked out from the strip's level otherwise.
+    var channel = widget.channel;
+    var measured =
+        channel != null && widget.controller.deviceLevels(channel).isNotEmpty;
+    var reduction = !comp.on
+        ? 0.0
+        : measured
+            ? widget.controller.reduction(channel)
+            : _input > -60
+                ? _input - comp.reducedDb(_input)
+                : 0.0;
     _needle += (reduction - _needle) * 0.35;
   }
 
@@ -1465,9 +1715,14 @@ class _Knob extends StatelessWidget {
   final bool automated;
   final bool held;
 
+  /// reading is whether its value is written under it: not on a short
+  /// device, where the room is the knob's.
+  final bool reading;
+
   const _Knob({
     this.automated = false,
     this.held = false,
+    this.reading = true,
     required this.label,
     required this.text,
     required this.value,
@@ -1511,12 +1766,14 @@ class _Knob extends StatelessWidget {
                 size: Size.square(size),
                 painter: _KnobFace(range.toUnit(value))),
           ),
-          const SizedBox(height: 4),
-          Text(text,
-              style: const TextStyle(
-                  fontSize: 10,
-                  fontFeatures: [FontFeature.tabularFigures()],
-                  color: _silverInk)),
+          if (reading) ...[
+            const SizedBox(height: 4),
+            Text(text,
+                style: const TextStyle(
+                    fontSize: 10,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                    color: _silverInk)),
+          ],
         ],
       );
 }
@@ -2358,10 +2615,41 @@ class ParamDevice extends StatelessWidget {
         if (l.points.isNotEmpty) l.target
     };
     var held = controller.overridden[owner] ?? const <String>{};
-    String target(DeviceParam p) =>
-        AutomationTarget.deviceSetting(index, device.kind, p.id).id;
+    String target(DeviceParam p) => AutomationTarget.deviceSetting(
+            deviceIdAt(devices, index), device.kind, p.id)
+        .id;
+    var (icon, accent) = deviceGroupLook(device.kind.group);
+    // Only a channel's strip measures between its devices: see
+    // CanvasController.deviceLevels.
+    var isChannel = controller.timelineChannels.any((c) => c.key == owner);
+    List<Widget> knobs(DeviceTier tier) => [
+          for (var p in params)
+            if (paramShown(device, p))
+              _Knob(
+                key: ValueKey("device-$index-${p.id}"),
+                automated: automated.contains(target(p)),
+                held: held.contains(target(p)),
+                label: p.label,
+                text: p.reading(device.value(p.id)),
+                value: device.value(p.id),
+                initial: p.initial,
+                range: _range(p),
+                size: switch (tier) {
+                  DeviceTier.large => 46,
+                  DeviceTier.medium => 38,
+                  _ => 28,
+                },
+                reading: tier != DeviceTier.small,
+                onChanged: (v, {transient = false}) =>
+                    write(device.withValue(p.id, v), transient: transient),
+                onCommit: controller.endInteraction,
+              ),
+          if (device.kind == DeviceKind.vocoder &&
+              device.value("carrier").round() == carrierFromChannel)
+            _carrierChannel(context, device, write),
+        ];
     return DeviceFrame(
-      id: "dev$index",
+      id: deviceKey(deviceIdAt(devices, index)),
       title: device.kind.label,
       skin: DeviceSkin.silver,
       on: device.on,
@@ -2369,9 +2657,10 @@ class ParamDevice extends StatelessWidget {
       powerKey: ValueKey("devicePower-$index"),
       folded: folded,
       onFold: onFold,
-      width: 24.0 + 72 * columns,
+      width: math.max(220.0, 24.0 + 72 * columns),
       height: height,
       actions: [
+        ...deviceMoveButtons(controller, owner, index, _headerInkLight),
         IconButton(
           key: ValueKey("deviceRemove-$index"),
           tooltip: "Take the ${device.kind.label.toLowerCase()} out",
@@ -2400,29 +2689,25 @@ class ParamDevice extends StatelessWidget {
           alignment: WrapAlignment.center,
           spacing: 12,
           runSpacing: 8,
-          children: [
-            for (var p in params)
-              if (paramShown(device, p))
-                _Knob(
-                  key: ValueKey("device-$index-${p.id}"),
-                  automated: automated.contains(target(p)),
-                  held: held.contains(target(p)),
-                  label: p.label,
-                  text: p.reading(device.value(p.id)),
-                  value: device.value(p.id),
-                  initial: p.initial,
-                  range: _range(p),
-                  size: 46,
-                  onChanged: (v, {transient = false}) =>
-                      write(device.withValue(p.id, v), transient: transient),
-                  onCommit: controller.endInteraction,
-                ),
-            if (device.kind == DeviceKind.vocoder &&
-                device.value("carrier").round() == carrierFromChannel)
-              _carrierChannel(context, device, write),
-          ],
+          children: knobs(DeviceTier.large),
         ),
       ),
+      // Laid out for its height: its levels over its knobs.
+      controls: knobs,
+      display: isChannel
+          ? DeviceLevels(
+              key: ValueKey("deviceLevels-$index"),
+              controller: controller,
+              channel: owner,
+              index: index,
+              accent: accent)
+          : null,
+      summary: [
+        for (var p in params.where((p) => paramShown(device, p)).take(2))
+          "${p.label} ${p.reading(device.value(p.id))}"
+      ].join(" · "),
+      icon: icon,
+      accent: accent,
     );
   }
 
@@ -2595,7 +2880,8 @@ class AddDeviceSlot extends StatelessWidget {
                             .setDevicesOf(owner, [...now, MixDevice(kind)]);
                         controller.endInteraction();
                         controller.openEffects(owner,
-                            device: "dev${now.length}");
+                            device: deviceKey(deviceIdAt(
+                                controller.devicesOf(owner), now.length)));
                       },
                       child: Text(kind.label),
                     ),
@@ -3028,7 +3314,7 @@ class _ListenerDeviceState extends State<ListenerDevice>
     }
 
     return DeviceFrame(
-      id: "dev${widget.index}",
+      id: deviceKey(deviceIdAt(devices, widget.index)),
       title: device.kind.label,
       skin: DeviceSkin.navy,
       on: device.on,
@@ -3039,6 +3325,7 @@ class _ListenerDeviceState extends State<ListenerDevice>
       width: tuner ? 220 : 360,
       height: widget.height,
       actions: [
+        ...deviceMoveButtons(c, widget.owner, widget.index, _eqInk),
         IconButton(
           key: ValueKey("deviceRemove-${widget.index}"),
           tooltip: "Take the ${device.kind.label.toLowerCase()} out",
@@ -3127,4 +3414,135 @@ class _SpectrumPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SpectrumPainter old) => true;
+}
+
+/// DeviceLevels is a device's display where it has no picture of its own:
+/// how loud the sound is going into it and coming out of it, over the last
+/// few seconds, and what it changes the level by. Read between the devices
+/// of [channel]'s strip -- see CanvasController.deviceLevels.
+class DeviceLevels extends StatefulWidget {
+  final CanvasController controller;
+  final String channel;
+  final int index;
+  final Color accent;
+  const DeviceLevels(
+      {required this.controller,
+      required this.channel,
+      required this.index,
+      required this.accent,
+      super.key});
+
+  @override
+  State<DeviceLevels> createState() => _DeviceLevelsState();
+}
+
+class _DeviceLevelsState extends State<DeviceLevels>
+    with SingleTickerProviderStateMixin, _Metered {
+  /// _history is the last few seconds of (in, out), in decibels, oldest
+  /// first.
+  final List<(double, double)> _history = [];
+  static const int _length = 120;
+
+  @override
+  CanvasController get meteredBy => widget.controller;
+
+  @override
+  void tick() {
+    var taps = widget.controller.deviceLevels(widget.channel);
+    var i = widget.index;
+    if (i + 1 >= taps.length) return;
+    double db((double, double) p) => gainToDb(math.max(p.$1, p.$2));
+    _history.add((db(taps[i]), db(taps[i + 1])));
+    if (_history.length > _length) _history.removeAt(0);
+  }
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+        painter: _LevelsPainter(List.of(_history), _length, widget.accent),
+        child: const SizedBox.expand(),
+      );
+}
+
+class _LevelsPainter extends CustomPainter {
+  final List<(double, double)> history;
+  final int length;
+  final Color accent;
+  _LevelsPainter(this.history, this.length, this.accent);
+
+  /// _y is where [db] sits, nought at the top to minus sixty at the bottom.
+  static double _y(double db, double h) =>
+      ((-db) / 60).clamp(0.0, 1.0) * (h - 6) + 3;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var w = size.width, h = size.height;
+    canvas.drawRect(
+        Offset.zero & size, Paint()..color = const Color(0xFF110F22));
+    var grid = Paint()..color = const Color(0xFF221F38);
+    for (var db in [-12.0, -24.0, -36.0, -48.0]) {
+      canvas.drawRect(Rect.fromLTWH(0, _y(db, h), w, 1), grid);
+    }
+    if (history.length < 2) {
+      _label(canvas, "Its levels in and out, while it plays", 6, h - 15,
+          const Color(0xFF8E8A9C));
+      return;
+    }
+    Path line(double Function((double, double)) of) {
+      var p = Path();
+      for (var (i, v) in history.indexed) {
+        var x = w - (history.length - 1 - i) * w / (length - 1);
+        var y = _y(of(v), h);
+        i == 0 ? p.moveTo(x, y) : p.lineTo(x, y);
+      }
+      return p;
+    }
+
+    canvas.drawPath(
+        line((v) => v.$1),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2
+          ..color = const Color(0x667FC8F8));
+    canvas.drawPath(
+        line((v) => v.$2),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = accent);
+    var (inDb, outDb) = history.last;
+    var change = inDb <= -80 || outDb <= -80 ? null : outDb - inDb;
+    _label(
+        canvas,
+        change == null
+            ? "—"
+            : "${change >= 0 ? "+" : "−"}${change.abs().toStringAsFixed(1)} dB",
+        6,
+        h - 15,
+        change == null
+            ? const Color(0xFF8E8A9C)
+            : change > 0.05
+                ? const Color(0xFFE2B04A)
+                : change < -0.05
+                    ? const Color(0xFF7FC8F8)
+                    : const Color(0xFFE8E4EE));
+  }
+
+  void _label(Canvas canvas, String text, double x, double y, Color colour) {
+    var tp = TextPainter(
+        text: TextSpan(
+            text: text,
+            style: TextStyle(
+                fontSize: 10,
+                color: colour,
+                fontFeatures: const [FontFeature.tabularFigures()])),
+        textDirection: TextDirection.ltr)
+      ..layout();
+    tp.paint(canvas, Offset(x, y));
+  }
+
+  @override
+  bool shouldRepaint(_LevelsPainter old) =>
+      old.history.length != history.length ||
+      (history.isNotEmpty && old.history.last != history.last) ||
+      old.accent != accent;
 }

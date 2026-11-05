@@ -197,8 +197,7 @@ IconData dockPanelIcon(DockPanel panel) => switch (panel) {
       DockPanel.timeline => Icons.view_timeline_outlined,
       DockPanel.slots => Icons.grid_view_outlined,
       DockPanel.mixer => Icons.tune,
-      DockPanel.animation => Icons.animation,
-      DockPanel.effects => Icons.auto_awesome_outlined,
+      DockPanel.chain => Icons.linear_scale,
     };
 
 /// _where is how a place reads in a sentence.

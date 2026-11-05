@@ -44,6 +44,47 @@ double rms(Float32List x, int from, int to) {
 }
 
 void main() {
+  group("a device's id", () {
+    test("is given by place to a chain that has none, and fresh after", () {
+      var chain = withDeviceIds(const [
+        MixDevice(DeviceKind.gate),
+        MixDevice(DeviceKind.chorus),
+      ]);
+      expect(chain.map((d) => d.id), ["d0", "d1"]);
+      var more = withDeviceIds(
+          [chain[1], const MixDevice(DeviceKind.delay), chain[0]]);
+      expect(more.map((d) => d.id), ["d1", "d2", "d0"]);
+      expect(deviceIndexOf(more, "d0"), 2);
+      expect(deviceIndexOf(more, "d9"), -1);
+    });
+
+    test("is saved, and a chain saved without ids gets them by place", () {
+      var d = const MixDevice(DeviceKind.delay, id: "d7");
+      expect(MixDevice.fromJson(d.toJson())!.id, "d7");
+      var mix = ChannelMix.fromJson({
+        "devices": [
+          {"kind": "gate"},
+          {"kind": "chorus"},
+        ],
+        "automation": [
+          {
+            "target": "device:1:chorus:rate",
+            "points": [
+              [0, 1],
+              [2, 3]
+            ]
+          },
+        ],
+      });
+      expect(mix.devices.map((d) => d.id), ["d0", "d1"]);
+      var lane = AutomationTarget.parse("device:1:chorus:rate")!;
+      expect(lane.device, "d1");
+      expect(lane.on(mix), isTrue,
+          reason: "an old lane still finds its device");
+      expect(lane.id, "device:d1:chorus:rate");
+    });
+  });
+
   group("a lane", () {
     test("goes in straight lines, and stays put past its ends", () {
       const lane = AutomationLane("volume", [(1, -20), (3, 0)]);
@@ -53,7 +94,8 @@ void main() {
       expect(const AutomationLane("volume").valueAt(1), isNull);
       // A choice steps from one point's value to the next.
       var steps = AutomationLane(
-          AutomationTarget.deviceSetting(0, DeviceKind.autoFilter, "type").id,
+          AutomationTarget.deviceSetting("d0", DeviceKind.autoFilter, "type")
+              .id,
           const [(0, 0), (2, 2)]);
       expect(steps.valueAt(1.9), 0);
       expect(steps.valueAt(2), 2);
@@ -84,8 +126,8 @@ void main() {
         AutomationTarget.volume,
         AutomationTarget.pan,
         AutomationTarget.sendTo("returnA"),
-        AutomationTarget.deviceSetting(0, DeviceKind.delay, "time"),
-        AutomationTarget.deviceSetting(0, DeviceKind.vocoder, "formant"),
+        AutomationTarget.deviceSetting("d0", DeviceKind.delay, "time"),
+        AutomationTarget.deviceSetting("d0", DeviceKind.vocoder, "formant"),
       ];
       for (var t in targets) {
         expect(AutomationTarget.parse(t.id)!.id, t.id);
@@ -110,7 +152,7 @@ void main() {
         const AutomationLane("pan", [(0, -1)]),
         const AutomationLane("send:returnB", [(0, -60), (2, 0)]),
         AutomationLane(
-            AutomationTarget.deviceSetting(0, DeviceKind.delay, "time").id,
+            AutomationTarget.deviceSetting("d0", DeviceKind.delay, "time").id,
             const [(0, 100), (2, 500)]),
       ]);
       var at = automatedAt(mix, 1);
@@ -261,7 +303,8 @@ void main() {
 
     test("a device's knobs show its lane, and taking it out takes the lane",
         () {
-      var d = AutomationTarget.deviceSetting(1, DeviceKind.chorus, "rate").id;
+      var d =
+          AutomationTarget.deviceSetting("d1", DeviceKind.chorus, "rate").id;
       c.setChannelMix(
           channel(),
           channel().mix.copyWith(devices: const [
@@ -272,13 +315,42 @@ void main() {
           ]));
       c.frame = 30;
       expect(c.devicesOf("a")[1].value("rate"), closeTo(2, 1e-9));
-      // The gate taken out: the chorus is first now, and so is its lane.
+      // The gate taken out: the chorus is first now, and its lane follows
+      // it by its id.
       c.setDevicesOf("a", [c.devicesOf("a")[1]]);
       expect(channel().mix.devices.single.kind, DeviceKind.chorus);
       expect(channel().mix.devices.single.value("rate"), 0.8,
           reason: "its own setting, not the lane's");
-      expect(channel().mix.automation.single.target,
-          AutomationTarget.deviceSetting(0, DeviceKind.chorus, "rate").id);
+      expect(channel().mix.automation.single.target, d);
+      expect(c.devicesOf("a").single.value("rate"), closeTo(2, 1e-9),
+          reason: "the lane still moves it");
+    });
+
+    test("a device put in another place takes its lane and settings", () {
+      var rate =
+          AutomationTarget.deviceSetting("d1", DeviceKind.chorus, "rate").id;
+      c.setChannelMix(
+          channel(),
+          channel().mix.copyWith(devices: const [
+            MixDevice(DeviceKind.gate, values: {"threshold": -30}),
+            MixDevice(DeviceKind.chorus),
+          ], automation: [
+            AutomationLane(rate, const [(0, 1), (2, 3)]),
+          ]));
+      c.frame = 30;
+      var now = c.devicesOf("a");
+      c.setDevicesOf("a", [now[1], now[0]]);
+      var moved = channel().mix.devices;
+      expect(moved.map((d) => d.kind), [DeviceKind.chorus, DeviceKind.gate]);
+      expect(moved.map((d) => d.id), ["d1", "d0"]);
+      expect(moved[1].value("threshold"), -30);
+      expect(channel().mix.automation.single.target, rate);
+      expect(c.devicesOf("a")[0].value("rate"), closeTo(2, 1e-9),
+          reason: "the lane moved with the chorus");
+      // One put on after: an id none of them has had.
+      c.setDevicesOf(
+          "a", [...c.devicesOf("a"), const MixDevice(DeviceKind.delay)]);
+      expect(channel().mix.devices.last.id, "d2");
     });
   });
 

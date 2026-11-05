@@ -212,6 +212,17 @@ abstract class AudioEngine {
   /// asking for it is what turns the measuring on.
   (double, double) levels([String? channel]);
 
+  /// deviceLevels is how loud channel [channel] is at each step of its
+  /// strip right now, left and right, nought to one: coming in, after each
+  /// device in order, then after its EQ and compressor in the order they
+  /// run -- the meters between devices. Empty from an engine that cannot
+  /// measure inside a strip. Asking is what turns the measuring on.
+  List<(double, double)> deviceLevels(String channel);
+
+  /// reduction is how many decibels [channel]'s compressor is taking off
+  /// right now, or 0: none, or an engine that cannot say.
+  double reduction(String channel);
+
   /// spectrum is what [channel] -- or the master -- is playing now, as 256
   /// magnitudes from the lowest frequency to half the rate, or null where
   /// none can be had. For the EQ to draw what it is shaping.
@@ -636,6 +647,14 @@ class SoLoudAudioEngine implements AudioEngine {
       return null;
     }
   }
+
+  /// deviceLevels: SoLoud runs a strip's filters as one, so there are no
+  /// steps to measure between.
+  @override
+  List<(double, double)> deviceLevels(String channel) => const [];
+
+  @override
+  double reduction(String channel) => 0;
 
   @override
   (double, double) levels([String? channel]) {

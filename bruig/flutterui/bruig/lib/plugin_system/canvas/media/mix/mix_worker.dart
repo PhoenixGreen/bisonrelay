@@ -36,8 +36,14 @@ class MixSnapshot {
   final Map<String, Float32List?> spectra;
   final Map<String, (double, double)?> pitches;
 
+  /// taps are each watched channel's levels at each step of its strip, and
+  /// reductions its compressor's: the meters between devices.
+  final Map<String, List<(double, double)>> taps;
+  final Map<String, double> reductions;
+
   const MixSnapshot(this.at, this.ahead, this.load, this.voices, this.levels,
-      this.spectra, this.pitches);
+      this.spectra, this.pitches,
+      {this.taps = const {}, this.reductions = const {}});
 
   static const empty = MixSnapshot(0, 0, 0, {}, {}, {}, {});
 }
@@ -106,6 +112,9 @@ class _Worker {
   final Map<int, CoreVoice> voices = {};
   final Map<String, (CoreVoice, _Live)> live = {};
   final Set<String> watchLevels = {}, watchSpectra = {}, watchPitches = {};
+
+  /// watchTaps are the channels whose meters between devices are on screen.
+  final Set<String> watchTaps = {};
   String? fontPath;
   SoundFont? _font;
   bool _fontTried = false;
@@ -250,6 +259,8 @@ class _Worker {
               null => null,
             }
         },
+        taps: {for (var k in watchTaps) k: core.graph.tapsOf(k)},
+        reductions: {for (var k in watchTaps) k: core.graph.reductionOf(k)},
       ),
     ]);
     // Voices that have ended are forgotten once reported.
@@ -355,6 +366,9 @@ class _Worker {
             watchSpectra.add(key);
           case "pitch":
             watchPitches.add(key);
+          case "taps":
+            watchTaps.add(key);
+            core.graph.tapped.add(key);
         }
       case "noteOn":
         var channel = m[1] as String;

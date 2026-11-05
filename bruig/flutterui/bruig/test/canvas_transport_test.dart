@@ -288,7 +288,7 @@ void main() {
         "timingMenu",
         "markerMenu",
         "playBarSettings",
-        "effectsToggle",
+        "chainToggle",
         "mixerToggle",
       ]) {
         expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
@@ -304,7 +304,7 @@ void main() {
       expect(within("transportPosition", "0:08.750"), findsOneWidget);
       // The views say what they are.
       expect(within("mixerToggle", "Mixer"), findsOneWidget);
-      expect(within("effectsToggle", "Effects"), findsOneWidget);
+      expect(within("chainToggle", "Chain"), findsOneWidget);
 
       // The readout's menu: tempo, metre, quantise -- and no frames.
       await openTiming(tester);

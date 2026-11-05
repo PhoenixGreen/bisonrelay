@@ -76,6 +76,9 @@ class Compressor {
   final double _attack, _release, _makeup;
   double _reduction = 0;
 
+  /// reductionDb is how many decibels it is taking off now: its meter.
+  double get reductionDb => _reduction;
+
   Compressor(this.d, {double sampleRate = 48000})
       : _attack = _coefficient(d.attackMs, sampleRate),
         _release = _coefficient(d.releaseMs, sampleRate),
@@ -159,13 +162,48 @@ class StripProcessor {
   /// _gl and _gr are the levels the last block ended on (see [level]).
   double _gl, _gr;
 
-  StripProcessor(ChannelMix mix)
+  /// tapping is whether shape notes [taps]: on while a chain's meters
+  /// between devices are on screen, as measuring costs a pass per step.
+  bool tapping = false;
+
+  /// taps are the peaks, left and right, at each step of the last block's
+  /// shape: coming in, after each device in order (an off or a listening
+  /// device passes it on as it was), then after the EQ and the compressor
+  /// in the order they ran. Empty when not [tapping], or muted.
+  List<(double, double)> taps = const [];
+
+  /// StripProcessor runs [mix]. With [carry], the strip it replaces, a
+  /// device of the same id, kind and source keeps running -- so a chain put
+  /// in another order keeps its delays' and reverbs' tails.
+  StripProcessor(ChannelMix mix, {StripProcessor? carry})
       : _mix = mix,
         _eq = EqProcessor(mix.eq),
         _comp = mix.comp.on ? Compressor(mix.comp) : null,
-        _chain = [for (var d in mix.devices) DeviceProcessor.of(d)],
+        _chain = [
+          for (var (i, d) in mix.devices.indexed)
+            _carried(carry, deviceIdAt(mix.devices, i), d) ??
+                DeviceProcessor.of(d)
+        ],
         _gl = mix.gains.$1,
-        _gr = mix.gains.$2;
+        _gr = mix.gains.$2 {
+    tapping = carry?.tapping ?? false;
+  }
+
+  static DeviceProcessor? _carried(
+      StripProcessor? was, String id, MixDevice now) {
+    if (was == null || !now.on) return null;
+    var j = deviceIndexOf(was._mix.devices, id);
+    if (j < 0 || j >= was._chain.length) return null;
+    var then = was._mix.devices[j], running = was._chain[j];
+    if (running == null || !then.on || then.kind != now.kind) return null;
+    if (then.source != now.source) return null;
+    if (then == now) return running;
+    if (running is Tunable) {
+      (running as Tunable).tune(now);
+      return running;
+    }
+    return null;
+  }
 
   ChannelMix get mix => _mix;
 
@@ -207,16 +245,23 @@ class StripProcessor {
       r.fillRange(0, n, 0);
       return;
     }
+    var taps = tapping ? <(double, double)>[blockPeaks(l, r, n)] : null;
     for (var d in _chain) {
       d?.process(l, r, n);
+      taps?.add(blockPeaks(l, r, n));
     }
     if (_mix.compFirst) {
       _comp?.process(l, r, n);
+      taps?.add(blockPeaks(l, r, n));
       _eq.process(l, r, n);
+      taps?.add(blockPeaks(l, r, n));
     } else {
       _eq.process(l, r, n);
+      taps?.add(blockPeaks(l, r, n));
       _comp?.process(l, r, n);
+      taps?.add(blockPeaks(l, r, n));
     }
+    this.taps = taps ?? const [];
   }
 
   /// level is the fader and balance, ramped from the last block's over this
@@ -236,6 +281,17 @@ class StripProcessor {
     _gl = gl;
     _gr = gr;
   }
+}
+
+/// blockPeaks is the loudest sample of each side of a block, nought to one.
+(double, double) blockPeaks(Float32List l, Float32List r, int n) {
+  var pl = 0.0, pr = 0.0;
+  for (var i = 0; i < n; i++) {
+    var a = l[i].abs(), b = r[i].abs();
+    if (a > pl) pl = a;
+    if (b > pr) pr = b;
+  }
+  return (math.min(pl, 1.0), math.min(pr, 1.0));
 }
 
 /// Tunable is a device that takes new settings without losing its state (a

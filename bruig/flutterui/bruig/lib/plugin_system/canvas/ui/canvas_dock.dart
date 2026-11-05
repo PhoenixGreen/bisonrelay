@@ -2,10 +2,10 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
-import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
+import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/dock_switcher.dart';
 import 'package:bruig/plugin_system/canvas/ui/panel_heights.dart';
 import 'package:bruig/plugin_system/canvas/ui/play_bar.dart';
@@ -109,7 +109,7 @@ class CanvasDockState extends State<CanvasDock> {
   double _panelLeast(DockPanel panel) => switch (panel) {
         DockPanel.timeline || DockPanel.slots => timelineRowsLeast,
         DockPanel.mixer => _mixerLeast(),
-        DockPanel.animation || DockPanel.effects => effectsMinHeight,
+        DockPanel.chain => effectsMinHeight,
       };
 
   /// _open are the panels showing in [row].
@@ -376,16 +376,10 @@ class CanvasDockState extends State<CanvasDock> {
             onResize: resize,
             onClose: () => controller.mixerOpen = false,
           ),
-        DockPanel.animation => AnimationPanel(
+        DockPanel.chain => ChainPanel(
             controller: controller,
             height: height,
             onResize: resize,
-          ),
-        DockPanel.effects => CanvasMixer.effects(
-            controller: controller,
-            height: height,
-            onResize: resize,
-            onClose: () => controller.effectsOpen = false,
           ),
       },
     );

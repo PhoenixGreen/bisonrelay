@@ -179,31 +179,41 @@ extension CanvasMixing on CanvasController {
         sends.remove(id);
       }
     }
-    // The devices, setting by setting, while the chain is as it was; a
-    // device put on or taken off is the chain the hand made.
-    var devices = next.devices;
-    if (next.devices.length == shown.devices.length &&
-        own.devices.length == shown.devices.length) {
+    // The devices, setting by setting, each found by its id, so a chain
+    // put in another order keeps what each device had; a device put on or
+    // taken off is the chain the hand made.
+    var ownDevices = withDeviceIds(own.devices),
+        shownDevices = withDeviceIds(shown.devices),
+        nextDevices = withDeviceIds(next.devices);
+    var devices = nextDevices;
+    if (nextDevices.length == shownDevices.length &&
+        ownDevices.length == shownDevices.length) {
       devices = [
-        for (var (i, d) in next.devices.indexed)
-          if (d.kind != shown.devices[i].kind || d.kind != own.devices[i].kind)
-            d
-          else
-            _mergedDevice(i, own.devices[i], shown.devices[i], d, moved),
+        for (var d in nextDevices)
+          switch ((
+            deviceIndexOf(ownDevices, d.id),
+            deviceIndexOf(shownDevices, d.id)
+          )) {
+            (var o, var sh)
+                when o >= 0 &&
+                    sh >= 0 &&
+                    d.kind == ownDevices[o].kind &&
+                    d.kind == shownDevices[sh].kind =>
+              _mergedDevice(ownDevices[o], shownDevices[sh], d, moved),
+            _ => d,
+          },
       ];
-    } else if (shown.devices.length == own.devices.length &&
-        next.devices.length == own.devices.length - 1) {
+    } else if (shownDevices.length == ownDevices.length &&
+        nextDevices.length == ownDevices.length - 1) {
       // One taken out: the rest as the channel had them.
-      var gone = 0;
-      while (gone < next.devices.length &&
-          next.devices[gone].kind == own.devices[gone].kind) {
-        gone++;
-      }
-      devices = [...own.devices]..removeAt(gone);
-    } else if (shown.devices.length == own.devices.length &&
-        next.devices.length == own.devices.length + 1) {
+      devices = [
+        for (var d in ownDevices)
+          if (deviceIndexOf(nextDevices, d.id) >= 0) d
+      ];
+    } else if (shownDevices.length == ownDevices.length &&
+        nextDevices.length == ownDevices.length + 1) {
       // One put on the end.
-      devices = [...own.devices, next.devices.last];
+      devices = [...ownDevices, nextDevices.last];
     }
     var lanes = own.automation;
     if (writing) {
@@ -242,45 +252,33 @@ extension CanvasMixing on CanvasController {
   }
 
   /// _lanesAfter is [lanes] once the chain [was] is [now]: a device taken
-  /// out takes its lanes with it, and the lanes of the devices after it
-  /// move up a place with them.
+  /// out takes its lanes with it. The others' lanes follow them by id,
+  /// wherever they now are.
   List<AutomationLane> _lanesAfter(
       List<AutomationLane> lanes, List<MixDevice> was, List<MixDevice> now) {
-    if (now.length != was.length - 1) return lanes;
-    var gone = 0;
-    while (gone < now.length && now[gone].kind == was[gone].kind) {
-      gone++;
-    }
+    var ids = {for (var i = 0; i < now.length; i++) deviceIdAt(now, i)};
     return [
       for (var l in lanes)
-        if (l.what case var w? when w.kind == AutomationKind.device)
-          if (w.device == gone)
-            ...[]
-          else if (w.device > gone)
-            AutomationLane(
-                AutomationTarget.deviceSetting(
-                        w.device - 1, w.deviceKind!, w.param)
-                    .id,
-                l.points)
-          else
-            l
+        if (l.what case var w?
+            when w.kind == AutomationKind.device && !ids.contains(w.device))
+          ...[]
         else
           l,
     ];
   }
 
-  /// _mergedDevice is device [i] as the hand left it: each setting it
+  /// _mergedDevice is a device as the hand left it: each setting it
   /// changed from what was [shown] taken from [next] -- and noted in
   /// [moved] -- the rest the channel's [own]; switched on or off as the
   /// hand left it.
-  MixDevice _mergedDevice(int i, MixDevice own, MixDevice shown, MixDevice next,
-      Set<String> moved) {
+  MixDevice _mergedDevice(
+      MixDevice own, MixDevice shown, MixDevice next, Set<String> moved) {
     var out = MixDevice(own.kind,
-        on: next.on, values: own.values, source: next.source);
+        on: next.on, values: own.values, source: next.source, id: next.id);
     for (var p in next.kind.params) {
       if (next.value(p.id) == shown.value(p.id)) continue;
       out = out.withValue(p.id, next.value(p.id));
-      moved.add(AutomationTarget.deviceSetting(i, next.kind, p.id).id);
+      moved.add(AutomationTarget.deviceSetting(next.id, next.kind, p.id).id);
     }
     return out;
   }
@@ -322,12 +320,16 @@ extension CanvasMixing on CanvasController {
 
   /// devicesOf is strip [key]'s devices -- a return's, or a channel's own --
   /// in order; empty for none, or for a strip that is neither.
+  ///
+  /// Every device has its id (see withDeviceIds), so a chain changed from
+  /// this one -- a device taken out, one put on -- keeps the others' ids.
   List<MixDevice> devicesOf(String key) {
-    if (key == mixerMasterKey) return _document.masterMix.devices;
-    if (returnOf(key) case var r?) return r.devices;
+    if (key == mixerMasterKey)
+      return withDeviceIds(_document.masterMix.devices);
+    if (returnOf(key) case var r?) return withDeviceIds(r.devices);
     // As they play now: a setting a lane moves, where the lane has it.
     var lane = timelineChannels.where((c) => c.key == key).firstOrNull;
-    return lane == null ? const [] : mixNow(lane).devices;
+    return lane == null ? const [] : withDeviceIds(mixNow(lane).devices);
   }
 
   /// setDevicesOf changes strip [key]'s devices.
@@ -348,6 +350,20 @@ extension CanvasMixing on CanvasController {
     changeChannelMix(lane, shown, shown.copyWith(devices: devices),
         transient: transient,
         automation: _lanesAfter(lane.mix.automation, shown.devices, devices));
+  }
+
+  /// moveDevice moves device [id] of strip [key] [by] places along its
+  /// chain, minus to the left, as one undo step. Its lanes, its fold and
+  /// its settings go with it: they follow its id, not its place.
+  void moveDevice(String key, String id, int by) {
+    var now = devicesOf(key);
+    var i = deviceIndexOf(now, id), j = i + by;
+    if (i < 0 || j < 0 || j >= now.length || by == 0) return;
+    var next = [...now];
+    next.insert(j, next.removeAt(i));
+    beginInteraction();
+    setDevicesOf(key, next);
+    endInteraction();
   }
 
   /// setReturn changes a return -- its name, its devices, its strip.
@@ -390,6 +406,14 @@ extension CanvasMixing on CanvasController {
   /// none -- is coming out now, for the meters.
   (double, double) levels([String? channel]) =>
       _audio?.levels(channel) ?? (0, 0);
+
+  /// deviceLevels is channel [channel]'s levels at each step of its strip --
+  /// see AudioEngine.deviceLevels -- for the meters between its devices.
+  List<(double, double)> deviceLevels(String channel) =>
+      _audio?.deviceLevels(channel) ?? const [];
+
+  /// reduction is how many decibels [channel]'s compressor takes off now.
+  double reduction(String channel) => _audio?.reduction(channel) ?? 0;
 
   /// spectrum is what a strip -- by its channel's key, or the master with
   /// none -- is playing now, for the EQ to draw. See AudioEngine.spectrum.

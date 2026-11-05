@@ -25,6 +25,10 @@ const List<ElementKind> _addable = [
   ElementKind.video,
   ElementKind.background,
   ElementKind.player,
+  // A character to animate and dress (in the Character Studio), and a 3D
+  // object, its model then chosen from the library's 3D objects.
+  ElementKind.character3d,
+  ElementKind.object3d,
   ElementKind.path,
   ElementKind.sprite,
   ElementKind.tileMap,

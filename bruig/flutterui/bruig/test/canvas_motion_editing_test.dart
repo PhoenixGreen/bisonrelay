@@ -108,18 +108,17 @@ void main() {
         reason: "a model's own animation stays with it");
   });
 
-  test("the animation and the effects side by side, or by turns in a place",
-      () {
+  test("the animation and the effects are the Chain's two views, by turns", () {
     var c = make();
     addTearDown(c.dispose);
     c.animationOpen = true;
     c.effectsOpen = true;
-    expect((c.animationOpen, c.effectsOpen), (true, true),
-        reason: "the Animation panel on the left, the effects in main");
-    c.moveDockPanel(DockPanel.animation, DockPlace.main);
+    expect((c.animationOpen, c.effectsOpen), (false, true),
+        reason: "one view of the Chain at a time");
+    c.animationOpen = true;
     expect((c.animationOpen, c.effectsOpen), (true, false));
-    c.effectsOpen = true;
-    expect((c.animationOpen, c.effectsOpen), (false, true));
+    expect(c.dockOpen(DockPanel.chain), isTrue);
+    expect(c.chainShowsMotion, isTrue);
   });
 
   test("moved by a clip, its box is where it is drawn", () {

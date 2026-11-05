@@ -7,6 +7,8 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show isStageScene;
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart'
     show modelClipsOnto;
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart'
+    show AssetKind, CanvasLibrary, LibraryAsset;
 import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
@@ -217,8 +219,24 @@ List<Widget> elementSettings(
               section(e, "object3d",
                   icon: Icons.view_in_ar,
                   title: "3D object",
-                  summary: "${e.animations.length} animations of its own",
+                  summary: e.assetId.isEmpty
+                      ? "No model yet"
+                      : "${e.animations.length} animations of its own",
                   children: [
+                    _ModelChoice(
+                      element: e,
+                      onPick: (a) {
+                        begin();
+                        var next =
+                            e.copyWith(assetId: a.id, animations: a.animations);
+                        write(next.withBase(
+                            // Named after its model, unless renamed.
+                            name: e.base.name == "3D object" ? a.name : null,
+                            motion: modelClipsOnto(
+                                e.base.motion, e.id, a.animations)));
+                        commit();
+                      },
+                    ),
                     CanvasControlGroup(
                         label: "Seen",
                         help: "How it is seen in its box. On a 3D stage, "
@@ -508,4 +526,60 @@ Widget _camera3dGroup(
             "tilt", "Tilt", view.pitch, -10, 89, (v) => view.copyWith(pitch: v),
             suffix: "°", decimals: 0),
       ]);
+}
+
+/// _ModelChoice is which of the library's 3D objects a 3D object shows. One
+/// added from the Add panel starts with none, and is given one here.
+class _ModelChoice extends StatefulWidget {
+  final Object3dElement element;
+  final ValueChanged<LibraryAsset> onPick;
+  const _ModelChoice({required this.element, required this.onPick});
+
+  @override
+  State<_ModelChoice> createState() => _ModelChoiceState();
+}
+
+class _ModelChoiceState extends State<_ModelChoice> {
+  late final Future<List<LibraryAsset>> _models =
+      CanvasLibrary.list(kind: AssetKind.model);
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<LibraryAsset>>(
+        future: _models,
+        builder: (context, got) {
+          if (got.connectionState != ConnectionState.done) {
+            return const SizedBox(height: 32);
+          }
+          var models = got.data ?? const <LibraryAsset>[];
+          var now = widget.element.assetId;
+          if (models.isEmpty && now.isEmpty) {
+            return const CanvasHint(
+                "No 3D objects in the library yet. Add a .glb file under "
+                "Assets › 3D objects, then choose it here.",
+                key: ValueKey("object3dNoModels"));
+          }
+          return CanvasControlGroup(
+              label: "Model",
+              help: "Which of the library's 3D objects it shows. Its own "
+                  "animations come with it, as clips in its slots.",
+              children: [
+                CanvasDropdown<String>(
+                  key: const ValueKey("object3dModel"),
+                  label: "Model",
+                  value: now,
+                  width: 200,
+                  options: [
+                    if (now.isEmpty) ("", "None yet"),
+                    if (now.isNotEmpty && !models.any((m) => m.id == now))
+                      (now, "Not in the library"),
+                    for (var m in models) (m.id, m.name),
+                  ],
+                  onChanged: (id) {
+                    var picked = models.where((m) => m.id == id).firstOrNull;
+                    if (picked != null && id != now) widget.onPick(picked);
+                  },
+                ),
+              ]);
+        },
+      );
 }

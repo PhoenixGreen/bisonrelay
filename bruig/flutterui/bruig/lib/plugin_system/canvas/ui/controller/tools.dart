@@ -461,7 +461,7 @@ extension CanvasTools on CanvasController {
     if (state["effects"] == true) _effectsOpen = true;
     if (state["rows"] case bool rows) _rowsShown = rows;
     if (state["slots"] == true) _slotsBeside = true;
-    if (state["animation"] == true) _animationOpen = true;
+    if (state["animation"] == true && !_effectsOpen) _animationOpen = true;
     // As many as fit their places.
     _dockSettle();
     if (state["folded"] case List folded) {
@@ -549,7 +549,11 @@ extension CanvasTools on CanvasController {
   set effectsOpen(bool open) {
     if (open == _effectsOpen) return;
     _effectsOpen = open;
-    if (open) _dockOpening(DockPanel.effects);
+    if (open) {
+      _animationOpen = false;
+      _chainMotion = false;
+      _dockOpening(DockPanel.chain);
+    }
     notifyListeners();
   }
 
@@ -570,7 +574,9 @@ extension CanvasTools on CanvasController {
     }
     _effectsOf = key;
     _effectsOpen = true;
-    _dockOpening(DockPanel.effects);
+    _animationOpen = false;
+    _chainMotion = false;
+    _dockOpening(DockPanel.chain);
     notifyListeners();
   }
 
@@ -640,8 +646,9 @@ extension CanvasTools on CanvasController {
     _clipCursor = 0;
     _effectsOf = channel;
     _effectsOpen = true;
-    // One detail panel: the effects in the Animation panel's place.
+    // One detail panel: the Chain on its sound.
     _animationOpen = false;
+    _chainMotion = false;
     _pianoRollShown = false;
     _clipEditorShown = true;
     // First in the strip: scrolled to.
@@ -1084,8 +1091,9 @@ extension CanvasTools on CanvasController {
     _pianoRoll = PianoRollTarget(channel, row);
     _effectsOf = channel;
     _effectsOpen = true;
-    // One detail panel: the effects in the Animation panel's place.
+    // One detail panel: the Chain on its sound.
     _animationOpen = false;
+    _chainMotion = false;
     _pianoRollShown = true;
     _clipEditorShown = false;
     _effectsFocus = "roll";

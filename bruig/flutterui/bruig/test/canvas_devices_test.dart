@@ -184,6 +184,55 @@ void main() {
       expect(out.last.abs(), lessThan(1e-4));
     });
 
+    test("a strip measures each step, for the meters between devices", () {
+      var g = MixGraph()
+        ..setChannel(
+            "a",
+            const ChannelMix(devices: [
+              MixDevice(DeviceKind.utility, values: {"gain": -12}),
+            ]));
+      expect(g.tapsOf("a"), isEmpty, reason: "nothing measured unasked");
+      g.tapped.add("a");
+      g.begin(512);
+      var (l, r) = g.input("a", 512);
+      l.fillRange(0, 512, 0.5);
+      r.fillRange(0, 512, 0.5);
+      g.finish(Float32List(512), Float32List(512), 512);
+      var taps = g.tapsOf("a");
+      expect(taps, hasLength(1 + 1 + 2), reason: "in, the utility, EQ, comp");
+      expect(taps.first.$1, closeTo(0.5, 1e-6));
+      expect(taps[1].$1, closeTo(0.5 * dbToGain(-12), 1e-3),
+          reason: "after the utility: twelve decibels down");
+      expect(g.reductionOf("a"), 0, reason: "no compressor on");
+    });
+
+    test("a chain put in another order keeps a delay's echoes", () {
+      const delay = MixDevice(DeviceKind.delay,
+          values: {"time": 100, "feedback": 0.5, "mix": 1}, id: "d0");
+      const utility = MixDevice(DeviceKind.utility, id: "d1");
+      var g = MixGraph()
+        ..setChannel("a", const ChannelMix(devices: [delay, utility]));
+      double block(double input) {
+        g.begin(512);
+        var (l, r) = g.input("a", 512);
+        l.fillRange(0, 512, input);
+        r.fillRange(0, 512, input);
+        var out = Float32List(512);
+        g.finish(out, Float32List(512), 512);
+        return out.fold(0.0, (m, x) => math.max(m, x.abs()));
+      }
+
+      block(0.5);
+      g.setChannel("a", const ChannelMix(devices: [utility, delay]));
+      // Silence in: what comes out is the echo of what went in before.
+      var echo = 0.0;
+      for (var i = 0; i < 20; i++) {
+        echo = math.max(echo, block(0));
+      }
+      expect(echo, greaterThan(0.01),
+          reason: "the delay carried across the reorder, still ringing");
+    });
+
     test("the master has its own chain too, before its EQ and glue", () {
       var c =
           CanvasController(const CanvasDocument(), audioEngine: FakeEngine({}));
@@ -208,6 +257,82 @@ void main() {
         g.finish(out, Float32List(512), 512);
       }
       expect(out.last.abs(), lessThan(1e-4));
+    });
+
+    testWidgets(
+        "a device's arrows move it along the chain, its fold going with it",
+        (tester) async {
+      var c = CanvasController(
+          CanvasDocument(frames: 100, elements: [
+            AudioElement(const ElementBase(id: "a", name: "Guitar"),
+                clip: const MediaClip(
+                    playlist: [MediaSource(assetId: "t", length: 2)],
+                    timed: true)),
+          ]),
+          audioEngine: FakeEngine({"t": 2}));
+      c.setDevicesOf("a", const [
+        MixDevice(DeviceKind.gate),
+        MixDevice(DeviceKind.chorus, values: {"rate": 2}),
+      ]);
+      c.foldedDevices.add(deviceKey("d0"));
+      c.openEffects("a");
+      tester.view.physicalSize = const Size(1600, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: ListenableBuilder(
+                    listenable: c,
+                    builder: (context, _) => Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              CanvasMixer.effects(
+                                  controller: c,
+                                  height: 360,
+                                  onResize: (_) {},
+                                  onClose: () {}),
+                            ])))),
+      ));
+      await tester.pump(const Duration(milliseconds: 400));
+      double left(String id) =>
+          tester.getRect(find.byKey(ValueKey("device-${deviceKey(id)}"))).left;
+      expect(left("d0"), lessThan(left("d1")));
+      // The chorus is open, so its arrows show; the first device has
+      // nowhere further left to go.
+      var leftmost =
+          tester.widget<IconButton>(find.byKey(const ValueKey("deviceLeft-1")));
+      expect(leftmost.onPressed, isNotNull);
+      await tester.tap(find.byKey(const ValueKey("deviceLeft-1")));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(c.devicesOf("a").map((d) => d.kind),
+          [DeviceKind.chorus, DeviceKind.gate]);
+      expect(c.devicesOf("a").map((d) => d.id), ["d1", "d0"]);
+      expect(c.devicesOf("a").first.value("rate"), 2);
+      expect(left("d1"), lessThan(left("d0")));
+      expect(c.foldedDevices, contains(deviceKey("d0")),
+          reason: "the fold follows the gate, not its old place");
+      expect(
+          tester
+              .widget<IconButton>(find.byKey(const ValueKey("deviceLeft-0")))
+              .onPressed,
+          isNull);
+      // One step to undo.
+      c.undo();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(c.devicesOf("a").map((d) => d.kind),
+          [DeviceKind.gate, DeviceKind.chorus]);
+      // A meter between each two: in, after each device, after the EQ and
+      // after the compressor.
+      for (var i = 0; i < 5; i++) {
+        expect(find.byKey(ValueKey("junction-$i")), findsOneWidget,
+            reason: "junction $i");
+      }
     });
 
     testWidgets(
@@ -261,7 +386,7 @@ void main() {
       await tester.tap(add);
       await tester.pump(const Duration(milliseconds: 400));
       expect(c.devicesOf("a").single.kind, DeviceKind.chorus);
-      expect(find.byKey(const ValueKey("device-dev0")), findsOneWidget);
+      expect(find.byKey(const ValueKey("device-dev:d0")), findsOneWidget);
       // Its slot on the channel's strip opens it.
       var slot = find.descendant(
           of: find.byKey(const ValueKey("strip-a")),
@@ -272,7 +397,7 @@ void main() {
       await tester.tap(slot);
       await tester.pump(const Duration(milliseconds: 400));
       expect(c.effectsOpen, isTrue);
-      expect(c.effectsFocus, "dev0");
+      expect(c.effectsFocus, "dev:d0");
       // Taken out: from its header's ×, which shows on the dark header --
       c.effectsOpen = true;
       await tester.pump(const Duration(milliseconds: 600));

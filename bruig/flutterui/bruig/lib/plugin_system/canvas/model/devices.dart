@@ -226,12 +226,17 @@ class MixDevice {
   final bool on;
   final Map<String, double> values;
 
+  /// id is the device's own name within its chain, kept when it moves, so
+  /// that a lane or a fold follows the device and not its place: see
+  /// withDeviceIds. "" until the chain is next written.
+  final String id;
+
   /// source is the channel a device takes a second sound from -- a
   /// vocoder's carrier -- by key, or "" for none.
   final String source;
 
   const MixDevice(this.kind,
-      {this.on = true, this.values = const {}, this.source = ""});
+      {this.on = true, this.values = const {}, this.source = "", this.id = ""});
 
   /// sidechain is the channel this device hears beside its own, or null:
   /// a vocoder set to take its carrier from a channel that is chosen.
@@ -255,16 +260,21 @@ class MixDevice {
     return MixDevice(kind,
         on: on,
         values: {...values, id: whole ? v.roundToDouble() : v},
-        source: source);
+        source: source,
+        id: this.id);
   }
 
   MixDevice switched(bool on) =>
-      MixDevice(kind, on: on, values: values, source: source);
+      MixDevice(kind, on: on, values: values, source: source, id: id);
 
   MixDevice withSource(String source) =>
-      MixDevice(kind, on: on, values: values, source: source);
+      MixDevice(kind, on: on, values: values, source: source, id: id);
+
+  MixDevice withId(String id) =>
+      MixDevice(kind, on: on, values: values, source: source, id: id);
 
   Map<String, dynamic> toJson() => {
+        if (id.isNotEmpty) "id": id,
         "kind": kind.name,
         if (!on) "on": false,
         if (values.isNotEmpty) "values": values,
@@ -283,7 +293,8 @@ class MixDevice {
             for (var p in kind.params)
               if (raw[p.id] is num) p.id: jsonDouble(raw[p.id], p.initial),
         },
-        source: json["source"] is String ? json["source"] as String : "");
+        source: json["source"] is String ? json["source"] as String : "",
+        id: json["id"] is String ? json["id"] as String : "");
   }
 
   @override
@@ -292,11 +303,53 @@ class MixDevice {
       other.kind == kind &&
       other.on == on &&
       other.source == source &&
+      other.id == id &&
       other.values.length == values.length &&
       other.values.entries.every((e) => values[e.key] == e.value);
 
   @override
-  int get hashCode => Object.hash(kind, on, source, values.length);
+  int get hashCode => Object.hash(kind, on, source, id, values.length);
+}
+
+/// deviceIdAt is device [i]'s id in [chain]: its own, or "d<i>" for one
+/// that has none yet -- the id withDeviceIds would give it, which is also
+/// how a lane saved before devices had ids, "device:<i>:…", finds it.
+String deviceIdAt(List<MixDevice> chain, int i) =>
+    chain[i].id.isEmpty ? "d$i" : chain[i].id;
+
+/// deviceKey is the mixer's name for the device with [id] -- how a strip
+/// opens it, folds it and scrolls to it -- "dev:<id>", so it follows the
+/// device when the chain is put in another order.
+String deviceKey(String id) => "dev:$id";
+
+/// deviceKeyId is the device id in a deviceKey, or null for another key
+/// ("eq", "speech", "midi0").
+String? deviceKeyId(String key) =>
+    key.startsWith("dev:") && key.length > 4 ? key.substring(4) : null;
+
+/// deviceIndexOf is where the device with [id] is in [chain], or -1.
+int deviceIndexOf(List<MixDevice> chain, String id) {
+  for (var i = 0; i < chain.length; i++) {
+    if (deviceIdAt(chain, i) == id) return i;
+  }
+  return -1;
+}
+
+/// withDeviceIds is [chain] with an id on every device. A chain with none
+/// yet -- one saved before ids -- gets them by place, "d0", "d1"…; a device
+/// added to a chain that has them gets one never used in it, so a lane
+/// left from a device taken out can't land on the new one.
+List<MixDevice> withDeviceIds(List<MixDevice> chain) {
+  if (chain.every((d) => d.id.isNotEmpty)) return chain;
+  if (chain.every((d) => d.id.isEmpty)) {
+    return [for (var (i, d) in chain.indexed) d.withId("d$i")];
+  }
+  var next = 0;
+  for (var d in chain) {
+    var n = d.id.startsWith("d") ? int.tryParse(d.id.substring(1)) : null;
+    if (n != null && n >= next) next = n + 1;
+  }
+  return [for (var d in chain) d.id.isEmpty ? d.withId("d${next++}") : d];
 }
 
 /// ReturnChannel is a return: a channel fed by the others' sends rather than
@@ -325,7 +378,7 @@ class ReturnChannel {
           bool? pre}) =>
       ReturnChannel(id,
           name: name ?? this.name,
-          devices: devices ?? this.devices,
+          devices: devices == null ? this.devices : withDeviceIds(devices),
           mix: mix ?? this.mix,
           pre: pre ?? this.pre);
 
@@ -344,11 +397,11 @@ class ReturnChannel {
     if (id is! String || id.isEmpty) return null;
     return ReturnChannel(id,
         name: json["name"] is String ? json["name"] as String : "",
-        devices: [
+        devices: withDeviceIds([
           if (json["devices"] case List list)
             for (var d in list.take(maxChainDevices))
               if (MixDevice.fromJson(d) case var device?) device,
-        ],
+        ]),
         mix: json["mix"] is Map<String, dynamic>
             ? ChannelMix.fromJson(json["mix"] as Map<String, dynamic>)
             : const ChannelMix(),

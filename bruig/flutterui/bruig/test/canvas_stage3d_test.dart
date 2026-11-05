@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -433,6 +434,24 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text(ElementKind.tileMap.label), findsWidgets);
       expect(find.text(ElementKind.stage.label), findsNothing);
+    });
+
+    testWidgets("Add offers a 3D character and a 3D object", (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var c = CanvasController(const CanvasDocument());
+      addTearDown(c.dispose);
+      tall(tester);
+      await tester.pumpWidget(host(CanvasElementsPanel(controller: c)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(ElementKind.character3d.label));
+      await tester.pump();
+      expect(c.document.elements.last, isA<Character3dElement>());
+      await tester.tap(find.text(ElementKind.object3d.label));
+      await tester.pump();
+      var object = c.document.elements.last as Object3dElement;
+      expect(object.assetId, isEmpty,
+          reason: "its model is chosen in its settings, from the library");
+      expect(tester.takeException(), isNull);
     });
   });
 }

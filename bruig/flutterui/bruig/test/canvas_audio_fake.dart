@@ -118,6 +118,12 @@ class FakeEngine implements AudioEngine {
   @override
   (double, double) levels([String? channel]) => (0.5, 0.5);
 
+  @override
+  List<(double, double)> deviceLevels(String channel) => const [];
+
+  @override
+  double reduction(String channel) => 0;
+
   /// heardPitch is what pitch says a tuner hears.
   PitchReading? heardPitch;
   @override

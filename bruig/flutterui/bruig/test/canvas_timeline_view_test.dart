@@ -147,7 +147,8 @@ void main() {
         (tester) async {
       var c = await show(tester,
           elements: [channel("a", "Music"), channel("b", "Voice")]);
-      var effects = find.byKey(const ValueKey("effectsToggle"));
+      // The Chain, on its sound: the effects.
+      var effects = find.byKey(const ValueKey("chainToggle"));
       var mixer = find.byKey(const ValueKey("mixerToggle"));
       // The mixer with the timeline at the bar's start, the effects with the
       // Animation panel at its end.

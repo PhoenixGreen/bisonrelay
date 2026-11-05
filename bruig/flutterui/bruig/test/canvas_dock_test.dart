@@ -29,22 +29,30 @@ void main() {
       expect(dock.placeOf(DockPanel.timeline), DockPlace.main);
       expect(dock.placeOf(DockPanel.slots), DockPlace.left);
       expect(dock.placeOf(DockPanel.mixer), DockPlace.left);
-      expect(dock.placeOf(DockPanel.effects), DockPlace.main);
-      expect(dock.placeOf(DockPanel.animation), DockPlace.left,
-          reason: "beside the timeline its clips are clicked on");
+      expect(dock.placeOf(DockPanel.chain), DockPlace.main);
+    });
+
+    test("the Effects and Animation panels of before are the Chain", () {
+      expect(DockPanel.fromName("effects"), DockPanel.chain);
+      expect(DockPanel.fromName("animation"), DockPanel.chain);
+      expect(DockPanel.fromName("chain"), DockPanel.chain);
+      var saved = DockLayout.fromJson(jsonDecode(jsonEncode(const DockLayout()
+              .withHome(DockPanel.chain, DockPlace.left)
+              .toJson())
+          .replaceAll('"chain"', '"animation"')));
+      expect(saved.homeOf(DockPanel.chain), DockPlace.left,
+          reason: "a layout saved with the old name keeps its place");
     });
 
     test("one place puts everything in main; above needs three", () {
-      var dock =
-          const DockLayout().withHome(DockPanel.animation, DockPlace.above);
-      expect(dock.placeOf(DockPanel.animation), DockPlace.main,
+      var dock = const DockLayout().withHome(DockPanel.chain, DockPlace.above);
+      expect(dock.placeOf(DockPanel.chain), DockPlace.main,
           reason: "no above with two places");
-      expect(
-          dock.copyWith(places: DockPlaces.three).placeOf(DockPanel.animation),
+      expect(dock.copyWith(places: DockPlaces.three).placeOf(DockPanel.chain),
           DockPlace.above);
       expect(dock.copyWith(places: DockPlaces.one).placeOf(DockPanel.slots),
           DockPlace.main);
-      expect(dock.homeOf(DockPanel.animation), DockPlace.above,
+      expect(dock.homeOf(DockPanel.chain), DockPlace.above,
           reason: "kept for when there is an above again");
     });
 
@@ -86,20 +94,38 @@ void main() {
       expect(c.slotsBeside, isFalse, reason: "the mixer took the left");
       expect(c.rowsShown, isTrue, reason: "main is the timeline's still");
       c.effectsOpen = true;
-      expect(c.rowsShown, isFalse, reason: "the effects took main");
+      expect(c.rowsShown, isFalse, reason: "the Chain took main");
       expect(c.mixerOpen, isTrue);
       c.animationOpen = true;
-      expect(c.mixerOpen, isFalse, reason: "the Animation panel took the left");
+      expect(c.mixerOpen, isTrue,
+          reason: "the Chain keeps main, on its motion");
+      expect(c.effectsOpen, isFalse, reason: "one view at a time");
+      expect(c.chainShowsMotion, isTrue);
+    });
+
+    test("the Chain's button opens it on the view it was last on", () {
+      var c = make();
+      c.animationOpen = true;
+      c.toggleDock(DockPanel.chain);
+      expect(c.dockOpen(DockPanel.chain), isFalse);
+      expect(c.animationOpen || c.effectsOpen, isFalse);
+      c.toggleDock(DockPanel.chain);
+      expect(c.chainShowsMotion, isTrue, reason: "back on its motion");
+      c.showChain(motion: false);
       expect(c.effectsOpen, isTrue);
+      expect(c.animationOpen, isFalse);
+      c.toggleDock(DockPanel.chain);
+      c.toggleDock(DockPanel.chain);
+      expect(c.effectsOpen, isTrue, reason: "back on its sound");
     });
 
     test("moved to another place, it opens there and keeps to it", () {
       var c = make();
       c.dock = c.dock.copyWith(places: DockPlaces.three);
-      c.moveDockPanel(DockPanel.effects, DockPlace.above);
-      expect(c.effectsOpen, isTrue);
+      c.moveDockPanel(DockPanel.chain, DockPlace.above);
+      expect(c.dockOpen(DockPanel.chain), isTrue);
       expect(c.rowsShown, isTrue, reason: "the timeline keeps main");
-      expect(c.dockShownIn(DockPlace.above), DockPanel.effects);
+      expect(c.dockShownIn(DockPlace.above), DockPanel.chain);
     });
 
     test("with one place, only one is open", () {
@@ -118,8 +144,8 @@ void main() {
 
     test("Shift opens it on the left, beside main", () {
       var c = make();
-      c.toggleDock(DockPanel.effects, beside: true);
-      expect(c.dock.placeOf(DockPanel.effects), DockPlace.left);
+      c.toggleDock(DockPanel.chain, beside: true);
+      expect(c.dock.placeOf(DockPanel.chain), DockPlace.left);
       expect(c.effectsOpen, isTrue);
       expect(c.rowsShown, isTrue);
     });
@@ -160,7 +186,7 @@ void main() {
         for (var p in DockPanel.values)
           if (c.dockOpen(p)) p
       ], [
-        DockPanel.animation
+        DockPanel.chain
       ]);
     });
 
@@ -344,10 +370,38 @@ void main() {
       await closeMore(tester);
     });
 
+    testWidgets("the Chain switches between its sound and its motion",
+        (tester) async {
+      var c = await show(tester, set: (c) => c.toggleDock(DockPanel.chain));
+      expect(find.byKey(const ValueKey("chainPanel")), findsOneWidget);
+      expect(find.byKey(const ValueKey("chainSound")), findsOneWidget,
+          reason: "it opens on its sound");
+      await tester.tap(find.byKey(const ValueKey("chainShowMotion")));
+      await tester.pump();
+      expect(c.chainShowsMotion, isTrue);
+      expect(find.byKey(const ValueKey("chainMotion")), findsOneWidget);
+      expect(find.byKey(const ValueKey("chainSound")), findsNothing);
+      await tester.tap(find.byKey(const ValueKey("chainShowSound")));
+      await tester.pump();
+      expect(c.effectsOpen, isTrue);
+      expect(find.byKey(const ValueKey("chainSound")), findsOneWidget);
+      // Its header resizes it, as a panel's top edge does.
+      var before =
+          tester.getSize(find.byKey(const ValueKey("chainPanel"))).height;
+      await tester.drag(find.text("Chain").last, const Offset(0, -60));
+      await tester.pump();
+      expect(tester.getSize(find.byKey(const ValueKey("chainPanel"))).height,
+          greaterThan(before));
+      await tester.tap(find.byKey(const ValueKey("chainClose")));
+      await tester.pump();
+      expect(c.dockOpen(DockPanel.chain), isFalse);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets("a panel above, over the bottom places", (tester) async {
       var c = await show(tester, set: (c) {
         c.dock = c.dock.copyWith(places: DockPlaces.three);
-        c.moveDockPanel(DockPanel.animation, DockPlace.above);
+        c.moveDockPanel(DockPanel.chain, DockPlace.above);
       });
       var above = tester.getRect(find.byKey(const ValueKey("dockRow-above")));
       var lower = tester.getRect(find.byKey(const ValueKey("dockRow-lower")));

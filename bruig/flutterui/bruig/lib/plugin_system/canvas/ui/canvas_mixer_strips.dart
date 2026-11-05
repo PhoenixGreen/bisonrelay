@@ -693,8 +693,9 @@ class _ChannelStrip extends StatelessWidget {
                 d.on,
                 Icon(Icons.circle,
                     size: 7, color: d.on ? theme.studio.on : colors.outline),
-                () => onOpenDevice?.call("dev$i"),
-                onRemove: () => onRemoveDevice?.call("dev$i"),
+                () => onOpenDevice?.call(deviceKey(deviceIdAt(mix.devices, i))),
+                onRemove: () =>
+                    onRemoveDevice?.call(deviceKey(deviceIdAt(mix.devices, i))),
                 key: ValueKey("chanDevice-$i")),
           _slot(
               theme,
@@ -970,8 +971,9 @@ class _ReturnStrip extends StatelessWidget {
               d.on,
               Icon(Icons.circle,
                   size: 7, color: d.on ? theme.studio.on : colors.outline),
-              () => onOpen("dev$i"),
-              onRemove: () => onRemoveDevice?.call("dev$i"),
+              () => onOpen(deviceKey(deviceIdAt(ret.devices, i))),
+              onRemove: () =>
+                  onRemoveDevice?.call(deviceKey(deviceIdAt(ret.devices, i))),
               key: ValueKey("returnDevice-$i")),
         _slot(
             theme,
@@ -1132,8 +1134,9 @@ class _MasterStrip extends StatelessWidget {
                 d.on,
                 Icon(Icons.circle,
                     size: 7, color: d.on ? theme.studio.on : colors.outline),
-                () => onOpenDevice?.call("dev$i"),
-                onRemove: () => onRemoveDevice?.call("dev$i"),
+                () => onOpenDevice?.call(deviceKey(deviceIdAt(mix.devices, i))),
+                onRemove: () =>
+                    onRemoveDevice?.call(deviceKey(deviceIdAt(mix.devices, i))),
                 key: ValueKey("masterDevice-$i")),
           _slot(
               theme,

@@ -851,21 +851,45 @@ class CanvasController extends ChangeNotifier {
     _pickedSceneWith = {..._selection};
     _pickedMotion = _pickedPlacement = null;
     _animationOpen = true;
-    _dockOpening(DockPanel.animation);
+    _effectsOpen = false;
+    _dockOpening(DockPanel.chain);
     _notifyView();
   }
 
   bool _animationOpen = false;
 
-  /// animationOpen is whether the Animation panel is out, in its place
-  /// under the canvas (see dock).
+  /// _chainMotion is the view the Chain panel opens on when its button
+  /// opens it: the one it was last on.
+  bool _chainMotion = false;
+
+  /// animationOpen is whether the Chain panel is out on its motion -- what
+  /// was the Animation panel -- in its place under the canvas (see dock).
+  /// Opening it puts the Chain's sound away: one view at a time.
   bool get animationOpen => _animationOpen;
 
   set animationOpen(bool value) {
     if (_animationOpen == value) return;
     _animationOpen = value;
-    if (value) _dockOpening(DockPanel.animation);
+    if (value) {
+      _effectsOpen = false;
+      _chainMotion = true;
+      _dockOpening(DockPanel.chain);
+    }
     _notifyView();
+  }
+
+  /// chainShowsMotion is whether the Chain panel shows its motion rather
+  /// than its sound.
+  bool get chainShowsMotion => _animationOpen;
+
+  /// showChain switches the Chain panel to its motion, or its sound: the
+  /// effects of the channel last opened there.
+  void showChain({required bool motion}) {
+    if (motion) {
+      animationOpen = true;
+    } else {
+      openEffects(effectsChannel);
+    }
   }
 
   bool _rowsShown = true;
@@ -947,8 +971,7 @@ class CanvasController extends ChangeNotifier {
         DockPanel.timeline => _rowsShown,
         DockPanel.slots => _slotsBeside,
         DockPanel.mixer => _mixerOpen,
-        DockPanel.animation => _animationOpen,
-        DockPanel.effects => _effectsOpen,
+        DockPanel.chain => _animationOpen || _effectsOpen,
       };
 
   /// setDockOpen opens or closes [panel]: opened, whatever else was showing
@@ -961,13 +984,13 @@ class CanvasController extends ChangeNotifier {
         slotsBeside = open;
       case DockPanel.mixer:
         mixerOpen = open;
-      case DockPanel.animation:
-        animationOpen = open;
-      case DockPanel.effects:
+      case DockPanel.chain:
         if (open) {
-          openEffects(effectsChannel);
+          showChain(motion: _chainMotion);
         } else {
+          _animationOpen = false;
           effectsOpen = false;
+          _notifyView();
         }
     }
   }
@@ -1036,6 +1059,7 @@ class CanvasController extends ChangeNotifier {
       }
     }
     _dock = _dock.copyWith(homes: homes);
+    if (shown.containsValue(DockPanel.chain)) _chainMotion = layout.chainMotion;
     for (var panel in DockPanel.values) {
       _setDockRaw(panel, shown.containsValue(panel));
     }
@@ -1054,6 +1078,7 @@ class CanvasController extends ChangeNotifier {
       },
       homes: {..._dock.homes},
       one: dockShownIn(DockPlace.main),
+      chainMotion: chainShowsMotion,
     );
     var saved = [
       ..._dock.saved.where((a) => a.name != name),
@@ -1108,10 +1133,9 @@ class CanvasController extends ChangeNotifier {
       case DockPanel.mixer:
         _mixerOpen = open;
         if (!open) _mixerMinimised = _mixerSmallest = false;
-      case DockPanel.animation:
-        _animationOpen = open;
-      case DockPanel.effects:
-        _effectsOpen = open;
+      case DockPanel.chain:
+        _animationOpen = open && _chainMotion;
+        _effectsOpen = open && !_chainMotion;
     }
   }
 
@@ -3653,8 +3677,9 @@ class CanvasController extends ChangeNotifier {
   void _openSoundDesk() {
     _mixerOpen = true;
     _effectsOpen = true;
-    // One detail panel: the effects in the Animation panel's place.
+    // One detail panel: the Chain on its sound.
     _animationOpen = false;
+    _chainMotion = false;
   }
 
   /// _autosave is the pending write, if any.

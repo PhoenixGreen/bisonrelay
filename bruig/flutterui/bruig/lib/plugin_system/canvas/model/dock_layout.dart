@@ -11,19 +11,26 @@ import 'dart:convert';
 
 /// DockPanel is one of the panels under the canvas. [key] is its button's,
 /// on the play bar.
+///
+/// [chain] is the picked channel's or element's devices: its sound (the
+/// effects) or its motion (the animation), switched in the panel -- see
+/// CanvasController.chainShowsMotion.
 enum DockPanel {
   timeline("Timeline", "rowsToggle"),
   slots("Slots", "slotsToggle"),
   mixer("Mixer", "mixerToggle"),
-  animation("Animation", "animationToggle"),
-  effects("Effects", "effectsToggle");
+  chain("Chain", "chainToggle");
 
   final String label;
   final String key;
   const DockPanel(this.label, this.key);
 
+  /// fromName reads a panel saved by name. The Effects and Animation panels
+  /// of before are the Chain's two views now, so either name is the Chain.
   static DockPanel? fromName(Object? name) =>
-      values.where((p) => p.name == name).firstOrNull;
+      name == "effects" || name == "animation"
+          ? chain
+          : values.where((p) => p.name == name).firstOrNull;
 }
 
 /// DockPlace is where a panel opens: [main] along the bottom, [left] beside
@@ -84,18 +91,24 @@ class DockArrangement {
   /// builtIn is one of the app's, which cannot be removed.
   final bool builtIn;
 
+  /// chainMotion is whether it shows the Chain on its motion rather than
+  /// its sound.
+  final bool chainMotion;
+
   const DockArrangement(this.name,
       {this.shown = const {},
       this.homes = const {},
       this.one,
       this.fallback,
-      this.builtIn = false});
+      this.builtIn = false,
+      this.chainMotion = false});
 
   Map<String, dynamic> toJson() => {
         "name": name,
         "shown": {for (var e in shown.entries) e.key.name: e.value.name},
         "homes": {for (var e in homes.entries) e.key.name: e.value.name},
         if (one != null) "one": one!.name,
+        if (chainMotion) "chainMotion": true,
       };
 
   static DockArrangement? fromJson(Object? json) {
@@ -119,6 +132,12 @@ class DockArrangement {
               panel: place,
       },
       one: DockPanel.fromName(json["one"]),
+      // One saved when the Animation panel was a panel of its own shows
+      // the Chain on its motion.
+      chainMotion: json["chainMotion"] == true ||
+          (json["shown"] is Map &&
+              (json["shown"] as Map).containsValue("animation")) ||
+          json["one"] == "animation",
     );
   }
 }
@@ -133,24 +152,22 @@ const builtInArrangements = [
       one: DockPanel.timeline,
       builtIn: true),
   DockArrangement("Mix",
-      shown: {
-        DockPlace.main: DockPanel.effects,
-        DockPlace.left: DockPanel.mixer
-      },
+      shown: {DockPlace.main: DockPanel.chain, DockPlace.left: DockPanel.mixer},
       one: DockPanel.mixer,
       builtIn: true),
   DockArrangement("Animate",
       shown: {
         DockPlace.main: DockPanel.timeline,
         DockPlace.left: DockPanel.slots,
-        DockPlace.above: DockPanel.animation,
+        DockPlace.above: DockPanel.chain,
       },
       fallback: {
-        DockPlace.main: DockPanel.animation,
+        DockPlace.main: DockPanel.chain,
         DockPlace.left: DockPanel.slots,
       },
-      one: DockPanel.animation,
-      builtIn: true),
+      one: DockPanel.chain,
+      builtIn: true,
+      chainMotion: true),
   DockArrangement("Clear", builtIn: true),
 ];
 
@@ -178,15 +195,13 @@ class DockLayout {
     this.saved = const [],
   });
 
-  /// defaultHomes are where the panels open to begin with. The Animation
-  /// panel opens on the left, beside the timeline: it is opened by clicking a
-  /// clip there, and opening in main would take that timeline away.
+  /// defaultHomes are where the panels open to begin with. The Chain opens
+  /// in main, under the mixer or the slots on the left.
   static const defaultHomes = {
     DockPanel.timeline: DockPlace.main,
     DockPanel.slots: DockPlace.left,
     DockPanel.mixer: DockPlace.left,
-    DockPanel.animation: DockPlace.left,
-    DockPanel.effects: DockPlace.main,
+    DockPanel.chain: DockPlace.main,
   };
 
   /// placeOf is where [panel] opens as things are: everything in main with

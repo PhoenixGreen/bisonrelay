@@ -22,27 +22,29 @@ typedef AutomationPoint = (double, double);
 enum AutomationKind { volume, pan, send, device }
 
 /// AutomationTarget is what a lane moves, read from its id: `volume`,
-/// `pan`, `send:<return id>`, or `device:<index>:<kind>:<setting>` -- a
-/// device by its place in the chain and its kind, so a lane whose device
-/// has been taken out or replaced moves nothing.
+/// `pan`, `send:<return id>`, or `device:<device id>:<kind>:<setting>` -- a
+/// device by its lasting id (see MixDevice.id) and its kind, so the lane
+/// follows the device when it moves, and moves nothing once it is taken out.
+/// A lane saved before devices had ids names it by place, `device:<i>:…`,
+/// which is read as the id `d<i>` that place is given (see withDeviceIds).
 class AutomationTarget {
   final AutomationKind kind;
   final String send;
-  final int device;
+  final String device;
   final DeviceKind? deviceKind;
   final String param;
 
   const AutomationTarget._(this.kind,
-      {this.send = "", this.device = -1, this.deviceKind, this.param = ""});
+      {this.send = "", this.device = "", this.deviceKind, this.param = ""});
 
   static const volume = AutomationTarget._(AutomationKind.volume);
   static const pan = AutomationTarget._(AutomationKind.pan);
   static AutomationTarget sendTo(String id) =>
       AutomationTarget._(AutomationKind.send, send: id);
   static AutomationTarget deviceSetting(
-          int index, DeviceKind kind, String param) =>
+          String id, DeviceKind kind, String param) =>
       AutomationTarget._(AutomationKind.device,
-          device: index, deviceKind: kind, param: param);
+          device: id, deviceKind: kind, param: param);
 
   static AutomationTarget? parse(String id) {
     if (id == "volume") return volume;
@@ -51,10 +53,13 @@ class AutomationTarget {
     var parts = id.split(":");
     if (parts.length == 4 && parts[0] == "device") {
       var kind = DeviceKind.fromName(parts[2]);
-      var index = int.tryParse(parts[1]);
-      if (kind == null || index == null || index < 0) return null;
+      var place = int.tryParse(parts[1]);
+      var id = place != null ? "d$place" : parts[1];
+      if (kind == null || id.isEmpty || (place != null && place < 0)) {
+        return null;
+      }
       if (!kind.params.any((p) => p.id == parts[3])) return null;
-      return deviceSetting(index, kind, parts[3]);
+      return deviceSetting(id, kind, parts[3]);
     }
     return null;
   }
@@ -77,18 +82,21 @@ class AutomationTarget {
   }
 
   /// on is whether it moves anything on [mix]: a device setting only while
-  /// that device is where it was, and is still that kind.
-  bool on(ChannelMix mix) =>
-      kind != AutomationKind.device ||
-      (device < mix.devices.length && mix.devices[device].kind == deviceKind);
+  /// that device is still in the chain, and is still that kind.
+  bool on(ChannelMix mix) {
+    if (kind != AutomationKind.device) return true;
+    var i = deviceIndexOf(mix.devices, device);
+    return i >= 0 && mix.devices[i].kind == deviceKind;
+  }
 
   /// own is the setting as the channel has it, untouched by automation.
   double own(ChannelMix mix) => switch (kind) {
         AutomationKind.volume => mix.gainDb,
         AutomationKind.pan => mix.balance,
         AutomationKind.send => mix.sendDb(send) ?? silent,
-        AutomationKind.device =>
-          on(mix) ? mix.devices[device].value(param) : setting!.initial,
+        AutomationKind.device => on(mix)
+            ? mix.devices[deviceIndexOf(mix.devices, device)].value(param)
+            : setting!.initial,
       };
 
   /// silent is a volume or a send at the bottom: nothing.
@@ -171,7 +179,9 @@ class AutomationTarget {
         var name = "${deviceKind!.label} › ${setting!.label}";
         // Two of one kind: told apart by their place.
         var same = mix.devices.where((d) => d.kind == deviceKind).length;
-        return same > 1 ? "$name (${device + 1})" : name;
+        return same > 1
+            ? "$name (${deviceIndexOf(mix.devices, device) + 1})"
+            : name;
     }
   }
 }
@@ -295,7 +305,8 @@ ChannelMix automatedAt(ChannelMix mix, double seconds,
           sends[what.send] = v.clamp(-60.0, 6.0);
         }
       case AutomationKind.device:
-        devices[what.device] = devices[what.device].withValue(what.param, v);
+        var i = deviceIndexOf(devices, what.device);
+        devices[i] = devices[i].withValue(what.param, v);
     }
   }
   if (!changed) return mix;
@@ -313,7 +324,8 @@ List<AutomationTarget> automationTargets(
       for (var r in returns) AutomationTarget.sendTo(r.id),
       for (var (i, d) in mix.devices.indexed)
         for (var p in d.kind.params)
-          AutomationTarget.deviceSetting(i, d.kind, p.id),
+          AutomationTarget.deviceSetting(
+              deviceIdAt(mix.devices, i), d.kind, p.id),
     ];
 
 /// ClipAutomation is a slot clip's envelope of one of its channel's
@@ -432,7 +444,8 @@ ChannelMix clipAutomatedAt(
           sends[what.send] = v.clamp(-60.0, 6.0);
         }
       case AutomationKind.device:
-        devices[what.device] = devices[what.device].withValue(what.param, v);
+        var i = deviceIndexOf(devices, what.device);
+        devices[i] = devices[i].withValue(what.param, v);
     }
   }
   if (!changed) return mix;

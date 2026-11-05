@@ -207,7 +207,7 @@ void main() {
             ]),
             audioEngine: FakeEngine({"t": 2}));
         c.setDevicesOf("a", [const MixDevice(DeviceKind.vocoder)]);
-        c.openEffects("a", device: "dev0");
+        c.openEffects("a", device: "dev:d0");
         tester.view.physicalSize = const Size(1600, 900);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
@@ -251,6 +251,9 @@ void main() {
         expect(note, findsNothing, reason: "a channel carries its own notes");
         expect(source, findsOneWidget);
         expect(tester.takeException(), isNull);
+        // Below its knobs, which scroll where large text leaves no room.
+        await tester.ensureVisible(source);
+        await tester.pump();
         await tester.tap(source);
         await tester.pump(const Duration(milliseconds: 500));
         // Every channel but its own.

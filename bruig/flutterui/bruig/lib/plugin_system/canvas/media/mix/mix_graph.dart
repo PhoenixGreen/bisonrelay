@@ -134,7 +134,8 @@ class MixGraph {
           ..remove("balance")
           ..remove("sends")
           ..["devices"] = [
-            for (var d in mix.devices) [d.kind.name, d.on, d.source]
+            for (var (i, d) in mix.devices.indexed)
+              [deviceIdAt(mix.devices, i), d.kind.name, d.on, d.source]
           ])
         .toString();
     var strip = _strips[key];
@@ -143,7 +144,7 @@ class MixGraph {
       return;
     }
     _structures[key] = structure;
-    _strips[key] = StripProcessor(mix);
+    _strips[key] = StripProcessor(mix, carry: strip);
   }
 
   void setReturns(List<ReturnChannel> returns) {
@@ -286,6 +287,18 @@ class MixGraph {
     return null;
   }
 
+  /// tapped are the channels whose meters between devices are on screen:
+  /// their strips measure each step (see StripProcessor.taps).
+  final Set<String> tapped = {};
+
+  /// tapsOf is channel [key]'s levels at each step of its strip, as last
+  /// played: see StripProcessor.taps. Empty until [tapped] has it.
+  List<(double, double)> tapsOf(String key) => _strips[key]?.taps ?? const [];
+
+  /// reductionOf is how many decibels channel [key]'s compressor is taking
+  /// off now, or 0 with none.
+  double reductionOf(String key) => _strips[key]?.compressor?.reductionDb ?? 0;
+
   (double, double) levels([String? key]) =>
       key == null ? _masterLevels : (_levels[key] ?? (0, 0));
 
@@ -355,6 +368,7 @@ class MixGraph {
       }
       b.grow(n);
       var strip = entry.value;
+      strip.tapping = tapped.contains(entry.key);
       strip.shape(b.l, b.r, n);
       _send(strip.mix, b, n, pre: true);
       strip.level(b.l, b.r, n);

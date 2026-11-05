@@ -199,7 +199,7 @@ void main() {
       "opened", () {
     var c = make();
     addTearDown(c.dispose);
-    c.moveDockPanel(DockPanel.animation, DockPlace.main);
+    c.moveDockPanel(DockPanel.chain, DockPlace.main);
     c.openEffects(elementSoundKey("a"));
     expect((c.animationOpen, c.effectsOpen), (false, true));
     c.animationOpen = true;

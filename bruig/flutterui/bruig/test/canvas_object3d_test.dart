@@ -15,6 +15,8 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/model_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/models/snackbar.dart';
@@ -111,6 +113,57 @@ void main() {
       await other.writeAsString("hello");
       expect((await addCanvasModel(other.path, "Notes")).problem, isNotNull,
           reason: "not a model, whatever it is called");
+    });
+
+    testWidgets("one added empty is given its model in its settings",
+        (tester) async {
+      await tester.runAsync(() async {
+        var file = File(path.join(root.path, "Robot.glb"));
+        await file.writeAsBytes(glb(robot));
+        await addCanvasModel(file.path, "Robot");
+      });
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      CanvasSection.openAll = true;
+      addTearDown(() => CanvasSection.openAll = false);
+      var c = CanvasController(CanvasDocument(elements: [
+        const Object3dElement(
+            ElementBase(id: "r", name: "3D object", width: 100, height: 100)),
+      ]));
+      addTearDown(c.dispose);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SingleChildScrollView(
+                    child: ListenableBuilder(
+                        listenable: c,
+                        builder: (context, _) => Column(
+                            children: elementSettings(
+                                context, c, c.document.elementById("r")!)))))),
+      ));
+      // The library is read from disk: let it finish.
+      for (var i = 0; i < 10; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump();
+      }
+      var model = find.byKey(const ValueKey("object3dModel"));
+      expect(model, findsOneWidget);
+      await tester.tap(model);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Robot").last);
+      await tester.pumpAndSettle();
+      var e = c.document.elementById("r") as Object3dElement;
+      expect(e.assetId, isNotEmpty);
+      expect((e.name, e.animations.length), ("Robot", 2),
+          reason: "named after its model, its animations with it");
+      expect(e.base.motion.slot(0)?.name, "Walk", reason: "in its slots");
     });
   });
 

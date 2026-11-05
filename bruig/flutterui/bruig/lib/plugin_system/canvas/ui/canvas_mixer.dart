@@ -264,6 +264,14 @@ class _CanvasMixerState extends State<CanvasMixer>
   final Map<String, GlobalKey> _devices = {};
   GlobalKey _deviceKey(String id) => _devices[id] ??= GlobalKey();
 
+  /// _junction is the meter at step [i] of the open chain.
+  Widget _junction(int i, double h, MixerLook theme) => _Junction(
+      i,
+      i < _taps.length ? _taps[i] : (-90.0, -90.0),
+      i < _tapPeaks.length ? _tapPeaks[i] : (-90.0, -90.0),
+      theme.studio,
+      h);
+
   Loudness? _measured;
   bool _measuring = false;
 
@@ -317,6 +325,11 @@ class _CanvasMixerState extends State<CanvasMixer>
     super.dispose();
   }
 
+  /// _taps and _tapPeaks are the open chain's levels between its devices,
+  /// in decibels, and their held peaks: see CanvasController.deviceLevels.
+  List<(double, double)> _taps = const [];
+  List<(double, double)> _tapPeaks = const [];
+
   /// _last and _meter read every strip's level, about thirty times a second.
   Duration _last = Duration.zero;
   void _meter(Duration now) {
@@ -349,6 +362,32 @@ class _CanvasMixerState extends State<CanvasMixer>
         math.max(db.$1, held.$1 - 0.66),
         math.max(db.$2, held.$2 - 0.66),
       );
+    }
+    // The open chain's meters between devices: a channel's only, as only a
+    // channel's strip measures each step.
+    var open = _editing;
+    if (open != null && channels.containsKey(open)) {
+      var taps = [
+        for (var (l, r) in controller.deviceLevels(open))
+          (gainToDb(l), gainToDb(r))
+      ];
+      if (taps.length != _taps.length ||
+          [
+            for (var i = 0; i < taps.length; i++)
+              (taps[i].$1 - _taps[i].$1).abs() > 0.3
+          ].any((x) => x)) {
+        moved = true;
+      }
+      _tapPeaks = [
+        for (var (i, t) in taps.indexed)
+          i < _tapPeaks.length
+              ? (
+                  math.max(t.$1, _tapPeaks[i].$1 - 0.66),
+                  math.max(t.$2, _tapPeaks[i].$2 - 0.66)
+                )
+              : t
+      ];
+      _taps = taps;
     }
     // Clips waiting for a bar blink, and playing ones go round.
     if (controller.sessionActive) moved = true;
@@ -707,7 +746,7 @@ class _CanvasMixerState extends State<CanvasMixer>
     );
   }
 
-  /// _removeDevice takes device [id] ("dev2", "midi0", "speech") out of strip
+  /// _removeDevice takes device [id] ("dev:d2", "midi0", "speech") out of strip
   /// [key]'s chain, as one change to undo.
   void _removeDevice(String key, String id) {
     controller.beginInteraction();
@@ -722,12 +761,10 @@ class _CanvasMixerState extends State<CanvasMixer>
           (p) => i < 0 || i >= p.effects.length
               ? p
               : p.copyWith(effects: [...p.effects]..removeAt(i)));
-    } else if (id.startsWith("dev")) {
-      var i = int.tryParse(id.substring(3)) ?? -1;
+    } else if (deviceKeyId(id) case var dev?) {
       var now = controller.devicesOf(key);
-      if (i >= 0 && i < now.length) {
-        controller.setDevicesOf(key, [...now]..removeAt(i));
-      }
+      var i = deviceIndexOf(now, dev);
+      if (i >= 0) controller.setDevicesOf(key, [...now]..removeAt(i));
     }
     controller.endInteraction();
   }
@@ -966,9 +1003,10 @@ class _CanvasMixerState extends State<CanvasMixer>
         // A return's devices, a channel's own or the master's (a chorus, a gate),
         // then a way to add another, then its EQ and compressor.
         if (ret != null || lane != null || isMaster) ...[
-          for (var i = 0; i < controller.devicesOf(key).length; i++)
+          for (var i = 0; i < controller.devicesOf(key).length; i++) ...[
+            if (lane != null) _junction(i, h, theme),
             device(
-                "dev$i",
+                deviceKey(deviceIdAt(controller.devicesOf(key), i)),
                 (f, fold) => listensOnly(controller.devicesOf(key)[i].kind)
                     ? ListenerDevice(
                         controller: controller,
@@ -984,13 +1022,31 @@ class _CanvasMixerState extends State<CanvasMixer>
                         folded: f,
                         onFold: fold,
                         height: h)),
+          ],
+          if (lane != null)
+            _junction(controller.devicesOf(key).length, h, theme),
           AddDeviceSlot(
               key: const ValueKey("addDeviceSlot"),
               controller: controller,
               owner: key,
               height: h),
         ],
-        ...(compFirst ? [comp, eq] : [eq, comp]),
+        ...switch ((lane != null, controller.devicesOf(key).length)) {
+          (true, var n) => compFirst
+              ? [
+                  comp,
+                  _junction(n + 1, h, theme),
+                  eq,
+                  _junction(n + 2, h, theme)
+                ]
+              : [
+                  eq,
+                  _junction(n + 1, h, theme),
+                  comp,
+                  _junction(n + 2, h, theme)
+                ],
+          _ => compFirst ? [comp, eq] : [eq, comp],
+        },
         if (lane != null)
           device(
               "duck",
@@ -1532,6 +1588,37 @@ class _FaderPainter extends CustomPainter {
       old.colors != colors ||
       old.small != small ||
       old.labels != labels;
+}
+
+/// _Junction is the meter between two devices of a chain: how loud the
+/// sound is after the one on its left, its peak held -- step [index] of
+/// the strip (see StripProcessor.taps).
+class _Junction extends StatelessWidget {
+  final int index;
+  final (double, double) level;
+  final (double, double) peak;
+  final StudioColors colors;
+  final double height;
+  const _Junction(this.index, this.level, this.peak, this.colors, this.height);
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        key: ValueKey("junction-$index"),
+        width: 16,
+        height: height,
+        child: Center(
+          child: Tooltip(
+            message:
+                "${level.$1 <= -80 ? "−∞" : level.$1.toStringAsFixed(1)} dB"
+                " · hold ${peak.$1 <= -80 ? "−∞" : peak.$1.toStringAsFixed(1)}",
+            child: SizedBox(
+              width: 9,
+              height: math.min(150.0, math.max(30.0, height - 60)),
+              child: CustomPaint(painter: _MeterPainter(level, peak, colors)),
+            ),
+          ),
+        ),
+      );
 }
 
 class _MeterPainter extends CustomPainter {

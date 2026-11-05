@@ -729,7 +729,7 @@ class ChannelMix {
         automation: automation ?? this.automation,
         speech: noSpeech ? null : speech ?? this.speech,
         vocaliser: noVocaliser ? null : vocaliser ?? this.vocaliser,
-        devices: devices ?? this.devices,
+        devices: devices == null ? this.devices : withDeviceIds(devices),
         surround: surround,
         lfeDb: lfeDb,
         sends: sends ?? this.sends,
@@ -772,11 +772,11 @@ class ChannelMix {
         vocaliser: json["vocaliser"] is Map
             ? VocaliserSpec.fromJson(json["vocaliser"])
             : null,
-        devices: [
+        devices: withDeviceIds([
           if (json["devices"] case List list)
             for (var raw in list.take(maxChainDevices))
               if (MixDevice.fromJson(raw) case var d?) d,
-        ],
+        ]),
         surround: json["surround"] is Map<String, dynamic>
             ? SurroundPan.fromJson(json["surround"] as Map<String, dynamic>)
             : null,
@@ -881,7 +881,7 @@ class MasterMix {
     bool? compFirst,
   }) =>
       MasterMix(
-        devices: devices ?? this.devices,
+        devices: devices == null ? this.devices : withDeviceIds(devices),
         gainDb: gainDb ?? this.gainDb,
         eq: eq ?? this.eq,
         comp: comp ?? this.comp,
@@ -905,11 +905,11 @@ class MasterMix {
       };
 
   factory MasterMix.fromJson(Map<String, dynamic> json) => MasterMix(
-        devices: [
+        devices: withDeviceIds([
           if (json["devices"] case List list)
             for (var raw in list)
               if (MixDevice.fromJson(raw) case var d?) d,
-        ],
+        ]),
         gainDb: jsonDouble(json["gain"], 0).clamp(-90.0, 12.0),
         eq: jsonSpec(json["eq"], Eq.fromJson, const Eq()),
         comp: jsonSpec(
