@@ -3,6 +3,12 @@ import 'dart:convert';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/session.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -103,6 +109,33 @@ void main() {
           reason: "the Chain keeps main, on its motion");
       expect(c.effectsOpen, isFalse, reason: "one view at a time");
       expect(c.chainShowsMotion, isTrue);
+    });
+
+    test("the Chain's button opens it on what is picked", () {
+      var c = CanvasController(
+          CanvasDocument(frames: 48, elements: [
+            ShapeElement(const ElementBase(id: "s", width: 100, height: 40)),
+            AudioElement(const ElementBase(id: "a", name: "Music"),
+                clip: const MediaClip(
+                    playlist: [MediaSource(assetId: "t", length: 2)],
+                    timed: true)),
+          ]),
+          audioEngine: FakeEngine(const {"t": 2}));
+      addTearDown(c.dispose);
+      c.selectOnly("s");
+      c.toggleDock(DockPanel.chain);
+      expect(c.chainShowsMotion, isTrue, reason: "a shape: its motion");
+      c.showChain(motion: false);
+      expect(c.chainShowsMotion, isFalse,
+          reason: "switched by hand, and not switched back");
+      // Last on its motion; then a channel picked opens it on its sound.
+      c.showChain(motion: true);
+      c.toggleDock(DockPanel.chain);
+      c.selectBackground();
+      c.selectedChannel = "a";
+      c.toggleDock(DockPanel.chain);
+      expect(c.chainShowsMotion, isFalse,
+          reason: "a channel picked: its sound");
     });
 
     test("the Chain's button opens it on the view it was last on", () {
@@ -210,12 +243,13 @@ void main() {
 
   group("the dock", () {
     Future<CanvasController> show(WidgetTester tester,
-        {double width = 1600, void Function(CanvasController)? set}) async {
+        {double width = 1600,
+        void Function(CanvasController)? set,
+        CanvasDocument document = const CanvasDocument(frames: 48)}) async {
       tester.view.physicalSize = Size(width, 1000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      var c = CanvasController(const CanvasDocument(frames: 48),
-          audioEngine: FakeEngine(const {}));
+      var c = CanvasController(document, audioEngine: FakeEngine(const {}));
       addTearDown(c.dispose);
       set?.call(c);
       await tester.pumpWidget(MultiProvider(
@@ -370,6 +404,41 @@ void main() {
       }
       expect(tester.takeException(), isNull);
       await closeMore(tester);
+    });
+
+    testWidgets("the Chain's tabs open a channel's notes and its clip",
+        (tester) async {
+      var c = await show(tester,
+          set: (c) => c.openEffects("p"),
+          document: CanvasDocument(
+            frames: 100,
+            elements: [
+              AudioElement(const ElementBase(id: "p", name: "Keys"),
+                  clip: const MediaClip(timed: true),
+                  instrument: const InstrumentPart()),
+            ],
+            session: const SessionGrid().put(
+                "p",
+                0,
+                const SessionClip(
+                    id: "clip",
+                    name: "Chords",
+                    midi: true,
+                    bars: 1,
+                    notes: [MidiNote(60, 0.1, 1)])),
+          ));
+      await tester.pump();
+      expect(find.byKey(const ValueKey("chainTabDevices")), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey("chainTabNotes")));
+      await tester.pump();
+      expect(c.pianoRollShown, isTrue, reason: "the part's notes");
+      await tester.tap(find.byKey(const ValueKey("chainTabClip")));
+      await tester.pump();
+      expect(c.clipEditorShown, isTrue, reason: "its first clip");
+      await tester.tap(find.byKey(const ValueKey("chainTabDevices")));
+      await tester.pump();
+      expect((c.pianoRollShown, c.clipEditorShown), (false, false));
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets("a timeline squeezed below its rows is cut off, not spilled",

@@ -3337,6 +3337,7 @@ class _ListenerDeviceState extends State<ListenerDevice>
     var look = MixerLook.of(context);
     var studio = look.studio;
     Widget body;
+    String summary = "Listening";
     if (tuner) {
       var heard = c.pitch(widget.owner);
       String note = "–", reading = "Listening…";
@@ -3363,32 +3364,49 @@ class _ListenerDeviceState extends State<ListenerDevice>
         reading = "${heard.hz.toStringAsFixed(1)} Hz · "
             "${cents >= 0 ? "+" : ""}${cents.round()} cents";
       }
-      body = Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(children: [
-          Text(note,
-              key: const ValueKey("tunerNote"),
-              style: TextStyle(
-                  fontSize: 56,
-                  fontWeight: FontWeight.w700,
-                  color: cents.abs() < 5 && note != "–"
-                      ? studio.meterLow
-                      : _eqInk)),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 40,
-            width: double.infinity,
-            child: CustomPaint(painter: _TunerPainter(cents, studio)),
-          ),
-          const SizedBox(height: 8),
-          Text(reading,
-              key: const ValueKey("tunerReading"),
-              style: const TextStyle(fontSize: 12, color: _eqDim)),
-        ]),
+      summary = note == "–"
+          ? "Listening"
+          : "$note ${cents >= 0 ? "+" : "−"}${cents.abs().round()} cents";
+      // The note as big as the screen has room for, its needle and its
+      // reading under it while there is room for them.
+      body = Container(
+        color: studio.display,
+        padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+        child: LayoutBuilder(builder: (context, box) {
+          var roomy = box.maxHeight > 110;
+          return Column(children: [
+            Expanded(
+              child: FittedBox(
+                // Smaller where the screen is short; never bigger.
+                fit: BoxFit.scaleDown,
+                child: Text(note,
+                    key: const ValueKey("tunerNote"),
+                    style: TextStyle(
+                        fontSize: 56,
+                        fontWeight: FontWeight.w700,
+                        color: cents.abs() < 5 && note != "–"
+                            ? studio.meterLow
+                            : studio.text)),
+              ),
+            ),
+            SizedBox(
+              height: roomy ? 34 : 18,
+              width: double.infinity,
+              child: CustomPaint(painter: _TunerPainter(cents, studio)),
+            ),
+            if (roomy) ...[
+              const SizedBox(height: 6),
+              Text(reading,
+                  key: const ValueKey("tunerReading"),
+                  style: TextStyle(fontSize: 12, color: studio.muted)),
+            ],
+          ]);
+        }),
       );
     } else {
-      body = Padding(
-        padding: const EdgeInsets.all(8),
+      body = Container(
+        color: studio.display,
+        padding: const EdgeInsets.all(6),
         child: CustomPaint(
           key: const ValueKey("spectrumView"),
           size: Size.infinite,
@@ -3406,10 +3424,18 @@ class _ListenerDeviceState extends State<ListenerDevice>
       c.endInteraction();
     }
 
+    var (icon, accent) = deviceGroupLook(device.kind.group);
+    var skin = DeviceSkin.studio(studio);
     return DeviceFrame(
       id: deviceKey(deviceIdAt(devices, widget.index)),
       title: device.kind.label,
-      skin: DeviceSkin.navy,
+      skin: skin,
+      // Its screen is all of it: it only listens.
+      display: body,
+      controls: (_) => const [],
+      summary: summary,
+      icon: icon,
+      accent: accent,
       on: device.on,
       onPower: (v) => write(device.switched(v)),
       powerKey: ValueKey("devicePower-${widget.index}"),
@@ -3418,13 +3444,13 @@ class _ListenerDeviceState extends State<ListenerDevice>
       width: tuner ? 220 : 360,
       height: widget.height,
       actions: [
-        ...deviceMoveButtons(c, widget.owner, widget.index, _eqInk),
+        ...deviceMoveButtons(c, widget.owner, widget.index, skin.ink),
         IconButton(
           key: ValueKey("deviceRemove-${widget.index}"),
           tooltip: "Take the ${device.kind.label.toLowerCase()} out",
           iconSize: 14,
           visualDensity: VisualDensity.compact,
-          icon: const Icon(Icons.close, color: _eqInk),
+          icon: Icon(Icons.close, color: skin.ink),
           onPressed: () {
             var now = c.devicesOf(widget.owner);
             if (widget.index >= now.length) return;
@@ -3438,7 +3464,7 @@ class _ListenerDeviceState extends State<ListenerDevice>
         child: RotatedBox(
           quarterTurns: 3,
           child: Text(device.kind.label,
-              style: const TextStyle(fontSize: 11, color: _eqInk)),
+              style: TextStyle(fontSize: 11, color: skin.ink)),
         ),
       ),
       body: body,

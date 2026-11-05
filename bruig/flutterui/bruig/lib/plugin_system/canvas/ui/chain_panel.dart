@@ -82,6 +82,7 @@ class _ChainPanelState extends State<ChainPanel> {
                     motion: motion,
                     look: look,
                     onChanged: (m) => c.showChain(motion: m)),
+                if (!motion) ..._editorTabs(look),
                 const Spacer(),
                 IconButton(
                   key: const ValueKey("chainClose"),
@@ -116,6 +117,71 @@ class _ChainPanelState extends State<ChainPanel> {
         ),
       ]),
     );
+  }
+}
+
+extension on _ChainPanelState {
+  /// _editorTabs are the Chain's sound's views besides its devices: the
+  /// channel's notes (an instrument's part, in the piano roll) and its
+  /// first clip (in the clip editor), each opened in the chain.
+  List<Widget> _editorTabs(MixerLook look) {
+    var key = c.effectsOf ?? c.effectsChannel;
+    int? firstClip;
+    for (var row = 0; row < c.session.rows; row++) {
+      if (c.session.at(key, row) != null) {
+        firstClip = row;
+        break;
+      }
+    }
+    var notes = c.instrumentChannel(key);
+    if (!notes && firstClip == null) return const [];
+    var rollOn = c.pianoRollShown && c.pianoRoll?.row == null;
+    var clipOn = c.clipEditorShown;
+    Widget tab(String id, String label, IconData icon, bool on,
+            VoidCallback onTap) =>
+        Padding(
+          padding: const EdgeInsets.only(left: 2),
+          child: InkWell(
+            key: ValueKey(id),
+            borderRadius: BorderRadius.circular(6),
+            onTap: on ? null : onTap,
+            child: Container(
+              height: 24,
+              padding: const EdgeInsets.symmetric(horizontal: 9),
+              decoration: BoxDecoration(
+                color: on ? look.studio.raised : null,
+                borderRadius: BorderRadius.circular(6),
+                border: on
+                    ? Border(
+                        bottom:
+                            BorderSide(color: look.colors.primary, width: 2))
+                    : null,
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon,
+                    size: 14, color: on ? look.studio.text : look.studio.muted),
+                const SizedBox(width: 5),
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        color: on ? look.studio.text : look.studio.muted)),
+              ]),
+            ),
+          ),
+        );
+    return [
+      const SizedBox(width: 8),
+      Container(width: 1, height: 18, color: look.studio.edge),
+      const SizedBox(width: 6),
+      tab("chainTabDevices", "Devices", Icons.linear_scale, !rollOn && !clipOn,
+          c.closeEditor),
+      if (notes)
+        tab("chainTabNotes", "Notes", Icons.piano, rollOn,
+            () => c.openPianoRoll(key)),
+      if (firstClip case var row?)
+        tab("chainTabClip", "Clip", Icons.graphic_eq, clipOn,
+            () => c.openClipEditor(key, row)),
+    ];
   }
 }
 

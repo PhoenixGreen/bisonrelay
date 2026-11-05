@@ -882,6 +882,17 @@ class CanvasController extends ChangeNotifier {
   /// than its sound.
   bool get chainShowsMotion => _animationOpen;
 
+  /// _chainOpensOnMotion is the view the Chain's button opens it on: what
+  /// is picked -- an element drawn on the canvas its motion, a channel or a
+  /// sound its sound -- or, with neither, the view it was last on. It never
+  /// switches an open Chain: only the switch in its header does.
+  bool get _chainOpensOnMotion {
+    var picked = selectedElements;
+    if (picked.any((e) => e is! AudioElement)) return true;
+    if (picked.isNotEmpty || selectedChannel != null) return false;
+    return _chainMotion;
+  }
+
   /// showChain switches the Chain panel to its motion, or its sound: the
   /// effects of the channel last opened there.
   void showChain({required bool motion}) {
@@ -986,7 +997,7 @@ class CanvasController extends ChangeNotifier {
         mixerOpen = open;
       case DockPanel.chain:
         if (open) {
-          showChain(motion: _chainMotion);
+          showChain(motion: _chainOpensOnMotion);
         } else {
           _animationOpen = false;
           effectsOpen = false;
