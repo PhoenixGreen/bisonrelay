@@ -363,6 +363,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
       });
       return;
     }
+    // Not while it plays: what is kept changes at every frame of it (the
+    // view follows the playhead), and it is kept as it stops.
+    if (_controller.playing) return;
     _keepTimer ??= Timer(const Duration(milliseconds: 800), () {
       _keepTimer = null;
       _savePanels();
@@ -562,12 +565,13 @@ class _CanvasScreenState extends State<CanvasScreen> {
     _controller.removeListener(_keepPanels);
     _keepTimer?.cancel();
     _savePanels();
-    // The canvas's sounds stop when the canvas is left: the session goes on,
-    // but music from a page nobody is looking at would have no off switch on
-    // screen. Just after this frame: stopping them notifies watchers, some of
-    // which are being taken down in this frame with the tree locked.
+    // Everything the page set going stops when it is left (see leavePage):
+    // the session goes on, but a canvas nobody is looking at would have no
+    // off switch on screen. Just after this frame: stopping notifies
+    // watchers, some of which are being taken down in this frame with the
+    // tree locked.
     var controller = _controller;
-    scheduleMicrotask(controller.stopAudio);
+    scheduleMicrotask(controller.leavePage);
     // Not disposed: the session outlives this page (see _controller).
     super.dispose();
   }
@@ -779,10 +783,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
       onPanelChanged: _setPanel,
       onHide: () => setState(() => _sidebarVisible = false),
       // Every panel that has been looked at is kept, and only the chosen one
-      // is shown: Offstage keeps the state and skips layout and painting, so
-      // switching tabs is instant (building the design column cold takes over
-      // a hundred milliseconds). Not built before it is wanted: see _seen.
-      child: Stack(
+      // is shown: Offstage keeps the state and skips painting (it still lays
+      // out), so switching tabs is instant (building the design column cold
+      // takes over a hundred milliseconds). Not built before it is wanted:
+      // see _seen. In a layer of its own: see the stage's.
+      child: RepaintBoundary(
+          child: Stack(
         children: [
           for (var panel in CanvasPanel.values)
             if (_seen.contains(panel))
@@ -814,7 +820,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                 ),
               ),
         ],
-      ),
+      )),
     );
 
     return ScreenWithChatSideMenu(
@@ -978,10 +984,17 @@ class _CanvasScreenState extends State<CanvasScreen> {
                                   ? null
                                   : theme.colors.primary
                                       .withValues(alpha: 0.06),
-                              child: CanvasStage(
-                                key: _stageKey,
-                                controller: _controller,
-                                onButtonLink: _openLink,
+                              // Each part of the page in a layer of its own
+                              // (here and below): the stage redraws at every
+                              // frame of play, and without these the timeline,
+                              // the mixer and the sidebar were redrawn with
+                              // it.
+                              child: RepaintBoundary(
+                                child: CanvasStage(
+                                  key: _stageKey,
+                                  controller: _controller,
+                                  onButtonLink: _openLink,
+                                ),
                               ),
                             ),
                           ),
@@ -1040,11 +1053,13 @@ class _CanvasScreenState extends State<CanvasScreen> {
                             : 0,
                         left: 0,
                         right: 0,
-                        child: CanvasMixer(
-                          controller: _controller,
-                          height: shown[_Stacked.mixer] ?? _mixerShown,
-                          onResize: (h) => _resizeStacked(_Stacked.mixer, h),
-                          onClose: () => _controller.mixerOpen = false,
+                        child: RepaintBoundary(
+                          child: CanvasMixer(
+                            controller: _controller,
+                            height: shown[_Stacked.mixer] ?? _mixerShown,
+                            onResize: (h) => _resizeStacked(_Stacked.mixer, h),
+                            onClose: () => _controller.mixerOpen = false,
+                          ),
                         ),
                       ),
                   ]),
@@ -1053,13 +1068,15 @@ class _CanvasScreenState extends State<CanvasScreen> {
                 // transport holds a focus node and a ticker, and an empty strip would
                 // still answer the keyboard.
                 if (_timelineShown)
-                  CanvasTimeline(
-                    controller: _controller,
-                    height: timelineShown,
-                    // With the mixer and the effects, one stack under the
-                    // settings bar: see _resizeStacked.
-                    onResize: (h) => _resizeStacked(_Stacked.timeline, h),
-                    mixerBeside: _mixerBeside,
+                  RepaintBoundary(
+                    child: CanvasTimeline(
+                      controller: _controller,
+                      height: timelineShown,
+                      // With the mixer and the effects, one stack under the
+                      // settings bar: see _resizeStacked.
+                      onResize: (h) => _resizeStacked(_Stacked.timeline, h),
+                      mixerBeside: _mixerBeside,
+                    ),
                   ),
               ]));
         },

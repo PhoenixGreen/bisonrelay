@@ -842,7 +842,21 @@ class SpritePreviewState extends State<SpritePreview> with SingleTickerProviderS
     super.dispose();
   }
 
-  void _tick(Duration t) => setState(() => _at = t);
+  /// _tick moves it on: built again only as the frame shown changes, and
+  /// not looping, stopped on its last.
+  void _tick(Duration t) {
+    var list = widget.frames;
+    int k(Duration d) => (d.inMicroseconds / 1e6 * widget.fps).floor();
+    if (!widget.loop && list.isNotEmpty && k(t) >= list.length - 1) {
+      _ticker?.stop();
+      setState(() {
+        _at = t;
+        _playing = false;
+      });
+      return;
+    }
+    if (k(t) != k(_at)) setState(() => _at = t);
+  }
 
   @override
   Widget build(BuildContext context) {

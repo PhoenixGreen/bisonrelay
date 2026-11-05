@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:convert';
 
 import 'package:archive/archive.dart';
@@ -99,7 +100,11 @@ const int maxBundleBytes = 1 << 30;
 /// bigger than [maxBundleBytes], since it is read whole into memory.
 Future<CanvasBundle?> unpackCanvasFile(File file) async {
   if (await file.length() > maxBundleBytes) return null;
-  return unpackCanvas(await file.readAsBytes());
+  // Read and taken apart on an isolate of its own: a bundle can be a
+  // gigabyte, and the whole app waited for it -- a canvas previewed in a
+  // chat froze the chat.
+  var at = file.path;
+  return Isolate.run(() async => unpackCanvas(await File(at).readAsBytes()));
 }
 
 /// unpackCanvas reads a bundle or a plain .bcanvas from outside the

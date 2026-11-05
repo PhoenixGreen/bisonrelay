@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -2127,7 +2128,7 @@ class CanvasStageState extends State<CanvasStage>
         controller.selection.length == 1 &&
         controller.selection.first == element.id &&
         _pressedAt != Offset.zero &&
-        DateTime.now().difference(_lastClickAt) < _doubleClickWindow) {
+        clock.now().difference(_lastClickAt) < _doubleClickWindow) {
       _mode = _DragMode.none;
       // And the shape that was double-clicked picked, ready to be worked on.
       var at = doc;
@@ -2150,7 +2151,7 @@ class CanvasStageState extends State<CanvasStage>
         controller.selection.length == 1 &&
         controller.selection.first == element.id &&
         _pressedAt != Offset.zero &&
-        DateTime.now().difference(_lastClickAt) < _doubleClickWindow) {
+        clock.now().difference(_lastClickAt) < _doubleClickWindow) {
       controller.editImage(element.id, layer: layerAt(element, doc).id);
       _mode = _DragMode.none;
       return;
@@ -2163,7 +2164,7 @@ class CanvasStageState extends State<CanvasStage>
         controller.selection.length == 1 &&
         controller.selection.first == element.id &&
         _pressedAt != Offset.zero &&
-        DateTime.now().difference(_lastClickAt) < _doubleClickWindow) {
+        clock.now().difference(_lastClickAt) < _doubleClickWindow) {
       var at = tableCellAt(element, element.movedBoundsAt(controller.frame, controller.document,
             live: controller.liveMotion), doc);
       if (at != null) {
@@ -2184,7 +2185,7 @@ class CanvasStageState extends State<CanvasStage>
         controller.selection.length == 1 &&
         controller.selection.first == element.id &&
         _pressedAt != Offset.zero &&
-        DateTime.now().difference(_lastClickAt) < _doubleClickWindow) {
+        clock.now().difference(_lastClickAt) < _doubleClickWindow) {
       setState(() {
         _editingText = element.id;
         // Whichever piece the second click landed on, or the element's own
@@ -2197,7 +2198,7 @@ class CanvasStageState extends State<CanvasStage>
       _mode = _DragMode.none;
       return;
     }
-    _lastClickAt = DateTime.now();
+    _lastClickAt = clock.now();
 
     if (_shiftHeld) {
       controller.toggleSelected(element.id);
@@ -2272,10 +2273,10 @@ class CanvasStageState extends State<CanvasStage>
   /// and the press is left for whatever else wants it.
   bool _pressVector(VectorElement e, Offset doc) {
     var reach = (e.handleSize / 2 + handleHitSlop) / _scale;
-    var twice = DateTime.now().difference(_lastClickAt) < _doubleClickWindow;
+    var twice = clock.now().difference(_lastClickAt) < _doubleClickWindow;
     // A double-click here is two clicks on one spot.
     var sameSpot = (doc - _lastVectorClick).distance * _scale <= _penPullMin;
-    _lastClickAt = DateTime.now();
+    _lastClickAt = clock.now();
     _lastVectorClick = doc;
     // The pen takes hold of points and handles as picking does, and the
     // next point it puts down joins on from the point it took.

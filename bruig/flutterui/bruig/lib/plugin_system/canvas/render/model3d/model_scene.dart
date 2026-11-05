@@ -20,6 +20,17 @@ typedef ModelPlay = (String name, double time, double weight);
 /// ModelScene is one 3D object's model, read into a scene of its own.
 class ModelScene extends ChangeNotifier {
   final Scene scene = Scene()..maxGpuFramesInFlight = 0;
+
+  bool _disposed = false;
+
+  /// dispose lets go of the scene's GPU memory; it draws nothing after.
+  @override
+  void dispose() {
+    _disposed = true;
+    scene.dispose();
+    super.dispose();
+  }
+
   Node? _node;
   final Map<String, AnimationClip> _clips = {};
 
@@ -55,7 +66,8 @@ class ModelScene extends ChangeNotifier {
     } catch (e) {
       error = "This model could not be drawn: $e";
     }
-    notifyListeners();
+    // Let go of while it loaded: nobody is listening.
+    if (!_disposed) notifyListeners();
   }
 
   /// _pose sets each animation where [plays] has it, and the rest to
@@ -82,6 +94,8 @@ class ModelScene extends ChangeNotifier {
       double zoom = 1,
       List<ModelPlay> plays = const [],
       double pixelRatio = 1}) {
+    // Let go of (see dispose), it draws nothing.
+    if (_disposed) return;
     var node = _node;
     if (node == null || box.width < 1 || box.height < 1) return;
     node.localTransform = vm.Matrix4.identity();
@@ -121,6 +135,8 @@ class ModelScene extends ChangeNotifier {
       double height = 1.6,
       List<ModelPlay> plays = const [],
       double pixelRatio = 1}) {
+    // Let go of (see dispose), it draws nothing.
+    if (_disposed) return;
     var node = _node;
     if (node == null || box.width < 1 || box.height < 1) return;
     // The stage's metres in the scene's: across mirrored, as for the stage

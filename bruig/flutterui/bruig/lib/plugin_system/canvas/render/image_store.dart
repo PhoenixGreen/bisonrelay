@@ -297,11 +297,26 @@ class CanvasImageStore extends ChangeNotifier
     return scene;
   }
 
+  /// _wornKey is what [e] wears, as a key: remembered for its design and
+  /// quick change, rather than every point of its sculpting written out at
+  /// every paint.
+  static String _wornKey(Character3dElement e) {
+    var wearing = e.performance.wearing;
+    if (_wornKeys[e.design] case (var w, var key) when w == wearing) {
+      return key;
+    }
+    var key = jsonEncode(e.worn.toJson()..remove("updated"));
+    _wornKeys[e.design] = (wearing, key);
+    return key;
+  }
+
+  static final Expando<(String, String)> _wornKeys = Expando();
+
   @override
   CharacterScene? resolveCharacter3d(Character3dElement e) {
     if (!_gpuKnown()) return null;
     final worn = e.worn;
-    var key = jsonEncode(worn.toJson()..remove("updated"));
+    var key = _wornKey(e);
     var held = _characters.remove(e.id);
     var scene = held?.$1;
     if (scene == null) {
@@ -517,10 +532,24 @@ class CanvasImageStore extends ChangeNotifier
     if (keys.isNotEmpty || drawing != null) notifyListeners();
   }
 
+  /// release lets go of every picture, drawing and 3D scene held, the store
+  /// staying usable: what is asked for again is loaded again. For the Canvas
+  /// page left, whose store lives on with the session.
+  void release() {
+    _clear();
+    _failed.clear();
+    _outlines.clear();
+  }
+
   @override
   void dispose() {
     _disposed = true;
     _edges.dispose();
+    _clear();
+    super.dispose();
+  }
+
+  void _clear() {
     for (var (scene, _) in _characters.values) {
       scene.dispose();
     }
@@ -529,6 +558,9 @@ class CanvasImageStore extends ChangeNotifier
       scene.dispose();
     }
     _models.clear();
+    for (var stage in _stages.values) {
+      stage.dispose();
+    }
     _stages.clear();
     for (var vector in _vectors.values) {
       vector.picture.dispose();
@@ -545,7 +577,6 @@ class CanvasImageStore extends ChangeNotifier
     _order.clear();
     _asked.clear();
     _bytes = 0;
-    super.dispose();
   }
 }
 
@@ -735,6 +766,9 @@ double scaleForWork(int width, int height) {
 /// Keyed by identity rather than asset id: a reloaded picture is a different
 /// object, and the old bytes go with the old object.
 final Map<ui.Image, _Working> _workingPixels = {};
+
+/// clearWorkingPixels forgets every picture's shrunk-down bytes.
+void clearWorkingPixels() => _workingPixels.clear();
 
 class _Working {
   final Uint8List pixels;

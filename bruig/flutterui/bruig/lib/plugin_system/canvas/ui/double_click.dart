@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:clock/clock.dart';
 
 // double_click.dart is the second click of a pair, counted by hand. Flutter's
 // double-tap recognizer cannot be used: in the gesture arena it holds back
@@ -10,11 +10,10 @@ import 'package:flutter/foundation.dart';
 /// second of a pair.
 class DoubleClick {
   /// window is how long a pair may take, a little under the system's half
-  /// second. Settable so a test need not race the real clock: the count is
-  /// against DateTime.now(), and a loaded machine can put a second of real time
-  /// between two taps a test made back to back.
-  @visibleForTesting
-  static Duration window = const Duration(milliseconds: 400);
+  /// second. Counted on package:clock's clock, which a widget test's own
+  /// time drives: two taps a test makes back to back are a pair however
+  /// busy the machine, and a pump of [window] sets them apart.
+  static const Duration window = Duration(milliseconds: 400);
 
   DateTime _last = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -25,7 +24,7 @@ class DoubleClick {
   /// isSecond is whether this press completes a pair on [what]. True also
   /// clears the count, so three clicks are a pair and a single.
   bool isSecond(Object what) {
-    var now = DateTime.now();
+    var now = clock.now();
     var second = _on == what && now.difference(_last) < window;
     _last = now;
     _on = second ? null : what;

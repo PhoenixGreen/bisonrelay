@@ -79,6 +79,15 @@ class CanvasDataEditorShell extends StatefulWidget {
   State<CanvasDataEditorShell> createState() => _CanvasDataEditorShellState();
 }
 
+/// forgetDataEditorsForTest clears what the editors were left at -- the
+/// table or the text, and their heights -- as a new run of the app has it.
+@visibleForTesting
+void forgetDataEditorsForTest() {
+  _CanvasDataEditorShellState._grids.clear();
+  _CanvasDataEditorShellState._stored.clear();
+  _CanvasDataEditorShellState._dragged.clear();
+}
+
 class _CanvasDataEditorShellState extends State<CanvasDataEditorShell> {
   /// _grids, _stored and _dragged are what each named editor was left at, for
   /// this run of the app (see the top of the file). A height read from disk

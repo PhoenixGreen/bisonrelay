@@ -671,8 +671,26 @@ class _ScenePainter extends CustomPainter {
   @override
   bool shouldRepaint(_ScenePainter old) =>
       old.index != index ||
-      !identical(old.document, document) ||
-      !identical(old.images, images);
+      !identical(old.images, images) ||
+      sceneDrawnDiffers(old.document, document, index);
+}
+
+/// sceneDrawnDiffers is whether scene [index] would be drawn differently
+/// from [a] than from [b]: its own scene, the one facing it, and what every
+/// scene shares. For a scene's preview, painted again only then -- any edit
+/// is a new document, and comparing those repainted every preview at every
+/// step of a drag.
+bool sceneDrawnDiffers(CanvasDocument a, CanvasDocument b, int index) {
+  if (identical(a, b)) return false;
+  CanvasScene? facing(CanvasDocument d) =>
+      switch (d.facingAt(index)) { var i? => d.allScenes[i], null => null };
+  return a.size != b.size ||
+      !identical(a.background, b.background) ||
+      !identical(a.master, b.master) ||
+      a.allScenes.length != b.allScenes.length ||
+      index >= b.allScenes.length ||
+      !identical(a.allScenes[index], b.allScenes[index]) ||
+      !identical(facing(a), facing(b));
 }
 
 /// _Switch is an on-and-off drawn to the height of a line of this panel's

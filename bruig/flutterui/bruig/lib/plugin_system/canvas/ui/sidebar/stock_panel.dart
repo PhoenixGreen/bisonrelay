@@ -105,6 +105,17 @@ class _StockPanelState extends State<StockPanel> {
     _restore();
   }
 
+  /// A hidden tab plays nothing: the sidebar turns its tickers off, and the
+  /// previews -- timers and a decoder, not tickers -- stop with them.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!TickerMode.valuesOf(context).enabled) {
+      _previewer.stop();
+      _watching.stop();
+    }
+  }
+
   @override
   void dispose() {
     _previewer.dispose();
@@ -846,6 +857,10 @@ class _Previewer {
   Timer? _watch;
   Directory? _dir;
 
+  /// _gone is the panel gone: a preview still fetching gives way, rather
+  /// than playing with nothing on screen to stop it.
+  bool _gone = false;
+
   /// toggle stops [item] if it is playing, or plays it; false when it could
   /// not be.
   Future<bool> toggle(StockItem item,
@@ -868,11 +883,11 @@ class _Previewer {
         if (!got) return false;
       }
       // Another preview asked for while this one was fetching wins.
-      if (loading != item.key) return true;
+      if (loading != item.key || _gone) return true;
       if (!await engine.start()) return false;
       var track = await engine.open(file.path);
       if (track == null) return false;
-      if (loading != item.key) {
+      if (loading != item.key || _gone) {
         engine.close(track);
         return true;
       }
@@ -905,6 +920,8 @@ class _Previewer {
   }
 
   void dispose() {
+    _gone = true;
+    loading = null;
     _watch?.cancel();
     var voice = _voice, track = _track;
     if (voice != null) engine.stop(voice);

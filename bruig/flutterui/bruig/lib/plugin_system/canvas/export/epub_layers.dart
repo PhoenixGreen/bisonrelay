@@ -887,10 +887,11 @@ class _LayerMaker {
     }
 
     Directory? work;
+    Process? running;
     try {
       work = await Directory.systemTemp.createTemp("canvas-element-film");
       var out = path.join(work.path, "clip.mp4");
-      var process = await Process.start(films.ffmpeg, [
+      var process = running = await Process.start(films.ffmpeg, [
         "-hide_banner", "-loglevel", "error", "-y", //
         "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "${w}x$h",
         "-r", "$rate", "-i", "-",
@@ -982,6 +983,8 @@ class _LayerMaker {
           before: await picture(a), after: await picture(b));
     } catch (exception) {
       debugPrint("Unable to film ${e.id} for the book: $exception");
+      // Not left waiting on its input for as long as the app runs.
+      running?.kill();
       return null;
     } finally {
       under.dispose();

@@ -14,25 +14,38 @@ import 'package:flutter/painting.dart';
 
 class VideoKey {
   static ui.FragmentProgram? _program;
-  static Future<void>? _loading;
+  static bool _unloadable = false;
 
   /// ready says the shader is loaded. Until it is, frames are drawn unkeyed.
   static final ValueNotifier<bool> ready = ValueNotifier(false);
 
   /// load reads the shader, once. Safe to call as often as liked; the stage
   /// calls it when it opens and repaints when it has landed.
-  static Future<void> load() => _loading ??= () async {
-        try {
-          _program =
-              await ui.FragmentProgram.fromAsset("shaders/chroma_key.frag");
-          ready.value = true;
-        } catch (exception) {
-          debugPrint("The green screen shader did not load: $exception");
-        }
-      }();
+  static Future<void> load() async {
+    // The program, not the loading, is what is kept: a load begun
+    // where it never finishes (a test's own time, gone) would leave
+    // every later wait for it waiting for ever.
+    if (_program != null || _unloadable) return;
+    try {
+      _program = await ui.FragmentProgram.fromAsset("shaders/chroma_key.frag");
+      ready.value = true;
+    } catch (exception) {
+      _unloadable = true;
+      debugPrint("The green screen shader did not load: $exception");
+    }
+  }
 
   static final List<(ui.Image, int, ui.Image)> _cache = [];
   static const _keep = 8;
+
+  /// clear lets go of the keyed frames kept -- not the frames they were
+  /// keyed from, which are the video's.
+  static void clear() {
+    for (var (_, _, out) in _cache) {
+      out.dispose();
+    }
+    _cache.clear();
+  }
 
   /// keyed is [frame] with [key]'s colour taken out, or [frame] itself when
   /// the shader is not there yet.

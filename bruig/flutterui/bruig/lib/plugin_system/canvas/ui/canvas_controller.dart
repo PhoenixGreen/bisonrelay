@@ -132,6 +132,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/background_element.dar
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/render/render_caches.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_convert.dart'
@@ -1187,7 +1188,7 @@ class CanvasController extends ChangeNotifier {
     // A selection can outlive the elements it names (a delete, another
     // document); pruning here spares every reader an id that resolves to
     // nothing.
-    _selection = _selection.where((id) => _document.indexOf(id) >= 0).toSet();
+    _selection = _selection.where((id) => _document.elementById(id) != null).toSet();
 
     if (_frame >= _document.frames) _frame = _document.frames - 1;
 
@@ -1258,7 +1259,7 @@ class CanvasController extends ChangeNotifier {
     _document = _undo.removeLast();
     _edits++;
     scheduleAutosave();
-    _selection = _selection.where((id) => _document.indexOf(id) >= 0).toSet();
+    _selection = _selection.where((id) => _document.elementById(id) != null).toSet();
     if (_frame >= _document.frames) _frame = _document.frames - 1;
     _followEdits(before);
     notifyListeners();
@@ -1273,7 +1274,7 @@ class CanvasController extends ChangeNotifier {
     _document = _redo.removeLast();
     _edits++;
     scheduleAutosave();
-    _selection = _selection.where((id) => _document.indexOf(id) >= 0).toSet();
+    _selection = _selection.where((id) => _document.elementById(id) != null).toSet();
     if (_frame >= _document.frames) _frame = _document.frames - 1;
     _followEdits(before);
     notifyListeners();
@@ -3484,11 +3485,11 @@ class CanvasController extends ChangeNotifier {
     if (n == null) return false;
     var at = _edits;
     var ok = await CanvasStorage.save(f ?? "", n, _toSave);
-    // Not awaited: tidying the stores is bookkeeping a save need not wait
-    // for. Only what is not an asset goes -- see CanvasLibrary.tidy.
+    // Tidying the stores is bookkeeping a save need not wait for, and need
+    // not do every time: see CanvasLibrary.tidySoon.
     if (ok) {
-      unawaited(CanvasLibrary.tidy(
-          open: {..._document.assetIds, ..._document.mediaIds}));
+      CanvasLibrary.tidySoon(
+          open: {..._document.assetIds, ..._document.mediaIds});
     }
     if (ok) {
       _savedEdits = at;

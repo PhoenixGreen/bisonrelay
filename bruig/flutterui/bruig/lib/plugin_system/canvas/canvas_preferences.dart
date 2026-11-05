@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:bruig/plugin_system/canvas/media/mix/dart_audio_engine.dart';
@@ -119,7 +120,34 @@ class CanvasPreferences extends ChangeNotifier {
   set timelineHeight(double value) {
     if (_timelineHeight == value) return;
     _timelineHeight = value;
-    StorageManager.saveString(_timelineHeightKey, value.toStringAsFixed(1));
+    _saveSoon(_timelineHeightKey, value.toStringAsFixed(1));
+  }
+
+  /// _saveSoon writes [value] under [key] once it has stopped changing for
+  /// a moment: a panel's edge dragged sets its height at every step, and
+  /// each write is a round trip to the platform's preferences.
+  void _saveSoon(String key, String value) {
+    _unsaved[key] = value;
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 400), _saveNow);
+  }
+
+  void _saveNow() {
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    for (var MapEntry(:key, :value) in _unsaved.entries) {
+      StorageManager.saveString(key, value);
+    }
+    _unsaved.clear();
+  }
+
+  final Map<String, String> _unsaved = {};
+  Timer? _saveTimer;
+
+  @override
+  void dispose() {
+    _saveNow();
+    super.dispose();
   }
 
   /// menuHidden is whether the app's sidebar and header are put away while
@@ -160,7 +188,7 @@ class CanvasPreferences extends ChangeNotifier {
   set mixerHeight(double value) {
     if (_mixerHeight == value) return;
     _mixerHeight = value;
-    StorageManager.saveString(_mixerHeightKey, value.toStringAsFixed(1));
+    _saveSoon(_mixerHeightKey, value.toStringAsFixed(1));
   }
 
   double get effectsHeight => _effectsHeight;
@@ -168,7 +196,7 @@ class CanvasPreferences extends ChangeNotifier {
   set effectsHeight(double value) {
     if (_effectsHeight == value) return;
     _effectsHeight = value;
-    StorageManager.saveString(_effectsHeightKey, value.toStringAsFixed(1));
+    _saveSoon(_effectsHeightKey, value.toStringAsFixed(1));
   }
 
   /// panels is how the panels under the canvas were left, whatever canvas

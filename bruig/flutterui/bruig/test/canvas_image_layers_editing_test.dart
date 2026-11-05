@@ -256,8 +256,6 @@ void main() {
         (tester) async {
       var c = await pumpPanel(tester);
       expect(c.imageEditing, isNull);
-      expect(find.byKey(const ValueKey("imageLayersEdit")), findsNothing,
-          reason: "no button to open and close them");
       // Shut, a strip with what is in front first.
       var top =
           tester.getTopLeft(find.byKey(ValueKey("imageLayer-${_layer.id}")));

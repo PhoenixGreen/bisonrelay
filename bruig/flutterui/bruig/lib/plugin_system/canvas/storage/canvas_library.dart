@@ -479,7 +479,36 @@ class CanvasLibrary {
   /// tidy deletes stored files that are neither an asset -- nor a video's
   /// poster or sound -- nor used by any saved canvas, nor by [open], the canvas
   /// in the editor, which may not have been saved.
-  static Future<int> tidy({Set<String> open = const {}}) async {
+  static Future<int> tidy({Set<String> open = const {}}) {
+    // One at a time: two at once would each walk the library. One that
+    // failed does not stop the next: chained on its error, every later tidy
+    // would have failed with it.
+    var run = (_tidying ?? Future.value(0))
+        .then((_) => 0, onError: (_) => 0)
+        .then((_) => _tidy(open))
+        .whenComplete(() => _tidied = DateTime.now());
+    _tidying = run;
+    return run;
+  }
+
+  static Future<int>? _tidying;
+  static DateTime? _tidied;
+
+  /// tidyEvery is the least time between the tidies saves ask for.
+  static const Duration tidyEvery = Duration(minutes: 5);
+
+  /// tidySoon is a tidy after a save, unless there has been one within
+  /// [tidyEvery]: every save had tidied, and a tidy walks the whole
+  /// library. What it would have deleted waits for a later save, as it
+  /// waits for sweepGrace anyway. What [open] names is kept.
+  static void tidySoon({Set<String> open = const {}}) {
+    var last = _tidied;
+    if (last != null && DateTime.now().difference(last) < tidyEvery) return;
+    _tidied = DateTime.now();
+    unawaited(tidy(open: open));
+  }
+
+  static Future<int> _tidy(Set<String> open) async {
     try {
       var assets = await list();
       var keep = <String>{
@@ -615,8 +644,14 @@ class CanvasLibrary {
     return out;
   }
 
-  /// resetForTest forgets the pending chain, so one test's failure cannot
-  /// hold the next one up.
+  /// resetForTest forgets the pending chain and tidy, so one test's failure
+  /// -- or a tidy a widget test started and never let finish -- cannot hold
+  /// the next one up.
   @visibleForTesting
-  static void resetForTest() => _pending = Future.value();
+  static void resetForTest() {
+    _pending = Future.value();
+    _tidying = null;
+    _tidied = null;
+    _movedVectors = false;
+  }
 }

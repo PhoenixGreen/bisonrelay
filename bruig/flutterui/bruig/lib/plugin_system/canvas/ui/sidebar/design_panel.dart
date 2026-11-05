@@ -51,6 +51,14 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   }
 
   @override
+  void dispose() {
+    // The hook set above held this panel, its editor and its document for
+    // the rest of the session.
+    TileSnapshot.letGo();
+    super.dispose();
+  }
+
+  @override
   void didUpdateWidget(CanvasDesignPanel old) {
     super.didUpdateWidget(old);
     // Built once per controller: keeping the old bodies would leave the column

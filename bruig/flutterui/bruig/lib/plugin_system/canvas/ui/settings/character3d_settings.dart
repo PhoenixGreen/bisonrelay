@@ -645,17 +645,26 @@ class _LipSyncGroupState extends State<_LipSyncGroup> {
       _said = "";
     });
     controller.beginInteraction();
-    var done = await controller.lipSync(widget.character, voice,
-        words: _words,
-        feel: LipSyncFeel(shortest: _shortest.round(), lead: _lead.round()));
-    controller.endInteraction();
-    if (!mounted) return;
-    setState(() {
-      _busy = false;
-      _said = done.problem ??
+    String said;
+    try {
+      var done = await controller.lipSync(widget.character, voice,
+          words: _words,
+          feel: LipSyncFeel(shortest: _shortest.round(), lead: _lead.round()));
+      said = done.problem ??
           (done.mouths == 0
               ? "No speech was found in that recording."
               : "${done.mouths} mouths laid down.");
+    } catch (exception) {
+      said = "The mouths could not be worked out: $exception";
+    } finally {
+      // Closed whatever happened: left open, every later edit would join
+      // this one undo step.
+      controller.endInteraction();
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _said = said;
     });
   }
 

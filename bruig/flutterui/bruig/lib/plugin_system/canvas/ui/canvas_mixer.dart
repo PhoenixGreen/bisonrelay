@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
@@ -270,13 +271,46 @@ class _CanvasMixerState extends State<CanvasMixer>
   void initState() {
     super.initState();
     _ticker = createTicker(_meter)..start();
+    controller.addListener(_wakeIfPlaying);
   }
+
+  /// The meters move only while there is sound to show: a ticker asks for a
+  /// frame on every screen refresh, the whole window drawn each time, so it
+  /// runs while something plays and rests once the peaks have fallen. At
+  /// rest a slow check (no frames) wakes it for sound that starts without
+  /// the timeline: a key played, a preview.
+  Timer? _resting;
+
+  void _wake() {
+    _resting?.cancel();
+    _resting = null;
+    if (!_ticker.isActive) _ticker.start();
+  }
+
+  void _rest() {
+    if (_ticker.isActive) _ticker.stop();
+    _resting ??= Timer.periodic(const Duration(milliseconds: 250), (_) {
+      var (l, r) = controller.levels();
+      if (_sounding || gainToDb(math.max(l, r)) > _floor) _wake();
+    });
+  }
+
+  bool get _sounding => controller.playing || controller.sessionActive;
+
+  void _wakeIfPlaying() {
+    if (_sounding) _wake();
+  }
+
+  /// _floor is as quiet as a meter shows, in decibels.
+  static const double _floor = -80;
 
   /// _clipScrolls keeps the columns' clip slots scrolled together.
   final _ClipScrolls _clipScrolls = _ClipScrolls();
 
   @override
   void dispose() {
+    controller.removeListener(_wakeIfPlaying);
+    _resting?.cancel();
     _clipScrolls.dispose();
     _ticker.dispose();
     _chainScroll.dispose();
@@ -319,6 +353,12 @@ class _CanvasMixerState extends State<CanvasMixer>
     // Clips waiting for a bar blink, and playing ones go round.
     if (controller.sessionActive) moved = true;
     if (moved && mounted) setState(() {});
+    // Nothing playing and every meter down: rest.
+    if (!moved &&
+        !_sounding &&
+        _peaks.values.every((p) => math.max(p.$1, p.$2) <= _floor)) {
+      _rest();
+    }
   }
 
   Future<void> _measure() async {

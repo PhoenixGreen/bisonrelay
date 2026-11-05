@@ -1267,16 +1267,24 @@ class _SampleViewState extends State<_SampleView>
   @override
   void initState() {
     super.initState();
-    // The playhead, while it plays.
+    // The playhead, while it plays: the ticker runs only then, as it asks
+    // for a frame on every screen refresh.
     _ticker = createTicker((_) {
       var at = c.clipPlayhead;
       if (at != _playhead) setState(() => _playhead = at);
-    })
-      ..start();
+      if (at == null) _ticker.stop();
+    });
+    c.addListener(_followPlayhead);
+    _followPlayhead();
+  }
+
+  void _followPlayhead() {
+    if (c.clipPlayhead != null && !_ticker.isActive) _ticker.start();
   }
 
   @override
   void dispose() {
+    c.removeListener(_followPlayhead);
     _ticker.dispose();
     super.dispose();
   }

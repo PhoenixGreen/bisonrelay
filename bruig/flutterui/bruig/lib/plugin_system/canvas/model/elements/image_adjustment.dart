@@ -210,13 +210,16 @@ class ImageAdjustment {
             CurveChannel.values.where((c) => c.name == e.key).firstOrNull;
         if (channel == null || e.value is! List) continue;
         var flat = e.value as List;
+        // On the unit square, left to right, and only so many: a curve is
+        // sampled a thousand times to be drawn, each sample a walk along it.
         var points = <Offset>[];
-        for (var i = 0; i + 1 < flat.length; i += 2) {
+        for (var i = 0; i + 1 < flat.length && points.length < 64; i += 2) {
           if (flat[i] is num && flat[i + 1] is num) {
-            points.add(Offset(
-                (flat[i] as num).toDouble(), (flat[i + 1] as num).toDouble()));
+            points.add(Offset((flat[i] as num).toDouble().clamp(0.0, 1.0),
+                (flat[i + 1] as num).toDouble().clamp(0.0, 1.0)));
           }
         }
+        points.sort((a, b) => a.dx.compareTo(b.dx));
         if (points.length >= 2) curves[channel] = points;
       }
     }

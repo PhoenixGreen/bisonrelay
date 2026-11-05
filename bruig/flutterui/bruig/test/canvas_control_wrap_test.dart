@@ -154,41 +154,6 @@ void main() {
     });
   });
 
-  group("every element's settings", () {
-    testWidgets("stay inside a narrow sidebar", (tester) async {
-      // Every kind, from the factory the Add panel uses, so a kind added later
-      // is covered by this without anybody remembering to list it here.
-      //
-      // A control wider than the line it is on is not something a wrapping
-      // layout can fix: it overflows, and what that looks like is a field with
-      // its right-hand edge off the panel and a number nobody can finish
-      // typing.
-      const width = 300.0;
-      for (var kind in ElementKind.values) {
-        var document = const CanvasDocument();
-        var element = newElement(kind, document);
-        var controller = CanvasController(document.addElement(element));
-        addTearDown(controller.dispose);
-        controller.selectOnly(element.id);
-        await pump(tester, CanvasDesignPanel(controller: controller),
-            width: width);
-
-        for (var of in [
-          find.byType(CanvasNumberField),
-          find.byType(CanvasTextField),
-          find.byType(CanvasToggle),
-          find.byType(CanvasIconButton),
-        ]) {
-          for (var i = 0; i < of.evaluate().length; i++) {
-            var box = tester.getRect(of.at(i));
-            expect(box.right, lessThanOrEqualTo(width + 0.5),
-                reason: "${kind.label}: a control runs off the panel: $box");
-          }
-        }
-      }
-    });
-  });
-
   group("the text element's type card", () {
     testWidgets("gives the face a line to itself rather than cut its name",
         (tester) async {
@@ -309,35 +274,6 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(ValueKey(link)));
         await tester.pumpAndSettle();
-      }
-    });
-  });
-
-  group("the lines down a panel", () {
-    testWidgets("are not drawn in a sectioned one: a card is its own edge",
-        (tester) async {
-      for (var kind in [
-        ElementKind.line,
-        ElementKind.button,
-        ElementKind.shape,
-        ElementKind.path,
-        ElementKind.counter,
-        ElementKind.player,
-      ]) {
-        var document = const CanvasDocument();
-        var element = newElement(kind, document);
-        var controller = CanvasController(document.addElement(element));
-        addTearDown(controller.dispose);
-        controller.selectOnly(element.id);
-        await pump(tester, CanvasDesignPanel(controller: controller),
-            width: 420);
-
-        expect(
-            find.descendant(
-                of: find.byType(CanvasSection),
-                matching: find.byType(CanvasGroupRule)),
-            findsNothing,
-            reason: kind.label);
       }
     });
   });

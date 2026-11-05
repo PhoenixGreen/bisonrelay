@@ -191,6 +191,16 @@ class _Painted {
 
 final Map<String, _Painted> _painted = {};
 
+/// clearPaintLayers lets go of every paint layer kept: see
+/// clearRenderCaches.
+void clearPaintLayers() {
+  for (var p in _painted.values) {
+    p.picture.dispose();
+    p.raster?.dispose();
+  }
+  _painted.clear();
+}
+
 /// _side is how big a paint layer is flattened at, on its longer side.
 const double _side = 2048;
 
@@ -286,17 +296,22 @@ const _alphaToOne = ColorFilter.matrix([
 /// sharpen.frag.
 class SharpenShader {
   static ui.FragmentProgram? _program;
-  static Future<void>? _loading;
+  static bool _unloadable = false;
   static final ValueNotifier<bool> ready = ValueNotifier(false);
 
-  static Future<void> load() => _loading ??= () async {
-        try {
-          _program = await ui.FragmentProgram.fromAsset("shaders/sharpen.frag");
-          ready.value = true;
-        } catch (exception) {
-          debugPrint("The sharpening shader did not load: $exception");
-        }
-      }();
+  static Future<void> load() async {
+    // The program, not the loading, is what is kept: a load begun
+    // where it never finishes (a test's own time, gone) would leave
+    // every later wait for it waiting for ever.
+    if (_program != null || _unloadable) return;
+    try {
+      _program = await ui.FragmentProgram.fromAsset("shaders/sharpen.frag");
+      ready.value = true;
+    } catch (exception) {
+      _unloadable = true;
+      debugPrint("The sharpening shader did not load: $exception");
+    }
+  }
 }
 
 /// _healFill draws a heal stroke's fill: what is round the spot, blurred
@@ -338,15 +353,20 @@ void _healFill(ui.Canvas canvas, ui.Image image, Paint picturePaint,
 /// HealShader is the healing brush's shader, loaded once -- see heal.frag.
 class HealShader {
   static ui.FragmentProgram? _program;
-  static Future<void>? _loading;
+  static bool _unloadable = false;
 
-  static Future<void> load() => _loading ??= () async {
-        try {
-          _program = await ui.FragmentProgram.fromAsset("shaders/heal.frag");
-        } catch (exception) {
-          debugPrint("The healing shader did not load: $exception");
-        }
-      }();
+  static Future<void> load() async {
+    // The program, not the loading, is what is kept: a load begun
+    // where it never finishes (a test's own time, gone) would leave
+    // every later wait for it waiting for ever.
+    if (_program != null || _unloadable) return;
+    try {
+      _program = await ui.FragmentProgram.fromAsset("shaders/heal.frag");
+    } catch (exception) {
+      _unloadable = true;
+      debugPrint("The healing shader did not load: $exception");
+    }
+  }
 }
 
 /// healSource is where a heal stroke started at [f] -- a fraction of a

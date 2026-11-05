@@ -12,7 +12,6 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
-import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -39,8 +38,6 @@ void main() {
   late Directory root;
 
   setUp(() async {
-    // The test clock is not the wall clock the second click is timed on.
-    DoubleClick.window = const Duration(days: 1);
     SharedPreferences.setMockInitialValues({});
     root = await Directory.systemTemp.createTemp("canvas_assets_panel");
     CanvasStorage.rootOverride = root.path;

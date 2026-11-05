@@ -165,12 +165,14 @@ class CharacterShape {
 
   factory CharacterShape.fromJson(Map<String, dynamic> j) => CharacterShape(
         values: {
-          for (final e in ((j["values"] as Map?) ?? const {}).entries)
+          for (final e
+              in (j["values"] is Map ? j["values"] as Map : const {}).entries)
             if (e.value is num && (e.value as num).isFinite)
               "${e.key}": (e.value as num).toDouble(),
         },
         choices: {
-          for (final e in ((j["choices"] as Map?) ?? const {}).entries)
+          for (final e
+              in (j["choices"] is Map ? j["choices"] as Map : const {}).entries)
             if (e.value is String) "${e.key}": e.value as String,
         },
       );

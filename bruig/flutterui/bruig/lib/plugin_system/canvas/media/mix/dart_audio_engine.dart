@@ -162,7 +162,7 @@ class DartAudioEngine implements AudioEngine {
         }
         if (useMixWorker && await _startWorker()) return true;
         _open();
-        _pump = Timer.periodic(const Duration(milliseconds: 5), (_) => _fill());
+        _wakeLocal();
         return true;
       } catch (exception) {
         debugPrint("The mix engine could not start: $exception");
@@ -291,13 +291,28 @@ class DartAudioEngine implements AudioEngine {
   set held(bool on) {
     _held = on;
     _send(["held", on]);
+    if (!on) _wakeLocal();
+  }
+
+  /// _wakeLocal sets the pump going again, mixing here rather than in the
+  /// worker: after a second of quiet it rests (see _fill), and anything
+  /// that may start a sound wakes it.
+  void _wakeLocal() {
+    if (_remote) return;
+    _quiet = 0;
+    _pump ??= Timer.periodic(const Duration(milliseconds: 5), (_) => _fill());
   }
 
   void _fill() {
     var stream = _stream;
     if (stream == null || _held) return;
-    if (core.voices.isEmpty) {
-      if (_quiet > mixRate) return;
+    if (core.voices.every((v) => v.paused)) {
+      if (_quiet > mixRate) {
+        // Rested: no timer on the editor's isolate while nothing sounds.
+        _pump?.cancel();
+        _pump = null;
+        return;
+      }
     } else {
       _quiet = 0;
     }
@@ -322,7 +337,7 @@ class DartAudioEngine implements AudioEngine {
         return;
       }
       _pushed += block;
-      if (core.voices.isEmpty) _quiet += block;
+      if (core.voices.every((v) => v.paused)) _quiet += block;
       if (_pushed * 8 > _limitBytes * 0.9) {
         // Near the end of what one stream may carry: the next takes over.
         _soloud.setDataIsEnded(stream);
@@ -410,6 +425,7 @@ class DartAudioEngine implements AudioEngine {
     }
     var source = (track as _Track).source();
     if (source == null) return null;
+    _wakeLocal();
     return _Voice(0,
         core: core.play(source,
             volume: volume,
@@ -491,6 +507,7 @@ class DartAudioEngine implements AudioEngine {
       _send(["noteOn", channel, sound, key, velocity, font != null]);
       return;
     }
+    _wakeLocal();
     var which = "${sound.look.name}:${sound.sound.name}:${sound.bank}:"
         "${sound.program}:"
         "${font != null && sound.sound == InstrumentSound.bank}";
@@ -573,12 +590,18 @@ class DartAudioEngine implements AudioEngine {
 
   @override
   void pause(AudioVoice voice, bool paused) {
-    if (_on(voice, ["pause", paused]) case var c?) core.pause(c, paused);
+    if (_on(voice, ["pause", paused]) case var c?) {
+      core.pause(c, paused);
+      if (!paused) _wakeLocal();
+    }
   }
 
   @override
   void seek(AudioVoice voice, double at) {
-    if (_on(voice, ["seek", at]) case var c?) core.seek(c, at);
+    if (_on(voice, ["seek", at]) case var c?) {
+      core.seek(c, at);
+      _wakeLocal();
+    }
   }
 
   /// position is where the voice has been heard to: rendered less what is

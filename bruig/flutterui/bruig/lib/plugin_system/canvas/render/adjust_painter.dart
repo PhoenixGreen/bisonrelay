@@ -18,21 +18,26 @@ import 'package:flutter/painting.dart';
 /// AdjustShader is the adjustment layers' shader, loaded once.
 class AdjustShader {
   static ui.FragmentProgram? _program;
-  static Future<void>? _loading;
+  static bool _unloadable = false;
 
   /// ready says the shader is loaded. Until it is, adjustment layers draw
   /// what is under them unadjusted.
   static final ValueNotifier<bool> ready = ValueNotifier(false);
 
   /// load reads the shader, once.
-  static Future<void> load() => _loading ??= () async {
-        try {
-          _program = await ui.FragmentProgram.fromAsset("shaders/adjust.frag");
-          ready.value = true;
-        } catch (exception) {
-          debugPrint("The adjustment shader did not load: $exception");
-        }
-      }();
+  static Future<void> load() async {
+    // The program, not the loading, is what is kept: a load begun
+    // where it never finishes (a test's own time, gone) would leave
+    // every later wait for it waiting for ever.
+    if (_program != null || _unloadable) return;
+    try {
+      _program = await ui.FragmentProgram.fromAsset("shaders/adjust.frag");
+      ready.value = true;
+    } catch (exception) {
+      _unloadable = true;
+      debugPrint("The adjustment shader did not load: $exception");
+    }
+  }
 }
 
 /// _lutOf is the 256-across strip a curve or a gradient map is read from.
@@ -318,3 +323,11 @@ ui.ImageFilter? _adjustFilter(
 /// _loose is adjusted pictures with no cache key (drawn over things still
 /// loading), held briefly until drawn.
 final List<ui.Image> _loose = [];
+
+/// clearAdjustedRasters lets go of the adjustments' unkeyed pictures.
+void clearAdjustedRasters() {
+  for (var image in _loose) {
+    image.dispose();
+  }
+  _loose.clear();
+}

@@ -325,6 +325,10 @@ class _TableTarget extends _Target {
       List<List<String>> raw = const []}) async {
     rows =
         await collectPictures(rows, next, allowFetching: allowed && !proxied);
+    // The table as it is now, not as it was when the fetch began: moved,
+    // resized or restyled meanwhile, that is kept. Deleted, nothing to fill.
+    var element = freshOf(controller, this.element);
+    if (element == null) return "The table has gone.";
 
     // The columns the reader fills in themselves, put back from what was
     // there before, matched by name so a badge follows its team.
@@ -453,6 +457,9 @@ class _ChartTarget extends _Target {
       {required bool allowed,
       required bool proxied,
       List<List<String>> raw = const []}) async {
+    // The chart as it is now: see the table's.
+    var element = freshOf(controller, this.element);
+    if (element == null) return "The chart has gone.";
     // Keeping what has been decided about how each series looks: a refresh
     // brings new values, it is not somebody asking for their colours back.
     var data = chartDataFromRows(rows, element.fromSource,

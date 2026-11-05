@@ -291,6 +291,9 @@ class AudioRuntime extends ChangeNotifier {
   @visibleForTesting
   Map<String, String> get routes => Map.unmodifiable(_routes);
   final Map<String, String> _channelSignature = {};
+
+  /// _mixOwners is which runtime last set each engine's mix.
+  static final Expando<AudioRuntime> _mixOwners = Expando();
   MasterSound? _master;
   String _masterSignature = "";
   bool _started = false;
@@ -312,6 +315,17 @@ class AudioRuntime extends ChangeNotifier {
       List<ReturnChannel> returns = const [],
       SpeakerLayout speakers = SpeakerLayout.stereo,
       Map<String, Heard> placements = const {}}) {
+    // Another runtime on the same engine -- a canvas previewed from the
+    // Files -- has set the mix since: all of this one's is sent again, not
+    // only what changed, or it would play through the other's.
+    if (_mixOwners[engine] != this) {
+      _mixOwners[engine] = this;
+      _channelSignature.clear();
+      _masterSignature = "";
+      _returnsKey = null;
+      _placements.clear();
+      if (_started) engine.setSpeakers(speakers);
+    }
     if (speakers != _speakers) {
       _speakers = speakers;
       if (_started) engine.setSpeakers(speakers);
@@ -775,6 +789,14 @@ class AudioRuntime extends ChangeNotifier {
     _disposed = true;
     _timer?.cancel();
     _timer = null;
+    // Its strips go with it, from an engine others go on using: left, they
+    // went on being mixed. Whoever sets the mix next sends theirs whole.
+    if (_started) {
+      for (var key in _channels.keys) {
+        engine.removeChannel(key);
+      }
+    }
+    if (_mixOwners[engine] == this) _mixOwners[engine] = null;
     for (var p in _sounds.values) {
       _silence(p, softly: false);
     }

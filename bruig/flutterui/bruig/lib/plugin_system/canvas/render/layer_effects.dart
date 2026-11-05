@@ -19,17 +19,22 @@ import 'package:flutter/painting.dart';
 /// has, so painters waiting on it can repaint.
 class TextureShader {
   static ui.FragmentProgram? _program;
-  static Future<void>? _loading;
+  static bool _unloadable = false;
   static final ValueNotifier<bool> ready = ValueNotifier(false);
 
-  static Future<void> load() => _loading ??= () async {
-        try {
-          _program = await ui.FragmentProgram.fromAsset("shaders/texture.frag");
-          ready.value = true;
-        } catch (exception) {
-          debugPrint("The texture shader did not load: $exception");
-        }
-      }();
+  static Future<void> load() async {
+    // The program, not the loading, is what is kept: a load begun
+    // where it never finishes (a test's own time, gone) would leave
+    // every later wait for it waiting for ever.
+    if (_program != null || _unloadable) return;
+    try {
+      _program = await ui.FragmentProgram.fromAsset("shaders/texture.frag");
+      ready.value = true;
+    } catch (exception) {
+      _unloadable = true;
+      debugPrint("The texture shader did not load: $exception");
+    }
+  }
 }
 
 /// paintTexture draws [spec] across [frame].
@@ -61,6 +66,14 @@ void paintTexture(ui.Canvas canvas, Rect frame, TextureSpec spec) {
 }
 
 final List<ui.Image> _loose = [];
+
+/// clearEffectRasters lets go of the effects' unkeyed pictures.
+void clearEffectRasters() {
+  for (var image in _loose) {
+    image.dispose();
+  }
+  _loose.clear();
+}
 
 /// _raster is [content] -- covering [room] -- as pixels at the size [canvas]
 /// is drawn at, capped at 4096 a side and 16 megapixels. With a [key] it is

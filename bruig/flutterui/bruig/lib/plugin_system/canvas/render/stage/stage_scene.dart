@@ -30,6 +30,15 @@ abstract interface class CanvasStageSource {
 /// StageScene is one stage's set, in its own scene.
 class StageScene {
   final Scene scene = Scene();
+
+  bool _disposed = false;
+
+  /// dispose lets go of the scene's GPU memory; it draws nothing after.
+  void dispose() {
+    _disposed = true;
+    scene.dispose();
+  }
+
   final PerspectiveCamera _camera =
       PerspectiveCamera(fovNear: 0.05, fovFar: 500);
 
@@ -86,6 +95,8 @@ class StageScene {
   /// [box], with [pixelRatio] pixels to each of the canvas's points.
   void paint(ui.Canvas canvas, ui.Rect box, StageElement stage, int frame,
       {double pixelRatio = 1}) {
+    // Let go of (see dispose), it draws nothing.
+    if (_disposed) return;
     if (box.width < 1 || box.height < 1) return;
     show(stage);
     final view = StageView(box, stage.cameraAt(frame));

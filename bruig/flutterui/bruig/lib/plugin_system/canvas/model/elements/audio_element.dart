@@ -194,7 +194,7 @@ class AudioElement extends CanvasElement {
         controls: raw is List
             ? [
                 for (var name in raw)
-                  if (AudioControl.fromName(name as String?) case var c?) c,
+                  if (AudioControl.fromName(jsonStr(name)) case var c?) c,
               ]
             : const [AudioControl.playPause],
         animation: jsonSpec(

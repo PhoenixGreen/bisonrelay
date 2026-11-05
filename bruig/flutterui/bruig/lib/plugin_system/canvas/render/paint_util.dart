@@ -52,6 +52,14 @@ typedef _LayoutKey = (
 
 final _layouts = <_LayoutKey, TextPainter>{};
 
+/// clearTextLayouts lets go of every text laid out and kept.
+void clearTextLayouts() {
+  for (var painter in _layouts.values) {
+    painter.dispose();
+  }
+  _layouts.clear();
+}
+
 /// _layoutCap is the number of paragraphs kept (a busy table is a few
 /// hundred cells); the oldest inserted go first.
 const _layoutCap = 512;

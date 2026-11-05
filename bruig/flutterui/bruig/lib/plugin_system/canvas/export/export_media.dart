@@ -209,7 +209,13 @@ class ExportMedia {
     for (var p in _placed) {
       var e = p.element;
       if (e is! VideoElement) continue;
-      if (frame < p.start || frame >= p.until) continue;
+      // Past its last frame, its decoder goes: a run of scenes with a video
+      // in each would otherwise have every one of them open by the end.
+      if (frame >= p.until) {
+        p.close();
+        continue;
+      }
+      if (frame < p.start) continue;
       var moment = _momentAt(p, frame);
       if (moment == null) {
         // A video that is not on the timeline stays on its last frame once

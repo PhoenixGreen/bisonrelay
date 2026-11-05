@@ -6,7 +6,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
-    show revealFrom, revealTo;
+    show MotionProp, revealFrom, revealTo;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
@@ -928,7 +928,10 @@ void paintElement(
             // Turned the way its clips move it, not only its keyframes --
             // played live from its slots, on their clock: a frame before is
             // a frame's time before.
-            dxAt: e.faceTravel && !e.base.motion.isEmpty && document != null
+            dxAt: e.faceTravel &&
+                    e.base.motion.clips
+                        .any((c) => c.keys.containsKey(MotionProp.x)) &&
+                    document != null
                 ? switch (liveMotion) {
                     var live? when live.of(e.id) != null => (f) =>
                         poseWithMotion(e, frame, document,
@@ -952,14 +955,26 @@ void paintElement(
                 : (id) {
                     var f = document.elementById(id);
                     if (f is! SpriteElement || !f.visible) return null;
-                    var dy = f.track?.at(frame).dy ?? 0;
+                    // Where it stands as its clips -- live ones too -- have
+                    // it, and drawn as everything else is: figures on a map
+                    // are drawn only here.
+                    var dy = f.base.motion.isEmpty
+                        ? f.track?.at(frame).dy ?? 0
+                        : poseWithMotion(f, frame, document, live: liveMotion)
+                            .dy;
                     return (
                       f.bounds.bottom + dy,
                       () => paintElement(canvas, f, frame,
                           frameRate: frameRate,
                           images: images,
                           editing: editing,
-                          document: document)
+                          document: document,
+                          counterValue: counterValue,
+                          liveMotion: liveMotion,
+                          counterPressed: counterPressed,
+                          counterRunning: counterRunning,
+                          audioState: audioState,
+                          videoShow: videoShow)
                     );
                   });
       case Character3dElement e:

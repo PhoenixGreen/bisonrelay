@@ -37,9 +37,29 @@ Future<bool> soundBankReady() async {
   return await file.exists() && await file.length() == soundBankBytes;
 }
 
+/// soundBankProgress is how much of the bank has arrived while it is being
+/// fetched, nought to one, and null otherwise: for whichever panel shows it.
+final ValueNotifier<double?> soundBankProgress = ValueNotifier(null);
+
+Future<bool>? _fetching;
+
 /// downloadSoundBank fetches the bank, telling [progress] how much of it
-/// has arrived, nought to one. True once it is there.
-Future<bool> downloadSoundBank({void Function(double share)? progress}) async {
+/// has arrived, nought to one. True once it is there. Asked again while it
+/// is being fetched, it is the same fetch: two into one file would each
+/// undo the other.
+Future<bool> downloadSoundBank({void Function(double share)? progress}) {
+  void heard() => progress?.call(soundBankProgress.value ?? 0);
+  if (progress != null) soundBankProgress.addListener(heard);
+  var fetch = _fetching ??= _download().whenComplete(() {
+    _fetching = null;
+    soundBankProgress.value = null;
+  });
+  return fetch.whenComplete(() => soundBankProgress.removeListener(heard));
+}
+
+Future<bool> _download() async {
+  void progress(double share) => soundBankProgress.value = share;
+  progress(0);
   if (await networkIsProxied()) return false;
   var target = await soundBankPath();
   var partial = File("$target.part");
@@ -53,7 +73,7 @@ Future<bool> downloadSoundBank({void Function(double share)? progress}) async {
     await for (var chunk in response!.timeout(const Duration(seconds: 60))) {
       sink.add(chunk);
       got += chunk.length;
-      progress?.call(math.min(1.0, got / soundBankBytes));
+      progress(math.min(1.0, got / soundBankBytes));
     }
     await sink.close();
     if (got != soundBankBytes) {

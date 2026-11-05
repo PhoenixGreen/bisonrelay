@@ -50,6 +50,19 @@ class CharacterDecalControls extends StatelessWidget {
         ...await CanvasLibrary.list(kind: AssetKind.vector),
       ];
 
+  /// _listedAt is the library as read at a revision of it: the panel is
+  /// built again at every step of a slider, and read afresh each time the
+  /// library was read from disk with it.
+  static (int, Future<List<LibraryAsset>>)? _listed;
+
+  Future<List<LibraryAsset>> _listedAt(int revision) {
+    if (library case var read?) return read();
+    if (_listed case (var at, var f) when at == revision) return f;
+    var f = _library();
+    _listed = (revision, f);
+    return f;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = ThemeNotifier.of(context).colors;
@@ -86,8 +99,9 @@ class CharacterDecalControls extends StatelessWidget {
           const StudioLabel("Add from your library"),
           ValueListenableBuilder<int>(
             valueListenable: CanvasLibrary.changes,
-            builder: (context, _, __) => FutureBuilder<List<LibraryAsset>>(
-              future: (library ?? _library)(),
+            builder: (context, revision, __) =>
+                FutureBuilder<List<LibraryAsset>>(
+              future: _listedAt(revision),
               builder: (context, snap) {
                 final all = snap.data ?? const <LibraryAsset>[];
                 if (all.isEmpty) {

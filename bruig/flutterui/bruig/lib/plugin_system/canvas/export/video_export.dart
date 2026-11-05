@@ -26,6 +26,10 @@ import 'package:path/path.dart' as path;
 String? _found;
 bool _looked = false;
 
+/// _looking is the look while it is under way, so a second ask waits for it
+/// -- rather than hearing "not installed" from a look not yet done.
+Future<String?>? _looking;
+
 /// _candidates are the places an ffmpeg tends to be when it is not on PATH.
 /// A macOS GUI app does not inherit the shell's PATH, so a Homebrew install
 /// is invisible to `which`.
@@ -50,7 +54,14 @@ const String ffmpegHelp =
 /// ffmpegPath is where ffmpeg is, or null if it is not to be found.
 Future<String?> ffmpegPath() async {
   if (_looked) return _found;
+  var found = await (_looking ??= _findFfmpeg());
+  _found = found;
   _looked = true;
+  _looking = null;
+  return found;
+}
+
+Future<String?> _findFfmpeg() async {
   // Phones do not let one app run another's binaries.
   if (Platform.isAndroid || Platform.isIOS) return null;
 
@@ -59,7 +70,7 @@ Future<String?> ffmpegPath() async {
     var found = await Process.run(which, ["ffmpeg"]);
     if (found.exitCode == 0) {
       var first = (found.stdout as String).trim().split("\n").first.trim();
-      if (first.isNotEmpty && await File(first).exists()) return _found = first;
+      if (first.isNotEmpty && await File(first).exists()) return first;
     }
   } catch (exception) {
     // No `which` at all: still try the list below.
@@ -67,9 +78,9 @@ Future<String?> ffmpegPath() async {
   }
 
   for (var candidate in _candidates) {
-    if (await File(candidate).exists()) return _found = candidate;
+    if (await File(candidate).exists()) return candidate;
   }
-  return _found = null;
+  return null;
 }
 
 /// useFfmpegForTest fixes what [ffmpegPath] answers: a script that records
@@ -79,6 +90,7 @@ Future<String?> ffmpegPath() async {
 void useFfmpegForTest(String? path) {
   _looked = true;
   _found = path;
+  _looking = null;
 }
 
 /// forgetFfmpegForTest clears the pinned answer, so the next look is a real
@@ -87,6 +99,7 @@ void useFfmpegForTest(String? path) {
 void forgetFfmpegForTest() {
   _looked = false;
   _found = null;
+  _looking = null;
 }
 
 /// VideoFormat is which of the two files to write: MP4 plays everywhere,
@@ -305,7 +318,9 @@ Future<CanvasExport?> _renderPiped(
     // to it and stops reading frames, and both sides deadlock.
     var errors = StringBuffer();
     var draining = [
-      process.stderr.transform(utf8.decoder).forEach(errors.write),
+      process.stderr
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .forEach(errors.write),
       process.stdout.drain<void>(),
     ];
 

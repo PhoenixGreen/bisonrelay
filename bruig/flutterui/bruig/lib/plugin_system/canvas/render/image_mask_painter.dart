@@ -80,6 +80,15 @@ class _Rastered {
 /// as they fall out.
 final Map<ImageMask, _Rastered> _rastered = LinkedHashMap.identity();
 
+/// clearMaskRasters lets go of every mask kept as pixels: see
+/// clearRenderCaches.
+void clearMaskRasters() {
+  for (var r in _rastered.values) {
+    r.image.dispose();
+  }
+  _rastered.clear();
+}
+
 /// _maskSide is the most a mask is drawn into across: a mask is an edge's
 /// softness, not a photograph's detail.
 const double _maskSide = 2048;

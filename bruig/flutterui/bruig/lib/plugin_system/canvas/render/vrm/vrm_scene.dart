@@ -188,6 +188,9 @@ class ShapedAvatar {
   /// sculpt shapes the body by hand as well, with [strokes]
   /// (character_sculpt.dart), on the next [apply].
   void sculpt(List<SculptStroke> strokes) {
+    // Asked at every frame: the same list is the same strokes, without
+    // hashing every point of every one.
+    if (identical(strokes, _sculpt)) return;
     final key = strokes.map((s) => s.key).join(';');
     if (key == _sculptKey) return;
     _sculpt = strokes;

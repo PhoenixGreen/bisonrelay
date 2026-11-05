@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 // gif_encoder.dart writes an animated GIF89a by hand: there is no
@@ -191,11 +192,13 @@ int _paletteBits(int count) {
 /// boxes, each becoming the average of its colours. Unlike a popularity
 /// count, it keeps rare bright colours as well as shades of a dominant one.
 Uint8List _medianCut(List<GifFrame> frames, int wanted) {
-  // Sampled at a stride, about 20,000 pixels a frame.
+  // Sampled at a stride: about 20,000 pixels a frame, and no more than
+  // [_mostSamples] in all, so a long animation is not millions of them.
+  var each = math.max(1000, math.min(20000, _mostSamples ~/ frames.length));
   var samples = <int>[];
   for (var frame in frames) {
     var pixels = frame.rgba;
-    var stride = 4 * (1 + pixels.length ~/ (4 * 20000));
+    var stride = 4 * (1 + pixels.length ~/ (4 * each));
     for (var i = 0; i < pixels.length; i += stride) {
       if (pixels[i + 3] < 128) continue;
       samples.add((pixels[i] << 16) | (pixels[i + 1] << 8) | pixels[i + 2]);
@@ -203,41 +206,32 @@ Uint8List _medianCut(List<GifFrame> frames, int wanted) {
   }
   if (samples.isEmpty) return Uint8List.fromList([0, 0, 0]);
 
-  var boxes = <List<int>>[samples];
+  // Each box knows its widest channel from when it was made, rather than
+  // every box being measured again at every split.
+  var boxes = <_Box>[_Box(samples)];
   while (boxes.length < wanted) {
-    var bestIndex = -1, bestSpread = -1, bestChannel = 0;
+    var bestIndex = -1, bestSpread = 0;
     for (var i = 0; i < boxes.length; i++) {
-      if (boxes[i].length < 2) continue;
-      var lo = [255, 255, 255], hi = [0, 0, 0];
-      for (var c in boxes[i]) {
-        var rgb = [(c >> 16) & 255, (c >> 8) & 255, c & 255];
-        for (var k = 0; k < 3; k++) {
-          if (rgb[k] < lo[k]) lo[k] = rgb[k];
-          if (rgb[k] > hi[k]) hi[k] = rgb[k];
-        }
-      }
-      for (var k = 0; k < 3; k++) {
-        var spread = hi[k] - lo[k];
-        if (spread > bestSpread) {
-          bestSpread = spread;
-          bestIndex = i;
-          bestChannel = k;
-        }
+      var b = boxes[i];
+      if (b.colours.length >= 2 && b.spread > bestSpread) {
+        bestSpread = b.spread;
+        bestIndex = i;
       }
     }
-    if (bestIndex < 0 || bestSpread <= 0) break;
+    if (bestIndex < 0) break;
 
     var box = boxes.removeAt(bestIndex);
-    var shift = bestChannel == 0 ? 16 : (bestChannel == 1 ? 8 : 0);
-    box.sort((a, b) => ((a >> shift) & 255).compareTo((b >> shift) & 255));
-    var mid = box.length ~/ 2;
-    boxes.add(box.sublist(0, mid));
-    boxes.add(box.sublist(mid));
+    var shift = box.channel == 0 ? 16 : (box.channel == 1 ? 8 : 0);
+    var colours = box.colours
+      ..sort((a, b) => ((a >> shift) & 255).compareTo((b >> shift) & 255));
+    var mid = colours.length ~/ 2;
+    boxes.add(_Box(colours.sublist(0, mid)));
+    boxes.add(_Box(colours.sublist(mid)));
   }
 
   var palette = Uint8List(boxes.length * 3);
   for (var i = 0; i < boxes.length; i++) {
-    var box = boxes[i];
+    var box = boxes[i].colours;
     if (box.isEmpty) continue;
     var r = 0, g = 0, b = 0;
     for (var c in box) {
@@ -250,6 +244,35 @@ Uint8List _medianCut(List<GifFrame> frames, int wanted) {
     palette[i * 3 + 2] = b ~/ box.length;
   }
   return palette;
+}
+
+/// _mostSamples is the most pixels a palette is chosen from.
+const int _mostSamples = 200000;
+
+/// _Box is a median cut's box: its colours, and the channel they spread
+/// widest along and by how much.
+class _Box {
+  final List<int> colours;
+  int channel = 0, spread = 0;
+
+  _Box(this.colours) {
+    var lr = 255, lg = 255, lb = 255, hr = 0, hg = 0, hb = 0;
+    for (var c in colours) {
+      var r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+      if (r < lr) lr = r;
+      if (r > hr) hr = r;
+      if (g < lg) lg = g;
+      if (g > hg) hg = g;
+      if (b < lb) lb = b;
+      if (b > hb) hb = b;
+    }
+    for (var (k, d) in [(0, hr - lr), (1, hg - lg), (2, hb - lb)]) {
+      if (d > spread) {
+        spread = d;
+        channel = k;
+      }
+    }
+  }
 }
 
 /// _NearestColor maps a colour onto the closest palette entry, cached over

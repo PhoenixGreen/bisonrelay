@@ -692,7 +692,12 @@ class AssetThumb extends StatefulWidget {
 }
 
 class _AssetThumbState extends State<AssetThumb> {
+  /// _cache keeps what was read, by bytes, oldest first: whole files, held
+  /// for the session, so to a budget rather than a count -- a couple of
+  /// hundred photographs were most of a gigabyte. A big file is not kept.
   static final Map<String, Uint8List> _cache = {};
+  static int _cached = 0;
+  static const int _cacheBudget = 48 << 20, _keptLargest = 4 << 20;
   Uint8List? _bytes;
 
   @override
@@ -709,9 +714,14 @@ class _AssetThumbState extends State<AssetThumb> {
       var read = await CanvasMedia.load(MediaKind.vector, widget.id) ??
           await CanvasAssets.load(widget.id);
       if (read == null) return;
-      bytes = Uint8List.fromList(read);
-      if (_cache.length > 200) _cache.remove(_cache.keys.first);
-      _cache[widget.id] = bytes;
+      bytes = read is Uint8List ? read : Uint8List.fromList(read);
+      if (bytes.length <= _keptLargest) {
+        _cache[widget.id] = bytes;
+        _cached += bytes.length;
+        while (_cached > _cacheBudget && _cache.length > 1) {
+          _cached -= _cache.remove(_cache.keys.first)!.length;
+        }
+      }
     }
     if (mounted) setState(() => _bytes = bytes);
   }

@@ -533,6 +533,7 @@ extension CanvasPlayback on CanvasController {
         return;
       }
       _previewAt = next;
+      var turned = false;
 
       // Playing the document rather than watching one join: the editor is
       // walked along with the playhead, and a scene that has been told to
@@ -546,6 +547,7 @@ extension CanvasPlayback on CanvasController {
             return;
           }
           _document = _document.goToScene(place.scene);
+          turned = true;
           _audioFollowsPage(turned: true);
           _autoplayAudio();
         }
@@ -553,13 +555,13 @@ extension CanvasPlayback on CanvasController {
             place.frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
       }
       _syncTimeline();
-      notifyListeners();
+      _notifyPlayhead(turned);
       return;
     }
 
     // Waiting to be played: the playhead holds on the note.
     if (_practice != null && _practiceHolds(_frame + 1)) {
-      notifyListeners();
+      _notifyView();
       return;
     }
     var next = _frame + 1;
@@ -602,7 +604,19 @@ extension CanvasPlayback on CanvasController {
       }
     }
     _syncTimeline();
-    notifyListeners();
+    _notifyPlayhead(false);
+  }
+
+  /// _notifyPlayhead tells the playhead has moved on: what draws it is
+  /// drawn again, but nothing that redraws on a change to the canvas itself
+  /// (see revision) -- the settings column, built at every frame of play,
+  /// was most of what playing cost. Turned to another scene, everything.
+  void _notifyPlayhead(bool turned) {
+    if (turned) {
+      notifyListeners();
+    } else {
+      _notifyView();
+    }
   }
 
   /// counterTicks counts how many times the running counters have moved, so
@@ -741,7 +755,8 @@ extension CanvasPlayback on CanvasController {
     }
     if (moved) {
       _counterTicks++;
-      notifyListeners();
+      // Counts are not in the canvas: see _notifyPlayhead.
+      _notifyView();
     }
   }
 

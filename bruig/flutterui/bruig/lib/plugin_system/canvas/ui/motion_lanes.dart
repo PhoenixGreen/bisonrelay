@@ -130,7 +130,7 @@ class _MotionLanesState extends State<MotionLanes> {
   /// to one); pressed again, the button puts them all back. By id, for the
   /// session.
   static final Set<String> _flipped = {};
-  static int _flippedAt = -1;
+  static Object? _flippedAt;
 
   bool _isFolded(CanvasElement e) =>
       (controller.laneSize == 0) != _flipped.contains(e.id);
@@ -365,8 +365,12 @@ class _MotionLanesState extends State<MotionLanes> {
 
   @override
   Widget build(BuildContext context) {
-    if (_flippedAt != controller.laneSize) {
-      _flippedAt = controller.laneSize;
+    // The button's size, on this canvas: another canvas -- whose elements
+    // may have the same ids -- starts as its button says.
+    var at =
+        (controller, controller.folder, controller.name, controller.laneSize);
+    if (_flippedAt != at) {
+      _flippedAt = at;
       _flipped.clear();
     }
     var rows = _rows;

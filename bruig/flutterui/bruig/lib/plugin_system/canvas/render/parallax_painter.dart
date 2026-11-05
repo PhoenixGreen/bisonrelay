@@ -140,7 +140,11 @@ void _paintLayer(
       range(seen.top, seen.bottom, origin.dy, tile.height, layer.repeatY);
   // A sky or a fill that does not repeat down still covers the page above
   // and below it rather than ending in a hard line.
-  if (x1 - x0 > 400 || y1 - y0 > 400) return;
+  // Never more than a few thousand tiles a layer a frame, however small
+  // they are.
+  if (x1 - x0 > 400 || y1 - y0 > 400 || (x1 - x0 + 1) * (y1 - y0 + 1) > 4096) {
+    return;
+  }
 
   var faded = layer.opacity < 0.999;
   if (faded) {
@@ -185,6 +189,15 @@ void _paintLayer(
 /// expensive and a repeating layer asks for the same tile many times.
 final Map<String, ui.Image> _patterns = {};
 
+/// clearParallaxPatterns lets go of the layers' patterns kept: see
+/// clearRenderCaches.
+void clearParallaxPatterns() {
+  for (var image in _patterns.values) {
+    image.dispose();
+  }
+  _patterns.clear();
+}
+
 void _paintPattern(ui.Canvas canvas, Rect rect, ParallaxLayer layer,
     double time, double frameRate, CanvasImageSource? images) {
   if (layer.spec.animated) {
@@ -194,7 +207,8 @@ void _paintPattern(ui.Canvas canvas, Rect rect, ParallaxLayer layer,
   }
   var w = rect.width.round().clamp(1, 4096),
       h = rect.height.round().clamp(1, 4096);
-  var key = "${jsonEncode(layer.spec.toJson())}|$w|$h";
+  var key = "${_specKeys[layer.spec] ??= jsonEncode(layer.spec.toJson())}"
+      "|$w|$h";
   var image = _patterns[key];
   if (image == null) {
     var rec = ui.PictureRecorder();
@@ -217,10 +231,22 @@ void _paintPattern(ui.Canvas canvas, Rect rect, ParallaxLayer layer,
 /// move changes from frame to frame, so the paths are kept.
 final Map<String, List<(Path, Paint)>> _drawn = {};
 
+/// _specKeys and _shapeKeys are what a layer's look is, written out once
+/// per look rather than for every tile of every frame (looks never change;
+/// an edit makes a new one).
+final Expando<String> _specKeys = Expando(), _shapeKeys = Expando();
+
 List<(Path, Paint)> _sceneryOf(ParallaxLayer layer, Size tile) {
-  var key =
-      "${jsonEncode(layer.copyWith(scrollX: 0, scrollY: 0, autoX: 0, autoY: 0, offset: Offset.zero, opacity: 1).toJson())}"
-      "|${tile.width.round()}|${tile.height.round()}";
+  var shape = _shapeKeys[layer] ??= jsonEncode(layer
+      .copyWith(
+          scrollX: 0,
+          scrollY: 0,
+          autoX: 0,
+          autoY: 0,
+          offset: Offset.zero,
+          opacity: 1)
+      .toJson());
+  var key = "$shape|${tile.width.round()}|${tile.height.round()}";
   var hit = _drawn[key];
   if (hit != null) return hit;
   var made = scenery(layer, tile);

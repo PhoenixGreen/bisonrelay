@@ -281,7 +281,9 @@ class ParallaxLayer {
       offset: off is List && off.length == 2 && off[0] is num && off[1] is num
           ? Offset((off[0] as num).toDouble(), (off[1] as num).toDouble())
           : Offset.zero,
-      size: jsonDouble(json["size"], 1),
+      // As copyWith holds it: a received canvas's tiny size would be
+      // thousands of tiles a frame.
+      size: jsonDouble(json["size"], 1).clamp(0.1, 8).toDouble(),
       anchor: LayerAnchor.fromName(jsonStr(json["anchor"])),
       opacity: jsonDouble(json["opacity"], 1),
       visible: jsonBool(json["visible"], true),

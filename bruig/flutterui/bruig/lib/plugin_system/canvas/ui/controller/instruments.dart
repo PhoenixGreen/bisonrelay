@@ -23,7 +23,8 @@ extension CanvasInstruments on CanvasController {
       frames: _frameSource ?? FfmpegFrames(ffmpegPath),
       audio: audio,
       locate: (id) => CanvasMedia.existingPath(MediaKind.video, id))
-    ..addListener(notifyListeners);
+    // A video's frames are not changes to the canvas: see _notifyPlayhead.
+    ..addListener(_notifyView);
 
   /// videoShow is how [e] should be drawn now: its frame and its play bar.
   VideoShow videoShow(VideoElement e) {
@@ -84,6 +85,43 @@ extension CanvasInstruments on CanvasController {
   void stopAudio() {
     _video?.stopAll();
     _audio?.stopAll();
+  }
+
+  /// leavePage is the Canvas page left. The session outlives the page, but
+  /// nothing of it goes on with no page to see or stop it: not the playhead
+  /// (whose every frame would cue the sounds again), a game and its keys, a
+  /// stop waiting for one, the slots, a voice being heard, the counters'
+  /// clock, an arpeggio or a held note -- nor the pictures the renderer kept.
+  void leavePage() {
+    if (gaming) gaming = false;
+    _endWait();
+    if (playing) pause();
+    motionPlayer.clear();
+    stopHearing();
+    _counterTimer?.cancel();
+    _counterTimer = null;
+    for (var MapEntry(key: id, value: live) in _arps.entries) {
+      live.timer?.cancel();
+      if ((live.sounding, _document.elementById(id))
+          case (var k?, AudioElement e)) {
+        audio.noteOff(CanvasController._channelOf(e), k);
+      }
+    }
+    _arps.clear();
+    for (var MapEntry(key: id, value: held) in _sounded.entries) {
+      if (_document.elementById(id) case AudioElement e) {
+        var channel = CanvasController._channelOf(e);
+        for (var k in held.values.expand((keys) => keys)) {
+          audio.noteOff(channel, k);
+        }
+      }
+    }
+    _sounded.clear();
+    _soundCount.clear();
+    _sustained.clear();
+    stopAudio();
+    clearRenderCaches();
+    images.release();
   }
 
   /// audioState is how [e]'s sound is doing, for the icon to show.

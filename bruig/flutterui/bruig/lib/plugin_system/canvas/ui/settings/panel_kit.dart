@@ -177,7 +177,11 @@ class _CanvasStepperState extends State<CanvasStepper> {
   }
 
   void _nudge(int by) {
-    _running = _snap(_running + by * _step);
+    var next = _snap(_running + by * _step);
+    // Held at a limit: nothing more to say, rather than the same value
+    // written sixteen times a second.
+    if (next == _running && _held) return;
+    _running = next;
     widget.onChanged(_running);
   }
 
@@ -549,6 +553,16 @@ class TileSnapshot extends StatelessWidget {
   static bool Function() holding = _never;
   static bool _never() => false;
 
+  /// letGo is the panels closed: the hook no longer holds their editor,
+  /// and the pictures kept go.
+  static void letGo() {
+    holding = _never;
+    for (var image in _snapshots.values) {
+      image.dispose();
+    }
+    _snapshots.clear();
+  }
+
   /// stoodIn counts the pictures drawn with something standing in for
   /// what is not ready -- a body still being made: a tile drawn so is not
   /// kept, and is drawn again when [arrived] says the real thing is here.
@@ -917,6 +931,8 @@ class _MenuItem {
   const _MenuItem(this.remember, this.title, this.icon, this.changed,
       {this.help = "", this.resets = false, this.action, this.state});
 
+  /// Equal whatever its [action]: that is a widget, made anew at every
+  /// build, and comparing it had every build of the panel cause another.
   @override
   bool operator ==(Object other) =>
       other is _MenuItem &&
@@ -925,12 +941,10 @@ class _MenuItem {
       other.icon == icon &&
       other.changed == changed &&
       other.help == help &&
-      other.resets == resets &&
-      other.action == action;
+      other.resets == resets;
 
   @override
-  int get hashCode =>
-      Object.hash(remember, title, icon, changed, help, resets, action);
+  int get hashCode => Object.hash(remember, title, icon, changed, help, resets);
 }
 
 /// _MenuScope tells the sections under a menu which of them is chosen.
@@ -1031,7 +1045,12 @@ class _CanvasSectionsState extends State<CanvasSections> {
       }
 
       context.visitChildElements(visit);
-      if (!listEquals(found, _items)) setState(() => _items = found);
+      if (!listEquals(found, _items)) {
+        setState(() => _items = found);
+      } else {
+        // The same sections: their newest actions, shown at the next build.
+        _items = found;
+      }
     });
   }
 
@@ -2026,6 +2045,17 @@ class _FoldingTilesState<T> extends State<_FoldingTiles<T>> {
 /// _unlinked is which side fields have been split into their four, for this
 /// run of the app.
 final Set<String> _unlinked = {};
+
+/// forgetPanelsForTest puts the panels back as a new run of the app has
+/// them: see forgetSectionsForTest.
+@visibleForTesting
+void forgetPanelsForTest() {
+  TileSnapshot.letGo();
+  _lastIn.clear();
+  _unlinked.clear();
+  settingsAsMenu.value = false;
+  CanvasSection.openAll = false;
+}
 
 /// CanvasSidesField is four numbers that are usually one -- a border's
 /// sides, a box's corners, its padding -- as one stepper with a link beside

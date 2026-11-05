@@ -15,7 +15,6 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -33,9 +32,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
-    // The pair is counted against the real clock, so a loaded machine can
-    // put a second of real time between two taps made back to back.
-    DoubleClick.window = const Duration(minutes: 1);
   });
 
   Future<CanvasController> panel(WidgetTester tester,

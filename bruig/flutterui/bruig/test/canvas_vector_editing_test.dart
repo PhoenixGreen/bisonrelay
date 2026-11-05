@@ -970,9 +970,8 @@ void main() {
       // The square's two top corners, at (110, 110) and (190, 110).
       c.pickVectorPoints(
           {const VectorPick(0, 0, 0), const VectorPick(0, 0, 1)});
-      // Out of the double-click's reach, which is timed on the real clock.
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 450)));
+      // Out of the double-click's reach.
+      await tester.pump(const Duration(milliseconds: 450));
       var scale = view.pageRect.width / c.document.size.size.width;
       await tester.dragFrom(
           onScreen(view, c, const Offset(150, 111)), Offset(0, 10 * scale));
@@ -1026,8 +1025,10 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    Future<void> settle(WidgetTester tester) => tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 450)));
+    // Past the double-click's reach: its clock is the test's, so no real
+    // time need pass.
+    Future<void> settle(WidgetTester tester) =>
+        tester.pump(const Duration(milliseconds: 450));
 
     testWidgets("the pen on a point picks it, and the next point joins on",
         (tester) async {

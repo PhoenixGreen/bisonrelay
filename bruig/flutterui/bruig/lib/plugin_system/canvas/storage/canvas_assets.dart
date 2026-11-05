@@ -135,12 +135,14 @@ class CanvasAssets {
     // An id that is a hash must be these bytes' hash, or a sender could put
     // their own picture under the name of one somebody else already uses.
     // Only the oldest ids, random names, cannot be checked.
-    if (_hashed.hasMatch(id) && !await idMatches(id, bytes)) return false;
     var file = await _pathFor(id, create: true);
     if (file == null) return false;
     try {
       var handle = File(file);
+      // Already here (checked when it was stored): not hashed again, as a
+      // canvas previewed twice would have every picture hashed twice.
       if (await handle.exists()) return true;
+      if (_hashed.hasMatch(id) && !await idMatches(id, bytes)) return false;
       await writeWhole(file, bytes);
       return true;
     } catch (exception) {

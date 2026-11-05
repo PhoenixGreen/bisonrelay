@@ -343,8 +343,11 @@ class VideoRuntime extends ChangeNotifier {
         changed = true;
       }
       if (p.waiting == null) _pull(p);
-      // The fades change the picture every tick while they run.
-      if (p.element.clip.fadeIn > 0 || p.element.clip.fadeOut > 0) {
+      // The fades change the picture every tick while they run -- only
+      // while: a clip with a fade is not redrawn for its whole length.
+      var clip = p.element.clip;
+      if ((clip.fadeIn > 0 && at - p.start < clip.fadeIn) ||
+          (clip.fadeOut > 0 && p.end - at < clip.fadeOut)) {
         changed = true;
       }
     }

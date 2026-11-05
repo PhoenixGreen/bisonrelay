@@ -87,8 +87,8 @@ void main() {
     Offset at(Offset doc) => page.topLeft + doc * scale;
     VectorElement e() => c.document.elementById("v") as VectorElement;
     Rect box(int shape) => itemExtent(e(), (shape: shape, part: 0))!;
-    Future<void> pause() => tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 500)));
+    // Past the double-click's reach, on the test's own clock.
+    Future<void> pause() => tester.pump(const Duration(milliseconds: 500));
 
     c.selectOnly("v");
     c.editVector("v");

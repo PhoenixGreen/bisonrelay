@@ -561,6 +561,19 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
           ),
       };
 
+  /// _designsAt is the saved characters as listed at a revision of them:
+  /// the panel is built again at every change in the Studio, and every
+  /// design was read from disk each time.
+  (int, Future<List<CharacterDesign>>)? _listed;
+
+  Future<List<CharacterDesign>> _designsAt(int revision) {
+    if (widget.designs case var read?) return read();
+    if (_listed case (var at, var f) when at == revision) return f;
+    var f = CharacterDesigns.list();
+    _listed = (revision, f);
+    return f;
+  }
+
   Widget _panel() {
     final part = _open;
     if (part != null) {
@@ -609,8 +622,9 @@ class _CharacterStudio3DState extends State<CharacterStudio3D> {
                     "Done keeps the character in your library."),
             ValueListenableBuilder<int>(
               valueListenable: CharacterDesigns.changed,
-              builder: (context, _, __) => FutureBuilder<List<CharacterDesign>>(
-                future: (widget.designs ?? CharacterDesigns.list)(),
+              builder: (context, revision, __) =>
+                  FutureBuilder<List<CharacterDesign>>(
+                future: _designsAt(revision),
                 builder: (context, snap) {
                   final all = snap.data ?? const <CharacterDesign>[];
                   if (all.isEmpty) return const SizedBox.shrink();

@@ -111,7 +111,11 @@ class _Worker {
   bool _fontTried = false;
 
   SoundHash? _stream;
-  int _pushed = 0, _quiet = 0;
+  int _pushed = 0;
+
+  /// _quietSince is when nothing has been heard since, on [_clock], or null
+  /// while something is.
+  int? _quietSince;
   bool held = false, _renewing = false;
   double _load = 0;
   final Stopwatch _work = Stopwatch(), _clock = Stopwatch()..start();
@@ -124,10 +128,35 @@ class _Worker {
   final Float32List _interleaved = Float32List(block * 2);
 
   _Worker(this.port) {
-    _pump = Timer.periodic(const Duration(milliseconds: 5), (_) => _fill());
-    _report =
+    _wake();
+  }
+
+  /// _wake sets the pump and the reports going, after a rest: anything the
+  /// editor sends may start a sound. See _park.
+  void _wake() {
+    _quietSince = null;
+    _pump ??= Timer.periodic(const Duration(milliseconds: 5), (_) => _fill());
+    _report ??=
         Timer.periodic(const Duration(milliseconds: 20), (_) => _snapshot());
   }
+
+  /// _park rests after a second of quiet: one last report, its meters down,
+  /// and then nothing at all -- no timers, no messages -- until the editor
+  /// sends something. Left running, the reports woke the editor fifty times
+  /// a second for as long as the app was open.
+  void _park() {
+    _snapshot();
+    _pump?.cancel();
+    _report?.cancel();
+    _pump = _report = null;
+  }
+
+  /// _silent is whether nothing can be heard: no voice, or only paused ones
+  /// and instruments with no note sounding.
+  bool get _silent => core.voices.every((v) {
+        var t = v.track;
+        return v.paused || (t is _Live && t.sampler.sounding == 0);
+      });
 
   // Safe off the main isolate once the main one has started the engine --
   // see SoLoudIsolate. Experimental in flutter_soloud; pinned to 4.1.7.
@@ -149,11 +178,19 @@ class _Worker {
 
   void _fill() {
     var hash = _stream;
-    if (hash == null || held || _renewing) return;
-    if (core.voices.isEmpty) {
-      if (_quiet > mixRate) return;
+    if (held || _renewing) return;
+    // A second with nothing to be heard -- or nowhere to send it -- and it
+    // rests.
+    if (hash == null || _silent) {
+      var now = _clock.elapsedMicroseconds;
+      _quietSince ??= now;
+      if (now - _quietSince! > 1000000) {
+        _park();
+        return;
+      }
+      if (hash == null) return;
     } else {
-      _quiet = 0;
+      _quietSince = null;
     }
     var want = (lead * mixRate).round();
     for (var guard = 0; _ahead < want && guard < 32; guard++) {
@@ -174,7 +211,6 @@ class _Worker {
         return;
       }
       _pushed += block;
-      if (core.voices.isEmpty) _quiet += block;
       if (_pushed * 8 > _limitBytes * 0.9) {
         // Near what one stream may carry: the editor opens the next.
         try {
@@ -248,6 +284,7 @@ class _Worker {
   CoreVoice? _voice(Object? id) => voices[id];
 
   void handle(List m) {
+    _wake();
     switch (m[0]) {
       case "stream":
         _stream = m[1] as SoundHash;

@@ -15,7 +15,6 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
-import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -38,7 +37,6 @@ void main() {
   late Future<MidiImport?> Function(String) midiWas;
 
   setUp(() async {
-    DoubleClick.window = const Duration(days: 1);
     SharedPreferences.setMockInitialValues({});
     root = await Directory.systemTemp.createTemp("canvas_midi_assets");
     CanvasStorage.rootOverride = root.path;

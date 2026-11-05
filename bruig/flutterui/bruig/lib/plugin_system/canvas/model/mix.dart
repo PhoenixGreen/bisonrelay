@@ -565,6 +565,11 @@ class Ducking {
 }
 
 /// ChannelMix is one channel strip.
+/// maxChainDevices is the most devices a chain is read with: each holds
+/// buffers once played (a delay's are seconds long), and a received canvas
+/// could otherwise ask for tens of thousands.
+const int maxChainDevices = 32;
+
 class ChannelMix {
   final double gainDb;
 
@@ -769,7 +774,7 @@ class ChannelMix {
             : null,
         devices: [
           if (json["devices"] case List list)
-            for (var raw in list)
+            for (var raw in list.take(maxChainDevices))
               if (MixDevice.fromJson(raw) case var d?) d,
         ],
         surround: json["surround"] is Map<String, dynamic>

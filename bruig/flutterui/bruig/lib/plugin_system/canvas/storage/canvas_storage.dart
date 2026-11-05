@@ -146,45 +146,67 @@ class CanvasStorage {
 
   /// liveAssetIds is every stored picture that some saved canvas still uses:
   /// every folder and document, since one picture can be used by several
-  /// canvases.
-  static Future<Set<String>> liveAssetIds() async {
-    var live = <String>{};
-    // The top level, and then each folder in it. The library is one level
-    // deep, the same as the post library's.
-    var pending = <String>[""];
-    for (var entry in await list("")) {
-      if (entry.isFolder) pending.add(entry.name);
-    }
-
-    for (var folder in pending) {
-      for (var entry in await list(folder)) {
-        if (entry.isFolder) continue;
-        var document = await load(folder, entry.name);
-        if (document != null) live.addAll(document.assetIds);
-      }
-    }
-    // And the 3D characters' decals.
-    live.addAll(await CharacterDesigns.pictureIds());
-    return live;
-  }
+  /// canvases -- and the 3D characters' decals.
+  static Future<Set<String>> liveAssetIds() async =>
+      {...(await liveIds()).$1, ...await CharacterDesigns.pictureIds()};
 
   /// liveMediaIds is every stored sound or video that some saved canvas still
   /// uses -- [liveAssetIds] for the media store.
-  static Future<Set<String>> liveMediaIds() async {
-    var live = <String>{};
-    var pending = <String>[""];
+  static Future<Set<String>> liveMediaIds() async =>
+      {...(await liveIds()).$2, ...await CharacterDesigns.vectorIds()};
+
+  /// liveIds is every saved canvas's pictures and media, in one walk of the
+  /// library (one level deep, as the post library is).
+  ///
+  /// A document is read only when it has changed since it was last read --
+  /// by its modified time and size -- and then off the editor's isolate: a
+  /// tidy after every save once read every canvas whole, twice, in the
+  /// middle of editing. A zip bundle is not a document and is left alone.
+  static Future<(Set<String>, Set<String>)> liveIds() async {
+    var assets = <String>{}, media = <String>{};
+    var folders = <String>[""];
     for (var entry in await list("")) {
-      if (entry.isFolder) pending.add(entry.name);
+      if (entry.isFolder) folders.add(entry.name);
     }
-    for (var folder in pending) {
+    var seen = <String>{};
+    for (var folder in folders) {
       for (var entry in await list(folder)) {
         if (entry.isFolder) continue;
-        var document = await load(folder, entry.name);
-        if (document != null) live.addAll(document.mediaIds);
+        var file = await pathFor(folder, entry.name);
+        if (file == null) continue;
+        seen.add(file);
+        var ids = await _idsOf(file);
+        if (ids == null) continue;
+        assets.addAll(ids.$1);
+        media.addAll(ids.$2);
       }
     }
-    live.addAll(await CharacterDesigns.vectorIds());
-    return live;
+    _ids.removeWhere((file, _) => !seen.contains(file));
+    return (assets, media);
+  }
+
+  /// _ids is each document's pictures and media as last read, with the
+  /// modified time and size they were read at.
+  static final Map<String, (DateTime, int, Set<String>, Set<String>)> _ids =
+      {};
+
+  static Future<(Set<String>, Set<String>)?> _idsOf(String file) async {
+    try {
+      var stat = await File(file).stat();
+      if (_ids[file] case (var at, var size, var a, var m)
+          when at == stat.modified && size == stat.size) {
+        return (a, m);
+      }
+      var head = await File(file).openRead(0, 2).first;
+      if (head.length == 2 && head[0] == 0x50 && head[1] == 0x4b) return null;
+      var text = await File(file).readAsString();
+      var ids = await compute(_documentIds, text);
+      if (ids == null) return null;
+      _ids[file] = (stat.modified, stat.size, ids.$1, ids.$2);
+      return ids;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// sharedDir is `<appDataDir>/shared`, beside the library and downloads:
@@ -561,4 +583,12 @@ class CanvasStorage {
     }
     return clean;
   }
+}
+
+/// _documentIds is a saved document's pictures and media, read on an
+/// isolate of its own: see CanvasStorage.liveIds.
+(Set<String>, Set<String>)? _documentIds(String text) {
+  var document = CanvasDocument.decode(text);
+  if (document == null) return null;
+  return (document.assetIds, document.mediaIds);
 }

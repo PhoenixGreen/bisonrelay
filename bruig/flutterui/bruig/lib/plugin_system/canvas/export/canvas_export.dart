@@ -1,3 +1,4 @@
+import 'dart:isolate';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -359,8 +360,9 @@ Future<CanvasExport?> renderGif(
     }
 
     if (frames.isEmpty) return null;
-    var bytes =
-        encodeGif(frames, loop: loop, dither: dither, maxColors: maxColors);
+    // Off the editor's isolate: a long animation is seconds of work.
+    var bytes = await Isolate.run(() =>
+        encodeGif(frames, loop: loop, dither: dither, maxColors: maxColors));
     return CanvasExport(bytes, "image/gif",
         width: frames.first.width, height: frames.first.height);
   } catch (exception) {

@@ -175,6 +175,8 @@ class GameRun extends ChangeNotifier {
   Future<void> listen() async {
     try {
       var list = await Gamepads.list();
+      // Stopped while it asked: nothing to listen for.
+      if (_disposed) return;
       _controllers
         ..clear()
         ..addAll([for (var c in list) c.name]);
@@ -187,8 +189,11 @@ class GameRun extends ChangeNotifier {
     }
   }
 
+  bool _disposed = false;
+
   @override
   void dispose() {
+    _disposed = true;
     _pads?.cancel();
     super.dispose();
   }

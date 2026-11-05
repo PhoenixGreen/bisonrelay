@@ -433,7 +433,7 @@ class CounterElement extends CanvasElement {
         buttons: raw is List
             ? [
                 for (var name in raw)
-                  if (CounterButton.fromName(name as String?) case var button?)
+                  if (CounterButton.fromName(jsonStr(name)) case var button?)
                     button,
               ]
             : const [],

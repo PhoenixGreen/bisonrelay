@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'canvas_audio_fake.dart';
 import 'canvas_timeline_menus.dart';
@@ -38,6 +39,10 @@ import 'canvas_timeline_menus.dart';
 const song = "aaaaaaaaaaaaaaaa.mp3";
 
 void main() {
+  // The timeline keeps its widths and switches in the settings: each test
+  // starts on the defaults, not on what the one before it dragged them to.
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   group("the view", () {
     test("whole is every frame, and the two directions agree", () {
       var v = TimelineView.whole(100);

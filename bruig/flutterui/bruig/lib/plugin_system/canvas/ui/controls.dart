@@ -2003,17 +2003,7 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   double _menuWidth(BuildContext context) {
     var widest = 0.0;
     for (var (_, text, heading) in _rows()) {
-      var painter = TextPainter(
-          text: TextSpan(
-              text: heading ? text.toUpperCase() : text,
-              style: TextStyle(
-                  fontSize: heading ? 10 : 12,
-                  letterSpacing: heading ? 0.8 : null)),
-          textDirection: TextDirection.ltr,
-          maxLines: 1)
-        ..layout();
-      widest = math.max(widest, painter.width);
-      painter.dispose();
+      widest = math.max(widest, _widthOf(text, heading));
     }
     var extra = 40.0 + // the item's own padding and the scroll bar's room
         (leading != null ? 42 : 0) +
@@ -2028,18 +2018,36 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     var widest = 0.0;
     for (var (_, text, heading) in _rows()) {
       if (heading) continue;
-      var painter = TextPainter(
-          text: TextSpan(text: text, style: const TextStyle(fontSize: 12)),
-          textDirection: TextDirection.ltr,
-          maxLines: 1)
-        ..layout();
-      widest = math.max(widest, painter.width);
-      painter.dispose();
+      widest = math.max(widest, _widthOf(text, false));
     }
     // Two arrows and their dividers, and the room either side of the name.
     var chrome = 2 * 33 + 16 + 4 + (leading != null ? 42 : 0);
     return (widest + chrome).clamp(120.0, 320.0);
   }
+
+  /// _widthOf is how wide [text] is set as an option (or, [heading], as a
+  /// group's heading): measured once and remembered, since a settings panel
+  /// is built over and over with the same fifty palette names in it.
+  static double _widthOf(String text, bool heading) {
+    var key = heading ? "^$text" : text;
+    var known = _widths[key];
+    if (known != null) return known;
+    var painter = TextPainter(
+        text: TextSpan(
+            text: heading ? text.toUpperCase() : text,
+            style: TextStyle(
+                fontSize: heading ? 10 : 12,
+                letterSpacing: heading ? 0.8 : null)),
+        textDirection: TextDirection.ltr,
+        maxLines: 1)
+      ..layout();
+    var width = painter.width;
+    painter.dispose();
+    if (_widths.length >= 4096) _widths.clear();
+    return _widths[key] = width;
+  }
+
+  static final Map<String, double> _widths = {};
 
   /// _named is an option's name, with its leading drawing where it has one.
   Widget _named(T v, String text) {
@@ -3041,6 +3049,15 @@ class CanvasExpander extends StatefulWidget {
 /// asynchronously would show the section shut until the answer came back.
 /// Shared by [CanvasExpander] and [CanvasFoldingGroup].
 final Map<String, bool> _rememberedSections = {};
+
+/// forgetSectionsForTest forgets which sections and groups were open, as a
+/// new run of the app would: for tests run one file after another in one
+/// process, each of which starts as the app does.
+@visibleForTesting
+void forgetSectionsForTest() {
+  _rememberedSections.clear();
+  _CanvasMoreGroupState._remembered.clear();
+}
 
 /// _restoreSection reads a section's state off disk into the map, and tells
 /// [then] if it turns out to differ from what is on screen.

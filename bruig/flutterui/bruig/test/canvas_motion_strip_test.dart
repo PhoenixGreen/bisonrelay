@@ -13,6 +13,7 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'canvas_audio_fake.dart';
 
@@ -82,6 +83,10 @@ Future<void> frames(WidgetTester tester) async {
 }
 
 void main() {
+  // The timeline keeps its widths and switches in the settings: each test
+  // starts on the defaults, not on what the one before it dragged them to.
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   testWidgets("its triangle launches the slot; its name opens it",
       (tester) async {
     var c = await pumpBoth(tester);

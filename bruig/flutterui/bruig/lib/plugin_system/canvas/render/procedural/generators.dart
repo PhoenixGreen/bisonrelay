@@ -1466,6 +1466,14 @@ void _drawRing(ui.Canvas canvas, Offset centre, double radius,
 /// a fading tail reuses painters and the cache stays bounded.
 final Map<String, TextPainter> _glyphCache = {};
 
+/// clearGlyphs lets go of every glyph laid out and kept.
+void clearGlyphs() {
+  for (var painter in _glyphCache.values) {
+    painter.dispose();
+  }
+  _glyphCache.clear();
+}
+
 /// _maxGlyphCache is where the cache is emptied wholesale: rare, and cheaper
 /// than tracking ages on every lookup.
 const int _maxGlyphCache = 4096;

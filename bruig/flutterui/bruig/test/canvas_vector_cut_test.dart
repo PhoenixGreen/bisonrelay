@@ -209,8 +209,7 @@ void main() {
     c.vectorTool = VectorTool.select;
     await tester.pumpAndSettle();
     // Long enough after the knife's press not to be a double-click.
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 600)));
+    await tester.pump(const Duration(milliseconds: 600));
     var leftPart = partAt(shape(), const Offset(25, 50), 0)!;
     var scale = view.pageRect.width / c.document.size.size.width;
     await tester.dragFrom(

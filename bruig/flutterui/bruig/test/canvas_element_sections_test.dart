@@ -22,9 +22,13 @@ void main() {
   setUpAll(() => CanvasSection.openAll = true);
   tearDownAll(() => CanvasSection.openAll = false);
 
+  /// narrow is the sidebar at its narrowest, where a control wider than its
+  /// line has nowhere to go.
+  const narrow = 300.0;
+
   Future<void> pump(WidgetTester tester, CanvasController c) async {
     SharedPreferences.setMockInitialValues({});
-    tester.view.physicalSize = const Size(380, 9000);
+    tester.view.physicalSize = const Size(narrow, 9000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(MultiProvider(
@@ -76,6 +80,31 @@ void main() {
           findsNothing);
       expect(tester.takeException(), isNull,
           reason: "nothing overruns the sidebar with every section open");
+      // A control wider than the line it is on is not something a wrapping
+      // layout can fix: its right-hand edge is off the panel, a number
+      // nobody can finish typing. A table that scrolls sideways is the one
+      // place a control may start off the edge: it is scrolled to.
+      var sideways = find.byWidgetPredicate((w) =>
+          w is Scrollable &&
+          axisDirectionToAxis(w.axisDirection) == Axis.horizontal);
+      for (var of in [
+        find.byType(CanvasNumberField),
+        find.byType(CanvasTextField),
+        find.byType(CanvasToggle),
+        find.byType(CanvasIconButton),
+      ]) {
+        for (var i = 0; i < of.evaluate().length; i++) {
+          if (find
+              .ancestor(of: of.at(i), matching: sideways)
+              .evaluate()
+              .isNotEmpty) {
+            continue;
+          }
+          var box = tester.getRect(of.at(i));
+          expect(box.right, lessThanOrEqualTo(narrow + 0.5),
+              reason: "${kind.label}: a control runs off the panel: $box");
+        }
+      }
     });
   }
 

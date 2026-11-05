@@ -79,4 +79,35 @@ void main() {
     expect(snap.levels.keys, contains("a"));
     send.send(const ["dispose"]);
   });
+
+  test("with nothing to be heard it rests -- no reports -- until told",
+      () async {
+    var from = ReceivePort();
+    var isolate = await Isolate.spawn(mixWorkerMain, from.sendPort);
+    addTearDown(() {
+      isolate.kill();
+      from.close();
+    });
+    var to = Completer<SendPort>();
+    var reports = <int>[];
+    var watch = Stopwatch()..start();
+    from.listen((m) {
+      if (m is SendPort) {
+        to.complete(m);
+      } else if (m is List && m.first == "snapshot") {
+        reports.add(watch.elapsedMilliseconds);
+      }
+    });
+    var send = await to.future;
+    await Future.delayed(const Duration(milliseconds: 2500));
+    var resting = reports.length;
+    expect(resting, lessThan(100), reason: "not fifty a second for ever");
+    await Future.delayed(const Duration(milliseconds: 800));
+    expect(reports.length, resting, reason: "at rest, nothing is sent");
+    // Anything said to it wakes it.
+    send.send(["watch", "levels", "a"]);
+    await Future.delayed(const Duration(milliseconds: 300));
+    expect(reports.length, greaterThan(resting));
+    send.send(const ["dispose"]);
+  });
 }

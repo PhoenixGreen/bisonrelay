@@ -13,7 +13,6 @@ import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_panels.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -62,9 +61,6 @@ void main() {
   late Directory root;
 
   setUp(() {
-    // The pair is counted against the real clock, so a loaded machine can
-    // put a second of real time between two taps made back to back.
-    DoubleClick.window = const Duration(minutes: 1);
     SharedPreferences.setMockInitialValues({});
     root = Directory.systemTemp.createTempSync("canvas-presets-sidebar");
     CanvasStorage.rootOverride = root.path;
@@ -164,20 +160,18 @@ void main() {
 
     var name = find.text("Title card");
     var rename = find.byKey(const ValueKey("presetRename"));
-    // No pause between them: the second click is counted against the real
-    // clock. Even so, a loaded machine can put them too far apart, so the
-    // pair is tried again until it lands.
-    for (var i = 0; i < 5 && rename.evaluate().isEmpty; i++) {
-      await tester.tap(name);
-      await tester.tap(name);
-      await tester.pumpAndSettle();
-    }
+    // The two clicks are timed on the test's clock, which stands still
+    // between them: a double click however loaded the machine is.
+    await tester.tap(name);
+    await tester.tap(name);
+    await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey("presetRename")), findsOneWidget);
-    await tester.enterText(
-        find.byKey(const ValueKey("presetRename")), "Opening card");
+    expect(rename, findsOneWidget);
+    await tester.enterText(rename, "Opening card");
     await tester.testTextInput.receiveAction(TextInputAction.done);
-    await idle(tester);
+    // Saved to a real file: waited for, not given a fixed time.
+    await until(tester,
+        () => SavedPresetStore.scenes.presets.single.name == "Opening card");
 
     expect(SavedPresetStore.scenes.presets.single.name, "Opening card");
   });

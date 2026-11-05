@@ -297,7 +297,7 @@ class VideoElement extends CanvasElement {
         controls: raw is List
             ? [
                 for (var name in raw)
-                  if (VideoControl.fromName(name as String?) case var c?) c,
+                  if (VideoControl.fromName(jsonStr(name)) case var c?) c,
               ]
             : const [
                 VideoControl.clickToggle,

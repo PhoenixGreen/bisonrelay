@@ -1574,13 +1574,21 @@ class _PenMeter extends StatefulWidget {
 
 class _PenMeterState extends State<_PenMeter> {
   late final Timer _tick;
+  Object? _shown;
 
   @override
   void initState() {
     super.initState();
     // A tenth of a second: quick enough to follow a press, and nothing like
     // the couple of hundred readings a second the pen sends.
+    // Built again only when what it shows has changed: a panel left open
+    // is not redrawn ten times a second for a pen nobody holds.
     _tick = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      var t = TabletInput.instance;
+      var now = (t.fresh, t.heard, t.eraser, t.buttons,
+          (t.pressure * 100).round(), (t.tilt * 180 / math.pi).round());
+      if (now == _shown) return;
+      _shown = now;
       if (mounted) setState(() {});
     });
   }

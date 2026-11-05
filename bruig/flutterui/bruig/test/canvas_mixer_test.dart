@@ -1338,15 +1338,19 @@ void main() {
         VideoElement(ElementBase(id: id, name: name),
             clip: const MediaClip(
                 playlist: [MediaSource(assetId: "x", length: 4)], timed: true));
-    for (var (scale, speakers) in [
-      (0.85, SpeakerLayout.stereo),
-      (1.15, SpeakerLayout.stereo),
-      (1.25, SpeakerLayout.stereo),
-      (1.5, SpeakerLayout.stereo),
+    // The desk is laid out at the ordinary text size and zoomed as a whole
+    // (see CanvasMixer.build): a larger text at a height is the ordinary one
+    // at a lower, so one sweep at 1x, down past what 200 is at 1.5x and up
+    // past what 440 is at 0.85x, stands for every size -- and a few heights
+    // zoomed, for the zoom itself.
+    var every = [56.0, for (var k = 130.0; k <= 520; k += 10) k];
+    const some = <double>[56, 200, 320, 440];
+    for (var (scale, speakers, heights) in [
+      (1.0, SpeakerLayout.stereo, every),
+      (1.5, SpeakerLayout.stereo, some),
       // The surround pad, its width and its LFE, in each strip.
-      (1.0, SpeakerLayout.surround51),
-      (1.25, SpeakerLayout.surround71),
-      (1.5, SpeakerLayout.surround51),
+      (1.0, SpeakerLayout.surround51, every),
+      (1.25, SpeakerLayout.surround71, some),
     ]) {
       for (var effects in [false, true]) {
         // Every height a desk is dragged to, in tens: strips came out a
@@ -1400,10 +1404,9 @@ void main() {
                                       onClose: () {}),
                                 ])))),
           ));
-          for (var h in [
-            56.0,
-            for (var k = 200.0; k <= 440; k += 10) k,
-          ]) {
+          for (var h in heights) {
+            // Two panels of it in a window 900 high.
+            if (effects && h > 440) continue;
             height.value = h;
             await tester.pump();
             if (tester.takeException() case var e?) {
@@ -1915,36 +1918,38 @@ void main() {
               MixerSection.sends: sends,
             }
       ].where((c) => main.any((s) => c[s] != BandState.hidden)).toList();
-      for (var scale in [1.0, 1.25]) {
-        for (var shown in combos) {
-          var c = make(speakers: SpeakerLayout.surround51);
-          for (var s in MixerSection.values) {
-            while (c.bandState(s) != shown[s]) {
-              c.toggleMixerSection(s);
-            }
+      // One desk, its bands set to each combination in turn. The desk is laid
+      // out at the ordinary text size and zoomed as a whole (see
+      // CanvasMixer.build), so a larger text at a height is the ordinary one
+      // at a lower: the heights run down to what 260 is at 1.25x.
+      var c = make(speakers: SpeakerLayout.surround51);
+      var columns = [
+        "v",
+        "keys",
+        mixerMasterKey,
+        for (var r in c.document.returns) r.id
+      ];
+      var height = ValueNotifier(260.0);
+      await show(tester, c, height: height);
+      const heights = <double>[208, 248, 288, 328, 368, 408, 448, 460];
+      for (var shown in combos) {
+        for (var s in MixerSection.values) {
+          while (c.bandState(s) != shown[s]) {
+            c.toggleMixerSection(s);
           }
-          var columns = [
-            "v",
-            "keys",
-            mixerMasterKey,
-            for (var r in c.document.returns) r.id
-          ];
-          var height = ValueNotifier(260.0);
-          await show(tester, c, height: height, scale: scale);
-          for (var h = 260.0; h <= 460; h += 40) {
-            // Every other height, every column narrow.
-            c.setAllNarrow(columns, h % 80 == 20);
-            height.value = h;
-            await tester.pump();
-            if (tester.takeException() case var e?) {
-              failures
-                  .add("${shown.values.map((v) => v.name[0]).join()}, $h tall, "
-                      "${scale}x: ${e.toString().split("\n").first}");
-            }
+        }
+        for (var (i, h) in heights.indexed) {
+          // Every other height, every column narrow.
+          c.setAllNarrow(columns, i.isOdd);
+          height.value = h;
+          await tester.pump();
+          if (tester.takeException() case var e?) {
+            failures.add("${shown.values.map((v) => v.name[0]).join()}, "
+                "$h tall: ${e.toString().split("\n").first}");
           }
-          await done(tester, c);
         }
       }
+      await done(tester, c);
       expect(failures, isEmpty);
     });
   });

@@ -335,12 +335,14 @@ class StrokeMark {
       };
 
   factory StrokeMark.fromJson(Map<String, dynamic> json) {
-    var points = fractionsFromJson(json["p"]);
+    var points = _withinReach(fractionsFromJson(json["p"]));
     var src = json["src"];
     var rawTilt = json["tl"];
     var tilt = <Offset>[];
     if (rawTilt is List) {
-      for (var i = 0; i + 1 < rawTilt.length; i += 2) {
+      for (var i = 0;
+          i + 1 < rawTilt.length && tilt.length < points.length;
+          i += 2) {
         var x = rawTilt[i], y = rawTilt[i + 1];
         if (x is num && y is num) tilt.add(Offset(x.toDouble(), y.toDouble()));
       }
@@ -366,9 +368,28 @@ class StrokeMark {
   }
 }
 
-/// strokesFromJson reads a list of strokes, skipping what is not one.
+/// strokesFromJson reads a list of strokes, skipping what is not one --
+/// and no more than [maxStrokes] of them.
 List<StrokeMark> strokesFromJson(Object? raw) => [
       if (raw is List)
-        for (var s in raw)
+        for (var s in raw.take(maxStrokes))
           if (s is Map<String, dynamic>) StrokeMark.fromJson(s)
     ];
+
+/// maxStrokes is the most strokes a layer is read with.
+const int maxStrokes = 20000;
+
+/// _withinReach is [points] cut off once the line through them has gone
+/// [_longest] frame-widths: the brush lays a dab every half pixel along
+/// it, and a received stroke zig-zagging across the frame would otherwise
+/// be a billion of them.
+List<Offset> _withinReach(List<Offset> points) {
+  var gone = 0.0;
+  for (var i = 1; i < points.length; i++) {
+    gone += (points[i] - points[i - 1]).distance;
+    if (gone > _longest) return points.sublist(0, i);
+  }
+  return points;
+}
+
+const double _longest = 200;

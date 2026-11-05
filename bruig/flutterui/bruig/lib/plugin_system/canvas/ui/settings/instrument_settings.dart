@@ -236,21 +236,40 @@ class _BankStatusState extends State<_BankStatus> {
     soundBankReady().then((r) {
       if (mounted) setState(() => _ready = r);
     });
+    // A fetch already going -- started from this panel before it was shut
+    // -- is shown, not offered again.
+    _progress = soundBankProgress.value;
+    soundBankProgress.addListener(_heard);
+  }
+
+  void _heard() {
+    if (!mounted) return;
+    var p = soundBankProgress.value;
+    setState(() {
+      _progress = p;
+      if (p == null) {
+        soundBankReady().then((r) {
+          if (mounted) setState(() => _ready = r);
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    soundBankProgress.removeListener(_heard);
+    super.dispose();
   }
 
   Future<void> _download() async {
-    setState(() => _progress = 0);
-    var ok = await downloadSoundBank(progress: (p) {
-      if (mounted) setState(() => _progress = p);
-    });
+    var controller = widget.controller;
+    var ok = await downloadSoundBank();
+    // The parts are played with the bank whether or not this panel is
+    // still open to say so.
+    if (ok) await controller.renderParts();
     if (!mounted) return;
-    setState(() {
-      _progress = null;
-      _ready = ok;
-    });
-    if (ok) {
-      await widget.controller.renderParts();
-    } else {
+    setState(() => _ready = ok);
+    if (!ok) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
           content: Text("The sound bank could not be downloaded. Until it "
               "is, the built-in piano plays.")));

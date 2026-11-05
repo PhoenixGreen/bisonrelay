@@ -91,10 +91,17 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
   }
 
   /// _onControllerChanged redraws the "open" and "unsaved" marks, which follow
-  /// the editor rather than the disk.
+  /// the editor rather than the disk -- only when they change: the editor
+  /// notifies at every frame of play and every step of a drag, and this
+  /// panel is built even while another tab shows.
   void _onControllerChanged() {
+    var now = (controller.folder, controller.name, controller.dirty);
+    if (now == _marks) return;
+    _marks = now;
     if (mounted) setState(() {});
   }
+
+  (String?, String?, bool)? _marks;
 
   Future<void> _reload() async {
     var entries = await CanvasStorage.list(_folder);

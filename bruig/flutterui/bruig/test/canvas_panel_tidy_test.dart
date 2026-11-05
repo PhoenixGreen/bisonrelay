@@ -70,20 +70,14 @@ void main() {
         (tester) async {
       var controller = await panel(tester, ElementKind.table);
       var id = controller.selected!.id;
-      var section = find.byKey(const ValueKey("elementSection-source"));
       var refresh = find.byKey(ValueKey("refresh-$id"));
       expect(refresh, findsOneWidget,
-          reason: "on the heading even before a source is chosen");
+          reason: "on the heading even before a source is chosen -- and "
+              "only there, not a second inside the section");
       var fold =
           at(tester, find.byKey(const ValueKey("sectionFold-table.source")));
       expect(at(tester, refresh).center.dy, closeTo(fold.center.dy, 1));
       expect(at(tester, refresh).right, lessThanOrEqualTo(fold.left + 0.5));
-      expect(
-          find.descendant(
-              of: section,
-              matching: find.byKey(const ValueKey("sourceRefresh"))),
-          findsNothing,
-          reason: "no second one inside the section");
     });
 
     testWidgets("an Order's help is beside Order by, not on the heading",

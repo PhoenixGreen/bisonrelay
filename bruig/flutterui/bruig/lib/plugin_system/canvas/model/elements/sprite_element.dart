@@ -287,17 +287,24 @@ class SpriteElement extends CanvasElement {
     var reach = dxAt == null ? 600 : 120;
     var last = track != null && !track.isEmpty ? track.keys.last.frame : 0;
     if (dxAt != null) last = math.max(last, frame + reach);
-    SpriteFacing? way(int a, int b) {
-      var dx = moved(b) - moved(a);
+    // Each frame's place asked once, the walk carrying the last one along.
+    SpriteFacing? way(double from, double to) {
+      var dx = to - from;
       if (dx.abs() < 0.01) return null;
       return dx < 0 ? SpriteFacing.left : SpriteFacing.right;
     }
 
+    var after = moved(frame);
     for (var f = frame; f > frame - reach && f > 0; f--) {
-      if (way(f - 1, f) case var w?) return w;
+      var before = moved(f - 1);
+      if (way(before, after) case var w?) return w;
+      after = before;
     }
+    var at = moved(math.max(0, frame));
     for (var f = math.max(0, frame); f < last; f++) {
-      if (way(f, f + 1) case var w?) return w;
+      var next = moved(f + 1);
+      if (way(at, next) case var w?) return w;
+      at = next;
     }
     return null;
   }

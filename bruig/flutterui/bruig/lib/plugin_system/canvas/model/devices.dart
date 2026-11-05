@@ -346,7 +346,7 @@ class ReturnChannel {
         name: json["name"] is String ? json["name"] as String : "",
         devices: [
           if (json["devices"] case List list)
-            for (var d in list)
+            for (var d in list.take(maxChainDevices))
               if (MixDevice.fromJson(d) case var device?) device,
         ],
         mix: json["mix"] is Map<String, dynamic>

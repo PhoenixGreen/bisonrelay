@@ -211,12 +211,10 @@ void main() {
                 child: const Text("Open"))),
       ),
     ));
-    await tester.tap(find.text("Open"));
-    for (var i = 0; i < 20 && prefs.pendingOpen == null; i++) {
-      await tester
-          .runAsync(() => Future.delayed(const Duration(milliseconds: 10)));
-      await tester.pump();
-    }
+    // What the button does, in real time: it reads and stores the file off
+    // the test's own clock, which pumping alone never let finish quickly.
+    var context = tester.element(find.text("Open"));
+    await tester.runAsync(() => openCanvasFile(context, file.path));
     await tester.pumpAndSettle();
     expect(prefs.pendingOpen, ("", "Sky Isles"));
     expect(find.text("the Canvas page"), findsOneWidget);

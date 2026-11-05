@@ -23,6 +23,8 @@ environment:
 
 dependencies:
   io: ^1.0.4
+  # The time a double click is counted against: fake under testWidgets.
+  clock: ^1.1.2
   flutter:
     sdk: flutter
   flutter_local_notifications: ^19.1.0

@@ -477,6 +477,8 @@ class CharacterScene extends ChangeNotifier {
       double tilt = 0,
       double zoom = 1,
       double pixelRatio = 1}) {
+    // Let go of (see dispose), it draws nothing.
+    if (_disposed) return;
     if (box.width < 1 || box.height < 1) return;
     final camera = _canvasCamera;
     aim(camera,
@@ -596,6 +598,8 @@ class CharacterScene extends ChangeNotifier {
       required int frame,
       int frameRate = 12,
       double pixelRatio = 1}) {
+    // Let go of (see dispose), it draws nothing.
+    if (_disposed) return;
     if (box.width < 1 || box.height < 1) return;
     final dt = _advance(frame, frameRate);
     final p = performance;
@@ -767,7 +771,7 @@ class CharacterScene extends ChangeNotifier {
   /// picture is the character standing, [width] by [height] pixels, as a
   /// PNG: for the library's list of characters. Null before it is drawn.
   Future<Uint8List?> picture(int width, int height) async {
-    if (_avatar == null) return null;
+    if (_avatar == null || _disposed) return null;
     final camera = PerspectiveCamera(
         fovRadiansY: 30 * vm.degrees2Radians, fovNear: 0.05, fovFar: 100);
     aim(camera, turn: 0.12, aspect: width / height);
@@ -989,6 +993,9 @@ class CharacterScene extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    // Its render targets, shadows and history are GPU memory, which the
+    // garbage collector does not feel the want of.
+    scene.dispose();
     super.dispose();
   }
 }

@@ -214,8 +214,13 @@ class InstrumentPart {
           : gmPrograms[program.clamp(0, 127)];
 
   /// signature is a short hash of what the part sounds like: the same
-  /// signature is the same file.
-  String get signature {
+  /// signature is the same file. Worked out once per part (parts never
+  /// change): every edit asks whether each part needs playing again.
+  String get signature => _signatures[this] ??= _sign();
+
+  static final Expando<String> _signatures = Expando();
+
+  String _sign() {
     var text = jsonEncode([
       // The look changes the sound only for the built-in instrument.
       if (sound == InstrumentSound.builtin) look.name,

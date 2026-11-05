@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -458,6 +459,30 @@ mixin _Metered<T extends StatefulWidget>
 
   void tick();
 
+  /// meteredBy is the canvas whose sound the device shows.
+  CanvasController get meteredBy;
+
+  /// The device's readings move only while there is sound: a ticker asks
+  /// for a frame on every screen refresh, so it rests after a second and a
+  /// half of quiet (the needles fallen), and a slow check -- no frames --
+  /// wakes it.
+  int _quietTicks = 0;
+  Timer? _resting;
+
+  bool get _loud {
+    var c = meteredBy;
+    if (c.playing || c.sessionActive) return true;
+    var (l, r) = c.levels();
+    return gainToDb(math.max(l, r)) > -80;
+  }
+
+  void _wake() {
+    _resting?.cancel();
+    _resting = null;
+    _quietTicks = 0;
+    if (!_ticker.isActive) _ticker.start();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -465,12 +490,21 @@ mixin _Metered<T extends StatefulWidget>
       if (now - _last < const Duration(milliseconds: 33)) return;
       _last = now;
       if (mounted) setState(tick);
+      if (_loud) {
+        _quietTicks = 0;
+      } else if (++_quietTicks > 45) {
+        _ticker.stop();
+        _resting ??= Timer.periodic(const Duration(milliseconds: 250), (_) {
+          if (_loud) _wake();
+        });
+      }
     })
       ..start();
   }
 
   @override
   void dispose() {
+    _resting?.cancel();
     _ticker.dispose();
     super.dispose();
   }
@@ -525,6 +559,9 @@ class EqDevice extends StatefulWidget {
 class _EqDeviceState extends State<EqDevice>
     with SingleTickerProviderStateMixin, _Metered {
   late final _Strip strip = _Strip(widget.controller, widget.channel);
+
+  @override
+  CanvasController get meteredBy => widget.controller;
 
   /// _analyzer is whether what is playing is drawn behind the curve.
   bool _analyzer = true;
@@ -1162,6 +1199,9 @@ class _CompDeviceState extends State<CompDevice>
     with SingleTickerProviderStateMixin, _Metered {
   late final _Strip strip = _Strip(widget.controller, widget.channel);
 
+  @override
+  CanvasController get meteredBy => widget.controller;
+
   /// _graph is whether the display shows the transfer curve rather than the
   /// gain-reduction meter.
   bool _graph = false;
@@ -1775,6 +1815,9 @@ class MeterDevice extends StatefulWidget {
 class _MeterDeviceState extends State<MeterDevice>
     with SingleTickerProviderStateMixin, _Metered {
   late final _Strip strip = _Strip(widget.controller, widget.channel);
+
+  @override
+  CanvasController get meteredBy => widget.controller;
   (double, double) _now = (-90, -90);
   (double, double) _held = (-90, -90);
 
@@ -1987,6 +2030,9 @@ class DuckDevice extends StatefulWidget {
 class _DuckDeviceState extends State<DuckDevice>
     with SingleTickerProviderStateMixin, _Metered {
   late final _Strip strip = _Strip(widget.controller, widget.channel);
+
+  @override
+  CanvasController get meteredBy => widget.controller;
 
   /// _now is how far, in decibels, the channels it ducks are down at the
   /// playhead.
@@ -2894,26 +2940,13 @@ class ListenerDevice extends StatefulWidget {
 }
 
 class _ListenerDeviceState extends State<ListenerDevice>
-    with SingleTickerProviderStateMixin {
-  late final Ticker _ticker;
-  Duration _last = Duration.zero;
+    with SingleTickerProviderStateMixin, _Metered {
+  // What it shows is read in build: a tick only asks for it again.
+  @override
+  void tick() {}
 
   @override
-  void initState() {
-    super.initState();
-    _ticker = createTicker((now) {
-      if (now - _last < const Duration(milliseconds: 60)) return;
-      _last = now;
-      if (mounted) setState(() {});
-    })
-      ..start();
-  }
-
-  @override
-  void dispose() {
-    _ticker.dispose();
-    super.dispose();
-  }
+  CanvasController get meteredBy => widget.controller;
 
   @override
   Widget build(BuildContext context) {

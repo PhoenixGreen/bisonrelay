@@ -16,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/game_counts_settings.dart
 import 'package:bruig/plugin_system/canvas/ui/settings/game_ready.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/play_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -697,5 +698,5 @@ class _SceneThumb extends CustomPainter {
 
   @override
   bool shouldRepaint(_SceneThumb old) =>
-      old.index != index || !identical(old.document, document);
+      old.index != index || sceneDrawnDiffers(old.document, document, index);
 }
