@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_performance.
 import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
+import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
@@ -226,6 +227,20 @@ class GameRun extends ChangeNotifier {
           ? e.boundsAt(frame)
           : e.movedBoundsAt(frame, doc, live: _live);
 
+  /// _boxesOf is where [e] is on [frame], by name: its own box, or -- an
+  /// element reused -- each instance's not gone (see instanceKey), each
+  /// a pickup, a hazard or a platform of its own.
+  Map<String, Rect> _boxesOf(CanvasDocument doc, CanvasElement e, int frame) {
+    var set = e.base.motion.instances;
+    if (set == null) return {e.id: _boxOf(doc, e, frame)};
+    return {
+      for (var (i, item) in set.items.indexed)
+        if (!gone.contains(instanceKey(e.id, item.id)))
+          instanceKey(e.id, item.id): e.boundsWith(
+              poseWithMotion(e, frame, doc, live: _live, instance: i)),
+    };
+  }
+
   /// _movesLive is whether [e] is moved by clips launched from its slots,
   /// on their own clock rather than the timeline's.
   bool _movesLive(CanvasElement e) => _live?.of(e.id) != null;
@@ -265,7 +280,8 @@ class GameRun extends ChangeNotifier {
 
     var solids = [
       for (var e in doc.elements)
-        if (e.base.play.as == PlayAs.solid && shown(e)) _boxOf(doc, e, frame),
+        if (e.base.play.as == PlayAs.solid && shown(e))
+          ..._boxesOf(doc, e, frame).values,
       // A tile map's solid layers: the tiles are the ground.
       for (var e in doc.elements)
         if (e is TileMapElement && shown(e))
@@ -284,7 +300,7 @@ class GameRun extends ChangeNotifier {
             shown(e) &&
             (e.track != null || e.base.motion.moves) &&
             (onward || _movesLive(e)))
-          e.id: _boxOf(doc, e, frame),
+          ..._boxesOf(doc, e, frame),
     };
     var page = doc.size.rect;
     // The ground under everything: the canvas's bottom edge.
@@ -419,8 +435,13 @@ class GameRun extends ChangeNotifier {
       if (spec.pressedBy.isEmpty || !shown(e) || !pressed(spec.pressedBy)) {
         continue;
       }
-      var near = _boxOf(doc, e, frame).inflate(spec.reach);
-      if (spec.reach > 0 && !players.any((p) => p.overlaps(near))) continue;
+      var near = [
+        for (var b in _boxesOf(doc, e, frame).values) b.inflate(spec.reach)
+      ];
+      if (spec.reach > 0 &&
+          !players.any((p) => near.any((n) => p.overlaps(n)))) {
+        continue;
+      }
       events.add(GameEvent(press: e.id));
     }
   }
@@ -467,9 +488,13 @@ class GameRun extends ChangeNotifier {
             shown(e))
           e,
     ];
-    var boxes = {
-      for (var t in things) t.id: _touchOf(t, _boxOf(doc, t, frame))
-    };
+    // Each thing by name, and each instance of one reused its own.
+    var boxes = [
+      for (var t in things)
+        for (var MapEntry(key: name, value: box)
+            in _boxesOf(doc, t, frame).entries)
+          (t, name, _touchOf(t, box)),
+    ];
     var now = <(String, String)>{};
     for (var e in doc.elements) {
       var spec = e.base.play;
@@ -477,17 +502,21 @@ class GameRun extends ChangeNotifier {
       var body = bodies[e.id];
       if (body == null) continue;
       var box = _touchOf(e, e.boundsAt(frame).shift(body.at));
-      for (var t in things) {
-        if (gone.contains(t.id) || !box.overlaps(boxes[t.id]!)) continue;
-        var key = (e.id, t.id);
+      for (var (t, name, thing) in boxes) {
+        if (gone.contains(name) || !box.overlaps(thing)) continue;
+        var key = (e.id, name);
         now.add(key);
         if (_touching.contains(key)) continue;
         if (_startsOnTouch(t)) events.add(GameEvent(touched: t.id));
         var touched = t.base.play;
         if (!touched.as.touched) continue;
-        if (touched.sound.isNotEmpty)
-          events.add(GameEvent(sound: touched.sound));
-        if (touched.as == PlayAs.pickup && !touched.stays) gone.add(t.id);
+        if (touched.sound.isNotEmpty) {
+          // An instance's sound comes from that instance.
+          events.add(GameEvent(
+              sound: touched.sound,
+              soundFrom: name == t.id ? null : thing.center.dx));
+        }
+        if (touched.as == PlayAs.pickup && !touched.stays) gone.add(name);
         if (touched.as == PlayAs.hazard && touched.sendsBack) {
           body
             ..at = Offset.zero
@@ -588,6 +617,20 @@ class GameRun extends ChangeNotifier {
       // A pickup taken is gone until the game starts again -- once a clip
       // it started (a coin's pop) has played.
       if (gone.contains(e.id) && !(playing?.call(e.id) ?? false)) continue;
+      // An element reused: its instances taken are gone, the rest stay.
+      if (e.base.motion.instances case var set?
+          when !(playing?.call(e.id) ?? false)) {
+        var left = [
+          for (var item in set.items)
+            if (!gone.contains(instanceKey(e.id, item.id))) item,
+        ];
+        if (left.isEmpty) continue;
+        if (left.length < set.items.length) {
+          e = e.withBase(
+              motion:
+                  e.base.motion.copyWith(instances: set.copyWith(items: left)));
+        }
+      }
       if (e is BackgroundElement) {
         shifted.add(_withCamera(e));
         continue;
@@ -772,8 +815,13 @@ class GameEvent {
   /// counted is a count changed, by id, and where it has got to.
   final (String, int)? counted;
   final bool stop;
+
+  /// soundFrom is where across the page [sound] is set off -- the instance
+  /// of an element reused that was touched -- or null for its own place.
+  final double? soundFrom;
   const GameEvent(
       {this.sound,
+      this.soundFrom,
       this.scene,
       this.next = false,
       this.restart = false,

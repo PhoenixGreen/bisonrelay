@@ -144,7 +144,7 @@ extension CanvasGame on CanvasController {
     var asked = [...run.events];
     run.events.clear();
     for (var event in asked) {
-      if (event.sound case var ref?) gameSound(ref);
+      if (event.sound case var ref?) gameSound(ref, from: event.soundFrom);
       // Another scene: a chosen one, the next -- the game over after the
       // last -- or, started again, the game's first.
       if (event.scene case var id?) _gameScene(run, id);
@@ -274,10 +274,21 @@ extension CanvasGame on CanvasController {
   /// sound on the canvas, from its start; a mixer slot, at once unless its
   /// own Launch waits for a beat or a bar; or a channel's slots stopped, at
   /// once.
-  void gameSound(String ref) {
+  ///
+  /// [from], given, is where across the page the sound is set off -- an
+  /// instance of an element reused, touched -- for a sound placed on the
+  /// canvas to be heard from there.
+  void gameSound(String ref, {double? from}) {
     switch (gameSoundOf(ref)) {
       case GameSoundElement(:var id):
         if (_audioById(id) case var sound?) {
+          var channel = CanvasController._channelOf(sound);
+          if (from != null && sound.clip.place.by == PlaceBy.canvas) {
+            _soundFrom[channel] =
+                heardAcross(_document, from, sound.clip.place);
+          } else {
+            _soundFrom.remove(channel);
+          }
           audio.stop(id);
           _gameSounded.add(id);
           unawaited(audio.play(sound));

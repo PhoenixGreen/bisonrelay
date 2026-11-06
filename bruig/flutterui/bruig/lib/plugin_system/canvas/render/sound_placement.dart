@@ -50,10 +50,25 @@ Heard? heardAt(
 /// keyframes move it.
 Heard _across(
     CanvasDocument doc, CanvasElement e, SoundPlacement place, int frame) {
-  var pose = poseWithMotion(e, frame, doc);
-  var centre = e.x + e.width / 2 + pose.dx;
+  double centreOf(int? instance) =>
+      e.x +
+      e.width / 2 +
+      poseWithMotion(e, frame, doc, instance: instance).dx;
+  // An element reused is heard from the middle of its instances.
+  var set = e.base.motion.instances;
+  var centre = set == null || set.count == 0
+      ? centreOf(null)
+      : [for (var i = 0; i < set.count; i++) centreOf(i)]
+              .reduce((a, b) => a + b) /
+          set.count;
+  return heardAcross(doc, centre, place);
+}
+
+/// heardAcross is a sound placed by [place] heard from [x] across [doc]'s
+/// page: for one instance of an element reused, heard from where it is.
+Heard heardAcross(CanvasDocument doc, double x, SoundPlacement place) {
   var width = doc.size.rect.width;
-  var u = width <= 0 ? 0.5 : (centre - doc.size.rect.left) / width;
+  var u = width <= 0 ? 0.5 : (x - doc.size.rect.left) / width;
   return Heard(wrapAngle((u.clamp(0.0, 1.0) - 0.5) * place.arc));
 }
 

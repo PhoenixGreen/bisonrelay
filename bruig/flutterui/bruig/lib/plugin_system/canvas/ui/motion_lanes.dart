@@ -70,6 +70,7 @@ List<CanvasElement> motionRowsOf(CanvasController c) {
     for (var e in c.document.elements)
       if (!(e is AudioElement && e.clip.timed) &&
           (!e.base.motion.isEmpty ||
+              e.base.motion.instances != null ||
               owners.contains(e.id) ||
               c.selection.contains(e.id)))
         e,
@@ -738,6 +739,26 @@ class _LanesPainter extends CustomPainter {
             top + (isFolded ? lane : lane - 2));
         if (rect.right < 0 || rect.left > size.width) continue;
         _clip(canvas, rect, c, p, s);
+      }
+      // An element reused: where each instance starts, as ticks along the
+      // foot of its one row -- from its first clip, or the scene's start.
+      if (m.instances case var set? when set.count > 1) {
+        var from = [
+          for (var p in m.placed)
+            if (times.span(p.id) case var s?) s.start
+        ].fold<double?>(null, (a, b) => a == null ? b : math.min(a, b));
+        var starts = [for (var i = 0; i < set.count; i++) set.startOf(i)];
+        if (starts.any((t) => t > 0)) {
+          var tick = Paint()
+            ..color = colors.primary
+            ..strokeWidth = 1.5;
+          for (var t in starts) {
+            var tx = x((from ?? 0) + t);
+            if (tx < 0 || tx > size.width) continue;
+            canvas.drawLine(
+                Offset(tx, y + h - 7), Offset(tx, y + h - 1.5), tick);
+          }
+        }
       }
       y += h;
     }

@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 
 // motion.dart is how an element moves: its clips. A clip is a piece of
@@ -700,6 +701,11 @@ class ElementMotion {
   /// run in.
   final List<MotionDevice> devices;
 
+  /// instances are the element reused, or null for an element placed once:
+  /// see instances.dart. Where they split in its chain is its Instances
+  /// device, first of its moves unless moved.
+  final InstanceSet? instances;
+
   const ElementMotion({
     this.clips = const [],
     this.slots = const [],
@@ -707,6 +713,7 @@ class ElementMotion {
     this.weights = const [1, 1, 1],
     this.output = "",
     this.devices = const [],
+    this.instances,
   });
 
   static const ElementMotion none = ElementMotion();
@@ -714,10 +721,23 @@ class ElementMotion {
   bool get isEmpty => clips.isEmpty && placed.isEmpty;
 
   /// poseDevices are its pose devices switched on, in the order they run.
-  List<MotionDevice> get poseDevices => [
-        for (var d in devices)
-          if (d.on && d.side == MotionDeviceSide.pose) d,
+  List<MotionDevice> get poseDevices {
+    var poses = [
+      for (var d in devices)
+        if (d.on && d.side == MotionDeviceSide.pose) d,
+    ];
+    // Its Instances only with instances, first unless put somewhere.
+    if (instances == null) {
+      return [
+        for (var d in poses)
+          if (d.kind != MotionDeviceKind.instances) d
       ];
+    }
+    if (devices.any((d) => d.kind == MotionDeviceKind.instances)) {
+      return poses;
+    }
+    return [const MotionDevice(MotionDeviceKind.instances), ...poses];
+  }
 
   /// looks are its look devices switched on, in the order they run.
   List<MotionDevice> get looks => [
@@ -728,10 +748,12 @@ class ElementMotion {
   /// moves is whether anything of its motion can move it: a clip, or a pose
   /// device.
   bool get moves =>
-      !isEmpty || devices.any((d) => d.on && d.side == MotionDeviceSide.pose);
+      !isEmpty ||
+      instances != null ||
+      devices.any((d) => d.on && d.side == MotionDeviceSide.pose);
 
   /// isBlank is whether there is nothing of it to keep.
-  bool get isBlank => isEmpty && devices.isEmpty;
+  bool get isBlank => isEmpty && devices.isEmpty && instances == null;
 
   MotionClip? clip(String id) => clips.where((c) => c.id == id).firstOrNull;
 
@@ -756,6 +778,8 @@ class ElementMotion {
     List<double>? weights,
     String? output,
     List<MotionDevice>? devices,
+    InstanceSet? instances,
+    bool clearInstances = false,
   }) =>
       ElementMotion(
         clips: clips ?? this.clips,
@@ -764,6 +788,7 @@ class ElementMotion {
         weights: weights ?? this.weights,
         output: output ?? this.output,
         devices: devices == null ? this.devices : withMotionDeviceIds(devices),
+        instances: clearInstances ? null : instances ?? this.instances,
       );
 
   /// renamedFor is this for a copy, element [id]: fresh placement ids, with
@@ -852,6 +877,7 @@ class ElementMotion {
         if (weights.any((w) => w != 1)) "weights": weights,
         if (output.isNotEmpty) "output": output,
         if (devices.isNotEmpty) "devices": [for (var d in devices) d.toJson()],
+        if (instances != null) "instances": instances!.toJson(),
       };
 
   static ElementMotion fromJson(Object? json) {
@@ -889,6 +915,7 @@ class ElementMotion {
           for (var d in raw)
             if (MotionDevice.fromJson(d) case var device?) device,
       ]),
+      instances: InstanceSet.fromJson(json["instances"]),
     );
   }
 }

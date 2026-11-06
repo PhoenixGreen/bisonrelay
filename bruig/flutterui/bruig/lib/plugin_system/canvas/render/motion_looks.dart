@@ -125,6 +125,7 @@ void _look(ui.Canvas canvas, Rect room, MotionDevice d, void Function() under,
       canvas.restore();
       under();
     case MotionDeviceKind.time:
+    case MotionDeviceKind.instances:
       under();
   }
 }

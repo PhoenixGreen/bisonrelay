@@ -603,11 +603,71 @@ void paintElement(
   /// backgrounds is the editor's cache of generated patterns, which a
   /// background element is drawn from as the canvas's own background is.
   ProceduralCache? backgrounds,
+
+  /// instance is which of an element reused to draw (see instances.dart);
+  /// null draws every one, and -1 the element as placed, as one.
+  int? instance,
 }) {
   // A camera frames the picture and is never in it: see cameraFrame.
   if (element is CameraElement) return;
+  // An element reused: each of its instances.
+  if (instance == null && document != null) {
+    if (element.base.motion.instances case var set? when set.count > 0) {
+      void one(ui.Canvas on, int which) => paintElement(on, element, frame,
+          frameRate: frameRate,
+          images: images,
+          hovered: hovered,
+          editing: editing,
+          skipTextItem: skipTextItem,
+          document: document,
+          counterValue: counterValue,
+          liveMotion: liveMotion,
+          counterPressed: counterPressed,
+          counterRunning: counterRunning,
+          audioState: audioState,
+          videoShow: videoShow,
+          poseOutside: poseOutside,
+          backgrounds: backgrounds,
+          instance: which);
+      if (set.uniform) {
+        // Alike but for where they are: drawn once, and stamped at each
+        // place.
+        var rec = ui.PictureRecorder();
+        one(ui.Canvas(rec), -1);
+        var stamp = rec.endRecording();
+        for (var item in set.items) {
+          canvas.save();
+          canvas.translate(item.dx, item.dy);
+          canvas.drawPicture(stamp);
+          canvas.restore();
+        }
+        stamp.dispose();
+      } else {
+        for (var i = 0; i < set.count; i++) {
+          var hue = set.hueOf(i);
+          if (hue != 0) {
+            canvas.saveLayer(
+                null,
+                Paint()
+                  ..colorFilter = ColorFilter.matrix(colourMatrix(hue, 1, 0)));
+          }
+          // Its pose left to the caller (an EPUB's CSS moves the element
+          // as a whole): its own place, at least, drawn here.
+          if (poseOutside) {
+            canvas.save();
+            canvas.translate(set.items[i].dx, set.items[i].dy);
+          }
+          one(canvas, i);
+          if (poseOutside) canvas.restore();
+          if (hue != 0) canvas.restore();
+        }
+      }
+      return;
+    }
+  }
   // Its clips' moves over any legacy track. See motion_document.dart.
-  var pose = poseWithMotion(element, frame, document, live: liveMotion);
+  var pose = poseWithMotion(element, frame, document,
+      live: liveMotion, instance: instance);
   var outer = poseOutside ? Keyframe.rest : pose;
   var alpha = (element.opacity * outer.opacity).clamp(0.0, 1.0);
   // A closing stretch with no exit chosen fades rather than doing nothing:

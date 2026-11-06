@@ -17,6 +17,7 @@ import 'package:bruig/plugin_system/canvas/model/media_clip.dart'
     show GainPoint, envelopeAt;
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart'
     show duckEnvelope;
+import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
@@ -26,6 +27,8 @@ import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
     show automationColour;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart'
+    show CanvasDropdown;
 import 'package:bruig/plugin_system/canvas/ui/device_screens.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -4481,5 +4484,236 @@ class _MotionJoinState extends State<MotionJoin>
         ),
       ),
     );
+  }
+}
+
+/// InstancesCard is an element's Instances, first of its moves unless moved:
+/// "1 · this one" and a way to reuse it, or its instances -- how many, how
+/// they are laid out, and what differs between them, each by order, at
+/// random or from the middle (rule 3: from here on, each has its own).
+class InstancesCard extends StatelessWidget {
+  final CanvasController controller;
+  final String element;
+  final bool folded;
+  final VoidCallback onFold;
+  final double height;
+
+  /// canLeft and canRight are whether it can move among the moves.
+  final bool canLeft, canRight;
+
+  const InstancesCard({
+    required this.controller,
+    required this.element,
+    required this.folded,
+    required this.onFold,
+    required this.height,
+    this.canLeft = false,
+    this.canRight = false,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var skin = DeviceSkin.studio(look.studio);
+    var set = controller.motionOf(element).instances;
+    const accent = Color(0xFF6FA8FF);
+    var ink = TextStyle(fontSize: 11, color: skin.ink);
+    Widget button(String key, String label, VoidCallback onTap) => Padding(
+          padding: const EdgeInsets.all(2),
+          child: OutlinedButton(
+            key: ValueKey(key),
+            style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                foregroundColor: skin.ink,
+                side: BorderSide(color: look.studio.edge)),
+            onPressed: onTap,
+            child: Text(label, style: ink),
+          ),
+        );
+    void write(InstanceSet next, {bool transient = false}) {
+      controller.beginInteraction();
+      controller.setInstances(element, next, transient: true);
+      if (!transient) controller.endInteraction();
+    }
+
+    List<Widget> controls(DeviceTier tier) {
+      if (set == null) {
+        return [
+          Text("1 · this one", style: ink),
+          button("instancesReuse", "Reuse…", () {
+            controller.beginInteraction();
+            controller.reuseElement(element, 5);
+            controller.endInteraction();
+          }),
+        ];
+      }
+      return [
+        // How many.
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(
+              key: const ValueKey("instancesLess"),
+              iconSize: 14,
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.remove, color: skin.ink),
+              onPressed: set.count <= 1
+                  ? null
+                  : () {
+                      controller.beginInteraction();
+                      controller.reuseElement(element, set.count - 1);
+                      controller.endInteraction();
+                    }),
+          Text("×${set.count}",
+              key: const ValueKey("instancesCount"),
+              style: ink.copyWith(fontWeight: FontWeight.w700)),
+          IconButton(
+              key: const ValueKey("instancesMore"),
+              iconSize: 14,
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.add, color: skin.ink),
+              onPressed: set.count >= maxInstances
+                  ? null
+                  : () {
+                      controller.beginInteraction();
+                      controller.reuseElement(element, set.count + 1);
+                      controller.endInteraction();
+                    }),
+        ]),
+        // Laid out afresh: a choice that does something, so it shows none.
+        CanvasDropdown<InstanceLayout?>(
+          key: const ValueKey("instancesLayout"),
+          label: "Lay out",
+          value: null,
+          width: 120,
+          grow: false,
+          options: [
+            (null, "Lay out…"),
+            for (var l in InstanceLayout.values) (l, l.label),
+          ],
+          onChanged: (l) {
+            if (l == null) return;
+            controller.beginInteraction();
+            controller.layOutInstances(element, l);
+            controller.endInteraction();
+          },
+        ),
+        // What differs between them.
+        for (var w in VaryWhat.values)
+          _VaryRow(
+            what: w,
+            vary: set.varyOf(w),
+            ink: skin.ink,
+            accent: accent,
+            tier: tier,
+            onChanged: (v, {transient = false}) =>
+                write(set.withVary(w, v), transient: transient),
+            onCommit: controller.endInteraction,
+          ),
+        if (set.vary.values.any((v) => v.how == VaryHow.random))
+          button("instancesReroll", "Re-roll",
+              () => write(set.copyWith(seed: set.seed + 1))),
+        button("instancesOnce", "Place once", () {
+          controller.beginInteraction();
+          controller.setInstances(element, null);
+          controller.endInteraction();
+        }),
+      ];
+    }
+
+    var varied = set == null
+        ? 0
+        : VaryWhat.values
+            .where((w) => set.varyOf(w).how != VaryHow.same)
+            .length;
+    return DeviceFrame(
+      id: "instances",
+      title: set == null ? "Instances" : "Instances ×${set.count}",
+      skin: skin,
+      folded: folded,
+      onFold: onFold,
+      width: set == null ? 220 : 420,
+      height: height,
+      icon: Icons.copy_all_outlined,
+      accent: accent,
+      actions: [
+        if (set != null)
+          DeviceMove(
+              id: "instances",
+              canLeft: canLeft,
+              canRight: canRight,
+              onSwap: () {},
+              onMove: (by) => controller.moveInstances(element, by),
+              ink: _headerInkLight),
+      ],
+      foldedBody: Center(
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: Text(set == null ? "Placed once" : "×${set.count}",
+              style: TextStyle(fontSize: 11, color: skin.ink)),
+        ),
+      ),
+      body: const SizedBox.shrink(),
+      controls: controls,
+      summary: set == null
+          ? "placed once"
+          : "×${set.count}${varied == 0 ? " · alike" : " · $varied vary"}",
+    );
+  }
+}
+
+/// _VaryRow is one setting that can differ between instances: how, and by
+/// at most how much.
+class _VaryRow extends StatelessWidget {
+  final VaryWhat what;
+  final Vary vary;
+  final Color ink, accent;
+  final DeviceTier tier;
+  final void Function(Vary v, {bool transient}) onChanged;
+  final VoidCallback onCommit;
+  const _VaryRow(
+      {required this.what,
+      required this.vary,
+      required this.ink,
+      required this.accent,
+      required this.tier,
+      required this.onChanged,
+      required this.onCommit});
+
+  String _reading(double v) => switch (what.unit) {
+        "s" => "${v.toStringAsFixed(2)} s",
+        "°" => "${v.round()}°",
+        _ => "${v >= 0 ? "+" : "−"}${(v.abs() * 100).round()}%",
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      CanvasDropdown<VaryHow>(
+        key: ValueKey("vary-${what.name}"),
+        label: what.label,
+        value: vary.how,
+        width: 120,
+        grow: false,
+        options: [for (var h in VaryHow.values) (h, h.label)],
+        onChanged: (h) => onChanged(Vary(h, vary.amount)),
+      ),
+      if (vary.how != VaryHow.same)
+        _Knob(
+          key: ValueKey("vary-${what.name}-amount"),
+          label: "",
+          text: _reading(vary.amount),
+          value: vary.amount,
+          initial: what.initial,
+          range: _Range(what.min, what.max),
+          size: tier == DeviceTier.large ? 34 : 26,
+          reading: tier != DeviceTier.small,
+          accent: accent,
+          ink: ink,
+          bipolar: what.min < 0,
+          onChanged: (v, {transient = false}) =>
+              onChanged(Vary(vary.how, v), transient: transient),
+          onCommit: onCommit,
+        ),
+    ]);
   }
 }

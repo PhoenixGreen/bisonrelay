@@ -564,6 +564,10 @@ extension CanvasMixing on CanvasController {
         out[lane.channelKey] = h;
       }
     }
+    // A sound a game set off at an instance: from there, until the next.
+    for (var e in _soundFrom.entries) {
+      if (out.containsKey(e.key)) out[e.key] = e.value;
+    }
     return out;
   }
 

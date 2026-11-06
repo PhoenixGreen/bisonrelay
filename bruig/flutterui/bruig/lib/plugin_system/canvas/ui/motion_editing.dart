@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
@@ -84,6 +85,66 @@ extension MotionEditing on CanvasController {
         for (var x in all)
           if (x.side == MotionDeviceSide.look) x,
     ]);
+  }
+
+  /// setInstances writes [element]'s instances: null places it once again.
+  void setInstances(String element, InstanceSet? set,
+      {bool transient = false}) {
+    var m = motionOf(element);
+    setMotion(
+        element,
+        set == null
+            ? m.copyWith(clearInstances: true, devices: [
+                for (var d in m.devices)
+                  if (d.kind != MotionDeviceKind.instances) d
+              ])
+            : m.copyWith(instances: set),
+        transient: transient);
+  }
+
+  /// _stepOf is how far apart [element]'s instances are laid: half as far
+  /// again as it is big.
+  double _stepOf(String element) {
+    var e = document.elementById(element);
+    if (e == null) return 60;
+    return math.max(e.base.width, e.base.height) * 1.5;
+  }
+
+  /// reuseElement makes [element] [count] instances, in a line to its
+  /// right.
+  void reuseElement(String element, int count) => setInstances(
+      element,
+      (motionOf(element).instances ?? const InstanceSet())
+          .withCount(count, gap: _stepOf(element)));
+
+  /// moveInstances moves [element]'s Instances [by] places among its
+  /// moves: where its instances split from what they share.
+  void moveInstances(String element, int by) {
+    var m = motionOf(element);
+    if (m.instances == null) return;
+    var devices = withMotionDeviceIds(m.devices);
+    var stored =
+        devices.where((d) => d.kind == MotionDeviceKind.instances).firstOrNull;
+    if (stored == null) {
+      // First of its moves until now: put where it is, to be moved.
+      devices = withMotionDeviceIds(
+          [const MotionDevice(MotionDeviceKind.instances), ...devices]);
+      stored = devices.first;
+      setMotion(element, m.copyWith(devices: motionDevicesInOrder(devices)),
+          transient: true);
+    }
+    moveMotionDevice(element, stored.id, by);
+  }
+
+  /// layOutInstances places [element]'s instances by [layout].
+  void layOutInstances(String element, InstanceLayout layout) {
+    var set = motionOf(element).instances;
+    if (set == null) return;
+    setInstances(
+        element,
+        set.laidOut(layout,
+            gap: _stepOf(element),
+            columns: math.max(1, math.sqrt(set.count).ceil())));
   }
 
   /// spanOf is where placement [id] plays, its pins followed.

@@ -407,10 +407,6 @@ class _AnimationPanelState extends State<AnimationPanel> {
             ? _folded.remove("mdev:${d.id}")
             : _folded.add("mdev:${d.id}")),
         height: h);
-    var moves = [
-      for (var d in devices)
-        if (d.side == MotionDeviceSide.pose) d,
-    ];
     // How fast it goes after its clips, and after each move: and, clicked,
     // the stage showing it as it is there.
     Widget join(int upto) => MotionJoin(
@@ -419,10 +415,46 @@ class _AnimationPanelState extends State<AnimationPanel> {
         element: e.id,
         upto: upto,
         height: h);
+    // Its moves, with its Instances among them: first, until moved.
+    var reused = e.base.motion.instances != null;
+    var poses = [
+      for (var d in devices)
+        if (d.side == MotionDeviceSide.pose) d,
+    ];
+    var placed = poses.any((d) => d.kind == MotionDeviceKind.instances);
+    List<MotionDevice?> moves = [
+      if (!reused || !placed) null,
+      for (var d in poses)
+        if (d.kind != MotionDeviceKind.instances || reused)
+          d.kind == MotionDeviceKind.instances ? null : d,
+    ];
+    Widget instancesCard(int at) => InstancesCard(
+        key: const ValueKey("instancesCard"),
+        controller: controller,
+        element: e.id,
+        folded: _folded.contains("instances"),
+        onFold: () => setState(() => _folded.contains("instances")
+            ? _folded.remove("instances")
+            : _folded.add("instances")),
+        height: h,
+        canLeft: reused && at > 0,
+        canRight: reused && at < moves.length - 1);
+    // Each join counts the moves switched on before it, as the chain runs.
+    var upto = 0;
+    var row = <Widget>[];
+    for (var (i, d) in moves.indexed) {
+      if (d == null) {
+        row.add(instancesCard(i));
+        if (reused) row.add(join(++upto));
+      } else {
+        if (d.on) upto++;
+        row.addAll([card(d), join(upto)]);
+      }
+    }
     return [
       _zone("Before", "Moves: where it is, and when"),
       join(0),
-      for (var (i, d) in moves.indexed) ...[card(d), join(i + 1)],
+      ...row,
       AddMotionDeviceSlot(
           key: const ValueKey("addMotionPose"),
           controller: controller,

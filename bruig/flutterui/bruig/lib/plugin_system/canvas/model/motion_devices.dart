@@ -25,6 +25,10 @@ enum MotionDeviceSide {
 
 /// MotionDeviceKind is a kind of motion device, with its settings.
 enum MotionDeviceKind {
+  /// instances is where an element reused splits into its instances (rule
+  /// 3): what is left of it is worked out once, for all of them; what is
+  /// right of it, for each. Its settings are ElementMotion.instances.
+  instances("Instances", MotionDeviceSide.pose, []),
   time("Time", MotionDeviceSide.pose, [
     DeviceParam("speed", "Speed", 0.1, 4, 1, "×"),
     DeviceParam("offset", "Offset", -10, 10, 0, "s"),
@@ -65,10 +69,11 @@ enum MotionDeviceKind {
   static MotionDeviceKind? fromName(String? name) =>
       values.where((k) => k.name == name).firstOrNull;
 
-  /// on is the kinds offered on [side]: see rule 1.
+  /// on is the kinds offered on [side]: see rule 1. Instances is not one:
+  /// it is always there, as Reuse.
   static List<MotionDeviceKind> on(MotionDeviceSide side) => [
         for (var k in values)
-          if (k.side == side) k
+          if (k.side == side && k != instances) k
       ];
 }
 

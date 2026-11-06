@@ -1306,6 +1306,14 @@ Rect _regionFor(
     CanvasElement e, double pixels, Rect pageBox, CanvasDocument document,
     {required bool moves}) {
   var bounds = e.bounds;
+  // An element reused is drawn as all of its instances, each where it is
+  // put from the element (its place is in the picture; the shared move in
+  // the CSS).
+  if (e.base.motion.instances case var set?) {
+    for (var x in set.items) {
+      bounds = bounds.expandToInclude(e.bounds.shift(Offset(x.dx, x.dy)));
+    }
+  }
   // Things drawn somewhere other than their own box: text riding a line, and
   // a page number mirrored to the outside edge of a left-hand leaf.
   var elsewhere = (e is TextElement && e.curve != null) ||

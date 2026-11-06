@@ -1,0 +1,419 @@
+import 'dart:typed_data';
+import 'dart:ui';
+
+import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/instances.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/model/play.dart';
+import 'package:bruig/plugin_system/canvas/model/surround.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/sound_placement.dart';
+import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/material.dart' hide Canvas, Paint;
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+
+import 'canvas_audio_fake.dart';
+
+// canvas_instances_test.dart is an element reused: one element drawn many
+// times, each instance with its own place and start, alike to the left of
+// its Instances device and its own to the right of it (rule 3).
+
+/// across moves 100 to the right over 4 seconds, placed at the start.
+const MotionClip across = MotionClip(
+  id: "go",
+  kind: MotionKind.action,
+  length: 4,
+  keys: {
+    MotionProp.x: [
+      MotionKey(0, MotionNumber(0)),
+      MotionKey(4, MotionNumber(100))
+    ],
+  },
+);
+
+InstanceSet three({Map<VaryWhat, Vary> vary = const {}}) => InstanceSet(
+      items: const [
+        ElementInstance("i0"),
+        ElementInstance("i1", dx: 50),
+        ElementInstance("i2", dx: 100, start: 1),
+      ],
+      vary: vary,
+    );
+
+CanvasDocument doc(InstanceSet? set,
+        {List<MotionDevice> devices = const [], bool clip = true}) =>
+    CanvasDocument(frames: 240, frameRate: 24, elements: [
+      ShapeElement(
+          ElementBase(
+              id: "a",
+              x: 10,
+              y: 10,
+              width: 20,
+              height: 20,
+              motion: ElementMotion(
+                  clips: clip ? const [across] : const [],
+                  placed: clip
+                      ? const [ClipPlacement(id: "p", clip: "go", length: 4)]
+                      : const [],
+                  devices: devices,
+                  instances: set)),
+          fill: const Color(0xFF000000)),
+    ]);
+
+double dx(CanvasDocument d, int frame, int? instance) =>
+    poseWithMotion(d.elementById("a")!, frame, d, instance: instance).dx;
+
+Future<ByteData> draw(CanvasDocument d, int frame) async {
+  var rec = PictureRecorder();
+  var canvas = Canvas(rec);
+  canvas.drawRect(const Rect.fromLTWH(0, 0, 300, 100),
+      Paint()..color = const Color(0xFFFFFFFF));
+  paintElement(canvas, d.elementById("a")!, frame, document: d, frameRate: 24);
+  var img = await rec.endRecording().toImage(300, 100);
+  return (await img.toByteData())!;
+}
+
+int red(ByteData px, int x, int y) => px.getUint8((y * 300 + x) * 4);
+
+void main() {
+  group("the model", () {
+    test("kept, and dropped when empty", () {
+      var set = three(vary: {VaryWhat.size: const Vary(VaryHow.random, 0.5)});
+      var back = InstanceSet.fromJson(set.toJson())!;
+      expect(back.items.map((x) => x.id), ["i0", "i1", "i2"]);
+      expect(back.items[2].start, 1);
+      expect(back.varyOf(VaryWhat.size).how, VaryHow.random);
+      expect(InstanceSet.fromJson(const {"items": []}), isNull);
+      var m = ElementMotion.fromJson(ElementMotion(instances: set).toJson());
+      expect(m.instances!.count, 3);
+      expect(m.moves, isTrue);
+      expect(m.isBlank, isFalse);
+    });
+
+    test("more keep their ids and their step; fewer drop the last", () {
+      var set = const InstanceSet().withCount(3, gap: 40);
+      expect(set.items.map((x) => (x.id, x.dx)),
+          [("i0", 0.0), ("i1", 40.0), ("i2", 80.0)]);
+      set = set.withCount(4);
+      expect(set.items.last.dx, 120, reason: "the last two's step");
+      expect(set.withCount(2).items.map((x) => x.id), ["i0", "i1"]);
+    });
+
+    test("each way of differing", () {
+      var set = const InstanceSet().withCount(5);
+      expect(set.share(VaryWhat.size, 2), 0, reason: "same for all");
+      var byOrder =
+          set.withVary(VaryWhat.starts, const Vary(VaryHow.byOrder, 2));
+      expect(byOrder.startOf(4), 2);
+      expect(byOrder.startOf(2), 1);
+      var middle =
+          set.withVary(VaryWhat.size, const Vary(VaryHow.fromMiddle, 1));
+      expect(middle.sizeOf(2), 1, reason: "the middle one as it is");
+      expect(middle.sizeOf(0), 2);
+      var random =
+          set.withVary(VaryWhat.colour, const Vary(VaryHow.random, 90));
+      expect(random.hueOf(1), isNot(random.hueOf(2)));
+      expect(random.hueOf(1), random.hueOf(1), reason: "the same each time");
+      expect(set.uniform, isTrue);
+      expect(byOrder.uniform, isFalse);
+    });
+
+    test("laid out in a line, a grid, a circle", () {
+      var set = const InstanceSet().withCount(4);
+      expect(
+          set
+              .laidOut(InstanceLayout.grid, gap: 10, columns: 2)
+              .items
+              .map((x) => (x.dx, x.dy)),
+          [(0.0, 0.0), (10.0, 0.0), (0.0, 10.0), (10.0, 10.0)]);
+      var circle = set.laidOut(InstanceLayout.circle, gap: 10);
+      expect(circle.items.first.dx, closeTo(0, 1e-9));
+      expect(circle.items.first.dy, closeTo(0, 1e-9),
+          reason: "the first where the element is");
+    });
+  });
+
+  group("rule 3", () {
+    test("each instance at its place, and at its own start", () {
+      var d = doc(three());
+      expect(dx(d, 48, 0), closeTo(50, 0.01), reason: "two seconds in");
+      expect(dx(d, 48, 1), closeTo(100, 0.01), reason: "50 to the right");
+      expect(dx(d, 48, 2), closeTo(125, 0.01),
+          reason: "a second behind, 100 to the right");
+      expect(dx(d, 12, 2), closeTo(100, 0.01),
+          reason: "before its start it holds its first frame");
+      expect(dx(d, 48, null), closeTo(50, 0.01),
+          reason: "the element as placed");
+    });
+
+    test("left of Instances is shared; right of it, each its own", () {
+      var time = const MotionDevice(MotionDeviceKind.time,
+          id: "m0", values: {"speed": 2});
+      // Time first: each instance asks it at its own moment.
+      var before = doc(three(), devices: [
+        time,
+        const MotionDevice(MotionDeviceKind.instances, id: "m1")
+      ]);
+      // Instances first: Time speeds each instance's moment up.
+      var after = doc(three(), devices: [
+        const MotionDevice(MotionDeviceKind.instances, id: "m1"),
+        time
+      ]);
+      // At 2 s: instance 2 starts a second late.
+      expect(dx(before, 48, 2), closeTo(100 + 50, 0.01),
+          reason: "1 s of its own, twice as fast: 2 s in");
+      expect(dx(after, 48, 2), closeTo(100 + 75, 0.01),
+          reason: "4 s asked for, less its second: 3 s in");
+    });
+
+    test("its box is all of them; one is found by where it is", () {
+      var d = doc(three(), clip: false);
+      var e = d.elementById("a")!;
+      var b = e.movedBoundsAt(0, d);
+      expect(b.left, 10);
+      expect(b.right, 130);
+      expect(e.instanceAt(const Offset(70, 20), 0, d), 1);
+      expect(e.instanceAt(const Offset(45, 20), 0, d), isNull);
+    });
+  });
+
+  group("drawn", () {
+    test("each instance is drawn where it is", () async {
+      var px = await draw(doc(three(), clip: false), 0);
+      for (var x in [20, 70, 120]) {
+        expect(red(px, x, 20), 0, reason: "an instance at $x");
+      }
+      expect(red(px, 45, 20), 255, reason: "nothing between");
+    });
+
+    test("alike, they are stamped; differing, drawn one by one", () async {
+      var stamped = InstanceSet(items: const [
+        ElementInstance("i0"),
+        ElementInstance("i1", dx: 50),
+      ]);
+      expect(stamped.uniform, isTrue);
+      var px = await draw(doc(stamped, clip: false), 0);
+      expect(red(px, 70, 20), 0);
+      var coloured =
+          stamped.withVary(VaryWhat.colour, const Vary(VaryHow.byOrder, 120));
+      expect(coloured.uniform, isFalse);
+      // Black stays black whatever its hue: the colour varies, the places
+      // hold.
+      px = await draw(doc(coloured, clip: false), 0);
+      expect(red(px, 70, 20), 0);
+    });
+  });
+
+  group("the controller", () {
+    test("reuse, lay out, and place once", () {
+      var c = CanvasController(doc(null, clip: false),
+          audioEngine: FakeEngine(const {}));
+      addTearDown(c.dispose);
+      c.reuseElement("a", 4);
+      var set = c.motionOf("a").instances!;
+      expect(set.count, 4);
+      expect(set.items[1].dx, 30, reason: "half as far again as it is big");
+      c.layOutInstances("a", InstanceLayout.grid);
+      expect(c.motionOf("a").instances!.items[2].dy, 30);
+      c.moveInstances("a", 0);
+      c.setInstances("a", null);
+      expect(c.motionOf("a").instances, isNull);
+      expect(c.motionOf("a").devices, isEmpty,
+          reason: "its Instances gone with them");
+      c.undo();
+      expect(c.motionOf("a").instances, isNotNull);
+    });
+  });
+
+  group("the card", () {
+    for (var scale in [1.0, 1.5]) {
+      testWidgets("reuse it from its Instances card, at $scale",
+          (tester) async {
+        var c = CanvasController(doc(null, clip: false),
+            audioEngine: FakeEngine(const {}));
+        addTearDown(c.dispose);
+        c.selectOnly("a");
+        tester.view.physicalSize = const Size(2400, 300);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ThemeNotifier>(
+                create: (c) => ThemeNotifier(doLoad: false)),
+            ChangeNotifierProvider<SnackBarModel>(
+                create: (c) => SnackBarModel()),
+          ],
+          child: MaterialApp(
+              builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(context)
+                      .copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!),
+              home: Scaffold(
+                  body: ListenableBuilder(
+                      listenable: c,
+                      builder: (context, _) =>
+                          AnimationPanel(controller: c, height: 300)))),
+        ));
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(find.byKey(const ValueKey("instancesCard")), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey("instancesReuse")));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(c.motionOf("a").instances!.count, 5);
+        await tester.tap(find.byKey(const ValueKey("instancesMore")));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(c.motionOf("a").instances!.count, 6);
+        // How their starts differ.
+        await tester.ensureVisible(find.byKey(const ValueKey("vary-starts")));
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey("vary-starts")));
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(find.text("By order").last);
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(c.motionOf("a").instances!.varyOf(VaryWhat.starts).how,
+            VaryHow.byOrder);
+        expect(
+            find.byKey(const ValueKey("vary-starts-amount")), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.ensureVisible(find.byKey(const ValueKey("instancesOnce")));
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey("instancesOnce")));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(c.motionOf("a").instances, isNull);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      });
+    }
+  });
+
+  group("in a game", () {
+    CanvasDocument world() => CanvasDocument(
+          game: true,
+          counts: const [GameCount("coins", "Coins")],
+          elements: [
+            ShapeElement(const ElementBase(
+                id: "hero",
+                x: 100,
+                y: 600,
+                width: 40,
+                height: 60,
+                play: PlaySpec(as: PlayAs.platformer))),
+            ShapeElement(const ElementBase(
+                id: "coin",
+                x: 300,
+                y: 680,
+                width: 20,
+                height: 20,
+                play: PlaySpec(
+                    as: PlayAs.pickup,
+                    touched: GameEffect(does: GameDoes.add, count: "coins")),
+                motion: ElementMotion(
+                    instances: InstanceSet(items: [
+                  ElementInstance("i0"),
+                  ElementInstance("i1", dx: 100),
+                  ElementInstance("i2", dx: 700),
+                ])))),
+          ],
+        );
+
+    void run(GameRun g, CanvasDocument doc, double seconds,
+        {bool right = false}) {
+      g.input.keys
+        ..clear()
+        ..addAll([if (right) LogicalKeyboardKey.arrowRight.keyId]);
+      for (var t = 0.0; t < seconds; t += 1 / 60) {
+        g.step(doc, 0, 1 / 60);
+      }
+    }
+
+    test("each instance is collected on its own, and comes back", () {
+      var g = GameRun();
+      var doc = world();
+      run(g, doc, 0.2);
+      run(g, doc, 1.2, right: true);
+      expect(g.countOf(doc, "coins"), 2, reason: "the two in reach");
+      expect(g.gone, {"coin#i0", "coin#i1"});
+      var seen = g.view(doc).elementById("coin")!;
+      expect(seen.base.motion.instances!.items.map((x) => x.id), ["i2"],
+          reason: "the one not taken is still drawn");
+      // Started again: every coin back.
+      g.reset();
+      run(g, doc, 0.1);
+      expect(g.view(doc).elementById("coin")!.base.motion.instances!.count, 3);
+      expect(g.countOf(doc, "coins"), 0);
+    });
+
+    test("an instance's sound is set off from where it is", () {
+      var doc = world();
+      var coin = doc.elementById("coin")!;
+      doc = doc.withElement(coin.rebase(
+          coin.base.copyWith(play: coin.base.play.copyWith(sound: "ding"))));
+      var g = GameRun();
+      run(g, doc, 0.2);
+      g.events.clear();
+      run(g, doc, 1.2, right: true);
+      var from = [
+        for (var e in g.events)
+          if (e.sound == "ding") e.soundFrom
+      ];
+      expect(from, [310, 410], reason: "each coin's middle across the page");
+    });
+  });
+
+  group("elsewhere", () {
+    test("an EPUB's picture of it holds each instance at its place", () async {
+      // Its pose is the EPUB's to move: each instance still at its own
+      // place from the element.
+      var d = doc(three(vary: {VaryWhat.size: const Vary(VaryHow.byOrder, 0)}),
+          clip: false);
+      var rec = PictureRecorder();
+      var canvas = Canvas(rec);
+      canvas.drawRect(const Rect.fromLTWH(0, 0, 300, 100),
+          Paint()..color = const Color(0xFFFFFFFF));
+      paintElement(canvas, d.elementById("a")!, 0,
+          document: d, poseOutside: true);
+      var px =
+          (await (await rec.endRecording().toImage(300, 100)).toByteData())!;
+      for (var x in [20, 70, 120]) {
+        expect(red(px, x, 20), 0, reason: "an instance at $x");
+      }
+    });
+
+    test("a reused element has a row on the timeline", () {
+      var c = CanvasController(doc(three(), clip: false),
+          audioEngine: FakeEngine(const {}));
+      addTearDown(c.dispose);
+      expect(motionRowsOf(c).map((e) => e.id), ["a"]);
+    });
+
+    test("its sound is heard from the middle of its instances", () {
+      var d = CanvasDocument(elements: [
+        ShapeElement(const ElementBase(
+            id: "a",
+            x: 0,
+            width: 40,
+            height: 40,
+            motion: ElementMotion(
+                instances: InstanceSet(items: [
+              ElementInstance("i0"),
+              ElementInstance("i1", dx: 1200),
+            ])))),
+      ]);
+      var heard = heardAt(d, d.elementById("a")!,
+          const SoundPlacement(by: PlaceBy.canvas, arc: 60), 0)!;
+      // Its instances' middles at 20 and 1220: 620 across 1280.
+      expect(heard.angle, closeTo((620 / 1280 - 0.5) * 60, 0.01));
+    });
+  });
+}

@@ -3438,6 +3438,10 @@ class CanvasController extends ChangeNotifier {
   /// stands at one join, and that join: see previewMotionFrom.
   (String, int)? _motionPreview;
 
+  /// _soundFrom is where a game last set a channel's sound off -- the
+  /// instance of an element reused it touched -- by channel: see gameSound.
+  final Map<String, Heard> _soundFrom = {};
+
   /// _previewTicks counts the previews changed, for the stage to repaint.
   int _previewTicks = 0;
 

@@ -158,8 +158,12 @@ class _ShiftedLive implements LiveMotion {
 /// (see motion_devices.dart). With [upto], only the first that many of its
 /// pose devices: the chain as it stands at that join. Without [doc] (a lone
 /// element drawn), its track alone.
+///
+/// [instance] is which of an element reused (see instances.dart) -- its
+/// place, start and size put on at its Instances device (rule 3); null for
+/// the element as it is placed, as one.
 Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
-    {LiveMotion? live, int? upto}) {
+    {LiveMotion? live, int? upto, int? instance}) {
   if (doc == null) return e.track?.at(frame) ?? Keyframe.rest;
   if (live case MotionPreview p when upto == null && p.element == e.id) {
     upto = p.upto;
@@ -169,26 +173,49 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
     devices = devices.sublist(0, upto.clamp(0, devices.length));
   }
   if (devices.isEmpty) return _clipPose(e, frame, doc, live);
-  return _pulled(e, frame, doc, live, devices, devices.length - 1);
+  return _pulled(e, frame, doc, live, devices, devices.length - 1, instance);
 }
 
 /// _pulled is [e]'s pose on [frame] after pose device [i] of [devices]:
 /// what the device makes of what those to its left give it -- asked, by a
 /// device that changes time, for another moment (rule 2).
 Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
-    LiveMotion? live, List<MotionDevice> devices, int i) {
+    LiveMotion? live, List<MotionDevice> devices, int i, int? instance) {
   if (i < 0) return _clipPose(e, frame, doc, live);
   var d = devices[i];
   switch (d.kind) {
+    case MotionDeviceKind.instances:
+      var set = e.base.motion.instances;
+      if (set == null || instance == null || instance < 0) {
+        return _pulled(e, frame, doc, live, devices, i - 1, null);
+      }
+      if (instance >= set.count) {
+        return _pulled(e, frame, doc, live, devices, i - 1, null);
+      }
+      // What is left of it is the same for every instance, asked at this
+      // one's own moment: later by its start -- holding its first frame
+      // before then, never wrapping round -- and at its own speed.
+      var rate = math.max(1, doc.frameRate).toDouble();
+      var t = frame / rate;
+      var at = math.max(0.0, t - set.startOf(instance)) * set.speedOf(instance);
+      var shifted = live == null ? null : liveShifted(live, at - t);
+      var left =
+          _pulled(e, (at * rate).round(), doc, shifted, devices, i - 1, null);
+      var item = set.items[instance];
+      return left.copyWith(
+          dx: left.dx + item.dx,
+          dy: left.dy + item.dy,
+          scale: left.scale * set.sizeOf(instance));
     case MotionDeviceKind.time:
       var rate = math.max(1, doc.frameRate).toDouble();
       var t = frame / rate, tt = retimed(d, t);
       // What plays live is asked at its own clock, moved alike.
       var shifted = live == null ? null : liveShifted(live, tt - t);
-      return _pulled(e, (tt * rate).round(), doc, shifted, devices, i - 1);
+      return _pulled(
+          e, (tt * rate).round(), doc, shifted, devices, i - 1, instance);
     default:
       // A look is not a pose device; it passes the pose on.
-      return _pulled(e, frame, doc, live, devices, i - 1);
+      return _pulled(e, frame, doc, live, devices, i - 1, instance);
   }
 }
 
@@ -258,9 +285,33 @@ extension MovedElement on CanvasElement {
     if (this case CameraElement cam) {
       return cameraFrame(cam, frame, doc, live: live);
     }
-    return !base.motion.moves
-        ? boundsAt(frame)
-        : boundsWith(poseWithMotion(this, frame, doc, live: live));
+    if (!base.motion.moves) return boundsAt(frame);
+    // An element reused is all of its instances.
+    if (base.motion.instances case var set?) {
+      Rect? all;
+      for (var i = 0; i < set.count; i++) {
+        var b = boundsWith(
+            poseWithMotion(this, frame, doc, live: live, instance: i));
+        all = all == null ? b : all.expandToInclude(b);
+      }
+      if (all != null) return all;
+    }
+    return boundsWith(poseWithMotion(this, frame, doc, live: live));
+  }
+
+  /// instanceAt is which of this element reused is at [point] on [frame],
+  /// the last drawn first; null where none is, or it is placed once.
+  int? instanceAt(Offset point, int frame, CanvasDocument doc,
+      {LiveMotion? live}) {
+    var set = base.motion.instances;
+    if (set == null) return null;
+    for (var i = set.count - 1; i >= 0; i--) {
+      if (boundsWith(poseWithMotion(this, frame, doc, live: live, instance: i))
+          .contains(point)) {
+        return i;
+      }
+    }
+    return null;
   }
 
   /// movedRotationAt is rotationAt with the clips' turn added.
