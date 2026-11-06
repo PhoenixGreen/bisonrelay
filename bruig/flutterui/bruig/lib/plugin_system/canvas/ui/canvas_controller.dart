@@ -4064,7 +4064,11 @@ Future<(Uint8List, int)> _warpedWavAway(
         double secondsPerBeat,
         double semitones,
         Map<ClipEnvelope, List<ControlPoint>> envelopes,
-        ({List<double> ins, List<double> outs})? fades) =>
+        ({
+          List<(double, double)> ins,
+          List<(double, double)> outs,
+          FadeCurve curve
+        })? fades) =>
     Isolate.run(() {
       var (wl, wr) = renderWarp(l, r,
           from: from,
@@ -4075,7 +4079,10 @@ Future<(Uint8List, int)> _warpedWavAway(
           secondsPerBeat: secondsPerBeat,
           semitones: semitones,
           envelopes: envelopes);
-      if (fades != null) declick(wl, wr, ins: fades.ins, outs: fades.outs);
+      if (fades != null) {
+        fadeEdges(wl, wr,
+            ins: fades.ins, outs: fades.outs, curve: fades.curve.level);
+      }
       return (wav16(wl, wr), wl.length);
     });
 

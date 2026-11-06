@@ -152,6 +152,42 @@ double curveAt(List<ControlPoint> points, double beat, double rest) {
 /// clipBarChoices are the lengths a clip is offered, in bars.
 const clipBarChoices = [1, 2, 4, 8, 16, 32];
 
+/// SliceBy is where Slice cuts a clip: at each of its hits, or every
+/// beat, or every bar.
+enum SliceBy {
+  hits("At its hits"),
+  beat("Every beat"),
+  bar("Every bar");
+
+  final String label;
+  const SliceBy(this.label);
+}
+
+/// FadeCurve is the way a clip's fade goes.
+enum FadeCurve {
+  linear("Straight"),
+  smooth("Smooth"),
+  fast("Fast"),
+  slow("Slow");
+
+  final String label;
+  const FadeCurve(this.label);
+
+  static FadeCurve fromName(String? name) =>
+      values.where((c) => c.name == name).firstOrNull ?? smooth;
+
+  /// level is how far up the fade is [u] of the way in, nought to one.
+  double level(double u) {
+    u = u.clamp(0.0, 1.0);
+    return switch (this) {
+      FadeCurve.linear => u,
+      FadeCurve.smooth => u * u * (3 - 2 * u),
+      FadeCurve.fast => 1 - (1 - u) * (1 - u),
+      FadeCurve.slow => u * u,
+    };
+  }
+}
+
 /// SessionClip is one clip in a session slot.
 class SessionClip {
   /// id is kept through every change, so what is playing can be found.
@@ -194,6 +230,12 @@ class SessionClip {
   /// fade is a few milliseconds' fade at its start, loop start and loop end,
   /// so a cut mid-wave does not click (Ableton's Fade).
   final bool fade;
+
+  /// fadeIn and fadeOut are seconds of fade at its start (and its loop's,
+  /// each time round) and at its loop's end: longer than Fade's, to be
+  /// heard; [fadeCurve] the way they go.
+  final double fadeIn, fadeOut;
+  final FadeCurve fadeCurve;
 
   /// reversedOf is the sound before Reverse, kept so it can be undone.
   final MediaSource? reversedOf;
@@ -307,6 +349,8 @@ class SessionClip {
       !midi &&
       (warp ||
           fade ||
+          fadeIn > 0 ||
+          fadeOut > 0 ||
           pitch != 0 ||
           cents != 0 ||
           envelopes.values.any((e) => e.isNotEmpty));
@@ -330,6 +374,8 @@ class SessionClip {
           secondsPerBeat,
         // The fades sit at the start and loop points, so those count.
         if (fade) "fade=$start,$loopStart,$bars,$loop",
+        if (fadeIn > 0 || fadeOut > 0)
+          "fades=$fadeIn,$fadeOut,${fadeCurve.name},$start,$loopStart,$bars,$loop",
       ].join(":");
 
   /// rendered is the [signature] a MIDI clip's [sound] was rendered from.
@@ -351,6 +397,9 @@ class SessionClip {
     this.loopStart = 0,
     this.gain = 0,
     this.fade = false,
+    this.fadeIn = 0,
+    this.fadeOut = 0,
+    this.fadeCurve = FadeCurve.smooth,
     this.reversedOf,
     this.quantise,
     this.legato = false,
@@ -388,6 +437,9 @@ class SessionClip {
     double? loopStart,
     double? gain,
     bool? fade,
+    double? fadeIn,
+    double? fadeOut,
+    FadeCurve? fadeCurve,
     MediaSource? reversedOf,
     bool clearReversed = false,
     Quantise? quantise,
@@ -424,6 +476,9 @@ class SessionClip {
         loopStart: math.max(0, loopStart ?? this.loopStart),
         gain: (gain ?? this.gain).clamp(-70.0, 24.0),
         fade: fade ?? this.fade,
+        fadeIn: (fadeIn ?? this.fadeIn).clamp(0.0, 60.0),
+        fadeOut: (fadeOut ?? this.fadeOut).clamp(0.0, 60.0),
+        fadeCurve: fadeCurve ?? this.fadeCurve,
         reversedOf: clearReversed ? null : reversedOf ?? this.reversedOf,
         quantise: clearQuantise ? null : quantise ?? this.quantise,
         legato: legato ?? this.legato,
@@ -487,6 +542,9 @@ class SessionClip {
         if (quantise case var q?) "quantise": q.name,
         if (legato) "legato": true,
         if (fade) "fade": true,
+        if (fadeIn > 0) "fadeIn": fadeIn,
+        if (fadeOut > 0) "fadeOut": fadeOut,
+        if (fadeCurve != FadeCurve.smooth) "fadeCurve": fadeCurve.name,
         if (velocity != 0) "velocity": velocity,
         if (follow != FollowAction.none) "follow": follow.name,
         if (followBars case var f?) "followBars": f,
@@ -547,6 +605,9 @@ class SessionClip {
           Quantise.values.where((q) => q.name == json["quantise"]).firstOrNull,
       legato: jsonBool(json["legato"], false),
       fade: jsonBool(json["fade"], false),
+      fadeIn: jsonDouble(json["fadeIn"], 0).clamp(0.0, 60.0),
+      fadeOut: jsonDouble(json["fadeOut"], 0).clamp(0.0, 60.0),
+      fadeCurve: FadeCurve.fromName(jsonStr(json["fadeCurve"])),
       velocity: jsonDouble(json["velocity"], 0).clamp(0.0, 1.0),
       follow: FollowAction.values
               .where((f) => f.name == json["follow"])

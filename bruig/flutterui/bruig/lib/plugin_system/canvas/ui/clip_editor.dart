@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/media/spectrogram.dart';
 import 'package:bruig/plugin_system/canvas/media/warp.dart' show onsets;
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/automation.dart';
@@ -13,6 +16,8 @@ import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
     show envelopeLengths, settingLabel;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart'
+    show CanvasDropdown;
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
     show dragPointers;
 import 'package:bruig/plugin_system/canvas/ui/piano_roll.dart';
@@ -206,6 +211,9 @@ class _ClipEditorState extends State<ClipEditor> {
   String? _said;
   bool _busy = false;
 
+  /// _spectral is whether its sound is drawn as a spectrogram.
+  bool _spectral = false;
+
   /// _shown is the column of settings shown, narrow: 0 Clip, 1 Launch, 2
   /// Audio or Notes.
   int _shown = 0;
@@ -286,7 +294,8 @@ class _ClipEditorState extends State<ClipEditor> {
                       clip: clip,
                       envelope: _envelopes ? _envelopeKey(clip, t) : null,
                       envelopeRest: _envelopeRest(_envelopeKey(clip, t), t),
-                      envelopeLength: clip.lengthOf(_envelopeKey(clip, t))));
+                      envelopeLength: clip.lengthOf(_envelopeKey(clip, t)),
+                      spectral: _spectral));
         },
       );
 
@@ -501,6 +510,34 @@ class _ClipEditorState extends State<ClipEditor> {
       );
 
   /// _row is a setting: its name, and what sets it.
+  /// _fadeSteps are the lengths a fade's arrows step through, in seconds.
+  static const _fadeSteps = [
+    0.0,
+    0.01,
+    0.03,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.0,
+    4.0
+  ];
+
+  /// _fadeStep is the length [by] steps on from [now]: the next of
+  /// _fadeSteps up, or down.
+  static double _fadeStep(double now, int by) {
+    if (by > 0) {
+      return _fadeSteps.firstWhere((s) => s > now + 1e-9,
+          orElse: () => _fadeSteps.last);
+    }
+    return _fadeSteps.lastWhere((s) => s < now - 1e-9, orElse: () => 0);
+  }
+
+  static String _seconds(double s) => s < 1
+      ? "${(s * 1000).round()} ms"
+      : "${s.toStringAsFixed(s < 10 ? 1 : 0)} s";
+
   Widget _row(MixerLook look, String label, Widget child) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
         child: Row(children: [
@@ -1085,6 +1122,46 @@ class _ClipEditorState extends State<ClipEditor> {
               "${clip.gain > 0 ? "+" : ""}${clip.gain.toStringAsFixed(1)} dB",
               () => c.editClip((x) => x.copyWith(gain: x.gain - 1)),
               () => c.editClip((x) => x.copyWith(gain: x.gain + 1)))),
+      // Its fades: in at its start (and its loop's), out at its loop's end.
+      for (var (label, key, value, set) in [
+        (
+          "Fade in",
+          "clipFadeIn",
+          clip.fadeIn,
+          (SessionClip x, double v) => x.copyWith(fadeIn: v)
+        ),
+        (
+          "Fade out",
+          "clipFadeOut",
+          clip.fadeOut,
+          (SessionClip x, double v) => x.copyWith(fadeOut: v)
+        ),
+      ])
+        _row(
+            look,
+            label,
+            _stepper(
+                look,
+                key,
+                value == 0 ? "None" : _seconds(value),
+                value <= 0
+                    ? null
+                    : () => c.editClip((x) => set(x, _fadeStep(value, -1))),
+                () => c.editClip((x) => set(x, _fadeStep(value, 1))))),
+      if (clip.fadeIn > 0 || clip.fadeOut > 0)
+        _row(
+            look,
+            "Curve",
+            _stepper(
+                look,
+                "clipFadeCurve",
+                clip.fadeCurve.label,
+                () => c.editClip((x) => x.copyWith(
+                    fadeCurve: FadeCurve.values[
+                        (x.fadeCurve.index - 1) % FadeCurve.values.length])),
+                () => c.editClip((x) => x.copyWith(
+                    fadeCurve: FadeCurve.values[
+                        (x.fadeCurve.index + 1) % FadeCurve.values.length])))),
       const SizedBox(height: 4),
       Wrap(spacing: 4, runSpacing: 4, children: [
         _pill(look, "Reverse", clip.reversedOf != null,
@@ -1097,10 +1174,32 @@ class _ClipEditorState extends State<ClipEditor> {
             key: const ValueKey("clipFade"),
             tip: "A few milliseconds' fade in at its start and its loop's, "
                 "and out at its loop's end: no click where it is cut"),
+        _pill(look, "Spectrum", _spectral,
+            () => setState(() => _spectral = !_spectral),
+            key: const ValueKey("clipSpectrum"),
+            tip: "Its sound as a spectrogram: low pitches at the bottom, "
+                "each as bright as it is loud"),
         _pill(look, "Crop", false, _busy ? null : () => _run(c.cropClip),
             key: const ValueKey("clipCrop"),
             tip: "Keep only what it plays, as a new sound, so the rest "
                 "stops taking room"),
+        // Cut into slices, each a clip in the slots under it.
+        CanvasDropdown<SliceBy?>(
+          key: const ValueKey("clipSlice"),
+          label: "",
+          value: null,
+          width: 130,
+          grow: false,
+          tight: true,
+          enabled: !_busy,
+          options: [
+            (null, "Slice…"),
+            for (var by in SliceBy.values) (by, by.label),
+          ],
+          onChanged: (by) {
+            if (by != null) _run(() => c.sliceClip(by));
+          },
+        ),
       ]),
       const SizedBox(height: 10),
       Text(
@@ -1174,6 +1273,33 @@ final Map<String, Future<_Sound?>> _soundsOf = {};
 
 const int _peakSlices = 4000;
 
+/// _spectraOf are each stored sound's spectrogram, made once.
+final Map<String, Future<ui.Image?>> _spectraOf = {};
+
+Future<ui.Image?> _spectrumOf(String assetId) =>
+    _spectraOf[assetId] ??= () async {
+      var audio = await CanvasController.clipAudio(assetId);
+      if (audio == null) {
+        _spectraOf.remove(assetId);
+        return null;
+      }
+      var (l, r) = audio;
+      var made = await Isolate.run(() {
+        var mono = Float32List(l.length);
+        for (var i = 0; i < l.length; i++) {
+          mono[i] = (l[i] + r[i]) / 2;
+        }
+        return spectrogramOf(mono);
+      });
+      var done = Completer<ui.Image>();
+      ui.decodeImageFromPixels(made.rgba, made.columns, made.rows,
+          ui.PixelFormat.rgba8888, done.complete);
+      return _spectraMade[assetId] = await done.future;
+    }();
+
+/// _spectraMade are the spectrograms made, to draw at once.
+final Map<String, ui.Image> _spectraMade = {};
+
 Future<_Sound?> _soundOf(String assetId) => _soundsOf[assetId] ??= () async {
       var audio = await CanvasController.clipAudio(assetId);
       // Not kept, unread: it is read again next time.
@@ -1218,12 +1344,16 @@ class _SampleView extends StatefulWidget {
   final String? envelope;
   final double envelopeRest;
   final double? envelopeLength;
+
+  /// spectral draws its sound as a spectrogram, under its wave.
+  final bool spectral;
   const _SampleView(
       {required this.controller,
       required this.clip,
       this.envelope,
       this.envelopeRest = 1,
-      this.envelopeLength});
+      this.envelopeLength,
+      this.spectral = false});
 
   @override
   State<_SampleView> createState() => _SampleViewState();
@@ -1307,6 +1437,16 @@ class _SampleViewState extends State<_SampleView>
     var audio = c.document.audio;
     var bpb = audio.beatsPerBar;
     var spb = math.max(0.001, audio.secondsPerBeat);
+    // Its spectrogram, once made, when the Spectrum view is on.
+    ui.Image? spectrum;
+    if (widget.spectral && sound != null) {
+      spectrum = _spectraMade[sound.assetId];
+      if (spectrum == null) {
+        _spectrumOf(sound.assetId).then((_) {
+          if (mounted) setState(() {});
+        });
+      }
+    }
     return FutureBuilder<_Sound?>(
       future: sound == null ? null : _soundOf(sound.assetId),
       builder: (context, snap) => LayoutBuilder(builder: (context, size) {
@@ -1532,6 +1672,10 @@ class _SampleViewState extends State<_SampleView>
                   loopEnd: clip.loopEnd(bpb),
                   loop: clip.loop,
                   gain: math.pow(10, clip.gain / 20).toDouble(),
+                  fadeIn: clip.fadeIn / c.document.audio.secondsPerBeat,
+                  fadeOut: clip.fadeOut / c.document.audio.secondsPerBeat,
+                  fadeCurve: clip.fadeCurve,
+                  spectrum: spectrum,
                   playhead: _playhead,
                   studio: look.studio,
                   rulerH: _rulerH,
@@ -1701,7 +1845,20 @@ class _SamplePainter extends CustomPainter {
     this.envelope,
     this.envelopeRest = 1,
     this.envelopeLength,
+    this.fadeIn = 0,
+    this.fadeOut = 0,
+    this.fadeCurve = FadeCurve.smooth,
+    this.spectrum,
   });
+
+  /// spectrum is its sound as a spectrogram (see spectrogram.dart), drawn
+  /// under its wave when the Spectrum view is on.
+  final ui.Image? spectrum;
+
+  /// fadeIn and fadeOut are its fades, in beats, and [fadeCurve] their
+  /// way: drawn as ramps over the sound.
+  final double fadeIn, fadeOut;
+  final FadeCurve fadeCurve;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1770,13 +1927,33 @@ class _SamplePainter extends CustomPainter {
             Paint()..color = pin.color.withValues(alpha: 0.35));
       }
     }
+    // Its spectrum, where each moment of it falls: a column of the picture
+    // every two pixels.
+    if ((spectrum, fileSeconds) case (var image?, var seconds)
+        when seconds > 0) {
+      var shownTo = left + size.width;
+      var paint = Paint()..filterQuality = FilterQuality.low;
+      for (var x = left.floorToDouble();
+          x < math.min(shownTo, soundBeats * beatW);
+          x += 2) {
+        var at = playStart + secondOf(x / beatW);
+        if (at >= playStart + playLength) break;
+        var col = (at / seconds * image.width).floorToDouble();
+        if (col < 0 || col >= image.width) continue;
+        canvas.drawImageRect(
+            image,
+            Rect.fromLTWH(col, 0, 1, image.height.toDouble()),
+            Rect.fromLTWH(x, top, 2, h - top),
+            paint);
+      }
+    }
     // The sound: both sides together, where each moment of it falls.
     var peaks = this.peaks;
     if (peaks != null && fileSeconds > 0) {
       var mid = top + (h - top) / 2;
       var half = (h - top) / 2 - 6;
       var wave = Paint()
-        ..color = studio.text.withValues(alpha: 0.75)
+        ..color = studio.text.withValues(alpha: spectrum == null ? 0.75 : 0.12)
         ..strokeWidth = 1;
       // Only what is in view, a pixel at a time: zoomed in far, the whole of
       // it is many windows wide.
@@ -1867,6 +2044,39 @@ class _SamplePainter extends CustomPainter {
         canvas.drawCircle(Offset(b * beatW, y(v)), 4, Paint()..color = colour);
       }
     }
+    // Its fades: the level rising from its start (and its loop's) and
+    // falling to its loop's end, the faded part shaded.
+    void ramp(double from, double to, bool rising) {
+      if (to <= from) return;
+      var path = Path();
+      var shade = Path()..moveTo(from * beatW, top);
+      for (var k = 0; k <= 32; k++) {
+        var u = k / 32;
+        var level = fadeCurve.level(rising ? u : 1 - u);
+        var x = (from + (to - from) * u) * beatW;
+        var y = top + (h - top) * (1 - level);
+        k == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+        shade.lineTo(x, y);
+      }
+      shade
+        ..lineTo(to * beatW, top)
+        ..close();
+      canvas.drawPath(shade, Paint()..color = const Color(0x55000000));
+      canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = studio.text.withValues(alpha: 0.85));
+    }
+
+    if (fadeIn > 0) {
+      ramp(start, start + fadeIn, true);
+      if (loop && (loopStart - start).abs() > 1e-6) {
+        ramp(loopStart, loopStart + fadeIn, true);
+      }
+    }
+    if (fadeOut > 0) ramp(loopEnd - fadeOut, loopEnd, false);
     if (playhead case var p?) {
       canvas.drawLine(
           Offset(p * beatW, top),
@@ -1880,6 +2090,7 @@ class _SamplePainter extends CustomPainter {
   @override
   bool shouldRepaint(_SamplePainter old) =>
       old.peaks != peaks ||
+      old.spectrum != spectrum ||
       old.key != key ||
       old.playhead != playhead ||
       old.start != start ||

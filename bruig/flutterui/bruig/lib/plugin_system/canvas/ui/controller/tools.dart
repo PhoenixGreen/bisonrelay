@@ -928,6 +928,82 @@ extension CanvasTools on CanvasController {
   /// loop's start where that is earlier, to its loop's end -- as a new file
   /// for an audio clip, or the notes there for a MIDI one, and moves its
   /// start and loop to match. Answers why not.
+  /// sliceClip cuts the audio clip the editor is open on into slices --
+  /// at its hits, or every beat or bar of it as it plays -- each a clip of
+  /// its own in the channel's empty slots under it, playing that stretch of
+  /// the same sound: as one undo step. Why not, or null.
+  Future<String?> sliceClip(SliceBy by) async {
+    var t = clipEditing;
+    var clip = editedClip;
+    if (t == null || clip == null || clip.midi) return null;
+    var sound = clip.sound;
+    if (sound == null) return null;
+    var bpb = _document.audio.beatsPerBar;
+    var spb = math.max(0.001, _document.audio.secondsPerBeat);
+    var speed = math.pow(2, (clip.pitch + clip.cents / 100) / 12).toDouble();
+    // Where in the file each beat of it is.
+    double sourceOf(double beat) => clip.warp
+        ? sound.start + clip.warpMap.sourceAt(beat)
+        : sound.start + beat * spb * speed;
+    var from = clip.start, to = clip.loopEnd(bpb);
+    if (to <= from) return null;
+    var cuts = <double>[];
+    switch (by) {
+      case SliceBy.hits:
+        var audio = await CanvasController.clipAudio(sound.assetId);
+        if (audio == null) return "Its sound could not be read.";
+        var (l, r) = audio;
+        var hits = await Isolate.run(() => onsets(l, r));
+        var a = sourceOf(from), b = sourceOf(to);
+        // No slice shorter than 50ms: a hit read a little late, at its
+        // very start, would otherwise leave a sliver.
+        const least = 0.05;
+        cuts = [a];
+        for (var h in hits) {
+          if (h - cuts.last >= least && h <= b - least) cuts.add(h);
+        }
+        cuts.add(b);
+      case SliceBy.beat || SliceBy.bar:
+        var step = by == SliceBy.bar ? bpb.toDouble() : 1.0;
+        cuts = [
+          for (var b = from; b < to - 1e-6; b += step) sourceOf(b),
+          sourceOf(to),
+        ];
+    }
+    if (cuts.length < 3) return "There is only one slice there.";
+    var slices = <SessionClip>[];
+    for (var i = 0; i + 1 < cuts.length; i++) {
+      var a = cuts[i], b = cuts[i + 1];
+      // At its own speed, its length in the song's bars.
+      var bars = (b - a) / speed / spb / bpb;
+      slices.add(SessionClip(
+        id: newElementId(),
+        name: "${clip.name.isEmpty ? "Slice" : clip.name} ${i + 1}",
+        color: clip.color,
+        sound: sound.copyWith(start: a, end: b),
+        bars: bars,
+        loop: false,
+        launch: clip.launch,
+        gain: clip.gain,
+        pitch: clip.pitch,
+        cents: clip.cents,
+        // No click where each is cut.
+        fade: true,
+      ));
+    }
+    // Each in the next empty slot under it.
+    var grid = session;
+    var row = t.row!;
+    for (var s in slices) {
+      do {
+        row++;
+      } while (grid.at(t.channel, row) != null);
+      grid = grid.put(t.channel, row, s);
+    }
+    apply(_document.copyWith(session: grid));
+    return null;
+  }
+
   Future<String?> cropClip() async {
     var clip = editedClip;
     if (clip == null) return null;
@@ -1023,12 +1099,25 @@ extension CanvasTools on CanvasController {
       var semitones = clip.pitch + clip.cents / 100;
       // Faded where it is played from and round: as _startClip has them.
       var loopAt = clip.loopStart * spb;
-      var fades = clip.fade
+      // Each edge as long as its own fade, or Fade's few milliseconds (as
+      // warp.dart's declick has them).
+      const declick = 0.004;
+      var inFor = clip.fadeIn > 0 ? clip.fadeIn : (clip.fade ? declick : 0.0);
+      var outFor =
+          clip.fadeOut > 0 ? clip.fadeOut : (clip.fade ? declick : 0.0);
+      var fades = inFor > 0 || outFor > 0
           ? (
-              ins: [clip.start * spb, if (clip.loop) loopAt],
-              outs: [
-                loopAt + math.max(0.05, clip.bars * _barSeconds),
+              ins: [
+                if (inFor > 0) ...[
+                  (clip.start * spb, inFor),
+                  if (clip.loop) (loopAt, inFor),
+                ],
               ],
+              outs: [
+                if (outFor > 0)
+                  (loopAt + math.max(0.05, clip.bars * _barSeconds), outFor),
+              ],
+              curve: clip.fadeCurve,
             )
           : null;
       var (wav, frames) = await _warpedWavAway(l, r, from, to, warp, mode, map,

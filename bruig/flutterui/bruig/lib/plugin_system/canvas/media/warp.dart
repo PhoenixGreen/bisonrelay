@@ -90,6 +90,36 @@ void declick(Float32List l, Float32List r,
   }
 }
 
+/// fadeEdges fades [l] and [r] in from each of [ins] and out to each of
+/// [outs] -- each a place, in seconds, and how long its fade is -- the way
+/// [curve] goes (nought to one, [u] of the way), in place.
+void fadeEdges(Float32List l, Float32List r,
+    {List<(double, double)> ins = const [],
+    List<(double, double)> outs = const [],
+    double Function(double u)? curve}) {
+  double level(double u) => curve == null ? u : curve(u);
+  for (var (t, length) in ins) {
+    var at = (t * 48000).round(), n = (length * 48000).round();
+    for (var k = 0; k < n; k++) {
+      var i = at + k;
+      if (i < 0 || i >= l.length) continue;
+      var g = level(k / n);
+      l[i] *= g;
+      r[i] *= g;
+    }
+  }
+  for (var (t, length) in outs) {
+    var at = (t * 48000).round(), n = (length * 48000).round();
+    for (var k = 0; k < n; k++) {
+      var i = at - 1 - k;
+      if (i < 0 || i >= l.length) continue;
+      var g = level(k / n);
+      l[i] *= g;
+      r[i] *= g;
+    }
+  }
+}
+
 /// _envelop applies [envelopes] to [l] and [r] -- the clip's sound from its
 /// first beat, at [secondsPerBeat] -- in place: its gain, squared so half
 /// way is well down (twelve decibels), and its pan as a balance.

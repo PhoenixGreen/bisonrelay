@@ -871,6 +871,51 @@ void main() {
       await done(tester, c);
     });
 
+    testWidgets("its fades stepped, the way they go, its Spectrum, Slice",
+        (tester) async {
+      var c = await show(tester);
+      c.openClipEditor("a", 0);
+      await tester.pump();
+      await idle(tester);
+      expect(find.byKey(const ValueKey("clipFadeCurve")), findsNothing,
+          reason: "no curve without a fade");
+      await tester.ensureVisible(find.byKey(const ValueKey("clipFadeIn-up")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("clipFadeIn-up")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("clipFadeIn-up")));
+      await tester.pump();
+      expect(c.session.at("a", 0)!.fadeIn, 0.03);
+      expect(
+          (tester.widget<Text>(find.byKey(const ValueKey("clipFadeIn")))).data,
+          "30 ms");
+      await tester
+          .ensureVisible(find.byKey(const ValueKey("clipFadeCurve-up")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("clipFadeCurve-up")));
+      await tester.pump();
+      expect(c.session.at("a", 0)!.fadeCurve, FadeCurve.fast,
+          reason: "on from Smooth, its first");
+      await tester.ensureVisible(find.byKey(const ValueKey("clipSpectrum")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("clipSpectrum")));
+      await tester.pump();
+      await idle(tester);
+      expect(tester.takeException(), isNull);
+      // Sliced every beat, from its dropdown: two bars, eight slices.
+      await tester.ensureVisible(find.byKey(const ValueKey("clipSlice")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("clipSlice")));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text("Every beat").last);
+      await tester.pump(const Duration(milliseconds: 300));
+      await idle(tester);
+      expect(c.session.at("a", 8)?.name, "Patience 8");
+      expect(c.session.at("a", 9), isNull);
+      expect(tester.takeException(), isNull);
+      await done(tester, c);
+    });
+
     testWidgets("a MIDI clip opens on its notes, and the tools change them",
         (tester) async {
       var c = await show(tester);
