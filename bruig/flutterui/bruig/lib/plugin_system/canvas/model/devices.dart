@@ -93,6 +93,57 @@ bool paramShown(MixDevice device, DeviceParam p) => switch ((device.kind, p.id))
       _ => true,
     };
 
+/// deviceAbout is what [kind] does, in a few words: what a device's "?"
+/// shows.
+String deviceAbout(DeviceKind kind) => switch (kind) {
+      DeviceKind.reverb =>
+        "A room round the sound: Size is how big, Damping how dull its walls, "
+            "Pre-delay how long before the room answers.",
+      DeviceKind.delay => "Echoes: Time apart, Feedback how many come back.",
+      DeviceKind.gate =>
+        "Lets sound through only above its Threshold: quiet between notes, "
+            "hiss and spill cut out. It can listen to another channel.",
+      DeviceKind.autoFilter =>
+        "A filter that moves by itself, with the beat or with how loud the "
+            "sound is.",
+      DeviceKind.chorus =>
+        "Thickens the sound with copies of itself, slightly late and moving.",
+      DeviceKind.flanger => "A sweeping, jet-like comb of the sound with itself.",
+      DeviceKind.phaser => "A swirl of moving notches across the sound.",
+      DeviceKind.autoPan => "Moves the sound from side to side, with the beat.",
+      DeviceKind.saturator => "Warms the sound, as tape or valves would.",
+      DeviceKind.overdrive => "Pushes the sound into a crunchy distortion.",
+      DeviceKind.bitCrusher =>
+        "Fewer bits and a lower rate: the sound of old machines.",
+      DeviceKind.autoTune =>
+        "Pulls a voice onto the notes of a key, gently or hard.",
+      DeviceKind.vocoder =>
+        "Makes a sound speak with a voice: the voice shapes a synth, or "
+            "another channel.",
+      DeviceKind.tuner => "The note it hears, and how far off it is.",
+      DeviceKind.spectrum =>
+        "How loud each pitch is, low to high; over time as a spectrogram.",
+      DeviceKind.scope => "The wave itself, left and right, over its Time.",
+      DeviceKind.stereoImage =>
+        "Left against right: a line up the middle is mono, a cloud is wide. "
+            "Correlation under minus nought means the sides cancel in mono.",
+      DeviceKind.loudness =>
+        "Broadcast loudness: momentary, the last three seconds, the whole "
+            "since reset, and the true peak between the samples.",
+      DeviceKind.utility =>
+        "Gain, width, mono and phase: the plain tools.",
+      DeviceKind.lfo =>
+        "Makes no sound: moves other knobs up and down. Right-click a knob to "
+            "have it moved.",
+      DeviceKind.follower =>
+        "Makes no sound: moves other knobs as the sound gets louder.",
+      DeviceKind.macro =>
+        "Makes no sound: one knob that turns several others at once.",
+      DeviceKind.split =>
+        "Sends the sound down two or more chains at once and mixes them back: "
+            "side by side, middle and sides, left and right, or lows and highs.",
+    };
+
 /// listensOnly is whether [kind] only listens -- an analyser: a tuner, a
 /// spectrum, a scope -- and changes nothing it is given.
 bool listensOnly(DeviceKind kind) => kind.group == DeviceGroup.analysers;

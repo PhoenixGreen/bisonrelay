@@ -287,13 +287,12 @@ void main() {
       await tester.pump();
     }
 
-    Future<void> pick(WidgetTester tester, String key, String option) async {
+    /// pick presses a choice, as the editor's joined buttons have them.
+    Future<void> pick(WidgetTester tester, String key) async {
       await tester.ensureVisible(find.byKey(ValueKey(key)));
       await tester.pump();
       await tester.tap(find.byKey(ValueKey(key)));
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.tap(find.text(option).last);
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
     }
 
     testWidgets("its card in the chain opens it; its settings are set there",
@@ -313,7 +312,7 @@ void main() {
         expect(find.byKey(ValueKey("instrument${card}Card")), findsOneWidget);
       }
       // Its own envelope, then an attack turned up.
-      await pick(tester, "instrumentEnvelope", "Set here");
+      await pick(tester, "instrumentEnvelope-own");
       expect(shape(c).envelope, isTrue);
       var attack = shape(c).attack;
       await tester
@@ -334,7 +333,7 @@ void main() {
       await tester.pump();
       expect(shape(c).attack, greaterThan(attack));
       // A low-pass, its corner dragged across its curve.
-      await pick(tester, "instrumentFilter", "Low-pass");
+      await pick(tester, "instrumentFilter-lowPass");
       expect(shape(c).filter, SynthFilter.lowPass);
       var cutoff = shape(c).cutoff;
       await centre(tester, "instrumentFilterGraph");
@@ -345,9 +344,9 @@ void main() {
       await tester.pump();
       expect(shape(c).cutoff, lessThan(cutoff));
       // Legato; the LFO on the filter.
-      await pick(tester, "instrumentVoiceMode", "Legato");
+      await pick(tester, "instrumentVoiceMode-legato");
       expect(shape(c).mode, VoiceMode.legato);
-      await pick(tester, "instrumentLfoTarget", "Filter");
+      await pick(tester, "instrumentLfoTarget-filter");
       expect(shape(c).lfoTarget, LfoTarget.filter);
       // Each one step to undo.
       c.undo();
@@ -359,6 +358,8 @@ void main() {
       await tester.pump();
       expect(shape(c).plain, isTrue);
       expect(tester.takeException(), isNull);
+      // The knobs' double-click waits out its moment.
+      await tester.pump(const Duration(milliseconds: 500));
       await tester.pumpWidget(const SizedBox());
     });
 

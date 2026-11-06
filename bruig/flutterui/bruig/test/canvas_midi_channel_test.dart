@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_chain_helpers.dart';
 
 // canvas_midi_channel_test.dart is the rest of a MIDI channel: where its
 // notes come from (From), when it plays them (Monitor), the sustain pedal,
@@ -323,7 +324,7 @@ void main() {
           (c.document.elements.single as AudioElement).instrument!;
       expect(part().monitor, MidiMonitor.input);
 
-      await tester.ensureVisible(find.byKey(const ValueKey("addMidi-chord")));
+      await openAdd(tester, find.byKey(const ValueKey("addMidiOpen")));
       await tester.tap(find.byKey(const ValueKey("addMidi-chord")));
       await tester.pump(const Duration(milliseconds: 400));
       expect(part().effects.single.kind, MidiEffectKind.chord);

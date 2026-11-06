@@ -3452,6 +3452,20 @@ class CanvasController extends ChangeNotifier {
   /// editor.
   bool _instrumentShown = false;
 
+  /// _chainFull is whether the Chain fills the window: the canvas put away
+  /// for it, as the prototype's full-screen button does.
+  bool _chainFull = false;
+
+  /// chainFull: see _chainFull. The screen puts the canvas away while it is
+  /// set, and the dock then fills the room.
+  bool get chainFull => _chainFull;
+
+  set chainFull(bool full) {
+    if (full == _chainFull) return;
+    _chainFull = full;
+    notifyListeners();
+  }
+
   /// _hear is which of a surround mix's speakers the editor plays: see
   /// hearSpeakers.
   SpeakerGroup _hear = SpeakerGroup.all;
@@ -3472,7 +3486,7 @@ class CanvasController extends ChangeNotifier {
 
   // ---- The clip editor
 
-  bool _editorWide = false;
+  bool _editorWide = true;
 
   double? _editorWidth;
 

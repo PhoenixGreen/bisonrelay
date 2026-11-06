@@ -1031,13 +1031,6 @@ class _CanvasMixerState extends State<CanvasMixer>
       var skin = DeviceSkin.themed(theme.colors);
       // The editor (a clip's, opened from its slot, or a part's piano roll)
       // first in its channel's strip.
-      var wide = controller.editorWide;
-      var most = math.max(420.0, room.maxWidth - 24);
-      // As its right edge was dragged to; else as Wider or Narrower has it.
-      var editorWidth = controller.editorWidth?.clamp(420.0, most) ??
-          (wide
-              ? math.max(editorNarrowWidth, room.maxWidth - 24)
-              : math.min(editorNarrowWidth, most));
       var clipHere =
           controller.clipEditorShown && controller.clipEditing?.channel == key;
       var rollHere = controller.pianoRollShown &&
@@ -1049,71 +1042,54 @@ class _CanvasMixerState extends State<CanvasMixer>
       var instrumentHere = controller.instrumentShown &&
           lane != null &&
           controller.instrumentChannel(key);
+      // An editor, opened from the Chain's tabs, fills the panel as the
+      // prototype's do: the chain is then the rail under it.
+      var editorId = instrumentHere
+          ? "instrument"
+          : pitchHere
+              ? "pitch"
+              : clipHere
+                  ? "clip"
+                  : rollHere
+                      ? "roll"
+                      : null;
+      Widget? editor = switch (editorId) {
+        "instrument" => InstrumentEditor(controller: controller, channel: key),
+        "pitch" => PitchEditor(controller: controller, channel: key),
+        // Every column of its settings where there is room for them; one
+        // at a time where not.
+        "clip" => LayoutBuilder(
+            builder: (context, box) => ClipEditor(
+                controller: controller,
+                wide: controller.editorWide && _roomForAll(context, box),
+                canWiden: _roomForAll(context, box))),
+        "roll" => LayoutBuilder(
+            builder: (context, box) => ClipEditor(
+                controller: controller,
+                wide: controller.editorWide && _roomForAll(context, box),
+                canWiden: _roomForAll(context, box),
+                part: true)),
+        _ => null,
+      };
+      if (editor != null) {
+        return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: Container(
+                  key: ValueKey("device-$editorId"),
+                  color: theme.studio.panel,
+                  child: editor,
+                ),
+              ),
+              _ChainRail(controller: controller, channel: key, theme: theme),
+            ]);
+      }
       var chain = <Widget>[
-        if (instrumentHere)
-          KeyedSubtree(
-            key: _deviceKey("instrument"),
-            child: EditorFrame(
-              id: "instrument",
-              title: "Instrument · ${lane.name}",
-              width: math.max(editorWidth, math.min(1040.0, most)),
-              height: h,
-              wide: wide,
-              onWide: controller.toggleEditorWide,
-              onClose: controller.closeEditor,
-              onResize: (w) => controller.editorWidth = w.clamp(420.0, most),
-              child: InstrumentEditor(controller: controller, channel: key),
-            ),
-          ),
-        if (pitchHere)
-          KeyedSubtree(
-            key: _deviceKey("pitch"),
-            child: EditorFrame(
-              id: "pitch",
-              title: "Pitch · ${lane.name}",
-              width: math.max(editorWidth, math.min(900.0, most)),
-              height: h,
-              wide: wide,
-              onWide: controller.toggleEditorWide,
-              onClose: controller.closeEditor,
-              onResize: (w) => controller.editorWidth = w.clamp(420.0, most),
-              child: PitchEditor(controller: controller, channel: key),
-            ),
-          ),
-        if (clipHere)
-          KeyedSubtree(
-            key: _deviceKey("clip"),
-            child: EditorFrame(
-              id: "clip",
-              title:
-                  "Clip · ${controller.editedClip?.name.isNotEmpty == true ? controller.editedClip!.name : "untitled"}",
-              width: editorWidth,
-              height: h,
-              wide: wide,
-              onWide: controller.toggleEditorWide,
-              onClose: controller.closeEditor,
-              onResize: (w) => controller.editorWidth = w.clamp(420.0, most),
-              child: ClipEditor(controller: controller, wide: wide),
-            ),
-          ),
-        if (rollHere)
-          KeyedSubtree(
-            key: _deviceKey("roll"),
-            child: EditorFrame(
-              id: "roll",
-              title: "Part · ${lane?.name ?? ""}",
-              width: editorWidth,
-              height: h,
-              wide: wide,
-              onWide: controller.toggleEditorWide,
-              onClose: controller.closeEditor,
-              onResize: (w) => controller.editorWidth = w.clamp(420.0, most),
-              child: ClipEditor(controller: controller, wide: wide, part: true),
-            ),
-          ),
         // A MIDI channel's In and its MIDI effects, before its instrument plays:
         // what comes in, and what is done to the notes.
         if (lane != null && controller.instrumentChannel(key)) ...[
+          chainZone("Before", midiColour, h),
           device(
               "midiIn",
               (f, fold) => MidiInDevice(
@@ -1140,6 +1116,7 @@ class _CanvasMixerState extends State<CanvasMixer>
               channel: key,
               height: h),
           // Then the instrument, playing them.
+          chainZone("Generator", midiColour, h),
           device(
               "instrumentCard",
               (f, fold) => InstrumentDevice(
@@ -1205,6 +1182,12 @@ class _CanvasMixerState extends State<CanvasMixer>
                   onFold: fold,
                   height: h)),
         if (lane != null || isMaster || isScene) ...[
+          chainZone(
+              lane != null && controller.instrumentChannel(key)
+                  ? "After"
+                  : "Effects",
+              const Color(0xFF4F8FD6),
+              h),
           for (var (i, step) in controller.chainOf(key).indexed) ...[
             // The way to add one where it will go: before the EQ and
             // compressor when they are last (see chainOrder).
@@ -1260,6 +1243,11 @@ class _CanvasMixerState extends State<CanvasMixer>
               id: "loudness",
               title: "Loudness",
               skin: skin,
+              icon: Icons.insights,
+              accent: deviceGroupLook(DeviceGroup.analysers).$2,
+              help: "How loud the whole piece is, measured as an export "
+                  "would be, against a target; bringing an export to it is "
+                  "set where it is published.",
               folded: f,
               onFold: fold,
               width: 340,
@@ -1310,6 +1298,8 @@ class _CanvasMixerState extends State<CanvasMixer>
         // Where it is heard from, big enough to place it by: the room, its
         // speakers and the channel among them, stereo or surround.
         if (lane != null || ret != null)
+          chainZone("Output", const Color(0xFFCFCBDF), h),
+        if (lane != null || ret != null)
           device("panner", (f, fold) {
             // A channel's pan as it plays now: see mixNow.
             var mix = lane != null ? controller.mixNow(lane) : ret!.mix;
@@ -1358,6 +1348,10 @@ class _CanvasMixerState extends State<CanvasMixer>
               id: "meter",
               title: lane.name,
               skin: skin,
+              icon: Icons.speaker,
+              accent: const Color(0xFFCFCBDF),
+              help: "The channel's own strip: its level, its fader, mute and "
+                  "solo -- as on the mixer.",
               folded: f,
               onFold: fold,
               width: 150,
@@ -1469,6 +1463,13 @@ class _CanvasMixerState extends State<CanvasMixer>
       );
     });
   }
+
+  /// _roomForAll is whether an editor [box] wide has room for every column
+  /// of its settings -- three, 690 together -- and what it edits beside
+  /// them, at the text's size.
+  static bool _roomForAll(BuildContext context, BoxConstraints box) =>
+      box.maxWidth >=
+      690 + 480 * math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
 
   final ScrollController _chainScroll = ScrollController();
 }
@@ -2225,6 +2226,136 @@ class _PanControl extends StatelessWidget {
   }
 }
 
+/// _ChainRail is the chain under an open editor, as the prototype has it:
+/// "Chain" back to it, then each step as a chip -- its colour and its name
+/// -- pressed, the chain again, on that step.
+class _ChainRail extends StatelessWidget {
+  final CanvasController controller;
+  final String channel;
+  final MixerLook theme;
+  const _ChainRail(
+      {required this.controller, required this.channel, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    var c = controller;
+    var studio = theme.studio;
+    var steps = <(String, String, Color, bool)>[];
+    if (c.instrumentOf(channel)?.instrument case var part?) {
+      steps.add(("midiIn", "MIDI In", midiColour, true));
+      for (var (i, e) in part.effects.indexed) {
+        steps.add(("midi$i", e.kind.label, midiColour, e.on));
+      }
+      steps.add(("instrumentCard", "Instrument", midiColour, true));
+    }
+    var devices = c.devicesOf(channel);
+    for (var step in c.chainOf(channel)) {
+      if (step == chainEq) {
+        steps.add(("eq", "EQ", const Color(0xFF9A92EA), true));
+      } else if (step == chainComp) {
+        steps.add((
+          "comp",
+          "Compressor",
+          deviceGroupLook(DeviceGroup.dynamics).$2,
+          true
+        ));
+      } else if (deviceIndexOf(devices, step) case var at when at >= 0) {
+        var d = devices[at];
+        steps.add((
+          deviceKey(step),
+          d.kind.label,
+          deviceGroupLook(d.kind.group).$2,
+          d.on
+        ));
+      }
+    }
+    steps.add(("panner", "Output", const Color(0xFFCFCBDF), true));
+    Widget chip(String id, String name, Color colour, bool on) => Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: InkWell(
+            key: ValueKey("railChip-$id"),
+            borderRadius: BorderRadius.circular(5),
+            onTap: () {
+              c.closeEditor();
+              c.openEffects(channel, device: id);
+            },
+            child: Opacity(
+              opacity: on ? 1 : 0.45,
+              child: Container(
+                height: 22,
+                padding: const EdgeInsets.fromLTRB(4, 0, 7, 0),
+                decoration: BoxDecoration(
+                  color: studio.raised,
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(color: studio.edge),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                      width: 3,
+                      height: 14,
+                      decoration: BoxDecoration(
+                          color: colour,
+                          borderRadius: BorderRadius.circular(2))),
+                  const SizedBox(width: 5),
+                  Text(name,
+                      style: TextStyle(fontSize: 10.5, color: studio.muted)),
+                ]),
+              ),
+            ),
+          ),
+        );
+    return Container(
+      height: 30,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: studio.panel,
+        border: Border(top: BorderSide(color: studio.edge)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          InkWell(
+            key: const ValueKey("editorClose"),
+            borderRadius: BorderRadius.circular(5),
+            onTap: c.closeEditor,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Text("Chain",
+                  style: TextStyle(fontSize: 11, color: studio.text)),
+            ),
+          ),
+          const SizedBox(width: 4),
+          for (var (id, name, colour, on) in steps) chip(id, name, colour, on),
+        ]),
+      ),
+    );
+  }
+}
+
+/// chainZone marks where a part of a chain begins, as the prototype does:
+/// its name up the side, a line of [colour] beside it.
+Widget chainZone(String label, Color colour, double height) => Builder(
+      builder: (context) {
+        var look = MixerLook.of(context);
+        return Container(
+          key: ValueKey("chainZone-$label"),
+          width: 16,
+          height: height,
+          margin: const EdgeInsets.only(right: 4),
+          decoration: BoxDecoration(
+              border: Border(left: BorderSide(color: colour, width: 2))),
+          alignment: Alignment.center,
+          child: RotatedBox(
+            quarterTurns: 3,
+            child: Text(label.toUpperCase(),
+                maxLines: 1,
+                style: TextStyle(
+                    fontSize: 9, letterSpacing: 1.1, color: look.studio.muted)),
+          ),
+        );
+      },
+    );
+
 /// _PinnedRight lays out the mixer's two parts: [right] (the returns, the
 /// scene's bus, the master, the rail) as wide as it is, up to all but
 /// [leftLeast] of the room (at most half of it, where the room is narrower
@@ -2287,6 +2418,11 @@ class _MasterOutputDevice extends StatelessWidget {
     var small = TextStyle(fontSize: 11, color: skin.ink.withValues(alpha: 0.7));
     return DeviceFrame(
       id: "output",
+      accent: const Color(0xFFCFCBDF),
+      help: "What the piece is mixed for: two speakers, 5.1 or 7.1, with a "
+          "meter for each. Surround is heard here folded down to two; Hear "
+          "plays one group of speakers alone, to check what goes where. "
+          "Exports carry the whole mix.",
       title: "Output",
       skin: skin,
       icon: Icons.speaker,
@@ -2679,6 +2815,11 @@ class _PannerDevice extends StatelessWidget {
 
     return DeviceFrame(
       id: "panner",
+      icon: Icons.speaker,
+      accent: const Color(0xFFCFCBDF),
+      help: "Where it is heard from. Drag in the room to place it; in "
+          "surround the wheel sets its width. Centre is how much of what is "
+          "in front goes to the centre speaker. Double-click for the front.",
       title: "Panner",
       skin: skin,
       folded: folded,

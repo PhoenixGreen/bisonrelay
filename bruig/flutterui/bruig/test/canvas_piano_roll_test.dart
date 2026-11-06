@@ -176,7 +176,8 @@ void main() {
         {int? row,
         double height = 760,
         double bars = 2,
-        double scale = 1}) async {
+        double scale = 1,
+        bool lanes = true}) async {
       c = CanvasController(
           CanvasDocument(
               frames: 100,
@@ -232,7 +233,38 @@ void main() {
       // Any scroll to the editor done: a scroll view takes no presses while
       // it moves.
       await tester.pump(const Duration(milliseconds: 450));
+      // The lanes start folded (Ken): opened, for the tests that use them.
+      var folded = find.byKey(const ValueKey("rollLanesFolded"));
+      if (lanes && folded.evaluate().isNotEmpty) {
+        await tester.tap(folded);
+        await tester.pump();
+      }
     }
+
+    /// pickLane shows [lane] in the first lane: its line in the list
+    /// beside it, pressed.
+    Future<void> pickLane(WidgetTester tester, RollLane lane) async {
+      var line = find.descendant(
+          of: find.byKey(const ValueKey("rollLane")),
+          matching: find.text(lane.label));
+      await tester.ensureVisible(line);
+      await tester.pump();
+      await tester.tap(line);
+      await tester.pump();
+    }
+
+    testWidgets("the lanes start folded, a bar to open them by",
+        (tester) async {
+      await open(tester, lanes: false);
+      expect(find.byKey(const ValueKey("rollLanesFolded")), findsOneWidget);
+      expect(find.byKey(const ValueKey("rollLaneHeading-0")), findsNothing);
+      await tester.tap(find.byKey(const ValueKey("rollLanesFolded")));
+      await tester.pump();
+      expect(find.byKey(const ValueKey("rollLaneHeading-0")), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+    });
 
     Future<void> done(WidgetTester tester) async {
       await tester.pump(const Duration(milliseconds: 500));
@@ -338,11 +370,7 @@ void main() {
 
     testWidgets("a controller's lane takes points", (tester) async {
       await open(tester, row: 0);
-      tester
-          .widget<DropdownButton<RollLane>>(
-              find.byKey(const ValueKey("rollLane")))
-          .onChanged!(const RollLane(MidiControl.expression));
-      await tester.pump();
+      await pickLane(tester, const RollLane(MidiControl.expression));
       var lane = find.byKey(const ValueKey("rollLane-expression"));
       expect(lane, findsOneWidget);
       var box = tester.getRect(lane);
@@ -360,11 +388,7 @@ void main() {
     testWidgets("a drag on an empty lane puts a point down and moves it",
         (tester) async {
       await open(tester, row: 0);
-      tester
-          .widget<DropdownButton<RollLane>>(
-              find.byKey(const ValueKey("rollLane")))
-          .onChanged!(const RollLane(MidiControl.modulation));
-      await tester.pump();
+      await pickLane(tester, const RollLane(MidiControl.modulation));
       var box =
           tester.getRect(find.byKey(const ValueKey("rollLane-modulation")));
       var g = await tester.startGesture(Offset(box.left + 48, box.bottom - 10));
@@ -415,6 +439,11 @@ void main() {
         ));
         await tester.pump();
         expect(tester.takeException(), isNull, reason: "$h high");
+        // Tall enough, the folded bar opens them (they start folded).
+        if (lanes) {
+          await tester.tap(find.byKey(const ValueKey("rollLanesFolded")));
+          await tester.pump();
+        }
         expect(find.byKey(const ValueKey("rollVelocity")),
             lanes ? findsOneWidget : findsNothing,
             reason: "$h high");
@@ -487,7 +516,7 @@ void main() {
       // The width beside the keys -- and the lanes' panels under them.
       var view = tester.getSize(find.byType(PianoRoll)).width -
           tester.getSize(find.byKey(const ValueKey("rollLaneHeading-0"))).width;
-      expect(grid.width, lessThanOrEqualTo(view),
+      expect(grid.width, lessThanOrEqualTo(view + 0.01),
           reason: "32 bars in the width there is");
       tester
           .widget<Slider>(find.byKey(const ValueKey("rollZoom")))
@@ -596,16 +625,19 @@ void main() {
       await tester.pump();
       expect(find.byKey(const ValueKey("device-roll")), findsOneWidget);
       expect(find.byKey(const ValueKey("partColumn")), findsOneWidget);
-      // The columns a slot's clip has: Clip, Launch, Notes.
-      expect(find.byKey(const ValueKey("clipShow-2")), findsOneWidget);
-      // Its notes' tools, as a clip's.
-      await tester.tap(find.byKey(const ValueKey("clipShow-2")));
-      await tester.pump();
+      // Its notes' tools, as a clip's: their column picked where the panel
+      // shows one column at a time.
+      if (find.byKey(const ValueKey("clipShow-2")).evaluate().isNotEmpty) {
+        await tester.tap(find.byKey(const ValueKey("clipShow-2")));
+        await tester.pump();
+      }
       await tester.tap(find.byKey(const ValueKey("noteTool-up")));
       await tester.pump();
       expect(c.rollContent!.notes.single.key, 61);
-      await tester.tap(find.byKey(const ValueKey("clipShow-0")));
-      await tester.pump();
+      if (find.byKey(const ValueKey("clipShow-0")).evaluate().isNotEmpty) {
+        await tester.tap(find.byKey(const ValueKey("clipShow-0")));
+        await tester.pump();
+      }
       // Moved along the timeline a bar: four beats at 120.
       var bar = (4 * 0.5 * c.document.frameRate).round();
       await tester.tap(find.byKey(const ValueKey("partStart-up")));
@@ -630,9 +662,13 @@ void main() {
       expect(c.playing, isFalse);
       // Launched only from a slot: copied into the first empty one, and
       // opened there.
-      await tester.tap(find.byKey(const ValueKey("clipShow-1")));
-      await tester.pump();
+      if (find.byKey(const ValueKey("clipShow-1")).evaluate().isNotEmpty) {
+        await tester.tap(find.byKey(const ValueKey("clipShow-1")));
+        await tester.pump();
+      }
       expect(find.byKey(const ValueKey("launchColumn")), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey("partToSlot")));
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey("partToSlot")));
       await tester.pump(const Duration(milliseconds: 450));
       // Slot 1 held the test's clip already: the part went into slot 2.
@@ -648,13 +684,11 @@ void main() {
     for (var scale in [1.0, 1.25, 1.5]) {
       testWidgets("a part's editor fits, narrow and wide, at $scale",
           (tester) async {
+        // Filling the panel: every column where there is room for them at
+        // this text size, one at a time where not -- and nothing spills.
         await open(tester, scale: scale);
-        expect(tester.takeException(), isNull, reason: "narrow");
-        c.toggleEditorWide();
-        await tester.pump(const Duration(milliseconds: 450));
-        expect(tester.takeException(), isNull, reason: "wide");
+        expect(tester.takeException(), isNull);
         expect(find.byKey(const ValueKey("partColumn")), findsOneWidget);
-        expect(find.byKey(const ValueKey("notesColumn")), findsOneWidget);
         await done(tester);
       });
     }
@@ -737,9 +771,12 @@ void main() {
 
     testWidgets("a chord drawn at once; kept in key", (tester) async {
       await open(tester, row: 0);
-      tester
-          .widget<DropdownButton<int>>(find.byKey(const ValueKey("rollChord")))
-          .onChanged!(2); // Minor.
+      await tester.ensureVisible(find.byKey(const ValueKey("rollChord")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("rollChord")));
+      await tester.pump();
+      await tester.tap(find.text("Minor").last);
+      await tester.pump();
       await tester.pump();
       await pick(tester, "rollDraw");
       await tester.tapAt(at(tester, 4.05, 62));
@@ -750,9 +787,13 @@ void main() {
               if (n.start == 4) n.key
           ]..sort(),
           [62, 65, 69]);
-      tester
-          .widget<DropdownButton<int>>(find.byKey(const ValueKey("rollChord")))
-          .onChanged!(0);
+      await tester.ensureVisible(find.byKey(const ValueKey("rollChord")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("rollChord")));
+      await tester.pump();
+      await tester.tap(find.text("One note").last);
+      await tester.pump();
+      await tester.pump();
       await pick(tester, "rollKeep");
       // C sharp is not in C major: drawn as C.
       await tester.tapAt(at(tester, 6.05, 61));

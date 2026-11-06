@@ -656,7 +656,7 @@ void main() {
             MidiNote(64, 1, 1),
           ]));
       // Widened, every column showing -- see "narrow" below for one.
-      if (wide) c.toggleEditorWide();
+      if (wide != c.editorWide) c.toggleEditorWide();
       tester.view.physicalSize = Size(width, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -1020,39 +1020,6 @@ void main() {
       await done(tester, c);
     });
 
-    testWidgets("in the effects strip: narrow, a column at a time; widened",
-        (tester) async {
-      var c = await show(tester, wide: false);
-      c.openClipEditor("a", 0);
-      await tester.pump();
-      await idle(tester);
-      expect(find.byKey(const ValueKey("device-clip")), findsOneWidget);
-      var narrow = tester.getSize(find.byKey(const ValueKey("device-clip")));
-      expect(narrow.width, lessThanOrEqualTo(760));
-      expect(find.byKey(const ValueKey("clipColumn")), findsOneWidget);
-      expect(find.byKey(const ValueKey("audioColumn")), findsNothing);
-      // The Audio column, picked above it.
-      await tester.tap(find.byKey(const ValueKey("clipShow-2")));
-      await tester.pump();
-      expect(find.byKey(const ValueKey("audioColumn")), findsOneWidget);
-      expect(find.byKey(const ValueKey("clipColumn")), findsNothing);
-      // The rest of the channel's chain still beside it.
-      expect(find.byKey(const ValueKey("addDeviceSlot")), findsOneWidget);
-      // Widened: every column, and wider -- still in the strip.
-      await tester.tap(find.byKey(const ValueKey("editorWide")));
-      await tester.pump();
-      await idle(tester);
-      expect(c.editorWide, isTrue);
-      expect(find.byKey(const ValueKey("clipColumn")), findsOneWidget);
-      expect(find.byKey(const ValueKey("launchColumn")), findsOneWidget);
-      expect(find.byKey(const ValueKey("audioColumn")), findsOneWidget);
-      expect(tester.getSize(find.byKey(const ValueKey("device-clip"))).width,
-          greaterThan(narrow.width));
-      expect(find.byKey(const ValueKey("effectsChain")), findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await done(tester, c);
-    });
-
     // Ken's log: a device's tooltip showing as the clip editor opened ahead
     // of it -- each device moved, not rebuilt, and a showing tooltip moved
     // in a layout asserts. Needs a real hover and the app's LayoutBuilder
@@ -1230,33 +1197,6 @@ void main() {
       await done(tester, c);
     });
 
-    // Ken: the editor made wider or narrower by its right edge; and the
-    // columns wide enough for their numbers.
-    testWidgets("dragged by its right edge, wider and narrower",
-        (tester) async {
-      var c = await show(tester, wide: false);
-      c.openClipEditor("keys", 0);
-      await tester.pump();
-      await idle(tester);
-      var device = find.byKey(const ValueKey("device-clip"));
-      var was = tester.getSize(device).width;
-      expect(
-          tester.getSize(find.byKey(const ValueKey("clipColumn"))).width, 220,
-          reason: "room for 1.2.1 beside its steppers");
-      var edge = find.byKey(const ValueKey("editorEdge-clip"));
-      await tester.drag(edge, const Offset(-120, 0),
-          kind: PointerDeviceKind.mouse);
-      await tester.pump();
-      expect(tester.getSize(device).width, closeTo(was - 120, 1));
-      expect(c.editorWidth, closeTo(was - 120, 1));
-      // Wider or Narrower: as they have it again.
-      await tester.tap(find.byKey(const ValueKey("editorWide")));
-      await tester.pump();
-      expect(c.editorWidth, isNull);
-      expect(tester.takeException(), isNull);
-      await done(tester, c);
-    });
-
     testWidgets("an audio clip's envelope is drawn over its sound",
         (tester) async {
       var c = await show(tester);
@@ -1340,9 +1280,16 @@ void main() {
       c.openClipEditor("keys", 0);
       await tester.pump();
       await idle(tester);
-      await tester.tap(find.byKey(const ValueKey("rollLane")));
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.tap(find.text("Channel › Volume").last);
+      // The lanes start folded: opened first.
+      await tester.tap(find.byKey(const ValueKey("rollLanesFolded")));
+      await tester.pump();
+      // Picked from the lane's list beside it.
+      var volume = find.descendant(
+          of: find.byKey(const ValueKey("rollLane")),
+          matching: find.text("Channel › Volume"));
+      await tester.ensureVisible(volume);
+      await tester.pump();
+      await tester.tap(volume);
       await tester.pump(const Duration(milliseconds: 400));
       var lane = find.byKey(const ValueKey("rollSetting-volume"));
       expect(lane, findsOneWidget);
@@ -1398,7 +1345,6 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(c.selectedSlot, ("a", 1));
       expect(c.editedClip!.name, "Chorus");
-      expect(find.text("Clip · Chorus"), findsOneWidget);
       await done(tester, c);
     });
 

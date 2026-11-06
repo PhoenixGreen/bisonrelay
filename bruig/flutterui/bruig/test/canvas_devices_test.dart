@@ -15,10 +15,12 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_chain_helpers.dart';
 
 // canvas_devices_test.dart is the devices beside the reverb and the delay --
 // gate, auto filter, chorus, flanger, phaser, auto pan, saturator,
@@ -394,10 +396,14 @@ void main() {
       expect(left("d0"), lessThan(left("d1")));
       // The chorus is open, so its arrows show; the first device has
       // nowhere further left to go.
-      var leftmost =
-          tester.widget<IconButton>(find.byKey(const ValueKey("deviceLeft-1")));
+      // Behind its ⋯, as the prototype keeps them.
+      await revealInMenu(tester, "deviceLeft-1");
+      var leftmost = tester
+          .widget<MenuItemButton>(find.byKey(const ValueKey("deviceLeft-1")));
       expect(leftmost.onPressed, isNotNull);
       await tester.tap(find.byKey(const ValueKey("deviceLeft-1")));
+      // A menu's item acts as the menu shuts: a frame later.
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(c.devicesOf("a").map((d) => d.kind),
           [DeviceKind.chorus, DeviceKind.gate]);
@@ -406,11 +412,15 @@ void main() {
       expect(left("d1"), lessThan(left("d0")));
       expect(c.foldedDevices, contains(deviceKey("d0")),
           reason: "the fold follows the gate, not its old place");
+      await revealInMenu(tester, "deviceLeft-0");
       expect(
           tester
-              .widget<IconButton>(find.byKey(const ValueKey("deviceLeft-0")))
+              .widget<MenuItemButton>(
+                  find.byKey(const ValueKey("deviceLeft-0")))
               .onPressed,
           isNull);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
       // One step to undo.
       c.undo();
       await tester.pump(const Duration(milliseconds: 400));
@@ -465,13 +475,13 @@ void main() {
                             ])))),
       ));
       await tester.pump();
-      var add = find.byKey(const ValueKey("addDevice-chorus"));
-      // Down the list of kinds to it: they are built as they come into view.
-      await tester.scrollUntilVisible(add, 40,
-          scrollable: find.descendant(
+      // The chain's "+", then the kind.
+      await openAdd(
+          tester,
+          find.descendant(
               of: find.byKey(const ValueKey("addDeviceSlot")),
-              matching: find.byType(Scrollable)));
-      await tester.pump();
+              matching: find.byKey(const ValueKey("addDeviceOpen"))));
+      var add = find.byKey(const ValueKey("addDevice-chorus"));
       await tester.tap(add);
       await tester.pump(const Duration(milliseconds: 400));
       expect(c.devicesOf("a").single.kind, DeviceKind.chorus);
@@ -490,11 +500,9 @@ void main() {
       // Taken out: from its header's ×, which shows on the dark header --
       c.effectsOpen = true;
       await tester.pump(const Duration(milliseconds: 600));
+      await revealInMenu(tester, "deviceRemove-0");
       var remove = find.byKey(const ValueKey("deviceRemove-0"));
-      var icon = tester.widget<Icon>(
-          find.descendant(of: remove, matching: find.byType(Icon)));
-      expect(icon.color!.computeLuminance(), greaterThan(0.5),
-          reason: "light, on the dark header bar");
+      expect(remove, findsOneWidget, reason: "behind its ⋯");
       await tester.tap(remove);
       await tester.pump();
       expect(c.devicesOf("a"), isEmpty);

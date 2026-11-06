@@ -142,7 +142,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// _noCanvas is a document with no picture (Ratio "None"), whose canvas
   /// is away for good.
   bool get _noCanvas => _audioKind && !_controller.document.hasCanvas;
-  bool get _shown => _canvasShown && !_noCanvas;
+  bool get _shown => _canvasShown && !_noCanvas && !_controller.chainFull;
   bool get _timelineShown => _timelineOpen || _audioKind;
 
   /// _dockOpen is whether any panel under the canvas is open.

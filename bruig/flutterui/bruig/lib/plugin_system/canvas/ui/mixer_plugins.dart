@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/ui/chain_icons.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
     show Wave, correlation;
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
@@ -39,6 +40,7 @@ import 'package:bruig/plugin_system/canvas/ui/device_screens.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey;
 
 // mixer_plugins.dart is a strip's effects as devices in a chain, as in
 // Ableton: the Channel EQ and Compressor as Logic has them, a limiter and
@@ -64,7 +66,7 @@ const Set<PointerDeviceKind> dragPointers = {
 const double deviceHeight = 320;
 
 /// deviceFoldedWidth is a folded device's width, before scaling.
-const double deviceFoldedWidth = 92;
+const double deviceFoldedWidth = 34;
 
 /// DeviceSkin is a device's colours.
 class DeviceSkin {
@@ -137,6 +139,10 @@ enum DeviceTier {
               ? small
               : strip;
 }
+
+/// midiColour is the colour of what carries notes: a MIDI channel's
+/// effects, its In and its instrument, as the prototype has them.
+const midiColour = Color(0xFFD08F3E);
 
 /// deviceGroupLook is a family of devices' mark: its icon in a device's bar
 /// and the colour of the stripe along its top.
@@ -229,6 +235,15 @@ class DeviceFrame extends StatelessWidget {
   final IconData? icon;
   final Color? accent;
 
+  /// help is what it does, behind a "?" at the right of its bar, read when
+  /// clicked: the Chain shows no tips on hover. Empty for none.
+  final String help;
+
+  /// glows is whether it is what makes the sound -- an instrument, the
+  /// Generator -- drawn as the prototype does: its edge and a glow in its
+  /// colour.
+  final bool glows;
+
   const DeviceFrame({
     required this.id,
     required this.title,
@@ -250,169 +265,336 @@ class DeviceFrame extends StatelessWidget {
     this.summary = "",
     this.icon,
     this.accent,
+    this.glows = false,
+    this.help = "",
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
     if (controls != null) return _tiered(context);
-    var scale = (height / drawnHeight).clamp(0.5, 1.5);
-    var w = folded ? deviceFoldedWidth : width;
-    var header = Container(
-      height: 28,
-      color: skin.header,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Row(children: [
-        Tooltip(
-          message: folded ? "Open $title" : "Fold $title",
-          child: GestureDetector(
-            key: ValueKey("deviceFold-$id"),
-            behavior: HitTestBehavior.opaque,
-            onTap: onFold,
-            child: SizedBox(
-              width: 20,
-              height: 28,
-              child: Icon(folded ? Icons.arrow_right : Icons.arrow_drop_down,
-                  size: 18, color: headerInk),
-            ),
-          ),
-        ),
-        if (on != null) ...[
-          _Power(on: on!, onPower: onPower!, powerKey: powerKey),
-          const SizedBox(width: 6),
-        ],
-        if (!folded)
-          Expanded(
-            child: Text(title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: headerInk)),
-          ),
-        if (!folded) ...actions,
-      ]),
-    );
-    var inside = folded
-        ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            RotatedBox(
-              quarterTurns: 3,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: skin.ink)),
-              ),
-            ),
-            Expanded(
-                child: Padding(
-                    padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
-                    child: foldedBody)),
-          ])
-        : body;
+    // The bar as every card's, at its own size; only what is under it is
+    // drawn at the device's size and scaled to the room.
+    var tier = DeviceTier.of(height);
+    var barHeight =
+        tier == DeviceTier.small || tier == DeviceTier.strip ? 24.0 : 28.0;
+    var header = _bar(context, height: barHeight, short: false, full: true);
+    if (folded) {
+      return SizedBox(
+        key: ValueKey("device-$id"),
+        width: deviceFoldedWidth,
+        height: height,
+        child: _card(context, header, _foldedInside(context)),
+      );
+    }
+    var drawn = drawnHeight - 28;
+    var scale = ((height - barHeight) / drawn).clamp(0.5, 1.5);
+    // Never narrower than its bar needs; what is under the bar keeps its
+    // shape, scaled to fit.
     return SizedBox(
       key: ValueKey("device-$id"),
-      width: w * scale,
+      width: math.max(width * scale, 120),
       height: height,
-      child: FittedBox(
-        fit: BoxFit.fill,
-        child: SizedBox(
-          width: w,
-          height: drawnHeight,
-          child: Container(
-            decoration: skin.body,
-            foregroundDecoration: BoxDecoration(
-                border: Border.all(color: Colors.black38),
-                borderRadius: BorderRadius.circular(6)),
-            clipBehavior: Clip.antiAlias,
-            child: Material(
-              type: MaterialType.transparency,
-              child: Column(children: [header, Expanded(child: inside)]),
-            ),
-          ),
+      child: _card(
+        context,
+        header,
+        FittedBox(
+          fit: BoxFit.contain,
+          alignment: Alignment.topCenter,
+          child: SizedBox(width: width, height: drawn, child: body),
         ),
       ),
     );
   }
+
+  /// _card is the Chain's card round [header] and [inside], as the
+  /// prototype draws every device: the studio's raised card, a line round
+  /// it, its family's colour along its top, faded while it is switched off.
+  Widget _card(BuildContext context, Widget header, Widget inside) {
+    var studio = MixerLook.of(context).studio;
+    var off = on == false;
+    // The line round it and the colour along its top are drawn over it, as
+    // the prototype's are, taking none of the room its insides had.
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            stops: const [
+              0,
+              0.14
+            ],
+            colors: [
+              Color.lerp(studio.raised, Colors.white, 0.03)!,
+              studio.raised
+            ]),
+        borderRadius: BorderRadius.circular(9),
+        boxShadow: glows && accent != null
+            ? [
+                BoxShadow(
+                    color: accent!.withValues(alpha: 0.35),
+                    blurRadius: 18,
+                    spreadRadius: -6)
+              ]
+            : null,
+      ),
+      foregroundDecoration: BoxDecoration(
+        border: Border.all(
+            color: glows && accent != null
+                ? Color.lerp(accent!, studio.edge, 0.3)!
+                : studio.edge),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Stack(children: [
+          Column(children: [
+            header,
+            Expanded(child: Opacity(opacity: off ? 0.55 : 1, child: inside)),
+          ]),
+          if (!folded)
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              height: 2,
+              child: IgnorePointer(
+                child: ColoredBox(
+                    color: (accent ?? studio.muted)
+                        .withValues(alpha: off ? 0.3 : 0.9)),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  /// _menuKey is whether [w] goes behind the bar's ⋯ rather than on it: the
+  /// arrows that move a device along the chain, and what takes it out.
+  static bool _inMenu(Widget w) {
+    if (w is DeviceMove) return true;
+    var key = w.key;
+    if (key is! ValueKey<String>) return false;
+    var k = key.value;
+    return k.startsWith("deviceLeft-") ||
+        k.startsWith("deviceRight-") ||
+        k.contains("Remove");
+  }
+
+  /// _menuItems are [actions] that go behind ⋯, as items: the same keys,
+  /// their tooltips as their words.
+  List<Widget> _menuItems() {
+    var items = <Widget>[];
+    for (var w in actions.where(_inMenu)) {
+      if (w is DeviceMove) {
+        for (var (left, can) in [(true, w.canLeft), (false, w.canRight)]) {
+          items.add(MenuItemButton(
+            key: ValueKey("deviceMove${left ? "Left" : "Right"}-${w.id}"),
+            leadingIcon:
+                Icon(left ? Icons.chevron_left : Icons.chevron_right, size: 16),
+            onPressed: !can
+                ? null
+                : w.onMove == null
+                    ? w.onSwap
+                    : () => w.onMove!(left ? -1 : 1),
+            child: Text(left ? "Move earlier in the chain" : "Move later"),
+          ));
+        }
+      } else if (w is IconButton) {
+        items.add(MenuItemButton(
+          key: w.key,
+          leadingIcon:
+              w.icon is Icon ? Icon((w.icon as Icon).icon, size: 16) : null,
+          onPressed: w.onPressed,
+          child: Text(w.tooltip ?? ""),
+        ));
+      }
+    }
+    return items;
+  }
+
+  /// _bar is the card's top: its power dot, its family's mark, its name in
+  /// capitals -- pressed, it folds -- then its buttons and a ⋯ for the rest.
+  Widget _bar(BuildContext context,
+      {required double height, required bool short, required bool full}) {
+    var studio = MixerLook.of(context).studio;
+    var shown = [
+      for (var a in actions)
+        if (!_inMenu(a)) a
+    ];
+    var menu = _menuItems();
+    Widget small(Widget child) => IconButtonTheme(
+          data: IconButtonThemeData(
+              style: IconButton.styleFrom(
+                  foregroundColor: studio.muted,
+                  minimumSize: const Size(21, 21),
+                  maximumSize: const Size(28, 28),
+                  padding: EdgeInsets.zero,
+                  iconSize: 14)),
+          child: child,
+        );
+    if (folded) {
+      return Container(
+        height: height,
+        alignment: Alignment.center,
+        child: on == null
+            ? null
+            : _Power(on: on!, onPower: onPower!, powerKey: powerKey),
+      );
+    }
+    return Container(
+      height: height,
+      padding: const EdgeInsets.fromLTRB(8, 0, 2, 0),
+      decoration: BoxDecoration(
+          border: Border(
+              bottom: BorderSide(color: studio.edge.withValues(alpha: 0.7)))),
+      child: Row(children: [
+        if (on != null) ...[
+          _Power(on: on!, onPower: onPower!, powerKey: powerKey),
+          const SizedBox(width: 7),
+        ],
+        if (icon != null && full) ...[
+          chainIconOr(icon!, size: 14, color: accent ?? studio.muted),
+          const SizedBox(width: 6),
+        ],
+        Expanded(
+          child: Tooltip(
+            message: "Fold $title",
+            child: GestureDetector(
+              key: ValueKey("deviceFold-$id"),
+              behavior: HitTestBehavior.opaque,
+              onTap: onFold,
+              child: Text(title.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      letterSpacing: 0.6,
+                      fontWeight: FontWeight.w600,
+                      color: studio.text)),
+            ),
+          ),
+        ),
+        // A strip is too narrow for its buttons: they are for a taller
+        // panel.
+        if (full) ...[
+          for (var a in shown) small(a),
+          if (help.isNotEmpty)
+            MenuAnchor(
+              builder: (context, controller, _) => small(IconButton(
+                key: ValueKey("deviceHelp-$id"),
+                icon: const Icon(Icons.help_outline),
+                onPressed: () =>
+                    controller.isOpen ? controller.close() : controller.open(),
+              )),
+              menuChildren: [
+                Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: SizedBox(
+                    width: 240,
+                    child: Text(help,
+                        key: ValueKey("deviceHelpText-$id"),
+                        style: const TextStyle(fontSize: 11.5, height: 1.4)),
+                  ),
+                ),
+              ],
+            ),
+          if (menu.isNotEmpty)
+            MenuAnchor(
+              builder: (context, controller, _) => small(IconButton(
+                key: ValueKey("deviceMore-$id"),
+                tooltip: "Move or remove",
+                icon: const Icon(Icons.more_horiz),
+                onPressed: () =>
+                    controller.isOpen ? controller.close() : controller.open(),
+              )),
+              menuChildren: menu,
+            ),
+        ],
+      ]),
+    );
+  }
+
+  /// _foldedInside is a folded card, as the prototype's: a slim column of
+  /// its family's mark and its name down it, pressed to open it.
+  Widget _foldedInside(BuildContext context) {
+    var studio = MixerLook.of(context).studio;
+    return Tooltip(
+      message: "Open $title",
+      child: GestureDetector(
+        key: ValueKey("deviceFold-$id"),
+        behavior: HitTestBehavior.opaque,
+        onTap: onFold,
+        child: Column(children: [
+          if (icon != null) ...[
+            const SizedBox(height: 4),
+            chainIconOr(icon!, size: 14, color: accent ?? studio.muted),
+          ],
+          const SizedBox(height: 8),
+          Expanded(
+            child: RotatedBox(
+              quarterTurns: 1,
+              child: Text(title.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      letterSpacing: 0.8,
+                      fontWeight: FontWeight.w600,
+                      color: studio.text)),
+            ),
+          ),
+          // What it shows folded -- a meter, a curve -- at its foot, as the
+          // prototype's level does.
+          LayoutBuilder(builder: (context, box) {
+            var room = box.maxHeight.isFinite ? box.maxHeight : 200.0;
+            return SizedBox(
+              width: 26,
+              height: math.min(90.0, math.max(0.0, room * 0.4)),
+              child: ClipRect(child: foldedBody),
+            );
+          }),
+          const SizedBox(height: 6),
+        ]),
+      ),
+    );
+  }
+
+  /// _isKnob is whether [w] takes a knob's cell on the card's grid.
+  static bool _isKnob(Widget w) => w is _Knob || w is DeviceKnob;
+
+  /// _besideDisplay is how wide a short card's display is, beside its
+  /// knobs.
+  static const double _besideDisplay = 170;
 
   /// _tiered is the device laid out for [height]: see DeviceTier.
   Widget _tiered(BuildContext context) {
     var tier = DeviceTier.of(height);
     var short = tier == DeviceTier.small || tier == DeviceTier.strip;
     var barHeight = short ? 24.0 : 28.0;
+    // Wider rather than taller: as wide as its knobs need to sit on one row
+    // -- the chain scrolls sideways, and has more room across than down.
+    var knobCount = folded || tier == DeviceTier.strip
+        ? 0
+        : controls!(tier).where(_isKnob).length;
+    var oneRow = 14.0 + 58 * math.min(knobCount, 9);
+    // Short, its display goes beside its knobs rather than over them: the
+    // card wider, the display still a picture worth looking at.
+    var beside = tier == DeviceTier.small && display != null;
     var w = folded
         ? deviceFoldedWidth
         : tier == DeviceTier.strip
             ? math.min(width, 170.0)
-            : width;
-    var header = Container(
-      height: barHeight,
-      color: skin.header,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Row(children: [
-        Tooltip(
-          message: folded ? "Open $title" : "Fold $title",
-          child: GestureDetector(
-            key: ValueKey("deviceFold-$id"),
-            behavior: HitTestBehavior.opaque,
-            onTap: onFold,
-            child: SizedBox(
-              width: 20,
-              height: barHeight,
-              child: Icon(folded ? Icons.arrow_right : Icons.arrow_drop_down,
-                  size: 18, color: headerInk),
-            ),
-          ),
-        ),
-        if (on != null) ...[
-          _Power(on: on!, onPower: onPower!, powerKey: powerKey),
-          const SizedBox(width: 6),
-        ],
-        if (!folded && icon != null && tier != DeviceTier.strip) ...[
-          Icon(icon, size: 14, color: accent ?? headerInk),
-          const SizedBox(width: 5),
-        ],
-        if (!folded)
-          Expanded(
-            child: Text(title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: short ? 11 : 12,
-                    fontWeight: FontWeight.w600,
-                    color: headerInk)),
-          ),
-        // A strip is too narrow for its buttons: its ⋯ and the chain's
-        // arrows are for a taller panel.
-        if (!folded && tier != DeviceTier.strip) ...actions,
-      ]),
-    );
+            : beside
+                ? math.max(width, _besideDisplay + 50.0 * knobCount + 24)
+                : math.max(width, oneRow);
+    var header = _bar(context,
+        height: barHeight, short: short, full: tier != DeviceTier.strip);
+    var studio = MixerLook.of(context).studio;
     Widget inside;
     if (folded) {
-      inside = Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        RotatedBox(
-          quarterTurns: 3,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text(title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: skin.ink)),
-          ),
-        ),
-        Expanded(
-            child: Padding(
-                padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
-                child: foldedBody)),
-      ]);
+      inside = _foldedInside(context);
     } else if (tier == DeviceTier.strip) {
       inside = Padding(
         key: ValueKey("deviceSummary-$id"),
@@ -424,26 +606,66 @@ class DeviceFrame extends StatelessWidget {
                 fontSize: 10.5,
                 height: 1.35,
                 fontFeatures: const [FontFeature.tabularFigures()],
-                color: skin.ink)),
+                color: studio.muted)),
       );
     } else {
       var knobs = controls!(tier);
-      var row = tier == DeviceTier.small
-          ? SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                for (var (i, k) in knobs.indexed) ...[
-                  if (i > 0) const SizedBox(width: 8),
-                  k,
-                ],
-              ]),
-            )
-          : Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 12,
-              runSpacing: 8,
-              children: knobs);
       inside = LayoutBuilder(builder: (context, box) {
+        // The knobs on an even grid, a column for every 55 pixels of the
+        // card (three to seven), each other setting a row of its own; one
+        // row of them on a small card, scrolled where it is too long.
+        Widget grid;
+        if (tier == DeviceTier.small) {
+          grid = SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var (i, k) in knobs.indexed) ...[
+                    if (i > 0) const SizedBox(width: 4),
+                    // A knob a cell; any other setting as wide as it
+                    // needs, in a row that scrolls.
+                    _isKnob(k)
+                        ? SizedBox(width: 50, child: k)
+                        : SizedBox(width: 170, child: k),
+                  ],
+                ]),
+          );
+        } else {
+          var count = knobs.where(_isKnob).length;
+          var columns = math.max(((box.maxWidth - 14) / 55).floor().clamp(3, 9),
+              math.min(count, 9));
+          var rows = <Widget>[];
+          var run = <Widget>[];
+          void flush() {
+            if (run.isEmpty) return;
+            rows.add(
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              for (var k in run) Expanded(child: k),
+              for (var i = run.length; i < columns; i++)
+                const Expanded(child: SizedBox()),
+            ]));
+            run = [];
+          }
+
+          for (var k in knobs) {
+            if (_isKnob(k)) {
+              run.add(k);
+              if (run.length == columns) flush();
+            } else {
+              flush();
+              rows.add(Align(alignment: Alignment.centerLeft, child: k));
+            }
+          }
+          flush();
+          grid = Column(mainAxisSize: MainAxisSize.min, children: [
+            for (var (i, r) in rows.indexed) ...[
+              if (i > 0) const SizedBox(height: 7),
+              r,
+            ],
+          ]);
+        }
         // The knobs, as much of them as fits under the display's least;
         // they scroll rather than spill where even that is too much.
         var most = math.max(0.0, box.maxHeight - (display == null ? 0 : 40));
@@ -451,9 +673,9 @@ class DeviceFrame extends StatelessWidget {
           constraints: BoxConstraints(maxHeight: most),
           child: SingleChildScrollView(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(6, short ? 4 : 8, 6, short ? 4 : 6),
+              padding: EdgeInsets.fromLTRB(7, short ? 5 : 8, 7, short ? 5 : 5),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                row,
+                grid,
                 if (tier == DeviceTier.large && footer.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Row(children: footer),
@@ -462,13 +684,41 @@ class DeviceFrame extends StatelessWidget {
             ),
           ),
         );
+        Widget? screen = display == null
+            ? null
+            : Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: studio.edge.withValues(alpha: 0.8)),
+                ),
+                child: ClipRRect(
+                    borderRadius: BorderRadius.circular(5), child: display),
+              );
+        if (beside) {
+          return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(7, 5, 0, 6),
+              child: SizedBox(width: _besideDisplay, child: screen),
+            ),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(7, 5, 7, 5),
+                    child: grid,
+                  ),
+                ),
+              ),
+            ),
+          ]);
+        }
         return Column(children: [
-          if (display != null)
+          if (screen != null)
             Expanded(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(7, short ? 5 : 7, 7, 0),
-                child: ClipRRect(
-                    borderRadius: BorderRadius.circular(6), child: display),
+                child: screen,
               ),
             ),
           below,
@@ -480,21 +730,7 @@ class DeviceFrame extends StatelessWidget {
       key: ValueKey("device-$id"),
       width: w,
       height: height,
-      child: Container(
-        decoration: skin.body,
-        foregroundDecoration: BoxDecoration(
-            border: Border.all(color: Colors.black38),
-            borderRadius: BorderRadius.circular(6)),
-        clipBehavior: Clip.antiAlias,
-        child: Material(
-          type: MaterialType.transparency,
-          child: Column(children: [
-            if (accent != null && !folded) Container(height: 2, color: accent),
-            header,
-            Expanded(child: inside),
-          ]),
-        ),
-      ),
+      child: _card(context, header, inside),
     );
   }
 
@@ -513,19 +749,31 @@ class _Power extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Tooltip(
         message: on ? "On: click to bypass" : "Bypassed: click to switch on",
+        // A lit dot, as the prototype's: green and glowing while on, grey
+        // while bypassed.
         child: GestureDetector(
           key: powerKey,
+          behavior: HitTestBehavior.opaque,
           onTap: () => onPower(!on),
-          child: Container(
-            width: 18,
-            height: 18,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: on ? const Color(0xFFF0A33C) : const Color(0xFF555B66),
-              border: Border.all(color: Colors.black38),
+          child: Padding(
+            padding: const EdgeInsets.all(3),
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: on
+                    ? const RadialGradient(
+                        center: Alignment(-0.3, -0.3),
+                        colors: [Color(0xFF9BF0A6), Color(0xFF5BC46B)])
+                    : null,
+                color: on ? null : const Color(0xFF4A4658),
+                border: Border.all(color: const Color(0xFF110F22), width: 2),
+                boxShadow: on
+                    ? const [BoxShadow(color: Color(0x885BC46B), blurRadius: 6)]
+                    : null,
+              ),
             ),
-            child: const Icon(Icons.power_settings_new,
-                size: 12, color: Colors.white),
           ),
         ),
       );
@@ -886,7 +1134,6 @@ Color eqBandColour(EqSlot slot) => switch (slot) {
     };
 
 const _eqBack = Color(0xFF0D1826);
-const _eqPanel = Color(0xFF132233);
 const _eqInk = Color(0xFFC9D6E6);
 
 /// _headerInkLight is what reads on a device's dark header bar -- its
@@ -897,7 +1144,7 @@ const _eqDim = Color(0xFF6E8199);
 /// EqDevice is a strip's Channel EQ in the chain -- the master's, with no
 /// [channel].
 class EqDevice extends StatefulWidget {
-  static const width = 780.0;
+  static const width = 392.0;
   final CanvasController controller;
   final String? channel;
   final bool folded;
@@ -955,10 +1202,20 @@ class _EqDeviceState extends State<EqDevice>
           if (strip.gone) return const SizedBox.shrink();
           var eq = strip.eq;
           var first = !strip.compFirst;
+          var look = MixerLook.of(context);
+          var studio = look.studio;
+          var picked = _picked ?? EqSlot.mid;
           return DeviceFrame(
             id: "eq",
             title: widget.channel == null ? "Master EQ" : "Channel EQ",
-            skin: DeviceSkin.navy,
+            help: "Shapes the sound's tone. Drag a band's point on the curve: "
+                "across for where, up and down for how much; the wheel over "
+                "it for how wide. A chip picks a band and shows its knobs; "
+                "pressed again, switches it off.",
+            skin: DeviceSkin.studio(studio),
+            // The prototype's Tone family: its own colour and mark.
+            icon: Icons.equalizer,
+            accent: const Color(0xFF9A92EA),
             on: eq.on,
             powerKey: const ValueKey("eqOn"),
             onPower: (v) => _write(eq.copyWith(on: v)),
@@ -967,13 +1224,6 @@ class _EqDeviceState extends State<EqDevice>
             width: EqDevice.width,
             height: widget.height,
             actions: [
-              _pill("Analyzer", _analyzer,
-                  key: const ValueKey("eqAnalyzer"),
-                  onTap: () => setState(() {
-                        _analyzer = !_analyzer;
-                        _spectrum = null;
-                      })),
-              const SizedBox(width: 6),
               DeviceMove(
                   id: "eq",
                   canLeft: strip.inChain ? strip.canMove(chainEq).$1 : !first,
@@ -981,58 +1231,168 @@ class _EqDeviceState extends State<EqDevice>
                   onSwap: strip.swap,
                   onMove:
                       strip.inChain ? (by) => strip.move(chainEq, by) : null,
-                  ink: _eqInk),
+                  ink: studio.text),
             ],
+            summary: [
+              for (var slot in EqSlot.values)
+                if (eq.band(slot).on) slot.label,
+            ].join(" · "),
             foldedBody: CustomPaint(
                 key: const ValueKey("eqFolded"), painter: _MiniCurve(eq)),
-            body: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-              child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _bandButtons(eq),
-                            const SizedBox(height: 6),
-                            Expanded(child: _graph(eq)),
-                            const SizedBox(height: 6),
-                            _readouts(eq),
-                          ]),
+            // Its curve, the bands dragged on it, what is playing behind it
+            // while Analyzer is on.
+            display: Stack(children: [
+              Positioned.fill(
+                  child: ColoredBox(color: _eqBack, child: _graph(eq))),
+              Positioned(
+                top: 4,
+                right: 4,
+                child: GestureDetector(
+                  key: const ValueKey("eqAnalyzer"),
+                  onTap: () => setState(() {
+                    _analyzer = !_analyzer;
+                    _spectrum = null;
+                  }),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: studio.panel.withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                          color: _analyzer ? look.colors.primary : studio.edge),
                     ),
-                    const SizedBox(width: 10),
-                    _gain(eq),
-                  ]),
-            ),
+                    child: Text("Analyzer",
+                        style: TextStyle(
+                            fontSize: 9.5,
+                            color: _analyzer ? studio.text : studio.muted)),
+                  ),
+                ),
+              ),
+            ]),
+            controls: (tier) => [
+              _bandButtons(eq),
+              ..._bandKnobs(eq, picked, tier),
+              if (picked.isCut) _slope(eq, picked, studio),
+            ],
+            body: const SizedBox(),
           );
         },
       );
 
-  Widget _pill(String label, bool on,
-          {required Key key, required VoidCallback onTap}) =>
-      GestureDetector(
-        key: key,
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: on ? const Color(0xFF2E6FB0) : const Color(0xFF26364A),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(label,
-              style:
-                  TextStyle(fontSize: 11, color: on ? Colors.white : _eqDim)),
+  /// _bandKnobs are the picked band's knobs -- where it is, how much (a
+  /// bell's or shelf's), how wide -- and the EQ's output.
+  List<Widget> _bandKnobs(Eq eq, EqSlot slot, DeviceTier tier) {
+    var b = eq.band(slot);
+    var size = switch (tier) {
+      DeviceTier.large => 46.0,
+      DeviceTier.medium => 38.0,
+      _ => 28.0,
+    };
+    var accent = eqBandColour(slot);
+    void set(EqBand next, {bool transient = false}) =>
+        _band(slot, next, transient: transient);
+    return [
+      _Knob(
+        key: ValueKey("eqFreq-${slot.name}"),
+        label: "${slot.label} freq",
+        text: _hz(b.freq),
+        value: b.freq,
+        initial: slot.initial.freq,
+        range: _freq,
+        size: size,
+        reading: tier != DeviceTier.small,
+        accent: accent,
+        onChanged: (v, {transient = false}) =>
+            set(b.copyWith(freq: v), transient: transient),
+        onCommit: strip.commit,
+      ),
+      if (!slot.isCut)
+        _Knob(
+          key: ValueKey("eqGain-${slot.name}"),
+          label: "Gain",
+          text: "${_signed(b.gainDb)} dB",
+          value: b.gainDb,
+          initial: 0,
+          range: const _Range(-12, 12),
+          size: size,
+          reading: tier != DeviceTier.small,
+          accent: accent,
+          bipolar: true,
+          onChanged: (v, {transient = false}) => set(
+              b.copyWith(gainDb: (v * 2).roundToDouble() / 2),
+              transient: transient),
+          onCommit: strip.commit,
         ),
-      );
+      _Knob(
+        key: ValueKey("eqQ-${slot.name}"),
+        label: "Q",
+        text: b.q.toStringAsFixed(2),
+        value: b.q,
+        initial: slot.initial.q,
+        range: const _Range(0.1, 10, log: true),
+        size: size,
+        reading: tier != DeviceTier.small,
+        accent: accent,
+        onChanged: (v, {transient = false}) =>
+            set(b.copyWith(q: v), transient: transient),
+        onCommit: strip.commit,
+      ),
+      _Knob(
+        key: const ValueKey("eqOutput"),
+        label: "Output",
+        text: "${_signed(eq.gainDb)} dB",
+        value: eq.gainDb,
+        initial: 0,
+        range: const _Range(-12, 12),
+        size: size,
+        reading: tier != DeviceTier.small,
+        accent: accent,
+        bipolar: true,
+        onChanged: (v, {transient = false}) => _write(
+            eq.copyWith(on: true, gainDb: (v * 2).roundToDouble() / 2),
+            transient: transient),
+        onCommit: strip.commit,
+      ),
+    ];
+  }
 
+  /// _slope is a cut's steepness, stepped through by a click.
+  Widget _slope(Eq eq, EqSlot slot, StudioColors studio) {
+    var b = eq.band(slot);
+    return Row(children: [
+      Text("Slope", style: TextStyle(fontSize: 9.5, color: studio.muted)),
+      const SizedBox(width: 8),
+      GestureDetector(
+        key: ValueKey("eqSlope-${slot.name}"),
+        onTap: () {
+          var i = eqSlopes.indexOf(b.slope);
+          _band(slot, b.copyWith(slope: eqSlopes[(i + 1) % eqSlopes.length]));
+        },
+        child: Container(
+          height: 20,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            border: Border.all(color: studio.edge),
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: Text("${b.slope} dB/Oct ▸",
+              style: TextStyle(fontSize: 10, color: studio.text)),
+        ),
+      ),
+    ]);
+  }
+
+  /// _bandButtons are a chip a band: pressed, the band is picked -- its
+  /// knobs shown -- and switched on or off.
   Widget _bandButtons(Eq eq) => SizedBox(
-        height: 34,
+        height: 22,
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           for (var slot in EqSlot.values)
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 1.5),
                 child: Tooltip(
                   message: "${slot.label}: "
                       "${eq.band(slot).on ? "on" : "off"}",
@@ -1040,10 +1400,15 @@ class _EqDeviceState extends State<EqDevice>
                     key: ValueKey("eqBand-${slot.name}"),
                     onTap: () {
                       var b = eq.band(slot);
+                      // A press on the band picked switches it; on another,
+                      // picks it, switching it on.
+                      var switching = _picked == slot || !b.on;
                       setState(() => _picked = slot);
-                      _write(eq
-                          .withBand(slot, b.copyWith(on: !b.on))
-                          .copyWith(on: true));
+                      if (switching) {
+                        _write(eq
+                            .withBand(slot, b.copyWith(on: !b.on))
+                            .copyWith(on: true));
+                      }
                     },
                     child: Container(
                       decoration: BoxDecoration(
@@ -1052,7 +1417,7 @@ class _EqDeviceState extends State<EqDevice>
                             : const Color(0xFF1F2E40),
                         borderRadius: BorderRadius.circular(4),
                         border: Border.all(
-                            color: _picked == slot
+                            color: (_picked ?? EqSlot.mid) == slot
                                 ? Colors.white70
                                 : Colors.black26),
                       ),
@@ -1158,124 +1523,6 @@ class _EqDeviceState extends State<EqDevice>
           ),
         );
       });
-
-  Widget _readouts(Eq eq) {
-    Widget value(String text, {required Key key, required Color colour}) =>
-        Container(
-          key: key,
-          height: 17,
-          alignment: Alignment.center,
-          child: Text(text,
-              style: TextStyle(
-                  fontSize: 11,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                  color: colour)),
-        );
-    return SizedBox(
-      height: 58,
-      child: Row(children: [
-        for (var slot in EqSlot.values)
-          Expanded(
-            child: Builder(builder: (context) {
-              var b = eq.band(slot);
-              var ink = b.on ? _eqInk : _eqDim;
-              void set(EqBand next, {bool transient = false}) =>
-                  _band(slot, next, transient: transient);
-              return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 3),
-                decoration: BoxDecoration(
-                    color: _eqPanel, borderRadius: BorderRadius.circular(4)),
-                child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _Dragged(
-                        value: b.freq,
-                        initial: slot.initial.freq,
-                        range: _freq,
-                        onChanged: (v, {transient = false}) =>
-                            set(b.copyWith(freq: v), transient: transient),
-                        onCommit: strip.commit,
-                        child: value(_hz(b.freq),
-                            key: ValueKey("eqFreq-${slot.name}"), colour: ink),
-                      ),
-                      if (slot.isCut)
-                        // A click steps through the slopes.
-                        GestureDetector(
-                          onTap: () {
-                            var i = eqSlopes.indexOf(b.slope);
-                            set(b.copyWith(
-                                slope: eqSlopes[(i + 1) % eqSlopes.length]));
-                          },
-                          child: value("${b.slope} dB/Oct",
-                              key: ValueKey("eqSlope-${slot.name}"),
-                              colour: ink),
-                        )
-                      else
-                        _Dragged(
-                          value: b.gainDb,
-                          initial: 0,
-                          range: const _Range(-12, 12),
-                          onChanged: (v, {transient = false}) => set(
-                              b.copyWith(gainDb: (v * 2).roundToDouble() / 2),
-                              transient: transient),
-                          onCommit: strip.commit,
-                          child: value("${_signed(b.gainDb)} dB",
-                              key: ValueKey("eqGain-${slot.name}"),
-                              colour: ink),
-                        ),
-                      _Dragged(
-                        value: b.q,
-                        initial: slot.initial.q,
-                        range: const _Range(0.1, 10, log: true),
-                        onChanged: (v, {transient = false}) =>
-                            set(b.copyWith(q: v), transient: transient),
-                        onCommit: strip.commit,
-                        child: value("Q ${b.q.toStringAsFixed(2)}",
-                            key: ValueKey("eqQ-${slot.name}"), colour: _eqDim),
-                      ),
-                    ]),
-              );
-            }),
-          ),
-      ]),
-    );
-  }
-
-  /// _gain is the output gain: a slider down the right, as Logic has.
-  Widget _gain(Eq eq) => SizedBox(
-        width: 56,
-        child: Column(children: [
-          const Text("Gain", style: TextStyle(fontSize: 11, color: _eqDim)),
-          const SizedBox(height: 6),
-          Expanded(
-            child: LayoutBuilder(builder: (context, box) {
-              var h = box.maxHeight;
-              double at(double dy) => ((0.5 - dy / h) * 24).clamp(-12.0, 12.0);
-              return GestureDetector(
-                supportedDevices: dragPointers,
-                key: const ValueKey("eqOutput"),
-                behavior: HitTestBehavior.opaque,
-                onVerticalDragUpdate: (d) => _write(
-                    eq.copyWith(
-                        on: true,
-                        gainDb:
-                            (at(d.localPosition.dy) * 2).roundToDouble() / 2),
-                    transient: true),
-                onVerticalDragEnd: (_) => strip.commit(),
-                onDoubleTap: () => _write(eq.copyWith(gainDb: 0)),
-                child: CustomPaint(
-                    size: Size(56, h), painter: _GainSlider(eq.gainDb)),
-              );
-            }),
-          ),
-          const SizedBox(height: 6),
-          Text("${_signed(eq.gainDb)} dB",
-              style: const TextStyle(
-                  fontSize: 11,
-                  fontFeatures: [FontFeature.tabularFigures()],
-                  color: _eqInk)),
-        ]),
-      );
 }
 
 /// _BandIcon is a band's shape, drawn small on its button.
@@ -1497,48 +1744,23 @@ class _EqGraph extends CustomPainter {
       old.eq.toJson().toString() != eq.toJson().toString();
 }
 
-class _GainSlider extends CustomPainter {
-  final double db;
-  _GainSlider(this.db);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    var w = size.width, h = size.height;
-    var cx = w / 2;
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTWH(cx - 3, 0, 6, h), const Radius.circular(3)),
-        Paint()..color = const Color(0xFF22354B));
-    var y = (0.5 - db / 24) * h;
-    canvas.drawLine(Offset(cx - 10, h / 2), Offset(cx + 10, h / 2),
-        Paint()..color = _eqDim);
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromCenter(center: Offset(cx, y), width: 34, height: 14),
-            const Radius.circular(3)),
-        Paint()..color = const Color(0xFFB8C6D8));
-    canvas.drawLine(
-        Offset(cx - 12, y),
-        Offset(cx + 12, y),
-        Paint()
-          ..color = const Color(0xFF0D1826)
-          ..strokeWidth = 1.5);
-  }
-
-  @override
-  bool shouldRepaint(_GainSlider old) => old.db != db;
-}
-
 // ---- Compressor
 
-const _silverInk = Color(0xFF2B2F36);
-const _silverDim = Color(0xFF6A707A);
+/// _silverInk and _silverDim are what reads on a device's card: they were
+/// a silver unit's dark ink, and every card is the Chain's dark one now.
+const _silverInk = Color(0xFFE8E4EE);
+const _silverDim = Color(0xFF8E8A9C);
+
+/// _faceInk and _faceDim read on a cream meter's face: the compressor's VU,
+/// the ducking curve.
+const _faceInk = Color(0xFF2B2F36);
+const _faceDim = Color(0xFF6A707A);
 const _cream = Color(0xFFF1E7C9);
 
 /// CompDevice is a strip's compressor in the chain -- the master's glue,
 /// with no [channel].
 class CompDevice extends StatefulWidget {
-  static const width = 660.0;
+  static const width = 440.0;
   final CanvasController controller;
   final String? channel;
   final bool folded;
@@ -1563,9 +1785,9 @@ class _CompDeviceState extends State<CompDevice>
   @override
   CanvasController get meteredBy => widget.controller;
 
-  /// _graph is whether the display shows the transfer curve rather than the
-  /// gain-reduction meter.
-  bool _graph = false;
+  /// _needleShown is whether the display shows the gain-reduction needle
+  /// rather than the transfer curve, which it opens on, as the prototype's.
+  bool _needleShown = false;
   double _input = -90;
 
   /// _needle is the gain reduction shown, eased as a VU needle is.
@@ -1605,10 +1827,18 @@ class _CompDeviceState extends State<CompDevice>
                       (comp.reducedDb(_input) + comp.totalMakeupDb - _input)
               : _input;
           var first = strip.compFirst;
+          var look = MixerLook.of(context);
+          var studio = look.studio;
           return DeviceFrame(
             id: "comp",
             title: widget.channel == null ? "Glue" : "Compressor",
-            skin: DeviceSkin.silver,
+            help: "Turns the sound down when it goes over the Threshold, by "
+                "the Ratio, so loud and quiet sit closer. Attack and Release "
+                "are how fast; Make up brings it back up. Listens to another "
+                "channel to duck under it, as a kick pumps a pad.",
+            skin: DeviceSkin.studio(studio),
+            icon: deviceGroupLook(DeviceGroup.dynamics).$1,
+            accent: deviceGroupLook(DeviceGroup.dynamics).$2,
             on: comp.on,
             powerKey: const ValueKey("compOn"),
             onPower: (v) => _write(comp.copyWith(on: v)),
@@ -1624,107 +1854,115 @@ class _CompDeviceState extends State<CompDevice>
                   onSwap: strip.swap,
                   onMove:
                       strip.inChain ? (by) => strip.move(chainComp, by) : null,
-                  ink: const Color(0xFFE8EAEE)),
+                  ink: studio.text),
             ],
+            summary: "${comp.threshold.round()} dB · "
+                "${comp.ratio.toStringAsFixed(1)}:1 · "
+                "−${_needle.toStringAsFixed(1)} dB",
             // Folded, how much it is taking off.
-            foldedBody: Column(children: [
-              const Text("GR",
-                  style: TextStyle(fontSize: 10, color: _silverDim)),
-              const SizedBox(height: 4),
-              Expanded(
-                child: CustomPaint(
-                    key: const ValueKey("compFolded"),
-                    size: const Size(14, double.infinity),
-                    painter: _ReductionBar(_needle)),
-              ),
-              const SizedBox(height: 4),
-              Text(_needle > 0.05 ? "−${_needle.toStringAsFixed(1)}" : "0",
-                  style: const TextStyle(
-                      fontSize: 10,
-                      fontFeatures: [FontFeature.tabularFigures()],
-                      color: _silverInk)),
-            ]),
-            body: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-              child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _meter("In", _input, const ValueKey("compIn")),
-                    const SizedBox(width: 10),
-                    SizedBox(width: 290, child: _display(comp)),
-                    const SizedBox(width: 12),
-                    Expanded(child: _knobs(comp)),
-                    const SizedBox(width: 10),
-                    _meter("Out", output, const ValueKey("compOut")),
-                  ]),
-            ),
+            foldedBody: CustomPaint(
+                key: const ValueKey("compFolded"),
+                size: const Size(14, double.infinity),
+                painter: _ReductionBar(_needle)),
+            display: _display(comp, studio, output),
+            controls: (tier) => [
+              ..._knobList(comp, tier),
+              _autoGain(comp, studio),
+              if (widget.channel != null) _listensTo(comp),
+            ],
+            body: const SizedBox(),
           );
         },
       );
 
-  Widget _meter(String label, double db, Key key) => SizedBox(
-        width: 22,
-        child: Column(children: [
-          Text(label, style: const TextStyle(fontSize: 10, color: _silverDim)),
-          const SizedBox(height: 4),
-          Expanded(
-              child: CustomPaint(
-                  key: key, size: Size.infinite, painter: _LedMeter(db))),
-          const SizedBox(height: 4),
-          Text(db > -60 ? db.round().toString() : "−∞",
-              style: const TextStyle(
-                  fontSize: 9,
-                  fontFeatures: [FontFeature.tabularFigures()],
-                  color: _silverInk)),
-        ]),
-      );
-
-  Widget _display(Dynamics comp) =>
-      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          _segment("Meter", !_graph, const ValueKey("compViewMeter"),
-              () => setState(() => _graph = false)),
-          _segment("Graph", _graph, const ValueKey("compViewGraph"),
-              () => setState(() => _graph = true)),
-        ]),
-        const SizedBox(height: 6),
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              color: _cream,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: const Color(0xFF8D8F93), width: 2),
-              boxShadow: const [
-                BoxShadow(
-                    color: Colors.black26, blurRadius: 3, offset: Offset(0, 1)),
-              ],
-            ),
-            child: _graph
-                ? CustomPaint(
-                    key: const ValueKey("compCurve"),
-                    painter: _TransferCurve(comp, _input))
+  /// _display is the compressor's screen: its curve, or how much it is
+  /// taking off as a needle, switched in its corner, with the reduction
+  /// read along its foot.
+  Widget _display(Dynamics comp, StudioColors studio, double output) =>
+      Stack(children: [
+        Positioned.fill(
+          child: ColoredBox(
+            color: studio.display,
+            child: _needleShown
+                ? Container(
+                    margin: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                        color: _cream, borderRadius: BorderRadius.circular(4)),
+                    child: CustomPaint(
+                        key: const ValueKey("gainReduction"),
+                        painter: _VuNeedle(_needle)),
+                  )
                 : CustomPaint(
-                    key: const ValueKey("gainReduction"),
-                    painter: _VuNeedle(_needle)),
+                    key: const ValueKey("compCurve"),
+                    painter: _TransferCurve(comp, _input,
+                        line: Color.lerp(studio.text, Colors.white, 0.1)!,
+                        grid: studio.edge.withValues(alpha: 0.6),
+                        dim: studio.muted)),
           ),
         ),
-        const SizedBox(height: 10),
-        const Text("Auto gain",
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 10, color: _silverDim)),
-        const SizedBox(height: 4),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          for (var a in AutoGain.values)
-            _segment(
-                a.label,
-                comp.autoGain == a,
-                ValueKey("autoGain-${a.name}"),
-                () => _write(comp.copyWith(autoGain: a))),
-        ]),
-        if (widget.channel != null) ...[
-          const SizedBox(height: 6),
-          _listensTo(comp),
-        ],
+        Positioned(
+          top: 4,
+          right: 4,
+          child: Row(children: [
+            _tab("Curve", !_needleShown, const ValueKey("compViewGraph"),
+                () => setState(() => _needleShown = false), studio),
+            const SizedBox(width: 3),
+            _tab("Meter", _needleShown, const ValueKey("compViewMeter"),
+                () => setState(() => _needleShown = true), studio),
+          ]),
+        ),
+        Positioned(
+          left: 6,
+          bottom: 4,
+          child: IgnorePointer(
+            child: Text(
+                "takes off ${_needle.toStringAsFixed(1)} dB · out "
+                "${output > -60 ? output.round() : "−∞"} dB",
+                style: TextStyle(
+                    fontSize: 9.5,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    color: studio.muted)),
+          ),
+        ),
+      ]);
+
+  /// _tab is one of the display's views, in its corner, as the prototype's.
+  Widget _tab(String label, bool on, Key key, VoidCallback onTap,
+          StudioColors studio) =>
+      GestureDetector(
+        key: key,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(
+            color: studio.panel.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+                color: on ? MixerLook.of(context).colors.primary : studio.edge),
+          ),
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 9.5, color: on ? studio.text : studio.muted)),
+        ),
+      );
+
+  /// _autoGain is its make-up worked out for it: off, or to a level.
+  Widget _autoGain(Dynamics comp, StudioColors studio) => Row(children: [
+        Text("Auto gain", style: TextStyle(fontSize: 9.5, color: studio.muted)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: DeviceChoices(
+            options: [
+              for (var a in AutoGain.values)
+                (
+                  ValueKey("autoGain-${a.name}"),
+                  a.label,
+                  comp.autoGain == a,
+                  () => _write(comp.copyWith(autoGain: a))
+                ),
+            ],
+          ),
+        ),
       ]);
 
   /// _listensTo is what the compressor hears to turn down by: its own sound,
@@ -1748,7 +1986,7 @@ class _CompDeviceState extends State<CompDevice>
           value: chosen,
           style: ink,
           iconEnabledColor: _silverInk,
-          dropdownColor: const Color(0xFFE4E6EA),
+          dropdownColor: MixerLook.of(context).studio.raised,
           items: [
             const DropdownMenuItem(
                 value: "", child: Text("Itself", style: ink)),
@@ -1766,25 +2004,9 @@ class _CompDeviceState extends State<CompDevice>
     ]);
   }
 
-  Widget _segment(String label, bool on, Key key, VoidCallback onTap) =>
-      GestureDetector(
-        key: key,
-        onTap: onTap,
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: on ? const Color(0xFF4A5059) : const Color(0xFFD4D7DC),
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: const Color(0xFF9A9EA5)),
-          ),
-          child: Text(label,
-              style: TextStyle(
-                  fontSize: 11, color: on ? Colors.white : _silverInk)),
-        ),
-      );
-
-  Widget _knobs(Dynamics comp) {
+  /// _knobList are its knobs, sized for [tier], in the order the
+  /// prototype has them.
+  List<Widget> _knobList(Dynamics comp, DeviceTier tier) {
     var initial =
         widget.channel == null ? const MasterMix().comp : const Dynamics();
     Widget knob(String label, String key, double value, double initialValue,
@@ -1797,76 +2019,121 @@ class _CompDeviceState extends State<CompDevice>
           value: value,
           initial: initialValue,
           range: range,
-          size: big ? 66 : 48,
+          size: switch (tier) {
+            DeviceTier.large => 46,
+            DeviceTier.medium => 38,
+            _ => 28,
+          },
+          reading: tier != DeviceTier.small,
+          accent: deviceGroupLook(DeviceGroup.dynamics).$2,
           onChanged: (v, {transient = false}) =>
               _write(apply(v), transient: transient),
           onCommit: strip.commit,
         );
-    return Column(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-      Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-        knob(
-            "Threshold",
-            "compThreshold",
-            comp.threshold,
-            initial.threshold,
-            const _Range(-60, 0),
-            "${comp.threshold.toStringAsFixed(1)} dB",
-            (v) => comp.copyWith(threshold: v),
-            big: true),
-        knob(
-            "Ratio",
-            "compRatio",
-            comp.ratio,
-            initial.ratio,
-            const _Range(1, 10, log: true),
-            "${comp.ratio.toStringAsFixed(1)} : 1",
-            (v) => comp.copyWith(ratio: v),
-            big: true),
-        knob(
-            "Make up",
-            "compMakeup",
-            comp.makeupDb,
-            initial.makeupDb,
-            const _Range(0, 24),
-            "${comp.makeupDb.toStringAsFixed(1)} dB",
-            (v) => comp.copyWith(makeupDb: v),
-            big: true),
+    return [
+      knob(
+          "Threshold",
+          "compThreshold",
+          comp.threshold,
+          initial.threshold,
+          const _Range(-60, 0),
+          "${comp.threshold.toStringAsFixed(1)} dB",
+          (v) => comp.copyWith(threshold: v),
+          big: true),
+      knob(
+          "Ratio",
+          "compRatio",
+          comp.ratio,
+          initial.ratio,
+          const _Range(1, 10, log: true),
+          "${comp.ratio.toStringAsFixed(1)} : 1",
+          (v) => comp.copyWith(ratio: v),
+          big: true),
+      knob(
+          "Make up",
+          "compMakeup",
+          comp.makeupDb,
+          initial.makeupDb,
+          const _Range(0, 24),
+          "${comp.makeupDb.toStringAsFixed(1)} dB",
+          (v) => comp.copyWith(makeupDb: v),
+          big: true),
+      knob(
+          "Knee",
+          "compKnee",
+          comp.kneeDb,
+          initial.kneeDb,
+          const _Range(0, 18),
+          "${comp.kneeDb.toStringAsFixed(1)} dB",
+          (v) => comp.copyWith(kneeDb: v)),
+      knob(
+          "Attack",
+          "compAttack",
+          comp.attackMs,
+          initial.attackMs,
+          const _Range(0.1, 100, log: true),
+          "${comp.attackMs.toStringAsFixed(comp.attackMs < 10 ? 1 : 0)} ms",
+          (v) => comp.copyWith(attackMs: v)),
+      knob(
+          "Release",
+          "compRelease",
+          comp.releaseMs,
+          initial.releaseMs,
+          const _Range(10, 1000, log: true),
+          "${comp.releaseMs.round()} ms",
+          (v) => comp.copyWith(releaseMs: v)),
+      knob("Mix", "compMix", comp.mix, initial.mix, const _Range(0, 1),
+          "${(comp.mix * 100).round()}%", (v) => comp.copyWith(mix: v)),
+    ];
+  }
+}
+
+/// _Choices is a setting that is one of a few, as the prototype draws one:
+/// joined buttons, the one chosen filled.
+class DeviceChoices extends StatelessWidget {
+  /// options are each one's key, name, whether it is chosen, and its press.
+  final List<(Key, String, bool, VoidCallback)> options;
+  const DeviceChoices({required this.options, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    return Container(
+      height: 22,
+      decoration: BoxDecoration(
+        border: Border.all(color: look.studio.edge),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(children: [
+        for (var (i, (key, label, on, tap)) in options.indexed) ...[
+          if (i > 0) Container(width: 1, color: look.studio.edge),
+          Expanded(
+            child: GestureDetector(
+              key: key,
+              behavior: HitTestBehavior.opaque,
+              onTap: tap,
+              child: Container(
+                color: on ? look.colors.primary : null,
+                alignment: Alignment.center,
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: on ? look.colors.onPrimary : look.studio.muted)),
+              ),
+            ),
+          ),
+        ],
       ]),
-      Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-        knob(
-            "Knee",
-            "compKnee",
-            comp.kneeDb,
-            initial.kneeDb,
-            const _Range(0, 18),
-            "${comp.kneeDb.toStringAsFixed(1)} dB",
-            (v) => comp.copyWith(kneeDb: v)),
-        knob(
-            "Attack",
-            "compAttack",
-            comp.attackMs,
-            initial.attackMs,
-            const _Range(0.1, 100, log: true),
-            "${comp.attackMs.toStringAsFixed(comp.attackMs < 10 ? 1 : 0)} ms",
-            (v) => comp.copyWith(attackMs: v)),
-        knob(
-            "Release",
-            "compRelease",
-            comp.releaseMs,
-            initial.releaseMs,
-            const _Range(10, 1000, log: true),
-            "${comp.releaseMs.round()} ms",
-            (v) => comp.copyWith(releaseMs: v)),
-        knob("Mix", "compMix", comp.mix, initial.mix, const _Range(0, 1),
-            "${(comp.mix * 100).round()}%", (v) => comp.copyWith(mix: v)),
-      ]),
-    ]);
+    );
   }
 }
 
 /// _Knob is a rotary control: dragged up to turn it right, double-clicked
 /// to put it back.
-class _Knob extends StatelessWidget {
+class _Knob extends StatefulWidget {
   final String label;
   final String text;
   final double value;
@@ -1920,63 +2187,196 @@ class _Knob extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Column(
+  State<_Knob> createState() => _KnobState();
+}
+
+/// _KnobState is a knob, and -- its value double-clicked -- a field to type
+/// a number into.
+class _KnobState extends State<_Knob> {
+  bool _typing = false;
+  final TextEditingController _typed = TextEditingController();
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // Clicked away from, what was typed is kept.
+    _focus.addListener(() {
+      if (!_focus.hasFocus && _typing) _commit();
+    });
+  }
+
+  @override
+  void dispose() {
+    _typed.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  String get label => widget.label;
+  String get text => widget.text;
+  double get value => widget.value;
+  double get initial => widget.initial;
+  _Range get range => widget.range;
+  double get size => widget.size;
+  bool get automated => widget.automated;
+  bool get held => widget.held;
+  bool get modulated => widget.modulated;
+  List<(String, VoidCallback)> get menu => widget.menu;
+  bool get reading => widget.reading;
+  bool get bipolar => widget.bipolar;
+  void Function(double v, {bool transient}) get onChanged => widget.onChanged;
+  VoidCallback get onCommit => widget.onCommit;
+
+  void _type() {
+    _typed.text = text;
+    _typed.selection =
+        TextSelection(baseOffset: 0, extentOffset: _typed.text.length);
+    setState(() => _typing = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
+
+  void _commit() {
+    var v = typedValue(_typed.text, text, range.min, range.max);
+    setState(() => _typing = false);
+    if (v != null) onChanged(v);
+  }
+
+  /// _face is the knob's size drawn, as the prototype's: 32 on a tall card,
+  /// 27 and 22 on shorter ones, whatever size it was asked for.
+  double get _face => size >= 44
+      ? 32
+      : size >= 36
+          ? 27
+          : size >= 26
+              ? 22
+              : size;
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var face = _face;
+    // The whole of it takes a drag, its name and reading as well as its
+    // dial, as the prototype's knobs do.
+    return _Dragged(
+      value: value,
+      initial: initial,
+      range: range,
+      onChanged: onChanged,
+      onCommit: onCommit,
+      menu: menu,
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            if (automated)
-              Container(
-                key: const ValueKey("knobAutomated"),
-                width: 6,
-                height: 6,
-                margin: const EdgeInsets.only(right: 3),
-                decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: held ? const Color(0xFF7D838D) : automationColour),
-              ),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: accent == null ? ink : ink.withValues(alpha: 0.7))),
-          ]),
-          const SizedBox(height: 4),
-          _Dragged(
-            value: value,
-            initial: initial,
-            range: range,
-            onChanged: onChanged,
-            onCommit: onCommit,
-            menu: menu,
-            child: Stack(alignment: Alignment.center, children: [
-              CustomPaint(
-                  size: Size.square(size),
-                  painter: _KnobFace(range.toUnit(value),
-                      accent: accent, from: bipolar ? range.toUnit(0) : 0)),
-              if (modulated)
-                IgnorePointer(
-                  child: Container(
-                    key: const ValueKey("knobModulated"),
-                    width: size + 4,
-                    height: size + 4,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: modulationColour, width: 2),
+          Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                CustomPaint(
+                    size: Size.square(face),
+                    painter: _KnobFace(range.toUnit(value),
+                        accent: look.colors.primary,
+                        from: bipolar ? range.toUnit(0) : 0)),
+                if (modulated)
+                  IgnorePointer(
+                    child: Container(
+                      key: const ValueKey("knobModulated"),
+                      width: face + 4,
+                      height: face + 4,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: modulationColour, width: 2),
+                      ),
                     ),
                   ),
+                if (automated)
+                  Positioned(
+                    top: 0,
+                    right: -6,
+                    child: Container(
+                      key: const ValueKey("knobAutomated"),
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: held
+                              ? const Color(0xFF7D838D)
+                              : automationColour),
+                    ),
+                  ),
+              ]),
+          const SizedBox(height: 1),
+          Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 9.5, color: look.studio.muted)),
+          // Its value, double-clicked: typed in.
+          if (reading && _typing)
+            SizedBox(
+              width: 56,
+              height: 16,
+              child: Focus(
+                onKeyEvent: (node, e) {
+                  if (e is KeyDownEvent &&
+                      e.logicalKey == LogicalKeyboardKey.escape) {
+                    setState(() => _typing = false);
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: TextField(
+                  key: ValueKey("knobTyped-$label"),
+                  controller: _typed,
+                  focusNode: _focus,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 9.5,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                      color: look.studio.text),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 2),
+                    filled: true,
+                    fillColor: look.studio.inset,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(3),
+                        borderSide: BorderSide(color: look.colors.primary)),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(3),
+                        borderSide: BorderSide(color: look.colors.primary)),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(3),
+                        borderSide: BorderSide(color: look.colors.primary)),
+                  ),
+                  onSubmitted: (_) => _commit(),
                 ),
-            ]),
-          ),
-          if (reading) ...[
-            const SizedBox(height: 4),
-            Text(text,
-                style: TextStyle(
-                    fontSize: 10,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    color: ink)),
-          ],
+              ),
+            )
+          else if (reading)
+            Tooltip(
+              message: "Double-click to type a value",
+              waitDuration: const Duration(milliseconds: 800),
+              child: GestureDetector(
+                key: ValueKey("knobValue-$label"),
+                behavior: HitTestBehavior.opaque,
+                onDoubleTap: _type,
+                child: Text(text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 9.5,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                        color: look.studio.text)),
+              ),
+            ),
         ],
-      );
+      ),
+    );
+  }
 }
 
 /// DeviceKnob is the Chain's knob for an editor outside this file (the
@@ -2025,6 +2425,26 @@ class DeviceKnob extends StatelessWidget {
         onChanged: onChanged,
         onCommit: onCommit,
       );
+}
+
+/// typedValue is what was [typed] for a knob that reads [shown], in its own
+/// terms -- "50" a half where it reads in percent, "1.2k" or "1200" hertz
+/// -- held to [min] and [max]; null where nothing like a number was typed.
+double? typedValue(String typed, String shown, double min, double max) {
+  var t = typed.trim().replaceAll("\u2212", "-").replaceAll(",", ".");
+  var m = RegExp(r"-?\d*\.?\d+").firstMatch(t);
+  if (m == null) return null;
+  var v = double.tryParse(m.group(0)!);
+  if (v == null) return null;
+  var rest = t.substring(m.end).trim().toLowerCase();
+  // In thousands: "k", or kilohertz.
+  if (rest.startsWith("k")) v *= 1000;
+  // A share the knob shows in percent: as a percent unless typed as one.
+  var percent = shown.trim().endsWith("%");
+  if (percent && max <= 2.0001) v /= 100;
+  // Shown in kilohertz, a small number typed is in kilohertz too.
+  if (!rest.startsWith("k") && shown.contains("kHz") && v < min) v *= 1000;
+  return v.clamp(math.min(min, max), math.max(min, max)).toDouble();
 }
 
 /// _sweep is a knob's travel, from seven o'clock round to five.
@@ -2172,7 +2592,7 @@ class _VuNeedle extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5
-          ..color = _silverInk);
+          ..color = _faceInk);
     canvas.drawArc(
         arc.deflate(-4),
         angle(30),
@@ -2190,14 +2610,14 @@ class _VuNeedle extends CustomPainter {
           pivot + dir * (radius + 7),
           Paint()
             ..strokeWidth = 1.2
-            ..color = _silverInk);
+            ..color = _faceInk);
       var tp =
-          paintedLabel("$db", const TextStyle(fontSize: 10, color: _silverInk));
+          paintedLabel("$db", const TextStyle(fontSize: 10, color: _faceInk));
       tp.paint(canvas,
           pivot + dir * (radius + 16) - Offset(tp.width / 2, tp.height / 2));
     }
     var tp = paintedLabel("GAIN REDUCTION  dB",
-        const TextStyle(fontSize: 9, letterSpacing: 1, color: _silverDim));
+        const TextStyle(fontSize: 9, letterSpacing: 1, color: _faceDim));
     tp.paint(canvas, Offset(w / 2 - tp.width / 2, pivot.dy - radius * 0.45));
     var a = angle(reduction);
     canvas.drawLine(
@@ -2217,7 +2637,14 @@ class _VuNeedle extends CustomPainter {
 class _TransferCurve extends CustomPainter {
   final Dynamics comp;
   final double input;
-  _TransferCurve(this.comp, this.input);
+
+  /// line, grid and dim are its colours: on a cream face by default, or the
+  /// Chain's dark display.
+  final Color line, grid, dim;
+  _TransferCurve(this.comp, this.input,
+      {this.line = _faceInk,
+      this.grid = const Color(0xFFD3C7A4),
+      this.dim = _faceDim});
 
   static const _lo = -60.0;
 
@@ -2227,7 +2654,7 @@ class _TransferCurve extends CustomPainter {
     var w = size.width - 2 * pad, h = size.height - 2 * pad;
     double px(double db) => pad + (db - _lo) / -_lo * w;
     double py(double db) => pad + h - ((db - _lo) / -_lo).clamp(0.0, 1.0) * h;
-    var grid = Paint()..color = const Color(0xFFD3C7A4);
+    var grid = Paint()..color = this.grid;
     for (var db = -48.0; db <= 0; db += 12) {
       canvas.drawLine(Offset(px(db), pad), Offset(px(db), pad + h), grid);
       canvas.drawLine(Offset(pad, py(db)), Offset(pad + w, py(db)), grid);
@@ -2250,7 +2677,7 @@ class _TransferCurve extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.2
-          ..color = comp.on ? _silverInk : _silverDim);
+          ..color = comp.on ? line : dim);
     if (input > _lo) {
       var out = comp.on ? comp.reducedDb(input) + comp.totalMakeupDb : input;
       canvas.drawCircle(Offset(px(input), py(out)), 5,
@@ -2527,6 +2954,10 @@ class LimiterDevice extends StatelessWidget {
       id: "limiter",
       title: "Limiter",
       skin: DeviceSkin.silver,
+      icon: deviceGroupLook(DeviceGroup.dynamics).$1,
+      accent: deviceGroupLook(DeviceGroup.dynamics).$2,
+      help: "Last in the chain: no peak gets past its ceiling, in playing "
+          "or in an export.",
       on: m.limiter,
       powerKey: const ValueKey("limitOn"),
       onPower: (v) => _write(m.copyWith(limiter: v)),
@@ -2638,6 +3069,10 @@ class _DuckDeviceState extends State<DuckDevice>
             id: "duck",
             title: "Ducker",
             skin: DeviceSkin.silver,
+            icon: deviceGroupLook(DeviceGroup.dynamics).$1,
+            accent: deviceGroupLook(DeviceGroup.dynamics).$2,
+            help: "Turns the other channels down while this one plays -- a "
+                "voice over music -- by Depth, easing down and back.",
             on: duck.on,
             powerKey: const ValueKey("duckOn"),
             onPower: (v) => write(duck.copyWith(on: v)),
@@ -2872,6 +3307,10 @@ class _DuckedDeviceState extends State<DuckedDevice>
             id: "ducked",
             title: "Ducker",
             skin: DeviceSkin.silver,
+            icon: deviceGroupLook(DeviceGroup.dynamics).$1,
+            accent: deviceGroupLook(DeviceGroup.dynamics).$2,
+            help: "This channel is turned down while the ones that duck it "
+                "play: worked out ahead, as the sounds come in.",
             on: on,
             powerKey: const ValueKey("duckedOn"),
             onPower: (v) => c.setDuckedBy(widget.channel, v),
@@ -3008,7 +3447,7 @@ class _RunDips extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.8
-          ..color = _silverInk);
+          ..color = _faceInk);
     canvas.drawLine(Offset(x(now), pad), Offset(x(now), pad + h),
         Paint()..color = const Color(0xFFE08A1E));
   }
@@ -3048,7 +3487,7 @@ class _DuckShape extends CustomPainter {
         Paint()..color = const Color(0xFFE08A1E).withValues(alpha: 0.18));
     var tp = TextPainter(
         text: TextSpan(
-            text: name, style: const TextStyle(fontSize: 9, color: _silverDim)),
+            text: name, style: const TextStyle(fontSize: 9, color: _faceDim)),
         textDirection: TextDirection.ltr,
         maxLines: 1,
         ellipsis: "…")
@@ -3069,7 +3508,7 @@ class _DuckShape extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.2
-          ..color = duck.on ? _silverInk : _silverDim);
+          ..color = duck.on ? _faceInk : _faceDim);
   }
 
   @override
@@ -3279,6 +3718,7 @@ class ParamDevice extends StatelessWidget {
     return DeviceFrame(
       id: deviceKey(deviceIdAt(devices, index)),
       title: device.kind.label,
+      help: deviceAbout(device.kind),
       skin: skin,
       on: device.on,
       onPower: (v) => write(device.switched(v)),
@@ -3313,13 +3753,7 @@ class ParamDevice extends StatelessWidget {
           },
         ),
       ],
-      foldedBody: Center(
-        child: RotatedBox(
-          quarterTurns: 3,
-          child: Text(device.kind.label,
-              style: TextStyle(fontSize: 11, color: skin.ink)),
-        ),
-      ),
+      foldedBody: const SizedBox(),
       body: Padding(
         padding: const EdgeInsets.all(8),
         child: Wrap(
@@ -3418,9 +3852,9 @@ class ParamDevice extends StatelessWidget {
   }
 }
 
-/// AddDeviceSlot is the end of a strip's chain -- a return's, or a
-/// channel's -- listing every kind of device that can be put on it, by
-/// group, to add one.
+/// AddDeviceSlot puts a device on strip [owner], after its others: the
+/// prototype's "+" at the chain's end, opening every kind of device by its
+/// family.
 class AddDeviceSlot extends StatelessWidget {
   final CanvasController controller;
 
@@ -3435,47 +3869,21 @@ class AddDeviceSlot extends StatelessWidget {
       super.key});
 
   @override
-  Widget build(BuildContext context) {
-    var look = MixerLook.of(context);
-    // Shut nearly flat, as the effects are opened or shut: too short for
-    // its title, it is only its place.
-    if (height < 48) return SizedBox(width: 124, height: height);
-    return Container(
-      width: 124,
-      height: height,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: look.studio.edge),
-      ),
-      padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text("Add a device",
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: look.studio.muted)),
-        const SizedBox(height: 4),
-        Expanded(
-          child: ListView(padding: EdgeInsets.zero, children: [
-            for (var group in DeviceGroup.values) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(2, 6, 2, 2),
-                child: Text(group.label.toUpperCase(),
-                    style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        color: look.studio.muted)),
-              ),
-              for (var kind in DeviceKind.values)
-                if (kind.group == group)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 3),
-                    child: OutlinedButton(
-                      key: ValueKey("addDevice-${kind.name}"),
-                      style: OutlinedButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          foregroundColor: look.studio.text,
-                          side: BorderSide(color: look.studio.edge),
-                          textStyle: const TextStyle(fontSize: 11)),
-                      onPressed: () {
+  Widget build(BuildContext context) => AddSlot(
+        id: "addDeviceOpen",
+        title: "Add a device",
+        height: height,
+        groups: [
+          for (var group in DeviceGroup.values)
+            (
+              group.label,
+              [
+                for (var kind in DeviceKind.values)
+                  if (kind.group == group)
+                    (
+                      "addDevice-${kind.name}",
+                      kind.label,
+                      () {
                         var now = controller.devicesOf(owner);
                         controller.beginInteraction();
                         controller
@@ -3484,14 +3892,191 @@ class AddDeviceSlot extends StatelessWidget {
                         controller.openEffects(owner,
                             device: deviceKey(deviceIdAt(
                                 controller.devicesOf(owner), now.length)));
-                      },
-                      child: Text(kind.label),
+                      }
                     ),
-                  ),
-            ],
-          ]),
+              ]
+            ),
+        ],
+      );
+}
+
+/// AddSlot is the chain's "+", as the prototype draws it: a slim dashed slot
+/// that, pressed, opens what can be added -- a search, and each family's
+/// kinds in columns.
+class AddSlot extends StatelessWidget {
+  /// id keys the slot itself; each item is keyed by its own key.
+  final String id;
+  final String title;
+  final double height;
+
+  /// groups are each family's name and its items: a key, a name, and what
+  /// picking it does.
+  final List<(String, List<(String, String, VoidCallback)>)> groups;
+
+  const AddSlot(
+      {required this.id,
+      required this.title,
+      required this.height,
+      required this.groups,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    return MenuAnchor(
+      builder: (context, menu, _) => Tooltip(
+        message: title,
+        child: InkWell(
+          key: ValueKey(id),
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => menu.isOpen ? menu.close() : menu.open(),
+          child: SizedBox(
+            width: 30,
+            height: height,
+            child: CustomPaint(
+              painter: _DashedSlot(look.studio.edge),
+              child: Center(
+                child: Icon(Icons.add, size: 16, color: look.studio.muted),
+              ),
+            ),
+          ),
         ),
-      ]),
+      ),
+      menuChildren: [
+        Builder(
+          builder: (context) => _AddPanel(
+            title: title,
+            groups: groups,
+            onPicked: () => MenuController.maybeOf(context)?.close(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// _DashedSlot draws the "+" slot's dashed outline.
+class _DashedSlot extends CustomPainter {
+  final Color colour;
+  _DashedSlot(this.colour);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var r = RRect.fromRectAndRadius(
+        (Offset.zero & size).deflate(3), const Radius.circular(8));
+    var paint = Paint()
+      ..color = colour
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    for (var metric in (Path()..addRRect(r)).computeMetrics()) {
+      for (var d = 0.0; d < metric.length; d += 9) {
+        canvas.drawPath(metric.extractPath(d, d + 5), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedSlot old) => old.colour != colour;
+}
+
+/// _AddPanel is what the "+" opens: a search over every kind, and the kinds
+/// by family, four families to a row.
+class _AddPanel extends StatefulWidget {
+  final String title;
+  final List<(String, List<(String, String, VoidCallback)>)> groups;
+  final VoidCallback onPicked;
+  const _AddPanel(
+      {required this.title, required this.groups, required this.onPicked});
+
+  @override
+  State<_AddPanel> createState() => _AddPanelState();
+}
+
+class _AddPanelState extends State<_AddPanel> {
+  String _q = "";
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var q = _q.toLowerCase();
+    var shown = [
+      for (var (family, items) in widget.groups)
+        (
+          family,
+          [
+            for (var item in items)
+              if (q.isEmpty ||
+                  item.$2.toLowerCase().contains(q) ||
+                  family.toLowerCase().contains(q))
+                item
+          ]
+        ),
+    ].where((g) => g.$2.isNotEmpty).toList();
+    var columns = math.min(4, math.max(1, shown.length));
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: SizedBox(
+        width: 150.0 * columns + 8 * (columns - 1),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                height: 30,
+                child: TextField(
+                  key: const ValueKey("addSlotSearch"),
+                  autofocus: true,
+                  style: const TextStyle(fontSize: 12),
+                  decoration: InputDecoration(
+                    hintText:
+                        "Find ${widget.title.toLowerCase().replaceFirst("add ", "")}",
+                    isDense: true,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(5)),
+                  ),
+                  onChanged: (v) => setState(() => _q = v),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(spacing: 8, runSpacing: 4, children: [
+                for (var (family, items) in shown)
+                  SizedBox(
+                    width: 150,
+                    child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(6, 6, 6, 2),
+                            child: Text(family.toUpperCase(),
+                                style: TextStyle(
+                                    fontSize: 9.5,
+                                    letterSpacing: 0.8,
+                                    fontWeight: FontWeight.w500,
+                                    color: look.studio.muted)),
+                          ),
+                          for (var (key, label, pick) in items)
+                            InkWell(
+                              key: ValueKey(key),
+                              borderRadius: BorderRadius.circular(5),
+                              onTap: () {
+                                widget.onPicked();
+                                pick();
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 5),
+                                child: Text(label,
+                                    style: const TextStyle(fontSize: 12)),
+                              ),
+                            ),
+                        ]),
+                  ),
+              ]),
+            ]),
+      ),
     );
   }
 }
@@ -3534,8 +4119,13 @@ class MidiInDevice extends StatelessWidget {
         TextStyle(fontSize: 11, color: c ?? skin.ink);
     return DeviceFrame(
       id: "midiIn",
-      title: "In",
+      title: "MIDI In",
+      help: "Where the channel's notes come in from: a keyboard, or all of "
+          "them. Monitor is when what comes in is heard: always, while the "
+          "channel is armed, or never.",
       skin: skin,
+      icon: Icons.grid_view,
+      accent: midiColour,
       folded: folded,
       onFold: onFold,
       width: 190,
@@ -3675,17 +4265,19 @@ class MidiEffectDevice extends StatelessWidget {
     }
 
     var params = effect.kind.params;
-    var columns = (params.length + 1) ~/ 2;
     return DeviceFrame(
       id: "midi$index",
       title: effect.kind.label,
+      help: "Done to the notes before the instrument plays them.",
       skin: DeviceSkin.silver,
+      icon: Icons.grid_view,
+      accent: midiColour,
       on: effect.on,
       onPower: (v) => write(effect.switched(v)),
       powerKey: ValueKey("midiPower-$index"),
       folded: folded,
       onFold: onFold,
-      width: 24.0 + 80 * columns,
+      width: 236,
       height: height,
       actions: [
         IconButton(
@@ -3705,42 +4297,38 @@ class MidiEffectDevice extends StatelessWidget {
           },
         ),
       ],
-      foldedBody: Center(
-        child: RotatedBox(
-          quarterTurns: 3,
-          child: Text(effect.kind.label,
-              style: const TextStyle(fontSize: 11, color: _silverInk)),
-        ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Wrap(
-          alignment: WrapAlignment.center,
-          spacing: 12,
-          runSpacing: 8,
-          children: [
-            for (var p in params)
-              _Knob(
-                key: ValueKey("midi-$index-${p.id}"),
-                label: p.label,
-                text: p.reading(effect.value(p.id)),
-                value: effect.value(p.id),
-                initial: p.initial,
-                range: _Range(p.min, p.max),
-                size: 46,
-                onChanged: (v, {transient = false}) =>
-                    write(effect.withValue(p.id, v), transient: transient),
-                onCommit: controller.endInteraction,
-              ),
-          ],
-        ),
-      ),
+      foldedBody: const SizedBox(),
+      summary: [
+        for (var p in params) "${p.label} ${p.reading(effect.value(p.id))}"
+      ].join(" · "),
+      controls: (tier) => [
+        for (var p in params)
+          _Knob(
+            key: ValueKey("midi-$index-${p.id}"),
+            label: p.label,
+            text: p.reading(effect.value(p.id)),
+            value: effect.value(p.id),
+            initial: p.initial,
+            range: _Range(p.min, p.max),
+            size: switch (tier) {
+              DeviceTier.large => 46,
+              DeviceTier.medium => 38,
+              _ => 28,
+            },
+            reading: tier != DeviceTier.small,
+            accent: midiColour,
+            onChanged: (v, {transient = false}) =>
+                write(effect.withValue(p.id, v), transient: transient),
+            onCommit: controller.endInteraction,
+          ),
+      ],
+      body: const SizedBox(),
     );
   }
 }
 
 /// AddMidiEffectSlot puts a MIDI effect on a MIDI channel, after the
-/// others, before its instrument.
+/// others, before its instrument: the chain's "+".
 class AddMidiEffectSlot extends StatelessWidget {
   final CanvasController controller;
   final String channel;
@@ -3753,52 +4341,34 @@ class AddMidiEffectSlot extends StatelessWidget {
       super.key});
 
   @override
-  Widget build(BuildContext context) {
-    var look = MixerLook.of(context);
-    return Container(
-      width: 112,
-      height: height,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: look.studio.edge),
-      ),
-      padding: const EdgeInsets.all(8),
-      // Shrunk to a short panel, as the devices beside it are: a button
-      // for each MIDI effect is taller than the panel at its shortest.
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text("MIDI effects",
-              style: TextStyle(fontSize: 11, color: look.studio.muted)),
-          const SizedBox(height: 6),
-          for (var kind in MidiEffectKind.values)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: OutlinedButton(
-                key: ValueKey("addMidi-${kind.name}"),
-                style: OutlinedButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    foregroundColor: look.studio.text,
-                    side: BorderSide(color: look.studio.edge),
-                    textStyle: const TextStyle(fontSize: 11)),
-                onPressed: () {
-                  controller.beginInteraction();
-                  controller.setChannelPart(
-                      channel,
-                      (p) => p
-                          .copyWith(effects: [...p.effects, MidiEffect(kind)]));
-                  controller.endInteraction();
-                  controller.openEffects(channel,
-                      device:
-                          "midi${controller.instrumentOf(channel)!.instrument!.effects.length - 1}");
-                },
-                child: Text(kind.label),
-              ),
-            ),
-        ]),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => AddSlot(
+        id: "addMidiOpen",
+        title: "Add a MIDI effect",
+        height: height,
+        groups: [
+          (
+            "MIDI effects",
+            [
+              for (var kind in MidiEffectKind.values)
+                (
+                  "addMidi-${kind.name}",
+                  kind.label,
+                  () {
+                    controller.beginInteraction();
+                    controller.setChannelPart(
+                        channel,
+                        (p) => p.copyWith(
+                            effects: [...p.effects, MidiEffect(kind)]));
+                    controller.endInteraction();
+                    controller.openEffects(channel,
+                        device:
+                            "midi${controller.instrumentOf(channel)!.instrument!.effects.length - 1}");
+                  }
+                ),
+            ]
+          ),
+        ],
+      );
 }
 
 // ---- The devices that only listen: a tuner, a spectrum
@@ -4074,6 +4644,7 @@ class _ListenerDeviceState extends State<ListenerDevice>
     return DeviceFrame(
       id: deviceKey(deviceIdAt(devices, widget.index)),
       title: device.kind.label,
+      help: deviceAbout(device.kind),
       skin: skin,
       // Its screen is all of it, and its few settings: it only listens.
       display: body,
@@ -4164,13 +4735,7 @@ class _ListenerDeviceState extends State<ListenerDevice>
           },
         ),
       ],
-      foldedBody: Center(
-        child: RotatedBox(
-          quarterTurns: 3,
-          child: Text(device.kind.label,
-              style: TextStyle(fontSize: 11, color: skin.ink)),
-        ),
-      ),
+      foldedBody: const SizedBox(),
       body: body,
     );
   }
@@ -4834,6 +5399,10 @@ class MotionDeviceCard extends StatelessWidget {
     return DeviceFrame(
       id: "mdev:${d.id}",
       title: d.kind.label,
+      help: d.kind.side == MotionDeviceSide.pose
+          ? "A move: changes where it is, how it turns and how big, before "
+              "it is drawn."
+          : "A look: changes how it is drawn, after the moves.",
       skin: skin,
       on: d.on,
       onPower: (v) => write(d.switched(v)),
@@ -4861,13 +5430,7 @@ class MotionDeviceCard extends StatelessWidget {
           onPressed: () => controller.removeMotionDevice(element, d.id),
         ),
       ],
-      foldedBody: Center(
-        child: RotatedBox(
-          quarterTurns: 3,
-          child: Text(d.kind.label,
-              style: TextStyle(fontSize: 11, color: skin.ink)),
-        ),
-      ),
+      foldedBody: const SizedBox(),
       body: const SizedBox.shrink(),
       controls: knobs,
       // A screen where there is something to show without the element:
@@ -5072,8 +5635,8 @@ class DrawingCard extends StatelessWidget {
   }
 }
 
-/// AddMotionDeviceSlot is the end of one side of an element's motion
-/// chain: the kinds that side takes (rule 1), to put one on.
+/// AddMotionDeviceSlot puts a move (or a look, by [side]) on [element]'s
+/// motion chain: the chain's "+".
 class AddMotionDeviceSlot extends StatelessWidget {
   final CanvasController controller;
   final String element;
@@ -5088,51 +5651,28 @@ class AddMotionDeviceSlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var look = MixerLook.of(context);
     var pose = side == MotionDeviceSide.pose;
-    return Container(
-      width: 132,
+    return AddSlot(
+      id: pose ? "addMoveOpen" : "addLookOpen",
+      title: pose ? "Add a move" : "Add a look",
       height: height,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: look.studio.edge),
-      ),
-      padding: const EdgeInsets.all(6),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text(pose ? "Add a move" : "Add a look",
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: look.studio.text)),
-        const SizedBox(height: 4),
-        Expanded(
-          child: ListView(children: [
+      groups: [
+        (
+          pose ? "Moves" : "Looks",
+          [
             for (var k in MotionDeviceKind.on(side))
-              InkWell(
-                key: ValueKey("addMotion-${k.name}"),
-                onTap: () {
+              (
+                "addMotion-${k.name}",
+                k.label,
+                () {
                   controller.beginInteraction();
                   controller.addMotionDevice(element, k);
                   controller.endInteraction();
-                },
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
-                  child: Row(children: [
-                    Icon(Icons.add, size: 13, color: look.studio.muted),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(k.label,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              TextStyle(fontSize: 11, color: look.studio.text)),
-                    ),
-                  ]),
-                ),
+                }
               ),
-          ]),
+          ]
         ),
-      ]),
+      ],
     );
   }
 }

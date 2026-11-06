@@ -89,30 +89,35 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
           var current = _current;
           _seen.add(current.id);
           var shown = _shown;
-          return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _header(context, theme, shown, current),
-                const Divider(height: 1),
-                Expanded(
-                  child: RepaintBoundary(
-                    child: Stack(children: [
-                      for (var s in shown)
-                        if (_seen.contains(s.id))
-                          Offstage(
-                            key: ValueKey("sidebar-${s.id}"),
-                            offstage: s.id != current.id,
-                            // Nothing hidden should be animating: an offstage
-                            // spinner would go on scheduling frames.
-                            child: TickerMode(
-                              enabled: s.id == current.id,
-                              child: _column(context, s, s.id == current.id),
+          // Squeezed to a sliver -- the Chain filling the window, a panel
+          // dragged over it -- it shows nothing rather than spilling.
+          return LayoutBuilder(builder: (context, box) {
+            if (box.maxHeight < 60) return const SizedBox.shrink();
+            return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _header(context, theme, shown, current),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: RepaintBoundary(
+                      child: Stack(children: [
+                        for (var s in shown)
+                          if (_seen.contains(s.id))
+                            Offstage(
+                              key: ValueKey("sidebar-${s.id}"),
+                              offstage: s.id != current.id,
+                              // Nothing hidden should be animating: an offstage
+                              // spinner would go on scheduling frames.
+                              child: TickerMode(
+                                enabled: s.id == current.id,
+                                child: _column(context, s, s.id == current.id),
+                              ),
                             ),
-                          ),
-                    ]),
+                      ]),
+                    ),
                   ),
-                ),
-              ]);
+                ]);
+          });
         },
       );
 

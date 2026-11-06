@@ -253,6 +253,11 @@ extension CanvasInstruments on CanvasController {
     }
   }
 
+  /// controlOn moves [control] on instrument [e] alone -- its editor's bend
+  /// and mod wheels -- heard at once.
+  void controlOn(AudioElement e, MidiControl control, double value) =>
+      audio.control(CanvasController._channelOf(e), control, value);
+
   /// liveScale is the scale a keyboard plays in -- a Push's pads are laid
   /// out in it: the Scale effect of the channel it plays, or C major.
   (int, List<int>) get liveScale {

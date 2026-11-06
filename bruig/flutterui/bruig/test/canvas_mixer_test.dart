@@ -31,6 +31,7 @@ import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_chain_helpers.dart';
 import 'canvas_video_element_test.dart' show FakeFrames;
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
@@ -868,6 +869,8 @@ void main() {
       await tester.ensureVisible(f);
       await tester.pump();
       await tester.tap(f);
+      // A menu's item acts as the menu shuts: a frame later.
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
     }
 
@@ -1065,7 +1068,7 @@ void main() {
       var meter = find.byKey(const ValueKey("device-meter"));
       await tester.ensureVisible(meter);
       await tester.pump();
-      expect(find.descendant(of: meter, matching: find.text("Backdrop")),
+      expect(find.descendant(of: meter, matching: find.text("BACKDROP")),
           findsOneWidget,
           reason: "the channel's strip, under its name");
       await done(tester, c);
@@ -1131,6 +1134,7 @@ void main() {
       expect([...order]..sort(), order, reason: "left to right as it sounds");
 
       // The compressor is moved before the EQ: in the chain and in the mix.
+      await revealInMenu(tester, "deviceMoveRight-eq");
       await tapOn(tester, find.byKey(const ValueKey("deviceMoveRight-eq")));
       expect(leftOf(tester, "comp"), lessThan(leftOf(tester, "eq")));
       var mix = (c.document.elements.first as VideoElement).clip.mix;
@@ -1179,10 +1183,12 @@ void main() {
       await openOn(tester, "strip-v", "eqSlot");
       var curve = find.byKey(const ValueKey("eqCurve"));
       expect(curve, findsOneWidget);
+      // A chip a band; the band picked -- the mid, to begin -- has its
+      // knobs.
       for (var slot in EqSlot.values) {
         expect(find.byKey(ValueKey("eqBand-${slot.name}")), findsOneWidget);
-        expect(find.byKey(ValueKey("eqFreq-${slot.name}")), findsOneWidget);
       }
+      expect(find.byKey(const ValueKey("eqFreq-mid")), findsOneWidget);
       await tester.ensureVisible(curve);
       await tester.pump();
       var box = tester.getRect(curve);
@@ -1294,8 +1300,10 @@ void main() {
     testWidgets("the compressor: a meter, a graph and knobs", (tester) async {
       var c = await show(tester);
       await openOn(tester, "strip-v", "compSlot");
-      expect(find.byKey(const ValueKey("gainReduction")), findsOneWidget,
-          reason: "the meter first");
+      expect(find.byKey(const ValueKey("compCurve")), findsOneWidget,
+          reason: "the curve first, as the prototype opens it");
+      await tapOn(tester, find.byKey(const ValueKey("compViewMeter")));
+      expect(find.byKey(const ValueKey("gainReduction")), findsOneWidget);
       await tapOn(tester, find.byKey(const ValueKey("compViewGraph")));
       expect(find.byKey(const ValueKey("compCurve")), findsOneWidget);
       for (var k in [
@@ -1306,8 +1314,7 @@ void main() {
         "compAttack",
         "compRelease",
         "compMix",
-        "compIn",
-        "compOut",
+        // Its levels in and out are the meters either side of it.
       ]) {
         expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
       }

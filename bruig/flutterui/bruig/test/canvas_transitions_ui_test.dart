@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,6 +33,7 @@ void main() {
     addTearDown(tester.view.reset);
 
     controller.pickScene(controller.document.at);
+    controller.showChain(motion: true);
     await tester.pumpWidget(MultiProvider(
       providers: [
         ChangeNotifierProvider<ThemeNotifier>(
@@ -46,7 +48,13 @@ void main() {
             alignment: Alignment.topLeft,
             child: SizedBox(
               width: width,
-              child: AnimationPanel(controller: controller, height: 360),
+              // In the Chain, whose header names the scene and what it
+              // gives way to.
+              child: ListenableBuilder(
+                listenable: controller,
+                builder: (context, _) => ChainPanel(
+                    controller: controller, height: 390, onResize: (_) {}),
+              ),
             ),
           ),
         ),

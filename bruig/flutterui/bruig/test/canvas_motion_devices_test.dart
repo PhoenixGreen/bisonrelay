@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_chain_helpers.dart';
 
 // canvas_motion_devices_test.dart is an element's motion chain beyond its
 // clips: pose devices left of its drawing, pulled -- a Time device asking
@@ -331,18 +332,21 @@ void main() {
         expect(tester.takeException(), isNull);
         expect(find.byKey(const ValueKey("drawingCard")), findsOneWidget);
         // Only moves are offered before the drawing, only looks after.
-        expect(
+        await openAdd(
+            tester,
             find.descendant(
                 of: find.byKey(const ValueKey("addMotionPose")),
-                matching: find.byKey(const ValueKey("addMotion-glow"))),
-            findsNothing);
-        await tester.tap(find.descendant(
-            of: find.byKey(const ValueKey("addMotionLook")),
-            matching: find.byKey(const ValueKey("addMotion-shadow"))));
+                matching: find.byKey(const ValueKey("addMoveOpen"))));
+        expect(find.byKey(const ValueKey("addMotion-glow")), findsNothing);
+        await tester.tap(find.byKey(const ValueKey("addMotion-time")));
         await tester.pump(const Duration(milliseconds: 100));
-        await tester.tap(find.descendant(
-            of: find.byKey(const ValueKey("addMotionPose")),
-            matching: find.byKey(const ValueKey("addMotion-time"))));
+        await openAdd(
+            tester,
+            find.descendant(
+                of: find.byKey(const ValueKey("addMotionLook")),
+                matching: find.byKey(const ValueKey("addLookOpen"))));
+        expect(find.byKey(const ValueKey("addMotion-time")), findsNothing);
+        await tester.tap(find.byKey(const ValueKey("addMotion-shadow")));
         await tester.pump(const Duration(milliseconds: 100));
         var devices = c.motionDevicesOf("a");
         expect(devices.map((d) => d.kind),
@@ -365,7 +369,9 @@ void main() {
         await tester.tap(find.byKey(ValueKey("mdevPower-${devices[1].id}")));
         await tester.pump(const Duration(milliseconds: 100));
         expect(c.motionDevicesOf("a")[1].on, isFalse);
+        await revealInMenu(tester, "mdevRemove-${devices[1].id}");
         await tester.tap(find.byKey(ValueKey("mdevRemove-${devices[1].id}")));
+        await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
         expect(c.motionDevicesOf("a").length, 1);
         expect(tester.takeException(), isNull);

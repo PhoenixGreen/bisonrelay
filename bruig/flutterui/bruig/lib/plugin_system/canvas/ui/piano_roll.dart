@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/session.dart'
 import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
     show envelopeLengths, settingLabel;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/chain_icons.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
     show dragPointers;
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
@@ -71,6 +72,9 @@ const double _laneLeast = 48;
 const double _headH = 22;
 const double _splitH = 6;
 const double _toolbarH = 34;
+
+/// _statusH is the roll's foot: its notes, tool and grid.
+const double _statusH = 20;
 
 /// _gridLeast is the least of the notes kept in view: a short roll folds
 /// its lanes away before it gives the notes less.
@@ -141,7 +145,8 @@ class _PianoRollState extends State<PianoRoll> {
   /// notes' velocity or a controller's curve; _lanesOpen whether they show,
   /// or only their headings.
   final List<RollLane> _lanes = [RollLane.velocity];
-  bool _lanesOpen = true;
+  // Folded to begin with, as Ken asked: opened when they are wanted.
+  bool _lanesOpen = false;
 
   /// _laneTall is each lane's height, as its edge was dragged -- as tall as
   /// there is room for, up to it; _edgeFrom and _tallFrom where the drag
@@ -152,6 +157,12 @@ class _PianoRollState extends State<PianoRoll> {
   /// _zoom is the zoom slider: nought the closest, one the whole of what is
   /// shown in the width there is. Null until moved: a beat 48 wide.
   double? _zoom;
+
+  /// _zoomNow is the zoom as last drawn, and _zoomSpan how far apart its
+  /// ends are (the log of the closest over the farthest): a pinch moves it
+  /// in proportion. _pinchFrom is where a pinch began.
+  double _zoomNow = 0, _zoomSpan = 1;
+  double? _pinchFrom;
 
   /// _rowH and _beatW are the grid's measures: a key's height, a beat's
   /// width -- the width zoomed with the slider.
@@ -420,6 +431,19 @@ class _PianoRollState extends State<PianoRoll> {
       return KeyEventResult.handled;
     }
     switch (e.logicalKey) {
+      // The tools by their keys, as the toolbar shows them.
+      case LogicalKeyboardKey.keyV:
+        setState(() => _tool = _Tool.select);
+      case LogicalKeyboardKey.keyD:
+        setState(() => _tool = _Tool.draw);
+      case LogicalKeyboardKey.keyB:
+        setState(() => _tool = _Tool.paint);
+      case LogicalKeyboardKey.keyE:
+        setState(() => _tool = _Tool.erase);
+      case LogicalKeyboardKey.keyC:
+        setState(() => _tool = _Tool.knife);
+      case LogicalKeyboardKey.keyM:
+        setState(() => _tool = _Tool.mute);
       case LogicalKeyboardKey.delete || LogicalKeyboardKey.backspace:
         _delete();
       case LogicalKeyboardKey.arrowUp:
@@ -715,12 +739,16 @@ class _PianoRollState extends State<PianoRoll> {
                     : math.log(_closest / 48) / math.log(_closest / far));
             _beatW = math.exp(math.log(_closest) +
                 (math.log(far) - math.log(_closest)) * t.clamp(0.0, 1.0));
+            _zoomNow = t.clamp(0.0, 1.0);
+            _zoomSpan = math.max(0.01, math.log(_closest / far));
             var width = content.beats * _beatW;
             // The lanes: as tall as dragged, up to the room there is over
             // the notes' least; short of their least, folded to a bar --
             // and short of that, not there.
             var height = box.maxHeight.isFinite ? box.maxHeight : 480.0;
-            var room = height - _toolbarH - _rulerH;
+            // The foot, where there is room for it beside the notes.
+            var status = height >= 220;
+            var room = height - _toolbarH - _rulerH - (status ? _statusH : 0);
             var showLanes = room - _headH >= 24;
             var tallest = (room - _splitH - _gridLeast) / _lanes.length;
             var open = showLanes && _lanesOpen && tallest >= _laneLeast;
@@ -785,57 +813,73 @@ class _PianoRollState extends State<PianoRoll> {
                                 ),
                               ),
                               Expanded(
-                                child: SingleChildScrollView(
-                                  controller: _grid1,
-                                  scrollDirection: Axis.horizontal,
-                                  child: GestureDetector(
-                                    key: const ValueKey("rollGrid"),
-                                    // Pressed and dragged, never swiped past: two fingers on
-                                    // a trackpad would draw notes as they scrolled.
-                                    supportedDevices: dragPointers,
-                                    behavior: HitTestBehavior.opaque,
-                                    onTapUp: (d) => _tapGrid(
-                                        d.localPosition, content, keys),
-                                    // Right-clicked, a note is taken out: a double-click would
-                                    // hold back every note drawn while it waited.
-                                    onSecondaryTapUp: (d) {
-                                      var hit = _hit(
-                                          d.localPosition, content.notes, keys);
-                                      if (hit == null) return;
-                                      _selected
-                                        ..clear()
-                                        ..add(hit.$1);
-                                      _delete();
-                                    },
-                                    // From the press, not from where the drag
-                                    // was told apart from a click.
-                                    dragStartBehavior: DragStartBehavior.down,
-                                    onPanStart: (d) => _startDrag(
-                                        d.localPosition, content, keys),
-                                    onPanUpdate: (d) =>
-                                        _updateDrag(d.localPosition, keys),
-                                    onPanEnd: (_) => _endDrag(),
-                                    child: CustomPaint(
-                                      size: Size(width, keys.length * _rowH),
-                                      painter: _GridPainter(
-                                        notes: content.notes,
-                                        keys: keys,
-                                        rowH: _rowH,
-                                        beatW: _beatW,
-                                        beats: content.beats,
-                                        beatsPerBar:
-                                            c.document.audio.beatsPerBar,
-                                        grid: _grid,
-                                        selected: {..._selected},
-                                        ghosts: _ghostNotes(),
-                                        root: root,
-                                        steps: _scale ? steps : null,
-                                        playhead: head,
-                                        playing: c.rollPlayhead != null,
-                                        box: _drag == _Drag.box
-                                            ? Rect.fromPoints(_from, _to)
-                                            : null,
-                                        studio: look.studio,
+                                // Pinched on a trackpad: closer, or farther.
+                                child: Listener(
+                                  onPointerPanZoomStart: (_) =>
+                                      _pinchFrom = _zoomNow,
+                                  onPointerPanZoomUpdate: (e) {
+                                    var from = _pinchFrom;
+                                    if (from == null ||
+                                        (e.scale - 1).abs() < 0.01) {
+                                      return;
+                                    }
+                                    setState(() => _zoom =
+                                        (from - math.log(e.scale) / _zoomSpan)
+                                            .clamp(0.0, 1.0));
+                                  },
+                                  onPointerPanZoomEnd: (_) => _pinchFrom = null,
+                                  child: SingleChildScrollView(
+                                    controller: _grid1,
+                                    scrollDirection: Axis.horizontal,
+                                    child: GestureDetector(
+                                      key: const ValueKey("rollGrid"),
+                                      // Pressed and dragged, never swiped past: two fingers on
+                                      // a trackpad would draw notes as they scrolled.
+                                      supportedDevices: dragPointers,
+                                      behavior: HitTestBehavior.opaque,
+                                      onTapUp: (d) => _tapGrid(
+                                          d.localPosition, content, keys),
+                                      // Right-clicked, a note is taken out: a double-click would
+                                      // hold back every note drawn while it waited.
+                                      onSecondaryTapUp: (d) {
+                                        var hit = _hit(d.localPosition,
+                                            content.notes, keys);
+                                        if (hit == null) return;
+                                        _selected
+                                          ..clear()
+                                          ..add(hit.$1);
+                                        _delete();
+                                      },
+                                      // From the press, not from where the drag
+                                      // was told apart from a click.
+                                      dragStartBehavior: DragStartBehavior.down,
+                                      onPanStart: (d) => _startDrag(
+                                          d.localPosition, content, keys),
+                                      onPanUpdate: (d) =>
+                                          _updateDrag(d.localPosition, keys),
+                                      onPanEnd: (_) => _endDrag(),
+                                      child: CustomPaint(
+                                        size: Size(width, keys.length * _rowH),
+                                        painter: _GridPainter(
+                                          notes: content.notes,
+                                          keys: keys,
+                                          rowH: _rowH,
+                                          beatW: _beatW,
+                                          beats: content.beats,
+                                          beatsPerBar:
+                                              c.document.audio.beatsPerBar,
+                                          grid: _grid,
+                                          selected: {..._selected},
+                                          ghosts: _ghostNotes(),
+                                          root: root,
+                                          steps: _scale ? steps : null,
+                                          playhead: head,
+                                          playing: c.rollPlayhead != null,
+                                          box: _drag == _Drag.box
+                                              ? Rect.fromPoints(_from, _to)
+                                              : null,
+                                          studio: look.studio,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -868,6 +912,7 @@ class _PianoRollState extends State<PianoRoll> {
                         ),
                     ] else if (showLanes)
                       _foldedLanes(look, canOpen: tallest >= _laneLeast),
+                    if (status) _status(look, content),
                   ]),
             );
           });
@@ -942,27 +987,25 @@ class _PianoRollState extends State<PianoRoll> {
       height: _headH,
       decoration:
           BoxDecoration(border: Border(top: BorderSide(color: studio.edge))),
-      child: Row(children: [
-        InkWell(
-          key: const ValueKey("rollLanesOpen-0"),
-          onTap: canOpen ? () => setState(() => _lanesOpen = true) : null,
-          child: Tooltip(
-            message: canOpen
-                ? "Open the lanes"
-                : "No room for the lanes: make the editor taller",
-            child: SizedBox(
-                width: 22,
-                child: Icon(Icons.chevron_right,
-                    size: 14, color: canOpen ? studio.text : studio.muted)),
+      child: InkWell(
+        key: const ValueKey("rollLanesOpen-0"),
+        onTap: canOpen ? () => setState(() => _lanesOpen = true) : null,
+        child: Row(children: [
+          SizedBox(
+              width: 22,
+              child: Icon(Icons.chevron_right,
+                  size: 14, color: canOpen ? studio.text : studio.muted)),
+          Expanded(
+            child: Text(
+                canOpen
+                    ? _lanes.map((l) => l.label).join(" · ")
+                    : "Lanes: make the editor taller to open them",
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 10.5, color: studio.muted)),
           ),
-        ),
-        Expanded(
-          child: Text(_lanes.map((l) => l.label).join(" · "),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 10.5, color: studio.muted)),
-        ),
-      ]),
+        ]),
+      ),
     );
   }
 
@@ -1016,26 +1059,36 @@ class _PianoRollState extends State<PianoRoll> {
               icon("rollLaneRemove", Icons.close, "Take this lane away",
                   () => setState(() => _lanes.removeAt(i))),
           ]),
-          DropdownButton<RollLane>(
+          // What it shows, as the prototype lists them: each a line, the
+          // one shown lit.
+          Column(
             key: ValueKey(i == 0 ? "rollLane" : "rollLane2"),
-            value: lane,
-            isDense: true,
-            isExpanded: true,
-            underline: const SizedBox(),
-            iconSize: 14,
-            style: TextStyle(fontSize: 10.5, color: studio.text),
-            dropdownColor: look.colors.surfaceContainerHigh,
-            items: [
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               for (var (l, label) in choices)
                 if (!others.contains(l))
-                  DropdownMenuItem(
-                      value: l,
+                  InkWell(
+                    key: ValueKey("rollLaneChoice-$i-$label"),
+                    borderRadius: BorderRadius.circular(3),
+                    onTap: () => setState(() => _lanes[i] = l),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: l == lane
+                            ? look.colors.primary.withValues(alpha: 0.28)
+                            : null,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
                       child: Text(label,
-                          maxLines: 1, overflow: TextOverflow.ellipsis)),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: l == lane ? studio.text : studio.muted)),
+                    ),
+                  ),
             ],
-            onChanged: (v) {
-              if (v != null) setState(() => _lanes[i] = v);
-            },
           ),
           // A setting's envelope: the clip's length, or its own.
           if (lane.setting case var key? when clip != null)
@@ -1292,54 +1345,79 @@ class _PianoRollState extends State<PianoRoll> {
   Widget _toolbar(MixerLook look, RollContent content, double zoom) {
     var studio = look.studio;
     var small = TextStyle(fontSize: 11, color: studio.text);
+    // The prototype's toolbar buttons: flat, the one on filled.
     Widget pill(String label, bool on, VoidCallback onTap,
             {Key? key, String? tip}) =>
-        Tooltip(
-          message: tip ?? label,
-          child: Material(
-            color: on ? studio.on : studio.raised,
-            borderRadius: BorderRadius.circular(4),
-            child: InkWell(
-              key: key,
-              borderRadius: BorderRadius.circular(4),
-              onTap: onTap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: Text(label,
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: on ? studio.onOn : studio.text)),
-              ),
+        Material(
+          color: on ? look.colors.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(5),
+          child: InkWell(
+            key: key,
+            borderRadius: BorderRadius.circular(5),
+            onTap: onTap,
+            child: Container(
+              height: 22,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              alignment: Alignment.center,
+              child: Text(label,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: on ? look.colors.onPrimary : studio.muted)),
             ),
           ),
         );
+    Widget gap() => Container(
+        width: 1,
+        height: 18,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        color: studio.edge);
+    // The prototype's drop-downs: as wide as what is picked, and a list
+    // under it.
     Widget drop<T>(Key key, T value, List<(String, T)> items,
             ValueChanged<T> onChanged) =>
-        DropdownButton<T>(
-          key: key,
-          value: value,
-          isDense: true,
-          underline: const SizedBox(),
-          style: small,
-          dropdownColor: look.colors.surfaceContainerHigh,
-          items: [
+        MenuAnchor(
+          style: MenuStyle(
+              backgroundColor:
+                  WidgetStatePropertyAll(look.colors.surfaceContainerHigh)),
+          builder: (context, menu, _) => InkWell(
+            key: key,
+            borderRadius: BorderRadius.circular(5),
+            onTap: () => menu.isOpen ? menu.close() : menu.open(),
+            child: Container(
+              height: 22,
+              padding: const EdgeInsets.fromLTRB(6, 0, 2, 0),
+              decoration: BoxDecoration(
+                color: studio.inset,
+                borderRadius: BorderRadius.circular(5),
+                border: Border.all(color: studio.edge),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 110),
+                  child: Text(
+                      items.where((i) => i.$2 == value).firstOrNull?.$1 ?? "",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: small),
+                ),
+                Icon(Icons.expand_more, size: 13, color: studio.muted),
+              ]),
+            ),
+          ),
+          menuChildren: [
             for (var (label, v) in items)
-              DropdownMenuItem(value: v, child: Text(label)),
+              MenuItemButton(
+                onPressed: () => onChanged(v),
+                child: Text(label,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight:
+                            v == value ? FontWeight.w600 : FontWeight.w400)),
+              ),
           ],
-          onChanged: (v) {
-            if (v != null) onChanged(v);
-          },
         );
     var bars = content.beats / c.document.audio.beatsPerBar;
-    return Container(
-      height: 34,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration:
-          BoxDecoration(border: Border(bottom: BorderSide(color: studio.edge))),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(children: [
+    List<Widget> left() => [
           // Named by the editor round it, in the strip.
           if (!widget.inClipEditor) ...[
             Text(content.name,
@@ -1349,98 +1427,113 @@ class _PianoRollState extends State<PianoRoll> {
                     color: studio.text)),
             const SizedBox(width: 12),
           ],
-          for (var (tool, label, key, tip) in [
-            (
-              _Tool.draw,
-              "Draw",
-              "rollDraw",
-              "Draw: press the grid for a note -- or the chord chosen -- "
-                  "drag for a longer one"
-            ),
-            (
-              _Tool.select,
-              "Select",
-              "rollSelect",
-              "Select: drag a box round notes; drag them to move them"
-            ),
-            (
-              _Tool.paint,
-              "Paint",
-              "rollPaint",
-              "Paint: drag along a row for a note on every step of the grid"
-            ),
-            (
-              _Tool.erase,
-              "Erase",
-              "rollErase",
-              "Erase: press or drag over notes"
-            ),
-            (
-              _Tool.knife,
-              "Split",
-              "rollKnife",
-              "Split: press a note to cut it in two there"
-            ),
-            (
-              _Tool.mute,
-              "Mute",
-              "rollMute",
-              "Mute: press a note to keep it but not play it, or play it again"
-            ),
-          ]) ...[
-            pill(label, _tool == tool, () => setState(() => _tool = tool),
-                key: ValueKey(key), tip: tip),
-            const SizedBox(width: 4),
+          // A part's Play, first where it is always in sight: the timeline
+          // from the playhead.
+          if (widget.inClipEditor && c.pianoRoll?.row == null) ...[
+            pill(c.playing ? "■ Stop" : "▶ Play", c.playing, c.togglePlay,
+                key: const ValueKey("partPlay")),
+            const SizedBox(width: 8),
           ],
-          const SizedBox(width: 12),
-          Text("Grid ", style: TextStyle(fontSize: 11, color: studio.muted)),
+          // The tools, as the prototype groups them: an icon each and the
+          // key that picks it.
+          Container(
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              color: studio.inset,
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(color: studio.edge),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              for (var (tool, icon, letter, key) in [
+                (_Tool.select, "select", "V", "rollSelect"),
+                (_Tool.draw, "draw", "D", "rollDraw"),
+                (_Tool.paint, "paint", "B", "rollPaint"),
+                (_Tool.erase, "erase", "E", "rollErase"),
+                (_Tool.knife, "knife", "C", "rollKnife"),
+                (_Tool.mute, "mute", "M", "rollMute"),
+              ])
+                Material(
+                  color:
+                      _tool == tool ? look.colors.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(5),
+                  child: InkWell(
+                    key: ValueKey(key),
+                    borderRadius: BorderRadius.circular(5),
+                    onTap: () => setState(() => _tool = tool),
+                    child: Container(
+                      height: 22,
+                      padding: const EdgeInsets.symmetric(horizontal: 5),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        ChainIcon(icon,
+                            size: 14,
+                            color: _tool == tool
+                                ? look.colors.onPrimary
+                                : studio.muted),
+                        const SizedBox(width: 3),
+                        Text(letter,
+                            style: TextStyle(
+                                fontSize: 9,
+                                color: (_tool == tool
+                                        ? look.colors.onPrimary
+                                        : studio.muted)
+                                    .withValues(alpha: 0.8))),
+                      ]),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+          gap(),
+          Text("Grid", style: TextStyle(fontSize: 11, color: studio.muted)),
+          const SizedBox(width: 4),
           drop(
               const ValueKey("rollGridSize"),
               _grid,
               [for (var (l, b) in rollGrids) (l, b)],
               (v) => setState(() => _grid = v)),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           pill("Quantise", false, _quantise,
               key: const ValueKey("rollQuantise"),
               tip: "Onto the grid: the notes picked, or every one"),
+          gap(),
+          // The scale: lit, folded to, kept to.
+          ChainIcon("scale", size: 14, color: studio.muted),
           const SizedBox(width: 4),
+          pill("Show", _scale, () => setState(() => _scale = !_scale),
+              key: const ValueKey("rollScale")),
+          const SizedBox(width: 2),
           pill("Fold", _fold, () => setState(() => _fold = !_fold),
-              key: const ValueKey("rollFold"),
-              tip: "Only the keys that have notes"),
-          const SizedBox(width: 4),
+              key: const ValueKey("rollFold")),
+          const SizedBox(width: 2),
           pill("Keep in key", _keep, () => setState(() => _keep = !_keep),
-              key: const ValueKey("rollKeep"),
-              tip: "Notes drawn and moved stay in the scale"),
-          const SizedBox(width: 8),
-          Text("Chord ", style: TextStyle(fontSize: 11, color: studio.muted)),
+              key: const ValueKey("rollKeep")),
+          gap(),
+          // What Draw draws, and another channel's notes behind.
+          ChainIcon("chord", size: 14, color: studio.muted),
+          const SizedBox(width: 4),
           drop(
               const ValueKey("rollChord"),
               _chord,
               [for (var (i, (name, _)) in rollChords.indexed) (name, i)],
               (v) => setState(() => _chord = v)),
           const SizedBox(width: 8),
-          Text("Ghosts ", style: TextStyle(fontSize: 11, color: studio.muted)),
+          ChainIcon("ghost", size: 14, color: studio.muted),
+          const SizedBox(width: 4),
           drop(
               const ValueKey("rollGhost"),
               _ghost ?? "",
               [
-                ("None", ""),
+                ("No ghosts", ""),
                 for (var ch in c.timelineChannels)
                   if (ch.key != c.pianoRoll?.channel &&
                       c.instrumentChannel(ch.key))
                     (ch.name, ch.key),
               ],
               (v) => setState(() => _ghost = v.isEmpty ? null : v)),
-          const SizedBox(width: 4),
-          pill("Show scale", _scale, () => setState(() => _scale = !_scale),
-              key: const ValueKey("rollScale"),
-              tip: "Light the rows of the keys in the scale -- the "
-                  "channel's Scale effect's, or C major -- so you can see "
-                  "which notes are in key"),
           if (content.clip && !widget.inClipEditor) ...[
-            const SizedBox(width: 12),
-            Text("Length ",
-                style: TextStyle(fontSize: 11, color: studio.muted)),
+            gap(),
+            Text("Length", style: TextStyle(fontSize: 11, color: studio.muted)),
+            const SizedBox(width: 4),
             drop(
                 const ValueKey("rollLength"),
                 bars,
@@ -1454,37 +1547,130 @@ class _PianoRollState extends State<PianoRoll> {
                 (v) =>
                     c.setRollContent(beats: v * c.document.audio.beatsPerBar)),
           ],
-          const SizedBox(width: 12),
-          Text("Zoom ", style: TextStyle(fontSize: 11, color: studio.muted)),
-          SizedBox(
-            width: 90,
-            // Closest at the left; at the right, the whole of it.
-            child: Slider(
-              key: const ValueKey("rollZoom"),
-              value: zoom.clamp(0.0, 1.0),
-              onChanged: (v) => setState(() => _zoom = v),
-            ),
-          ),
-          const SizedBox(width: 8),
-          pill("Delete", false, _delete,
-              key: const ValueKey("rollDelete"),
-              tip: "Take the picked notes out"),
-          const SizedBox(width: 4),
-          pill("Copy", false, _copy,
-              key: const ValueKey("rollCopy"),
-              tip: "Keep the picked notes, to paste (⌘C; ⌘X cuts them)"),
-          const SizedBox(width: 4),
-          pill("Paste", false, _paste,
-              key: const ValueKey("rollPaste"),
-              tip: "The notes copied, at the playhead (⌘V) -- drag it along "
-                  "the ruler"),
           if (!widget.inClipEditor) ...[
             const SizedBox(width: 12),
             pill("Effects", false, () => c.pianoRollShown = false,
                 key: const ValueKey("rollToEffects"),
                 tip: "Back to the channel's effects"),
           ],
+        ];
+    // The right end, as the prototype keeps it: the edits and the zoom.
+    Widget iconButton(String key, String icon, VoidCallback onTap) => InkWell(
+          key: ValueKey(key),
+          borderRadius: BorderRadius.circular(5),
+          onTap: onTap,
+          child: SizedBox(
+              width: 24,
+              height: 22,
+              child: Center(
+                  child: ChainIcon(icon, size: 14, color: studio.muted))),
+        );
+    Widget materialButton(String key, IconData icon, VoidCallback onTap) =>
+        InkWell(
+          key: ValueKey(key),
+          borderRadius: BorderRadius.circular(5),
+          onTap: onTap,
+          child: SizedBox(
+              width: 24,
+              height: 22,
+              child: Icon(icon, size: 14, color: studio.muted)),
+        );
+    var right = <Widget>[
+      materialButton("rollCopy", Icons.content_copy, _copy),
+      materialButton("rollPaste", Icons.content_paste, _paste),
+      materialButton("rollDelete", Icons.delete_outline, _delete),
+      gap(),
+      iconButton("rollZoomOut", "zoomout",
+          () => setState(() => _zoom = (zoom + 0.1).clamp(0.0, 1.0))),
+      SizedBox(
+        width: 72,
+        // Closest at the left; at the right, the whole of it.
+        child: SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+              trackHeight: 2,
+              overlayShape: SliderComponentShape.noOverlay,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5)),
+          child: Slider(
+            key: const ValueKey("rollZoom"),
+            value: zoom.clamp(0.0, 1.0),
+            onChanged: (v) => setState(() => _zoom = v),
+          ),
+        ),
+      ),
+      iconButton("rollZoomIn", "zoomin",
+          () => setState(() => _zoom = (zoom - 0.1).clamp(0.0, 1.0))),
+    ];
+    return Container(
+      height: _toolbarH,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration:
+          BoxDecoration(border: Border(bottom: BorderSide(color: studio.edge))),
+      child: LayoutBuilder(builder: (context, box) {
+        // Room enough, the right end keeps to the right; short of it, it
+        // follows the rest.
+        var pinned = box.maxWidth >= 640;
+        var scroll = SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            ...left(),
+            if (!pinned) ...[gap(), ...right],
+          ]),
+        );
+        if (!pinned) return scroll;
+        return Row(children: [
+          Expanded(child: scroll),
+          gap(),
+          ...right,
+        ]);
+      }),
+    );
+  }
+
+  /// _status is the roll's foot, as the prototype has it: how many notes,
+  /// the tool and the grid, and what the tool does.
+  Widget _status(MixerLook look, RollContent content) {
+    var studio = look.studio;
+    var picked = _selected.length;
+    var grid = rollGrids.where((g) => g.$2 == _grid).firstOrNull?.$1 ??
+        "${_trim(_grid)} beat";
+    var hint = switch (_tool) {
+      _Tool.select => "Drag to move · its end to lengthen · Shift-click adds "
+          "· ↑↓ transpose, ⇧ an octave",
+      _Tool.draw => "Click draws a note · drag to lengthen it",
+      _Tool.paint => "Drag along to lay notes on the grid",
+      _Tool.erase => "Click or drag over notes to take them out",
+      _Tool.knife => "Click a note to cut it in two there",
+      _Tool.mute => "Click a note to mute it, or play it again",
+    };
+    var mono = TextStyle(
+        fontSize: 10.5,
+        fontFeatures: const [FontFeature.tabularFigures()],
+        color: studio.muted);
+    var strong = mono.copyWith(color: studio.text, fontWeight: FontWeight.w600);
+    return Container(
+      key: const ValueKey("rollStatus"),
+      height: _statusH,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      alignment: Alignment.centerLeft,
+      decoration:
+          BoxDecoration(border: Border(top: BorderSide(color: studio.edge))),
+      child: Text.rich(
+        TextSpan(style: mono, children: [
+          TextSpan(text: "${content.notes.length}", style: strong),
+          TextSpan(text: content.notes.length == 1 ? " note" : " notes"),
+          if (picked > 0) ...[
+            const TextSpan(text: "   "),
+            TextSpan(text: "$picked", style: strong),
+            const TextSpan(text: " picked"),
+          ],
+          const TextSpan(text: "   Tool: "),
+          TextSpan(text: _tool.name, style: strong),
+          const TextSpan(text: "   Grid "),
+          TextSpan(text: grid, style: strong),
+          TextSpan(text: "   $hint"),
         ]),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
@@ -1641,7 +1827,8 @@ class _GridPainter extends CustomPainter {
     required this.studio,
   });
 
-  static const _blue = Color(0xFF5AA9FF);
+  /// _note is a note's colour: the prototype's MIDI orange.
+  static const _note = Color(0xFFD08F3E);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1707,20 +1894,39 @@ class _GridPainter extends CustomPainter {
       var r = Rect.fromLTWH(n.start * beatW, row * rowH + 1,
           math.max(4, n.length * beatW - 1), rowH - 2);
       var v = n.velocity / 127;
+      var picked = selected.contains(i);
+      // The prototype's notes: the MIDI orange, as solid as the note is
+      // likely to play, a line along its foot as long as it is hard.
       if (!n.muted) {
-        canvas.drawRRect(
-            RRect.fromRectAndRadius(r, const Radius.circular(2)),
-            Paint()
-              ..color = _blue.withValues(
-                  alpha: (0.45 + v * 0.55) * (0.35 + 0.65 * n.chance)));
+        canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(2)),
+            Paint()..color = _note.withValues(alpha: 0.35 + 0.65 * n.chance));
+        if (r.width > 8) {
+          canvas.drawRect(
+              Rect.fromLTWH(r.left + 2, r.bottom - 3, (r.width - 4) * v, 1.5),
+              Paint()..color = Colors.white.withValues(alpha: 0.55));
+        }
       }
       canvas.drawRRect(
           RRect.fromRectAndRadius(r, const Radius.circular(2)),
           Paint()
             ..style = PaintingStyle.stroke
-            ..strokeWidth = selected.contains(i) ? 1.5 : 1
+            ..strokeWidth = picked ? 1.5 : 1
             ..color =
-                selected.contains(i) ? studio.on : const Color(0xFF1B4F86));
+                picked ? Colors.white : Color.lerp(_note, Colors.black, 0.35)!);
+      // Its name, where it is long enough to hold it.
+      if (r.width >= 26 && rowH >= 11) {
+        var name = TextPainter(
+            text: TextSpan(
+                text: "${_noteNames[n.key % 12]}${n.key ~/ 12 - 1}",
+                style: TextStyle(
+                    fontSize: math.min(9.5, rowH - 3),
+                    fontWeight: FontWeight.w600,
+                    color: n.muted ? _note : const Color(0xFF1E1A10))),
+            textDirection: TextDirection.ltr)
+          ..layout(maxWidth: r.width - 4);
+        name.paint(canvas,
+            Offset(r.left + 3, r.top + (rowH - 2 - name.height) / 2 - 1));
+      }
     }
     if (box case var b?) {
       canvas.drawRect(b, Paint()..color = studio.on.withValues(alpha: 0.12));
@@ -1762,7 +1968,7 @@ class _VelocityPainter extends CustomPainter {
           Rect.fromLTWH(x, size.height - 4 - h, 4, h),
           Paint()
             ..color =
-                selected.contains(i) ? studio.on : const Color(0xFF5AA9FF));
+                selected.contains(i) ? Colors.white : const Color(0xFFD08F3E));
       canvas.drawCircle(Offset(x + 2, size.height - 4 - h), 2.5,
           Paint()..color = studio.text);
     }

@@ -22,7 +22,6 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
 import 'package:bruig/plugin_system/canvas/ui/scene_transition_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/camera_section.dart';
@@ -147,19 +146,9 @@ class _AnimationPanelState extends State<AnimationPanel> {
       width: width,
       height: widget.height - 40,
       drawnHeight: widget.height - 40,
-      actions: [
-        ...actions,
-        if (help != null)
-          Tooltip(
-            message: help,
-            preferBelow: false,
-            constraints: const BoxConstraints(maxWidth: 320),
-            child: Icon(Icons.help_outline,
-                key: ValueKey("animHelp-$id"),
-                size: 15,
-                color: colors.onSurfaceVariant),
-          ),
-      ],
+      actions: actions,
+      // Behind its "?", read when clicked: the Chain shows no tips on hover.
+      help: help ?? "",
       body: Padding(
         padding: const EdgeInsets.all(8),
         child: SingleChildScrollView(child: body),
@@ -199,7 +188,6 @@ class _AnimationPanelState extends State<AnimationPanel> {
     var document = controller.document;
     var target = SceneTransitionTarget(controller, index);
     var master = target.master;
-    var hint = TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant);
     Widget part(TransitionPart p, String id, String title, double width,
             {String? help}) =>
         _device(
@@ -236,40 +224,11 @@ class _AnimationPanelState extends State<AnimationPanel> {
         _device("sceneCamera", "Camera", 240,
             CanvasCameraSection(controller: controller), colors),
     ];
-    var next = index + 1 < document.allScenes.length
-        ? "gives way to ${document.nameOf(index + 1)}"
-        : "the last: gives way to nothing";
     return Container(
       key: const ValueKey("animationPanel"),
       height: widget.height,
       color: colors.surfaceContainerLow,
       child: Column(children: [
-        SizedBox(
-          height: 32,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Row(children: [
-              Icon(Icons.movie_outlined, size: 14, color: colors.primary),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                    master
-                        ? "Every ${document.kind.one}"
-                        : document.nameOf(index),
-                    key: const ValueKey("animSceneTitle"),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700, color: colors.onSurface)),
-              ),
-              const SizedBox(width: 10),
-              Flexible(
-                child: Text(master ? "unless one says otherwise" : next,
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: hint),
-              ),
-            ]),
-          ),
-        ),
         Expanded(
           child: ListView(
             scrollDirection: Axis.horizontal,
@@ -310,42 +269,11 @@ class _AnimationPanelState extends State<AnimationPanel> {
     var (e, c) = picked;
     var place = controller.pickedPlacement;
     var span = place == null ? null : controller.spanOf(place);
-    var colour = motionKindColours[c.kind]!;
     return Container(
       key: const ValueKey("animationPanel"),
       height: widget.height,
       color: colors.surfaceContainerLow,
       child: Column(children: [
-        SizedBox(
-          height: 32,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Row(children: [
-              Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                      color: colour, borderRadius: BorderRadius.circular(3))),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text("${e.name.isEmpty ? e.id : e.name} · ${c.name}",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700, color: colors.onSurface)),
-              ),
-              const SizedBox(width: 10),
-              Flexible(
-                child: Text(
-                    "${span != null ? "On the timeline" : _slotLabel(e, c)}"
-                    "${c.isSound ? "" : " · layer ${c.layer + 1}"} · ${c.kind.label}",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: hint),
-              ),
-            ]),
-          ),
-        ),
         Expanded(
           child: LayoutBuilder(builder: (context, box) {
             var keys = !c.isSound && c.kind != MotionKind.model;
@@ -474,24 +402,26 @@ class _AnimationPanelState extends State<AnimationPanel> {
     ];
   }
 
-  /// _zone marks where one part of the chain begins.
+  /// _zone marks where one part of the chain begins, as the Sound view's
+  /// do: its name up the side by a line in the motion colour.
   Widget _zone(String label, String tip) {
     var look = MixerLook.of(context);
     return Tooltip(
       message: tip,
-      child: SizedBox(
+      child: Container(
         key: ValueKey("motionZone-$label"),
-        width: 18,
-        child: Center(
-          child: RotatedBox(
-            quarterTurns: 3,
-            child: Text(label.toUpperCase(),
-                style: TextStyle(
-                    fontSize: 10,
-                    letterSpacing: 1.2,
-                    fontWeight: FontWeight.w700,
-                    color: look.studio.muted)),
-          ),
+        width: 16,
+        margin: const EdgeInsets.only(right: 2),
+        decoration: const BoxDecoration(
+            border:
+                Border(left: BorderSide(color: Color(0xFF3FB08D), width: 2))),
+        alignment: Alignment.center,
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: Text(label.toUpperCase(),
+              maxLines: 1,
+              style: TextStyle(
+                  fontSize: 9, letterSpacing: 1.1, color: look.studio.muted)),
         ),
       ),
     );
@@ -500,35 +430,11 @@ class _AnimationPanelState extends State<AnimationPanel> {
   /// _chainOnly is an element with no clips: its chain alone.
   Widget _chainOnly(BuildContext context, CanvasElement e) {
     var colors = ThemeNotifier.of(context).colors;
-    var hint = TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant);
     return Container(
       key: const ValueKey("animationPanel"),
       height: widget.height,
       color: colors.surfaceContainerLow,
       child: Column(children: [
-        SizedBox(
-          height: 32,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Row(children: [
-              Flexible(
-                child: Text(e.name.isEmpty ? e.id : e.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700, color: colors.onSurface)),
-              ),
-              const SizedBox(width: 10),
-              Flexible(
-                child: Text(
-                    "No clips -- double-click its row on the timeline for one",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: hint),
-              ),
-            ]),
-          ),
-        ),
         Expanded(
           child: ListView(
             scrollDirection: Axis.horizontal,
@@ -560,11 +466,6 @@ class _AnimationPanelState extends State<AnimationPanel> {
     var at = controller.secondsAt(controller.frame);
     if (at < span.start || at > span.end) return null;
     return span.clipTime(c, at);
-  }
-
-  String _slotLabel(CanvasElement e, MotionClip c) {
-    var i = e.base.motion.slots.indexOf(c.id);
-    return i < 0 ? "In no slot" : "Slot ${i + 1}";
   }
 
   Widget _clipDevice(CanvasElement e, MotionClip c, ColorScheme colors) =>

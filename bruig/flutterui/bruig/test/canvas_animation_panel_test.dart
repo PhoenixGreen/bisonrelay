@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -63,14 +64,18 @@ void main() {
     await pump(tester, height: 520);
     expect(sizeAt(520), short, reason: "not shrunk to the panel");
     expect(find.textContaining("Click a row to add a key"), findsNothing);
-    var help = find.byKey(const ValueKey("animHelp-keys"));
+    // Behind its "?", read when clicked.
+    var help = find.byKey(const ValueKey("deviceHelp-anim-keys"));
     expect(help, findsOneWidget);
-    var tip = tester.widget<Tooltip>(
-        find.ancestor(of: help, matching: find.byType(Tooltip)).first);
-    expect(tip.message, contains("Click a row to add a key"));
+    await tester.tap(help);
+    await tester.pump();
+    expect(find.textContaining("Click a row to add a key"), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
     // The ones in view: the rest are along the row, built as it scrolls.
     for (var id in ["clip", "motion"]) {
-      expect(find.byKey(ValueKey("animHelp-$id")), findsOneWidget, reason: id);
+      expect(find.byKey(ValueKey("deviceHelp-anim-$id")), findsOneWidget,
+          reason: id);
     }
     expect(tester.takeException(), isNull);
   });
@@ -116,13 +121,25 @@ void main() {
     c.selectOnly("a");
     await tester.pump();
     expect(find.textContaining("Pick a slot"), findsNothing);
-    expect(find.text("Logo · Pop"), findsOneWidget);
+    // The clip it shows, by its name in its Clip card (the Chain's header
+    // names the element).
+    expect(
+        tester
+            .widget<CanvasTextField>(find.byKey(const ValueKey("animClipName")))
+            .value,
+        "Pop");
   });
 
   testWidgets("a ready-made motion picked writes the clip's keys",
       (tester) async {
     var (c, clip) = await pump(tester);
-    expect(find.text("Logo · Pop"), findsOneWidget);
+    // The clip it shows, by its name in its Clip card (the Chain's header
+    // names the element).
+    expect(
+        tester
+            .widget<CanvasTextField>(find.byKey(const ValueKey("animClipName")))
+            .value,
+        "Pop");
     await tester.tap(find.byKey(const ValueKey("animPreset-Slide in")));
     await tester.pumpAndSettle();
     var m = c.motionOf("a").clip(clip)!;

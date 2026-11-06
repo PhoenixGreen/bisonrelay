@@ -193,10 +193,15 @@ class ClipEditor extends StatefulWidget {
   /// from its In) rather than a clip in a slot: its place on the timeline and
   /// its notes' tools, and Play for the timeline.
   final bool part;
+
+  /// canWiden is whether there is room for every column: without it, one
+  /// at a time and no button to show them all.
+  final bool canWiden;
   const ClipEditor(
       {required this.controller,
       this.wide = true,
       this.part = false,
+      this.canWiden = true,
       super.key});
 
   @override
@@ -257,9 +262,11 @@ class _ClipEditorState extends State<ClipEditor> {
             if (t == null || t.row != null || content == null || e == null) {
               return const SizedBox();
             }
+            // Straight to its toolbar, as the prototype's Notes: what it is
+            // is in the Chain's header, and Play is on the roll's bar.
             return _layout(
                 look,
-                _partHeader(look, e),
+                null,
                 // The columns a slot's clip has, in the same places: a part's place on
                 // the timeline, how it is launched (it is not, but a copy of it in a
                 // slot is) and its notes' tools.
@@ -302,7 +309,7 @@ class _ClipEditorState extends State<ClipEditor> {
   /// _layout is the editor: its header over its columns of settings (every
   /// one, wide; narrow, one at a time, picked above it) and what it plays
   /// beside them.
-  Widget _layout(MixerLook look, Widget header,
+  Widget _layout(MixerLook look, Widget? header,
       List<(String, List<Widget>, String)> settings, Widget editor) {
     var columns = [
       for (var (title, children, key) in settings)
@@ -310,12 +317,18 @@ class _ClipEditorState extends State<ClipEditor> {
     ];
     var shown = _shown.clamp(0, columns.length - 1);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      header,
+      if (header != null) header,
       Expanded(
+        // What it plays first, its settings at the right, as the
+        // prototype's inspector is.
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (widget.wide)
-            ...columns
-          else
+          Expanded(child: editor),
+          Container(width: 1, color: look.studio.edge),
+          if (widget.wide) ...[
+            // Folded to one column, for more of what it plays.
+            _columnsButton(look, wide: true),
+            ...columns,
+          ] else
             SizedBox(
               width: _columnW,
               child: Column(
@@ -323,64 +336,48 @@ class _ClipEditorState extends State<ClipEditor> {
                   children: [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
-                      child: Wrap(spacing: 3, runSpacing: 3, children: [
-                        for (var (i, (label, _, _)) in settings.indexed)
-                          _pill(look, label, i == shown,
-                              () => setState(() => _shown = i),
-                              key: ValueKey("clipShow-$i")),
+                      child: Row(children: [
+                        Expanded(
+                          child: Wrap(spacing: 3, runSpacing: 3, children: [
+                            for (var (i, (label, _, _)) in settings.indexed)
+                              _pill(look, label, i == shown,
+                                  () => setState(() => _shown = i),
+                                  key: ValueKey("clipShow-$i")),
+                          ]),
+                        ),
+                        if (widget.canWiden) _columnsButton(look, wide: false),
                       ]),
                     ),
                     Expanded(child: columns[shown]),
                   ]),
             ),
-          Expanded(child: editor),
         ]),
       ),
     ]);
   }
 
-  /// _partHeader is a part's name and its channel's, and Play: the timeline,
-  /// from the playhead, which is dragged along the ruler over the notes.
-  Widget _partHeader(MixerLook look, AudioElement e) {
-    var lane = c.timelineChannels
-        .where((l) => l.key == c.pianoRoll?.channel)
-        .firstOrNull;
-    return Container(
-      height: 34,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: look.studio.edge))),
-      child: Row(children: [
-        Icon(Icons.piano, size: 14, color: look.studio.muted),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text("${e.name.isEmpty ? "Part" : e.name} · part",
-              key: const ValueKey("partEditorName"),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: look.studio.text)),
-        ),
-        const SizedBox(width: 8),
-        if (lane != null)
-          Flexible(
-            child: Text(lane.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: _small(look, look.studio.muted)),
+  /// _columnsButton shows every column of settings, or folds them to one --
+  /// the one picked above it -- for more room for what it plays.
+  Widget _columnsButton(MixerLook look, {required bool wide}) => Tooltip(
+        message: wide ? "Show one column" : "Show every column",
+        child: InkWell(
+          key: const ValueKey("editorWide"),
+          borderRadius: BorderRadius.circular(5),
+          onTap: c.toggleEditorWide,
+          child: SizedBox(
+            width: 22,
+            height: wide ? null : 22,
+            child: Align(
+              alignment: wide ? Alignment.topCenter : Alignment.center,
+              child: Padding(
+                padding: EdgeInsets.only(top: wide ? 8 : 0),
+                child: Icon(wide ? Icons.chevron_right : Icons.chevron_left,
+                    size: 16, color: look.studio.muted),
+              ),
+            ),
           ),
-        const Spacer(),
-        _pill(look, c.playing ? "■ Stop" : "▶ Play", c.playing, c.togglePlay,
-            key: const ValueKey("partPlay"),
-            tip: c.playing
-                ? "Stop playing"
-                : "Play the timeline from the playhead -- drag it along "
-                    "the ruler over the notes"),
-      ]),
-    );
-  }
+        ),
+      );
 
   /// _partLaunchColumn is a part's Launch: it plays with the timeline, not
   /// from a slot, but copied into one it is launched as any clip is.
@@ -464,19 +461,21 @@ class _ClipEditorState extends State<ClipEditor> {
         message: tip ?? label,
         child: Material(
           color: on ? look.studio.on : look.studio.raised,
-          borderRadius: BorderRadius.circular(4),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(5),
+              side: BorderSide(color: on ? look.studio.on : look.studio.edge)),
           child: InkWell(
             key: key,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(5),
             onTap: onTap,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
               child: Text(label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                       fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
                       color: onTap == null
                           ? look.studio.muted
                           : on
@@ -593,6 +592,28 @@ class _ClipEditorState extends State<ClipEditor> {
         ),
       );
 
+  /// _head is a heading of a column's, as the prototype's inspector has
+  /// them: small, uppercase, quiet -- and [end] at its right.
+  Widget _head(MixerLook look, String title, {String? end, Key? key}) {
+    var style = TextStyle(
+        fontSize: 10,
+        letterSpacing: 0.8,
+        fontWeight: FontWeight.w600,
+        color: look.studio.muted);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(children: [
+        Expanded(
+            child: Text(title.toUpperCase(),
+                key: key,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: style)),
+        if (end != null) Text(end.toUpperCase(), style: style),
+      ]),
+    );
+  }
+
   Widget _column(MixerLook look, String title, List<Widget> children,
           {Key? key}) =>
       Container(
@@ -604,12 +625,7 @@ class _ClipEditorState extends State<ClipEditor> {
           padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(title,
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: look.studio.text)),
-            const SizedBox(height: 8),
+            _head(look, title),
             ...children,
           ]),
         ),
@@ -798,8 +814,9 @@ class _ClipEditorState extends State<ClipEditor> {
     ValueChanged<String> typed(
             SessionClip Function(SessionClip x, double beats) change) =>
         (text) {
-          if (beatsOfPlace(text, bpb) case var b?)
+          if (beatsOfPlace(text, bpb) case var b?) {
             c.editClip((x) => change(x, b));
+          }
         };
     var playhead = c.clipPlayhead;
     var bars = clip.bars;
@@ -1217,44 +1234,56 @@ class _ClipEditorState extends State<ClipEditor> {
         _pill(look, t.label, false, () => c.useNoteTool(t),
             key: ValueKey("noteTool-${t.name}"), tip: tip);
     var picked = c.rollSelected.length;
+    var all = c.rollContent?.notes.length ?? 0;
+    Widget group(List<Widget> tools) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Wrap(spacing: 4, runSpacing: 4, children: tools),
+        );
     return [
       Text(
           picked == 0
-              ? "On every note -- or pick some in the notes."
+              ? "On every note -- or pick some in the notes: drag across "
+                  "empty space, Shift-click to add one."
               : "On the $picked note${picked == 1 ? "" : "s"} picked.",
           key: const ValueKey("notesToolsOn"),
-          style: _small(look, look.studio.muted).copyWith(fontSize: 10)),
-      const SizedBox(height: 6),
-      _row(
-          look,
-          "Transpose",
-          Wrap(spacing: 3, runSpacing: 3, children: [
-            tool(NoteTool.down, "Down a semitone"),
-            tool(NoteTool.up, "Up a semitone"),
-            tool(NoteTool.octaveDown, "Down an octave"),
-            tool(NoteTool.octaveUp, "Up an octave"),
-          ])),
-      Wrap(spacing: 4, runSpacing: 4, children: [
+          style: _small(look, look.studio.muted).copyWith(fontSize: 10.5)),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12, top: 2),
+        child: Text("$all in all",
+            style: _small(look, look.studio.muted).copyWith(fontSize: 10)),
+      ),
+      _head(look, "Transpose"),
+      group([
+        tool(NoteTool.down, "Down a semitone"),
+        tool(NoteTool.up, "Up a semitone"),
+        tool(NoteTool.octaveDown, "Down an octave"),
+        tool(NoteTool.octaveUp, "Up an octave"),
         tool(NoteTool.fitToScale,
             "Each to the nearest note of the channel's scale"),
-        tool(NoteTool.invert, "Upside down: the highest the lowest"),
-        tool(NoteTool.reverse, "Played backwards"),
-        tool(NoteTool.legato, "Each held until the next"),
-        tool(NoteTool.faster, "Twice as fast"),
-        tool(NoteTool.slower, "Half as fast"),
-        tool(NoteTool.third, "A third added over each: a chord"),
-        tool(NoteTool.fifth, "A fifth added over each"),
+      ]),
+      _head(look, "Transform", end: picked == 0 ? "Every note" : "Picked"),
+      group([
         tool(
             NoteTool.humanise,
             "A little off the grid, a little louder "
             "or softer"),
+        tool(NoteTool.legato, "Each held until the next"),
         tool(NoteTool.strum, "A chord's notes one after another, upwards"),
+        tool(NoteTool.reverse, "Played backwards"),
+        tool(NoteTool.invert, "Upside down: the highest the lowest"),
+        tool(NoteTool.faster, "Twice as fast"),
+        tool(NoteTool.slower, "Half as fast"),
         tool(NoteTool.crescendo, "Softer to louder, first to last"),
         tool(NoteTool.chop, "Each cut in two"),
         tool(NoteTool.join, "Notes of one key that touch made one"),
-        tool(NoteTool.mute, "Kept but not played, or played again"),
+      ]),
+      _head(look, "Generate"),
+      group([
+        tool(NoteTool.third, "A third added over each: a chord"),
+        tool(NoteTool.fifth, "A fifth added over each"),
         tool(NoteTool.chance, "Played half the time round"),
         tool(NoteTool.always, "Played every time"),
+        tool(NoteTool.mute, "Kept but not played, or played again"),
       ]),
     ];
   }

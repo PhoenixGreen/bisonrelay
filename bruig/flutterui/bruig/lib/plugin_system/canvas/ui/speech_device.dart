@@ -1822,10 +1822,7 @@ class _VocaliserDeviceState extends State<VocaliserDevice> {
           },
         ),
       ],
-      foldedBody: Center(
-        child: RotatedBox(
-            quarterTurns: 3, child: Text("Vocaliser", style: small(skin.dim))),
-      ),
+      foldedBody: const SizedBox(),
       body: Padding(
         padding: const EdgeInsets.all(10),
         child:

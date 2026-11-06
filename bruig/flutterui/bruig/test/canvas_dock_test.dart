@@ -588,11 +588,16 @@ void main() {
       // Its header resizes it, as a panel's top edge does.
       var before =
           tester.getSize(find.byKey(const ValueKey("chainPanel"))).height;
-      await tester.drag(find.text("Chain").last, const Offset(0, -60));
+      await tester.drag(
+          find.byKey(const ValueKey("chainTier")), const Offset(0, -60));
       await tester.pump();
       expect(tester.getSize(find.byKey(const ValueKey("chainPanel"))).height,
           greaterThan(before));
+      // Closed from its ⋯.
+      await tester.tap(find.byKey(const ValueKey("chainMore")));
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey("chainClose")));
+      await tester.pump();
       await tester.pump();
       expect(c.dockOpen(DockPanel.chain), isFalse);
       expect(tester.takeException(), isNull);

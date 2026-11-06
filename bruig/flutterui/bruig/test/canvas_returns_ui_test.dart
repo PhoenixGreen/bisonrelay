@@ -11,6 +11,7 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'canvas_chain_helpers.dart';
 
 // canvas_returns_ui_test.dart is sends and returns on the mixer: a dial per
 // return on each channel, the returns' own strips after the channels, adding
@@ -146,13 +147,13 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("devicePower-0")));
     await tester.pump(const Duration(milliseconds: 100));
     expect(c.returnOf("returnA")!.devices.single.on, isFalse);
+    await openAdd(tester, find.byKey(const ValueKey("addDeviceOpen")));
     var add = find.byKey(const ValueKey("addDevice-delay"));
-    await tester.ensureVisible(add);
-    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(add);
     await tester.pump(const Duration(milliseconds: 300));
     expect(c.returnOf("returnA")!.devices.map((d) => d.kind),
         [DeviceKind.reverb, DeviceKind.delay]);
+    await revealInMenu(tester, "deviceRemove-0");
     var remove = find.byKey(const ValueKey("deviceRemove-0"));
     await tester.ensureVisible(remove);
     await tester.pump(const Duration(milliseconds: 300));
