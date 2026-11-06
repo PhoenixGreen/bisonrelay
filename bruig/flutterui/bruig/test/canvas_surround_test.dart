@@ -671,7 +671,9 @@ void main() {
       expect(mixOf(c).balance, 0);
     });
 
-    testWidgets("in 5.1, dragged round behind; the wheel spreads it",
+    // Ken: a scroll over the Chain scrolls it; settings are set by a press
+    // and a drag. The spread is the Width number's.
+    testWidgets("in 5.1, dragged round behind; the wheel leaves it",
         (tester) async {
       var c = await open(tester, SpeakerLayout.surround51);
       await dragTo(tester, -135);
@@ -681,10 +683,8 @@ void main() {
           position: tester.getCenter(room),
           scrollDelta: const Offset(0, -40)));
       await tester.pump(const Duration(milliseconds: 100));
-      expect(mixOf(c).surround!.width, closeTo(70, 0.01));
+      expect(mixOf(c).surround!.width, 60);
       expect(find.text("L135°"), findsWidgets);
-      c.undo();
-      expect(mixOf(c).surround!.width, 60, reason: "each change undoable");
       // Double-clicked: the front pair again.
       await tester.tap(room);
       await tester.pump(const Duration(milliseconds: 50));

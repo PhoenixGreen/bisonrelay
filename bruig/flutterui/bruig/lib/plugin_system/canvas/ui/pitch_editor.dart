@@ -4,6 +4,8 @@ import 'package:bruig/plugin_system/canvas/model/pitch_edit.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_effects.dart'
     show noteNames;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+    show dragPointers;
 import 'package:bruig/plugin_system/canvas/ui/pitch_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/gestures.dart';
@@ -109,6 +111,7 @@ class _PitchEditorState extends State<PitchEditor> {
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: GestureDetector(
+                          supportedDevices: dragPointers,
                           key: const ValueKey("pitchGrid"),
                           behavior: HitTestBehavior.opaque,
                           dragStartBehavior: DragStartBehavior.down,

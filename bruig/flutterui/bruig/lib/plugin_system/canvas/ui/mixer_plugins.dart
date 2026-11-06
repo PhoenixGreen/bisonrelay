@@ -192,6 +192,117 @@ List<Widget> deviceMoveButtons(
   ];
 }
 
+/// duplicateDevice puts a copy of device [index] of [owner]'s chain after
+/// it, with an id of its own, as one undo step.
+void duplicateDevice(CanvasController c, String owner, int index) {
+  var now = withDeviceIds(c.devicesOf(owner));
+  if (index >= now.length) return;
+  c.beginInteraction();
+  c.setDevicesOf(
+      owner, withDeviceIds([...now]..insert(index + 1, now[index].withId(""))));
+  c.endInteraction();
+}
+
+/// resetDevice sets device [index] of [owner]'s chain back to a new one's
+/// settings, keeping its place, its switch and what it listens to.
+void resetDevice(CanvasController c, String owner, int index) {
+  var now = c.devicesOf(owner);
+  if (index >= now.length) return;
+  var d = now[index];
+  c.beginInteraction();
+  c.setDevicesOf(
+      owner,
+      [...now]..[index] =
+          MixDevice(d.kind, on: d.on, id: d.id, source: d.source));
+  c.endInteraction();
+}
+
+/// chainMenuStyle is a menu of the Chain's, as the prototype draws them:
+/// a dark panel with a fine edge, rounded, close-set.
+MenuStyle chainMenuStyle(MixerLook look) => MenuStyle(
+      backgroundColor: WidgetStatePropertyAll(Color.alphaBlend(
+          look.colors.primary.withValues(alpha: 0.07), look.studio.raised)),
+      surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+      side: WidgetStatePropertyAll(BorderSide(color: look.studio.edge)),
+      shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+      padding: const WidgetStatePropertyAll(EdgeInsets.all(4)),
+      elevation: const WidgetStatePropertyAll(6),
+      shadowColor: const WidgetStatePropertyAll(Color(0xAA000000)),
+    );
+
+/// chainMenuItemStyle is one line of such a menu: small text, lit in the
+/// accent under the pointer.
+ButtonStyle chainMenuItemStyle(MixerLook look) => ButtonStyle(
+      textStyle: const WidgetStatePropertyAll(
+          TextStyle(fontSize: 12, fontWeight: FontWeight.w400)),
+      minimumSize: const WidgetStatePropertyAll(Size(170, 26)),
+      maximumSize: const WidgetStatePropertyAll(Size(double.infinity, 28)),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding:
+          const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8)),
+      visualDensity: VisualDensity.compact,
+      shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(5))),
+      overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+      backgroundColor: WidgetStateProperty.resolveWith((s) => s
+              .contains(WidgetState.disabled)
+          ? null
+          : s.contains(WidgetState.hovered) || s.contains(WidgetState.focused)
+              ? look.colors.primary
+              : null),
+      foregroundColor: WidgetStateProperty.resolveWith((s) => s
+              .contains(WidgetState.disabled)
+          ? look.studio.muted
+          : s.contains(WidgetState.hovered) || s.contains(WidgetState.focused)
+              ? look.colors.onPrimary
+              : look.studio.text),
+    );
+
+/// chainMenuItem is a line of a Chain menu: [text], and [hint] small at
+/// its right.
+Widget chainMenuItem(MixerLook look,
+        {Key? key,
+        required String text,
+        String? hint,
+        bool current = false,
+        VoidCallback? onPressed}) =>
+    MenuItemButton(
+      key: key,
+      style: chainMenuItemStyle(look),
+      onPressed: onPressed,
+      leadingIcon: current
+          ? Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                  color: look.colors.primary, shape: BoxShape.circle))
+          : null,
+      trailingIcon: hint == null
+          ? null
+          : Text(hint,
+              style: TextStyle(
+                  fontSize: 10,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                  color: look.studio.muted)),
+      child: Text(text),
+    );
+
+/// chainMenuHeading is a small capital heading in a Chain menu.
+Widget chainMenuHeading(MixerLook look, String text) => Padding(
+      padding: const EdgeInsets.fromLTRB(8, 5, 8, 3),
+      child: Text(text.toUpperCase(),
+          style: TextStyle(
+              fontSize: 9.5,
+              letterSpacing: 0.8,
+              fontWeight: FontWeight.w500,
+              color: look.studio.muted)),
+    );
+
+/// chainMenuDivider is a fine line between a Chain menu's groups.
+Widget chainMenuDivider(MixerLook look) => Divider(
+    height: 9, thickness: 1, indent: 2, endIndent: 2, color: look.studio.edge);
+
 /// DeviceFrame is one device in the chain: a bar along the top with its
 /// fold arrow, its power switch and its name, and under it the device -- or,
 /// folded, its name down the side and [folded], a meter or a reading.
@@ -244,6 +355,12 @@ class DeviceFrame extends StatelessWidget {
   /// colour.
   final bool glows;
 
+  /// onDuplicate and onReset, given, are its ⋯ menu's Duplicate and Reset
+  /// every setting, as the prototype's: a copy after it, and its settings
+  /// as a new one's.
+  final VoidCallback? onDuplicate;
+  final VoidCallback? onReset;
+
   const DeviceFrame({
     required this.id,
     required this.title,
@@ -267,6 +384,8 @@ class DeviceFrame extends StatelessWidget {
     this.accent,
     this.glows = false,
     this.help = "",
+    this.onDuplicate,
+    this.onReset,
     super.key,
   });
 
@@ -382,36 +501,86 @@ class DeviceFrame extends StatelessWidget {
         k.contains("Remove");
   }
 
-  /// _menuItems are [actions] that go behind ⋯, as items: the same keys,
-  /// their tooltips as their words.
-  List<Widget> _menuItems() {
-    var items = <Widget>[];
+  /// _menuItems are its ⋯ menu, as the prototype's: its name; moving it,
+  /// a copy and its settings reset; what else [actions] keeps there; what
+  /// it does; and, last, taking it out. The actions keep their keys.
+  List<Widget> _menuItems(MixerLook look) {
+    var moves = <Widget>[], others = <Widget>[], removes = <Widget>[];
+    String? hintOf(VoidCallback? onPressed, bool left) =>
+        onPressed != null ? null : (left ? "first" : "last");
     for (var w in actions.where(_inMenu)) {
       if (w is DeviceMove) {
         for (var (left, can) in [(true, w.canLeft), (false, w.canRight)]) {
-          items.add(MenuItemButton(
-            key: ValueKey("deviceMove${left ? "Left" : "Right"}-${w.id}"),
-            leadingIcon:
-                Icon(left ? Icons.chevron_left : Icons.chevron_right, size: 16),
-            onPressed: !can
-                ? null
-                : w.onMove == null
-                    ? w.onSwap
-                    : () => w.onMove!(left ? -1 : 1),
-            child: Text(left ? "Move earlier in the chain" : "Move later"),
-          ));
+          VoidCallback? go = !can
+              ? null
+              : w.onMove == null
+                  ? w.onSwap
+                  : () => w.onMove!(left ? -1 : 1);
+          moves.add(chainMenuItem(look,
+              key: ValueKey("deviceMove${left ? "Left" : "Right"}-${w.id}"),
+              text: left ? "Move left" : "Move right",
+              hint: hintOf(go, left),
+              onPressed: go));
         }
       } else if (w is IconButton) {
-        items.add(MenuItemButton(
-          key: w.key,
-          leadingIcon:
-              w.icon is Icon ? Icon((w.icon as Icon).icon, size: 16) : null,
-          onPressed: w.onPressed,
-          child: Text(w.tooltip ?? ""),
-        ));
+        var k =
+            w.key is ValueKey<String> ? (w.key as ValueKey<String>).value : "";
+        var left = k.startsWith("deviceLeft-");
+        if (left || k.startsWith("deviceRight-")) {
+          moves.add(chainMenuItem(look,
+              key: w.key,
+              text: left ? "Move left" : "Move right",
+              hint: hintOf(w.onPressed, left),
+              onPressed: w.onPressed));
+        } else if (k.contains("Remove")) {
+          removes.add(chainMenuItem(look,
+              key: w.key, text: "Remove", onPressed: w.onPressed));
+        } else {
+          others.add(chainMenuItem(look,
+              key: w.key, text: w.tooltip ?? "", onPressed: w.onPressed));
+        }
       }
     }
-    return items;
+    var top = [
+      ...moves,
+      if (onDuplicate != null)
+        chainMenuItem(look,
+            key: ValueKey("deviceDuplicate-$id"),
+            text: "Duplicate",
+            onPressed: onDuplicate),
+      if (onReset != null)
+        chainMenuItem(look,
+            key: ValueKey("deviceReset-$id"),
+            text: "Reset every setting",
+            onPressed: onReset),
+      ...others,
+    ];
+    if (top.isEmpty && removes.isEmpty) return const [];
+    return [
+      chainMenuHeading(look, title),
+      ...top,
+      if (help.isNotEmpty) ...[
+        chainMenuDivider(look),
+        SubmenuButton(
+          key: ValueKey("deviceAbout-$id"),
+          style: chainMenuItemStyle(look),
+          menuStyle: chainMenuStyle(look),
+          menuChildren: [
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: SizedBox(
+                width: 240,
+                child: Text(help,
+                    style: TextStyle(
+                        fontSize: 11.5, height: 1.4, color: look.studio.text)),
+              ),
+            ),
+          ],
+          child: const Text("What it does"),
+        ),
+      ],
+      if (removes.isNotEmpty) ...[chainMenuDivider(look), ...removes],
+    ];
   }
 
   /// _bar is the card's top: its power dot, its family's mark, its name in
@@ -423,7 +592,8 @@ class DeviceFrame extends StatelessWidget {
       for (var a in actions)
         if (!_inMenu(a)) a
     ];
-    var menu = _menuItems();
+    var look = MixerLook.of(context);
+    var menu = _menuItems(look);
     Widget small(Widget child) => IconButtonTheme(
           data: IconButtonThemeData(
               style: IconButton.styleFrom(
@@ -482,6 +652,7 @@ class DeviceFrame extends StatelessWidget {
           for (var a in shown) small(a),
           if (help.isNotEmpty)
             MenuAnchor(
+              style: chainMenuStyle(look),
               builder: (context, controller, _) => small(IconButton(
                 key: ValueKey("deviceHelp-$id"),
                 icon: const Icon(Icons.help_outline),
@@ -495,13 +666,17 @@ class DeviceFrame extends StatelessWidget {
                     width: 240,
                     child: Text(help,
                         key: ValueKey("deviceHelpText-$id"),
-                        style: const TextStyle(fontSize: 11.5, height: 1.4)),
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            height: 1.4,
+                            color: look.studio.text)),
                   ),
                 ),
               ],
             ),
           if (menu.isNotEmpty)
             MenuAnchor(
+              style: chainMenuStyle(look),
               builder: (context, controller, _) => small(IconButton(
                 key: ValueKey("deviceMore-$id"),
                 tooltip: "Move or remove",
@@ -1476,50 +1651,35 @@ class _EqDeviceState extends State<EqDevice>
 
   Widget _graph(Eq eq) => LayoutBuilder(builder: (context, box) {
         var w = box.maxWidth, h = box.maxHeight;
-        return Listener(
-          // The wheel over a handle is its Q: how wide a bell is, how sharp
-          // a cut's corner.
-          onPointerSignal: (e) {
-            if (e is! PointerScrollEvent) return;
-            var slot = _nearest(eq, e.localPosition, w, h, 18);
-            if (slot == null ||
-                slot.kind == EqKind.lowShelf ||
-                slot.kind == EqKind.highShelf) {
-              return;
-            }
-            var b = eq.band(slot);
-            var q =
-                (b.q * (e.scrollDelta.dy > 0 ? 0.9 : 1 / 0.9)).clamp(0.1, 10.0);
-            _band(slot, b.copyWith(q: q));
+        // Set by a press and a drag only: a wheel or a trackpad's scroll
+        // over it scrolls the chain (Ken). A band's Q is its knob.
+        return GestureDetector(
+          key: const ValueKey("eqCurve"),
+          supportedDevices: dragPointers,
+          // The handle is chosen where the press lands, not where the drag
+          // is recognised: in the sideways-scrolling chain that is a
+          // little way off, past the handle.
+          onPanDown: (d) => setState(() {
+            _dragging = _nearest(eq, d.localPosition, w, h, 24);
+            if (_dragging != null) _picked = _dragging;
+          }),
+          onPanCancel: () => setState(() => _dragging = null),
+          // Moved from the start: what was moved while the drag was being
+          // recognised arrives with it, not as an update.
+          onPanStart: (d) => _moveTo(d.localPosition, w, h),
+          onPanUpdate: (d) => _moveTo(d.localPosition, w, h),
+          onPanEnd: (_) {
+            if (_dragging != null) strip.commit();
+            setState(() => _dragging = null);
           },
-          child: GestureDetector(
-            key: const ValueKey("eqCurve"),
-            supportedDevices: dragPointers,
-            // The handle is chosen where the press lands, not where the drag
-            // is recognised: in the sideways-scrolling chain that is a
-            // little way off, past the handle.
-            onPanDown: (d) => setState(() {
-              _dragging = _nearest(eq, d.localPosition, w, h, 24);
-              if (_dragging != null) _picked = _dragging;
-            }),
-            onPanCancel: () => setState(() => _dragging = null),
-            // Moved from the start: what was moved while the drag was being
-            // recognised arrives with it, not as an update.
-            onPanStart: (d) => _moveTo(d.localPosition, w, h),
-            onPanUpdate: (d) => _moveTo(d.localPosition, w, h),
-            onPanEnd: (_) {
-              if (_dragging != null) strip.commit();
-              setState(() => _dragging = null);
-            },
-            onDoubleTapDown: (d) {
-              var slot = _nearest(eq, d.localPosition, w, h, 14);
-              if (slot == null || slot.isCut) return;
-              _band(slot, eq.band(slot).copyWith(gainDb: 0));
-            },
-            child: CustomPaint(
-              size: Size(w, h),
-              painter: _EqGraph(eq, _picked, _spectrum, _x, _y, _handle),
-            ),
+          onDoubleTapDown: (d) {
+            var slot = _nearest(eq, d.localPosition, w, h, 14);
+            if (slot == null || slot.isCut) return;
+            _band(slot, eq.band(slot).copyWith(gainDb: 0));
+          },
+          child: CustomPaint(
+            size: Size(w, h),
+            painter: _EqGraph(eq, _picked, _spectrum, _x, _y, _handle),
           ),
         );
       });
@@ -2839,7 +2999,11 @@ class _MeterDeviceState extends State<MeterDevice>
   Widget build(BuildContext context) {
     Widget pair(double width) =>
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          for (var (side, db) in [("L", _now.$1), ("R", _now.$2)]) ...[
+          for (var (i, (side, db))
+              in [("L", _now.$1), ("R", _now.$2)].indexed) ...[
+            // A gap between the two, not after them: folded, they fill
+            // the fold's 26 exactly.
+            if (i > 0) const SizedBox(width: 4),
             SizedBox(
               width: width,
               child: CustomPaint(
@@ -2847,7 +3011,6 @@ class _MeterDeviceState extends State<MeterDevice>
                   size: Size.infinite,
                   painter: _LedMeter(db)),
             ),
-            const SizedBox(width: 4),
           ],
         ]);
     var clipped = _loudest.$1 > -0.1 || _loudest.$2 > -0.1;
@@ -2859,7 +3022,7 @@ class _MeterDeviceState extends State<MeterDevice>
       onFold: widget.onFold,
       width: MeterDevice.width,
       height: widget.height,
-      foldedBody: pair(12),
+      foldedBody: pair(11),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         child: Column(children: [
@@ -3719,6 +3882,8 @@ class ParamDevice extends StatelessWidget {
       id: deviceKey(deviceIdAt(devices, index)),
       title: device.kind.label,
       help: deviceAbout(device.kind),
+      onDuplicate: () => duplicateDevice(controller, owner, index),
+      onReset: () => resetDevice(controller, owner, index),
       skin: skin,
       on: device.on,
       onPower: (v) => write(device.switched(v)),
@@ -4265,9 +4430,22 @@ class MidiEffectDevice extends StatelessWidget {
     }
 
     var params = effect.kind.params;
+    void edit(List<MidiEffect> Function(List<MidiEffect>) change) {
+      controller.beginInteraction();
+      controller.setChannelPart(
+          channel,
+          (p) => index >= p.effects.length
+              ? p
+              : p.copyWith(effects: change([...p.effects])));
+      controller.endInteraction();
+    }
+
     return DeviceFrame(
       id: "midi$index",
       title: effect.kind.label,
+      onDuplicate: () => edit((e) => e..insert(index + 1, e[index])),
+      onReset: () =>
+          edit((e) => e..[index] = MidiEffect(e[index].kind, on: e[index].on)),
       help: "Done to the notes before the instrument plays them.",
       skin: DeviceSkin.silver,
       icon: Icons.grid_view,
@@ -4645,6 +4823,8 @@ class _ListenerDeviceState extends State<ListenerDevice>
       id: deviceKey(deviceIdAt(devices, widget.index)),
       title: device.kind.label,
       help: deviceAbout(device.kind),
+      onDuplicate: () => duplicateDevice(c, widget.owner, widget.index),
+      onReset: () => resetDevice(c, widget.owner, widget.index),
       skin: skin,
       // Its screen is all of it, and its few settings: it only listens.
       display: body,

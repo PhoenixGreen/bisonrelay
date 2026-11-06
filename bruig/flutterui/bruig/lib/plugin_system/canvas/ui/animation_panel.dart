@@ -172,6 +172,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
           child: MouseRegion(
             cursor: SystemMouseCursors.resizeUpDown,
             child: GestureDetector(
+              supportedDevices: dragPointers,
               key: const ValueKey("animationGrip"),
               behavior: HitTestBehavior.opaque,
               onVerticalDragUpdate: (d) => resize(widget.height - d.delta.dy),
@@ -716,6 +717,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
           child: MouseRegion(
             cursor: SystemMouseCursors.resizeLeftRight,
             child: GestureDetector(
+              supportedDevices: dragPointers,
               key: const ValueKey("animKeysGrip"),
               behavior: HitTestBehavior.opaque,
               onHorizontalDragUpdate: (d) => setState(() => _keysWidth =
@@ -1362,6 +1364,7 @@ class _KeysEditorState extends State<_KeysEditor> {
               SizedBox(
                 width: trackWidth,
                 child: GestureDetector(
+                  supportedDevices: dragPointers,
                   key: ValueKey("animKeysRow-${prop.name}"),
                   behavior: HitTestBehavior.opaque,
                   // The key under the press is the one dragged, not

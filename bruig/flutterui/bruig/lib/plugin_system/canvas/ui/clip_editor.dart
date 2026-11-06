@@ -1516,6 +1516,7 @@ class _SampleViewState extends State<_SampleView>
         var markers = clip.warp ? clip.markers : const <WarpMarker>[];
         var top = _rulerH + (clip.warp ? _markersH : 0);
         return GestureDetector(
+          supportedDevices: dragPointers,
           key: const ValueKey("clipRuler"),
           behavior: HitTestBehavior.opaque,
           dragStartBehavior: DragStartBehavior.down,

@@ -19,7 +19,12 @@ Future<void> revealInMenu(WidgetTester tester, String key) async {
     await tester.pump();
     await tester.tap(more);
     await tester.pump();
-    if (find.byKey(ValueKey(key)).evaluate().isNotEmpty) return;
+    if (find.byKey(ValueKey(key)).evaluate().isNotEmpty) {
+      // A long menu in a short window scrolls: what is wanted, in sight.
+      await tester.ensureVisible(find.byKey(ValueKey(key)));
+      await tester.pump();
+      return;
+    }
     // Not this one's: shut it again.
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pump();

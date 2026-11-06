@@ -376,6 +376,55 @@ void main() {
       expect(c.instrumentShown, isFalse);
     });
 
+    // Ken: "Plays like" showed the keys whatever it was set to.
+    testWidgets("it plays like a keyboard, drum pads, a guitar or a bass",
+        (tester) async {
+      var engine = FakeEngine({});
+      var c = CanvasController(
+          CanvasDocument(frames: 100, elements: [
+            AudioElement(const ElementBase(id: "p", name: "Keys"),
+                clip: const MediaClip(timed: true),
+                instrument: const InstrumentPart()),
+          ]),
+          audioEngine: engine);
+      addTearDown(c.dispose);
+      c.showInstrument("p");
+      await show(tester, c);
+      expect(
+          find.byKey(const ValueKey("instrumentSurface-drums")), findsNothing);
+      Future<int> press(Offset at) async {
+        engine.notes.clear();
+        var keys = tester.getRect(find.byKey(const ValueKey("instrumentKeys")));
+        var g = await tester.startGesture(keys.topLeft + at,
+            kind: PointerDeviceKind.mouse);
+        await tester.pump();
+        await g.up();
+        await tester.pump();
+        return engine.notes.firstWhere((n) => n.$3 > 0).$2;
+      }
+
+      // Its Zones, as the prototype's: the built-in sound is one.
+      expect(find.byKey(const ValueKey("instrumentZonesCard")), findsOneWidget);
+      // The pads: wide and short, eight by two -- the first, the crash.
+      await pick(tester, "instrumentLook-drums");
+      expect(find.byKey(const ValueKey("instrumentSurface-drums")),
+          findsOneWidget);
+      expect(await press(const Offset(8, 8)), drumPads.first.$1);
+      // A guitar's neck: its lowest string open, at the bottom left.
+      await pick(tester, "instrumentLook-guitar");
+      expect(find.byKey(const ValueKey("instrumentSurface-guitar")),
+          findsOneWidget);
+      var keys = tester.getRect(find.byKey(const ValueKey("instrumentKeys")));
+      expect(await press(Offset(4, keys.height - 4)), guitarStrings.first);
+      await pick(tester, "instrumentLook-bass");
+      expect(
+          find.byKey(const ValueKey("instrumentSurface-bass")), findsOneWidget);
+      expect(await press(Offset(4, keys.height - 4)), bassStrings.first);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets("it fits, at every size and text size", (tester) async {
       var failures = <String>[];
       for (var scale in [1.0, 1.25, 1.5]) {

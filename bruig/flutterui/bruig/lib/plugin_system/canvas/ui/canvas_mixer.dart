@@ -1085,10 +1085,42 @@ class _CanvasMixerState extends State<CanvasMixer>
               _ChainRail(controller: controller, channel: key, theme: theme),
             ]);
       }
+      // The chain's Macro, kept in its own zone at the start, as the
+      // prototype's Macros: knobs that turn other knobs.
+      var macroAt = controller
+          .devicesOf(key)
+          .indexWhere((d) => d.kind == DeviceKind.macro);
       var chain = <Widget>[
-        // A MIDI channel's In and its MIDI effects, before its instrument plays:
-        // what comes in, and what is done to the notes.
+        if (lane != null || isMaster || isScene || ret != null) ...[
+          chainZone("Macros", const Color(0xFFA7A3B8), h),
+          if (macroAt >= 0)
+            deviceAt(macroAt)
+          else
+            device(
+                "macros",
+                // Folded until opened, as the prototype starts it.
+                (f, fold) => _MacrosStart(
+                    controller: controller,
+                    owner: key,
+                    folded: !f,
+                    onFold: fold,
+                    height: h,
+                    skin: skin)),
+        ],
+        // A MIDI channel's notes -- its part and its note clips -- then its
+        // In and its MIDI effects, before its instrument plays: what comes
+        // in, and what is done to the notes.
         if (lane != null && controller.instrumentChannel(key)) ...[
+          chainZone("Source", midiColour, h),
+          device(
+              "noteClips",
+              (f, fold) => NoteClipsDevice(
+                  controller: controller,
+                  channel: key,
+                  folded: f,
+                  onFold: fold,
+                  height: h,
+                  skin: skin)),
           chainZone("Before", midiColour, h),
           device(
               "midiIn",
@@ -1203,7 +1235,7 @@ class _CanvasMixerState extends State<CanvasMixer>
             else if (step == chainComp)
               comp
             else if (deviceIndexOf(controller.devicesOf(key), step) case var at
-                when at >= 0)
+                when at >= 0 && at != macroAt)
               deviceAt(at),
           ],
           if (lane != null) _junction(controller.chainOf(key).length, h, theme),
@@ -1215,7 +1247,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                 height: h),
         ] else if (ret != null) ...[
           for (var i = 0; i < controller.devicesOf(key).length; i++)
-            deviceAt(i),
+            if (i != macroAt) deviceAt(i),
           AddDeviceSlot(
               key: const ValueKey("addDeviceSlot"),
               controller: controller,
@@ -2334,6 +2366,65 @@ class _ChainRail extends StatelessWidget {
 
 /// chainZone marks where a part of a chain begins, as the prototype does:
 /// its name up the side, a line of [colour] beside it.
+/// _MacrosStart is the Macros zone of a chain with no Macro yet: folded,
+/// as the prototype starts it; opened, a way to add one.
+class _MacrosStart extends StatelessWidget {
+  final CanvasController controller;
+  final String owner;
+  final bool folded;
+  final VoidCallback onFold;
+  final double height;
+  final DeviceSkin skin;
+  const _MacrosStart(
+      {required this.controller,
+      required this.owner,
+      required this.folded,
+      required this.onFold,
+      required this.height,
+      required this.skin});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    return DeviceFrame(
+      id: "macros",
+      title: "Macros",
+      help: deviceAbout(DeviceKind.macro),
+      skin: skin,
+      icon: Icons.tune,
+      accent: const Color(0xFFA7A3B8),
+      folded: folded,
+      onFold: onFold,
+      width: 240,
+      height: height,
+      foldedBody: const SizedBox(),
+      body: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+              "Four knobs, each turning any knobs of this chain you "
+              "give it -- one move for many settings.",
+              style: TextStyle(
+                  fontSize: 11, height: 1.35, color: look.studio.muted)),
+          const SizedBox(height: 10),
+          FilledButton.tonal(
+            key: const ValueKey("macrosAdd"),
+            onPressed: () {
+              controller.beginInteraction();
+              controller.setDevicesOf(owner, [
+                ...controller.devicesOf(owner),
+                const MixDevice(DeviceKind.macro),
+              ]);
+              controller.endInteraction();
+            },
+            child: const Text("Add macros"),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
 Widget chainZone(String label, Color colour, double height) => Builder(
       builder: (context) {
         var look = MixerLook.of(context);
@@ -2675,22 +2766,16 @@ class _PannerDevice extends StatelessWidget {
         ),
       );
       if (placed == null) {
-        view = Listener(
-          // The wheel over the room: its width, in surround.
-          onPointerSignal: (e) {
-            if (!surround || e is! PointerScrollEvent) return;
-            onChanged(mix.withSurround(
-                pan.copyWith(width: pan.width - e.scrollDelta.dy / 4)));
-          },
-          child: GestureDetector(
-            supportedDevices: dragPointers,
-            onPanStart: (d) => point(d.localPosition, room),
-            onPanUpdate: (d) => point(d.localPosition, room),
-            onPanEnd: (_) => onCommit(),
-            onDoubleTap: () => onChanged(
-                surround ? mix.withSurround(null) : mix.copyWith(balance: 0)),
-            child: MouseRegion(cursor: SystemMouseCursors.precise, child: view),
-          ),
+        // Set by a press and a drag only: a wheel or a trackpad's scroll
+        // over it scrolls the chain (Ken). Its width is the Width number's.
+        view = GestureDetector(
+          supportedDevices: dragPointers,
+          onPanStart: (d) => point(d.localPosition, room),
+          onPanUpdate: (d) => point(d.localPosition, room),
+          onPanEnd: (_) => onCommit(),
+          onDoubleTap: () => onChanged(
+              surround ? mix.withSurround(null) : mix.copyWith(balance: 0)),
+          child: MouseRegion(cursor: SystemMouseCursors.precise, child: view),
         );
       }
       return view;

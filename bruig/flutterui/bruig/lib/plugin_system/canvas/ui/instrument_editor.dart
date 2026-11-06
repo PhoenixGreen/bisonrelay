@@ -2,7 +2,12 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
+import 'package:bruig/plugin_system/canvas/model/session.dart' show SessionClip;
 import 'package:bruig/plugin_system/canvas/model/devices.dart' show DeviceGroup;
+import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart'
+    show loadSoundBank;
+import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
+import 'package:bruig/plugin_system/canvas/render/instrument_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
@@ -79,6 +84,11 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
   /// _find is what the sound browser is filtered by.
   String _find = "";
 
+  /// _font is the sound bank, read for the Zones card once its sound is
+  /// the bank's; _fontAsked whether it has been asked for.
+  SoundFont? _font;
+  bool _fontAsked = false;
+
   void _set(InstrumentShape Function(InstrumentShape) change,
       {bool transient = false}) {
     c.beginInteraction();
@@ -154,8 +164,14 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
             const Spacer(),
             Flexible(
               child: Text(
-                  "Your computer keys play it: A to K, "
-                  "with W E T Y U for the black keys",
+                  switch (part.look) {
+                    InstrumentLook.drums =>
+                      "Your computer keys play the pads: A to ' along the row",
+                    InstrumentLook.keyboard => "Your computer keys play it: "
+                        "A to K, with W E T Y U for the black keys",
+                    _ => "Press a string at a fret, or play it from your "
+                        "computer keys: A to K",
+                  },
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: muted),
@@ -324,6 +340,7 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
           _filterCard(look, shape),
           _lfoCard(look, shape),
           _voicesCard(look, shape),
+          _zonesCard(look),
         ];
         if (room.maxWidth >= least * cards.length + 40) {
           return Padding(
@@ -347,6 +364,66 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
           ],
         );
       });
+
+  /// _zonesCard is the prototype's Zones: the samples the sound is made
+  /// of, drawn by key along and by how hard up, with how many layers a
+  /// key has by velocity and how many ranges the keys are split into.
+  Widget _zonesCard(MixerLook look) {
+    const accent = Color(0xFFA7A3B8);
+    var part = c.instrumentOf(channel)?.instrument;
+    var bank = part?.sound == InstrumentSound.bank;
+    if (bank && !_fontAsked) {
+      _fontAsked = true;
+      loadSoundBank().then((f) {
+        if (mounted) setState(() => _font = f);
+      });
+    }
+    var map = bank && part != null && _font != null
+        ? zoneMap(_font!, part.bank, part.program)
+        : null;
+    var muted = TextStyle(fontSize: 10, color: look.studio.muted);
+    var strong = TextStyle(fontSize: 10.5, color: look.studio.text);
+    Widget fact(String label, String value) => Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Row(children: [
+            SizedBox(width: 74, child: Text(label, style: muted)),
+            Expanded(
+                child: Text(value,
+                    key: ValueKey("instrumentZones-$label"),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: strong)),
+          ]),
+        );
+    return _card(look,
+        id: "instrumentZonesCard",
+        title: "Zones",
+        accent: accent,
+        picture: CustomPaint(
+            painter: _ZonesPainter(map,
+                accent: accent,
+                back: look.studio.display,
+                text: look.studio.muted)),
+        knobs: [
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (map == null) ...[
+              fact("Layers", bank ? "reading the bank…" : "one"),
+              fact("Key ranges", bank ? "" : "one, every key"),
+              Text(
+                  bank
+                      ? "From the sound bank: each zone a sample, a key "
+                          "range and a velocity range."
+                      : "The built-in sound is made, not sampled: one zone "
+                          "over every key and velocity.",
+                  style: muted),
+            ] else ...[
+              fact("Layers", "${map.layers} by velocity"),
+              fact("Key ranges", "${map.ranges}"),
+              fact("Round robin", "off"),
+            ],
+          ]),
+        ]);
+  }
 
   /// _card is one of the editor's cards, as the prototype draws them: its
   /// colour along its top, its title in capitals, a picture, its knobs on a
@@ -489,6 +566,7 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
         var size = room.biggest;
         var points = envelopePoints(s, size);
         return GestureDetector(
+          supportedDevices: dragPointers,
           key: const ValueKey("instrumentEnvelopeGraph"),
           // The dot nearest where it was pressed, not where the drag began.
           dragStartBehavior: DragStartBehavior.down,
@@ -582,6 +660,7 @@ class _InstrumentEditorState extends State<InstrumentEditor> {
       picture: LayoutBuilder(builder: (context, room) {
         var w = room.maxWidth;
         return GestureDetector(
+          supportedDevices: dragPointers,
           key: const ValueKey("instrumentFilterGraph"),
           dragStartBehavior: DragStartBehavior.down,
           behavior: HitTestBehavior.opaque,
@@ -806,7 +885,7 @@ class _KeyboardState extends State<_Keyboard> {
   /// _octave is the C the keys start from: 48 is C3.
   int _octave = 48;
   bool _byHeight = true;
-  int _velocity = 100;
+  final int _velocity = 100;
   int _chord = 0;
   bool _hold = false;
   bool _sustain = false;
@@ -862,9 +941,60 @@ class _KeyboardState extends State<_Keyboard> {
     }
     var i = ch.length == 1 ? keyRow.indexOf(ch) : -1;
     if (i < 0) return KeyEventResult.ignored;
-    if (e is KeyDownEvent) _on(_octave + i, _byHeight ? 100 : _velocity);
-    if (e is KeyUpEvent) _off(_octave + i);
+    // Drum pads by their place along the row; anything else from the
+    // octave's C.
+    var drums = widget.element.instrument?.look == InstrumentLook.drums;
+    if (drums && i >= drumPads.length) return KeyEventResult.ignored;
+    var key = drums ? drumPads[i].$1 : _octave + i;
+    if (e is KeyDownEvent) _on(key, _byHeight ? 100 : _velocity);
+    if (e is KeyUpEvent) _off(key);
     return KeyEventResult.handled;
+  }
+
+  /// _surface is the pads or the neck [size] big, played as the keys are:
+  /// pressed, dragged across, let go -- lower on a pad, harder.
+  Widget _surface(InstrumentPart part, Size size, MixerLook look) {
+    var layout = keyboardLayout(part, Offset.zero & size, titled: false);
+    int velocity(double depth) =>
+        _byHeight ? (40 + 87 * depth).round() : _velocity;
+    int? down;
+    return Listener(
+      key: const ValueKey("instrumentKeys"),
+      onPointerDown: (e) {
+        _focus.requestFocus();
+        var hit = layout.keyAt(e.localPosition);
+        if (hit == null) return;
+        if (_hold && _held.containsKey(hit.$1)) {
+          _off(hit.$1, force: true);
+          setState(() {});
+          return;
+        }
+        down = hit.$1;
+        _on(hit.$1, velocity(hit.$2));
+      },
+      onPointerMove: (e) {
+        var hit = layout.keyAt(e.localPosition);
+        if (hit == null || hit.$1 == down) return;
+        if (down != null) _off(down!);
+        down = hit.$1;
+        _on(hit.$1, velocity(hit.$2));
+      },
+      onPointerUp: (_) {
+        if (down != null) _off(down!);
+        down = null;
+      },
+      onPointerCancel: (_) {
+        if (down != null) _off(down!);
+        down = null;
+      },
+      child: CustomPaint(
+        key: ValueKey("instrumentSurface-${part.look.name}"),
+        size: size,
+        painter: _SurfacePainter(layout, part,
+            down: {for (var n in _held.values) ...n},
+            accent: look.colors.primary),
+      ),
+    );
   }
 
   @override
@@ -1028,9 +1158,13 @@ class _KeyboardState extends State<_Keyboard> {
                   ),
                 ),
               ),
-            // The keys.
+            // The keys -- or the pads, or the neck, as it plays like.
             Expanded(
               child: LayoutBuilder(builder: (context, box) {
+                var part = widget.element.instrument;
+                if (part != null && part.look != InstrumentLook.keyboard) {
+                  return _surface(part, box.biggest, look);
+                }
                 var layout = _KeysLayout(box.biggest, _octave);
                 int? at(Offset p) => layout.keyAt(p);
                 int velocity(Offset p) => _byHeight
@@ -1086,6 +1220,29 @@ class _KeyboardState extends State<_Keyboard> {
   }
 }
 
+/// _SurfacePainter draws drum pads or a neck, as the canvas draws an
+/// instrument element, the notes held lit.
+class _SurfacePainter extends CustomPainter {
+  final KeyboardLayout layout;
+  final InstrumentPart part;
+  final Set<int> down;
+  final Color accent;
+  _SurfacePainter(this.layout, this.part,
+      {required this.down, required this.accent});
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      paintPlayingSurface(canvas, layout, part, lit: down, accent: accent);
+
+  @override
+  bool shouldRepaint(_SurfacePainter old) =>
+      old.part != part ||
+      old.layout.board != layout.board ||
+      old.accent != accent ||
+      !old.down.containsAll(down) ||
+      !down.containsAll(old.down);
+}
+
 /// _Wheel is a bend or mod wheel: dragged up and down; the bend wheel
 /// springs back to the middle when let go.
 class _Wheel extends StatelessWidget {
@@ -1105,6 +1262,7 @@ class _Wheel extends StatelessWidget {
         var h = box.maxHeight;
         double at(Offset p) => (1 - p.dy / h).clamp(0.0, 1.0);
         return GestureDetector(
+          supportedDevices: dragPointers,
           onVerticalDragStart: (d) => onChanged(at(d.localPosition)),
           onVerticalDragUpdate: (d) => onChanged(at(d.localPosition)),
           onVerticalDragEnd: (_) {
@@ -1747,4 +1905,237 @@ class _InstrumentDeviceState extends State<InstrumentDevice> {
       body: const SizedBox(),
     );
   }
+}
+
+/// NoteClipsDevice is a MIDI channel's source, first in its chain as the
+/// prototype's Note clips: its part's notes, drawn small; how long it is
+/// and how many clips its slots hold; and the way into the piano roll.
+class NoteClipsDevice extends StatelessWidget {
+  final CanvasController controller;
+  final String channel;
+  final bool folded;
+  final VoidCallback onFold;
+  final double height;
+  final DeviceSkin skin;
+
+  const NoteClipsDevice({
+    required this.controller,
+    required this.channel,
+    required this.folded,
+    required this.onFold,
+    required this.height,
+    required this.skin,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var c = controller;
+    var studio = MixerLook.of(context).studio;
+    var part = c.instrumentOf(channel)?.instrument;
+    var notes = part?.notes ?? const <MidiNote>[];
+    var clips = [
+      for (var s in c.session.slots[channel] ?? const <SessionClip?>[])
+        if (s != null && s.midi) s
+    ];
+    var seconds = notes.isEmpty
+        ? 0.0
+        : notes.map((n) => n.start + n.length).reduce(math.max);
+    var beat = 60 / c.document.audio.tempo;
+    var bars = (seconds / beat / c.document.audio.beatsPerBar).ceil();
+    var muted = TextStyle(fontSize: 10, color: studio.muted);
+    var strong = TextStyle(fontSize: 10.5, color: studio.text);
+    Widget fact(String label, String value) => Row(children: [
+          SizedBox(width: 52, child: Text(label, style: muted)),
+          Flexible(
+              child: Text(value,
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: strong)),
+        ]);
+    return DeviceFrame(
+      id: "noteClips",
+      title: "Note clips",
+      help: "What the channel plays: its part on the timeline, and the note "
+          "clips in its slots. Open the piano roll to draw and edit notes.",
+      skin: skin,
+      icon: Icons.music_note,
+      accent: midiColour,
+      folded: folded,
+      onFold: onFold,
+      width: 300,
+      height: height,
+      actions: [
+        IconButton(
+          key: const ValueKey("noteClipsEdit"),
+          tooltip: "Open the piano roll",
+          icon: const Icon(Icons.open_in_new),
+          onPressed: () => c.openPianoRoll(channel),
+        ),
+      ],
+      summary: notes.isEmpty
+          ? "No notes"
+          : "${notes.length} notes · $bars bar${bars == 1 ? "" : "s"}",
+      foldedBody: const SizedBox(),
+      display: GestureDetector(
+        key: const ValueKey("noteClipsRoll"),
+        onDoubleTap: () => c.openPianoRoll(channel),
+        child: CustomPaint(
+          size: Size.infinite,
+          painter: _MiniRollPainter(notes,
+              accent: midiColour, back: studio.display, line: studio.edge),
+          child: notes.isEmpty
+              ? Center(
+                  child: Text("No notes yet: open the piano roll to draw some",
+                      textAlign: TextAlign.center, style: muted))
+              : null,
+        ),
+      ),
+      controls: (tier) => [
+        SizedBox(
+          width: 170,
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                fact(
+                    "Part",
+                    notes.isEmpty
+                        ? "empty"
+                        : "${notes.length} notes, $bars "
+                            "bar${bars == 1 ? "" : "s"}"),
+                const SizedBox(height: 3),
+                fact("Slots",
+                    clips.isEmpty ? "no note clips" : "${clips.length} clips"),
+              ]),
+        ),
+      ],
+      body: const SizedBox(),
+    );
+  }
+}
+
+/// _MiniRollPainter draws notes small: each a bar at its key and its time,
+/// the lowest note at the foot and the highest at the top.
+class _MiniRollPainter extends CustomPainter {
+  final List<MidiNote> notes;
+  final Color accent, back, line;
+  _MiniRollPainter(this.notes,
+      {required this.accent, required this.back, required this.line});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var r =
+        RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(4));
+    canvas.drawRRect(r, Paint()..color = back);
+    if (notes.isEmpty) return;
+    var low = notes.map((n) => n.key).reduce(math.min) - 1;
+    var high = notes.map((n) => n.key).reduce(math.max) + 1;
+    var end = notes.map((n) => n.start + n.length).reduce(math.max);
+    if (end <= 0) return;
+    var rows = math.max(1, high - low + 1);
+    var rowH = (size.height - 8) / rows;
+    var paint = Paint()..color = accent;
+    for (var n in notes) {
+      var x = 4 + (size.width - 8) * n.start / end;
+      var w = math.max(2.0, (size.width - 8) * n.length / end - 1);
+      var y = 4 + (high - n.key) * rowH;
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              Rect.fromLTWH(x, y, w, math.max(2.0, rowH - 1)),
+              const Radius.circular(1.5)),
+          paint..color = accent.withValues(alpha: n.muted ? 0.35 : 0.95));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_MiniRollPainter old) =>
+      !identical(old.notes, notes) || old.accent != accent || old.back != back;
+}
+
+/// ZoneMap is a sound's zones, as the Zones card draws them: which sample
+/// group plays at each key (21 to 108) and each band of velocity, and how
+/// many layers and key ranges that makes.
+class ZoneMap {
+  static const lowKey = 21, keys = 88, bands = 16;
+
+  /// cells are the group at each band (from the softest) of each key: the
+  /// same number, the same samples.
+  final List<List<int>> cells;
+  final int layers, ranges;
+  const ZoneMap(this.cells, this.layers, this.ranges);
+}
+
+final Map<(SoundFont, int, int), ZoneMap> _zoneMaps = {};
+
+/// zoneMap is [font]'s zones for the sound at [bank] and [program], worked
+/// out once.
+ZoneMap? zoneMap(SoundFont font, int bank, int program) {
+  var key = (font, bank, program);
+  if (_zoneMaps[key] case var m?) return m;
+  var preset = font.preset(bank, program);
+  if (preset == null) return null;
+  var groups = <String, int>{};
+  int groupOf(int k, int v) {
+    var names = [for (var z in font.zones(preset, k, v)) z.sample.name]..sort();
+    if (names.isEmpty) return -1;
+    return groups.putIfAbsent(names.join("|"), () => groups.length);
+  }
+
+  var cells = [
+    for (var k = 0; k < ZoneMap.keys; k++)
+      [
+        for (var b = 0; b < ZoneMap.bands; b++)
+          groupOf(ZoneMap.lowKey + k, 1 + b * 8)
+      ],
+  ];
+  // Layers: the most groups any one key changes through, softest to
+  // hardest; ranges: the groups along the keys, played moderately hard.
+  var layers = 1;
+  for (var col in cells) {
+    var n = col.where((g) => g >= 0).toSet().length;
+    if (n > layers) layers = n;
+  }
+  var ranges = 0, last = -2;
+  for (var col in cells) {
+    var g = col[12];
+    if (g >= 0 && g != last) ranges++;
+    last = g;
+  }
+  return _zoneMaps[key] = ZoneMap(cells, layers, math.max(1, ranges));
+}
+
+/// _ZonesPainter draws a ZoneMap: keys along, velocity up, each group of
+/// samples its own shade; with none, one zone over all of it.
+class _ZonesPainter extends CustomPainter {
+  final ZoneMap? map;
+  final Color accent, back, text;
+  _ZonesPainter(this.map,
+      {required this.accent, required this.back, required this.text});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = back);
+    var m = map;
+    if (m == null) {
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              (Offset.zero & size).deflate(6), const Radius.circular(3)),
+          Paint()..color = accent.withValues(alpha: 0.25));
+      return;
+    }
+    var w = size.width / ZoneMap.keys, h = size.height / ZoneMap.bands;
+    for (var (k, col) in m.cells.indexed) {
+      for (var (b, g) in col.indexed) {
+        if (g < 0) continue;
+        // Neighbouring groups told apart by how light they are.
+        var shade = 0.25 + 0.6 * ((g * 37) % 11) / 10;
+        canvas.drawRect(
+            Rect.fromLTWH(k * w, size.height - (b + 1) * h, w + 0.5, h + 0.5),
+            Paint()..color = accent.withValues(alpha: shade));
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ZonesPainter old) =>
+      old.map != map || old.accent != accent || old.back != back;
 }

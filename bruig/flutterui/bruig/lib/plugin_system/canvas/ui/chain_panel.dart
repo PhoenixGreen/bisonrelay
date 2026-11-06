@@ -2,12 +2,20 @@ import 'package:bruig/plugin_system/canvas/ui/chain_icons.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/devices.dart'
+    show MixDevice, withDeviceIds;
 import 'package:bruig/plugin_system/canvas/model/mix.dart' show sceneBusKey;
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
-    show DeviceTier;
+    show
+        DeviceFrame,
+        DeviceTier,
+        chainMenuDivider,
+        chainMenuItem,
+        chainMenuStyle,
+        dragPointers;
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/pitch_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
@@ -46,6 +54,9 @@ class ChainPanel extends StatefulWidget {
 class _ChainPanelState extends State<ChainPanel> {
   CanvasController get c => widget.controller;
 
+  /// _copied is a chain copied by the header's ⋯, to paste into another.
+  static List<MixDevice>? _copied;
+
   /// _dragFrom is the height and the pointer's place when a drag of the
   /// header began; measured from there, so no move between frames is lost.
   (double, double)? _dragFrom;
@@ -74,6 +85,7 @@ class _ChainPanelState extends State<ChainPanel> {
         height: widget.height,
         child: Column(children: [
           GestureDetector(
+            supportedDevices: dragPointers,
             behavior: HitTestBehavior.translucent,
             onVerticalDragStart: (d) =>
                 _dragFrom = (widget.height, d.globalPosition.dy),
@@ -276,6 +288,26 @@ extension on _ChainPanelState {
             onTap: null),
       ];
 
+  /// _soundOwner is the strip whose effects the Chain shows -- what Copy
+  /// and Paste work on -- or null showing motion.
+  String? get _soundOwner =>
+      c.chainShowsMotion ? null : c.effectsOf ?? c.effectsChannel;
+
+  /// _foldEvery folds every card the Chain shows, or opens every one, as
+  /// each card's own name does when pressed.
+  void _foldEvery(bool fold) {
+    var frames = <DeviceFrame>[];
+    void visit(Element e) {
+      if (e.widget case DeviceFrame f) frames.add(f);
+      e.visitChildElements(visit);
+    }
+
+    context.visitChildElements(visit);
+    for (var f in frames) {
+      if (f.folded != fold) f.onFold();
+    }
+  }
+
   /// _sizeControls are the header's right end: how much each device shows
   /// at this height, the heights to pick from, filling the window, and the
   /// rest behind its "more" button.
@@ -334,6 +366,7 @@ extension on _ChainPanelState {
         onTap: () => c.chainFull = !c.chainFull,
       ),
       MenuAnchor(
+        style: chainMenuStyle(look),
         builder: (context, menu, _) => _IconChip(
           id: "chainMore",
           icon: Icons.more_horiz,
@@ -343,14 +376,49 @@ extension on _ChainPanelState {
           onTap: () => menu.isOpen ? menu.close() : menu.open(),
         ),
         menuChildren: [
-          MenuItemButton(
-            key: const ValueKey("chainClose"),
-            onPressed: () {
-              c.animationOpen = false;
-              c.effectsOpen = false;
-            },
-            child: const Text("Close the Chain"),
-          ),
+          chainMenuItem(look,
+              key: const ValueKey("chainFoldAll"),
+              text: "Fold every device",
+              onPressed: () => _foldEvery(true)),
+          chainMenuItem(look,
+              key: const ValueKey("chainUnfoldAll"),
+              text: "Unfold every device",
+              onPressed: () => _foldEvery(false)),
+          if (_soundOwner case var owner?) ...[
+            chainMenuDivider(look),
+            chainMenuItem(look,
+                key: const ValueKey("chainCopy"),
+                text: "Copy this chain",
+                hint: "${c.devicesOf(owner).length} devices",
+                onPressed: () =>
+                    _ChainPanelState._copied = [...c.devicesOf(owner)]),
+            chainMenuItem(look,
+                key: const ValueKey("chainPaste"),
+                text: "Paste a chain here",
+                hint:
+                    _ChainPanelState._copied == null ? "nothing copied" : null,
+                onPressed: _ChainPanelState._copied == null
+                    ? null
+                    : () {
+                        // After this chain's own, each with an id of its own.
+                        c.beginInteraction();
+                        c.setDevicesOf(
+                            owner,
+                            withDeviceIds([
+                              ...c.devicesOf(owner),
+                              for (var d in _ChainPanelState._copied!)
+                                d.withId(""),
+                            ]));
+                        c.endInteraction();
+                      }),
+          ],
+          chainMenuDivider(look),
+          chainMenuItem(look,
+              key: const ValueKey("chainClose"),
+              text: "Close the Chain", onPressed: () {
+            c.animationOpen = false;
+            c.effectsOpen = false;
+          }),
         ],
       ),
     ];
@@ -484,7 +552,9 @@ class _ChainWho extends StatelessWidget {
       for (var e in c.document.elements)
         if (e is! AudioElement) e,
     ];
+    var shown = c.chainShowsMotion ? null : c.effectsOf ?? c.effectsChannel;
     return MenuAnchor(
+      style: chainMenuStyle(look),
       builder: (context, menu, _) => InkWell(
         key: const ValueKey("chainWho"),
         borderRadius: BorderRadius.circular(6),
@@ -522,39 +592,39 @@ class _ChainWho extends StatelessWidget {
       menuChildren: [
         _heading("Channels"),
         for (var lane in c.timelineChannels)
-          MenuItemButton(
-            key: ValueKey("chainWho-${lane.key}"),
-            onPressed: () => c.openEffects(lane.key),
-            child: Text(lane.name),
-          ),
+          chainMenuItem(look,
+              key: ValueKey("chainWho-${lane.key}"),
+              text: lane.name,
+              current: shown == lane.key,
+              onPressed: () => c.openEffects(lane.key)),
         _heading("Buses"),
         for (var r in c.document.returns)
-          MenuItemButton(
-            key: ValueKey("chainWho-${r.id}"),
-            onPressed: () => c.openEffects(r.id),
-            child: Text(r.name),
-          ),
-        MenuItemButton(
-          key: const ValueKey("chainWho-master"),
-          onPressed: () => c.openEffects(mixerMasterKey),
-          child: const Text("Master"),
-        ),
+          chainMenuItem(look,
+              key: ValueKey("chainWho-${r.id}"),
+              text: r.name,
+              current: shown == r.id,
+              onPressed: () => c.openEffects(r.id)),
+        chainMenuItem(look,
+            key: const ValueKey("chainWho-master"),
+            text: "Master",
+            current: shown == mixerMasterKey,
+            onPressed: () => c.openEffects(mixerMasterKey)),
         if (elements.isNotEmpty) _heading("Elements"),
         for (var e in elements)
-          MenuItemButton(
-            key: ValueKey("chainWho-${e.id}"),
-            onPressed: () {
-              c.selectOnly(e.id);
-              c.showChain(motion: true);
-            },
-            child: Text(e.name.isEmpty ? e.id : e.name),
-          ),
+          chainMenuItem(look,
+              key: ValueKey("chainWho-${e.id}"),
+              text: e.name.isEmpty ? e.id : e.name,
+              current: c.chainShowsMotion && c.selected?.id == e.id,
+              onPressed: () {
+            c.selectOnly(e.id);
+            c.showChain(motion: true);
+          }),
       ],
     );
   }
 
   Widget _heading(String text) => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
         child: Text(text.toUpperCase(),
             style: TextStyle(
                 fontSize: 9.5,

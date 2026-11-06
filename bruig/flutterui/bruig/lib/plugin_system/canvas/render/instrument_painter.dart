@@ -36,24 +36,32 @@ class KeyboardLayout {
 }
 
 /// keyboardLayout lays [part]'s keys, pads, or strings and frets out inside
-/// [bounds], one KeyRect per playable place.
-KeyboardLayout keyboardLayout(InstrumentPart part, Rect bounds) {
-  var inset = math.min(bounds.width, bounds.height) * 0.04;
+/// [bounds], one KeyRect per playable place. Without [titled] -- the
+/// instrument editor's, which names it elsewhere -- they fill [bounds],
+/// with no name strip and no case round them.
+KeyboardLayout keyboardLayout(InstrumentPart part, Rect bounds,
+    {bool titled = true}) {
+  var inset = titled ? math.min(bounds.width, bounds.height) * 0.04 : 0.0;
   var inner = bounds.deflate(inset);
-  var titleHeight = math.min(inner.height * 0.16, 22.0);
+  var titleHeight = titled ? math.min(inner.height * 0.16, 22.0) : 0.0;
   var title = Rect.fromLTWH(inner.left, inner.top, inner.width, titleHeight);
   var board = Rect.fromLTRB(
       inner.left, inner.top + titleHeight, inner.right, inner.bottom);
   switch (part.look) {
     case InstrumentLook.drums:
+      // Four by four; on a wide, short board, as the prototype's editor
+      // has them, eight by two.
+      var cols = board.width > board.height * 2.5 ? 8 : 4;
+      var rows = drumPads.length ~/ cols;
       var gap = math.min(board.width, board.height) * 0.03;
-      var w = (board.width - gap * 3) / 4, h = (board.height - gap * 3) / 4;
+      var w = (board.width - gap * (cols - 1)) / cols,
+          h = (board.height - gap * (rows - 1)) / rows;
       return KeyboardLayout(title, board, [
         for (var (i, (key, _)) in drumPads.indexed)
           (
             key: key,
-            rect: Rect.fromLTWH(board.left + (i % 4) * (w + gap),
-                board.top + (i ~/ 4) * (h + gap), w, h),
+            rect: Rect.fromLTWH(board.left + (i % cols) * (w + gap),
+                board.top + (i ~/ cols) * (h + gap), w, h),
             black: false,
           ),
       ]);
@@ -190,6 +198,21 @@ void paintKeyboard(ui.Canvas canvas, Rect bounds, InstrumentPart part,
         Offset(k.rect.center.dx, k.rect.bottom - k.rect.width * 0.35),
         math.max(1.5, k.rect.width * 0.08),
         Paint()..color = const Color(0xFF9AA0AA));
+  }
+}
+
+/// paintPlayingSurface draws [part]'s pads, or its neck, as [layout] has
+/// them, with no case or name: the instrument editor's, under its own
+/// toolbar. A keyboard is the editor's own to draw.
+void paintPlayingSurface(
+    ui.Canvas canvas, KeyboardLayout layout, InstrumentPart part,
+    {Set<int> lit = const {},
+    Color accent = const Color(0xFF3D7EFF)}) {
+  if (part.look == InstrumentLook.drums) {
+    _paintPads(canvas, layout, lit, const {}, accent);
+  } else if (part.look == InstrumentLook.guitar ||
+      part.look == InstrumentLook.bass) {
+    _paintNeck(canvas, layout, part, lit, const {}, accent);
   }
 }
 

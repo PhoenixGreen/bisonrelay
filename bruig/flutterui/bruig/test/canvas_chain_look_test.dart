@@ -3,12 +3,14 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
@@ -111,6 +113,75 @@ void main() {
     });
   });
 
+  // Ken: scrolling through the chain with two fingers changed settings.
+  testWidgets("a trackpad's scroll over a knob scrolls; a drag turns it",
+      (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    c.openEffects("m");
+    await show(tester, c);
+    var depth = find.byKey(const ValueKey("device-0-depth"));
+    await tester.ensureVisible(depth);
+    await tester.pump();
+    double now() => c.devicesOf("m").first.value("depth");
+    var was = now();
+    var pan = await tester.startGesture(tester.getCenter(depth),
+        kind: PointerDeviceKind.trackpad);
+    for (var i = 0; i < 6; i++) {
+      await pan.panZoomUpdate(tester.getCenter(depth),
+          pan: Offset(0, -12.0 * (i + 1)));
+      await tester.pump();
+    }
+    await pan.panZoomEnd();
+    await tester.pump();
+    expect(now(), was, reason: "a scroll, not a turn");
+    // Pressed and dragged, it turns.
+    await tester.drag(depth, const Offset(0, -40),
+        kind: PointerDeviceKind.mouse);
+    await tester.pump();
+    expect(now(), greaterThan(was));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // Ken: no "Note clips" for MIDI, no macros for MIDI.
+  testWidgets("a MIDI chain starts with its Macros and its Note clips",
+      (tester) async {
+    var c = CanvasController(
+        CanvasDocument(frames: 100, elements: [
+          AudioElement(const ElementBase(id: "p", name: "Piano"),
+              clip: const MediaClip(timed: true),
+              instrument: const InstrumentPart(notes: [
+                MidiNote(60, 0, 0.5, 100),
+                MidiNote(64, 0.5, 0.5, 100),
+              ])),
+        ]),
+        audioEngine: FakeEngine({}));
+    addTearDown(c.dispose);
+    c.openEffects("p");
+    await show(tester, c);
+    double x(String key) => tester.getTopLeft(find.byKey(ValueKey(key))).dx;
+    expect(x("chainZone-Macros"), lessThan(x("chainZone-Source")));
+    expect(x("chainZone-Source"), lessThan(x("chainZone-Before")));
+    expect(find.byKey(const ValueKey("noteClipsRoll")), findsOneWidget);
+    expect(find.text("2 notes, 1 bar"), findsOneWidget);
+    // The macros start folded; opened, one is added, and kept in its zone.
+    await tester.tap(find.byKey(const ValueKey("deviceFold-macros")));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey("macrosAdd")));
+    await tester.pump();
+    expect(c.devicesOf("p").single.kind, DeviceKind.macro);
+    expect(x("device-${deviceKey(c.devicesOf("p").single.id)}"),
+        lessThan(x("chainZone-Source")));
+    // Its notes, pressed open: the piano roll.
+    await tester.tap(find.byKey(const ValueKey("noteClipsEdit")));
+    await tester.pump();
+    expect(c.pianoRollShown, isTrue);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   group("the header", () {
     testWidgets("one row: what it shows, its views, its heights",
         (tester) async {
@@ -180,6 +251,105 @@ void main() {
       expect(find.byKey(ValueKey("deviceHelpText-${deviceKey("d0")}")),
           findsOneWidget);
       expect(find.textContaining("Thickens the sound"), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    // Ken's log: the master's meter, folded, overflowed its fold by 6.
+    for (var scale in [1.0, 1.5]) {
+      testWidgets("every card folded fits its fold, text at ${scale}x",
+          (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        var c = CanvasController(
+            CanvasDocument(frames: 100, elements: [
+              AudioElement(const ElementBase(id: "m", name: "Music"),
+                  clip: MediaClip(
+                      playlist: const [MediaSource(assetId: "t", length: 8)],
+                      timed: true,
+                      mix: ChannelMix(devices: [
+                        for (var (i, k) in DeviceKind.values.indexed)
+                          MixDevice(k, id: "d$i"),
+                      ]))),
+            ]),
+            audioEngine: FakeEngine({"t": 8}));
+        addTearDown(c.dispose);
+        for (var shown in ["m", mixerMasterKey]) {
+          c.openEffects(shown);
+          await show(tester, c);
+          var folds = find.byWidgetPredicate((w) =>
+              w.key is ValueKey<String> &&
+              (w.key as ValueKey<String>).value.startsWith("deviceFold-"));
+          for (var e in folds.evaluate().toList()) {
+            var id = (e.widget.key as ValueKey<String>)
+                .value
+                .substring("deviceFold-".length);
+            c.foldDevice(id, true);
+          }
+          await tester.pump(const Duration(milliseconds: 300));
+          expect(tester.takeException(), isNull, reason: "$shown folded");
+        }
+        await tester.pumpWidget(const SizedBox());
+      });
+    }
+
+    testWidgets("its ⋯ duplicates it and resets it, as the prototype's",
+        (tester) async {
+      var c = make();
+      addTearDown(c.dispose);
+      c.openEffects("m");
+      c.setDevicesOf("m", [
+        c.devicesOf("m").first.withValue("depth", 0.9),
+        c.devicesOf("m")[1],
+      ]);
+      await show(tester, c);
+      var id = deviceKey("d0");
+      await revealInMenu(tester, "deviceDuplicate-$id");
+      expect(find.text("Move right"), findsOneWidget);
+      expect(find.text("What it does"), findsOneWidget);
+      await tester.tap(find.byKey(ValueKey("deviceDuplicate-$id")));
+      await tester.pump();
+      await tester.pump();
+      var now = c.devicesOf("m");
+      expect(now.map((d) => d.kind),
+          [DeviceKind.chorus, DeviceKind.chorus, DeviceKind.reverb]);
+      expect(now[1].value("depth"), 0.9, reason: "a copy, settings and all");
+      expect(now.map((d) => d.id).toSet(), hasLength(3), reason: "own ids");
+      await revealInMenu(tester, "deviceReset-$id");
+      await tester.tap(find.byKey(ValueKey("deviceReset-$id")));
+      await tester.pump();
+      await tester.pump();
+      expect(c.devicesOf("m").first.value("depth"),
+          DeviceKind.chorus.param("depth").initial);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets("the header's ⋯ folds every card, and copies a chain",
+        (tester) async {
+      var c = make();
+      addTearDown(c.dispose);
+      c.openEffects("m");
+      await show(tester, c);
+      Future<void> menu(String key) async {
+        await tester.tap(find.byKey(const ValueKey("chainMore")));
+        await tester.pump();
+        await tester.tap(find.byKey(ValueKey(key)));
+        await tester.pump();
+        await tester.pump();
+      }
+
+      await menu("chainFoldAll");
+      expect(c.foldedDevices, containsAll([deviceKey("d0"), deviceKey("d1")]));
+      await menu("chainUnfoldAll");
+      expect(c.foldedDevices, isNot(contains(deviceKey("d0"))));
+      await menu("chainCopy");
+      c.openEffects(mixerMasterKey);
+      await tester.pump();
+      var before = c.devicesOf(mixerMasterKey).length;
+      await menu("chainPaste");
+      expect(c.devicesOf(mixerMasterKey).length, before + 2);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(milliseconds: 500));
       await tester.pumpWidget(const SizedBox());
     });
 

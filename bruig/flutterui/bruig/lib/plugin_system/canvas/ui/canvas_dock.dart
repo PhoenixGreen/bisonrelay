@@ -7,6 +7,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/dock_switcher.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+    show dragPointers;
 import 'package:bruig/plugin_system/canvas/ui/panel_heights.dart';
 import 'package:bruig/plugin_system/canvas/ui/play_bar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -316,6 +318,7 @@ class CanvasDockState extends State<CanvasDock> {
   Widget _widthGrip(ThemeNotifier theme, double room) => MouseRegion(
         cursor: SystemMouseCursors.resizeLeftRight,
         child: GestureDetector(
+          supportedDevices: dragPointers,
           key: const ValueKey("dockLeftGrip"),
           behavior: HitTestBehavior.opaque,
           onHorizontalDragUpdate: (d) => setState(() {
