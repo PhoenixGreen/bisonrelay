@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
+    show Wave, LoudnessReading;
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart' show ChannelMix;
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
@@ -143,6 +145,21 @@ class FakeEngine implements AudioEngine {
   PitchReading? heardPitch;
   @override
   PitchReading? pitch([String? channel]) => heardPitch;
+
+  /// heardWave and heardLoudness are what its analysers report, set by a
+  /// test; loudnessResets counts the Loudness started again.
+  Wave? heardWave;
+  LoudnessReading? heardLoudness;
+  int loudnessResets = 0;
+
+  @override
+  Wave? wave(DeviceKind kind, [String? channel]) => heardWave;
+
+  @override
+  LoudnessReading? loudness([String? channel]) => heardLoudness;
+
+  @override
+  void resetLoudness([String? channel]) => loudnessResets++;
 
   @override
   Float32List? spectrum([String? channel]) =>

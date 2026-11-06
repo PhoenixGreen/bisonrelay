@@ -485,6 +485,18 @@ extension CanvasMixing on CanvasController {
   PitchReading? pitch(String channel) =>
       _audio?.pitch(channel == mixerMasterKey ? null : channel);
 
+  /// wave is what [channel]'s first analyser of [kind] last heard: see
+  /// AudioEngine.wave.
+  Wave? wave(DeviceKind kind, String channel) =>
+      _audio?.wave(kind, channel == mixerMasterKey ? null : channel);
+
+  /// loudness is [channel]'s Loudness's reading: see AudioEngine.loudness.
+  LoudnessReading? loudness(String channel) =>
+      _audio?.loudness(channel == mixerMasterKey ? null : channel);
+
+  void resetLoudness(String channel) =>
+      _audio?.resetLoudness(channel == mixerMasterKey ? null : channel);
+
   /// _heard opens the runtime, where it is not open yet, with the mixer
   /// already in it: a sound pressed on the canvas plays through its strip
   /// from its first note.

@@ -1953,4 +1953,65 @@ void main() {
       expect(failures, isEmpty);
     });
   });
+
+  // Ken's log, 2026-11-06: the mixer docked narrow (a 281px room) ran its
+  // pinned strips -- the returns, the master, the rail -- 146 pixels past
+  // its right edge. Now they keep to the room and scroll themselves where
+  // a channel would otherwise have none.
+  testWidgets("narrow: the pinned strips keep to the room", (tester) async {
+    var failures = <String>[];
+    for (var scale in [1.0, 1.5]) {
+      for (var width in [240.0, 281.0, 360.0, 520.0, 1200.0]) {
+        var c = CanvasController(
+            CanvasDocument(frames: 100, frameRate: 25, elements: [
+              for (var id in ["a", "b", "c"])
+                VideoElement(ElementBase(id: id, name: id),
+                    clip: const MediaClip(
+                        playlist: [MediaSource(assetId: "x", length: 4)],
+                        timed: true)),
+            ]),
+            audioEngine: FakeEngine({"x": 4}),
+            frameSource: FakeFrames(4));
+        c.addReturn();
+        c.addReturn();
+        c.returnsShown = true;
+        tester.view.physicalSize = Size(width, 700);
+        tester.view.devicePixelRatio = 1.0;
+        await tester.pumpWidget(MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ThemeNotifier>(
+                create: (c) => ThemeNotifier(doLoad: false)),
+            ChangeNotifierProvider<SnackBarModel>(
+                create: (c) => SnackBarModel()),
+          ],
+          child: MaterialApp(
+              builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(context)
+                      .copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!),
+              home: Scaffold(
+                  body: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: CanvasMixer(
+                          controller: c,
+                          height: 420,
+                          onResize: (_) {},
+                          onClose: () {})))),
+        ));
+        await tester.pump();
+        if (tester.takeException() case var e?) {
+          failures.add("$width ${scale}x: ${e.toString().split("\n").first}");
+        }
+        // A channel still has a strip's room, and the master is there.
+        var channels = tester.getRect(find.byKey(const ValueKey("strip-a")));
+        if (channels.width < 50) failures.add("$width ${scale}x: no channel");
+        expect(find.byKey(const ValueKey("strip-master")), findsOneWidget);
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pumpWidget(const SizedBox());
+        c.dispose();
+      }
+    }
+    tester.view.reset();
+    expect(failures, isEmpty);
+  });
 }

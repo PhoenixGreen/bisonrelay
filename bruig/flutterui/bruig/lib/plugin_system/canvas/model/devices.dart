@@ -54,6 +54,7 @@ class DeviceParam {
       "px" => "${v.toStringAsFixed(v < 10 ? 1 : 0)} px",
       "°" => "${v.round()}°",
       "×" => "×${v.toStringAsFixed(2)}",
+      "LUFS" => "${v >= 0 ? "" : "−"}${v.abs().round()} LUFS",
       _ => "${(v * 100).round()}%",
     };
   }
@@ -92,10 +93,9 @@ bool paramShown(MixDevice device, DeviceParam p) => switch ((device.kind, p.id))
       _ => true,
     };
 
-/// listensOnly is whether [kind] only listens -- a tuner, a spectrum -- and
-/// changes nothing it is given.
-bool listensOnly(DeviceKind kind) =>
-    kind == DeviceKind.tuner || kind == DeviceKind.spectrum;
+/// listensOnly is whether [kind] only listens -- an analyser: a tuner, a
+/// spectrum, a scope -- and changes nothing it is given.
+bool listensOnly(DeviceKind kind) => kind.group == DeviceGroup.analysers;
 
 /// DeviceGroup is where a device is listed when one is added.
 enum DeviceGroup {
@@ -106,6 +106,9 @@ enum DeviceGroup {
   drive("Drive"),
   pitch("Pitch"),
   utility("Utility"),
+
+  /// analysers only listen, and show what they hear where they are.
+  analysers("Analysers"),
 
   /// modulators make no sound: they move other devices' knobs.
   modulators("Modulators");
@@ -207,8 +210,18 @@ enum DeviceKind {
     DeviceParam("unvoiced", "Unvoiced", 0, 1, 0.3),
     DeviceParam("mix", "Mix", 0, 1, 1),
   ]),
-  tuner("Tuner", DeviceGroup.pitch, []),
-  spectrum("Spectrum", DeviceGroup.pitch, []),
+  tuner("Tuner", DeviceGroup.analysers, []),
+  spectrum("Spectrum", DeviceGroup.analysers, [
+    DeviceParam("view", "View", 0, 1, 0, "", ["Spectrum", "Spectrogram"]),
+  ]),
+  scope("Scope", DeviceGroup.analysers, [
+    DeviceParam("time", "Time", 1, 100, 20, "ms"),
+    DeviceParam("zoom", "Zoom", 0.5, 8, 1, "×"),
+  ]),
+  stereoImage("Stereo Image", DeviceGroup.analysers, []),
+  loudness("Loudness", DeviceGroup.analysers, [
+    DeviceParam("target", "Target", -24, -8, -14, "LUFS"),
+  ]),
   utility("Utility", DeviceGroup.utility, [
     DeviceParam("gain", "Gain", -36, 36, 0, "dB"),
     DeviceParam("width", "Width", 0, 2, 1),

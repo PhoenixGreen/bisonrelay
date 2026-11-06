@@ -5,6 +5,8 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart'
     show PitchReading;
+import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
+    show Wave, LoudnessReading;
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
@@ -240,6 +242,17 @@ abstract class AudioEngine {
   /// pitch is the pitch a tuner on [channel] -- or Auto-tune -- is hearing
   /// now, or null: nothing heard, no tuner, or an engine with none.
   PitchReading? pitch([String? channel]);
+
+  /// wave is the latest of what [channel]'s first analyser of [kind] (a
+  /// Scope or a Stereo Image) heard, where it is in the chain; null with
+  /// none, or an engine with none.
+  Wave? wave(DeviceKind kind, [String? channel]);
+
+  /// loudness is [channel]'s first Loudness's reading, or null.
+  LoudnessReading? loudness([String? channel]);
+
+  /// resetLoudness starts [channel]'s Loudness measuring again.
+  void resetLoudness([String? channel]);
 
   /// volume moves [voice] to [to], over [fade] seconds.
   void volume(AudioVoice voice, double to, {double fade = 0});
@@ -636,6 +649,15 @@ class SoLoudAudioEngine implements AudioEngine {
 
   @override
   PitchReading? pitch([String? channel]) => null;
+
+  @override
+  Wave? wave(DeviceKind kind, [String? channel]) => null;
+
+  @override
+  LoudnessReading? loudness([String? channel]) => null;
+
+  @override
+  void resetLoudness([String? channel]) {}
 
   @override
   Float32List? spectrum([String? channel]) {

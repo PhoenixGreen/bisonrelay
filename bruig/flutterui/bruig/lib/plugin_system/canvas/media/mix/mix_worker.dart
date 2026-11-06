@@ -4,10 +4,13 @@ import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
+    show Wave, LoudnessReading;
 import 'package:bruig/plugin_system/canvas/media/mix/click_track.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_core.dart';
+import 'package:bruig/plugin_system/canvas/model/devices.dart' show DeviceKind;
 import 'package:bruig/plugin_system/canvas/model/mix.dart' show ChannelMix;
 import 'package:bruig/plugin_system/canvas/media/synth/sampler.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
@@ -44,9 +47,17 @@ class MixSnapshot {
   final Map<String, List<(double, double)>> taps;
   final Map<String, double> reductions;
 
+  /// waves are each watched analyser's latest sound, by "kind:channel", and
+  /// loudness each watched Loudness's reading, by channel.
+  final Map<String, Wave?> waves;
+  final Map<String, LoudnessReading?> loudness;
+
   const MixSnapshot(this.at, this.ahead, this.load, this.voices, this.levels,
       this.spectra, this.pitches,
-      {this.taps = const {}, this.reductions = const {}});
+      {this.taps = const {},
+      this.reductions = const {},
+      this.waves = const {},
+      this.loudness = const {}});
 
   static const empty = MixSnapshot(0, 0, 0, {}, {}, {}, {});
 }
@@ -115,6 +126,11 @@ class _Worker {
   final Map<int, CoreVoice> voices = {};
   final Map<String, (CoreVoice, _Live)> live = {};
   final Set<String> watchLevels = {}, watchSpectra = {}, watchPitches = {};
+
+  /// watchWaves are the analysers whose sound is on screen, as (kind,
+  /// channel); watchLoudness the channels whose Loudness is.
+  final Set<(DeviceKind, String)> watchWaves = {};
+  final Set<String> watchLoudness = {};
 
   /// watchTaps are the channels whose meters between devices are on screen.
   final Set<String> watchTaps = {};
@@ -264,6 +280,15 @@ class _Worker {
         },
         taps: {for (var k in watchTaps) k: core.graph.tapsOf(k)},
         reductions: {for (var k in watchTaps) k: core.graph.reductionOf(k)},
+        waves: {
+          for (var (kind, k) in watchWaves)
+            "${kind.name}:$k":
+                core.graph.waveOf(k == snapshotMaster ? null : k, kind)
+        },
+        loudness: {
+          for (var k in watchLoudness)
+            k: core.graph.loudnessOf(k == snapshotMaster ? null : k)
+        },
       ),
     ]);
     // Voices that have ended are forgotten once reported.
@@ -356,6 +381,8 @@ class _Worker {
         core.graph.setScene(m[1] as ChannelMix, (m[2] as Set).cast());
       case "speakers":
         core.graph.setSpeakers(m[1]);
+      case "resetLoudness":
+        core.graph.resetLoudness(m[1] as String?);
       case "hear":
         core.graph.hear = m[1] as SpeakerGroup;
       case "placement":
@@ -373,6 +400,13 @@ class _Worker {
             watchSpectra.add(key);
           case "pitch":
             watchPitches.add(key);
+          case "loudness":
+            watchLoudness.add(key);
+          case String what when what.startsWith("wave:"):
+            var name = what.substring(5);
+            var kind =
+                DeviceKind.values.where((k) => k.name == name).firstOrNull;
+            if (kind != null) watchWaves.add((kind, key));
           case "taps":
             watchTaps.add(key);
             core.graph.tapped.add(key);

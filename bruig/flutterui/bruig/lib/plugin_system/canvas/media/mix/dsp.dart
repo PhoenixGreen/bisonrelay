@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/device_dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/split_dsp.dart';
@@ -521,6 +522,13 @@ abstract class DeviceProcessor {
       DeviceKind.vocoder => Vocoder(device),
       DeviceKind.tuner => PitchListener(pitch: true),
       DeviceKind.spectrum => PitchListener(),
+      // The latest of the sound, for the Scope over its Time and the
+      // Stereo Image over 20ms; a loudness meter.
+      DeviceKind.scope =>
+        WaveTap(DeviceKind.scope, frames: WaveTap.framesOf(device)),
+      DeviceKind.stereoImage =>
+        WaveTap(DeviceKind.stereoImage, frames: 1024, points: 1024),
+      DeviceKind.loudness => LoudnessTap(),
       // It makes no sound: it moves other devices' knobs (see shape).
       DeviceKind.lfo => null,
       DeviceKind.follower => Follower(device),
@@ -800,6 +808,28 @@ class LoudnessMeter {
   /// integrated is the loudness of everything added, or minus infinity for
   /// silence.
   double get integrated => _gated(_steps);
+
+  /// momentary and shortTerm are the loudness of the last 400ms and the
+  /// last three seconds, ungated, as a meter shows them.
+  double get momentary => _over(4);
+  double get shortTerm => _over(30);
+
+  double _over(int steps) {
+    if (_steps.isEmpty) return -double.infinity;
+    var from = math.max(0, _steps.length - steps);
+    var sum = 0.0;
+    for (var i = from; i < _steps.length; i++) {
+      sum += _steps[i];
+    }
+    return _lufs(sum / (_steps.length - from));
+  }
+
+  /// reset starts it again: nothing measured.
+  void reset() {
+    _steps.clear();
+    _sum = 0;
+    _count = 0;
+  }
 
   /// _gated is the gated loudness of [steps], 100ms powers.
   static double _gated(List<double> steps) {

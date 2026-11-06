@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart'
     show ffmpegPath;
+import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
+    show Wave, LoudnessReading;
 import 'package:bruig/plugin_system/canvas/media/mix/click_track.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
@@ -599,6 +601,25 @@ class DartAudioEngine implements AudioEngine {
     _watch("spectrum", channel);
     return _snap.spectra[channel ?? snapshotMaster];
   }
+
+  @override
+  Wave? wave(DeviceKind kind, [String? channel]) {
+    if (!_remote) return core.graph.waveOf(channel, kind);
+    _watch("wave:${kind.name}", channel);
+    return _snap.waves["${kind.name}:${channel ?? snapshotMaster}"];
+  }
+
+  @override
+  LoudnessReading? loudness([String? channel]) {
+    if (!_remote) return core.graph.loudnessOf(channel);
+    _watch("loudness", channel);
+    return _snap.loudness[channel ?? snapshotMaster];
+  }
+
+  @override
+  void resetLoudness([String? channel]) => _remote
+      ? _send(["resetLoudness", channel])
+      : core.graph.resetLoudness(channel);
 
   @override
   PitchReading? pitch([String? channel]) {

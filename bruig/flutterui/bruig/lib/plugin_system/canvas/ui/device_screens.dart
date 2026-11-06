@@ -27,8 +27,7 @@ class ScreenMoment {
 
 /// hasScreen is whether [kind] draws a picture of its own, rather than its
 /// levels in and out.
-bool hasScreen(DeviceKind kind) =>
-    !const {DeviceKind.tuner, DeviceKind.spectrum}.contains(kind);
+bool hasScreen(DeviceKind kind) => !listensOnly(kind);
 
 /// DeviceScreenPainter draws [device]'s screen at [moment].
 class DeviceScreenPainter extends CustomPainter {
@@ -323,7 +322,11 @@ class DeviceScreenPainter extends CustomPainter {
               dots);
         }
         say = "width ${(width * 100).round()}%";
-      case DeviceKind.tuner || DeviceKind.spectrum:
+      case DeviceKind.tuner ||
+            DeviceKind.spectrum ||
+            DeviceKind.scope ||
+            DeviceKind.stereoImage ||
+            DeviceKind.loudness:
         break;
     }
     // Its reading, and what it does to the level while something plays.

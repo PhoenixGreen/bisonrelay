@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
+    show Wave, correlation;
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/plugin_system/canvas/model/automation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart'
@@ -148,6 +151,7 @@ enum DeviceTier {
       DeviceGroup.drive => (Icons.whatshot_outlined, const Color(0xFFE07A5F)),
       DeviceGroup.pitch => (Icons.music_note, const Color(0xFFE57AA8)),
       DeviceGroup.utility => (Icons.tune, const Color(0xFFA7A3B8)),
+      DeviceGroup.analysers => (Icons.insights, const Color(0xFF7FC8F8)),
       // Pink, as the rings round the knobs they move.
       DeviceGroup.modulators => (Icons.swap_vert, modulationColour),
     };
@@ -3825,9 +3829,27 @@ class ListenerDevice extends StatefulWidget {
 
 class _ListenerDeviceState extends State<ListenerDevice>
     with SingleTickerProviderStateMixin, _Metered {
-  // What it shows is read in build: a tick only asks for it again.
+  /// _history is a Spectrum's spectrogram: its spectra, oldest first, one
+  /// taken each tick while it is shown.
+  final List<Float32List> _history = [];
+  static const int _historyLength = 240;
+
+  // What it shows is read in build: a tick only asks for it again -- and a
+  // spectrogram keeps what it heard.
   @override
-  void tick() {}
+  void tick() {
+    var c = widget.controller;
+    var devices = c.devicesOf(widget.owner);
+    if (widget.index >= devices.length) return;
+    var device = devices[widget.index];
+    if (device.kind != DeviceKind.spectrum || device.value("view") < 0.5) {
+      return;
+    }
+    var bins = c.spectrum(widget.owner == mixerMasterKey ? null : widget.owner);
+    if (bins == null || !(c.playing || c.sessionActive)) return;
+    _history.add(Float32List.fromList(bins));
+    if (_history.length > _historyLength) _history.removeAt(0);
+  }
 
   @override
   CanvasController get meteredBy => widget.controller;
@@ -3908,6 +3930,124 @@ class _ListenerDeviceState extends State<ListenerDevice>
           ]);
         }),
       );
+    } else if (device.kind == DeviceKind.scope) {
+      var wave = c.wave(DeviceKind.scope, widget.owner);
+      summary = "${device.value("time").round()} ms";
+      body = Container(
+        color: studio.display,
+        padding: const EdgeInsets.all(6),
+        child: CustomPaint(
+          key: const ValueKey("scopeView"),
+          size: Size.infinite,
+          painter: _ScopePainter(wave, device.value("zoom"), studio),
+        ),
+      );
+    } else if (device.kind == DeviceKind.stereoImage) {
+      var wave = c.wave(DeviceKind.stereoImage, widget.owner);
+      var r = wave == null ? 0.0 : correlation(wave);
+      summary =
+          "correlation ${r >= 0 ? "+" : "−"}${r.abs().toStringAsFixed(2)}";
+      body = Container(
+        color: studio.display,
+        padding: const EdgeInsets.all(6),
+        child: Column(children: [
+          Expanded(
+            child: CustomPaint(
+              key: const ValueKey("stereoImageView"),
+              size: Size.infinite,
+              painter: _GoniometerPainter(wave, studio),
+            ),
+          ),
+          const SizedBox(height: 4),
+          SizedBox(
+            height: 16,
+            width: double.infinity,
+            child: CustomPaint(
+                key: const ValueKey("correlationBar"),
+                painter: _CorrelationPainter(r, studio)),
+          ),
+          Text(summary,
+              key: const ValueKey("correlationReading"),
+              style: TextStyle(fontSize: 11, color: studio.muted)),
+        ]),
+      );
+    } else if (device.kind == DeviceKind.loudness) {
+      var heard = c.loudness(widget.owner);
+      var target = device.value("target");
+      String lufs(double v) =>
+          v.isFinite ? "${v < 0 ? "−" : ""}${v.abs().toStringAsFixed(1)}" : "–";
+      summary = heard == null || !heard.shortTerm.isFinite
+          ? "Listening"
+          : "${lufs(heard.shortTerm)} LUFS";
+      Widget row(String key, String label, String value) => Row(children: [
+            Expanded(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: studio.muted)),
+            ),
+            Text(value,
+                key: ValueKey(key),
+                style: TextStyle(
+                    fontSize: 12,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    color: studio.text)),
+          ]);
+      body = Container(
+        color: studio.display,
+        padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+        child: LayoutBuilder(builder: (context, box) {
+          return SingleChildScrollView(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(heard == null ? "–" : lufs(heard.shortTerm),
+                        key: const ValueKey("loudnessShortTerm"),
+                        style: TextStyle(
+                            fontSize: 34,
+                            fontWeight: FontWeight.w700,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                            color: studio.text)),
+                  ),
+                  Text("LUFS short-term · aim ${target.round()}",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 10.5, color: studio.muted)),
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    height: 10,
+                    child: CustomPaint(
+                        painter: _LoudnessBarPainter(
+                            heard?.shortTerm ?? -double.infinity,
+                            target,
+                            studio)),
+                  ),
+                  const SizedBox(height: 6),
+                  row("loudnessMomentary", "Momentary",
+                      heard == null ? "–" : lufs(heard.momentary)),
+                  row("loudnessIntegrated", "Whole, since reset",
+                      heard == null ? "–" : lufs(heard.integrated)),
+                  row(
+                      "loudnessTruePeak",
+                      "True peak",
+                      heard == null || !heard.truePeak.isFinite
+                          ? "–"
+                          : "${lufs(heard.truePeak)} dBTP"),
+                ]),
+          );
+        }),
+      );
+    } else if (device.value("view") >= 0.5) {
+      body = Container(
+        color: studio.display,
+        padding: const EdgeInsets.all(6),
+        child: CustomPaint(
+          key: const ValueKey("spectrogramView"),
+          size: Size.infinite,
+          painter: _SpectrogramPainter(_history, _history.length),
+        ),
+      );
     } else {
       body = Container(
         color: studio.display,
@@ -3935,9 +4075,34 @@ class _ListenerDeviceState extends State<ListenerDevice>
       id: deviceKey(deviceIdAt(devices, widget.index)),
       title: device.kind.label,
       skin: skin,
-      // Its screen is all of it: it only listens.
+      // Its screen is all of it, and its few settings: it only listens.
       display: body,
-      controls: (_) => const [],
+      controls: (tier) => [
+        for (var p in device.kind.params)
+          if (!p.isChoice)
+            _Knob(
+              key: ValueKey("device-${widget.index}-${p.id}"),
+              label: p.label,
+              text: p.reading(device.value(p.id)),
+              value: device.value(p.id),
+              initial: p.initial,
+              range: _Range(p.min, p.max),
+              size: tier == DeviceTier.large ? 38 : 28,
+              reading: tier != DeviceTier.small,
+              accent: accent,
+              ink: skin.ink,
+              onChanged: (v, {transient = false}) {
+                var now = c.devicesOf(widget.owner);
+                if (widget.index >= now.length) return;
+                c.beginInteraction();
+                c.setDevicesOf(widget.owner,
+                    [...now]..[widget.index] = device.withValue(p.id, v),
+                    transient: true);
+                if (!transient) c.endInteraction();
+              },
+              onCommit: c.endInteraction,
+            ),
+      ],
       summary: summary,
       icon: icon,
       accent: accent,
@@ -3946,9 +4111,43 @@ class _ListenerDeviceState extends State<ListenerDevice>
       powerKey: ValueKey("devicePower-${widget.index}"),
       folded: widget.folded,
       onFold: widget.onFold,
-      width: tuner ? 220 : 360,
+      width: switch (device.kind) {
+        DeviceKind.tuner => 220,
+        DeviceKind.stereoImage || DeviceKind.loudness => 290,
+        _ => 360,
+      },
       height: widget.height,
       actions: [
+        // A Spectrum shown as it is now, or over time; a Loudness started
+        // again.
+        if (device.kind == DeviceKind.spectrum)
+          IconButton(
+            key: ValueKey("spectrumView-${widget.index}"),
+            tooltip: device.value("view") >= 0.5
+                ? "Show the spectrum as it is now"
+                : "Show it over time: a spectrogram",
+            iconSize: 14,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(
+                device.value("view") >= 0.5
+                    ? Icons.show_chart
+                    : Icons.view_week_outlined,
+                color: skin.ink),
+            onPressed: () {
+              _history.clear();
+              write(device.withValue(
+                  "view", device.value("view") >= 0.5 ? 0 : 1));
+            },
+          ),
+        if (device.kind == DeviceKind.loudness)
+          IconButton(
+            key: ValueKey("loudnessReset-${widget.index}"),
+            tooltip: "Start measuring again",
+            iconSize: 14,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(Icons.restart_alt, color: skin.ink),
+            onPressed: () => c.resetLoudness(widget.owner),
+          ),
         ...deviceMoveButtons(c, widget.owner, widget.index, skin.ink),
         IconButton(
           key: ValueKey("deviceRemove-${widget.index}"),
@@ -4007,6 +4206,197 @@ class _TunerPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_TunerPainter old) => old.cents != cents;
+}
+
+/// _ScopePainter is a sound's wave over the Scope's time: left and right
+/// over each other, [zoom] times as tall.
+class _ScopePainter extends CustomPainter {
+  final Wave? wave;
+  final double zoom;
+  final StudioColors studio;
+  _ScopePainter(this.wave, this.zoom, this.studio);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var mid = size.height / 2;
+    canvas.drawLine(Offset(0, mid), Offset(size.width, mid),
+        Paint()..color = studio.muted.withValues(alpha: 0.3));
+    var w = wave;
+    if (w == null || w.$1.isEmpty) return;
+    for (var (side, colour) in [
+      (w.$2, studio.meterMid.withValues(alpha: 0.7)),
+      (w.$1, studio.meterLow),
+    ]) {
+      var path = Path();
+      for (var i = 0; i < side.length; i++) {
+        var x = i / math.max(1, side.length - 1) * size.width;
+        var y = mid - (side[i] * zoom).clamp(-1.0, 1.0) * (mid - 2);
+        i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+      }
+      canvas.drawPath(
+          path,
+          Paint()
+            ..color = colour
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ScopePainter old) => true;
+}
+
+/// _GoniometerPainter draws left against right as a goniometer does: the
+/// middle (both alike) straight up, the sides (left less right) across, so
+/// mono is a vertical line and a wide sound a cloud.
+class _GoniometerPainter extends CustomPainter {
+  final Wave? wave;
+  final StudioColors studio;
+  _GoniometerPainter(this.wave, this.studio);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var c = size.center(Offset.zero);
+    var r = math.min(size.width, size.height) / 2 - 4;
+    var guide = Paint()
+      ..color = studio.muted.withValues(alpha: 0.3)
+      ..strokeWidth = 1;
+    canvas.drawLine(c - Offset(0, r), c + Offset(0, r), guide);
+    canvas.drawLine(c - Offset(r, 0), c + Offset(r, 0), guide);
+    var d = r * math.sqrt1_2;
+    canvas.drawLine(c + Offset(-d, -d), c + Offset(d, d), guide);
+    canvas.drawLine(c + Offset(d, -d), c + Offset(-d, d), guide);
+    var w = wave;
+    if (w == null) return;
+    var (l, rr) = w;
+    // Its loudest, so a quiet sound still fills it.
+    var most = 1e-6;
+    for (var i = 0; i < l.length; i++) {
+      most = math.max(most, math.max(l[i].abs(), rr[i].abs()));
+    }
+    var scale = r / math.max(most, 0.05) * math.sqrt1_2;
+    var points = <Offset>[
+      for (var i = 0; i < l.length; i++)
+        c + Offset((l[i] - rr[i]) * scale, -(l[i] + rr[i]) * scale),
+    ];
+    canvas.drawPoints(
+        ui.PointMode.points,
+        points,
+        Paint()
+          ..color = studio.meterLow.withValues(alpha: 0.75)
+          ..strokeWidth = 1.6
+          ..strokeCap = StrokeCap.round);
+  }
+
+  @override
+  bool shouldRepaint(_GoniometerPainter old) => true;
+}
+
+/// _CorrelationPainter is the correlation's bar: minus one (opposite, left
+/// of the middle, in the warning colour) to plus one (alike).
+class _CorrelationPainter extends CustomPainter {
+  final double value;
+  final StudioColors studio;
+  _CorrelationPainter(this.value, this.studio);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var track = RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, size.height / 2 - 3, size.width, 6),
+        const Radius.circular(3));
+    canvas.drawRRect(track, Paint()..color = studio.inset);
+    var mid = size.width / 2;
+    canvas.drawLine(Offset(mid, 0), Offset(mid, size.height),
+        Paint()..color = studio.muted.withValues(alpha: 0.5));
+    var x = mid + value.clamp(-1.0, 1.0) * (mid - 4);
+    canvas.drawCircle(Offset(x, size.height / 2), 5,
+        Paint()..color = value < 0 ? studio.meterHigh : studio.meterLow);
+  }
+
+  @override
+  bool shouldRepaint(_CorrelationPainter old) => old.value != value;
+}
+
+/// _LoudnessBarPainter is short-term loudness from -40 to nought LUFS, the
+/// target marked: green under it, amber to a couple over, red past.
+class _LoudnessBarPainter extends CustomPainter {
+  final double lufs, target;
+  final StudioColors studio;
+  _LoudnessBarPainter(this.lufs, this.target, this.studio);
+
+  double _x(double v, double w) => ((v + 40) / 40).clamp(0.0, 1.0) * w;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(3)),
+        Paint()..color = studio.inset);
+    if (lufs.isFinite) {
+      var colour = lufs > target + 2
+          ? studio.meterHigh
+          : lufs > target - 1
+              ? studio.meterMid
+              : studio.meterLow;
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              Rect.fromLTWH(0, 0, _x(lufs, size.width), size.height),
+              const Radius.circular(3)),
+          Paint()..color = colour);
+    }
+    var t = _x(target, size.width);
+    canvas.drawLine(
+        Offset(t, -2),
+        Offset(t, size.height + 2),
+        Paint()
+          ..color = studio.text
+          ..strokeWidth = 2);
+  }
+
+  @override
+  bool shouldRepaint(_LoudnessBarPainter old) =>
+      old.lufs != lufs || old.target != target;
+}
+
+/// _SpectrogramPainter is a Spectrum over time: a column a tick, the
+/// oldest on the left, low pitches at the bottom, each as bright as loud.
+class _SpectrogramPainter extends CustomPainter {
+  final List<Float32List> history;
+  final int count;
+  _SpectrogramPainter(this.history, this.count);
+
+  static const int _rows = 64;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(
+        Offset.zero & size, Paint()..color = const Color(0xFF0E1622));
+    if (history.isEmpty) return;
+    var colW = size.width / _ListenerDeviceState._historyLength;
+    var rowH = size.height / _rows;
+    var left = size.width - history.length * colW;
+    const lowHz = 30.0, highHz = 20000.0;
+    var paint = Paint();
+    for (var (c, bins) in history.indexed) {
+      for (var r = 0; r < _rows; r++) {
+        var hz = lowHz * math.pow(highHz / lowHz, r / _rows);
+        var i = (hz / 24000 * bins.length).floor().clamp(0, bins.length - 1);
+        var db = 20 * math.log(math.max(1e-6, bins[i])) / math.ln10;
+        var v = ((db + 80) / 80).clamp(0.0, 1.0);
+        if (v < 0.05) continue;
+        paint.color = Color.lerp(
+            const Color(0xFF3C2470),
+            v < 0.6 ? const Color(0xFFD0506A) : const Color(0xFFFFE9A8),
+            v < 0.6 ? v / 0.6 : (v - 0.6) / 0.4)!;
+        canvas.drawRect(
+            Rect.fromLTWH(left + c * colW, size.height - (r + 1) * rowH,
+                colW + 0.5, rowH + 0.5),
+            paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_SpectrogramPainter old) => true;
 }
 
 /// _SpectrumPainter is a sound's spectrum, low on the left to high on the

@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
+    show Wave, LoudnessReading;
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart'
     show PitchReading;
 import 'dart:async';
@@ -449,6 +451,17 @@ class AudioRuntime extends ChangeNotifier {
   /// pitch is what a tuner on [channel] hears now -- see AudioEngine.pitch.
   PitchReading? pitch([String? channel]) =>
       _started ? engine.pitch(channel) : null;
+
+  /// wave, loudness and resetLoudness: see AudioEngine's.
+  Wave? wave(DeviceKind kind, [String? channel]) =>
+      _started ? engine.wave(kind, channel) : null;
+
+  LoudnessReading? loudness([String? channel]) =>
+      _started ? engine.loudness(channel) : null;
+
+  void resetLoudness([String? channel]) {
+    if (_started) engine.resetLoudness(channel);
+  }
 
   /// _channelFor is the mixer channel a sound plays through, or null for
   /// none: the element's own, or for a video's sound, its video's.

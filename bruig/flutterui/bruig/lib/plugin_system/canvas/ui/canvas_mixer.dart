@@ -650,160 +650,190 @@ class _CanvasMixerState extends State<CanvasMixer>
         var bands = _Bands.fit(
             box.maxHeight - 14, states, devicesWanted, devicesCap,
             sendsH: sendsH, bare: bare, clipRows: controller.slotsShown);
-        return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(
-            child: lanes.isEmpty && widget.embedded
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        "A strip appears here for each video and background "
-                        "sound on the timeline. The master strip is always "
-                        "here, and sets how the whole canvas sounds.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 12, color: theme.colors.onSurfaceVariant),
-                      ),
-                    ),
-                  )
-                : ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: [
-                      // The sounds', except an element's own, which go with it; none
-                      // shows only the animation.
-                      for (var (i, lane) in lanes.indexed)
-                        if (!ownedKeys.contains(lane.key) &&
-                            show != TimelineShow.animation)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: _channelStrip(theme, lane, i, bands),
+        // The channels on the left, scrolled; the returns, the scene's bus,
+        // the master and the rail pinned on the right as wide as they are --
+        // or, where that leaves no room for a channel, scrolled themselves.
+        return CustomMultiChildLayout(
+            delegate: _PinnedRight(leftLeast: 124),
+            children: [
+              LayoutId(
+                id: _PinnedRight.left,
+                child: lanes.isEmpty && widget.embedded
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            "A strip appears here for each video and background "
+                            "sound on the timeline. The master strip is always "
+                            "here, and sets how the whole canvas sounds.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: theme.colors.onSurfaceVariant),
                           ),
-                      // The elements' strips, after the sounds': their
-                      // animation slots on the same cue rows, and each
-                      // one's own sound beside it.
-                      for (var e in rows) ...[
-                        if (show != TimelineShow.sound)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: _elementStrip(controller, theme, e, bands,
-                                _clipScrolls.of("motion:${e.id}")),
-                          ),
-                        if (show != TimelineShow.animation)
+                        ),
+                      )
+                    : ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          // The sounds', except an element's own, which go with it; none
+                          // shows only the animation.
                           for (var (i, lane) in lanes.indexed)
-                            if (lane.key == elementSoundKey(e.id))
+                            if (!ownedKeys.contains(lane.key) &&
+                                show != TimelineShow.animation)
                               Padding(
                                 padding: const EdgeInsets.only(right: 8),
                                 child: _channelStrip(theme, lane, i, bands),
                               ),
-                      ],
-                    ],
-                  ),
-          ),
-          // The returns, pinned beside the master as Ableton's are, in view
-          // however far the channels are scrolled. Never more than half the
-          // width; past that they scroll among themselves.
-          if (showReturns) ...[
-            const SizedBox(width: 8),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: box.maxWidth / 2),
-              child: SingleChildScrollView(
-                key: const ValueKey("returnsPinned"),
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (var (i, ret) in returns.indexed)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: _returnStrip(theme, ret, i, bands),
-                        ),
-                      if (returns.length < maxReturns)
-                        _AddReturn(
-                            theme: theme,
-                            onAdd: () {
-                              controller.beginInteraction();
-                              controller.addReturn();
-                              controller.endInteraction();
-                            }),
-                    ]),
+                          // The elements' strips, after the sounds': their
+                          // animation slots on the same cue rows, and each
+                          // one's own sound beside it.
+                          for (var e in rows) ...[
+                            if (show != TimelineShow.sound)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: _elementStrip(controller, theme, e,
+                                    bands, _clipScrolls.of("motion:${e.id}")),
+                              ),
+                            if (show != TimelineShow.animation)
+                              for (var (i, lane) in lanes.indexed)
+                                if (lane.key == elementSoundKey(e.id))
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: _channelStrip(theme, lane, i, bands),
+                                  ),
+                          ],
+                        ],
+                      ),
               ),
-            ),
-          ],
-          // The scene's bus, between what is in the scene and the master:
-          // where there is a master's or another scene's to tell it from.
-          if (_sceneShown) ...[
-            const SizedBox(width: 8),
-            _SceneStrip(
-              key: const ValueKey("strip-scene"),
-              name: controller.document.scene
-                  .saysAt(controller.document.at, controller.document.kind),
-              mix: controller.sceneBus,
-              chain: controller.chainOf(sceneBusKey),
-              level: _now[sceneBusKey] ?? (-90, -90),
-              peak: _peaks[sceneBusKey] ?? (-90, -90),
-              theme: theme,
-              bands: bands,
-              narrow: narrow.contains(sceneBusKey),
-              onNarrow: () => controller.toggleNarrow(sceneBusKey),
-              onChanged: (mix, {transient = false}) {
-                controller.beginInteraction();
-                controller.setSceneBus(mix, transient: true);
-                if (!transient) controller.endInteraction();
-              },
-              onCommit: controller.endInteraction,
-              onOpen: (device) =>
-                  controller.openEffects(sceneBusKey, device: device),
-              onRemoveDevice: (id) => _removeDevice(sceneBusKey, id),
-              selected: controller.selectedChannel == sceneBusKey,
-              onSelect: () => controller.pickStrip(sceneBusKey),
-            ),
-          ],
-          const SizedBox(width: 8),
-          _MasterStrip(
-            key: const ValueKey("strip-master"),
-            mix: master,
-            speakers: controller.document.audio.speakers,
-            level: _now[_master] ?? (-90, -90),
-            peak: _peaks[_master] ?? (-90, -90),
-            theme: theme,
-            bands: bands,
-            narrow: narrow.contains(_master),
-            onNarrow: () => controller.toggleNarrow(_master),
-            onChanged: (mix, {transient = false}) {
-              controller.beginInteraction();
-              controller.setMasterMix(mix, transient: true);
-              if (!transient) controller.endInteraction();
-            },
-            onCommit: controller.endInteraction,
-            onOpenEq: () => _open(_master, _Opened.eq),
-            onOpenComp: () => _open(_master, _Opened.comp),
-            onOpenLoudness: () => _open(_master, _Opened.loudness),
-            onOpenDevice: (id) => controller.openEffects(_master, device: id),
-            onRemoveDevice: (id) => _removeDevice(_master, id),
-            scenes: () => _SceneBand(
-                controller: controller,
-                theme: theme,
-                scroll: _clipScrolls.of(_master)),
-            selected: controller.selectedChannel == _master,
-            onSelect: () => controller.pickStrip(_master),
-          ),
-          if (!widget.embedded && !bare) ...[
-            const SizedBox(width: 6),
-            _SectionRail(
-              states: states,
-              theme: theme,
-              onToggle: controller.toggleMixerSection,
-              returnsShown: controller.returnsShown,
-              onReturns: () =>
-                  controller.returnsShown = !controller.returnsShown,
-              allNarrow: _allKeys(lanes, rows).every(narrow.contains),
-              onNarrowAll: () {
-                var keys = _allKeys(lanes, rows);
-                controller.setAllNarrow(keys, !keys.every(narrow.contains));
-              },
-            ),
-          ],
-        ]);
+              LayoutId(
+                id: _PinnedRight.right,
+                child: SingleChildScrollView(
+                  key: const ValueKey("mixerPinned"),
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // The returns, pinned beside the master as Ableton's are, in view
+                        // however far the channels are scrolled. Never more than half the
+                        // width; past that they scroll among themselves.
+                        if (showReturns) ...[
+                          const SizedBox(width: 8),
+                          ConstrainedBox(
+                            constraints:
+                                BoxConstraints(maxWidth: box.maxWidth / 2),
+                            child: SingleChildScrollView(
+                              key: const ValueKey("returnsPinned"),
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    for (var (i, ret) in returns.indexed)
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(right: 8),
+                                        child:
+                                            _returnStrip(theme, ret, i, bands),
+                                      ),
+                                    if (returns.length < maxReturns)
+                                      _AddReturn(
+                                          theme: theme,
+                                          onAdd: () {
+                                            controller.beginInteraction();
+                                            controller.addReturn();
+                                            controller.endInteraction();
+                                          }),
+                                  ]),
+                            ),
+                          ),
+                        ],
+                        // The scene's bus, between what is in the scene and the master:
+                        // where there is a master's or another scene's to tell it from.
+                        if (_sceneShown) ...[
+                          const SizedBox(width: 8),
+                          _SceneStrip(
+                            key: const ValueKey("strip-scene"),
+                            name: controller.document.scene.saysAt(
+                                controller.document.at,
+                                controller.document.kind),
+                            mix: controller.sceneBus,
+                            chain: controller.chainOf(sceneBusKey),
+                            level: _now[sceneBusKey] ?? (-90, -90),
+                            peak: _peaks[sceneBusKey] ?? (-90, -90),
+                            theme: theme,
+                            bands: bands,
+                            narrow: narrow.contains(sceneBusKey),
+                            onNarrow: () =>
+                                controller.toggleNarrow(sceneBusKey),
+                            onChanged: (mix, {transient = false}) {
+                              controller.beginInteraction();
+                              controller.setSceneBus(mix, transient: true);
+                              if (!transient) controller.endInteraction();
+                            },
+                            onCommit: controller.endInteraction,
+                            onOpen: (device) => controller
+                                .openEffects(sceneBusKey, device: device),
+                            onRemoveDevice: (id) =>
+                                _removeDevice(sceneBusKey, id),
+                            selected: controller.selectedChannel == sceneBusKey,
+                            onSelect: () => controller.pickStrip(sceneBusKey),
+                          ),
+                        ],
+                        const SizedBox(width: 8),
+                        _MasterStrip(
+                          key: const ValueKey("strip-master"),
+                          mix: master,
+                          speakers: controller.document.audio.speakers,
+                          level: _now[_master] ?? (-90, -90),
+                          peak: _peaks[_master] ?? (-90, -90),
+                          theme: theme,
+                          bands: bands,
+                          narrow: narrow.contains(_master),
+                          onNarrow: () => controller.toggleNarrow(_master),
+                          onChanged: (mix, {transient = false}) {
+                            controller.beginInteraction();
+                            controller.setMasterMix(mix, transient: true);
+                            if (!transient) controller.endInteraction();
+                          },
+                          onCommit: controller.endInteraction,
+                          onOpenEq: () => _open(_master, _Opened.eq),
+                          onOpenComp: () => _open(_master, _Opened.comp),
+                          onOpenLoudness: () =>
+                              _open(_master, _Opened.loudness),
+                          onOpenDevice: (id) =>
+                              controller.openEffects(_master, device: id),
+                          onRemoveDevice: (id) => _removeDevice(_master, id),
+                          scenes: () => _SceneBand(
+                              controller: controller,
+                              theme: theme,
+                              scroll: _clipScrolls.of(_master)),
+                          selected: controller.selectedChannel == _master,
+                          onSelect: () => controller.pickStrip(_master),
+                        ),
+                        if (!widget.embedded && !bare) ...[
+                          const SizedBox(width: 6),
+                          _SectionRail(
+                            states: states,
+                            theme: theme,
+                            onToggle: controller.toggleMixerSection,
+                            returnsShown: controller.returnsShown,
+                            onReturns: () => controller.returnsShown =
+                                !controller.returnsShown,
+                            allNarrow:
+                                _allKeys(lanes, rows).every(narrow.contains),
+                            onNarrowAll: () {
+                              var keys = _allKeys(lanes, rows);
+                              controller.setAllNarrow(
+                                  keys, !keys.every(narrow.contains));
+                            },
+                          ),
+                        ],
+                      ]),
+                ),
+              ),
+            ]);
       }),
     );
   }
@@ -2193,6 +2223,35 @@ class _PanControl extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// _PinnedRight lays out the mixer's two parts: [right] (the returns, the
+/// scene's bus, the master, the rail) as wide as it is, up to all but
+/// [leftLeast] of the room (at most half of it, where the room is narrower
+/// still), and [left] (the channels) in what is left.
+class _PinnedRight extends MultiChildLayoutDelegate {
+  static const left = 0, right = 1;
+  final double leftLeast;
+  _PinnedRight({required this.leftLeast});
+
+  @override
+  void performLayout(Size size) {
+    var keep = math.min(leftLeast, size.width / 2);
+    var most = math.max(0.0, size.width - keep);
+    var pinned = layoutChild(
+        right,
+        BoxConstraints(
+            maxWidth: most, minHeight: size.height, maxHeight: size.height));
+    positionChild(right, Offset(size.width - pinned.width, 0));
+    layoutChild(
+        left,
+        BoxConstraints.tightFor(
+            width: size.width - pinned.width, height: size.height));
+    positionChild(left, Offset.zero);
+  }
+
+  @override
+  bool shouldRelayout(_PinnedRight old) => old.leftLeast != leftLeast;
 }
 
 /// _MasterOutputDevice is the master's Output, last in its chain: the

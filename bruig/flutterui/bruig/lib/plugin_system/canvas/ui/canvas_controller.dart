@@ -109,6 +109,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/render/sheet_painter.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart';
 import 'package:path/path.dart' as path;
+import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
+    show Wave, LoudnessReading;
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart'
     show PitchReading;
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';

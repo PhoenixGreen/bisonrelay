@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/device_dsp.dart'
     show Follower, Gate;
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
@@ -381,6 +382,37 @@ class MixGraph {
       if (d case AutoTune a) return a.heard;
     }
     return null;
+  }
+
+  /// _devicesOf are strip [key]'s processors (the master's with no key).
+  List<DeviceProcessor> _devicesOf(String? key) => key == null
+      ? _master.devices
+      : _stripOf(key)?.devices ??
+          _returns.where((r) => r.spec.id == key).firstOrNull?.devices ??
+          const <DeviceProcessor>[];
+
+  /// waveOf is what strip [key]'s first analyser of [kind] (a Scope or a
+  /// Stereo Image) last heard, or null with none.
+  Wave? waveOf(String? key, DeviceKind kind) {
+    for (var d in _devicesOf(key)) {
+      if (d case WaveTap t when t.kind == kind) return t.wave;
+    }
+    return null;
+  }
+
+  /// loudnessOf is strip [key]'s first Loudness's reading, or null.
+  LoudnessReading? loudnessOf([String? key]) {
+    for (var d in _devicesOf(key)) {
+      if (d case LoudnessTap t) return t.reading;
+    }
+    return null;
+  }
+
+  /// resetLoudness starts strip [key]'s Loudness measuring again.
+  void resetLoudness([String? key]) {
+    for (var d in _devicesOf(key)) {
+      if (d case LoudnessTap t) t.reset();
+    }
   }
 
   /// tapped are the channels whose meters between devices are on screen:
