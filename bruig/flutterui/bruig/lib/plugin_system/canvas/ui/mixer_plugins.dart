@@ -1975,6 +1975,54 @@ class _Knob extends StatelessWidget {
       );
 }
 
+/// DeviceKnob is the Chain's knob for an editor outside this file (the
+/// Instrument's, say): dragged up to turn it right, double-clicked to put it
+/// back to [initial]; [log] spreads its travel as hertz and seconds want.
+class DeviceKnob extends StatelessWidget {
+  final String label;
+  final String text;
+  final double value, initial, min, max;
+  final bool log;
+  final double size;
+  final Color accent;
+  final Color ink;
+  final bool bipolar;
+  final void Function(double v, {bool transient}) onChanged;
+  final VoidCallback onCommit;
+
+  const DeviceKnob({
+    required this.label,
+    required this.text,
+    required this.value,
+    required this.initial,
+    required this.min,
+    required this.max,
+    required this.accent,
+    required this.ink,
+    required this.onChanged,
+    required this.onCommit,
+    this.log = false,
+    this.size = 38,
+    this.bipolar = false,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) => _Knob(
+        label: label,
+        text: text,
+        value: value,
+        initial: initial,
+        range: _Range(min, max, log: log),
+        size: size,
+        accent: accent,
+        ink: ink,
+        bipolar: bipolar,
+        onChanged: onChanged,
+        onCommit: onCommit,
+      );
+}
+
 /// _sweep is a knob's travel, from seven o'clock round to five.
 const _sweepStart = math.pi * 0.75, _sweep = math.pi * 1.5;
 

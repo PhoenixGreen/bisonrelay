@@ -5,10 +5,14 @@ import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart'
     show InstrumentLook, MidiControl;
+import 'package:bruig/plugin_system/canvas/model/instrument_shape.dart';
 
 // sampler.dart plays notes: a bank's samples where there is a bank (see
 // soundfont.dart), otherwise built-in piano, drum and plucked voices, so an
-// instrument sounds the moment it is added.
+// instrument sounds the moment it is added -- each shaped as the
+// instrument's InstrumentShape has it (instrument_shape.dart): its own
+// volume envelope, a filter with an envelope, an LFO, one voice or many,
+// gliding from note to note.
 //
 // Generator meanings, and the 0.4 scale on initial attenuation, follow
 // FluidSynth, which MuseScore's bank was voiced for.
@@ -25,7 +29,26 @@ abstract class Voice {
   /// pitch is the bend from the voice's key as a ratio (pitch bend plus mod
   /// wheel vibrato). Plucked and drum voices ignore it.
   double pitch = 1;
-  Voice(this.key);
+
+  /// heldAs is the key it answers to: [key], or where a legato note moved
+  /// it. offset is how far it plays from [key] there, in semitones, and
+  /// slide how far it still has to glide.
+  int heldAs;
+  double offset = 0, slide = 0;
+
+  /// note is which note it was started for: a bank's note may be two
+  /// voices, a side each.
+  int note = 0;
+
+  /// The instrument's own envelopes, where it has them, and its filter's
+  /// state, a side each.
+  _Adsr? _envelope, _filterEnvelope;
+  double _l1 = 0, _l2 = 0, _r1 = 0, _r2 = 0;
+
+  Voice(this.key) : heldAs = key;
+
+  /// ending is whether its key is let go: it is dying away.
+  bool get ending => released || (_envelope?.letGo ?? false);
 
   void release() => released = true;
 
@@ -55,8 +78,13 @@ class _SfVoice extends Voice {
   final List<double>? _f;
   double _x1 = 0, _x2 = 0, _y1 = 0, _y2 = 0;
 
-  _SfVoice(super.key, int velocity, Zone z, this.data)
-      : end = math.min(data.length - 1,
+  /// _enveloped is whether it keeps its zone's envelope: not where the
+  /// instrument has one of its own.
+  final bool _enveloped;
+
+  _SfVoice(super.key, int velocity, Zone z, this.data, {bool enveloped = true})
+      : _enveloped = enveloped,
+        end = math.min(data.length - 1,
             z.sample.end + z[Gen.endOffset] + z[Gen.endCoarse] * 32768),
         loopStart = z.sample.loopStart +
             z[Gen.loopStartOffset] +
@@ -133,6 +161,7 @@ class _SfVoice extends Voice {
 
   /// _next is the envelope's next value.
   double _next() {
+    if (!_enveloped) return 1;
     if (released) {
       _level *= _releaseFactor;
       if (_level < 1e-5) done = true;
@@ -362,6 +391,36 @@ class _PluckVoice extends Voice {
   }
 }
 
+/// _Adsr is an envelope: up in a straight line over its attack, down to its
+/// sustain over its decay, held there, then to silence over its release
+/// once let go -- each fall within a thousandth (60dB) of its end in the
+/// time it is given.
+class _Adsr {
+  final int _attack;
+  final double _decay, _sustain, _release;
+  int _t = 0;
+  double level = 0;
+  bool letGo = false, done = false;
+
+  _Adsr(double attack, double decay, this._sustain, double release)
+      : _attack = math.max(1, (attack * mixRate).round()),
+        _decay = _factor(decay),
+        _release = _factor(release);
+
+  static double _factor(double seconds) =>
+      math.exp(-6.9 / (math.max(0.001, seconds) * mixRate));
+
+  double next() {
+    if (letGo) {
+      level *= _release;
+      if (level < 1e-4) done = true;
+      return level;
+    }
+    if (_t < _attack) return level = ++_t / _attack;
+    return level = _sustain + (level - _sustain) * _decay;
+  }
+}
+
 /// Sampler is an instrument: a bank's preset, or a built-in voice.
 class Sampler {
   final SoundFont? font;
@@ -369,17 +428,22 @@ class Sampler {
 
   /// look picks the built-in voice used with no bank.
   final InstrumentLook look;
+
+  /// shape is how it plays: see instrument_shape.dart. Changed as it plays,
+  /// the next note has it, and the filter, LFO and bend at once.
+  InstrumentShape shape;
   final List<Voice> _voices = [];
 
   /// maxVoices is how many sound at once: past it the oldest let-go note
   /// is cut, then the oldest of all.
-  static const int maxVoices = 64;
+  static const int maxVoices = InstrumentShape.maxVoices;
 
   Sampler(
       {this.font,
       int bank = 0,
       int program = 0,
-      this.look = InstrumentLook.keyboard})
+      this.look = InstrumentLook.keyboard,
+      this.shape = const InstrumentShape()})
       : preset = font?.preset(bank, program);
 
   int get sounding => _voices.length;
@@ -393,11 +457,26 @@ class Sampler {
   /// until it is let up.
   final Set<int> _pedalled = {};
 
-  /// _time is how long it has played, for the vibrato's swing.
-  double _time = 0;
+  /// _held are the keys down, the last pressed last, with how hard each was
+  /// struck: where one voice plays, letting go of a note goes back to the
+  /// one held before it.
+  final List<int> _held = [];
+  final Map<int, int> _struck = {};
+
+  /// _notes counts the notes started, to tell one from another.
+  int _notes = 0;
+
+  /// _time is how long it has played, for the vibrato's swing, and
+  /// _lfoPhase where the LFO is in its cycle.
+  double _time = 0, _lfoPhase = 0;
   double _gainL = 1, _gainR = 1;
   bool _rendered = false;
   Float32List _l = Float32List(0), _r = Float32List(0);
+
+  /// _step is how many frames are rendered together: the LFO, the filter's
+  /// envelope and a glide move between them.
+  static const int _step = 64;
+  final Float32List _vl = Float32List(_step), _vr = Float32List(_step);
 
   /// control sets one of the channel's controllers, 0 to 1.
   void control(MidiControl c, double value) {
@@ -405,7 +484,7 @@ class Sampler {
     if (c == MidiControl.sustain && value < 0.5) {
       for (var key in _pedalled) {
         for (var v in _voices) {
-          if (v.key == key) v.release();
+          if (v.heldAs == key) _end(v);
         }
       }
       _pedalled.clear();
@@ -417,62 +496,211 @@ class Sampler {
       noteOff(key);
       return;
     }
+    velocity = shape.velocity(velocity);
+    _held
+      ..remove(key)
+      ..add(key);
+    _struck[key] = velocity;
+    _pedalled.remove(key);
+    if (shape.mode == VoiceMode.poly) {
+      _start(key, velocity);
+      return;
+    }
+    // One at a time: legato moves what is sounding to the new key; mono
+    // starts it afresh, gliding from where the last was.
+    var sounding = [
+      for (var v in _voices)
+        if (!v.ending) v
+    ];
+    if (shape.mode == VoiceMode.legato && sounding.isNotEmpty) {
+      for (var v in sounding) {
+        _moveTo(v, key);
+      }
+      return;
+    }
+    var from = sounding.isEmpty
+        ? null
+        : sounding.last.key + sounding.last.offset + sounding.last.slide;
+    for (var v in sounding) {
+      _end(v);
+    }
+    _start(key, velocity, from: from);
+  }
+
+  /// _start sounds [key], gliding from [from] (a key, in semitones) where it
+  /// is given and the instrument glides.
+  void _start(int key, int velocity, {double? from}) {
+    var started = <Voice>[];
     var f = font, p = preset;
+    var own = shape.envelope;
     if (f != null && p != null) {
       for (var z in f.zones(p, key, velocity)) {
-        _voices.add(_SfVoice(key, velocity, z, f.samples));
+        started.add(_SfVoice(key, velocity, z, f.samples, enveloped: !own));
       }
     } else {
-      _voices.add(switch (look) {
+      started.add(switch (look) {
         InstrumentLook.keyboard => _PianoVoice(key, velocity),
         InstrumentLook.drums => _DrumVoice(key, velocity),
         InstrumentLook.guitar => _PluckVoice(key, velocity),
         InstrumentLook.bass => _PluckVoice(key, velocity, bass: true),
       });
     }
+    var note = ++_notes;
+    for (var v in started) {
+      v.note = note;
+      if (own) {
+        v._envelope =
+            _Adsr(shape.attack, shape.decay, shape.sustain, shape.release);
+      }
+      if (shape.filter != SynthFilter.off && shape.filterEnvelope != 0) {
+        v._filterEnvelope =
+            _Adsr(0.002, shape.filterDecay, 0, shape.filterDecay);
+      }
+      if (from != null && shape.glides) v.slide = from - key;
+    }
+    _voices.addAll(started);
+    _trim();
+  }
+
+  /// _moveTo moves [v] to [key] -- a legato note -- gliding there where the
+  /// instrument glides, else at once.
+  void _moveTo(Voice v, int key) {
+    var now = v.offset + v.slide;
+    v.offset = (key - v.key).toDouble();
+    v.slide = shape.glides ? now - v.offset : 0;
+    v.heldAs = key;
+  }
+
+  /// _end lets [v] go: its own release, or the instrument's.
+  void _end(Voice v) {
+    var amp = v._envelope;
+    if (amp == null) {
+      v.release();
+    } else {
+      amp.letGo = true;
+    }
+    v._filterEnvelope?.letGo = true;
+  }
+
+  /// _trim cuts voices past the most there may be -- the oldest let-go note
+  /// first, then the oldest of all -- and notes past the instrument's
+  /// [InstrumentShape.voices].
+  void _trim() {
     while (_voices.length > maxVoices) {
-      var old = _voices.indexWhere((v) => v.released);
+      var old = _voices.indexWhere((v) => v.ending);
       _voices.removeAt(old < 0 ? 0 : old);
+    }
+    if (shape.voices >= maxVoices) return;
+    while (true) {
+      var notes = {for (var v in _voices) v.note};
+      if (notes.length <= shape.voices) return;
+      var ending = _voices.where((v) => v.ending);
+      var cut = ending.isNotEmpty ? ending.first.note : _voices.first.note;
+      _voices.removeWhere((v) => v.note == cut);
     }
   }
 
   void noteOff(int key) {
+    _held.remove(key);
     if (_controls[MidiControl.sustain]! >= 0.5) {
       _pedalled.add(key);
       return;
     }
-    for (var v in _voices) {
-      if (v.key == key) v.release();
+    var sounding = [
+      for (var v in _voices)
+        if (v.heldAs == key && !v.ending) v
+    ];
+    // One at a time: back to the key still held, if any.
+    if (shape.mode != VoiceMode.poly &&
+        sounding.isNotEmpty &&
+        _held.isNotEmpty) {
+      var back = _held.last;
+      if (shape.mode == VoiceMode.legato) {
+        for (var v in sounding) {
+          _moveTo(v, back);
+        }
+        return;
+      }
+      var from = sounding.last.key + sounding.last.offset + sounding.last.slide;
+      for (var v in sounding) {
+        _end(v);
+      }
+      _start(back, _struck[back] ?? 100, from: from);
+      return;
+    }
+    for (var v in sounding) {
+      _end(v);
     }
   }
 
   void allOff() {
+    _held.clear();
     for (var v in _voices) {
-      v.release();
+      _end(v);
     }
   }
 
   /// render adds the next [n] frames of everything sounding to [l] and [r],
   /// through the controllers.
   void render(Float32List l, Float32List r, int n) {
-    // Bend range is two semitones; the mod wheel gives up to half a
-    // semitone of vibrato at 5.5Hz.
-    var bend = (_controls[MidiControl.pitchBend]! - 0.5) * 4;
-    var vibrato = _controls[MidiControl.modulation]! *
-        0.5 *
-        math.sin(2 * math.pi * 5.5 * _time);
-    var pitch = math.pow(2, (bend + vibrato) / 12).toDouble();
-    _time += n / mixRate;
     if (_l.length < n) {
       _l = Float32List(n);
       _r = Float32List(n);
     }
     _l.fillRange(0, n, 0);
     _r.fillRange(0, n, 0);
-    for (var v in [..._voices]) {
-      v.pitch = pitch;
-      v.render(_l, _r, n);
-      if (v.done) _voices.remove(v);
+    var shape = this.shape;
+    var lfoStep = 2 * math.pi * shape.lfoRate / mixRate;
+    for (var at = 0; at < n; at += _step) {
+      var m = math.min(_step, n - at);
+      var lfo = shape.lfoDepth > 0 ? math.sin(_lfoPhase) * shape.lfoDepth : 0.0;
+      // The bend wheel bends as far as the instrument says; the mod wheel
+      // gives up to half a semitone of vibrato at 5.5Hz; the LFO, a
+      // semitone either way.
+      var bend =
+          (_controls[MidiControl.pitchBend]! - 0.5) * 2 * shape.bendRange;
+      var vibrato = _controls[MidiControl.modulation]! *
+          0.5 *
+          math.sin(2 * math.pi * 5.5 * _time);
+      var semitones = bend +
+          vibrato +
+          shape.tune / 100 +
+          (shape.lfoTarget == LfoTarget.pitch ? lfo : 0);
+      var outL = Float32List.sublistView(_l, at, at + m);
+      var outR = Float32List.sublistView(_r, at, at + m);
+      var glideFall =
+          shape.glide > 0 ? math.exp(-4.6 * m / (shape.glide * mixRate)) : 0.0;
+      for (var v in [..._voices]) {
+        v.pitch = math.pow(2, (semitones + v.offset + v.slide) / 12).toDouble();
+        if (v._envelope == null && shape.filter == SynthFilter.off) {
+          v.render(outL, outR, m);
+        } else {
+          _vl.fillRange(0, m, 0);
+          _vr.fillRange(0, m, 0);
+          v.render(_vl, _vr, m);
+          _shaped(v, m, lfo);
+          for (var i = 0; i < m; i++) {
+            outL[i] += _vl[i];
+            outR[i] += _vr[i];
+          }
+        }
+        if (v.slide != 0) {
+          v.slide *= glideFall;
+          if (v.slide.abs() < 1e-3) v.slide = 0;
+        }
+        if (v.done) _voices.remove(v);
+      }
+      // The LFO on the volume: down from full as far as its depth.
+      if (shape.lfoTarget == LfoTarget.volume && shape.lfoDepth > 0) {
+        for (var i = 0; i < m; i++) {
+          var g = 1 -
+              shape.lfoDepth * (0.5 - 0.5 * math.sin(_lfoPhase + lfoStep * i));
+          outL[i] *= g;
+          outR[i] *= g;
+        }
+      }
+      _time += m / mixRate;
+      _lfoPhase = (_lfoPhase + lfoStep * m) % (2 * math.pi);
     }
     // Volume and expression are squared, as MIDI has them; unity at
     // volume's rest value and full expression.
@@ -498,5 +726,67 @@ class Sampler {
     }
     _gainL = toL;
     _gainR = toR;
+  }
+
+  /// _shaped puts [v]'s [m] frames, in _vl and _vr, through the instrument's
+  /// filter and its own volume envelope. [lfo] is the LFO's swing now,
+  /// minus to plus its depth.
+  void _shaped(Voice v, int m, double lfo) {
+    var shape = this.shape;
+    if (shape.filter != SynthFilter.off) {
+      // Its corner: up (or down) as far as the filter's envelope is open,
+      // and two octaves either way of the LFO.
+      var octaves = (v._filterEnvelope?.level ?? 0) * shape.filterEnvelope * 4 +
+          (shape.lfoTarget == LfoTarget.filter ? lfo * 2 : 0);
+      var hz = (shape.cutoff * math.pow(2, octaves))
+          .clamp(20.0, mixRate * 0.45)
+          .toDouble();
+      // A state-variable filter (Simper's), stable however it is moved.
+      var g = math.tan(math.pi * hz / mixRate);
+      var k = 1 / (math.sqrt1_2 * math.pow(28, shape.resonance));
+      var a1 = 1 / (1 + g * (g + k)), a2 = g * a1, a3 = g * a2;
+      var kind = shape.filter;
+      // A side at a time: its two states in, the filtered frames out.
+      (double, double) side(Float32List x, double c1, double c2) {
+        for (var i = 0; i < m; i++) {
+          var input = x[i];
+          var v3 = input - c2;
+          var v1 = a1 * c1 + a2 * v3;
+          var v2 = c2 + a2 * c1 + a3 * v3;
+          c1 = 2 * v1 - c1;
+          c2 = 2 * v2 - c2;
+          x[i] = switch (kind) {
+            SynthFilter.lowPass => v2,
+            SynthFilter.highPass => input - k * v1 - v2,
+            SynthFilter.bandPass => v1,
+            SynthFilter.off => input,
+          };
+        }
+        return (c1, c2);
+      }
+
+      var (l1, l2) = side(_vl, v._l1, v._l2);
+      var (r1, r2) = side(_vr, v._r1, v._r2);
+      v
+        .._l1 = l1
+        .._l2 = l2
+        .._r1 = r1
+        .._r2 = r2;
+      var fe = v._filterEnvelope;
+      if (fe != null) {
+        for (var i = 0; i < m; i++) {
+          fe.next();
+        }
+      }
+    }
+    var amp = v._envelope;
+    if (amp != null) {
+      for (var i = 0; i < m; i++) {
+        var a = amp.next();
+        _vl[i] *= a;
+        _vr[i] *= a;
+      }
+      if (amp.done) v.done = true;
+    }
   }
 }

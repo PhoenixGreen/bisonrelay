@@ -3,8 +3,11 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonInt, jsonDouble, jsonStr;
+import 'package:bruig/plugin_system/canvas/model/instrument_shape.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_effects.dart';
 import 'package:crypto/crypto.dart';
+
+export 'package:bruig/plugin_system/canvas/model/instrument_shape.dart';
 
 // instrument.dart is an instrument's part: the notes it plays, the sound it
 // plays them with, and the keyboard it is drawn as.
@@ -222,6 +225,10 @@ class InstrumentPart {
   /// rendered again only when that changes.
   final String rendered;
 
+  /// shape is how it plays its sound: its envelope, filter, LFO and voices.
+  /// See instrument_shape.dart.
+  final InstrumentShape shape;
+
   const InstrumentPart({
     this.look = InstrumentLook.keyboard,
     this.sound = InstrumentSound.builtin,
@@ -235,6 +242,7 @@ class InstrumentPart {
     this.input = "",
     this.monitor = MidiMonitor.auto,
     this.rendered = "",
+    this.shape = const InstrumentShape(),
   });
 
   /// highKey is the keyboard's top key.
@@ -280,6 +288,8 @@ class InstrumentPart {
       for (var e in effects)
         if (e.on) e.toString(),
       if (controls.isNotEmpty) controlsToJson(controls),
+      // As it is by default, nothing: a part from before keeps its file.
+      if (!shape.plain) shape.toJson(),
     ]);
     return sha256.convert(utf8.encode(text)).toString().substring(0, 16);
   }
@@ -327,6 +337,7 @@ class InstrumentPart {
     String? input,
     MidiMonitor? monitor,
     String? rendered,
+    InstrumentShape? shape,
   }) {
     var k = (keys ?? this.keys).clamp(12, 88);
     return InstrumentPart(
@@ -342,6 +353,7 @@ class InstrumentPart {
       input: input ?? this.input,
       monitor: monitor ?? this.monitor,
       rendered: rendered ?? this.rendered,
+      shape: shape ?? this.shape,
     );
   }
 
@@ -358,6 +370,7 @@ class InstrumentPart {
         if (input.isNotEmpty) "input": input,
         if (monitor != MidiMonitor.auto) "monitor": monitor.name,
         if (rendered.isNotEmpty) "rendered": rendered,
+        if (!shape.plain) "shape": shape.toJson(),
       };
 
   factory InstrumentPart.fromJson(Map<String, dynamic> json) =>
@@ -385,6 +398,7 @@ class InstrumentPart {
                 .firstOrNull ??
             MidiMonitor.auto,
         rendered: json["rendered"] is String ? json["rendered"] as String : "",
+        shape: InstrumentShape.fromJson(json["shape"]),
       );
 }
 

@@ -123,7 +123,8 @@ Future<SoundFont?> loadSoundBank() async {
       font: part.sound == InstrumentSound.bank ? font : null,
       bank: part.bank,
       program: part.program,
-      look: part.look);
+      look: part.look,
+      shape: part.shape);
   // Note-offs sort before note-ons at the same moment, so a note played
   // again straight away sounds again.
   var events = <(int, bool, MidiNote)>[

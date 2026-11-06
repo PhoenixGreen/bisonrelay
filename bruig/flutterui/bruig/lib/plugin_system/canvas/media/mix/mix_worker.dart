@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart' show ChannelMix;
 import 'package:bruig/plugin_system/canvas/media/synth/sampler.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
+import 'package:bruig/plugin_system/canvas/model/surround.dart'
+    show SpeakerGroup;
 import 'package:flutter_soloud/flutter_soloud.dart';
 
 // mix_worker.dart runs the mix in an isolate of its own. It renders ahead
@@ -354,6 +356,8 @@ class _Worker {
         core.graph.setScene(m[1] as ChannelMix, (m[2] as Set).cast());
       case "speakers":
         core.graph.setSpeakers(m[1]);
+      case "hear":
+        core.graph.hear = m[1] as SpeakerGroup;
       case "placement":
         core.graph.setPlacement(m[1] as String, m[2]);
       case "master":
@@ -395,7 +399,9 @@ class _Worker {
               (core.play(instrument, volume: 1, channel: channel), instrument);
           live[channel] = had;
         }
-        had.$2.sampler.noteOn(m[3] as int, m[4] as int);
+        had.$2.sampler
+          ..shape = part.shape
+          ..noteOn(m[3] as int, m[4] as int);
       case "noteOff":
         live[m[1]]?.$2.sampler.noteOff(m[2] as int);
       case "control":

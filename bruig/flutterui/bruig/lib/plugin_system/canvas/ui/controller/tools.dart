@@ -576,6 +576,7 @@ extension CanvasTools on CanvasController {
       // the chain.
       _speechShown = device == "speech" || device == "vocaliser";
       _pitchShown = false;
+      _instrumentShown = false;
     }
     _effectsOf = key;
     _effectsOpen = true;
@@ -613,6 +614,7 @@ extension CanvasTools on CanvasController {
     _pianoRollShown = false;
     _speechShown = false;
     _pitchShown = false;
+    _instrumentShown = false;
     notifyListeners();
   }
 
@@ -629,12 +631,43 @@ extension CanvasTools on CanvasController {
     _clipEditorShown = false;
     _pianoRollShown = false;
     _speechShown = false;
+    _instrumentShown = false;
     _pitchShown = true;
     _effectsFocus = "pitch";
     _effectsFocusCount++;
     _dockOpening(DockPanel.chain);
     notifyListeners();
   }
+
+  /// instrumentShown is whether the Chain's sound is on the Instrument
+  /// editor of the channel [effectsOf]: how its instrument plays -- see
+  /// instrument_shape.dart.
+  bool get instrumentShown => _instrumentShown;
+
+  /// showInstrument opens [key]'s instrument in the Instrument editor, in
+  /// the Chain.
+  void showInstrument(String key) {
+    _effectsOf = key;
+    _effectsOpen = true;
+    _animationOpen = false;
+    _chainMotion = false;
+    _clipEditorShown = false;
+    _pianoRollShown = false;
+    _speechShown = false;
+    _pitchShown = false;
+    _instrumentShown = true;
+    _effectsFocus = "instrument";
+    _effectsFocusCount++;
+    _dockOpening(DockPanel.chain);
+    notifyListeners();
+  }
+
+  /// setInstrumentShape changes how [channel]'s instrument plays.
+  void setInstrumentShape(
+          String channel, InstrumentShape Function(InstrumentShape) change,
+          {bool transient = false}) =>
+      setChannelPart(channel, (p) => p.copyWith(shape: change(p.shape)),
+          transient: transient);
 
   /// speechShown is whether the Chain's sound is on the channel's Speech:
   /// see showSpeech.
@@ -651,6 +684,7 @@ extension CanvasTools on CanvasController {
     _clipEditorShown = false;
     _pianoRollShown = false;
     _pitchShown = false;
+    _instrumentShown = false;
     _speechShown = true;
     _effectsFocus = "speech";
     _effectsFocusCount++;
@@ -701,6 +735,7 @@ extension CanvasTools on CanvasController {
     _pianoRollShown = false;
     _speechShown = false;
     _pitchShown = false;
+    _instrumentShown = false;
     _clipEditorShown = true;
     // First in the strip: scrolled to.
     _effectsFocus = "clip";
@@ -1237,6 +1272,7 @@ extension CanvasTools on CanvasController {
     _pianoRollShown = true;
     _speechShown = false;
     _pitchShown = false;
+    _instrumentShown = false;
     _clipEditorShown = false;
     _effectsFocus = "roll";
     _effectsFocusCount++;

@@ -316,6 +316,7 @@ class AudioRuntime extends ChangeNotifier {
       ChannelMix sceneBus = const ChannelMix(),
       Set<String> sceneChannels = const {},
       SpeakerLayout speakers = SpeakerLayout.stereo,
+      SpeakerGroup hear = SpeakerGroup.all,
       Map<String, Heard> placements = const {}}) {
     // Another runtime on the same engine -- a canvas previewed from the
     // Files -- has set the mix since: all of this one's is sent again, not
@@ -328,10 +329,15 @@ class AudioRuntime extends ChangeNotifier {
       _sceneKey = null;
       _placements.clear();
       if (_started) engine.setSpeakers(speakers);
+      if (_started) engine.setHear(hear);
     }
     if (speakers != _speakers) {
       _speakers = speakers;
       if (_started) engine.setSpeakers(speakers);
+    }
+    if (hear != _hear) {
+      _hear = hear;
+      if (_started) engine.setHear(hear);
     }
     // Where each placed sound's channel is heard from, on this frame; a
     // channel no longer placed goes back to its own pan.
@@ -416,6 +422,7 @@ class AudioRuntime extends ChangeNotifier {
   Set<String> _sceneChannels = const {};
   String? _sceneKey;
   SpeakerLayout _speakers = SpeakerLayout.stereo;
+  SpeakerGroup _hear = SpeakerGroup.all;
   final Map<String, Heard> _placements = {};
 
   /// placements are where each placed channel is heard from now, for tests
@@ -650,6 +657,7 @@ class AudioRuntime extends ChangeNotifier {
       engine.setReturns(_returns);
       engine.setScene(_sceneBus, _sceneChannels);
       engine.setSpeakers(_speakers);
+      engine.setHear(_hear);
       for (var e in _placements.entries) {
         engine.setPlacement(e.key, e.value);
       }

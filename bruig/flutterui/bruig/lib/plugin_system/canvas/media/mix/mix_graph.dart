@@ -227,6 +227,10 @@ class MixGraph {
   MasterMix _masterMix = const MasterMix(limiter: false);
   double _normaliseDb = 0;
 
+  /// hear is which speakers the editor hears on its two (see SpeakerGroup):
+  /// only the folded l and r change; [speakers] are as mixed.
+  SpeakerGroup hear = SpeakerGroup.all;
+
   /// setSpeakers sets the speaker layout the mix is for.
   void setSpeakers(SpeakerLayout layout) {
     if (layout == _layout) return;
@@ -282,8 +286,8 @@ class MixGraph {
     // scaled down to 1/sqrt2, so the point is as loud as the pair.
     var near = 1 / math.sqrt2;
     var k = near + (1 - near) * (pan.width / 60).clamp(0.0, 1.0);
-    var gl = panGains(_layout, pan.angle - pan.width / 2);
-    var gr = panGains(_layout, pan.angle + pan.width / 2);
+    var gl = panGains(_layout, pan.angle - pan.width / 2, centre: pan.centre);
+    var gr = panGains(_layout, pan.angle + pan.width / 2, centre: pan.centre);
     for (var c = 0; c < count; c++) {
       l[c] = gl[c] * k;
       r[c] = gr[c] * k;
@@ -540,6 +544,8 @@ class MixGraph {
       _out[0].setRange(0, n, l);
       _out[1].setRange(0, n, r);
       _masterLevels = _peaks(l, r, n);
+      _levels[speakerLevelKey(0)] = (_masterLevels.$1, _masterLevels.$1);
+      _levels[speakerLevelKey(1)] = (_masterLevels.$2, _masterLevels.$2);
       return;
     }
     if ((_layout.lfe, _lfeFilter) case (var lfe?, var filter?)) {
@@ -551,10 +557,16 @@ class MixGraph {
       var b = 2 * k + 1 < _out.length ? _out[2 * k + 1] : _silent;
       _masters[k].process(a, b, n, limit: limit);
     }
-    // Heard on two speakers: folded down.
+    // Each speaker's peak, for its meter.
+    for (var c = 0; c < _out.length; c++) {
+      var p = _peaks(_out[c], _out[c], n).$1;
+      _levels[speakerLevelKey(c)] = (p, p);
+    }
+    // Heard on two speakers: folded down, or the group listened to.
     l.fillRange(0, n, 0);
     r.fillRange(0, n, 0);
-    for (var (c, (gl, gr)) in foldDown(_layout).indexed) {
+    for (var (c, (gl, gr)) in hearFold(_layout, hear).indexed) {
+      if (gl == 0 && gr == 0) continue;
       var o = _out[c];
       for (var i = 0; i < n; i++) {
         l[i] += o[i] * gl;

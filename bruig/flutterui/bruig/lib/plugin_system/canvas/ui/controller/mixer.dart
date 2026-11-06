@@ -493,6 +493,18 @@ extension CanvasMixing on CanvasController {
     _applyMix();
   }
 
+  /// hear is which of a surround mix's speakers the editor plays on its two:
+  /// everything folded down, or one group alone (see SpeakerGroup). Only
+  /// what is heard here; the mix and its exports are as they are.
+  SpeakerGroup get hear => _hear;
+
+  void hearSpeakers(SpeakerGroup group) {
+    if (group == _hear) return;
+    _hear = group;
+    _applyMix();
+    notifyListeners();
+  }
+
   /// _applyMix hands the runtime the mixer as it stands. Cheap when nothing
   /// has changed: the runtime compares before it calls the engine.
   void _applyMix() {
@@ -540,6 +552,7 @@ extension CanvasMixing on CanvasController {
                 beatsPerBar: _document.audio.beatsPerBar)),
         sceneChannels: inScene,
         speakers: _document.audio.speakers,
+        hear: _hear,
         placements: placementsNow);
   }
 

@@ -73,27 +73,40 @@ class SurroundPan {
   /// the front pair (stereo as mixed), nought a single point.
   final double width;
 
-  const SurroundPan({this.angle = 0, this.width = 60});
+  /// centre is how much of what is heard from in front the centre speaker
+  /// carries, nought to one: at one, as the speakers fall (a sound straight
+  /// ahead all on it); at nought, none -- between the front pair, as music
+  /// is often mixed, the centre kept for voices.
+  final double centre;
 
-  bool get isDefault => angle == 0 && width == 60;
+  const SurroundPan({this.angle = 0, this.width = 60, this.centre = 1});
 
-  SurroundPan copyWith({double? angle, double? width}) => SurroundPan(
-      angle: wrapAngle(angle ?? this.angle),
-      width: (width ?? this.width).clamp(0.0, 180.0));
+  bool get isDefault => angle == 0 && width == 60 && centre == 1;
 
-  Map<String, dynamic> toJson() => {"angle": angle, "width": width};
+  SurroundPan copyWith({double? angle, double? width, double? centre}) =>
+      SurroundPan(
+          angle: wrapAngle(angle ?? this.angle),
+          width: (width ?? this.width).clamp(0.0, 180.0),
+          centre: (centre ?? this.centre).clamp(0.0, 1.0));
+
+  Map<String, dynamic> toJson() =>
+      {"angle": angle, "width": width, if (centre != 1) "centre": centre};
 
   factory SurroundPan.fromJson(Map<String, dynamic> json) => const SurroundPan()
       .copyWith(
           angle: jsonDouble(json["angle"], 0),
-          width: jsonDouble(json["width"], 60));
+          width: jsonDouble(json["width"], 60),
+          centre: jsonDouble(json["centre"], 1));
 
   @override
   bool operator ==(Object other) =>
-      other is SurroundPan && other.angle == angle && other.width == width;
+      other is SurroundPan &&
+      other.angle == angle &&
+      other.width == width &&
+      other.centre == centre;
 
   @override
-  int get hashCode => Object.hash(angle, width);
+  int get hashCode => Object.hash(angle, width, centre);
 }
 
 /// wrapAngle is [degrees] brought into -180 to 180.
@@ -106,12 +119,30 @@ double wrapAngle(double degrees) {
 /// panGains are [layout]'s channel gains for a sound heard from [angle], the
 /// two speakers either side sharing it with powers summing to one. In
 /// stereo an angle behind is mirrored to the front, then held to the pair.
-Float64List panGains(SpeakerLayout layout, double angle) {
+/// [centre] below one takes the centre speaker's share (see
+/// SurroundPan.centre) to the front pair, the powers still summing to one.
+Float64List panGains(SpeakerLayout layout, double angle,
+    {double centre = 1}) {
+  var full = _ringGains(layout, angle, withCentre: true);
+  var c = layout.speakers.indexWhere((s) => s.$2 == 0);
+  if (centre >= 1 || c < 0) return full;
+  var none = _ringGains(layout, angle, withCentre: false);
+  var k = centre.clamp(0.0, 1.0);
+  return Float64List.fromList([
+    for (var i = 0; i < full.length; i++)
+      math.sqrt(k * full[i] * full[i] + (1 - k) * none[i] * none[i]),
+  ]);
+}
+
+/// _ringGains are [panGains] round the speakers there are, the centre
+/// one left out unless [withCentre].
+Float64List _ringGains(SpeakerLayout layout, double angle,
+    {required bool withCentre}) {
   var out = Float64List(layout.channels);
   var a = wrapAngle(angle);
   var ring = <(int, double)>[
     for (var (i, (_, deg)) in layout.speakers.indexed)
-      if (deg != null) (i, deg.toDouble()),
+      if (deg != null && (withCentre || deg != 0)) (i, deg.toDouble()),
   ]..sort((x, y) => x.$2.compareTo(y.$2));
   if (layout == SpeakerLayout.stereo) {
     // Folded to the front: behind the listener is the same side, mirrored.
@@ -151,6 +182,56 @@ List<(double, double)> foldDown(SpeakerLayout layout) {
         deg < 0 ? (half, 0.0) : (0.0, half),
   ];
 }
+
+/// SpeakerGroup is which of a surround mix's speakers the editor plays on
+/// its two: everything folded down, as most listeners hear it, or one group
+/// alone, to check what goes where. The mix and its exports are unchanged.
+enum SpeakerGroup {
+  all("Everything, folded"),
+  front("The front pair"),
+  centre("The centre"),
+  surround("The surrounds"),
+  lfe("The LFE");
+
+  final String label;
+  const SpeakerGroup(this.label);
+
+  /// has is whether the speaker at [deg] (null for the LFE) is one of it.
+  bool has(int? deg) => switch (this) {
+        SpeakerGroup.all => true,
+        SpeakerGroup.front => deg != null && deg.abs() == 30,
+        SpeakerGroup.centre => deg == 0,
+        SpeakerGroup.surround => deg != null && deg.abs() > 30,
+        SpeakerGroup.lfe => deg == null,
+      };
+}
+
+/// hearFold is each of [layout]'s channels' (left, right) gains on the
+/// editor's two speakers with [group] heard: [foldDown] for everything,
+/// else that group alone -- each speaker on its own side, the centre and
+/// the LFE on both.
+List<(double, double)> hearFold(SpeakerLayout layout, SpeakerGroup group) {
+  if (group == SpeakerGroup.all) return foldDown(layout);
+  const half = 0.7071067811865476;
+  // Two speakers on a side (7.1's sides and backs) share it.
+  var perSide = group == SpeakerGroup.surround &&
+          layout.speakers.where((s) => (s.$2 ?? 0) < -30).length > 1
+      ? half
+      : 1.0;
+  return [
+    for (var (_, deg) in layout.speakers)
+      if (!group.has(deg))
+        (0.0, 0.0)
+      else if (deg == null || deg == 0)
+        (half, half)
+      else
+        deg < 0 ? (perSide, 0.0) : (0.0, perSide),
+  ];
+}
+
+/// speakerLevelKey is the key speaker [channel]'s peaks go by among a mix's
+/// levels: the master's, a speaker at a time.
+String speakerLevelKey(int channel) => "\u0000speaker$channel";
 
 /// loudnessWeights are BS.1770's channel weights for [layout]: 1.41 (+1.5
 /// dB) for side and rear speakers, none for the LFE.

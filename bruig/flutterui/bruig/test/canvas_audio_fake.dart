@@ -107,6 +107,10 @@ class FakeEngine implements AudioEngine {
   @override
   void setSpeakers(SpeakerLayout layout) => speakers = layout;
 
+  SpeakerGroup hear = SpeakerGroup.all;
+  @override
+  void setHear(SpeakerGroup group) => hear = group;
+
   /// notes is every live note, as (channel, key, velocity) -- nought for a
   /// let-go -- in order.
   final List<(String, int, int)> notes = [];

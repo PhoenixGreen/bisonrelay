@@ -37,6 +37,9 @@ import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
     show automationColour;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart'
+    show CanvasDropdown;
+import 'package:bruig/plugin_system/canvas/ui/instrument_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/pitch_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/clip_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/speech_device.dart';
@@ -350,18 +353,30 @@ class _CanvasMixerState extends State<CanvasMixer>
       for (var channel in controller.timelineChannels) channel.key: channel,
     };
     var returns = {for (var r in controller.document.returns) r.id};
+    // The master's chain open: each speaker's level too, for its Output.
+    var speakers = _editing == _master
+        ? [
+            for (var c = 0;
+                c < controller.document.audio.speakers.channels;
+                c++)
+              speakerLevelKey(c)
+          ]
+        : const <String>[];
     var keys = [
       ...channels.keys,
       ...returns,
       if (_sceneShown) sceneBusKey,
-      _master
+      _master,
+      ...speakers,
     ];
     var moved = false;
     for (var key in keys) {
       // A channel is as loud as its strip: every sound on it is mixed there.
       var (l, r) = key == _master
           ? controller.levels()
-          : returns.contains(key) || key == sceneBusKey
+          : returns.contains(key) ||
+                  key == sceneBusKey ||
+                  speakers.contains(key)
               ? controller.levels(key)
               : controller.channelLevels(channels[key]!);
       var db = (gainToDb(l), gainToDb(r));
@@ -1000,7 +1015,26 @@ class _CanvasMixerState extends State<CanvasMixer>
           controller.pianoRoll?.channel == key;
       // The Pitch editor: the channel's recording as notes, first in it.
       var pitchHere = controller.pitchShown && lane != null;
+      // The Instrument editor: how a MIDI channel's instrument plays.
+      var instrumentHere = controller.instrumentShown &&
+          lane != null &&
+          controller.instrumentChannel(key);
       var chain = <Widget>[
+        if (instrumentHere)
+          KeyedSubtree(
+            key: _deviceKey("instrument"),
+            child: EditorFrame(
+              id: "instrument",
+              title: "Instrument · ${lane.name}",
+              width: math.max(editorWidth, math.min(1040.0, most)),
+              height: h,
+              wide: wide,
+              onWide: controller.toggleEditorWide,
+              onClose: controller.closeEditor,
+              onResize: (w) => controller.editorWidth = w.clamp(420.0, most),
+              child: InstrumentEditor(controller: controller, channel: key),
+            ),
+          ),
         if (pitchHere)
           KeyedSubtree(
             key: _deviceKey("pitch"),
@@ -1075,6 +1109,16 @@ class _CanvasMixerState extends State<CanvasMixer>
               controller: controller,
               channel: key,
               height: h),
+          // Then the instrument, playing them.
+          device(
+              "instrumentCard",
+              (f, fold) => InstrumentDevice(
+                  controller: controller,
+                  channel: key,
+                  folded: f,
+                  onFold: fold,
+                  height: h,
+                  skin: skin)),
         ],
         // A channel's Speech, on its Speech view: what makes its clips, not a
         // step of its chain -- its script and takes, then Sing (the
@@ -1214,6 +1258,24 @@ class _CanvasMixerState extends State<CanvasMixer>
               ),
             ),
           ),
+          // Last, where it goes: the speakers it is mixed for, each one's
+          // level, and which of them are heard here.
+          device(
+              "output",
+              (f, fold) => _MasterOutputDevice(
+                    controller: controller,
+                    levels: [
+                      for (var c = 0;
+                          c < controller.document.audio.speakers.channels;
+                          c++)
+                        (_now[speakerLevelKey(c)] ?? (-90.0, -90.0)).$1
+                    ],
+                    theme: theme,
+                    skin: skin,
+                    folded: f,
+                    onFold: fold,
+                    height: h,
+                  )),
         ],
         // Where it is heard from, big enough to place it by: the room, its
         // speakers and the channel among them, stereo or surround.
@@ -2133,6 +2195,178 @@ class _PanControl extends StatelessWidget {
   }
 }
 
+/// _MasterOutputDevice is the master's Output, last in its chain: the
+/// speakers the piece is mixed for (stereo, 5.1 or 7.1), a meter for each,
+/// and -- in surround, which the editor plays folded down to two -- which
+/// of them are heard here, everything or one group alone.
+class _MasterOutputDevice extends StatelessWidget {
+  final CanvasController controller;
+
+  /// levels are each speaker's level now, in decibels.
+  final List<double> levels;
+  final MixerLook theme;
+  final DeviceSkin skin;
+  final bool folded;
+  final VoidCallback onFold;
+  final double height;
+
+  const _MasterOutputDevice({
+    required this.controller,
+    required this.levels,
+    required this.theme,
+    required this.skin,
+    required this.folded,
+    required this.onFold,
+    required this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var audio = controller.document.audio;
+    var layout = audio.speakers;
+    var hear = controller.hear;
+    var small = TextStyle(fontSize: 11, color: skin.ink.withValues(alpha: 0.7));
+    return DeviceFrame(
+      id: "output",
+      title: "Output",
+      skin: skin,
+      icon: Icons.speaker,
+      folded: folded,
+      onFold: onFold,
+      width: 70.0 + 26 * layout.channels + (layout.isSurround ? 90 : 60),
+      height: height,
+      foldedBody: Center(
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: Text(layout.label,
+              style: TextStyle(fontSize: 11, color: skin.ink)),
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(10),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(
+            child: CustomPaint(
+              key: const ValueKey("outputMeters"),
+              painter: _SpeakerMetersPainter(
+                layout: layout,
+                levels: levels,
+                hear: hear,
+                studio: theme.studio,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          CanvasDropdown<SpeakerLayout>(
+            key: const ValueKey("outputSpeakers"),
+            label: "Speakers",
+            value: layout,
+            tight: true,
+            width: 150,
+            options: [for (var l in SpeakerLayout.values) (l, l.label)],
+            onChanged: (l) => controller.setAudio(audio.copyWith(speakers: l)),
+          ),
+          if (layout.isSurround) ...[
+            const SizedBox(height: 6),
+            Tooltip(
+              message: "Heard here on two speakers: everything folded "
+                  "down, as most listeners will hear it, or one group "
+                  "alone to check what goes where. What is written is "
+                  "the whole mix.",
+              child: CanvasDropdown<SpeakerGroup>(
+                key: const ValueKey("outputHear"),
+                label: "Hear",
+                value: hear,
+                tight: true,
+                width: 150,
+                options: [
+                  for (var g in SpeakerGroup.values)
+                    if (g == SpeakerGroup.all ||
+                        layout.speakers.any((s) => g.has(s.$2)))
+                      (g, g.label)
+                ],
+                onChanged: controller.hearSpeakers,
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 6),
+            Text("Two speakers, as heard here",
+                maxLines: 2, overflow: TextOverflow.ellipsis, style: small),
+          ],
+        ]),
+      ),
+    );
+  }
+}
+
+/// _SpeakerMetersPainter draws a meter a speaker, named beneath, those not
+/// heard here dimmed.
+class _SpeakerMetersPainter extends CustomPainter {
+  final SpeakerLayout layout;
+  final List<double> levels;
+  final SpeakerGroup hear;
+  final StudioColors studio;
+
+  _SpeakerMetersPainter({
+    required this.layout,
+    required this.levels,
+    required this.hear,
+    required this.studio,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var n = layout.channels;
+    const foot = 14.0;
+    var w = size.width / n;
+    var h = size.height - foot;
+    if (h <= 4) return;
+    for (var (c, (name, deg)) in layout.speakers.indexed) {
+      var x = c * w + 3;
+      var bar = Rect.fromLTWH(x, 0, w - 6, h);
+      canvas.drawRRect(RRect.fromRectAndRadius(bar, const Radius.circular(2)),
+          Paint()..color = studio.inset);
+      var db = c < levels.length ? levels[c] : -90.0;
+      var u = ((db + 60) / 60).clamp(0.0, 1.0);
+      var heard = hear.has(deg);
+      var colour = db > -1
+          ? studio.meterHigh
+          : db > -12
+              ? studio.meterMid
+              : studio.meterLow;
+      if (u > 0) {
+        canvas.drawRect(Rect.fromLTWH(x, h * (1 - u), w - 6, h * u),
+            Paint()..color = colour.withValues(alpha: heard ? 1 : 0.3));
+      }
+      var label = TextPainter(
+          text: TextSpan(
+              text: name,
+              style: TextStyle(
+                  fontSize: 9.5,
+                  color: studio.muted.withValues(alpha: heard ? 1 : 0.5))),
+          textDirection: TextDirection.ltr)
+        ..layout(maxWidth: w);
+      label.paint(canvas, Offset(c * w + (w - label.width) / 2, h + 2));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_SpeakerMetersPainter old) =>
+      old.layout != layout ||
+      old.hear != hear ||
+      old.studio != studio ||
+      !_same(old.levels, levels);
+
+  static bool _same(List<double> a, List<double> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if ((a[i] - b[i]).abs() > 0.2) return false;
+    }
+    return true;
+  }
+}
+
 /// speakerLights is how much of a channel each of [layout]'s speakers
 /// carries, nought to one (the same sums MixGraph lands it with), for
 /// lighting them.
@@ -2156,8 +2390,8 @@ List<double> speakerLights(
     out[0] = 1;
     out[1] = 1;
   } else {
-    var gl = panGains(layout, pan.angle - pan.width / 2);
-    var gr = panGains(layout, pan.angle + pan.width / 2);
+    var gl = panGains(layout, pan.angle - pan.width / 2, centre: pan.centre);
+    var gr = panGains(layout, pan.angle + pan.width / 2, centre: pan.centre);
     for (var c = 0; c < n; c++) {
       out[c] = math.max(gl[c], gr[c]);
     }
@@ -2336,6 +2570,19 @@ class _PannerDevice extends StatelessWidget {
                   mix.withSurround(pan.copyWith(width: pan.width - dy)),
                   transient: true),
               () => onChanged(mix.withSurround(pan.copyWith(width: 60)))),
+          if (layout.speakers.any((s) => s.$2 == 0))
+            number(
+                "pannerCentre",
+                "Centre",
+                "${(pan.centre * 100).round()}%",
+                "How much of what is heard from in front goes to the centre "
+                    "speaker: all of it, or none -- between the front pair, "
+                    "the centre kept for voices.",
+                (dy) => onChanged(
+                    mix.withSurround(
+                        pan.copyWith(centre: pan.centre - dy / 100)),
+                    transient: true),
+                () => onChanged(mix.withSurround(pan.copyWith(centre: 1)))),
           number(
               "pannerLfe",
               "LFE",

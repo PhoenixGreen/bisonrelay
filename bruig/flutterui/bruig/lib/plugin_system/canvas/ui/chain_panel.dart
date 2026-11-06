@@ -141,6 +141,7 @@ extension on _ChainPanelState {
     var clipOn = c.clipEditorShown;
     var speechOn = c.speechShown;
     var pitchOn = c.pitchShown;
+    var instrumentOn = c.instrumentShown;
     // A recording to tune: a channel's sound, not an instrument's.
     var tunable = channel && !notes && c.pitchElementOf(key) != null;
     Widget tab(String id, String label, IconData icon, bool on,
@@ -179,11 +180,18 @@ extension on _ChainPanelState {
       const SizedBox(width: 8),
       Container(width: 1, height: 18, color: look.studio.edge),
       const SizedBox(width: 6),
-      tab("chainTabDevices", "Devices", Icons.linear_scale,
-          !rollOn && !clipOn && !speechOn && !pitchOn, c.closeEditor),
+      tab(
+          "chainTabDevices",
+          "Devices",
+          Icons.linear_scale,
+          !rollOn && !clipOn && !speechOn && !pitchOn && !instrumentOn,
+          c.closeEditor),
       if (notes)
         tab("chainTabNotes", "Notes", Icons.piano, rollOn,
             () => c.openPianoRoll(key)),
+      if (notes)
+        tab("chainTabInstrument", "Instrument", Icons.tune, instrumentOn,
+            () => c.showInstrument(key)),
       if (firstClip case var row?)
         tab("chainTabClip", "Clip", Icons.graphic_eq, clipOn,
             () => c.openClipEditor(key, row)),

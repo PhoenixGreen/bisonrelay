@@ -501,6 +501,10 @@ class DartAudioEngine implements AudioEngine {
   void setSpeakers(SpeakerLayout layout) =>
       _remote ? _send(["speakers", layout]) : core.graph.setSpeakers(layout);
 
+  @override
+  void setHear(SpeakerGroup group) =>
+      _remote ? _send(["hear", group]) : core.graph.hear = group;
+
   /// _live is each channel's instrument played live: a sampler always
   /// sounding on the channel, as one more voice through its strip.
   final Map<String, (CoreVoice, _LiveInstrument)> _live = {};
@@ -529,7 +533,10 @@ class DartAudioEngine implements AudioEngine {
       held = (core.play(instrument, volume: 1, channel: channel), instrument);
       _live[channel] = held;
     }
-    held.$2.sampler.noteOn(key, velocity);
+    // Its shape as it is now: changed in its editor, the next note has it.
+    held.$2.sampler
+      ..shape = sound.shape
+      ..noteOn(key, velocity);
   }
 
   @override

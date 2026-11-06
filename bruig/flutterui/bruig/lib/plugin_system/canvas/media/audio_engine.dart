@@ -194,6 +194,10 @@ abstract class AudioEngine {
   /// down to stereo; an engine with no surround hears it as stereo.
   void setSpeakers(SpeakerLayout layout);
 
+  /// setHear is which of a surround mix's speakers the editor plays on its
+  /// two (see SpeakerGroup). An engine with no surround hears them all.
+  void setHear(SpeakerGroup group);
+
   /// setPlacement is where the sound on channel [key] is heard from, taken
   /// from the picture -- or null for the channel's own pan. See
   /// SoundPlacement. SoLoud's buses cannot follow one, and leave it.
@@ -332,6 +336,9 @@ class SoLoudAudioEngine implements AudioEngine {
 
   @override
   void setSpeakers(SpeakerLayout layout) {}
+
+  @override
+  void setHear(SpeakerGroup group) {}
 
   @override
   void noteOn(String channel, InstrumentPart sound, int key, int velocity,

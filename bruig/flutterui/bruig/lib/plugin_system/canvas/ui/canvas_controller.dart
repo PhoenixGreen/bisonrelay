@@ -124,7 +124,8 @@ import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_runtime.dart';
 import 'package:bruig/plugin_system/canvas/render/sound_placement.dart';
-import 'package:bruig/plugin_system/canvas/model/surround.dart' show Heard;
+import 'package:bruig/plugin_system/canvas/model/surround.dart'
+    show Heard, SpeakerGroup;
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
@@ -3444,6 +3445,14 @@ class CanvasController extends ChangeNotifier {
 
   /// _pitchShown is whether the Chain shows its channel's Pitch editor.
   bool _pitchShown = false;
+
+  /// _instrumentShown is whether the Chain shows its channel's Instrument
+  /// editor.
+  bool _instrumentShown = false;
+
+  /// _hear is which of a surround mix's speakers the editor plays: see
+  /// hearSpeakers.
+  SpeakerGroup _hear = SpeakerGroup.all;
 
   /// _motionPreview is the element whose motion chain the stage shows as it
   /// stands at one join, and that join: see previewMotionFrom.
