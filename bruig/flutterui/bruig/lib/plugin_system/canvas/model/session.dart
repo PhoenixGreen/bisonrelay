@@ -460,8 +460,9 @@ class SessionClip {
   InstrumentPart partOf(InstrumentPart part, double secondsPerBeat) =>
       part.copyWith(notes: [
         for (var n in notes)
-          MidiNote(n.key, n.start * secondsPerBeat, n.length * secondsPerBeat,
-              n.velocity),
+          n.copyWith(
+              start: n.start * secondsPerBeat,
+              length: n.length * secondsPerBeat),
       ], controls: {
         for (var e in controls.entries)
           e.key: [for (var (t, v) in e.value) (t * secondsPerBeat, v)],

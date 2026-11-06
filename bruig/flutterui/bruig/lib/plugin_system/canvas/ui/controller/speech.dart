@@ -769,7 +769,7 @@ extension CanvasSpeech on CanvasController {
     var spb = math.max(0.001, _document.audio.secondsPerBeat);
     var notes = [
       for (var n in read.notes)
-        MidiNote(n.key, n.start / spb, n.length / spb, n.velocity),
+        n.copyWith(start: n.start / spb, length: n.length / spb),
     ];
     var end = notes.isEmpty ? 0.0 : notes.map((n) => n.end).reduce(math.max);
     var index = timelineChannels.indexWhere((c) => c.key == channel);

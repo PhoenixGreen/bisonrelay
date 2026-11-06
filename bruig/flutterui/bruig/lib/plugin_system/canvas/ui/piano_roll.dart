@@ -93,7 +93,25 @@ class PianoRoll extends StatefulWidget {
   State<PianoRoll> createState() => _PianoRollState();
 }
 
-enum _Drag { none, draw, move, resize, box }
+enum _Drag { none, draw, move, resize, box, paint, erase }
+
+/// _Tool is what a press on the grid does: draw a note (or a chord),
+/// select and move, paint a run of notes, erase, split a note, mute one.
+enum _Tool { draw, select, paint, erase, knife, mute }
+
+/// rollChords are what Draw draws for each note, by the semitones above
+/// it: one note; a chord; or, the last, a chord from the scale's own notes.
+const List<(String, List<int>)> rollChords = [
+  ("One note", []),
+  ("Major", [0, 4, 7]),
+  ("Minor", [0, 3, 7]),
+  ("Seventh", [0, 4, 7, 10]),
+  ("Major seventh", [0, 4, 7, 11]),
+  ("Minor seventh", [0, 3, 7, 10]),
+  ("Sus four", [0, 5, 7]),
+  ("Power", [0, 7, 12]),
+  ("From the scale", []),
+];
 
 /// _copied are the notes last copied, each from the first one's start:
 /// shared by every piano roll, so a part's notes paste into a clip.
@@ -102,7 +120,19 @@ List<MidiNote> _copied = const [];
 class _PianoRollState extends State<PianoRoll> {
   CanvasController get c => widget.controller;
 
-  bool _drawTool = true;
+  _Tool _tool = _Tool.draw;
+  bool get _drawTool => _tool == _Tool.draw;
+
+  /// _keep keeps notes drawn and moved in the scale; _chord is which of
+  /// rollChords Draw draws; _ghost is the channel whose notes are shown
+  /// faint behind these, by key, or null.
+  bool _keep = false;
+  int _chord = 0;
+  String? _ghost;
+
+  /// _painted are the steps a Paint drag has put a note on already.
+  final Set<int> _painted = {};
+  int _lastPainted = 0;
   double _grid = 0.25;
   bool _fold = false;
   bool _scale = true;
@@ -199,13 +229,68 @@ class _PianoRollState extends State<PianoRoll> {
     );
   }
 
-  /// _keys are the rows, top to bottom: every key, or -- folded -- only
-  /// those with notes.
+  /// _keys are the rows, top to bottom: every key, or -- folded -- the
+  /// scale's keys and any other in use, from an octave under the lowest
+  /// note to an octave over the highest (C3 to C6 with none).
   List<int> _keys(List<MidiNote> notes) {
-    if (_fold && notes.isNotEmpty) {
-      return ({for (var n in notes) n.key}.toList()..sort()).reversed.toList();
+    if (!_fold) return [for (var k = 127; k >= 0; k--) k];
+    var (root, steps) = _scaleOf();
+    var used = {for (var n in notes) n.key};
+    var lo = used.isEmpty ? 48 : math.max(0, used.reduce(math.min) - 12);
+    var hi = used.isEmpty ? 84 : math.min(127, used.reduce(math.max) + 12);
+    return [
+      for (var k = hi; k >= lo; k--)
+        if (used.contains(k) || steps.contains((k - root) % 12)) k
+    ];
+  }
+
+  /// _inKey is [key] kept in the scale when Keep in key is on: the nearest
+  /// key of it, the lower between two.
+  int _inKey(int key) {
+    if (!_keep) return key;
+    var (root, steps) = _scaleOf();
+    for (var d = 0; d < 12; d++) {
+      if (steps.contains((key - d - root) % 12)) return key - d;
+      if (steps.contains((key + d - root) % 12)) return key + d;
     }
-    return [for (var k = 127; k >= 0; k--) k];
+    return key;
+  }
+
+  /// _stamp is what Draw puts down for [key]: it alone, or the chord on it.
+  List<int> _stamp(int key) {
+    key = _inKey(key);
+    if (_chord <= 0 || _chord >= rollChords.length) return [key];
+    if (_chord == rollChords.length - 1) {
+      // A triad of the scale's own notes: every other one, up from it.
+      var (root, steps) = _scaleOf();
+      var up = [
+        for (var k = key; k <= math.min(127, key + 24); k++)
+          if (steps.contains((k - root) % 12)) k
+      ];
+      return [
+        for (var i in [0, 2, 4])
+          if (i < up.length) up[i]
+      ];
+    }
+    return [
+      for (var d in rollChords[_chord].$2)
+        if (key + d <= 127) key + d
+    ];
+  }
+
+  /// _ghostNotes are the notes of the channel chosen to show faint, in
+  /// beats: its clip in the same slot row, or its part.
+  List<MidiNote> _ghostNotes() {
+    var key = _ghost;
+    if (key == null) return const [];
+    var row = c.pianoRoll?.row;
+    if (row != null) return c.session.at(key, row)?.notes ?? const [];
+    var spb = c.document.audio.secondsPerBeat;
+    return [
+      for (var n
+          in c.instrumentOf(key)?.instrument?.notes ?? const <MidiNote>[])
+        n.copyWith(start: n.start / spb, length: n.length / spb),
+    ];
   }
 
   double _snap(double beat) => (beat / _grid).floor() * _grid;
@@ -383,15 +468,57 @@ class _PianoRollState extends State<PianoRoll> {
       }
       _selected.clear();
     });
-    if (hit != null || !_drawTool) return;
-    var key = _keyAt(p.dy, keys);
-    if (key == null) return;
-    var start = _snap(p.dx / _beatW);
-    if (start >= content.beats) return;
-    _write([...content.notes, MidiNote(key, start, _grid, 100)]);
-    setState(() => _selected
-      ..clear()
-      ..add(content.notes.length));
+    switch (_tool) {
+      case _Tool.erase:
+        if (hit != null) {
+          _write([...content.notes]..removeAt(hit.$1));
+          _selected.clear();
+        }
+        return;
+      case _Tool.knife:
+        // Cut in two where it was pressed, on the grid.
+        if (hit == null) return;
+        var n = content.notes[hit.$1];
+        var at = _round(p.dx / _beatW);
+        if (at <= n.start + 1e-6 || at >= n.end - 1e-6) return;
+        _write([
+          for (var (i, m) in content.notes.indexed)
+            if (i == hit.$1) ...[
+              m.copyWith(length: at - m.start),
+              m.copyWith(start: at, length: m.end - at),
+            ] else
+              m,
+        ]);
+        _selected.clear();
+        return;
+      case _Tool.mute:
+        // It -- or, picked among others, all those picked -- muted, or
+        // played again.
+        if (hit == null) return;
+        var which = _selected.length > 1 && _selected.contains(hit.$1)
+            ? {..._selected}
+            : {hit.$1};
+        var muting = !content.notes[hit.$1].muted;
+        _write([
+          for (var (i, m) in content.notes.indexed)
+            which.contains(i) ? m.copyWith(muted: muting) : m,
+        ]);
+        return;
+      case _Tool.draw:
+        if (hit != null) return;
+        var key = _keyAt(p.dy, keys);
+        if (key == null) return;
+        var start = _snap(p.dx / _beatW);
+        if (start >= content.beats) return;
+        var put = [for (var k in _stamp(key)) MidiNote(k, start, _grid, 100)];
+        _write([...content.notes, ...put]);
+        setState(() => _selected
+          ..clear()
+          ..addAll(
+              [for (var i = 0; i < put.length; i++) content.notes.length + i]));
+      case _Tool.select || _Tool.paint:
+        return;
+    }
   }
 
   void _startDrag(Offset p, RollContent content, List<int> keys) {
@@ -400,6 +527,25 @@ class _PianoRollState extends State<PianoRoll> {
     _to = p;
     _before = content.notes;
     var hit = _hit(p, content.notes, keys);
+    if (_tool == _Tool.erase) {
+      _drag = _Drag.erase;
+      _eraseAt(p, keys);
+      setState(() {});
+      return;
+    }
+    if (_tool == _Tool.paint) {
+      var key = _keyAt(p.dy, keys);
+      if (key == null) return;
+      _drag = _Drag.paint;
+      _painted.clear();
+      _paintAt(p, _inKey(key));
+      setState(() {});
+      return;
+    }
+    if (_tool == _Tool.knife || _tool == _Tool.mute) {
+      _drag = _Drag.none;
+      return;
+    }
     if (hit != null) {
       if (!_selected.contains(hit.$1)) {
         _selected
@@ -412,12 +558,13 @@ class _PianoRollState extends State<PianoRoll> {
       if (key == null) return;
       _drag = _Drag.draw;
       _drawn = content.notes.length;
+      var put = [
+        for (var k in _stamp(key)) MidiNote(k, _snap(p.dx / _beatW), _grid, 100)
+      ];
       _selected
         ..clear()
-        ..add(_drawn!);
-      _write(
-          [...content.notes, MidiNote(key, _snap(p.dx / _beatW), _grid, 100)],
-          transient: true);
+        ..addAll([for (var i = 0; i < put.length; i++) _drawn! + i]);
+      _write([...content.notes, ...put], transient: true);
     } else {
       _drag = _Drag.box;
       _selected.clear();
@@ -434,8 +581,15 @@ class _PianoRollState extends State<PianoRoll> {
         var start = _snap(_from.dx / _beatW);
         var key = _keyAt(_from.dy, keys) ?? 60;
         var end = math.max(start + _grid, _round(p.dx / _beatW));
-        _write([..._before.take(n), MidiNote(key, start, end - start, 100)],
-            transient: true);
+        _write([
+          ..._before.take(n),
+          for (var k in _stamp(key)) MidiNote(k, start, end - start, 100)
+        ], transient: true);
+      case _Drag.paint:
+        var key = _keyAt(_from.dy, keys) ?? 60;
+        _paintAt(p, _inKey(key));
+      case _Drag.erase:
+        _eraseAt(p, keys);
       case _Drag.move:
         var steps = _round(dx);
         var rows = ((p.dy - _from.dy) / _rowH).round();
@@ -444,7 +598,7 @@ class _PianoRollState extends State<PianoRoll> {
             if (_selected.contains(i))
               n.copyWith(
                   start: math.max(0, n.start + steps),
-                  key: _shiftKey(n.key, rows, keys))
+                  key: _inKey(_shiftKey(n.key, rows, keys)))
             else
               n,
         ], transient: true);
@@ -479,6 +633,40 @@ class _PianoRollState extends State<PianoRoll> {
     var at = keys.indexOf(key);
     if (at < 0) return key;
     return keys[(at + rows).clamp(0, keys.length - 1)];
+  }
+
+  /// _paintAt puts a note of [key] on the grid step under [p], once per
+  /// step a Paint drag passes.
+  void _paintAt(Offset p, int key) {
+    var content = c.rollContent;
+    if (content == null) return;
+    var step = (p.dx / _beatW / _grid).floor();
+    var last = (content.beats / _grid).ceil() - 1;
+    if (step < 0 || step > last) return;
+    // Every step from the last one painted: a quick drag passes several
+    // between two moves of the pointer.
+    var from = _painted.isEmpty ? step : _lastPainted;
+    var steps = [
+      for (var k = math.min(from, step); k <= math.max(from, step); k++)
+        if (!_painted.contains(k)) k
+    ];
+    _lastPainted = step;
+    if (steps.isEmpty) return;
+    _painted.addAll(steps);
+    _write([
+      ...content.notes,
+      for (var k in steps) MidiNote(key, k * _grid, _grid, 100)
+    ], transient: true);
+  }
+
+  /// _eraseAt takes out the note under [p].
+  void _eraseAt(Offset p, List<int> keys) {
+    var content = c.rollContent;
+    if (content == null) return;
+    var hit = _hit(p, content.notes, keys);
+    if (hit == null) return;
+    _selected.clear();
+    _write([...content.notes]..removeAt(hit.$1), transient: true);
   }
 
   void _endDrag() {
@@ -639,6 +827,7 @@ class _PianoRollState extends State<PianoRoll> {
                                             c.document.audio.beatsPerBar,
                                         grid: _grid,
                                         selected: {..._selected},
+                                        ghosts: _ghostNotes(),
                                         root: root,
                                         steps: _scale ? steps : null,
                                         playhead: head,
@@ -1160,13 +1349,49 @@ class _PianoRollState extends State<PianoRoll> {
                     color: studio.text)),
             const SizedBox(width: 12),
           ],
-          pill("Draw", _drawTool, () => setState(() => _drawTool = true),
-              key: const ValueKey("rollDraw"),
-              tip: "Draw: press the grid for a note, drag for a longer one"),
-          const SizedBox(width: 4),
-          pill("Select", !_drawTool, () => setState(() => _drawTool = false),
-              key: const ValueKey("rollSelect"),
-              tip: "Select: drag a box round notes; drag them to move them"),
+          for (var (tool, label, key, tip) in [
+            (
+              _Tool.draw,
+              "Draw",
+              "rollDraw",
+              "Draw: press the grid for a note -- or the chord chosen -- "
+                  "drag for a longer one"
+            ),
+            (
+              _Tool.select,
+              "Select",
+              "rollSelect",
+              "Select: drag a box round notes; drag them to move them"
+            ),
+            (
+              _Tool.paint,
+              "Paint",
+              "rollPaint",
+              "Paint: drag along a row for a note on every step of the grid"
+            ),
+            (
+              _Tool.erase,
+              "Erase",
+              "rollErase",
+              "Erase: press or drag over notes"
+            ),
+            (
+              _Tool.knife,
+              "Split",
+              "rollKnife",
+              "Split: press a note to cut it in two there"
+            ),
+            (
+              _Tool.mute,
+              "Mute",
+              "rollMute",
+              "Mute: press a note to keep it but not play it, or play it again"
+            ),
+          ]) ...[
+            pill(label, _tool == tool, () => setState(() => _tool = tool),
+                key: ValueKey(key), tip: tip),
+            const SizedBox(width: 4),
+          ],
           const SizedBox(width: 12),
           Text("Grid ", style: TextStyle(fontSize: 11, color: studio.muted)),
           drop(
@@ -1182,6 +1407,30 @@ class _PianoRollState extends State<PianoRoll> {
           pill("Fold", _fold, () => setState(() => _fold = !_fold),
               key: const ValueKey("rollFold"),
               tip: "Only the keys that have notes"),
+          const SizedBox(width: 4),
+          pill("Keep in key", _keep, () => setState(() => _keep = !_keep),
+              key: const ValueKey("rollKeep"),
+              tip: "Notes drawn and moved stay in the scale"),
+          const SizedBox(width: 8),
+          Text("Chord ", style: TextStyle(fontSize: 11, color: studio.muted)),
+          drop(
+              const ValueKey("rollChord"),
+              _chord,
+              [for (var (i, (name, _)) in rollChords.indexed) (name, i)],
+              (v) => setState(() => _chord = v)),
+          const SizedBox(width: 8),
+          Text("Ghosts ", style: TextStyle(fontSize: 11, color: studio.muted)),
+          drop(
+              const ValueKey("rollGhost"),
+              _ghost ?? "",
+              [
+                ("None", ""),
+                for (var ch in c.timelineChannels)
+                  if (ch.key != c.pianoRoll?.channel &&
+                      c.instrumentChannel(ch.key))
+                    (ch.name, ch.key),
+              ],
+              (v) => setState(() => _ghost = v.isEmpty ? null : v)),
           const SizedBox(width: 4),
           pill("Show scale", _scale, () => setState(() => _scale = !_scale),
               key: const ValueKey("rollScale"),
@@ -1362,6 +1611,9 @@ class _GridPainter extends CustomPainter {
   final double rowH, beatW, beats, grid;
   final int beatsPerBar;
   final Set<int> selected;
+
+  /// ghosts are another channel's notes, drawn faint behind these.
+  final List<MidiNote> ghosts;
   final int root;
   final List<int>? steps;
 
@@ -1381,6 +1633,7 @@ class _GridPainter extends CustomPainter {
     required this.beatsPerBar,
     required this.grid,
     required this.selected,
+    this.ghosts = const [],
     required this.root,
     required this.steps,
     required this.playhead,
@@ -1431,15 +1684,36 @@ class _GridPainter extends CustomPainter {
     // Past a clip's end, shaded.
     canvas.drawRect(Rect.fromLTRB(beats * beatW, 0, size.width, size.height),
         Paint()..color = const Color(0x66000000));
-    // The notes, coloured by how hard they are played.
+    // Another channel's notes, faint, behind these.
+    for (var n in ghosts) {
+      var row = keys.indexOf(n.key);
+      if (row < 0) continue;
+      var r = RRect.fromRectAndRadius(
+          Rect.fromLTWH(n.start * beatW, row * rowH + 1,
+              math.max(4, n.length * beatW - 1), rowH - 2),
+          const Radius.circular(2));
+      canvas.drawRRect(r, Paint()..color = const Color(0x14FFFFFF));
+      canvas.drawRRect(
+          r,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..color = const Color(0x40FFFFFF));
+    }
+    // The notes, coloured by how hard they are played: a muted one hollow,
+    // one left to chance the fainter the less likely.
     for (var (i, n) in notes.indexed) {
       var row = keys.indexOf(n.key);
       if (row < 0) continue;
       var r = Rect.fromLTWH(n.start * beatW, row * rowH + 1,
           math.max(4, n.length * beatW - 1), rowH - 2);
       var v = n.velocity / 127;
-      canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(2)),
-          Paint()..color = _blue.withValues(alpha: 0.45 + v * 0.55));
+      if (!n.muted) {
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(r, const Radius.circular(2)),
+            Paint()
+              ..color = _blue.withValues(
+                  alpha: (0.45 + v * 0.55) * (0.35 + 0.65 * n.chance)));
+      }
       canvas.drawRRect(
           RRect.fromRectAndRadius(r, const Radius.circular(2)),
           Paint()

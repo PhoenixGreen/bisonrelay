@@ -1149,7 +1149,7 @@ extension CanvasTools on CanvasController {
     var spb = math.max(0.001, a.secondsPerBeat);
     var notes = [
       for (var n in part.notes)
-        MidiNote(n.key, n.start / spb, n.length / spb, n.velocity),
+        n.copyWith(start: n.start / spb, length: n.length / spb),
     ];
     var end = notes.isEmpty ? 0.0 : notes.map((n) => n.end).reduce(math.max);
     var bars = math.max(4, (end / a.beatsPerBar).ceil() + 1);
@@ -1197,7 +1197,7 @@ extension CanvasTools on CanvasController {
           ? null
           : [
               for (var n in notes)
-                MidiNote(n.key, n.start * spb, n.length * spb, n.velocity),
+                n.copyWith(start: n.start * spb, length: n.length * spb),
             ],
       controls: controls == null
           ? null

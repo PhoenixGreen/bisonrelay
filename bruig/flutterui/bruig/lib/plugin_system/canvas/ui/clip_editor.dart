@@ -1149,6 +1149,13 @@ class _ClipEditorState extends State<ClipEditor> {
             NoteTool.humanise,
             "A little off the grid, a little louder "
             "or softer"),
+        tool(NoteTool.strum, "A chord's notes one after another, upwards"),
+        tool(NoteTool.crescendo, "Softer to louder, first to last"),
+        tool(NoteTool.chop, "Each cut in two"),
+        tool(NoteTool.join, "Notes of one key that touch made one"),
+        tool(NoteTool.mute, "Kept but not played, or played again"),
+        tool(NoteTool.chance, "Played half the time round"),
+        tool(NoteTool.always, "Played every time"),
       ]),
     ];
   }

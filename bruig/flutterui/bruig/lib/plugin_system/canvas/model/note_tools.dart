@@ -20,7 +20,14 @@ enum NoteTool {
   third("+ third"),
   fifth("+ fifth"),
   humanise("Humanise"),
-  quantise("Quantise");
+  quantise("Quantise"),
+  strum("Strum"),
+  crescendo("Crescendo"),
+  chop("Chop"),
+  join("Join"),
+  mute("Mute"),
+  chance("Chance 50%"),
+  always("Always");
 
   final String label;
   const NoteTool(this.label);
@@ -113,5 +120,72 @@ List<MidiNote> applyNoteTool(
         var end = math.max(start + grid, (n.end / grid).round() * grid);
         return n.copyWith(start: start, length: end - start);
       });
+    case NoteTool.strum:
+      // A chord's notes each a little after the one under it, as a hand
+      // drawn across the strings.
+      var under = <int, int>{};
+      for (var (i, n) in notes.indexed) {
+        if (!on(i)) continue;
+        under[i] = [
+          for (var (j, m) in notes.indexed)
+            if (on(j) && (m.start - n.start).abs() < 1e-6 && m.key < n.key) j
+        ].length;
+      }
+      return each((n, i) {
+        var late = (under[i] ?? 0) * 0.06;
+        return n.copyWith(
+            start: n.start + late, length: math.max(0.06, n.length - late));
+      });
+    case NoteTool.crescendo:
+      // Softer to louder, the first to start to the last.
+      var lastStart = chosen.map((n) => n.start).reduce(math.max);
+      var span = math.max(1e-6, lastStart - first);
+      return each((n, _) =>
+          n.copyWith(velocity: (40 + (n.start - first) / span * 87).round()));
+    case NoteTool.chop:
+      // Each cut in two.
+      return [
+        for (var (i, n) in notes.indexed)
+          if (on(i) && n.length >= 0.02) ...[
+            n.copyWith(length: n.length / 2),
+            n.copyWith(start: n.start + n.length / 2, length: n.length / 2),
+          ] else
+            n,
+      ];
+    case NoteTool.join:
+      // Notes of one key that touch made one.
+      var out = <MidiNote>[];
+      var byKey = <int, List<MidiNote>>{};
+      for (var (i, n) in notes.indexed) {
+        if (on(i)) {
+          (byKey[n.key] ??= []).add(n);
+        } else {
+          out.add(n);
+        }
+      }
+      for (var run in byKey.values) {
+        run.sort((a, b) => a.start.compareTo(b.start));
+        var held = run.first;
+        for (var n in run.skip(1)) {
+          if (n.start <= held.end + 1e-6) {
+            held =
+                held.copyWith(length: math.max(held.end, n.end) - held.start);
+          } else {
+            out.add(held);
+            held = n;
+          }
+        }
+        out.add(held);
+      }
+      out.sort((a, b) => a.start.compareTo(b.start));
+      return out;
+    case NoteTool.mute:
+      // Muted -- or, all muted, played again.
+      var all = chosen.every((n) => n.muted);
+      return each((n, _) => n.copyWith(muted: !all));
+    case NoteTool.chance:
+      return each((n, _) => n.copyWith(chance: 0.5));
+    case NoteTool.always:
+      return each((n, _) => n.copyWith(chance: 1));
   }
 }

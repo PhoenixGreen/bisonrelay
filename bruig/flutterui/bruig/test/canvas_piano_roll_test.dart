@@ -315,6 +315,9 @@ void main() {
 
     testWidgets("Quantise puts them on the grid", (tester) async {
       await open(tester, row: 0);
+      // Along the toolbar, which scrolls where it is longer than the room.
+      await tester.ensureVisible(find.byKey(const ValueKey("rollQuantise")));
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey("rollQuantise")));
       await tester.pump();
       expect(notes().map((n) => n.start), [0, 1]);
@@ -656,13 +659,110 @@ void main() {
       });
     }
 
-    testWidgets("Fold shows only the keys with notes", (tester) async {
+    testWidgets("Fold shows the scale's keys round the notes, and theirs",
+        (tester) async {
       await open(tester, row: 0);
       var tall = tester.getSize(find.byKey(const ValueKey("rollGrid"))).height;
+      await tester.ensureVisible(find.byKey(const ValueKey("rollFold")));
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey("rollFold")));
       await tester.pump();
+      // An octave either side of the notes, in C major: a few dozen rows of
+      // the hundred and twenty-eight.
       expect(tester.getSize(find.byKey(const ValueKey("rollGrid"))).height,
-          lessThan(tall / 10));
+          lessThan(tall / 3));
+      await done(tester);
+    });
+
+    /// pick presses the toolbar's [key], scrolled to it.
+    Future<void> pick(WidgetTester tester, String key) async {
+      await tester.ensureVisible(find.byKey(ValueKey(key)));
+      await tester.pump();
+      await tester.tap(find.byKey(ValueKey(key)));
+      await tester.pump();
+    }
+
+    testWidgets("Erase takes a note out; Split cuts one in two",
+        (tester) async {
+      await open(tester, row: 0);
+      await pick(tester, "rollKnife");
+      // The note on C from 0.1 for a beat, cut on the grid at a half.
+      await tester.tapAt(at(tester, 0.45, 60));
+      await tester.pump();
+      expect([
+        for (var n in notes())
+          if (n.key == 60) (n.start, n.end)
+      ], [
+        (0.1, 0.5),
+        (0.5, 1.1)
+      ]);
+      await pick(tester, "rollErase");
+      await tester.tapAt(at(tester, 1.2, 64));
+      await tester.pump();
+      expect(notes().where((n) => n.key == 64), isEmpty);
+      await done(tester);
+    });
+
+    testWidgets("Mute keeps a note but not its sound, and back",
+        (tester) async {
+      await open(tester, row: 0);
+      await pick(tester, "rollMute");
+      await tester.tapAt(at(tester, 0.2, 60));
+      await tester.pump();
+      expect(notes().firstWhere((n) => n.key == 60).muted, isTrue);
+      await tester.tapAt(at(tester, 0.2, 60));
+      await tester.pump();
+      expect(notes().firstWhere((n) => n.key == 60).muted, isFalse);
+      await done(tester);
+    });
+
+    testWidgets("Paint puts a note on every step dragged over", (tester) async {
+      await open(tester, row: 0);
+      await pick(tester, "rollPaint");
+      var from = at(tester, 2.05, 67);
+      await tester.dragFrom(from, const Offset(48 * 0.95, 0));
+      await tester.pump();
+      expect([
+        for (var n in notes())
+          if (n.key == 67) n.start
+      ], [
+        2,
+        2.25,
+        2.5,
+        2.75,
+        3
+      ]);
+      await done(tester);
+    });
+
+    testWidgets("a chord drawn at once; kept in key", (tester) async {
+      await open(tester, row: 0);
+      tester
+          .widget<DropdownButton<int>>(find.byKey(const ValueKey("rollChord")))
+          .onChanged!(2); // Minor.
+      await tester.pump();
+      await pick(tester, "rollDraw");
+      await tester.tapAt(at(tester, 4.05, 62));
+      await tester.pump();
+      expect(
+          [
+            for (var n in notes())
+              if (n.start == 4) n.key
+          ]..sort(),
+          [62, 65, 69]);
+      tester
+          .widget<DropdownButton<int>>(find.byKey(const ValueKey("rollChord")))
+          .onChanged!(0);
+      await pick(tester, "rollKeep");
+      // C sharp is not in C major: drawn as C.
+      await tester.tapAt(at(tester, 6.05, 61));
+      await tester.pump();
+      expect([
+        for (var n in notes())
+          if (n.start == 6) n.key
+      ], [
+        60
+      ]);
       await done(tester);
     });
 

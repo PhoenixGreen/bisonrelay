@@ -23,19 +23,41 @@ class MidiNote {
   final double length;
   final int velocity;
 
-  const MidiNote(this.key, this.start, this.length, [this.velocity = 96]);
+  /// muted is a note kept but not played: drawn hollow.
+  final bool muted;
+
+  /// chance is how likely it is to play each time round, nought to one:
+  /// the same each time for the same note (see InstrumentPart.played).
+  final double chance;
+
+  const MidiNote(this.key, this.start, this.length,
+      [this.velocity = 96, this.muted = false, this.chance = 1]);
 
   double get end => start + length;
 
-  MidiNote copyWith({int? key, double? start, double? length, int? velocity}) =>
+  MidiNote copyWith(
+          {int? key,
+          double? start,
+          double? length,
+          int? velocity,
+          bool? muted,
+          double? chance}) =>
       MidiNote(
           (key ?? this.key).clamp(0, 127),
           // Within an hour: a part is rendered as long as its last note.
           (start ?? this.start).clamp(0.0, 3600.0),
           (length ?? this.length).clamp(0.01, 3600.0),
-          (velocity ?? this.velocity).clamp(1, 127));
+          (velocity ?? this.velocity).clamp(1, 127),
+          muted ?? this.muted,
+          (chance ?? this.chance).clamp(0.0, 1.0));
 
-  List<num> toJson() => [key, _round(start), _round(length), velocity];
+  List<num> toJson() => [
+        key,
+        _round(start),
+        _round(length),
+        velocity,
+        if (chance != 1 || muted) ...[_round(chance), if (muted) 1],
+      ];
 
   static double _round(double v) => (v * 10000).round() / 10000;
 
@@ -45,7 +67,9 @@ class MidiNote {
         key: jsonInt(json[0], 60),
         start: jsonDouble(json[1], 0),
         length: jsonDouble(json[2], 0.5),
-        velocity: json.length > 3 ? jsonInt(json[3], 96) : 96);
+        velocity: json.length > 3 ? jsonInt(json[3], 96) : 96,
+        chance: json.length > 4 ? jsonDouble(json[4], 1) : 1,
+        muted: json.length > 5 && jsonInt(json[5], 0) == 1);
   }
 
   @override
@@ -54,10 +78,35 @@ class MidiNote {
       other.key == key &&
       other.start == start &&
       other.length == length &&
-      other.velocity == velocity;
+      other.velocity == velocity &&
+      other.muted == muted &&
+      other.chance == chance;
 
   @override
-  int get hashCode => Object.hash(key, start, length, velocity);
+  int get hashCode => Object.hash(key, start, length, velocity, muted, chance);
+}
+
+/// notesHeard is [notes] as they play: without the muted, and each with a
+/// chance below one kept or not by a roll that is the same each time for
+/// the same note, so a part sounds the same played and exported. [notes]
+/// itself where every note plays.
+List<MidiNote> notesHeard(List<MidiNote> notes) {
+  if (notes.every((n) => !n.muted && n.chance >= 1)) return notes;
+  return [
+    for (var n in notes)
+      if (!n.muted && (n.chance >= 1 || _roll(n) < n.chance)) n,
+  ];
+}
+
+/// _roll is a number from nought to one for [n]: its key and its start.
+double _roll(MidiNote n) {
+  var x = (n.key * 73856093 ^ (n.start * 1000).round() * 19349663) & 0xFFFFFFFF;
+  x ^= x >> 15;
+  x = (x * 0x85EBCA77) & 0xFFFFFFFF;
+  x ^= x >> 13;
+  x = (x * 0xC2B2AE3D) & 0xFFFFFFFF;
+  x ^= x >> 16;
+  return x / 0xFFFFFFFF;
 }
 
 /// InstrumentSound is what an instrument's notes are played with.
@@ -251,9 +300,13 @@ class InstrumentPart {
 
   /// played is the part as its instrument plays it: its notes through its
   /// effects, at [secondsPerBeat] a beat.
-  InstrumentPart played(double secondsPerBeat) => effects.isEmpty
-      ? this
-      : copyWith(notes: applyMidiEffects(notes, effects, secondsPerBeat));
+  InstrumentPart played(double secondsPerBeat) {
+    var heard = notesHeard(notes);
+    if (effects.isEmpty) {
+      return identical(heard, notes) ? this : copyWith(notes: heard);
+    }
+    return copyWith(notes: applyMidiEffects(heard, effects, secondsPerBeat));
+  }
 
   /// sounding is the keys down at [seconds] into the part.
   Set<int> sounding(double seconds) => {

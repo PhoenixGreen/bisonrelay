@@ -916,7 +916,7 @@ extension CanvasSession on CanvasController {
     var notes = fromPart
         ? [
             for (var n in e.instrument!.notes)
-              MidiNote(n.key, n.start / spb, n.length / spb, n.velocity),
+              n.copyWith(start: n.start / spb, length: n.length / spb),
           ]
         : <MidiNote>[];
     if (fromPart && notes.isNotEmpty) {
@@ -1117,7 +1117,8 @@ extension CanvasSession on CanvasController {
             var start = played.from + heard + at - from;
             var len = math.min(n.length * spb, played.to - start);
             if (start - base < 0 || len <= 0) continue;
-            added.add(MidiNote(n.key, start - base, len, n.velocity));
+            added.add(MidiNote(
+                n.key, start - base, len, n.velocity, n.muted, n.chance));
           }
         }
         var part = e.instrument!;
