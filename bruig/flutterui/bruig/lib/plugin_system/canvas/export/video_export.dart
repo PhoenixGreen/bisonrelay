@@ -409,6 +409,7 @@ Future<({List<String> inputs, List<String> output})> _soundArgs(
       ffmpeg: ffmpeg,
       out: mixed,
       returns: document.returns,
+      scenes: sceneBuses(document),
       // An MP4's AAC and a WebM's Opus both carry surround.
       speakers: document.audio.speakers);
   if (!ok) return none;

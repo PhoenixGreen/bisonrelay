@@ -76,18 +76,24 @@ class Compressor {
   final double _attack, _release, _makeup;
   double _reduction = 0;
 
+  /// source is the channel it listens to rather than its own sound (see
+  /// Dynamics.sidechain), fed into [key] before each block.
+  final String? source;
+  final SideKey key = SideKey();
+
   /// reductionDb is how many decibels it is taking off now: its meter.
   double get reductionDb => _reduction;
 
   Compressor(this.d, {double sampleRate = 48000})
       : _attack = _coefficient(d.attackMs, sampleRate),
         _release = _coefficient(d.releaseMs, sampleRate),
-        _makeup = dbToGain(d.totalMakeupDb);
+        _makeup = dbToGain(d.totalMakeupDb),
+        source = d.sidechain;
 
   void process(Float32List l, Float32List r, int n) {
     var wet = d.mix.clamp(0.0, 1.0);
     for (var i = 0; i < n; i++) {
-      var peak = math.max(l[i].abs(), r[i].abs());
+      var peak = key.level(i, math.max(l[i].abs(), r[i].abs()));
       var level = peak <= 1e-9 ? -180.0 : 20 * math.log(peak) / math.ln10;
       var want = level - d.reducedDb(level);
       // Down quickly, back slowly: the attack when it has to turn down
@@ -99,6 +105,7 @@ class Compressor {
       l[i] *= gain;
       r[i] *= gain;
     }
+    key.done();
   }
 }
 
@@ -245,20 +252,18 @@ class StripProcessor {
       r.fillRange(0, n, 0);
       return;
     }
+    // In the order it was arranged in: the EQ and the compressor among the
+    // devices wherever they were put (see ChannelMix.chain).
     var taps = tapping ? <(double, double)>[blockPeaks(l, r, n)] : null;
-    for (var d in _chain) {
-      d?.process(l, r, n);
-      taps?.add(blockPeaks(l, r, n));
-    }
-    if (_mix.compFirst) {
-      _comp?.process(l, r, n);
-      taps?.add(blockPeaks(l, r, n));
-      _eq.process(l, r, n);
-      taps?.add(blockPeaks(l, r, n));
-    } else {
-      _eq.process(l, r, n);
-      taps?.add(blockPeaks(l, r, n));
-      _comp?.process(l, r, n);
+    for (var step in _mix.chain) {
+      if (step == chainEq) {
+        _eq.process(l, r, n);
+      } else if (step == chainComp) {
+        _comp?.process(l, r, n);
+      } else {
+        var i = deviceIndexOf(_mix.devices, step);
+        if (i >= 0 && i < _chain.length) _chain[i]?.process(l, r, n);
+      }
       taps?.add(blockPeaks(l, r, n));
     }
     this.taps = taps ?? const [];
@@ -298,6 +303,45 @@ class StripProcessor {
 /// delay line, a reverb's tail, an LFO's phase).
 abstract class Tunable {
   void tune(MixDevice device);
+}
+
+/// Sidechained is a device that hears a second channel: [feed] is given
+/// that channel's pre-strip input before each block is processed.
+abstract class Sidechained implements DeviceProcessor {
+  String? get source;
+  void feed(Float32List l, Float32List r, int n);
+}
+
+/// SideKey is what a gate or compressor listens to in place of its own
+/// sound: another channel's loudest side, sample by sample, for the block
+/// about to be processed. Not fed -- the channel gone -- it is not [fed],
+/// and the device listens to its own sound.
+class SideKey {
+  Float32List _peaks = Float32List(0);
+  bool _fed = false;
+
+  bool get fed => _fed;
+
+  void feed(Float32List l, Float32List r, int n) {
+    if (_peaks.length < n) _peaks = Float32List(n);
+    for (var i = 0; i < n; i++) {
+      _peaks[i] = math.max(l[i].abs(), r[i].abs());
+    }
+    _fed = true;
+  }
+
+  /// silence is a channel that is there with nothing on it this block.
+  void silence(int n) {
+    if (_peaks.length < n) _peaks = Float32List(n);
+    _peaks.fillRange(0, n, 0);
+    _fed = true;
+  }
+
+  /// level is the key's peak at sample [i], or [own] where it is not fed.
+  double level(int i, double own) => _fed ? _peaks[i] : own;
+
+  /// done is the block processed: the next is listened to afresh.
+  void done() => _fed = false;
 }
 
 /// DeviceProcessor is a device of a chain, running.
@@ -512,9 +556,13 @@ class MasterProcessor {
   final Compressor? _glue;
   final Limiter? _limiter;
 
-  /// _devices are the master's own, before its EQ and glue.
-  final List<DeviceProcessor> _devices;
-  List<DeviceProcessor> get devices => _devices;
+  /// _devices are the master's own, by place among its devices: null for
+  /// one that is off or only listens.
+  final List<DeviceProcessor?> _devices;
+  List<DeviceProcessor> get devices => [
+        for (var d in _devices)
+          if (d != null) d,
+      ];
 
   /// normaliseDb is the gain that brings the mix to its loudness target,
   /// measured on a first pass; 0 until then.
@@ -524,23 +572,22 @@ class MasterProcessor {
       : _eq = EqProcessor(mix.eq),
         _glue = mix.comp.on ? Compressor(mix.comp) : null,
         _limiter = mix.limiter ? Limiter(mix.ceilingDb) : null,
-        _devices = [
-          for (var d in mix.devices)
-            if (DeviceProcessor.of(d) case var p?) p,
-        ];
+        _devices = [for (var d in mix.devices) DeviceProcessor.of(d)];
 
   /// process runs the master on a block, the limiter only when [limit]. The
   /// measuring pass leaves it out, as a loudness normaliser measures.
   void process(Float32List l, Float32List r, int n, {bool limit = true}) {
-    for (var d in _devices) {
-      d.process(l, r, n);
-    }
-    if (mix.compFirst) {
-      _glue?.process(l, r, n);
-      _eq.process(l, r, n);
-    } else {
-      _eq.process(l, r, n);
-      _glue?.process(l, r, n);
+    // In the order it was arranged in (see MasterMix.chain); the limiter
+    // last, always.
+    for (var step in mix.chain) {
+      if (step == chainEq) {
+        _eq.process(l, r, n);
+      } else if (step == chainComp) {
+        _glue?.process(l, r, n);
+      } else {
+        var i = deviceIndexOf(mix.devices, step);
+        if (i >= 0 && i < _devices.length) _devices[i]?.process(l, r, n);
+      }
     }
     var g = dbToGain(mix.gainDb + normaliseDb);
     if (g != 1) _scale(l, r, n, g, g);

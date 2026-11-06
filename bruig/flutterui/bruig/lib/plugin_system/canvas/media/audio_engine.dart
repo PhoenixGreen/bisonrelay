@@ -185,6 +185,11 @@ abstract class AudioEngine {
   /// leaves them silent.
   void setReturns(List<ReturnChannel> returns);
 
+  /// setScene is the bus of the scene playing (see CanvasScene.bus) and
+  /// the channels heard through it. An engine with no buses of buses --
+  /// SoLoud's -- plays the scene's channels straight to the master.
+  void setScene(ChannelMix bus, Set<String> channels);
+
   /// setSpeakers is what the mix is for. The editor hears surround folded
   /// down to stereo; an engine with no surround hears it as stereo.
   void setSpeakers(SpeakerLayout layout);
@@ -319,6 +324,9 @@ class SoLoudAudioEngine implements AudioEngine {
 
   @override
   void setReturns(List<ReturnChannel> returns) {}
+
+  @override
+  void setScene(ChannelMix bus, Set<String> channels) {}
 
   Future<bool>? _starting;
 

@@ -314,6 +314,15 @@ extension CanvasMixing on CanvasController {
   void setMasterMix(MasterMix mix, {bool transient = false}) =>
       apply(_document.copyWith(masterMix: mix), transient: transient);
 
+  /// sceneBus is the bus of the scene being shown -- see CanvasScene.bus --
+  /// which every sound in it goes through on its way to the master.
+  ChannelMix get sceneBus => _document.scene.bus;
+
+  /// setSceneBus changes the shown scene's bus.
+  void setSceneBus(ChannelMix bus, {bool transient = false}) => apply(
+      _document.withScene(_document.at, _document.scene.copyWith(bus: bus)),
+      transient: transient);
+
   /// returnOf is the return called [id], or null.
   ReturnChannel? returnOf(String? id) =>
       _document.returns.where((r) => r.id == id).firstOrNull;
@@ -326,6 +335,7 @@ extension CanvasMixing on CanvasController {
   List<MixDevice> devicesOf(String key) {
     if (key == mixerMasterKey)
       return withDeviceIds(_document.masterMix.devices);
+    if (key == sceneBusKey) return withDeviceIds(sceneBus.devices);
     if (returnOf(key) case var r?) return withDeviceIds(r.devices);
     // As they play now: a setting a lane moves, where the lane has it.
     var lane = timelineChannels.where((c) => c.key == key).firstOrNull;
@@ -340,6 +350,10 @@ extension CanvasMixing on CanvasController {
           transient: transient);
       return;
     }
+    if (key == sceneBusKey) {
+      setSceneBus(sceneBus.copyWith(devices: devices), transient: transient);
+      return;
+    }
     if (returnOf(key) case var r?) {
       setReturn(r.copyWith(devices: devices), transient: transient);
       return;
@@ -352,17 +366,61 @@ extension CanvasMixing on CanvasController {
         automation: _lanesAfter(lane.mix.automation, shown.devices, devices));
   }
 
-  /// moveDevice moves device [id] of strip [key] [by] places along its
-  /// chain, minus to the left, as one undo step. Its lanes, its fold and
-  /// its settings go with it: they follow its id, not its place.
+  /// chainOf is strip [key]'s chain in the order it runs: device ids, and
+  /// chainEq and chainComp for its EQ and compressor (see ChannelMix.chain).
+  /// A return's is its devices alone: its EQ and compressor are its strip's,
+  /// after them.
+  List<String> chainOf(String key) {
+    if (key == mixerMasterKey) return _document.masterMix.chain;
+    if (key == sceneBusKey) return sceneBus.chain;
+    if (returnOf(key) case var r?) {
+      var d = withDeviceIds(r.devices);
+      return [for (var i = 0; i < d.length; i++) deviceIdAt(d, i)];
+    }
+    var lane = timelineChannels.where((c) => c.key == key).firstOrNull;
+    return lane == null ? const [] : mixNow(lane).chain;
+  }
+
+  /// moveDevice moves [id] -- a device, or chainEq or chainComp -- [by]
+  /// places along strip [key]'s chain, minus to the left, as one undo step.
+  /// A device's lanes, its fold and its settings go with it: they follow its
+  /// id, not its place.
   void moveDevice(String key, String id, int by) {
-    var now = devicesOf(key);
-    var i = deviceIndexOf(now, id), j = i + by;
-    if (i < 0 || j < 0 || j >= now.length || by == 0) return;
-    var next = [...now];
-    next.insert(j, next.removeAt(i));
+    var chain = [...chainOf(key)];
+    var i = chain.indexOf(id), j = i + by;
+    if (i < 0 || j < 0 || j >= chain.length || by == 0) return;
+    chain.insert(j, chain.removeAt(i));
+    // The devices kept in the same order among themselves, so a list of
+    // them reads as the chain does.
+    var devices = devicesOf(key);
+    var sorted = [
+      for (var step in chain)
+        if (deviceIndexOf(devices, step) case var at when at >= 0) devices[at],
+    ];
     beginInteraction();
-    setDevicesOf(key, next);
+    if (key == mixerMasterKey) {
+      var m = _document.masterMix;
+      setMasterMix(
+          m.copyWith(
+              devices: sorted, order: chain, compFirst: compFirstIn(chain)),
+          transient: true);
+    } else if (key == sceneBusKey) {
+      setSceneBus(
+          sceneBus.copyWith(
+              devices: sorted, order: chain, compFirst: compFirstIn(chain)),
+          transient: true);
+    } else if (returnOf(key) != null) {
+      setDevicesOf(key, sorted, transient: true);
+    } else if (timelineChannels.where((c) => c.key == key).firstOrNull
+        case var lane?) {
+      var shown = mixNow(lane);
+      changeChannelMix(
+          lane,
+          shown,
+          shown.copyWith(
+              devices: sorted, order: chain, compFirst: compFirstIn(chain)),
+          transient: true);
+    }
     endInteraction();
   }
 
@@ -445,8 +503,17 @@ extension CanvasMixing on CanvasController {
     // every sound on the channel; each as it plays now, its lanes' settings
     // put in but for those held by hand.
     var strips = <String, ChannelMix>{};
+    // The channels heard through the scene's bus: those whose first sound
+    // -- whose strip it is -- is in a scene, or a transition's; not the
+    // master's.
+    var inScene = <String>{};
     var now = automationNow;
     for (var lane in lanes) {
+      if (!strips.containsKey(lane.channelKey) &&
+          (lane.scene >= 0 ||
+              lane.element.id.startsWith(transitionSoundPrefix))) {
+        inScene.add(lane.channelKey);
+      }
       strips.putIfAbsent(lane.channelKey, () {
         var held = _overridden[lane.channelKey] ?? const <String>{};
         return _withClipAutomation(lane.channelKey,
@@ -461,6 +528,8 @@ extension CanvasMixing on CanvasController {
         },
         master: _document.masterMix,
         returns: _document.returns,
+        sceneBus: sceneBus,
+        sceneChannels: inScene,
         speakers: _document.audio.speakers,
         placements: placementsNow);
   }

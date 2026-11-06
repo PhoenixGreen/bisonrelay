@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/speech_spec.dart'
     show SpeechSpec, VocaliserSpec;
 import 'package:bruig/plugin_system/canvas/media/midi_input.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart'
-    show envelopeAt;
+    show GainPoint, envelopeAt;
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart'
     show duckEnvelope;
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
@@ -143,8 +143,12 @@ enum DeviceTier {
 List<Widget> deviceMoveButtons(
     CanvasController c, String owner, int index, Color ink) {
   var devices = c.devicesOf(owner);
-  if (index >= devices.length || devices.length < 2) return const [];
+  if (index >= devices.length) return const [];
   var id = deviceIdAt(devices, index), name = devices[index].kind.label;
+  // Its place in the chain, the EQ and compressor among the devices.
+  var chain = c.chainOf(owner);
+  var at = chain.indexOf(id);
+  if (at < 0 || chain.length < 2) return const [];
   Widget arrow(int by, IconData icon, String side) => IconButton(
         key: ValueKey("device${by < 0 ? "Left" : "Right"}-$index"),
         tooltip: "Move the ${name.toLowerCase()} $side",
@@ -153,7 +157,7 @@ List<Widget> deviceMoveButtons(
         constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
         padding: EdgeInsets.zero,
         icon: Icon(icon, color: ink),
-        onPressed: index + by < 0 || index + by >= devices.length
+        onPressed: at + by < 0 || at + by >= chain.length
             ? null
             : () => c.moveDevice(owner, id, by),
       );
@@ -515,12 +519,18 @@ class DeviceMove extends StatelessWidget {
   final VoidCallback onSwap;
   final Color ink;
   final String id;
+
+  /// onMove, given, moves it a place along the chain -- minus one to the
+  /// left -- rather than swapping it with its neighbour.
+  final void Function(int by)? onMove;
+
   const DeviceMove(
       {required this.id,
       required this.canLeft,
       required this.canRight,
       required this.onSwap,
       required this.ink,
+      this.onMove,
       super.key});
 
   @override
@@ -530,7 +540,11 @@ class DeviceMove extends StatelessWidget {
             message: left ? "Move earlier in the chain" : "Move later",
             child: GestureDetector(
               key: ValueKey("deviceMove${left ? "Left" : "Right"}-$id"),
-              onTap: can ? onSwap : null,
+              onTap: !can
+                  ? null
+                  : onMove == null
+                      ? onSwap
+                      : () => onMove!(left ? -1 : 1),
               child: Icon(left ? Icons.chevron_left : Icons.chevron_right,
                   size: 18, color: can ? ink : ink.withValues(alpha: 0.25)),
             ),
@@ -553,9 +567,29 @@ class _Strip {
   /// channel of sounds.
   ReturnChannel? get _return => controller.returnOf(channel);
 
-  ChannelMix? get _mix => _lane?.mix ?? _return?.mix;
+  /// _scene is whether it is the scene's bus (see CanvasScene.bus).
+  bool get _scene => channel == sceneBusKey;
 
-  bool get gone => channel != null && _lane == null && _return == null;
+  ChannelMix? get _mix =>
+      _scene ? controller.sceneBus : _lane?.mix ?? _return?.mix;
+
+  bool get gone =>
+      channel != null && !_scene && _lane == null && _return == null;
+
+  /// inChain is whether its EQ and compressor have places in a chain with
+  /// its devices: a channel's and the master's do; a return's are its
+  /// strip's, after its devices, and only change places with each other.
+  bool get inChain => _return == null;
+
+  /// canMove is whether [step] (chainEq, chainComp) can go left, and right.
+  (bool, bool) canMove(String step) {
+    var chain = controller.chainOf(channel ?? mixerMasterKey);
+    var i = chain.indexOf(step);
+    return (i > 0, i >= 0 && i < chain.length - 1);
+  }
+
+  void move(String step, int by) =>
+      controller.moveDevice(channel ?? mixerMasterKey, step, by);
 
   // A channel can go while its devices are on screen -- its last sound
   // deleted, a speaker emptied -- and the meters ask for its settings thirty
@@ -572,6 +606,9 @@ class _Strip {
     if (channel == null) {
       var m = controller.document.masterMix;
       controller.setMasterMix(m.copyWith(eq: eq, comp: comp), transient: true);
+    } else if (_scene) {
+      controller.setSceneBus(controller.sceneBus.copyWith(eq: eq, comp: comp),
+          transient: true);
     } else if (_lane case var lane?) {
       // Opened on purpose, so changed wherever the sound is.
       controller.setChannelMix(lane, lane.mix.copyWith(eq: eq, comp: comp),
@@ -597,7 +634,9 @@ class _Strip {
     if (!transient) controller.endInteraction();
   }
 
-  String get name => _lane?.name ?? _return?.name ?? "";
+  String get name => _scene
+      ? controller.document.scene.saysAt(controller.document.at)
+      : _lane?.name ?? _return?.name ?? "";
 
   bool get compFirst => channel == null
       ? controller.document.masterMix.compFirst
@@ -609,6 +648,10 @@ class _Strip {
     if (channel == null) {
       var m = controller.document.masterMix;
       controller.setMasterMix(m.copyWith(compFirst: !m.compFirst),
+          transient: true);
+    } else if (_scene) {
+      var b = controller.sceneBus;
+      controller.setSceneBus(b.copyWith(compFirst: !b.compFirst),
           transient: true);
     } else if (_lane case var lane?) {
       controller.setChannelMix(
@@ -872,9 +915,11 @@ class _EqDeviceState extends State<EqDevice>
               const SizedBox(width: 6),
               DeviceMove(
                   id: "eq",
-                  canLeft: !first,
-                  canRight: first,
+                  canLeft: strip.inChain ? strip.canMove(chainEq).$1 : !first,
+                  canRight: strip.inChain ? strip.canMove(chainEq).$2 : first,
                   onSwap: strip.swap,
+                  onMove:
+                      strip.inChain ? (by) => strip.move(chainEq, by) : null,
                   ink: _eqInk),
             ],
             foldedBody: CustomPaint(
@@ -1513,9 +1558,11 @@ class _CompDeviceState extends State<CompDevice>
             actions: [
               DeviceMove(
                   id: "comp",
-                  canLeft: !first,
-                  canRight: first,
+                  canLeft: strip.inChain ? strip.canMove(chainComp).$1 : !first,
+                  canRight: strip.inChain ? strip.canMove(chainComp).$2 : first,
                   onSwap: strip.swap,
+                  onMove:
+                      strip.inChain ? (by) => strip.move(chainComp, by) : null,
                   ink: const Color(0xFFE8EAEE)),
             ],
             // Folded, how much it is taking off.
@@ -1613,7 +1660,50 @@ class _CompDeviceState extends State<CompDevice>
                 ValueKey("autoGain-${a.name}"),
                 () => _write(comp.copyWith(autoGain: a))),
         ]),
+        if (widget.channel != null) ...[
+          const SizedBox(height: 6),
+          _listensTo(comp),
+        ],
       ]);
+
+  /// _listensTo is what the compressor hears to turn down by: its own sound,
+  /// or another channel's -- a sidechain, as a kick pumps a pad.
+  Widget _listensTo(Dynamics comp) {
+    var channels = [
+      for (var c in widget.controller.timelineChannels)
+        if (c.key != widget.channel) c,
+    ];
+    var chosen = channels.any((c) => c.key == comp.source) ? comp.source : "";
+    const ink = TextStyle(fontSize: 11, color: _silverInk);
+    return Row(children: [
+      const Text("Listens to",
+          style: TextStyle(fontSize: 10, color: _silverDim)),
+      const SizedBox(width: 8),
+      Expanded(
+        child: DropdownButton<String>(
+          key: const ValueKey("compSource"),
+          isExpanded: true,
+          isDense: true,
+          value: chosen,
+          style: ink,
+          iconEnabledColor: _silverInk,
+          dropdownColor: const Color(0xFFE4E6EA),
+          items: [
+            const DropdownMenuItem(
+                value: "", child: Text("Itself", style: ink)),
+            for (var c in channels)
+              DropdownMenuItem(
+                  value: c.key,
+                  child: Text(c.name,
+                      overflow: TextOverflow.ellipsis, style: ink)),
+          ],
+          onChanged: (v) {
+            if (v != null) _write(comp.copyWith(source: v));
+          },
+        ),
+      ),
+    ]);
+  }
 
   Widget _segment(String label, bool on, Key key, VoidCallback onTap) =>
       GestureDetector(
@@ -2589,6 +2679,212 @@ class _DuckDeviceState extends State<DuckDevice>
   }
 }
 
+/// DuckedDevice is the Ducker as the channel it turns down sees it: first in
+/// its chain, as the dip is made to its sounds as they come in. Which voices
+/// duck it, the dips drawn across the run with the playhead, how far down it
+/// is now, and its switch -- off leaves this channel alone. The dip's
+/// settings belong to the voice, for every channel it ducks (see Ducking),
+/// so the knobs here turn the voice's, and say so.
+///
+/// The dips are worked out ahead from the voice's recordings, so they lead
+/// each line rather than chase it.
+class DuckedDevice extends StatefulWidget {
+  static const width = 460.0;
+  final CanvasController controller;
+  final String channel;
+  final bool folded;
+  final VoidCallback onFold;
+  final double height;
+  const DuckedDevice(
+      {required this.controller,
+      required this.channel,
+      required this.folded,
+      required this.onFold,
+      required this.height,
+      super.key});
+
+  @override
+  State<DuckedDevice> createState() => _DuckedDeviceState();
+}
+
+class _DuckedDeviceState extends State<DuckedDevice>
+    with SingleTickerProviderStateMixin, _Metered {
+  @override
+  CanvasController get meteredBy => widget.controller;
+
+  /// _now is how far, in decibels, the channel is down at the playhead.
+  double _now = 0;
+
+  @override
+  void tick() {
+    var c = widget.controller;
+    var env = c.duckEnvelopeOf(widget.channel);
+    var rate = math.max(1, c.document.frameRate);
+    _now = env == null
+        ? 0
+        : -gainToDb(envelopeAt(env, c.runFrame / rate)).clamp(-60.0, 0.0);
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: widget.controller,
+        builder: (context, _) {
+          var c = widget.controller;
+          var by = c.duckersOf(widget.channel);
+          if (by.isEmpty) return const SizedBox.shrink();
+          var on = by.any((v) => !v.mix.duck.except.contains(widget.channel));
+          var names = by.map((v) => v.name).join(", ");
+          var rate = math.max(1, c.document.frameRate);
+          return DeviceFrame(
+            id: "ducked",
+            title: "Ducker",
+            skin: DeviceSkin.silver,
+            on: on,
+            powerKey: const ValueKey("duckedOn"),
+            onPower: (v) => c.setDuckedBy(widget.channel, v),
+            folded: widget.folded,
+            onFold: widget.onFold,
+            width: DuckedDevice.width,
+            height: widget.height,
+            foldedBody: Column(children: [
+              const Text("Duck",
+                  style: TextStyle(fontSize: 10, color: _silverDim)),
+              const SizedBox(height: 4),
+              Expanded(
+                child: CustomPaint(
+                    key: const ValueKey("duckedFolded"),
+                    size: const Size(14, double.infinity),
+                    painter: _ReductionBar(_now)),
+              ),
+            ]),
+            body: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text("By $names, ahead of each line",
+                        key: const ValueKey("duckedBy"),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            const TextStyle(fontSize: 11, color: _silverInk)),
+                    const SizedBox(height: 6),
+                    Expanded(
+                      child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: _cream,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                      color: const Color(0xFF8D8F93), width: 2),
+                                ),
+                                child: CustomPaint(
+                                    key: const ValueKey("duckedDips"),
+                                    painter: _RunDips(
+                                        on
+                                            ? c.duckEnvelopeOf(
+                                                    widget.channel) ??
+                                                const []
+                                            : const [],
+                                        c.document.playFrames / rate,
+                                        c.runFrame / rate)),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            SizedBox(
+                              width: 22,
+                              child: Column(children: [
+                                const Text("Now",
+                                    style: TextStyle(
+                                        fontSize: 10, color: _silverDim)),
+                                const SizedBox(height: 4),
+                                Expanded(
+                                    child: CustomPaint(
+                                        key: const ValueKey("duckedNow"),
+                                        size: Size.infinite,
+                                        painter: _ReductionBar(_now))),
+                                const SizedBox(height: 4),
+                                Text(
+                                    _now > 0.05
+                                        ? "−${_now.toStringAsFixed(1)}"
+                                        : "0",
+                                    style: const TextStyle(
+                                        fontSize: 9,
+                                        fontFeatures: [
+                                          FontFeature.tabularFigures()
+                                        ],
+                                        color: _silverInk)),
+                              ]),
+                            ),
+                          ]),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      for (var v in by)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: TextButton(
+                            key: ValueKey("duckedOpen-${v.key}"),
+                            style: TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                foregroundColor: _silverInk),
+                            onPressed: () =>
+                                c.openEffects(v.key, device: "duck"),
+                            child: Text(
+                                "${v.name}: ${v.mix.duck.depthDb.toStringAsFixed(1)} dB",
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                        ),
+                    ]),
+                  ]),
+            ),
+          );
+        },
+      );
+}
+
+/// _RunDips is a channel's ducking over the whole run: how far down it is,
+/// forty decibels down the screen, with the playhead.
+class _RunDips extends CustomPainter {
+  final List<GainPoint> env;
+  final double total, now;
+  _RunDips(this.env, this.total, this.now);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const pad = 8.0;
+    var w = size.width - 2 * pad, h = size.height - 2 * pad;
+    if (w <= 0 || h <= 0 || total <= 0) return;
+    double x(double t) => pad + (t / total).clamp(0.0, 1.0) * w;
+    double y(double gain) => pad + (-gainToDb(gain).clamp(-40.0, 0.0) / 40) * h;
+    var grid = Paint()..color = const Color(0xFFD3C7A4);
+    for (var db = 0.0; db >= -40; db -= 10) {
+      var gy = pad + -db / 40 * h;
+      canvas.drawLine(Offset(pad, gy), Offset(pad + w, gy), grid);
+    }
+    var path = Path()..moveTo(x(0), y(env.isEmpty ? 1 : env.first.gain));
+    for (var p in env) {
+      path.lineTo(x(p.time), y(p.gain));
+    }
+    path.lineTo(x(total), y(env.isEmpty ? 1 : env.last.gain));
+    canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.8
+          ..color = _silverInk);
+    canvas.drawLine(Offset(x(now), pad), Offset(x(now), pad + h),
+        Paint()..color = const Color(0xFFE08A1E));
+  }
+
+  @override
+  bool shouldRepaint(_RunDips old) =>
+      old.now != now || old.total != total || !identical(old.env, env);
+}
+
 /// _DuckShape is one dip: the others at full level, down by the depth over
 /// the attack in the chosen shape, held while the channel is heard, and back
 /// over the release.
@@ -2739,7 +3035,10 @@ class ParamDevice extends StatelessWidget {
               ),
           if (device.kind == DeviceKind.vocoder &&
               device.value("carrier").round() == carrierFromChannel)
-            _carrierChannel(context, device, write),
+            _sourceChannel(context, device, write),
+          // A gate opens to its own sound, or to another channel's.
+          if (device.kind == DeviceKind.gate)
+            _sourceChannel(context, device, write, itself: true),
         ];
     return DeviceFrame(
       id: deviceKey(deviceIdAt(devices, index)),
@@ -2791,7 +3090,9 @@ class ParamDevice extends StatelessWidget {
           key: ValueKey("deviceLevels-$index"),
           controller: controller,
           channel: isChannel ? owner : null,
-          index: index,
+          // Its place in the chain, where its levels are read: the EQ and
+          // compressor can be before it.
+          index: controller.chainOf(owner).indexOf(deviceIdAt(devices, index)),
           device: device,
           accent: accent,
           back: look.studio.display),
@@ -2804,18 +3105,23 @@ class ParamDevice extends StatelessWidget {
     );
   }
 
-  /// _carrierChannel is which channel a vocoder's carrier comes from: any
-  /// but its own -- an instrument playing the chords, muted so only the
-  /// vocoder is heard.
-  Widget _carrierChannel(
-      BuildContext context, MixDevice device, void Function(MixDevice) write) {
+  /// _sourceChannel is which channel a device listens to beside its own:
+  /// a vocoder's carrier -- an instrument playing the chords, muted so only
+  /// the vocoder is heard -- or, with [itself], a gate's key, where "" is
+  /// its own sound.
+  Widget _sourceChannel(
+      BuildContext context, MixDevice device, void Function(MixDevice) write,
+      {bool itself = false}) {
     var look = MixerLook.of(context);
     var channels = [
       for (var c in controller.timelineChannels)
         if (c.key != owner) c,
     ];
-    var chosen =
-        channels.any((c) => c.key == device.source) ? device.source : null;
+    var chosen = channels.any((c) => c.key == device.source)
+        ? device.source
+        : itself
+            ? ""
+            : null;
     var ink = TextStyle(fontSize: 11, color: look.studio.text);
     return SizedBox(
       width: 104,
@@ -2833,6 +3139,12 @@ class ParamDevice extends StatelessWidget {
           hint: Text(channels.isEmpty ? "No other channel" : "A channel",
               style: ink, overflow: TextOverflow.ellipsis),
           items: [
+            if (itself)
+              DropdownMenuItem(
+                  value: "",
+                  child: Text("Itself",
+                      style: TextStyle(
+                          fontSize: 11, color: look.colors.onSurface))),
             for (var c in channels)
               DropdownMenuItem(
                   value: c.key,
@@ -2842,10 +3154,11 @@ class ParamDevice extends StatelessWidget {
                           fontSize: 11, color: look.colors.onSurface))),
           ],
           selectedItemBuilder: (_) => [
+            if (itself) Text("Itself", style: ink),
             for (var c in channels)
               Text(c.name, overflow: TextOverflow.ellipsis, style: ink),
           ],
-          onChanged: channels.isEmpty
+          onChanged: channels.isEmpty && !itself
               ? null
               : (v) {
                   if (v != null) write(device.withSource(v));
@@ -2893,59 +3206,6 @@ class AddDeviceSlot extends StatelessWidget {
         const SizedBox(height: 4),
         Expanded(
           child: ListView(padding: EdgeInsets.zero, children: [
-            // A voice: an audio channel's Speech device and Vocaliser, one
-            // of each to a channel.
-            if (controller.timelineChannels.any((l) => l.key == owner) &&
-                !controller.instrumentChannel(owner) &&
-                (controller.speechOf(owner) == null ||
-                    controller.vocaliserOf(owner) == null)) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(2, 6, 2, 2),
-                child: Text("VOICE",
-                    style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        color: look.studio.muted)),
-              ),
-              if (controller.speechOf(owner) == null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 3),
-                  child: OutlinedButton(
-                    key: const ValueKey("addDevice-speech"),
-                    style: OutlinedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        foregroundColor: look.studio.text,
-                        side: BorderSide(color: look.studio.edge),
-                        textStyle: const TextStyle(fontSize: 11)),
-                    onPressed: () {
-                      controller.beginInteraction();
-                      controller.setSpeech(owner, const SpeechSpec());
-                      controller.endInteraction();
-                      controller.openEffects(owner, device: "speech");
-                    },
-                    child: const Text("Speech"),
-                  ),
-                ),
-              if (controller.vocaliserOf(owner) == null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 3),
-                  child: OutlinedButton(
-                    key: const ValueKey("addDevice-vocaliser"),
-                    style: OutlinedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        foregroundColor: look.studio.text,
-                        side: BorderSide(color: look.studio.edge),
-                        textStyle: const TextStyle(fontSize: 11)),
-                    onPressed: () {
-                      controller.beginInteraction();
-                      controller.setVocaliser(owner, const VocaliserSpec());
-                      controller.endInteraction();
-                      controller.openEffects(owner, device: "vocaliser");
-                    },
-                    child: const Text("Vocaliser"),
-                  ),
-                ),
-            ],
             for (var group in DeviceGroup.values) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(2, 6, 2, 2),
@@ -3702,4 +3962,65 @@ class _LevelsPainter extends CustomPainter {
       old.history.length != history.length ||
       (history.isNotEmpty && old.history.last != history.last) ||
       old.accent != accent;
+}
+
+/// VoiceStartCard is the way into a channel's Speech where it has none --
+/// "Speak a script" -- or, with [sing], to its Vocaliser: "Sing it", a sung
+/// copy of the speech made as a new clip.
+class VoiceStartCard extends StatelessWidget {
+  final CanvasController controller;
+  final String channel;
+  final double height;
+  final bool sing;
+  const VoiceStartCard(
+      {required this.controller,
+      required this.channel,
+      required this.height,
+      this.sing = false,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var skin = DeviceSkin.studio(look.studio);
+    return Container(
+      width: 200,
+      height: height,
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+          color: look.studio.strip,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: look.studio.edge)),
+      child: SingleChildScrollView(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(sing ? Icons.music_note : Icons.record_voice_over,
+              size: 20, color: skin.ink),
+          const SizedBox(height: 8),
+          Text(
+              sing
+                  ? "Sing it: the speech sung to notes, made as a new clip."
+                  : "Speak a script: each line spoken is a clip on this "
+                      "channel, beside recordings.",
+              style: TextStyle(fontSize: 11.5, height: 1.4, color: skin.dim)),
+          const SizedBox(height: 10),
+          FilledButton.tonal(
+            key: ValueKey(sing ? "speechSingButton" : "speechStartButton"),
+            onPressed: () {
+              controller.beginInteraction();
+              if (sing) {
+                controller.setVocaliser(channel, const VocaliserSpec());
+              } else {
+                controller.setSpeech(channel, const SpeechSpec());
+              }
+              controller.endInteraction();
+              controller.openEffects(channel,
+                  device: sing ? "vocaliser" : "speech");
+            },
+            child: Text(sing ? "Sing it" : "Speak a script"),
+          ),
+        ]),
+      ),
+    );
+  }
 }

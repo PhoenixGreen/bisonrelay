@@ -264,6 +264,16 @@ class _CanvasMixerState extends State<CanvasMixer>
   final Map<String, GlobalKey> _devices = {};
   GlobalKey _deviceKey(String id) => _devices[id] ??= GlobalKey();
 
+  /// _addAt is where in [chain] a device put on goes: before the EQ and
+  /// compressor where they end it, else at the end -- see chainOrder.
+  static int _addAt(List<String> chain) {
+    var at = chain.length;
+    while (at > 0 && (chain[at - 1] == chainEq || chain[at - 1] == chainComp)) {
+      at--;
+    }
+    return at;
+  }
+
   /// _junction is the meter at step [i] of the open chain.
   Widget _junction(int i, double h, MixerLook theme) => _Junction(
       i,
@@ -339,13 +349,18 @@ class _CanvasMixerState extends State<CanvasMixer>
       for (var channel in controller.timelineChannels) channel.key: channel,
     };
     var returns = {for (var r in controller.document.returns) r.id};
-    var keys = [...channels.keys, ...returns, _master];
+    var keys = [
+      ...channels.keys,
+      ...returns,
+      if (_sceneShown) sceneBusKey,
+      _master
+    ];
     var moved = false;
     for (var key in keys) {
       // A channel is as loud as its strip: every sound on it is mixed there.
       var (l, r) = key == _master
           ? controller.levels()
-          : returns.contains(key)
+          : returns.contains(key) || key == sceneBusKey
               ? controller.levels(key)
               : controller.channelLevels(channels[key]!);
       var db = (gainToDb(l), gainToDb(r));
@@ -488,7 +503,9 @@ class _CanvasMixerState extends State<CanvasMixer>
           // A channel gone from the timeline: the master's, in the effects panel,
           // which always shows a chain. A return is not on the timeline and keeps
           // its own.
-          if (lane == null && controller.returnOf(editing) == null) {
+          if (lane == null &&
+              controller.returnOf(editing) == null &&
+              editing != sceneBusKey) {
             editing = widget.effects ? _master : null;
           }
         }
@@ -696,6 +713,35 @@ class _CanvasMixerState extends State<CanvasMixer>
               ),
             ),
           ],
+          // The scene's bus, between what is in the scene and the master:
+          // where there is a master's or another scene's to tell it from.
+          if (_sceneShown) ...[
+            const SizedBox(width: 8),
+            _SceneStrip(
+              key: const ValueKey("strip-scene"),
+              name: controller.document.scene
+                  .saysAt(controller.document.at, controller.document.kind),
+              mix: controller.sceneBus,
+              chain: controller.chainOf(sceneBusKey),
+              level: _now[sceneBusKey] ?? (-90, -90),
+              peak: _peaks[sceneBusKey] ?? (-90, -90),
+              theme: theme,
+              bands: bands,
+              narrow: narrow.contains(sceneBusKey),
+              onNarrow: () => controller.toggleNarrow(sceneBusKey),
+              onChanged: (mix, {transient = false}) {
+                controller.beginInteraction();
+                controller.setSceneBus(mix, transient: true);
+                if (!transient) controller.endInteraction();
+              },
+              onCommit: controller.endInteraction,
+              onOpen: (device) =>
+                  controller.openEffects(sceneBusKey, device: device),
+              onRemoveDevice: (id) => _removeDevice(sceneBusKey, id),
+              selected: controller.selectedChannel == sceneBusKey,
+              onSelect: () => controller.pickStrip(sceneBusKey),
+            ),
+          ],
           const SizedBox(width: 8),
           _MasterStrip(
             key: const ValueKey("strip-master"),
@@ -769,15 +815,24 @@ class _CanvasMixerState extends State<CanvasMixer>
     controller.endInteraction();
   }
 
-  /// _allKeys is every column's key: channels, returns, master.
+  /// _allKeys is every column's key: channels, returns, the scene's bus,
+  /// master.
   List<String> _allKeys(
           List<TimelineChannel> lanes, List<CanvasElement> rows) =>
       [
         for (var l in lanes) l.key,
         for (var e in rows) motionStripKey(e.id),
         for (var r in controller.document.returns) r.id,
+        if (_sceneShown) sceneBusKey,
         _master,
       ];
+
+  /// _sceneShown is whether the scene's bus has a strip: in a document of
+  /// scenes, or with a master's sounds to go past it. Not in a sound's own
+  /// settings, which show its channel and the master's.
+  bool get _sceneShown =>
+      widget.only == null &&
+      (controller.document.hasScenes || controller.document.masterOn);
 
   Widget _channelStrip(
       MixerLook theme, TimelineChannel lane, int index, _Bands bands) {
@@ -873,6 +928,8 @@ class _CanvasMixerState extends State<CanvasMixer>
   Widget _editor(MixerLook theme, String key, TimelineChannel? lane) {
     var master = controller.document.masterMix;
     var isMaster = key == _master;
+    // The scene's bus: a chain as a channel's is, of the scene's strip.
+    var isScene = key == sceneBusKey;
     var channel = isMaster ? null : key;
     var folded = controller.foldedDevices;
     return LayoutBuilder(builder: (context, room) {
@@ -900,10 +957,31 @@ class _CanvasMixerState extends State<CanvasMixer>
               folded: f,
               onFold: fold,
               height: h));
+      // deviceAt is device [i] of the strip's own, a listener's screen or
+      // a device of knobs.
+      Widget deviceAt(int i) => device(
+          deviceKey(deviceIdAt(controller.devicesOf(key), i)),
+          (f, fold) => listensOnly(controller.devicesOf(key)[i].kind)
+              ? ListenerDevice(
+                  controller: controller,
+                  owner: key,
+                  index: i,
+                  folded: f,
+                  onFold: fold,
+                  height: h)
+              : ParamDevice(
+                  controller: controller,
+                  owner: key,
+                  index: i,
+                  folded: f,
+                  onFold: fold,
+                  height: h));
       var ret = isMaster ? null : controller.returnOf(key);
       var compFirst = isMaster
           ? master.compFirst
-          : ret?.mix.compFirst ?? lane!.mix.compFirst;
+          : isScene
+              ? controller.sceneBus.compFirst
+              : ret?.mix.compFirst ?? lane!.mix.compFirst;
       var skin = DeviceSkin.themed(theme.colors);
       // The editor (a clip's, opened from its slot, or a part's piano roll)
       // first in its channel's strip.
@@ -980,73 +1058,96 @@ class _CanvasMixerState extends State<CanvasMixer>
               channel: key,
               height: h),
         ],
-        // A channel's Speech device, first: what it speaks is its sound.
-        if (lane != null && controller.speechOf(key) != null)
-          device(
-              "speech",
-              (f, fold) => SpeechDevice(
-                  controller: controller,
-                  channel: key,
-                  folded: f,
-                  onFold: fold,
-                  height: h)),
-        // Its Vocaliser, after: what it sings is the speech, sung.
-        if (lane != null && controller.vocaliserOf(key) != null)
-          device(
-              "vocaliser",
-              (f, fold) => VocaliserDevice(
-                  controller: controller,
-                  channel: key,
-                  folded: f,
-                  onFold: fold,
-                  height: h)),
+        // A channel's Speech, on its Speech view: what makes its clips, not a
+        // step of its chain -- its script and takes, then Sing (the
+        // Vocaliser); a way to start where it has none.
+        if (lane != null && controller.speechShown) ...[
+          if (controller.speechOf(key) == null)
+            VoiceStartCard(
+                key: const ValueKey("speechStart"),
+                controller: controller,
+                channel: key,
+                height: h)
+          else
+            device(
+                "speech",
+                (f, fold) => SpeechDevice(
+                    controller: controller,
+                    channel: key,
+                    folded: f,
+                    onFold: fold,
+                    height: h)),
+          if (controller.speechOf(key) != null &&
+              controller.vocaliserOf(key) == null)
+            VoiceStartCard(
+                key: const ValueKey("speechSing"),
+                controller: controller,
+                channel: key,
+                height: h,
+                sing: true)
+          else if (controller.vocaliserOf(key) != null)
+            device(
+                "vocaliser",
+                (f, fold) => VocaliserDevice(
+                    controller: controller,
+                    channel: key,
+                    folded: f,
+                    onFold: fold,
+                    height: h)),
+        ],
         // A return's devices, a channel's own or the master's (a chorus, a gate),
         // then a way to add another, then its EQ and compressor.
-        if (ret != null || lane != null || isMaster) ...[
-          for (var i = 0; i < controller.devicesOf(key).length; i++) ...[
+        // A channel's and the master's chain in the order it runs, its EQ and
+        // compressor among its devices wherever they were put, a meter
+        // between each two of a channel's; then a way to add another. A
+        // return's devices, then its strip's EQ and compressor.
+        // Turned down by a voice: the Ducker first, as the dips are made to
+        // the channel's sounds as they come in.
+        if (lane != null && controller.duckersOf(key).isNotEmpty)
+          device(
+              "ducked",
+              (f, fold) => DuckedDevice(
+                  controller: controller,
+                  channel: key,
+                  folded: f,
+                  onFold: fold,
+                  height: h)),
+        if (lane != null || isMaster || isScene) ...[
+          for (var (i, step) in controller.chainOf(key).indexed) ...[
+            // The way to add one where it will go: before the EQ and
+            // compressor when they are last (see chainOrder).
+            if (i == _addAt(controller.chainOf(key)))
+              AddDeviceSlot(
+                  key: const ValueKey("addDeviceSlot"),
+                  controller: controller,
+                  owner: key,
+                  height: h),
             if (lane != null) _junction(i, h, theme),
-            device(
-                deviceKey(deviceIdAt(controller.devicesOf(key), i)),
-                (f, fold) => listensOnly(controller.devicesOf(key)[i].kind)
-                    ? ListenerDevice(
-                        controller: controller,
-                        owner: key,
-                        index: i,
-                        folded: f,
-                        onFold: fold,
-                        height: h)
-                    : ParamDevice(
-                        controller: controller,
-                        owner: key,
-                        index: i,
-                        folded: f,
-                        onFold: fold,
-                        height: h)),
+            if (step == chainEq)
+              eq
+            else if (step == chainComp)
+              comp
+            else if (deviceIndexOf(controller.devicesOf(key), step) case var at
+                when at >= 0)
+              deviceAt(at),
           ],
-          if (lane != null)
-            _junction(controller.devicesOf(key).length, h, theme),
+          if (lane != null) _junction(controller.chainOf(key).length, h, theme),
+          if (_addAt(controller.chainOf(key)) == controller.chainOf(key).length)
+            AddDeviceSlot(
+                key: const ValueKey("addDeviceSlot"),
+                controller: controller,
+                owner: key,
+                height: h),
+        ] else if (ret != null) ...[
+          for (var i = 0; i < controller.devicesOf(key).length; i++)
+            deviceAt(i),
           AddDeviceSlot(
               key: const ValueKey("addDeviceSlot"),
               controller: controller,
               owner: key,
               height: h),
+          ...(compFirst ? [comp, eq] : [eq, comp]),
         ],
-        ...switch ((lane != null, controller.devicesOf(key).length)) {
-          (true, var n) => compFirst
-              ? [
-                  comp,
-                  _junction(n + 1, h, theme),
-                  eq,
-                  _junction(n + 2, h, theme)
-                ]
-              : [
-                  eq,
-                  _junction(n + 1, h, theme),
-                  comp,
-                  _junction(n + 2, h, theme)
-                ],
-          _ => compFirst ? [comp, eq] : [eq, comp],
-        },
         if (lane != null)
           device(
               "duck",

@@ -493,6 +493,11 @@ class DartAudioEngine implements AudioEngine {
       _remote ? _send(["returns", returns]) : core.setReturns(returns);
 
   @override
+  void setScene(ChannelMix bus, Set<String> channels) => _remote
+      ? _send(["scene", bus, channels])
+      : core.graph.setScene(bus, channels);
+
+  @override
   void setSpeakers(SpeakerLayout layout) =>
       _remote ? _send(["speakers", layout]) : core.graph.setSpeakers(layout);
 

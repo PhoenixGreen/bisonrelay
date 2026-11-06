@@ -29,10 +29,11 @@ Future<bool> renderMixWav(List<ExportSound> sounds, MasterMix master,
         required String ffmpeg,
         required String out,
         List<ReturnChannel> returns = const [],
+        List<SceneBus> scenes = const [],
         SpeakerLayout speakers = SpeakerLayout.stereo,
         bool fold = false}) =>
-    Isolate.run(() => _render(
-        sounds, master, returns, seconds, ffmpeg, out, speakers, fold));
+    Isolate.run(() => _render(sounds, master, returns, scenes, seconds,
+        ffmpeg, out, speakers, fold));
 
 const int _block = 4096;
 
@@ -50,6 +51,7 @@ Future<bool> _render(
     List<ExportSound> sounds,
     MasterMix master,
     List<ReturnChannel> returns,
+    List<SceneBus> scenes,
     double seconds,
     String ffmpeg,
     String out,
@@ -61,16 +63,19 @@ Future<bool> _render(
   var strips = <String, ChannelMix>{};
   var places = <String, List<(double, Heard)>>{};
   var clocks = <String, double>{};
+  // The channels heard through the scenes' buses: those whose first sound
+  // -- whose strip it is -- is a scene's.
+  var inScene = <String>{};
   var decodedAny = false;
-  // A muted channel that is a vocoder's carrier is still decoded: it is
-  // heard through the vocoder.
+  // A muted channel a vocoder, a gate or a compressor listens to is still
+  // decoded: it is heard through them.
   var carriers = {
-    for (var s in sounds)
-      for (var d in s.mix.devices)
-        if (d.sidechain case var c?) c,
-    for (var r in returns)
+    for (var s in sounds) ...s.mix.sidechains,
+    for (var r in returns) ...[
       for (var d in r.devices)
         if (d.sidechain case var c?) c,
+      ...r.mix.sidechains,
+    ],
   };
   // A loop's repeats are the same stretch, decoded once and shared.
   var decoded = <(String, double, double?), (Float32List, Float32List)?>{};
@@ -83,6 +88,7 @@ Future<bool> _render(
     if (pcm == null) continue;
     decodedAny = true;
     var key = s.channel.isNotEmpty ? s.channel : "#$i";
+    if (!strips.containsKey(key) && s.inScene) inScene.add(key);
     (channels[key] ??= []).add(_Stretch(s, pcm.$1, pcm.$2));
     strips.putIfAbsent(key, () => s.mix);
     clocks.putIfAbsent(key, () => s.clock);
@@ -100,8 +106,8 @@ Future<bool> _render(
     // the fold-down pair.
     var weights = fold ? const [1.0, 1.0] : loudnessWeights(speakers);
     var meter = SpeakerLoudness(weights);
-    _pass(channels, strips, places, clocks, master, returns, total, 0, speakers,
-        fold, (out, n) => meter.add(out, n),
+    _pass(channels, strips, places, clocks, master, returns, (scenes, inScene),
+        total, 0, speakers, fold, (out, n) => meter.add(out, n),
         limit: false);
     var heard = meter.integrated;
     if (heard.isFinite) normalise = (master.target - heard).clamp(-30.0, 30.0);
@@ -111,8 +117,8 @@ Future<bool> _render(
   try {
     file.writeFromSync(wavHeader(total, written));
     var interleaved = Float32List(_block * written);
-    _pass(channels, strips, places, clocks, master, returns, total, normalise,
-        speakers, fold, (out, n) {
+    _pass(channels, strips, places, clocks, master, returns, (scenes, inScene),
+        total, normalise, speakers, fold, (out, n) {
       for (var i = 0; i < n; i++) {
         for (var c = 0; c < written; c++) {
           interleaved[i * written + c] = out[c][i];
@@ -136,6 +142,7 @@ void _pass(
     Map<String, double> clocks,
     MasterMix master,
     List<ReturnChannel> returns,
+    (List<SceneBus>, Set<String>) scenes,
     int total,
     double normaliseDb,
     SpeakerLayout speakers,
@@ -159,6 +166,13 @@ void _pass(
     for (var e in places.entries) {
       graph.setPlacement(e.key, heardOn(e.value, middle));
     }
+    // The bus of the scene playing; between scenes -- none -- the master.
+    var (buses, inScene) = scenes;
+    var bus = buses
+        .where((b) => b.from <= middle && middle < b.until)
+        .firstOrNull
+        ?.bus;
+    graph.setScene(bus ?? const ChannelMix(), inScene);
     // Automated channels are retuned in place (see MixGraph.setChannel).
     for (var e in strips.entries) {
       if (e.value.automation.isEmpty) continue;

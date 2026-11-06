@@ -37,16 +37,27 @@ class _Lfo {
 
 /// Gate lets a sound through only while it is louder than the threshold:
 /// it opens over the attack, stays open for the hold, and closes over the
-/// release down to the floor level.
-class Gate implements DeviceProcessor, Tunable {
+/// release down to the floor level. With a [source] it opens to another
+/// channel's sound instead -- a pad chopped by the drums.
+class Gate implements Sidechained, Tunable {
   late double _threshold, _attack, _release, _floor;
   late int _hold;
   double _env = 0, _gain = 0;
   int _held = 0;
 
-  Gate(MixDevice d) {
+  @override
+  final String? source;
+  final SideKey _key = SideKey();
+
+  Gate(MixDevice d) : source = d.sidechain {
     tune(d);
   }
+
+  @override
+  void feed(Float32List l, Float32List r, int n) => _key.feed(l, r, n);
+
+  /// silence is its key channel there with nothing on it this block.
+  void silence(int n) => _key.silence(n);
 
   @override
   void tune(MixDevice d) {
@@ -60,7 +71,7 @@ class Gate implements DeviceProcessor, Tunable {
   @override
   void process(Float32List l, Float32List r, int n) {
     for (var i = 0; i < n; i++) {
-      var x = math.max(l[i].abs(), r[i].abs());
+      var x = _key.level(i, math.max(l[i].abs(), r[i].abs()));
       // A fast peak follower, falling over ten milliseconds.
       _env = x > _env ? x : _env * 0.9979;
       if (_env >= _threshold) {
@@ -75,6 +86,7 @@ class Gate implements DeviceProcessor, Tunable {
       l[i] *= g;
       r[i] *= g;
     }
+    _key.done();
   }
 }
 

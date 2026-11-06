@@ -393,6 +393,11 @@ class Dynamics {
   /// autoGain makes up what is taken off, on top of [makeupDb].
   final AutoGain autoGain;
 
+  /// source is the channel, by key, whose sound it listens to rather than
+  /// its own -- a sidechain: a kick pumping a pad, a voice pushing the music
+  /// down live -- or "" for its own. See [sidechain].
+  final String source;
+
   const Dynamics({
     this.on = false,
     this.threshold = -18,
@@ -403,7 +408,11 @@ class Dynamics {
     this.kneeDb = 6,
     this.mix = 1,
     this.autoGain = AutoGain.off,
+    this.source = "",
   });
+
+  /// sidechain is the channel it listens to, while it is on and has one.
+  String? get sidechain => on && source.isNotEmpty ? source : null;
 
   Dynamics copyWith({
     bool? on,
@@ -415,6 +424,7 @@ class Dynamics {
     double? kneeDb,
     double? mix,
     AutoGain? autoGain,
+    String? source,
   }) =>
       Dynamics(
         on: on ?? this.on,
@@ -426,6 +436,7 @@ class Dynamics {
         kneeDb: kneeDb ?? this.kneeDb,
         mix: mix ?? this.mix,
         autoGain: autoGain ?? this.autoGain,
+        source: source ?? this.source,
       );
 
   Map<String, dynamic> toJson() => {
@@ -438,6 +449,7 @@ class Dynamics {
         if (kneeDb != 6) "knee": kneeDb,
         if (mix != 1) "mix": mix,
         if (autoGain != AutoGain.off) "autoGain": autoGain.name,
+        if (source.isNotEmpty) "source": source,
       };
 
   factory Dynamics.fromJson(Map<String, dynamic> json) => Dynamics(
@@ -450,6 +462,7 @@ class Dynamics {
         kneeDb: jsonDouble(json["knee"], 6).clamp(0.0, 18.0),
         mix: jsonDouble(json["mix"], 1).clamp(0.0, 1.0),
         autoGain: AutoGain.fromName(jsonStr(json["autoGain"])),
+        source: jsonStr(json["source"]) ?? "",
       );
 
   /// reducedDb is [input] dB after threshold, ratio and knee, before
@@ -493,6 +506,10 @@ enum DuckCurve {
   static DuckCurve fromName(String? name) =>
       values.firstWhere((c) => c.name == name, orElse: () => smooth);
 }
+
+/// sceneBusKey is the scene's bus (see CanvasScene.bus) among the strips,
+/// wherever a strip is named by key: its meters, its chain.
+const sceneBusKey = "\u0000scene";
 
 /// Ducking is a channel (a voice) turning the others down while it is
 /// heard. It is set on the voice; every other channel is ducked except those
@@ -583,8 +600,26 @@ class ChannelMix {
   final Ducking duck;
 
   /// compFirst is whether the compressor comes before the EQ, stored so
-  /// playing and exporting agree.
+  /// playing and exporting agree. Kept in step with [order], which says
+  /// where each goes among the devices too.
   final bool compFirst;
+
+  /// order is the strip's chain as it was last arranged: device ids, and
+  /// [chainEq] and [chainComp] for its EQ and compressor. Empty for one
+  /// never arranged. Read through [chain], which mends it.
+  final List<String> order;
+
+  /// chain is the order the strip runs in: see chainOrder.
+  List<String> get chain => chainOrder(devices, order, compFirst);
+
+  /// sidechains are the channels this strip listens to beside its own
+  /// sound: a vocoder's carrier, a gate's or the compressor's key. Such a
+  /// channel is still played when muted, to be heard through them.
+  Set<String> get sidechains => {
+        for (var d in devices)
+          if (d.sidechain case var c?) c,
+        if (comp.sidechain case var c?) c,
+      };
 
   /// sends is how much of this channel also goes to each return, by return
   /// id, in dB. A return not listed is sent nothing.
@@ -631,6 +666,7 @@ class ChannelMix {
     this.comp = const Dynamics(),
     this.duck = const Ducking(),
     this.compFirst = false,
+    this.order = const [],
   });
 
   bool get isDefault =>
@@ -641,6 +677,7 @@ class ChannelMix {
       !comp.on &&
       !duck.on &&
       !compFirst &&
+      order.isEmpty &&
       surround == null &&
       lfeDb == null &&
       sends.isEmpty &&
@@ -686,6 +723,7 @@ class ChannelMix {
         comp: comp,
         duck: duck,
         compFirst: compFirst,
+        order: order,
       );
 
   /// withLfe sets how much goes to the LFE; null sends none.
@@ -705,6 +743,7 @@ class ChannelMix {
         comp: comp,
         duck: duck,
         compFirst: compFirst,
+        order: order,
       );
 
   ChannelMix copyWith({
@@ -715,6 +754,7 @@ class ChannelMix {
     Dynamics? comp,
     Ducking? duck,
     bool? compFirst,
+    List<String>? order,
     Map<String, double>? sends,
     List<MixDevice>? devices,
     SpeechSpec? speech,
@@ -740,6 +780,7 @@ class ChannelMix {
         comp: comp ?? this.comp,
         duck: duck ?? this.duck,
         compFirst: compFirst ?? this.compFirst,
+        order: order ?? this.order,
       );
 
   Map<String, dynamic> toJson() => {
@@ -750,6 +791,7 @@ class ChannelMix {
         if (comp.on) "comp": comp.toJson(),
         if (duck.on) "duck": duck.toJson(),
         if (compFirst) "compFirst": true,
+        if (order.isNotEmpty) "order": order,
         if (sends.isNotEmpty) "sends": sends,
         if (surround case var s?) "surround": s.toJson(),
         if (lfeDb case var l?) "lfe": l,
@@ -796,6 +838,11 @@ class ChannelMix {
         comp: jsonSpec(json["comp"], Dynamics.fromJson, const Dynamics()),
         duck: jsonSpec(json["duck"], Ducking.fromJson, const Ducking()),
         compFirst: jsonBool(json["compFirst"], false),
+        order: [
+          if (json["order"] case List list)
+            for (var o in list.take(maxChainDevices + 2))
+              if (o is String) o,
+        ],
         output: json["output"] is String ? json["output"] as String : "",
       );
 }
@@ -841,6 +888,11 @@ class MasterMix {
   /// always last.
   final bool compFirst;
 
+  /// order and chain: see ChannelMix.order. The limiter is not in it: it is
+  /// always last.
+  final List<String> order;
+  List<String> get chain => chainOrder(devices, order, compFirst);
+
   /// devices are the master's own devices, in order, before its EQ and
   /// glue.
   final List<MixDevice> devices;
@@ -856,6 +908,7 @@ class MasterMix {
     this.target = -16,
     this.normalise = false,
     this.compFirst = false,
+    this.order = const [],
   });
 
   bool get isDefault =>
@@ -867,6 +920,7 @@ class MasterMix {
       target == -16 &&
       !normalise &&
       !compFirst &&
+      order.isEmpty &&
       devices.isEmpty;
 
   MasterMix copyWith({
@@ -879,6 +933,7 @@ class MasterMix {
     double? target,
     bool? normalise,
     bool? compFirst,
+    List<String>? order,
   }) =>
       MasterMix(
         devices: devices == null ? this.devices : withDeviceIds(devices),
@@ -890,6 +945,7 @@ class MasterMix {
         target: target ?? this.target,
         normalise: normalise ?? this.normalise,
         compFirst: compFirst ?? this.compFirst,
+        order: order ?? this.order,
       );
 
   Map<String, dynamic> toJson() => {
@@ -901,6 +957,7 @@ class MasterMix {
         if (target != -16) "target": target,
         if (normalise) "normalise": true,
         if (compFirst) "compFirst": true,
+        if (order.isNotEmpty) "order": order,
         if (devices.isNotEmpty) "devices": [for (var d in devices) d.toJson()],
       };
 
@@ -922,6 +979,11 @@ class MasterMix {
         target: jsonDouble(json["target"], -16).clamp(-36.0, -6.0),
         normalise: jsonBool(json["normalise"], false),
         compFirst: jsonBool(json["compFirst"], false),
+        order: [
+          if (json["order"] case List list)
+            for (var o in list.take(64))
+              if (o is String) o,
+        ],
       );
 }
 
@@ -997,3 +1059,42 @@ double _biquadDb(_Biquad q, double f, double fs) {
   if (den <= 0 || num <= 0) return 0;
   return 20 * math.log(num / den) / math.ln10;
 }
+
+/// chainEq and chainComp are a strip's EQ and compressor in its order (see
+/// ChannelMix.order).
+const String chainEq = "eq", chainComp = "comp";
+
+/// chainOrder is the order a strip runs in, from its [devices], the [order]
+/// it was last arranged in and [compFirst]: what is in [order], in that
+/// order, of what is still there; the EQ and the compressor, where it does
+/// not have them, last (the compressor first if [compFirst]); and a device
+/// it does not have -- one just put on -- before the EQ and compressor
+/// where they are last, or else at the end.
+List<String> chainOrder(
+    List<MixDevice> devices, List<String> order, bool compFirst) {
+  var ids = [for (var i = 0; i < devices.length; i++) deviceIdAt(devices, i)];
+  var out = <String>[];
+  for (var o in order) {
+    if ((o == chainEq || o == chainComp || ids.contains(o)) &&
+        !out.contains(o)) {
+      out.add(o);
+    }
+  }
+  for (var p in compFirst ? [chainComp, chainEq] : [chainEq, chainComp]) {
+    if (!out.contains(p)) out.add(p);
+  }
+  var at = out.length;
+  while (at > 0 && (out[at - 1] == chainEq || out[at - 1] == chainComp)) {
+    at--;
+  }
+  var missing = [
+    for (var id in ids)
+      if (!out.contains(id)) id
+  ];
+  out.insertAll(at, missing);
+  return out;
+}
+
+/// compFirstIn is whether [chain] has the compressor before the EQ.
+bool compFirstIn(List<String> chain) =>
+    chain.indexOf(chainComp) < chain.indexOf(chainEq);

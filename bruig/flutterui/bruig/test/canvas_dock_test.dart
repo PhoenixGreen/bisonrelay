@@ -441,6 +441,34 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets("Speech is the Chain's Speech view, not a device",
+        (tester) async {
+      var c = await show(tester,
+          set: (c) => c.openEffects("v"),
+          document: const CanvasDocument(frames: 100, elements: [
+            AudioElement(ElementBase(id: "v", name: "Narrator"),
+                clip: MediaClip(
+                    playlist: [MediaSource(assetId: "t", length: 2)],
+                    timed: true)),
+          ]));
+      await tester.pump();
+      expect(find.byKey(const ValueKey("speechStart")), findsNothing,
+          reason: "the chain holds only what the sound passes through");
+      await tester.tap(find.byKey(const ValueKey("chainTabSpeech")));
+      await tester.pump();
+      expect(c.speechShown, isTrue);
+      await tester.tap(find.byKey(const ValueKey("speechStartButton")));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(c.speechOf("v"), isNotNull);
+      expect(find.byKey(const ValueKey("device-speech")), findsOneWidget);
+      expect(find.byKey(const ValueKey("speechSing")), findsOneWidget,
+          reason: "Sing it, after the speech");
+      await tester.tap(find.byKey(const ValueKey("chainTabDevices")));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey("device-speech")), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets("a timeline squeezed below its rows is cut off, not spilled",
         (tester) async {
       tester.view.physicalSize = const Size(1600, 600);

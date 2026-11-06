@@ -59,12 +59,18 @@ class ExportSound {
   /// SoundPlacement.
   final List<(double, Heard)> place;
 
+  /// inScene is whether it is a scene's sound -- its own, its backdrop's,
+  /// its transition's -- heard through the scene's bus (see sceneBuses),
+  /// rather than the master's, heard straight.
+  final bool inScene;
+
   /// clock is the seconds into the export its channel's timeline counts
   /// from -- its scene's start -- for the lanes of the channel's
   /// automation, whose points are counted from there.
   final double clock;
 
   const ExportSound({
+    this.inScene = false,
     this.clock = 0,
     this.place = const [],
     required this.path,
@@ -101,7 +107,12 @@ class _Placed {
   /// transition: where a placed sound finds its stage.
   final int? scene;
 
-  _Placed(this.element, this.start, this.until, [this.scene]);
+  /// inScene is whether it is heard through its scene's bus: see
+  /// ExportSound.inScene.
+  final bool inScene;
+
+  _Placed(this.element, this.start, this.until,
+      [this.scene, this.inScene = false]);
 
   /// clip is the element's clip as the export plays it: a video that is not
   /// on the timeline from the start of its scene, wherever it was once put.
@@ -162,13 +173,13 @@ class ExportMedia {
       var from = document.hasScenes ? document.startOfScene(i) : 0;
       var until = math.min(run, from + scenes[i].frames);
       for (var e in scenes[i].elements) {
-        if (_timed(e)) placed.add(_Placed(e, from, until, i));
+        if (_timed(e)) placed.add(_Placed(e, from, until, i, true));
       }
       // A scene's backdrop is its own, unless the master's covers it --
       // which is placed once, below, against the whole run.
       if (master?.sharedBackground == null) {
         for (var e in document.backgroundOf(i).media) {
-          if (_timed(e)) placed.add(_Placed(e, from, until));
+          if (_timed(e)) placed.add(_Placed(e, from, until, null, true));
         }
       }
     }
@@ -180,7 +191,7 @@ class ExportMedia {
     // What the transitions carry, where each transition is -- see
     // CanvasDocument.transitionSounds.
     for (var e in document.transitionSounds) {
-      placed.add(_Placed(e, 0, run));
+      placed.add(_Placed(e, 0, run, null, true));
     }
     if (placed.isEmpty) return null;
     return ExportMedia._(
@@ -293,15 +304,15 @@ class ExportMedia {
     var out = <ExportSound>[];
     var total = document.playFrames / _rate;
     var ducks = await _duckEnvelopes();
-    // A muted channel a vocoder takes its carrier from is still carried:
-    // unheard itself, it is heard through the vocoder.
+    // A muted channel a vocoder, a gate or a compressor listens to is still
+    // carried: unheard itself, it is heard through them.
     var carriers = {
-      for (var p in _placed)
-        for (var d in p.clip.mix.devices)
-          if (d.sidechain case var c?) c,
-      for (var r in document.returns)
+      for (var p in _placed) ...p.clip.mix.sidechains,
+      for (var r in document.returns) ...[
         for (var d in r.devices)
           if (d.sidechain case var c?) c,
+        ...r.mix.sidechains,
+      ],
     };
     for (var p in _placed) {
       var clip = p.clip;
@@ -345,6 +356,7 @@ class ExportMedia {
                 channel:
                     clip.channel.isNotEmpty ? clip.channel : p.element.id,
                 clock: p.start / _rate,
+                inScene: p.inScene,
                 place: place,
                 // The run's ducking, from where this stretch starts.
                 envelope: [
@@ -420,6 +432,22 @@ class ExportMedia {
   }
 }
 
+/// SceneBus is a scene's bus (see CanvasScene.bus) over the seconds of the
+/// run it plays for.
+typedef SceneBus = ({double from, double until, ChannelMix bus});
+
+/// sceneBuses is each scene's bus where it plays in [document]'s run, for
+/// the sounds heard through it (see ExportSound.inScene).
+List<SceneBus> sceneBuses(CanvasDocument document) {
+  var rate = (document.frameRate <= 0 ? 1 : document.frameRate).toDouble();
+  var scenes = document.allScenes;
+  return [
+    for (var (i, s) in scenes.indexed)
+      if (document.hasScenes ? document.startOfScene(i) : 0 case var from)
+        (from: from / rate, until: (from + s.frames) / rate, bus: s.bus),
+  ];
+}
+
 /// renderSoundtrack is [document]'s timeline sound through its mix -- what a
 /// video export of it would carry -- as an AAC file exactly as long as the
 /// timeline, for a book page laid out as its elements. Null where there is
@@ -444,6 +472,7 @@ Future<Uint8List?> renderSoundtrack(CanvasDocument document,
         ffmpeg: ffmpeg,
         out: mixed,
         returns: document.returns,
+        scenes: sceneBuses(document),
         speakers: document.audio.speakers,
         fold: true)) {
       return null;
@@ -523,6 +552,7 @@ Future<Loudness?> measureMix(CanvasDocument document,
         ffmpeg: ffmpeg,
         out: mixed,
         returns: document.returns,
+        scenes: sceneBuses(document),
         // Every speaker: ffmpeg's meter weights them as BS.1770 says.
         speakers: document.audio.speakers)) {
       return null;

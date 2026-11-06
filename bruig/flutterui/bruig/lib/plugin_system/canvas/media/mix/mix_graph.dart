@@ -1,9 +1,9 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/media/mix/device_dsp.dart' show Gate;
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
-import 'package:bruig/plugin_system/canvas/media/mix/vocoder.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
@@ -101,6 +101,17 @@ class MixGraph {
   final Map<String, (double, double)> _levels = {};
   (double, double) _masterLevels = (0, 0);
 
+  /// The scene's bus (see CanvasScene.bus): the channels in [_sceneKeys]
+  /// land on [_sceneOut], speaker by speaker as they would on the master,
+  /// so their pans and places are kept; each pair of speakers then runs
+  /// through a strip of the scene's settings, and on to the master. Null
+  /// strips -- a bus at its defaults -- and they land on the master.
+  List<StripProcessor>? _scene;
+  String _sceneSignature = "";
+  ChannelMix _sceneMix = const ChannelMix();
+  Set<String> _sceneKeys = const {};
+  List<Float32List> _sceneOut = [Float32List(1024), Float32List(1024)];
+
   /// heard is each channel's and return's last block after its strip, by
   /// key, for a spectrum.
   final Map<String, (Float32List, Float32List)> heard = {};
@@ -147,6 +158,53 @@ class MixGraph {
     _strips[key] = StripProcessor(mix, carry: strip);
   }
 
+  /// setScene sets the bus of the scene playing, and [channels], the
+  /// channels heard through it -- the scene's own, not the master's.
+  void setScene(ChannelMix bus, Set<String> channels) {
+    _sceneKeys = channels;
+    if (identical(bus, _sceneMix)) return;
+    // As for a channel (see setChannel): differing only in its fader and
+    // its devices' settings, the same strips are retuned, and the fader
+    // ramps.
+    var signature = bus.isDefault
+        ? ""
+        : (bus.toJson()
+              ..remove("gain")
+              ..remove("balance")
+              ..remove("sends")
+              ..["devices"] = [
+                for (var (i, d) in bus.devices.indexed)
+                  [deviceIdAt(bus.devices, i), d.kind.name, d.on, d.source]
+              ])
+            .toString();
+    if (signature == _sceneSignature) {
+      if (_scene case var strips?) {
+        for (var s in strips) {
+          s.retune(bus);
+        }
+      }
+      _sceneMix = bus;
+      return;
+    }
+    var was = _scene;
+    _sceneSignature = signature;
+    _sceneMix = bus;
+    _buildScene(carry: was);
+  }
+
+  void _buildScene({List<StripProcessor>? carry}) {
+    if (_sceneSignature.isEmpty) {
+      _scene = null;
+      return;
+    }
+    var pairs = (_layout.channels + 1) ~/ 2;
+    _scene = [
+      for (var k = 0; k < pairs; k++)
+        StripProcessor(_sceneMix,
+            carry: carry != null && k < carry.length ? carry[k] : null)
+    ];
+  }
+
   void setReturns(List<ReturnChannel> returns) {
     var signature = [for (var r in returns) r.toKey()].join("|");
     if (signature == _returnsSignature) return;
@@ -174,6 +232,7 @@ class MixGraph {
     _out = [for (var i = 0; i < layout.channels; i++) Float32List(1024)];
     _pans.clear();
     _buildMasters();
+    _buildScene();
   }
 
   void _buildMasters() {
@@ -232,7 +291,9 @@ class MixGraph {
 
   /// _land adds [b], a channel's block, to the speakers through its pan
   /// (ramped over the block) and to the LFE as its strip asks.
-  void _land(String key, ChannelMix mix, _Bus b, int n) {
+  void _land(String key, ChannelMix mix, _Bus b, int n,
+      {List<Float32List>? into}) {
+    var speakers = into ?? _out;
     var count = _layout.channels;
     var (tl, tr) = _targets(key, mix);
     var pan = _pans[key];
@@ -246,7 +307,7 @@ class MixGraph {
       var a = pan.fromL[c], b2 = pan.fromR[c];
       var da = (tl[c] - a) / n, db = (tr[c] - b2) / n;
       if (a == 0 && b2 == 0 && da == 0 && db == 0) continue;
-      var out = _out[c];
+      var out = speakers[c];
       if (da == 0 && db == 0) {
         for (var i = 0; i < n; i++) {
           out[i] += b.l[i] * a + b.r[i] * b2;
@@ -265,9 +326,38 @@ class MixGraph {
     var lfe = _layout.lfe;
     if (lfe != null && mix.lfeDb != null) {
       var g = dbToGain(mix.lfeDb!) / 2;
-      var out = _out[lfe];
+      var out = speakers[lfe];
       for (var i = 0; i < n; i++) {
         out[i] += (b.l[i] + b.r[i]) * g;
+      }
+    }
+  }
+
+  /// _runScene runs the scene's bus over what landed on it, a pair of
+  /// speakers at a time, and adds it to the master's.
+  void _runScene(int n) {
+    var strips = _scene;
+    if (strips == null) return;
+    for (var (k, strip) in strips.indexed) {
+      var a = _sceneOut[2 * k];
+      var b = 2 * k + 1 < _sceneOut.length ? _sceneOut[2 * k + 1] : null;
+      // An odd speaker out -- none in the layouts there are -- runs alone.
+      b ??= Float32List(n);
+      strip.tapping = k == 0 && tapped.contains(sceneBusKey);
+      strip.process(a, b, n);
+      if (k == 0) {
+        _levels[sceneBusKey] = _peaks(a, b, n);
+        heard[sceneBusKey] = (a, b);
+      }
+      var oa = _out[2 * k];
+      for (var i = 0; i < n; i++) {
+        oa[i] += a[i];
+      }
+      if (2 * k + 1 < _out.length) {
+        var ob = _out[2 * k + 1];
+        for (var i = 0; i < n; i++) {
+          ob[i] += b[i];
+        }
       }
     }
   }
@@ -277,7 +367,7 @@ class MixGraph {
   PitchReading? pitchOf([String? key]) {
     var devices = key == null
         ? _master.devices
-        : _strips[key]?.devices ??
+        : _stripOf(key)?.devices ??
             _returns.where((r) => r.spec.id == key).firstOrNull?.devices ??
             const <DeviceProcessor>[];
     for (var d in devices) {
@@ -293,11 +383,15 @@ class MixGraph {
 
   /// tapsOf is channel [key]'s levels at each step of its strip, as last
   /// played: see StripProcessor.taps. Empty until [tapped] has it.
-  List<(double, double)> tapsOf(String key) => _strips[key]?.taps ?? const [];
+  List<(double, double)> tapsOf(String key) => _stripOf(key)?.taps ?? const [];
+
+  /// _stripOf is channel [key]'s strip, or the scene bus's front pair's.
+  StripProcessor? _stripOf(String key) =>
+      _strips[key] ?? (key == sceneBusKey ? _scene?.firstOrNull : null);
 
   /// reductionOf is how many decibels channel [key]'s compressor is taking
   /// off now, or 0 with none.
-  double reductionOf(String key) => _strips[key]?.compressor?.reductionDb ?? 0;
+  double reductionOf(String key) => _stripOf(key)?.compressor?.reductionDb ?? 0;
 
   (double, double) levels([String? key]) =>
       key == null ? _masterLevels : (_levels[key] ?? (0, 0));
@@ -319,6 +413,18 @@ class MixGraph {
       b
         ..grow(n)
         ..clear(n);
+    }
+    if (_scene != null) {
+      if (_sceneOut.length != _layout.channels || _sceneOut[0].length < n) {
+        _sceneOut = [
+          for (var i = 0; i < _layout.channels; i++)
+            Float32List(math.max(n, 1024))
+        ];
+      } else {
+        for (var o in _sceneOut) {
+          o.fillRange(0, n, 0);
+        }
+      }
     }
     for (var r in _returns) {
       r.bus
@@ -353,11 +459,32 @@ class MixGraph {
     for (var devices in [
       for (var strip in _strips.values) strip.devices,
       for (var ret in _returns) ret.devices,
+      for (var strip in _scene ?? const <StripProcessor>[]) strip.devices,
     ]) {
       for (var d in devices) {
         if (d is! Sidechained) continue;
         var from = _inputs[d.source];
-        if (from != null) d.feed(from.l, from.r, n);
+        if (from != null) {
+          d.feed(from.l, from.r, n);
+        } else if (d is Gate && _strips.containsKey(d.source)) {
+          d.silence(n);
+        }
+      }
+    }
+    // A compressor listening to another channel: a channel there but
+    // silent this block is listened to as silence; one gone, not at all.
+    for (var comp in [
+      for (var strip in _strips.values) strip.compressor,
+      for (var ret in _returns) ret.strip.compressor,
+      for (var strip in _scene ?? const <StripProcessor>[]) strip.compressor,
+    ]) {
+      var source = comp?.source;
+      if (comp == null || source == null) continue;
+      var from = _inputs[source];
+      if (from != null) {
+        comp.key.feed(from.l, from.r, n);
+      } else if (_strips.containsKey(source)) {
+        comp.key.silence(n);
       }
     }
     for (var entry in _strips.entries) {
@@ -383,8 +510,12 @@ class MixGraph {
         if (!strip.mix.mute) bus.bus.addScaled(b, n, 1);
         continue;
       }
-      _land(entry.key, strip.mix, b, n);
+      _land(entry.key, strip.mix, b, n,
+          into: _scene != null && _sceneKeys.contains(entry.key)
+              ? _sceneOut
+              : null);
     }
+    _runScene(n);
     for (var ret in _returns) {
       var b = ret.bus;
       for (var d in ret.devices) {

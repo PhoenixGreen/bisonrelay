@@ -61,13 +61,6 @@ List<double> _bandPass(double hz, double q) {
 /// _coef is a one-pole follower coefficient for a time of [ms].
 double _coef(double ms) => math.exp(-1 / (ms / 1000 * _rate));
 
-/// Sidechained is a device that hears a second channel: [feed] is given
-/// that channel's pre-strip input before each block is processed.
-abstract class Sidechained implements DeviceProcessor {
-  String? get source;
-  void feed(Float32List l, Float32List r, int n);
-}
-
 class Vocoder implements Sidechained {
   @override
   final String? source;

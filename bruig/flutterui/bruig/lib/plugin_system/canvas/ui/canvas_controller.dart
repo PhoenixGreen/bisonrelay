@@ -3429,6 +3429,11 @@ class CanvasController extends ChangeNotifier {
 
   bool _effectsOpen = false;
 
+  /// _speechShown is whether the Chain's sound shows the channel's Speech:
+  /// its script, takes and voice, and Sing. Speech makes clips; it is not a
+  /// step of the chain, so it shows only when asked for (see showSpeech).
+  bool _speechShown = false;
+
   String? _effectsFocus;
   int _effectsFocusCount = 0;
 

@@ -239,13 +239,17 @@ class MixDevice {
       {this.on = true, this.values = const {}, this.source = "", this.id = ""});
 
   /// sidechain is the channel this device hears beside its own, or null:
-  /// a vocoder set to take its carrier from a channel that is chosen.
-  String? get sidechain => kind == DeviceKind.vocoder &&
-          on &&
-          source.isNotEmpty &&
-          value("carrier").round() == carrierFromChannel
-      ? source
-      : null;
+  /// a vocoder set to take its carrier from a channel that is chosen, or a
+  /// gate opened by another channel's sound.
+  String? get sidechain => !on || source.isEmpty
+      ? null
+      : switch (kind) {
+          DeviceKind.vocoder
+              when value("carrier").round() == carrierFromChannel =>
+            source,
+          DeviceKind.gate => source,
+          _ => null,
+        };
 
   /// value is setting [id], or its default.
   double value(String id) {

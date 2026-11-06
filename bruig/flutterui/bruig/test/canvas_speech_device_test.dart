@@ -722,10 +722,11 @@ esac
           ["Hello there,", "my friend"]);
     });
 
-    testWidgets("added from the effects, spoken, and seen on the strip",
+    testWidgets("started from the Speech view, spoken, and seen on the strip",
         (tester) async {
       var c = make();
-      c.openEffects("a");
+      // Speech makes clips: it is the Chain's Speech view, not a device.
+      c.showSpeech("a");
       tester.view.physicalSize = const Size(1600, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -755,7 +756,7 @@ esac
                             ])))),
       ));
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey("addDevice-speech")));
+      await tester.tap(find.byKey(const ValueKey("speechStartButton")));
       await tester.pump(const Duration(milliseconds: 400));
       expect(c.speechOf("a"), isNotNull);
       expect(find.byKey(const ValueKey("device-speech")), findsOneWidget);
@@ -811,7 +812,7 @@ esac
       var held = _Held();
       CanvasController.speechEngineFor = (_) => held;
       var c = make();
-      c.openEffects("a");
+      c.showSpeech("a");
       c.setSpeech("a",
           const SpeechSpec(voice: "v1", script: "Hello there.\nGood night."));
       tester.view.physicalSize = const Size(1600, 900);

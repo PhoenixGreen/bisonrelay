@@ -281,7 +281,7 @@ void main() {
           (tester) async {
         var c = make();
         CanvasController.takePath = (id) async => "/kept/$id";
-        c.openEffects("a");
+        c.showSpeech("a");
         tester.view.physicalSize = const Size(1600, 900);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);

@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart' show ChannelMix;
 
 // canvas_scene.dart is one canvas of several in a document.
 //
@@ -671,6 +672,13 @@ class CanvasScene {
   /// lands where it looks.
   final SceneCamera? camera;
 
+  /// bus is the scene's own strip: everything heard in the scene -- its
+  /// channels, its elements' sounds, its transition's -- sums into it, through
+  /// its devices, EQ, compressor and fader, on its way to the master. The
+  /// master's own sounds go straight to the master. As it is made, it changes
+  /// nothing.
+  final ChannelMix bus;
+
   const CanvasScene({
     required this.id,
     this.name = "",
@@ -685,6 +693,7 @@ class CanvasScene {
     this.transition,
     this.cover = PageCover.none,
     this.camera,
+    this.bus = const ChannelMix(),
   });
 
   /// saysAt is what the panel calls this canvas: its name, or its kind and
@@ -719,6 +728,7 @@ class CanvasScene {
     PageCover? cover,
     SceneCamera? camera,
     bool clearCamera = false,
+    ChannelMix? bus,
   }) =>
       CanvasScene(
         id: id ?? this.id,
@@ -734,6 +744,7 @@ class CanvasScene {
         transition: clearTransition ? null : (transition ?? this.transition),
         cover: cover ?? this.cover,
         camera: clearCamera ? null : (camera ?? this.camera),
+        bus: bus ?? this.bus,
       );
 
   Map<String, dynamic> toJson() => {
@@ -750,6 +761,7 @@ class CanvasScene {
         if (transition != null) "transition": transition!.toJson(),
         if (cover.isCover) "cover": cover.name,
         if (camera != null) "camera": camera!.toJson(),
+        if (!bus.isDefault) "bus": bus.toJson(),
       };
 
   factory CanvasScene.fromJson(Map<String, dynamic> json) {
@@ -789,6 +801,9 @@ class CanvasScene {
           : null,
       cover: PageCover.fromName(jsonStr(json["cover"])),
       camera: SceneCamera.fromJson(json["camera"]),
+      bus: json["bus"] is Map<String, dynamic>
+          ? ChannelMix.fromJson(json["bus"] as Map<String, dynamic>)
+          : const ChannelMix(),
     );
   }
 }

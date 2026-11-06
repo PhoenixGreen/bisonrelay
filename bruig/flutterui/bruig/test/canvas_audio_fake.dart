@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart' show ChannelMix;
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
@@ -89,6 +90,16 @@ class FakeEngine implements AudioEngine {
   List<ReturnChannel> returns = const [];
   @override
   void setReturns(List<ReturnChannel> returns) => this.returns = returns;
+
+  /// sceneBus and sceneChannels are the scene's bus as last set -- see
+  /// AudioEngine.setScene.
+  ChannelMix sceneBus = const ChannelMix();
+  Set<String> sceneChannels = const {};
+  @override
+  void setScene(ChannelMix bus, Set<String> channels) {
+    sceneBus = bus;
+    sceneChannels = channels;
+  }
 
   /// speakers and placements are as last set -- see AudioEngine.
   SpeakerLayout speakers = SpeakerLayout.stereo;

@@ -1050,6 +1050,173 @@ class _ReturnStrip extends StatelessWidget {
   }
 }
 
+/// _SceneStrip is the bus of the scene shown (see CanvasScene.bus): every
+/// sound in the scene -- its channels, its backdrop's, its transition's --
+/// sums into it on its way to the master, while the master's own sounds go
+/// straight there. Its devices, EQ and compressor in its chain's order, its
+/// pan and its fader.
+class _SceneStrip extends StatelessWidget {
+  final String name;
+  final ChannelMix mix;
+  final List<String> chain;
+  final (double, double) level;
+  final (double, double) peak;
+  final MixerLook theme;
+  final _Bands bands;
+  final _MixWrite<ChannelMix> onChanged;
+  final VoidCallback onCommit;
+  final ValueChanged<String?> onOpen;
+  final ValueChanged<String>? onRemoveDevice;
+  final bool selected;
+  final bool narrow;
+  final VoidCallback? onNarrow;
+  final VoidCallback onSelect;
+
+  const _SceneStrip({
+    required this.name,
+    required this.mix,
+    required this.chain,
+    required this.level,
+    required this.peak,
+    required this.theme,
+    required this.bands,
+    required this.onChanged,
+    required this.onCommit,
+    required this.onOpen,
+    this.onRemoveDevice,
+    required this.selected,
+    required this.onSelect,
+    super.key,
+    this.narrow = false,
+    this.onNarrow,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var colors = theme.colors;
+    var devices = withDeviceIds(mix.devices);
+    const what = "This scene";
+    var body = _StripFrame(
+      narrow: narrow,
+      onNarrow: onNarrow,
+      narrowKey: const ValueKey("narrow-scene"),
+      selected: selected,
+      theme: theme,
+      bands: bands,
+      head: Row(children: [
+        Icon(Icons.movie_outlined, size: 13, color: theme.studio.on),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Tooltip(
+            message: "Everything heard in $name goes through here on its "
+                "way to the master: its channels, its sounds, its "
+                "transition's. The master's own sounds go straight there.",
+            child: Text(name,
+                key: const ValueKey("sceneStripName"),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: colors.onSurface)),
+          ),
+        ),
+      ]),
+      // Its clips are its channels': it plays what is in the scene.
+      clips: () => const SizedBox(),
+      devices: () => _band(_slots([
+        for (var step in chain)
+          if (step == chainEq)
+            _slot(
+                theme,
+                "EQ",
+                mix.eq.on,
+                CustomPaint(
+                    size: const Size(40, 14),
+                    painter: _MiniCurve(mix.eq, colors)),
+                () => onOpen("eq"),
+                key: const ValueKey("sceneEq"))
+          else if (step == chainComp)
+            _slot(
+                theme,
+                "Comp",
+                mix.comp.on,
+                Icon(Icons.circle,
+                    size: 7,
+                    color: mix.comp.on ? theme.studio.on : colors.outline),
+                () => onOpen("comp"),
+                key: const ValueKey("sceneComp"))
+          else if (deviceIndexOf(devices, step) case var i when i >= 0)
+            _slot(
+                theme,
+                devices[i].kind.label,
+                devices[i].on,
+                Icon(Icons.circle,
+                    size: 7,
+                    color: devices[i].on ? theme.studio.on : colors.outline),
+                () => onOpen(deviceKey(step)),
+                onRemove: () => onRemoveDevice?.call(deviceKey(step)),
+                key: ValueKey("sceneDevice-$i")),
+        _slot(
+            theme,
+            "Add a device",
+            false,
+            Icon(Icons.add, size: 12, color: colors.onSurfaceVariant),
+            () => onOpen(null),
+            key: const ValueKey("sceneAddDevice")),
+      ])),
+      miniMixer: () => _miniMixerBand(theme,
+          bare: bands.bare,
+          buttons: [
+            _onToggle(theme, "S", mix.mute,
+                () => onChanged(mix.copyWith(mute: !mix.mute)),
+                key: const ValueKey("sceneMute"), what: what),
+          ],
+          db: mix.gainDb,
+          level: level,
+          peak: peak,
+          onDb: (db, {transient = false}) =>
+              onChanged(mix.copyWith(gainDb: db), transient: transient),
+          onCommit: onCommit),
+      mixer: () => _mixerBand(
+        narrow: narrow,
+        left: _leftColumn(
+          pan: _StripPan(
+            channel: sceneBusKey,
+            mix: mix,
+            theme: theme,
+            onChanged: (m, {transient = false}) =>
+                onChanged(m, transient: transient),
+            onCommit: onCommit,
+            onOpenPanner: () => onOpen("panner"),
+          ),
+          on: _onToggle(theme, "S", mix.mute,
+              () => onChanged(mix.copyWith(mute: !mix.mute)),
+              key: const ValueKey("sceneMute"), what: what),
+        ),
+        fader: _faderOf(
+            theme,
+            mix.gainDb,
+            level,
+            peak,
+            (db, {transient = false}) =>
+                onChanged(mix.copyWith(gainDb: db), transient: transient),
+            onCommit,
+            narrow: narrow),
+        reading: DbReading(
+            db: mix.gainDb,
+            textKey: const ValueKey("sceneReading"),
+            onSet: (db) => onChanged(mix.copyWith(gainDb: db)),
+            style: TextStyle(
+                fontSize: 11,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                color: colors.onSurface)),
+      ),
+    );
+    return Listener(onPointerDown: (_) => onSelect(), child: body);
+  }
+}
+
 class _MasterStrip extends StatelessWidget {
   final MasterMix mix;
   final SpeakerLayout speakers;

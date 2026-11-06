@@ -313,6 +313,8 @@ class AudioRuntime extends ChangeNotifier {
       Set<String> solo = const {},
       required MasterMix master,
       List<ReturnChannel> returns = const [],
+      ChannelMix sceneBus = const ChannelMix(),
+      Set<String> sceneChannels = const {},
       SpeakerLayout speakers = SpeakerLayout.stereo,
       Map<String, Heard> placements = const {}}) {
     // Another runtime on the same engine -- a canvas previewed from the
@@ -323,6 +325,7 @@ class AudioRuntime extends ChangeNotifier {
       _channelSignature.clear();
       _masterSignature = "";
       _returnsKey = null;
+      _sceneKey = null;
       _placements.clear();
       if (_started) engine.setSpeakers(speakers);
     }
@@ -341,6 +344,15 @@ class AudioRuntime extends ChangeNotifier {
       if (_placements[e.key] == e.value) continue;
       _placements[e.key] = e.value;
       if (_started) engine.setPlacement(e.key, e.value);
+    }
+    // The scene's bus, and which channels are heard through it.
+    var sceneKey =
+        "${sceneBus.toJson()}|${(sceneChannels.toList()..sort()).join("|")}";
+    _sceneBus = sceneBus;
+    _sceneChannels = sceneChannels;
+    if (sceneKey != _sceneKey) {
+      _sceneKey = sceneKey;
+      if (_started) engine.setScene(sceneBus, sceneChannels);
     }
     var returnsKey = [for (var r in returns) r.toKey()].join("|");
     _returns = returns;
@@ -400,6 +412,9 @@ class AudioRuntime extends ChangeNotifier {
 
   List<ReturnChannel> _returns = const [];
   String? _returnsKey;
+  ChannelMix _sceneBus = const ChannelMix();
+  Set<String> _sceneChannels = const {};
+  String? _sceneKey;
   SpeakerLayout _speakers = SpeakerLayout.stereo;
   final Map<String, Heard> _placements = {};
 
@@ -633,6 +648,7 @@ class AudioRuntime extends ChangeNotifier {
       }
       if (_master case var m?) engine.setMaster(m);
       engine.setReturns(_returns);
+      engine.setScene(_sceneBus, _sceneChannels);
       engine.setSpeakers(_speakers);
       for (var e in _placements.entries) {
         engine.setPlacement(e.key, e.value);

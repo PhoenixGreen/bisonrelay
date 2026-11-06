@@ -184,6 +184,88 @@ void main() {
       expect(out.last.abs(), lessThan(1e-4));
     });
 
+    test("the EQ and compressor have places in the chain", () {
+      const gate = MixDevice(DeviceKind.gate, id: "d0");
+      const chorus = MixDevice(DeviceKind.chorus, id: "d1");
+      // Never arranged: the devices, then the EQ and compressor.
+      expect(const ChannelMix(devices: [gate, chorus]).chain,
+          ["d0", "d1", "eq", "comp"]);
+      expect(const ChannelMix(devices: [gate], compFirst: true).chain,
+          ["d0", "comp", "eq"]);
+      // Arranged, kept; a device put on goes before them where they end it,
+      // else at the end; one taken off leaves.
+      var mix = const ChannelMix(devices: [gate], order: ["eq", "d0", "comp"]);
+      expect(mix.chain, ["eq", "d0", "comp"]);
+      expect(mix.copyWith(devices: [gate, chorus]).chain,
+          ["eq", "d0", "d1", "comp"],
+          reason: "before the compressor, which still ends it");
+      expect(
+          const ChannelMix(devices: [gate, chorus], order: ["comp", "eq", "d0"])
+              .chain,
+          ["comp", "eq", "d0", "d1"],
+          reason: "nothing of theirs at the end: at the end");
+      expect(
+          const ChannelMix(devices: [gate, chorus], order: ["d0", "eq", "comp"])
+              .chain,
+          ["d0", "d1", "eq", "comp"]);
+      expect(const ChannelMix(order: ["eq", "d0", "comp"]).chain, ["eq", "comp"]);
+      var back = ChannelMix.fromJson(mix.toJson());
+      expect(back.chain, ["eq", "d0", "comp"], reason: "saved");
+      expect(compFirstIn(["comp", "d0", "eq"]), isTrue);
+    });
+
+    test("a strip runs in its chain's order", () {
+      // The EQ first, then a utility twelve decibels down: the measure after
+      // the utility is the second step's.
+      var g = MixGraph()
+        ..setChannel(
+            "a",
+            const ChannelMix(
+                devices: [MixDevice(DeviceKind.utility, values: {"gain": -12}, id: "d0")],
+                order: ["eq", "d0", "comp"]));
+      g.tapped.add("a");
+      g.begin(512);
+      var (l, r) = g.input("a", 512);
+      l.fillRange(0, 512, 0.5);
+      r.fillRange(0, 512, 0.5);
+      g.finish(Float32List(512), Float32List(512), 512);
+      var taps = g.tapsOf("a");
+      expect(taps, hasLength(4));
+      expect(taps[1].$1, closeTo(0.5, 1e-3), reason: "after the EQ, off");
+      expect(taps[2].$1, closeTo(0.5 * dbToGain(-12), 1e-3),
+          reason: "after the utility, second");
+    });
+
+    test("the EQ and compressor move along a channel's chain", () {
+      var c = CanvasController(
+          CanvasDocument(frames: 100, elements: [
+            AudioElement(const ElementBase(id: "a", name: "Guitar"),
+                clip: const MediaClip(
+                    playlist: [MediaSource(assetId: "t", length: 2)],
+                    timed: true)),
+          ]),
+          audioEngine: FakeEngine({"t": 2}));
+      addTearDown(c.dispose);
+      c.setDevicesOf("a", const [
+        MixDevice(DeviceKind.gate),
+        MixDevice(DeviceKind.chorus),
+      ]);
+      expect(c.chainOf("a"), ["d0", "d1", "eq", "comp"]);
+      c.moveDevice("a", "eq", -2);
+      expect(c.chainOf("a"), ["eq", "d0", "d1", "comp"]);
+      c.moveDevice("a", "comp", -1);
+      c.moveDevice("a", "comp", -2);
+      expect(c.chainOf("a"), ["comp", "eq", "d0", "d1"]);
+      var mix = c.timelineChannels.single.mix;
+      expect(mix.compFirst, isTrue, reason: "kept in step, for SoLoud");
+      c.moveDevice("a", "d1", -2);
+      expect(c.chainOf("a"), ["comp", "d1", "eq", "d0"]);
+      expect(c.devicesOf("a").map((d) => d.id), ["d1", "d0"],
+          reason: "the devices in the chain's order among themselves");
+      c.undo();
+      expect(c.chainOf("a"), ["comp", "eq", "d0", "d1"], reason: "one step");
+    });
+
     test("a strip measures each step, for the meters between devices", () {
       var g = MixGraph()
         ..setChannel(

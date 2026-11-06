@@ -99,6 +99,7 @@ Future<CanvasExport?> renderAudio(CanvasDocument document,
         ffmpeg: ffmpeg,
         out: mixed,
         returns: document.returns,
+        scenes: sceneBuses(document),
         speakers: document.audio.speakers,
         fold: !options.format.carriesSurround)) {
       return null;

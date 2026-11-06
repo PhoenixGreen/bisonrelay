@@ -200,11 +200,12 @@ void main() {
       expect(await d.sing("a"), contains("pick a MIDI channel"));
     });
 
-    testWidgets("added from the effects, sung from, and on the strip",
+    testWidgets("Sing it from the Speech view, sung from, and on the strip",
         (tester) async {
       var c = make();
       c.setVocaliser("a", null);
-      c.openEffects("a");
+      // It sings the speech: in the Speech view, after it.
+      c.showSpeech("a");
       tester.view.physicalSize = const Size(1600, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -234,7 +235,7 @@ void main() {
                             ])))),
       ));
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey("addDevice-vocaliser")));
+      await tester.tap(find.byKey(const ValueKey("speechSingButton")));
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }

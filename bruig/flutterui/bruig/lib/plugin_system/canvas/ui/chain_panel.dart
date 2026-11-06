@@ -134,9 +134,11 @@ extension on _ChainPanelState {
       }
     }
     var notes = c.instrumentChannel(key);
-    if (!notes && firstClip == null) return const [];
+    var channel = c.timelineChannels.any((l) => l.key == key);
+    if (!notes && firstClip == null && !channel) return const [];
     var rollOn = c.pianoRollShown && c.pianoRoll?.row == null;
     var clipOn = c.clipEditorShown;
+    var speechOn = c.speechShown;
     Widget tab(String id, String label, IconData icon, bool on,
             VoidCallback onTap) =>
         Padding(
@@ -173,14 +175,18 @@ extension on _ChainPanelState {
       const SizedBox(width: 8),
       Container(width: 1, height: 18, color: look.studio.edge),
       const SizedBox(width: 6),
-      tab("chainTabDevices", "Devices", Icons.linear_scale, !rollOn && !clipOn,
-          c.closeEditor),
+      tab("chainTabDevices", "Devices", Icons.linear_scale,
+          !rollOn && !clipOn && !speechOn, c.closeEditor),
       if (notes)
         tab("chainTabNotes", "Notes", Icons.piano, rollOn,
             () => c.openPianoRoll(key)),
       if (firstClip case var row?)
         tab("chainTabClip", "Clip", Icons.graphic_eq, clipOn,
             () => c.openClipEditor(key, row)),
+      // Speech makes a channel's clips: any channel but an instrument's.
+      if (channel && !notes)
+        tab("chainTabSpeech", "Speech", Icons.record_voice_over, speechOn,
+            () => c.showSpeech(key)),
     ];
   }
 }

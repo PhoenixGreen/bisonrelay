@@ -530,6 +530,7 @@ extension CanvasTools on CanvasController {
     var channels = timelineChannels;
     if (selectedChannel case var k?) {
       if (k == mixerMasterKey ||
+          k == sceneBusKey ||
           channels.any((c) => c.key == k) ||
           returnOf(k) != null) {
         return k;
@@ -571,6 +572,9 @@ extension CanvasTools on CanvasController {
       foldedDevices.remove(device);
       _effectsFocus = device;
       _effectsFocusCount++;
+      // Speech and its Vocaliser are the Speech view's; anything else is in
+      // the chain.
+      _speechShown = device == "speech" || device == "vocaliser";
     }
     _effectsOf = key;
     _effectsOpen = true;
@@ -606,6 +610,28 @@ extension CanvasTools on CanvasController {
   void closeEditor() {
     _clipEditorShown = false;
     _pianoRollShown = false;
+    _speechShown = false;
+    notifyListeners();
+  }
+
+  /// speechShown is whether the Chain's sound is on the channel's Speech:
+  /// see showSpeech.
+  bool get speechShown => _speechShown;
+
+  /// showSpeech opens [key]'s Speech in the Chain: its script, its takes and
+  /// its voice -- what makes its clips -- and Sing, the Vocaliser. Not steps
+  /// of its chain: what they make plays through it.
+  void showSpeech(String key) {
+    _effectsOf = key;
+    _effectsOpen = true;
+    _animationOpen = false;
+    _chainMotion = false;
+    _clipEditorShown = false;
+    _pianoRollShown = false;
+    _speechShown = true;
+    _effectsFocus = "speech";
+    _effectsFocusCount++;
+    _dockOpening(DockPanel.chain);
     notifyListeners();
   }
 
@@ -650,6 +676,7 @@ extension CanvasTools on CanvasController {
     _animationOpen = false;
     _chainMotion = false;
     _pianoRollShown = false;
+    _speechShown = false;
     _clipEditorShown = true;
     // First in the strip: scrolled to.
     _effectsFocus = "clip";
@@ -1095,6 +1122,7 @@ extension CanvasTools on CanvasController {
     _animationOpen = false;
     _chainMotion = false;
     _pianoRollShown = true;
+    _speechShown = false;
     _clipEditorShown = false;
     _effectsFocus = "roll";
     _effectsFocusCount++;
@@ -1504,6 +1532,33 @@ extension CanvasTools on CanvasController {
   /// duckEnvelopeOf is how far channel [key] is ducked over the run, for the
   /// timeline to draw, or null where nothing ducks it.
   List<GainPoint>? duckEnvelopeOf(String key) => _duckEnvelopes()[key];
+
+  /// duckersOf is the channels that duck channel [key] -- each with its
+  /// Ducker on -- whether or not [key] is left out of it (see Ducking).
+  List<TimelineChannel> duckersOf(String key) => [
+        for (var c in timelineChannels)
+          if (c.key != key && c.mix.duck.on) c,
+      ];
+
+  /// setDuckedBy puts channel [key] in or out of every Ducker that would
+  /// turn it down: the switch of its Ducker card.
+  void setDuckedBy(String key, bool ducked) {
+    beginInteraction();
+    for (var voice in duckersOf(key)) {
+      // Read afresh: each write is a new document.
+      var now = timelineChannels.where((c) => c.key == voice.key).firstOrNull;
+      if (now == null) continue;
+      var duck = now.mix.duck;
+      var except = [
+        for (var k in duck.except)
+          if (k != key) k,
+        if (!ducked) key,
+      ];
+      setChannelMix(now, now.mix.copyWith(duck: duck.copyWith(except: except)),
+          transient: true, anywhere: true);
+    }
+    endInteraction();
+  }
 
   /// _joinedCuts is the timeline's sounds as they are played: a sound cut in
   /// two, its halves still end to end on one channel, is played as the one

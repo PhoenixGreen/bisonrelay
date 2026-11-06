@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/media/mix/click_track.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_core.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart' show ChannelMix;
 import 'package:bruig/plugin_system/canvas/media/synth/sampler.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
@@ -349,6 +350,8 @@ class _Worker {
         core.removeChannel(m[1] as String);
       case "returns":
         core.setReturns((m[1] as List).cast());
+      case "scene":
+        core.graph.setScene(m[1] as ChannelMix, (m[2] as Set).cast());
       case "speakers":
         core.graph.setSpeakers(m[1]);
       case "placement":
