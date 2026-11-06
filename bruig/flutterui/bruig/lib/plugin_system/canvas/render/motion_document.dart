@@ -426,7 +426,12 @@ MotionDevice motionModulated(MotionDevice d, List<MotionDevice> chain, double t,
       }
       v ??= switch (l.kind) {
         MotionDeviceKind.lfo => lfoValue(
-            l.value("shape").round(), l.value("rate") * t + l.value("phase")),
+            l.value("shape").round(),
+            lfoRate(l.value,
+                        bpm: doc?.audio.tempo ?? 120,
+                        beatsPerBar: doc?.audio.beatsPerBar ?? 4) *
+                    t +
+                l.value("phase")),
         MotionDeviceKind.follower => _followed(l, t, doc),
         _ => 0.0,
       };

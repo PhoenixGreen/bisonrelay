@@ -84,6 +84,9 @@ List<ModTarget> readModTargets(Object? json) => [
 /// have them.
 const List<DeviceParam> lfoParams = [
   DeviceParam("rate", "Rate", 0.05, 20, 1, "Hz"),
+  // Free at its rate, or a cycle every so many bars or beats of the tempo.
+  DeviceParam("sync", "Sync", 0, 7, 0, "",
+      ["Free", "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/8", "1/16"]),
   DeviceParam(
       "shape", "Shape", 0, 3, 0, "", ["Sine", "Triangle", "Square", "Random"]),
   DeviceParam("phase", "Phase", 0, 1, 0),
@@ -96,6 +99,25 @@ const List<DeviceParam> followerParams = [
   DeviceParam("release", "Fall", 10, 2000, 200, "ms"),
   DeviceParam("gain", "Gain", 0.1, 8, 2, "×"),
 ];
+
+/// lfoRate is an LFO's rate in cycles a second, read by [value]: its own,
+/// or with Sync, a cycle every so many bars or beats at [bpm] -- [beatsPerBar]
+/// to a bar, a quarter note to a beat.
+double lfoRate(double Function(String id) value,
+    {double bpm = 120, int beatsPerBar = 4}) {
+  var sync = value("sync").round();
+  if (sync <= 0) return value("rate");
+  var beats = switch (sync) {
+    1 => 4.0 * beatsPerBar,
+    2 => 2.0 * beatsPerBar,
+    3 => 1.0 * beatsPerBar,
+    4 => 2.0,
+    5 => 1.0,
+    6 => 0.5,
+    _ => 0.25,
+  };
+  return math.max(1e-3, bpm) / 60 / beats;
+}
 
 /// lfoValue is an LFO of [shape] (see lfoParams) [cycles] cycles in, from
 /// minus one to one. Random holds a new value each cycle, the same for the

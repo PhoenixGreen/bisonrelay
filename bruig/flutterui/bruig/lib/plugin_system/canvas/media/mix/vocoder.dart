@@ -76,6 +76,10 @@ class Vocoder implements Sidechained {
   Float32List _side = Float32List(1024);
   int _fed = 0;
 
+  /// _sideAt is where in the carrier fed this stretch reads from: a strip
+  /// whose modulators move knobs runs a short stretch at a time.
+  int _sideAt = 0;
+
   // The buzz's phase and step, easing to [_toStep] when following the voice.
   double _phase = 0, _step, _toStep;
   int _seed = 22222;
@@ -132,6 +136,7 @@ class Vocoder implements Sidechained {
       _side[i] = (l[i] + r[i]) * 0.5;
     }
     _fed = n;
+    _sideAt = 0;
   }
 
   double _noise() {
@@ -174,7 +179,7 @@ class Vocoder implements Sidechained {
         0 => _noise() * 0.5,
         1 => _saw() * 0.5,
         2 => _voiced ? _saw() * 0.5 : _noise() * 0.5,
-        _ => i < _fed ? _side[i] : 0,
+        _ => _sideAt + i < _fed ? _side[_sideAt + i] : 0,
       };
 
   @override
@@ -210,6 +215,8 @@ class Vocoder implements Sidechained {
       l[i] = l[i] * (1 - _mix) + wet * _mix;
       r[i] = r[i] * (1 - _mix) + wet * _mix;
     }
-    _fed = 0;
+    // Read on from here, until what was fed has run out.
+    _sideAt += n;
+    if (_sideAt >= _fed) _fed = 0;
   }
 }

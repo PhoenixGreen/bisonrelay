@@ -119,6 +119,27 @@ class SplitProcessor implements DeviceProcessor, Tunable {
     _crossover = crossover;
   }
 
+  /// inner are its branches' running devices, for a sidechain to be fed:
+  /// see MixGraph.finish.
+  Iterable<DeviceProcessor> get inner => [
+        for (var b in _branches)
+          for (var p in b.chain)
+            if (p != null) p,
+      ];
+
+  /// specOf is device [j] of branch [b] as it is set, or null.
+  MixDevice? specOf(int b, int j) =>
+      b < _branches.length && j < _branches[b].spec.devices.length
+          ? _branches[b].spec.devices[j]
+          : null;
+
+  /// tuneInner sets device [j] of branch [b] to [d] in place, keeping its
+  /// state: a modulator moving one of its knobs (see StripProcessor).
+  void tuneInner(int b, int j, MixDevice d) {
+    if (b >= _branches.length || j >= _branches[b].chain.length) return;
+    if (_branches[b].chain[j] case Tunable running) running.tune(d);
+  }
+
   @override
   void process(Float32List l, Float32List r, int n) {
     if (_branches.isEmpty) return;

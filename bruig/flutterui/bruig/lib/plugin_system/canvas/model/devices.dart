@@ -431,6 +431,35 @@ List<MixDevice> withDeviceIds(List<MixDevice> chain) {
   return [for (var d in chain) d.id.isEmpty ? d.withId("d${next++}") : d];
 }
 
+/// tempoSynced is [devices] with each LFO set to Sync given its rate at
+/// [bpm], as the engine -- which knows no tempo -- runs it.
+List<MixDevice> tempoSynced(List<MixDevice> devices, double bpm,
+        {int beatsPerBar = 4}) =>
+    devices.any((d) => d.kind == DeviceKind.lfo && d.value("sync") > 0)
+        ? [
+            for (var d in devices)
+              d.kind == DeviceKind.lfo && d.value("sync") > 0
+                  ? d.withValue("rate",
+                      lfoRate(d.value, bpm: bpm, beatsPerBar: beatsPerBar))
+                  : d,
+          ]
+        : devices;
+
+/// branchDeviceId names device [device] in branch [branch] of split
+/// [split] (each by its id or place) for a modulator to move one of its
+/// knobs: see ModTarget.device.
+String branchDeviceId(String split, int branch, String device) =>
+    "$split/$branch/$device";
+
+/// branchDevicePath is a name branchDeviceId made, taken apart; null for a
+/// device of the chain itself.
+(String, int, String)? branchDevicePath(String id) {
+  var parts = id.split("/");
+  if (parts.length != 3) return null;
+  var b = int.tryParse(parts[1]);
+  return b == null ? null : (parts[0], b, parts[2]);
+}
+
 /// maxBranches is the most branches a split has.
 const int maxBranches = 4;
 

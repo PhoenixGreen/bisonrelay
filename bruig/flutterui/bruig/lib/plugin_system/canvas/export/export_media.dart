@@ -13,6 +13,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/devices.dart'
+    show tempoSynced;
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/render/sound_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
@@ -352,7 +354,10 @@ class ExportMedia {
                 // fading: the fade belongs to the end of the file.
                 fadeOut: length < span ? 0 : clip.fadeOut,
                 volume: clip.volume,
-                mix: clip.mix,
+                // Its LFOs set to Sync at the tempo's rate.
+                mix: clip.mix.copyWith(
+                    devices: tempoSynced(clip.mix.devices, document.audio.tempo,
+                        beatsPerBar: document.audio.beatsPerBar)),
                 channel:
                     clip.channel.isNotEmpty ? clip.channel : p.element.id,
                 clock: p.start / _rate,

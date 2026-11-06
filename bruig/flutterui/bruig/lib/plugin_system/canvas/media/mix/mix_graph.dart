@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/media/mix/device_dsp.dart'
     show Follower, Gate;
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/split_dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
@@ -459,6 +460,10 @@ class MixGraph {
     // so a muted carrier still carries.
     for (var devices in [
       for (var strip in _strips.values) strip.devices,
+      // And those in a split's branches.
+      for (var strip in _strips.values)
+        for (var split in strip.devices.whereType<SplitProcessor>())
+          split.inner.toList(),
       for (var ret in _returns) ret.devices,
       for (var strip in _scene ?? const <StripProcessor>[]) strip.devices,
     ]) {

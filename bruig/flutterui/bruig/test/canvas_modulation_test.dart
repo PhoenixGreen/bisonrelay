@@ -425,4 +425,119 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
+
+  group("refinements", () {
+    test("Sync: a cycle every so many bars or beats of the tempo", () {
+      double rate(int sync, {double bpm = 120}) => lfoRate(
+          (id) => id == "sync" ? sync.toDouble() : (id == "rate" ? 3 : 0),
+          bpm: bpm);
+      expect(rate(0), 3, reason: "free, at its own rate");
+      expect(rate(3), closeTo(0.5, 1e-9), reason: "a bar of four at 120");
+      expect(rate(5), closeTo(2, 1e-9), reason: "a quarter note");
+      expect(rate(1, bpm: 60), closeTo(1 / 16, 1e-9),
+          reason: "four bars at 60");
+      var synced = tempoSynced([
+        const MixDevice(DeviceKind.lfo, values: {"sync": 5}),
+        utility,
+      ], 90);
+      expect(synced.first.value("rate"), closeTo(1.5, 1e-9));
+      expect(synced.last, utility);
+    });
+
+    test("a synced LFO in motion turns at the tempo's rate", () {
+      var d = CanvasDocument(frames: 240, frameRate: 24, elements: [
+        ShapeElement(const ElementBase(
+            id: "a",
+            width: 20,
+            height: 20,
+            motion: ElementMotion(devices: [
+              MotionDevice(MotionDeviceKind.oscillate,
+                  id: "m0", values: {"rate": 1, "amount": 0, "moves": 1}),
+              // A bar of four at 120: two seconds a cycle.
+              MotionDevice(MotionDeviceKind.lfo,
+                  id: "m1",
+                  values: {"shape": 2, "sync": 3},
+                  mods: [ModTarget("m0", "amount", 0.25)]),
+            ]))),
+      ]);
+      var e = d.elementById("a")!;
+      // At 0.25 s and 1.25 s the oscillator is at its side; the square up
+      // for the first second, down for the next.
+      expect(poseWithMotion(e, 6, d).dx, closeTo(50, 1e-6));
+      expect(poseWithMotion(e, 30, d).dx, closeTo(0, 1e-6),
+          reason: "the square down: its amount back at nought");
+    });
+
+    test("a knob is moved within a block, not only at its start", () {
+      var strip = StripProcessor(
+          ChannelMix(devices: [utility, lfo("d0", "gain", rate: 1)]));
+      // Blocks of a tenth of a second: half a second falls inside one.
+      var total = mixRate;
+      var out = Float32List(total);
+      for (var at = 0; at < total; at += 4800) {
+        var l = Float32List(4800)..fillRange(0, 4800, 0.01);
+        var r = Float32List.fromList(l);
+        strip.process(l, r, 4800);
+        out.setRange(at, at + 4800, l);
+      }
+      expect(out[mixRate ~/ 2 + 200], closeTo(0.01 * dbToGain(-18), 1e-4),
+          reason: "turned down soon after half a second");
+    });
+
+    test("a modulator moves a knob in a split's branch", () {
+      var split =
+          const MixDevice(DeviceKind.split, id: "d0").withBranches(const [
+        SplitBranch(devices: [MixDevice(DeviceKind.utility, id: "d0")])
+      ]);
+      var strip = StripProcessor(ChannelMix(devices: [
+        split,
+        MixDevice(DeviceKind.lfo,
+            id: "d1",
+            values: const {"rate": 1, "shape": 2},
+            mods: [ModTarget(branchDeviceId("d0", 0, "d0"), "gain", 0.5)]),
+      ]));
+      var out = run(strip);
+      expect(out[mixRate ~/ 4], closeTo(0.01 * dbToGain(18), 1e-4));
+      expect(out[mixRate * 3 ~/ 4], closeTo(0.01 * dbToGain(-18), 1e-4));
+    });
+
+    test("a gate in a split's branch hears its key channel", () {
+      var g = MixGraph()
+        ..setMaster(const MasterMix(limiter: false))
+        ..setReturns(const [])
+        ..setChannel(
+            "pad",
+            ChannelMix(devices: [
+              const MixDevice(DeviceKind.split, id: "d0").withBranches(const [
+                SplitBranch(devices: [
+                  MixDevice(DeviceKind.gate,
+                      values: {"threshold": -20, "release": 20, "hold": 5},
+                      source: "kick"),
+                ]),
+              ]),
+            ]))
+        ..setChannel("kick", const ChannelMix(mute: true));
+      double padAt(bool kick) {
+        var level = 0.0;
+        for (var b = 0; b < 30; b++) {
+          g.begin(480);
+          var (pl, pr) = g.input("pad", 480);
+          pl.fillRange(0, 480, 0.05);
+          pr.fillRange(0, 480, 0.05);
+          if (kick) {
+            var (kl, kr) = g.input("kick", 480);
+            kl.fillRange(0, 480, 0.5);
+            kr.fillRange(0, 480, 0.5);
+          }
+          var l = Float32List(480), r = Float32List(480);
+          g.finish(l, r, 480);
+          level = l.last;
+        }
+        return level;
+      }
+
+      expect(padAt(true), closeTo(0.05, 1e-3), reason: "open with the kick");
+      expect(padAt(false), lessThan(0.001), reason: "shut without it");
+    });
+  });
 }

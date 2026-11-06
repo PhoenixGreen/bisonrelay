@@ -107,7 +107,7 @@ class Compressor {
       l[i] *= gain;
       r[i] *= gain;
     }
-    key.done();
+    key.done(n);
   }
 }
 
@@ -176,8 +176,10 @@ class StripProcessor {
   double _clock = 0;
 
   /// _moved are the devices, by place, an LFO moved on the last block: let
-  /// go of, each goes back to where it is set.
+  /// go of, each goes back to where it is set. _movedInner likewise, for
+  /// devices in a split's branches: (split's place, branch, place in it).
   Set<int> _moved = {};
+  Set<(int, int, int)> _movedInner = {};
 
   /// tapping is whether shape notes [taps]: on while a chain's meters
   /// between devices are on screen, as measuring costs a pass per step.
@@ -267,10 +269,35 @@ class StripProcessor {
       r.fillRange(0, n, 0);
       return;
     }
-    _modulate();
-    _clock += n / mixRate;
-    // In the order it was arranged in: the EQ and the compressor among the
-    // devices wherever they were put (see ChannelMix.chain).
+    // Moved by its modulators every so often within the block, so a knob
+    // they turn glides rather than steps; all at once with none.
+    var every = _modulating ? modulationStep : n;
+    List<(double, double)>? taps;
+    for (var at = 0; at < n; at += every) {
+      var m = math.min(every, n - at);
+      var bl = m == n ? l : Float32List.sublistView(l, at, at + m);
+      var br = m == n ? r : Float32List.sublistView(r, at, at + m);
+      _modulate();
+      _clock += m / mixRate;
+      var part = _run(bl, br, m);
+      taps = taps == null || part == null
+          ? part
+          : [
+              for (var (i, (pl, pr)) in part.indexed)
+                (math.max(pl, taps[i].$1), math.max(pr, taps[i].$2)),
+            ];
+    }
+    this.taps = taps ?? const [];
+  }
+
+  /// _modulating is whether any of its modulators moves anything.
+  bool get _modulating =>
+      _mix.devices.any((d) => d.on && d.kind.modulates && d.mods.isNotEmpty);
+
+  /// _run runs [l] and [r] through the chain, in the order it was arranged
+  /// in: the EQ and the compressor among the devices wherever they were
+  /// put (see ChannelMix.chain). The peaks between each step, when tapping.
+  List<(double, double)>? _run(Float32List l, Float32List r, int n) {
     var taps = tapping ? <(double, double)>[blockPeaks(l, r, n)] : null;
     for (var step in _mix.chain) {
       if (step == chainEq) {
@@ -283,7 +310,7 @@ class StripProcessor {
       }
       taps?.add(blockPeaks(l, r, n));
     }
-    this.taps = taps ?? const [];
+    return taps;
   }
 
   /// _modulate turns the knobs the strip's LFOs move, for this block: each
@@ -292,6 +319,7 @@ class StripProcessor {
   /// goes back to where it is set.
   void _modulate() {
     var adds = <int, Map<String, double>>{};
+    var inner = <(int, int, int), Map<String, double>>{};
     for (var (at, d) in _mix.devices.indexed) {
       if (!d.on || d.mods.isEmpty) continue;
       double Function(ModTarget) v;
@@ -313,6 +341,23 @@ class StripProcessor {
         continue;
       }
       for (var t in d.mods) {
+        // A device in a split's branch.
+        if (branchDevicePath(t.device) case (var split, var b, var id)) {
+          var i = deviceIndexOf(_mix.devices, split);
+          if (i < 0 || i >= _chain.length || _chain[i] is! SplitProcessor) {
+            continue;
+          }
+          var branches = _mix.devices[i].branches;
+          if (b < 0 || b >= branches.length) continue;
+          var j = deviceIndexOf(branches[b].devices, id);
+          if (j < 0) continue;
+          if (!branches[b].devices[j].kind.params.any((p) => p.id == t.param)) {
+            continue;
+          }
+          var add = inner[(i, b, j)] ??= {};
+          add[t.param] = (add[t.param] ?? 0) + t.depth * v(t);
+          continue;
+        }
         var i = deviceIndexOf(_mix.devices, t.device);
         if (i < 0 || i >= _chain.length) continue;
         if (!_mix.devices[i].kind.params.any((p) => p.id == t.param)) continue;
@@ -320,6 +365,25 @@ class StripProcessor {
         add[t.param] = (add[t.param] ?? 0) + t.depth * v(t);
       }
     }
+    // Those in branches: let go of, set back; moved, set where moved.
+    for (var (i, b, j) in _movedInner.difference(inner.keys.toSet())) {
+      if (i >= _chain.length) continue;
+      if (_chain[i] case SplitProcessor split) {
+        if (split.specOf(b, j) case var spec?) split.tuneInner(b, j, spec);
+      }
+    }
+    for (var MapEntry(key: (i, b, j), value: add) in inner.entries) {
+      var split = _chain[i] as SplitProcessor;
+      var spec = split.specOf(b, j);
+      if (spec == null || !spec.on) continue;
+      var next = spec;
+      for (var MapEntry(key: id, value: by) in add.entries) {
+        next = next.withValue(
+            id, modulated(spec.kind.param(id), spec.value(id), by));
+      }
+      split.tuneInner(b, j, next);
+    }
+    _movedInner = inner.keys.toSet();
     for (var i in _moved.difference(adds.keys.toSet())) {
       if (i >= _chain.length) continue;
       if (_chain[i] case Tunable running) running.tune(_mix.devices[i]);
@@ -357,6 +421,10 @@ class StripProcessor {
   }
 }
 
+/// modulationStep is how many samples apart a strip's modulators move the
+/// knobs they turn: a millisecond and a third, too fine to hear as steps.
+const int modulationStep = 64;
+
 /// blockPeaks is the loudest sample of each side of a block, nought to one.
 (double, double) blockPeaks(Float32List l, Float32List r, int n) {
   var pl = 0.0, pr = 0.0;
@@ -389,6 +457,12 @@ class SideKey {
   Float32List _peaks = Float32List(0);
   bool _fed = false;
 
+  /// _at and _length are where in the block fed it is read from, and how
+  /// long that block is: a strip whose modulators move its knobs runs its
+  /// chain a short stretch at a time (see StripProcessor.shape), each
+  /// stretch reading on from the last.
+  int _at = 0, _length = 0;
+
   bool get fed => _fed;
 
   void feed(Float32List l, Float32List r, int n) {
@@ -397,6 +471,8 @@ class SideKey {
       _peaks[i] = math.max(l[i].abs(), r[i].abs());
     }
     _fed = true;
+    _at = 0;
+    _length = n;
   }
 
   /// silence is a channel that is there with nothing on it this block.
@@ -404,13 +480,21 @@ class SideKey {
     if (_peaks.length < n) _peaks = Float32List(n);
     _peaks.fillRange(0, n, 0);
     _fed = true;
+    _at = 0;
+    _length = n;
   }
 
-  /// level is the key's peak at sample [i], or [own] where it is not fed.
-  double level(int i, double own) => _fed ? _peaks[i] : own;
+  /// level is the key's peak at sample [i] of the stretch being run, or
+  /// [own] where it is not fed.
+  double level(int i, double own) =>
+      _fed && _at + i < _length ? _peaks[_at + i] : own;
 
-  /// done is the block processed: the next is listened to afresh.
-  void done() => _fed = false;
+  /// done is a stretch of [n] run: the next reads on from it, and with the
+  /// block it was fed run out, the next block is listened to afresh.
+  void done(int n) {
+    _at += n;
+    if (_at >= _length) _fed = false;
+  }
 }
 
 /// DeviceProcessor is a device of a chain, running.

@@ -314,6 +314,9 @@ extension CanvasMixing on CanvasController {
   void setMasterMix(MasterMix mix, {bool transient = false}) =>
       apply(_document.copyWith(masterMix: mix), transient: transient);
 
+  /// audioTempo is the document's tempo, for the LFOs set to Sync.
+  double get audioTempo => _document.audio.tempo;
+
   /// sceneBus is the bus of the scene being shown -- see CanvasScene.bus --
   /// which every sound in it goes through on its way to the master.
   ChannelMix get sceneBus => _document.scene.bus;
@@ -516,8 +519,12 @@ extension CanvasMixing on CanvasController {
       }
       strips.putIfAbsent(lane.channelKey, () {
         var held = _overridden[lane.channelKey] ?? const <String>{};
-        return _withClipAutomation(lane.channelKey,
+        var mix = _withClipAutomation(lane.channelKey,
             automatedAt(lane.clip.mix, now, except: held), held);
+        // Its LFOs set to Sync at the tempo's rate: the engine knows none.
+        return mix.copyWith(
+            devices: tempoSynced(mix.devices, audioTempo,
+                beatsPerBar: _document.audio.beatsPerBar));
       });
     }
     audio.setMix(strips,
@@ -528,7 +535,9 @@ extension CanvasMixing on CanvasController {
         },
         master: _document.masterMix,
         returns: _document.returns,
-        sceneBus: sceneBus,
+        sceneBus: sceneBus.copyWith(
+            devices: tempoSynced(sceneBus.devices, audioTempo,
+                beatsPerBar: _document.audio.beatsPerBar)),
         sceneChannels: inScene,
         speakers: _document.audio.speakers,
         placements: placementsNow);

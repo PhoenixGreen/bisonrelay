@@ -3165,6 +3165,16 @@ class ParamDevice extends StatelessWidget {
             SplitBranches(
               key: ValueKey("splitBranches-$index"),
               device: device,
+              // Its branches' knobs a modulator of the chain moves.
+              moved: {
+                for (var d in devices)
+                  if (d.on && d.kind.modulates)
+                    for (var m in d.mods)
+                      if (branchDevicePath(m.device)
+                          case (var split, var b, var id)
+                          when split == deviceIdAt(devices, index))
+                        "$b/$id/${m.param}",
+              },
               ink: skin.ink,
               accent: accent,
               onChanged: (branches, {transient = false}) =>
@@ -3181,7 +3191,7 @@ class ParamDevice extends StatelessWidget {
                   : const [],
               knobs: [
                 for (var (i, d) in devices.indexed)
-                  if (i != index && !d.kind.modulates)
+                  if (i != index && !d.kind.modulates) ...[
                     for (var p in d.kind.params)
                       if (!p.isChoice)
                         (
@@ -3189,6 +3199,19 @@ class ParamDevice extends StatelessWidget {
                           p.id,
                           "${d.kind.label} · ${p.label}"
                         ),
+                    // And the knobs of a split's branches' devices.
+                    for (var (b, branch) in d.branches.indexed)
+                      for (var (j, x) in branch.devices.indexed)
+                        for (var p in x.kind.params)
+                          if (!p.isChoice)
+                            (
+                              branchDeviceId(deviceIdAt(devices, i), b,
+                                  deviceIdAt(branch.devices, j)),
+                              p.id,
+                              "${splitBranchNames(d.value("mode").round(), d.branches.length).elementAtOrNull(b) ?? "Branch"}"
+                                  " · ${x.kind.label} · ${p.label}"
+                            ),
+                  ],
               ],
               ink: skin.ink,
               onChanged: (mods, {transient = false}) =>
@@ -5143,6 +5166,10 @@ class ModTargets extends StatelessWidget {
 /// parallel, a way to add a branch and take one away.
 class SplitBranches extends StatelessWidget {
   final MixDevice device;
+
+  /// moved are its branches' knobs a modulator moves, each as
+  /// "branch/device id/setting": a pink ring round them.
+  final Set<String> moved;
   final Color ink, accent;
   final void Function(List<SplitBranch> branches, {bool transient}) onChanged;
   final VoidCallback onCommit;
@@ -5152,6 +5179,7 @@ class SplitBranches extends StatelessWidget {
       required this.accent,
       required this.onChanged,
       required this.onCommit,
+      this.moved = const {},
       super.key});
 
   /// _addable are the kinds a branch takes: what changes sound, not a
@@ -5269,6 +5297,8 @@ class SplitBranches extends StatelessWidget {
                       if (!p.isChoice)
                         _Knob(
                           key: ValueKey("splitKnob-$i-$j-${p.id}"),
+                          modulated: moved.contains(
+                              "$i/${deviceIdAt(b.devices, j)}/${p.id}"),
                           label: p.label,
                           text: p.reading(d.value(p.id)),
                           value: d.value(p.id),

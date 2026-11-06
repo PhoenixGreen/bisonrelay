@@ -86,7 +86,7 @@ class Gate implements Sidechained, Tunable {
       l[i] *= g;
       r[i] *= g;
     }
-    _key.done();
+    _key.done(n);
   }
 }
 
@@ -128,7 +128,7 @@ class Follower implements Sidechained, Tunable {
       var x = _key.level(i, math.max(l[i].abs(), r[i].abs()));
       _env += (x - _env) * (x > _env ? _attack : _release);
     }
-    _key.done();
+    _key.done(n);
   }
 }
 
