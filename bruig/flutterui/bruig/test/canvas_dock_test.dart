@@ -273,6 +273,57 @@ void main() {
       return c;
     }
 
+    for (var (width, scale, named) in [
+      (1300.0, 1.2, true),
+      (2000.0, 1.5, true),
+      (560.0, 1.0, false),
+    ]) {
+      testWidgets(
+          "the panels' buttons have their names where they fit: "
+          "$width wide at $scale", (tester) async {
+        tester.view.physicalSize = Size(width, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        var c = CanvasController(const CanvasDocument(frames: 48),
+            audioEngine: FakeEngine(const {}));
+        addTearDown(c.dispose);
+        await tester.pumpWidget(MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ThemeNotifier>(
+                create: (c) => ThemeNotifier(doLoad: false)),
+            ChangeNotifierProvider<SnackBarModel>(
+                create: (c) => SnackBarModel()),
+            ChangeNotifierProvider<CanvasPreferences>(
+                create: (c) => CanvasPreferences()),
+          ],
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!),
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.bottomCenter,
+                child: CanvasDock(controller: c, room: 700),
+              ),
+            ),
+          ),
+        ));
+        // Measured after a frame, and settled the frame after.
+        await tester.pump();
+        await tester.pump();
+        for (var p in DockPanel.values) {
+          expect(
+              find.descendant(
+                  of: find.byKey(ValueKey(p.key)),
+                  matching: find.text(p.label)),
+              named ? findsOneWidget : findsNothing,
+              reason: p.label);
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+
     testWidgets("the play bar over the timeline, with a button a panel",
         (tester) async {
       var c = await show(tester);

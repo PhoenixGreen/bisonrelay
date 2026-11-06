@@ -81,6 +81,37 @@ class CanvasPlayBar extends StatefulWidget {
 }
 
 class _CanvasPlayBarState extends State<CanvasPlayBar> {
+  /// _leftKey and _rightKey are the bar's two ends, measured after each
+  /// layout to know whether the panels' buttons fit with their names.
+  final GlobalKey _leftKey = GlobalKey(), _rightKey = GlobalKey();
+
+  /// _wideNeeds is how wide the bar must be for the buttons' names, as last
+  /// measured with them; null until measured. _wideFor is what it was
+  /// measured for -- the text's size and which buttons there are -- so a
+  /// change measures it afresh.
+  double? _wideNeeds;
+  String _wideFor = "";
+
+  /// _compact is whether the panels' buttons are their icons alone.
+  bool _compact = false;
+
+  /// _measure, after a layout, decides whether the names fit: the ends'
+  /// own widths beside each other within [room], the right one within the
+  /// part of it it may take.
+  void _measure(double room) {
+    if (!mounted) return;
+    var left = _leftKey.currentContext?.findRenderObject();
+    var right = _rightKey.currentContext?.findRenderObject();
+    if (left is! RenderBox || right is! RenderBox) return;
+    if (!left.hasSize || !right.hasSize) return;
+    if (!_compact) {
+      _wideNeeds = math.max(
+          left.size.width + right.size.width + 16, right.size.width / 0.6);
+    }
+    var compact = _wideNeeds != null && room < _wideNeeds!;
+    if (compact != _compact) setState(() => _compact = compact);
+  }
+
   CanvasController get controller => widget.controller;
 
   /// _focus takes the keyboard once one of the bar's controls is pressed,
@@ -651,7 +682,20 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
         // past that the right-hand end scrolls too, rather than running off
         // the bar.
         var scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
-        var compact = box.maxWidth < 1180 * scale;
+        // Measured rather than guessed: with their names while they fit
+        // beside the transport. A new text size, or other buttons, are
+        // measured again with their names.
+        var dock = controller.dock;
+        var measuredFor = "$scale|${dock.switcher}|${dock.showLayouts}|"
+            "${dock.arrangements.length}|${dock.places}";
+        if (measuredFor != _wideFor) {
+          _wideFor = measuredFor;
+          _wideNeeds = null;
+          _compact = false;
+        }
+        var compact = _compact;
+        var room = box.maxWidth;
+        WidgetsBinding.instance.addPostFrameCallback((_) => _measure(room));
         var switcher =
             widget.switcher ?? DockSwitcherBar(controller: controller);
         if (switcher is DockSwitcherBar && switcher.compact != compact) {
@@ -662,7 +706,8 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: Row(children: [
+              child:
+                  Row(key: _leftKey, mainAxisSize: MainAxisSize.min, children: [
                 transportMin(),
                 readout,
                 marker,
@@ -695,12 +740,15 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               reverse: true,
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                lit,
-                const SizedBox(width: 4),
-                switcher,
-                more,
-              ]),
+              child: Row(
+                  key: _rightKey,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    lit,
+                    const SizedBox(width: 4),
+                    switcher,
+                    more,
+                  ]),
             ),
           ),
         ]);
