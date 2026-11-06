@@ -22,7 +22,8 @@ void main() {
 
   /// shown pumps the sidebar on [layout], keeping what it is set out as.
   Future<ValueNotifier<SidebarLayout>> shown(WidgetTester tester,
-      {SidebarLayout layout = const SidebarLayout(current: "design")}) async {
+      {SidebarLayout layout = const SidebarLayout(current: "design"),
+      bool canSitAbove = true}) async {
     tester.view.physicalSize = const Size(1200, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -56,6 +57,7 @@ void main() {
                   layout: l,
                   onLayout: (next) => laid.value = next,
                   bodies: bodies,
+                  canSitAbove: canSitAbove,
                   onCustomise: () => showCustomiseSidebars(context,
                       controller: c,
                       read: () => laid.value,
@@ -167,6 +169,17 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("sidebarModeToggle")));
     await tester.pump();
     expect(laid.value.mode, SidebarMode.full);
+  });
+
+  testWidgets("with the canvas away it cannot sit over the panels",
+      (tester) async {
+    // An audio document's: its panels fill the page.
+    await shown(tester, canSitAbove: false);
+    expect(find.byKey(const ValueKey("sidebarModeToggle")), findsNothing);
+    await tester.tap(find.byKey(const ValueKey("sidebarMenu")));
+    await tester.pumpAndSettle();
+    expect(find.text(SidebarMode.above.label), findsNothing);
+    expect(find.text("Hide the sidebar"), findsOneWidget);
   });
 
   testWidgets("no + along the top: sidebars are added in Customise",

@@ -104,7 +104,17 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   /// _sidebarVisible is whether the sidebar is showing, one way or the other.
   /// the Writing page's: hiding it is "give me the width for a minute".
-  bool get _sidebarVisible => _sidebars.mode != SidebarMode.hidden;
+  bool get _sidebarVisible =>
+      _audioKind ? _audioSidebarShown : _sidebars.mode != SidebarMode.hidden;
+
+  /// _audioSidebarShown is whether an audio document's sidebar is out: shut
+  /// to begin with, and always full height, as its panels fill the page.
+  /// For this session, so it leaves the sidebar of a design as it was.
+  bool _audioSidebarShown = false;
+
+  /// _aboveAllowed is whether the sidebar can sit above the bottom panels:
+  /// only with the canvas on screen beside it.
+  bool get _aboveAllowed => _shown && !_audioKind;
 
   /// _canvasSettingsOpen is whether the canvas settings line is out. Closed
   /// to begin with: the ratio and export width are set once and then rarely
@@ -410,6 +420,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// _setSidebars is the sidebar set out as [next], kept.
   void _setSidebars(SidebarLayout next) {
     if (!mounted) return;
+    // An audio document's sidebar is shown or put away for the session,
+    // its place left as it was for the designs.
+    if (_audioKind && next.mode == SidebarMode.hidden) {
+      setState(() => _audioSidebarShown = false);
+      return;
+    }
     var shows = next.byId(next.current);
     if (shows?.panels.contains("settings") == true) _designUsed = true;
     setState(() => _sidebars = next);
@@ -601,6 +617,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       onLayout: _setSidebars,
       bodies: _bodies,
       onCustomise: _customise,
+      canSitAbove: _aboveAllowed,
     );
 
     // Hidden means nothing beside the canvas. Not through
@@ -611,7 +628,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // where it goes the way a full-height one does.
     var narrow = MediaQuery.sizeOf(context).width < kSidebarCollapseWidth;
     if (!_sidebarVisible) return ScreenWithChatSideMenu(client, content);
-    if (_sidebars.mode == SidebarMode.above && !narrow) {
+    if (_sidebars.mode == SidebarMode.above && !narrow && _aboveAllowed) {
       return ScreenWithChatSideMenu(
           client,
           CanvasSpaceBar(
@@ -760,7 +777,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
                     // on this page.
                     onShowSidebar: _sidebarVisible
                         ? null
-                        : () => _setSidebars(_sidebars.shownAgain),
+                        : _audioKind
+                            ? () => setState(() => _audioSidebarShown = true)
+                            : () => _setSidebars(_sidebars.shownAgain),
                   ),
                   ...canvasSecondLine(
                     settings: _canvasSettingsOpen

@@ -46,12 +46,18 @@ class CanvasSidebar extends StatefulWidget {
   /// onCustomise opens the sidebars' settings.
   final VoidCallback onCustomise;
 
+  /// canSitAbove is whether it may sit above the bottom panels: not with
+  /// the canvas away (an audio document's), where the panels fill the
+  /// page and would leave the sidebar's column nothing.
+  final bool canSitAbove;
+
   const CanvasSidebar({
     required this.controller,
     required this.layout,
     required this.onLayout,
     required this.bodies,
     required this.onCustomise,
+    this.canSitAbove = true,
     super.key,
   });
 
@@ -125,7 +131,7 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
             ]),
           ),
         ),
-        _modeToggle(theme),
+        if (widget.canSitAbove) _modeToggle(theme),
         _menu(theme),
         // A drawer is already put away by tapping off it, and the chevron
         // would point at an edge that is not there.
@@ -237,8 +243,9 @@ class _CanvasSidebarState extends State<CanvasSidebar> {
           _line("customise", "Show hidden panels (${layout.hidden.length})",
               enabled: layout.hidden.isNotEmpty),
           const PopupMenuDivider(height: 8),
-          for (var m in [SidebarMode.full, SidebarMode.above])
-            _line(m.name, m.label, ticked: layout.mode == m),
+          if (widget.canSitAbove)
+            for (var m in [SidebarMode.full, SidebarMode.above])
+              _line(m.name, m.label, ticked: layout.mode == m),
           _line("hide", "Hide the sidebar"),
         ],
         onSelected: (v) => switch (v) {
