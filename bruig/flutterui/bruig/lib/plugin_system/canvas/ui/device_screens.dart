@@ -233,6 +233,30 @@ class DeviceScreenPainter extends CustomPainter {
         say = rate < 10
             ? "${rate.toStringAsFixed(2)} Hz"
             : "${rate.toStringAsFixed(1)} Hz";
+      case DeviceKind.split:
+        // The sound dividing into its branches and joining again.
+        var mode = v("mode").round();
+        var names = splitBranchNames(mode, device.branches.length);
+        var line = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6
+          ..color = accent;
+        var rows = names.isEmpty ? 1 : names.length;
+        for (var (i, name) in (names.isEmpty ? ["Through"] : names).indexed) {
+          var y = h * (i + 1) / (rows + 1);
+          var path = Path()
+            ..moveTo(6, h / 2)
+            ..quadraticBezierTo(w * 0.2, y, w * 0.3, y)
+            ..lineTo(w * 0.7, y)
+            ..quadraticBezierTo(w * 0.8, y, w - 6, h / 2);
+          canvas.drawPath(path, line);
+          var tp = TextPainter(
+              text: TextSpan(
+                  text: name, style: TextStyle(fontSize: 9.5, color: accent)),
+              textDirection: TextDirection.ltr)
+            ..layout();
+          tp.paint(canvas, Offset(w / 2 - tp.width / 2, y - tp.height - 1));
+        }
       case DeviceKind.macro:
         // Its four knobs as bars, as far as each is turned.
         var bar = (w - 10) / macroKnobs;

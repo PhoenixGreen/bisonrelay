@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/media/mix/device_dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/split_dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/vocoder.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
@@ -441,6 +442,7 @@ abstract class DeviceProcessor {
       DeviceKind.follower => Follower(device),
       // Knobs only: what it turns, it turns (see shape).
       DeviceKind.macro => null,
+      DeviceKind.split => SplitProcessor(device),
     };
   }
 }

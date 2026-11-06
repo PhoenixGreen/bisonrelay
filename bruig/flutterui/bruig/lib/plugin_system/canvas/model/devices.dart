@@ -227,7 +227,17 @@ enum DeviceKind {
 
   /// macro is four knobs, each turning any knobs of the chain it is given:
   /// one move for many.
-  macro("Macro", DeviceGroup.modulators, macroParams);
+  macro("Macro", DeviceGroup.modulators, macroParams),
+
+  /// split runs its sound through branches side by side -- each its own
+  /// chain of devices (MixDevice.branches) -- and sums them again: all of
+  /// it into each, or its middle and sides, left and right, or lows and
+  /// highs apart.
+  split("Split", DeviceGroup.utility, [
+    DeviceParam("mode", "Splits", 0, 3, 0, "",
+        ["In parallel", "Mid / Side", "Left / Right", "Low / High"]),
+    DeviceParam("crossover", "Crossover", 60, 12000, 800, "Hz"),
+  ]);
 
   final String label;
   final DeviceGroup group;
@@ -263,12 +273,16 @@ class MixDevice {
   /// mods are the knobs a modulator (an LFO) moves: see modulation.dart.
   final List<ModTarget> mods;
 
+  /// branches are a split's chains, side by side: see DeviceKind.split.
+  final List<SplitBranch> branches;
+
   const MixDevice(this.kind,
       {this.on = true,
       this.values = const {},
       this.source = "",
       this.id = "",
-      this.mods = const []});
+      this.mods = const [],
+      this.branches = const []});
 
   /// sidechain is the channel this device hears beside its own, or null:
   /// a vocoder set to take its carrier from a channel that is chosen, or a
@@ -298,20 +312,30 @@ class MixDevice {
         values: {...values, id: whole ? v.roundToDouble() : v},
         source: source,
         id: this.id,
-        mods: mods);
+        mods: mods, branches: branches);
   }
 
   MixDevice switched(bool on) => MixDevice(kind,
-      on: on, values: values, source: source, id: id, mods: mods);
+      on: on, values: values, source: source, id: id, mods: mods, branches: branches);
 
   MixDevice withSource(String source) => MixDevice(kind,
-      on: on, values: values, source: source, id: id, mods: mods);
+      on: on, values: values, source: source, id: id, mods: mods, branches: branches);
 
   MixDevice withId(String id) => MixDevice(kind,
-      on: on, values: values, source: source, id: id, mods: mods);
+      on: on, values: values, source: source, id: id, mods: mods, branches: branches);
+
+  MixDevice withBranches(List<SplitBranch> branches) => MixDevice(kind,
+      on: on,
+      values: values,
+      source: source,
+      id: id,
+      mods: mods,
+      branches: [
+        for (var b in branches) b.copyWith(devices: withDeviceIds(b.devices))
+      ]);
 
   MixDevice withMods(List<ModTarget> mods) => MixDevice(kind,
-      on: on, values: values, source: source, id: id, mods: mods);
+      on: on, values: values, source: source, id: id, mods: mods, branches: branches);
 
   Map<String, dynamic> toJson() => {
         if (id.isNotEmpty) "id": id,
@@ -320,6 +344,8 @@ class MixDevice {
         if (values.isNotEmpty) "values": values,
         if (source.isNotEmpty) "source": source,
         if (mods.isNotEmpty) "mods": [for (var m in mods) m.toJson()],
+        if (branches.isNotEmpty)
+          "branches": [for (var b in branches) b.toJson()],
       };
 
   static MixDevice? fromJson(Object? json) {
@@ -336,7 +362,12 @@ class MixDevice {
         },
         source: json["source"] is String ? json["source"] as String : "",
         id: json["id"] is String ? json["id"] as String : "",
-        mods: readModTargets(json["mods"]));
+        mods: readModTargets(json["mods"]),
+        branches: [
+          if (json["branches"] case List raw)
+            for (var b in raw.take(maxBranches))
+              if (SplitBranch.fromJson(b) case var branch?) branch,
+        ]);
   }
 
   @override
@@ -347,6 +378,9 @@ class MixDevice {
       other.source == source &&
       other.id == id &&
       other.mods.length == mods.length &&
+      other.branches.length == branches.length &&
+      [for (var i = 0; i < branches.length; i++)
+        other.branches[i] == branches[i]].every((x) => x) &&
       [for (var i = 0; i < mods.length; i++) other.mods[i] == mods[i]]
           .every((x) => x) &&
       other.values.length == values.length &&
@@ -396,6 +430,74 @@ List<MixDevice> withDeviceIds(List<MixDevice> chain) {
   }
   return [for (var d in chain) d.id.isEmpty ? d.withId("d${next++}") : d];
 }
+
+/// maxBranches is the most branches a split has.
+const int maxBranches = 4;
+
+/// SplitBranch is one of a split's chains: its devices in order, how loud
+/// it comes back, and whether it is heard at all.
+class SplitBranch {
+  final List<MixDevice> devices;
+  final double gainDb;
+  final bool mute;
+  const SplitBranch({this.devices = const [], this.gainDb = 0, this.mute = false});
+
+  SplitBranch copyWith({List<MixDevice>? devices, double? gainDb, bool? mute}) =>
+      SplitBranch(
+          devices: devices ?? this.devices,
+          gainDb: gainDb ?? this.gainDb,
+          mute: mute ?? this.mute);
+
+  Map<String, dynamic> toJson() => {
+        if (devices.isNotEmpty) "devices": [for (var d in devices) d.toJson()],
+        if (gainDb != 0) "gain": gainDb,
+        if (mute) "mute": true,
+      };
+
+  static SplitBranch? fromJson(Object? json) {
+    if (json is! Map) return null;
+    return SplitBranch(
+      devices: withDeviceIds([
+        if (json["devices"] case List raw)
+          for (var d in raw)
+            // No split in a split: one level of branches.
+            if (MixDevice.fromJson(d) case var device?
+                when device.kind != DeviceKind.split)
+              device,
+      ]),
+      gainDb: jsonDouble(json["gain"], 0).clamp(-60.0, 12.0),
+      mute: jsonBool(json["mute"], false),
+    );
+  }
+
+  /// structure is what of it a running split is made of: a changed
+  /// setting is retuned, a device added or switched remade.
+  String get structure => [
+        for (var (i, d) in devices.indexed)
+          "${deviceIdAt(devices, i)}:${d.kind.name}:${d.on}:${d.source}"
+      ].join(",");
+
+  @override
+  bool operator ==(Object other) =>
+      other is SplitBranch &&
+      other.gainDb == gainDb &&
+      other.mute == mute &&
+      other.devices.length == devices.length &&
+      [for (var i = 0; i < devices.length; i++) other.devices[i] == devices[i]]
+          .every((x) => x);
+
+  @override
+  int get hashCode => Object.hash(gainDb, mute, devices.length);
+}
+
+/// splitBranchNames are a split's branches' names in [mode] (see
+/// DeviceKind.split): two of them, but in parallel as many as [count].
+List<String> splitBranchNames(int mode, int count) => switch (mode) {
+      1 => const ["Mid", "Side"],
+      2 => const ["Left", "Right"],
+      3 => const ["Low", "High"],
+      _ => [for (var i = 0; i < count; i++) "Branch ${String.fromCharCode(65 + i)}"],
+    };
 
 /// ReturnChannel is a return: a channel fed by the others' sends rather than
 /// by sounds of its own -- one reverb every channel feeds a little of, rather

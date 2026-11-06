@@ -3160,6 +3160,17 @@ class ParamDevice extends StatelessWidget {
           if (device.kind == DeviceKind.vocoder &&
               device.value("carrier").round() == carrierFromChannel)
             _sourceChannel(context, device, write),
+          // A split's branches, each its own chain.
+          if (device.kind == DeviceKind.split)
+            SplitBranches(
+              key: ValueKey("splitBranches-$index"),
+              device: device,
+              ink: skin.ink,
+              accent: accent,
+              onChanged: (branches, {transient = false}) =>
+                  write(device.withBranches(branches), transient: transient),
+              onCommit: controller.endInteraction,
+            ),
           // What a modulator moves: any knob of the chain's other devices.
           if (device.kind.modulates)
             ModTargets(
@@ -3199,7 +3210,16 @@ class ParamDevice extends StatelessWidget {
       powerKey: ValueKey("devicePower-$index"),
       folded: folded,
       onFold: onFold,
-      width: math.max(220.0, 24.0 + 72 * columns),
+      // A split's branches side by side, a column each.
+      width: device.kind == DeviceKind.split
+          ? 40.0 +
+              250 *
+                  math.max(
+                      2,
+                      device.value("mode").round() == 0
+                          ? device.branches.length + 1
+                          : 2)
+          : math.max(220.0, 24.0 + 72 * columns),
       height: height,
       actions: [
         ...deviceMoveButtons(controller, owner, index, _headerInkLight),
@@ -3236,16 +3256,20 @@ class ParamDevice extends StatelessWidget {
       ),
       // Laid out for its height: its levels over its knobs.
       controls: knobs,
-      display: DeviceLevels(
-          key: ValueKey("deviceLevels-$index"),
-          controller: controller,
-          channel: isChannel ? owner : null,
-          // Its place in the chain, where its levels are read: the EQ and
-          // compressor can be before it.
-          index: controller.chainOf(owner).indexOf(deviceIdAt(devices, index)),
-          device: device,
-          accent: accent,
-          back: look.studio.display),
+      // A split's branches are its picture: they have the room.
+      display: device.kind == DeviceKind.split
+          ? null
+          : DeviceLevels(
+              key: ValueKey("deviceLevels-$index"),
+              controller: controller,
+              channel: isChannel ? owner : null,
+              // Its place in the chain, where its levels are read: the EQ and
+              // compressor can be before it.
+              index:
+                  controller.chainOf(owner).indexOf(deviceIdAt(devices, index)),
+              device: device,
+              accent: accent,
+              back: look.studio.display),
       summary: [
         for (var p in params.where((p) => paramShown(device, p)).take(2))
           "${p.label} ${p.reading(device.value(p.id))}"
@@ -5110,5 +5134,192 @@ class ModTargets extends StatelessWidget {
               Text("Nothing in the chain to move yet", style: style),
           ]),
     );
+  }
+}
+
+/// SplitBranches is a split's branches, a column each: its name, how loud
+/// it comes back and whether it is heard, its devices -- each with its
+/// switch, its knobs and a way to take it out -- and a way to add one; in
+/// parallel, a way to add a branch and take one away.
+class SplitBranches extends StatelessWidget {
+  final MixDevice device;
+  final Color ink, accent;
+  final void Function(List<SplitBranch> branches, {bool transient}) onChanged;
+  final VoidCallback onCommit;
+  const SplitBranches(
+      {required this.device,
+      required this.ink,
+      required this.accent,
+      required this.onChanged,
+      required this.onCommit,
+      super.key});
+
+  /// _addable are the kinds a branch takes: what changes sound, not a
+  /// split, a modulator or a listener.
+  static List<DeviceKind> get _addable => [
+        for (var k in DeviceKind.values)
+          if (k != DeviceKind.split &&
+              !k.modulates &&
+              !listensOnly(k) &&
+              k != DeviceKind.vocoder)
+            k
+      ];
+
+  @override
+  Widget build(BuildContext context) {
+    var mode = device.value("mode").round();
+    var parallel = mode == 0;
+    var names = splitBranchNames(mode, device.branches.length);
+    var branches = [
+      for (var i = 0; i < names.length; i++)
+        i < device.branches.length ? device.branches[i] : const SplitBranch(),
+    ];
+    var style = TextStyle(fontSize: 11, color: ink);
+    void set(int i, SplitBranch b, {bool transient = false}) {
+      var next = [...branches];
+      next[i] = b;
+      onChanged(next, transient: transient);
+    }
+
+    Widget column(int i, SplitBranch b) => Container(
+          key: ValueKey("splitBranch-$i"),
+          width: 236,
+          margin: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: ink.withValues(alpha: 0.25)),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              Expanded(
+                child: Text(names[i],
+                    style: style.copyWith(fontWeight: FontWeight.w700)),
+              ),
+              InkWell(
+                key: ValueKey("splitMute-$i"),
+                onTap: () => set(i, b.copyWith(mute: !b.mute)),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: b.mute ? const Color(0xFFE0A84F) : null,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: ink.withValues(alpha: 0.4)),
+                  ),
+                  child: Text("M", style: style),
+                ),
+              ),
+              if (parallel && branches.length > 1)
+                IconButton(
+                  key: ValueKey("splitRemove-$i"),
+                  tooltip: "Take this branch away",
+                  iconSize: 13,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.close, color: ink),
+                  onPressed: () => onChanged([...branches]..removeAt(i)),
+                ),
+            ]),
+            _Knob(
+              key: ValueKey("splitGain-$i"),
+              label: "Level",
+              text: "${b.gainDb.toStringAsFixed(1)} dB",
+              value: b.gainDb,
+              initial: 0,
+              range: const _Range(-60, 12),
+              size: 26,
+              accent: accent,
+              ink: ink,
+              onChanged: (v, {transient = false}) => set(
+                  i, b.copyWith(gainDb: (v * 2).roundToDouble() / 2),
+                  transient: transient),
+              onCommit: onCommit,
+            ),
+            for (var (j, d) in b.devices.indexed)
+              Padding(
+                key: ValueKey("splitDevice-$i-$j"),
+                padding: const EdgeInsets.only(top: 6),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Row(children: [
+                    InkWell(
+                      key: ValueKey("splitDevicePower-$i-$j"),
+                      onTap: () => set(
+                          i,
+                          b.copyWith(
+                              devices: [...b.devices]..[j] =
+                                  d.switched(!d.on))),
+                      child: Icon(d.on ? Icons.circle : Icons.circle_outlined,
+                          size: 10,
+                          color: d.on ? accent : ink.withValues(alpha: 0.5)),
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                        child: Text(d.kind.label,
+                            style:
+                                style.copyWith(fontWeight: FontWeight.w600))),
+                    InkWell(
+                      key: ValueKey("splitDeviceRemove-$i-$j"),
+                      onTap: () => set(
+                          i, b.copyWith(devices: [...b.devices]..removeAt(j))),
+                      child: Icon(Icons.close, size: 12, color: ink),
+                    ),
+                  ]),
+                  Wrap(spacing: 6, runSpacing: 4, children: [
+                    for (var p in d.kind.params)
+                      if (!p.isChoice)
+                        _Knob(
+                          key: ValueKey("splitKnob-$i-$j-${p.id}"),
+                          label: p.label,
+                          text: p.reading(d.value(p.id)),
+                          value: d.value(p.id),
+                          initial: p.initial,
+                          range: ParamDevice._range(p),
+                          size: 24,
+                          reading: false,
+                          accent: accent,
+                          ink: ink,
+                          bipolar: p.min < 0 && p.max > 0,
+                          onChanged: (v, {transient = false}) => set(
+                              i,
+                              b.copyWith(
+                                  devices: [...b.devices]..[j] =
+                                      d.withValue(p.id, v)),
+                              transient: transient),
+                          onCommit: onCommit,
+                        ),
+                  ]),
+                ]),
+              ),
+            const SizedBox(height: 6),
+            CanvasDropdown<DeviceKind?>(
+              key: ValueKey("splitAdd-$i"),
+              label: "",
+              value: null,
+              width: 200,
+              grow: false,
+              options: [
+                (null, "Add a device…"),
+                for (var k in _addable) (k, k.label),
+              ],
+              onChanged: (k) {
+                if (k == null) return;
+                set(i, b.copyWith(devices: [...b.devices, MixDevice(k)]));
+              },
+            ),
+          ]),
+        );
+
+    return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var (i, b) in branches.indexed) column(i, b),
+          if (parallel && branches.length < maxBranches)
+            OutlinedButton(
+              key: const ValueKey("splitAddBranch"),
+              onPressed: () => onChanged([...branches, const SplitBranch()]),
+              child: Text("+ Branch", style: style),
+            ),
+        ]);
   }
 }
