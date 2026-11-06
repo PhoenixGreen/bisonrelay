@@ -373,7 +373,7 @@ class ElementBase {
         if (cue.isNotEmpty) "cue": cue,
         if (!play.isNone) "play": play.toJson(),
         if (spot != null) "spot": spot!.toJson(),
-        if (!motion.isEmpty) "motion": motion.toJson(),
+        if (!motion.isBlank) "motion": motion.toJson(),
         if (layouts.isNotEmpty)
           "layouts": {
             for (var e in layouts.entries) e.key: e.value.toJson(),

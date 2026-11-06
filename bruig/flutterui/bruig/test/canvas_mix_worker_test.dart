@@ -99,7 +99,15 @@ void main() {
       }
     });
     var send = await to.future;
-    await Future.delayed(const Duration(milliseconds: 2500));
+    // Settled: no report for half a second. Under a loaded machine (the
+    // whole suite) that can take longer than it does alone.
+    var settling = Stopwatch()..start();
+    var seen = -1;
+    while (settling.elapsedMilliseconds < 6000) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (reports.length == seen) break;
+      seen = reports.length;
+    }
     var resting = reports.length;
     expect(resting, lessThan(100), reason: "not fifty a second for ever");
     await Future.delayed(const Duration(milliseconds: 800));

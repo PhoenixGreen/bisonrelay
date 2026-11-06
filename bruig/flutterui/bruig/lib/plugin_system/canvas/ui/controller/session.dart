@@ -7,10 +7,29 @@ part of '../canvas_controller.dart';
 extension CanvasSession on CanvasController {
   /// liveMotion is what the renderer draws the elements off their
   /// timelines from: null with every one on it.
-  LiveMotion? get liveMotion => motionPlayer.offTimeline ? motionPlayer : null;
+  LiveMotion? get liveMotion {
+    LiveMotion? playing = motionPlayer.offTimeline ? motionPlayer : null;
+    if (_motionPreview case (var e, var upto)) {
+      return MotionPreview(playing, e, upto);
+    }
+    return playing;
+  }
+
+  /// motionPreview is the element and join the stage previews its motion
+  /// chain from, or null for every chain whole.
+  (String, int)? get motionPreview => _motionPreview;
+
+  /// previewMotionFrom shows [element] on the stage as its motion chain
+  /// stands after its first [upto] pose devices -- or, with null, whole
+  /// again. Shown only: nothing is changed.
+  void previewMotionFrom(String element, int? upto) {
+    _motionPreview = upto == null ? null : (element, upto);
+    _previewTicks++;
+    notifyListeners();
+  }
 
   /// motionTick goes up as the slots play on, for the stage to paint.
-  int get motionTick => motionPlayer.revision;
+  int get motionTick => motionPlayer.revision + _previewTicks;
 
   /// pressMotionSlot is slot [slot] of [element] pressed: its clip launched
   /// as it says -- on the next bar, or what it waits for -- or, empty, the

@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.da
 import 'package:bruig/plugin_system/canvas/render/vrm/character3d_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/parallax_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_looks.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -790,7 +791,8 @@ void paintElement(
     // Grown, because a shadow, an outline or a glow reaches outside the
     // element's bounds and a layer clipped to them would cut it off.
     canvas.saveLayer(
-        bounds.inflate(math.max(bounds.width, bounds.height)),
+        bounds.inflate(math.max(bounds.width, bounds.height) +
+            looksReach(element.base.motion.looks)),
         Paint()
           ..color = const Color(0xFFFFFFFF).withValues(alpha: alpha)
           ..blendMode = blend);
@@ -958,7 +960,7 @@ void paintElement(
                     // Where it stands as its clips -- live ones too -- have
                     // it, and drawn as everything else is: figures on a map
                     // are drawn only here.
-                    var dy = f.base.motion.isEmpty
+                    var dy = !f.base.motion.moves
                         ? f.track?.at(frame).dy ?? 0
                         : poseWithMotion(f, frame, document, live: liveMotion)
                             .dy;
@@ -1004,11 +1006,23 @@ void paintElement(
       : looping.phaseAt(frame,
           arrived: arrivalEnd(element, frameRate),
           last: (document?.frames ?? (1 << 30)) - 1);
-  if (looping != null && phase != null) {
-    paintLoopEffect(canvas, bounds, looping, phase.$1, phase.$2,
-        element.id.hashCode, _loopOutline(element, bounds, frame), body);
+  void drawn() {
+    if (looping != null && phase != null) {
+      paintLoopEffect(canvas, bounds, looping, phase.$1, phase.$2,
+          element.id.hashCode, _loopOutline(element, bounds, frame), body);
+    } else {
+      body();
+    }
+  }
+
+  // Its looks -- the devices right of its drawing in its Chain -- on what
+  // is drawn: see motion_looks.dart.
+  var looks = element.base.motion.looks;
+  if (looks.isEmpty) {
+    drawn();
   } else {
-    body();
+    paintWithLooks(canvas, bounds, looks, drawn,
+        turn: element.rotation + pose.rotate, scale: pose.scale);
   }
 
   if (layered) canvas.restore();

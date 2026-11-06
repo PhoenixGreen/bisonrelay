@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
 
 // motion_document.dart joins clips to a document: where every placed clip in
@@ -116,6 +117,23 @@ abstract class LiveMotion {
   MotionLive? of(String element);
 }
 
+/// MotionPreview is what plays live, with one element's motion chain shown
+/// as it stands at one join -- its first [upto] pose devices -- for the
+/// Chain's "Preview from here". Handed to the stage as its LiveMotion; an
+/// export has none, and draws every chain whole.
+class MotionPreview implements LiveMotion {
+  final LiveMotion? playing;
+  final String element;
+  final int upto;
+  const MotionPreview(this.playing, this.element, this.upto);
+
+  @override
+  double get clock => playing?.clock ?? 0;
+
+  @override
+  MotionLive? of(String element) => playing?.of(element);
+}
+
 /// liveShifted is [live] seen [seconds] later (earlier, negative): what is
 /// playing the same, its clock moved. For asking where something live was a
 /// moment ago, as the frames before this one ask of the timeline.
@@ -136,11 +154,86 @@ class _ShiftedLive implements LiveMotion {
 
 /// poseWithMotion is [e]'s pose on [frame]: its track's, if it kept one, with
 /// its clips' moves on top -- from its slots where [live] has it off its
-/// timeline. Without [doc] (a lone element drawn), its track alone.
+/// timeline -- and then its pose devices', each asking the ones to its left
+/// (see motion_devices.dart). With [upto], only the first that many of its
+/// pose devices: the chain as it stands at that join. Without [doc] (a lone
+/// element drawn), its track alone.
 Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
-    {LiveMotion? live}) {
+    {LiveMotion? live, int? upto}) {
+  if (doc == null) return e.track?.at(frame) ?? Keyframe.rest;
+  if (live case MotionPreview p when upto == null && p.element == e.id) {
+    upto = p.upto;
+  }
+  var devices = e.base.motion.poseDevices;
+  if (upto != null && upto < devices.length) {
+    devices = devices.sublist(0, upto.clamp(0, devices.length));
+  }
+  if (devices.isEmpty) return _clipPose(e, frame, doc, live);
+  return _pulled(e, frame, doc, live, devices, devices.length - 1);
+}
+
+/// _pulled is [e]'s pose on [frame] after pose device [i] of [devices]:
+/// what the device makes of what those to its left give it -- asked, by a
+/// device that changes time, for another moment (rule 2).
+Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
+    LiveMotion? live, List<MotionDevice> devices, int i) {
+  if (i < 0) return _clipPose(e, frame, doc, live);
+  var d = devices[i];
+  switch (d.kind) {
+    case MotionDeviceKind.time:
+      var rate = math.max(1, doc.frameRate).toDouble();
+      var t = frame / rate, tt = retimed(d, t);
+      // What plays live is asked at its own clock, moved alike.
+      var shifted = live == null ? null : liveShifted(live, tt - t);
+      return _pulled(e, (tt * rate).round(), doc, shifted, devices, i - 1);
+    default:
+      // A look is not a pose device; it passes the pose on.
+      return _pulled(e, frame, doc, live, devices, i - 1);
+  }
+}
+
+/// motionSpeedAt is how fast [e] is going on [frame], in the page's pixels a
+/// second, as its chain stands after its first [upto] pose devices: for the
+/// meters between them. With it, the pose there.
+(double, Keyframe) motionSpeedAt(CanvasElement e, int frame, CanvasDocument doc,
+    {int? upto, LiveMotion? live}) {
+  var rate = math.max(1, doc.frameRate).toDouble();
+  var now = poseWithMotion(e, frame, doc, live: live, upto: upto ?? 1 << 20);
+  var before = poseWithMotion(e, frame - 1, doc,
+      live: live == null ? null : liveShifted(live, -1 / rate),
+      upto: upto ?? 1 << 20);
+  var dx = now.dx - before.dx, dy = now.dy - before.dy;
+  return (math.sqrt(dx * dx + dy * dy) * rate, now);
+}
+
+/// retimed is the moment a Time device asks the devices to its left for,
+/// at [t] seconds: shifted, sped up or slowed, held to every few frames
+/// (as stop motion is), and looped -- cycled or there and back -- over its
+/// Every.
+double retimed(MotionDevice d, double t) {
+  var tt = (t + d.value("offset")) * d.value("speed");
+  var every = d.value("every");
+  switch (d.value("loop").round()) {
+    case 1:
+      tt = tt % every;
+    case 2:
+      var q = tt % (2 * every);
+      tt = q > every ? 2 * every - q : q;
+    default:
+      tt = math.max(0.0, tt);
+  }
+  var hold = d.value("hold").round();
+  // Held in steps of so many frames of a 24 a second film.
+  if (hold > 1) tt = (tt * 24 / hold).floor() / (24 / hold);
+  return tt;
+}
+
+/// _clipPose is [e]'s pose on [frame] from its track and its clips: the
+/// start of its chain, before any pose device.
+Keyframe _clipPose(
+    CanvasElement e, int frame, CanvasDocument doc, LiveMotion? live) {
   var pose = e.track?.at(frame) ?? Keyframe.rest;
-  if (doc == null || e.base.motion.isEmpty) return pose;
+  if (e.base.motion.isEmpty) return pose;
   var off = live?.of(e.id);
   var moved = motionPoseIn(doc, e, frame, live: off, clock: live?.clock ?? 0)
       .onto(pose);
@@ -165,14 +258,14 @@ extension MovedElement on CanvasElement {
     if (this case CameraElement cam) {
       return cameraFrame(cam, frame, doc, live: live);
     }
-    return base.motion.isEmpty
+    return !base.motion.moves
         ? boundsAt(frame)
         : boundsWith(poseWithMotion(this, frame, doc, live: live));
   }
 
   /// movedRotationAt is rotationAt with the clips' turn added.
   double movedRotationAt(int frame, CanvasDocument doc, {LiveMotion? live}) =>
-      base.motion.isEmpty
+      !base.motion.moves
           ? rotationAt(frame)
           : rotation + poseWithMotion(this, frame, doc, live: live).rotate;
 

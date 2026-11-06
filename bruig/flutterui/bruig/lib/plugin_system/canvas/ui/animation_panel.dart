@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
@@ -23,6 +24,7 @@ import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
 import 'package:bruig/plugin_system/canvas/ui/scene_transition_parts.dart';
+import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/camera_section.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
@@ -288,6 +290,10 @@ class _AnimationPanelState extends State<AnimationPanel> {
     var colors = ThemeNotifier.of(context).colors;
     var picked = _picked;
     var hint = TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant);
+    // An element with no clips still has a chain: its moves and its looks.
+    if (picked == null && controller.selected != null) {
+      return _chainOnly(context, controller.selected!);
+    }
     if (picked == null) {
       return Container(
         key: const ValueKey("animationPanel"),
@@ -368,6 +374,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
               children: [
+                _zone("Source", "Its clips: what it plays, when and where"),
                 _clipDevice(e, c, colors),
                 _motionDevice(e, c, colors),
                 if (keys) _keysDevice(e, c, colors, _keysWidth ?? fill),
@@ -375,9 +382,128 @@ class _AnimationPanelState extends State<AnimationPanel> {
                 _timingDevice(e, c, span, colors),
                 if (!c.isSound) _placeDevice(e, c, colors),
                 _launchDevice(e, c, colors),
+                ..._chain(e),
               ].expand((w) => [w, const SizedBox(width: 6)]).toList(),
             );
           }),
+        ),
+      ]),
+    );
+  }
+
+  /// _chain is [e]'s motion chain after its clips (the Source): its moves,
+  /// a way to add one, its drawing, its looks and a way to add one -- the
+  /// drawing between the two sides, as rule 1 has it.
+  List<Widget> _chain(CanvasElement e) {
+    var h = widget.height - 40;
+    var devices = controller.motionDevicesOf(e.id);
+    Widget card(MotionDevice d) => MotionDeviceCard(
+        key: ValueKey("mdevCard-${d.id}"),
+        controller: controller,
+        element: e.id,
+        device: d.id,
+        folded: _folded.contains("mdev:${d.id}"),
+        onFold: () => setState(() => _folded.contains("mdev:${d.id}")
+            ? _folded.remove("mdev:${d.id}")
+            : _folded.add("mdev:${d.id}")),
+        height: h);
+    var moves = [
+      for (var d in devices)
+        if (d.side == MotionDeviceSide.pose) d,
+    ];
+    // How fast it goes after its clips, and after each move: and, clicked,
+    // the stage showing it as it is there.
+    Widget join(int upto) => MotionJoin(
+        key: ValueKey("motionJoinOf-$upto"),
+        controller: controller,
+        element: e.id,
+        upto: upto,
+        height: h);
+    return [
+      _zone("Before", "Moves: where it is, and when"),
+      join(0),
+      for (var (i, d) in moves.indexed) ...[card(d), join(i + 1)],
+      AddMotionDeviceSlot(
+          key: const ValueKey("addMotionPose"),
+          controller: controller,
+          element: e.id,
+          side: MotionDeviceSide.pose,
+          height: h),
+      DrawingCard(name: e.name.isEmpty ? e.id : e.name, height: h),
+      _zone("After", "Looks: how it looks once drawn"),
+      for (var d in devices)
+        if (d.side == MotionDeviceSide.look) card(d),
+      AddMotionDeviceSlot(
+          key: const ValueKey("addMotionLook"),
+          controller: controller,
+          element: e.id,
+          side: MotionDeviceSide.look,
+          height: h),
+    ];
+  }
+
+  /// _zone marks where one part of the chain begins.
+  Widget _zone(String label, String tip) {
+    var look = MixerLook.of(context);
+    return Tooltip(
+      message: tip,
+      child: SizedBox(
+        key: ValueKey("motionZone-$label"),
+        width: 18,
+        child: Center(
+          child: RotatedBox(
+            quarterTurns: 3,
+            child: Text(label.toUpperCase(),
+                style: TextStyle(
+                    fontSize: 10,
+                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w700,
+                    color: look.studio.muted)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// _chainOnly is an element with no clips: its chain alone.
+  Widget _chainOnly(BuildContext context, CanvasElement e) {
+    var colors = ThemeNotifier.of(context).colors;
+    var hint = TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant);
+    return Container(
+      key: const ValueKey("animationPanel"),
+      height: widget.height,
+      color: colors.surfaceContainerLow,
+      child: Column(children: [
+        SizedBox(
+          height: 32,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(children: [
+              Flexible(
+                child: Text(e.name.isEmpty ? e.id : e.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, color: colors.onSurface)),
+              ),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                    "No clips -- double-click its row on the timeline for one",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: hint),
+              ),
+            ]),
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+            children:
+                _chain(e).expand((w) => [w, const SizedBox(width: 6)]).toList(),
+          ),
         ),
       ]),
     );

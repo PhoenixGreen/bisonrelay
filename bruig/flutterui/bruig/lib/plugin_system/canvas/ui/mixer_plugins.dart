@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/plugin_system/canvas/model/automation.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart'
+    show Keyframe;
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart'
     show MidiMonitor, noInput;
@@ -16,6 +18,11 @@ import 'package:bruig/plugin_system/canvas/model/media_clip.dart'
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart'
     show duckEnvelope;
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show motionSpeedAt, retimed;
+import 'package:bruig/plugin_system/canvas/render/motion_looks.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
     show automationColour;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -4020,6 +4027,458 @@ class VoiceStartCard extends StatelessWidget {
             child: Text(sing ? "Sing it" : "Speak a script"),
           ),
         ]),
+      ),
+    );
+  }
+}
+
+// ---- The motion chain
+
+/// MotionDeviceCard is one device of an element's motion chain (see
+/// motion_devices.dart) in the Chain's Motion view, as a sound's devices
+/// are in its Sound view: its switch, its knobs, a screen of what it does,
+/// arrows to move it along its side of the drawing, and a way to take it
+/// out.
+class MotionDeviceCard extends StatelessWidget {
+  final CanvasController controller;
+  final String element;
+  final String device;
+  final bool folded;
+  final VoidCallback onFold;
+  final double height;
+
+  const MotionDeviceCard({
+    required this.controller,
+    required this.element,
+    required this.device,
+    required this.folded,
+    required this.onFold,
+    required this.height,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var all = controller.motionDevicesOf(element);
+    var d = all.where((x) => x.id == device).firstOrNull;
+    if (d == null) return const SizedBox.shrink();
+    var side = [
+      for (var x in all)
+        if (x.side == d.side) x.id
+    ];
+    var at = side.indexOf(d.id);
+    void write(MotionDevice next, {bool transient = false}) {
+      var now = controller.motionDevicesOf(element);
+      controller.beginInteraction();
+      controller.setMotionDevices(
+          element, [for (var x in now) x.id == next.id ? next : x],
+          transient: true);
+      if (!transient) controller.endInteraction();
+    }
+
+    var look = MixerLook.of(context);
+    var skin = DeviceSkin.studio(look.studio);
+    var pose = d.side == MotionDeviceSide.pose;
+    var accent = pose ? const Color(0xFF6FA8FF) : const Color(0xFFE59BFF);
+    List<Widget> knobs(DeviceTier tier) => [
+          for (var p in d.kind.params)
+            _Knob(
+              key: ValueKey("mdev-${d.id}-${p.id}"),
+              label: p.label,
+              text: p.reading(d.value(p.id)),
+              value: d.value(p.id),
+              initial: p.initial,
+              range: _Range(p.min, p.max),
+              size: switch (tier) {
+                DeviceTier.large => 46,
+                DeviceTier.medium => 38,
+                _ => 28,
+              },
+              reading: tier != DeviceTier.small,
+              accent: accent,
+              ink: skin.ink,
+              bipolar: p.min < 0 && p.max > 0,
+              onChanged: (v, {transient = false}) =>
+                  write(d.withValue(p.id, v), transient: transient),
+              onCommit: controller.endInteraction,
+            ),
+          if (d.side == MotionDeviceSide.look &&
+              d.kind != MotionDeviceKind.colour &&
+              d.kind != MotionDeviceKind.blur)
+            _LookColour(
+                key: ValueKey("mdevColour-${d.id}"),
+                colour: d.colour,
+                ink: skin.ink,
+                onPick: (c) => write(d.withColour(c))),
+        ];
+    return DeviceFrame(
+      id: "mdev:${d.id}",
+      title: d.kind.label,
+      skin: skin,
+      on: d.on,
+      onPower: (v) => write(d.switched(v)),
+      powerKey: ValueKey("mdevPower-${d.id}"),
+      folded: folded,
+      onFold: onFold,
+      width: math.max(220.0, 30.0 + 72 * ((d.kind.params.length + 2) ~/ 2)),
+      height: height,
+      icon: pose ? Icons.timer_outlined : Icons.auto_awesome,
+      accent: accent,
+      actions: [
+        DeviceMove(
+            id: "mdev-${d.id}",
+            canLeft: at > 0,
+            canRight: at < side.length - 1,
+            onSwap: () {},
+            onMove: (by) => controller.moveMotionDevice(element, d.id, by),
+            ink: _headerInkLight),
+        IconButton(
+          key: ValueKey("mdevRemove-${d.id}"),
+          tooltip: "Take the ${d.kind.label.toLowerCase()} off",
+          iconSize: 14,
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.close, color: _headerInkLight),
+          onPressed: () => controller.removeMotionDevice(element, d.id),
+        ),
+      ],
+      foldedBody: Center(
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: Text(d.kind.label,
+              style: TextStyle(fontSize: 11, color: skin.ink)),
+        ),
+      ),
+      body: const SizedBox.shrink(),
+      controls: knobs,
+      display: SizedBox.expand(
+        child: CustomPaint(
+            key: ValueKey("mdevScreen-${d.id}"),
+            painter: _MotionScreen(d, look.studio.display, accent)),
+      ),
+      summary: [
+        for (var p in d.kind.params.take(2))
+          "${p.label} ${p.reading(d.value(p.id))}"
+      ].join(" · "),
+    );
+  }
+}
+
+/// _LookColour is the colour a look draws in: its own (none chosen), or
+/// one of a few.
+class _LookColour extends StatelessWidget {
+  final int? colour;
+  final Color ink;
+  final ValueChanged<int?> onPick;
+  const _LookColour(
+      {required this.colour,
+      required this.ink,
+      required this.onPick,
+      super.key});
+
+  static const _choices = <int?>[
+    null,
+    0xFF000000,
+    0xFFFFFFFF,
+    0xFFFFD54F,
+    0xFFFF5252,
+    0xFF40C4FF,
+    0xFF69F0AE,
+  ];
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 92,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text("Colour", style: TextStyle(fontSize: 11, color: ink)),
+          const SizedBox(height: 4),
+          Wrap(spacing: 3, runSpacing: 3, children: [
+            for (var c in _choices)
+              Tooltip(
+                message: c == null ? "Its own" : "",
+                child: InkWell(
+                  key: ValueKey("lookColour-${c ?? "own"}"),
+                  onTap: () => onPick(c),
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: c == null ? null : Color(c),
+                      gradient: c == null
+                          ? const SweepGradient(colors: [
+                              Color(0xFFFF5252),
+                              Color(0xFFFFD54F),
+                              Color(0xFF69F0AE),
+                              Color(0xFF40C4FF),
+                              Color(0xFFFF5252),
+                            ])
+                          : null,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                          color: colour == c ? ink : ink.withValues(alpha: 0.3),
+                          width: colour == c ? 2 : 1),
+                    ),
+                  ),
+                ),
+              ),
+          ]),
+        ]),
+      );
+}
+
+/// _MotionScreen is a motion device's screen: a look drawn on a square, as
+/// it would be on the element; Time, the moment it asks for against the
+/// moment it is.
+class _MotionScreen extends CustomPainter {
+  final MotionDevice device;
+  final Color back, accent;
+  _MotionScreen(this.device, this.back, this.accent);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = back);
+    if (size.width < 8 || size.height < 8) return;
+    if (device.kind == MotionDeviceKind.time) {
+      // Eight seconds along; the moment asked for, up the side.
+      const span = 8.0;
+      var grid = Paint()..color = accent.withValues(alpha: 0.15);
+      canvas.drawLine(Offset(0, size.height), Offset(size.width, 0), grid);
+      var path = Path();
+      for (var i = 0; i <= 120; i++) {
+        var t = span * i / 120;
+        var y = size.height -
+            (retimed(device, t) / span).clamp(0.0, 1.0) * size.height;
+        var x = size.width * i / 120;
+        i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+      }
+      canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..color = device.on ? accent : accent.withValues(alpha: 0.4));
+      return;
+    }
+    // A look is shown on a page, as it would mostly be seen: a shadow in its
+    // own black would vanish on the dark screen.
+    canvas.drawRect(
+        Offset.zero & size, Paint()..color = const Color(0xFFE9E6DF));
+    var side = math.min(size.width, size.height) * 0.42;
+    var box = Rect.fromCenter(
+        center: size.center(Offset.zero), width: side, height: side);
+    void square() => canvas.drawRRect(
+        RRect.fromRectAndRadius(box, Radius.circular(side * 0.12)),
+        Paint()..color = accent);
+    if (!device.on) return square();
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    paintWithLooks(canvas, box, [device], square);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_MotionScreen old) =>
+      old.device != device || old.back != back || old.accent != accent;
+}
+
+/// DrawingCard is the element itself in its motion chain: what its pose
+/// devices move, and its looks are laid on. It has no settings of its own
+/// here; it marks the drawing between the two sides.
+class DrawingCard extends StatelessWidget {
+  final String name;
+  final double height;
+  const DrawingCard({required this.name, required this.height, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    return Container(
+      key: const ValueKey("drawingCard"),
+      width: 92,
+      height: height,
+      decoration: BoxDecoration(
+        color: look.studio.raised,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: look.studio.edge),
+      ),
+      padding: const EdgeInsets.all(8),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(Icons.draw_outlined, size: 22, color: look.studio.text),
+        const SizedBox(height: 6),
+        Text("Drawing",
+            style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: look.studio.text)),
+        const SizedBox(height: 2),
+        Text(name,
+            maxLines: 2,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 10.5, color: look.studio.muted)),
+      ]),
+    );
+  }
+}
+
+/// AddMotionDeviceSlot is the end of one side of an element's motion
+/// chain: the kinds that side takes (rule 1), to put one on.
+class AddMotionDeviceSlot extends StatelessWidget {
+  final CanvasController controller;
+  final String element;
+  final MotionDeviceSide side;
+  final double height;
+  const AddMotionDeviceSlot(
+      {required this.controller,
+      required this.element,
+      required this.side,
+      required this.height,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var pose = side == MotionDeviceSide.pose;
+    return Container(
+      width: 132,
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: look.studio.edge),
+      ),
+      padding: const EdgeInsets.all(6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(pose ? "Add a move" : "Add a look",
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: look.studio.text)),
+        const SizedBox(height: 4),
+        Expanded(
+          child: ListView(children: [
+            for (var k in MotionDeviceKind.on(side))
+              InkWell(
+                key: ValueKey("addMotion-${k.name}"),
+                onTap: () {
+                  controller.beginInteraction();
+                  controller.addMotionDevice(element, k);
+                  controller.endInteraction();
+                },
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
+                  child: Row(children: [
+                    Icon(Icons.add, size: 13, color: look.studio.muted),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(k.label,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              TextStyle(fontSize: 11, color: look.studio.text)),
+                    ),
+                  ]),
+                ),
+              ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+/// MotionJoin is the join after the first [upto] pose devices of
+/// [element]'s motion chain -- after its clips, for nought: how fast it is
+/// going there, as a bar and in its tooltip with its pose; clicked, the
+/// stage shows the element as the chain leaves it there ("Preview from
+/// here"), and clicked again, whole.
+class MotionJoin extends StatefulWidget {
+  final CanvasController controller;
+  final String element;
+  final int upto;
+  final double height;
+  const MotionJoin(
+      {required this.controller,
+      required this.element,
+      required this.upto,
+      required this.height,
+      super.key});
+
+  @override
+  State<MotionJoin> createState() => _MotionJoinState();
+}
+
+class _MotionJoinState extends State<MotionJoin>
+    with SingleTickerProviderStateMixin, _Metered {
+  @override
+  CanvasController get meteredBy => widget.controller;
+
+  double _speed = 0;
+  Keyframe _pose = Keyframe.rest;
+
+  @override
+  void tick() {
+    var c = widget.controller;
+    var e = c.document.elementById(widget.element);
+    if (e == null) return;
+    var (speed, pose) = motionSpeedAt(e, c.frame, c.document,
+        upto: widget.upto, live: c.liveMotion);
+    _speed = speed;
+    _pose = pose;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Read again on every build too -- a frame scrubbed to, the chain
+    // changed -- as the ticker rests while nothing plays.
+    tick();
+    var c = widget.controller;
+    var look = MixerLook.of(context);
+    var on = c.motionPreview == (widget.element, widget.upto);
+    // A thousand pixels a second fills it; slower is more than its share,
+    // so a drift still shows.
+    var fill = (math.log(1 + _speed) / math.log(1001)).clamp(0.0, 1.0);
+    return Tooltip(
+      message: "x ${_pose.dx.round()} · y ${_pose.dy.round()} · "
+          "size ${_pose.scale.toStringAsFixed(2)} · turn ${_pose.rotate.round()}° · "
+          "${_speed.round()} px/s\n"
+          "${on ? "Showing it as it is here. Click to show it whole." : "Click to show it on the stage as it is here."}",
+      child: InkWell(
+        key: ValueKey("motionJoin-${widget.upto}"),
+        onTap: () =>
+            c.previewMotionFrom(widget.element, on ? null : widget.upto),
+        child: Container(
+          width: 22,
+          height: widget.height,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+          decoration: BoxDecoration(
+            color: on ? look.colors.primary.withValues(alpha: 0.25) : null,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Column(children: [
+            Icon(on ? Icons.visibility : Icons.visibility_outlined,
+                size: 11, color: on ? look.colors.primary : look.studio.muted),
+            const SizedBox(height: 4),
+            Expanded(
+              child: Container(
+                width: 6,
+                alignment: Alignment.bottomCenter,
+                decoration: BoxDecoration(
+                  color: look.studio.display,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: FractionallySizedBox(
+                  key: ValueKey("motionJoinBar-${widget.upto}"),
+                  heightFactor: fill,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6FA8FF),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ]),
+        ),
       ),
     );
   }

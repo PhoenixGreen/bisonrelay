@@ -32,6 +32,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_looks.dart'
+    show looksReach;
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
@@ -429,7 +431,7 @@ Future<StageResult?> buildEpubStage(
     }
     await flatten();
     var region = _regionFor(e, pixels, pageBox, document,
-        moves: e.track != null || !e.base.motion.isEmpty);
+        moves: e.track != null || e.base.motion.moves);
     var maker = _LayerMaker(
         e, page, frames, pixels, images, sheets, start, region, pageBox,
         films: changing.contains(e.id) ? films : null,
@@ -1317,7 +1319,9 @@ Rect _regionFor(
     // An arrival that slides, grows, spins or scatters reaches as far again
     // as the element is big. Anything else only reaches as far as a shadow
     // or an outline -- a chart grows inside its own box.
-    var room = _travels(e) ? side : side * 0.1 + 24;
+    var room = (_travels(e) ? side : side * 0.1 + 24) +
+        // Its looks reach as far as they reach (see motion_looks.dart).
+        looksReach(e.base.motion.looks);
     region = Rect.fromLTRB(
         (turned.left - room) * pixels,
         (turned.top - room) * pixels,

@@ -49,6 +49,10 @@ class DeviceParam {
           ? "0 st"
           : "${v > 0 ? "+" : "−"}${v.abs().toStringAsFixed(1)} st",
       "note" => noteName(v.round()),
+      "s" => "${v.toStringAsFixed(v.abs() < 10 ? 2 : 1)} s",
+      "px" => "${v.toStringAsFixed(v < 10 ? 1 : 0)} px",
+      "°" => "${v.round()}°",
+      "×" => "×${v.toStringAsFixed(2)}",
       _ => "${(v * 100).round()}%",
     };
   }

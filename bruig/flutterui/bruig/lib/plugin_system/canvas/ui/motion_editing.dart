@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -30,6 +31,59 @@ extension MotionEditing on CanvasController {
     var e = document.elementById(element);
     if (e == null) return;
     replaceElement(e.withBase(motion: motion), transient: transient);
+  }
+
+  /// motionDevicesOf is [element]'s motion devices, in the order they run
+  /// (its pose devices, then its looks: see motionDevicesInOrder), each with
+  /// its id.
+  List<MotionDevice> motionDevicesOf(String element) =>
+      motionDevicesInOrder(withMotionDeviceIds(motionOf(element).devices));
+
+  /// setMotionDevices writes [element]'s motion devices.
+  void setMotionDevices(String element, List<MotionDevice> devices,
+          {bool transient = false}) =>
+      setMotion(element, motionOf(element).copyWith(devices: devices),
+          transient: transient);
+
+  /// addMotionDevice puts a [kind] on [element]: last of its side -- the
+  /// last pose device, before the drawing, or the last look -- and returns
+  /// its id.
+  String addMotionDevice(String element, MotionDeviceKind kind) {
+    var devices =
+        withMotionDeviceIds([...motionDevicesOf(element), MotionDevice(kind)]);
+    setMotionDevices(element, motionDevicesInOrder(devices));
+    return devices.last.id;
+  }
+
+  /// removeMotionDevice takes device [id] off [element].
+  void removeMotionDevice(String element, String id) =>
+      setMotionDevices(element, [
+        for (var d in motionDevicesOf(element))
+          if (d.id != id) d
+      ]);
+
+  /// moveMotionDevice moves device [id] [by] places among those on its
+  /// side of the drawing -- it never crosses it (rule 1).
+  void moveMotionDevice(String element, String id, int by) {
+    var all = motionDevicesOf(element);
+    var d = all.where((x) => x.id == id).firstOrNull;
+    if (d == null) return;
+    var side = [
+      for (var x in all)
+        if (x.side == d.side) x
+    ];
+    var i = side.indexOf(d), j = i + by;
+    if (j < 0 || j >= side.length || by == 0) return;
+    side.insert(j, side.removeAt(i));
+    setMotionDevices(element, [
+      if (d.side == MotionDeviceSide.look)
+        for (var x in all)
+          if (x.side == MotionDeviceSide.pose) x,
+      ...side,
+      if (d.side == MotionDeviceSide.pose)
+        for (var x in all)
+          if (x.side == MotionDeviceSide.look) x,
+    ]);
   }
 
   /// spanOf is where placement [id] plays, its pins followed.

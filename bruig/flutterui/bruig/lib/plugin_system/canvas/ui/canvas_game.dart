@@ -222,7 +222,7 @@ class GameRun extends ChangeNotifier {
   /// _boxOf is where [e] is on [frame]: moved by its clips -- on the
   /// timeline, or live -- as well as its keyframes.
   Rect _boxOf(CanvasDocument doc, CanvasElement e, int frame) =>
-      e.base.motion.isEmpty
+      !e.base.motion.moves
           ? e.boundsAt(frame)
           : e.movedBoundsAt(frame, doc, live: _live);
 
@@ -282,7 +282,7 @@ class GameRun extends ChangeNotifier {
       for (var e in doc.elements)
         if (e.base.play.as == PlayAs.solid &&
             shown(e) &&
-            (e.track != null || !e.base.motion.isEmpty) &&
+            (e.track != null || e.base.motion.moves) &&
             (onward || _movesLive(e)))
           e.id: _boxOf(doc, e, frame),
     };

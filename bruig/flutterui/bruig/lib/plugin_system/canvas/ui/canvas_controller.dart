@@ -143,7 +143,7 @@ import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart'
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
     show ClipTriggerKind, MotionKind;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
-    show LiveMotion, settledFrameOf;
+    show LiveMotion, MotionPreview, settledFrameOf;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart'
     show HardwareKeyboard, KeyDownEvent, KeyEvent, KeyRepeatEvent, KeyUpEvent, LogicalKeyboardKey;
@@ -3433,6 +3433,13 @@ class CanvasController extends ChangeNotifier {
   /// its script, takes and voice, and Sing. Speech makes clips; it is not a
   /// step of the chain, so it shows only when asked for (see showSpeech).
   bool _speechShown = false;
+
+  /// _motionPreview is the element whose motion chain the stage shows as it
+  /// stands at one join, and that join: see previewMotionFrom.
+  (String, int)? _motionPreview;
+
+  /// _previewTicks counts the previews changed, for the stage to repaint.
+  int _previewTicks = 0;
 
   String? _effectsFocus;
   int _effectsFocusCount = 0;

@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 
 // motion.dart is how an element moves: its clips. A clip is a piece of
 // animation belonging to one element (an arrival, a loop, a way out, an
@@ -693,17 +694,44 @@ class ElementMotion {
   /// name, or "" for its own lane.
   final String output;
 
+  /// devices are its motion chain beyond its clips, as arranged: pose
+  /// devices that run left of its drawing and looks right of it -- see
+  /// motion_devices.dart. Read [poseDevices] and [looks] for the order they
+  /// run in.
+  final List<MotionDevice> devices;
+
   const ElementMotion({
     this.clips = const [],
     this.slots = const [],
     this.placed = const [],
     this.weights = const [1, 1, 1],
     this.output = "",
+    this.devices = const [],
   });
 
   static const ElementMotion none = ElementMotion();
 
   bool get isEmpty => clips.isEmpty && placed.isEmpty;
+
+  /// poseDevices are its pose devices switched on, in the order they run.
+  List<MotionDevice> get poseDevices => [
+        for (var d in devices)
+          if (d.on && d.side == MotionDeviceSide.pose) d,
+      ];
+
+  /// looks are its look devices switched on, in the order they run.
+  List<MotionDevice> get looks => [
+        for (var d in devices)
+          if (d.on && d.side == MotionDeviceSide.look) d,
+      ];
+
+  /// moves is whether anything of its motion can move it: a clip, or a pose
+  /// device.
+  bool get moves =>
+      !isEmpty || devices.any((d) => d.on && d.side == MotionDeviceSide.pose);
+
+  /// isBlank is whether there is nothing of it to keep.
+  bool get isBlank => isEmpty && devices.isEmpty;
 
   MotionClip? clip(String id) => clips.where((c) => c.id == id).firstOrNull;
 
@@ -727,6 +755,7 @@ class ElementMotion {
     List<ClipPlacement>? placed,
     List<double>? weights,
     String? output,
+    List<MotionDevice>? devices,
   }) =>
       ElementMotion(
         clips: clips ?? this.clips,
@@ -734,6 +763,7 @@ class ElementMotion {
         placed: placed ?? this.placed,
         weights: weights ?? this.weights,
         output: output ?? this.output,
+        devices: devices == null ? this.devices : withMotionDeviceIds(devices),
       );
 
   /// renamedFor is this for a copy, element [id]: fresh placement ids, with
@@ -821,6 +851,7 @@ class ElementMotion {
         if (placed.isNotEmpty) "placed": [for (var p in placed) p.toJson()],
         if (weights.any((w) => w != 1)) "weights": weights,
         if (output.isNotEmpty) "output": output,
+        if (devices.isNotEmpty) "devices": [for (var d in devices) d.toJson()],
       };
 
   static ElementMotion fromJson(Object? json) {
@@ -853,6 +884,11 @@ class ElementMotion {
             1.0,
       ],
       output: jsonString(json["output"], ""),
+      devices: withMotionDeviceIds([
+        if (json["devices"] case List raw)
+          for (var d in raw)
+            if (MotionDevice.fromJson(d) case var device?) device,
+      ]),
     );
   }
 }
