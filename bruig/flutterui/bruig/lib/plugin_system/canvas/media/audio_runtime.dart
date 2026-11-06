@@ -187,6 +187,16 @@ class AudioRuntime extends ChangeNotifier {
   Future<void> noteOn(
       String channel, InstrumentPart part, int key, int velocity) async {
     var down = _down.putIfAbsent(channel, () => {})..add(key);
+    // Started, and the bank read if it is wanted: straight to the engine,
+    // with nothing awaited between the key and the sound.
+    if (_started && !_disposed) {
+      var bank = part.sound == InstrumentSound.bank;
+      if (!bank || loadedSoundBank != null) {
+        engine.noteOn(channel, part, key, velocity,
+            font: bank ? loadedSoundBank : null);
+        return;
+      }
+    }
     if (!await _ready()) return;
     var font =
         part.sound == InstrumentSound.bank ? await loadSoundBank() : null;

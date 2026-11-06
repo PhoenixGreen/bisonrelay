@@ -735,6 +735,14 @@ class MasterProcessor {
   /// measured on a first pass; 0 until then.
   double normaliseDb;
 
+  /// tapping is whether process notes [taps]: on while the master's
+  /// devices are on screen, as a channel strip's are (StripProcessor.taps).
+  bool tapping = false;
+
+  /// taps are the peaks coming in and after each step of its chain, in the
+  /// order it ran, on the last block. Empty when not [tapping].
+  List<(double, double)> taps = const [];
+
   MasterProcessor(this.mix, {this.normaliseDb = 0})
       : _eq = EqProcessor(mix.eq),
         _glue = mix.comp.on ? Compressor(mix.comp) : null,
@@ -746,6 +754,7 @@ class MasterProcessor {
   void process(Float32List l, Float32List r, int n, {bool limit = true}) {
     // In the order it was arranged in (see MasterMix.chain); the limiter
     // last, always.
+    var taps = tapping ? <(double, double)>[blockPeaks(l, r, n)] : null;
     for (var step in mix.chain) {
       if (step == chainEq) {
         _eq.process(l, r, n);
@@ -755,7 +764,9 @@ class MasterProcessor {
         var i = deviceIndexOf(mix.devices, step);
         if (i >= 0 && i < _devices.length) _devices[i]?.process(l, r, n);
       }
+      taps?.add(blockPeaks(l, r, n));
     }
+    this.taps = taps ?? const [];
     var g = dbToGain(mix.gainDb + normaliseDb);
     if (g != 1) _scale(l, r, n, g, g);
     if (limit) _limiter?.process(l, r, n);

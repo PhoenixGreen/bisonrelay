@@ -3,7 +3,10 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_icons.dart';
+import 'package:bruig/plugin_system/canvas/ui/device_presets.dart';
+import 'package:bruig/plugin_system/canvas/ui/pitch_editing.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
     show Wave, correlation;
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
@@ -192,6 +195,149 @@ List<Widget> deviceMoveButtons(
   ];
 }
 
+/// _MacroTools are a macro's Random -- every knob somewhere new -- and its
+/// Variation: its knobs' settings kept, by number, and brought back.
+class _MacroTools extends StatelessWidget {
+  final int index;
+  final MixDevice device;
+  final MixerLook look;
+  final ValueChanged<MixDevice> onChanged;
+  const _MacroTools(
+      {required this.index,
+      required this.device,
+      required this.look,
+      required this.onChanged,
+      super.key});
+
+  /// _now is the knobs' settings as they are.
+  Map<String, double> get _now => {
+        for (var p in macroParams) p.id: device.value(p.id),
+      };
+
+  bool _isNow(Map<String, double> v) =>
+      macroParams.every((p) => (v[p.id] ?? 0) == device.value(p.id));
+
+  @override
+  Widget build(BuildContext context) {
+    var studio = look.studio;
+    var variations = device.variations;
+    var current = variations.indexWhere(_isNow);
+    Widget button(String key, String icon, String label, VoidCallback onTap) =>
+        InkWell(
+          key: ValueKey(key),
+          borderRadius: BorderRadius.circular(5),
+          onTap: onTap,
+          child: Container(
+            height: 22,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(5),
+                border: Border.all(color: studio.edge)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (icon.isNotEmpty) ...[
+                ChainIcon(icon, size: 12, color: studio.muted),
+                const SizedBox(width: 4),
+              ],
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10.5, color: studio.text)),
+              ),
+            ]),
+          ),
+        );
+    return SizedBox(
+      width: 170,
+      child: Wrap(spacing: 4, runSpacing: 4, children: [
+        button("macroRandom-$index", "dice", "Random", () {
+          var dice = math.Random();
+          var next = device;
+          for (var p in macroParams) {
+            next = next.withValue(p.id, dice.nextDouble());
+          }
+          onChanged(next);
+        }),
+        MenuAnchor(
+          style: chainMenuStyle(look),
+          builder: (context, menu, _) => button(
+              "macroVariation-$index",
+              "",
+              current >= 0
+                  ? "Variation ${current + 1} ▾"
+                  : variations.isEmpty
+                      ? "Variations ▾"
+                      : "Variation · changed ▾",
+              () => menu.isOpen ? menu.close() : menu.open()),
+          menuChildren: [
+            chainMenuHeading(look, "Variations"),
+            for (var (i, v) in variations.indexed)
+              chainMenuItem(look,
+                  key: ValueKey("macroVariation-$index-$i"),
+                  text: "Variation ${i + 1}",
+                  current: i == current, onPressed: () {
+                var next = device;
+                for (var p in macroParams) {
+                  next = next.withValue(p.id, v[p.id] ?? 0);
+                }
+                onChanged(next);
+              }),
+            if (variations.isNotEmpty) chainMenuDivider(look),
+            chainMenuItem(look,
+                key: ValueKey("macroVariationSave-$index"),
+                text: "Keep these as Variation ${variations.length + 1}",
+                onPressed: () =>
+                    onChanged(device.withVariations([...variations, _now]))),
+            if (current >= 0)
+              chainMenuItem(look,
+                  key: ValueKey("macroVariationForget-$index"),
+                  text: "Forget Variation ${current + 1}",
+                  onPressed: () => onChanged(device
+                      .withVariations([...variations]..removeAt(current)))),
+          ],
+        ),
+      ]),
+    );
+  }
+}
+
+/// freezeFrom freezes [owner]'s chain up to [step], saying so as it goes:
+/// it takes a moment, as each sound is rendered.
+Future<void> freezeFrom(
+    BuildContext context, CanvasController c, String owner, String step) async {
+  SnackBarModel? snack;
+  try {
+    snack = SnackBarModel.of(context);
+  } catch (_) {}
+  snack?.success("Freezing: each sound on the channel is rendered once");
+  var why = await c.freezeChain(owner, step);
+  if (why != null) {
+    snack?.error(why);
+  } else {
+    snack?.success("Frozen: it plays a rendered copy until unfrozen");
+  }
+}
+
+/// freezeHooks are a device card's freezing, at [step] of [owner]'s chain:
+/// whether it is frozen, a way to freeze up to it, and to unfreeze.
+({bool frozen, VoidCallback? onFreeze, VoidCallback? onUnfreeze}) freezeHooks(
+    BuildContext context, CanvasController c, String owner, String step) {
+  var steps = c.frozenSteps(owner);
+  if (steps.isNotEmpty) {
+    return (
+      frozen: steps.contains(step),
+      onFreeze: null,
+      onUnfreeze: () => c.unfreezeChain(owner),
+    );
+  }
+  var can = c.canFreeze(owner) == null && !c.freezing(owner);
+  return (
+    frozen: false,
+    onFreeze: can ? () => freezeFrom(context, c, owner, step) : null,
+    onUnfreeze: null,
+  );
+}
+
 /// duplicateDevice puts a copy of device [index] of [owner]'s chain after
 /// it, with an id of its own, as one undo step.
 void duplicateDevice(CanvasController c, String owner, int index) {
@@ -212,8 +358,8 @@ void resetDevice(CanvasController c, String owner, int index) {
   c.beginInteraction();
   c.setDevicesOf(
       owner,
-      [...now]..[index] =
-          MixDevice(d.kind, on: d.on, id: d.id, source: d.source));
+      [...now]..[index] = MixDevice(d.kind,
+          on: d.on, id: d.id, source: d.source, variations: d.variations));
   c.endInteraction();
 }
 
@@ -361,6 +507,18 @@ class DeviceFrame extends StatelessWidget {
   final VoidCallback? onDuplicate;
   final VoidCallback? onReset;
 
+  /// onSavePreset, given, is its ⋯ menu's Save as a preset: it and its
+  /// settings, kept with the canvas's presets.
+  final VoidCallback? onSavePreset;
+
+  /// frozen is whether it is in the part of its chain frozen into the
+  /// channel's sounds (see CanvasController.freezeChain): shown as frozen,
+  /// and not to be changed until unfrozen. onFreeze, given, freezes the
+  /// chain up to it; onUnfreeze puts the chain back.
+  final bool frozen;
+  final VoidCallback? onFreeze;
+  final VoidCallback? onUnfreeze;
+
   const DeviceFrame({
     required this.id,
     required this.title,
@@ -386,6 +544,10 @@ class DeviceFrame extends StatelessWidget {
     this.help = "",
     this.onDuplicate,
     this.onReset,
+    this.onSavePreset,
+    this.frozen = false,
+    this.onFreeze,
+    this.onUnfreeze,
     super.key,
   });
 
@@ -470,8 +632,38 @@ class DeviceFrame extends StatelessWidget {
         child: Stack(children: [
           Column(children: [
             header,
-            Expanded(child: Opacity(opacity: off ? 0.55 : 1, child: inside)),
+            Expanded(
+                child: IgnorePointer(
+                    ignoring: frozen,
+                    child: Opacity(opacity: off ? 0.55 : 1, child: inside))),
           ]),
+          if (frozen && !folded)
+            Positioned(
+              right: 8,
+              bottom: 6,
+              child: IgnorePointer(
+                child: Container(
+                  key: ValueKey("deviceFrozen-$id"),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF5AB4E6).withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                        color: const Color(0xFF5AB4E6).withValues(alpha: 0.6)),
+                  ),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.ac_unit, size: 11, color: Color(0xFF9FD4F2)),
+                    SizedBox(width: 3),
+                    Text("FROZEN",
+                        style: TextStyle(
+                            fontSize: 9,
+                            letterSpacing: 0.6,
+                            color: Color(0xFF9FD4F2))),
+                  ]),
+                ),
+              ),
+            ),
           if (!folded)
             Positioned(
               left: 0,
@@ -498,6 +690,7 @@ class DeviceFrame extends StatelessWidget {
     var k = key.value;
     return k.startsWith("deviceLeft-") ||
         k.startsWith("deviceRight-") ||
+        k.startsWith("menu-") ||
         k.contains("Remove");
   }
 
@@ -555,12 +748,38 @@ class DeviceFrame extends StatelessWidget {
             onPressed: onReset),
       ...others,
     ];
-    if (top.isEmpty && removes.isEmpty) return const [];
+    if (top.isEmpty &&
+        removes.isEmpty &&
+        onSavePreset == null &&
+        onFreeze == null &&
+        onUnfreeze == null) {
+      return const [];
+    }
     return [
       chainMenuHeading(look, title),
       ...top,
-      if (help.isNotEmpty) ...[
+      if (help.isNotEmpty ||
+          onSavePreset != null ||
+          onFreeze != null ||
+          onUnfreeze != null)
         chainMenuDivider(look),
+      if (onUnfreeze != null)
+        chainMenuItem(look,
+            key: ValueKey("deviceUnfreeze-$id"),
+            text: "Unfreeze the chain",
+            onPressed: onUnfreeze)
+      else if (onFreeze != null)
+        chainMenuItem(look,
+            key: ValueKey("deviceFreeze-$id"),
+            text: "Freeze the chain up to here",
+            hint: "plays a copy",
+            onPressed: onFreeze),
+      if (onSavePreset != null)
+        chainMenuItem(look,
+            key: ValueKey("deviceSavePreset-$id"),
+            text: "Save as a preset",
+            onPressed: onSavePreset),
+      if (help.isNotEmpty) ...[
         SubmenuButton(
           key: ValueKey("deviceAbout-$id"),
           style: chainMenuItemStyle(look),
@@ -1380,13 +1599,20 @@ class _EqDeviceState extends State<EqDevice>
           var look = MixerLook.of(context);
           var studio = look.studio;
           var picked = _picked ?? EqSlot.mid;
+          var hooks = widget.channel == null
+              ? (frozen: false, onFreeze: null, onUnfreeze: null)
+              : freezeHooks(
+                  context, widget.controller, widget.channel!, chainEq);
           return DeviceFrame(
             id: "eq",
+            frozen: hooks.frozen,
+            onFreeze: hooks.onFreeze,
+            onUnfreeze: hooks.onUnfreeze,
             title: widget.channel == null ? "Master EQ" : "Channel EQ",
             help: "Shapes the sound's tone. Drag a band's point on the curve: "
-                "across for where, up and down for how much; the wheel over "
-                "it for how wide. A chip picks a band and shows its knobs; "
-                "pressed again, switches it off.",
+                "across for where, up and down for how much; its Q knob for "
+                "how wide. A chip picks a band and shows its knobs; pressed "
+                "again, switches it off.",
             skin: DeviceSkin.studio(studio),
             // The prototype's Tone family: its own colour and mark.
             icon: Icons.equalizer,
@@ -1399,6 +1625,14 @@ class _EqDeviceState extends State<EqDevice>
             width: EqDevice.width,
             height: widget.height,
             actions: [
+              if (widget.channel case var owner?
+                  when widget.controller.canRemovePart(owner, chainEq))
+                IconButton(
+                  key: const ValueKey("deviceRemove-eq"),
+                  tooltip: "Take the EQ out",
+                  icon: const Icon(Icons.close),
+                  onPressed: () => widget.controller.removePart(owner, chainEq),
+                ),
               DeviceMove(
                   id: "eq",
                   canLeft: strip.inChain ? strip.canMove(chainEq).$1 : !first,
@@ -1989,8 +2223,15 @@ class _CompDeviceState extends State<CompDevice>
           var first = strip.compFirst;
           var look = MixerLook.of(context);
           var studio = look.studio;
+          var hooks = widget.channel == null
+              ? (frozen: false, onFreeze: null, onUnfreeze: null)
+              : freezeHooks(
+                  context, widget.controller, widget.channel!, chainComp);
           return DeviceFrame(
             id: "comp",
+            frozen: hooks.frozen,
+            onFreeze: hooks.onFreeze,
+            onUnfreeze: hooks.onUnfreeze,
             title: widget.channel == null ? "Glue" : "Compressor",
             help: "Turns the sound down when it goes over the Threshold, by "
                 "the Ratio, so loud and quiet sit closer. Attack and Release "
@@ -2007,6 +2248,15 @@ class _CompDeviceState extends State<CompDevice>
             width: CompDevice.width,
             height: widget.height,
             actions: [
+              if (widget.channel case var owner?
+                  when widget.controller.canRemovePart(owner, chainComp))
+                IconButton(
+                  key: const ValueKey("deviceRemove-comp"),
+                  tooltip: "Take the compressor out",
+                  icon: const Icon(Icons.close),
+                  onPressed: () =>
+                      widget.controller.removePart(owner, chainComp),
+                ),
               DeviceMove(
                   id: "comp",
                   canLeft: strip.inChain ? strip.canMove(chainComp).$1 : !first,
@@ -3231,6 +3481,16 @@ class _DuckDeviceState extends State<DuckDevice>
           return DeviceFrame(
             id: "duck",
             title: "Ducker",
+            actions: [
+              if (widget.controller.canRemovePart(widget.channel, stripDuck))
+                IconButton(
+                  key: const ValueKey("deviceRemove-duck"),
+                  tooltip: "Take the Ducker out",
+                  icon: const Icon(Icons.close),
+                  onPressed: () =>
+                      widget.controller.removePart(widget.channel, stripDuck),
+                ),
+            ],
             skin: DeviceSkin.silver,
             icon: deviceGroupLook(DeviceGroup.dynamics).$1,
             accent: deviceGroupLook(DeviceGroup.dynamics).$2,
@@ -3265,25 +3525,7 @@ class _DuckDeviceState extends State<DuckDevice>
                     SizedBox(width: 280, child: _screen(duck, write)),
                     const SizedBox(width: 10),
                     // How far the others are down now.
-                    SizedBox(
-                      width: 22,
-                      child: Column(children: [
-                        const Text("Now",
-                            style: TextStyle(fontSize: 10, color: _silverDim)),
-                        const SizedBox(height: 4),
-                        Expanded(
-                            child: CustomPaint(
-                                key: const ValueKey("duckNow"),
-                                size: Size.infinite,
-                                painter: _ReductionBar(_now))),
-                        const SizedBox(height: 4),
-                        Text(_now > 0.05 ? "−${_now.toStringAsFixed(1)}" : "0",
-                            style: const TextStyle(
-                                fontSize: 9,
-                                fontFeatures: [FontFeature.tabularFigures()],
-                                color: _silverInk)),
-                      ]),
-                    ),
+                    _NowMeter(barKey: const ValueKey("duckNow"), now: _now),
                     const SizedBox(width: 12),
                     Expanded(child: _controls(duck, write)),
                   ]),
@@ -3292,23 +3534,30 @@ class _DuckDeviceState extends State<DuckDevice>
         },
       );
 
-  Widget _segment(String label, bool on, Key key, VoidCallback onTap) =>
-      GestureDetector(
-        key: key,
-        onTap: onTap,
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: on ? const Color(0xFF4A5059) : const Color(0xFFD4D7DC),
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: const Color(0xFF9A9EA5)),
-          ),
-          child: Text(label,
-              style: TextStyle(
-                  fontSize: 11, color: on ? Colors.white : _silverInk)),
+  /// _segment is one of the card's choices, as the Chain's chips: the one
+  /// picked filled in the accent, the rest outlined on the dark card.
+  Widget _segment(String label, bool on, Key key, VoidCallback onTap) {
+    var look = MixerLook.of(context);
+    return GestureDetector(
+      key: key,
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: on ? look.colors.primary : look.studio.inset,
+          borderRadius: BorderRadius.circular(5),
+          border:
+              Border.all(color: on ? look.colors.primary : look.studio.edge),
         ),
-      );
+        child: Text(label,
+            maxLines: 1,
+            style: TextStyle(
+                fontSize: 11,
+                color: on ? look.colors.onPrimary : look.studio.text)),
+      ),
+    );
+  }
 
   /// _screen is the dip drawn on the cream screen, and under it its shape.
   Widget _screen(
@@ -3410,6 +3659,46 @@ class _DuckDeviceState extends State<DuckDevice>
   }
 }
 
+/// _NowMeter is how far the ducked channels are down now: a bar, under a
+/// label that never wraps, over the reading -- in dB while it is ducking,
+/// and nothing when it is not.
+class _NowMeter extends StatelessWidget {
+  final Key barKey;
+  final double now;
+  const _NowMeter({required this.barKey, required this.now});
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 30,
+        child: Column(children: [
+          const FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text("Now",
+                maxLines: 1, style: TextStyle(fontSize: 10, color: _silverDim)),
+          ),
+          const SizedBox(height: 4),
+          Expanded(
+              child: CustomPaint(
+                  key: barKey,
+                  size: Size.infinite,
+                  painter: _ReductionBar(now))),
+          const SizedBox(height: 4),
+          SizedBox(
+            height: 13,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(now > 0.05 ? "−${now.toStringAsFixed(1)} dB" : "",
+                  maxLines: 1,
+                  style: const TextStyle(
+                      fontSize: 9,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                      color: _silverInk)),
+            ),
+          ),
+        ]),
+      );
+}
+
 /// DuckedDevice is the Ducker as the channel it turns down sees it: first in
 /// its chain, as the dip is made to its sounds as they come in. Which voices
 /// duck it, the dips drawn across the run with the playhead, how far down it
@@ -3469,6 +3758,14 @@ class _DuckedDeviceState extends State<DuckedDevice>
           return DeviceFrame(
             id: "ducked",
             title: "Ducker",
+            actions: [
+              IconButton(
+                key: const ValueKey("deviceRemove-ducked"),
+                tooltip: "Take it out: this channel is not ducked",
+                icon: const Icon(Icons.close),
+                onPressed: () => c.removePart(widget.channel, stripDucked),
+              ),
+            ],
             skin: DeviceSkin.silver,
             icon: deviceGroupLook(DeviceGroup.dynamics).$1,
             accent: deviceGroupLook(DeviceGroup.dynamics).$2,
@@ -3529,31 +3826,8 @@ class _DuckedDeviceState extends State<DuckedDevice>
                               ),
                             ),
                             const SizedBox(width: 10),
-                            SizedBox(
-                              width: 22,
-                              child: Column(children: [
-                                const Text("Now",
-                                    style: TextStyle(
-                                        fontSize: 10, color: _silverDim)),
-                                const SizedBox(height: 4),
-                                Expanded(
-                                    child: CustomPaint(
-                                        key: const ValueKey("duckedNow"),
-                                        size: Size.infinite,
-                                        painter: _ReductionBar(_now))),
-                                const SizedBox(height: 4),
-                                Text(
-                                    _now > 0.05
-                                        ? "−${_now.toStringAsFixed(1)}"
-                                        : "0",
-                                    style: const TextStyle(
-                                        fontSize: 9,
-                                        fontFeatures: [
-                                          FontFeature.tabularFigures()
-                                        ],
-                                        color: _silverInk)),
-                              ]),
-                            ),
+                            _NowMeter(
+                                barKey: const ValueKey("duckedNow"), now: _now),
                           ]),
                     ),
                     const SizedBox(height: 6),
@@ -3781,9 +4055,6 @@ class ParamDevice extends StatelessWidget {
     var (icon, accent) = deviceGroupLook(device.kind.group);
     var look = MixerLook.of(context);
     var skin = DeviceSkin.studio(look.studio);
-    // Only a channel's strip measures between its devices: see
-    // CanvasController.deviceLevels.
-    var isChannel = controller.timelineChannels.any((c) => c.key == owner);
     List<Widget> knobs(DeviceTier tier) => [
           for (var p in params)
             if (paramShown(device, p))
@@ -3835,6 +4106,19 @@ class ParamDevice extends StatelessWidget {
                   write(device.withBranches(branches), transient: transient),
               onCommit: controller.endInteraction,
             ),
+          // A macro's knobs set at random, and its settings kept as
+          // variations to come back to, as the prototype's Macros.
+          if (device.kind == DeviceKind.macro)
+            _MacroTools(
+              key: ValueKey("macroTools-$index"),
+              index: index,
+              device: device,
+              look: MixerLook.of(context),
+              onChanged: (next) {
+                write(next, transient: true);
+                controller.endInteraction();
+              },
+            ),
           // What a modulator moves: any knob of the chain's other devices.
           if (device.kind.modulates)
             ModTargets(
@@ -3878,12 +4162,19 @@ class ParamDevice extends StatelessWidget {
               device.kind == DeviceKind.follower)
             _sourceChannel(context, device, write, itself: true),
         ];
+    var hooks =
+        freezeHooks(context, controller, owner, deviceIdAt(devices, index));
     return DeviceFrame(
       id: deviceKey(deviceIdAt(devices, index)),
       title: device.kind.label,
       help: deviceAbout(device.kind),
+      frozen: hooks.frozen,
+      onFreeze: hooks.onFreeze,
+      onUnfreeze: hooks.onUnfreeze,
       onDuplicate: () => duplicateDevice(controller, owner, index),
       onReset: () => resetDevice(controller, owner, index),
+      onSavePreset: () =>
+          saveDevicePreset(context, device.kind.label, devices: [device]),
       skin: skin,
       on: device.on,
       onPower: (v) => write(device.switched(v)),
@@ -3902,6 +4193,36 @@ class ParamDevice extends StatelessWidget {
           : math.max(220.0, 24.0 + 72 * columns),
       height: height,
       actions: [
+        // Auto-tune's notes: in the Pitch editor, or made a MIDI channel.
+        if (device.kind == DeviceKind.autoTune &&
+            controller.pitchElementOf(owner) != null) ...[
+          IconButton(
+            key: ValueKey("autoTunePitch-$index"),
+            tooltip: "Open the Pitch editor",
+            icon: const Icon(Icons.open_in_new),
+            onPressed: () => controller.showPitch(owner),
+          ),
+          IconButton(
+            key: ValueKey("menu-autoTuneToMidi-$index"),
+            tooltip: "Notes to MIDI",
+            icon: const Icon(Icons.piano),
+            onPressed: () {
+              var scale = device.value("scale").round();
+              var why = controller.notesToMidi(owner,
+                  root: device.value("key").round(),
+                  steps: scale == 0
+                      ? const []
+                      : scaleSteps[
+                          (scale - 1).clamp(0, scaleSteps.length - 1)]);
+              try {
+                var snack = SnackBarModel.of(context);
+                why == null
+                    ? snack.success("Its notes are on a new MIDI channel")
+                    : snack.error(why);
+              } catch (_) {}
+            },
+          ),
+        ],
         ...deviceMoveButtons(controller, owner, index, _headerInkLight),
         IconButton(
           key: ValueKey("deviceRemove-$index"),
@@ -3936,7 +4257,9 @@ class ParamDevice extends StatelessWidget {
           : DeviceLevels(
               key: ValueKey("deviceLevels-$index"),
               controller: controller,
-              channel: isChannel ? owner : null,
+              // Measured on any strip: a channel's, a return's, the
+              // master's or a scene's bus.
+              channel: owner,
               // Its place in the chain, where its levels are read: the EQ and
               // compressor can be before it.
               index:
@@ -4034,11 +4357,76 @@ class AddDeviceSlot extends StatelessWidget {
       super.key});
 
   @override
-  Widget build(BuildContext context) => AddSlot(
+  Widget build(BuildContext context) {
+    // A sound's channel can be given a generator: Speech, which makes its
+    // clips. A MIDI channel has its instrument; a bus, a video's sound or
+    // one with speech already, none.
+    var lane =
+        controller.timelineChannels.where((l) => l.key == owner).firstOrNull;
+    var canSpeak = lane != null &&
+        !lane.video &&
+        !controller.instrumentChannel(owner) &&
+        controller.speechOf(owner) == null;
+    devicePresets.load();
+    return ListenableBuilder(
+      listenable: devicePresets,
+      builder: (context, _) => AddSlot(
         id: "addDeviceOpen",
         title: "Add a device",
         height: height,
         groups: [
+          // Kept with Save as a preset: a device, or a whole chain.
+          if (devicePresets.presets.where((p) => presetHolds(p)) case var kept
+              when kept.isNotEmpty)
+            (
+              "Presets",
+              [
+                for (var p in kept)
+                  (
+                    "addPreset-${p.id}",
+                    p.name,
+                    () => useDevicePreset(controller, owner, p.data),
+                  ),
+              ]
+            ),
+          // The strip's own parts taken out, to put back.
+          if ([
+            for (var part in removableParts)
+              if (controller.partRemoved(owner, part)) part
+          ]
+              case var gone when gone.isNotEmpty)
+            (
+              "Channel strip",
+              [
+                for (var part in gone)
+                  (
+                    "addPart-$part",
+                    switch (part) {
+                      chainEq => "EQ",
+                      chainComp => "Compressor",
+                      stripDucked => "Ducked by others",
+                      _ => "Ducker",
+                    },
+                    () => controller.restorePart(owner, part),
+                  ),
+              ]
+            ),
+          if (canSpeak)
+            (
+              "Generators",
+              [
+                (
+                  "addDevice-speech",
+                  "Speech",
+                  () {
+                    controller.beginInteraction();
+                    controller.setSpeech(owner, const SpeechSpec());
+                    controller.endInteraction();
+                    controller.showSpeech(owner);
+                  }
+                ),
+              ]
+            ),
           for (var group in DeviceGroup.values)
             (
               group.label,
@@ -4062,7 +4450,9 @@ class AddDeviceSlot extends StatelessWidget {
               ]
             ),
         ],
-      );
+      ),
+    );
+  }
 }
 
 /// AddSlot is the chain's "+", as the prototype draws it: a slim dashed slot
@@ -4444,6 +4834,8 @@ class MidiEffectDevice extends StatelessWidget {
       id: "midi$index",
       title: effect.kind.label,
       onDuplicate: () => edit((e) => e..insert(index + 1, e[index])),
+      onSavePreset: () =>
+          saveDevicePreset(context, effect.kind.label, midi: [effect]),
       onReset: () =>
           edit((e) => e..[index] = MidiEffect(e[index].kind, on: e[index].on)),
       help: "Done to the notes before the instrument plays them.",
@@ -4519,11 +4911,29 @@ class AddMidiEffectSlot extends StatelessWidget {
       super.key});
 
   @override
-  Widget build(BuildContext context) => AddSlot(
+  Widget build(BuildContext context) {
+    devicePresets.load();
+    return ListenableBuilder(
+      listenable: devicePresets,
+      builder: (context, _) => AddSlot(
         id: "addMidiOpen",
         title: "Add a MIDI effect",
         height: height,
         groups: [
+          // Kept with Save as a preset: its MIDI effects, after the rest.
+          if (devicePresets.presets.where((p) => presetHolds(p, midi: true))
+              case var kept when kept.isNotEmpty)
+            (
+              "Presets",
+              [
+                for (var p in kept)
+                  (
+                    "addPreset-${p.id}",
+                    p.name,
+                    () => useDevicePreset(controller, channel, p.data),
+                  ),
+              ]
+            ),
           (
             "MIDI effects",
             [
@@ -4546,7 +4956,9 @@ class AddMidiEffectSlot extends StatelessWidget {
             ]
           ),
         ],
-      );
+      ),
+    );
+  }
 }
 
 // ---- The devices that only listen: a tuner, a spectrum
@@ -4594,7 +5006,8 @@ class _ListenerDeviceState extends State<ListenerDevice>
       return;
     }
     var bins = c.spectrum(widget.owner == mixerMasterKey ? null : widget.owner);
-    if (bins == null || !(c.playing || c.sessionActive)) return;
+    // Kept while there is sound: played, a clip launched, or keys pressed.
+    if (bins == null || !_loud) return;
     _history.add(Float32List.fromList(bins));
     if (_history.length > _historyLength) _history.removeAt(0);
   }
@@ -4819,12 +5232,19 @@ class _ListenerDeviceState extends State<ListenerDevice>
 
     var (icon, accent) = deviceGroupLook(device.kind.group);
     var skin = DeviceSkin.studio(studio);
+    var hooks = freezeHooks(
+        context, c, widget.owner, deviceIdAt(devices, widget.index));
     return DeviceFrame(
       id: deviceKey(deviceIdAt(devices, widget.index)),
       title: device.kind.label,
       help: deviceAbout(device.kind),
+      frozen: hooks.frozen,
+      onFreeze: hooks.onFreeze,
+      onUnfreeze: hooks.onUnfreeze,
       onDuplicate: () => duplicateDevice(c, widget.owner, widget.index),
       onReset: () => resetDevice(c, widget.owner, widget.index),
+      onSavePreset: () =>
+          saveDevicePreset(context, device.kind.label, devices: [device]),
       skin: skin,
       // Its screen is all of it, and its few settings: it only listens.
       display: body,
@@ -5242,7 +5662,12 @@ class _DeviceLevelsState extends State<DeviceLevels>
             device,
             ScreenMoment(
                 t: _t,
-                live: widget.controller.playing,
+                // Moving while sound passes it: played, or pressed live.
+                live: widget.controller.playing || sounding,
+                // What a tuning device hears there now.
+                hz: device.kind == DeviceKind.autoTune && widget.channel != null
+                    ? widget.controller.pitch(widget.channel!)?.hz
+                    : null,
                 level: last == null
                     ? 0
                     : ((last.$1 + 60) / 60).clamp(0.0, 1.0).toDouble(),

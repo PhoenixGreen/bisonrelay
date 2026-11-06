@@ -863,8 +863,9 @@ extension CanvasTools on CanvasController {
   }
 
   /// useNoteTool uses [tool] on the open MIDI clip's picked notes -- or all
-  /// of them.
-  void useNoteTool(NoteTool tool) {
+  /// of them -- on [grid] beats where it steps (the piano roll's grid; a
+  /// sixteenth otherwise).
+  void useNoteTool(NoteTool tool, {double grid = 0.25}) {
     var t = clipEditing;
     var clip = editedClip;
     // A part's notes, in its piano roll.
@@ -874,6 +875,7 @@ extension CanvasTools on CanvasController {
       setRollContent(
           notes: applyNoteTool(tool, content.notes, rollSelected,
               scale: scaleOf(roll.channel),
+              grid: grid,
               loopEnd: content.beats,
               seed: _noteToolPresses++));
       return;
@@ -882,6 +884,7 @@ extension CanvasTools on CanvasController {
     var bpb = _document.audio.beatsPerBar;
     var notes = applyNoteTool(tool, clip.notes, rollSelected,
         scale: scaleOf(t.channel),
+        grid: grid,
         loopEnd: clip.loopEnd(bpb),
         seed: _noteToolPresses++);
     editClip((c) => c.copyWith(notes: notes));
@@ -1357,6 +1360,54 @@ extension CanvasTools on CanvasController {
             },
     );
     setInstrument(e, part, transient: transient);
+  }
+
+  /// rollStep is the piano roll's Step input: see _rollStep.
+  bool get rollStep => _rollStep;
+
+  /// setRollStep turns Step input on or off, its notes [grid] beats long.
+  void setRollStep(bool on, {double? grid}) {
+    _rollStep = on;
+    if (grid != null) _rollStepGrid = grid;
+    _stepAt = null;
+    _stepHeld.clear();
+    notifyListeners();
+  }
+
+  /// rollStepGrid is how long a step's notes are, and how far it moves on.
+  set rollStepGrid(double beats) => _rollStepGrid = math.max(1 / 64, beats);
+
+  /// stepNoteOn writes [key] at the step's place, if Step input is on and
+  /// the piano roll shows [channel]'s notes. The first key of a chord sets
+  /// the place; the rest join it.
+  void stepNoteOn(String channel, int key, int velocity) {
+    var t = pianoRoll;
+    // The roll on screen: a part's, or a clip's in its clip editor.
+    var shown = pianoRollShown || (clipEditorShown && t?.row != null);
+    if (!_rollStep || !shown || t == null || t.channel != channel) return;
+    var content = rollContent;
+    if (content == null) return;
+    var at = _stepAt ??= rollCursor;
+    // A clip's notes stop at its end.
+    if (t.row != null && at >= content.beats - 1e-6) return;
+    _stepHeld.add(key);
+    setRollContent(
+        notes: [...content.notes, MidiNote(key, at, _rollStepGrid, velocity)]);
+  }
+
+  /// stepNoteOff lets [key] go: the last of a chord let go moves the
+  /// cursor a step on.
+  void stepNoteOff(int key) {
+    if (!_stepHeld.remove(key) || _stepHeld.isNotEmpty) return;
+    var at = _stepAt;
+    _stepAt = null;
+    if (at != null) rollCursor = at + _rollStepGrid;
+  }
+
+  /// stepRest moves Step input's cursor a step on without a note.
+  void stepRest() {
+    if (!_rollStep) return;
+    rollCursor = rollCursor + _rollStepGrid;
   }
 
   /// rollCursor is where in what the piano roll shows a paste goes, in

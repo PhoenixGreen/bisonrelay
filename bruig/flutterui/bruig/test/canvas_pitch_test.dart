@@ -10,6 +10,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/pitch_edit.dart';
+import 'package:bruig/plugin_system/canvas/ui/pitch_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -105,6 +107,75 @@ void main() {
     // Early on still near where it was; later on the note.
     expect(pitchAt(slow, 0.1), greaterThan(445));
     expect(pitchAt(slow, 1.8), closeTo(440, 3));
+  });
+
+  // The prototype's Vibrato: the singer's own vibrato kept, as sung or not
+  // at all, while the note under it goes onto the scale.
+  test("Vibrato keeps the singer's vibrato round the note it is tuned to", () {
+    // A sharp A (450Hz), sung with a third of a semitone of vibrato at 5Hz.
+    Float32List sung(double seconds) {
+      var n = (seconds * 48000).round();
+      var x = Float32List(n);
+      var phase = 0.0;
+      for (var i = 0; i < n; i++) {
+        var t = i / 48000;
+        var hz = 450 * math.pow(2, 0.33 * math.sin(2 * math.pi * 5 * t) / 12);
+        phase += 2 * math.pi * hz / 48000;
+        x[i] = 0.5 * math.sin(phase);
+      }
+      return x;
+    }
+
+    List<double> heard(double vibrato) {
+      var out = through(
+          AutoTune(MixDevice(DeviceKind.autoTune, values: {
+            "retune": 0,
+            "amount": 1,
+            "humanise": 0,
+            "vibrato": vibrato,
+          })),
+          sung(2));
+      return [for (var t = 1.0; t < 1.4; t += 0.025) pitchAt(out, t)];
+    }
+
+    double spread(List<double> hz) => hz.reduce(math.max) - hz.reduce(math.min);
+    double mean(List<double> hz) => hz.reduce((a, b) => a + b) / hz.length;
+    var flat = heard(0), kept = heard(1);
+    expect(mean(flat), closeTo(440, 4), reason: "onto A");
+    expect(spread(flat), lessThan(6), reason: "its vibrato taken out");
+    expect(mean(kept), closeTo(440, 5), reason: "still round A");
+    expect(spread(kept), greaterThan(10), reason: "its vibrato kept");
+  });
+
+  // The prototype's Auto-tune "Notes to MIDI": what was sung, played by a
+  // new MIDI channel from where the recording starts, in the key.
+  test("Notes to MIDI makes a MIDI channel of what was sung", () {
+    var c = CanvasController(
+        const CanvasDocument(frames: 200, elements: [
+          AudioElement(ElementBase(id: "v", name: "Vocal"),
+              clip: MediaClip(at: 24, timed: true, playlist: [
+                MediaSource(
+                    assetId: "t",
+                    length: 3,
+                    start: 0.5,
+                    pitch: PitchEdit("t", notes: [
+                      PitchNote(0.6, 1.0, 60.3),
+                      PitchNote(1.0, 1.5, 61.2),
+                    ])),
+              ])),
+        ]),
+        audioEngine: FakeEngine({"t": 3}));
+    addTearDown(c.dispose);
+    expect(c.notesToMidi("v", root: 0, steps: const [0, 2, 4, 5, 7, 9, 11]),
+        isNull);
+    var made = c.document.elements.whereType<AudioElement>().last;
+    expect(made.instrument, isNotNull);
+    expect(made.clip.at, 24, reason: "where the recording starts");
+    var notes = made.instrument!.notes;
+    expect([for (var n in notes) n.key], [60, 62], reason: "in C major");
+    expect(notes[0].start, closeTo(0.1, 1e-9));
+    expect(notes[1].start, closeTo(0.5, 1e-9));
+    expect(c.notesToMidi("nothing"), isNotNull);
   });
 
   test("a tuner on a channel hears its note through the mix", () {

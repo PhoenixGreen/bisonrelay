@@ -650,7 +650,18 @@ class ChannelMix {
   /// master.
   final String output;
 
+  /// frozen, when it is, is the start of the chain rendered into its sounds
+  /// -- see FrozenChain -- and what to put back when it is unfrozen.
+  final FrozenChain? frozen;
+
+  /// removed are the strip's own parts taken out of its chain, as any
+  /// device is: chainEq, chainComp, or stripDuck. Taken out, each is off
+  /// and not shown; its settings are kept for when it is put back.
+  final List<String> removed;
+
   const ChannelMix({
+    this.removed = const [],
+    this.frozen,
     this.output = "",
     this.automation = const [],
     this.speech,
@@ -685,7 +696,9 @@ class ChannelMix {
       speech == null &&
       vocaliser == null &&
       automation.isEmpty &&
-      output.isEmpty;
+      output.isEmpty &&
+      frozen == null &&
+      removed.isEmpty;
 
   /// sendDb is how much goes to return [id], or null for none.
   double? sendDb(String id) => sends[id];
@@ -708,6 +721,8 @@ class ChannelMix {
 
   /// withSurround places the channel; null puts it back on the front pair.
   ChannelMix withSurround(SurroundPan? pan) => ChannelMix(
+        removed: removed,
+        frozen: frozen,
         output: output,
         automation: automation,
         speech: speech,
@@ -728,6 +743,8 @@ class ChannelMix {
 
   /// withLfe sets how much goes to the LFE; null sends none.
   ChannelMix withLfe(double? db) => ChannelMix(
+        removed: removed,
+        frozen: frozen,
         output: output,
         automation: automation,
         speech: speech,
@@ -763,8 +780,13 @@ class ChannelMix {
     bool noVocaliser = false,
     List<AutomationLane>? automation,
     String? output,
+    FrozenChain? frozen,
+    bool noFrozen = false,
+    List<String>? removed,
   }) =>
       ChannelMix(
+        removed: removed ?? this.removed,
+        frozen: noFrozen ? null : frozen ?? this.frozen,
         output: output ?? this.output,
         automation: automation ?? this.automation,
         speech: noSpeech ? null : speech ?? this.speech,
@@ -801,9 +823,17 @@ class ChannelMix {
         if (automation.isNotEmpty)
           "automation": [for (var a in automation) a.toJson()],
         if (output.isNotEmpty) "output": output,
+        if (frozen case var f?) "frozen": f.toJson(),
+        if (removed.isNotEmpty) "removed": removed,
       };
 
   factory ChannelMix.fromJson(Map<String, dynamic> json) => ChannelMix(
+        removed: [
+          if (json["removed"] case List list)
+            for (var r in list)
+              if (r is String && removableParts.contains(r)) r,
+        ],
+        frozen: FrozenChain.fromJson(json["frozen"]),
         automation: [
           if (json["automation"] case List list)
             for (var raw in list)
@@ -845,6 +875,73 @@ class ChannelMix {
         ],
         output: json["output"] is String ? json["output"] as String : "",
       );
+}
+
+/// stripDuck is a strip's Ducker among ChannelMix.removed; stripDucked
+/// the card of the Duckers that turn it down (its first, when another
+/// channel ducks it).
+const String stripDuck = "duck", stripDucked = "ducked";
+
+/// removableParts are the strip's own parts that can be taken out of its
+/// chain: its EQ, its compressor, its Ducker, and its being ducked.
+const List<String> removableParts = [
+  chainEq,
+  chainComp,
+  stripDuck,
+  stripDucked
+];
+
+/// FrozenChain is a channel's chain frozen up to a step, as the
+/// prototype's "Freeze the chain up to here": each of its sounds rendered
+/// through the chain's start, once, and played from that copy -- the steps
+/// it went through switched off, so they are not run twice.
+class FrozenChain {
+  /// upTo is the last step frozen: a device's id, chainEq or chainComp.
+  final String upTo;
+
+  /// wasOn is each step frozen, and whether it was switched on: as they
+  /// are put back.
+  final Map<String, bool> wasOn;
+
+  /// playlists are each sound's own files before, by element id, as
+  /// MediaSource JSON: put back when unfrozen.
+  final Map<String, List<Map<String, dynamic>>> playlists;
+
+  const FrozenChain(
+      {required this.upTo, required this.wasOn, required this.playlists});
+
+  /// steps are the steps frozen.
+  Set<String> get steps => wasOn.keys.toSet();
+
+  Map<String, dynamic> toJson() => {
+        "upTo": upTo,
+        "wasOn": wasOn,
+        "playlists": playlists,
+      };
+
+  static FrozenChain? fromJson(Object? json) {
+    if (json is! Map) return null;
+    var upTo = json["upTo"];
+    if (upTo is! String) return null;
+    return FrozenChain(
+      upTo: upTo,
+      wasOn: {
+        if (json["wasOn"] case Map raw)
+          for (var e in raw.entries)
+            if (e.key is String && e.value is bool)
+              e.key as String: e.value as bool,
+      },
+      playlists: {
+        if (json["playlists"] case Map raw)
+          for (var e in raw.entries)
+            if (e.key is String && e.value is List)
+              e.key as String: [
+                for (var s in e.value as List)
+                  if (s is Map) Map<String, dynamic>.from(s),
+              ],
+      },
+    );
+  }
 }
 
 /// loudnessTargets are the loudness targets offered, one list for every

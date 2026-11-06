@@ -150,7 +150,11 @@ class _Worker {
   Timer? _pump, _report;
 
   static const int block = 512;
+
+  /// lead is how far ahead it renders: a steady 50ms. Ken heard a shorter
+  /// one, changed as live notes came and went, as worse: the timing moved.
   static const double lead = 0.05;
+
   static const int _limitBytes = 1 << 30;
   final Float32List _l = Float32List(block), _r = Float32List(block);
   final Float32List _interleaved = Float32List(block * 2);
@@ -436,6 +440,8 @@ class _Worker {
         had.$2.sampler
           ..shape = part.shape
           ..noteOn(m[3] as int, m[4] as int);
+        // Into the next block now, rather than at the pump's next tick.
+        _fill();
       case "noteOff":
         live[m[1]]?.$2.sampler.noteOff(m[2] as int);
       case "control":

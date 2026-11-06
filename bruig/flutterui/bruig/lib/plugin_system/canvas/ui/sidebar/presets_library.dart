@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/device_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/pitch_views.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_panels.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_row.dart';
@@ -34,7 +35,8 @@ enum PresetFilter {
   football("Football"),
   text("Text"),
   looks("Looks"),
-  brushes("Brushes");
+  brushes("Brushes"),
+  sound("Sound");
 
   final String label;
   const PresetFilter(this.label);
@@ -160,6 +162,10 @@ class _CanvasPresetsLibraryState extends State<CanvasPresetsLibrary> {
         if (shows(PresetFilter.brushes)) ...[
           heading("Brushes"),
           _Brushes(controller: controller, query: query),
+        ],
+        if (shows(PresetFilter.sound)) ...[
+          heading("Devices and chains"),
+          _SoundPresets(controller: controller, query: query),
         ],
       ],
     );
@@ -321,6 +327,36 @@ class _Looks extends StatelessWidget {
             return;
           }
           controller.changeImage(withLookApplied(e, p.data));
+        },
+      );
+}
+
+/// _SoundPresets are the sound devices and chains kept with a device's or
+/// the Chain's "Save as a preset": used, they go on the end of the chain
+/// the Chain shows.
+class _SoundPresets extends StatelessWidget {
+  final CanvasController controller;
+  final String query;
+  const _SoundPresets({required this.controller, required this.query});
+
+  @override
+  Widget build(BuildContext context) => _StoreList(
+        store: devicePresets,
+        query: query,
+        icon: Icons.tune,
+        empty: "A device or a chain is kept from its ⋯ in the Chain: "
+            "Save as a preset.",
+        onUse: (context, p) {
+          var owner = controller.chainShowsMotion || !controller.effectsOpen
+              ? null
+              : controller.effectsOf ?? controller.effectsChannel;
+          if (owner == null) {
+            _needs(context, "Open a channel's Chain to add it to.");
+            return;
+          }
+          if (!useDevicePreset(controller, owner, p.data)) {
+            _needs(context, "Nothing in it goes on that chain.");
+          }
         },
       );
 }

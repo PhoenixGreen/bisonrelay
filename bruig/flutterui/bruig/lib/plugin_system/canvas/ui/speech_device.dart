@@ -1897,3 +1897,133 @@ class _VocaliserDeviceState extends State<VocaliserDevice> {
     );
   }
 }
+
+/// voiceColour is a voice channel's colour, as the prototype's.
+const voiceColour = Color(0xFFC45C8A);
+
+/// SpeechCard is a voice channel's generator in its chain, as the
+/// Instrument card is a MIDI channel's: Speech is chosen for a channel (the
+/// Add menu's Generators), not there on every one. It shows the script's
+/// first lines and the voice; its editor is the Speech tab.
+class SpeechCard extends StatelessWidget {
+  final CanvasController controller;
+  final String channel;
+  final bool folded;
+  final VoidCallback onFold;
+  final double height;
+  final DeviceSkin skin;
+
+  const SpeechCard({
+    required this.controller,
+    required this.channel,
+    required this.folded,
+    required this.onFold,
+    required this.height,
+    required this.skin,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var c = controller;
+    var spec = c.speechOf(channel);
+    var studio = MixerLook.of(context).studio;
+    if (spec == null) return const SizedBox();
+    var lines = [
+      for (var l in spec.lines)
+        if (l.text.trim().isNotEmpty) l.text.trim()
+    ];
+    var voice = spec.voiceName.isNotEmpty
+        ? spec.voiceName
+        : spec.voice.isNotEmpty
+            ? spec.voice
+            : "the default voice";
+    var muted = TextStyle(fontSize: 10, color: studio.muted);
+    var strong = TextStyle(fontSize: 10.5, color: studio.text);
+    Widget fact(String label, String value) => Row(children: [
+          SizedBox(width: 52, child: Text(label, style: muted)),
+          Flexible(
+              child: Text(value,
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: strong)),
+        ]);
+    return DeviceFrame(
+      id: "speechCard",
+      title: "Speech",
+      help: "Speaks a script: each line spoken is a clip on this channel. "
+          "Write the script and choose the voice in the Speech tab.",
+      skin: skin,
+      icon: Icons.record_voice_over,
+      accent: voiceColour,
+      glows: true,
+      folded: folded,
+      onFold: onFold,
+      width: 320,
+      height: height,
+      actions: [
+        IconButton(
+          key: const ValueKey("speechEdit"),
+          tooltip: "Open the script",
+          icon: const Icon(Icons.open_in_new),
+          onPressed: () => c.showSpeech(channel),
+        ),
+        IconButton(
+          key: const ValueKey("speechRemove"),
+          tooltip: "Take the speech off: what it spoke stays on the timeline",
+          icon: const Icon(Icons.close),
+          onPressed: () {
+            c.beginInteraction();
+            c.setVocaliser(channel, null);
+            c.setSpeech(channel, null);
+            c.endInteraction();
+          },
+        ),
+      ],
+      summary: "${lines.length} line${lines.length == 1 ? "" : "s"} · $voice",
+      foldedBody: const SizedBox(),
+      display: GestureDetector(
+        key: const ValueKey("speechCardScript"),
+        onDoubleTap: () => c.showSpeech(channel),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+              color: studio.display, borderRadius: BorderRadius.circular(4)),
+          child: lines.isEmpty
+              ? Center(
+                  child: Text("No script yet: open it to write one",
+                      textAlign: TextAlign.center, style: muted))
+              : ClipRect(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (var l in lines.take(6))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 3),
+                            child: Text(l,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 11, color: studio.text)),
+                          ),
+                      ]),
+                ),
+        ),
+      ),
+      controls: (tier) => [
+        SizedBox(
+          width: 200,
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                fact("Voice", voice),
+                const SizedBox(height: 3),
+                fact("Engine", spec.engine.label),
+                const SizedBox(height: 3),
+                fact("Lines", "${lines.length}"),
+              ]),
+        ),
+      ],
+      body: const SizedBox(),
+    );
+  }
+}

@@ -116,6 +116,15 @@ class AutoTune implements DeviceProcessor {
   final double _amount;
   final double _ease;
 
+  /// _retuneMs, _humanise and _vibrato: see the device's knobs. _slow is
+  /// the pitch heard, smoothed over about a tenth of a second -- the note
+  /// being sung, without its vibrato -- and _held how long it has been on
+  /// one note, in samples.
+  final double _retuneMs, _humanise, _vibrato;
+  double? _slow;
+  int _held = 0;
+  double _easeNow = 0;
+
   final Float32List _inL = Float32List(_size), _inR = Float32List(_size);
   final Float32List _outL = Float32List(_size), _outR = Float32List(_size);
   final Float32List _scratch = Float32List(_window);
@@ -139,10 +148,19 @@ class AutoTune implements DeviceProcessor {
             : scaleSteps[
                 (d.value("scale").round() - 1).clamp(0, scaleSteps.length - 1)],
         _amount = d.value("amount"),
+        _retuneMs = d.value("retune"),
+        _humanise = d.value("humanise"),
+        _vibrato = d.value("vibrato"),
         // Retune time as a per-sample one-pole coefficient.
         _ease = d.value("retune") <= 0
             ? 0
-            : math.exp(-1 / (d.value("retune") / 1000 * 48000));
+            : math.exp(-1 / (d.value("retune") / 1000 * 48000)) {
+    _easeNow = _ease;
+  }
+
+  /// _easeFor is the retune's per-sample coefficient for [ms].
+  static double _easeFor(double ms) =>
+      ms <= 0 ? 0 : math.exp(-1 / (ms / 1000 * 48000));
 
   void _listen() {
     // The last window of what came in, both sides as one.
@@ -154,12 +172,31 @@ class AutoTune implements DeviceProcessor {
     heard = p;
     if (p == null || p.clarity < 0.5) {
       _target = 1;
+      _slow = null;
       return;
     }
     _period = 48000 / p.hz;
     var midi = midiOf(p.hz);
-    var to = snapNote(midi, _root, _steps);
+    // The note sung, under its vibrato: a jump of more than half a
+    // semitone is a new note, taken at once.
+    var slow = _slow;
+    if (slow == null || (midi - slow).abs() > 0.7) {
+      slow = midi;
+      _held = 0;
+    } else {
+      // Heard every 256 samples: a tenth of a second's smoothing.
+      const k = 256 / (0.1 * 48000);
+      slow += (midi - slow) * k;
+      _held += 256;
+    }
+    _slow = slow;
+    // The note sung goes onto the scale; its vibrato is kept, by Vibrato.
+    var to = snapNote(slow, _root, _steps) + _vibrato * (midi - slow);
     _target = math.pow(2, (to - midi) * _amount / 12).toDouble();
+    // Held a while, eased on more slowly, by Humanise: up to three tenths
+    // of a second more once it has been held for a sixth of one.
+    var settled = (_held / (48000 / 6)).clamp(0.0, 1.0);
+    _easeNow = _easeFor(_retuneMs + _humanise * 300 * settled);
   }
 
   @override
@@ -173,7 +210,8 @@ class AutoTune implements DeviceProcessor {
         _sinceHeard = 0;
         _listen();
       }
-      _ratio = _ease == 0 ? _target : _target + (_ratio - _target) * _ease;
+      _ratio =
+          _easeNow == 0 ? _target : _target + (_ratio - _target) * _easeNow;
       // Lay down every slice due by now: two periods of the input [latency]
       // behind, spaced the period over the ratio, each scaled by 1/ratio
       // as that many more overlap.

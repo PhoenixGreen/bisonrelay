@@ -21,7 +21,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dart_audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart'
     show ffmpegDecode, readWholeAway;
-import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart' show mixRate;
+import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart'
+    show StripProcessor, mixRate;
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:math' as math;
@@ -3496,6 +3497,18 @@ class CanvasController extends ChangeNotifier {
   /// rollSelected are the notes picked in the piano roll, by their place in
   /// its notes: what the Notes tools change.
   final Set<int> rollSelected = {};
+
+  /// _rollStep is the piano roll's Step input: each key played writes a
+  /// note at the cursor, a grid step [_rollStepGrid] long; keys held
+  /// together a chord, and the cursor moves on when all are let go.
+  /// [_stepAt] is where the chord being held goes; [_stepHeld] its keys.
+  bool _rollStep = false;
+
+  /// _freezing are the channels being frozen now: see freezeChain.
+  final Set<String> _freezing = {};
+  double _rollStepGrid = 0.25;
+  double? _stepAt;
+  final Set<int> _stepHeld = {};
 
   (String, int)? _selectedSlot;
 

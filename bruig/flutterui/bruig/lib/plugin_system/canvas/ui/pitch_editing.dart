@@ -1,7 +1,11 @@
 import 'dart:async';
 import 'dart:isolate';
 
+import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart' show snapNote;
 import 'package:bruig/plugin_system/canvas/media/phrasing.dart' show readTake;
+import 'package:bruig/plugin_system/canvas/model/instrument.dart' show MidiNote;
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart'
+    show newInstrument;
 import 'package:bruig/plugin_system/canvas/media/pitch_retune.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart'
     show wav16;
@@ -34,6 +38,43 @@ void pitchTrackSeed(String assetId, List<double?> track) =>
     _tracks[assetId] = track;
 
 extension PitchEditing on CanvasController {
+  /// notesToMidi makes a MIDI channel playing [key]'s recording's notes --
+  /// as edited in the Pitch editor, or as sung -- each on the nearest note
+  /// of the scale [root] and [steps] give (every note, with none), from
+  /// where the recording starts: the prototype's Auto-tune "Notes to MIDI".
+  /// Answers why not, or null.
+  String? notesToMidi(String key, {int root = 0, List<int> steps = const []}) {
+    var e = pitchElementOf(key);
+    if (e == null) return "There is no recording on this channel.";
+    var source = e.clip.playlist.first;
+    var found = source.pitch?.notes ??
+        switch (pitchTrackOf(key)) {
+          var track? => findNotes(track),
+          null => null,
+        };
+    if (found == null) return "Still listening to it: try again in a moment.";
+    if (found.isEmpty) return "No notes were heard in it.";
+    var notes = [
+      for (var n in found)
+        if (n.end > source.start)
+          MidiNote(
+              snapNote(n.target, root, steps).round().clamp(0, 127),
+              (n.start - source.start).clamp(0.0, double.infinity),
+              n.length,
+              100),
+    ];
+    var made = newInstrument(document);
+    made = made
+        .copyWith(
+            instrument: made.instrument!.copyWith(notes: notes),
+            clip: made.clip.copyWith(at: e.clip.at))
+        .rebase(made.base.copyWith(
+            name: "${e.name.isEmpty ? "Recording" : e.name} notes",
+            visible: false)) as AudioElement;
+    addElement(made);
+    return null;
+  }
+
   /// pitchElementOf is the sound on channel [key] the Pitch editor works
   /// on: its first, with a recording.
   AudioElement? pitchElementOf(String key) {

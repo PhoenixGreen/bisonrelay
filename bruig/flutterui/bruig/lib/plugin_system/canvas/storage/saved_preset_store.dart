@@ -32,6 +32,8 @@ class SavedPresetStore extends ChangeNotifier {
       SavedPresetStore._(SavedPresetKind.look);
   static final SavedPresetStore paintBrushes =
       SavedPresetStore._(SavedPresetKind.paintBrush);
+  static final SavedPresetStore devices =
+      SavedPresetStore._(SavedPresetKind.device);
 
   final SavedPresetKind kind;
   SavedPresetStore._(this.kind);

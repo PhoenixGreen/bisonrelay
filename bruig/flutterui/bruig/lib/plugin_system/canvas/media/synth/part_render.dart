@@ -96,6 +96,10 @@ Future<bool> _download() async {
 SoundFont? _loaded;
 String? _loadedFrom;
 
+/// loadedSoundBank is the bank once read, at once: what a key pressed
+/// plays on, without asking the disk where the bank is every time.
+SoundFont? get loadedSoundBank => _loaded;
+
 /// loadSoundBank is the bank, read once and kept. Null where it has not
 /// been downloaded or cannot be read.
 Future<SoundFont?> loadSoundBank() async {

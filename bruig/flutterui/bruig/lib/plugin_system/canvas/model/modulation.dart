@@ -56,8 +56,8 @@ class ModTarget {
   int get hashCode => Object.hash(device, param, depth, from);
 }
 
-/// macroKnobs is how many knobs a macro has.
-const int macroKnobs = 4;
+/// macroKnobs is how many knobs a macro has: eight, as the prototype's.
+const int macroKnobs = 8;
 
 /// macroParams are a macro's knobs: each turns what it is given from where
 /// they are set (nought) as far as their depths (all the way).
@@ -66,6 +66,10 @@ const List<DeviceParam> macroParams = [
   DeviceParam("m2", "Macro 2", 0, 1, 0),
   DeviceParam("m3", "Macro 3", 0, 1, 0),
   DeviceParam("m4", "Macro 4", 0, 1, 0),
+  DeviceParam("m5", "Macro 5", 0, 1, 0),
+  DeviceParam("m6", "Macro 6", 0, 1, 0),
+  DeviceParam("m7", "Macro 7", 0, 1, 0),
+  DeviceParam("m8", "Macro 8", 0, 1, 0),
 ];
 
 /// macroValue is how far macro knob [from] of a device read by [value] is

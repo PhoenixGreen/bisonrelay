@@ -6,6 +6,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/modulation.dart';
+import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
@@ -144,6 +146,269 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets("an audio chain starts with its Clips: its level and fades",
+      (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    c.openEffects("m");
+    await show(tester, c);
+    double x(String key) => tester.getTopLeft(find.byKey(ValueKey(key))).dx;
+    expect(x("chainZone-Macros"), lessThan(x("chainZone-Source")));
+    expect(x("chainZone-Source"), lessThan(x("chainZone-Effects")));
+    MediaClip clip() => (c.document.elements.single as AudioElement).clip;
+    var level = find.byKey(const ValueKey("audioClipsLevel"));
+    await tester.ensureVisible(level);
+    await tester.pump();
+    var was = clip().volume;
+    await tester.drag(level, const Offset(0, -30),
+        kind: PointerDeviceKind.mouse);
+    await tester.pump();
+    expect(clip().volume, greaterThan(was));
+    await tester.drag(
+        find.byKey(const ValueKey("audioClipsFadeIn")), const Offset(0, -30),
+        kind: PointerDeviceKind.mouse);
+    await tester.pump();
+    expect(clip().fadeIn, greaterThan(0));
+    c.undo();
+    expect(clip().fadeIn, 0, reason: "one undo step a turn");
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  test("a channel's devices keep what they move when another is turned", () {
+    var c = make();
+    addTearDown(c.dispose);
+    c.setDevicesOf("m", [
+      ...c.devicesOf("m"),
+      const MixDevice(DeviceKind.lfo,
+          id: "d2", mods: [ModTarget("d0", "depth")]),
+      const MixDevice(DeviceKind.macro, id: "d3", variations: [
+        {"m1": 0.5}
+      ]),
+    ]);
+    c.setDevicesOf("m", [
+      for (var d in c.devicesOf("m"))
+        d.kind == DeviceKind.chorus ? d.withValue("depth", 0.2) : d
+    ]);
+    var now = c.devicesOf("m");
+    expect(now.firstWhere((d) => d.kind == DeviceKind.lfo).mods,
+        [const ModTarget("d0", "depth")]);
+    expect(now.firstWhere((d) => d.kind == DeviceKind.macro).variations,
+        hasLength(1));
+    expect(now.first.value("depth"), 0.2);
+  });
+
+  testWidgets("the macros are eight, set at random, kept as variations",
+      (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    c.setDevicesOf("m", [
+      ...c.devicesOf("m"),
+      const MixDevice(DeviceKind.macro, id: "d2"),
+    ]);
+    c.openEffects("m");
+    await show(tester, c);
+    MixDevice macro() =>
+        c.devicesOf("m").firstWhere((d) => d.kind == DeviceKind.macro);
+    var index = c.devicesOf("m").indexOf(macro());
+    expect(find.byKey(ValueKey("device-$index-m8")), findsOneWidget);
+    var random = find.byKey(ValueKey("macroRandom-$index"));
+    await tester.ensureVisible(random);
+    await tester.pump();
+    await tester.tap(random);
+    await tester.pump();
+    var set = {for (var i = 1; i <= 8; i++) "m$i": macro().value("m$i")};
+    expect(set.values.where((v) => v > 0), isNotEmpty);
+    // Kept as Variation 1; turned elsewhere; brought back.
+    Future<void> menu(String key) async {
+      await tester.tap(find.byKey(ValueKey("macroVariation-$index")));
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(ValueKey(key)));
+      await tester.pump();
+      await tester.tap(find.byKey(ValueKey(key)));
+      await tester.pump();
+      await tester.pump();
+    }
+
+    await menu("macroVariationSave-$index");
+    expect(macro().variations, hasLength(1));
+    await tester.tap(random);
+    await tester.pump();
+    await menu("macroVariation-$index-0");
+    expect({for (var i = 1; i <= 8; i++) "m$i": macro().value("m$i")}, set);
+    c.undo();
+    expect(
+        {for (var i = 1; i <= 8; i++) "m$i": macro().value("m$i")}, isNot(set),
+        reason: "a recall is one undo step");
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // Ken: the Ducker, the compressor and the EQ taken out as any device is.
+  testWidgets("the EQ, compressor and Ducker are taken out and put back",
+      (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    c.openEffects("m");
+    await show(tester, c);
+    ChannelMix mix() => c.timelineChannels.single.mix;
+    for (var (key, part) in [
+      ("deviceRemove-eq", chainEq),
+      ("deviceRemove-comp", chainComp),
+      ("deviceRemove-duck", stripDuck),
+    ]) {
+      await revealInMenu(tester, key);
+      await tester.tap(find.byKey(ValueKey(key)));
+      await tester.pump();
+      await tester.pump();
+      expect(c.partRemoved("m", part), isTrue, reason: part);
+    }
+    expect(find.byKey(const ValueKey("device-eq")), findsNothing);
+    expect(find.byKey(const ValueKey("device-comp")), findsNothing);
+    expect(find.byKey(const ValueKey("device-duck")), findsNothing);
+    expect((mix().eq.on, mix().comp.on, mix().duck.on), (false, false, false));
+    // Put back from the "+", with what they had.
+    await openAdd(tester, find.byKey(const ValueKey("addDeviceOpen")));
+    await tester.tap(find.byKey(ValueKey("addPart-$chainComp")));
+    await tester.pump();
+    await tester.pump();
+    expect(c.partRemoved("m", chainComp), isFalse);
+    expect(mix().comp.on, isTrue);
+    expect(find.byKey(const ValueKey("device-comp")), findsOneWidget);
+    c.undo();
+    expect(c.partRemoved("m", chainComp), isTrue, reason: "one undo step");
+    expect(ChannelMix.fromJson(mix().toJson()).removed,
+        containsAll([chainEq, chainComp, stripDuck]));
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // Ken: the first Ducker -- the one a channel shows when another ducks it
+  // -- taken out too.
+  testWidgets("a channel ducked by another takes its Ducker card out",
+      (tester) async {
+    var c = CanvasController(
+        CanvasDocument(frames: 100, elements: [
+          AudioElement(const ElementBase(id: "m", name: "Music"),
+              clip: const MediaClip(
+                  playlist: [MediaSource(assetId: "t", length: 8)],
+                  timed: true)),
+          AudioElement(const ElementBase(id: "v", name: "Voice"),
+              clip: const MediaClip(
+                  playlist: [MediaSource(assetId: "t", length: 8)],
+                  timed: true,
+                  mix: ChannelMix(duck: Ducking(on: true)))),
+        ]),
+        audioEngine: FakeEngine({"t": 8}));
+    addTearDown(c.dispose);
+    c.openEffects("m");
+    await show(tester, c);
+    expect(find.byKey(const ValueKey("device-ducked")), findsOneWidget);
+    await revealInMenu(tester, "deviceRemove-ducked");
+    await tester.tap(find.byKey(const ValueKey("deviceRemove-ducked")));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey("device-ducked")), findsNothing);
+    var voice = c.timelineChannels.firstWhere((l) => l.key == "v").mix.duck;
+    expect(voice.except, contains("m"), reason: "not turned down");
+    // Put back from the "+": ducked again.
+    await openAdd(tester, find.byKey(const ValueKey("addDeviceOpen")));
+    await tester.tap(find.byKey(ValueKey("addPart-$stripDucked")));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey("device-ducked")), findsOneWidget);
+    expect(c.timelineChannels.firstWhere((l) => l.key == "v").mix.duck.except,
+        isNot(contains("m")));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // Ken: a voice's Pitch is its Speech's Phrasing.
+  testWidgets("a voice channel's Pitch tab opens its Speech's Phrasing",
+      (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    c.setSpeech("m", const SpeechSpec());
+    c.openEffects("m");
+    await show(tester, c);
+    await tester.tap(find.byKey(const ValueKey("chainTabPitch")));
+    await tester.pump();
+    expect(c.speechShown, isTrue);
+    expect(c.phrasing?.channel, "m");
+    expect(c.pitchShown, isFalse, reason: "not the recording's Pitch editor");
+    await tester.tap(find.byKey(const ValueKey("chainTabSpeech")));
+    await tester.pump();
+    expect(c.phrasing, isNull);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  group("freezing", () {
+    test("a frozen chain is kept, and unfrozen puts everything back", () {
+      var c = make();
+      addTearDown(c.dispose);
+      var frozen = FrozenChain(upTo: "d0", wasOn: const {
+        "d0": true
+      }, playlists: {
+        "m": [const MediaSource(assetId: "t", length: 8).toJson()],
+      });
+      expect(FrozenChain.fromJson(frozen.toJson())!.steps, {"d0"});
+      // As freezeChain leaves it: a rendered copy playing, the chorus off.
+      var lane = c.timelineChannels.single;
+      c.setTimedClip(
+          lane.first.element,
+          lane.first.clip.copyWith(
+              playlist: const [MediaSource(assetId: "frozen", length: 8)]));
+      lane = c.timelineChannels.single;
+      c.setChannelMix(
+          lane,
+          lane.mix.copyWith(frozen: frozen, devices: [
+            lane.mix.devices.first.switched(false),
+            lane.mix.devices[1],
+          ]));
+      expect(c.frozenSteps("m"), {"d0"});
+      expect(c.canFreeze("m"), isNotNull, reason: "already frozen");
+      c.unfreezeChain("m");
+      var clip = (c.document.elements.single as AudioElement).clip;
+      expect(clip.playlist.single.assetId, "t");
+      expect(clip.mix.frozen, isNull);
+      expect(clip.mix.devices.first.on, isTrue);
+      c.undo();
+      expect(c.frozenSteps("m"), {"d0"}, reason: "one undo step");
+    });
+
+    testWidgets("its ⋯ freezes up to it; frozen, it is shown and unfrozen",
+        (tester) async {
+      var c = make();
+      addTearDown(c.dispose);
+      c.openEffects("m");
+      await show(tester, c);
+      var id = deviceKey("d0");
+      await revealInMenu(tester, "deviceFreeze-$id");
+      expect(find.byKey(ValueKey("deviceFreeze-$id")), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      var lane = c.timelineChannels.single;
+      c.setChannelMix(
+          lane,
+          lane.mix.copyWith(
+              frozen: const FrozenChain(
+                  upTo: "d0", wasOn: {"d0": true}, playlists: {})));
+      await tester.pump();
+      expect(find.byKey(ValueKey("deviceFrozen-$id")), findsOneWidget);
+      await revealInMenu(tester, "deviceUnfreeze-$id");
+      await tester.tap(find.byKey(ValueKey("deviceUnfreeze-$id")));
+      await tester.pump();
+      await tester.pump();
+      expect(c.frozenSteps("m"), isEmpty);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
   // Ken: no "Note clips" for MIDI, no macros for MIDI.
   testWidgets("a MIDI chain starts with its Macros and its Note clips",
       (tester) async {
@@ -216,6 +481,7 @@ void main() {
         (tester) async {
       var c = make();
       addTearDown(c.dispose);
+      c.setSpeech("m", const SpeechSpec());
       c.openEffects("m");
       var asked = <double>[];
       await show(tester, c, height: 210, onResize: asked.add);
@@ -226,6 +492,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey("chainTabDevices")));
       await tester.pump();
       expect(asked.last, 210, reason: "back to the height it had");
+      await tester.pump(const Duration(seconds: 1));
       await tester.pumpWidget(const SizedBox());
     });
   });

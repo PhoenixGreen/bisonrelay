@@ -515,7 +515,16 @@ class DartAudioEngine implements AudioEngine {
   void noteOn(String channel, InstrumentPart sound, int key, int velocity,
       {SoundFont? font}) {
     if (_remote) {
-      _send(["noteOn", channel, sound, key, velocity, font != null]);
+      // What plays it, not what it plays: a part's notes and curves are
+      // not copied to the worker on every key pressed.
+      _send([
+        "noteOn",
+        channel,
+        sound.copyWith(notes: const [], controls: const {}),
+        key,
+        velocity,
+        font != null
+      ]);
       return;
     }
     _wakeLocal();

@@ -274,4 +274,59 @@ void main() {
       expect(d.getInt16(48, Endian.little), -32767, reason: "held to full");
     });
   });
+
+  // Ken: every built-in sound was a piano. With no bank, the program's
+  // family picks the voice: each its own sound, ringing and let go.
+  group("the built-in sounds", () {
+    (Float32List, bool) play(int program, {int bank = 0}) {
+      var s = Sampler(program: program, bank: bank)..noteOn(60, 100);
+      const n = 48000 ~/ 2;
+      var l = Float32List(n), r = Float32List(n);
+      s.render(l, r, n);
+      s.noteOff(60);
+      var tail = Float32List(48000 * 3), tr = Float32List(48000 * 3);
+      s.render(tail, tr, tail.length);
+      return (l, s.sounding == 0);
+    }
+
+    double peak(Float32List x) =>
+        x.fold(0.0, (m, v) => math.max(m, v.abs()));
+
+    test("each family is a sound of its own, and dies away when let go", () {
+      var families = {
+        "piano": 0,
+        "bells": 9,
+        "organ": 16,
+        "strings": 40,
+        "pad": 48,
+        "brass": 56,
+        "reed": 64,
+        "flute": 73,
+        "lead": 80,
+        "synth pad": 88,
+      };
+      var heard = <String, Float32List>{};
+      for (var e in families.entries) {
+        var (sound, ended) = play(e.value);
+        expect(peak(sound), inInclusiveRange(0.01, 0.95), reason: e.key);
+        expect(ended, isTrue, reason: "${e.key} let go");
+        heard[e.key] = sound;
+      }
+      // No two the same: compared over a stretch after their attacks.
+      var names = heard.keys.toList();
+      for (var a = 0; a < names.length; a++) {
+        for (var b = a + 1; b < names.length; b++) {
+          var x = heard[names[a]]!, y = heard[names[b]]!;
+          var diff = 0.0;
+          for (var i = 12000; i < 16000; i++) {
+            diff += (x[i] - y[i]).abs();
+          }
+          expect(diff, greaterThan(1), reason: "${names[a]} vs ${names[b]}");
+        }
+      }
+      // The kit, by bank: a drum, not a piano.
+      var (kit, _) = play(0, bank: 128);
+      expect(peak(kit), greaterThan(0.01));
+    });
+  });
 }

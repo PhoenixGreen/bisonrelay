@@ -248,6 +248,10 @@ enum DeviceKind {
     DeviceParam("scale", "Scale", 0, 8, 0, "", _scales),
     DeviceParam("retune", "Retune", 0, 400, 20, "ms"),
     DeviceParam("amount", "Amount", 0, 1, 1),
+    // Held notes eased onto the scale more slowly, as a singer settles.
+    DeviceParam("humanise", "Humanise", 0, 1, 0.2),
+    // The singer's own vibrato kept: none, as sung, or more.
+    DeviceParam("vibrato", "Vibrato", 0, 1.5, 1, "x"),
   ]),
   vocoder("Vocoder", DeviceGroup.pitch, [
     DeviceParam("carrier", "Carrier", 0, 3, 1, "", vocoderCarriers),
@@ -289,7 +293,7 @@ enum DeviceKind {
   /// source).
   follower("Follower", DeviceGroup.modulators, followerParams),
 
-  /// macro is four knobs, each turning any knobs of the chain it is given:
+  /// macro is eight knobs, each turning any knobs of the chain it is given:
   /// one move for many.
   macro("Macro", DeviceGroup.modulators, macroParams),
 
@@ -340,13 +344,18 @@ class MixDevice {
   /// branches are a split's chains, side by side: see DeviceKind.split.
   final List<SplitBranch> branches;
 
+  /// variations are a macro's saved settings -- its knobs' values, each a
+  /// variation -- to come back to (see the Macros card's Variation).
+  final List<Map<String, double>> variations;
+
   const MixDevice(this.kind,
       {this.on = true,
       this.values = const {},
       this.source = "",
       this.id = "",
       this.mods = const [],
-      this.branches = const []});
+      this.branches = const [],
+      this.variations = const []});
 
   /// sidechain is the channel this device hears beside its own, or null:
   /// a vocoder set to take its carrier from a channel that is chosen, or a
@@ -376,17 +385,17 @@ class MixDevice {
         values: {...values, id: whole ? v.roundToDouble() : v},
         source: source,
         id: this.id,
-        mods: mods, branches: branches);
+        mods: mods, branches: branches, variations: variations);
   }
 
   MixDevice switched(bool on) => MixDevice(kind,
-      on: on, values: values, source: source, id: id, mods: mods, branches: branches);
+      on: on, values: values, source: source, id: id, mods: mods, branches: branches, variations: variations);
 
   MixDevice withSource(String source) => MixDevice(kind,
-      on: on, values: values, source: source, id: id, mods: mods, branches: branches);
+      on: on, values: values, source: source, id: id, mods: mods, branches: branches, variations: variations);
 
   MixDevice withId(String id) => MixDevice(kind,
-      on: on, values: values, source: source, id: id, mods: mods, branches: branches);
+      on: on, values: values, source: source, id: id, mods: mods, branches: branches, variations: variations);
 
   MixDevice withBranches(List<SplitBranch> branches) => MixDevice(kind,
       on: on,
@@ -394,12 +403,23 @@ class MixDevice {
       source: source,
       id: id,
       mods: mods,
+      variations: variations,
       branches: [
         for (var b in branches) b.copyWith(devices: withDeviceIds(b.devices))
       ]);
 
+  MixDevice withVariations(List<Map<String, double>> variations) =>
+      MixDevice(kind,
+          on: on,
+          values: values,
+          source: source,
+          id: id,
+          mods: mods,
+          branches: branches,
+          variations: variations);
+
   MixDevice withMods(List<ModTarget> mods) => MixDevice(kind,
-      on: on, values: values, source: source, id: id, mods: mods, branches: branches);
+      on: on, values: values, source: source, id: id, mods: mods, branches: branches, variations: variations);
 
   Map<String, dynamic> toJson() => {
         if (id.isNotEmpty) "id": id,
@@ -410,6 +430,7 @@ class MixDevice {
         if (mods.isNotEmpty) "mods": [for (var m in mods) m.toJson()],
         if (branches.isNotEmpty)
           "branches": [for (var b in branches) b.toJson()],
+        if (variations.isNotEmpty) "variations": variations,
       };
 
   static MixDevice? fromJson(Object? json) {
@@ -431,6 +452,15 @@ class MixDevice {
           if (json["branches"] case List raw)
             for (var b in raw.take(maxBranches))
               if (SplitBranch.fromJson(b) case var branch?) branch,
+        ],
+        variations: [
+          if (json["variations"] case List raw)
+            for (var v in raw)
+              if (v is Map)
+                {
+                  for (var p in kind.params)
+                    if (v[p.id] is num) p.id: (v[p.id] as num).toDouble(),
+                },
         ]);
   }
 
@@ -448,7 +478,15 @@ class MixDevice {
       [for (var i = 0; i < mods.length; i++) other.mods[i] == mods[i]]
           .every((x) => x) &&
       other.values.length == values.length &&
-      other.values.entries.every((e) => values[e.key] == e.value);
+      other.values.entries.every((e) => values[e.key] == e.value) &&
+      other.variations.length == variations.length &&
+      [
+        for (var i = 0; i < variations.length; i++)
+          other.variations[i].length == variations[i].length &&
+              other.variations[i]
+                  .entries
+                  .every((e) => variations[i][e.key] == e.value)
+      ].every((x) => x);
 
   @override
   int get hashCode => Object.hash(kind, on, source, id, values.length);

@@ -115,15 +115,15 @@ void main() {
       (tester) async {
     await sidebar(tester);
     var canvas = tester.getTopLeft(find.text("CANVAS"));
-    var list = find
-        .descendant(
-            of: find.byKey(const ValueKey("presetsLibrary")),
-            matching: find.byType(Scrollable))
-        .first;
-    await tester.scrollUntilVisible(find.text("SCENE"), 300, scrollable: list);
+    // Dragged by the list itself, a little at a time, as a hand would.
+    var list = find.byKey(const ValueKey("presetsLibrary"));
+    await tester.dragUntilVisible(
+        find.text("SCENE"), list, const Offset(0, -200));
+    await tester.pump();
     var scene = tester.getTopLeft(find.text("SCENE"));
-    await tester.scrollUntilVisible(find.text("ELEMENT"), 300,
-        scrollable: list);
+    await tester.dragUntilVisible(
+        find.text("ELEMENT"), list, const Offset(0, -200));
+    await tester.pump();
     var element = tester.getTopLeft(find.text("ELEMENT"));
     expect(element.dy, greaterThan(scene.dy - 1e-6),
         reason: "scenes, then elements, after the canvases");

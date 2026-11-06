@@ -746,51 +746,60 @@ class _CanvasScreenState extends State<CanvasScreen> {
                   onCustomiseSidebars: _customise,
                 )
               : null;
-          var page = Column(children: [
-            _Measured(
-                onHeight: (h) => _measured(top: h),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  CanvasSettingsBar(
-                    controller: _controller,
-                    onPublish: _publish,
-                    canvasSettingsOpen: _canvasSettingsOpen,
-                    onToggleCanvasSettings: () => setState(() {
-                      _canvasSettingsOpen = !_canvasSettingsOpen;
-                      if (_canvasSettingsOpen) _guidesOpen = false;
-                    }),
-                    guidesOpen: _guidesOpen,
-                    onToggleGuides: () => setState(() {
-                      _guidesOpen = !_guidesOpen;
-                      if (_guidesOpen) _canvasSettingsOpen = false;
-                    }),
-                    canvasShown: _shown,
-                    onToggleCanvas: _noCanvas
-                        ? null
-                        : () => setState(() => _canvasShown = !_canvasShown),
-                    timelineOpen: _timelineShown,
-                    onToggleTimeline: () => setState(() {
-                      _timelineOpen = !_timelineOpen;
-                      Provider.of<CanvasPreferences>(context, listen: false)
-                          .timeline = _timelineOpen;
-                    }),
-                    // Only while the sidebar is away; on the band, with every other control
-                    // on this page.
-                    onShowSidebar: _sidebarVisible
-                        ? null
-                        : _audioKind
-                            ? () => setState(() => _audioSidebarShown = true)
-                            : () => _setSidebars(_sidebars.shownAgain),
-                  ),
-                  ...canvasSecondLine(
-                    settings: _canvasSettingsOpen
-                        ? CanvasSettingsPanel(controller: _controller)
-                        : null,
-                    guides: _guidesOpen
-                        ? CanvasGuidesPanel(controller: _controller)
-                        : null,
-                  ),
-                ])),
-            Expanded(
+          // Laid out top first, then the dock as tall as it is, and the
+          // canvas in what is left: the top's height is known a frame late
+          // (see _Measured), and a Column would overflow for that frame.
+          var page = ClipRect(
+              child: CustomMultiChildLayout(delegate: _PageLayout(), children: [
+            LayoutId(
+                id: _PageLayout.top,
+                child: _Measured(
+                    onHeight: (h) => _measured(top: h),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      CanvasSettingsBar(
+                        controller: _controller,
+                        onPublish: _publish,
+                        canvasSettingsOpen: _canvasSettingsOpen,
+                        onToggleCanvasSettings: () => setState(() {
+                          _canvasSettingsOpen = !_canvasSettingsOpen;
+                          if (_canvasSettingsOpen) _guidesOpen = false;
+                        }),
+                        guidesOpen: _guidesOpen,
+                        onToggleGuides: () => setState(() {
+                          _guidesOpen = !_guidesOpen;
+                          if (_guidesOpen) _canvasSettingsOpen = false;
+                        }),
+                        canvasShown: _shown,
+                        onToggleCanvas: _noCanvas
+                            ? null
+                            : () =>
+                                setState(() => _canvasShown = !_canvasShown),
+                        timelineOpen: _timelineShown,
+                        onToggleTimeline: () => setState(() {
+                          _timelineOpen = !_timelineOpen;
+                          Provider.of<CanvasPreferences>(context, listen: false)
+                              .timeline = _timelineOpen;
+                        }),
+                        // Only while the sidebar is away; on the band, with every other control
+                        // on this page.
+                        onShowSidebar: _sidebarVisible
+                            ? null
+                            : _audioKind
+                                ? () =>
+                                    setState(() => _audioSidebarShown = true)
+                                : () => _setSidebars(_sidebars.shownAgain),
+                      ),
+                      ...canvasSecondLine(
+                        settings: _canvasSettingsOpen
+                            ? CanvasSettingsPanel(controller: _controller)
+                            : null,
+                        guides: _guidesOpen
+                            ? CanvasGuidesPanel(controller: _controller)
+                            : null,
+                      ),
+                    ]))),
+            LayoutId(
+              id: _PageLayout.middle,
               child: Stack(children: [
                 Positioned.fill(
                   // Put away rather than taken out: Offstage keeps the
@@ -875,8 +884,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
             // Taken out rather than shrunk to nothing when put away: the
             // play bar holds a focus node and a ticker, and an empty bar
             // would still answer the keyboard.
-            if (beside == null && dock != null) dock,
-          ]);
+            if (beside == null && dock != null)
+              LayoutId(id: _PageLayout.bottom, child: dock),
+          ]));
           return _Measured(
               onHeight: (h) => _measured(page: h),
               child: beside == null
@@ -919,6 +929,31 @@ List<Widget> canvasSecondLine({Widget? settings, Widget? guides}) => [
       // the settings win.
       if (settings == null && guides != null) guides,
     ];
+
+/// _PageLayout lays the page out: [top] (the settings band) as tall as it
+/// is, [bottom] (the dock) as tall as it is under it, and [middle] (the
+/// canvas) in what is left between, never less than nothing.
+class _PageLayout extends MultiChildLayoutDelegate {
+  static const top = 0, middle = 1, bottom = 2;
+
+  @override
+  void performLayout(Size size) {
+    var w = size.width;
+    var wide = BoxConstraints(minWidth: w, maxWidth: w);
+    var t = hasChild(top) ? layoutChild(top, wide).height : 0.0;
+    var b = hasChild(bottom) ? layoutChild(bottom, wide).height : 0.0;
+    var m = math.max(0.0, size.height - t - b);
+    if (hasChild(middle)) {
+      layoutChild(middle, BoxConstraints.tightFor(width: w, height: m));
+      positionChild(middle, Offset(0, t));
+    }
+    if (hasChild(top)) positionChild(top, Offset.zero);
+    if (hasChild(bottom)) positionChild(bottom, Offset(0, t + m));
+  }
+
+  @override
+  bool shouldRelayout(_PageLayout oldDelegate) => false;
+}
 
 /// _Measured tells [onHeight] its child's height whenever layout changes it,
 /// after the frame, so the change is a build of its own, not one in the

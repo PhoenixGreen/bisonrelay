@@ -79,7 +79,7 @@ enum MotionDeviceKind {
   /// a move's or a look's (see MotionDevice.mods and modulation.dart).
   lfo("LFO", MotionDeviceSide.pose, lfoParams),
 
-  /// macro is four knobs, each turning any knobs of the chain it is given.
+  /// macro is eight knobs, each turning any knobs of the chain it is given.
   macro("Macro", MotionDeviceSide.pose, macroParams),
 
   /// follower moves other devices' knobs by how loud a channel is (its

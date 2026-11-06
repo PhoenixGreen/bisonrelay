@@ -71,4 +71,61 @@ void main() {
           isTrue);
     });
   });
+
+  // The prototype's Transform and Generate, beyond the tools there were.
+  group("Transform and Generate", () {
+    test("Duplicate puts a copy after them, on the grid", () {
+      var notes = const [MidiNote(60, 0, 0.5), MidiNote(62, 0.5, 0.5)];
+      var out = applyNoteTool(NoteTool.duplicate, notes, const {}, grid: 0.25);
+      expect([for (var n in out) (n.key, n.start)],
+          [(60, 0.0), (62, 0.5), (60, 1.0), (62, 1.5)]);
+    });
+
+    test("Swing pushes every second step a third of a step late", () {
+      var notes = [for (var i = 0; i < 4; i++) MidiNote(60, i * 0.25, 0.2)];
+      var out = applyNoteTool(NoteTool.swing, notes, const {}, grid: 0.25);
+      expect([
+        for (var n in out) n.start
+      ], [
+        0.0,
+        closeTo(0.25 + 0.25 / 3, 1e-9),
+        0.5,
+        closeTo(0.75 + 0.25 / 3, 1e-9)
+      ]);
+    });
+
+    test("Arpeggiate spreads a chord up the grid, lowest first", () {
+      var chord = const [
+        MidiNote(67, 0, 1),
+        MidiNote(60, 0, 1),
+        MidiNote(64, 0, 1),
+      ];
+      var out = applyNoteTool(NoteTool.arpeggiate, chord, const {}, grid: 0.5);
+      var by = {for (var n in out) n.key: (n.start, n.length)};
+      expect(by, {60: (0.0, 0.5), 64: (0.5, 0.5), 67: (1.0, 0.5)});
+    });
+
+    test("Rhythm lays five in every eight steps, even with no notes", () {
+      var out = applyNoteTool(NoteTool.rhythm, const [], const {},
+          grid: 0.25, loopEnd: 2);
+      expect([for (var n in out) n.start], [0.0, 0.5, 0.75, 1.25, 1.5]);
+      expect(out.every((n) => n.key == 60), isTrue);
+    });
+
+    test("Fill chords makes each note the root of the scale's chord", () {
+      // C major: on D, D F A; on G, G B D.
+      var out = applyNoteTool(NoteTool.fillChords,
+          const [MidiNote(62, 0, 1), MidiNote(67, 1, 1)], const {});
+      expect({
+        for (var n in out) (n.start, n.key)
+      }, {
+        (0.0, 62),
+        (0.0, 65),
+        (0.0, 69),
+        (1.0, 67),
+        (1.0, 71),
+        (1.0, 74),
+      });
+    });
+  });
 }

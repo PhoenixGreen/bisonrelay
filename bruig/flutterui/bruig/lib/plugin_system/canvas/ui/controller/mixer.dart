@@ -273,8 +273,16 @@ extension CanvasMixing on CanvasController {
   /// hand left it.
   MixDevice _mergedDevice(
       MixDevice own, MixDevice shown, MixDevice next, Set<String> moved) {
+    // What it moves, its branches and its saved variations are as the hand
+    // left them: only its settings are merged.
     var out = MixDevice(own.kind,
-        on: next.on, values: own.values, source: next.source, id: next.id);
+        on: next.on,
+        values: own.values,
+        source: next.source,
+        id: next.id,
+        mods: next.mods,
+        branches: next.branches,
+        variations: next.variations);
     for (var p in next.kind.params) {
       if (next.value(p.id) == shown.value(p.id)) continue;
       out = out.withValue(p.id, next.value(p.id));
@@ -470,8 +478,11 @@ extension CanvasMixing on CanvasController {
 
   /// deviceLevels is channel [channel]'s levels at each step of its strip --
   /// see AudioEngine.deviceLevels -- for the meters between its devices.
+  /// The master's are asked for by mixerMasterKey; a return's, a scene
+  /// bus's, by theirs.
   List<(double, double)> deviceLevels(String channel) =>
-      _audio?.deviceLevels(channel) ?? const [];
+      _audio?.deviceLevels(channel == mixerMasterKey ? "" : channel) ??
+      const [];
 
   /// reduction is how many decibels [channel]'s compressor takes off now.
   double reduction(String channel) => _audio?.reduction(channel) ?? 0;
@@ -642,5 +653,288 @@ extension CanvasMixing on CanvasController {
       _heard();
       video.autoplay(videos);
     }
+  }
+
+  // ---- Freezing a chain
+
+  /// frozenSteps are the steps of [channel]'s chain frozen into its sounds:
+  /// device ids, chainEq and chainComp. Empty for one not frozen.
+  Set<String> frozenSteps(String channel) =>
+      timelineChannels
+          .where((l) => l.key == channel)
+          .firstOrNull
+          ?.mix
+          .frozen
+          ?.steps ??
+      const {};
+
+  /// freezing is whether [channel] is being frozen now.
+  bool freezing(String channel) => _freezing.contains(channel);
+
+  /// canFreeze is why [channel] cannot be frozen, or null where it can: a
+  /// recording's channel, one sound or several, not already frozen.
+  String? canFreeze(String channel) {
+    var lane = timelineChannels.where((l) => l.key == channel).firstOrNull;
+    if (lane == null) return "Only a channel's chain can be frozen.";
+    if (lane.video) return "A video's sound cannot be frozen.";
+    if (instrumentChannel(channel)) {
+      return "An instrument's channel cannot be frozen yet.";
+    }
+    if (lane.mix.frozen != null) return "It is frozen: unfreeze it first.";
+    if (!lane.lanes.any((l) => l.editable && l.clip.playlist.isNotEmpty)) {
+      return "There is no sound on it to freeze.";
+    }
+    return null;
+  }
+
+  /// freezeChain renders each sound of [channel] through its chain from
+  /// the start to [upTo] (a device's id, chainEq or chainComp) -- with its
+  /// modulators, as it plays -- keeps each as a new sound in the library,
+  /// and plays those: the steps frozen switched off so they are not run
+  /// twice, and remembered to be put back (unfreezeChain). Off the main
+  /// thread; one undo step. Answers why not, or null.
+  Future<String?> freezeChain(String channel, String upTo) async {
+    if (canFreeze(channel) case var why?) return why;
+    if (!_freezing.add(channel)) return "It is being frozen.";
+    notifyListeners();
+    try {
+      var lane = timelineChannels.firstWhere((l) => l.key == channel);
+      var mix = lane.mix;
+      var chain = mix.chain;
+      var at = chain.indexOf(upTo);
+      if (at < 0) return "That is not on this channel's chain.";
+      var steps = chain.sublist(0, at + 1).toSet();
+      var devices = withDeviceIds(mix.devices);
+      // The strip's start: what is frozen as it is set, the rest off but
+      // for its modulators, which turn knobs and make no sound.
+      var part = mix.copyWith(
+        mute: false,
+        devices: [
+          for (var (i, d) in devices.indexed)
+            steps.contains(deviceIdAt(devices, i)) || d.kind.modulates
+                ? d
+                : d.switched(false),
+        ],
+        eq: steps.contains(chainEq) ? mix.eq : mix.eq.copyWith(on: false),
+        comp:
+            steps.contains(chainComp) ? mix.comp : mix.comp.copyWith(on: false),
+      );
+      var playlists = <String, List<Map<String, dynamic>>>{};
+      var made = <(CanvasElement, List<MediaSource>)>[];
+      for (var sound in lane.lanes) {
+        if (!sound.editable) continue;
+        var next = <MediaSource>[];
+        for (var s in sound.clip.playlist) {
+          var file = await CanvasMedia.existingPath(MediaKind.audio, s.assetId);
+          if (file == null) return "\"${s.name}\" is missing from the library.";
+          var pcm = await readWholeAway(file);
+          if (pcm == null) return "\"${s.name}\" could not be read.";
+          var wav = await _frozenWav(part, pcm.$1, pcm.$2);
+          var id = await _keepSound(wav);
+          if (id == null) return "The frozen sound could not be kept.";
+          next.add(s.copyWith(
+              assetId: id,
+              name: s.name.isEmpty ? "Frozen" : "${s.name} (frozen)"));
+        }
+        playlists[sound.element.id] = [
+          for (var s in sound.clip.playlist) s.toJson(),
+        ];
+        made.add((sound.element, next));
+      }
+      // Changed while it rendered: not frozen, rather than half frozen.
+      var now = timelineChannels.where((l) => l.key == channel).firstOrNull;
+      if (now == null || now.mix.chain.join("|") != chain.join("|")) {
+        return "The chain changed while it was being frozen.";
+      }
+      var frozen = FrozenChain(
+        upTo: upTo,
+        wasOn: {
+          for (var step in steps)
+            step: step == chainEq
+                ? mix.eq.on
+                : step == chainComp
+                    ? mix.comp.on
+                    : devices[deviceIndexOf(devices, step)].on,
+        },
+        playlists: playlists,
+      );
+      beginInteraction();
+      for (var (e, playlist) in made) {
+        var current = _document.elementById(e.id);
+        if (current is! AudioElement) continue;
+        setTimedClip(current, current.clip.copyWith(playlist: playlist),
+            transient: true);
+      }
+      var lane2 = timelineChannels.firstWhere((l) => l.key == channel);
+      var m = lane2.mix;
+      var ds = withDeviceIds(m.devices);
+      setChannelMix(
+          lane2,
+          m.copyWith(
+            frozen: frozen,
+            devices: [
+              for (var (i, d) in ds.indexed)
+                steps.contains(deviceIdAt(ds, i)) ? d.switched(false) : d,
+            ],
+            eq: steps.contains(chainEq) ? m.eq.copyWith(on: false) : null,
+            comp: steps.contains(chainComp) ? m.comp.copyWith(on: false) : null,
+          ),
+          transient: true);
+      endInteraction();
+      return null;
+    } catch (exception) {
+      debugPrint("Unable to freeze $channel: $exception");
+      return "It could not be frozen.";
+    } finally {
+      _freezing.remove(channel);
+      notifyListeners();
+    }
+  }
+
+  /// _frozenWav runs [l] and [r] through [part]'s strip before its fader,
+  /// in its own isolate where it can, and answers it as a WAV file's bytes.
+  Future<Uint8List> _frozenWav(
+      ChannelMix part, Float32List l, Float32List r) async {
+    Uint8List run() {
+      var strip = StripProcessor(part);
+      const block = 1024;
+      for (var i = 0; i < l.length; i += block) {
+        var n = math.min(block, l.length - i);
+        strip.shape(Float32List.sublistView(l, i, i + n),
+            Float32List.sublistView(r, i, i + n), n);
+      }
+      return wav16(l, r);
+    }
+
+    try {
+      return await Isolate.run(run);
+    } catch (_) {
+      // Something in the chain cannot cross to an isolate: here, then.
+      return run();
+    }
+  }
+
+  /// unfreezeChain puts [channel] back as it was before freezeChain: its
+  /// sounds' own files, and the steps frozen switched as they were. The
+  /// frozen copies stay in the library. One undo step.
+  void unfreezeChain(String channel) {
+    var lane = timelineChannels.where((l) => l.key == channel).firstOrNull;
+    var frozen = lane?.mix.frozen;
+    if (lane == null || frozen == null) return;
+    beginInteraction();
+    for (var sound in lane.lanes) {
+      var was = frozen.playlists[sound.element.id];
+      if (was == null || sound.element is! AudioElement) continue;
+      setTimedClip(
+          sound.element,
+          sound.clip.copyWith(playlist: [
+            for (var s in was) MediaSource.fromJson(s),
+          ]),
+          transient: true);
+    }
+    var lane2 = timelineChannels.firstWhere((l) => l.key == channel);
+    var m = lane2.mix;
+    var ds = withDeviceIds(m.devices);
+    var eqWas = frozen.wasOn[chainEq], compWas = frozen.wasOn[chainComp];
+    setChannelMix(
+        lane2,
+        m.copyWith(
+          noFrozen: true,
+          devices: [
+            for (var (i, d) in ds.indexed)
+              if (frozen.wasOn[deviceIdAt(ds, i)] case var on?)
+                d.switched(on)
+              else
+                d,
+          ],
+          eq: eqWas == null ? null : m.eq.copyWith(on: eqWas),
+          comp: compWas == null ? null : m.comp.copyWith(on: compWas),
+        ),
+        transient: true);
+    endInteraction();
+  }
+
+  // ---- The strip's own parts taken out, and put back
+
+  /// _stripMix is strip [owner]'s mix: a channel's, a return's or the
+  /// scene's bus's. Null for the master, whose parts stay.
+  ChannelMix? _stripMix(String owner) {
+    if (owner == sceneBusKey) return sceneBus;
+    return timelineChannels.where((l) => l.key == owner).firstOrNull?.mix ??
+        returnOf(owner)?.mix;
+  }
+
+  void _setStripMix(String owner, ChannelMix mix) {
+    if (owner == sceneBusKey) {
+      setSceneBus(mix, transient: true);
+      return;
+    }
+    if (timelineChannels.where((l) => l.key == owner).firstOrNull
+        case var lane?) {
+      setChannelMix(lane, mix, transient: true, anywhere: true);
+      return;
+    }
+    if (returnOf(owner) case var r?) {
+      setReturn(r.copyWith(mix: mix), transient: true);
+    }
+  }
+
+  /// partRemoved is whether strip [owner]'s [part] -- chainEq, chainComp
+  /// or stripDuck -- is taken out of its chain.
+  bool partRemoved(String owner, String part) =>
+      _stripMix(owner)?.removed.contains(part) ?? false;
+
+  /// canRemovePart is whether [part] of strip [owner] can be taken out: a
+  /// channel's, a return's or the scene bus's EQ and compressor, and a
+  /// channel's Ducker. The master's stay.
+  bool canRemovePart(String owner, String part) =>
+      _stripMix(owner) != null &&
+      ((part != stripDuck && part != stripDucked) ||
+          timelineChannels.any((l) => l.key == owner));
+
+  /// removePart takes [part] out of strip [owner]'s chain, as a device is:
+  /// switched off and no longer shown, its settings kept. One undo step.
+  void removePart(String owner, String part) {
+    var m = _stripMix(owner);
+    if (m == null || m.removed.contains(part)) return;
+    beginInteraction();
+    // Ducked no more: out of every Ducker that would turn it down.
+    if (part == stripDucked) {
+      setDuckedBy(owner, false);
+      m = _stripMix(owner)!;
+    }
+    _setStripMix(
+        owner,
+        m.copyWith(
+          removed: [...m.removed, part],
+          eq: part == chainEq ? m.eq.copyWith(on: false) : null,
+          comp: part == chainComp ? m.comp.copyWith(on: false) : null,
+          duck: part == stripDuck ? m.duck.copyWith(on: false) : null,
+        ));
+    endInteraction();
+  }
+
+  /// restorePart puts [part] back in strip [owner]'s chain, switched on,
+  /// with the settings it had. One undo step.
+  void restorePart(String owner, String part) {
+    var m = _stripMix(owner);
+    if (m == null || !m.removed.contains(part)) return;
+    beginInteraction();
+    if (part == stripDucked) {
+      setDuckedBy(owner, true);
+      m = _stripMix(owner)!;
+    }
+    _setStripMix(
+        owner,
+        m.copyWith(
+          removed: [
+            for (var r in m.removed)
+              if (r != part) r
+          ],
+          eq: part == chainEq ? m.eq.copyWith(on: true) : null,
+          comp: part == chainComp ? m.comp.copyWith(on: true) : null,
+          duck: part == stripDuck ? m.duck.copyWith(on: true) : null,
+        ));
+    endInteraction();
   }
 }

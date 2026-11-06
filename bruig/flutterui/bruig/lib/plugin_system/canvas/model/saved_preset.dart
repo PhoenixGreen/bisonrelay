@@ -28,7 +28,12 @@ enum SavedPresetKind {
   look("looks"),
 
   /// paintBrush is a brush for a picture's paint layers. See BrushPreset.
-  paintBrush("paint-brushes");
+  paintBrush("paint-brushes"),
+
+  /// device is a sound's device or a whole chain of them, with their
+  /// settings: {"devices": [MixDevice…], "midi": [MidiEffect…]}. See
+  /// device_presets.dart.
+  device("devices");
 
   /// folder is where these are kept on disk, under the presets folder.
   final String folder;
@@ -101,7 +106,8 @@ class SavedPreset {
         SavedPresetKind.brush ||
         SavedPresetKind.pitchView ||
         SavedPresetKind.look ||
-        SavedPresetKind.paintBrush =>
+        SavedPresetKind.paintBrush ||
+        SavedPresetKind.device =>
           const [],
       };
 

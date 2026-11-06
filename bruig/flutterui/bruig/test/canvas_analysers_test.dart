@@ -292,4 +292,65 @@ void main() {
       expect(failures, isEmpty);
     });
   });
+
+  // Ken: some devices' displays did not move. Every device's screen reads
+  // the levels before and after it -- on a channel, a return and the
+  // master alike -- and every analyser reads where it is.
+  group("every device's display has what it draws from", () {
+    var kinds = [
+      for (var k in DeviceKind.values)
+        if (k != DeviceKind.split) k,
+    ];
+    var devices = [
+      for (var (i, k) in kinds.indexed) MixDevice(k, id: "d$i"),
+    ];
+    const n = 4800;
+
+    MixGraph played() {
+      var g = MixGraph()
+        ..setMaster(MasterMix(limiter: false, devices: devices))
+        ..setReturns([
+          ReturnChannel("fx",
+              name: "Room", devices: devices, mix: const ChannelMix())
+        ])
+        ..setChannel("a", ChannelMix(devices: devices, sends: const {"fx": 0}));
+      g.tapped.addAll(["a", "fx", masterTapKey]);
+      var tone = sine(n, 440, 0.3);
+      var l = Float32List(n), r = Float32List(n);
+      // Two seconds: a Delay set all wet is silent until its first echo,
+      // and the return's comes after the channel's.
+      for (var b = 0; b < 20; b++) {
+        g.begin(n);
+        var (il, ir) = g.input("a", n);
+        il.setRange(0, n, tone);
+        ir.setRange(0, n, tone);
+        g.finish(l, r, n);
+      }
+      return g;
+    }
+
+    test("the levels at every step: a channel, a return and the master", () {
+      var g = played();
+      for (var (key, steps) in [
+        ("a", ChannelMix(devices: devices).chain.length),
+        ("fx", devices.length),
+        (masterTapKey, MasterMix(devices: devices).chain.length),
+      ]) {
+        var taps = g.tapsOf(key);
+        expect(taps.length, steps + 1, reason: "in, then after each: $key");
+        expect(taps.first.$1, greaterThan(0.01), reason: "heard in: $key");
+      }
+    });
+
+    test("each analyser reads where it is", () {
+      var g = played();
+      for (var key in ["a", "fx", null]) {
+        expect(g.waveOf(key, DeviceKind.scope), isNotNull, reason: "$key");
+        expect(g.waveOf(key, DeviceKind.stereoImage), isNotNull,
+            reason: "$key");
+        expect(g.loudnessOf(key)?.shortTerm.isFinite, isTrue, reason: "$key");
+        expect(g.pitchOf(key), isNotNull, reason: "tuner: $key");
+      }
+    });
+  });
 }

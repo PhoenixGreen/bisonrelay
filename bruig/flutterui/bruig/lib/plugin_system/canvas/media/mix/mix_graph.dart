@@ -55,17 +55,31 @@ class _Bus {
 
 class _Return {
   final ReturnChannel spec;
-  final List<DeviceProcessor> devices;
+
+  /// chain is a processor for each of its devices, by place: null for one
+  /// switched off.
+  final List<DeviceProcessor?> chain;
   final StripProcessor strip;
   final _Bus bus;
+
+  /// taps are the peaks coming in and after each of its devices on the
+  /// last block, while it is tapped (see MixGraph.tapped).
+  List<(double, double)> taps = const [];
+
   _Return(this.spec, int n)
-      : devices = [
-          for (var d in spec.devices)
-            if (DeviceProcessor.of(d) case var p?) p,
-        ],
+      : chain = [for (var d in spec.devices) DeviceProcessor.of(d)],
         strip = StripProcessor(spec.mix),
         bus = _Bus(n);
+
+  List<DeviceProcessor> get devices => [
+        for (var d in chain)
+          if (d != null) d,
+      ];
 }
+
+/// masterTapKey is the master's key among MixGraph.tapped: the empty
+/// string, as the worker's snapshots name it.
+const String masterTapKey = "";
 
 /// _Pan is the gain to each speaker from a channel's left and right sides,
 /// as the last block ended.
@@ -421,7 +435,16 @@ class MixGraph {
 
   /// tapsOf is channel [key]'s levels at each step of its strip, as last
   /// played: see StripProcessor.taps. Empty until [tapped] has it.
-  List<(double, double)> tapsOf(String key) => _stripOf(key)?.taps ?? const [];
+  List<(double, double)> tapsOf(String key) {
+    if (key == masterTapKey) {
+      return _layout.isSurround
+          ? _masters.firstOrNull?.taps ?? const []
+          : _master.taps;
+    }
+    return _stripOf(key)?.taps ??
+        _returns.where((r) => r.spec.id == key).firstOrNull?.taps ??
+        const [];
+  }
 
   /// _stripOf is channel [key]'s strip, or the scene bus's front pair's.
   StripProcessor? _stripOf(String key) =>
@@ -561,9 +584,15 @@ class MixGraph {
     _runScene(n);
     for (var ret in _returns) {
       var b = ret.bus;
-      for (var d in ret.devices) {
-        d.process(b.l, b.r, n);
+      // Measured between its devices while they are on screen.
+      var taps = tapped.contains(ret.spec.id)
+          ? <(double, double)>[blockPeaks(b.l, b.r, n)]
+          : null;
+      for (var d in ret.chain) {
+        d?.process(b.l, b.r, n);
+        taps?.add(blockPeaks(b.l, b.r, n));
       }
+      ret.taps = taps ?? const [];
       ret.strip.process(b.l, b.r, n);
       _levels[ret.spec.id] = _peaks(b.l, b.r, n);
       heard[ret.spec.id] = (b.l, b.r);
@@ -572,6 +601,7 @@ class MixGraph {
     if (!_layout.isSurround) {
       l.setRange(0, n, _out[0]);
       r.setRange(0, n, _out[1]);
+      _master.tapping = tapped.contains(masterTapKey);
       _master.process(l, r, n, limit: limit);
       _out[0].setRange(0, n, l);
       _out[1].setRange(0, n, r);
@@ -587,6 +617,9 @@ class MixGraph {
     for (var k = 0; k < _masters.length; k++) {
       var a = _out[2 * k];
       var b = 2 * k + 1 < _out.length ? _out[2 * k + 1] : _silent;
+      // The front pair's measured between its devices, as a stereo
+      // master's is.
+      _masters[k].tapping = k == 0 && tapped.contains(masterTapKey);
       _masters[k].process(a, b, n, limit: limit);
     }
     // Each speaker's peak, for its meter.

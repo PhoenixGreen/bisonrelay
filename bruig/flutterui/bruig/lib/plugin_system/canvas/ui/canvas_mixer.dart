@@ -42,6 +42,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart'
 import 'package:bruig/plugin_system/canvas/ui/instrument_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/pitch_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/clip_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/source_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/speech_device.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
@@ -312,16 +313,23 @@ class _CanvasMixerState extends State<CanvasMixer>
   void _rest() {
     if (_ticker.isActive) _ticker.stop();
     _resting ??= Timer.periodic(const Duration(milliseconds: 250), (_) {
-      var (l, r) = controller.levels();
-      if (_sounding || gainToDb(math.max(l, r)) > _floor) _wake();
+      // Sound anywhere: the master, or any channel -- an instrument played
+      // live is heard on its channel first.
+      var loudest = [
+        controller.levels(),
+        for (var c in controller.timelineChannels) controller.levels(c.key),
+      ].fold(0.0, (m, lr) => math.max(m, math.max(lr.$1, lr.$2)));
+      if (_sounding || gainToDb(loudest) > _floor) _wake();
     });
   }
 
   bool get _sounding => controller.playing || controller.sessionActive;
 
-  void _wakeIfPlaying() {
-    if (_sounding) _wake();
-  }
+  /// _wakeIfPlaying wakes the meters on any change the canvas tells of --
+  /// a key pressed, a clip launched, playing -- rather than waiting for the
+  /// slow check: Ken's channel meters stood still while he played keys. At
+  /// rest again at the next tick if nothing is heard.
+  void _wakeIfPlaying() => _wake();
 
   /// _floor is as quiet as a meter shows, in decibels.
   static const double _floor = -80;
@@ -1107,6 +1115,23 @@ class _CanvasMixerState extends State<CanvasMixer>
                     height: h,
                     skin: skin)),
         ],
+        // An audio channel's sounds -- on the timeline and in its slots --
+        // before anything is done to them.
+        if (lane != null &&
+            !lane.video &&
+            !controller.instrumentChannel(key) &&
+            !controller.speechShown) ...[
+          chainZone("Source", audioColour, h),
+          device(
+              "audioClips",
+              (f, fold) => AudioClipsDevice(
+                  controller: controller,
+                  channel: key,
+                  folded: f,
+                  onFold: fold,
+                  height: h,
+                  skin: skin)),
+        ],
         // A MIDI channel's notes -- its part and its note clips -- then its
         // In and its MIDI effects, before its instrument plays: what comes
         // in, and what is done to the notes.
@@ -1159,6 +1184,23 @@ class _CanvasMixerState extends State<CanvasMixer>
                   height: h,
                   skin: skin)),
         ],
+        // A voice channel's generator: Speech, chosen for it from the Add
+        // menu's Generators, as a MIDI channel's Instrument is its own. Its
+        // script and takes are the Speech tab's.
+        if (lane != null &&
+            !controller.speechShown &&
+            controller.speechOf(key) != null) ...[
+          chainZone("Generator", voiceColour, h),
+          device(
+              "speechCard",
+              (f, fold) => SpeechCard(
+                  controller: controller,
+                  channel: key,
+                  folded: f,
+                  onFold: fold,
+                  height: h,
+                  skin: skin)),
+        ],
         // A channel's Speech, on its Speech view: what makes its clips, not a
         // step of its chain -- its script and takes, then Sing (the
         // Vocaliser); a way to start where it has none.
@@ -1204,7 +1246,9 @@ class _CanvasMixerState extends State<CanvasMixer>
         // return's devices, then its strip's EQ and compressor.
         // Turned down by a voice: the Ducker first, as the dips are made to
         // the channel's sounds as they come in.
-        if (lane != null && controller.duckersOf(key).isNotEmpty)
+        if (lane != null &&
+            controller.duckersOf(key).isNotEmpty &&
+            !controller.partRemoved(key, stripDucked))
           device(
               "ducked",
               (f, fold) => DuckedDevice(
@@ -1229,8 +1273,12 @@ class _CanvasMixerState extends State<CanvasMixer>
                   controller: controller,
                   owner: key,
                   height: h),
-            if (lane != null) _junction(i, h, theme),
-            if (step == chainEq)
+            // A part of the strip taken out is not shown, nor its meter.
+            if (lane != null && !controller.partRemoved(key, step))
+              _junction(i, h, theme),
+            if (controller.partRemoved(key, step))
+              const SizedBox.shrink()
+            else if (step == chainEq)
               eq
             else if (step == chainComp)
               comp
@@ -1253,9 +1301,12 @@ class _CanvasMixerState extends State<CanvasMixer>
               controller: controller,
               owner: key,
               height: h),
-          ...(compFirst ? [comp, eq] : [eq, comp]),
+          for (var (step, card) in compFirst
+              ? [(chainComp, comp), (chainEq, eq)]
+              : [(chainEq, eq), (chainComp, comp)])
+            if (!controller.partRemoved(key, step)) card,
         ],
-        if (lane != null)
+        if (lane != null && !controller.partRemoved(key, stripDuck))
           device(
               "duck",
               (f, fold) => DuckDevice(
@@ -2402,7 +2453,7 @@ class _MacrosStart extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
-              "Four knobs, each turning any knobs of this chain you "
+              "Eight knobs, each turning any knobs of this chain you "
               "give it -- one move for many settings.",
               style: TextStyle(
                   fontSize: 11, height: 1.35, color: look.studio.muted)),

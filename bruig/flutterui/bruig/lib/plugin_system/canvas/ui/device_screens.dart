@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
+import 'package:bruig/plugin_system/canvas/model/midi_effects.dart'
+    show scaleSteps;
 import 'package:bruig/plugin_system/canvas/model/modulation.dart'
     show lfoValue, macroKnobs;
 import 'package:flutter/material.dart';
@@ -21,13 +23,29 @@ class ScreenMoment {
   final double level;
   final double? change;
   final bool live;
+
+  /// hz is the pitch heard there now, for a device that tunes, or null.
+  final double? hz;
   const ScreenMoment(
-      {this.t = 0, this.level = 0, this.change, this.live = false});
+      {this.t = 0, this.level = 0, this.change, this.live = false, this.hz});
 }
 
 /// hasScreen is whether [kind] draws a picture of its own, rather than its
 /// levels in and out.
 bool hasScreen(DeviceKind kind) => !listensOnly(kind);
+
+/// _noteName writes [text] centred at [at], small, bright where [lit].
+void _noteName(Canvas canvas, String text, Offset at, bool lit) {
+  var tp = TextPainter(
+    text: TextSpan(
+        text: text,
+        style: TextStyle(
+            fontSize: 8,
+            color: lit ? const Color(0xFFE6E2F0) : const Color(0xFF6E6A80))),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  tp.paint(canvas, Offset(at.dx - tp.width / 2, at.dy));
+}
 
 /// DeviceScreenPainter draws [device]'s screen at [moment].
 class DeviceScreenPainter extends CustomPainter {
@@ -178,23 +196,86 @@ class DeviceScreenPainter extends CustomPainter {
             1.6);
         say = "${bits.round()} bits";
       case DeviceKind.autoTune:
-        _line(
-            canvas,
-            w,
-            (x) =>
-                h / 2 -
-                math.sin(x * 9 + t * 2) * h * 0.2 -
-                math.sin(x * 27) * 5,
-            const Color(0x99C45C8A),
-            1.3);
-        _line(
-            canvas,
-            w,
-            (x) =>
-                h / 2 - ((math.sin(x * 9 + t * 2) * h * 0.2) / 9).round() * 9,
-            accent,
-            2);
-        say = "sung · corrected";
+        // The octave's notes, the key's scale lit; and, sung, the pitch
+        // heard and the note it is pulled onto.
+        var root = v("key").round();
+        var scale = v("scale").round();
+        var steps = scale == 0
+            ? const [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+            : scaleSteps[(scale - 1).clamp(0, scaleSteps.length - 1)];
+        var cell = w / 12, top = h * 0.18, bottom = h * 0.78;
+        for (var n = 0; n < 12; n++) {
+          var inScale = steps.contains((n - root) % 12);
+          canvas.drawRRect(
+              RRect.fromRectAndRadius(
+                  Rect.fromLTWH(n * cell + 1.5, top, cell - 3, bottom - top),
+                  const Radius.circular(3)),
+              Paint()
+                ..color = inScale
+                    ? accent.withValues(alpha: n == root ? 0.5 : 0.22)
+                    : Colors.white.withValues(alpha: 0.04));
+          _noteName(
+              canvas,
+              const [
+                "C",
+                "C♯",
+                "D",
+                "E♭",
+                "E",
+                "F",
+                "F♯",
+                "G",
+                "A♭",
+                "A",
+                "B♭",
+                "B"
+              ][n],
+              Offset(n * cell + cell / 2, bottom + 3),
+              inScale);
+        }
+        var hz = moment.hz;
+        if (hz != null && hz > 20) {
+          var midi = 69 + 12 * math.log(hz / 440) / math.ln2;
+          var to = midi.round();
+          // Its nearest in the scale: the note it goes to.
+          for (var d = 0; d < 12; d++) {
+            if (steps.contains((midi.round() - d - root) % 12)) {
+              to = midi.round() - d;
+              break;
+            }
+            if (steps.contains((midi.round() + d - root) % 12)) {
+              to = midi.round() + d;
+              break;
+            }
+          }
+          double xOf(double m) => ((m % 12) + 0.5) * cell;
+          canvas.drawRect(
+              Rect.fromLTWH(xOf(midi) - 1, top - 4, 2, bottom - top + 8),
+              Paint()..color = const Color(0xFFC45C8A));
+          canvas.drawCircle(
+              Offset(xOf(to.toDouble()), top + (bottom - top) / 2),
+              5,
+              Paint()..color = accent);
+          var cents = ((midi - to) * 100).round();
+          say = "${const [
+            "C",
+            "C♯",
+            "D",
+            "E♭",
+            "E",
+            "F",
+            "F♯",
+            "G",
+            "A♭",
+            "A",
+            "B♭",
+            "B"
+          ][to % 12]}${to ~/ 12 - 1}"
+              " · ${cents >= 0 ? "+" : "−"}${cents.abs()}¢ heard";
+        } else {
+          say = "${device.kind.param("key").reading(v("key"))} "
+              "${device.kind.param("scale").reading(v("scale")).toLowerCase()}";
+        }
       case DeviceKind.vocoder:
         var n = v("bands").round();
         for (var i = 0; i < n; i++) {
@@ -257,7 +338,7 @@ class DeviceScreenPainter extends CustomPainter {
           tp.paint(canvas, Offset(w / 2 - tp.width / 2, y - tp.height - 1));
         }
       case DeviceKind.macro:
-        // Its four knobs as bars, as far as each is turned.
+        // Its knobs as bars, as far as each is turned.
         var bar = (w - 10) / macroKnobs;
         for (var i = 0; i < macroKnobs; i++) {
           var x = 5 + i * bar;

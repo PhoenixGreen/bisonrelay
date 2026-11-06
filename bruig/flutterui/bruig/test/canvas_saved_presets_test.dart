@@ -4,11 +4,20 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/devices.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/midi_effects.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/saved_preset.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/device_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'canvas_audio_fake.dart';
 
 // canvas_saved_presets_test.dart is a scene or a whole canvas somebody wants
 // again.
@@ -29,12 +38,14 @@ void main() {
     CanvasStorage.rootOverride = root.path;
     SavedPresetStore.scenes.forget();
     SavedPresetStore.canvases.forget();
+    SavedPresetStore.devices.forget();
   });
 
   tearDown(() {
     CanvasStorage.rootOverride = null;
     SavedPresetStore.scenes.forget();
     SavedPresetStore.canvases.forget();
+    SavedPresetStore.devices.forget();
     if (root.existsSync()) root.deleteSync(recursive: true);
   });
 
@@ -136,10 +147,64 @@ void main() {
 
     SavedPresetStore.scenes.forget();
     SavedPresetStore.canvases.forget();
+    SavedPresetStore.devices.forget();
     await SavedPresetStore.scenes.load();
     await SavedPresetStore.canvases.load();
 
     expect(SavedPresetStore.scenes.presets.map((p) => p.name), ["A scene"]);
     expect(SavedPresetStore.canvases.presets.map((p) => p.name), ["A canvas"]);
+  });
+
+  // The prototype's "Save as a preset…": a device, or a whole chain.
+  group("sound presets", () {
+    test("a device's preset is named afresh, kept, and comes back", () async {
+      expect(freshPresetName("Chorus", {"Chorus", "Chorus 2"}), "Chorus 3");
+      var store = SavedPresetStore.devices;
+      var kept = await store.save("Wide chorus", {
+        "devices": [
+          const MixDevice(DeviceKind.chorus, id: "d4", values: {"depth": 0.9})
+              .toJson()
+        ],
+        "midi": [const MidiEffect(MidiEffectKind.arpeggiator).toJson()],
+      });
+      expect(kept, isNotNull);
+      store.forget();
+      await store.load();
+      var back = store.presets.single;
+      expect(back.name, "Wide chorus");
+      var devices = presetDevices(back.data);
+      expect(devices.single.kind, DeviceKind.chorus);
+      expect(devices.single.value("depth"), 0.9);
+      expect(devices.single.id, "", reason: "an id of its own once added");
+      expect(presetMidi(back.data).single.kind, MidiEffectKind.arpeggiator);
+    });
+
+    test("used, it goes on the end of a chain with ids of its own", () {
+      var c = CanvasController(
+          const CanvasDocument(frames: 100, elements: [
+            AudioElement(ElementBase(id: "m", name: "Music"),
+                clip: MediaClip(
+                    playlist: [MediaSource(assetId: "t", length: 8)],
+                    timed: true,
+                    mix: ChannelMix(
+                        devices: [MixDevice(DeviceKind.reverb, id: "d0")]))),
+          ]),
+          audioEngine: FakeEngine({"t": 8}));
+      addTearDown(c.dispose);
+      var preset = {
+        "devices": [
+          const MixDevice(DeviceKind.chorus, id: "d0").toJson(),
+          const MixDevice(DeviceKind.delay).toJson(),
+        ],
+      };
+      expect(useDevicePreset(c, "m", preset), isTrue);
+      var now = c.devicesOf("m");
+      expect(now.map((d) => d.kind),
+          [DeviceKind.reverb, DeviceKind.chorus, DeviceKind.delay]);
+      expect(now.map((d) => d.id).toSet(), hasLength(3));
+      c.undo();
+      expect(c.devicesOf("m").length, 1, reason: "one undo step");
+      expect(useDevicePreset(c, "m", const {}), isFalse);
+    });
   });
 }

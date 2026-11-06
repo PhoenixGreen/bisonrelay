@@ -9,8 +9,16 @@ import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
     show envelopeLengths, settingLabel;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_icons.dart';
+import 'package:bruig/plugin_system/canvas/model/note_tools.dart';
+import 'package:bruig/plugin_system/canvas/ui/instrument_editor.dart'
+    show keyRow;
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
-    show dragPointers;
+    show
+        chainMenuDivider,
+        chainMenuHeading,
+        chainMenuItem,
+        chainMenuStyle,
+        dragPointers;
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
@@ -409,7 +417,44 @@ class _PianoRollState extends State<PianoRoll> {
     ]);
   }
 
+  /// _stepOctave is the C Step input's computer keys start from.
+  int _stepOctave = 60;
+
+  /// _stepKey plays Step input from the computer's keys, as the instrument
+  /// editor's keys play: A to ' a note each from the octave's C (held
+  /// together, a chord), Z and X an octave down and up, Tab a rest. Null
+  /// for a key it leaves to the roll.
+  KeyEventResult? _stepKey(KeyEvent e) {
+    var keys = HardwareKeyboard.instance;
+    if (keys.isMetaPressed || keys.isControlPressed || keys.isAltPressed) {
+      return null;
+    }
+    var t = c.pianoRoll;
+    var element = t == null ? null : c.instrumentOf(t.channel);
+    if (element == null) return null;
+    if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.tab) {
+      c.stepRest();
+      return KeyEventResult.handled;
+    }
+    var ch = e.character?.toLowerCase() ?? e.logicalKey.keyLabel.toLowerCase();
+    if (ch == "z" || ch == "x") {
+      if (e is KeyDownEvent) {
+        setState(() => _stepOctave =
+            (_stepOctave + (ch == "z" ? -12 : 12)).clamp(12, 108));
+      }
+      return KeyEventResult.handled;
+    }
+    var i = ch.length == 1 ? keyRow.indexOf(ch) : -1;
+    if (i < 0) return null;
+    if (e is KeyDownEvent) c.noteOn(element, _stepOctave + i);
+    if (e is KeyUpEvent) c.noteOff(element, _stepOctave + i);
+    return KeyEventResult.handled;
+  }
+
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (c.rollStep) {
+      if (_stepKey(e) case var handled?) return handled;
+    }
     if (e is! KeyDownEvent && e is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
@@ -765,7 +810,16 @@ class _PianoRollState extends State<PianoRoll> {
                     SizedBox(
                       height: _rulerH,
                       child: Row(children: [
-                        const SizedBox(width: _keysW),
+                        // The keys' corner, named as the prototype's.
+                        SizedBox(
+                          width: _keysW,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 6, top: 4),
+                            child: Text("keys",
+                                style: TextStyle(
+                                    fontSize: 9.5, color: look.studio.muted)),
+                          ),
+                        ),
                         Expanded(
                           child: SingleChildScrollView(
                             controller: _ruler,
@@ -1416,6 +1470,44 @@ class _PianoRollState extends State<PianoRoll> {
               ),
           ],
         );
+    // The prototype's Transform and Generate: the notes' tools, on those
+    // picked or every one, grouped.
+    Widget toolMenu(
+            String key, String label, List<(String, List<NoteTool>)> groups) =>
+        MenuAnchor(
+          style: chainMenuStyle(look),
+          builder: (context, menu, _) => InkWell(
+            key: ValueKey(key),
+            borderRadius: BorderRadius.circular(5),
+            onTap: () => menu.isOpen ? menu.close() : menu.open(),
+            child: Container(
+              height: 22,
+              padding: const EdgeInsets.fromLTRB(6, 0, 2, 0),
+              alignment: Alignment.center,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(label,
+                    style: TextStyle(fontSize: 11, color: studio.muted)),
+                Icon(Icons.expand_more, size: 13, color: studio.muted),
+              ]),
+            ),
+          ),
+          menuChildren: [
+            chainMenuHeading(
+                look,
+                _selected.isEmpty
+                    ? "Every note"
+                    : "${_selected.length} picked"),
+            for (var (i, (title, tools)) in groups.indexed) ...[
+              if (i > 0) chainMenuDivider(look),
+              chainMenuHeading(look, title),
+              for (var t in tools)
+                chainMenuItem(look,
+                    key: ValueKey("rollTool-${t.name}"),
+                    text: t.label,
+                    onPressed: () => c.useNoteTool(t, grid: _grid)),
+            ],
+          ],
+        );
     var bars = content.beats / c.document.audio.beatsPerBar;
     List<Widget> left() => [
           // Named by the editor round it, in the strip.
@@ -1490,7 +1582,10 @@ class _PianoRollState extends State<PianoRoll> {
               const ValueKey("rollGridSize"),
               _grid,
               [for (var (l, b) in rollGrids) (l, b)],
-              (v) => setState(() => _grid = v)),
+              (v) => setState(() {
+                    _grid = v;
+                    c.rollStepGrid = v;
+                  })),
           const SizedBox(width: 4),
           pill("Quantise", false, _quantise,
               key: const ValueKey("rollQuantise"),
@@ -1530,6 +1625,62 @@ class _PianoRollState extends State<PianoRoll> {
                     (ch.name, ch.key),
               ],
               (v) => setState(() => _ghost = v.isEmpty ? null : v)),
+          const SizedBox(width: 4),
+          // Step input: each key played a note at the cursor, and on.
+          pill("Step", c.rollStep, () {
+            c.setRollStep(!c.rollStep, grid: _grid);
+            _focus.requestFocus();
+          }, key: const ValueKey("rollStep")),
+          gap(),
+          toolMenu("rollTransform", "Transform", [
+            (
+              "Move",
+              [
+                NoteTool.quantise,
+                NoteTool.swing,
+                NoteTool.humanise,
+                NoteTool.legato,
+                NoteTool.strum,
+              ]
+            ),
+            (
+              "Shape",
+              [
+                NoteTool.reverse,
+                NoteTool.invert,
+                NoteTool.faster,
+                NoteTool.slower,
+                NoteTool.crescendo,
+                NoteTool.chop,
+                NoteTool.join,
+                NoteTool.duplicate,
+              ]
+            ),
+            (
+              "Pitch",
+              [
+                NoteTool.up,
+                NoteTool.down,
+                NoteTool.octaveUp,
+                NoteTool.octaveDown,
+                NoteTool.fitToScale,
+              ]
+            ),
+          ]),
+          const SizedBox(width: 2),
+          toolMenu("rollGenerate", "Generate", [
+            (
+              "Add",
+              [
+                NoteTool.arpeggiate,
+                NoteTool.rhythm,
+                NoteTool.fillChords,
+                NoteTool.third,
+                NoteTool.fifth,
+              ]
+            ),
+            ("Play", [NoteTool.chance, NoteTool.always, NoteTool.mute]),
+          ]),
           if (content.clip && !widget.inClipEditor) ...[
             gap(),
             Text("Length", style: TextStyle(fontSize: 11, color: studio.muted)),
@@ -1576,6 +1727,9 @@ class _PianoRollState extends State<PianoRoll> {
               child: Icon(icon, size: 14, color: studio.muted)),
         );
     var right = <Widget>[
+      materialButton("rollUndo", Icons.undo, c.undo),
+      materialButton("rollRedo", Icons.redo, c.redo),
+      gap(),
       materialButton("rollCopy", Icons.content_copy, _copy),
       materialButton("rollPaste", Icons.content_paste, _paste),
       materialButton("rollDelete", Icons.delete_outline, _delete),
@@ -1633,15 +1787,19 @@ class _PianoRollState extends State<PianoRoll> {
     var picked = _selected.length;
     var grid = rollGrids.where((g) => g.$2 == _grid).firstOrNull?.$1 ??
         "${_trim(_grid)} beat";
-    var hint = switch (_tool) {
-      _Tool.select => "Drag to move · its end to lengthen · Shift-click adds "
-          "· ↑↓ transpose, ⇧ an octave",
-      _Tool.draw => "Click draws a note · drag to lengthen it",
-      _Tool.paint => "Drag along to lay notes on the grid",
-      _Tool.erase => "Click or drag over notes to take them out",
-      _Tool.knife => "Click a note to cut it in two there",
-      _Tool.mute => "Click a note to mute it, or play it again",
-    };
+    var hint = c.rollStep
+        ? "Step: A to K play notes at the cursor, held together a chord "
+            "· Tab rests · Z X octave"
+        : switch (_tool) {
+            _Tool.select =>
+              "Drag to move · its end to lengthen · Shift-click adds "
+                  "· ↑↓ transpose, ⇧ an octave",
+            _Tool.draw => "Click draws a note · drag to lengthen it",
+            _Tool.paint => "Drag along to lay notes on the grid",
+            _Tool.erase => "Click or drag over notes to take them out",
+            _Tool.knife => "Click a note to cut it in two there",
+            _Tool.mute => "Click a note to mute it, or play it again",
+          };
     var mono = TextStyle(
         fontSize: 10.5,
         fontFeatures: const [FontFeature.tabularFigures()],

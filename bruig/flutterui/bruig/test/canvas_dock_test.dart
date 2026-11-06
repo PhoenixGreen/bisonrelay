@@ -21,6 +21,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_chain_helpers.dart';
 import 'canvas_timeline_menus.dart';
 
 // canvas_dock_test.dart is the panels under the canvas: where each opens
@@ -492,7 +493,9 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("Speech is the Chain's Speech view, not a device",
+    // Ken: Speech is an instrument that is chosen, not there on every
+    // audio channel.
+    testWidgets("Speech is chosen as a channel's generator, then has its tab",
         (tester) async {
       var c = await show(tester,
           set: (c) => c.openEffects("v"),
@@ -503,21 +506,32 @@ void main() {
                     timed: true)),
           ]));
       await tester.pump();
-      expect(find.byKey(const ValueKey("speechStart")), findsNothing,
-          reason: "the chain holds only what the sound passes through");
-      await tester.tap(find.byKey(const ValueKey("chainTabSpeech")));
+      expect(find.byKey(const ValueKey("chainTabSpeech")), findsNothing,
+          reason: "an audio channel speaks only once Speech is chosen");
+      await openAdd(tester, find.byKey(const ValueKey("addDeviceOpen")));
+      await tester.tap(find.byKey(const ValueKey("addDevice-speech")));
       await tester.pump();
-      expect(c.speechShown, isTrue);
-      await tester.tap(find.byKey(const ValueKey("speechStartButton")));
       await tester.pump(const Duration(milliseconds: 300));
       expect(c.speechOf("v"), isNotNull);
+      expect(c.speechShown, isTrue, reason: "its script, to be written");
       expect(find.byKey(const ValueKey("device-speech")), findsOneWidget);
       expect(find.byKey(const ValueKey("speechSing")), findsOneWidget,
           reason: "Sing it, after the speech");
+      // On the chain, its generator: the Speech card, in its zone.
       await tester.tap(find.byKey(const ValueKey("chainTabDevices")));
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byKey(const ValueKey("device-speech")), findsNothing);
+      expect(find.byKey(const ValueKey("chainZone-Generator")), findsOneWidget);
+      expect(find.byKey(const ValueKey("device-speechCard")), findsOneWidget);
+      // Taken off, the channel is a plain audio channel again.
+      await revealInMenu(tester, "speechRemove");
+      await tester.tap(find.byKey(const ValueKey("speechRemove")));
+      await tester.pump();
+      await tester.pump();
+      expect(c.speechOf("v"), isNull);
+      expect(find.byKey(const ValueKey("chainTabSpeech")), findsNothing);
       expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(milliseconds: 500));
     });
 
     testWidgets("a timeline squeezed below its rows is cut off, not spilled",

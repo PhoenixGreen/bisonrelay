@@ -769,6 +769,56 @@ void main() {
       await done(tester);
     });
 
+    // The prototype's Step input: each key played a note at the cursor.
+    testWidgets("Step input writes what is played at the cursor, and on",
+        (tester) async {
+      await open(tester, row: 0);
+      var before = notes().length;
+      await tester.ensureVisible(find.byKey(const ValueKey("rollStep")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("rollStep")));
+      await tester.pump();
+      expect(c.rollStep, isTrue);
+      c.rollCursor = 4;
+      // A, a note; then A and F held together, a chord, then let go.
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyA);
+      await tester.pump();
+      expect(c.rollCursor, closeTo(4.25, 1e-9));
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyF);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyA);
+      await tester.pump();
+      expect(c.rollCursor, closeTo(4.25, 1e-9), reason: "a chord still held");
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyF);
+      await tester.pump();
+      expect(c.rollCursor, closeTo(4.5, 1e-9));
+      // Tab, a rest.
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      expect(c.rollCursor, closeTo(4.75, 1e-9));
+      var added = notes().skip(before).map((n) => (n.key, n.start)).toSet();
+      expect(added, {(60, 4.0), (60, 4.25), (65, 4.25)});
+      await done(tester);
+    });
+
+    testWidgets("Transform and Generate are the notes' tools, as menus",
+        (tester) async {
+      await open(tester, row: 0);
+      var before = notes().length;
+      await tester.ensureVisible(find.byKey(const ValueKey("rollGenerate")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("rollGenerate")));
+      await tester.pump();
+      expect(find.byKey(const ValueKey("rollTool-duplicate")), findsNothing,
+          reason: "Duplicate is Transform's");
+      await tester.tap(find.byKey(const ValueKey("rollTool-fillChords")));
+      await tester.pump();
+      await tester.pump();
+      expect(notes().length, greaterThan(before));
+      await done(tester);
+    });
+
     testWidgets("a chord drawn at once; kept in key", (tester) async {
       await open(tester, row: 0);
       await tester.ensureVisible(find.byKey(const ValueKey("rollChord")));

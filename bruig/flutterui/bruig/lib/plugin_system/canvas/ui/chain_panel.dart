@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/ui/chain_icons.dart';
+import 'package:bruig/plugin_system/canvas/ui/device_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -13,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
         DeviceFrame,
         DeviceTier,
         chainMenuDivider,
+        freezeFrom,
         chainMenuItem,
         chainMenuStyle,
         dragPointers;
@@ -194,8 +196,11 @@ extension on _ChainPanelState {
     var speechOn = c.speechShown;
     var pitchOn = c.pitchShown;
     var instrumentOn = c.instrumentShown;
-    // A recording to tune: a channel's sound, not an instrument's.
-    var tunable = channel && !notes && c.pitchElementOf(key) != null;
+    // A recording to tune: a channel's sound, not an instrument's. A
+    // voice's pitch is its Speech's Phrasing (Ken), not the Pitch editor.
+    var voice = channel && !notes && c.speechOf(key) != null;
+    var tunable = channel && !notes && !voice && c.pitchElementOf(key) != null;
+    var phrasingOn = speechOn && c.phrasing?.channel == key;
     Widget tab(String id, String label, IconData icon, bool on,
             VoidCallback onTap) =>
         Padding(
@@ -262,10 +267,20 @@ extension on _ChainPanelState {
       if (firstClip case var row?)
         tab("chainTabClip", "Clip", Icons.graphic_eq, clipOn,
             () => c.openClipEditor(key, row)),
-      // Speech makes a channel's clips: any channel but an instrument's.
-      if (channel && !notes)
-        tab("chainTabSpeech", "Speech", Icons.record_voice_over, speechOn,
-            () => c.showSpeech(key)),
+      // Speech makes a voice channel's clips: chosen for it, as an
+      // instrument is, from the Add menu's Generators.
+      if (voice) ...[
+        tab("chainTabSpeech", "Speech", Icons.record_voice_over,
+            speechOn && !phrasingOn, () {
+          c.closePhrasing();
+          c.showSpeech(key);
+        }),
+        // Its pitch: the Speech's Phrasing, on the section picked there.
+        tab("chainTabPitch", "Pitch", Icons.multiline_chart, phrasingOn, () {
+          c.showSpeech(key);
+          c.openPhrasing(key, 0, 0);
+        }),
+      ],
       if (tunable)
         tab("chainTabPitch", "Pitch", Icons.multiline_chart, pitchOn,
             () => c.showPitch(key)),
@@ -386,6 +401,30 @@ extension on _ChainPanelState {
               onPressed: () => _foldEvery(false)),
           if (_soundOwner case var owner?) ...[
             chainMenuDivider(look),
+            if (c.frozenSteps(owner).isNotEmpty)
+              chainMenuItem(look,
+                  key: const ValueKey("chainUnfreeze"),
+                  text: "Unfreeze the chain",
+                  onPressed: () => c.unfreezeChain(owner))
+            else if (c.canFreeze(owner) == null && c.chainOf(owner).isNotEmpty)
+              chainMenuItem(look,
+                  key: const ValueKey("chainFreeze"),
+                  text: "Freeze this chain",
+                  hint: "plays a copy",
+                  onPressed: c.freezing(owner)
+                      ? null
+                      : () =>
+                          freezeFrom(context, c, owner, c.chainOf(owner).last)),
+            chainMenuItem(look,
+                key: const ValueKey("chainSavePreset"),
+                text: "Save the whole chain as a preset", onPressed: () {
+              var name = _ChainWho.nameOf(c);
+              saveDevicePreset(context, "$name chain",
+                  devices: c.devicesOf(owner),
+                  midi: c.instrumentChannel(owner)
+                      ? c.instrumentOf(owner)?.instrument?.effects ?? const []
+                      : const []);
+            }),
             chainMenuItem(look,
                 key: const ValueKey("chainCopy"),
                 text: "Copy this chain",
@@ -504,8 +543,13 @@ class _ChainWho extends StatelessWidget {
 
   CanvasController get c => controller;
 
+  /// nameOf is the name of what [c]'s Chain shows.
+  static String nameOf(CanvasController c) => _shownBy(c).$1;
+
   /// _shown is what the Chain shows now: its name and its kind.
-  (String, String) _shown() {
+  (String, String) _shown() => _shownBy(c);
+
+  static (String, String) _shownBy(CanvasController c) {
     if (c.chainShowsMotion) {
       if (c.pickedScene case var i?) {
         return (

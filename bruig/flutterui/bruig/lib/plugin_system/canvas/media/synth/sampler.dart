@@ -391,6 +391,265 @@ class _PluckVoice extends Voice {
   }
 }
 
+/// _Patch is a built-in sound for a General MIDI family, played by a
+/// _SynthVoice: its wave, a second one detuned beside it, breath, its
+/// envelope, how open its filter is (times the note), how far the filter
+/// opens with the envelope, a vibrato, and -- for bells -- a frequency
+/// modulator's ratio and how much it bites, dying away.
+class _Patch {
+  final int wave; // 0 sine, 1 saw, 2 square, 3 triangle, 4 organ
+  final double detune, noise;
+  final double attack, decay, sustain, release;
+  final double cutoff, sweep, vibrato;
+  final double fmRatio, fmIndex;
+  final double level;
+  const _Patch(
+      {this.wave = 1,
+      this.detune = 0,
+      this.noise = 0,
+      this.attack = 0.01,
+      this.decay = 0.3,
+      this.sustain = 0.8,
+      this.release = 0.2,
+      this.cutoff = 8,
+      this.sweep = 0,
+      this.vibrato = 0,
+      this.fmRatio = 0,
+      this.fmIndex = 0,
+      this.level = 0.22});
+}
+
+/// _patches are the built-in sounds, by General MIDI family (program ~/ 8).
+/// Null for a family played by a voice of its own: pianos, guitars, basses
+/// and plucked ethnic instruments.
+const Map<int, _Patch> _patches = {
+  // Chromatic percussion: bells, a struck bar's inharmonic ring.
+  1: _Patch(
+      wave: 0,
+      attack: 0.002,
+      decay: 1.4,
+      sustain: 0,
+      release: 0.5,
+      fmRatio: 3.5,
+      fmIndex: 2.2,
+      cutoff: 30,
+      level: 0.28),
+  // Organs: drawbars, held as long as the key.
+  2: _Patch(
+      wave: 4,
+      attack: 0.006,
+      decay: 0.1,
+      sustain: 1,
+      release: 0.06,
+      cutoff: 30,
+      level: 0.16),
+  // Strings: bowed, swelling in, with a late vibrato.
+  5: _Patch(
+      wave: 1,
+      detune: 6,
+      attack: 0.18,
+      decay: 0.4,
+      sustain: 0.9,
+      release: 0.45,
+      cutoff: 6,
+      vibrato: 0.12,
+      level: 0.18),
+  // Ensembles and choirs: wide and slow.
+  6: _Patch(
+      wave: 1,
+      detune: 11,
+      attack: 0.3,
+      decay: 0.6,
+      sustain: 0.9,
+      release: 0.9,
+      cutoff: 4,
+      vibrato: 0.06,
+      level: 0.16),
+  // Brass: a bright blat as the filter opens.
+  7: _Patch(
+      wave: 1,
+      attack: 0.04,
+      decay: 0.3,
+      sustain: 0.8,
+      release: 0.15,
+      cutoff: 2.5,
+      sweep: 6,
+      vibrato: 0.05,
+      level: 0.2),
+  // Reeds: hollow and buzzy.
+  8: _Patch(
+      wave: 2,
+      attack: 0.03,
+      decay: 0.2,
+      sustain: 0.85,
+      release: 0.1,
+      cutoff: 5,
+      vibrato: 0.06,
+      level: 0.16),
+  // Pipes and flutes: soft, with breath.
+  9: _Patch(
+      wave: 3,
+      noise: 0.06,
+      attack: 0.06,
+      decay: 0.2,
+      sustain: 0.9,
+      release: 0.12,
+      cutoff: 3,
+      vibrato: 0.08,
+      level: 0.3),
+  // Synth leads: bright and immediate.
+  10: _Patch(
+      wave: 1,
+      detune: 4,
+      attack: 0.004,
+      decay: 0.2,
+      sustain: 0.9,
+      release: 0.1,
+      cutoff: 10,
+      level: 0.17),
+  // Synth pads: slow, wide and dark.
+  11: _Patch(
+      wave: 1,
+      detune: 12,
+      attack: 0.6,
+      decay: 1,
+      sustain: 0.9,
+      release: 1.5,
+      cutoff: 3,
+      level: 0.15),
+  // Synth effects: a shimmer with air in it.
+  12: _Patch(
+      wave: 3,
+      detune: 15,
+      noise: 0.05,
+      attack: 0.4,
+      decay: 1,
+      sustain: 0.8,
+      release: 2,
+      cutoff: 6,
+      vibrato: 0.15,
+      level: 0.22),
+  // Percussive: woodblocks, steel drums -- short and struck.
+  14: _Patch(
+      wave: 0,
+      attack: 0.001,
+      decay: 0.35,
+      sustain: 0,
+      release: 0.15,
+      fmRatio: 1.4,
+      fmIndex: 1.6,
+      cutoff: 30,
+      level: 0.3),
+  // Sound effects: noise, filtered by the note.
+  15: _Patch(
+      wave: 3,
+      noise: 0.5,
+      attack: 0.1,
+      decay: 0.5,
+      sustain: 0.7,
+      release: 0.5,
+      cutoff: 4,
+      level: 0.22),
+};
+
+/// _SynthVoice plays a _Patch: band-limited waves (PolyBLEP), two of them
+/// detuned, through two one-pole low-passes that open with the touch and
+/// the envelope.
+class _SynthVoice extends Voice {
+  final _Patch p;
+  final double _f0, _gain, _bright;
+  final _Adsr _env;
+  double _ph1 = 0, _ph2 = 0, _fm = 0, _lp1 = 0, _lp2 = 0, _t = 0;
+  final math.Random _noise;
+
+  _SynthVoice(super.key, int velocity, this.p)
+      : _f0 = 440 * math.pow(2, (key - 69) / 12).toDouble(),
+        _gain =
+            p.level * math.pow(velocity.clamp(1, 127) / 127, 1.4).toDouble(),
+        _bright = 0.55 + 0.45 * velocity.clamp(1, 127) / 127,
+        _env = _Adsr(p.attack, p.decay, p.sustain, p.release),
+        _noise = math.Random(key);
+
+  @override
+  void release() {
+    super.release();
+    _env.letGo = true;
+  }
+
+  static double _blep(double t, double dt) {
+    if (t < dt) {
+      t /= dt;
+      return t + t - t * t - 1;
+    }
+    if (t > 1 - dt) {
+      t = (t - 1) / dt;
+      return t * t + t + t + 1;
+    }
+    return 0;
+  }
+
+  double _wave(double ph, double dt) => switch (p.wave) {
+        0 => math.sin(2 * math.pi * ph),
+        1 => 2 * ph - 1 - _blep(ph, dt),
+        2 =>
+          (ph < 0.5 ? 1.0 : -1.0) + _blep(ph, dt) - _blep((ph + 0.5) % 1, dt),
+        3 => 1 - 4 * (ph - 0.5).abs(),
+        // Drawbars: the note, its octave, its twelfth and two octaves up.
+        _ => (math.sin(2 * math.pi * ph) +
+                0.7 * math.sin(4 * math.pi * ph) +
+                0.45 * math.sin(6 * math.pi * ph) +
+                0.3 * math.sin(8 * math.pi * ph)) /
+            1.6,
+      };
+
+  @override
+  void render(Float32List l, Float32List r, int n) {
+    var spread = math.pow(2, p.detune / 1200).toDouble();
+    for (var i = 0; i < n; i++) {
+      var e = _env.next();
+      if (_env.done) {
+        done = true;
+        return;
+      }
+      _t += 1 / mixRate;
+      // A vibrato that comes in after a third of a second.
+      var vib = p.vibrato == 0
+          ? 1.0
+          : math
+              .pow(
+                  2,
+                  p.vibrato *
+                      math.min(1.0, _t / 0.35) *
+                      math.sin(2 * math.pi * 5.5 * _t) /
+                      12)
+              .toDouble();
+      var f = _f0 * pitch * vib;
+      var dt1 = (f / mixRate).clamp(0.0, 0.45);
+      double s;
+      if (p.fmRatio > 0) {
+        // A bell: the modulator's bite dying with the note.
+        _fm = (_fm + dt1 * p.fmRatio) % 1;
+        var index = p.fmIndex * e;
+        s = math.sin(2 * math.pi * _ph1 + index * math.sin(2 * math.pi * _fm));
+      } else {
+        s = _wave(_ph1, dt1);
+        if (p.detune > 0) s = 0.5 * (s + _wave(_ph2, dt1 * spread));
+      }
+      if (p.noise > 0) s += p.noise * (_noise.nextDouble() * 2 - 1);
+      _ph1 = (_ph1 + dt1) % 1;
+      _ph2 = (_ph2 + dt1 * spread) % 1;
+      // The filter opens with the touch, and with the envelope by sweep.
+      var cut = math.min(16000.0, f * p.cutoff * _bright * (1 + p.sweep * e));
+      var a = 1 - math.exp(-2 * math.pi * cut / mixRate);
+      _lp1 += (s - _lp1) * a;
+      _lp2 += (_lp1 - _lp2) * a;
+      var v = _lp2 * _gain * e;
+      l[i] += v * 0.7;
+      r[i] += v * 0.7;
+    }
+  }
+}
+
 /// _Adsr is an envelope: up in a straight line over its attack, down to its
 /// sustain over its decay, held there, then to silence over its release
 /// once let go -- each fall within a thousandth (60dB) of its end in the
@@ -426,6 +685,11 @@ class Sampler {
   final SoundFont? font;
   final SfPreset? preset;
 
+  /// bank and program are the General MIDI sound: with no bank of
+  /// samples, the program's family picks the built-in voice, and bank 128
+  /// is the drum kit.
+  final int bank, program;
+
   /// look picks the built-in voice used with no bank.
   final InstrumentLook look;
 
@@ -440,8 +704,8 @@ class Sampler {
 
   Sampler(
       {this.font,
-      int bank = 0,
-      int program = 0,
+      this.bank = 0,
+      this.program = 0,
       this.look = InstrumentLook.keyboard,
       this.shape = const InstrumentShape()})
       : preset = font?.preset(bank, program);
@@ -538,12 +802,19 @@ class Sampler {
         started.add(_SfVoice(key, velocity, z, f.samples, enveloped: !own));
       }
     } else {
-      started.add(switch (look) {
-        InstrumentLook.keyboard => _PianoVoice(key, velocity),
-        InstrumentLook.drums => _DrumVoice(key, velocity),
-        InstrumentLook.guitar => _PluckVoice(key, velocity),
-        InstrumentLook.bass => _PluckVoice(key, velocity, bass: true),
-      });
+      // Built in: the drum kit, or the program's family -- a piano, a
+      // plucked string, or one of the synth's patches.
+      var family = program.clamp(0, 127) ~/ 8;
+      started.add(look == InstrumentLook.drums || bank == 128
+          ? _DrumVoice(key, velocity)
+          : switch (_patches[family]) {
+              var patch? => _SynthVoice(key, velocity, patch),
+              null => switch (family) {
+                  3 || 13 => _PluckVoice(key, velocity),
+                  4 => _PluckVoice(key, velocity, bass: true),
+                  _ => _PianoVoice(key, velocity),
+                },
+            });
     }
     var note = ++_notes;
     for (var v in started) {

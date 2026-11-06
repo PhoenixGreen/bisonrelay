@@ -157,6 +157,8 @@ extension CanvasInstruments on CanvasController {
     _heard();
     _soundOn(e, part, key, velocity);
     if (_practice != null) _practiceHeard(e, key);
+    // Step input: written at the piano roll's cursor.
+    stepNoteOn(CanvasController._channelOf(e), key, velocity);
     // Into the slot being recorded, where it is this channel's; otherwise
     // into the part, with Record.
     if (_clipRecord?.channel == CanvasController._channelOf(e)) {
@@ -370,6 +372,7 @@ extension CanvasInstruments on CanvasController {
       return;
     }
     if (!(_held[e.id]?.remove(key) ?? false)) return;
+    stepNoteOff(key);
     _soundOff(e, key);
     _clipNoteOff(e, key);
     if (_take[e.id]?.remove(key) case (var start, var velocity)?) {

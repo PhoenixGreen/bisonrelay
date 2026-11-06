@@ -27,7 +27,26 @@ enum NoteTool {
   join("Join"),
   mute("Mute"),
   chance("Chance 50%"),
-  always("Always");
+  always("Always"),
+
+  /// duplicate puts a copy of the notes after them, a grid step on from
+  /// where the last ends.
+  duplicate("Duplicate"),
+
+  /// swing pushes every second step of the grid a third of a step later.
+  swing("Swing"),
+
+  /// arpeggiate spreads each chord's notes up the grid, lowest first.
+  arpeggiate("Arpeggiate chords"),
+
+  /// rhythm lays five notes in every eight steps of the grid (Euclid's
+  /// spacing, as Bjorklund's) on the lowest key, from the first note to the
+  /// loop's end -- or on middle C from the start, with none.
+  rhythm("Rhythm 5 in 8"),
+
+  /// fillChords makes each note the root of the scale's chord on it: the
+  /// scale's third and fifth over it.
+  fillChords("Fill chords");
 
   final String label;
   const NoteTool(this.label);
@@ -51,6 +70,10 @@ List<MidiNote> applyNoteTool(
     for (var (i, n) in notes.indexed)
       if (on(i)) n
   ];
+  // A rhythm needs no notes to start from: middle C, from the start.
+  if (chosen.isEmpty && tool == NoteTool.rhythm) {
+    return _rhythm(notes, 60, 0, loopEnd, grid);
+  }
   if (chosen.isEmpty) return notes;
   List<MidiNote> each(MidiNote Function(MidiNote n, int i) f) => [
         for (var (i, n) in notes.indexed) on(i) ? f(n, i) : n,
@@ -187,5 +210,84 @@ List<MidiNote> applyNoteTool(
       return each((n, _) => n.copyWith(chance: 0.5));
     case NoteTool.always:
       return each((n, _) => n.copyWith(chance: 1));
+    case NoteTool.duplicate:
+      var step = grid <= 0 ? 0.25 : grid;
+      var by = math.max(step, ((last - first) / step).ceil() * step);
+      return [
+        ...notes,
+        for (var n in chosen) n.copyWith(start: n.start + by),
+      ];
+    case NoteTool.swing:
+      if (grid <= 0) return notes;
+      return each((n, _) {
+        var step = (n.start / grid).round();
+        var onGrid = (n.start - step * grid).abs() < grid / 8;
+        if (!onGrid || step.isEven) return n;
+        return n.copyWith(start: n.start + grid / 3);
+      });
+    case NoteTool.arpeggiate:
+      var step = grid <= 0 ? 0.25 : grid;
+      var byStart = <double, List<int>>{};
+      for (var (i, n) in notes.indexed) {
+        if (on(i)) (byStart[n.start] ??= []).add(i);
+      }
+      var place = <int, int>{};
+      for (var group in byStart.values) {
+        group.sort((a, b) => notes[a].key.compareTo(notes[b].key));
+        for (var (k, i) in group.indexed) {
+          place[i] = k;
+        }
+      }
+      return each((n, i) {
+        var k = place[i] ?? 0;
+        if (k == 0) return n.copyWith(length: math.min(n.length, step));
+        return n.copyWith(
+            start: n.start + k * step, length: math.min(n.length, step));
+      });
+    case NoteTool.rhythm:
+      var low = chosen.map((n) => n.key).reduce(math.min);
+      return _rhythm(notes, low, first, loopEnd, grid);
+    case NoteTool.fillChords:
+      var (root, steps) = scale;
+      List<int> chordOn(int key) {
+        var at = steps.indexOf((key - root) % 12);
+        if (at < 0) return const [];
+        int up(int by) {
+          var d = at + by;
+          var octave = d ~/ steps.length;
+          var s = steps[d % steps.length];
+          var base = key - steps[at];
+          return base + s + 12 * octave;
+        }
+
+        return [up(2), up(4)];
+      }
+
+      return [
+        ...notes,
+        for (var n in chosen)
+          for (var k in chordOn(n.key))
+            if (k <= 127 &&
+                !notes
+                    .any((m) => m.key == k && (m.start - n.start).abs() < 1e-6))
+              n.copyWith(key: k),
+      ];
   }
+}
+
+/// _rhythm is [notes] with five notes in every eight grid steps on [key],
+/// from [from] to [to], where none of that key starts already.
+List<MidiNote> _rhythm(
+    List<MidiNote> notes, int key, double from, double to, double grid) {
+  var step = grid <= 0 ? 0.25 : grid;
+  // Five in eight, as evenly as eight steps let them be: x.xx.xx.
+  const pattern = [true, false, true, true, false, true, true, false];
+  var out = [...notes];
+  var i = 0;
+  for (var t = from; t < to - 1e-6; t += step, i++) {
+    if (!pattern[i % pattern.length]) continue;
+    if (notes.any((n) => n.key == key && (n.start - t).abs() < 1e-6)) continue;
+    out.add(MidiNote(key, t, step, 100));
+  }
+  return out;
 }
