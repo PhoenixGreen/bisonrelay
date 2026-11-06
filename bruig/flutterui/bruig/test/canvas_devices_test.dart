@@ -61,6 +61,12 @@ void main() {
     test("every kind runs, on and saved", () {
       for (var kind in DeviceKind.values) {
         var d = MixDevice(kind);
+        // An LFO makes no sound: it moves other devices' knobs.
+        if (kind == DeviceKind.lfo) {
+          expect(DeviceProcessor.of(d), isNull);
+          expect(MixDevice.fromJson(d.toJson()), d);
+          continue;
+        }
         expect(DeviceProcessor.of(d), isNotNull, reason: kind.name);
         expect(MixDevice.fromJson(d.toJson()), d, reason: kind.name);
         var (l, _) = run(d, sine(440, 4800));

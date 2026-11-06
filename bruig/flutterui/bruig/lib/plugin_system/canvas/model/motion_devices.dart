@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonBool, jsonDouble, jsonStr;
 import 'package:bruig/plugin_system/canvas/model/devices.dart' show DeviceParam;
+import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 
 // motion_devices.dart is an element's motion chain beyond its clips: the
 // devices of its Chain's Motion view. Three rules make it work (see the
@@ -73,6 +74,10 @@ enum MotionDeviceKind {
     DeviceParam(
         "moves", "Moves", 0, 3, 0, "", ["Size", "Up", "Turn", "Opacity"]),
   ]),
+
+  /// lfo moves no pose itself: it turns other devices' knobs up and down,
+  /// a move's or a look's (see MotionDevice.mods and modulation.dart).
+  lfo("LFO", MotionDeviceSide.pose, lfoParams),
   glow("Glow", MotionDeviceSide.look, [
     DeviceParam("radius", "Radius", 0, 60, 10, "px"),
     DeviceParam("strength", "Strength", 0, 1, 0.6),
@@ -127,6 +132,9 @@ class MotionDevice {
   /// goes along, what Look at looks at -- or "" for none.
   final String target;
 
+  /// mods are the knobs an LFO moves: see modulation.dart.
+  final List<ModTarget> mods;
+
   /// colour is the colour a look draws in -- a glow's, a shadow's, an
   /// outline's -- as ARGB; null for the kind's own.
   final int? colour;
@@ -136,7 +144,8 @@ class MotionDevice {
       this.values = const {},
       this.id = "",
       this.colour,
-      this.target = ""});
+      this.target = "",
+      this.mods = const []});
 
   /// takesTarget is whether it works with another element.
   bool get takesTarget =>
@@ -160,20 +169,49 @@ class MotionDevice {
         values: {...values, id: whole ? v.roundToDouble() : v},
         id: this.id,
         colour: colour,
-        target: target);
+        target: target,
+        mods: mods);
   }
 
   MotionDevice switched(bool on) => MotionDevice(kind,
-      on: on, values: values, id: id, colour: colour, target: target);
+      on: on,
+      values: values,
+      id: id,
+      colour: colour,
+      target: target,
+      mods: mods);
 
   MotionDevice withId(String id) => MotionDevice(kind,
-      on: on, values: values, id: id, colour: colour, target: target);
+      on: on,
+      values: values,
+      id: id,
+      colour: colour,
+      target: target,
+      mods: mods);
 
   MotionDevice withColour(int? colour) => MotionDevice(kind,
-      on: on, values: values, id: id, colour: colour, target: target);
+      on: on,
+      values: values,
+      id: id,
+      colour: colour,
+      target: target,
+      mods: mods);
 
   MotionDevice withTarget(String target) => MotionDevice(kind,
-      on: on, values: values, id: id, colour: colour, target: target);
+      on: on,
+      values: values,
+      id: id,
+      colour: colour,
+      target: target,
+      mods: mods);
+
+  MotionDevice withMods(List<ModTarget> mods) => MotionDevice(kind,
+      on: on,
+      values: values,
+      id: id,
+      colour: colour,
+      target: target,
+      mods: mods);
 
   Map<String, dynamic> toJson() => {
         "kind": kind.name,
@@ -182,6 +220,7 @@ class MotionDevice {
         if (id.isNotEmpty) "id": id,
         if (colour != null) "colour": colour,
         if (target.isNotEmpty) "target": target,
+        if (mods.isNotEmpty) "mods": [for (var m in mods) m.toJson()],
       };
 
   static MotionDevice? fromJson(Object? json) {
@@ -199,7 +238,8 @@ class MotionDevice {
         },
         id: jsonStr(json["id"]) ?? "",
         colour: json["colour"] is int ? json["colour"] as int : null,
-        target: jsonStr(json["target"]) ?? "");
+        target: jsonStr(json["target"]) ?? "",
+        mods: readModTargets(json["mods"]));
   }
 
   @override
@@ -210,6 +250,9 @@ class MotionDevice {
       other.id == id &&
       other.colour == colour &&
       other.target == target &&
+      other.mods.length == mods.length &&
+      [for (var i = 0; i < mods.length; i++) other.mods[i] == mods[i]]
+          .every((x) => x) &&
       other.values.length == values.length &&
       values.entries.every((e) => other.values[e.key] == e.value);
 

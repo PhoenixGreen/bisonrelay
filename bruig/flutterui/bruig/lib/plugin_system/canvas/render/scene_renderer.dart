@@ -860,12 +860,19 @@ void paintElement(
   var blend =
       element is VideoElement ? element.blend.flutter : BlendMode.srcOver;
   var layered = alpha < 0.999 || blend != BlendMode.srcOver;
+  // Its looks -- the devices right of its drawing in its Chain -- as its
+  // LFOs have them now: see motion_looks.dart.
+  var looks = [
+    for (var l in element.base.motion.looks)
+      motionModulated(l, element.base.motion.devices,
+          frame / (frameRate <= 0 ? 1 : frameRate)),
+  ];
   if (layered) {
     // Grown, because a shadow, an outline or a glow reaches outside the
     // element's bounds and a layer clipped to them would cut it off.
     canvas.saveLayer(
-        bounds.inflate(math.max(bounds.width, bounds.height) +
-            looksReach(element.base.motion.looks)),
+        bounds
+            .inflate(math.max(bounds.width, bounds.height) + looksReach(looks)),
         Paint()
           ..color = const Color(0xFFFFFFFF).withValues(alpha: alpha)
           ..blendMode = blend);
@@ -1088,9 +1095,6 @@ void paintElement(
     }
   }
 
-  // Its looks -- the devices right of its drawing in its Chain -- on what
-  // is drawn: see motion_looks.dart.
-  var looks = element.base.motion.looks;
   if (looks.isEmpty) {
     drawn();
   } else {

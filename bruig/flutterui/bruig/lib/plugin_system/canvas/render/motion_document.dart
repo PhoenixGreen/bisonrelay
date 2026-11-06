@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart'
     show channelLevelAt;
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart'
@@ -187,7 +188,9 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
 Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
     LiveMotion? live, List<MotionDevice> devices, int i, int? instance) {
   if (i < 0) return _clipPose(e, frame, doc, live);
-  var d = devices[i];
+  // Its knobs where its LFOs have them at this moment.
+  var d = motionModulated(
+      devices[i], e.base.motion.devices, frame / math.max(1, doc.frameRate));
   switch (d.kind) {
     case MotionDeviceKind.instances:
       var set = e.base.motion.instances;
@@ -404,6 +407,32 @@ Offset? _centreOf(CanvasDocument doc, String id, int frame) {
       upto: upto ?? 1 << 20);
   var dx = now.dx - before.dx, dy = now.dy - before.dy;
   return (math.sqrt(dx * dx + dy * dy) * rate, now);
+}
+
+/// motionModulated is [d] with what the LFOs of [chain] add to its knobs
+/// [t] seconds in (see modulation.dart); as it is where none moves it.
+MotionDevice motionModulated(
+    MotionDevice d, List<MotionDevice> chain, double t) {
+  if (d.kind.params.isEmpty || d.id.isEmpty) return d;
+  Map<String, double>? add;
+  for (var l in chain) {
+    if (!l.on || l.kind != MotionDeviceKind.lfo || l.mods.isEmpty) continue;
+    double? v;
+    for (var m in l.mods) {
+      if (m.device != d.id || !d.kind.params.any((p) => p.id == m.param)) {
+        continue;
+      }
+      v ??= lfoValue(
+          l.value("shape").round(), l.value("rate") * t + l.value("phase"));
+      (add ??= {})[m.param] = (add[m.param] ?? 0) + m.depth * v;
+    }
+  }
+  if (add == null) return d;
+  var next = d;
+  for (var MapEntry(key: id, value: by) in add.entries) {
+    next = next.withValue(id, modulated(d.kind.param(id), d.value(id), by));
+  }
+  return next;
 }
 
 /// retimed is the moment a Time device asks the devices to its left for,

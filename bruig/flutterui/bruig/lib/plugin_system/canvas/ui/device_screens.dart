@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
+import 'package:bruig/plugin_system/canvas/model/modulation.dart' show lfoValue;
 import 'package:flutter/material.dart';
 
 // device_screens.dart is what each device draws on its screen in the Chain:
@@ -206,6 +207,31 @@ class DeviceScreenPainter extends CustomPainter {
               Paint()..color = accent);
         }
         say = "$n bands";
+      case DeviceKind.lfo:
+        // Two of its cycles, and where it is now on them.
+        var shape = v("shape").round(), rate = v("rate"), phase = v("phase");
+        var wave = Path();
+        for (var i = 0; i <= 160; i++) {
+          var x = w * i / 160;
+          var y = h / 2 - lfoValue(shape, 2 * i / 160 + phase) * (h / 2 - 6);
+          i == 0 ? wave.moveTo(x, y) : wave.lineTo(x, y);
+        }
+        canvas.drawPath(
+            wave,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.6
+              ..color = accent);
+        var now = rate * t;
+        var at = (now % 2) / 2;
+        canvas.drawCircle(
+            Offset(
+                w * at, h / 2 - lfoValue(shape, 2 * at + phase) * (h / 2 - 6)),
+            3.5,
+            Paint()..color = live > 0 ? Colors.white : accent);
+        say = rate < 10
+            ? "${rate.toStringAsFixed(2)} Hz"
+            : "${rate.toStringAsFixed(1)} Hz";
       case DeviceKind.utility:
         var width = v("width");
         var c = Offset(w / 2, h - 6);

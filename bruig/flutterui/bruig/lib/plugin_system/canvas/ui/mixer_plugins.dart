@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show motionSpeedAt, retimed;
@@ -1832,6 +1833,9 @@ class _Knob extends StatelessWidget {
   final bool automated;
   final bool held;
 
+  /// modulated is whether an LFO moves it: a pink ring round it.
+  final bool modulated;
+
   /// reading is whether its value is written under it: not on a short
   /// device, where the room is the knob's.
   final bool reading;
@@ -1846,6 +1850,7 @@ class _Knob extends StatelessWidget {
   const _Knob({
     this.automated = false,
     this.held = false,
+    this.modulated = false,
     this.reading = true,
     this.accent,
     this.ink = _silverInk,
@@ -1889,10 +1894,24 @@ class _Knob extends StatelessWidget {
             range: range,
             onChanged: onChanged,
             onCommit: onCommit,
-            child: CustomPaint(
-                size: Size.square(size),
-                painter: _KnobFace(range.toUnit(value),
-                    accent: accent, from: bipolar ? range.toUnit(0) : 0)),
+            child: Stack(alignment: Alignment.center, children: [
+              CustomPaint(
+                  size: Size.square(size),
+                  painter: _KnobFace(range.toUnit(value),
+                      accent: accent, from: bipolar ? range.toUnit(0) : 0)),
+              if (modulated)
+                IgnorePointer(
+                  child: Container(
+                    key: const ValueKey("knobModulated"),
+                    width: size + 4,
+                    height: size + 4,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: modulationColour, width: 2),
+                    ),
+                  ),
+                ),
+            ]),
           ),
           if (reading) ...[
             const SizedBox(height: 4),
@@ -3011,6 +3030,13 @@ class ParamDevice extends StatelessWidget {
         if (l.points.isNotEmpty) l.target
     };
     var held = controller.overridden[owner] ?? const <String>{};
+    // Which of its knobs an LFO in the chain moves.
+    var moved = {
+      for (var d in devices)
+        if (d.on && d.kind == DeviceKind.lfo)
+          for (var m in d.mods)
+            if (m.device == deviceIdAt(devices, index)) m.param,
+    };
     String target(DeviceParam p) => AutomationTarget.deviceSetting(
             deviceIdAt(devices, index), device.kind, p.id)
         .id;
@@ -3027,6 +3053,7 @@ class ParamDevice extends StatelessWidget {
                 key: ValueKey("device-$index-${p.id}"),
                 automated: automated.contains(target(p)),
                 held: held.contains(target(p)),
+                modulated: moved.contains(p.id),
                 label: p.label,
                 text: p.reading(device.value(p.id)),
                 value: device.value(p.id),
@@ -3048,6 +3075,27 @@ class ParamDevice extends StatelessWidget {
           if (device.kind == DeviceKind.vocoder &&
               device.value("carrier").round() == carrierFromChannel)
             _sourceChannel(context, device, write),
+          // What an LFO moves: any knob of the chain's other devices.
+          if (device.kind == DeviceKind.lfo)
+            ModTargets(
+              key: ValueKey("modTargets-$index"),
+              mods: device.mods,
+              knobs: [
+                for (var (i, d) in devices.indexed)
+                  if (i != index && d.kind != DeviceKind.lfo)
+                    for (var p in d.kind.params)
+                      if (!p.isChoice)
+                        (
+                          deviceIdAt(devices, i),
+                          p.id,
+                          "${d.kind.label} · ${p.label}"
+                        ),
+              ],
+              ink: skin.ink,
+              onChanged: (mods, {transient = false}) =>
+                  write(device.withMods(mods), transient: transient),
+              onCommit: controller.endInteraction,
+            ),
           // A gate opens to its own sound, or to another channel's.
           if (device.kind == DeviceKind.gate)
             _sourceChannel(context, device, write, itself: true),
@@ -4084,11 +4132,19 @@ class MotionDeviceCard extends StatelessWidget {
     var look = MixerLook.of(context);
     var skin = DeviceSkin.studio(look.studio);
     var pose = d.side == MotionDeviceSide.pose;
+    // Which of its knobs an LFO in the chain moves.
+    var moved = {
+      for (var l in all)
+        if (l.on && l.kind == MotionDeviceKind.lfo)
+          for (var m in l.mods)
+            if (m.device == d.id) m.param,
+    };
     var accent = pose ? const Color(0xFF6FA8FF) : const Color(0xFFE59BFF);
     List<Widget> knobs(DeviceTier tier) => [
           for (var p in d.kind.params)
             _Knob(
               key: ValueKey("mdev-${d.id}-${p.id}"),
+              modulated: moved.contains(p.id),
               label: p.label,
               text: p.reading(d.value(p.id)),
               value: d.value(p.id),
@@ -4105,6 +4161,23 @@ class MotionDeviceCard extends StatelessWidget {
               bipolar: p.min < 0 && p.max > 0,
               onChanged: (v, {transient = false}) =>
                   write(d.withValue(p.id, v), transient: transient),
+              onCommit: controller.endInteraction,
+            ),
+          // What an LFO moves: any knob of the element's other devices.
+          if (d.kind == MotionDeviceKind.lfo)
+            ModTargets(
+              key: ValueKey("mdevMods-${d.id}"),
+              mods: d.mods,
+              knobs: [
+                for (var x in all)
+                  if (x.id != d.id && x.kind != MotionDeviceKind.lfo)
+                    for (var p in x.kind.params)
+                      if (!p.isChoice)
+                        (x.id, p.id, "${x.kind.label} · ${p.label}"),
+              ],
+              ink: skin.ink,
+              onChanged: (mods, {transient = false}) =>
+                  write(d.withMods(mods), transient: transient),
               onCommit: controller.endInteraction,
             ),
           // What it follows, or looks at.
@@ -4776,5 +4849,113 @@ class _VaryRow extends StatelessWidget {
           onCommit: onCommit,
         ),
     ]);
+  }
+}
+
+/// modulationColour marks what a modulator moves: a knob's ring.
+const Color modulationColour = Color(0xFFFF6FB5);
+
+/// ModTargets is what a modulator moves: each knob, by its device and its
+/// name, with how far it moves it and a way to take it off, and a way to
+/// add another of [knobs] -- (device id, setting, name) each.
+class ModTargets extends StatelessWidget {
+  final List<ModTarget> mods;
+  final List<(String, String, String)> knobs;
+  final Color ink;
+  final void Function(List<ModTarget> mods, {bool transient}) onChanged;
+  final VoidCallback onCommit;
+  const ModTargets(
+      {required this.mods,
+      required this.knobs,
+      required this.ink,
+      required this.onChanged,
+      required this.onCommit,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var style = TextStyle(fontSize: 11, color: ink);
+    String nameOf(ModTarget m) =>
+        knobs
+            .where((k) => k.$1 == m.device && k.$2 == m.param)
+            .firstOrNull
+            ?.$3 ??
+        "Gone";
+    var free = [
+      for (var k in knobs)
+        if (!mods.any((m) => m.device == k.$1 && m.param == k.$2)) k,
+    ];
+    return SizedBox(
+      width: 230,
+      child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text("Moves", style: style.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            for (var (i, m) in mods.indexed)
+              Row(key: ValueKey("modTarget-$i"), children: [
+                Container(
+                    width: 7,
+                    height: 7,
+                    margin: const EdgeInsets.only(right: 5),
+                    decoration: const BoxDecoration(
+                        color: modulationColour, shape: BoxShape.circle)),
+                Expanded(
+                  child: Text(nameOf(m),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: style),
+                ),
+                _Knob(
+                  key: ValueKey("modDepth-$i"),
+                  label: "",
+                  text: "${(m.depth * 100).round()}%",
+                  value: m.depth,
+                  initial: 0.5,
+                  range: const _Range(-1, 1),
+                  size: 22,
+                  reading: false,
+                  accent: modulationColour,
+                  ink: ink,
+                  bipolar: true,
+                  onChanged: (v, {transient = false}) => onChanged(
+                      [...mods]..[i] = m.withDepth(v),
+                      transient: transient),
+                  onCommit: onCommit,
+                ),
+                IconButton(
+                  key: ValueKey("modRemove-$i"),
+                  tooltip: "Stop moving it",
+                  iconSize: 13,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.close, color: ink),
+                  onPressed: () => onChanged([...mods]..removeAt(i)),
+                ),
+              ]),
+            if (free.isNotEmpty)
+              CanvasDropdown<String>(
+                key: const ValueKey("modAdd"),
+                label: "Add",
+                value: "",
+                width: 200,
+                grow: false,
+                options: [
+                  ("", "Move a knob…"),
+                  for (var k in free) ("${k.$1}|${k.$2}", k.$3),
+                ],
+                onChanged: (v) {
+                  if (v.isEmpty) return;
+                  var cut = v.indexOf("|");
+                  onChanged([
+                    ...mods,
+                    ModTarget(v.substring(0, cut), v.substring(cut + 1)),
+                  ]);
+                },
+              )
+            else if (knobs.isEmpty)
+              Text("Nothing in the chain to move yet", style: style),
+          ]),
+    );
   }
 }

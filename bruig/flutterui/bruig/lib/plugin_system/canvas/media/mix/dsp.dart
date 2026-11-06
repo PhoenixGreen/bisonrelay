@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/vocoder.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 
 // dsp.dart is the arithmetic a mix is made of: filters, a compressor, a
 // limiter, a channel strip, the master, and a loudness meter.
@@ -169,6 +170,14 @@ class StripProcessor {
   /// _gl and _gr are the levels the last block ended on (see [level]).
   double _gl, _gr;
 
+  /// _clock is how many seconds the strip has run, for its LFOs; carried
+  /// on when the strip is rebuilt, so they do not jump.
+  double _clock = 0;
+
+  /// _moved are the devices, by place, an LFO moved on the last block: let
+  /// go of, each goes back to where it is set.
+  Set<int> _moved = {};
+
   /// tapping is whether shape notes [taps]: on while a chain's meters
   /// between devices are on screen, as measuring costs a pass per step.
   bool tapping = false;
@@ -194,6 +203,7 @@ class StripProcessor {
         _gl = mix.gains.$1,
         _gr = mix.gains.$2 {
     tapping = carry?.tapping ?? false;
+    _clock = carry?._clock ?? 0;
   }
 
   static DeviceProcessor? _carried(
@@ -204,7 +214,11 @@ class StripProcessor {
     var then = was._mix.devices[j], running = was._chain[j];
     if (running == null || !then.on || then.kind != now.kind) return null;
     if (then.source != now.source) return null;
-    if (then == now) return running;
+    if (then == now) {
+      // Set again as it is: an LFO may have left it somewhere else.
+      if (running is Tunable) (running as Tunable).tune(now);
+      return running;
+    }
     if (running is Tunable) {
       (running as Tunable).tune(now);
       return running;
@@ -252,6 +266,8 @@ class StripProcessor {
       r.fillRange(0, n, 0);
       return;
     }
+    _modulate();
+    _clock += n / mixRate;
     // In the order it was arranged in: the EQ and the compressor among the
     // devices wherever they were put (see ChannelMix.chain).
     var taps = tapping ? <(double, double)>[blockPeaks(l, r, n)] : null;
@@ -267,6 +283,42 @@ class StripProcessor {
       taps?.add(blockPeaks(l, r, n));
     }
     this.taps = taps ?? const [];
+  }
+
+  /// _modulate turns the knobs the strip's LFOs move, for this block: each
+  /// moved device set to where it is plus what every LFO on it adds (see
+  /// modulation.dart), in place, keeping its state. One no longer moved
+  /// goes back to where it is set.
+  void _modulate() {
+    var adds = <int, Map<String, double>>{};
+    for (var d in _mix.devices) {
+      if (!d.on || d.kind != DeviceKind.lfo || d.mods.isEmpty) continue;
+      var v = lfoValue(d.value("shape").round(),
+          d.value("rate") * _clock + d.value("phase"));
+      for (var t in d.mods) {
+        var i = deviceIndexOf(_mix.devices, t.device);
+        if (i < 0 || i >= _chain.length) continue;
+        if (!_mix.devices[i].kind.params.any((p) => p.id == t.param)) continue;
+        var add = adds[i] ??= {};
+        add[t.param] = (add[t.param] ?? 0) + t.depth * v;
+      }
+    }
+    for (var i in _moved.difference(adds.keys.toSet())) {
+      if (i >= _chain.length) continue;
+      if (_chain[i] case Tunable running) running.tune(_mix.devices[i]);
+    }
+    for (var MapEntry(key: i, value: add) in adds.entries) {
+      var target = _mix.devices[i];
+      if (_chain[i] case Tunable running when target.on) {
+        var next = target;
+        for (var MapEntry(key: id, value: by) in add.entries) {
+          next = next.withValue(
+              id, modulated(target.kind.param(id), target.value(id), by));
+        }
+        running.tune(next);
+      }
+    }
+    _moved = adds.keys.toSet();
   }
 
   /// level is the fader and balance, ramped from the last block's over this
@@ -368,6 +420,8 @@ abstract class DeviceProcessor {
       DeviceKind.vocoder => Vocoder(device),
       DeviceKind.tuner => PitchListener(pitch: true),
       DeviceKind.spectrum => PitchListener(),
+      // It makes no sound: it moves other devices' knobs (see shape).
+      DeviceKind.lfo => null,
     };
   }
 }

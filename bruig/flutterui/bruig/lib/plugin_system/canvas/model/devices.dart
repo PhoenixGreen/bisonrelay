@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonBool, jsonDouble, jsonStr;
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 
 // devices.dart is the effects a channel's chain can hold beyond its strip --
 // a reverb, a delay -- and the returns they usually live on.
@@ -210,7 +211,11 @@ enum DeviceKind {
     DeviceParam("width", "Width", 0, 2, 1),
     DeviceParam("mono", "Mono", 0, 1, 0, "", ["Off", "On"]),
     DeviceParam("invert", "Phase", 0, 3, 0, "", ["Normal", "Left", "Right", "Both"]),
-  ]);
+  ]),
+
+  /// lfo makes no sound: it turns other devices' knobs up and down (see
+  /// MixDevice.mods and modulation.dart).
+  lfo("LFO", DeviceGroup.modulation, lfoParams);
 
   final String label;
   final DeviceGroup group;
@@ -239,8 +244,15 @@ class MixDevice {
   /// vocoder's carrier -- by key, or "" for none.
   final String source;
 
+  /// mods are the knobs a modulator (an LFO) moves: see modulation.dart.
+  final List<ModTarget> mods;
+
   const MixDevice(this.kind,
-      {this.on = true, this.values = const {}, this.source = "", this.id = ""});
+      {this.on = true,
+      this.values = const {},
+      this.source = "",
+      this.id = "",
+      this.mods = const []});
 
   /// sidechain is the channel this device hears beside its own, or null:
   /// a vocoder set to take its carrier from a channel that is chosen, or a
@@ -269,17 +281,21 @@ class MixDevice {
         on: on,
         values: {...values, id: whole ? v.roundToDouble() : v},
         source: source,
-        id: this.id);
+        id: this.id,
+        mods: mods);
   }
 
-  MixDevice switched(bool on) =>
-      MixDevice(kind, on: on, values: values, source: source, id: id);
+  MixDevice switched(bool on) => MixDevice(kind,
+      on: on, values: values, source: source, id: id, mods: mods);
 
-  MixDevice withSource(String source) =>
-      MixDevice(kind, on: on, values: values, source: source, id: id);
+  MixDevice withSource(String source) => MixDevice(kind,
+      on: on, values: values, source: source, id: id, mods: mods);
 
-  MixDevice withId(String id) =>
-      MixDevice(kind, on: on, values: values, source: source, id: id);
+  MixDevice withId(String id) => MixDevice(kind,
+      on: on, values: values, source: source, id: id, mods: mods);
+
+  MixDevice withMods(List<ModTarget> mods) => MixDevice(kind,
+      on: on, values: values, source: source, id: id, mods: mods);
 
   Map<String, dynamic> toJson() => {
         if (id.isNotEmpty) "id": id,
@@ -287,6 +303,7 @@ class MixDevice {
         if (!on) "on": false,
         if (values.isNotEmpty) "values": values,
         if (source.isNotEmpty) "source": source,
+        if (mods.isNotEmpty) "mods": [for (var m in mods) m.toJson()],
       };
 
   static MixDevice? fromJson(Object? json) {
@@ -302,7 +319,8 @@ class MixDevice {
               if (raw[p.id] is num) p.id: jsonDouble(raw[p.id], p.initial),
         },
         source: json["source"] is String ? json["source"] as String : "",
-        id: json["id"] is String ? json["id"] as String : "");
+        id: json["id"] is String ? json["id"] as String : "",
+        mods: readModTargets(json["mods"]));
   }
 
   @override
@@ -312,6 +330,9 @@ class MixDevice {
       other.on == on &&
       other.source == source &&
       other.id == id &&
+      other.mods.length == mods.length &&
+      [for (var i = 0; i < mods.length; i++) other.mods[i] == mods[i]]
+          .every((x) => x) &&
       other.values.length == values.length &&
       other.values.entries.every((e) => values[e.key] == e.value);
 
