@@ -152,6 +152,43 @@ List<TimedSound> timedSounds(CanvasDocument doc) {
   ];
 }
 
+/// _timedOf keeps each document's timed sounds, worked out once: a channel
+/// followed is asked about on every frame.
+final Expando<List<TimedSound>> _timedOf = Expando("timedSounds");
+
+/// channelLevelAt is how loud [channel] is [seconds] into [doc]'s run,
+/// nought to one, from its recordings' shapes ([peaksOf]; a sound not read
+/// yet is silent) -- averaged over the [window] of seconds before, as a
+/// smoothed meter would read. The same playing and exported, as ducking is.
+double channelLevelAt(CanvasDocument doc, String channel, double seconds,
+    Float32List? Function(String assetId) peaksOf,
+    {double window = 0}) {
+  var sounds = _timedOf[doc] ??= timedSounds(doc);
+  var rate = math.max(1, doc.frameRate).toDouble();
+  var loudest = 0.0;
+  for (var s in sounds) {
+    if (s.channel != channel || s.clip.muted) continue;
+    var source = s.clip.playlist.firstOrNull;
+    if (source == null || source.length <= 0) continue;
+    var begins = (s.offset + s.clip.at) / rate;
+    var end = source.end > 0 ? source.end : source.length;
+    var local = seconds - begins + source.start;
+    if (local < source.start || local > end) continue;
+    var peaks = peaksOf(source.assetId);
+    if (peaks == null || peaks.isEmpty) continue;
+    int index(double t) =>
+        (t / source.length * peaks.length).floor().clamp(0, peaks.length - 1);
+    var from = index(math.max(source.start, local - window)), to = index(local);
+    var sum = 0.0;
+    for (var i = from; i <= to; i++) {
+      sum += peaks[i];
+    }
+    var level = sum / (to - from + 1) * s.clip.volume;
+    if (level > loudest) loudest = level;
+  }
+  return loudest.clamp(0.0, 1.0);
+}
+
 /// duckEnvelopes is how far each channel is turned down, over the whole
 /// run, by the channels that duck the others -- see Ducking. Keyed by
 /// channel, in seconds of the run; a channel nothing ducks is not in it.

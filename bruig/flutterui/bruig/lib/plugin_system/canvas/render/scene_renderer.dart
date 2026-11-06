@@ -814,6 +814,19 @@ void paintElement(
   // about where it now is rather than where it was drawn.
   if (outer.dx != 0 || outer.dy != 0) canvas.translate(outer.dx, outer.dy);
 
+  // Squashed along the way it goes, about its middle, across the page: see
+  // the Squash device.
+  if (outer.values[KeyframeChannel.squash] case var s?
+      when (s - 1).abs() > 1e-3 && s > 0) {
+    var a = outer.values[KeyframeChannel.squashAngle] ?? 0;
+    var c = bounds.center;
+    canvas.translate(c.dx, c.dy);
+    canvas.rotate(a);
+    canvas.scale(s, 1 / s);
+    canvas.rotate(-a);
+    canvas.translate(-c.dx, -c.dy);
+  }
+
   // Its resting turn and slant about its centre (BoxFrame); then the pose's
   // turn and size about its anchor (ElementBase.anchorX).
   BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
@@ -1451,6 +1464,14 @@ List<Offset> _rotatedWith(CanvasElement host, List<Offset> points) {
 ///
 /// Found by id, so moving or reshaping the line carries its text with it. A
 /// deleted line is simply not found, and the text falls back to its box.
+/// pathPointsOf is [host] -- a path or a line -- as points along it on the
+/// page, turned as it is drawn; null for anything else. For Follow path.
+List<Offset>? pathPointsOf(CanvasElement host, int frame) {
+  var drawn = host is LineElement ? _bowed(host, host.poseAt(frame)) : host;
+  var points = _curvePoints(drawn);
+  return points == null ? null : _rotatedWith(drawn, points);
+}
+
 List<Offset>? _curveFor(TextElement e, CanvasDocument? doc, int frame) {
   var on = e.curve;
   if (on == null || doc == null) return null;

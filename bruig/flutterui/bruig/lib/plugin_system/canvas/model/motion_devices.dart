@@ -36,6 +36,43 @@ enum MotionDeviceKind {
     DeviceParam("every", "Every", 0.1, 30, 2, "s"),
     DeviceParam("hold", "Hold frames", 1, 6, 1, "#"),
   ]),
+  wiggle("Wiggle", MotionDeviceSide.pose, [
+    DeviceParam("speed", "Speed", 0.1, 10, 2, "Hz"),
+    DeviceParam("amount", "Amount", 0, 200, 12, "px"),
+    DeviceParam("turn", "Turn", 0, 45, 5, "°"),
+    DeviceParam("seed", "Seed", 0, 1, 1, "", ["Same for all", "Each its own"]),
+  ]),
+  oscillate("Oscillate", MotionDeviceSide.pose, [
+    DeviceParam("rate", "Rate", 0.05, 5, 0.5, "Hz"),
+    DeviceParam("amount", "Amount", 0, 400, 30, "px"),
+    DeviceParam("moves", "Moves", 0, 3, 0, "",
+        ["Up and down", "Side to side", "Size", "Turn"]),
+    DeviceParam("phase", "Phase", 0, 1, 0),
+  ]),
+  spring("Spring", MotionDeviceSide.pose, [
+    DeviceParam("stiffness", "Stiffness", 1, 40, 12, "#"),
+    DeviceParam("damping", "Damping", 0, 1, 0.35),
+  ]),
+  followPath("Follow path", MotionDeviceSide.pose, [
+    DeviceParam("start", "Start along", 0, 1, 0),
+    DeviceParam("lap", "Once round", 0.5, 60, 6, "s"),
+    DeviceParam("loop", "At the end", 0, 1, 0, "", ["Round again", "Stops"]),
+    DeviceParam("turns", "Turns with it", 0, 1, 1, "", ["No", "Yes"]),
+  ]),
+  lookAt("Look at", MotionDeviceSide.pose, [
+    DeviceParam("smooth", "Smooth", 0, 1, 0),
+    DeviceParam("offset", "Offset", -180, 180, 0, "°"),
+  ]),
+  squash("Squash", MotionDeviceSide.pose, [
+    DeviceParam("amount", "Amount", 0, 1, 0.4),
+    DeviceParam("bySpeed", "By speed", 0, 1, 0.6),
+  ]),
+  followSound("Follow sound", MotionDeviceSide.pose, [
+    DeviceParam("amount", "Amount", 0, 2, 0.6, "×"),
+    DeviceParam("smooth", "Smooth", 0, 1, 0.3),
+    DeviceParam(
+        "moves", "Moves", 0, 3, 0, "", ["Size", "Up", "Turn", "Opacity"]),
+  ]),
   glow("Glow", MotionDeviceSide.look, [
     DeviceParam("radius", "Radius", 0, 60, 10, "px"),
     DeviceParam("strength", "Strength", 0, 1, 0.6),
@@ -86,12 +123,26 @@ class MotionDevice {
   final Map<String, double> values;
   final String id;
 
+  /// target is the element it works with, by id -- the path Follow path
+  /// goes along, what Look at looks at -- or "" for none.
+  final String target;
+
   /// colour is the colour a look draws in -- a glow's, a shadow's, an
   /// outline's -- as ARGB; null for the kind's own.
   final int? colour;
 
   const MotionDevice(this.kind,
-      {this.on = true, this.values = const {}, this.id = "", this.colour});
+      {this.on = true,
+      this.values = const {},
+      this.id = "",
+      this.colour,
+      this.target = ""});
+
+  /// takesTarget is whether it works with another element.
+  bool get takesTarget =>
+      kind == MotionDeviceKind.followPath ||
+      kind == MotionDeviceKind.lookAt ||
+      kind == MotionDeviceKind.followSound;
 
   MotionDeviceSide get side => kind.side;
 
@@ -108,17 +159,21 @@ class MotionDevice {
         on: on,
         values: {...values, id: whole ? v.roundToDouble() : v},
         id: this.id,
-        colour: colour);
+        colour: colour,
+        target: target);
   }
 
-  MotionDevice switched(bool on) =>
-      MotionDevice(kind, on: on, values: values, id: id, colour: colour);
+  MotionDevice switched(bool on) => MotionDevice(kind,
+      on: on, values: values, id: id, colour: colour, target: target);
 
-  MotionDevice withId(String id) =>
-      MotionDevice(kind, on: on, values: values, id: id, colour: colour);
+  MotionDevice withId(String id) => MotionDevice(kind,
+      on: on, values: values, id: id, colour: colour, target: target);
 
-  MotionDevice withColour(int? colour) =>
-      MotionDevice(kind, on: on, values: values, id: id, colour: colour);
+  MotionDevice withColour(int? colour) => MotionDevice(kind,
+      on: on, values: values, id: id, colour: colour, target: target);
+
+  MotionDevice withTarget(String target) => MotionDevice(kind,
+      on: on, values: values, id: id, colour: colour, target: target);
 
   Map<String, dynamic> toJson() => {
         "kind": kind.name,
@@ -126,6 +181,7 @@ class MotionDevice {
         if (values.isNotEmpty) "values": values,
         if (id.isNotEmpty) "id": id,
         if (colour != null) "colour": colour,
+        if (target.isNotEmpty) "target": target,
       };
 
   static MotionDevice? fromJson(Object? json) {
@@ -142,7 +198,8 @@ class MotionDevice {
                 key: jsonDouble(value, kind.param(key).initial),
         },
         id: jsonStr(json["id"]) ?? "",
-        colour: json["colour"] is int ? json["colour"] as int : null);
+        colour: json["colour"] is int ? json["colour"] as int : null,
+        target: jsonStr(json["target"]) ?? "");
   }
 
   @override
@@ -152,6 +209,7 @@ class MotionDevice {
       other.on == on &&
       other.id == id &&
       other.colour == colour &&
+      other.target == target &&
       other.values.length == values.length &&
       values.entries.every((e) => other.values[e.key] == e.value);
 

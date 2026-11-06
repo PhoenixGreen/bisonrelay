@@ -115,8 +115,11 @@ void main() {
         MotionDeviceKind.shadow,
         MotionDeviceKind.glow,
       ]);
-      expect(
-          MotionDeviceKind.on(MotionDeviceSide.pose), [MotionDeviceKind.time]);
+      expect(MotionDeviceKind.on(MotionDeviceSide.pose),
+          containsAll([MotionDeviceKind.time, MotionDeviceKind.wiggle]));
+      expect(MotionDeviceKind.on(MotionDeviceSide.pose),
+          isNot(contains(MotionDeviceKind.instances)),
+          reason: "always there, as Reuse");
       expect(MotionDeviceKind.on(MotionDeviceSide.look),
           isNot(contains(MotionDeviceKind.time)));
     });

@@ -17,6 +17,8 @@ import 'package:bruig/plugin_system/canvas/model/media_clip.dart'
     show GainPoint, envelopeAt;
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart'
     show duckEnvelope;
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
@@ -4105,6 +4107,33 @@ class MotionDeviceCard extends StatelessWidget {
                   write(d.withValue(p.id, v), transient: transient),
               onCommit: controller.endInteraction,
             ),
+          // What it follows, or looks at.
+          if (d.takesTarget)
+            CanvasDropdown<String>(
+              key: ValueKey("mdevTarget-${d.id}"),
+              label: switch (d.kind) {
+                MotionDeviceKind.followPath => "Path",
+                MotionDeviceKind.followSound => "Channel",
+                _ => "Looks at",
+              },
+              value: d.target,
+              width: 140,
+              grow: false,
+              options: [
+                ("", "Nothing"),
+                // A sound follows a channel's loudness.
+                if (d.kind == MotionDeviceKind.followSound)
+                  for (var ch in controller.timelineChannels) (ch.key, ch.name)
+                else
+                  for (var x in controller.document.elements)
+                    if (x.id != element &&
+                        (d.kind != MotionDeviceKind.followPath ||
+                            x is PathElement ||
+                            x is LineElement))
+                      (x.id, x.name.isEmpty ? x.id : x.name),
+              ],
+              onChanged: (v) => write(d.withTarget(v)),
+            ),
           if (d.side == MotionDeviceSide.look &&
               d.kind != MotionDeviceKind.colour &&
               d.kind != MotionDeviceKind.blur)
@@ -4153,11 +4182,18 @@ class MotionDeviceCard extends StatelessWidget {
       ),
       body: const SizedBox.shrink(),
       controls: knobs,
-      display: SizedBox.expand(
-        child: CustomPaint(
-            key: ValueKey("mdevScreen-${d.id}"),
-            painter: _MotionScreen(d, look.studio.display, accent)),
-      ),
+      // A screen where there is something to show without the element:
+      // a look on a square, Time's curve, a wave's shape.
+      display: d.side == MotionDeviceSide.look ||
+              d.kind == MotionDeviceKind.time ||
+              d.kind == MotionDeviceKind.wiggle ||
+              d.kind == MotionDeviceKind.oscillate
+          ? SizedBox.expand(
+              child: CustomPaint(
+                  key: ValueKey("mdevScreen-${d.id}"),
+                  painter: _MotionScreen(d, look.studio.display, accent)),
+            )
+          : null,
       summary: [
         for (var p in d.kind.params.take(2))
           "${p.label} ${p.reading(d.value(p.id))}"
@@ -4240,6 +4276,31 @@ class _MotionScreen extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = back);
     if (size.width < 8 || size.height < 8) return;
+    if (device.kind == MotionDeviceKind.wiggle ||
+        device.kind == MotionDeviceKind.oscillate) {
+      // Four seconds of what it adds, across.
+      var path = Path();
+      var amount = device.value("amount");
+      double at(double t) => device.kind == MotionDeviceKind.oscillate
+          ? math.sin(
+              2 * math.pi * (device.value("rate") * t + device.value("phase")))
+          : (math.sin(t * device.value("speed") * 2.1) * 0.5 +
+              math.sin(t * device.value("speed") * 4.7 + 1.3) * 0.3 +
+              math.sin(t * device.value("speed") * 9.3 + 2.1) * 0.2);
+      var reach = amount <= 0 ? 0.0 : 0.42;
+      for (var i = 0; i <= 160; i++) {
+        var x = size.width * i / 160;
+        var y = size.height * (0.5 - at(4.0 * i / 160) * reach);
+        i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+      }
+      canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..color = device.on ? accent : accent.withValues(alpha: 0.4));
+      return;
+    }
     if (device.kind == MotionDeviceKind.time) {
       // Eight seconds along; the moment asked for, up the side.
       const span = 8.0;

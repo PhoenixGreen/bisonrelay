@@ -516,6 +516,12 @@ class KeyframeChannel {
   /// count is the number a counter is showing: the value itself, not a
   /// fraction, so a count can pass its end and come back.
   static const String count = "count";
+
+  /// squash is how far an element is stretched along [squashAngle]
+  /// (radians, across the page) and squeezed across it, its area kept: a
+  /// ball squashing as it goes. One is as it is. See the Squash device.
+  static const String squash = "squash";
+  static const String squashAngle = "squashAngle";
 }
 
 /// bounceOut is the classic four-stage bounce -- the one curve a keyframe's

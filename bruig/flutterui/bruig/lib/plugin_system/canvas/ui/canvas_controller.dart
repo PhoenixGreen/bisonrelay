@@ -143,7 +143,7 @@ import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart'
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
     show ClipTriggerKind, MotionKind;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
-    show LiveMotion, MotionPreview, settledFrameOf;
+    show LiveMotion, MotionPreview, motionSoundPeaks, settledFrameOf;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart'
     show HardwareKeyboard, KeyDownEvent, KeyEvent, KeyRepeatEvent, KeyUpEvent, LogicalKeyboardKey;
@@ -303,7 +303,10 @@ class CanvasController extends ChangeNotifier {
       {AudioEngine? audioEngine, FrameSource? frameSource})
       : _document = document,
         _audioEngine = audioEngine,
-        _frameSource = frameSource;
+        _frameSource = frameSource {
+    // Follow sound reads the recordings this canvas reads.
+    motionSoundPeaks = (id) => waveformOf(id);
+  }
 
   CanvasDocument _document;
   CanvasDocument get document => _document;

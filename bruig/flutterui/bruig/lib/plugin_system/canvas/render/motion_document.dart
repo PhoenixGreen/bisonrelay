@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/render/model3d/model_scene.dart'
@@ -8,9 +9,13 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
+import 'package:bruig/plugin_system/canvas/model/audio_tools.dart'
+    show channelLevelAt;
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart'
+    show pathPointsOf;
 
 // motion_document.dart joins clips to a document: where every placed clip in
 // the scene plays, worked out once per scene, and an element's pose with its
@@ -213,9 +218,177 @@ Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
       var shifted = live == null ? null : liveShifted(live, tt - t);
       return _pulled(
           e, (tt * rate).round(), doc, shifted, devices, i - 1, instance);
+    case MotionDeviceKind.wiggle:
+      var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
+      var t = frame / math.max(1, doc.frameRate);
+      var f = d.value("speed"), a = d.value("amount");
+      // Each instance its own wiggle, when asked: rule 3.
+      var seed = d.value("seed").round() == 1 && (instance ?? -1) >= 0
+          ? instance! * 7.31 + 1
+          : 0.0;
+      double nz(double x) =>
+          math.sin(x * 2.1) * 0.5 +
+          math.sin(x * 4.7 + 1.3) * 0.3 +
+          math.sin(x * 9.3 + 2.1) * 0.2;
+      var at = t * f + seed * 3;
+      return p.copyWith(
+          dx: p.dx + nz(at) * a,
+          dy: p.dy + nz(at + 40) * a,
+          rotate: p.rotate + nz(at + 80) * d.value("turn"));
+    case MotionDeviceKind.oscillate:
+      var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
+      var t = frame / math.max(1, doc.frameRate);
+      var s = math.sin(2 * math.pi * (d.value("rate") * t + d.value("phase")));
+      var a = d.value("amount");
+      return switch (d.value("moves").round()) {
+        1 => p.copyWith(dx: p.dx + s * a),
+        // Size: the amount a share, a hundred to the whole.
+        2 => p.copyWith(scale: p.scale * math.max(0.0, 1 + s * a / 100)),
+        3 => p.copyWith(rotate: p.rotate + s * a),
+        _ => p.copyWith(dy: p.dy + s * a),
+      };
+    case MotionDeviceKind.spring:
+      // What is to its left, followed by a spring: the moments before this
+      // one, each weighed by how a spring answers a push that long ago.
+      var rate = math.max(1, doc.frameRate).toDouble();
+      var w0 = d.value("stiffness") * 0.9;
+      var z = d.value("damping").clamp(0.03, 0.95);
+      var wd = w0 * math.sqrt(1 - z * z);
+      var dt = 1 / rate;
+      var base = _pulled(e, frame, doc, live, devices, i - 1, instance);
+      var dx = 0.0, dy = 0.0, sc = 0.0, turn = 0.0, sum = 0.0;
+      for (var j = 0; j < 16; j++) {
+        var tau = j * dt;
+        var h = math.exp(-z * w0 * tau) * math.sin(wd * (tau + dt));
+        var q = j == 0
+            ? base
+            : _pulled(
+                e,
+                frame - j,
+                doc,
+                live == null ? null : liveShifted(live, -tau),
+                devices,
+                i - 1,
+                instance);
+        dx += q.dx * h;
+        dy += q.dy * h;
+        sc += q.scale * h;
+        turn += q.rotate * h;
+        sum += h;
+      }
+      if (sum.abs() < 1e-4) return base;
+      return base.copyWith(
+          dx: dx / sum, dy: dy / sum, scale: sc / sum, rotate: turn / sum);
+    case MotionDeviceKind.followPath:
+      var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
+      var host = doc.elementById(d.target);
+      var points = host == null ? null : pathPointsOf(host, frame);
+      if (points == null || points.length < 2) return p;
+      var t = frame / math.max(1, doc.frameRate);
+      var u = d.value("start") + t / d.value("lap");
+      u = d.value("loop").round() == 1 ? u.clamp(0.0, 1.0) : u % 1;
+      var (point, angle) = _alongPath(points, u);
+      var turned = d.value("turns").round() == 1;
+      return p.copyWith(
+          dx: point.dx - (e.x + e.width / 2),
+          dy: point.dy - (e.y + e.height / 2),
+          rotate: turned ? p.rotate + angle * 180 / math.pi : p.rotate);
+    case MotionDeviceKind.lookAt:
+      var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
+      var aim = _centreOf(doc, d.target, frame);
+      if (aim == null || d.target == e.id) return p;
+      var me = Offset(e.x + e.width / 2 + p.dx, e.y + e.height / 2 + p.dy);
+      // Facing right when it looks straight ahead, as it is drawn.
+      var want = math.atan2(aim.dy - me.dy, aim.dx - me.dx) * 180 / math.pi +
+          d.value("offset") -
+          e.rotation;
+      var smooth = d.value("smooth");
+      return p.copyWith(
+          rotate: p.rotate + (want - p.rotate) * (1 - smooth * 0.8));
+    case MotionDeviceKind.squash:
+      var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
+      var rate = math.max(1, doc.frameRate).toDouble();
+      var q = _pulled(
+          e,
+          frame - 1,
+          doc,
+          live == null ? null : liveShifted(live, -1 / rate),
+          devices,
+          i - 1,
+          instance);
+      var vx = (p.dx - q.dx) * rate, vy = (p.dy - q.dy) * rate;
+      var speed = math.sqrt(vx * vx + vy * vy);
+      // Six hundred pixels a second, all by speed, squashes it most.
+      var k = math.min(0.8, speed / 600 * d.value("bySpeed"));
+      if (k <= 0) return p;
+      return p.copyWith(values: {
+        ...p.values,
+        KeyframeChannel.squash: 1 + k * d.value("amount"),
+        KeyframeChannel.squashAngle: math.atan2(vy, vx),
+      });
+    case MotionDeviceKind.followSound:
+      var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
+      var peaks = motionSoundPeaks;
+      if (peaks == null || d.target.isEmpty) return p;
+      var t = frame / math.max(1, doc.frameRate);
+      var level = channelLevelAt(doc, d.target, t, peaks,
+              window: d.value("smooth") * 0.5) *
+          d.value("amount");
+      if (level <= 0) return p;
+      return switch (d.value("moves").round()) {
+        1 => p.copyWith(dy: p.dy - level * 40),
+        2 => p.copyWith(rotate: p.rotate + level * 30),
+        3 =>
+          p.copyWith(opacity: (p.opacity * (1 - level * 0.5)).clamp(0.0, 1.0)),
+        _ => p.copyWith(scale: p.scale * (1 + level * 0.45)),
+      };
     default:
       // A look is not a pose device; it passes the pose on.
       return _pulled(e, frame, doc, live, devices, i - 1, instance);
+  }
+}
+
+/// motionSoundPeaks is where Follow sound reads a recording's shape -- its
+/// loudness along it -- by asset: the editor's, which reads them as they are
+/// asked for. Null, as for a lone element drawn, follows nothing.
+Float32List? Function(String assetId)? motionSoundPeaks;
+
+/// _alongPath is the point [u] of the way along [points] (nought to one,
+/// by length) and the way it heads there, in radians.
+(Offset, double) _alongPath(List<Offset> points, double u) {
+  var lengths = <double>[0];
+  for (var i = 1; i < points.length; i++) {
+    lengths.add(lengths.last + (points[i] - points[i - 1]).distance);
+  }
+  var want = u.clamp(0.0, 1.0) * lengths.last;
+  for (var i = 1; i < points.length; i++) {
+    if (lengths[i] >= want || i == points.length - 1) {
+      var span = lengths[i] - lengths[i - 1];
+      var f = span <= 0 ? 0.0 : (want - lengths[i - 1]) / span;
+      var a = points[i - 1], b = points[i];
+      return (
+        Offset.lerp(a, b, f.clamp(0.0, 1.0))!,
+        math.atan2(b.dy - a.dy, b.dx - a.dx)
+      );
+    }
+  }
+  return (points.first, 0);
+}
+
+/// _looking is how deep Look at is in asking where its targets are: two
+/// elements looking at each other would ask for ever.
+int _looking = 0;
+
+/// _centreOf is the middle of element [id] on [frame], as it moves.
+Offset? _centreOf(CanvasDocument doc, String id, int frame) {
+  var t = doc.elementById(id);
+  if (t == null) return null;
+  if (_looking > 3) return t.bounds.center;
+  _looking++;
+  try {
+    return t.boundsWith(poseWithMotion(t, frame, doc)).center;
+  } finally {
+    _looking--;
   }
 }
 

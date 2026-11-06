@@ -124,8 +124,8 @@ void _look(ui.Canvas canvas, Rect room, MotionDevice d, void Function() under,
       under();
       canvas.restore();
       under();
-    case MotionDeviceKind.time:
-    case MotionDeviceKind.instances:
+    default:
+      // A pose device: nothing to how it looks.
       under();
   }
 }
