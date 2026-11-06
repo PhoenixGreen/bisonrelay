@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonBool, jsonDouble, jsonInt, jsonSpec, jsonString, jsonStr;
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/pitch_edit.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart'
     show SpeechLine, SpeechTake;
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
@@ -62,6 +63,10 @@ class MediaSource {
   final int height;
   final double fps;
 
+  /// pitch is its notes moved (see pitch_edit.dart), or null: [assetId] is
+  /// then the recording made with them, and pitch.original the one made.
+  final PitchEdit? pitch;
+
   const MediaSource({
     required this.assetId,
     this.name = "",
@@ -73,6 +78,7 @@ class MediaSource {
     this.width = 0,
     this.height = 0,
     this.fps = 0,
+    this.pitch,
   });
 
   /// endOr is where playing stops, given the file's real length.
@@ -96,6 +102,8 @@ class MediaSource {
     double? length,
     String? posterId,
     String? soundId,
+    PitchEdit? pitch,
+    bool clearPitch = false,
   }) =>
       MediaSource(
         assetId: assetId ?? this.assetId,
@@ -108,6 +116,7 @@ class MediaSource {
         width: width,
         height: height,
         fps: fps,
+        pitch: clearPitch ? null : pitch ?? this.pitch,
       );
 
   Map<String, dynamic> toJson() => {
@@ -121,6 +130,7 @@ class MediaSource {
         if (width > 0) "w": width,
         if (height > 0) "h": height,
         if (fps > 0) "fps": fps,
+        if (pitch != null) "pitch": pitch!.toJson(),
       };
 
   factory MediaSource.fromJson(Map<String, dynamic> json) {
@@ -138,6 +148,7 @@ class MediaSource {
       width: jsonInt(json["w"], 0),
       height: jsonInt(json["h"], 0),
       fps: math.max(0.0, jsonDouble(json["fps"], 0)),
+      pitch: PitchEdit.fromJson(json["pitch"]),
     );
   }
 }
@@ -214,6 +225,8 @@ class MediaClip {
         for (var s in playlist) ...[
           if (s.assetId.isNotEmpty) s.assetId,
           if (s.soundId.isNotEmpty) s.soundId,
+          // The recording its notes were moved from.
+          if (s.pitch case var p?) p.original,
         ],
         // Its channel's Speech takes: the Vocaliser sings the latest even
         // when its clip is off the timeline.

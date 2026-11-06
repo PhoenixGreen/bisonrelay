@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
+import 'package:bruig/plugin_system/canvas/ui/pitch_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
 
@@ -139,6 +140,9 @@ extension on _ChainPanelState {
     var rollOn = c.pianoRollShown && c.pianoRoll?.row == null;
     var clipOn = c.clipEditorShown;
     var speechOn = c.speechShown;
+    var pitchOn = c.pitchShown;
+    // A recording to tune: a channel's sound, not an instrument's.
+    var tunable = channel && !notes && c.pitchElementOf(key) != null;
     Widget tab(String id, String label, IconData icon, bool on,
             VoidCallback onTap) =>
         Padding(
@@ -176,7 +180,7 @@ extension on _ChainPanelState {
       Container(width: 1, height: 18, color: look.studio.edge),
       const SizedBox(width: 6),
       tab("chainTabDevices", "Devices", Icons.linear_scale,
-          !rollOn && !clipOn && !speechOn, c.closeEditor),
+          !rollOn && !clipOn && !speechOn && !pitchOn, c.closeEditor),
       if (notes)
         tab("chainTabNotes", "Notes", Icons.piano, rollOn,
             () => c.openPianoRoll(key)),
@@ -187,6 +191,9 @@ extension on _ChainPanelState {
       if (channel && !notes)
         tab("chainTabSpeech", "Speech", Icons.record_voice_over, speechOn,
             () => c.showSpeech(key)),
+      if (tunable)
+        tab("chainTabPitch", "Pitch", Icons.multiline_chart, pitchOn,
+            () => c.showPitch(key)),
     ];
   }
 }

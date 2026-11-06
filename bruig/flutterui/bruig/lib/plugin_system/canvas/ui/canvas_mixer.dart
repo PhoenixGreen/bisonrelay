@@ -37,6 +37,7 @@ import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
     show automationColour;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
+import 'package:bruig/plugin_system/canvas/ui/pitch_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/clip_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/speech_device.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -997,7 +998,24 @@ class _CanvasMixerState extends State<CanvasMixer>
       var rollHere = controller.pianoRollShown &&
           controller.pianoRoll?.row == null &&
           controller.pianoRoll?.channel == key;
+      // The Pitch editor: the channel's recording as notes, first in it.
+      var pitchHere = controller.pitchShown && lane != null;
       var chain = <Widget>[
+        if (pitchHere)
+          KeyedSubtree(
+            key: _deviceKey("pitch"),
+            child: EditorFrame(
+              id: "pitch",
+              title: "Pitch · ${lane.name}",
+              width: math.max(editorWidth, math.min(900.0, most)),
+              height: h,
+              wide: wide,
+              onWide: controller.toggleEditorWide,
+              onClose: controller.closeEditor,
+              onResize: (w) => controller.editorWidth = w.clamp(420.0, most),
+              child: PitchEditor(controller: controller, channel: key),
+            ),
+          ),
         if (clipHere)
           KeyedSubtree(
             key: _deviceKey("clip"),

@@ -3233,6 +3233,11 @@ class CanvasController extends ChangeNotifier {
   static Future<void> Function(String id) speechUnlist =
       (id) => CanvasLibrary.unlist(id);
 
+  /// keepRecording keeps a recording made from another -- [wav]'s bytes --
+  /// as a take is kept (see speechTakeStore), answering its id: a voice's
+  /// notes moved in the Pitch editor.
+  static Future<String?> keepRecording(Uint8List wav) => speechTakeStore(wav);
+
   /// speechTakeStore keeps a line's take -- [wav]'s bytes -- apart from the
   /// library, with the canvases that have it, answering its id: in the
   /// Audio library only once it is saved or put on the timeline, and
@@ -3436,6 +3441,9 @@ class CanvasController extends ChangeNotifier {
   /// its script, takes and voice, and Sing. Speech makes clips; it is not a
   /// step of the chain, so it shows only when asked for (see showSpeech).
   bool _speechShown = false;
+
+  /// _pitchShown is whether the Chain shows its channel's Pitch editor.
+  bool _pitchShown = false;
 
   /// _motionPreview is the element whose motion chain the stage shows as it
   /// stands at one join, and that join: see previewMotionFrom.

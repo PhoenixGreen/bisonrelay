@@ -575,6 +575,7 @@ extension CanvasTools on CanvasController {
       // Speech and its Vocaliser are the Speech view's; anything else is in
       // the chain.
       _speechShown = device == "speech" || device == "vocaliser";
+      _pitchShown = false;
     }
     _effectsOf = key;
     _effectsOpen = true;
@@ -611,6 +612,27 @@ extension CanvasTools on CanvasController {
     _clipEditorShown = false;
     _pianoRollShown = false;
     _speechShown = false;
+    _pitchShown = false;
+    notifyListeners();
+  }
+
+  /// pitchShown is whether the Chain's sound is on the Pitch editor of the
+  /// channel [effectsOf]: its recording's notes, moved -- see pitch_edit.dart.
+  bool get pitchShown => _pitchShown;
+
+  /// showPitch opens [key]'s recording in the Pitch editor, in the Chain.
+  void showPitch(String key) {
+    _effectsOf = key;
+    _effectsOpen = true;
+    _animationOpen = false;
+    _chainMotion = false;
+    _clipEditorShown = false;
+    _pianoRollShown = false;
+    _speechShown = false;
+    _pitchShown = true;
+    _effectsFocus = "pitch";
+    _effectsFocusCount++;
+    _dockOpening(DockPanel.chain);
     notifyListeners();
   }
 
@@ -628,6 +650,7 @@ extension CanvasTools on CanvasController {
     _chainMotion = false;
     _clipEditorShown = false;
     _pianoRollShown = false;
+    _pitchShown = false;
     _speechShown = true;
     _effectsFocus = "speech";
     _effectsFocusCount++;
@@ -677,6 +700,7 @@ extension CanvasTools on CanvasController {
     _chainMotion = false;
     _pianoRollShown = false;
     _speechShown = false;
+    _pitchShown = false;
     _clipEditorShown = true;
     // First in the strip: scrolled to.
     _effectsFocus = "clip";
@@ -1123,6 +1147,7 @@ extension CanvasTools on CanvasController {
     _chainMotion = false;
     _pianoRollShown = true;
     _speechShown = false;
+    _pitchShown = false;
     _clipEditorShown = false;
     _effectsFocus = "roll";
     _effectsFocusCount++;
