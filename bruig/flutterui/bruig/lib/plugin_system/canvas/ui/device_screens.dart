@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
-import 'package:bruig/plugin_system/canvas/model/modulation.dart' show lfoValue;
+import 'package:bruig/plugin_system/canvas/model/modulation.dart'
+    show lfoValue, macroKnobs;
 import 'package:flutter/material.dart';
 
 // device_screens.dart is what each device draws on its screen in the Chain:
@@ -232,6 +233,48 @@ class DeviceScreenPainter extends CustomPainter {
         say = rate < 10
             ? "${rate.toStringAsFixed(2)} Hz"
             : "${rate.toStringAsFixed(1)} Hz";
+      case DeviceKind.macro:
+        // Its four knobs as bars, as far as each is turned.
+        var bar = (w - 10) / macroKnobs;
+        for (var i = 0; i < macroKnobs; i++) {
+          var x = 5 + i * bar;
+          var full = Rect.fromLTWH(x + 3, 8, bar - 6, h - 16);
+          canvas.drawRRect(
+              RRect.fromRectAndRadius(full, const Radius.circular(3)),
+              Paint()..color = accent.withValues(alpha: 0.15));
+          var up = v("m${i + 1}");
+          canvas.drawRRect(
+              RRect.fromRectAndRadius(
+                  Rect.fromLTRB(full.left, full.bottom - full.height * up,
+                      full.right, full.bottom),
+                  const Radius.circular(3)),
+              Paint()..color = accent);
+        }
+      case DeviceKind.follower:
+        // A sound coming and going, and the follower rising to it and
+        // falling after: its attack and release, to the scale of a second.
+        var rise = v("attack") / 1000, fall = v("release") / 1000;
+        var path = Path()..moveTo(0, h - 6);
+        var env = 0.0;
+        for (var i = 0; i <= 200; i++) {
+          var sec = i / 200;
+          var on = sec > 0.15 && sec < 0.45 ? 1.0 : 0.0;
+          var step = 1 / 200;
+          var k = on > env
+              ? 1 - math.exp(-step / math.max(0.001, rise))
+              : 1 - math.exp(-step / math.max(0.001, fall));
+          env += (on - env) * k;
+          path.lineTo(w * sec, h - 6 - env * (h - 14));
+        }
+        canvas.drawRect(Rect.fromLTRB(w * 0.15, 8, w * 0.45, h - 6),
+            Paint()..color = accent.withValues(alpha: 0.12));
+        canvas.drawPath(
+            path,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.6
+              ..color = accent);
+        say = "×${v("gain").toStringAsFixed(1)}";
       case DeviceKind.utility:
         var width = v("width");
         var c = Offset(w / 2, h - 6);

@@ -90,6 +90,48 @@ class Gate implements Sidechained, Tunable {
   }
 }
 
+/// Follower is a follower's ear: the sound passes through it as it was,
+/// and it keeps how loud it is -- its own sound where it stands, or its
+/// source channel's -- rising over its attack and falling over its
+/// release, for the strip to move knobs by (see StripProcessor).
+class Follower implements Sidechained, Tunable {
+  late double _attack, _release, _gain;
+  double _env = 0;
+
+  /// level is how loud, nought to one, as it last heard.
+  double get level => (_env * _gain).clamp(0.0, 1.0);
+
+  @override
+  final String? source;
+  final SideKey _key = SideKey();
+
+  Follower(MixDevice d) : source = d.sidechain {
+    tune(d);
+  }
+
+  @override
+  void tune(MixDevice d) {
+    _attack = 1 - math.exp(-1 / (d.value("attack") / 1000 * _rate));
+    _release = 1 - math.exp(-1 / (d.value("release") / 1000 * _rate));
+    _gain = d.value("gain");
+  }
+
+  @override
+  void feed(Float32List l, Float32List r, int n) => _key.feed(l, r, n);
+
+  /// silence is its source channel there with nothing on it this block.
+  void silence(int n) => _key.silence(n);
+
+  @override
+  void process(Float32List l, Float32List r, int n) {
+    for (var i = 0; i < n; i++) {
+      var x = _key.level(i, math.max(l[i].abs(), r[i].abs()));
+      _env += (x - _env) * (x > _env ? _attack : _release);
+    }
+    _key.done();
+  }
+}
+
 /// _Svf is a trapezoidal state-variable filter, which stays stable while
 /// its frequency is swept, giving low-, band- and high-pass at once.
 class _Svf {

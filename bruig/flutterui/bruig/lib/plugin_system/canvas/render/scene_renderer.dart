@@ -865,7 +865,8 @@ void paintElement(
   var looks = [
     for (var l in element.base.motion.looks)
       motionModulated(l, element.base.motion.devices,
-          frame / (frameRate <= 0 ? 1 : frameRate)),
+          frame / (frameRate <= 0 ? 1 : frameRate),
+          doc: document),
   ];
   if (layered) {
     // Grown, because a shadow, an outline or a glow reaches outside the

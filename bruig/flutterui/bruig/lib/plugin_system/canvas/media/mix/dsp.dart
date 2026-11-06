@@ -291,16 +291,32 @@ class StripProcessor {
   /// goes back to where it is set.
   void _modulate() {
     var adds = <int, Map<String, double>>{};
-    for (var d in _mix.devices) {
-      if (!d.on || d.kind != DeviceKind.lfo || d.mods.isEmpty) continue;
-      var v = lfoValue(d.value("shape").round(),
-          d.value("rate") * _clock + d.value("phase"));
+    for (var (at, d) in _mix.devices.indexed) {
+      if (!d.on || d.mods.isEmpty) continue;
+      double Function(ModTarget) v;
+      if (d.kind == DeviceKind.lfo) {
+        var now = lfoValue(d.value("shape").round(),
+            d.value("rate") * _clock + d.value("phase"));
+        v = (_) => now;
+      } else if (d.kind == DeviceKind.follower &&
+          at < _chain.length &&
+          _chain[at] is Follower) {
+        // As loud as it heard on the last block.
+        var now = (_chain[at] as Follower).level;
+        v = (_) => now;
+      } else if (d.kind == DeviceKind.macro) {
+        // Each its own knob's way, nought to all the way (twice the half
+        // travel an LFO swings).
+        v = (t) => macroValue(d.value, t.from) * 2;
+      } else {
+        continue;
+      }
       for (var t in d.mods) {
         var i = deviceIndexOf(_mix.devices, t.device);
         if (i < 0 || i >= _chain.length) continue;
         if (!_mix.devices[i].kind.params.any((p) => p.id == t.param)) continue;
         var add = adds[i] ??= {};
-        add[t.param] = (add[t.param] ?? 0) + t.depth * v;
+        add[t.param] = (add[t.param] ?? 0) + t.depth * v(t);
       }
     }
     for (var i in _moved.difference(adds.keys.toSet())) {
@@ -422,6 +438,9 @@ abstract class DeviceProcessor {
       DeviceKind.spectrum => PitchListener(),
       // It makes no sound: it moves other devices' knobs (see shape).
       DeviceKind.lfo => null,
+      DeviceKind.follower => Follower(device),
+      // Knobs only: what it turns, it turns (see shape).
+      DeviceKind.macro => null,
     };
   }
 }

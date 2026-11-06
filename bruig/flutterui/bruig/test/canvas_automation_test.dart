@@ -188,8 +188,10 @@ void main() {
     test("a device's settings moved tune it, rather than making it again", () {
       for (var kind in DeviceKind.values) {
         var p = kind.params.where((p) => !p.isChoice).firstOrNull;
-        // An LFO runs nothing: it moves other devices' knobs.
-        if (p == null || kind == DeviceKind.lfo) continue;
+        // An LFO and a macro run nothing: they move other devices' knobs.
+        if (p == null || kind == DeviceKind.lfo || kind == DeviceKind.macro) {
+          continue;
+        }
         var strip = StripProcessor(ChannelMix(devices: [MixDevice(kind)]));
         var running = strip.devices.single;
         strip.retune(ChannelMix(

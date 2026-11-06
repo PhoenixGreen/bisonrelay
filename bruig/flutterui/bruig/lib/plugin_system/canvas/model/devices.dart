@@ -105,7 +105,10 @@ enum DeviceGroup {
   modulation("Modulation"),
   drive("Drive"),
   pitch("Pitch"),
-  utility("Utility");
+  utility("Utility"),
+
+  /// modulators make no sound: they move other devices' knobs.
+  modulators("Modulators");
 
   final String label;
   const DeviceGroup(this.label);
@@ -215,7 +218,16 @@ enum DeviceKind {
 
   /// lfo makes no sound: it turns other devices' knobs up and down (see
   /// MixDevice.mods and modulation.dart).
-  lfo("LFO", DeviceGroup.modulation, lfoParams);
+  lfo("LFO", DeviceGroup.modulators, lfoParams),
+
+  /// follower makes no sound either: it moves other devices' knobs by how
+  /// loud its own sound is where it stands, or another channel's (its
+  /// source).
+  follower("Follower", DeviceGroup.modulators, followerParams),
+
+  /// macro is four knobs, each turning any knobs of the chain it is given:
+  /// one move for many.
+  macro("Macro", DeviceGroup.modulators, macroParams);
 
   final String label;
   final DeviceGroup group;
@@ -223,6 +235,10 @@ enum DeviceKind {
   const DeviceKind(this.label, this.group, this.params);
 
   DeviceParam param(String id) => params.firstWhere((p) => p.id == id);
+
+  /// modulates is whether it moves other devices' knobs (see MixDevice.mods)
+  /// rather than making or changing sound.
+  bool get modulates => group == DeviceGroup.modulators;
 
   static DeviceKind? fromName(String? name) =>
       values.where((k) => k.name == name).firstOrNull;
@@ -263,7 +279,7 @@ class MixDevice {
           DeviceKind.vocoder
               when value("carrier").round() == carrierFromChannel =>
             source,
-          DeviceKind.gate => source,
+          DeviceKind.gate || DeviceKind.follower => source,
           _ => null,
         };
 

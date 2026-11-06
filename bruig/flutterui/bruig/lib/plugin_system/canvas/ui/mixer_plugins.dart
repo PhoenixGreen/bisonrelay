@@ -148,6 +148,8 @@ enum DeviceTier {
       DeviceGroup.drive => (Icons.whatshot_outlined, const Color(0xFFE07A5F)),
       DeviceGroup.pitch => (Icons.music_note, const Color(0xFFE57AA8)),
       DeviceGroup.utility => (Icons.tune, const Color(0xFFA7A3B8)),
+      // Pink, as the rings round the knobs they move.
+      DeviceGroup.modulators => (Icons.swap_vert, modulationColour),
     };
 
 /// deviceMoveButtons are the arrows in a device's bar that move it a place
@@ -724,6 +726,9 @@ class _Dragged extends StatelessWidget {
   final VoidCallback onCommit;
   final Widget child;
 
+  /// menu is its right-click's choices: see _Knob.menu.
+  final List<(String, VoidCallback)> menu;
+
   const _Dragged({
     required this.value,
     required this.initial,
@@ -731,10 +736,17 @@ class _Dragged extends StatelessWidget {
     required this.onChanged,
     required this.onCommit,
     required this.child,
+    this.menu = const [],
   });
 
   @override
   Widget build(BuildContext context) {
+    if (menu.isEmpty) return _knob();
+    // Its right-click's menu, anchored on the knob where it was clicked.
+    return _KnobMenu(menu: menu, child: _knob());
+  }
+
+  Widget _knob() {
     var at = range.toUnit(value);
     return MouseRegion(
       cursor: SystemMouseCursors.resizeUpDown,
@@ -752,6 +764,38 @@ class _Dragged extends StatelessWidget {
       ),
     );
   }
+}
+
+/// _KnobMenu is a knob's right-click menu (see _Knob.menu), anchored on it
+/// where it was clicked; keeps its controller across builds.
+class _KnobMenu extends StatefulWidget {
+  final List<(String, VoidCallback)> menu;
+  final Widget child;
+  const _KnobMenu({required this.menu, required this.child});
+
+  @override
+  State<_KnobMenu> createState() => _KnobMenuState();
+}
+
+class _KnobMenuState extends State<_KnobMenu> {
+  final MenuController _opened = MenuController();
+
+  @override
+  Widget build(BuildContext context) => MenuAnchor(
+        controller: _opened,
+        menuChildren: [
+          for (var (i, (label, then)) in widget.menu.indexed)
+            MenuItemButton(
+              key: ValueKey("knobMenu-$i"),
+              onPressed: then,
+              child: Text(label, style: const TextStyle(fontSize: 12.5)),
+            ),
+        ],
+        child: GestureDetector(
+          onSecondaryTapDown: (d) => _opened.open(position: d.localPosition),
+          child: widget.child,
+        ),
+      );
 }
 
 String _hz(double f) => f >= 1000
@@ -1836,6 +1880,10 @@ class _Knob extends StatelessWidget {
   /// modulated is whether an LFO moves it: a pink ring round it.
   final bool modulated;
 
+  /// menu is what its right-click offers -- a modulator of the chain to
+  /// move it with, each -- by name; empty for none.
+  final List<(String, VoidCallback)> menu;
+
   /// reading is whether its value is written under it: not on a short
   /// device, where the room is the knob's.
   final bool reading;
@@ -1851,6 +1899,7 @@ class _Knob extends StatelessWidget {
     this.automated = false,
     this.held = false,
     this.modulated = false,
+    this.menu = const [],
     this.reading = true,
     this.accent,
     this.ink = _silverInk,
@@ -1894,6 +1943,7 @@ class _Knob extends StatelessWidget {
             range: range,
             onChanged: onChanged,
             onCommit: onCommit,
+            menu: menu,
             child: Stack(alignment: Alignment.center, children: [
               CustomPaint(
                   size: Size.square(size),
@@ -3033,10 +3083,44 @@ class ParamDevice extends StatelessWidget {
     // Which of its knobs an LFO in the chain moves.
     var moved = {
       for (var d in devices)
-        if (d.on && d.kind == DeviceKind.lfo)
+        if (d.on && d.kind.modulates)
           for (var m in d.mods)
             if (m.device == deviceIdAt(devices, index)) m.param,
     };
+    // Right-click: move it with a modulator of the chain.
+    void moveWith(int j, ModTarget t) {
+      var now = controller.devicesOf(owner);
+      if (j >= now.length) return;
+      var m = now[j];
+      if (m.mods.any((x) =>
+          x.device == t.device && x.param == t.param && x.from == t.from)) {
+        return;
+      }
+      controller.beginInteraction();
+      controller.setDevicesOf(
+          owner, [...now]..[j] = m.withMods([...m.mods, t]));
+      controller.endInteraction();
+    }
+
+    List<(String, VoidCallback)> modMenu(DeviceParam p) {
+      var me = deviceIdAt(devices, index);
+      return [
+        for (var (j, m) in devices.indexed)
+          if (j != index && m.kind.modulates)
+            if (m.kind == DeviceKind.macro)
+              for (var k = 0; k < macroKnobs; k++)
+                (
+                  "Turn with ${m.kind.label} ${j + 1}'s M${k + 1}",
+                  () => moveWith(j, ModTarget(me, p.id, 0.5, k))
+                )
+            else
+              (
+                "Move with ${m.kind.label} ${j + 1}",
+                () => moveWith(j, ModTarget(me, p.id))
+              ),
+      ];
+    }
+
     String target(DeviceParam p) => AutomationTarget.deviceSetting(
             deviceIdAt(devices, index), device.kind, p.id)
         .id;
@@ -3054,6 +3138,7 @@ class ParamDevice extends StatelessWidget {
                 automated: automated.contains(target(p)),
                 held: held.contains(target(p)),
                 modulated: moved.contains(p.id),
+                menu: device.kind.modulates ? const [] : modMenu(p),
                 label: p.label,
                 text: p.reading(device.value(p.id)),
                 value: device.value(p.id),
@@ -3075,14 +3160,17 @@ class ParamDevice extends StatelessWidget {
           if (device.kind == DeviceKind.vocoder &&
               device.value("carrier").round() == carrierFromChannel)
             _sourceChannel(context, device, write),
-          // What an LFO moves: any knob of the chain's other devices.
-          if (device.kind == DeviceKind.lfo)
+          // What a modulator moves: any knob of the chain's other devices.
+          if (device.kind.modulates)
             ModTargets(
               key: ValueKey("modTargets-$index"),
               mods: device.mods,
+              sources: device.kind == DeviceKind.macro
+                  ? [for (var i = 1; i <= macroKnobs; i++) "M$i"]
+                  : const [],
               knobs: [
                 for (var (i, d) in devices.indexed)
-                  if (i != index && d.kind != DeviceKind.lfo)
+                  if (i != index && !d.kind.modulates)
                     for (var p in d.kind.params)
                       if (!p.isChoice)
                         (
@@ -3096,8 +3184,10 @@ class ParamDevice extends StatelessWidget {
                   write(device.withMods(mods), transient: transient),
               onCommit: controller.endInteraction,
             ),
-          // A gate opens to its own sound, or to another channel's.
-          if (device.kind == DeviceKind.gate)
+          // A gate opens to its own sound, or to another channel's; a
+          // follower follows one or the other.
+          if (device.kind == DeviceKind.gate ||
+              device.kind == DeviceKind.follower)
             _sourceChannel(context, device, write, itself: true),
         ];
     return DeviceFrame(
@@ -4135,16 +4225,50 @@ class MotionDeviceCard extends StatelessWidget {
     // Which of its knobs an LFO in the chain moves.
     var moved = {
       for (var l in all)
-        if (l.on && l.kind == MotionDeviceKind.lfo)
+        if (l.on && l.modulates)
           for (var m in l.mods)
             if (m.device == d.id) m.param,
     };
     var accent = pose ? const Color(0xFF6FA8FF) : const Color(0xFFE59BFF);
+    // Right-click: move it with a modulator of the element's chain.
+    List<(String, VoidCallback)> modMenu(DeviceParam p) {
+      if (d.modulates) return const [];
+      void moveWith(MotionDevice m, ModTarget t) {
+        if (m.mods.any((x) =>
+            x.device == t.device && x.param == t.param && x.from == t.from)) {
+          return;
+        }
+        var now = controller.motionDevicesOf(element);
+        controller.beginInteraction();
+        controller.setMotionDevices(element, [
+          for (var x in now) x.id == m.id ? x.withMods([...x.mods, t]) : x
+        ]);
+        controller.endInteraction();
+      }
+
+      return [
+        for (var m in all)
+          if (m.id != d.id && m.modulates)
+            if (m.kind == MotionDeviceKind.macro)
+              for (var k = 0; k < macroKnobs; k++)
+                (
+                  "Turn with ${m.kind.label}'s M${k + 1}",
+                  () => moveWith(m, ModTarget(d.id, p.id, 0.5, k))
+                )
+            else
+              (
+                "Move with ${m.kind.label}",
+                () => moveWith(m, ModTarget(d.id, p.id))
+              ),
+      ];
+    }
+
     List<Widget> knobs(DeviceTier tier) => [
           for (var p in d.kind.params)
             _Knob(
               key: ValueKey("mdev-${d.id}-${p.id}"),
               modulated: moved.contains(p.id),
+              menu: modMenu(p),
               label: p.label,
               text: p.reading(d.value(p.id)),
               value: d.value(p.id),
@@ -4164,13 +4288,16 @@ class MotionDeviceCard extends StatelessWidget {
               onCommit: controller.endInteraction,
             ),
           // What an LFO moves: any knob of the element's other devices.
-          if (d.kind == MotionDeviceKind.lfo)
+          if (d.modulates)
             ModTargets(
               key: ValueKey("mdevMods-${d.id}"),
               mods: d.mods,
+              sources: d.kind == MotionDeviceKind.macro
+                  ? [for (var i = 1; i <= macroKnobs; i++) "M$i"]
+                  : const [],
               knobs: [
                 for (var x in all)
-                  if (x.id != d.id && x.kind != MotionDeviceKind.lfo)
+                  if (x.id != d.id && !x.modulates)
                     for (var p in x.kind.params)
                       if (!p.isChoice)
                         (x.id, p.id, "${x.kind.label} · ${p.label}"),
@@ -4186,7 +4313,9 @@ class MotionDeviceCard extends StatelessWidget {
               key: ValueKey("mdevTarget-${d.id}"),
               label: switch (d.kind) {
                 MotionDeviceKind.followPath => "Path",
-                MotionDeviceKind.followSound => "Channel",
+                MotionDeviceKind.followSound ||
+                MotionDeviceKind.follower =>
+                  "Channel",
                 _ => "Looks at",
               },
               value: d.target,
@@ -4195,7 +4324,8 @@ class MotionDeviceCard extends StatelessWidget {
               options: [
                 ("", "Nothing"),
                 // A sound follows a channel's loudness.
-                if (d.kind == MotionDeviceKind.followSound)
+                if (d.kind == MotionDeviceKind.followSound ||
+                    d.kind == MotionDeviceKind.follower)
                   for (var ch in controller.timelineChannels) (ch.key, ch.name)
                 else
                   for (var x in controller.document.elements)
@@ -4861,6 +4991,10 @@ const Color modulationColour = Color(0xFFFF6FB5);
 class ModTargets extends StatelessWidget {
   final List<ModTarget> mods;
   final List<(String, String, String)> knobs;
+
+  /// sources are a macro's knobs, by name, each target turned by one;
+  /// empty for a modulator of one.
+  final List<String> sources;
   final Color ink;
   final void Function(List<ModTarget> mods, {bool transient}) onChanged;
   final VoidCallback onCommit;
@@ -4870,6 +5004,7 @@ class ModTargets extends StatelessWidget {
       required this.ink,
       required this.onChanged,
       required this.onCommit,
+      this.sources = const [],
       super.key});
 
   @override
@@ -4901,6 +5036,24 @@ class ModTargets extends StatelessWidget {
                     margin: const EdgeInsets.only(right: 5),
                     decoration: const BoxDecoration(
                         color: modulationColour, shape: BoxShape.circle)),
+                // Which of a macro's knobs turns it.
+                if (sources.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: CanvasDropdown<int>(
+                      key: ValueKey("modFrom-$i"),
+                      label: "",
+                      value: m.from.clamp(0, sources.length - 1),
+                      width: 64,
+                      grow: false,
+                      tight: true,
+                      options: [
+                        for (var (k, name) in sources.indexed) (k, name)
+                      ],
+                      onChanged: (k) =>
+                          onChanged([...mods]..[i] = m.withFrom(k)),
+                    ),
+                  ),
                 Expanded(
                   child: Text(nameOf(m),
                       maxLines: 1,

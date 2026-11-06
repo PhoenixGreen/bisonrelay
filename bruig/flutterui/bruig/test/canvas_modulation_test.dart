@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/mix_graph.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
@@ -16,6 +17,7 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -216,5 +218,211 @@ void main() {
         await tester.pumpWidget(const SizedBox());
       });
     }
+  });
+
+  group("a follower", () {
+    MixDevice follower(String device, String param,
+            {String source = "", double depth = 0.5}) =>
+        MixDevice(DeviceKind.follower,
+            id: "d1",
+            source: source,
+            // Quick to fall, for a test of a fraction of a second.
+            values: const {"gain": 8, "release": 20},
+            mods: [ModTarget(device, param, depth)]);
+
+    test("turns a knob by how loud its own sound is", () {
+      var strip = StripProcessor(
+          ChannelMix(devices: [follower("d0", "gain"), utility]));
+      var total = mixRate ~/ 2;
+      var last = 0.0;
+      for (var at = 0; at < total; at += 480) {
+        var l = Float32List(480)..fillRange(0, 480, 0.2);
+        var r = Float32List.fromList(l);
+        strip.process(l, r, 480);
+        last = l.last;
+      }
+      // Loud enough to be followed all the way: up 18 dB.
+      expect(last, closeTo(0.2 * dbToGain(18), 1e-3));
+    });
+
+    test("follows another channel, muted or not", () {
+      var g = MixGraph()
+        ..setMaster(const MasterMix(limiter: false))
+        ..setReturns(const [])
+        ..setChannel(
+            "pad",
+            ChannelMix(devices: [
+              utility,
+              follower("d0", "gain", source: "kick"),
+            ]))
+        ..setChannel("kick", const ChannelMix(mute: true));
+      double padAt(bool kick) {
+        var level = 0.0;
+        for (var b = 0; b < 40; b++) {
+          g.begin(480);
+          var (pl, pr) = g.input("pad", 480);
+          pl.fillRange(0, 480, 0.05);
+          pr.fillRange(0, 480, 0.05);
+          if (kick) {
+            var (kl, kr) = g.input("kick", 480);
+            kl.fillRange(0, 480, 0.5);
+            kr.fillRange(0, 480, 0.5);
+          }
+          var l = Float32List(480), r = Float32List(480);
+          g.finish(l, r, 480);
+          level = l.last;
+        }
+        return level;
+      }
+
+      var loud = padAt(true);
+      var quiet = padAt(false);
+      expect(loud, closeTo(0.05 * dbToGain(18), 1e-3),
+          reason: "pushed up while the kick sounds");
+      expect(quiet, closeTo(0.05, 1e-3), reason: "back when it stops");
+    });
+
+    test("a motion follower moves a knob by a channel's loudness", () {
+      var peaks = Float32List(100);
+      for (var i = 20; i < 40; i++) {
+        peaks[i] = 0.5;
+      }
+      var was = motionSoundPeaks;
+      motionSoundPeaks = (id) => id == "voice.mp3" ? peaks : null;
+      addTearDown(() => motionSoundPeaks = was);
+      var d = CanvasDocument(frames: 240, frameRate: 24, elements: [
+        ShapeElement(const ElementBase(
+            id: "a",
+            width: 20,
+            height: 20,
+            motion: ElementMotion(devices: [
+              MotionDevice(MotionDeviceKind.oscillate,
+                  id: "m0", values: {"rate": 1, "amount": 0, "moves": 0}),
+              MotionDevice(MotionDeviceKind.follower,
+                  id: "m1",
+                  target: "voice",
+                  values: {"smooth": 0, "gain": 2},
+                  mods: [ModTarget("m0", "amount", 0.25)]),
+            ]))),
+        AudioElement(const ElementBase(id: "vo", visible: false),
+            clip: const MediaClip(
+                timed: true,
+                volume: 1,
+                channel: "voice",
+                playlist: [MediaSource(assetId: "voice.mp3", length: 10)])),
+      ]);
+      var e = d.elementById("a")!;
+      // 2.25 s: the voice loud, followed whole; the swing at its top, its
+      // amount a quarter of 400 -- half its travel -- up from nought.
+      expect(poseWithMotion(e, 54, d).dy, closeTo(50, 1e-6));
+      expect(poseWithMotion(e, 6 + 24 * 6, d).dy, 0, reason: "quiet at 6.25 s");
+    });
+  });
+
+  group("a macro", () {
+    test("which of its knobs turns each target is kept", () {
+      const t = ModTarget("d0", "gain", 0.5, 2);
+      expect(ModTarget.fromJson(t.toJson()), t);
+      expect(
+          const ModTarget("d0", "gain").toJson().containsKey("from"), isFalse);
+    });
+
+    test("turns what it is given from where it is set as far as its depth", () {
+      MixDevice macro(double m1, double m2) =>
+          MixDevice(DeviceKind.macro, id: "d1", values: {
+            "m1": m1,
+            "m2": m2
+          }, mods: const [
+            ModTarget("d0", "gain", 0.5, 0),
+            ModTarget("d0", "width", 0.5, 1),
+          ]);
+      double gainAt(double m1) {
+        var strip =
+            StripProcessor(ChannelMix(devices: [utility, macro(m1, 0)]));
+        return run(strip)[mixRate ~/ 2] / 0.01;
+      }
+
+      expect(gainAt(0), closeTo(1, 1e-6), reason: "where it is set");
+      // Half of half its travel (-36 to 36 dB) at half way: 18 dB.
+      expect(gainAt(0.5), closeTo(dbToGain(18), 1e-4));
+      expect(gainAt(1), closeTo(dbToGain(36), 1e-3), reason: "all the way");
+    });
+
+    test("in motion, one knob turns a move's", () {
+      var d = CanvasDocument(frames: 240, frameRate: 24, elements: [
+        ShapeElement(const ElementBase(
+            id: "a",
+            width: 20,
+            height: 20,
+            motion: ElementMotion(devices: [
+              MotionDevice(MotionDeviceKind.oscillate,
+                  id: "m0", values: {"rate": 1, "amount": 0, "moves": 0}),
+              MotionDevice(MotionDeviceKind.macro,
+                  id: "m1",
+                  values: {"m3": 0.25},
+                  mods: [ModTarget("m0", "amount", 1, 2)]),
+            ]))),
+      ]);
+      // A quarter of the way: a quarter of 400.
+      expect(poseWithMotion(d.elementById("a")!, 6, d).dy, closeTo(100, 1e-6));
+    });
+  });
+
+  testWidgets("right-click a knob to move it with the chain's LFO",
+      (tester) async {
+    var c = CanvasController(
+        CanvasDocument(frames: 100, elements: [
+          AudioElement(const ElementBase(id: "a", name: "Pad"),
+              clip: const MediaClip(
+                  playlist: [MediaSource(assetId: "t", length: 2)],
+                  timed: true)),
+        ]),
+        audioEngine: FakeEngine({"t": 2}));
+    addTearDown(c.dispose);
+    c.setDevicesOf("a", [
+      const MixDevice(DeviceKind.autoFilter),
+      const MixDevice(DeviceKind.lfo),
+    ]);
+    c.openEffects("a");
+    tester.view.physicalSize = const Size(2000, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: ListenableBuilder(
+                  listenable: c,
+                  builder: (context, _) => Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            CanvasMixer.effects(
+                                controller: c,
+                                height: 420,
+                                onResize: (_) {},
+                                onClose: () {}),
+                          ])))),
+    ));
+    await tester.pump(const Duration(milliseconds: 300));
+    var knob = find.byKey(const ValueKey("device-0-freq"));
+    await tester.ensureVisible(knob);
+    await tester.pump();
+    await tester.tap(
+        find.descendant(of: knob, matching: find.byType(CustomPaint)).first,
+        buttons: kSecondaryButton);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text("Move with LFO 2"));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(c.devicesOf("a")[1].mods,
+        [ModTarget(c.devicesOf("a")[0].id, "freq", 0.5)]);
+    // A menu's choice is acted on as it closes: drawn on the next frame.
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const ValueKey("knobModulated")), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
   });
 }

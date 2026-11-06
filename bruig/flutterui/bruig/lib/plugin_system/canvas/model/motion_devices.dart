@@ -78,6 +78,16 @@ enum MotionDeviceKind {
   /// lfo moves no pose itself: it turns other devices' knobs up and down,
   /// a move's or a look's (see MotionDevice.mods and modulation.dart).
   lfo("LFO", MotionDeviceSide.pose, lfoParams),
+
+  /// macro is four knobs, each turning any knobs of the chain it is given.
+  macro("Macro", MotionDeviceSide.pose, macroParams),
+
+  /// follower moves other devices' knobs by how loud a channel is (its
+  /// target), as Follow sound moves the element.
+  follower("Follower", MotionDeviceSide.pose, [
+    DeviceParam("smooth", "Smooth", 0, 1, 0.3),
+    DeviceParam("gain", "Gain", 0.1, 8, 2, "×"),
+  ]),
   glow("Glow", MotionDeviceSide.look, [
     DeviceParam("radius", "Radius", 0, 60, 10, "px"),
     DeviceParam("strength", "Strength", 0, 1, 0.6),
@@ -151,7 +161,14 @@ class MotionDevice {
   bool get takesTarget =>
       kind == MotionDeviceKind.followPath ||
       kind == MotionDeviceKind.lookAt ||
-      kind == MotionDeviceKind.followSound;
+      kind == MotionDeviceKind.followSound ||
+      kind == MotionDeviceKind.follower;
+
+  /// modulates is whether it moves other devices' knobs (see [mods]).
+  bool get modulates =>
+      kind == MotionDeviceKind.lfo ||
+      kind == MotionDeviceKind.follower ||
+      kind == MotionDeviceKind.macro;
 
   MotionDeviceSide get side => kind.side;
 

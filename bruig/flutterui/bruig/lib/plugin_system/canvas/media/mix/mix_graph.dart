@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:bruig/plugin_system/canvas/media/mix/device_dsp.dart' show Gate;
+import 'package:bruig/plugin_system/canvas/media/mix/device_dsp.dart'
+    show Follower, Gate;
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
@@ -466,8 +467,9 @@ class MixGraph {
         var from = _inputs[d.source];
         if (from != null) {
           d.feed(from.l, from.r, n);
-        } else if (d is Gate && _strips.containsKey(d.source)) {
-          d.silence(n);
+        } else if (_strips.containsKey(d.source)) {
+          if (d is Gate) d.silence(n);
+          if (d is Follower) d.silence(n);
         }
       }
     }

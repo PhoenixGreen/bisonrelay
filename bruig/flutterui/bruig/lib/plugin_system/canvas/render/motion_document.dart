@@ -190,7 +190,8 @@ Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
   if (i < 0) return _clipPose(e, frame, doc, live);
   // Its knobs where its LFOs have them at this moment.
   var d = motionModulated(
-      devices[i], e.base.motion.devices, frame / math.max(1, doc.frameRate));
+      devices[i], e.base.motion.devices, frame / math.max(1, doc.frameRate),
+      doc: doc);
   switch (d.kind) {
     case MotionDeviceKind.instances:
       var set = e.base.motion.instances;
@@ -409,22 +410,31 @@ Offset? _centreOf(CanvasDocument doc, String id, int frame) {
   return (math.sqrt(dx * dx + dy * dy) * rate, now);
 }
 
-/// motionModulated is [d] with what the LFOs of [chain] add to its knobs
-/// [t] seconds in (see modulation.dart); as it is where none moves it.
-MotionDevice motionModulated(
-    MotionDevice d, List<MotionDevice> chain, double t) {
+/// motionModulated is [d] with what the modulators of [chain] add to its
+/// knobs [t] seconds in (see modulation.dart): its LFOs, and its followers
+/// of [doc]'s channels; as it is where none moves it.
+MotionDevice motionModulated(MotionDevice d, List<MotionDevice> chain, double t,
+    {CanvasDocument? doc}) {
   if (d.kind.params.isEmpty || d.id.isEmpty) return d;
   Map<String, double>? add;
   for (var l in chain) {
-    if (!l.on || l.kind != MotionDeviceKind.lfo || l.mods.isEmpty) continue;
+    if (!l.on || !l.modulates || l.mods.isEmpty) continue;
     double? v;
     for (var m in l.mods) {
       if (m.device != d.id || !d.kind.params.any((p) => p.id == m.param)) {
         continue;
       }
-      v ??= lfoValue(
-          l.value("shape").round(), l.value("rate") * t + l.value("phase"));
-      (add ??= {})[m.param] = (add[m.param] ?? 0) + m.depth * v;
+      v ??= switch (l.kind) {
+        MotionDeviceKind.lfo => lfoValue(
+            l.value("shape").round(), l.value("rate") * t + l.value("phase")),
+        MotionDeviceKind.follower => _followed(l, t, doc),
+        _ => 0.0,
+      };
+      // A macro's each by its own knob, nought to all the way.
+      var by = l.kind == MotionDeviceKind.macro
+          ? macroValue(l.value, m.from) * 2
+          : v;
+      (add ??= {})[m.param] = (add[m.param] ?? 0) + m.depth * by;
     }
   }
   if (add == null) return d;
@@ -433,6 +443,17 @@ MotionDevice motionModulated(
     next = next.withValue(id, modulated(d.kind.param(id), d.value(id), by));
   }
   return next;
+}
+
+/// _followed is how loud follower [l]'s channel is [t] seconds into
+/// [doc], times its gain: nought to one.
+double _followed(MotionDevice l, double t, CanvasDocument? doc) {
+  var peaks = motionSoundPeaks;
+  if (doc == null || peaks == null || l.target.isEmpty) return 0;
+  return (channelLevelAt(doc, l.target, t, peaks,
+              window: l.value("smooth") * 0.5) *
+          l.value("gain"))
+      .clamp(0.0, 1.0);
 }
 
 /// retimed is the moment a Time device asks the devices to its left for,
