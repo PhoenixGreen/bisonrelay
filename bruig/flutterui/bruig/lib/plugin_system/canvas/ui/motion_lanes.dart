@@ -68,7 +68,7 @@ List<CanvasElement> motionRowsOf(CanvasController c) {
   return [
     for (var e in c.document.elements)
       if (!(e is AudioElement && e.clip.timed) &&
-          (!e.base.motion.isEmpty ||
+          (e.base.motion.channelled ||
               e.base.motion.instances != null ||
               owners.contains(e.id) ||
               c.selection.contains(e.id)))
@@ -593,22 +593,34 @@ class _RowSlots extends StatelessWidget {
             ),
           if (clip != null)
             Expanded(
-              child: GestureDetector(
-                key: ValueKey("rowSlotName-${element.id}-$i"),
-                behavior: HitTestBehavior.opaque,
-                // A click picks it; a double-click opens it in the Chain.
-                onTap: () {
-                  c.pickMotion(element.id, clip.id);
-                  if (c.effectsOpen) c.animationOpen = true;
+              // Clicked, it has the keyboard: Delete or Backspace empties
+              // the slot, not the canvas's selection (Ken: it took the
+              // element, and its channel with it).
+              child: SlotFocus(
+                key: ValueKey("rowSlotKeys-${element.id}-$i"),
+                onDelete: () {
+                  c.beginInteraction();
+                  c.clearMotionSlot(element.id, i);
+                  c.endInteraction();
                 },
-                onDoubleTap: () {
-                  c.pickMotion(element.id, clip.id);
-                  c.animationOpen = true;
-                },
-                child: Text(clip.name.isEmpty ? "Clip" : clip.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 10, height: 1.1, color: ink)),
+                builder: (focus) => GestureDetector(
+                  key: ValueKey("rowSlotName-${element.id}-$i"),
+                  behavior: HitTestBehavior.opaque,
+                  // A click picks it; a double-click opens it in the Chain.
+                  onTap: () {
+                    c.pickMotion(element.id, clip.id);
+                    if (c.effectsOpen) c.animationOpen = true;
+                    focus.requestFocus();
+                  },
+                  onDoubleTap: () {
+                    c.pickMotion(element.id, clip.id);
+                    c.animationOpen = true;
+                  },
+                  child: Text(clip.name.isEmpty ? "Clip" : clip.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10, height: 1.1, color: ink)),
+                ),
               ),
             ),
         ]),

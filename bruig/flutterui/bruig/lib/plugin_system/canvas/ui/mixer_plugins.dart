@@ -1066,6 +1066,11 @@ class DeviceFrame extends StatelessWidget {
   final double? besideDisplay;
   final double besideSettings;
 
+  /// displayBeside puts [display] beside the settings at every height but
+  /// the strip, not only a short one's: a list, which wants height more
+  /// than width (the Instances card's copies).
+  final bool displayBeside;
+
   const DeviceFrame({
     required this.id,
     required this.title,
@@ -1101,6 +1106,7 @@ class DeviceFrame extends StatelessWidget {
     this.onUnfreeze,
     this.besideDisplay,
     this.besideSettings = 220,
+    this.displayBeside = false,
     super.key,
   });
 
@@ -1569,7 +1575,9 @@ class DeviceFrame extends StatelessWidget {
     var oneRow = 14.0 + 58 * math.min(knobCount, 9);
     // Short, its display goes beside its knobs rather than over them: the
     // card wider, the display still a picture worth looking at.
-    var beside = tier == DeviceTier.small && display != null;
+    var beside = display != null &&
+        (tier == DeviceTier.small ||
+            (displayBeside && tier != DeviceTier.strip));
     var packed = beside && besideDisplay != null;
     var textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.5);
     var w = folded
@@ -1714,7 +1722,10 @@ class DeviceFrame extends StatelessWidget {
             ),
             Expanded(
               child: Align(
-                alignment: Alignment.centerLeft,
+                // Beside a list, from its top; beside a picture, level with
+                // its middle.
+                alignment:
+                    displayBeside ? Alignment.topLeft : Alignment.centerLeft,
                 child: SingleChildScrollView(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(7, 5, 7, 5),
@@ -3197,6 +3208,10 @@ class _Knob extends StatefulWidget {
   /// modulated is whether an LFO moves it: a pink ring round it.
   final bool modulated;
 
+  /// own is whether the copies being edited have a value of their own here
+  /// (see instances.dart): its arc amber, with a dot by it.
+  final bool own;
+
   /// menu is what its right-click offers -- a modulator of the chain to
   /// move it with, each -- by name; empty for none.
   final List<(String, VoidCallback)> menu;
@@ -3216,6 +3231,7 @@ class _Knob extends StatefulWidget {
     this.automated = false,
     this.held = false,
     this.modulated = false,
+    this.own = false,
     this.menu = const [],
     this.reading = true,
     this.accent,
@@ -3323,8 +3339,22 @@ class _KnobState extends State<_Knob> {
                 CustomPaint(
                     size: Size.square(face),
                     painter: _KnobFace(range.toUnit(value),
-                        accent: look.colors.primary,
+                        accent: widget.own ? ownColour : look.colors.primary,
                         from: bipolar ? range.toUnit(0) : 0)),
+                if (widget.own)
+                  Positioned(
+                    top: 0,
+                    left: -6,
+                    child: IgnorePointer(
+                      child: Container(
+                        key: const ValueKey("knobOwn"),
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                            color: ownColour, shape: BoxShape.circle),
+                      ),
+                    ),
+                  ),
                 if (modulated)
                   IgnorePointer(
                     child: Container(
@@ -3441,13 +3471,16 @@ class DeviceKnob extends StatelessWidget {
   final VoidCallback onCommit;
 
   /// menu is its right-click's choices, and modulated whether something
-  /// moves it (a pink ring), as a device's own knobs have.
+  /// moves it (a pink ring), as a device's own knobs have; own whether the
+  /// copies edited have their own value (see _Knob.own).
   final List<(String, VoidCallback)> menu;
   final bool modulated;
+  final bool own;
 
   const DeviceKnob({
     this.menu = const [],
     this.modulated = false,
+    this.own = false,
     required this.label,
     required this.text,
     required this.value,
@@ -3468,6 +3501,7 @@ class DeviceKnob extends StatelessWidget {
   Widget build(BuildContext context) => _Knob(
         menu: menu,
         modulated: modulated,
+        own: own,
         label: label,
         text: text,
         value: value,
@@ -3984,79 +4018,214 @@ class _MeterScale extends CustomPainter {
   bool shouldRepaint(_MeterScale old) => false;
 }
 
-/// LimiterDevice is the master's limiter: on or off, and its ceiling.
-class LimiterDevice extends StatelessWidget {
-  static const width = 220.0;
+/// LimiterDevice is the master's limiter, last in its chain, as the chain
+/// prototype has it (Ken, 2026-11-08): its screen the turn-down it has made
+/// lately against its ceiling, its Ceiling, Release and Look-ahead, and
+/// the delay its look-ahead adds on its bar.
+class LimiterDevice extends StatefulWidget {
+  static const width = 280.0;
   final CanvasController controller;
   final bool folded;
   final VoidCallback onFold;
   final double height;
+
+  /// reductionDb is how far it is turning the sound down now, in dB (zero
+  /// or less).
+  final double reductionDb;
   const LimiterDevice(
       {required this.controller,
       required this.folded,
       required this.onFold,
       required this.height,
+      this.reductionDb = 0,
       super.key});
 
+  @override
+  State<LimiterDevice> createState() => _LimiterDeviceState();
+}
+
+class _LimiterDeviceState extends State<LimiterDevice> {
+  /// _history is the turn-down at each of the last readings, oldest first.
+  final List<double> _history = [];
+
+  /// _reduction is the turn-down read now: none where nothing has been
+  /// read (silence reads as minus infinity, not as all the way down).
+  double get _reduction => widget.reductionDb.isFinite
+      ? widget.reductionDb.clamp(-24.0, 0.0)
+      : 0.0;
+
+  @override
+  void didUpdateWidget(LimiterDevice old) {
+    super.didUpdateWidget(old);
+    _history.add(_reduction);
+    if (_history.length > 160) _history.removeAt(0);
+  }
+
   void _write(MasterMix m, {bool transient = false}) {
-    controller.beginInteraction();
-    controller.setMasterMix(m, transient: true);
-    if (!transient) controller.endInteraction();
+    var c = widget.controller;
+    c.beginInteraction();
+    c.setMasterMix(m, transient: true);
+    if (!transient) c.endInteraction();
   }
 
   @override
   Widget build(BuildContext context) {
-    var m = controller.document.masterMix;
+    var c = widget.controller;
+    var m = c.document.masterMix;
+    var look = MixerLook.of(context);
+    var skin = DeviceSkin.studio(look.studio);
+    var (icon, accent) = deviceGroupLook(DeviceGroup.dynamics);
     var reading = "${m.ceilingDb.toStringAsFixed(1)} dBTP";
     return DeviceFrame(
       id: "limiter",
       title: "Limiter",
-      skin: DeviceSkin.silver,
-      icon: deviceGroupLook(DeviceGroup.dynamics).$1,
-      accent: deviceGroupLook(DeviceGroup.dynamics).$2,
-      help: "Last in the chain: no peak gets past its ceiling, in playing "
-          "or in an export.",
+      skin: skin,
+      icon: icon,
+      accent: accent,
+      help: "Last in the chain: no peak gets past its ceiling, in playing or "
+          "in an export. It looks ahead, so it turns down before a peak "
+          "arrives -- which delays everything by that much -- and lets go "
+          "over its release.",
       on: m.limiter,
       powerKey: const ValueKey("limitOn"),
       onPower: (v) => _write(m.copyWith(limiter: v)),
-      folded: folded,
-      onFold: onFold,
-      width: width,
-      height: height,
-      foldedBody: Center(
-        child: RotatedBox(
-          quarterTurns: 3,
-          child: Text(reading,
-              style: const TextStyle(fontSize: 11, color: _silverInk)),
+      onReset: () => _write(m.copyWith(
+          ceilingDb: -1, limiterAheadMs: 5, limiterReleaseMs: 50)),
+      folded: widget.folded,
+      onFold: widget.onFold,
+      width: LimiterDevice.width,
+      height: widget.height,
+      besideDisplay: 200,
+      besideSettings: 180,
+      // Its look-ahead delays the whole mix by as much.
+      barExtras: [
+        Container(
+          key: const ValueKey("limitLatency"),
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(3),
+              border: Border.all(color: look.studio.edge)),
+          child: Text("${m.limiterAheadMs.toStringAsFixed(1)} ms",
+              style: TextStyle(fontSize: 9.5, color: look.studio.muted)),
         ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(children: [
-          const Spacer(),
-          _Knob(
-            key: const ValueKey("limitCeiling"),
-            label: "Ceiling",
-            text: reading,
-            value: m.ceilingDb,
-            initial: -1,
-            range: const _Range(-12, 0),
-            size: 76,
-            onChanged: (v, {transient = false}) => _write(
-                m.copyWith(ceilingDb: (v * 10).roundToDouble() / 10),
-                transient: transient),
-            onCommit: controller.endInteraction,
+      ],
+      summary: "$reading · ${_reduction.toStringAsFixed(1)} dB",
+      foldedBody: const SizedBox(),
+      body: const SizedBox.shrink(),
+      controls: (tier) => [
+        for (var (key, label, text, value, min, max, initial, log, set) in [
+          (
+            "limitCeiling",
+            "Ceiling",
+            reading,
+            m.ceilingDb,
+            -12.0,
+            0.0,
+            -1.0,
+            false,
+            (double v) =>
+                m.copyWith(ceilingDb: (v * 10).roundToDouble() / 10)
           ),
-          const Spacer(),
-          const Text(
-              "Last in the chain: no peak gets past the ceiling, in "
-              "playing or in an export.",
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 10, color: _silverDim)),
-        ]),
+          (
+            "limitRelease",
+            "Release",
+            "${m.limiterReleaseMs.round()} ms",
+            m.limiterReleaseMs,
+            5.0,
+            1000.0,
+            50.0,
+            true,
+            (double v) => m.copyWith(limiterReleaseMs: v.roundToDouble())
+          ),
+          (
+            "limitAhead",
+            "Look-ahead",
+            "${m.limiterAheadMs.toStringAsFixed(1)} ms",
+            m.limiterAheadMs,
+            0.5,
+            20.0,
+            5.0,
+            true,
+            (double v) =>
+                m.copyWith(limiterAheadMs: (v * 10).roundToDouble() / 10)
+          ),
+        ])
+          _Knob(
+            key: ValueKey(key),
+            label: label,
+            text: text,
+            value: value,
+            initial: initial,
+            range: _Range(min, max, log: log),
+            size: switch (tier) {
+              DeviceTier.large => 46,
+              DeviceTier.medium => 38,
+              _ => 30,
+            },
+            accent: accent,
+            ink: skin.ink,
+            onChanged: (v, {transient = false}) =>
+                _write(set(v), transient: transient),
+            onCommit: c.endInteraction,
+          ),
+      ],
+      display: CustomPaint(
+        key: const ValueKey("limitScreen"),
+        painter: _LimitHistory(
+            List.of(_history), m.ceilingDb, accent, look.studio),
+        child: const SizedBox.expand(),
       ),
     );
   }
+}
+
+/// _LimitHistory is the limiter's turn-down over the last readings, down
+/// from the top (none) to twelve decibels, and its ceiling written.
+class _LimitHistory extends CustomPainter {
+  final List<double> history;
+  final double ceiling;
+  final Color accent;
+  final StudioColors studio;
+  _LimitHistory(this.history, this.ceiling, this.accent, this.studio);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = studio.display);
+    var grid = Paint()..color = Colors.white.withValues(alpha: 0.05);
+    for (var db = 3; db < 12; db += 3) {
+      var y = size.height * db / 12;
+      canvas.drawRect(Rect.fromLTWH(0, y, size.width, 1), grid);
+    }
+    if (history.isNotEmpty) {
+      var step = size.width / math.max(1, 159);
+      var x0 = size.width - (history.length - 1) * step;
+      var path = Path()..moveTo(x0, 0);
+      for (var (i, db) in history.indexed) {
+        var y = size.height * (-db).clamp(0.0, 12.0) / 12;
+        path.lineTo(x0 + i * step, y);
+      }
+      path
+        ..lineTo(size.width, 0)
+        ..close();
+      canvas.drawPath(path, Paint()..color = accent.withValues(alpha: 0.35));
+    }
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, 2),
+        Paint()..color = const Color(0xFFE5534B));
+    var now = history.isEmpty ? 0.0 : history.last;
+    var tp = TextPainter(
+        text: TextSpan(
+            text: "ceiling ${ceiling.toStringAsFixed(1)} dB · "
+                "${now < -0.05 ? "down ${(-now).toStringAsFixed(1)} dB" : "not turning down"}",
+            style: TextStyle(fontSize: 10, color: studio.muted)),
+        maxLines: 1,
+        ellipsis: "…",
+        textDirection: TextDirection.ltr)
+      ..layout(maxWidth: size.width - 12);
+    tp.paint(canvas, Offset(6, size.height - tp.height - 4));
+  }
+
+  @override
+  bool shouldRepaint(_LimitHistory old) => true;
 }
 
 // ---- Ducking
@@ -6959,16 +7128,41 @@ class MotionDeviceCard extends StatelessWidget {
     }
 
     var reused = controller.motionOf(element).instances != null;
+    // With copies picked, a knob is theirs: their own value, or the shared
+    // one, and turned it becomes their own (Ken, 2026-11-08).
+    var copies = controller.copiesPicked(element);
+    (double, bool) knobAt(DeviceParam p) =>
+        controller.deviceKnob(element, d.id, p.id, d.value(p.id));
+    void set(DeviceParam p, double v, {bool transient = false}) {
+      if (!copies) return write(d.withValue(p.id, v), transient: transient);
+      controller.beginInteraction();
+      controller.setCopyOwn(element, deviceOwnKey(d.id, p.id), v,
+          transient: true);
+      if (!transient) controller.endInteraction();
+    }
+
+    List<(String, VoidCallback)> ownMenu(DeviceParam p) => [
+          if (copies && knobAt(p).$2)
+            (
+              "Back to the shared value",
+              () {
+                controller.beginInteraction();
+                controller.setCopyOwn(element, deviceOwnKey(d.id, p.id), null);
+                controller.endInteraction();
+              }
+            ),
+        ];
     List<Widget> knobs(DeviceTier tier) => [
           for (var p in d.kind.params)
             if (!p.isChoice && motionParamShown(d, p, reused: reused))
               _Knob(
                 key: ValueKey("mdev-${d.id}-${p.id}"),
                 modulated: moved.contains(p.id),
-                menu: modMenu(p),
+                own: knobAt(p).$2,
+                menu: [...ownMenu(p), ...modMenu(p)],
                 label: p.label,
-                text: p.reading(d.value(p.id)),
-                value: d.value(p.id),
+                text: p.reading(knobAt(p).$1),
+                value: knobAt(p).$1,
                 initial: p.initial,
                 range: _Range(p.min, p.max),
                 size: switch (tier) {
@@ -6981,7 +7175,7 @@ class MotionDeviceCard extends StatelessWidget {
                 ink: skin.ink,
                 bipolar: p.min < 0 && p.max > 0,
                 onChanged: (v, {transient = false}) =>
-                    write(d.withValue(p.id, v), transient: transient),
+                    set(p, v, transient: transient),
                 onCommit: controller.endInteraction,
               ),
           // What an LFO moves: any knob of the element's other devices.
@@ -7014,10 +7208,10 @@ class MotionDeviceCard extends StatelessWidget {
                 if (p.isChoice && motionParamShown(d, p, reused: reused))
                   StudioDrop<int>(
                     key: ValueKey("mdev-${d.id}-${p.id}"),
-                    label: p.label,
-                    value: d.value(p.id).round(),
+                    label: knobAt(p).$2 ? "${p.label} · its own" : p.label,
+                    value: knobAt(p).$1.round(),
                     options: [for (var (i, ch) in p.choices.indexed) (i, ch)],
-                    onChanged: (i) => write(d.withValue(p.id, i.toDouble())),
+                    onChanged: (i) => set(p, i.toDouble()),
                   ),
               if (d.takesTarget)
                 StudioDrop<String>(
@@ -7405,46 +7599,6 @@ class _MotionScreen extends CustomPainter {
       old.device != device || old.back != back || old.accent != accent;
 }
 
-/// DrawingCard is the element itself in its motion chain: what its pose
-/// devices move, and its looks are laid on. It has no settings of its own
-/// here; it marks the drawing between the two sides.
-class DrawingCard extends StatelessWidget {
-  final String name;
-  final double height;
-  const DrawingCard({required this.name, required this.height, super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    var look = MixerLook.of(context);
-    return Container(
-      key: const ValueKey("drawingCard"),
-      width: 92,
-      height: height,
-      decoration: BoxDecoration(
-        color: look.studio.raised,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: look.studio.edge),
-      ),
-      padding: const EdgeInsets.all(8),
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(Icons.draw_outlined, size: 22, color: look.studio.text),
-        const SizedBox(height: 6),
-        Text("Drawing",
-            style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: look.studio.text)),
-        const SizedBox(height: 2),
-        Text(name,
-            maxLines: 2,
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 10.5, color: look.studio.muted)),
-      ]),
-    );
-  }
-}
-
 /// AddMotionDeviceSlot puts a move (or a look, by [side]) on [element]'s
 /// motion chain: the chain's "+".
 class AddMotionDeviceSlot extends StatelessWidget {
@@ -7591,239 +7745,11 @@ class _MotionJoinState extends State<MotionJoin>
   }
 }
 
-/// InstancesCard is an element's Instances, first of its moves unless moved:
-/// "1 · this one" and a way to reuse it, or its instances -- how many, how
-/// they are laid out, and what differs between them, each by order, at
-/// random or from the middle (rule 3: from here on, each has its own).
-class InstancesCard extends StatelessWidget {
-  final CanvasController controller;
-  final String element;
-  final bool folded;
-  final VoidCallback onFold;
-  final double height;
-
-  /// canLeft and canRight are whether it can move among the moves.
-  final bool canLeft, canRight;
-
-  const InstancesCard({
-    required this.controller,
-    required this.element,
-    required this.folded,
-    required this.onFold,
-    required this.height,
-    this.canLeft = false,
-    this.canRight = false,
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    var look = MixerLook.of(context);
-    var skin = DeviceSkin.studio(look.studio);
-    var set = controller.motionOf(element).instances;
-    const accent = Color(0xFF6FA8FF);
-    var ink = TextStyle(fontSize: 11, color: skin.ink);
-    Widget button(String key, String label, VoidCallback onTap) => Padding(
-          padding: const EdgeInsets.all(2),
-          child: OutlinedButton(
-            key: ValueKey(key),
-            style: OutlinedButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                foregroundColor: skin.ink,
-                side: BorderSide(color: look.studio.edge)),
-            onPressed: onTap,
-            child: Text(label, style: ink),
-          ),
-        );
-    void write(InstanceSet next, {bool transient = false}) {
-      controller.beginInteraction();
-      controller.setInstances(element, next, transient: true);
-      if (!transient) controller.endInteraction();
-    }
-
-    List<Widget> controls(DeviceTier tier) {
-      if (set == null) {
-        return [
-          Text("1 · this one", style: ink),
-          button("instancesReuse", "Reuse…", () {
-            controller.beginInteraction();
-            controller.reuseElement(element, 5);
-            controller.endInteraction();
-          }),
-        ];
-      }
-      return [
-        // How many.
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          IconButton(
-              key: const ValueKey("instancesLess"),
-              iconSize: 14,
-              visualDensity: VisualDensity.compact,
-              icon: Icon(Icons.remove, color: skin.ink),
-              onPressed: set.count <= 1
-                  ? null
-                  : () {
-                      controller.beginInteraction();
-                      controller.reuseElement(element, set.count - 1);
-                      controller.endInteraction();
-                    }),
-          Text("×${set.count}",
-              key: const ValueKey("instancesCount"),
-              style: ink.copyWith(fontWeight: FontWeight.w700)),
-          IconButton(
-              key: const ValueKey("instancesMore"),
-              iconSize: 14,
-              visualDensity: VisualDensity.compact,
-              icon: Icon(Icons.add, color: skin.ink),
-              onPressed: set.count >= maxInstances
-                  ? null
-                  : () {
-                      controller.beginInteraction();
-                      controller.reuseElement(element, set.count + 1);
-                      controller.endInteraction();
-                    }),
-        ]),
-        // Laid out afresh: a choice that does something, so it shows none.
-        CanvasDropdown<InstanceLayout?>(
-          key: const ValueKey("instancesLayout"),
-          label: "Lay out",
-          value: null,
-          width: 120,
-          grow: false,
-          options: [
-            (null, "Lay out…"),
-            for (var l in InstanceLayout.values) (l, l.label),
-          ],
-          onChanged: (l) {
-            if (l == null) return;
-            controller.beginInteraction();
-            controller.layOutInstances(element, l);
-            controller.endInteraction();
-          },
-        ),
-        // What differs between them.
-        for (var w in VaryWhat.values)
-          _VaryRow(
-            what: w,
-            vary: set.varyOf(w),
-            ink: skin.ink,
-            accent: accent,
-            tier: tier,
-            onChanged: (v, {transient = false}) =>
-                write(set.withVary(w, v), transient: transient),
-            onCommit: controller.endInteraction,
-          ),
-        if (set.vary.values.any((v) => v.how == VaryHow.random))
-          button("instancesReroll", "Re-roll",
-              () => write(set.copyWith(seed: set.seed + 1))),
-        button("instancesOnce", "Place once", () {
-          controller.beginInteraction();
-          controller.setInstances(element, null);
-          controller.endInteraction();
-        }),
-      ];
-    }
-
-    var varied = set == null
-        ? 0
-        : VaryWhat.values
-            .where((w) => set.varyOf(w).how != VaryHow.same)
-            .length;
-    return DeviceFrame(
-      id: "instances",
-      title: set == null ? "Instances" : "Instances ×${set.count}",
-      skin: skin,
-      folded: folded,
-      onFold: onFold,
-      width: set == null ? 220 : 420,
-      height: height,
-      icon: Icons.copy_all_outlined,
-      accent: accent,
-      actions: [
-        if (set != null)
-          DeviceMove(
-              id: "instances",
-              canLeft: canLeft,
-              canRight: canRight,
-              onSwap: () {},
-              onMove: (by) => controller.moveInstances(element, by),
-              ink: _headerInkLight),
-      ],
-      foldedBody: Center(
-        child: RotatedBox(
-          quarterTurns: 3,
-          child: Text(set == null ? "Placed once" : "×${set.count}",
-              style: TextStyle(fontSize: 11, color: skin.ink)),
-        ),
-      ),
-      body: const SizedBox.shrink(),
-      controls: controls,
-      summary: set == null
-          ? "placed once"
-          : "×${set.count}${varied == 0 ? " · alike" : " · $varied vary"}",
-    );
-  }
-}
-
-/// _VaryRow is one setting that can differ between instances: how, and by
-/// at most how much.
-class _VaryRow extends StatelessWidget {
-  final VaryWhat what;
-  final Vary vary;
-  final Color ink, accent;
-  final DeviceTier tier;
-  final void Function(Vary v, {bool transient}) onChanged;
-  final VoidCallback onCommit;
-  const _VaryRow(
-      {required this.what,
-      required this.vary,
-      required this.ink,
-      required this.accent,
-      required this.tier,
-      required this.onChanged,
-      required this.onCommit});
-
-  String _reading(double v) => switch (what.unit) {
-        "s" => "${v.toStringAsFixed(2)} s",
-        "°" => "${v.round()}°",
-        _ => "${v >= 0 ? "+" : "−"}${(v.abs() * 100).round()}%",
-      };
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(mainAxisSize: MainAxisSize.min, children: [
-      CanvasDropdown<VaryHow>(
-        key: ValueKey("vary-${what.name}"),
-        label: what.label,
-        value: vary.how,
-        width: 120,
-        grow: false,
-        options: [for (var h in VaryHow.values) (h, h.label)],
-        onChanged: (h) => onChanged(Vary(h, vary.amount)),
-      ),
-      if (vary.how != VaryHow.same)
-        _Knob(
-          key: ValueKey("vary-${what.name}-amount"),
-          label: "",
-          text: _reading(vary.amount),
-          value: vary.amount,
-          initial: what.initial,
-          range: _Range(what.min, what.max),
-          size: tier == DeviceTier.large ? 34 : 26,
-          reading: tier != DeviceTier.small,
-          accent: accent,
-          ink: ink,
-          bipolar: what.min < 0,
-          onChanged: (v, {transient = false}) =>
-              onChanged(Vary(vary.how, v), transient: transient),
-          onCommit: onCommit,
-        ),
-    ]);
-  }
-}
-
 /// modulationColour marks what a modulator moves: a knob's ring.
 const Color modulationColour = Color(0xFFFF6FB5);
+
+/// ownColour marks a copy's own value: a knob's arc and its dot.
+const Color ownColour = Color(0xFFE2B04A);
 
 /// ModTargets is what a modulator moves: each knob, by its device and its
 /// name, with how far it moves it and a way to take it off, and a way to

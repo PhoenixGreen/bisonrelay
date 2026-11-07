@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/background_element.dar
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart'
     show channelLevelAt;
+import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
@@ -146,6 +147,49 @@ class MotionPreview implements LiveMotion {
 LiveMotion liveShifted(LiveMotion live, double seconds) =>
     _ShiftedLive(live, seconds);
 
+/// liveForCopy is [live] as a copy of an element reused sees it (Ken,
+/// 2026-11-08: launched from their slots, the copies moved as one): each
+/// clip playing started [start] seconds later and going at [speed] -- the
+/// clock the same, each play's start moved so that what it has played is
+/// the copy's share of it, holding its first moment until its start.
+/// A clip played once has ended for the copy only when its own share of it
+/// has: its clips are read from [motion].
+LiveMotion liveForCopy(
+        LiveMotion live, double start, double speed, ElementMotion motion) =>
+    start == 0 && speed == 1 ? live : _CopyLive(live, start, speed, motion);
+
+class _CopyLive implements LiveMotion {
+  final LiveMotion live;
+  final double start, speed;
+  final ElementMotion motion;
+  _CopyLive(this.live, this.start, this.speed, this.motion);
+
+  @override
+  double get clock => live.clock;
+
+  @override
+  MotionLive? of(String element) {
+    var m = live.of(element);
+    if (m == null) return null;
+    var now = live.clock;
+    LivePlay? copied(LivePlay? p) {
+      if (p == null) return null;
+      var played = math.max(0.0, now - p.start - start) * speed;
+      var clip = motion.clip(p.clip);
+      // Ended for the element; for a copy that started later, only once it
+      // has played its own way through.
+      var ended = p.ended &&
+          (clip == null ||
+              clip.loop ||
+              played * clip.speed >= clip.length - 1e-6);
+      return LivePlay(p.clip, now - played, ended: ended);
+    }
+
+    return MotionLive(
+        plays: [for (var p in m.plays) copied(p)], carry: m.carry);
+  }
+}
+
 class _ShiftedLive implements LiveMotion {
   final LiveMotion live;
   final double by;
@@ -178,8 +222,34 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
   if (upto != null && upto < devices.length) {
     devices = devices.sublist(0, upto.clamp(0, devices.length));
   }
-  if (devices.isEmpty) return _clipPose(e, frame, doc, live);
-  return _pulled(e, frame, doc, live, devices, devices.length - 1, instance);
+  var pose = devices.isEmpty
+      ? _clipPose(e, frame, doc, live)
+      : _pulled(e, frame, doc, live, devices, devices.length - 1, instance);
+  // Drawn at its Drawing's size -- a copy's own, where it has one.
+  var m = e.base.motion;
+  var size = m.drawSize;
+  if (m.instances case var set?
+      when instance != null && instance >= 0 && instance < set.count) {
+    size = set.items[instance].own["drawSize"] ?? size;
+  }
+  return size == 1 ? pose : pose.copyWith(scale: pose.scale * size);
+}
+
+/// withOwnValues is [d] as copy [instance] of [set] has it: each knob it has
+/// a value of its own for (see deviceOwnKey) set to that. As it is for the
+/// element, or one placed once.
+MotionDevice withOwnValues(MotionDevice d, InstanceSet? set, int? instance) {
+  if (set == null || instance == null || instance < 0) return d;
+  if (instance >= set.count) return d;
+  var own = set.items[instance].own;
+  if (own.isEmpty) return d;
+  var out = d;
+  for (var p in d.kind.params) {
+    if (own[deviceOwnKey(d.id, p.id)] case var v?) {
+      out = out.withValue(p.id, v);
+    }
+  }
+  return out;
 }
 
 /// _pulled is [e]'s pose on [frame] after pose device [i] of [devices]:
@@ -188,10 +258,14 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
 Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
     LiveMotion? live, List<MotionDevice> devices, int i, int? instance) {
   if (i < 0) return _clipPose(e, frame, doc, live);
-  // Its knobs where its LFOs have them at this moment.
-  var d = motionModulated(
-      devices[i], e.base.motion.devices, frame / math.max(1, doc.frameRate),
-      doc: doc);
+  // Its knobs where its LFOs have them at this moment -- and, for one copy
+  // of an element reused, where that copy has its own (see instances.dart).
+  var d = withOwnValues(
+      motionModulated(
+          devices[i], e.base.motion.devices, frame / math.max(1, doc.frameRate),
+          doc: doc),
+      e.base.motion.instances,
+      instance);
   switch (d.kind) {
     case MotionDeviceKind.instances:
       var set = e.base.motion.instances;
@@ -207,14 +281,27 @@ Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
       var rate = math.max(1, doc.frameRate).toDouble();
       var t = frame / rate;
       var at = math.max(0.0, t - set.startOf(instance)) * set.speedOf(instance);
-      var shifted = live == null ? null : liveShifted(live, at - t);
-      var left =
-          _pulled(e, (at * rate).round(), doc, shifted, devices, i - 1, null);
+      // Live from its slots, on their own clock: each clip playing seen as
+      // this copy plays it -- later by its start, at its speed.
+      var shifted = live == null
+          ? null
+          : liveForCopy(live, set.startOf(instance), set.speedOf(instance),
+              e.base.motion);
+      // Its clips worked out from where this copy stands: a place such as
+      // "off the left edge" is past the page's edge from the copy, not
+      // from the element (Ken: Slide in left copies on the page).
       var item = set.items[instance];
+      var here = item.dx == 0 && item.dy == 0
+          ? e
+          : e.withBase(x: e.base.x + item.dx, y: e.base.y + item.dy);
+      var left = _pulled(
+          here, (at * rate).round(), doc, shifted, devices, i - 1, null);
       return left.copyWith(
           dx: left.dx + item.dx,
           dy: left.dy + item.dy,
-          scale: left.scale * set.sizeOf(instance));
+          scale: left.scale * set.sizeOf(instance),
+          rotate: left.rotate + set.turnOf(instance),
+          opacity: left.opacity * set.opacityOf(instance));
     case MotionDeviceKind.time:
       var rate = math.max(1, doc.frameRate).toDouble();
       var t = frame / rate, tt = retimed(d, t);

@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart'
+    show transitionSoundPrefix;
+
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
@@ -36,7 +39,11 @@ import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart'
 import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
     show automationColour;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/slots_window.dart' show SlotKeys;
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart' show StudioDrop;
+import 'package:bruig/plugin_system/canvas/media/mix/mix_graph.dart'
+    show limitKey;
 import 'package:bruig/plugin_system/canvas/ui/controls.dart'
     show CanvasDropdown;
 import 'package:bruig/plugin_system/canvas/ui/instrument_editor.dart';
@@ -49,11 +56,12 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show listEquals, mapEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
-    show HardwareKeyboard, KeyDownEvent, LogicalKeyboardKey;
+    show HardwareKeyboard, LogicalKeyboardKey;
 import 'package:flutter/scheduler.dart';
 
 part 'canvas_mixer_strips.dart';
 part 'canvas_mixer_motion.dart';
+part 'canvas_mixer_buses.dart';
 
 // canvas_mixer.dart is the mixer panel: a column for each channel, each
 // return and the master (the columns are canvas_mixer_strips.dart), resized
@@ -390,6 +398,8 @@ class _CanvasMixerState extends State<CanvasMixer>
       if (_sceneShown) sceneBusKey,
       _master,
       ...speakers,
+      // How far the master's limiter is turning down, for its screen.
+      if (_editing == _master) limitKey,
     ];
     var moved = false;
     for (var key in keys) {
@@ -398,6 +408,7 @@ class _CanvasMixerState extends State<CanvasMixer>
           ? controller.levels()
           : returns.contains(key) ||
                   key == sceneBusKey ||
+                  key == limitKey ||
                   speakers.contains(key)
               ? controller.levels(key)
               : controller.channelLevels(channels[key]!);
@@ -1165,6 +1176,20 @@ class _CanvasMixerState extends State<CanvasMixer>
           else
             _MacrosStart(controller: controller, owner: key, height: h),
         ],
+        // A scene's bus: everything heard in it, summed -- its Source, as
+        // the prototype has it.
+        if (isScene) ...[
+          chainZone("Source", _sceneColour, h),
+          device(
+              "sceneSound",
+              (f, fold) => _SceneSoundDevice(
+                  controller: controller,
+                  levels: _now,
+                  theme: theme,
+                  folded: f,
+                  onFold: fold,
+                  height: h)),
+        ],
         // An audio channel's sounds -- on the timeline and in its slots --
         // before anything is done to them.
         if (lane != null &&
@@ -1348,48 +1373,25 @@ class _CanvasMixerState extends State<CanvasMixer>
           device(
               "limiter",
               (f, fold) => LimiterDevice(
-                  controller: controller, folded: f, onFold: fold, height: h)),
+                  controller: controller,
+                  folded: f,
+                  onFold: fold,
+                  height: h,
+                  reductionDb: (_now[limitKey] ?? (0.0, 0.0)).$1)),
           device(
-            "loudness",
-            (f, fold) => DeviceFrame(
-              id: "loudness",
-              title: "Loudness",
-              skin: skin,
-              icon: Icons.insights,
-              accent: deviceGroupLook(DeviceGroup.analysers).$2,
-              help: "How loud the whole piece is, measured as an export "
-                  "would be, against a target; bringing an export to it is "
-                  "set where it is published.",
-              folded: f,
-              onFold: fold,
-              width: 340,
-              height: h,
-              foldedBody: Center(
-                child: RotatedBox(
-                  quarterTurns: 3,
-                  child: Text("${master.target.round()} LUFS",
-                      style: TextStyle(fontSize: 11, color: skin.ink)),
-                ),
-              ),
-              body: Padding(
-                padding: const EdgeInsets.all(10),
-                child: _LoudnessEditor(
-                  mix: master,
-                  measured: _measured,
-                  measuring: _measuring,
-                  onMeasure: _measure,
-                  theme: theme,
-                  onChanged: (next) {
-                    controller.beginInteraction();
-                    controller.setMasterMix(next, transient: true);
-                    controller.endInteraction();
-                  },
-                ),
-              ),
-            ),
-          ),
-          // Last, where it goes: the speakers it is mixed for, each one's
-          // level, and which of them are heard here.
+              "loudness",
+              (f, fold) => _LoudnessDevice(
+                    controller: controller,
+                    mix: master,
+                    measured: _measured,
+                    measuring: _measuring,
+                    onMeasure: _measure,
+                    theme: theme,
+                    folded: f,
+                    onFold: fold,
+                    height: h,
+                  )),
+          // Where it is heard: the speakers, each one's level.
           device(
               "output",
               (f, fold) => _MasterOutputDevice(
@@ -1604,6 +1606,34 @@ class _CanvasMixerState extends State<CanvasMixer>
               ),
             );
           }),
+        // A bus's chain ends at its Output too: a scene's, a return's.
+        if (isScene || (ret != null && lane == null)) ...[
+          if (isScene) chainZone("Output", const Color(0xFFCFCBDF), h),
+          device("busOutput", (f, fold) {
+            var mix = isScene ? controller.sceneBus : ret!.mix;
+            return _BusOutputDevice(
+              id: "busOutput",
+              mix: mix,
+              level: _now[key] ?? (-90.0, -90.0),
+              to: "Master",
+              theme: theme,
+              folded: f,
+              onFold: fold,
+              height: h,
+              onChanged: (next, {transient = false}) {
+                controller.beginInteraction();
+                if (isScene) {
+                  controller.setSceneBus(next, transient: true);
+                } else {
+                  controller.setReturn(ret!.copyWith(mix: next),
+                      transient: true);
+                }
+                if (!transient) controller.endInteraction();
+              },
+              onCommit: controller.endInteraction,
+            );
+          }),
+        ],
         device(
             "masterMeter",
             (f, fold) => MeterDevice(
@@ -3505,108 +3535,6 @@ class _KnobPainter extends CustomPainter {
 // ---------------------------------------------------------------------------
 // The ducking and loudness editors
 // ---------------------------------------------------------------------------
-
-class _LoudnessEditor extends StatelessWidget {
-  final MasterMix mix;
-  final Loudness? measured;
-  final bool measuring;
-  final VoidCallback onMeasure;
-  final MixerLook theme;
-  final ValueChanged<MasterMix> onChanged;
-
-  const _LoudnessEditor({
-    required this.mix,
-    required this.measured,
-    required this.measuring,
-    required this.onMeasure,
-    required this.theme,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    var colors = theme.colors;
-    String lufs(double v) => v.isFinite ? v.toStringAsFixed(1) : "−∞";
-    Widget reading(String label, String value, Color? colour) => Padding(
-          padding: const EdgeInsets.only(bottom: 2),
-          child: Row(children: [
-            SizedBox(
-                width: 90,
-                child: Text(label,
-                    style: TextStyle(
-                        fontSize: 11, color: colors.onSurfaceVariant))),
-            Text(value,
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    color: colour ?? colors.onSurface)),
-          ]),
-        );
-    return SingleChildScrollView(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // A Wrap, not a Row: in the sidebar this is under 300 wide, and the
-        // Measure button goes to the next line rather than off the edge.
-        Wrap(
-            spacing: 10,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text("Target",
-                  style: TextStyle(fontSize: 11, color: colors.onSurface)),
-              // Held to a width, the label shortened rather than run off.
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 190),
-                child: DropdownButton<double>(
-                  key: const ValueKey("loudnessTarget"),
-                  value: mix.target,
-                  isDense: true,
-                  isExpanded: true,
-                  style: TextStyle(fontSize: 11, color: colors.onSurface),
-                  items: [
-                    for (var (v, label) in loudnessOptions(mix.target))
-                      DropdownMenuItem(
-                          value: v,
-                          child: Text(label, overflow: TextOverflow.ellipsis)),
-                  ],
-                  onChanged: (v) {
-                    if (v != null) onChanged(mix.copyWith(target: v));
-                  },
-                ),
-              ),
-              OutlinedButton.icon(
-                key: const ValueKey("measure"),
-                onPressed: measuring ? null : onMeasure,
-                icon: const Icon(Icons.graphic_eq, size: 14),
-                label: Text(measuring ? "Measuring…" : "Measure",
-                    style: const TextStyle(fontSize: 11)),
-              ),
-            ]),
-        const SizedBox(height: 8),
-        if (measured case var m?) ...[
-          reading(
-              "Integrated",
-              "${lufs(m.integrated)} LUFS",
-              m.integrated > mix.target + 1
-                  ? const Color(0xFFEF4D4D)
-                  : m.integrated < mix.target - 2
-                      ? theme.studio.on
-                      : const Color(0xFF3FCF73)),
-          reading("Range", "${m.range.toStringAsFixed(1)} LU", null),
-          reading("True peak", "${lufs(m.truePeak)} dBTP",
-              m.truePeak > mix.ceilingDb ? const Color(0xFFEF4D4D) : null),
-        ] else
-          Text(
-              "Measure plays the timeline's sound through this mix into a "
-              "broadcast loudness meter, as an export would.",
-              style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
-        const SizedBox(height: 6),
-        Text("Bringing an export to the target is set where it is published.",
-            style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
-      ]),
-    );
-  }
-}
 
 /// _Sends is a channel's sends: a dial for each return, by its letter,
 /// dragged up for more, double-clicked for none.

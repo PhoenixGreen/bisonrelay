@@ -71,6 +71,10 @@ import 'package:bruig/plugin_system/canvas/render/vector_painter.dart'
     show vectorLinePath, vectorShapePath;
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/model/instances.dart'
+    show InstanceSet;
+import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart'
+    show MotionEditing;
 import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
@@ -104,6 +108,10 @@ import 'package:flutter/services.dart';
 /// _DragMode is what the pointer is currently doing.
 enum _DragMode {
   none,
+
+  /// copies is copies of an element reused dragged on their own -- those
+  /// picked, or made by an Alt-drag. See _moveCopies.
+  copies,
 
   /// skew is a side handle dragged to slant the element. See _applySkew.
   skew,
@@ -1677,6 +1685,16 @@ class CanvasStageState extends State<CanvasStage>
 
   bool get _shiftHeld => HardwareKeyboard.instance.isShiftPressed;
 
+  /// _pressedCopy is the copy of [_pressedCopyOf] a press landed on, picked
+  /// where the press is a click rather than a drag (Ken, 2026-11-08: copies
+  /// are objects on the canvas).
+  String? _pressedCopy, _pressedCopyOf;
+
+  /// _copiesStart and _dragCopies are an element's copies as a drag of
+  /// some of them began, and which are dragged.
+  InstanceSet? _copiesStart;
+  Set<String> _dragCopies = const {};
+
   void _onPointerDown(PointerDownEvent event) {
     _pointer = event;
     // Not while typing: an editor is a real text field over the canvas, with
@@ -1698,6 +1716,16 @@ class CanvasStageState extends State<CanvasStage>
     _travelled = false;
     var doc = _toDocument(stage);
     _dragStart = doc;
+    _pressedCopy = null;
+    // Placing copies: each click puts one there (Escape stops).
+    if (controller.placingCopies case var placing?
+        when event.buttons == kPrimaryMouseButton) {
+      controller.beginInteraction();
+      controller.placeCopyAt(placing, doc);
+      controller.endInteraction();
+      _mode = _DragMode.none;
+      return;
+    }
 
     // A press on the facing page opens it. Before the pan check (panning is
     // a drag) and the hit test (an element of the edited page hanging over
@@ -2204,6 +2232,9 @@ class CanvasStageState extends State<CanvasStage>
     }
     _lastClickAt = clock.now();
 
+    // A copy of an element reused: see _pressCopy.
+    if (_pressCopy(element, doc)) return;
+
     if (_shiftHeld) {
       controller.toggleSelected(element.id);
     } else if (!controller.selection.contains(element.id)) {
@@ -2219,6 +2250,76 @@ class CanvasStageState extends State<CanvasStage>
     }
 
     _beginTransform(_DragMode.move, null);
+  }
+
+  /// _pressCopy takes a press on [element], reused, at [doc] for the copy
+  /// there (Ken, 2026-11-08). Alt drags out new copies of it (or of those
+  /// picked, it among them); Shift picks it in or out; with copies picked,
+  /// it is picked and dragged on its own -- otherwise the press goes on to
+  /// the element, a drag moving them all and a click picking this one (see
+  /// _onPointerUp). True where the press is dealt with.
+  bool _pressCopy(CanvasElement element, Offset doc) {
+    var set = element.base.motion.instances;
+    if (set == null) return false;
+    var i = element.instanceAt(doc, controller.frame, controller.document,
+        live: controller.liveMotion);
+    if (i == null) return false;
+    var id = set.items[i].id;
+    _pressedCopy = id;
+    _pressedCopyOf = element.id;
+    var picked = controller.pickedCopiesOf(element.id);
+    if (HardwareKeyboard.instance.isAltPressed) {
+      if (!controller.selection.contains(element.id)) {
+        controller.selectOnly(element.id);
+      }
+      controller.beginInteraction();
+      _dragCopies = controller.duplicateCopies(
+          element.id, picked.contains(id) ? picked : {id}, Offset.zero);
+      _copiesStart = controller.motionOf(element.id).instances;
+      _pressedCopy = null;
+      _mode = _DragMode.copies;
+      return true;
+    }
+    if (_shiftHeld && controller.selection.contains(element.id)) {
+      controller.pickCopy(element.id, id, toggle: true);
+      _pressedCopy = null;
+      _mode = _DragMode.none;
+      return true;
+    }
+    if (picked.isNotEmpty) {
+      if (!picked.contains(id)) {
+        controller.pickCopy(element.id, id);
+        picked = {id};
+      }
+      controller.beginInteraction();
+      _dragCopies = picked;
+      _copiesStart = set;
+      _pressedCopy = null;
+      _mode = _DragMode.copies;
+      return true;
+    }
+    return false;
+  }
+
+  /// _moveCopies puts the copies being dragged [delta] from where they
+  /// began, one way only with Shift.
+  void _moveCopies(Offset delta) {
+    var from = _copiesStart, of = controller.selected?.id;
+    if (from == null || of == null) return;
+    if (_shiftHeld) {
+      delta = delta.dx.abs() >= delta.dy.abs()
+          ? Offset(delta.dx, 0)
+          : Offset(0, delta.dy);
+    }
+    controller.setInstances(
+        of,
+        from.copyWith(items: [
+          for (var x in from.items)
+            _dragCopies.contains(x.id)
+                ? x.copyWith(dx: x.dx + delta.dx, dy: x.dy + delta.dy)
+                : x,
+        ]),
+        transient: true);
   }
 
   /// _selectedPath is the one selected element, when it is a path.
@@ -4966,6 +5067,8 @@ class CanvasStageState extends State<CanvasStage>
     var delta = doc - _dragStart;
 
     switch (_mode) {
+      case _DragMode.copies:
+        _moveCopies(delta);
       case _DragMode.move:
         _applyMove(delta);
       case _DragMode.resize:
@@ -5675,7 +5778,15 @@ class CanvasStageState extends State<CanvasStage>
       }
       setState(() => _marquee = null);
     }
-    if (_mode == _DragMode.move ||
+    // A click on a copy, not a drag: that copy picked.
+    if (_mode == _DragMode.move && !_travelled) {
+      if ((_pressedCopy, _pressedCopyOf) case (var id?, var of?)) {
+        controller.pickCopy(of, id);
+      }
+    }
+    _pressedCopy = null;
+    if (_mode == _DragMode.copies ||
+        _mode == _DragMode.move ||
         _mode == _DragMode.anchor ||
         _mode == _DragMode.resize ||
         _mode == _DragMode.skew ||
@@ -6110,6 +6221,14 @@ class CanvasStageState extends State<CanvasStage>
           when controller.editingImage != null &&
               controller.imageLayer != baseLayerId:
         controller.removeImageLayer(controller.imageLayer);
+      // Copies picked: those copies go, not the element.
+      case LogicalKeyboardKey.delete || LogicalKeyboardKey.backspace
+          when controller.selected != null &&
+              controller.copiesPicked(controller.selected!.id):
+        var id = controller.selected!.id;
+        controller.beginInteraction();
+        controller.removeCopies(id, controller.pickedCopiesOf(id));
+        controller.endInteraction();
       case LogicalKeyboardKey.delete:
       case LogicalKeyboardKey.backspace:
         controller.deleteSelected();
@@ -6248,6 +6367,13 @@ class CanvasStageState extends State<CanvasStage>
           } else {
             controller.editVector(null);
           }
+        } else if (controller.placingCopies != null) {
+          // Placing copies stops before anything is let go.
+          controller.placingCopies = null;
+        } else if (controller.selected case var e?
+            when controller.copiesPicked(e.id)) {
+          // Copies picked: back to all of them, then the element.
+          controller.pickAllCopies(e.id);
         } else {
           controller.clearSelection();
         }
@@ -6345,6 +6471,9 @@ class CanvasStageState extends State<CanvasStage>
                         videoShow: controller.videoShow,
                         audioRevision: controller.audioRevision,
                         selection: {for (var e in _chosen) e.id},
+                        pickedCopies: controller.selected == null
+                            ? const {}
+                            : controller.pickedCopiesOf(controller.selected!.id),
                         showHelpers: controller.showHelpers,
                         // The scene's slow move, while it plays (see SceneCamera). Still while
                         // editing, so a press lands where the page looks to be.
@@ -6770,6 +6899,8 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   MouseCursor _cursor() {
+    // Placing copies: a click puts one down.
+    if (controller.placingCopies != null) return SystemMouseCursors.copy;
     if (controller.retouch.on && _selectedPicture() != null) {
       return SystemMouseCursors.precise;
     }

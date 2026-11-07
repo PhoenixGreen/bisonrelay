@@ -889,49 +889,77 @@ class CanvasTimelineState extends State<CanvasTimeline> {
       width: _slotsW,
       decoration: BoxDecoration(
           border: Border(right: BorderSide(color: colors.outlineVariant))),
-      // Along with the slots under it: see slots_window.dart.
-      child: slotsScroller(
-        controller,
-        Padding(
-            padding: const EdgeInsets.fromLTRB(3, 4, 2, 4),
-            child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var i = 0; i < controller.slotsShown; i++) ...[
-                    if (i > 0) const SizedBox(width: 3),
-                    SizedBox(
-                      width: CanvasController.slotCellWidth,
-                      height: 20,
-                      child: Material(
-                        color: controller.sceneLaunched == i
-                            ? colors.primaryContainer
-                            : colors.surfaceContainerHigh,
-                        borderRadius: BorderRadius.circular(3),
-                        child: InkWell(
-                          key: ValueKey("cueLaunch-$i"),
-                          borderRadius: BorderRadius.circular(3),
-                          onTap: () => controller.launchScene(i),
-                          child: Row(children: [
-                            Icon(Icons.play_arrow,
-                                size: 12, color: colors.onSurface),
-                            Expanded(
-                              child: Text(
-                                  controller.session.scenes[i].isEmpty
-                                      ? "${i + 1}"
-                                      : controller.session.scenes[i],
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      fontSize: 10.5, color: colors.onSurface)),
+      // Along with the slots under it: see slots_window.dart. At its end,
+      // Stop all (Ken), where it stays as the cues scroll.
+      child: Row(children: [
+        Expanded(
+          child: slotsScroller(
+            controller,
+            Padding(
+                padding: const EdgeInsets.fromLTRB(3, 4, 2, 4),
+                child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (var i = 0; i < controller.slotsShown; i++) ...[
+                        if (i > 0) const SizedBox(width: 3),
+                        SizedBox(
+                          width: CanvasController.slotCellWidth,
+                          height: 20,
+                          child: Material(
+                            color: controller.sceneLaunched == i
+                                ? colors.primaryContainer
+                                : colors.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(3),
+                            child: InkWell(
+                              key: ValueKey("cueLaunch-$i"),
+                              borderRadius: BorderRadius.circular(3),
+                              onTap: () => controller.launchScene(i),
+                              child: Row(children: [
+                                Icon(Icons.play_arrow,
+                                    size: 12, color: colors.onSurface),
+                                Expanded(
+                                  child: Text(
+                                      controller.session.scenes[i].isEmpty
+                                          ? "${i + 1}"
+                                          : controller.session.scenes[i],
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          fontSize: 10.5,
+                                          color: colors.onSurface)),
+                                ),
+                              ]),
                             ),
-                          ]),
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
-                ])),
-      ),
+                      ],
+                    ])),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(2, 4, 3, 4),
+          child: Tooltip(
+            message: "Stop all clips, on the next bar",
+            child: Material(
+              color: controller.anyClipPlaying
+                  ? colors.primaryContainer
+                  : colors.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(3),
+              child: InkWell(
+                key: const ValueKey("stopAllClips"),
+                borderRadius: BorderRadius.circular(3),
+                onTap: controller.stopAllClips,
+                child: SizedBox(
+                  width: 22,
+                  height: 20,
+                  child: Icon(Icons.stop, size: 13, color: colors.onSurface),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ]),
     );
   }
 

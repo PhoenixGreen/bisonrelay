@@ -1636,8 +1636,8 @@ class _ClipBand extends StatelessWidget {
 
 /// _ClipSlot is one slot: a clip (its colour, a play mark, its name) or an
 /// empty slot, which stops the channel when pressed, or on an armed MIDI
-/// channel records into it. A right-click, or a double-click on an empty
-/// one, offers what can be done with it.
+/// channel records into it. A right-click offers what can be done with it;
+/// a double-click on an empty one makes a clip there (see _make).
 class _ClipSlot extends StatefulWidget {
   final CanvasController controller;
   final String channel;
@@ -1832,6 +1832,22 @@ class _ClipSlotState extends State<_ClipSlot> {
 
   void _openMenu(Offset at) => _menu.open(position: at);
 
+  /// _make puts a clip in this empty slot, double-clicked (Ken, 2026-11-08,
+  /// as the motion slots do): on a MIDI channel an empty one to draw notes
+  /// into, on an audio channel one of the channel's sound -- its first; the
+  /// menu has the rest. Picked, it takes Delete; double-clicked again, it
+  /// opens. With no sound to make one of, the menu says so.
+  void _make(Offset at) {
+    if (!c.makeSessionClip(widget.channel, widget.row)) {
+      _openMenu(at);
+      return;
+    }
+    // Its name, which has the keys, is built on the next frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _keys.requestFocus();
+    });
+  }
+
   /// _menuAt is where a right-click (or a Mac's Control-click) went down, for
   /// its menu to open when it comes up: opened on the press, a menu still open
   /// from another slot, closing on the same press, could take the new one with
@@ -1900,17 +1916,25 @@ class _ClipSlotState extends State<_ClipSlot> {
           ),
           Expanded(
             child: _renaming
-                ? TextField(
-                    key: const ValueKey("clipNameField"),
-                    controller: _name,
-                    focusNode: _focus,
-                    style: const TextStyle(fontSize: 10),
-                    decoration: const InputDecoration(
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
-                        border: InputBorder.none),
-                    onSubmitted: (_) => _renamed(clip),
-                    onTapOutside: (_) => _renamed(clip),
+                // Return or a click away keeps the name; Escape leaves it
+                // as it was.
+                ? CallbackShortcuts(
+                    bindings: {
+                      const SingleActivator(LogicalKeyboardKey.escape): () =>
+                          setState(() => _renaming = false),
+                    },
+                    child: TextField(
+                      key: const ValueKey("clipNameField"),
+                      controller: _name,
+                      focusNode: _focus,
+                      style: const TextStyle(fontSize: 10),
+                      decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
+                          border: InputBorder.none),
+                      onSubmitted: (_) => _renamed(clip),
+                      onTapOutside: (_) => _renamed(clip),
+                    ),
                   )
                 : _named(
                     clip,
@@ -2004,9 +2028,8 @@ class _ClipSlotState extends State<_ClipSlot> {
         },
         onPointerCancel: (_) => _menuAt = null,
         child: GestureDetector(
-          // Double-clicked: an empty slot's menu.
-          onDoubleTapDown:
-              clip == null ? (d) => _openMenu(d.localPosition) : null,
+          // Double-clicked: a clip in an empty slot.
+          onDoubleTapDown: clip == null ? (d) => _make(d.localPosition) : null,
           onDoubleTap: clip == null ? () {} : null,
           child: MouseRegion(cursor: SystemMouseCursors.click, child: body),
         ),
@@ -2403,33 +2426,4 @@ class _CapMark extends CustomPainter {
 
   @override
   bool shouldRepaint(_CapMark old) => old.x != x || old.colour != colour;
-}
-
-/// SlotKeys is a slot taking the keyboard once clicked: Delete or
-/// Backspace empties it (Ken: "with a slot selected a user should be able
-/// to delete it"). [focus] is asked for by the slot's click.
-class SlotKeys extends StatelessWidget {
-  final FocusNode focus;
-  final VoidCallback onDelete;
-  final Widget child;
-  const SlotKeys(
-      {required this.focus,
-      required this.onDelete,
-      required this.child,
-      super.key});
-
-  @override
-  Widget build(BuildContext context) => Focus(
-        focusNode: focus,
-        onKeyEvent: (node, event) {
-          if (event is KeyDownEvent &&
-              (event.logicalKey == LogicalKeyboardKey.delete ||
-                  event.logicalKey == LogicalKeyboardKey.backspace)) {
-            onDelete();
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
-        child: child,
-      );
 }

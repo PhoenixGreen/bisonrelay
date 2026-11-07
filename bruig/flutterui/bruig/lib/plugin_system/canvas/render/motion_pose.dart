@@ -252,9 +252,11 @@ MotionPose clipPose(MotionClip c, double t, Rect self, MotionScene scene,
 /// layerPose is what [layer] of [motion] makes of an element set at [self]
 /// at [t] seconds into the scene, from its placed clips. [replaces] is a
 /// camera's rule: a held last frame is replaced, not carried on from.
+/// [holdBefore] false leaves out a first clip held at its first frame
+/// before it starts: only what has played.
 MotionPose layerPose(ElementMotion motion, int layer, double t, Rect self,
     MotionTimes times, MotionScene scene,
-    {bool replaces = false}) {
+    {bool replaces = false, bool holdBefore = true}) {
   var mine = [
     for (var p in motion.placed)
       if (p.layer == layer)
@@ -265,7 +267,10 @@ MotionPose layerPose(ElementMotion motion, int layer, double t, Rect self,
   (MotionClip, double, ClipSpan)? active;
   for (var (n, (_, c, s)) in mine.indexed) {
     if (t < s.start) {
-      if (n == 0 && c.before == ClipHold.first && active == null) {
+      if (holdBefore &&
+          n == 0 &&
+          c.before == ClipHold.first &&
+          active == null) {
         active = (c, s.from, s);
       }
       continue;

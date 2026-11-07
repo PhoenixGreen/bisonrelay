@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
     show
+        ownColour,
         DeviceFrame,
         DeviceTier,
         chainMenuDivider,
@@ -98,55 +99,61 @@ class _ChainPanelState extends State<ChainPanel> {
             onVerticalDragEnd: (_) => _dragFrom = null,
             child: MouseRegion(
               cursor: SystemMouseCursors.resizeUpDown,
-              child: Container(
-                height: ChainPanel.headerHeight,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  color: look.studio.panel,
-                  border: Border(bottom: BorderSide(color: look.studio.edge)),
-                ),
-                // One row, as the prototype has it: what it shows, its sound
-                // or motion, its views; then how tall it is.
-                child: Row(children: [
-                  // What it shows and its views take what room is spare; its
-                  // heights and the rest keep to the far right.
-                  Expanded(
-                    child: Row(children: [
-                      _ChainWho(controller: c, look: look),
-                      const SizedBox(width: 6),
-                      _ChainSwitch(
-                          motion: motion,
-                          look: look,
-                          onChanged: (m) => c.showChain(motion: m)),
-                      Flexible(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            if (motion)
-                              ..._motionTabs(look)
-                            else
-                              ..._editorTabs(look),
-                          ]),
-                        ),
-                      ),
-                      // A word on what it shows, where there is one: a scene's
-                      // next, a clip's place, an element with none.
-                      if (chainNote(c) case var note?)
+              // Its own size whatever the app's text size, as the
+              // prototype's bar and the mixer's are: the bar is a fixed
+              // height, and larger words outgrew it (Ken).
+              child: MediaQuery.withNoTextScaling(
+                child: Container(
+                  height: ChainPanel.headerHeight,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: look.studio.panel,
+                    border: Border(bottom: BorderSide(color: look.studio.edge)),
+                  ),
+                  // One row, as the prototype has it: what it shows, its sound
+                  // or motion, its views; then how tall it is.
+                  child: Row(children: [
+                    // What it shows and its views take what room is spare; its
+                    // heights and the rest keep to the far right.
+                    Expanded(
+                      child: Row(children: [
+                        _ChainWho(controller: c, look: look),
+                        const SizedBox(width: 6),
+                        _ChainSwitch(
+                            motion: motion,
+                            look: look,
+                            onChanged: (m) => c.showChain(motion: m)),
                         Flexible(
-                          child: Padding(
-                            padding: const EdgeInsets.only(left: 10),
-                            child: Text(note,
-                                key: const ValueKey("chainNote"),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    fontSize: 11, color: look.studio.muted)),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child:
+                                Row(mainAxisSize: MainAxisSize.min, children: [
+                              if (motion)
+                                ..._motionTabs(look)
+                              else
+                                ..._editorTabs(look),
+                            ]),
                           ),
                         ),
-                    ]),
-                  ),
-                  ..._sizeControls(look),
-                ]),
+                        // A word on what it shows, where there is one: a scene's
+                        // next, a clip's place, an element with none.
+                        if (chainNote(c) case var note?)
+                          Flexible(
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 10),
+                              child: Text(note,
+                                  key: const ValueKey("chainNote"),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 11, color: look.studio.muted)),
+                            ),
+                          ),
+                      ]),
+                    ),
+                    ..._sizeControls(look),
+                  ]),
+                ),
               ),
             ),
           ),
@@ -310,7 +317,48 @@ extension on _ChainPanelState {
             on: c.motionCurvesShown,
             look: look,
             onTap: () => c.showMotionCurves(e.id, clip)),
+      // Copies picked: what the chain edits is theirs alone (Ken,
+      // 2026-11-08), with a way back to all of them.
+      if (e != null && c.copiesPicked(e.id)) ...[
+        const SizedBox(width: 8),
+        Container(
+          key: const ValueKey("chainEditingCopies"),
+          padding: const EdgeInsets.fromLTRB(8, 2, 3, 2),
+          decoration: BoxDecoration(
+            color: ownColour.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: ownColour.withValues(alpha: 0.7)),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(_copiesName(e),
+                style: const TextStyle(fontSize: 10.5, color: ownColour)),
+            const SizedBox(width: 6),
+            InkWell(
+              key: const ValueKey("chainCopiesAll"),
+              borderRadius: BorderRadius.circular(3),
+              onTap: () => c.pickAllCopies(e.id),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                child: Text("All",
+                    style: TextStyle(fontSize: 10.5, color: look.studio.text)),
+              ),
+            ),
+          ]),
+        ),
+      ],
     ];
+  }
+
+  /// _copiesName is which of [e]'s copies the chain edits: "Editing #3
+  /// only", or how many.
+  String _copiesName(CanvasElement e) {
+    var set = e.base.motion.instances;
+    var picked = c.pickedCopiesOf(e.id);
+    if (set == null || picked.isEmpty) return "";
+    if (picked.length == 1) {
+      return "Editing #${set.indexOf(picked.first) + 1} only";
+    }
+    return "Editing ${picked.length} of ${set.count}";
   }
 
   /// _soundOwner is the strip whose effects the Chain shows -- what Copy
@@ -630,7 +678,7 @@ class _ChainWho extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      fontSize: 12.5,
+                      fontSize: 11.5,
                       fontWeight: FontWeight.w600,
                       color: look.studio.text)),
             ),

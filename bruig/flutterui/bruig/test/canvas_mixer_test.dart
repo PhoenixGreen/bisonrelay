@@ -25,6 +25,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
+    show StudioDrop;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
@@ -1244,8 +1246,7 @@ void main() {
     testWidgets("the master's Loudness slot opens the target and Measure",
         (tester) async {
       var c = await show(tester);
-      expect(find.byKey(const ValueKey("normalise")), findsNothing,
-          reason: "bringing an export to the target is a publish setting");
+      expect(find.byKey(const ValueKey("normalise")), findsNothing);
       await tester.ensureVisible(
           find.byKey(const ValueKey("loudnessSlot"), skipOffstage: false));
       await tester.pump();
@@ -1271,9 +1272,11 @@ void main() {
         await tester.tap(find.byKey(const ValueKey("loudnessSlot")));
         await tester.pump(const Duration(milliseconds: 300));
         expect(tester.takeException(), isNull);
-        var dropdown = tester.widget<DropdownButton<double>>(
+        // Aim for, on the studio card (Ken, 2026-11-08): the target among
+        // its choices, whatever it is.
+        var drop = tester.widget<StudioDrop<double>>(
             find.byKey(const ValueKey("loudnessTarget")));
-        expect(dropdown.items!.where((i) => i.value == target), hasLength(1));
+        expect(drop.options.where((o) => o.$1 == target), hasLength(1));
         await done(tester, c);
       });
     }

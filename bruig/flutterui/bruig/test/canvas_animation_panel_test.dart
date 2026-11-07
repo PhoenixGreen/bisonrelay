@@ -10,6 +10,13 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_clip_display.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show boxOf, motionSceneOf;
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart'
+    show KeyframeEasing;
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, kSecondaryMouseButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:bruig/plugin_system/canvas/model/play.dart';
@@ -151,7 +158,7 @@ void main() {
             reason: card);
       }
       // The clip's name lines up with the dropdowns beside it.
-      var name = tester.getRect(find.byKey(const ValueKey("animClipName")));
+      var name = tester.getRect(find.byKey(const ValueKey("animClipNameBox")));
       var layer =
           tester.getRect(find.byKey(const ValueKey("motionClipsOn-open")));
       expect(name.top, closeTo(layer.top, 1));
@@ -159,6 +166,165 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  // Ken, 2026-11-08: the clip's screen shows what it does as set, and is
+  // edited there -- its points moved, a stretch's curve, a point added and
+  // taken out -- with a Reset back to its preset.
+  group("the clip's screen", () {
+    Future<(CanvasController, String, Rect)> path(WidgetTester tester) async {
+      var (c, clip) = await pump(tester);
+      var m = c.motionOf("a").clip(clip)!;
+      c.setMotion(
+          "a", c.motionOf("a").withClip(presetNamed("Slide in")!.onto(m)));
+      await tester.pumpAndSettle();
+      var rect =
+          tester.getRect(find.byKey(ValueKey("motionClipDisplay-$clip")));
+      return (c, clip, rect);
+    }
+
+    ClipLayout layoutOf(CanvasController c, String clip, Rect rect,
+            [ClipView view = ClipView.path]) =>
+        ClipLayout(c.motionOf("a").clip(clip)!, view, rect.size,
+            boxOf(c.document.elementById("a")!), motionSceneOf(c.document, 0));
+
+    testWidgets("its end point dragged moves it, as one step; Reset",
+        (tester) async {
+      var (c, clip, rect) = await path(tester);
+      expect(find.byKey(const ValueKey("motionClipsReset")), findsNothing,
+          reason: "as its preset made it");
+      var l = layoutOf(c, clip, rect);
+      var end = l.handles.where((h) => !h.ease).last;
+      await tester.timedDragFrom(rect.topLeft + end.at, const Offset(0, -30),
+          const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      var m = c.motionOf("a").clip(clip)!;
+      expect(m.edited, isTrue);
+      expect(l.value(MotionProp.y, m.length), 0, reason: "it was level");
+      var after = layoutOf(c, clip, rect);
+      expect(after.value(MotionProp.y, m.length), closeTo(-30 / l.scale, 2),
+          reason: "moved up as far as it was dragged");
+      expect(find.byKey(const ValueKey("motionClipsReset")), findsOneWidget);
+      // Back to its preset, in one step.
+      await tester.tap(find.byKey(const ValueKey("motionClipsReset")));
+      await tester.pumpAndSettle();
+      m = c.motionOf("a").clip(clip)!;
+      expect(m.edited, isFalse);
+      expect(m.keys[MotionProp.y], isNull);
+      expect(find.byKey(const ValueKey("motionClipsReset")), findsNothing);
+      c.undo();
+      expect(c.motionOf("a").clip(clip)!.edited, isTrue, reason: "one undo");
+    });
+
+    testWidgets("a stretch's diamond picks its curve", (tester) async {
+      var (c, clip, rect) = await path(tester);
+      var l = layoutOf(c, clip, rect);
+      var diamond = l.handles.firstWhere((h) => h.ease);
+      await tester.tapAt(rect.topLeft + diamond.at);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("motionClipsEase-bounce")));
+      await tester.pumpAndSettle();
+      var keys = c.motionOf("a").clip(clip)!.keys[MotionProp.x]!;
+      expect(
+          keys.firstWhere((k) => k.t == diamond.t).ease, KeyframeEasing.bounce);
+    });
+
+    testWidgets(
+        "a double-click on the path adds a point; a right-click "
+        "takes it out", (tester) async {
+      var (c, clip, rect) = await path(tester);
+      int count() => c.motionOf("a").clip(clip)!.keys[MotionProp.x]!.length;
+      var before = count();
+      var l = layoutOf(c, clip, rect);
+      var len = c.motionOf("a").clip(clip)!.length;
+      var spot = rect.topLeft + l.toScreen(l.pose(len * 0.2).move);
+      await tester.tapAt(spot);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(spot);
+      await tester.pumpAndSettle();
+      expect(count(), before + 1);
+      var made =
+          layoutOf(c, clip, rect).handles.where((h) => !h.ease).toList()[1];
+      // A mouse's right button, then the mouse taken away: hovered, the
+      // screen plays.
+      var mouse = await tester.startGesture(rect.topLeft + made.at,
+          kind: PointerDeviceKind.mouse, buttons: kSecondaryMouseButton);
+      await mouse.up();
+      await mouse.removePointer();
+      await tester.pumpAndSettle();
+      expect(count(), before);
+    });
+
+    testWidgets("a size-only clip shows its values; a point dragged up",
+        (tester) async {
+      var (c, clip) = await pump(tester);
+      expect(find.byKey(const ValueKey("motionClipsView-path")), findsNothing,
+          reason: "Pop has no path");
+      var rect =
+          tester.getRect(find.byKey(ValueKey("motionClipDisplay-$clip")));
+      var l = layoutOf(c, clip, rect, ClipView.graph);
+      var key = l.handles
+          .where((h) => !h.ease && h.props.single == MotionProp.scale)
+          .last;
+      var was = l.value(MotionProp.scale, key.t);
+      await tester.timedDragFrom(rect.topLeft + key.at, const Offset(0, -20),
+          const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      var now = c.motionOf("a").clip(clip)!;
+      expect(now.edited, isTrue);
+      expect(
+          layoutOf(c, clip, rect, ClipView.graph)
+              .value(MotionProp.scale, key.t),
+          greaterThan(was));
+    });
+
+    testWidgets("its own style: frames shown; Reset its direction and reach",
+        (tester) async {
+      var (c, clip) = await pump(tester);
+      tester
+          .widget<StudioDrop<String>>(
+              find.byKey(const ValueKey("motionClipsPreset")))
+          .onChanged("own:wipe");
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("motionClipsReset")), findsNothing);
+      var a = CanvasController.elementAnimationOf(c.document.elementById("a")!);
+      c.setElementAnimation("a", a.copyWith(strength: 2));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("motionClipsReset")));
+      await tester.pumpAndSettle();
+      expect(
+          CanvasController.elementAnimationOf(c.document.elementById("a")!)
+              .strength,
+          1);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  // Ken, 2026-11-08: once renamed, the name could not be left.
+  testWidgets("the clip's name: Return keeps it and leaves; Escape undoes",
+      (tester) async {
+    var (c, clip) = await pump(tester);
+    var field = find.byKey(const ValueKey("animClipName"));
+    bool typing() =>
+        FocusManager.instance.primaryFocus?.debugLabel == "clipName";
+    await tester.tap(field);
+    await tester.pump();
+    expect(typing(), isTrue);
+    await tester.enterText(field, "Bounce");
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(c.motionOf("a").clip(clip)!.name, "Bounce");
+    expect(typing(), isFalse, reason: "left");
+    await tester.tap(field);
+    await tester.pump();
+    await tester.enterText(field, "Nope");
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(typing(), isFalse);
+    expect(c.motionOf("a").clip(clip)!.name, "Bounce");
+    expect(tester.widget<TextField>(field).controller!.text, "Bounce",
+        reason: "as it was");
+  });
 
   testWidgets("an element picked, with no clip, shows its first",
       (tester) async {

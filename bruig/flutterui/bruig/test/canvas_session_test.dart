@@ -1050,6 +1050,38 @@ void main() {
       c.dispose();
     }
 
+    // Ken, 2026-11-08: a double-click on an empty slot makes a clip there,
+    // as the motion slots do -- of the channel's sound, or, on a MIDI
+    // channel, an empty one to draw notes into.
+    testWidgets("an empty slot double-clicked makes a clip, picked",
+        (tester) async {
+      var c = await show(tester);
+      c.apply(c.document.copyWith(elements: [
+        ...c.document.elements,
+        AudioElement(const ElementBase(id: "keys", name: "Keys"),
+            clip: const MediaClip(timed: true),
+            instrument: const InstrumentPart()),
+      ]));
+      await tester.pump();
+      for (var ch in ["a", "keys"]) {
+        var slot = find.byKey(ValueKey("clip-$ch-1"));
+        await tester.ensureVisible(slot);
+        await tester.tap(slot);
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.tap(slot);
+        await menu(tester);
+        var made = c.session.at(ch, 1);
+        expect(made, isNotNull, reason: ch);
+        expect(made!.midi, ch == "keys");
+        if (ch == "a") expect(made.name, "Loop");
+        expect(c.selectedSlot, (ch, 1));
+        // No menu: the clip is made.
+        expect(find.byKey(const ValueKey("clipSound-0")), findsNothing);
+        expect(find.byKey(const ValueKey("clipNewMidi")), findsNothing);
+      }
+      await done(tester, c);
+    });
+
     testWidgets("an empty slot right-clicked takes the channel's sound",
         (tester) async {
       var c = await show(tester);

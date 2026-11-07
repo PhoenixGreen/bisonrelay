@@ -83,3 +83,58 @@ Widget slotsScroller(CanvasController c, Widget child) => Builder(
             ),
           ),
         ));
+
+/// SlotKeys is a slot taking the keyboard once clicked: Delete or
+/// Backspace empties it (Ken: "with a slot selected a user should be able
+/// to delete it"). [focus] is asked for by the slot's click.
+class SlotKeys extends StatelessWidget {
+  final FocusNode focus;
+  final VoidCallback onDelete;
+  final Widget child;
+  const SlotKeys(
+      {required this.focus,
+      required this.onDelete,
+      required this.child,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) => Focus(
+        focusNode: focus,
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent &&
+              (event.logicalKey == LogicalKeyboardKey.delete ||
+                  event.logicalKey == LogicalKeyboardKey.backspace)) {
+            onDelete();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: child,
+      );
+}
+
+/// SlotFocus is a slot that takes the keyboard once clicked, holding its own
+/// focus for a slot drawn by a stateless list: [builder] is given the focus
+/// to ask for on a click.
+class SlotFocus extends StatefulWidget {
+  final VoidCallback onDelete;
+  final Widget Function(FocusNode focus) builder;
+  const SlotFocus({required this.onDelete, required this.builder, super.key});
+
+  @override
+  State<SlotFocus> createState() => _SlotFocusState();
+}
+
+class _SlotFocusState extends State<SlotFocus> {
+  final _focus = FocusNode(debugLabel: "slot");
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SlotKeys(
+      focus: _focus, onDelete: widget.onDelete, child: widget.builder(_focus));
+}

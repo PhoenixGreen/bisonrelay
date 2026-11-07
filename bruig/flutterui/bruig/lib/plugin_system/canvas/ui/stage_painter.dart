@@ -119,6 +119,10 @@ class StagePainter extends CustomPainter {
   final CanvasImageSource images;
   final String? hoveredButton;
   final Set<String> selection;
+
+  /// pickedCopies are the copies picked of the one element selected, reused:
+  /// ringed, every other copy of it outlined faintly. See _paintCopies.
+  final Set<String> pickedCopies;
   final Rect? selectionBounds;
   final double selectionRotation;
 
@@ -370,6 +374,7 @@ class StagePainter extends CustomPainter {
     this.videoShow,
     this.audioRevision = 0,
     required this.selection,
+    this.pickedCopies = const {},
     required this.selectionBounds,
     required this.selectionRotation,
     this.touchAreas = const [],
@@ -914,6 +919,7 @@ class StagePainter extends CustomPainter {
     // box round the lot (see chosenOutlines). No handles on these: the
     // group is what is resized.
     _paintChosenBoxes(canvas);
+    _paintCopies(canvas);
 
     var centre = bounds.center * scale + origin;
     var half = Offset(bounds.width, bounds.height) * scale / 2;
@@ -986,6 +992,51 @@ class StagePainter extends CustomPainter {
       canvas.drawPath(
           Path()..addPolygon([for (var p in corners) p * scale + origin], true),
           paint);
+    }
+  }
+
+  /// _paintCopies shows the one element selected, reused, as its copies
+  /// (Ken, 2026-11-08: each an object): every copy outlined faintly, those
+  /// picked ringed and numbered -- what its chain edits.
+  void _paintCopies(Canvas canvas) {
+    if (selection.length != 1) return;
+    var e = document.elementById(selection.first);
+    var set = e?.base.motion.instances;
+    if (e == null || set == null || set.count < 2) return;
+    var faint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = const Color(0x663D7EFF);
+    var ring = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = const Color(0xFFE2B04A);
+    for (var (i, copy) in set.items.indexed) {
+      var box = e.boundsWith(
+          poseWithMotion(e, frame, document, live: liveMotion, instance: i));
+      var r = Rect.fromLTRB(box.left * scale + origin.dx,
+          box.top * scale + origin.dy, box.right * scale + origin.dx,
+          box.bottom * scale + origin.dy);
+      var picked = pickedCopies.contains(copy.id);
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(r.inflate(picked ? 3 : 1),
+              const Radius.circular(3)),
+          picked ? ring : faint);
+      if (!picked) continue;
+      var tp = TextPainter(
+          text: TextSpan(
+              text: "#${i + 1}",
+              style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1B1A22))),
+          textDirection: TextDirection.ltr)
+        ..layout();
+      var tag = Rect.fromLTWH(
+          r.left - 3, r.top - tp.height - 7, tp.width + 8, tp.height + 3);
+      canvas.drawRRect(RRect.fromRectAndRadius(tag, const Radius.circular(3)),
+          Paint()..color = const Color(0xFFE2B04A));
+      tp.paint(canvas, tag.topLeft + const Offset(4, 1.5));
     }
   }
 
@@ -1723,6 +1774,7 @@ class StagePainter extends CustomPainter {
       old.audioRevision != audioRevision ||
       // A new set each build: the same ids are the same selection.
       !setEquals(old.selection, selection) ||
+      !setEquals(old.pickedCopies, pickedCopies) ||
       old.selectionBounds != selectionBounds ||
       old.selectionSkew != selectionSkew ||
       old.marquee != marquee;

@@ -716,6 +716,15 @@ class ElementMotion {
   /// device, first of its moves unless moved.
   final InstanceSet? instances;
 
+  /// kept is whether it keeps its channel -- its row on the timeline, its
+  /// slots and strip -- with no clips left: its last clip taken out is not
+  /// it taken out (Ken, 2026-11-08). See channelled.
+  final bool kept;
+
+  /// drawSize is how big its Drawing draws it, a share of its size: the
+  /// Drawing device's Size. A copy can have its own (key "drawSize").
+  final double drawSize;
+
   const ElementMotion({
     this.clips = const [],
     this.slots = const [],
@@ -724,11 +733,17 @@ class ElementMotion {
     this.output = "",
     this.devices = const [],
     this.instances,
+    this.kept = false,
+    this.drawSize = 1,
   });
 
   static const ElementMotion none = ElementMotion();
 
   bool get isEmpty => clips.isEmpty && placed.isEmpty;
+
+  /// channelled is whether the element has a channel of its own: clips, or
+  /// a chain, or one kept when its last clip went.
+  bool get channelled => !isEmpty || kept || devices.isNotEmpty;
 
   /// poseDevices are its pose devices switched on, in the order they run.
   List<MotionDevice> get poseDevices {
@@ -736,17 +751,15 @@ class ElementMotion {
       for (var d in devices)
         if (d.on && d.side == MotionDeviceSide.pose) d,
     ];
-    // Its Instances only with instances, first unless put somewhere.
-    if (instances == null) {
-      return [
-        for (var d in poses)
-          if (d.kind != MotionDeviceKind.instances) d
-      ];
-    }
-    if (devices.any((d) => d.kind == MotionDeviceKind.instances)) {
-      return poses;
-    }
-    return [const MotionDevice(MotionDeviceKind.instances), ...poses];
+    // Its Instances only with instances, and always first (Ken, 2026-11-08):
+    // every copy has the whole chain, each with what it has of its own. One
+    // kept further along from before is taken as first.
+    var rest = [
+      for (var d in poses)
+        if (d.kind != MotionDeviceKind.instances) d
+    ];
+    if (instances == null) return rest;
+    return [const MotionDevice(MotionDeviceKind.instances), ...rest];
   }
 
   /// looks are its look devices switched on, in the order they run.
@@ -760,10 +773,12 @@ class ElementMotion {
   bool get moves =>
       !isEmpty ||
       instances != null ||
+      drawSize != 1 ||
       devices.any((d) => d.on && d.side == MotionDeviceSide.pose);
 
   /// isBlank is whether there is nothing of it to keep.
-  bool get isBlank => isEmpty && devices.isEmpty && instances == null;
+  bool get isBlank =>
+      isEmpty && devices.isEmpty && instances == null && drawSize == 1;
 
   MotionClip? clip(String id) => clips.where((c) => c.id == id).firstOrNull;
 
@@ -790,6 +805,8 @@ class ElementMotion {
     List<MotionDevice>? devices,
     InstanceSet? instances,
     bool clearInstances = false,
+    bool? kept,
+    double? drawSize,
   }) =>
       ElementMotion(
         clips: clips ?? this.clips,
@@ -799,6 +816,8 @@ class ElementMotion {
         output: output ?? this.output,
         devices: devices == null ? this.devices : withMotionDeviceIds(devices),
         instances: clearInstances ? null : instances ?? this.instances,
+        kept: kept ?? this.kept,
+        drawSize: drawSize ?? this.drawSize,
       );
 
   /// renamedFor is this for a copy, element [id]: fresh placement ids, with
@@ -888,6 +907,8 @@ class ElementMotion {
         if (output.isNotEmpty) "output": output,
         if (devices.isNotEmpty) "devices": [for (var d in devices) d.toJson()],
         if (instances != null) "instances": instances!.toJson(),
+        if (kept) "kept": true,
+        if (drawSize != 1) "drawSize": drawSize,
       };
 
   static ElementMotion fromJson(Object? json) {
@@ -926,6 +947,8 @@ class ElementMotion {
             if (MotionDevice.fromJson(d) case var device?) device,
       ]),
       instances: InstanceSet.fromJson(json["instances"]),
+      kept: json["kept"] == true,
+      drawSize: jsonDouble(json["drawSize"], 1).clamp(0.05, 8.0),
     );
   }
 }

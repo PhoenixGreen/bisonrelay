@@ -336,17 +336,17 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       return;
     }
     _pick(lane);
-    // Twice on a sound: open in the clip editor, as a clip in a slot is
-    // (Ken: the two are interchangeable).
+    // Twice on a sound or a MIDI part: its channel's chain opened, it
+    // picked (Ken, 2026-11-08, as a double-click opens an element's clip
+    // in the Chain).
     var now = DateTime.now();
     var twice = _tappedClip == lane.element.id &&
         now.difference(_tappedAt) < const Duration(milliseconds: 400);
     _tappedClip = lane.element.id;
     _tappedAt = now;
-    if (twice &&
-        controller.timelineSoundOf(channel.key)?.id == lane.element.id) {
+    if (twice) {
       _tappedClip = null;
-      controller.openClipEditor(channel.key, timelineRow);
+      controller.openEffects(channel.key);
     }
   }
 
@@ -2176,8 +2176,10 @@ class _StripButton extends StatelessWidget {
 }
 
 /// SessionRowSlots are a channel's clip slots beside its row on the
-/// timeline, a cue each, as on its strip in the mixer: pressed, launched --
-/// an empty one stops the channel; dragged, onto a lane.
+/// timeline, a cue each, as on its strip in the mixer: its triangle
+/// launches it -- an empty one's square stops the channel; its name clicked
+/// picks it (Delete then empties it), double-clicked opens it; an empty one
+/// double-clicked has a clip made in it; dragged, onto a lane.
 class SessionRowSlots extends StatelessWidget {
   final CanvasController controller;
   final String channel;
@@ -2198,34 +2200,65 @@ class SessionRowSlots extends StatelessWidget {
         state == ClipState.stopping ||
         state == ClipState.queued;
     var ink = lit ? const Color(0xFF0E0F12) : colors.onSurface;
-    var cell = Listener(
-      key: ValueKey("rowClip-$channel-$row"),
+    var launch = Listener(
+      key: ValueKey("rowClipLaunch-$channel-$row"),
       behavior: HitTestBehavior.opaque,
       onPointerDown: (_) => c.pressClip(channel, row),
       onPointerUp: (_) => c.releaseClip(channel, row),
-      child: Container(
-        decoration: BoxDecoration(
-          color: clip == null
-              ? colors.surfaceContainerHigh
-              : Color(sectionColors[clip.color % sectionColors.length])
-                  .withValues(alpha: lit ? 1 : 0.45),
-          borderRadius: BorderRadius.circular(3),
-          border:
-              Border.all(color: colors.outlineVariant.withValues(alpha: 0.6)),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: clip == null
-            ? null
-            : Row(children: [
-                Icon(Icons.play_arrow, size: 11, color: ink),
-                Expanded(
-                  child: Text(clip.name.isEmpty ? "Clip" : clip.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 10, color: ink)),
-                ),
-              ]),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: Icon(clip == null ? Icons.stop : Icons.play_arrow,
+            size: 11, color: clip == null ? colors.onSurfaceVariant : ink),
       ),
+    );
+    var picked = c.selectedSlot == (channel, row);
+    var cell = Container(
+      key: ValueKey("rowClip-$channel-$row"),
+      decoration: BoxDecoration(
+        color: clip == null
+            ? colors.surfaceContainerHigh
+            : Color(sectionColors[clip.color % sectionColors.length])
+                .withValues(alpha: lit ? 1 : 0.45),
+        borderRadius: BorderRadius.circular(3),
+        border: Border.all(
+            color: picked && clip != null
+                ? colors.onSurface
+                : colors.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      padding: const EdgeInsets.only(left: 1, right: 3),
+      child: Row(children: [
+        launch,
+        Expanded(
+          child: clip == null
+              // Double-clicked: a clip made in it (Ken).
+              ? GestureDetector(
+                  key: ValueKey("rowClipNew-$channel-$row"),
+                  behavior: HitTestBehavior.opaque,
+                  onDoubleTap: () => c.makeSessionClip(channel, row),
+                )
+              : SlotFocus(
+                  key: ValueKey("rowClipKeys-$channel-$row"),
+                  onDelete: () {
+                    c.beginInteraction();
+                    c.setSessionClip(channel, row, null);
+                    c.endInteraction();
+                  },
+                  builder: (focus) => GestureDetector(
+                    key: ValueKey("rowClipName-$channel-$row"),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      c.selectSlot(channel, row);
+                      focus.requestFocus();
+                    },
+                    onDoubleTap: () => c.openClipEditor(channel, row),
+                    child: Text(clip.name.isEmpty ? "Clip" : clip.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 10, color: ink)),
+                  ),
+                ),
+        ),
+      ]),
     );
     if (clip == null) return cell;
     return Draggable<Object>(

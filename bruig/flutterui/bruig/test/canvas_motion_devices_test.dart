@@ -8,6 +8,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart'
+    show ChartEase;
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
@@ -711,5 +713,30 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     });
+  });
+
+  // The sidebar audit, 2026-11-08: picked in the chain, an own style took
+  // only its name; Build up and Break apart differ in their curve and how
+  // they cut.
+  test("an own style picked in the chain brings its curve and its cut", () {
+    var c =
+        CanvasController(CanvasDocument(frames: 48, frameRate: 24, elements: [
+      ShapeElement(const ElementBase(id: "a", width: 40, height: 40)),
+    ]));
+    addTearDown(c.dispose);
+    ElementAnimation now() =>
+        CanvasController.elementAnimationOf(c.document.elementById("a")!);
+    c.setElementAnimation(
+        "a", now().copyWith(preset: ElementAnimationPreset.shatter));
+    expect(now().effect.pieces, ElementAnimationPreset.shatter.effect!.pieces);
+    expect(now().ease, ChartEase.linear);
+    c.setElementAnimation(
+        "a", now().copyWith(preset: ElementAnimationPreset.assemble));
+    expect(
+        now().effect.scatter, ElementAnimationPreset.assemble.effect!.scatter);
+    // The same preset again keeps a number set on it.
+    c.setElementAnimation(
+        "a", now().copyWith(effect: now().effect.copyWith(pieces: 30)));
+    expect(now().effect.pieces, 30);
   });
 }

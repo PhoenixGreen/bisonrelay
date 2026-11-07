@@ -4,9 +4,12 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonDouble, jsonStr;
 
 // instances.dart is an element reused: drawn many times -- twenty coins --
-// as one element, one channel and one row, each instance with its own place
-// and start. Rule 3 of the motion chain: left of the Instances device is
-// shared by every instance; right of it, each has its own.
+// as one element, one channel and one row, each instance (a copy) with its
+// own place and start. Every copy uses the element's settings unless it has
+// its own (Ken, 2026-11-08, replacing the movable split of rule 3): its own
+// start, speed, size, turn, opacity or colour, or its own value of any knob
+// of the element's chain -- each kept in ElementInstance.own, shown with a
+// dot and taken back with Revert.
 
 /// VaryHow is how a setting differs from instance to instance.
 enum VaryHow {
@@ -50,25 +53,63 @@ class Vary {
   const Vary(this.how, this.amount);
 }
 
+/// CopyValue is one of a copy's own settings -- what it has instead of the
+/// element's -- by its key in ElementInstance.own, with its range.
+enum CopyValue {
+  start("Starts", 0, 30, 0, "s"),
+  speed("Speed", 0.05, 4, 1, "×"),
+  size("Size", 0.05, 4, 1, "×"),
+  turn("Turn", -180, 180, 0, "°"),
+  opacity("Opacity", 0, 1, 1, "%"),
+  colour("Colour", -180, 180, 0, "°");
+
+  final String label;
+  final double min, max, initial;
+  final String unit;
+  const CopyValue(this.label, this.min, this.max, this.initial, this.unit);
+}
+
+/// deviceOwnKey is the key in ElementInstance.own of a copy's own value of
+/// [param] of the chain's device [device] (its id).
+String deviceOwnKey(String device, String param) => "dev:$device:$param";
+
 /// ElementInstance is one instance: its own id, kept as instances come and
 /// go (a game's collected coin is this id), its place from the element's,
-/// and how much later than the others it starts.
+/// how much later than the others it starts, and what else it has of its
+/// own (see CopyValue and deviceOwnKey).
 class ElementInstance {
   final String id;
   final double dx, dy;
   final double start;
+  final Map<String, double> own;
 
-  const ElementInstance(this.id, {this.dx = 0, this.dy = 0, this.start = 0});
+  const ElementInstance(this.id,
+      {this.dx = 0, this.dy = 0, this.start = 0, this.own = const {}});
 
-  ElementInstance copyWith({double? dx, double? dy, double? start}) =>
+  ElementInstance copyWith(
+          {double? dx, double? dy, double? start, Map<String, double>? own}) =>
       ElementInstance(id,
-          dx: dx ?? this.dx, dy: dy ?? this.dy, start: start ?? this.start);
+          dx: dx ?? this.dx,
+          dy: dy ?? this.dy,
+          start: start ?? this.start,
+          own: own ?? this.own);
+
+  /// ownOf is its own value of [key], or null where it has the element's.
+  double? ownOf(String key) => own[key];
+
+  /// withOwn is it with [key] its own [value]; null takes it back.
+  ElementInstance withOwn(String key, double? value) => copyWith(
+      own: value == null ? ({...own}..remove(key)) : {...own, key: value});
+
+  /// reverted is it with nothing of its own but its place.
+  ElementInstance get reverted => ElementInstance(id, dx: dx, dy: dy);
 
   Map<String, dynamic> toJson() => {
         "id": id,
         if (dx != 0) "dx": dx,
         if (dy != 0) "dy": dy,
         if (start != 0) "start": start,
+        if (own.isNotEmpty) "own": own,
       };
 
   static ElementInstance? fromJson(Object? json) {
@@ -78,7 +119,13 @@ class ElementInstance {
     return ElementInstance(id,
         dx: jsonDouble(json["dx"], 0),
         dy: jsonDouble(json["dy"], 0),
-        start: jsonDouble(json["start"], 0).clamp(0.0, 3600.0));
+        start: jsonDouble(json["start"], 0).clamp(0.0, 3600.0),
+        own: {
+          if (json["own"] case Map raw)
+            for (var e in raw.entries)
+              if (e.key is String && e.value is num)
+                e.key as String: (e.value as num).toDouble(),
+        });
   }
 }
 
@@ -108,10 +155,24 @@ class InstanceSet {
   final Map<VaryWhat, Vary> vary;
   final int seed;
 
+  /// each is whether every copy is drawn on its own, though they are alike
+  /// but for where they are: the Drawing device's "Each its own".
+  final bool each;
+
   const InstanceSet(
-      {this.items = const [], this.vary = const {}, this.seed = 1});
+      {this.items = const [],
+      this.vary = const {},
+      this.seed = 1,
+      this.each = false});
 
   int get count => items.length;
+
+  /// indexOf is where the copy [id] is among them, or -1.
+  int indexOf(String id) => items.indexWhere((x) => x.id == id);
+
+  /// own is copy [i]'s own value of [key], or null.
+  double? _own(int i, CopyValue v) =>
+      i < 0 || i >= items.length ? null : items[i].own[v.name];
 
   Vary varyOf(VaryWhat w) => vary[w] ?? Vary(VaryHow.same, w.initial);
 
@@ -135,32 +196,83 @@ class InstanceSet {
   double _by(VaryWhat w, int i) => share(w, i) * varyOf(w).amount;
 
   /// startOf is how many seconds later than the element instance [i]
-  /// starts.
+  /// starts: its own, or as the set varies it.
   double startOf(int i) =>
+      _own(i, CopyValue.start) ??
       (i < items.length ? items[i].start : 0) + _by(VaryWhat.starts, i);
 
-  double speedOf(int i) => math.max(0.05, 1 + _by(VaryWhat.speed, i));
+  double speedOf(int i) =>
+      _own(i, CopyValue.speed) ?? math.max(0.05, 1 + _by(VaryWhat.speed, i));
 
-  double sizeOf(int i) => math.max(0.05, 1 + _by(VaryWhat.size, i));
+  double sizeOf(int i) =>
+      _own(i, CopyValue.size) ?? math.max(0.05, 1 + _by(VaryWhat.size, i));
 
   /// hueOf is how many degrees instance [i]'s colours are turned.
-  double hueOf(int i) => _by(VaryWhat.colour, i);
+  double hueOf(int i) => _own(i, CopyValue.colour) ?? _by(VaryWhat.colour, i);
+
+  /// turnOf is how many degrees more instance [i] is turned.
+  double turnOf(int i) => _own(i, CopyValue.turn) ?? 0;
+
+  /// opacityOf is how much of instance [i] is seen.
+  double opacityOf(int i) => _own(i, CopyValue.opacity) ?? 1;
+
+  /// valueOf is instance [i]'s [v] as it plays: its own, or the set's.
+  double valueOf(int i, CopyValue v) => switch (v) {
+        CopyValue.start => startOf(i),
+        CopyValue.speed => speedOf(i),
+        CopyValue.size => sizeOf(i),
+        CopyValue.turn => turnOf(i),
+        CopyValue.opacity => opacityOf(i),
+        CopyValue.colour => hueOf(i),
+      };
 
   /// uniform is whether the instances differ only in where they are: drawn
   /// once and stamped at each place.
   bool get uniform =>
-      items.every((x) => x.start == 0) &&
+      !each &&
+      items.every((x) => x.start == 0 && x.own.isEmpty) &&
       VaryWhat.values
           .every((w) => varyOf(w).how == VaryHow.same || varyOf(w).amount == 0);
+
+  /// withCopy is it with copy [id] changed by [change].
+  InstanceSet withCopy(
+          String id, ElementInstance Function(ElementInstance) change) =>
+      copyWith(items: [
+        for (var x in items) x.id == id ? change(x) : x,
+      ]);
+
+  /// withNewCopy is it with one more copy, at [dx], [dy] from the element.
+  InstanceSet withNewCopy(double dx, double dy) {
+    if (items.length >= maxInstances) return this;
+    var taken = {for (var x in items) x.id};
+    var n = 0;
+    while (taken.contains("i$n")) {
+      n++;
+    }
+    return copyWith(items: [...items, ElementInstance("i$n", dx: dx, dy: dy)]);
+  }
+
+  /// without is it without the copies [ids]; at least one is kept.
+  InstanceSet without(Set<String> ids) {
+    var left = [
+      for (var x in items)
+        if (!ids.contains(x.id)) x
+    ];
+    return left.isEmpty
+        ? copyWith(items: [items.first])
+        : copyWith(items: left);
+  }
 
   InstanceSet copyWith(
           {List<ElementInstance>? items,
           Map<VaryWhat, Vary>? vary,
-          int? seed}) =>
+          int? seed,
+          bool? each}) =>
       InstanceSet(
           items: items ?? this.items,
           vary: vary ?? this.vary,
-          seed: seed ?? this.seed);
+          seed: seed ?? this.seed,
+          each: each ?? this.each);
 
   InstanceSet withVary(VaryWhat w, Vary v) => copyWith(vary: {...vary, w: v});
 
@@ -243,6 +355,7 @@ class InstanceSet {
               e.key.name: {"how": e.value.how.name, "amount": e.value.amount},
           },
         if (seed != 1) "seed": seed,
+        if (each) "each": true,
       };
 
   static InstanceSet? fromJson(Object? json) {
@@ -267,6 +380,7 @@ class InstanceSet {
                   jsonDouble(v["amount"], w.initial).clamp(w.min, w.max)),
       },
       seed: json["seed"] is int ? json["seed"] as int : 1,
+      each: json["each"] == true,
     );
   }
 }

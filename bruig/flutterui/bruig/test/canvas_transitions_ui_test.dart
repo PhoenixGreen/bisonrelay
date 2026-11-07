@@ -6,6 +6,11 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+    show DeviceKnob;
+import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
+    show StudioDrop;
+import 'canvas_chain_helpers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -93,35 +98,42 @@ void main() {
     expect(controller.document.allScenes.first.custom, isTrue);
   });
 
-  testWidgets("its length and overlap are frames", (tester) async {
+  // Ken, 2026-11-08: the prototype's one Transition card, its length and
+  // overlap knobs in seconds.
+  testWidgets("its length and overlap are knobs in seconds", (tester) async {
     var controller = await bar(tester);
     controller.setSceneTransition(
         0, const SceneTransition(kind: SceneTransitionKind.fade));
     await tester.pumpAndSettle();
-
-    await tester.enterText(find.byKey(const ValueKey("transitionFrames")), "8");
+    var rate = controller.document.frameRate;
+    tester
+        .widget<DeviceKnob>(find.byKey(const ValueKey("transitionLength")))
+        .onChanged(8 / rate);
     await tester.pumpAndSettle();
     expect(controller.document.transitionAfter(0).frames, 8);
-
-    await tester.enterText(
-        find.byKey(const ValueKey("transitionOverlap")), "3");
+    tester
+        .widget<DeviceKnob>(find.byKey(const ValueKey("transitionOverlap")))
+        .onChanged(3 / rate);
     await tester.pumpAndSettle();
     expect(controller.document.transitionAfter(0).overlap, 3);
+    controller.undo();
+    expect(controller.document.transitionAfter(0).overlap, 12,
+        reason: "one step");
   });
 
   testWidgets("a scene can be put back on the master's transition",
       (tester) async {
-    // Which is what the switch is for: off, changing the default changes this
-    // scene with it.
+    // Which is what Comes from is for: the master's, changing the default
+    // changes this scene with it.
     var controller = await bar(tester);
     controller.setSceneTransition(
         0, const SceneTransition(kind: SceneTransitionKind.wipeLeft));
     await tester.pumpAndSettle();
     expect(controller.document.allScenes.first.custom, isTrue);
-
-    await tester.ensureVisible(find.text("Set on this scene"));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("Set on this scene"));
+    tester
+        .widget<StudioDrop<bool>>(
+            find.byKey(const ValueKey("transitionCustom")))
+        .onChanged(false);
     await tester.pumpAndSettle();
     expect(controller.document.allScenes.first.custom, isFalse);
     expect(controller.document.transitionAfter(0).kind, SceneTransitionKind.cut,
@@ -289,7 +301,9 @@ void main() {
             .copyWith(count: 37, spacing: 1.4, frames: 3));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey("resetTransition")));
+    // Reset every setting, in its card's menu.
+    await revealInMenu(tester, "deviceReset-sceneTransition");
+    await tester.tap(find.byKey(const ValueKey("deviceReset-sceneTransition")));
     await tester.pumpAndSettle();
 
     var back = controller.document.transitionAfter(0);
@@ -324,42 +338,27 @@ void main() {
         find.text(doors.way.saysFor(SceneTransitionKind.barn)), findsOneWidget);
   });
 
-  testWidgets("its settings are the panel's sections, as a clip's are",
+  // Ken, 2026-11-08: one card, as the prototype's, its settings those the
+  // kind has.
+  testWidgets("its settings are one card's, those the kind has",
       (tester) async {
-    // Only the sections a transition has: a cut has no length, look or
-    // sound.
-    await bar(tester);
-
+    var controller = await bar(tester);
     await tester.tap(find.byKey(const ValueKey("transitionFamily")));
     await tester.pumpAndSettle();
     await tester.tap(find.text("Overlay").last);
     await tester.pumpAndSettle();
-
-    expect(
-        find.byKey(const ValueKey("animDevice-sceneTiming")), findsOneWidget);
-    expect(find.byKey(const ValueKey("animDevice-sceneLooks")), findsOneWidget);
-    expect(find.byKey(const ValueKey("animDevice-sceneSound")), findsOneWidget);
-    // Each control's caption above it, as in the clip's sections.
-    var caption = tester.getRect(find.text("Frames"));
-    var field = tester.getRect(find.descendant(
-        of: find.byKey(const ValueKey("transitionFrames")),
-        matching: find.byType(EditableText)));
-    expect(caption.bottom, lessThanOrEqualTo(field.top + 1));
-
-    // And no empty heading with a rule under it where a transition has
-    // nothing to say about how it looks.
-    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
+    expect(find.byKey(const ValueKey("sceneTransitionCard")), findsOneWidget);
+    expect(find.byKey(const ValueKey("transitionLength")), findsOneWidget);
+    expect(find.byKey(const ValueKey("sceneTransitionScreen")), findsOneWidget,
+        reason: "its screen plays it");
+    expect(find.byKey(const ValueKey("animDevice-sceneTiming")), findsNothing,
+        reason: "no separate sections any more");
+    // A cut: no length, no look.
+    controller.setSceneTransition(0, const SceneTransition());
     await tester.pumpAndSettle();
-    // Scrolled to first. There are more families than fit a four-hundred
-    // pixel window, so the first entry of the menu opens above the top of it
-    // and a tap at its coordinates lands on nothing -- silently, because a
-    // tap that hits the barrier closes the menu and changes nothing.
-    await tester.ensureVisible(find.text("A cut").last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("A cut").last);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey("animDevice-sceneTiming")), findsNothing);
-    expect(find.byKey(const ValueKey("animDevice-sceneLooks")), findsNothing);
+    expect(find.byKey(const ValueKey("transitionLength")), findsNothing);
+    expect(find.byKey(const ValueKey("transitionWay")), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets("the ways offered are the ones the kind has", (tester) async {

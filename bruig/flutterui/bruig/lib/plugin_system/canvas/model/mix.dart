@@ -972,9 +972,11 @@ class MasterMix {
   /// comp is the "glue": a gentle compressor over the whole mix.
   final Dynamics comp;
 
-  /// limiter keeps the peaks under [ceilingDb], true peak.
+  /// limiter keeps the peaks under [ceilingDb], true peak, looking
+  /// [limiterAheadMs] ahead and letting go over [limiterReleaseMs].
   final bool limiter;
   final double ceilingDb;
+  final double limiterAheadMs, limiterReleaseMs;
 
   /// target is the loudness (LUFS) the mix is aimed at, and normalise
   /// whether an export is measured and adjusted to it.
@@ -1002,6 +1004,8 @@ class MasterMix {
         const Dynamics(threshold: -12, ratio: 2, attackMs: 30, releaseMs: 200),
     this.limiter = true,
     this.ceilingDb = -1,
+    this.limiterAheadMs = 5,
+    this.limiterReleaseMs = 50,
     this.target = -16,
     this.normalise = false,
     this.compFirst = false,
@@ -1014,6 +1018,8 @@ class MasterMix {
       !comp.on &&
       limiter &&
       ceilingDb == -1 &&
+      limiterAheadMs == 5 &&
+      limiterReleaseMs == 50 &&
       target == -16 &&
       !normalise &&
       !compFirst &&
@@ -1027,6 +1033,8 @@ class MasterMix {
     Dynamics? comp,
     bool? limiter,
     double? ceilingDb,
+    double? limiterAheadMs,
+    double? limiterReleaseMs,
     double? target,
     bool? normalise,
     bool? compFirst,
@@ -1039,6 +1047,8 @@ class MasterMix {
         comp: comp ?? this.comp,
         limiter: limiter ?? this.limiter,
         ceilingDb: ceilingDb ?? this.ceilingDb,
+        limiterAheadMs: limiterAheadMs ?? this.limiterAheadMs,
+        limiterReleaseMs: limiterReleaseMs ?? this.limiterReleaseMs,
         target: target ?? this.target,
         normalise: normalise ?? this.normalise,
         compFirst: compFirst ?? this.compFirst,
@@ -1051,6 +1061,8 @@ class MasterMix {
         if (comp.on) "comp": comp.toJson(),
         if (!limiter) "noLimiter": true,
         if (ceilingDb != -1) "ceiling": ceilingDb,
+        if (limiterAheadMs != 5) "limitAhead": limiterAheadMs,
+        if (limiterReleaseMs != 50) "limitRelease": limiterReleaseMs,
         if (target != -16) "target": target,
         if (normalise) "normalise": true,
         if (compFirst) "compFirst": true,
@@ -1073,6 +1085,9 @@ class MasterMix {
                 threshold: -12, ratio: 2, attackMs: 30, releaseMs: 200)),
         limiter: !jsonBool(json["noLimiter"], false),
         ceilingDb: jsonDouble(json["ceiling"], -1).clamp(-12.0, 0.0),
+        limiterAheadMs: jsonDouble(json["limitAhead"], 5).clamp(0.5, 20.0),
+        limiterReleaseMs:
+            jsonDouble(json["limitRelease"], 50).clamp(5.0, 1000.0),
         target: jsonDouble(json["target"], -16).clamp(-36.0, -6.0),
         normalise: jsonBool(json["normalise"], false),
         compFirst: jsonBool(json["compFirst"], false),

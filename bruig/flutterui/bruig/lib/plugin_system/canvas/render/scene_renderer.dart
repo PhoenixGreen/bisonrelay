@@ -862,11 +862,15 @@ void paintElement(
   var layered = alpha < 0.999 || blend != BlendMode.srcOver;
   // Its looks -- the devices right of its drawing in its Chain -- as its
   // LFOs have them now: see motion_looks.dart.
+  // A copy of an element reused with its own values of them.
   var looks = [
     for (var l in element.base.motion.looks)
-      motionModulated(l, element.base.motion.devices,
-          frame / (frameRate <= 0 ? 1 : frameRate),
-          doc: document),
+      withOwnValues(
+          motionModulated(l, element.base.motion.devices,
+              frame / (frameRate <= 0 ? 1 : frameRate),
+              doc: document),
+          element.base.motion.instances,
+          instance),
   ];
   if (layered) {
     // Grown, because a shadow, an outline or a glow reaches outside the

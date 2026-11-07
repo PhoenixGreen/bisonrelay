@@ -130,6 +130,31 @@ void main() {
     expect(c.motionOf("a").slot(1), isNotNull, reason: "one step each");
   });
 
+  // Ken, 2026-11-08: deleting the first clip took the channel with it.
+  testWidgets("its last clip deleted, the element keeps its channel",
+      (tester) async {
+    var c = await pumpBoth(tester);
+    // Picked on the canvas too, as it is when its slot is clicked there:
+    // Delete is the slot's, not the canvas's (Ken: it took the element).
+    c.selectOnly("a");
+    await frames(tester);
+    await tester.tap(find.byKey(const ValueKey("motionName-a-0")));
+    await tester.pump(const Duration(milliseconds: 400));
+    await frames(tester);
+    await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+    await frames(tester);
+    expect(c.document.elementById("a"), isNotNull, reason: "the element stays");
+    expect(c.motionOf("a").isEmpty, isTrue, reason: "no clips left");
+    expect(c.motionOf("a").kept, isTrue);
+    expect(find.byKey(const ValueKey("motionStrip-a")), findsOneWidget,
+        reason: "its strip and slots stay");
+    expect(find.byKey(const ValueKey("motionRow-a")), findsOneWidget,
+        reason: "and its row on the timeline");
+    // Kept on saving.
+    var back = ElementMotion.fromJson(c.motionOf("a").toJson());
+    expect(back.kept, isTrue);
+  });
+
   testWidgets("an empty slot, double-clicked, makes a clip in it",
       (tester) async {
     var c = await pumpBoth(tester);
@@ -213,6 +238,28 @@ void main() {
     expect(made, isNotNull, reason: "a clip in the slot pressed");
     expect(c.pickedMotion, made!.id);
     expect(c.animationOpen, isFalse);
+  });
+
+  // Ken, 2026-11-08: Delete on a slot beside the rows took the element.
+  testWidgets(
+      "beside the rows, a clicked slot goes with Delete, the element "
+      "stays", (tester) async {
+    var c = await pumpBoth(tester);
+    await tester.tap(find.byKey(const ValueKey("slotsToggle")));
+    await frames(tester);
+    c.selectOnly("a");
+    await frames(tester);
+    await tester.tap(find.byKey(const ValueKey("rowSlotName-a-0")));
+    await tester.pump(const Duration(milliseconds: 400));
+    await frames(tester);
+    await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+    await frames(tester);
+    expect(c.document.elementById("a"), isNotNull, reason: "the element stays");
+    expect(c.motionOf("a").slot(0), isNull, reason: "its slot emptied");
+    expect(find.byKey(const ValueKey("motionRow-a")), findsOneWidget,
+        reason: "and its channel");
+    c.undo();
+    expect(c.motionOf("a").slot(0), isNotNull, reason: "one step");
   });
 
   testWidgets("the strips and the slots each have a grip", (tester) async {

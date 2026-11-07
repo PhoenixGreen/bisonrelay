@@ -17,6 +17,8 @@ import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+    show DeviceKnob;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -348,6 +350,31 @@ void main() {
       ));
       await tester.pump(const Duration(milliseconds: 400));
       return c;
+    }
+
+    // Ken, 2026-11-08: the prototype's scene chain -- a Source of everything
+    // heard in it, and an Output.
+    for (var scale in [1.0, 1.5]) {
+      testWidgets(
+          "its chain starts with what it sums and ends at its Output, "
+          "at $scale", (tester) async {
+        var c = await pump(tester, effects: true, scale: scale);
+        expect(find.byKey(const ValueKey("device-sceneSound")), findsOneWidget);
+        expect(find.byKey(const ValueKey("sceneSoundScreen")), findsOneWidget);
+        expect(find.byKey(const ValueKey("device-busOutput")), findsOneWidget);
+        expect(find.text("Master"), findsWidgets);
+        // Its Output's level is the bus's fader, one step a turn.
+        await tester
+            .ensureVisible(find.byKey(const ValueKey("busOutput-level")));
+        tester
+            .widget<DeviceKnob>(find.byKey(const ValueKey("busOutput-level")))
+            .onChanged(-6);
+        await tester.pump();
+        expect(c.sceneBus.gainDb, -6);
+        c.undo();
+        expect(c.sceneBus.gainDb, 0);
+        expect(tester.takeException(), isNull);
+      });
     }
 
     for (var scale in [1.0, 1.5]) {

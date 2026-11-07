@@ -124,6 +124,10 @@ class Limiter {
   int _at = 0;
   double _gain = 1;
 
+  /// least is the lowest gain of the last block: how far it turned the
+  /// sound down, one for not at all.
+  double least = 1;
+
   Limiter(double ceilingDb,
       {double sampleRate = 48000, double aheadMs = 5, double releaseMs = 50})
       : ceiling = dbToGain(ceilingDb),
@@ -138,6 +142,7 @@ class Limiter {
             Float32List(math.max(1, (aheadMs / 1000 * sampleRate).round()));
 
   void process(Float32List l, Float32List r, int n) {
+    least = 1;
     for (var i = 0; i < n; i++) {
       // What comes in now is heard [_ahead] samples later; the gain is
       // worked out from the loudest of everything in that window.
@@ -148,6 +153,7 @@ class Limiter {
       }
       var want = loudest > ceiling ? ceiling / loudest : 1.0;
       _gain = want + (want < _gain ? _attack : _release) * (_gain - want);
+      if (_gain < least) least = _gain;
       var outL = _dl[_at], outR = _dr[_at];
       _dl[_at] = l[i];
       _dr[_at] = r[i];
@@ -830,7 +836,10 @@ class MasterProcessor {
   MasterProcessor(this.mix, {this.normaliseDb = 0})
       : _eq = EqProcessor(mix.eq),
         _glue = mix.comp.on ? Compressor(mix.comp) : null,
-        _limiter = mix.limiter ? Limiter(mix.ceilingDb) : null,
+        _limiter = mix.limiter
+            ? Limiter(mix.ceilingDb,
+                aheadMs: mix.limiterAheadMs, releaseMs: mix.limiterReleaseMs)
+            : null,
         _devices = [for (var d in mix.devices) DeviceProcessor.of(d)];
 
   /// process runs the master on a block, the limiter only when [limit]. The
@@ -863,6 +872,10 @@ class MasterProcessor {
     if (g != 1) _scale(l, r, n, g, g);
     if (limit) _limiter?.process(l, r, n);
   }
+
+  /// limited is the least gain its limiter set on the last block: one for
+  /// none, or no limiter.
+  double get limited => _limiter?.least ?? 1;
 }
 
 /// LoudnessMeter is ITU-R BS.1770-4 integrated loudness, in LUFS: the sound

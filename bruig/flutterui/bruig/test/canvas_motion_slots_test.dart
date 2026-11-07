@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
@@ -25,6 +26,8 @@ MotionClip across(String id, double by, {double length = 1}) =>
             MotionKey(length, MotionNumber(by)),
           ],
         });
+
+typedef MotionPoseSample = ({double dx, double scale});
 
 void main() {
   int micros = 0;
@@ -122,5 +125,71 @@ void main() {
     c.pause();
     c.undo();
     expect(c.motionOf("a").placed, isEmpty, reason: "one step to take back");
+  });
+
+  // Ken, 2026-11-08: an arrival placed on the timeline and launched from its
+  // slot showed only part of itself -- played on top of its own held first
+  // frame: Pop at nothing, Slide in from twice as far, ending off the page.
+  group("launched over the timeline", () {
+    CanvasController arrivals() =>
+        CanvasController(CanvasDocument(frames: 240, frameRate: 24, elements: [
+          ShapeElement(const ElementBase(
+              id: "a", name: "A", x: 300, y: 200, width: 50, height: 50)),
+        ]));
+    MotionPoseSample sample(CanvasController c) {
+      var p = motionPoseIn(c.document, c.document.elementById("a")!, c.frame,
+          live: c.motionPlayer.of("a"), clock: c.motionPlayer.clock);
+      return (dx: p.dx, scale: p.scale);
+    }
+
+    for (var name in ["Pop", "Slide in"]) {
+      testWidgets("$name, placed too, plays in full from its slot",
+          (tester) async {
+        var c = arrivals();
+        addTearDown(c.dispose);
+        var id = c.newClip("a", preset: presetNamed(name), slot: 0);
+        c.placeClip("a", id, seconds: 0);
+        c.pressMotionSlot("a", 0);
+        var first = sample(c);
+        var seen = <MotionPoseSample>[];
+        for (var i = 0; i < 16; i++) {
+          await tester.pump(const Duration(milliseconds: 80));
+          seen.add(sample(c));
+        }
+        c.pause();
+        if (name == "Pop") {
+          expect(first.scale, closeTo(0, 0.01));
+          expect(seen.map((s) => s.scale).reduce((a, b) => a > b ? a : b),
+              greaterThan(1.05),
+              reason: "it grows, overshoots");
+          expect(seen.last.scale, closeTo(1, 0.01), reason: "and settles");
+        } else {
+          expect(first.dx, closeTo(-364, 2),
+              reason: "from the page's edge once");
+          expect(seen.last.dx, closeTo(0, 0.5),
+              reason: "and in place at the end");
+        }
+      });
+    }
+
+    testWidgets(
+        "an arrival waiting on the timeline does not hide a loop "
+        "launched on another layer", (tester) async {
+      var c = arrivals();
+      addTearDown(c.dispose);
+      // Pop placed a second in, on layer 1: at the start it waits, held small.
+      var pop = c.newClip("a", preset: presetNamed("Pop"), layer: 1);
+      c.placeClip("a", pop, seconds: 1);
+      var spin = c.newClip("a", preset: presetNamed("Spin"), slot: 0);
+      expect(motionPoseIn(c.document, c.document.elementById("a")!, 0).scale,
+          closeTo(0, 0.01),
+          reason: "on the timeline it waits");
+      c.pressMotionSlot("a", 0);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(sample(c).scale, closeTo(1, 0.01),
+          reason: "off it, the spin is seen");
+      c.pause();
+      expect(spin, isNotEmpty);
+    });
   });
 }

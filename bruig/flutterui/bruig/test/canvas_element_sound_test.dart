@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -16,6 +17,7 @@ import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -163,6 +165,116 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("lit-show")));
     await tester.pump();
     expect(c.timelineShow, TimelineShow.everything);
+  });
+
+  // Ken, 2026-11-08: beside the rows as in the mixer -- an empty slot
+  // double-clicked has a clip made in it; a clip clicked takes Delete.
+  testWidgets(
+      "side by side, an empty slot double-clicked makes a clip; "
+      "Delete empties it", (tester) async {
+    var c = await pumpBoth(tester);
+    c.apply(c.document.copyWith(elements: [
+      for (var e in c.document.elements)
+        if (e.id == "m" && e is AudioElement)
+          AudioElement(e.base,
+              clip: const MediaClip(
+                  timed: true,
+                  channelName: "Music",
+                  playlist: [
+                    MediaSource(assetId: "x", name: "Loop", length: 8)
+                  ]),
+              controls: const [])
+        else
+          e,
+      AudioElement(const ElementBase(id: "keys", name: "Keys"),
+          clip: const MediaClip(timed: true),
+          instrument: const InstrumentPart()),
+    ]));
+    await tester.tap(find.byKey(const ValueKey("slotsToggle")));
+    await tester.pump();
+    for (var ch in ["m", "keys"]) {
+      var cell = find.byKey(ValueKey("rowClipNew-$ch-0"));
+      await tester.ensureVisible(cell);
+      await tester.tap(cell);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(cell);
+      await tester.pump(const Duration(milliseconds: 400));
+      var made = c.session.at(ch, 0);
+      expect(made, isNotNull, reason: ch);
+      expect(made!.midi, ch == "keys");
+      expect(c.selectedSlot, (ch, 0));
+    }
+    expect(c.session.at("m", 0)!.name, "Loop");
+    await tester.tap(find.byKey(const ValueKey("rowClipName-m-0")));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+    await tester.pump();
+    expect(c.session.at("m", 0), isNull);
+    expect(c.document.elementById("m"), isNotNull, reason: "the channel stays");
+    expect(tester.takeException(), isNull);
+  });
+
+  // Ken, 2026-11-08: a sound on the timeline double-clicked opens its
+  // channel's chain, as an element's clip opens its own.
+  testWidgets("a sound double-clicked on the timeline opens its chain",
+      (tester) async {
+    var c = await pumpBoth(tester);
+    c.apply(c.document.copyWith(elements: [
+      for (var e in c.document.elements)
+        if (e.id == "m" && e is AudioElement)
+          AudioElement(e.base,
+              clip: const MediaClip(
+                  timed: true,
+                  channelName: "Music",
+                  playlist: [
+                    MediaSource(assetId: "x", name: "Loop", length: 4)
+                  ]),
+              controls: const [])
+        else
+          e,
+    ]));
+    await tester.pump();
+    var lane = tester.getRect(find.byKey(const ValueKey("lane-m")).first);
+    var spot = Offset(lane.left + lane.width * 0.1, lane.center.dy);
+    await tester.tapAt(spot);
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(c.effectsOpen, isFalse, reason: "once, picked only");
+    await tester.tapAt(spot);
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(c.effectsOpen, isTrue);
+    expect(c.effectsOf, "m");
+    expect(c.selection, contains("m"), reason: "the sound picked");
+  });
+
+  // Ken: no Stop all over the slots.
+  testWidgets("over the slots, Stop all stops every channel's clips",
+      (tester) async {
+    var c = await pumpBoth(tester);
+    c.apply(c.document.copyWith(elements: [
+      for (var e in c.document.elements)
+        if (e.id == "m" && e is AudioElement)
+          AudioElement(e.base,
+              clip: const MediaClip(
+                  timed: true,
+                  channelName: "Music",
+                  playlist: [
+                    MediaSource(assetId: "x", name: "Loop", length: 8)
+                  ]),
+              controls: const [])
+        else
+          e,
+    ]));
+    await tester.tap(find.byKey(const ValueKey("slotsToggle")));
+    await tester.pump();
+    expect(c.makeSessionClip("m", 0), isTrue);
+    c.pressClip("m", 0);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(c.clipPlaying("m"), isTrue);
+    await tester.tap(find.byKey(const ValueKey("stopAllClips")));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(c.clipState("m", 0), isNot(ClipState.playing));
+    c.pause();
+    await tester.pump(const Duration(milliseconds: 100));
   });
 
   testWidgets("side by side: every row has its slots, the lanes still level",

@@ -890,15 +890,18 @@ extension CanvasScenes on CanvasController {
 
   /// setSceneCamera gives scene [index] a slow move, or holds it still with
   /// null. See SceneCamera.
-  void setSceneCamera(int index, SceneCamera? camera) {
+  void setSceneCamera(int index, SceneCamera? camera,
+      {bool transient = false}) {
     var list = _document.allScenes;
     if (index < 0 || index >= list.length) return;
-    _cameraView = camera != null;
-    apply(_document.withScene(
-        index,
-        camera == null
-            ? list[index].copyWith(clearCamera: true)
-            : list[index].copyWith(camera: camera)));
+    _cameraView = camera != null && index == _document.at;
+    apply(
+        _document.withScene(
+            index,
+            camera == null
+                ? list[index].copyWith(clearCamera: true)
+                : list[index].copyWith(camera: camera)),
+        transient: transient);
   }
 
   /// soundEveryTransition puts [like]'s sound -- its file, volume and lead
@@ -933,11 +936,14 @@ extension CanvasScenes on CanvasController {
   /// setDefaultTransition changes what every scene without one of its own
   /// uses. It lives on the master canvas, which is where the things shared by
   /// every scene live.
-  void setDefaultTransition(SceneTransition transition) {
+  void setDefaultTransition(SceneTransition transition,
+      {bool transient = false}) {
     var master =
         _document.master ?? CanvasScene(id: newSceneId(), name: "Master");
-    apply(_timed(
-        _document.copyWith(master: master.copyWith(transition: transition))));
+    apply(
+        _timed(_document.copyWith(
+            master: master.copyWith(transition: transition))),
+        transient: transient);
   }
 
   /// _afterSceneChange puts the editor back on solid ground after a scene

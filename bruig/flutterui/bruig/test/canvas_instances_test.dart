@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
@@ -17,6 +18,8 @@ import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Canvas, Paint;
@@ -27,8 +30,10 @@ import 'package:provider/provider.dart';
 import 'canvas_audio_fake.dart';
 
 // canvas_instances_test.dart is an element reused: one element drawn many
-// times, each instance with its own place and start, alike to the left of
-// its Instances device and its own to the right of it (rule 3).
+// times, each copy with its own place and start, and -- Ken, 2026-11-08 --
+// whatever else it has of its own, any knob of its chain among them. Its
+// Instances is first of its chain, the picker for what the chain edits;
+// copies are objects on the canvas, picked, dragged and placed there.
 
 /// across moves 100 to the right over 4 seconds, placed at the start.
 const MotionClip across = MotionClip(
@@ -158,24 +163,51 @@ void main() {
           reason: "the element as placed");
     });
 
-    test("left of Instances is shared; right of it, each its own", () {
+    // Rule 3's movable split is gone (Ken, 2026-11-08): Instances is
+    // always first, wherever an older canvas kept it.
+    test("Instances is first of the chain, wherever it was kept", () {
       var time = const MotionDevice(MotionDeviceKind.time,
           id: "m0", values: {"speed": 2});
-      // Time first: each instance asks it at its own moment.
-      var before = doc(three(), devices: [
+      var kept = doc(three(), devices: [
         time,
         const MotionDevice(MotionDeviceKind.instances, id: "m1")
       ]);
-      // Instances first: Time speeds each instance's moment up.
-      var after = doc(three(), devices: [
+      var first = doc(three(), devices: [
         const MotionDevice(MotionDeviceKind.instances, id: "m1"),
         time
       ]);
-      // At 2 s: instance 2 starts a second late.
-      expect(dx(before, 48, 2), closeTo(100 + 50, 0.01),
-          reason: "1 s of its own, twice as fast: 2 s in");
-      expect(dx(after, 48, 2), closeTo(100 + 75, 0.01),
-          reason: "4 s asked for, less its second: 3 s in");
+      // Time speeds each copy's moment up: 4 s asked for, less copy 2's
+      // second, 3 s in.
+      expect(dx(kept, 48, 2), closeTo(100 + 75, 0.01));
+      expect(dx(first, 48, 2), closeTo(100 + 75, 0.01));
+      expect(kept.elementById("a")!.base.motion.poseDevices.first.kind,
+          MotionDeviceKind.instances);
+    });
+
+    test("a copy's own values win over the set's, and its own knobs", () {
+      var set = three(vary: {VaryWhat.starts: const Vary(VaryHow.byOrder, 2)})
+          .withCopy("i1", (x) => x.withOwn(CopyValue.start.name, 0.5))
+          .withCopy("i2", (x) => x.withOwn(CopyValue.speed.name, 2));
+      expect(set.startOf(1), 0.5, reason: "its own, not by order's 1 s");
+      expect(set.startOf(2), 1 + 2,
+          reason: "its place's second, and 2 by order");
+      expect(set.speedOf(2), 2);
+      expect(set.uniform, isFalse);
+      // Its own Oscillate amount: the others' is nothing.
+      var wave = const MotionDevice(MotionDeviceKind.oscillate,
+          id: "m0", values: {"amount": 0, "rate": 1, "moves": 1});
+      var own = three()
+          .withCopy("i1", (x) => x.withOwn(deviceOwnKey("m0", "amount"), 30));
+      var d = doc(own, devices: [wave], clip: false);
+      // A quarter second in, the wave is at its height.
+      expect(dx(d, 6, 0), closeTo(0, 0.01), reason: "the shared amount");
+      expect(dx(d, 6, 1), closeTo(50 + 30, 0.5), reason: "its own amount");
+      // Kept with the canvas.
+      var back = InstanceSet.fromJson(own.toJson())!;
+      expect(back.items[1].own[deviceOwnKey("m0", "amount")], 30);
+      // Reverted: its place kept, its own values gone.
+      expect(own.items[1].reverted.own, isEmpty);
+      expect(own.items[1].reverted.dx, 50);
     });
 
     test("its box is all of them; one is found by where it is", () {
@@ -186,6 +218,82 @@ void main() {
       expect(b.right, 130);
       expect(e.instanceAt(const Offset(70, 20), 0, d), 1);
       expect(e.instanceAt(const Offset(45, 20), 0, d), isNull);
+    });
+  });
+
+  // Ken, 2026-11-08: Arrives > Slide in left copies on the page at the
+  // start: "off the left edge" was worked out from the element, not from
+  // each copy.
+  test("a place off the page is off it for every copy", () {
+    var c = CanvasController(doc(three(), clip: false),
+        audioEngine: FakeEngine(const {}));
+    addTearDown(c.dispose);
+    var id = c.newClip("a", preset: presetNamed("Slide in"), slot: 0);
+    c.placeClip("a", id, seconds: 0);
+    var e = c.document.elementById("a")!;
+    for (var i = 0; i < 3; i++) {
+      var box = e.boundsWith(poseWithMotion(e, 0, c.document, instance: i));
+      expect(box.right, lessThan(0), reason: "copy $i starts off the left");
+      var end = e.boundsWith(poseWithMotion(e, 48, c.document, instance: i));
+      expect(end.left, closeTo(10 + 50.0 * i, 0.5), reason: "and lands home");
+    }
+  });
+
+  // Ken, 2026-11-08: launched from their slot, the copies moved as one --
+  // their starts and speeds were put on the timeline's clock, not the
+  // slots'.
+  group("launched from a slot", () {
+    CanvasController launched() {
+      var c = CanvasController(doc(three(), clip: false),
+          audioEngine: FakeEngine(const {}));
+      c.setMotion("a",
+          c.motionOf("a").copyWith(clips: const [across], slots: const ["go"]));
+      return c;
+    }
+
+    double at(CanvasController c, int i) =>
+        poseWithMotion(c.document.elementById("a")!, c.frame, c.document,
+                live: c.liveMotion, instance: i)
+            .dx;
+
+    testWidgets("each copy plays at its own start and speed", (tester) async {
+      var c = launched();
+      addTearDown(c.dispose);
+      c.setInstances(
+          "a",
+          c
+              .motionOf("a")
+              .instances!
+              .withCopy("i1", (x) => x.withOwn(CopyValue.speed.name, 2)));
+      c.pressMotionSlot("a", 0);
+      await tester.pump(const Duration(milliseconds: 2000));
+      var clock = c.motionPlayer.clock;
+      expect(clock, greaterThan(1.5));
+      // Across: 25 a second, from each one's place.
+      expect(at(c, 0), closeTo(25 * clock, 1.5));
+      expect(at(c, 1), closeTo(50 + 50 * clock, 3), reason: "twice as fast");
+      expect(at(c, 2), closeTo(100 + 25 * (clock - 1), 1.5),
+          reason: "a second behind");
+      c.pause();
+    });
+
+    testWidgets("a copy started later is still playing a clip played once",
+        (tester) async {
+      var c = launched();
+      addTearDown(c.dispose);
+      c.setInstances(
+          "a",
+          c
+              .motionOf("a")
+              .instances!
+              .withCopy("i2", (x) => x.withOwn(CopyValue.start.name, 2)));
+      c.pressMotionSlot("a", 0);
+      // Past the clip's four seconds: over for the element, not for copy 2.
+      await tester.pump(const Duration(milliseconds: 5000));
+      var clock = c.motionPlayer.clock;
+      expect(clock, greaterThan(4.5));
+      expect(at(c, 2), closeTo(100 + 25 * (clock - 2), 2));
+      c.pause();
     });
   });
 
@@ -227,7 +335,6 @@ void main() {
       expect(set.items[1].dx, 30, reason: "half as far again as it is big");
       c.layOutInstances("a", InstanceLayout.grid);
       expect(c.motionOf("a").instances!.items[2].dy, 30);
-      c.moveInstances("a", 0);
       c.setInstances("a", null);
       expect(c.motionOf("a").instances, isNull);
       expect(c.motionOf("a").devices, isEmpty,
@@ -268,23 +375,56 @@ void main() {
         ));
         await tester.pump(const Duration(milliseconds: 200));
         expect(find.byKey(const ValueKey("instancesCard")), findsOneWidget);
+        // First of the chain, before its Source.
+        expect(
+            tester.getRect(find.byKey(const ValueKey("instancesCard"))).left,
+            lessThan(tester
+                .getRect(find.byKey(const ValueKey("motionZone-Source")))
+                .left));
         await tester.tap(find.byKey(const ValueKey("instancesReuse")));
         await tester.pump(const Duration(milliseconds: 100));
         expect(c.motionOf("a").instances!.count, 5);
-        await tester.tap(find.byKey(const ValueKey("instancesMore")));
+        // + Add: placing, until pressed again.
+        await tester.tap(find.byKey(const ValueKey("instancesPlace")));
         await tester.pump(const Duration(milliseconds: 100));
-        expect(c.motionOf("a").instances!.count, 6);
+        expect(c.placingCopies, "a");
+        await tester.tap(find.byKey(const ValueKey("instancesPlace")));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(c.placingCopies, isNull);
         // How their starts differ.
-        await tester.ensureVisible(find.byKey(const ValueKey("vary-starts")));
-        await tester.pump();
-        await tester.tap(find.byKey(const ValueKey("vary-starts")));
-        await tester.pump(const Duration(milliseconds: 300));
-        await tester.tap(find.text("By order").last);
-        await tester.pump(const Duration(milliseconds: 300));
+        tester
+            .widget<StudioDrop<VaryHow>>(
+                find.byKey(const ValueKey("vary-starts")))
+            .onChanged(VaryHow.byOrder);
+        await tester.pump(const Duration(milliseconds: 100));
         expect(c.motionOf("a").instances!.varyOf(VaryWhat.starts).how,
             VaryHow.byOrder);
         expect(
             find.byKey(const ValueKey("vary-starts-amount")), findsOneWidget);
+        // A copy picked in the table: its own knobs, its own start.
+        await tester.tap(find.byKey(const ValueKey("copyRow-i2")));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(c.pickedCopiesOf("a"), {"i2"});
+        expect(find.byKey(const ValueKey("copyKnob-start")), findsOneWidget);
+        expect(find.byKey(const ValueKey("vary-starts")), findsNothing);
+        c.setCopyOwn("a", CopyValue.start.name, 3);
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(c.motionOf("a").instances!.startOf(2), 3);
+        expect(find.byKey(const ValueKey("copyOwn-i2")), findsOneWidget,
+            reason: "a dot in its row");
+        expect(
+            find.descendant(
+                of: find.byKey(const ValueKey("copyKnob-start")),
+                matching: find.byKey(const ValueKey("knobOwn"))),
+            findsOneWidget);
+        await tester.ensureVisible(find.byKey(const ValueKey("copiesRevert")));
+        await tester.tap(find.byKey(const ValueKey("copiesRevert")));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(c.motionOf("a").instances!.items[2].own, isEmpty);
+        // Back to all of them, and then to one.
+        await tester.tap(find.byKey(const ValueKey("copyRow-all")));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(c.pickedCopiesOf("a"), isEmpty);
         expect(tester.takeException(), isNull);
         await tester.ensureVisible(find.byKey(const ValueKey("instancesOnce")));
         await tester.pump();
@@ -295,6 +435,154 @@ void main() {
         await tester.pumpWidget(const SizedBox());
       });
     }
+  });
+
+  // Ken, 2026-11-08: copies are objects on the canvas.
+  group("on the canvas", () {
+    Future<(CanvasController, CanvasStageState)> stage(
+        WidgetTester tester) async {
+      // Big enough that a click on a copy is not on the selection's handles.
+      var c = CanvasController(
+          CanvasDocument(frames: 240, frameRate: 24, elements: [
+            ShapeElement(
+                const ElementBase(
+                    id: "a",
+                    x: 100,
+                    y: 100,
+                    width: 100,
+                    height: 100,
+                    motion: ElementMotion(
+                        instances: InstanceSet(items: [
+                      ElementInstance("i0"),
+                      ElementInstance("i1", dx: 250),
+                      ElementInstance("i2", dx: 500),
+                    ]))),
+                fill: const Color(0xFF000000)),
+          ]),
+          audioEngine: FakeEngine(const {}));
+      addTearDown(c.dispose);
+      var key = GlobalKey<CanvasStageState>();
+      tester.view.physicalSize = const Size(900, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SizedBox(
+                    width: 900,
+                    height: 700,
+                    child: CanvasStage(key: key, controller: c)))),
+      ));
+      await tester.pumpAndSettle();
+      return (c, key.currentState!);
+    }
+
+    // The copies' middles: 150,150 · 400,150 · 650,150.
+    Offset copy(int i) => Offset(150 + 250.0 * i, 150);
+
+    testWidgets("a click picks a copy; Shift-click another; Escape, all",
+        (tester) async {
+      var (c, s) = await stage(tester);
+      await tester.tapAt(s.toStagePoint(copy(1)));
+      await tester.pumpAndSettle();
+      expect(c.selection, {"a"});
+      expect(c.pickedCopiesOf("a"), {"i1"});
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.tapAt(s.toStagePoint(copy(2)));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pumpAndSettle();
+      expect(c.pickedCopiesOf("a"), {"i1", "i2"});
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(c.pickedCopiesOf("a"), isEmpty, reason: "back to all of them");
+      expect(c.selection, {"a"});
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(c.selection, isEmpty);
+    });
+
+    testWidgets("a picked copy dragged moves alone; none picked, all move",
+        (tester) async {
+      var (c, s) = await stage(tester);
+      Future<void> drag(Offset from, Offset by) async {
+        var a = s.toStagePoint(from), b = s.toStagePoint(from + by);
+        await tester.timedDragFrom(a, b - a, const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+      }
+
+      // Not picked yet: the press takes the element, all of them.
+      await drag(copy(1), const Offset(0, 40));
+      expect(c.document.elementById("a")!.base.y, closeTo(140, 0.5));
+      expect(c.motionOf("a").instances!.items[1].dy, 0);
+      c.undo();
+      // Picked, it goes alone.
+      await tester.tapAt(s.toStagePoint(copy(1)));
+      await tester.pumpAndSettle();
+      await drag(copy(1), const Offset(0, 40));
+      var set = c.motionOf("a").instances!;
+      expect(set.items[1].dy, closeTo(40, 0.5));
+      expect(set.items[0].dy, 0);
+      expect(c.document.elementById("a")!.base.y, 100, reason: "the rest stay");
+      c.undo();
+      expect(c.motionOf("a").instances!.items[1].dy, 0, reason: "one step");
+    });
+
+    testWidgets("Alt-drag a copy for a new one; Delete takes picked copies",
+        (tester) async {
+      var (c, s) = await stage(tester);
+      await tester.tapAt(s.toStagePoint(copy(2)));
+      await tester.pumpAndSettle();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      var a = s.toStagePoint(copy(2)),
+          b = s.toStagePoint(copy(2) + const Offset(0, 50));
+      await tester.timedDragFrom(a, b - a, const Duration(milliseconds: 300));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pumpAndSettle();
+      var set = c.motionOf("a").instances!;
+      expect(set.count, 4);
+      expect(set.items.last.dx, 500);
+      expect(set.items.last.dy, closeTo(50, 0.5));
+      expect(set.items[2].dy, 0, reason: "the one dragged from stays");
+      expect(c.pickedCopiesOf("a"), {set.items.last.id});
+      await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+      await tester.pumpAndSettle();
+      expect(c.motionOf("a").instances!.count, 3);
+      expect(c.document.elementById("a"), isNotNull,
+          reason: "the element stays");
+    });
+
+    testWidgets("placing: each click puts a copy there; Escape stops",
+        (tester) async {
+      var (c, s) = await stage(tester);
+      c.selectOnly("a");
+      c.placingCopies = "a";
+      await tester.pump();
+      await tester.tapAt(s.toStagePoint(const Offset(300, 400)));
+      await tester.pumpAndSettle();
+      await tester.tapAt(s.toStagePoint(const Offset(500, 400)));
+      await tester.pumpAndSettle();
+      var set = c.motionOf("a").instances!;
+      expect(set.count, 5);
+      expect(set.items[3].dx, closeTo(150, 0.5), reason: "its middle there");
+      expect(set.items[3].dy, closeTo(250, 0.5));
+      expect(c.placingCopies, "a", reason: "still placing");
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(c.placingCopies, isNull);
+      // Placed once, it becomes two.
+      c.setInstances("a", null);
+      c.selectOnly("a");
+      c.placingCopies = "a";
+      await tester.pump();
+      await tester.tapAt(s.toStagePoint(const Offset(300, 400)));
+      await tester.pumpAndSettle();
+      expect(c.motionOf("a").instances!.count, 2);
+    });
   });
 
   group("in a game", () {

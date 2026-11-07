@@ -672,6 +672,14 @@ extension CanvasTools on CanvasController {
   void setElementAnimation(String id, ElementAnimation animation) {
     var e = document.elementById(id);
     if (e == null) return;
+    // A new preset brings its own curve and way of cutting, as the
+    // sidebar's applyElementAnimation does: Build up and Break apart differ
+    // only in these. Numbers set on the same preset are kept.
+    var was = CanvasController.elementAnimationOf(e);
+    if (animation.preset != was.preset) {
+      animation = animation.copyWith(
+          ease: animation.preset.wants, effect: animation.preset.effect);
+    }
     replaceElement(CanvasController._withElementAnimation(e, animation),
         transient: true);
   }

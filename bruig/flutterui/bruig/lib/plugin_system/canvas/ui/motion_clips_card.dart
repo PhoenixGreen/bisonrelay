@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+import 'dart:convert' show jsonEncode;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
@@ -8,9 +8,11 @@ import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_clip_display.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 // motion_clips_card.dart is the Motion chain's first card, as the chain
 // prototype has it (Ken, 2026-11-08): the element's clips as chips to pick
@@ -259,15 +261,16 @@ class MotionClipsCard extends StatelessWidget {
       foldedBody: const SizedBox(),
       body: const SizedBox.shrink(),
       controls: controls,
-      display: CustomPaint(
-        key: const ValueKey("motionClipsPath"),
-        painter: _ClipPath(
-            c,
-            controller.frame / math.max(1, controller.document.frameRate),
-            studio.display,
-            accent),
-        // The whole screen: a painter with no child is given no room.
-        child: const SizedBox.expand(),
+      // Its screen: what it does, drawn as the settings have it, and
+      // edited there (see motion_clip_display.dart).
+      display: MotionClipDisplay(
+        key: ValueKey("motionClipDisplay-${c?.id}"),
+        controller: controller,
+        element: e,
+        clip: c,
+        accent: accent,
+        edit: edit,
+        onReset: c == null ? null : _reset(c, edit, target),
       ),
     );
   }
@@ -344,7 +347,9 @@ class MotionClipsCard extends StatelessWidget {
           }
         },
       ),
-      if (!own && preset != null && preset.ways.isNotEmpty && !c.edited)
+      // Shown edited too, so the settings -- and the screen over them --
+      // keep their places as it is edited; picked, the preset again.
+      if (!own && preset != null && preset.ways.isNotEmpty)
         StudioDrop<MotionWay>(
           key: const ValueKey("animPresetWay"),
           label: "Which way",
@@ -406,6 +411,40 @@ class MotionClipsCard extends StatelessWidget {
     ];
   }
 
+  /// _reset puts [c] back as its preset made it -- which way it goes, its
+  /// name, speed, layer and launch kept -- or, its own style, that style's
+  /// direction and reach as they start. Null where it is as it was made.
+  VoidCallback? _reset(
+      MotionClip c, ClipEditFn edit, String Function() target) {
+    if (c.isSound) return null;
+    var e = element;
+    if (c.inside["own"] == true && c.keys.isEmpty) {
+      if (!CanvasController.animates(e)) return null;
+      var a = CanvasController.elementAnimationOf(e);
+      var arriving = c.kind == MotionKind.arrive;
+      var changed = arriving
+          ? a.direction != null || a.strength != 1
+          : a.exitStrength != 1;
+      if (!changed) return null;
+      return () {
+        controller.beginInteraction();
+        controller.setElementAnimation(
+            e.id,
+            arriving
+                ? a.copyWith(clearDirection: true, strength: 1)
+                : a.copyWith(exitStrength: 1));
+        controller.endInteraction();
+      };
+    }
+    var p = presetNamed(c.preset);
+    if (p == null) return null;
+    MotionWay? way(MotionClip x) => p.ways.isEmpty ? null : _wayOf(x, p);
+    var fresh = p.onto(c, way: way(c), target: p.aims ? target() : "");
+    if (jsonEncode(fresh.toJson()) == jsonEncode(c.toJson())) return null;
+    return () =>
+        edit((x) => p.onto(x, way: way(x), target: p.aims ? target() : ""));
+  }
+
   /// _wayOf is which way [p] goes as [c]'s keys have it.
   static MotionWay _wayOf(MotionClip c, MotionPreset p) {
     for (var keys in c.keys.values) {
@@ -438,92 +477,6 @@ class MotionClipsCard extends StatelessWidget {
   }
 }
 
-/// _ClipPath is [clip]'s path, from its across and down keys, with where it
-/// is at [seconds] on it: the prototype's Motion clips screen.
-class _ClipPath extends CustomPainter {
-  final MotionClip? clip;
-  final double seconds;
-  final Color back, accent;
-  _ClipPath(this.clip, this.seconds, this.back, this.accent);
-
-  static double _at(List<MotionKey>? keys, double t) {
-    if (keys == null || keys.isEmpty) return 0;
-    double v(MotionKey k) =>
-        k.value is MotionNumber ? (k.value as MotionNumber).value : 0;
-    if (t <= keys.first.t) return v(keys.first);
-    for (var i = 1; i < keys.length; i++) {
-      if (t <= keys[i].t) {
-        var a = keys[i - 1], b = keys[i];
-        var u = b.t == a.t ? 1.0 : (t - a.t) / (b.t - a.t);
-        return v(a) + (v(b) - v(a)) * u;
-      }
-    }
-    return v(keys.last);
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    var w = size.width, h = size.height;
-    canvas.drawRect(Offset.zero & size, Paint()..color = back);
-    var grid = Paint()..color = Color.lerp(back, Colors.white, 0.06)!;
-    for (var i = 1; i < 8; i++) {
-      canvas.drawRect(
-          Rect.fromLTWH((i * w / 8).roundToDouble(), 0, 1, h), grid);
-    }
-    for (var i = 1; i < 4; i++) {
-      canvas.drawRect(
-          Rect.fromLTWH(0, (i * h / 4).roundToDouble(), w, 1), grid);
-    }
-    var c = clip;
-    if (c == null || c.length <= 0) return;
-    var xs = c.keys[MotionProp.x], ys = c.keys[MotionProp.y];
-    // Its path, scaled to fit: across and down over its length; with
-    // neither, how big it gets over time, as a line.
-    var pts = <Offset>[];
-    for (var i = 0; i <= 60; i++) {
-      var t = c.length * i / 60;
-      pts.add(xs == null && ys == null
-          ? Offset(t / c.length, -_at(c.keys[MotionProp.scale], t))
-          : Offset(_at(xs, t), _at(ys, t)));
-    }
-    var minX = pts.map((p) => p.dx).reduce(math.min),
-        maxX = pts.map((p) => p.dx).reduce(math.max),
-        minY = pts.map((p) => p.dy).reduce(math.min),
-        maxY = pts.map((p) => p.dy).reduce(math.max);
-    var spanX = math.max(1e-6, maxX - minX),
-        spanY = math.max(1e-6, maxY - minY);
-    Offset fit(Offset p) => Offset(
-        14 + (spanX < 1e-3 ? 0.5 : (p.dx - minX) / spanX) * (w - 28),
-        14 + (spanY < 1e-3 ? 0.5 : (p.dy - minY) / spanY) * (h - 28));
-    var dash = Paint()
-      ..color = accent
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-    for (var i = 0; i < pts.length - 1; i += 2) {
-      canvas.drawLine(fit(pts[i]), fit(pts[i + 1]), dash);
-    }
-    // Where it is now, round its length.
-    var t = c.loop
-        ? (seconds * c.speed) % c.length
-        : math.min(c.length, seconds * c.speed % (c.length * 1.5));
-    var now = xs == null && ys == null
-        ? Offset(t / c.length, -_at(c.keys[MotionProp.scale], t))
-        : Offset(_at(xs, t), _at(ys, t));
-    canvas.drawCircle(fit(now), 7, Paint()..color = const Color(0xFFE2B04A));
-    canvas.drawCircle(
-        fit(now),
-        7,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5
-          ..color = const Color(0xFFB8860B));
-  }
-
-  @override
-  bool shouldRepaint(_ClipPath old) =>
-      old.clip != clip || old.seconds != seconds || old.accent != accent;
-}
-
 /// _ClipName is the picked clip's name, typed into.
 class _ClipName extends StatefulWidget {
   final String name;
@@ -536,11 +489,12 @@ class _ClipName extends StatefulWidget {
 
 class _ClipNameState extends State<_ClipName> {
   late final _text = TextEditingController(text: widget.name);
+  final _focus = FocusNode(debugLabel: "clipName");
 
   @override
   void didUpdateWidget(_ClipName old) {
     super.didUpdateWidget(old);
-    if (widget.name != _text.text && !FocusScope.of(context).hasFocus) {
+    if (widget.name != _text.text && !_focus.hasFocus) {
       _text.text = widget.name;
     }
   }
@@ -548,6 +502,7 @@ class _ClipNameState extends State<_ClipName> {
   @override
   void dispose() {
     _text.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -555,10 +510,9 @@ class _ClipNameState extends State<_ClipName> {
   Widget build(BuildContext context) {
     var s = MixerLook.of(context).studio;
     // Laid out as a StudioDrop is -- its label over a box 22 high -- to
-    // line up with the dropdowns beside it (Ken).
-    var edge = OutlineInputBorder(
-        borderRadius: BorderRadius.circular(4),
-        borderSide: BorderSide(color: s.edge));
+    // line up with the dropdowns beside it (Ken). One line: Return keeps
+    // the name and leaves it, Escape leaves it as it was (Ken: it could not
+    // be left once renamed).
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -568,30 +522,39 @@ class _ClipNameState extends State<_ClipName> {
           child: Text("Name",
               maxLines: 1, style: TextStyle(fontSize: 10, color: s.muted)),
         ),
-        SizedBox(
+        Container(
+          key: const ValueKey("animClipNameBox"),
           height: 22,
-          child: TextField(
-            key: const ValueKey("animClipName"),
-            controller: _text,
-            style: TextStyle(fontSize: 11, color: s.text),
-            textAlignVertical: TextAlignVertical.center,
-            // The whole 22, as the dropdowns' boxes.
-            expands: true,
-            maxLines: null,
-            decoration: InputDecoration(
-              isDense: true,
-              filled: true,
-              fillColor: s.inset,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 7),
-              border: edge,
-              enabledBorder: edge,
-              focusedBorder: edge,
-            ),
-            onSubmitted: widget.onNamed,
-            onTapOutside: (_) {
-              if (_text.text != widget.name) widget.onNamed(_text.text);
-              FocusScope.of(context).unfocus();
+          padding: const EdgeInsets.symmetric(horizontal: 7),
+          alignment: Alignment.centerLeft,
+          decoration: BoxDecoration(
+              color: s.inset,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: s.edge)),
+          child: CallbackShortcuts(
+            bindings: {
+              const SingleActivator(LogicalKeyboardKey.escape): () {
+                _text.text = widget.name;
+                _focus.unfocus();
+              },
             },
+            child: TextField(
+              key: const ValueKey("animClipName"),
+              controller: _text,
+              focusNode: _focus,
+              maxLines: 1,
+              style: TextStyle(fontSize: 11, color: s.text),
+              decoration: const InputDecoration.collapsed(hintText: ""),
+              onSubmitted: (v) {
+                widget.onNamed(v);
+                _focus.unfocus();
+              },
+              onTapOutside: (_) {
+                if (!_focus.hasFocus) return;
+                if (_text.text != widget.name) widget.onNamed(_text.text);
+                _focus.unfocus();
+              },
+            ),
           ),
         ),
       ],

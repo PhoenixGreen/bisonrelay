@@ -12,10 +12,11 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/camera_section.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
+    show StudioDrop;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -160,8 +161,10 @@ void main() {
                     child: AnimationPanel(controller: c, height: 360)))),
       ));
       await tester.pumpAndSettle();
+      // The Camera card's Move, as the prototype's scene chain has it.
+      expect(find.byKey(const ValueKey("sceneCameraCard")), findsOneWidget);
       tester
-          .widget<CanvasDropdown<CameraMove>>(
+          .widget<StudioDrop<CameraMove>>(
               find.byKey(const ValueKey("cameraMove")))
           .onChanged(CameraMove.pushIn);
       await tester.pumpAndSettle();

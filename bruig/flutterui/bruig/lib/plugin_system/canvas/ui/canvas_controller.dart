@@ -149,6 +149,8 @@ import 'package:bruig/plugin_system/canvas/model/motion_convert.dart'
     show TracksConverted, convertTracks, hasTracks;
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart'
     show MotionEditing, motionId, everyMotion;
+import 'package:bruig/plugin_system/canvas/model/instances.dart'
+    show CopyValue, ElementInstance, InstanceSet, deviceOwnKey;
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
     show ClipTriggerKind, MotionKind;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
@@ -172,6 +174,7 @@ part 'controller/tools.dart';
 part 'controller/mixer.dart';
 part 'controller/keyframes.dart';
 part 'controller/timeline_clips.dart';
+part 'controller/copies.dart';
 
 // canvas_controller.dart holds everything about the canvas being edited that
 // is not the document itself: the selection, the playhead, the zoom, the undo
@@ -451,6 +454,14 @@ class CanvasController extends ChangeNotifier {
     if (_imageEditing != null) {
       var e = editingImage!;
       _alsoPicked.removeWhere((id) => e.layerById(id) == null);
+    }
+    // Picked copies, only while their element is the one thing selected,
+    // and only those it still has.
+    if (_copiesOf case var of?
+        when _selection.length != 1 || _selection.first != of) {
+      _copiesOf = null;
+      _pickedCopies = {};
+      if (_placingCopies == of) _placingCopies = null;
     }
     if (!_viewOnly) _revision++;
     super.notifyListeners();
@@ -3527,6 +3538,16 @@ class CanvasController extends ChangeNotifier {
 
   /// _motionCurves is whether the Motion view shows its Curves.
   bool _motionCurves = false;
+
+  /// _copiesOf and _pickedCopies are the copies of an element reused that
+  /// are picked -- on the canvas or in its Instances card -- and so what
+  /// its chain edits; none picked is all of them. See controller/copies.dart.
+  String? _copiesOf;
+  Set<String> _pickedCopies = {};
+
+  /// _placingCopies is the element whose copies a click on the canvas
+  /// places, one a click: see placingCopies.
+  String? _placingCopies;
 
   /// _presetNames are the presets last put on devices, by "strip|device".
   final Map<String, String> _presetNames = {};

@@ -62,6 +62,13 @@ class _Layer {
   LivePlay? play;
   MotionPose? carry;
 
+  /// fromTimeline is whether [carry] is where the timeline left the layer,
+  /// no clip of the slots played on it yet: the first launched on it takes
+  /// the layer over from the timeline, starting from rest rather than on
+  /// top of it (Ken, 2026-11-08: an arrival placed and launched played on
+  /// its own held first frame -- Pop at nothing, Slide in off the page).
+  bool fromTimeline = false;
+
   /// next is the clip waiting to start at [nextAt]; "" a stop waiting.
   String? next;
   double nextAt = 0;
@@ -302,7 +309,8 @@ class MotionPlayer implements LiveMotion {
             }
             l.play = null;
           } else {
-            if (!again) l.carry = here;
+            if (!again) l.carry = l.fromTimeline ? null : here;
+            l.fromTimeline = false;
             l.play = LivePlay(next, at);
             if (recording) {
               var c = motion.clip(next);
@@ -325,6 +333,21 @@ class MotionPlayer implements LiveMotion {
     return events;
   }
 
+  /// _playedFor is how long [c] plays once launched: its length at its
+  /// speed -- or, reused, until the last of its copies is through it, each
+  /// later by its start and at its own speed (see liveForCopy).
+  static double _playedFor(MotionClip c, ElementMotion motion) {
+    var own = c.length / math.max(0.01, c.speed);
+    var set = motion.instances;
+    if (set == null) return own;
+    var longest = own;
+    for (var i = 0; i < set.count; i++) {
+      longest = math.max(
+          longest, set.startOf(i) + own / math.max(0.05, set.speedOf(i)));
+    }
+    return longest;
+  }
+
   void _end(String id, _Playing p, _Layer l, ElementMotion motion, Rect box,
       MotionScene scene, bool replaces, double now, List<MotionEvent> events) {
     var play = l.play;
@@ -335,7 +358,7 @@ class MotionPlayer implements LiveMotion {
       return;
     }
     if (c.loop) return;
-    var end = play.start + c.length / math.max(0.01, c.speed);
+    var end = play.start + _playedFor(c, motion);
     if (now < end - 1e-9) return;
     if (c.after == ClipHold.last) {
       l.carry = clipPose(c, c.length, box, scene,
@@ -397,9 +420,12 @@ class MotionPlayer implements LiveMotion {
     var scene = motionSceneOf(doc, frame);
     var replaces = motion.clips.any((c) => c.kind == MotionKind.camera);
     for (var (i, l) in p.layers.indexed) {
-      var pose =
-          layerPose(motion, i, t, boxOf(e), times, scene, replaces: replaces);
+      // Where it was left: what has played, not a clip yet to start held
+      // at its first frame -- an arrival waiting would keep it hidden.
+      var pose = layerPose(motion, i, t, boxOf(e), times, scene,
+          replaces: replaces, holdBefore: false);
       l.carry = pose.isRest ? null : pose;
+      l.fromTimeline = true;
     }
     return p;
   }

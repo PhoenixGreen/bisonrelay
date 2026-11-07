@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show boxOf;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/model/instances.dart' show CopyValue;
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
@@ -676,21 +677,45 @@ class MotionOutputCard extends StatelessWidget {
       foldedBody: const SizedBox(),
       body: const SizedBox.shrink(),
       controls: (tier) => [
-        DeviceKnob(
-          key: const ValueKey("motionOutputOpacity"),
-          label: "Opacity",
-          text: "${(e.opacity * 100).round()}%",
-          value: e.opacity,
-          initial: 1,
-          min: 0,
-          max: 1,
-          accent: const Color(0xFFCFCBDF),
-          ink: skin.ink,
-          onChanged: (v, {transient = false}) => write(
-              e.withBase(opacity: (v * 100).roundToDouble() / 100),
-              transient: transient),
-          onCommit: controller.endInteraction,
-        ),
+        // With copies picked, how much of them is seen: theirs.
+        if (controller.copiesPicked(e.id))
+          DeviceKnob(
+            key: const ValueKey("motionOutputOpacity"),
+            label: "Opacity",
+            text:
+                "${(controller.copyValue(e.id, CopyValue.opacity) * 100).round()}%",
+            value: controller.copyValue(e.id, CopyValue.opacity),
+            initial: 1,
+            min: 0,
+            max: 1,
+            own: controller.copyOwnOf(e.id, CopyValue.opacity.name) != null,
+            accent: const Color(0xFFCFCBDF),
+            ink: skin.ink,
+            onChanged: (v, {transient = false}) {
+              controller.beginInteraction();
+              controller.setCopyOwn(
+                  e.id, CopyValue.opacity.name, (v * 100).roundToDouble() / 100,
+                  transient: true);
+              if (!transient) controller.endInteraction();
+            },
+            onCommit: controller.endInteraction,
+          )
+        else
+          DeviceKnob(
+            key: const ValueKey("motionOutputOpacity"),
+            label: "Opacity",
+            text: "${(e.opacity * 100).round()}%",
+            value: e.opacity,
+            initial: 1,
+            min: 0,
+            max: 1,
+            accent: const Color(0xFFCFCBDF),
+            ink: skin.ink,
+            onChanged: (v, {transient = false}) => write(
+                e.withBase(opacity: (v * 100).roundToDouble() / 100),
+                transient: transient),
+            onCommit: controller.endInteraction,
+          ),
         StudioDrop<bool>(
           key: const ValueKey("motionOutputShown"),
           label: "Shown",

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/mix_graph.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -84,6 +85,52 @@ void main() {
       expect(l[i].abs(), lessThanOrEqualTo(ceiling + 1e-6));
     }
     expect(peakDb(l), closeTo(-1, 0.3), reason: "held at it, not far below");
+  });
+
+  // Ken, 2026-11-08: the prototype's Limiter -- its Release and Look-ahead
+  // set, and how far it turns down shown.
+  test("the limiter says how far it turned down; its look-ahead is kept", () {
+    var (l, r) = sine(440, 1.0);
+    var lim = Limiter(-6, aheadMs: 2, releaseMs: 50);
+    lim.process(l, r, l.length);
+    expect(gainToDb(lim.least), lessThan(-4), reason: "a full-scale tone");
+    var (q, qr) = sine(440, 0.05);
+    lim.process(q, qr, q.length);
+    expect(lim.least, lessThan(0.9), reason: "still letting go: its release");
+    var (q2, qr2) = sine(440, 0.05);
+    lim.process(q2, qr2, q2.length);
+    expect(lim.least, greaterThan(0.99), reason: "then a quiet one let alone");
+    var m = const MasterMix(limiterAheadMs: 2, limiterReleaseMs: 300);
+    var back = MasterMix.fromJson(m.toJson());
+    expect(back.limiterAheadMs, 2);
+    expect(back.limiterReleaseMs, 300);
+    expect(const MasterMix().isDefault, isTrue);
+  });
+
+  test("the master measures what leaves it, kept as its settings change", () {
+    var g = MixGraph()..setMaster(const MasterMix(limiter: false));
+    const n = 4800;
+    var l = Float32List(n), r = Float32List(n);
+    void block() {
+      g.begin(n);
+      var (il, ir) = g.input("a", n);
+      var (x, y) = sine(440, 0.3, seconds: n / mixRate);
+      il.setRange(0, n, x);
+      ir.setRange(0, n, y);
+      g.finish(l, r, n);
+    }
+
+    for (var i = 0; i < 20; i++) {
+      block();
+    }
+    var first = g.loudnessOf()!;
+    expect(first.momentary.isFinite, isTrue);
+    g.setMaster(const MasterMix(limiter: true, gainDb: -1));
+    block();
+    expect(g.loudnessOf()!.integrated.isFinite, isTrue,
+        reason: "not started again by a setting");
+    g.resetLoudness();
+    expect(g.loudnessOf()!.integrated.isFinite, isFalse);
   });
 
   test("a strip's balance turns down the other side, and mute is silence", () {

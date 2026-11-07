@@ -31,9 +31,9 @@ class SceneTransitionTarget {
   /// last is whether there is no scene after it to give way to.
   bool get last => !master && scene >= controller.document.allScenes.length - 1;
 
-  void write(SceneTransition next) => master
-      ? controller.setDefaultTransition(next)
-      : controller.setSceneTransition(scene, next);
+  void write(SceneTransition next, {bool transient = false}) => master
+      ? controller.setDefaultTransition(next, transient: transient)
+      : controller.setSceneTransition(scene, next, transient: transient);
 
   /// shows is whether [part] has anything to show for this transition: a
   /// cut has no length, look or sound, and the master's is where every
@@ -52,6 +52,9 @@ class SceneTransitionTarget {
 /// _started is [value] changed to another kind, set up the way that kind
 /// looks best: one set of settings cannot suit every kind (six suits blinds
 /// but not halftone dots). The colour is carried over, as a design choice.
+SceneTransition startedAs(SceneTransition value, SceneTransitionKind kind) =>
+    _started(value, kind);
+
 SceneTransition _started(SceneTransition value, SceneTransitionKind kind) =>
     SceneTransition.bestFor(kind).copyWith(color: value.color);
 

@@ -944,6 +944,24 @@ extension CanvasSession on CanvasController {
         ));
   }
 
+  /// makeSessionClip puts a clip in the empty slot [row] of [channel], as a
+  /// double-click there does (Ken, 2026-11-08, as the motion slots): on a
+  /// MIDI channel an empty one to draw notes into, on an audio channel one
+  /// of the channel's sound -- its first; a slot's menu has the rest. It is
+  /// picked. False where there is no sound to make one of.
+  bool makeSessionClip(String channel, int row) {
+    if (session.at(channel, row) != null) return false;
+    if (instrumentChannel(channel)) {
+      newMidiClip(channel, row);
+    } else {
+      var sounds = soundsOf(channel);
+      if (sounds.isEmpty) return false;
+      clipFromSound(channel, row, sounds.first);
+    }
+    selectSlot(channel, row);
+    return true;
+  }
+
   /// emptySlotOf is the first empty slot of [channel], or null when every
   /// one is full.
   int? emptySlotOf(String channel) {

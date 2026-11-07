@@ -31,6 +31,10 @@ extension MotionEditing on CanvasController {
       {bool transient = false}) {
     var e = document.elementById(element);
     if (e == null) return;
+    // Its last clip taken out, it keeps its channel: see ElementMotion.kept.
+    if (motion.isEmpty && !motion.kept && e.base.motion.channelled) {
+      motion = motion.copyWith(kept: true);
+    }
     replaceElement(e.withBase(motion: motion), transient: transient);
   }
 

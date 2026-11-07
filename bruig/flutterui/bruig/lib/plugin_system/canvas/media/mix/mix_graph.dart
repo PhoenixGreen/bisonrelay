@@ -28,6 +28,10 @@ import 'package:bruig/plugin_system/canvas/model/surround.dart';
 // filtered below 120Hz. The editor hears the speakers folded down to two;
 // an export takes them whole from [speakers].
 
+/// limitKey is the master limiter's turn-down among a graph's levels: see
+/// MixGraph._publishMaster.
+const String limitKey = "@limit";
+
 class _Bus {
   Float32List l, r;
   _Bus(int n)
@@ -122,6 +126,19 @@ class MixGraph {
   String _masterSignature = "";
 
   final Map<String, (double, double)> _levels = {};
+
+  /// _loudness measures what leaves the master, kept while its settings
+  /// change, so the whole song's reading is not lost to a turned knob.
+  LoudnessTap _loudness = LoudnessTap();
+
+  /// _publishMaster notes what the master's cards read: the limiter's
+  /// turn-down among the levels ([limitKey], as a gain), and what leaves
+  /// it measured for the Loudness card (see loudnessOf).
+  void _publishMaster(Float32List l, Float32List r, int n) {
+    var g = _master.limited;
+    _levels[limitKey] = (g, g);
+    _loudness.process(l, r, n);
+  }
   (double, double) _masterLevels = (0, 0);
 
   /// The scene's bus (see CanvasScene.bus): the channels in [_sceneKeys]
@@ -426,14 +443,17 @@ class MixGraph {
     for (var d in _devicesOf(key)) {
       if (d case LoudnessTap t) return t.reading;
     }
-    return null;
+    // The master always measures what leaves it, for its Loudness card.
+    return key == null ? _loudness.reading : null;
   }
 
-  /// resetLoudness starts strip [key]'s Loudness measuring again.
+  /// resetLoudness starts strip [key]'s Loudness measuring again -- the
+  /// master's, its own meter too.
   void resetLoudness([String? key]) {
     for (var d in _devicesOf(key)) {
       if (d case LoudnessTap t) t.reset();
     }
+    if (key == null) _loudness.reset();
   }
 
   /// scoped are the devices whose screens show the real sound, by strip
@@ -682,6 +702,7 @@ class MixGraph {
       _master.tapping = tapped.contains(masterTapKey);
       _master.scopes = scoped[masterTapKey] ?? const {};
       _master.process(l, r, n, limit: limit);
+      _publishMaster(l, r, n);
       _out[0].setRange(0, n, l);
       _out[1].setRange(0, n, r);
       _masterLevels = _peaks(l, r, n);

@@ -14,14 +14,14 @@ import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/copies_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_clips_card.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_curves.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/scene_transition_parts.dart';
+import 'package:bruig/plugin_system/canvas/ui/scene_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/camera_section.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -168,64 +168,46 @@ class _AnimationPanelState extends State<AnimationPanel> {
     ]);
   }
 
-  /// _sceneBody is a scene picked from the timeline: the transition after
-  /// it, part by part, and its camera.
+  /// _sceneBody is a scene picked from the timeline, as a chain like every
+  /// other (Ken, 2026-11-08: the prototype's scene design): how it gives
+  /// way to the next, and its camera's slow move, each a studio card.
   Widget _sceneBody(BuildContext context, int index) {
-    var colors = ThemeNotifier.of(context).colors;
-    var document = controller.document;
-    var target = SceneTransitionTarget(controller, index);
-    var master = target.master;
-    Widget part(TransitionPart p, String id, String title, double width,
-            {String? help}) =>
-        _device(
-            id,
-            title,
-            width,
-            SceneTransitionPart(
-              target: target,
-              part: p,
-              onPreview: () => controller.previewTransitionAfter(index),
-            ),
-            colors,
-            help: help);
-    var parts = [
-      part(TransitionPart.choice, "sceneTransition", "Transition", 240,
-          help: "How this ${document.kind.one} gives way to the next. On the "
-              "master ${document.kind.one}, the one every "
-              "${document.kind.one} starts from."),
-      if (target.shows(TransitionPart.timing))
-        part(TransitionPart.timing, "sceneTiming", "How long", 180),
-      if (target.shows(TransitionPart.looks))
-        part(TransitionPart.looks, "sceneLooks", "What it looks like", 220),
-      if (target.shows(TransitionPart.sound))
-        part(TransitionPart.sound, "sceneSound", "Sound", 280),
-      if (target.shows(TransitionPart.source))
-        part(TransitionPart.source, "sceneSource", "Where it comes from", 220,
-            help: "Off, this ${document.kind.one} uses the transition set on "
-                "the master ${document.kind.one}, and changing that one "
-                "changes it here. On, it keeps its own whatever the master "
-                "says."),
-      // Its slow move: the one being edited, which a double click has
-      // opened.
-      if (!master && document.at == index)
-        _device("sceneCamera", "Camera", 240,
-            CanvasCameraSection(controller: controller), colors),
-    ];
+    var studio = MixerLook.of(context).studio;
+    var master = controller.document.editingMaster;
+    var h = widget.height - 40;
+    bool shut(String id) => _folded.contains("$id:scene$index");
+    VoidCallback fold(String id) => () => setState(() => shut(id)
+        ? _folded.remove("$id:scene$index")
+        : _folded.add("$id:scene$index"));
     return Container(
       key: const ValueKey("animationPanel"),
       height: widget.height,
-      color: colors.surfaceContainerLow,
-      child: Column(children: [
-        Expanded(
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            children: [
-              for (var w in parts) ...[w, const SizedBox(width: 6)],
-            ],
-          ),
-        ),
-      ]),
+      color: studio.panel,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+        children: [
+          _zone("Transition", "How it gives way to the next"),
+          SceneTransitionCard(
+              key: const ValueKey("sceneTransitionCard"),
+              controller: controller,
+              scene: index,
+              folded: shut("transition"),
+              onFold: fold("transition"),
+              height: h),
+          // The master has no camera of its own: each scene has its move.
+          if (!master) ...[
+            _zone("Camera", "Its slow move over the scene"),
+            SceneCameraCard(
+                key: const ValueKey("sceneCameraCard"),
+                controller: controller,
+                scene: index,
+                folded: shut("camera"),
+                onFold: fold("camera"),
+                height: h),
+          ],
+        ].expand((w) => [w, const SizedBox(width: 6)]).toList(),
+      ),
     );
   }
 
@@ -288,6 +270,10 @@ class _AnimationPanelState extends State<AnimationPanel> {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
         children: [
+          // The element and its copies first: what the rest edits (Ken,
+          // 2026-11-08).
+          _zone("Copies", "The element and its copies: which the chain edits"),
+          _instancesCard(e),
           // Source: what it plays, when, and what starts it -- as the chain
           // prototype has it. Its keys are the Curves tab's.
           _zone("Source", "Its clips: what it plays, when and where"),
@@ -341,6 +327,18 @@ class _AnimationPanelState extends State<AnimationPanel> {
           ? _folded.remove("output:${e.id}")
           : _folded.add("output:${e.id}")));
 
+  /// _instancesCard is [e]'s copies, the chain's first card: see
+  /// InstancesCard.
+  Widget _instancesCard(CanvasElement e) => InstancesCard(
+      key: const ValueKey("instancesCard"),
+      controller: controller,
+      element: e.id,
+      folded: _folded.contains("instances:${e.id}"),
+      onFold: () => setState(() => _folded.contains("instances:${e.id}")
+          ? _folded.remove("instances:${e.id}")
+          : _folded.add("instances:${e.id}")),
+      height: widget.height - 40);
+
   /// _clipsCard is the Source's first card: [e]'s clips, [c] the one
   /// picked (see MotionClipsCard).
   Widget _clipsCard(CanvasElement e, MotionClip? c) => MotionClipsCard(
@@ -379,52 +377,34 @@ class _AnimationPanelState extends State<AnimationPanel> {
         element: e.id,
         upto: upto,
         height: h);
-    // Its moves, with its Instances among them: first, until moved.
+    // Its moves. Its Instances is the chain's first card (see
+    // _instancesCard): every copy has all of them, each with its own values.
     var reused = e.base.motion.instances != null;
-    var poses = [
+    var moves = [
       for (var d in devices)
-        if (d.side == MotionDeviceSide.pose) d,
+        if (d.side == MotionDeviceSide.pose &&
+            d.kind != MotionDeviceKind.instances)
+          d,
     ];
-    var placed = poses.any((d) => d.kind == MotionDeviceKind.instances);
-    List<MotionDevice?> moves = [
-      if (!reused || !placed) null,
-      for (var d in poses)
-        if (d.kind != MotionDeviceKind.instances || reused)
-          d.kind == MotionDeviceKind.instances ? null : d,
-    ];
-    Widget instancesCard(int at) => InstancesCard(
-        key: const ValueKey("instancesCard"),
-        controller: controller,
-        element: e.id,
-        folded: _folded.contains("instances:${e.id}"),
-        onFold: () => setState(() => _folded.contains("instances:${e.id}")
-            ? _folded.remove("instances:${e.id}")
-            : _folded.add("instances:${e.id}")),
-        height: h,
-        canLeft: reused && at > 0,
-        canRight: reused && at < moves.length - 1);
-    // Each join counts the moves switched on before it, as the chain runs.
-    var upto = 0;
+    // Each join counts the moves switched on before it, as the chain runs --
+    // the Instances step first of them, reused.
+    var upto = reused ? 1 : 0;
+    var first = upto;
     var row = <Widget>[];
-    for (var (i, d) in moves.indexed) {
-      if (d == null) {
-        row.add(instancesCard(i));
-        if (reused) row.add(join(++upto));
-      } else {
-        row.add(card(d));
-        // Switched off, it passes what it is given, and a modulator moves
-        // knobs, not the element: the join after either would be the one
-        // before it again. A modulator is still counted, as the preview
-        // counts it (MotionPreview.upto).
-        if (d.on) {
-          upto++;
-          if (!d.modulates) row.add(join(upto));
-        }
+    for (var d in moves) {
+      row.add(card(d));
+      // Switched off, it passes what it is given, and a modulator moves
+      // knobs, not the element: the join after either would be the one
+      // before it again. A modulator is still counted, as the preview
+      // counts it (MotionPreview.upto).
+      if (d.on) {
+        upto++;
+        if (!d.modulates) row.add(join(upto));
       }
     }
     return [
       _zone("Before", "Moves: where it is, and when"),
-      join(0),
+      join(first),
       ...row,
       AddMotionDeviceSlot(
           key: const ValueKey("addMotionPose"),
@@ -437,7 +417,15 @@ class _AnimationPanelState extends State<AnimationPanel> {
       if (e is CameraElement)
         _cameraNote(h)
       else ...[
-        DrawingCard(name: e.name.isEmpty ? e.id : e.name, height: h),
+        DrawingCard(
+            key: const ValueKey("drawingCard"),
+            controller: controller,
+            element: e,
+            folded: _folded.contains("drawing:${e.id}"),
+            onFold: () => setState(() => _folded.contains("drawing:${e.id}")
+                ? _folded.remove("drawing:${e.id}")
+                : _folded.add("drawing:${e.id}")),
+            height: h),
         _zone("After", "Looks: how it looks once drawn"),
         for (var d in devices)
           if (d.side == MotionDeviceSide.look) card(d),
@@ -511,6 +499,9 @@ class _AnimationPanelState extends State<AnimationPanel> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
             children: [
+              _zone("Copies",
+                  "The element and its copies: which the chain edits"),
+              _instancesCard(e),
               _zone("Source", "Its clips: what it plays, when and where"),
               _clipsCard(e, null),
               ..._chain(e),
