@@ -13,7 +13,8 @@ import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show KeyDownEvent, KeyUpEvent, KeyEvent;
+import 'package:flutter/services.dart'
+    show KeyDownEvent, KeyUpEvent, KeyEvent, LogicalKeyboardKey;
 
 // instrument_editor.dart is the Instrument editor, in the Chain: how a MIDI
 // channel's instrument plays its sound (instrument_shape.dart) -- its volume
@@ -896,7 +897,29 @@ class _KeyboardState extends State<_Keyboard> {
 
   /// _held are the keys down, each with the notes it plays.
   final Map<int, List<int>> _held = {};
+
+  /// _pressed is the key each pointer holds down, by pointer: kept on the
+  /// state, not in the build, so the press that let go finds the key it
+  /// played -- a rebuild between the two once left it sounding (Ken).
+  final Map<int, int> _pressed = {};
+
+  /// _typed is the key each computer key plays, by that key: let go, the
+  /// same note stops, whatever the octave has become meanwhile.
+  final Map<LogicalKeyboardKey, int> _typed = {};
   double _bend = 0.5, _mod = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Focus gone, no key up comes: what the computer keys hold goes.
+    _focus.addListener(() {
+      if (_focus.hasFocus) return;
+      for (var k in [..._typed.values]) {
+        _off(k);
+      }
+      _typed.clear();
+    });
+  }
 
   @override
   void dispose() {
@@ -939,16 +962,74 @@ class _KeyboardState extends State<_Keyboard> {
         return KeyEventResult.handled;
       }
     }
-    var i = ch.length == 1 ? keyRow.indexOf(ch) : -1;
-    if (i < 0) return KeyEventResult.ignored;
-    // Drum pads by their place along the row; anything else from the
-    // octave's C.
-    var drums = widget.element.instrument?.look == InstrumentLook.drums;
-    if (drums && i >= drumPads.length) return KeyEventResult.ignored;
-    var key = drums ? drumPads[i].$1 : _octave + i;
-    if (e is KeyDownEvent) _on(key, _byHeight ? 100 : _velocity);
-    if (e is KeyUpEvent) _off(key);
+    // Let go: the note it started, found by the key, not worked out again.
+    if (e is KeyUpEvent) {
+      var was = _typed.remove(e.logicalKey);
+      if (was == null) return KeyEventResult.ignored;
+      _off(was);
+      return KeyEventResult.handled;
+    }
+    var key = _keyFor(ch);
+    if (key == null) return KeyEventResult.ignored;
+    if (e is KeyDownEvent && !_typed.containsKey(e.logicalKey)) {
+      _typed[e.logicalKey] = key;
+      _on(key, _byHeight ? 100 : _velocity);
+    }
     return KeyEventResult.handled;
+  }
+
+  /// _keyFor is the note computer key [ch] plays, or null: drum pads by
+  /// their place along the row, anything else up from the octave's C.
+  int? _keyFor(String ch) {
+    var i = ch.length == 1 ? keyRow.indexOf(ch) : -1;
+    if (i < 0) return null;
+    var drums = widget.element.instrument?.look == InstrumentLook.drums;
+    if (drums) return i < drumPads.length ? drumPads[i].$1 : null;
+    return _octave + i;
+  }
+
+  /// _played is [child] played with the pointer, [hit] the key under a
+  /// point and how hard it strikes there: pressed, dragged across, and let
+  /// go -- or dragged off it -- the note stops.
+  Widget _played(
+          {required Key key,
+          required (int, int)? Function(Offset) hit,
+          required Widget child}) =>
+      Listener(
+        key: key,
+        onPointerDown: (e) {
+          _focus.requestFocus();
+          var h = hit(e.localPosition);
+          if (h == null) return;
+          // Held keys let go by a second press.
+          if (_hold && _held.containsKey(h.$1)) {
+            _off(h.$1, force: true);
+            setState(() {});
+            return;
+          }
+          _pressed[e.pointer] = h.$1;
+          _on(h.$1, h.$2);
+        },
+        onPointerMove: (e) {
+          var h = hit(e.localPosition);
+          var was = _pressed[e.pointer];
+          if (h?.$1 == was) return;
+          if (was != null) {
+            _pressed.remove(e.pointer);
+            _off(was);
+          }
+          if (h == null) return;
+          _pressed[e.pointer] = h.$1;
+          _on(h.$1, h.$2);
+        },
+        onPointerUp: (e) => _letGo(e.pointer),
+        onPointerCancel: (e) => _letGo(e.pointer),
+        child: child,
+      );
+
+  void _letGo(int pointer) {
+    var was = _pressed.remove(pointer);
+    if (was != null) _off(was);
   }
 
   /// _surface is the pads or the neck [size] big, played as the keys are:
@@ -957,41 +1038,27 @@ class _KeyboardState extends State<_Keyboard> {
     var layout = keyboardLayout(part, Offset.zero & size, titled: false);
     int velocity(double depth) =>
         _byHeight ? (40 + 87 * depth).round() : _velocity;
-    int? down;
-    return Listener(
+    var drums = part.look == InstrumentLook.drums;
+    return _played(
       key: const ValueKey("instrumentKeys"),
-      onPointerDown: (e) {
-        _focus.requestFocus();
-        var hit = layout.keyAt(e.localPosition);
-        if (hit == null) return;
-        if (_hold && _held.containsKey(hit.$1)) {
-          _off(hit.$1, force: true);
-          setState(() {});
-          return;
-        }
-        down = hit.$1;
-        _on(hit.$1, velocity(hit.$2));
-      },
-      onPointerMove: (e) {
-        var hit = layout.keyAt(e.localPosition);
-        if (hit == null || hit.$1 == down) return;
-        if (down != null) _off(down!);
-        down = hit.$1;
-        _on(hit.$1, velocity(hit.$2));
-      },
-      onPointerUp: (_) {
-        if (down != null) _off(down!);
-        down = null;
-      },
-      onPointerCancel: (_) {
-        if (down != null) _off(down!);
-        down = null;
+      hit: (p) => switch (layout.keyAt(p)) {
+        (var key, var depth)? => (key, velocity(depth)),
+        null => null,
       },
       child: CustomPaint(
         key: ValueKey("instrumentSurface-${part.look.name}"),
         size: size,
         painter: _SurfacePainter(layout, part,
             down: {for (var n in _held.values) ...n},
+            // The computer key each pad is played by, as Letters asks.
+            letters: drums && _labels == 0
+                ? {
+                    for (var (i, (key, _)) in drumPads.indexed)
+                      if (i < keyRow.length) key: keyRow[i].toUpperCase()
+                  }
+                : const {},
+            face: look.studio.raised,
+            ink: look.studio.text,
             accent: look.colors.primary),
       ),
     );
@@ -1170,36 +1237,11 @@ class _KeyboardState extends State<_Keyboard> {
                 int velocity(Offset p) => _byHeight
                     ? (40 + 87 * (p.dy / box.maxHeight).clamp(0.0, 1.0)).round()
                     : _velocity;
-                int? down;
-                return Listener(
+                return _played(
                   key: const ValueKey("instrumentKeys"),
-                  onPointerDown: (e) {
-                    _focus.requestFocus();
-                    var k = at(e.localPosition);
-                    if (k == null) return;
-                    // Held keys let go by a second press.
-                    if (_hold && _held.containsKey(k)) {
-                      _off(k, force: true);
-                      setState(() {});
-                      return;
-                    }
-                    down = k;
-                    _on(k, velocity(e.localPosition));
-                  },
-                  onPointerMove: (e) {
-                    var k = at(e.localPosition);
-                    if (k == null || k == down) return;
-                    if (down != null) _off(down!);
-                    down = k;
-                    _on(k, velocity(e.localPosition));
-                  },
-                  onPointerUp: (_) {
-                    if (down != null) _off(down!);
-                    down = null;
-                  },
-                  onPointerCancel: (_) {
-                    if (down != null) _off(down!);
-                    down = null;
+                  hit: (p) => switch (at(p)) {
+                    var k? => (k, velocity(p)),
+                    null => null,
                   },
                   child: CustomPaint(
                     size: box.biggest,
@@ -1226,19 +1268,30 @@ class _SurfacePainter extends CustomPainter {
   final KeyboardLayout layout;
   final InstrumentPart part;
   final Set<int> down;
+  final Map<int, String> letters;
+  final Color face;
+  final Color ink;
   final Color accent;
   _SurfacePainter(this.layout, this.part,
-      {required this.down, required this.accent});
+      {required this.down,
+      required this.accent,
+      required this.face,
+      required this.ink,
+      this.letters = const {}});
 
   @override
   void paint(Canvas canvas, Size size) =>
-      paintPlayingSurface(canvas, layout, part, lit: down, accent: accent);
+      paintPlayingSurface(canvas, layout, part,
+          lit: down, accent: accent, letters: letters, face: face, ink: ink);
 
   @override
   bool shouldRepaint(_SurfacePainter old) =>
       old.part != part ||
       old.layout.board != layout.board ||
       old.accent != accent ||
+      old.face != face ||
+      old.ink != ink ||
+      old.letters.length != letters.length ||
       !old.down.containsAll(down) ||
       !down.containsAll(old.down);
 }

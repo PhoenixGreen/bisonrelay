@@ -484,6 +484,42 @@ extension CanvasMixing on CanvasController {
       _audio?.deviceLevels(channel == mixerMasterKey ? "" : channel) ??
       const [];
 
+  /// deviceScope is what device [id] of [channel]'s strip passes now, for
+  /// its screen (see device_scope.dart): asked for while its display is
+  /// on, and stopped with [stopScope] when it is put off or away.
+  ScopeReading? deviceScope(String channel, String id) =>
+      _audio?.deviceScope(channel == mixerMasterKey ? "" : channel, id);
+
+  /// listening is the chain heard from a point, and where -- see listenAt --
+  /// or null.
+  (String, int)? get listening => _listening;
+
+  /// listenAt hears channel [channel] from step [step] of its chain, as the
+  /// prototype's "Listen from here"; null, all of it again.
+  void listenAt(String channel, int? step) {
+    if (_listening case (var was, _) when was != channel) {
+      _audio?.listenAt(was, null);
+    }
+    _listening = step == null ? null : (channel, step);
+    _audio?.listenAt(channel, step);
+    notifyListeners();
+  }
+
+  /// insertDevice puts [device] at step [at] of strip [key]'s chain: an
+  /// analyser added from a join. One undo step.
+  void insertDevice(String key, MixDevice device, int at) {
+    beginInteraction();
+    setDevicesOf(key, [...devicesOf(key), device], transient: true);
+    var devices = devicesOf(key);
+    var id = deviceIdAt(devices, devices.length - 1);
+    var from = chainOf(key).indexOf(id);
+    if (from >= 0 && from != at) moveDevice(key, id, at - from);
+    endInteraction();
+  }
+
+  void stopScope(String channel, String id) =>
+      _audio?.stopScope(channel == mixerMasterKey ? "" : channel, id);
+
   /// reduction is how many decibels [channel]'s compressor takes off now.
   double reduction(String channel) => _audio?.reduction(channel) ?? 0;
 

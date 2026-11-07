@@ -599,6 +599,45 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
+  /// analysing is whether device [id] of strip [owner] has its display
+  /// on: the real sound drawn, rather than a picture of its settings.
+  /// Off until switched on.
+  bool analysing(String owner, String id) =>
+      _analysing.contains("$owner|$id");
+
+  void setAnalysing(String owner, String id, bool on) {
+    if (on ? _analysing.add("$owner|$id") : _analysing.remove("$owner|$id")) {
+      if (!on) stopScope(owner, id);
+      notifyListeners();
+    }
+  }
+
+  /// showingB is whether device [id] of strip [owner] is heard with its
+  /// second set of settings: see toggleAB.
+  bool showingB(String owner, String id) => _abB.contains("$owner|$id");
+
+  /// toggleAB swaps device [id]'s settings with its other set, as the
+  /// prototype's A|B: pressed first, B starts as a copy of A, to change and
+  /// compare by ear. One undo step.
+  void toggleAB(String owner, String id) {
+    var devices = devicesOf(owner);
+    var i = deviceIndexOf(devices, id);
+    if (i < 0) return;
+    var d = devices[i];
+    var key = "$owner|$id";
+    var now = {for (var p in d.kind.params) p.id: d.value(p.id)};
+    var other = _abOther[key] ?? now;
+    var next = d;
+    for (var MapEntry(key: k, value: v) in other.entries) {
+      next = next.withValue(k, v);
+    }
+    _abOther[key] = now;
+    if (!_abB.remove(key)) _abB.add(key);
+    beginInteraction();
+    setDevicesOf(owner, [...devices]..[i] = next);
+    endInteraction();
+  }
+
   void toggleEditorWide() {
     _editorWide = !_editorWide;
     _editorWidth = null;

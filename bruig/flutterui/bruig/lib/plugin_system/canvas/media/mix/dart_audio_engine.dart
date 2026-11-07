@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:isolate';
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart'
     show ffmpegPath;
@@ -612,6 +613,38 @@ class DartAudioEngine implements AudioEngine {
     }
     _watch("taps", channel);
     return _snap.taps[channel] ?? const [];
+  }
+
+  @override
+  ScopeReading? deviceScope(String channel, String id) {
+    if (!_remote) {
+      core.graph.scope(channel, id, true);
+      return core.graph.scopeOf(channel, id);
+    }
+    _watch("scope:$id", channel);
+    return _snap.scopes["$channel|$id"];
+  }
+
+  @override
+  void listenAt(String channel, int? step) {
+    if (!_remote) {
+      step == null
+          ? core.graph.listenAt.remove(channel)
+          : core.graph.listenAt[channel] = step;
+      return;
+    }
+    _send(["listenAt", channel, step]);
+  }
+
+  @override
+  void stopScope(String channel, String id) {
+    if (!_remote) {
+      core.graph.scope(channel, id, false);
+      return;
+    }
+    if (_watching.remove("scope:$id:$channel")) {
+      _send(["unwatch", "scope:$id", channel]);
+    }
   }
 
   @override

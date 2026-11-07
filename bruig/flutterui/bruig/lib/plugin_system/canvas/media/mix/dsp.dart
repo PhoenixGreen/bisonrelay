@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/device_dsp.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/split_dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/vocoder.dart';
@@ -192,6 +193,17 @@ class StripProcessor {
   /// in the order they ran. Empty when not [tapping], or muted.
   List<(double, double)> taps = const [];
 
+  /// scopes are the devices of its chain, by step (a device's id, or the
+  /// EQ's or compressor's), whose sound in and out is kept for their
+  /// screens: see device_scope.dart. Set by its graph each block.
+  Map<String, DeviceScope> scopes = const {};
+
+  /// listenAt, set, is the step of its chain heard in place of its end: the
+  /// sound coming in (nought), or after that many steps -- the prototype's
+  /// "Listen from here". Set by its graph each block.
+  int? listenAt;
+  Float32List _heardL = Float32List(0), _heardR = Float32List(0);
+
   /// StripProcessor runs [mix]. With [carry], the strip it replaces, a
   /// device of the same id, kind and source keeps running -- so a chain put
   /// in another order keeps its delays' and reverbs' tails.
@@ -297,16 +309,44 @@ class StripProcessor {
   /// put (see ChannelMix.chain). The peaks between each step, when tapping.
   List<(double, double)>? _run(Float32List l, Float32List r, int n) {
     var taps = tapping ? <(double, double)>[blockPeaks(l, r, n)] : null;
+    var listen = listenAt;
+    var kept = false;
+    void keep() {
+      if (_heardL.length < n) {
+        _heardL = Float32List(n);
+        _heardR = Float32List(n);
+      }
+      _heardL.setRange(0, n, l);
+      _heardR.setRange(0, n, r);
+      kept = true;
+    }
+
+    if (listen == 0) keep();
+    var at = 0;
     for (var step in _mix.chain) {
+      var scope = scopes.isEmpty ? null : scopes[step];
+      scope?.before(l, r, n);
+      Object? ran;
       if (step == chainEq) {
         _eq.process(l, r, n);
       } else if (step == chainComp) {
+        ran = _comp;
         _comp?.process(l, r, n);
       } else {
         var i = deviceIndexOf(_mix.devices, step);
-        if (i >= 0 && i < _chain.length) _chain[i]?.process(l, r, n);
+        if (i >= 0 && i < _chain.length) {
+          ran = _chain[i];
+          _chain[i]?.process(l, r, n);
+        }
       }
+      scope?.after(l, r, n, ran);
       taps?.add(blockPeaks(l, r, n));
+      if (listen == ++at) keep();
+    }
+    // Heard from where it was listened to: what the rest did is not.
+    if (kept) {
+      l.setRange(0, n, _heardL);
+      r.setRange(0, n, _heardR);
     }
     return taps;
   }
@@ -744,6 +784,9 @@ class MasterProcessor {
   /// order it ran, on the last block. Empty when not [tapping].
   List<(double, double)> taps = const [];
 
+  /// scopes are as a strip's (StripProcessor.scopes).
+  Map<String, DeviceScope> scopes = const {};
+
   MasterProcessor(this.mix, {this.normaliseDb = 0})
       : _eq = EqProcessor(mix.eq),
         _glue = mix.comp.on ? Compressor(mix.comp) : null,
@@ -757,14 +800,22 @@ class MasterProcessor {
     // last, always.
     var taps = tapping ? <(double, double)>[blockPeaks(l, r, n)] : null;
     for (var step in mix.chain) {
+      var scope = scopes.isEmpty ? null : scopes[step];
+      scope?.before(l, r, n);
+      Object? ran;
       if (step == chainEq) {
         _eq.process(l, r, n);
       } else if (step == chainComp) {
+        ran = _glue;
         _glue?.process(l, r, n);
       } else {
         var i = deviceIndexOf(mix.devices, step);
-        if (i >= 0 && i < _devices.length) _devices[i]?.process(l, r, n);
+        if (i >= 0 && i < _devices.length) {
+          ran = _devices[i];
+          _devices[i]?.process(l, r, n);
+        }
       }
+      scope?.after(l, r, n, ran);
       taps?.add(blockPeaks(l, r, n));
     }
     this.taps = taps ?? const [];

@@ -3,6 +3,7 @@ import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart'
     show PitchReading;
 import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
@@ -229,6 +230,20 @@ abstract class AudioEngine {
   /// run -- the meters between devices. Empty from an engine that cannot
   /// measure inside a strip. Asking is what turns the measuring on.
   List<(double, double)> deviceLevels(String channel);
+
+  /// deviceScope is what device [id] of [channel]'s strip ("" for the
+  /// master's) is passing now -- see device_scope.dart -- or null: not kept
+  /// yet, or an engine that cannot. Asking starts the keeping, which goes
+  /// on until [stopScope].
+  ScopeReading? deviceScope(String channel, String id);
+
+  /// stopScope stops keeping what device [id] of [channel]'s strip passes.
+  void stopScope(String channel, String id);
+
+  /// listenAt hears [channel] from step [step] of its chain -- the sound
+  /// coming in (nought), or after that many steps -- in place of its end;
+  /// null hears all of it again. Nothing where an engine cannot.
+  void listenAt(String channel, int? step);
 
   /// reduction is how many decibels [channel]'s compressor is taking off
   /// right now, or 0: none, or an engine that cannot say.
@@ -694,6 +709,15 @@ class SoLoudAudioEngine implements AudioEngine {
   /// steps to measure between.
   @override
   List<(double, double)> deviceLevels(String channel) => const [];
+
+  @override
+  ScopeReading? deviceScope(String channel, String id) => null;
+
+  @override
+  void stopScope(String channel, String id) {}
+
+  @override
+  void listenAt(String channel, int? step) {}
 
   @override
   double reduction(String channel) => 0;

@@ -1269,6 +1269,79 @@ void main() {
       await done(tester, c);
     });
 
+    // Ken, 2026-11-08: double-click a setting's number to type it, and an
+    // envelope's point to take it out; and the colour picked shows.
+    testWidgets("numbers typed on a double-click; a point double-clicked out",
+        (tester) async {
+      var c = await show(tester);
+      c.openClipEditor("a", 0);
+      await tester.pump();
+      await idle(tester);
+      Future<void> typeIn(String key, String text) async {
+        var at = find.byKey(ValueKey(key));
+        await tester.ensureVisible(at);
+        // The field typed in last scrolled itself into view: the list takes
+        // no clicks until it has stopped.
+        await tester.pump(const Duration(milliseconds: 600));
+        await tester.tap(at);
+        await tester.pump(const Duration(milliseconds: 60));
+        await tester.tap(at);
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.enterText(find.byKey(const ValueKey("typedPlace")), text);
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pump();
+      }
+
+      // A gain point, double-clicked: gone.
+      await tester
+          .ensureVisible(find.byKey(const ValueKey("clipEnvelope-gain")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("clipEnvelope-gain")));
+      await tester.pump();
+      c.editClip((x) => x.withCurve("gain", const [(2, 0.5), (4, 0.5)]));
+      await tester.pump();
+      var view = tester.getRect(find.byKey(const ValueKey("clipSample")));
+      var clip = c.session.at("a", 0)!;
+      var beats = [16.0, clip.loopEnd(4), 1.0].reduce((a, b) => a > b ? a : b);
+      var beatW = view.width / beats;
+      var top = view.top + 40, bottom = view.bottom;
+      var middle = top + 6 + (bottom - top - 12) / 2;
+      var point = Offset(view.left + 2 * beatW, middle);
+      await tester.tapAt(point);
+      await tester.pump(const Duration(milliseconds: 60));
+      expect(c.session.at("a", 0)!.envelopes[ClipEnvelope.gain], hasLength(2),
+          reason: "one click on it leaves it");
+      await tester.tapAt(point);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(c.session.at("a", 0)!.envelopes[ClipEnvelope.gain]!.single.$1, 4);
+
+      await typeIn("clipGain-reading", "-4.5");
+      expect(c.session.at("a", 0)!.gain, -4.5);
+      await typeIn("clipFadeIn-reading", "250 ms");
+      expect(c.session.at("a", 0)!.fadeIn, 0.25);
+      await typeIn("clipFadeOut-reading", "1.5");
+      expect(c.session.at("a", 0)!.fadeOut, 1.5);
+      await typeIn("clipBpm-typed", "96");
+      expect(c.session.at("a", 0)!.bpm, 96);
+      await typeIn("clipPitch-typed", "-3");
+      expect(c.session.at("a", 0)!.pitch, -3);
+      // One click on a reading does nothing: its slider is beside it.
+      await tester.tap(find.byKey(const ValueKey("clipCents-reading")));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey("typedPlace")), findsNothing);
+
+      // Its colour, picked from the swatch's menu.
+      await tester.ensureVisible(find.byKey(const ValueKey("clipColour")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("clipColour")));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.byKey(const ValueKey("clipColour-4")));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(c.session.at("a", 0)!.color, 4);
+      expect(tester.takeException(), isNull);
+      await done(tester, c);
+    });
+
     // Ken: "the envelope settings don't update the look of the audio".
     testWidgets("its gain envelope turns its drawn sound down where it dips",
         (tester) async {

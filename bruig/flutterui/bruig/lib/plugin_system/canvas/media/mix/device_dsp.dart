@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart' show dbToGain;
@@ -39,10 +40,16 @@ class _Lfo {
 /// it opens over the attack, stays open for the hold, and closes over the
 /// release down to the floor level. With a [source] it opens to another
 /// channel's sound instead -- a pad chopped by the drums.
-class Gate implements Sidechained, Tunable {
+class Gate implements Sidechained, Tunable, Readable {
   late double _threshold, _attack, _release, _floor;
   late int _hold;
   double _env = 0, _gain = 0;
+
+  /// reading is how open it is (nought shut, one open) and the level it
+  /// hears, as the last stretch ended: what its screen draws.
+  @override
+  Float32List get reading =>
+      Float32List.fromList([_floor + (1 - _floor) * _gain, _env]);
   int _held = 0;
 
   @override

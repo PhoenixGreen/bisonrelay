@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/ui/instrument_editor.dart'
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -420,6 +421,99 @@ void main() {
       expect(
           find.byKey(const ValueKey("instrumentSurface-bass")), findsOneWidget);
       expect(await press(Offset(4, keys.height - 4)), bassStrings.first);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    // Ken: "when I click a key or pad it stays active when this should
+    // probably release when the click is released". The press was kept in
+    // the build, and the rebuild its note made forgot it.
+    testWidgets("a pad or key clicked is let go when the click is",
+        (tester) async {
+      var engine = FakeEngine({});
+      var c = CanvasController(
+          CanvasDocument(frames: 100, elements: [
+            AudioElement(const ElementBase(id: "p", name: "Keys"),
+                clip: const MediaClip(timed: true),
+                instrument: const InstrumentPart()),
+          ]),
+          audioEngine: engine);
+      addTearDown(c.dispose);
+      c.showInstrument("p");
+      await show(tester, c);
+      Rect keys() =>
+          tester.getRect(find.byKey(const ValueKey("instrumentKeys")));
+      dynamic surface() => tester
+          .widget<CustomPaint>(
+              find.byKey(const ValueKey("instrumentSurface-drums")))
+          .painter;
+      List<int> offs() => [
+            for (var n in engine.notes)
+              if (n.$3 == 0) n.$2
+          ];
+
+      // The keyboard: down, it sounds; up, it stops.
+      var g = await tester.startGesture(keys().topLeft + const Offset(8, 60),
+          kind: PointerDeviceKind.mouse);
+      await tester.pump();
+      var struck = engine.notes.single.$2;
+      await g.up();
+      await tester.pump();
+      expect(offs(), [struck], reason: "the key let go");
+
+      // The pads: the same, and none left lit.
+      await pick(tester, "instrumentLook-drums");
+      engine.notes.clear();
+      g = await tester.startGesture(keys().topLeft + const Offset(8, 8),
+          kind: PointerDeviceKind.mouse);
+      await tester.pump();
+      expect((surface().down as Set<int>), {drumPads.first.$1},
+          reason: "lit while held");
+      await g.up();
+      await tester.pump();
+      expect(offs(), [drumPads.first.$1]);
+      expect((surface().down as Set<int>), isEmpty, reason: "unlit let go");
+
+      // Dragged off the pads, the pad is let go there.
+      engine.notes.clear();
+      g = await tester.startGesture(keys().topLeft + const Offset(8, 8),
+          kind: PointerDeviceKind.mouse);
+      await tester.pump();
+      await g.moveTo(keys().topLeft - const Offset(0, 40));
+      await tester.pump();
+      expect(offs(), [drumPads.first.$1]);
+      await g.up();
+      await tester.pump();
+
+      // Each pad shows the computer key that plays it, as the row has them.
+      var letters = surface().letters as Map<int, String>;
+      expect(letters[drumPads.first.$1], "A");
+      expect(letters[drumPads[1].$1], "W");
+      expect(letters, hasLength(drumPads.length));
+      // A computer key let go stops what it started.
+      engine.notes.clear();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyA);
+      await tester.pump();
+      expect((surface().down as Set<int>), {drumPads.first.$1});
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyA);
+      await tester.pump();
+      expect(offs(), [drumPads.first.$1]);
+      expect((surface().down as Set<int>), isEmpty);
+
+      // On the keys, even with the octave changed while it was held.
+      await pick(tester, "instrumentLook-keyboard");
+      await tester.tapAt(keys().topLeft + const Offset(8, 60));
+      await tester.pump();
+      engine.notes.clear();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyA);
+      await tester.pump();
+      var played = engine.notes.single.$2;
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyX);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyX);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyA);
+      await tester.pump();
+      expect(offs(), [played], reason: "the note it played, not an octave up");
       expect(tester.takeException(), isNull);
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pumpWidget(const SizedBox());

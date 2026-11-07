@@ -49,6 +49,15 @@ class PitchNote {
   /// end where it did -- or null, as sung.
   final double? startAt;
 
+  /// endAt is where it is heard to end, in seconds into the original --
+  /// its edge dragged, its sound stretched or squeezed to fill it -- or
+  /// null, where it was sung to.
+  final double? endAt;
+
+  /// fadeIn and fadeOut are how long it fades in from its start and out to
+  /// its end, in seconds, as heard.
+  final double fadeIn, fadeOut;
+
   const PitchNote(this.start, this.end, this.sung,
       {this.shift = 0,
       this.straighten = 0,
@@ -59,19 +68,51 @@ class PitchNote {
       this.formant = 0,
       this.slideMs = 0,
       this.curve = const [],
-      this.startAt});
+      this.startAt,
+      this.endAt,
+      this.fadeIn = 0,
+      this.fadeOut = 0});
 
   /// heardStart is where it is heard to start: see [startAt].
   double get heardStart => startAt ?? start;
 
+  /// heardEnd is where it is heard to end: see [endAt].
+  double get heardEnd => endAt ?? end;
+
+  /// heardLength is how long it is heard for.
+  double get heardLength => heardEnd - heardStart;
+
+  /// stretch is how much longer it is heard than sung: one as sung.
+  double get stretch => heardLength / math.max(1e-3, length);
+
+  /// timed is whether it is heard anywhere but where it was sung.
+  bool get timed => startAt != null || endAt != null;
+
   /// sourceAt is where in the original [t] seconds is heard from: its own
-  /// sound stretched from [heardStart] to its end, as it is moved. Null
-  /// before it, moved later: silence there.
+  /// sound stretched from [heardStart] to [heardEnd]. Null where it was
+  /// sung but is heard no longer -- moved or squeezed off it: silence
+  /// there.
   double? sourceAt(double t) {
-    var from = startAt;
-    if (from == null || t >= end) return t;
-    if (t < from) return t < start ? t : null;
-    return start + (t - from) * (end - start) / math.max(1e-3, end - from);
+    if (!timed) return t;
+    var from = heardStart, to = heardEnd;
+    if (t >= from && t <= to) {
+      return start + (t - from) * (end - start) / math.max(1e-3, to - from);
+    }
+    if (t >= start && t <= end) return null;
+    return t;
+  }
+
+  /// fadeAt is how loud it is at [t] seconds heard, by its fades: one
+  /// outside them.
+  double fadeAt(double t) {
+    var g = 1.0;
+    if (fadeIn > 0 && t < heardStart + fadeIn) {
+      g = ((t - heardStart) / fadeIn).clamp(0.0, 1.0);
+    }
+    if (fadeOut > 0 && t > heardEnd - fadeOut) {
+      g = math.min(g, ((heardEnd - t) / fadeOut).clamp(0.0, 1.0));
+    }
+    return g;
   }
 
   double get length => end - start;
@@ -92,7 +133,10 @@ class PitchNote {
       formant != 0 ||
       slideMs != 0 ||
       curve.isNotEmpty ||
-      startAt != null;
+      startAt != null ||
+      endAt != null ||
+      fadeIn != 0 ||
+      fadeOut != 0;
 
   /// movedTo is it moved onto [note], its middle drawn right onto it.
   PitchNote movedTo(double note) =>
@@ -126,7 +170,11 @@ class PitchNote {
           double? slideMs,
           List<(double, double)>? curve,
           double? startAt,
-          bool clearStartAt = false}) =>
+          bool clearStartAt = false,
+          double? endAt,
+          bool clearEndAt = false,
+          double? fadeIn,
+          double? fadeOut}) =>
       PitchNote(start ?? this.start, end ?? this.end, sung ?? this.sung,
           shift: (shift ?? this.shift).clamp(-24.0, 24.0),
           straighten: (straighten ?? this.straighten).clamp(0.0, 1.0),
@@ -137,7 +185,10 @@ class PitchNote {
           formant: (formant ?? this.formant).clamp(-12.0, 12.0),
           slideMs: (slideMs ?? this.slideMs).clamp(0.0, 400.0),
           curve: curve ?? this.curve,
-          startAt: clearStartAt ? null : startAt ?? this.startAt);
+          startAt: clearStartAt ? null : startAt ?? this.startAt,
+          endAt: clearEndAt ? null : endAt ?? this.endAt,
+          fadeIn: math.max(0.0, fadeIn ?? this.fadeIn),
+          fadeOut: math.max(0.0, fadeOut ?? this.fadeOut));
 
   /// reset is it as sung, where it is.
   PitchNote get reset => PitchNote(start, end, sung);
@@ -157,6 +208,9 @@ class PitchNote {
         if (formant != 0) "formant": _r(formant),
         if (slideMs != 0) "slide": _r(slideMs),
         if (startAt case var at?) "at": _r(at),
+        if (endAt case var to?) "to": _r(to),
+        if (fadeIn != 0) "fi": _r(fadeIn),
+        if (fadeOut != 0) "fo": _r(fadeOut),
         if (curve.isNotEmpty)
           "curve": [
             for (var (t, m) in curve) [_r(t), _r(m)]
@@ -180,6 +234,9 @@ class PitchNote {
         formant: jsonDouble(json["formant"], 0),
         slideMs: jsonDouble(json["slide"], 0),
         startAt: json["at"] is num ? (json["at"] as num).toDouble() : null,
+        endAt: json["to"] is num ? (json["to"] as num).toDouble() : null,
+        fadeIn: jsonDouble(json["fi"], 0),
+        fadeOut: jsonDouble(json["fo"], 0),
         curve: [
           if (json["curve"] case List points)
             for (var p in points)
@@ -202,6 +259,9 @@ class PitchNote {
       other.formant == formant &&
       other.slideMs == slideMs &&
       other.startAt == startAt &&
+      other.endAt == endAt &&
+      other.fadeIn == fadeIn &&
+      other.fadeOut == fadeOut &&
       _sameCurve(other.curve, curve);
 
   static bool _sameCurve(List<(double, double)> a, List<(double, double)> b) {
@@ -213,8 +273,23 @@ class PitchNote {
   }
 
   @override
-  int get hashCode => Object.hash(start, end, sung, shift, straighten, wobble,
-      vibrato, gainDb, retuneMs, formant, slideMs, curve.length, startAt);
+  int get hashCode => Object.hash(
+      start,
+      end,
+      sung,
+      shift,
+      straighten,
+      wobble,
+      vibrato,
+      gainDb,
+      retuneMs,
+      formant,
+      slideMs,
+      curve.length,
+      startAt,
+      endAt,
+      fadeIn,
+      fadeOut);
 }
 
 /// PitchEdit is a recording's notes and what is done to them: kept on its
@@ -243,21 +318,37 @@ class PitchEdit {
       PitchEdit(original,
           notes: notes ?? this.notes, madeWith: madeWith ?? this.madeWith);
 
-  /// split cuts note [i] in two at [at] seconds.
+  /// split cuts note [i] in two at [at] seconds into the original: each
+  /// half heard where it was, stretched as it was, the first with its
+  /// fade in and the second with its fade out.
   PitchEdit split(int i, double at) {
     if (i < 0 || i >= notes.length) return this;
     var n = notes[i];
     if (at <= n.start + 0.02 || at >= n.end - 0.02) return this;
+    // Where the cut is heard.
+    var heard = n.heardStart + (at - n.start) * n.stretch;
     return copyWith(notes: [
       ...notes.take(i),
-      n.copyWith(end: at, curve: [
-        for (var p in n.curve)
-          if (p.$1 <= at) p
-      ]),
-      n.copyWith(start: at, clearStartAt: true, curve: [
-        for (var p in n.curve)
-          if (p.$1 >= at) p
-      ]),
+      n.copyWith(
+          end: at,
+          endAt: n.timed ? heard : null,
+          clearEndAt: !n.timed,
+          fadeOut: 0,
+          fadeIn: math.min(n.fadeIn, heard - n.heardStart),
+          curve: [
+            for (var p in n.curve)
+              if (p.$1 <= at) p
+          ]),
+      n.copyWith(
+          start: at,
+          startAt: n.timed ? heard : null,
+          clearStartAt: !n.timed,
+          fadeIn: 0,
+          fadeOut: math.min(n.fadeOut, n.heardEnd - heard),
+          curve: [
+            for (var p in n.curve)
+              if (p.$1 >= at) p
+          ]),
       ...notes.skip(i + 1),
     ]);
   }
@@ -270,7 +361,15 @@ class PitchEdit {
     var sung = (a.sung * a.length + b.sung * b.length) / (a.length + b.length);
     return copyWith(notes: [
       ...notes.take(i),
-      a.copyWith(end: b.end, sung: sung, curve: [...a.curve, ...b.curve]),
+      a.copyWith(
+          end: b.end,
+          sung: sung,
+          // Heard from the first's start to the second's end, faded in as
+          // the first was and out as the second.
+          endAt: b.endAt,
+          clearEndAt: b.endAt == null,
+          fadeOut: b.fadeOut,
+          curve: [...a.curve, ...b.curve]),
       ...notes.skip(i + 2),
     ]);
   }

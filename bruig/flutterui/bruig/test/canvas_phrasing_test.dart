@@ -408,7 +408,14 @@ void main() {
         // A box dragged round the first two words picks them.
         await tester.ensureVisible(word(0));
         await tester.pump();
-        var a = tester.getTopLeft(word(0)) + const Offset(2, -6);
+        // From just before the first, level with the higher of the two: in
+        // the pitch lane however little of it shows (the Speech view fills
+        // the panel, and at 1.5x a word can sit at the lane's very top).
+        var a = Offset(
+            tester.getTopLeft(word(0)).dx - 6,
+            math.min(tester.getTopLeft(word(0)).dy,
+                    tester.getTopLeft(word(1)).dy) +
+                1);
         var b = tester.getBottomRight(word(1)) + const Offset(2, 2);
         await tester.dragFrom(a, b - a, kind: PointerDeviceKind.mouse);
         await tester.pump();

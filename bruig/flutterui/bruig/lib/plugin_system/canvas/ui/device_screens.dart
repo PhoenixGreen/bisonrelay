@@ -1,5 +1,7 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_effects.dart'
     show scaleSteps;
@@ -101,30 +103,33 @@ class DeviceScreenPainter extends CustomPainter {
         }
         say = "${time.round()} ms · ${(fb * 100).round()}% back";
       case DeviceKind.gate:
-        var th = v("threshold");
-        var ty = h / 2 - (th + 80) / 80 * h / 2;
-        canvas.drawRect(Rect.fromLTRB(0, ty, w, h - ty),
+        // Its window: a level scale from silence to full, what is under
+        // the threshold shut (down to its floor), what is over it let
+        // through. No sound is drawn here: Analyse shows the real one.
+        var th = v("threshold"), floor = v("floor");
+        double yOf(double db) => 6 + (-db / 80).clamp(0.0, 1.0) * (h - 24);
+        var ty = yOf(th);
+        canvas.drawRect(Rect.fromLTRB(0, 6, w, ty),
+            Paint()..color = const Color(0x225BC46B));
+        canvas.drawRect(Rect.fromLTRB(0, ty, w, h - 18),
             Paint()..color = const Color(0x22E0564F));
-        _line(
-            canvas,
-            w,
-            (x) =>
-                h / 2 +
-                math.sin(x * 80 + t * 6) *
-                    h *
-                    0.36 *
-                    (0.3 + 0.7 * math.sin(x * 5 + t).abs()) *
-                    (0.2 + 0.8 * math.max(live, moment.level)),
-            const Color(0xFF4F8FD6),
-            1.1);
+        for (var db in [0, -20, -40, -60]) {
+          _text(canvas, "$db", 4, yOf(db.toDouble()) - 6,
+              const Color(0xFF6E6A80));
+        }
         var dash = Paint()
           ..color = const Color(0xFFE0564F)
-          ..strokeWidth = 1;
-        for (var x = 0.0; x < w; x += 7) {
+          ..strokeWidth = 1.2;
+        for (var x = 26.0; x < w; x += 7) {
           canvas.drawLine(Offset(x, ty), Offset(x + 4, ty), dash);
-          canvas.drawLine(Offset(x, h - ty), Offset(x + 4, h - ty), dash);
         }
-        say = "shut below ${th.round()} dB";
+        // Its floor: how far down it shuts.
+        var fy = yOf(floor);
+        canvas.drawLine(Offset(26, fy), Offset(w - 6, fy),
+            Paint()..color = accent.withValues(alpha: 0.5));
+        _text(canvas, "open", w - 34, ty - 15, const Color(0xFF5BC46B));
+        _text(canvas, "shut", w - 30, ty + 3, const Color(0xFFE0564F));
+        say = "opens above ${th.round()} dB";
       case DeviceKind.autoFilter:
         var type = v("type").round(), res = v("res"), amount = v("amount");
         var f0 = v("freq") *
@@ -277,17 +282,40 @@ class DeviceScreenPainter extends CustomPainter {
               "${device.kind.param("scale").reading(v("scale")).toLowerCase()}";
         }
       case DeviceKind.vocoder:
-        var n = v("bands").round();
+        // Its bands where they sit, from its Low to its High on a scale of
+        // pitch (20 Hz to 20 kHz), each a hump as wide as it hears; the
+        // carrier's moved up or down by its formant beside.
+        var n = v("bands").round(), low = v("low"), high = v("high");
+        var shift = math.pow(2, v("formant") / 12).toDouble();
+        double xOf(double hz) =>
+            8 + (math.log(hz.clamp(20, 20000) / 20) / math.log(1000)) * (w - 16);
+        var ratio = math.pow(high / low, 1 / math.max(1, n - 1)).toDouble();
+        var base = h - 18, top = 10.0;
         for (var i = 0; i < n; i++) {
-          var bar = (h - 10) *
-              (0.2 + 0.7 * math.sin(i * 0.7 + t * (1 + i % 3)).abs()) *
-              (0.25 + 0.75 * math.max(live, moment.level));
-          canvas.drawRect(
-              Rect.fromLTWH(4 + i * (w - 8) / n, h - 4 - bar,
-                  math.max(1, (w - 8) / n - 2), bar),
-              Paint()..color = accent);
+          var hz = low * math.pow(ratio, i);
+          var x = xOf(hz.toDouble());
+          var half = math.max(1.5, (xOf(hz * math.sqrt(ratio)) - x));
+          var hump = Path()
+            ..moveTo(x - half, base)
+            ..quadraticBezierTo(x, top - (base - top) * 0.35, x + half, base);
+          canvas.drawPath(
+              hump,
+              Paint()
+                ..color = accent.withValues(alpha: 0.16 + 0.5 * i / n));
+          if (shift != 1) {
+            var cx = xOf(hz * shift);
+            canvas.drawLine(
+                Offset(cx, base - 3),
+                Offset(cx, base - (base - top) * 0.55),
+                Paint()
+                  ..color = const Color(0xFF7FC8F8).withValues(alpha: 0.7)
+                  ..strokeWidth = 1);
+          }
         }
-        say = "$n bands";
+        canvas.drawLine(Offset(0, base), Offset(w, base),
+            Paint()..color = const Color(0xFF3E3958));
+        var carrier = device.kind.param("carrier").reading(v("carrier"));
+        say = "$n bands · carried by ${carrier.toLowerCase()}";
       case DeviceKind.lfo:
         // Two of its cycles, and where it is now on them.
         var shape = v("shape").round(), rate = v("rate"), phase = v("phase");
@@ -494,6 +522,255 @@ class DeviceScreenPainter extends CustomPainter {
       old.device != device ||
       old.moment.t != moment.t ||
       old.moment.change != moment.change ||
+      old.accent != accent ||
+      old.back != back;
+}
+
+/// analysedAsWave is whether [kind]'s display, on, draws the sound's wave
+/// before and after it (a drive's or a crusher's change is in its shape),
+/// rather than its level over the last few seconds.
+bool analysedAsWave(DeviceKind kind) =>
+    kind == DeviceKind.saturator ||
+    kind == DeviceKind.overdrive ||
+    kind == DeviceKind.bitCrusher;
+
+/// DeviceAnalysisPainter draws what [device] is doing to the real sound
+/// (Ken, 2026-11-08): [scope] as the engine kept it -- see device_scope.dart
+/// -- or nothing yet. A gate its level against its threshold and whether
+/// it is open; a vocoder its bands as loud as each is; a drive or crusher
+/// the wave going in and coming out; everything else its level going in
+/// and coming out over the last three seconds, so a reverb's tail and a
+/// delay's echoes show after the sound.
+class DeviceAnalysisPainter extends CustomPainter {
+  final MixDevice device;
+  final ScopeReading? scope;
+  final Color accent;
+  final Color back;
+
+  /// stamp changes with each reading, so a new one is drawn.
+  final int stamp;
+  DeviceAnalysisPainter(this.device, this.scope, this.accent, this.back,
+      {this.stamp = 0});
+
+  static const _before = Color(0xFFD8D4E4);
+  static const _muted = Color(0xFF8E8A9C);
+
+  /// _floorDb is the quietest drawn: the centre line.
+  static const double _floorDb = -60;
+
+  static double _db(double gain) =>
+      gain <= 1e-6 ? -120 : 20 * math.log(gain) / math.ln10;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var w = size.width, h = size.height;
+    canvas.drawRect(Offset.zero & size, Paint()..color = back);
+    var grid = Paint()..color = Color.lerp(back, Colors.white, 0.06)!;
+    for (var i = 1; i < 8; i++) {
+      canvas.drawRect(
+          Rect.fromLTWH((i * w / 8).roundToDouble(), 0, 1, h), grid);
+    }
+    canvas.drawRect(Rect.fromLTWH(0, (h / 2).roundToDouble(), w, 1), grid);
+    var s = scope;
+    if (s == null) {
+      _text(canvas, "Listening…", 6, h - 15, _muted);
+      return;
+    }
+    switch (device.kind) {
+      case DeviceKind.vocoder:
+        _bands(canvas, size, s);
+      case _ when analysedAsWave(device.kind):
+        _wave(canvas, size, s);
+      default:
+        _levels(canvas, size, s);
+    }
+  }
+
+  /// _y is how far from the centre a level of [gain] reaches, on a decibel
+  /// scale: [_floorDb] at the centre, nought at the edge.
+  double _reach(double gain, double half) =>
+      ((_db(gain) - _floorDb) / -_floorDb).clamp(0.0, 1.0) * half;
+
+  void _levels(Canvas canvas, Size size, ScopeReading s) {
+    var w = size.width, h = size.height, mid = h / 2, half = h / 2 - 3;
+    var n = s.inPeaks.length;
+    Path band(Float32List peaks) {
+      var p = Path()..moveTo(0, mid);
+      for (var i = 0; i < n; i++) {
+        p.lineTo(w * i / (n - 1), mid - _reach(peaks[i], half));
+      }
+      for (var i = n - 1; i >= 0; i--) {
+        p.lineTo(w * i / (n - 1), mid + _reach(peaks[i], half));
+      }
+      return p..close();
+    }
+
+    // Coming out, filled in the device's colour; going in, an outline over
+    // it -- what it cut is inside the line, what it added outside.
+    canvas.drawPath(
+        band(s.outPeaks), Paint()..color = accent.withValues(alpha: 0.7));
+    canvas.drawPath(
+        band(s.inPeaks),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = _before.withValues(alpha: 0.75));
+    if (device.kind == DeviceKind.gate) {
+      // Its threshold, either side: what is quieter shuts it.
+      var th = device.value("threshold");
+      var y = _reach(math.pow(10, th / 20).toDouble(), half);
+      var dash = Paint()
+        ..color = const Color(0xFFE0564F)
+        ..strokeWidth = 1;
+      for (var x = 0.0; x < w; x += 7) {
+        canvas.drawLine(Offset(x, mid - y), Offset(x + 4, mid - y), dash);
+        canvas.drawLine(Offset(x, mid + y), Offset(x + 4, mid + y), dash);
+      }
+      var open = (s.own?.isNotEmpty ?? false) ? s.own![0] : 0.0;
+      var lit = open > 0.5;
+      canvas.drawCircle(
+          Offset(w - 10, 10),
+          4,
+          Paint()
+            ..color = lit ? const Color(0xFF5BC46B) : const Color(0xFF4A2F3A));
+      _text(canvas, lit ? "open" : "shut", w - 44, 4, lit ? const Color(0xFF5BC46B) : _muted);
+    }
+    // The change it makes, over the last half second.
+    var last = math.max(1, n ~/ 6);
+    var inPeak = 0.0, outPeak = 0.0;
+    for (var i = n - last; i < n; i++) {
+      inPeak = math.max(inPeak, s.inPeaks[i]);
+      outPeak = math.max(outPeak, s.outPeaks[i]);
+    }
+    _legend(canvas, size,
+        inPeak > 1e-4 ? _db(outPeak) - _db(inPeak) : null);
+  }
+
+  void _wave(Canvas canvas, Size size, ScopeReading s) {
+    var w = size.width, h = size.height, mid = h / 2;
+    // Steady: drawn from where the sound going in last rose through
+    // nought, ten milliseconds of it at 48 kHz.
+    const span = 480;
+    var wave = s.inWave, out = s.outWave;
+    var start = math.max(0, wave.length - span - 1);
+    for (var i = wave.length - span - 1; i > wave.length ~/ 3; i--) {
+      if (wave[i - 1] < 0 && wave[i] >= 0) {
+        start = i;
+        break;
+      }
+    }
+    var peak = 1e-3;
+    for (var i = start; i < start + span && i < wave.length; i++) {
+      peak = math.max(peak, math.max(wave[i].abs(), out[i].abs()));
+    }
+    var scale = (h / 2 - 6) / peak;
+    Path line(Float32List x) {
+      var p = Path();
+      for (var i = 0; i < span && start + i < x.length; i++) {
+        var px = w * i / (span - 1), py = mid - x[start + i] * scale;
+        i == 0 ? p.moveTo(px, py) : p.lineTo(px, py);
+      }
+      return p;
+    }
+
+    canvas.drawPath(
+        line(wave),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2
+          ..color = _before.withValues(alpha: 0.5));
+    canvas.drawPath(
+        line(out),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.8
+          ..strokeJoin = StrokeJoin.round
+          ..color = accent);
+    var n = s.inPeaks.length, last = math.max(1, n ~/ 6);
+    var inPeak = 0.0, outPeak = 0.0;
+    for (var i = n - last; i < n; i++) {
+      inPeak = math.max(inPeak, s.inPeaks[i]);
+      outPeak = math.max(outPeak, s.outPeaks[i]);
+    }
+    _legend(canvas, size,
+        inPeak > 1e-4 ? _db(outPeak) - _db(inPeak) : null);
+  }
+
+  void _bands(Canvas canvas, Size size, ScopeReading s) {
+    var w = size.width, h = size.height;
+    var own = s.own;
+    if (own == null || own.length < 2) {
+      _levels(canvas, size, s);
+      return;
+    }
+    var n = own.length ~/ 2;
+    var bw = (w - 8) / n;
+    double up(double gain) =>
+        ((_db(gain * 4) - _floorDb) / -_floorDb).clamp(0.0, 1.0) * (h - 22);
+    for (var i = 0; i < n; i++) {
+      var x = 4 + i * bw;
+      var voice = up(own[i]);
+      var carrier = up(own[n + i]);
+      // The voice in that band, as loud as it is: what the carrier is
+      // shaped to; the carrier's own level a tick over it.
+      canvas.drawRect(
+          Rect.fromLTWH(x + 1, h - 16 - voice, math.max(1, bw - 2), voice),
+          Paint()
+            ..shader = LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [accent, accent.withValues(alpha: 0.25)])
+                .createShader(Rect.fromLTWH(x, h - 16 - voice, bw, voice + 1)));
+      canvas.drawRect(Rect.fromLTWH(x + 1, h - 17 - carrier, math.max(1, bw - 2), 1.5),
+          Paint()..color = _before.withValues(alpha: 0.8));
+    }
+    _text(canvas, device.kind.param("low").reading(device.value("low")),
+        4, h - 14, _muted);
+    var hi = device.kind.param("high").reading(device.value("high"));
+    _text(canvas, hi, w - 6 - hi.length * 5.6, h - 14, _muted);
+  }
+
+  /// _legend names the two, and says what it changes the level by.
+  void _legend(Canvas canvas, Size size, double? change) {
+    var h = size.height;
+    canvas.drawRect(Rect.fromLTWH(6, h - 11, 8, 3), Paint()..color = _before);
+    _text(canvas, "in", 17, h - 15, _muted);
+    canvas.drawRect(Rect.fromLTWH(32, h - 11, 8, 3), Paint()..color = accent);
+    _text(canvas, "out", 43, h - 15, _muted);
+    if (change != null) {
+      var text =
+          "${change >= 0 ? "+" : "−"}${change.abs().toStringAsFixed(1)} dB";
+      _text(
+          canvas,
+          text,
+          size.width - 8 - text.length * 5.6,
+          h - 15,
+          change > 0.05
+              ? const Color(0xFFE2B04A)
+              : change < -0.05
+                  ? _before
+                  : const Color(0xFFE8E4EE));
+    }
+  }
+
+  void _text(Canvas canvas, String text, double x, double y, Color colour) {
+    var tp = TextPainter(
+        text: TextSpan(
+            text: text,
+            style: TextStyle(
+                fontSize: 10,
+                color: colour,
+                fontFeatures: const [FontFeature.tabularFigures()])),
+        textDirection: TextDirection.ltr)
+      ..layout();
+    tp.paint(canvas, Offset(x, y));
+  }
+
+  @override
+  bool shouldRepaint(DeviceAnalysisPainter old) =>
+      old.stamp != stamp ||
+      old.scope != scope ||
+      old.device != device ||
       old.accent != accent ||
       old.back != back;
 }

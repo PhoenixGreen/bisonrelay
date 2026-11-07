@@ -204,49 +204,146 @@ void paintKeyboard(ui.Canvas canvas, Rect bounds, InstrumentPart part,
 /// paintPlayingSurface draws [part]'s pads, or its neck, as [layout] has
 /// them, with no case or name: the instrument editor's, under its own
 /// toolbar. A keyboard is the editor's own to draw.
+/// A drum pad shows its name and, from [letters], the computer key that
+/// plays it; [face] and [ink] are the pads' own colour and their writing.
 void paintPlayingSurface(
     ui.Canvas canvas, KeyboardLayout layout, InstrumentPart part,
     {Set<int> lit = const {},
-    Color accent = const Color(0xFF3D7EFF)}) {
+    Color accent = const Color(0xFF3D7EFF),
+    Map<int, String> letters = const {},
+    Color face = _padFace,
+    Color ink = _padInk}) {
   if (part.look == InstrumentLook.drums) {
-    _paintPads(canvas, layout, lit, const {}, accent);
+    _paintPads(canvas, layout, lit, const {}, accent,
+        letters: letters, face: face, ink: ink);
   } else if (part.look == InstrumentLook.guitar ||
       part.look == InstrumentLook.bass) {
     _paintNeck(canvas, layout, part, lit, const {}, accent);
   }
 }
 
+const Color _padFace = Color(0xFF2E3138);
+const Color _padInk = Color(0xFFD9DCE2);
+
+/// padFamily is the colour of drum [key]'s family, along its pad's top: the
+/// kick red, snares and hand claps amber, toms violet, hats and cymbals
+/// teal, the rest of the percussion green.
+Color padFamily(int key) => switch (key) {
+      35 || 36 => const Color(0xFFE0756A),
+      37 || 38 || 39 || 40 => const Color(0xFFE0A84F),
+      41 || 43 || 45 || 47 || 48 || 50 => const Color(0xFF9A92EA),
+      42 || 44 || 46 || 49 || 51 || 52 || 53 || 55 || 57 || 59 =>
+        const Color(0xFF5CC6B8),
+      _ => const Color(0xFF8BC46B),
+    };
+
+/// _paintPads draws the kit's pads: each a raised square with its family's
+/// colour along its top, its name, and -- from [letters] -- a key cap with
+/// the computer key that plays it. Struck, it lights in [accent] and
+/// glows; waited for ([next]), blue.
 void _paintPads(ui.Canvas canvas, KeyboardLayout layout, Set<int> lit,
-    Set<int> next, Color accent) {
+    Set<int> next, Color accent,
+    {Map<int, String> letters = const {},
+    Color face = _padFace,
+    Color ink = _padInk}) {
   for (var (i, k) in layout.keys.indexed) {
     var on = lit.contains(k.key), wanted = next.contains(k.key);
-    var r = RRect.fromRectAndRadius(
-        k.rect, Radius.circular(k.rect.shortestSide * 0.12));
+    var rect = k.rect.deflate(math.min(1.5, k.rect.shortestSide * 0.03));
+    var radius = Radius.circular(
+        math.min(8.0, math.max(2.0, rect.shortestSide * 0.12)));
+    var r = RRect.fromRectAndRadius(rect, radius);
+    var family = padFamily(k.key);
+    var fill = wanted
+        ? const Color(0xFF3D7EFF)
+        : on
+            ? accent
+            : face;
+    // Struck: a glow round it first.
+    if (on || wanted) {
+      canvas.drawRRect(
+          r.inflate(1.5),
+          Paint()
+            ..color = fill.withValues(alpha: 0.55)
+            ..maskFilter =
+                MaskFilter.blur(BlurStyle.normal, rect.shortestSide * 0.08));
+    }
+    // Raised: lighter at the top, darker at its foot.
     canvas.drawRRect(
         r,
         Paint()
-          ..color = wanted
-              ? const Color(0xFF3D7EFF)
-              : on
-                  ? accent
-                  : const Color(0xFF2E3138));
+          ..shader = LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color.lerp(fill, const Color(0xFFFFFFFF), on ? 0.18 : 0.07)!,
+                Color.lerp(fill, const Color(0xFF000000), on ? 0.05 : 0.22)!,
+              ]).createShader(rect));
+    canvas.drawRRect(
+        r,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = on || wanted
+              ? Color.lerp(fill, const Color(0xFFFFFFFF), 0.45)!
+              : Color.lerp(face, const Color(0xFF000000), 0.35)!);
+    // Its family, a band along its top.
+    var band = math.max(2.0, rect.height * 0.06);
+    canvas.save();
+    canvas.clipRRect(r);
+    canvas.drawRect(Rect.fromLTWH(rect.left, rect.top, rect.width, band),
+        Paint()..color = on ? const Color(0xCCFFFFFF) : family);
+    canvas.restore();
+    var lightInk = on || wanted ? const Color(0xFFFFFFFF) : ink;
+    var pad = math.max(3.0, rect.shortestSide * 0.08);
+    // The key that plays it, as a cap in its top corner.
+    var letter = letters[k.key];
+    var capped = false;
+    if (letter != null && rect.height >= 22 && rect.width >= 26) {
+      var size = (rect.shortestSide * 0.2).clamp(8.0, 12.0);
+      var cap = TextPainter(
+        text: TextSpan(
+            text: letter,
+            style: TextStyle(
+                fontSize: size,
+                fontWeight: FontWeight.w700,
+                color: lightInk)),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      var side = math.max(cap.width, cap.height) + 4;
+      var box = Rect.fromLTWH(
+          rect.right - pad - side, rect.top + band + pad * 0.6, side, side);
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(box, const Radius.circular(3)),
+          Paint()
+            ..color = const Color(0xFF000000)
+                .withValues(alpha: on ? 0.18 : 0.28));
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(box, const Radius.circular(3)),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = lightInk.withValues(alpha: 0.45));
+      cap.paint(canvas,
+          box.center - Offset(cap.width / 2, cap.height / 2));
+      capped = true;
+    }
+    // Its name, at its foot.
     var name = TextPainter(
       text: TextSpan(
-          text: drumPads[i].$2,
+          text: drumPads.elementAtOrNull(i)?.$2 ?? "",
           style: TextStyle(
-              fontSize: math.max(7, k.rect.height * 0.18),
+              fontSize: (rect.height * 0.17).clamp(7.0, 12.0),
               fontWeight: FontWeight.w600,
-              color: on || wanted
-                  ? const Color(0xFFFFFFFF)
-                  : const Color(0xFFB8BDC6))),
+              color: lightInk.withValues(alpha: on || wanted ? 1 : 0.85))),
       textDirection: TextDirection.ltr,
       maxLines: 1,
       ellipsis: "…",
-    )..layout(maxWidth: k.rect.width * 0.9);
+    )..layout(maxWidth: math.max(0, rect.width - pad * 2));
+    // Too short for both: the name only where the cap leaves room.
+    if (capped && rect.height < name.height * 2 + band + pad * 2) continue;
     name.paint(
-        canvas,
-        Offset(k.rect.center.dx - name.width / 2,
-            k.rect.bottom - name.height - k.rect.height * 0.08));
+        canvas, Offset(rect.left + pad, rect.bottom - name.height - pad * 0.8));
   }
 }
 

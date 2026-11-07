@@ -77,7 +77,7 @@ extension PitchEditing on CanvasController {
               snapNote(n.target, root, steps).round().clamp(0, 127),
               // Where it is heard: its timing quantised, or as sung.
               (n.heardStart - source.start).clamp(0.0, double.infinity),
-              n.end - n.heardStart,
+              n.heardLength,
               100),
     ];
     var made = newInstrument(document);

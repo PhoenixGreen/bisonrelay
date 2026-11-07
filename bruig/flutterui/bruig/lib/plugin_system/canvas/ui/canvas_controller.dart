@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/media/push_surface.dart'
     show PadClip;
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dart_audio_engine.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart'
     show ffmpegDecode, readWholeAway;
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart'
@@ -3503,6 +3504,19 @@ class CanvasController extends ChangeNotifier {
   /// slot's clip -- whether its columns of settings are folded away to a
   /// strip. The roll's start folded, as Ken asked: the notes first.
   final Map<String, bool> _settingsShut = {"roll": true};
+
+  /// _analysing are the devices, as "strip|device", whose displays show
+  /// the real sound: off until switched on (Ken, 2026-11-08), as keeping
+  /// and drawing it costs.
+  final Set<String> _analysing = {};
+
+  /// _listening is the chain heard from a point: see listenAt.
+  (String, int)? _listening;
+
+  /// _abOther are each compared device's other settings, by "strip|device",
+  /// and _abB those heard with their B: see toggleAB.
+  final Map<String, Map<String, double>> _abOther = {};
+  final Set<String> _abB = {};
 
   double? _editorWidth;
 

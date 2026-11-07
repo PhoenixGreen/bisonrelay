@@ -269,7 +269,7 @@ List<double?> editedTrack(PitchEdit edit, List<double?> track) {
         ? edit.notes[k - 1].target
         : null;
     var a = (math.min(n.start, n.heardStart) / 0.02).floor();
-    var b = (n.end / 0.02).ceil();
+    var b = (math.max(n.end, n.heardEnd) / 0.02).ceil();
     for (var i = math.max(0, a); i < math.min(b, out.length); i++) {
       // Heard from where in the original: moved by Quantise timing.
       var from = n.sourceAt(i * 0.02);

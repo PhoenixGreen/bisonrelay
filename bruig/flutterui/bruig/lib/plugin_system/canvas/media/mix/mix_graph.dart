@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/device_dsp.dart'
     show Follower, Gate;
+import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/split_dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
@@ -365,6 +366,7 @@ class MixGraph {
       // An odd speaker out -- none in the layouts there are -- runs alone.
       b ??= Float32List(n);
       strip.tapping = k == 0 && tapped.contains(sceneBusKey);
+      strip.scopes = k == 0 ? scoped[sceneBusKey] ?? const {} : const {};
       strip.process(a, b, n);
       if (k == 0) {
         _levels[sceneBusKey] = _peaks(a, b, n);
@@ -428,6 +430,28 @@ class MixGraph {
       if (d case LoudnessTap t) t.reset();
     }
   }
+
+  /// scoped are the devices whose screens show the real sound, by strip
+  /// (as [tapped] names them) and then by step: see device_scope.dart.
+  final Map<String, Map<String, DeviceScope>> scoped = {};
+
+  /// listenAt is, by channel, the step of its chain heard in place of its
+  /// end: see StripProcessor.listenAt.
+  final Map<String, int> listenAt = {};
+
+  /// scope starts or stops keeping what passes device [id] of strip [key].
+  void scope(String key, String id, bool on) {
+    if (on) {
+      (scoped[key] ??= {}).putIfAbsent(id, DeviceScope.new);
+    } else {
+      scoped[key]?.remove(id);
+      if (scoped[key]?.isEmpty ?? false) scoped.remove(key);
+    }
+  }
+
+  /// scopeOf is what device [id] of strip [key] has passed, or null where
+  /// it is not [scope]d.
+  ScopeReading? scopeOf(String key, String id) => scoped[key]?[id]?.reading;
 
   /// tapped are the channels whose meters between devices are on screen:
   /// their strips measure each step (see StripProcessor.taps).
@@ -586,6 +610,8 @@ class MixGraph {
       b.grow(n);
       var strip = entry.value;
       strip.tapping = tapped.contains(entry.key);
+      strip.scopes = scoped[entry.key] ?? const {};
+      strip.listenAt = listenAt[entry.key];
       strip.shape(b.l, b.r, n);
       _send(strip.mix, b, n, pre: true);
       strip.level(b.l, b.r, n);
@@ -626,6 +652,7 @@ class MixGraph {
       l.setRange(0, n, _out[0]);
       r.setRange(0, n, _out[1]);
       _master.tapping = tapped.contains(masterTapKey);
+      _master.scopes = scoped[masterTapKey] ?? const {};
       _master.process(l, r, n, limit: limit);
       _out[0].setRange(0, n, l);
       _out[1].setRange(0, n, r);
@@ -644,6 +671,8 @@ class MixGraph {
       // The front pair's measured between its devices, as a stereo
       // master's is.
       _masters[k].tapping = k == 0 && tapped.contains(masterTapKey);
+      _masters[k].scopes =
+          k == 0 ? scoped[masterTapKey] ?? const {} : const {};
       _masters[k].process(a, b, n, limit: limit);
     }
     // Each speaker's peak, for its meter.

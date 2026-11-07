@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
     show Wave, LoudnessReading;
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
@@ -142,6 +143,27 @@ class FakeEngine implements AudioEngine {
 
   @override
   List<(double, double)> deviceLevels(String channel) => heardTaps;
+
+  /// heardScope is what deviceScope says any device passes, and scoped
+  /// the devices asked for and not yet stopped, as "channel|device".
+  ScopeReading? heardScope;
+  final Set<String> scoped = {};
+
+  @override
+  ScopeReading? deviceScope(String channel, String id) {
+    scoped.add("$channel|$id");
+    return heardScope;
+  }
+
+  @override
+  void stopScope(String channel, String id) => scoped.remove("$channel|$id");
+
+  /// listened is each channel heard from a step of its chain.
+  final Map<String, int> listened = {};
+
+  @override
+  void listenAt(String channel, int? step) =>
+      step == null ? listened.remove(channel) : listened[channel] = step;
 
   @override
   double reduction(String channel) => 0;

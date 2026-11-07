@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
     show Wave, LoudnessReading;
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart'
@@ -475,6 +476,18 @@ class AudioRuntime extends ChangeNotifier {
   /// AudioEngine.deviceLevels.
   List<(double, double)> deviceLevels(String channel) =>
       _started ? engine.deviceLevels(channel) : const [];
+
+  /// deviceScope and stopScope: see AudioEngine's.
+  ScopeReading? deviceScope(String channel, String id) =>
+      _started ? engine.deviceScope(channel, id) : null;
+
+  void stopScope(String channel, String id) {
+    if (_started) engine.stopScope(channel, id);
+  }
+
+  void listenAt(String channel, int? step) {
+    if (_started) engine.listenAt(channel, step);
+  }
 
   /// reduction is [channel]'s compressor's reduction now, in decibels.
   double reduction(String channel) => _started ? engine.reduction(channel) : 0;

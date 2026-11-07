@@ -1,5 +1,7 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
+import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/media/kokoro_speech.dart';
 import 'package:bruig/plugin_system/canvas/media/qwen_speech.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_downloads.dart';
@@ -17,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/model/text_document.dart'
 import 'package:bruig/plugin_system/canvas/ui/document_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 
 // speech_device.dart is the Speech device in a channel's chain: the engine and
 // voice; the script, line by line, each with its direction and takes; the
@@ -305,8 +308,13 @@ class SpeechDevice extends StatefulWidget {
     required this.folded,
     required this.onFold,
     required this.height,
+    this.editor = false,
     super.key,
   });
+
+  /// editor is whether it fills the Chain as an editor does -- the Speech
+  /// view, the chain the rail under it -- rather than a card of the chain.
+  final bool editor;
 
   @override
   State<SpeechDevice> createState() => _SpeechDeviceState();
@@ -1587,6 +1595,270 @@ class _SpeechDeviceState extends State<SpeechDevice> {
         margin: const EdgeInsets.symmetric(horizontal: 10),
         color: s.edge.withValues(alpha: 0.7));
 
+    // ---- Its side panels, each folded to a strip down its edge and opened
+    // again (Ken): the voices, the section's takes, and the feel -- or,
+    // phrasing, the word picked -- kept folded as the clip editor's
+    // settings are (CanvasController.settingsShut).
+    var sideName = phrasingOn ? "Word" : "Feel";
+    var panels = [
+      if (!phrasingOn) ("voice", "Voice", 190.0),
+      ("takes", "Takes", 300.0),
+      ("side", sideName, 200.0),
+    ];
+    bool shown(String kind) => !c.settingsShut("speech-$kind");
+    Widget strip(String kind, String name) => Tooltip(
+          message: "Show the ${name.toLowerCase()} panel",
+          child: InkWell(
+            key: ValueKey("speechPanelOpen-$kind"),
+            borderRadius: BorderRadius.circular(4),
+            onTap: () => c.toggleSettingsShut("speech-$kind"),
+            child: Container(
+              width: 22,
+              decoration: BoxDecoration(
+                  color: s.inset.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(4)),
+              child: Column(children: [
+                const SizedBox(height: 6),
+                Icon(kind == "voice" ? Icons.chevron_right : Icons.chevron_left,
+                    size: 15, color: s.muted),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: RotatedBox(
+                    quarterTurns: 1,
+                    child: Text(name,
+                        maxLines: 1,
+                        overflow: TextOverflow.fade,
+                        softWrap: false,
+                        style: k.text(10.5, colour: s.muted)),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        );
+    Widget panel(String kind, String name, double width, Widget child) =>
+        shown(kind) ? SizedBox(width: width, child: child) : strip(kind, name);
+    // Each panel's switch, lit while it shows, as the prototype's
+    // inspector button is.
+    Widget toggle(String kind, String name) => Padding(
+          padding: const EdgeInsets.only(left: 3),
+          child: Material(
+            color: shown(kind) ? s.raised : Colors.transparent,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+                side: BorderSide(
+                    color:
+                        shown(kind) ? s.edge : s.edge.withValues(alpha: 0.5))),
+            child: InkWell(
+              key: ValueKey("speechPanel-$kind"),
+              borderRadius: BorderRadius.circular(4),
+              onTap: () => c.toggleSettingsShut("speech-$kind"),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(
+                      kind == "voice"
+                          ? Icons.view_sidebar_outlined
+                          : kind == "takes"
+                              ? Icons.view_list_outlined
+                              : Icons.tune,
+                      size: 12,
+                      color: shown(kind) ? s.text : s.muted),
+                  const SizedBox(width: 4),
+                  Text(name,
+                      style:
+                          k.text(10.5, colour: shown(kind) ? s.text : s.muted)),
+                ]),
+              ),
+            ),
+          ),
+        );
+    var toggles = [for (var (kind, name, _) in panels) toggle(kind, name)];
+
+    var engines = [
+      Text("Engine", style: k.text(11, colour: s.muted)),
+      const SizedBox(width: 6),
+      for (var e in SpeechEngineKind.values)
+        Padding(
+          padding: const EdgeInsets.only(right: 3),
+          child: Material(
+            color: engine == e ? s.on : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+            child: InkWell(
+              key: ValueKey("speechEngine-${e.name}"),
+              borderRadius: BorderRadius.circular(4),
+              onTap: () =>
+                  _set(spec.copyWith(engine: e, voice: "", voiceName: "")),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                child: Text(e.label,
+                    style: k.text(11,
+                        weight: FontWeight.w600,
+                        colour: engine == e ? s.onOn : s.text)),
+              ),
+            ),
+          ),
+        ),
+      // Phrasing, the step after a voice has spoken: the take's words
+      // shaped, in place of the sections.
+      Container(
+          key: const ValueKey("speechPhrasingRule"),
+          width: 1.5,
+          height: 18,
+          margin: const EdgeInsets.symmetric(horizontal: 7),
+          color: s.muted.withValues(alpha: 0.7)),
+      Tooltip(
+        message: phrasingOn
+            ? "Back to the sections"
+            : line == null
+                ? "Phrasing shapes a spoken take's words: write a script "
+                    "and speak it first"
+                : "Shape the picked take's words: each one's pitch, "
+                    "length and loudness",
+        child: Material(
+          color: phrasingOn ? s.on : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+          child: InkWell(
+            key: const ValueKey("speechPhrasing"),
+            borderRadius: BorderRadius.circular(4),
+            onTap: phrasingOn
+                ? c.closePhrasing
+                : line == null
+                    ? null
+                    : () => c.openPhrasing(widget.channel, _line, pickedSlot),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.graphic_eq,
+                    size: 13,
+                    color: phrasingOn
+                        ? s.onOn
+                        : line == null
+                            ? s.muted
+                            : s.text),
+                const SizedBox(width: 4),
+                Text("Phrasing",
+                    style: k.text(11,
+                        weight: FontWeight.w600,
+                        colour: phrasingOn
+                            ? s.onOn
+                            : line == null
+                                ? s.muted
+                                : s.text)),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    ];
+    var remove = IconButton(
+      key: const ValueKey("speechRemove"),
+      tooltip: "Take the Speech device off. Its takes stay on the "
+          "timeline.",
+      iconSize: 14,
+      visualDensity: VisualDensity.compact,
+      icon: Icon(Icons.close, color: widget.editor ? s.muted : skin.ink),
+      onPressed: _takeOff,
+    );
+
+    // The middle -- the sections, or Phrasing's lanes -- has a least
+    // width: narrower, the panels and it scroll sideways, and folding a
+    // panel gives it the room back.
+    var sides = [
+      for (var (kind, _, width) in panels) shown(kind) ? width : 22.0,
+    ].fold(0.0, (a, b) => a + b + 21);
+    var least = sides + MediaQuery.textScalerOf(context).scale(10) * 34;
+    Widget room(Widget row) => LayoutBuilder(
+        builder: (context, box) => box.maxWidth >= least
+            ? row
+            : SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(width: least, child: row)));
+    var inside =
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Expanded(
+        child:
+            room(Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (phrasingOn) ...[
+            Expanded(child: PhrasingLanes(controller: c)),
+            divider(),
+            panel("takes", "Takes", 300, linePanel()),
+            divider(),
+            panel("side", sideName, 200, PhrasingWordPanel(controller: c)),
+          ] else ...[
+            panel("voice", "Voice", 190, voiceColumn),
+            divider(),
+            Expanded(child: scriptColumn),
+            divider(),
+            panel("takes", "Takes", 300, linePanel()),
+            divider(),
+            panel("side", sideName, 200, feelColumn),
+          ],
+        ])),
+      ),
+      const SizedBox(height: 7),
+      clipStrip,
+    ]);
+
+    if (widget.editor) {
+      // The Speech view: a bar of its own over it, as the clip editor's,
+      // and the room the panel has, with no other device beside it.
+      return Container(
+        key: const ValueKey("speechEditor"),
+        color: s.panel,
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Container(
+            height: MediaQuery.textScalerOf(context).scale(11) + 19,
+            padding: const EdgeInsets.only(left: 10, right: 4),
+            decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: s.edge))),
+            child: Row(children: [
+              const Icon(Icons.record_voice_over, size: 14, color: voiceColour),
+              const SizedBox(width: 6),
+              Text("SPEECH",
+                  style: k
+                      .text(10.5, weight: FontWeight.w700)
+                      .copyWith(letterSpacing: 0.6)),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 3,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: engines),
+                ),
+              ),
+              Flexible(
+                flex: 2,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  reverse: true,
+                  child: Row(children: toggles),
+                ),
+              ),
+              const SizedBox(width: 4),
+              remove,
+            ]),
+          ),
+          // Its columns need a least height: shorter, it scrolls down to
+          // them rather than squeezing them.
+          Expanded(
+            child: LayoutBuilder(builder: (context, box) {
+              var least = MediaQuery.textScalerOf(context).scale(10) * 16;
+              var padded = Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                child: inside,
+              );
+              if (box.maxHeight >= least) return padded;
+              return SingleChildScrollView(
+                child: SizedBox(height: least, child: padded),
+              );
+            }),
+          ),
+        ]),
+      );
+    }
+
     return DeviceFrame(
       id: "speech",
       title: "Speech",
@@ -1595,92 +1867,12 @@ class _SpeechDeviceState extends State<SpeechDevice> {
       onFold: widget.onFold,
       width: 1140,
       height: widget.height,
+      // As a card its bar has no room for the panels' switches: folded,
+      // each opens again from its strip.
       actions: [
-        Text("Engine", style: k.text(11, colour: s.muted)),
+        ...engines,
         const SizedBox(width: 6),
-        for (var e in SpeechEngineKind.values)
-          Padding(
-            padding: const EdgeInsets.only(right: 3),
-            child: Material(
-              color: engine == e ? s.on : Colors.transparent,
-              borderRadius: BorderRadius.circular(4),
-              child: InkWell(
-                key: ValueKey("speechEngine-${e.name}"),
-                borderRadius: BorderRadius.circular(4),
-                onTap: () =>
-                    _set(spec.copyWith(engine: e, voice: "", voiceName: "")),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                  child: Text(e.label,
-                      style: k.text(11,
-                          weight: FontWeight.w600,
-                          colour: engine == e ? s.onOn : s.text)),
-                ),
-              ),
-            ),
-          ),
-        // Phrasing, the step after a voice has spoken: the take's words
-        // shaped, in place of the sections.
-        Container(
-            key: const ValueKey("speechPhrasingRule"),
-            width: 1.5,
-            height: 18,
-            margin: const EdgeInsets.symmetric(horizontal: 7),
-            color: s.muted.withValues(alpha: 0.7)),
-        Tooltip(
-          message: phrasingOn
-              ? "Back to the sections"
-              : line == null
-                  ? "Phrasing shapes a spoken take's words: write a script "
-                      "and speak it first"
-                  : "Shape the picked take's words: each one's pitch, "
-                      "length and loudness",
-          child: Material(
-            color: phrasingOn ? s.on : Colors.transparent,
-            borderRadius: BorderRadius.circular(4),
-            child: InkWell(
-              key: const ValueKey("speechPhrasing"),
-              borderRadius: BorderRadius.circular(4),
-              onTap: phrasingOn
-                  ? c.closePhrasing
-                  : line == null
-                      ? null
-                      : () => c.openPhrasing(widget.channel, _line, pickedSlot),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.graphic_eq,
-                      size: 13,
-                      color: phrasingOn
-                          ? s.onOn
-                          : line == null
-                              ? s.muted
-                              : s.text),
-                  const SizedBox(width: 4),
-                  Text("Phrasing",
-                      style: k.text(11,
-                          weight: FontWeight.w600,
-                          colour: phrasingOn
-                              ? s.onOn
-                              : line == null
-                                  ? s.muted
-                                  : s.text)),
-                ]),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 6),
-        IconButton(
-          key: const ValueKey("speechRemove"),
-          tooltip: "Take the Speech device off. Its takes stay on the "
-              "timeline.",
-          iconSize: 14,
-          visualDensity: VisualDensity.compact,
-          icon: Icon(Icons.close, color: skin.ink),
-          onPressed: _takeOff,
-        ),
+        remove,
       ],
       foldedBody: Center(
         child: RotatedBox(
@@ -1693,31 +1885,7 @@ class _SpeechDeviceState extends State<SpeechDevice> {
       body: Container(
         color: s.panel,
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(
-            child:
-                Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              if (phrasingOn) ...[
-                Expanded(child: PhrasingLanes(controller: c)),
-                divider(),
-                SizedBox(width: 300, child: linePanel()),
-                divider(),
-                SizedBox(width: 200, child: PhrasingWordPanel(controller: c)),
-              ] else ...[
-                SizedBox(width: 190, child: voiceColumn),
-                divider(),
-                Expanded(child: scriptColumn),
-                divider(),
-                SizedBox(width: 300, child: linePanel()),
-                divider(),
-                SizedBox(width: 200, child: feelColumn),
-              ],
-            ]),
-          ),
-          const SizedBox(height: 7),
-          clipStrip,
-        ]),
+        child: inside,
       ),
     );
   }
@@ -2003,9 +2171,12 @@ const voiceColour = Color(0xFFC45C8A);
 
 /// SpeechCard is a voice channel's generator in its chain, as the
 /// Instrument card is a MIDI channel's: Speech is chosen for a channel (the
-/// Add menu's Generators), not there on every one. It shows the script's
-/// first lines and the voice; its editor is the Speech tab.
-class SpeechCard extends StatelessWidget {
+/// Add menu's Generators), not there on every one. Drawn as the
+/// prototype's Generator: a section's take -- its sound, its words over it,
+/// and where it is heard to -- its feel as knobs, its voice as a list, and
+/// Speak all with how many takes there are at its foot. Its editor is the
+/// Speech tab.
+class SpeechCard extends StatefulWidget {
   final CanvasController controller;
   final String channel;
   final bool folded;
@@ -2024,47 +2195,152 @@ class SpeechCard extends StatelessWidget {
   });
 
   @override
+  State<SpeechCard> createState() => _SpeechCardState();
+}
+
+class _SpeechCardState extends State<SpeechCard> {
+  /// _line is the section stepped to, whose take the screen shows; null
+  /// until stepped, for the first spoken.
+  int? _line;
+
+  CanvasController get c => widget.controller;
+
+  /// _write changes the Speech: one change to undo, or -- [transient] --
+  /// part of a knob's turn.
+  void _write(SpeechSpec next, {bool transient = false}) {
+    c.beginInteraction();
+    c.setSpeech(widget.channel, next, transient: true);
+    if (!transient) c.endInteraction();
+  }
+
+  Future<void> _speakAll() async {
+    var problem = await c.speakLines(widget.channel);
+    if (problem == null || !mounted) return;
+    try {
+      SnackBarModel.of(context).error(problem);
+    } catch (_) {}
+  }
+
+  @override
   Widget build(BuildContext context) {
-    var c = controller;
-    var spec = c.speechOf(channel);
-    var studio = MixerLook.of(context).studio;
+    var spec = c.speechOf(widget.channel);
+    var look = MixerLook.of(context);
+    var studio = look.studio;
     if (spec == null) return const SizedBox();
-    var lines = [
-      for (var l in spec.lines)
-        if (l.text.trim().isNotEmpty) l.text.trim()
+    var k = SpeechKit(studio, look.colors);
+    var lines = spec.shownLines;
+    var written = lines.where((l) => l.text.trim().isNotEmpty).length;
+    var takes = lines.fold(0, (n, l) => n + l.takes.length);
+    var engine = spec.engine;
+    var expressive = engine == SpeechEngineKind.expressive;
+    var voices = expressive ? qwenVoices : kokoroVoices;
+    var voiceId =
+        voices.any((v) => v.id == spec.voice) ? spec.voice : voices.first.id;
+    var voiceName = voices.firstWhere((v) => v.id == voiceId).name;
+    // The section shown: the one stepped to, or the first spoken.
+    var spoken = [
+      for (var (i, l) in lines.indexed)
+        if (l.take != null) i
     ];
-    var voice = spec.voiceName.isNotEmpty
-        ? spec.voiceName
-        : spec.voice.isNotEmpty
-            ? spec.voice
-            : "the default voice";
-    var muted = TextStyle(fontSize: 10, color: studio.muted);
-    var strong = TextStyle(fontSize: 10.5, color: studio.text);
-    Widget fact(String label, String value) => Row(children: [
-          SizedBox(width: 52, child: Text(label, style: muted)),
-          Flexible(
-              child: Text(value,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: strong)),
-        ]);
+    if ((_line ?? 0) >= lines.length) _line = null;
+    var shownLine = lines.isEmpty ? null : _line ?? spoken.firstOrNull ?? 0;
+    var take = shownLine == null ? null : lines[shownLine].take;
+    var (lowSpeed, highSpeed) = switch (engine) {
+      SpeechEngineKind.local => (0.5, 2.0),
+      SpeechEngineKind.expressive => (0.7, 1.3),
+    };
+    var busy = c.speechQueue[widget.channel] != null ||
+        c.joining.contains(widget.channel);
+
+    Widget knob(
+            String id,
+            String label,
+            String text,
+            double value,
+            double initial,
+            double min,
+            double max,
+            SpeechSpec Function(double v) change) =>
+        DeviceKnob(
+          key: ValueKey("speechCard-$id"),
+          label: label,
+          text: text,
+          value: value.clamp(min, max),
+          initial: initial,
+          min: min,
+          max: max,
+          accent: voiceColour,
+          ink: widget.skin.ink,
+          onChanged: (v, {transient = false}) => _write(
+              change(v).copyWith(preset: "custom"),
+              transient: transient),
+          onCommit: c.endInteraction,
+        );
+
+    // Its voice, as the prototype's: one list of every voice, by engine.
+    var voiceRow = SizedBox(
+      width: 300,
+      child: Row(children: [
+        SizedBox(width: 40, child: k.label("Voice")),
+        Expanded(
+          child: k.dropdown<String>(
+            key: const ValueKey("speechCardVoice"),
+            value: "${engine.name}|$voiceId",
+            items: [
+              for (var (e, list) in [
+                (SpeechEngineKind.local, kokoroVoices),
+                (SpeechEngineKind.expressive, qwenVoices),
+              ])
+                for (var v in list)
+                  ("${e.name}|${v.id}", "${e.label} · ${v.name}"),
+            ],
+            onChanged: (v) {
+              var (name, id) = (v.split("|").first, v.split("|").last);
+              var e = SpeechEngineKind.values.firstWhere((x) => x.name == name);
+              var list =
+                  e == SpeechEngineKind.expressive ? qwenVoices : kokoroVoices;
+              var picked = list.firstWhere((x) => x.id == id);
+              _write(spec.copyWith(
+                  engine: e, voice: picked.id, voiceName: picked.name));
+            },
+          ),
+        ),
+        const SizedBox(width: 6),
+        // Speaker boost: on or off, so a switch, not a knob.
+        SizedBox(
+          width: 74,
+          child: DeviceChoices(options: [
+            (
+              const ValueKey("speechCardBoost"),
+              "Boost",
+              spec.boost,
+              () => _write(spec.copyWith(boost: !spec.boost, preset: "custom")),
+            ),
+          ]),
+        ),
+      ]),
+    );
+
     return DeviceFrame(
       id: "speechCard",
       title: "Speech",
-      help: "Speaks a script: each line spoken is a clip on this channel. "
-          "Write the script and choose the voice in the Speech tab.",
-      skin: skin,
+      help: "Speaks a script: each section spoken is a take, and the takes "
+          "are clips on this channel. Write the script and shape its "
+          "words in the Speech tab.",
+      skin: widget.skin,
       icon: Icons.record_voice_over,
       accent: voiceColour,
       glows: true,
-      folded: folded,
-      onFold: onFold,
-      width: 320,
-      height: height,
+      folded: widget.folded,
+      onFold: widget.onFold,
+      width: 340,
+      height: widget.height,
       actions: [
         IconButton(
           key: const ValueKey("speechEdit"),
           tooltip: "Open the script",
           icon: const Icon(Icons.open_in_new),
-          onPressed: () => c.showSpeech(channel),
+          onPressed: () => c.showSpeech(widget.channel),
         ),
         IconButton(
           key: const ValueKey("speechRemove"),
@@ -2072,58 +2348,283 @@ class SpeechCard extends StatelessWidget {
           icon: const Icon(Icons.close),
           onPressed: () {
             c.beginInteraction();
-            c.setVocaliser(channel, null);
-            c.setSpeech(channel, null);
+            c.setVocaliser(widget.channel, null);
+            c.setSpeech(widget.channel, null);
             c.endInteraction();
           },
         ),
       ],
-      summary: "${lines.length} line${lines.length == 1 ? "" : "s"} · $voice",
+      summary: "$written section${written == 1 ? "" : "s"} · $voiceName",
       foldedBody: const SizedBox(),
-      display: GestureDetector(
-        key: const ValueKey("speechCardScript"),
-        onDoubleTap: () => c.showSpeech(channel),
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-              color: studio.display, borderRadius: BorderRadius.circular(4)),
-          child: lines.isEmpty
-              ? Center(
-                  child: Text("No script yet: open it to write one",
-                      textAlign: TextAlign.center, style: muted))
-              : ClipRect(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (var l in lines.take(6))
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 3),
-                            child: Text(l,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    fontSize: 11, color: studio.text)),
-                          ),
-                      ]),
-                ),
-        ),
+      display: _SpeechTakeScreen(
+        controller: c,
+        onOpen: () => c.showSpeech(widget.channel),
+        take: take,
+        caption: shownLine == null
+            ? null
+            : "Section ${shownLine + 1} · $voiceName"
+                "${take == null ? "" : ", take ${String.fromCharCode(65 + lines[shownLine].chosen)}"}",
+        empty: lines.isEmpty
+            ? "No script yet: open it to write one"
+            : "Not spoken yet: “${lines[shownLine!].text.trim()}”",
+        step: lines.length < 2
+            ? null
+            : (
+                "${(shownLine ?? 0) + 1}/${lines.length}",
+                () => setState(() => _line =
+                    ((shownLine ?? 0) - 1 + lines.length) % lines.length),
+                () => setState(
+                    () => _line = ((shownLine ?? 0) + 1) % lines.length),
+              ),
       ),
       controls: (tier) => [
-        SizedBox(
-          width: 200,
-          child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                fact("Voice", voice),
-                const SizedBox(height: 3),
-                fact("Engine", spec.engine.label),
-                const SizedBox(height: 3),
-                fact("Lines", "${lines.length}"),
-              ]),
-        ),
+        knob("speed", "Speed", "${spec.speed.toStringAsFixed(2)}×", spec.speed,
+            1, lowSpeed, highSpeed, (v) => spec.copyWith(speed: v)),
+        // Steadiness and expression move the expressive voices only.
+        if (expressive) ...[
+          knob(
+              "steadiness",
+              "Steadiness",
+              "${(spec.steadiness * 100).round()}%",
+              spec.steadiness,
+              0.45,
+              0,
+              1,
+              (v) => spec.copyWith(steadiness: v)),
+          knob(
+              "expression",
+              "Expression",
+              "${(spec.expression * 100).round()}%",
+              spec.expression,
+              0.6,
+              0,
+              1,
+              (v) => spec.copyWith(expression: v)),
+        ],
+        knob(
+            "room",
+            "Room",
+            spec.room < 0.05 ? "dry" : "${(spec.room * 100).round()}%",
+            spec.room,
+            0,
+            0,
+            1,
+            (v) => spec.copyWith(room: v)),
+        if (tier != DeviceTier.small) voiceRow,
+      ],
+      footer: [
+        k.button(busy ? "Speaking…" : "Speak all",
+            busy || written == 0 ? null : _speakAll,
+            key: const ValueKey("speechCardSpeakAll"),
+            icon: Icons.record_voice_over,
+            small: true,
+            tip: "Speak every section that has no take yet"),
+        const Spacer(),
+        Text("Takes: $takes",
+            key: const ValueKey("speechCardTakes"),
+            style: k.text(10.5, colour: studio.muted)),
       ],
       body: const SizedBox(),
     );
   }
+}
+
+/// _SpeechTakeScreen is the Speech card's screen: [take]'s sound, its words
+/// over it where they were said, and -- heard -- a line where it has got to,
+/// with a button to hear it, and [step], given, to step through the
+/// sections.
+class _SpeechTakeScreen extends StatefulWidget {
+  final CanvasController controller;
+  final SpeechTake? take;
+  final String? caption;
+  final String empty;
+  final (String, VoidCallback, VoidCallback)? step;
+
+  /// onOpen opens the script: the screen double-clicked, under its
+  /// buttons.
+  final VoidCallback onOpen;
+  const _SpeechTakeScreen(
+      {required this.controller,
+      required this.onOpen,
+      required this.take,
+      required this.caption,
+      required this.empty,
+      required this.step});
+
+  @override
+  State<_SpeechTakeScreen> createState() => _SpeechTakeScreenState();
+}
+
+class _SpeechTakeScreenState extends State<_SpeechTakeScreen>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker = createTicker((_) => setState(() {}));
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var c = widget.controller;
+    var studio = MixerLook.of(context).studio;
+    var take = widget.take;
+    var heard = take != null && c.speechHeard == take.assetId;
+    // Moving only while it is heard.
+    if (heard != _ticker.isActive) heard ? _ticker.start() : _ticker.stop();
+    var muted = TextStyle(fontSize: 10, color: studio.muted);
+    Widget small(IconData icon, Key key, VoidCallback onTap) => InkWell(
+          key: key,
+          borderRadius: BorderRadius.circular(4),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(2),
+            child: Icon(icon, size: 14, color: studio.muted),
+          ),
+        );
+    return Container(
+      color: studio.display,
+      child: LayoutBuilder(builder: (context, box) {
+        var w = box.maxWidth, h = box.maxHeight;
+        var at = heard ? c.heardSeconds : null;
+        var length = take == null || take.length <= 0 ? 1.0 : take.length;
+        var wordH = MediaQuery.textScalerOf(context).scale(10) + 4;
+        // The words drawn only where the screen has room for them under
+        // its caption.
+        var wordsShown = take != null && h >= 60;
+        return Stack(children: [
+          Positioned.fill(
+            child: GestureDetector(
+              key: const ValueKey("speechCardScript"),
+              behavior: HitTestBehavior.opaque,
+              onDoubleTap: widget.onOpen,
+            ),
+          ),
+          if (take == null)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text(widget.empty,
+                    textAlign: TextAlign.center, style: muted),
+              ),
+            )
+          else
+            Positioned.fill(
+              child: IgnorePointer(
+                  child: CustomPaint(
+                painter: _TakeWave(
+                    peaks: c.waveformOf(take.assetId),
+                    words: take.words,
+                    length: length,
+                    playhead: at == null ? null : at / length,
+                    top: wordsShown ? 18 + wordH : 18,
+                    ink: voiceColour,
+                    faint: studio.edge),
+              )),
+            ),
+          if (wordsShown)
+            for (var word in take.words)
+              Positioned(
+                left: word.start / length * w + 2,
+                top: 18,
+                width: math.max(0.0, (word.end - word.start) / length * w),
+                child: Text(word.text,
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                    softWrap: false,
+                    style: TextStyle(fontSize: 10, color: studio.text)),
+              ),
+          if (widget.caption case var caption?)
+            Positioned(
+              left: 6,
+              top: 3,
+              right: widget.step == null ? 6 : 70,
+              child: Text(caption,
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
+            ),
+          if (widget.step case (var where, var back, var on))
+            Positioned(
+              right: 2,
+              top: 1,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                small(
+                    Icons.chevron_left, const ValueKey("speechCardPrev"), back),
+                Text(where, style: muted),
+                small(
+                    Icons.chevron_right, const ValueKey("speechCardNext"), on),
+              ]),
+            ),
+          if (take != null)
+            Positioned(
+              left: 3,
+              bottom: 3,
+              child: small(heard ? Icons.stop : Icons.play_arrow,
+                  const ValueKey("speechCardHear"), () async {
+                await c.hearTake(take.assetId);
+              }),
+            ),
+        ]);
+      }),
+    );
+  }
+}
+
+/// _TakeWave draws a take's sound under [top], each word's span lit faintly
+/// behind it, and the playhead, as a part of the take, where it is heard.
+class _TakeWave extends CustomPainter {
+  final Float32List? peaks;
+  final List<TimedWord> words;
+  final double length;
+  final double? playhead;
+  final double top;
+  final Color ink, faint;
+  _TakeWave(
+      {required this.peaks,
+      required this.words,
+      required this.length,
+      required this.playhead,
+      required this.top,
+      required this.ink,
+      required this.faint});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var w = size.width;
+    var bottom = size.height - 4;
+    var mid = (top + bottom) / 2, half = math.max(1.0, (bottom - top) / 2);
+    for (var word in words) {
+      canvas.drawRect(
+          Rect.fromLTRB(
+              word.start / length * w, top - 1, word.end / length * w, bottom),
+          Paint()..color = ink.withValues(alpha: 0.08));
+    }
+    var p = peaks;
+    var bar = Paint()
+      ..color = ink.withValues(alpha: 0.85)
+      ..strokeWidth = 1.2;
+    if (p == null || p.isEmpty) {
+      canvas.drawLine(Offset(0, mid), Offset(w, mid), Paint()..color = faint);
+    } else {
+      for (var x = 0.0; x < w; x += 2) {
+        var i = (x / w * p.length).floor().clamp(0, p.length - 1);
+        var a = math.max(0.5, p[i] * half);
+        canvas.drawLine(Offset(x, mid - a), Offset(x, mid + a), bar);
+      }
+    }
+    if (playhead case var at?) {
+      var x = at.clamp(0.0, 1.0) * w;
+      canvas.drawRect(Rect.fromLTWH(x - 1, 0, 2, size.height),
+          Paint()..color = const Color(0xFFFFFFFF));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_TakeWave old) =>
+      old.peaks != peaks ||
+      old.words != words ||
+      old.length != length ||
+      old.playhead != playhead ||
+      old.top != top ||
+      old.ink != ink;
 }

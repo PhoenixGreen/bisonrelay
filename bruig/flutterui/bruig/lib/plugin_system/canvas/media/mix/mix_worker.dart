@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
     show Wave, LoudnessReading;
 import 'package:bruig/plugin_system/canvas/media/mix/click_track.dart';
@@ -53,12 +54,17 @@ class MixSnapshot {
   final Map<String, Wave?> waves;
   final Map<String, LoudnessReading?> loudness;
 
+  /// scopes are each watched device's sound in and out, by
+  /// "channel|device": see device_scope.dart.
+  final Map<String, ScopeReading?> scopes;
+
   const MixSnapshot(this.at, this.ahead, this.load, this.voices, this.levels,
       this.spectra, this.pitches,
       {this.taps = const {},
       this.reductions = const {},
       this.waves = const {},
-      this.loudness = const {}});
+      this.loudness = const {},
+      this.scopes = const {}});
 
   static const empty = MixSnapshot(0, 0, 0, {}, {}, {}, {});
 }
@@ -135,6 +141,10 @@ class _Worker {
 
   /// watchTaps are the channels whose meters between devices are on screen.
   final Set<String> watchTaps = {};
+
+  /// watchScopes are the devices whose screens show the real sound, as
+  /// (channel, device).
+  final Set<(String, String)> watchScopes = {};
   String? fontPath;
 
   /// sliceFonts are the banks of instruments of slices, sent from the
@@ -301,6 +311,9 @@ class _Worker {
           for (var k in watchLoudness)
             k: core.graph.loudnessOf(k == snapshotMaster ? null : k)
         },
+        scopes: {
+          for (var (k, id) in watchScopes) "$k|$id": core.graph.scopeOf(k, id)
+        },
       ),
     ]);
     // Voices that have ended are forgotten once reported.
@@ -424,6 +437,23 @@ class _Worker {
           case "taps":
             watchTaps.add(key);
             core.graph.tapped.add(key);
+          case String what when what.startsWith("scope:"):
+            var id = what.substring(6);
+            watchScopes.add((key, id));
+            core.graph.scope(key, id, true);
+        }
+      case "listenAt":
+        var key = m[1] as String;
+        var step = m[2] as int?;
+        step == null
+            ? core.graph.listenAt.remove(key)
+            : core.graph.listenAt[key] = step;
+      case "unwatch":
+        var key = (m[2] as String?) ?? snapshotMaster;
+        if (m[1] case String what when what.startsWith("scope:")) {
+          var id = what.substring(6);
+          watchScopes.remove((key, id));
+          core.graph.scope(key, id, false);
         }
       case "noteOn":
         var channel = m[1] as String;

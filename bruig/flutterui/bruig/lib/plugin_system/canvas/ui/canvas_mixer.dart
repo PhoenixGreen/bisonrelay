@@ -279,13 +279,18 @@ class _CanvasMixerState extends State<CanvasMixer>
     return at;
   }
 
-  /// _junction is the meter at step [i] of the open chain.
-  Widget _junction(int i, double h, MixerLook theme) => _Junction(
+  /// _junction is the meter at step [i] of the open chain [key]: clicked,
+  /// listened to from there, or an analyser put there.
+  Widget _junction(int i, double h, MixerLook theme, String key) => _Junction(
       i,
       i < _taps.length ? _taps[i] : (-90.0, -90.0),
       i < _tapPeaks.length ? _tapPeaks[i] : (-90.0, -90.0),
       theme.studio,
-      h);
+      h,
+      listening: controller.listening == (key, i),
+      onListen: () =>
+          controller.listenAt(key, controller.listening == (key, i) ? null : i),
+      onAnalyser: (kind) => controller.insertDevice(key, MixDevice(kind), i));
 
   Loudness? _measured;
   bool _measuring = false;
@@ -1079,20 +1084,43 @@ class _CanvasMixerState extends State<CanvasMixer>
       var instrumentHere = controller.instrumentShown &&
           lane != null &&
           controller.instrumentChannel(key);
+      // The channel's Speech: its script, takes and voice -- what makes its
+      // clips, not a step of its chain -- as wide as the panel, as the clip
+      // editor is (Ken), not a card among the chain's others.
+      var speechHere = controller.speechShown && lane != null;
       // An editor, opened from the Chain's tabs, fills the panel as the
       // prototype's do: the chain is then the rail under it.
       var editorId = instrumentHere
           ? "instrument"
           : pitchHere
               ? "pitch"
-              : clipHere
-                  ? "clip"
-                  : rollHere
-                      ? "roll"
-                      : null;
+              : speechHere
+                  ? "speech"
+                  : clipHere
+                      ? "clip"
+                      : rollHere
+                          ? "roll"
+                          : null;
       Widget? editor = switch (editorId) {
         "instrument" => InstrumentEditor(controller: controller, channel: key),
         "pitch" => PitchEditor(controller: controller, channel: key),
+        // No Speech yet: the way to start one, in the middle of the room.
+        "speech" => controller.speechOf(key) == null
+            ? LayoutBuilder(
+                builder: (context, box) => Center(
+                      child: VoiceStartCard(
+                          key: const ValueKey("speechStart"),
+                          controller: controller,
+                          channel: key,
+                          height: math.min(300.0, box.maxHeight - 16)),
+                    ))
+            : SpeechDevice(
+                controller: controller,
+                channel: key,
+                folded: false,
+                onFold: () {},
+                height: h,
+                editor: true),
         // Every column of its settings where there is room for them; one
         // at a time where not.
         "clip" => LayoutBuilder(
@@ -1133,23 +1161,13 @@ class _CanvasMixerState extends State<CanvasMixer>
           if (macroAt >= 0)
             deviceAt(macroAt)
           else
-            device(
-                "macros",
-                // Folded until opened, as the prototype starts it.
-                (f, fold) => _MacrosStart(
-                    controller: controller,
-                    owner: key,
-                    folded: !f,
-                    onFold: fold,
-                    height: h,
-                    skin: skin)),
+            _MacrosStart(controller: controller, owner: key, height: h),
         ],
         // An audio channel's sounds -- on the timeline and in its slots --
         // before anything is done to them.
         if (lane != null &&
             !lane.video &&
-            !controller.instrumentChannel(key) &&
-            !controller.speechShown) ...[
+            !controller.instrumentChannel(key)) ...[
           chainZone("Source", audioColour, h),
           device(
               "audioClips",
@@ -1216,9 +1234,7 @@ class _CanvasMixerState extends State<CanvasMixer>
         // A voice channel's generator: Speech, chosen for it from the Add
         // menu's Generators, as a MIDI channel's Instrument is its own. Its
         // script and takes are the Speech tab's.
-        if (lane != null &&
-            !controller.speechShown &&
-            controller.speechOf(key) != null) ...[
+        if (lane != null && controller.speechOf(key) != null) ...[
           chainZone("Generator", voiceColour, h),
           device(
               "speechCard",
@@ -1229,26 +1245,6 @@ class _CanvasMixerState extends State<CanvasMixer>
                   onFold: fold,
                   height: h,
                   skin: skin)),
-        ],
-        // A channel's Speech, on its Speech view: what makes its clips, not a
-        // step of its chain -- its script and takes, then Sing (the
-        // Vocaliser); a way to start where it has none.
-        if (lane != null && controller.speechShown) ...[
-          if (controller.speechOf(key) == null)
-            VoiceStartCard(
-                key: const ValueKey("speechStart"),
-                controller: controller,
-                channel: key,
-                height: h)
-          else
-            device(
-                "speech",
-                (f, fold) => SpeechDevice(
-                    controller: controller,
-                    channel: key,
-                    folded: f,
-                    onFold: fold,
-                    height: h)),
         ],
         // A return's devices, a channel's own or the master's (a chorus, a gate),
         // then a way to add another, then its EQ and compressor.
@@ -1278,9 +1274,7 @@ class _CanvasMixerState extends State<CanvasMixer>
               h),
           // A voice's Vocaliser, first of its effects: added from the "+"
           // when it is wanted, not opened with the Speech.
-          if (lane != null &&
-              !controller.speechShown &&
-              controller.vocaliserOf(key) != null)
+          if (lane != null && controller.vocaliserOf(key) != null)
             device(
                 "vocaliser",
                 (f, fold) => VocaliserDevice(
@@ -1300,7 +1294,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                   height: h),
             // A part of the strip taken out is not shown, nor its meter.
             if (lane != null && !controller.partRemoved(key, step))
-              _junction(i, h, theme),
+              _junction(i, h, theme, key),
             if (controller.partRemoved(key, step))
               const SizedBox.shrink()
             else if (step == chainEq)
@@ -1311,7 +1305,8 @@ class _CanvasMixerState extends State<CanvasMixer>
                 when at >= 0 && at != macroAt)
               deviceAt(at),
           ],
-          if (lane != null) _junction(controller.chainOf(key).length, h, theme),
+          if (lane != null)
+            _junction(controller.chainOf(key).length, h, theme, key),
           if (_addAt(controller.chainOf(key)) == controller.chainOf(key).length)
             AddDeviceSlot(
                 key: const ValueKey("addDeviceSlot"),
@@ -1924,26 +1919,82 @@ class _Junction extends StatelessWidget {
   final (double, double) peak;
   final StudioColors colors;
   final double height;
-  const _Junction(this.index, this.level, this.peak, this.colors, this.height);
+
+  /// listening is whether the chain is heard from here; onListen hears it
+  /// from here, or all of it again, and onAnalyser puts one here.
+  final bool listening;
+  final VoidCallback onListen;
+  final ValueChanged<DeviceKind> onAnalyser;
+  const _Junction(this.index, this.level, this.peak, this.colors, this.height,
+      {required this.listening,
+      required this.onListen,
+      required this.onAnalyser});
+
+  /// reading is its level and the peak held, in decibels.
+  String get reading =>
+      "${level.$1 <= -80 ? "−∞" : level.$1.toStringAsFixed(1)} dB · hold "
+      "${peak.$1 <= -80 ? "−∞" : peak.$1.toStringAsFixed(1)}";
 
   @override
-  Widget build(BuildContext context) => SizedBox(
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    return MenuAnchor(
+      style: chainMenuStyle(look),
+      menuChildren: [
+        chainMenuHeading(look, reading),
+        chainMenuItem(look,
+            key: ValueKey("junctionListen-$index"),
+            text: listening
+                ? "Stop listening here"
+                : "Listen from here (what comes after unheard)",
+            onPressed: onListen),
+        chainMenuDivider(look),
+        chainMenuHeading(look, "Add an analyser here"),
+        for (var kind in const [
+          DeviceKind.spectrum,
+          DeviceKind.scope,
+          DeviceKind.tuner,
+          DeviceKind.loudness,
+        ])
+          chainMenuItem(look,
+              key: ValueKey("junctionAnalyser-$index-${kind.name}"),
+              text: kind.label,
+              onPressed: () => onAnalyser(kind)),
+      ],
+      builder: (context, menu, _) => GestureDetector(
         key: ValueKey("junction-$index"),
-        width: 16,
-        height: height,
-        child: Center(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => menu.isOpen ? menu.close() : menu.open(),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
           child: Tooltip(
-            message:
-                "${level.$1 <= -80 ? "−∞" : level.$1.toStringAsFixed(1)} dB"
-                " · hold ${peak.$1 <= -80 ? "−∞" : peak.$1.toStringAsFixed(1)}",
+            message: reading,
             child: SizedBox(
-              width: 9,
-              height: math.min(150.0, math.max(30.0, height - 60)),
-              child: CustomPaint(painter: _MeterPainter(level, peak, colors)),
+              width: 16,
+              height: height,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(1.5),
+                  decoration: listening
+                      ? BoxDecoration(
+                          borderRadius: BorderRadius.circular(3),
+                          border: Border.all(
+                              color: const Color(0xFFE2B04A), width: 1.5))
+                      : null,
+                  child: SizedBox(
+                    width: 9,
+                    height: math.min(150.0, math.max(30.0, height - 60)),
+                    child: CustomPaint(
+                        painter: _MeterPainter(level, peak, colors)),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 
 class _MeterPainter extends CustomPainter {
@@ -2457,63 +2508,30 @@ class _ChainRail extends StatelessWidget {
 
 /// chainZone marks where a part of a chain begins, as the prototype does:
 /// its name up the side, a line of [colour] beside it.
-/// _MacrosStart is the Macros zone of a chain with no Macro yet: folded,
-/// as the prototype starts it; opened, a way to add one.
+/// _MacrosStart is the Macros zone of a chain with no Macro yet: a narrow
+/// dashed "+" (Ken: narrow while unused), adding one at once.
 class _MacrosStart extends StatelessWidget {
   final CanvasController controller;
   final String owner;
-  final bool folded;
-  final VoidCallback onFold;
   final double height;
-  final DeviceSkin skin;
   const _MacrosStart(
-      {required this.controller,
-      required this.owner,
-      required this.folded,
-      required this.onFold,
-      required this.height,
-      required this.skin});
+      {required this.controller, required this.owner, required this.height});
 
   @override
-  Widget build(BuildContext context) {
-    var look = MixerLook.of(context);
-    return DeviceFrame(
-      id: "macros",
-      title: "Macros",
-      help: deviceAbout(DeviceKind.macro),
-      skin: skin,
-      icon: Icons.tune,
-      accent: const Color(0xFFA7A3B8),
-      folded: folded,
-      onFold: onFold,
-      width: 240,
-      height: height,
-      foldedBody: const SizedBox(),
-      body: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(
-              "Eight knobs, each turning any knobs of this chain you "
-              "give it -- one move for many settings.",
-              style: TextStyle(
-                  fontSize: 11, height: 1.35, color: look.studio.muted)),
-          const SizedBox(height: 10),
-          FilledButton.tonal(
-            key: const ValueKey("macrosAdd"),
-            onPressed: () {
-              controller.beginInteraction();
-              controller.setDevicesOf(owner, [
-                ...controller.devicesOf(owner),
-                const MixDevice(DeviceKind.macro),
-              ]);
-              controller.endInteraction();
-            },
-            child: const Text("Add macros"),
-          ),
-        ]),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => DashedAddButton(
+        key: const ValueKey("macrosAdd"),
+        tip: "Add macros: eight knobs, each turning any knobs of this "
+            "chain you give it",
+        height: height,
+        onTap: () {
+          controller.beginInteraction();
+          controller.setDevicesOf(owner, [
+            ...controller.devicesOf(owner),
+            const MixDevice(DeviceKind.macro),
+          ]);
+          controller.endInteraction();
+        },
+      );
 }
 
 Widget chainZone(String label, Color colour, double height) => Builder(

@@ -306,7 +306,10 @@ class _PhrasingLanesState extends State<PhrasingLanes>
       var caption = scale.scale(9) * 1.4;
       var ruler = math.max(14.0, caption);
       var room = math.max(0.0, box.maxHeight - ruler - caption - 4);
-      var loudH = (room * 0.25).clamp(18.0, 54.0);
+      // The loudness lane folded away (Ken): its caption the strip that
+      // opens it again, and the room the pitch lane's.
+      var loudShut = c.settingsShut("phrasingLoudness");
+      var loudH = loudShut ? 0.0 : (room * 0.25).clamp(18.0, 54.0);
       var pitchView = math.max(block + 4, room - loudH);
       var fitPx = math.max(20.0, (box.maxWidth - left - 12) / total);
       var px = fitPx * _timeZoom;
@@ -451,7 +454,9 @@ class _PhrasingLanesState extends State<PhrasingLanes>
         var level = (i < reading.levels.length ? reading.levels[i] : -60.0) -
             loudest +
             shape.loudness;
-        var barH = ((level + 30) * perDb).clamp(4.0, loudH - 4);
+        var barH = ((level + 30) * perDb)
+            .clamp(4.0, math.max(4.0, loudH - 4))
+            .toDouble();
         bars.add(Positioned(
           left: x,
           bottom: 2,
@@ -603,20 +608,40 @@ class _PhrasingLanesState extends State<PhrasingLanes>
               child: pitchLane,
             ),
             const SizedBox(height: 4),
+            // Its caption, which folds the lane away and opens it again.
             SizedBox(
               height: caption,
-              child: Text("Loudness · each word's level",
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: k.text(9, colour: s.muted)),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: InkWell(
+                  key: ValueKey(
+                      loudShut ? "phrasingLoudOpen" : "phrasingLoudShut"),
+                  borderRadius: BorderRadius.circular(3),
+                  onTap: () => c.toggleSettingsShut("phrasingLoudness"),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(loudShut ? Icons.chevron_right : Icons.expand_more,
+                        size: caption, color: s.muted),
+                    Flexible(
+                      child: Text(
+                          loudShut
+                              ? "Loudness · show each word's level"
+                              : "Loudness · each word's level",
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: k.text(9, colour: s.muted)),
+                    ),
+                  ]),
+                ),
+              ),
             ),
-            Container(
-              height: loudH,
-              decoration: BoxDecoration(
-                  color: s.inset, borderRadius: BorderRadius.circular(5)),
-              clipBehavior: Clip.antiAlias,
-              child: Stack(children: [...bars, playLine(loudH)]),
-            ),
+            if (!loudShut)
+              Container(
+                height: loudH,
+                decoration: BoxDecoration(
+                    color: s.inset, borderRadius: BorderRadius.circular(5)),
+                clipBehavior: Clip.antiAlias,
+                child: Stack(children: [...bars, playLine(loudH)]),
+              ),
           ]),
         )),
       );

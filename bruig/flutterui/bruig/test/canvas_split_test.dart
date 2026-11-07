@@ -220,6 +220,21 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(c.devicesOf("a").single.branches.single.devices.single.kind,
         DeviceKind.delay);
+    // Ken: the prototype's rows, one branch open beside them.
+    await tester.ensureVisible(find.byKey(const ValueKey("splitAddBranch")));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey("splitAddBranch")));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const ValueKey("splitEditor-1")), findsOneWidget,
+        reason: "a branch added is opened");
+    await tester.tap(find.byKey(const ValueKey("splitBranch-0")));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const ValueKey("splitEditor-0")), findsOneWidget);
+    expect(find.byKey(const ValueKey("splitDevice-0-0")), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("splitMode-3")));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(c.devicesOf("a").single.value("mode"), 3);
+    expect(find.byKey(const ValueKey("splitCrossover")), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

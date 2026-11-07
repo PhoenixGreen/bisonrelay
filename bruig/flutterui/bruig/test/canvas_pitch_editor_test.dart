@@ -110,6 +110,53 @@ void main() {
       expect(moved.copyWith(clearStartAt: true).startAt, isNull);
     });
 
+    // Ken, 2026-11-08: a note stretched by its edges, and faded in and out.
+    test("stretched by its edges and faded: kept, heard, split and glued", () {
+      const n = PitchNote(1, 2, 60);
+      var long = n.copyWith(endAt: 2.5);
+      expect(long.edited, isTrue);
+      expect(long.heardEnd, 2.5);
+      expect(long.stretch, closeTo(1.5, 1e-9));
+      expect(PitchNote.fromJson(long.toJson()), long);
+      // Heard from its start to 2.5: half way is half way through it.
+      expect(long.sourceAt(1.75), closeTo(1.5, 1e-9));
+      expect(long.sourceAt(2.4), closeTo(1 + 1.4 / 1.5, 1e-9));
+      expect(long.sourceAt(2.6), 2.6, reason: "after it, as it was");
+      var short = n.copyWith(endAt: 1.5);
+      expect(short.sourceAt(1.25), closeTo(1.5, 1e-9));
+      expect(short.sourceAt(1.8), isNull, reason: "squeezed: silent after");
+      expect(short.copyWith(clearEndAt: true).endAt, isNull);
+      // Faded in over a fifth of a second, out over a tenth.
+      var faded = n.copyWith(fadeIn: 0.2, fadeOut: 0.1);
+      expect(faded.edited, isTrue);
+      expect(PitchNote.fromJson(faded.toJson()), faded);
+      expect(faded.fadeAt(1.0), 0);
+      expect(faded.fadeAt(1.1), closeTo(0.5, 1e-9));
+      expect(faded.fadeAt(1.5), 1);
+      expect(faded.fadeAt(1.95), closeTo(0.5, 1e-9));
+      expect(faded.reset.edited, isFalse);
+      expect(faded.copyWith(fadeIn: 0.3).hashCode, isNot(faded.hashCode));
+      // Split: each half heard where it was, stretched as it was; the
+      // first keeps its fade in, the second its fade out.
+      var both = n.copyWith(endAt: 3, fadeIn: 0.2, fadeOut: 0.4);
+      var cut = PitchEdit("a.wav", notes: [both]).split(0, 1.5);
+      var (a, b) = (cut.notes[0], cut.notes[1]);
+      expect((a.start, a.end, a.heardStart, a.heardEnd), (1, 1.5, 1, 2));
+      expect((b.start, b.end, b.heardStart, b.heardEnd), (1.5, 2, 2, 3));
+      expect((a.fadeIn, a.fadeOut, b.fadeIn, b.fadeOut), (0.2, 0, 0, 0.4));
+      expect(a.sourceAt(1.5), closeTo(1.25, 1e-9));
+      expect(b.sourceAt(2.5), closeTo(1.75, 1e-9));
+      // Not stretched, split, neither half is.
+      var plain = PitchEdit("a.wav", notes: [n]).split(0, 1.5);
+      expect(plain.notes.every((m) => !m.timed), isTrue);
+      // Glued back: one note, heard from the first's start to the second's
+      // end, faded as each was.
+      var glued = cut.glue(0).notes.single;
+      expect((glued.start, glued.end, glued.heardStart, glued.heardEnd),
+          (1, 2, 1, 3));
+      expect((glued.fadeIn, glued.fadeOut), (0.2, 0.4));
+    });
+
     test("each note's own retune, vibrato, formant, slide and drawing kept",
         () {
       var n = const PitchNote(0, 1, 60.3).copyWith(
@@ -207,6 +254,51 @@ void main() {
       expect(loud(n.start + 0.25, n.start + 0.6), greaterThan(0.1));
       expect(pitchAround(out, n.start + 0.5), closeTo(220, 6),
           reason: "stretched, its pitch the same");
+    });
+
+    double loudIn(Float32List out, double from, double to) {
+      var most = 0.0;
+      for (var i = (from * rate).round(); i < (to * rate).round(); i++) {
+        most = math.max(most, out[i].abs());
+      }
+      return most;
+    }
+
+    test("faded in and out: quiet at its edges, as loud as ever between", () {
+      var x = sung([(0, 0.2), (220, 1), (0, 0.3)]);
+      var track = pitchTrackOfPcm(x);
+      var n = findNotes(track).first;
+      var out = retuneTake(x, track, [n.copyWith(fadeIn: 0.4, fadeOut: 0.3)]);
+      var full = loudIn(out, n.start + 0.45, n.end - 0.35);
+      expect(full, greaterThan(0.25), reason: "between its fades, as it was");
+      expect(loudIn(out, n.start, n.start + 0.04), lessThan(full * 0.15),
+          reason: "it starts quiet");
+      expect(loudIn(out, n.start + 0.18, n.start + 0.22),
+          closeTo(full * 0.5, full * 0.15),
+          reason: "half way in, half as loud");
+      expect(loudIn(out, n.end - 0.04, n.end), lessThan(full * 0.2),
+          reason: "it ends quiet");
+    });
+
+    test("stretched by its end: its sound lasts as long, its pitch kept", () {
+      // 0.6 s of A3, then silence.
+      var x = sung([(0, 0.1), (220, 0.6), (0, 0.8)]);
+      var track = pitchTrackOfPcm(x);
+      var n = findNotes(track).first;
+      var out = retuneTake(x, track, [n.copyWith(endAt: n.end + 0.4)]);
+      expect(out.length, x.length);
+      expect(loudIn(x, n.end + 0.1, n.end + 0.3), lessThan(0.01),
+          reason: "silent there as sung");
+      expect(loudIn(out, n.end + 0.05, n.end + 0.3), greaterThan(0.2),
+          reason: "stretched on into it");
+      expect(pitchAround(out, n.end + 0.1), closeTo(220, 6),
+          reason: "stretched, not slowed down");
+      expect(loudIn(out, n.end + 0.5, n.end + 0.7), lessThan(0.02),
+          reason: "over where it now ends");
+      // Squeezed: silent before where it was sung to end.
+      var short = retuneTake(x, track, [n.copyWith(endAt: n.end - 0.25)]);
+      expect(loudIn(short, n.end - 0.18, n.end - 0.02), lessThan(0.02));
+      expect(loudIn(short, n.start + 0.05, n.end - 0.3), greaterThan(0.2));
     });
 
     test("its formant moved, its pitch kept", () {
@@ -421,6 +513,88 @@ void main() {
         var q = n.heardStart / sixteenth;
         expect(q, closeTo(q.roundToDouble(), 1e-6), reason: "${n.heardStart}");
       }
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    // Ken, 2026-11-08: a note's edges stretch it, the squares on its top
+    // edge fade it.
+    testWidgets("a note's edge dragged stretches it; its handle fades it",
+        (tester) async {
+      tester.view.physicalSize = const Size(1800, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      c.showPitch("v");
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: ListenableBuilder(
+                    listenable: c,
+                    builder: (context, _) => Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              CanvasMixer.effects(
+                                  controller: c,
+                                  height: 420,
+                                  onResize: (_) {},
+                                  onClose: () {}),
+                            ])))),
+      ));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(c.findPitchNotes("v"), isTrue);
+      await tester.pump();
+      var grid = find.byKey(const ValueKey("pitchGrid"));
+      await tester.ensureVisible(grid);
+      await tester.pump();
+      var edit = c.pitchEditOf("v")!;
+      var high =
+          edit.notes.map((n) => math.max(n.sung, n.target)).reduce(math.max) +
+              3;
+      var low =
+          edit.notes.map((n) => math.min(n.sung, n.target)).reduce(math.min) -
+              3;
+      var top = high.ceilToDouble(), bottom = low.floorToDouble();
+      var size = tester.getSize(grid);
+      var row = size.height / (top - bottom);
+      var perSecond = size.width / (pitchTrackOfPcm(x).length * 0.02);
+      var h = math.max(14.0, row * 1.25);
+      var origin = tester.getTopLeft(grid);
+      double yOf(PitchNote n) => (top - n.target) * row + row / 2;
+      // The first note's right edge, a fifth of a second in: squeezed.
+      var first = edit.notes.first;
+      await tester.dragFrom(
+          origin + Offset(first.end * perSecond - 2, yOf(first)),
+          Offset(-0.2 * perSecond, 0));
+      await tester.pump();
+      var squeezed = c.pitchEditOf("v")!.notes.first;
+      expect(squeezed.heardEnd, closeTo(first.end - 0.2, 0.02));
+      expect(squeezed.stretch, lessThan(0.75));
+      expect(squeezed.start, first.start, reason: "sung where it was");
+      // The second note's fade-in square, at its top-left corner, dragged
+      // a tenth of a second in.
+      var second = edit.notes[1];
+      await tester.dragFrom(
+          origin +
+              Offset(
+                  second.heardStart * perSecond + 1, yOf(second) - h / 2 + 1),
+          Offset(0.1 * perSecond, 0));
+      await tester.pump();
+      var faded = c.pitchEditOf("v")!.notes[1];
+      expect(faded.fadeIn, closeTo(0.1, 0.02));
+      expect(faded.target, closeTo(second.target, 1e-9),
+          reason: "not moved up or down");
+      // Its fade out, and its length, in the inspector.
+      expect(find.byKey(const ValueKey("pitchFadeOut")), findsOneWidget);
+      expect(find.byKey(const ValueKey("pitchStretch")), findsOneWidget);
+      // One undo each.
+      c.undo();
+      expect(c.pitchEditOf("v")!.notes[1].fadeIn, 0);
       expect(tester.takeException(), isNull);
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpWidget(const SizedBox());

@@ -295,6 +295,49 @@ void main() {
     expect(now.first.value("depth"), 0.2);
   });
 
+  // Ken, 2026-11-08: "Macro 1 -- what is it set to, what can it be set
+  // to, and how can it be set?"
+  testWidgets("each macro says what it turns, and is given knobs to turn",
+      (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    c.setDevicesOf("m", [
+      ...c.devicesOf("m"),
+      const MixDevice(DeviceKind.macro, id: "d2"),
+    ]);
+    c.openEffects("m");
+    await show(tester, c);
+    MixDevice macro() =>
+        c.devicesOf("m").firstWhere((d) => d.kind == DeviceKind.macro);
+    var index = c.devicesOf("m").indexOf(macro());
+    expect(find.text("Not set"), findsNWidgets(8));
+    // Macro 2 picked, given the reverb's size.
+    var pick = find.byKey(ValueKey("macroPick-$index-1"));
+    await tester.ensureVisible(pick);
+    await tester.pump();
+    await tester.tapAt(tester.getBottomLeft(pick) + const Offset(28, -4));
+    await tester.pump();
+    expect(find.text("MACRO 2 TURNS"), findsOneWidget);
+    await tester.tap(find.byKey(ValueKey("macroAdd-$index")));
+    await tester.pump();
+    await tester.tap(find.byKey(ValueKey("macroAddDevice-$index-Reverb")));
+    await tester.pump();
+    await tester.tap(find.byKey(ValueKey("macroAddKnob-$index-d1-size")));
+    await tester.pump();
+    await tester.pump();
+    expect(macro().mods, [const ModTarget("d1", "size", 0.5, 1)]);
+    expect(find.text("Size"), findsWidgets,
+        reason: "under Macro 2, what it turns");
+    expect(find.text("Reverb · Size"), findsOneWidget);
+    // Taken off again.
+    await tester.tap(find.byKey(ValueKey("macroRemove-$index-0")));
+    await tester.pump();
+    expect(macro().mods, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets("the macros are eight, set at random, kept as variations",
       (tester) async {
     var c = make();
@@ -329,6 +372,8 @@ void main() {
 
     await menu("macroVariationSave-$index");
     expect(macro().variations, hasLength(1));
+    await tester.ensureVisible(random);
+    await tester.pump();
     await tester.tap(random);
     await tester.pump();
     await menu("macroVariation-$index-0");
@@ -578,9 +623,10 @@ void main() {
     expect(x("chainZone-Source"), lessThan(x("chainZone-Before")));
     expect(find.byKey(const ValueKey("noteClipsRoll")), findsOneWidget);
     expect(find.text("2 notes, 1 bar"), findsOneWidget);
-    // The macros start folded; opened, one is added, and kept in its zone.
-    await tester.tap(find.byKey(const ValueKey("deviceFold-macros")));
-    await tester.pump();
+    // Ken: with none, the macros are a narrow "+"; pressed, one is added,
+    // and kept in its zone.
+    expect(tester.getSize(find.byKey(const ValueKey("macrosAdd"))).width,
+        lessThan(40));
     await tester.tap(find.byKey(const ValueKey("macrosAdd")));
     await tester.pump();
     expect(c.devicesOf("p").single.kind, DeviceKind.macro);

@@ -11,6 +11,10 @@ part of '../canvas_controller.dart';
 /// a slot.
 const int timelineRow = -1;
 
+/// timelineClipColour is a sound's colour on the timeline (sectionColors'
+/// teal) until its clip is given another.
+const int timelineClipColour = 3;
+
 extension CanvasTimelineClips on CanvasController {
   /// timelineSoundOf is the sound on [channel]'s timeline the clip editor
   /// opens on: its first that is a file -- not an instrument, nor a voice.
@@ -48,6 +52,8 @@ extension CanvasTimelineClips on CanvasController {
       sound: source.copyWith(clearClip: true),
       bars: math.max(1 / bpb, span / spb / bpb),
       loop: false,
+      // The timeline's teal, until one is picked.
+      color: timelineClipColour,
       // As loud as it plays, and faded as it is.
       gain: (gainToDb(e.clip.volume) * 10).roundToDouble() / 10,
       fadeIn: e.clip.fadeIn,

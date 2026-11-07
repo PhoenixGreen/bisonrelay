@@ -394,19 +394,35 @@ class _ClipEditorState extends State<ClipEditor> {
             style: TextStyle(fontSize: 11, color: look.studio.muted)),
       );
 
-  Widget _tbReadout(MixerLook look, String key, String text) => Container(
-        key: ValueKey(key),
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-        decoration: BoxDecoration(
-            color: look.studio.inset,
-            border: Border.all(color: look.studio.edge),
-            borderRadius: BorderRadius.circular(4)),
-        child: Text(text,
-            style: TextStyle(
-                fontSize: 11.5,
-                fontFeatures: const [FontFeature.tabularFigures()],
-                color: look.studio.text)),
-      );
+  /// _tbReadout is a value on the bar, typed into on a double-click where
+  /// [onTyped] takes the number typed.
+  Widget _tbReadout(MixerLook look, String key, String text,
+      {ValueChanged<double>? onTyped}) {
+    var style = TextStyle(
+        fontSize: 11.5,
+        fontFeatures: const [FontFeature.tabularFigures()],
+        color: look.studio.text);
+    return Container(
+      key: ValueKey(key),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+          color: look.studio.inset,
+          border: Border.all(color: look.studio.edge),
+          borderRadius: BorderRadius.circular(4)),
+      child: onTyped == null
+          ? Text(text, style: style)
+          : IntrinsicWidth(
+              child: _TypedPlace(
+                  key: ValueKey("$key-typed"),
+                  value: text,
+                  style: style,
+                  doubleClick: true,
+                  onTyped: (t) {
+                    if (typedNumber(t) case (var v, _)) onTyped(v);
+                  }),
+            ),
+    );
+  }
 
   /// _tbMenu is a button of the bar opening [items] under it.
   Widget _tbMenu(MixerLook look, String key, String label, List<Widget> items,
@@ -498,7 +514,12 @@ class _ClipEditorState extends State<ClipEditor> {
               _tb(look, "clipBpm-down", "",
                   () => c.editClip((x) => x.copyWith(bpm: x.bpm - 1)),
                   icon: Icons.remove, tip: "Slower: a beat a minute less"),
-              _tbReadout(look, "clipBpm", clip.bpm.toStringAsFixed(1)),
+              _tbReadout(look, "clipBpm", clip.bpm.toStringAsFixed(1),
+                  onTyped: (v) {
+                if (v >= 20 && v <= 999) {
+                  c.editClip((x) => x.copyWith(bpm: v));
+                }
+              }),
               _tb(look, "clipBpm-up", "",
                   () => c.editClip((x) => x.copyWith(bpm: x.bpm + 1)),
                   icon: Icons.add, tip: "Faster: a beat a minute more"),
@@ -522,7 +543,11 @@ class _ClipEditorState extends State<ClipEditor> {
                       ? "In Re-pitch its pitch follows its speed"
                       : "Down a semitone"),
               _tbReadout(look, "clipPitch",
-                  "${clip.pitch > 0 ? "+" : ""}${clip.pitch} st"),
+                  "${clip.pitch > 0 ? "+" : ""}${clip.pitch} st",
+                  onTyped: repitch
+                      ? null
+                      : (v) => c.editClip(
+                          (x) => x.copyWith(pitch: v.round().clamp(-48, 48)))),
               _tb(
                   look,
                   "clipPitch-up",
@@ -688,13 +713,14 @@ class _ClipEditorState extends State<ClipEditor> {
       double min,
       double max,
       String reading,
-      SessionClip Function(SessionClip x, double v) set) {
+      SessionClip Function(SessionClip x, double v) set,
+      {double? Function(double v, String unit)? typed}) {
     var s = look.studio;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 1),
       child: Row(children: [
         SizedBox(
-            width: 60,
+            width: 56,
             child: Text(label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -704,27 +730,41 @@ class _ClipEditorState extends State<ClipEditor> {
             data: SliderTheme.of(context).copyWith(
                 trackHeight: 3,
                 overlayShape: SliderComponentShape.noOverlay,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6)),
-            child: Slider(
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5)),
+            child: SizedBox(
+              height: 18,
+              child: Slider(
               key: ValueKey(key),
               value: value.clamp(min, max),
               min: min,
               max: max,
-              onChangeStart: (_) => c.beginInteraction(),
-              onChanged: (v) => c.editClip((x) => set(x, v), transient: true),
-              onChangeEnd: (_) => c.endInteraction(),
+                onChangeStart: (_) => c.beginInteraction(),
+                onChanged: (v) =>
+                    c.editClip((x) => set(x, v), transient: true),
+                onChangeEnd: (_) => c.endInteraction(),
+              ),
             ),
           ),
         ),
+        // Its number, typed into on a double-click.
         SizedBox(
-          width: 50,
-          child: Text(reading,
+          width: 54,
+          child: _TypedPlace(
               key: ValueKey("$key-reading"),
-              textAlign: TextAlign.right,
-              maxLines: 1,
+              value: reading,
+              align: TextAlign.right,
+              doubleClick: true,
               style: _small(look).copyWith(
                   fontSize: 10.5,
-                  fontFeatures: const [FontFeature.tabularFigures()])),
+                  fontFeatures: const [FontFeature.tabularFigures()]),
+              onTyped: (text) {
+                if (typedNumber(text) case (var v, var unit)) {
+                  var value = typed == null ? v : typed(v, unit);
+                  if (value != null) {
+                    c.editClip((x) => set(x, value.clamp(min, max)));
+                  }
+                }
+              }),
         ),
       ]),
     );
@@ -733,11 +773,11 @@ class _ClipEditorState extends State<ClipEditor> {
   Widget _audioInspector(MixerLook look, SessionClip clip) {
     var s = look.studio;
     var help = _small(look, s.muted).copyWith(fontSize: 10.5, height: 1.4);
-    Widget gap() => const SizedBox(height: 10);
+    Widget gap() => const SizedBox(height: 6);
     return Container(
       color: s.panel,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
         child:
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _head(look, "Clip", key: const ValueKey("clipColumn")),
@@ -776,7 +816,10 @@ class _ClipEditorState extends State<ClipEditor> {
               0,
               4,
               clip.fadeIn == 0 ? "None" : _seconds(clip.fadeIn),
-              (x, v) => x.copyWith(fadeIn: (v * 100).roundToDouble() / 100)),
+              (x, v) => x.copyWith(fadeIn: (v * 100).roundToDouble() / 100),
+              typed: (v, unit) => unit == "ms" || (unit.isEmpty && v > 8)
+                  ? v / 1000
+                  : v),
           _slider(
               look,
               "clipFadeOut",
@@ -785,7 +828,10 @@ class _ClipEditorState extends State<ClipEditor> {
               0,
               8,
               clip.fadeOut == 0 ? "None" : _seconds(clip.fadeOut),
-              (x, v) => x.copyWith(fadeOut: (v * 100).roundToDouble() / 100)),
+              (x, v) => x.copyWith(fadeOut: (v * 100).roundToDouble() / 100),
+              typed: (v, unit) => unit == "ms" || (unit.isEmpty && v > 8)
+                  ? v / 1000
+                  : v),
           if (!clip.warp && (clip.pitch != 0 || clip.cents != 0))
             Text("Unwarped, a higher pitch is faster too.", style: help),
           gap(),
@@ -1115,12 +1161,12 @@ class _ClipEditorState extends State<ClipEditor> {
   Widget _drop<T>(MixerLook look, Key key, T value, List<(String, T)> items,
           ValueChanged<T> onChanged) =>
       Container(
-        height: 24,
+        height: 20,
         padding: const EdgeInsets.symmetric(horizontal: 6),
         decoration: BoxDecoration(
           color: look.studio.inset,
           border: Border.all(color: look.studio.edge),
-          borderRadius: BorderRadius.circular(5),
+          borderRadius: BorderRadius.circular(4),
         ),
         child: DropdownButton<T>(
           key: key,
@@ -1128,9 +1174,9 @@ class _ClipEditorState extends State<ClipEditor> {
           isDense: true,
           isExpanded: true,
           underline: const SizedBox(),
-          iconSize: 16,
+          iconSize: 14,
           iconEnabledColor: look.studio.muted,
-          style: _small(look),
+          style: _small(look).copyWith(fontSize: 10.5),
           dropdownColor: look.colors.surfaceContainerHigh,
           items: [
             for (var (label, v) in items)
@@ -1151,10 +1197,10 @@ class _ClipEditorState extends State<ClipEditor> {
       : "${s.toStringAsFixed(s < 10 ? 1 : 0)} s";
 
   Widget _row(MixerLook look, String label, Widget child) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.only(bottom: 3),
         child: Row(children: [
           SizedBox(
-              width: 70,
+              width: 64,
               child: Text(label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1214,7 +1260,7 @@ class _ClipEditorState extends State<ClipEditor> {
         fontWeight: FontWeight.w600,
         color: look.studio.muted);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(children: [
         Expanded(
             child: Text(title.toUpperCase(),
@@ -1399,7 +1445,7 @@ class _ClipEditorState extends State<ClipEditor> {
         b == 1 ? "1 bar" : "${b == b.roundToDouble() ? b.round() : b} bars";
     // Readouts, as the prototype's: each typed into once clicked.
     var readout = _small(look).copyWith(
-        fontSize: 11.5, fontFeatures: const [FontFeature.tabularFigures()]);
+        fontSize: 11, fontFeatures: const [FontFeature.tabularFigures()]);
     Widget place(String key, String value, ValueChanged<String> onTyped) =>
         _TypedPlace(
             key: ValueKey(key),
@@ -1811,6 +1857,9 @@ class _SampleViewState extends State<_SampleView>
 
   /// The last marker tapped and when, for a double-click taking it out.
   int? _tappedMarker;
+
+  /// The last envelope point tapped, for a double-click taking it out.
+  int? _tappedPoint;
   DateTime _tappedAt = DateTime(0);
   double _dragFrom = 0, _valueFrom = 0;
 
@@ -1949,10 +1998,24 @@ class _SampleViewState extends State<_SampleView>
             var p = d.localPosition;
             // An envelope's point, where the sound is.
             if (widget.envelope case var env? when p.dy > top) {
-              if (_pointNear(clip, env, beatW, top, size.maxHeight, p) !=
-                  null) {
+              if (_pointNear(clip, env, beatW, top, size.maxHeight,
+                      p + Offset(scroll * beatW, 0))
+                  case var i?) {
+                // Twice on it: taken out, as a right-click does.
+                var now = DateTime.now();
+                if (i == _tappedPoint &&
+                    now.difference(_tappedAt) <
+                        const Duration(milliseconds: 400)) {
+                  _tappedPoint = null;
+                  c.editClip((x) =>
+                      x.withCurve(env, [...x.curveOf(env)]..removeAt(i)));
+                } else {
+                  _tappedPoint = i;
+                  _tappedAt = now;
+                }
                 return;
               }
+              _tappedPoint = null;
               var beat = _onEnvelope(_snap(beatAt(p.dx), math.min(step, 0.25)));
               var value = _valueAt(p.dy, top, size.maxHeight);
               c.editClip(
@@ -1993,8 +2056,8 @@ class _SampleViewState extends State<_SampleView>
           },
           onSecondaryTapUp: (d) {
             if (widget.envelope case var env? when d.localPosition.dy > top) {
-              var i = _pointNear(
-                  clip, env, beatW, top, size.maxHeight, d.localPosition);
+              var i = _pointNear(clip, env, beatW, top, size.maxHeight,
+                  d.localPosition + Offset(scroll * beatW, 0));
               if (i == null) return;
               c.editClip(
                   (x) => x.withCurve(env, [...x.curveOf(env)]..removeAt(i)));
@@ -2730,6 +2793,18 @@ double? beatsOfPlace(String text, int beatsPerBar) {
   return (bar - 1) * beatsPerBar + (beat - 1) + (sixteenth - 1) / 4;
 }
 
+/// typedNumber is the number typed at the front of [text] -- "-3", "+2.5
+/// dB", "−1" -- and the unit after it, lower case ("" for none); null
+/// where it starts with no number.
+(double, String)? typedNumber(String text) {
+  var m = RegExp(r"^\s*([+\-−]?\d*\.?\d+)\s*([a-zA-Z%]*)")
+      .firstMatch(text.trim());
+  if (m == null) return null;
+  var v = double.tryParse(m.group(1)!.replaceAll("−", "-").replaceAll("+", ""));
+  if (v == null) return null;
+  return (v, m.group(2)!.toLowerCase());
+}
+
 /// _TypedPlace is a place shown as bar.beat.sixteenth, typed into once
 /// clicked: Return sets it, Escape or clicking away leaves it.
 class _TypedPlace extends StatefulWidget {
@@ -2737,11 +2812,17 @@ class _TypedPlace extends StatefulWidget {
   final TextStyle style;
   final TextAlign align;
   final ValueChanged<String> onTyped;
+
+  /// doubleClick is whether it is typed into on a double-click, as a
+  /// setting's number is (a click on it is the slider's, or nothing),
+  /// rather than on one.
+  final bool doubleClick;
   const _TypedPlace(
       {required this.value,
       required this.style,
       required this.onTyped,
       this.align = TextAlign.center,
+      this.doubleClick = false,
       super.key});
 
   @override
@@ -2772,18 +2853,21 @@ class _TypedPlaceState extends State<_TypedPlace> {
   @override
   Widget build(BuildContext context) {
     if (!_typing) {
+      void type() {
+        _text.text = widget.value;
+        _text.selection =
+            TextSelection(baseOffset: 0, extentOffset: widget.value.length);
+        setState(() => _typing = true);
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => _focus.requestFocus());
+      }
+
       return MouseRegion(
         cursor: SystemMouseCursors.text,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () {
-            _text.text = widget.value;
-            _text.selection =
-                TextSelection(baseOffset: 0, extentOffset: widget.value.length);
-            setState(() => _typing = true);
-            WidgetsBinding.instance
-                .addPostFrameCallback((_) => _focus.requestFocus());
-          },
+          onTap: widget.doubleClick ? null : type,
+          onDoubleTap: widget.doubleClick ? type : null,
           child: Text(widget.value,
               textAlign: widget.align,
               maxLines: 1,

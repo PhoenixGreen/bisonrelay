@@ -1382,11 +1382,17 @@ class _LanePainter extends CustomPainter {
     // not a recording -- blue, as a MIDI clip is told from audio.
     var instrument = lane.element is AudioElement &&
         (lane.element as AudioElement).isInstrument;
+    // A sound made a clip (see timeline_clips.dart) in its clip's colour.
+    var asClip = lane.element is AudioElement && clip.playlist.isNotEmpty
+        ? clip.playlist.first.clip
+        : null;
     var fill = (video
             ? const Color(0xFF7B5CC4)
             : instrument
                 ? const Color(0xFF3D6FD9)
-                : const Color(0xFF2A9D8F))
+                : asClip != null && asClip.color != timelineClipColour
+                    ? Color(sectionColors[asClip.color % sectionColors.length])
+                    : const Color(0xFF2A9D8F))
         .withValues(alpha: lane.editable && !locked ? 1 : 0.5);
 
     var from = _x(span.from, w), to = _x(span.to, w);

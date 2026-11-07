@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
@@ -61,7 +62,15 @@ List<double> _bandPass(double hz, double q) {
 /// _coef is a one-pole follower coefficient for a time of [ms].
 double _coef(double ms) => math.exp(-1 / (ms / 1000 * _rate));
 
-class Vocoder implements Sidechained {
+class Vocoder implements Sidechained, Readable {
+  /// reading is each band's voice, then each band's carrier, as loud as it
+  /// is now: what its screen draws.
+  @override
+  Float32List get reading => Float32List.fromList([
+        for (var b in _voice) b.env,
+        for (var b in _carry) b.env,
+      ]);
+
   @override
   final String? source;
   final int _carrier;

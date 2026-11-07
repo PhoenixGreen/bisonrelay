@@ -24,9 +24,10 @@ Float32List retuneTake(
   var slow = driftTrack(track);
   for (var (k, n) in notes.indexed) {
     if (!n.edited) continue;
-    // From where it is heard to start, moved by Quantise timing, or sung.
+    // From where it is heard to start -- moved by Quantise timing or its
+    // edge dragged -- or sung, to where it is heard or sung to end.
     var a = (math.min(n.start, n.heardStart) * rate).round() - margin;
-    var b = (n.end * rate).round() + margin;
+    var b = (math.max(n.end, n.heardEnd) * rate).round() + margin;
     a = a.clamp(0, source.length);
     b = b.clamp(a, source.length);
     if (b - a < 2 * margin + 16) continue;
@@ -162,8 +163,14 @@ Float32List _retune(Float32List source, List<double?> track, List<double?> slow,
     }
     u += synthPeriod;
   }
+  var faded = n.fadeIn > 0 || n.fadeOut > 0;
   for (var i = 0; i < out.length; i++) {
     if (weight[i] > 1e-6) out[i] = out[i] / math.max(1.0, weight[i]) * gain;
+    // Faded in from where it is heard to start, out to where it ends.
+    if (faded) {
+      var t = (a + i) / rate;
+      if (t >= n.heardStart && t <= n.heardEnd) out[i] *= n.fadeAt(t);
+    }
   }
   return out;
 }
