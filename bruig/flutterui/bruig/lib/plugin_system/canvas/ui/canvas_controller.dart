@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/automation.dart';
+import 'package:bruig/plugin_system/canvas/model/pitch_edit.dart'
+    show PitchEdit;
 import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/media/phrasing.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';

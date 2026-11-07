@@ -24,7 +24,8 @@ Float32List retuneTake(
   var slow = driftTrack(track);
   for (var (k, n) in notes.indexed) {
     if (!n.edited) continue;
-    var a = (n.start * rate).round() - margin;
+    // From where it is heard to start, moved by Quantise timing, or sung.
+    var a = (math.min(n.start, n.heardStart) * rate).round() - margin;
     var b = (n.end * rate).round() + margin;
     a = a.clamp(0, source.length);
     b = b.clamp(a, source.length);
@@ -123,13 +124,21 @@ Float32List _retune(Float32List source, List<double?> track, List<double?> slow,
   var k = 0;
   var u = a.toDouble();
   while (u < b) {
+    // Where in the original this moment is heard from: its own sound
+    // stretched from where it is moved to; silence before it, moved later.
+    var from = n.sourceAt(u / rate);
+    if (from == null) {
+      u += rate / hzOf(n.target);
+      continue;
+    }
+    var su = from * rate;
     while (k + 1 < marks.length &&
-        (marks[k + 1] - u).abs() <= (marks[k] - u).abs()) {
+        (marks[k + 1] - su).abs() <= (marks[k] - su).abs()) {
       k++;
     }
-    var centre = marks.isEmpty ? u.round() : marks[k].round();
+    var centre = marks.isEmpty ? su.round() : marks[k].round();
     var period = rate / hzOf(sungAt(centre.toDouble()));
-    var synthPeriod = rate / hzOf(targetAt(u));
+    var synthPeriod = rate / hzOf(targetAt(su));
     var span = (period / colour).round().clamp(16, 2000);
     var o = u.round();
     for (var j = -span; j < span; j++) {

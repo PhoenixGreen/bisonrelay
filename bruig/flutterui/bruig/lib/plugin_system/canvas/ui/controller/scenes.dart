@@ -667,7 +667,11 @@ extension CanvasScenes on CanvasController {
           .toInt();
       if (need > doc.frames) doc = doc.copyWith(frames: need);
     }
+    var tempoWas = _document.audio.secondsPerBeat;
     apply(doc, transient: transient);
+    // The timeline's clips at the new tempo: where they play from and to,
+    // and -- warped -- made again.
+    if (!transient && next.secondsPerBeat != tempoWas) refreshTimelineClips();
   }
 
   /// addSection adds a section at the end of the structure, named [name].

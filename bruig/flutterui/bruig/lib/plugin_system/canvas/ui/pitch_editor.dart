@@ -1,9 +1,14 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart' show snapNote;
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart'
+    show InstrumentPart;
+import 'package:bruig/plugin_system/canvas/model/speech_spec.dart'
+    show TimedWord;
 import 'package:bruig/plugin_system/canvas/model/midi_effects.dart'
     show scaleSteps;
 import 'package:bruig/plugin_system/canvas/model/pitch_edit.dart';
@@ -111,6 +116,7 @@ class _PitchEditorState extends State<PitchEditor> {
   void dispose() {
     // Left, it is heard corrected again: As sung is only for listening.
     if (c.pitchHeardAsSung(key)) c.hearPitchAsSung(key, false);
+    if (_sounding case var held?) c.audio.noteOff(key, held);
     _focus.dispose();
     _across.dispose();
     _down.dispose();
@@ -428,6 +434,10 @@ class _PitchEditorState extends State<PitchEditor> {
                         : _snapped(n.sung))
                 ]));
           }, tip: "Every note onto the nearest of the scale"),
+          act("Quantise timing", "pitchQuantise", _quantise,
+              tip: "Each note's start onto the nearest sixteenth of the "
+                  "song -- the picked ones, or all -- its sound stretched "
+                  "to end where it did"),
           act("Notes to MIDI", "pitchToMidi", () {
             var why = c.notesToMidi(key, root: _rootNow, steps: _steps);
             try {
@@ -505,6 +515,7 @@ class _PitchEditorState extends State<PitchEditor> {
       double mOf(double y) => top - (y - rowH / 2) / rowH;
       double tOf(double x) => x / perSecond;
       var grid = _PitchGrid(
+        words: c.pitchWordsOf(key) ?? const [],
         notes: notes,
         shown: [for (var n in notes) _shown(n)],
         track: track,
@@ -573,10 +584,17 @@ class _PitchEditorState extends State<PitchEditor> {
           child: SingleChildScrollView(
             controller: _keysDown,
             physics: const NeverScrollableScrollPhysics(),
-            child: CustomPaint(
-              key: const ValueKey("pitchKeys"),
-              size: Size(_keysW, height),
-              painter: _KeysPainter(top, bottom, rowH, _inScale, _rootNow, s),
+            // Pressed, a key sounds its note, as the prototype's do.
+            child: Listener(
+              onPointerDown: (d) =>
+                  _sound((top - (d.localPosition.dy / rowH).floor()).round()),
+              onPointerUp: (_) => _sound(null),
+              onPointerCancel: (_) => _sound(null),
+              child: CustomPaint(
+                key: const ValueKey("pitchKeys"),
+                size: Size(_keysW, height),
+                painter: _KeysPainter(top, bottom, rowH, _inScale, _rootNow, s),
+              ),
             ),
           ),
         ),
@@ -687,7 +705,7 @@ class _PitchEditorState extends State<PitchEditor> {
     int? best;
     var bestD = double.infinity;
     for (var (i, n) in notes.indexed) {
-      if (t < n.start - 0.02 || t > n.end + 0.02) continue;
+      if (t < n.heardStart - 0.02 || t > n.end + 0.02) continue;
       var d = (p.dy - yOf(_shown(n))).abs();
       if (d <= math.max(rowH, 10) && d < bestD) {
         best = i;
@@ -813,6 +831,10 @@ class _PitchEditorState extends State<PitchEditor> {
                         var want = was + by;
                         // Onto the scale, or a semitone; free with Alt.
                         if (!alt) want = _snapped(want);
+                        // The first of them heard where it lands.
+                        if (i == _targetsFrom.keys.first) {
+                          _sound(want.round());
+                        }
                         return n.copyWith(shift: n.shift + want - n.target);
                       }()
                     else
@@ -843,7 +865,7 @@ class _PitchEditorState extends State<PitchEditor> {
             var inside = {
               for (var (i, n) in edit.notes.indexed)
                 if (box.overlaps(Rect.fromLTRB(
-                    n.start * perSecond,
+                    n.heardStart * perSecond,
                     yOf(_shown(n)) - rowH / 2,
                     n.end * perSecond,
                     yOf(_shown(n)) + rowH / 2)))
@@ -857,6 +879,7 @@ class _PitchEditorState extends State<PitchEditor> {
         }
         if (_targetsFrom.isNotEmpty) {
           _targetsFrom = {};
+          _sound(null);
           c.endInteraction();
         }
       case PitchTool.draw:
@@ -895,6 +918,51 @@ class _PitchEditorState extends State<PitchEditor> {
             }()
         ]));
   }
+
+  /// _quantise moves each note's start -- the picked ones, or every one --
+  /// onto the nearest sixteenth of the song, as it falls on the timeline:
+  /// not before the note before it ends, nor too near its own end.
+  void _quantise() {
+    var e = c.pitchElementOf(key);
+    var source = c.pitchSourceOf(key);
+    if (e == null || source == null) return;
+    var spb = math.max(0.001, c.document.audio.secondsPerBeat);
+    var grid = spb / 4;
+    var startsAt = e.clip.at / c.document.frameRate - source.start;
+    _edit((edit) {
+      var out = <PitchNote>[];
+      for (var (i, n) in edit.notes.indexed) {
+        if (_picked.isNotEmpty && !_picked.contains(i)) {
+          out.add(n);
+          continue;
+        }
+        var at = ((startsAt + n.start) / grid).round() * grid - startsAt;
+        var least = out.isEmpty ? 0.0 : out.last.end;
+        at = at.clamp(least, math.max(least, n.end - 0.05)).toDouble();
+        out.add((at - n.start).abs() < 0.0005
+            ? n.copyWith(clearStartAt: true)
+            : n.copyWith(startAt: at));
+      }
+      return edit.copyWith(notes: out);
+    });
+  }
+
+  /// _sounding is the key heard now -- pressed, or a note dragged to it.
+  int? _sounding;
+
+  /// _sound plays [key] on the piano, through the channel -- the one before
+  /// let go -- or, null, lets go.
+  void _sound(int? key) {
+    if (key == _sounding) return;
+    if (_sounding case var was?) c.audio.noteOff(key0, was);
+    _sounding = key;
+    if (key != null && key >= 0 && key < 128) {
+      unawaited(c.audio.noteOn(key0, const InstrumentPart(), key, 96));
+    }
+  }
+
+  /// key0 is the channel the keys are heard through.
+  String get key0 => widget.channel;
 
   KeyEventResult _key(KeyEvent e, PitchEdit edit) {
     if (e is! KeyDownEvent && e is! KeyRepeatEvent) {
@@ -1360,6 +1428,10 @@ class _VoicePainter extends CustomPainter {
 class _PitchGrid extends CustomPainter {
   final List<PitchNote> notes;
 
+  /// words are what was said in the recording, timed in it: each note's
+  /// lyric, the word it starts in.
+  final List<TimedWord> words;
+
   /// shown is where each note is heard: see _shown.
   final List<double> shown;
   final List<double?> track, heard;
@@ -1377,6 +1449,7 @@ class _PitchGrid extends CustomPainter {
   _PitchGrid(
       {required this.notes,
       required this.shown,
+      this.words = const [],
       required this.track,
       required this.heard,
       required this.top,
@@ -1431,14 +1504,17 @@ class _PitchGrid extends CustomPainter {
     // with an arrow from there.
     var on = playhead;
     for (var (i, n) in notes.indexed) {
-      var x0 = n.start * perSecond, x1 = n.end * perSecond;
+      // Where it is heard -- moved in time by Quantise timing -- and,
+      // boxed, where it was sung.
+      var x0 = n.heardStart * perSecond, x1 = n.end * perSecond;
+      var sungX = n.start * perSecond;
       var target = shown[i];
       var y = _y(target);
       var h = math.max(6.0, rowH * 0.8);
-      var moved = (target - n.sung).abs() > 0.12;
+      var moved = (target - n.sung).abs() > 0.12 || n.startAt != null;
       if (moved) {
         var hy = _y(n.sung);
-        _dashed(canvas, Rect.fromLTRB(x0, hy - h / 2, x1, hy + h / 2),
+        _dashed(canvas, Rect.fromLTRB(sungX, hy - h / 2, x1, hy + h / 2),
             sungInk.withValues(alpha: 0.8));
         // The arrow, from the box to the note.
         var ax = x0 + math.min(14, (x1 - x0) / 2);
@@ -1481,6 +1557,23 @@ class _PitchGrid extends CustomPainter {
             ..color = picked.contains(i)
                 ? Colors.white
                 : _blobInk.withValues(alpha: 0.9));
+      // Its lyric under it, as the prototype's: the word it starts in.
+      if (words.isNotEmpty && x1 - x0 > 12) {
+        var said = words
+            .where((w) => w.start <= n.start + 0.05 && w.end > n.start)
+            .firstOrNull;
+        if (said != null) {
+          var tp = TextPainter(
+              text: TextSpan(
+                  text: said.text,
+                  style: TextStyle(fontSize: 10, color: s.text)),
+              maxLines: 1,
+              ellipsis: "…",
+              textDirection: TextDirection.ltr)
+            ..layout(maxWidth: math.max(12, x1 - x0));
+          tp.paint(canvas, Offset(x0 + 1, y + h / 2 + 1));
+        }
+      }
       // A drawn pitch over it.
       if (n.curve.length >= 2) {
         var path = Path()

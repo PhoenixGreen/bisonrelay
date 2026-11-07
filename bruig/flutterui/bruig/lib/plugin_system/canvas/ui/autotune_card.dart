@@ -268,11 +268,22 @@ List<double?> editedTrack(PitchEdit edit, List<double?> track) {
     var before = k > 0 && n.start - edit.notes[k - 1].end < 0.3
         ? edit.notes[k - 1].target
         : null;
-    var a = (n.start / 0.02).floor(), b = (n.end / 0.02).ceil();
+    var a = (math.min(n.start, n.heardStart) / 0.02).floor();
+    var b = (n.end / 0.02).ceil();
     for (var i = math.max(0, a); i < math.min(b, out.length); i++) {
-      var m = track[i];
-      if (m == null) continue;
-      out[i] = pitchHeardAt(n, i * 0.02, m, slow[i] ?? m, before: before);
+      // Heard from where in the original: moved by Quantise timing.
+      var from = n.sourceAt(i * 0.02);
+      if (from == null) {
+        out[i] = null;
+        continue;
+      }
+      var j = (from / 0.02).round().clamp(0, track.length - 1);
+      var m = track[j];
+      if (m == null) {
+        out[i] = null;
+        continue;
+      }
+      out[i] = pitchHeardAt(n, from, m, slow[j] ?? m, before: before);
     }
   }
   return out;

@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/pitch_editing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -132,6 +133,90 @@ void main() {
     // Dragged on the timeline: the clip editor has it.
     c.setTimedClip(_sound(c), _sound(c).clip.copyWith(fadeIn: 0.75));
     expect(c.editedClip!.fadeIn, 0.75);
+  });
+
+  group("made again", () {
+    var audioWas = CanvasController.clipAudio;
+    var takeWas = CanvasController.takeAudio;
+    var storeWas = CanvasController.partStore;
+    var keepWas = CanvasController.speechTakeStore;
+    var made = 0;
+    Float32List tone() {
+      var x = Float32List(4 * 48000);
+      for (var i = 0; i < x.length; i++) {
+        x[i] = 0.3 * math.sin(2 * math.pi * 220 * i / 48000);
+      }
+      return x;
+    }
+
+    setUp(() {
+      made = 0;
+      CanvasController.clipAudio = (id) async => (tone(), tone());
+      CanvasController.takeAudio = (id) async => tone();
+      CanvasController.partStore = (wav) async => "made${++made}.wav";
+      CanvasController.speechTakeStore = (wav) async => "notes${++made}.wav";
+    });
+    tearDown(() {
+      CanvasController.clipAudio = audioWas;
+      CanvasController.takeAudio = takeWas;
+      CanvasController.partStore = storeWas;
+      CanvasController.speechTakeStore = keepWas;
+    });
+
+    // Leftover from 2026-11-07: the song's tempo changed, a warped clip
+    // on the timeline is made again at it.
+    test("at a new tempo, a warped clip on the timeline is made again",
+        () async {
+      var c = _make();
+      addTearDown(c.dispose);
+      c.openClipEditor("m", timelineRow);
+      c.editClip((x) => x.copyWith(warp: true, bpm: 120));
+      await c.renderTimelineClip("m");
+      var first = _sound(c).clip.playlist.single.assetId;
+      expect(first, startsWith("made"));
+      c.setAudio(c.document.audio.copyWith(tempo: 90));
+      for (var i = 0;
+          i < 50 && _sound(c).clip.playlist.single.assetId == first;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      var source = _sound(c).clip.playlist.single;
+      expect(source.assetId, isNot(first), reason: "made again at 90");
+      // Its end where its loop ends at the new tempo: two bars at 90.
+      expect(source.end, closeTo(source.clip!.loopEnd(4) * 60 / 90, 1e-6));
+    });
+
+    // Leftover: the Pitch editor's notes and the clip's settings on one
+    // sound -- the notes first, the clip over them.
+    test("its notes moved in the Pitch editor, then its clip over them",
+        () async {
+      var c = _make();
+      addTearDown(c.dispose);
+      c.openClipEditor("m", timelineRow);
+      c.editClip((x) => x.copyWith(gain: -3));
+      pitchTrackSeed("impact.wav", pitchTrackOfPcm(tone()));
+      expect(c.findPitchNotes("m"), isTrue);
+      var source = _sound(c).clip.playlist.single;
+      expect(source.pitch!.original, "impact.wav",
+          reason: "its notes found in the recording, not in what it plays");
+      c.editPitch(
+          "m",
+          (e) => e.copyWith(
+              notes: [...e.notes]..[0] = e.notes[0].copyWith(shift: 2)));
+      await c.renderPitch("m");
+      source = _sound(c).clip.playlist.single;
+      expect(source.clip!.sound!.assetId, startsWith("notes"),
+          reason: "the clip made from what the notes made");
+      expect(source.clip!.gain, -3, reason: "its settings kept");
+      expect(source.pitch!.original, "impact.wav");
+      expect(c.pitchEditOf("m")!.notes.first.shift, 2,
+          reason: "the Pitch editor still has its notes");
+      // Its notes put back: the clip made from the recording again.
+      c.forgetPitch("m");
+      source = _sound(c).clip.playlist.single;
+      expect(source.clip!.sound!.assetId, "impact.wav");
+      expect(source.pitch, isNull);
+    });
   });
 
   testWidgets("with no clip in a slot, the Chain's Clip tab opens its sound",

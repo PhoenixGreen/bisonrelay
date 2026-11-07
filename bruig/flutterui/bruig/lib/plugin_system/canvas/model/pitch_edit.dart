@@ -44,6 +44,11 @@ class PitchNote {
   /// note) -- heard in place of its note where it is drawn.
   final List<(double, double)> curve;
 
+  /// startAt is where it is heard to start, in seconds into the original,
+  /// moved there by Quantise timing -- its sound stretched or squeezed to
+  /// end where it did -- or null, as sung.
+  final double? startAt;
+
   const PitchNote(this.start, this.end, this.sung,
       {this.shift = 0,
       this.straighten = 0,
@@ -53,7 +58,21 @@ class PitchNote {
       this.retuneMs = 0,
       this.formant = 0,
       this.slideMs = 0,
-      this.curve = const []});
+      this.curve = const [],
+      this.startAt});
+
+  /// heardStart is where it is heard to start: see [startAt].
+  double get heardStart => startAt ?? start;
+
+  /// sourceAt is where in the original [t] seconds is heard from: its own
+  /// sound stretched from [heardStart] to its end, as it is moved. Null
+  /// before it, moved later: silence there.
+  double? sourceAt(double t) {
+    var from = startAt;
+    if (from == null || t >= end) return t;
+    if (t < from) return t < start ? t : null;
+    return start + (t - from) * (end - start) / math.max(1e-3, end - from);
+  }
 
   double get length => end - start;
 
@@ -72,7 +91,8 @@ class PitchNote {
       retuneMs != 0 ||
       formant != 0 ||
       slideMs != 0 ||
-      curve.isNotEmpty;
+      curve.isNotEmpty ||
+      startAt != null;
 
   /// movedTo is it moved onto [note], its middle drawn right onto it.
   PitchNote movedTo(double note) =>
@@ -104,7 +124,9 @@ class PitchNote {
           double? retuneMs,
           double? formant,
           double? slideMs,
-          List<(double, double)>? curve}) =>
+          List<(double, double)>? curve,
+          double? startAt,
+          bool clearStartAt = false}) =>
       PitchNote(start ?? this.start, end ?? this.end, sung ?? this.sung,
           shift: (shift ?? this.shift).clamp(-24.0, 24.0),
           straighten: (straighten ?? this.straighten).clamp(0.0, 1.0),
@@ -114,7 +136,8 @@ class PitchNote {
           retuneMs: (retuneMs ?? this.retuneMs).clamp(0.0, 400.0),
           formant: (formant ?? this.formant).clamp(-12.0, 12.0),
           slideMs: (slideMs ?? this.slideMs).clamp(0.0, 400.0),
-          curve: curve ?? this.curve);
+          curve: curve ?? this.curve,
+          startAt: clearStartAt ? null : startAt ?? this.startAt);
 
   /// reset is it as sung, where it is.
   PitchNote get reset => PitchNote(start, end, sung);
@@ -133,6 +156,7 @@ class PitchNote {
         if (retuneMs != 0) "retune": _r(retuneMs),
         if (formant != 0) "formant": _r(formant),
         if (slideMs != 0) "slide": _r(slideMs),
+        if (startAt case var at?) "at": _r(at),
         if (curve.isNotEmpty)
           "curve": [
             for (var (t, m) in curve) [_r(t), _r(m)]
@@ -155,6 +179,7 @@ class PitchNote {
         retuneMs: jsonDouble(json["retune"], 0),
         formant: jsonDouble(json["formant"], 0),
         slideMs: jsonDouble(json["slide"], 0),
+        startAt: json["at"] is num ? (json["at"] as num).toDouble() : null,
         curve: [
           if (json["curve"] case List points)
             for (var p in points)
@@ -176,6 +201,7 @@ class PitchNote {
       other.retuneMs == retuneMs &&
       other.formant == formant &&
       other.slideMs == slideMs &&
+      other.startAt == startAt &&
       _sameCurve(other.curve, curve);
 
   static bool _sameCurve(List<(double, double)> a, List<(double, double)> b) {
@@ -188,7 +214,7 @@ class PitchNote {
 
   @override
   int get hashCode => Object.hash(start, end, sung, shift, straighten, wobble,
-      vibrato, gainDb, retuneMs, formant, slideMs, curve.length);
+      vibrato, gainDb, retuneMs, formant, slideMs, curve.length, startAt);
 }
 
 /// PitchEdit is a recording's notes and what is done to them: kept on its
@@ -228,7 +254,7 @@ class PitchEdit {
         for (var p in n.curve)
           if (p.$1 <= at) p
       ]),
-      n.copyWith(start: at, curve: [
+      n.copyWith(start: at, clearStartAt: true, curve: [
         for (var p in n.curve)
           if (p.$1 >= at) p
       ]),

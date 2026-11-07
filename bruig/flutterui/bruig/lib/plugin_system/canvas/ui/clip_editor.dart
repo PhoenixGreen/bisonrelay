@@ -46,8 +46,12 @@ import 'package:flutter/scheduler.dart';
 
 const double _columnW = 220;
 
-/// _fadeInk is the fades and their grips, amber as the prototype's.
+/// _fadeInk is the fades and their grips, and the warp markers, amber as
+/// the prototype's.
 const _fadeInk = Color(0xFFE2B04A);
+
+/// _envelopeInk is an envelope drawn over the sound: the prototype's pink.
+const _envelopeInk = Color(0xFFF08BD0);
 
 /// editorNarrowWidth is the clip editor's width in the strip, unwidened.
 const double editorNarrowWidth = 760;
@@ -318,6 +322,8 @@ class _ClipEditorState extends State<ClipEditor> {
                 envelopeRest: _envelopeRest(envKey, t),
                 envelopeLength: clip.lengthOf(envKey),
                 spectral: _spectral,
+                envelopeName:
+                    "${_envelopeChoices(clip, t).where((ch) => ch.$2 == envKey).firstOrNull?.$1 ?? ""} envelope",
                 onSay: (said) => setState(() => _said = said)),
           ),
           if (!shut) ...[
@@ -1105,26 +1111,38 @@ class _ClipEditorState extends State<ClipEditor> {
         ),
       );
 
+  /// _drop is a list to pick from, boxed as the prototype's selects are.
   Widget _drop<T>(MixerLook look, Key key, T value, List<(String, T)> items,
           ValueChanged<T> onChanged) =>
-      DropdownButton<T>(
-        key: key,
-        value: value,
-        isDense: true,
-        isExpanded: true,
-        underline: const SizedBox(),
-        style: _small(look),
-        dropdownColor: look.colors.surfaceContainerHigh,
-        items: [
-          for (var (label, v) in items)
-            DropdownMenuItem(
-                value: v,
-                child:
-                    Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
-        ],
-        onChanged: (v) {
-          if (v != null) onChanged(v);
-        },
+      Container(
+        height: 24,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        decoration: BoxDecoration(
+          color: look.studio.inset,
+          border: Border.all(color: look.studio.edge),
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: DropdownButton<T>(
+          key: key,
+          value: value,
+          isDense: true,
+          isExpanded: true,
+          underline: const SizedBox(),
+          iconSize: 16,
+          iconEnabledColor: look.studio.muted,
+          style: _small(look),
+          dropdownColor: look.colors.surfaceContainerHigh,
+          items: [
+            for (var (label, v) in items)
+              DropdownMenuItem(
+                  value: v,
+                  child: Text(label,
+                      maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ],
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        ),
       );
 
   /// _row is a setting: its name, and what sets it.
@@ -1136,7 +1154,7 @@ class _ClipEditorState extends State<ClipEditor> {
         padding: const EdgeInsets.only(bottom: 6),
         child: Row(children: [
           SizedBox(
-              width: 56,
+              width: 70,
               child: Text(label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1370,7 +1388,6 @@ class _ClipEditorState extends State<ClipEditor> {
             c.editClip((x) => change(x, b));
           }
         };
-    var playhead = c.clipPlayhead;
     var bars = clip.bars;
     var lengths = {
       0.25, 0.5, //
@@ -1380,83 +1397,79 @@ class _ClipEditorState extends State<ClipEditor> {
       ..sort();
     String barsText(double b) =>
         b == 1 ? "1 bar" : "${b == b.roundToDouble() ? b.round() : b} bars";
-    // Set: from where it is playing, to the beat.
-    VoidCallback? set(SessionClip Function(double beat) change) =>
-        playhead == null
-            ? null
-            : () => c.editClip((_) => change(playhead.floorToDouble()));
+    // Readouts, as the prototype's: each typed into once clicked.
+    var readout = _small(look).copyWith(
+        fontSize: 11.5, fontFeatures: const [FontFeature.tabularFigures()]);
+    Widget place(String key, String value, ValueChanged<String> onTyped) =>
+        _TypedPlace(
+            key: ValueKey(key),
+            value: value,
+            style: readout,
+            align: TextAlign.left,
+            onTyped: onTyped);
     return [
       _row(
           look,
           "Starts",
-          Row(children: [
-            Expanded(
-              // A sixteenth a step, and shown in seconds too: a sound's start is set
-              // by ear. Typed, a place or a time ("0.18s", "180ms").
-              child: _stepper(
-                  look,
-                  "clipStart",
-                  "${_place(clip.start)} · "
-                      "${_secondsAt(clip, clip.start).toStringAsFixed(2)}s",
-                  clip.start <= 0
-                      ? null
-                      : () => c.editClip((x) =>
-                          x.copyWith(start: math.max(0.0, x.start - 0.25))),
-                  () => c.editClip((x) => x.copyWith(start: x.start + 0.25)),
-                  typed: (text) {
-                var t = text.trim().toLowerCase();
-                var ms = RegExp(r"^([0-9.]+)\s*ms$").firstMatch(t);
-                var sec = RegExp(r"^([0-9.]+)\s*s$").firstMatch(t);
-                var seconds = ms != null
-                    ? (double.tryParse(ms.group(1)!) ?? -1) / 1000
-                    : sec != null
-                        ? double.tryParse(sec.group(1)!) ?? -1
-                        : null;
-                if (seconds != null) {
-                  if (seconds >= 0) {
-                    c.editClip((x) => x.copyWith(start: _beatsAt(x, seconds)));
-                  }
-                  return;
-                }
-                typed((x, b) => x.copyWith(start: b))(text);
-              }),
-            ),
-            const SizedBox(width: 4),
-            _pill(look, "Set", false, set((b) => clip.copyWith(start: b)),
-                key: const ValueKey("clipSetStart"),
-                tip: "Start where it is playing now"),
-          ])),
+          // Typed as a place, or a time ("0.18s", "180ms"): a sound's start
+          // is set by ear.
+          place(
+              "clipStart",
+              "${_place(clip.start)} · "
+                  "${_secondsAt(clip, clip.start).toStringAsFixed(2)}s",
+              (text) {
+            var t = text.trim().toLowerCase();
+            var ms = RegExp(r"^([0-9.]+)\s*ms$").firstMatch(t);
+            var sec = RegExp(r"^([0-9.]+)\s*s$").firstMatch(t);
+            var seconds = ms != null
+                ? (double.tryParse(ms.group(1)!) ?? -1) / 1000
+                : sec != null
+                    ? double.tryParse(sec.group(1)!) ?? -1
+                    : null;
+            if (seconds != null) {
+              if (seconds >= 0) {
+                c.editClip((x) => x.copyWith(start: _beatsAt(x, seconds)));
+              }
+              return;
+            }
+            typed((x, b) => x.copyWith(start: b))(text);
+          })),
       _row(
           look,
           "Loop",
-          Align(
-            alignment: Alignment.centerLeft,
-            child: _pill(look, clip.loop ? "On" : "Off", clip.loop,
-                () => c.editClip((x) => x.copyWith(loop: !x.loop)),
-                key: const ValueKey("clipLoop"),
-                tip: "Round its loop until it is stopped, or once through"),
-          )),
-      _row(
-          look,
-          "Position",
           Row(children: [
-            Expanded(
-              child: _stepper(
-                  look,
-                  "clipLoopStart",
-                  _place(clip.loopStart),
-                  clip.loopStart <= 0
-                      ? null
-                      : () => c.editClip(
-                          (x) => x.copyWith(loopStart: x.loopStart - 1)),
-                  () =>
-                      c.editClip((x) => x.copyWith(loopStart: x.loopStart + 1)),
-                  typed: typed((x, b) => x.copyWith(loopStart: b))),
+            Flexible(
+              child: place("clipLoopStart", _place(clip.loopStart),
+                  typed((x, b) => x.copyWith(loopStart: b))),
+            ),
+            Text(" – ", style: readout),
+            // Its end typed: the loop as long as that makes it.
+            Flexible(
+              child: place(
+                  "clipEnds",
+                  _place(clip.loopEnd(bpb)),
+                  typed((x, b) => b > x.loopStart
+                      ? x.copyWith(bars: (b - x.loopStart) / bpb)
+                      : x)),
             ),
             const SizedBox(width: 4),
-            _pill(look, "Set", false, set((b) => clip.copyWith(loopStart: b)),
-                key: const ValueKey("clipSetLoop"),
-                tip: "Its loop from where it is playing now"),
+            // Round its loop until stopped, or once through.
+            Tooltip(
+              message: clip.loop
+                  ? "Loops: round until it is stopped"
+                  : "Plays once through",
+              child: InkWell(
+                key: const ValueKey("clipLoop"),
+                borderRadius: BorderRadius.circular(4),
+                onTap: () => c.editClip((x) => x.copyWith(loop: !x.loop)),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(Icons.repeat,
+                      size: 15,
+                      color: clip.loop ? look.studio.on : look.studio.muted),
+                ),
+              ),
+            ),
           ])),
       _row(
           look,
@@ -1467,40 +1480,50 @@ class _ClipEditorState extends State<ClipEditor> {
               bars,
               [for (var b in lengths) (barsText(b), b)],
               (v) => c.editClip((x) => x.copyWith(bars: v)))),
-      // Its end typed: the loop as long as that makes it.
-      _row(
-          look,
-          "Ends",
-          _TypedPlace(
-              key: const ValueKey("clipEnds"),
-              value: _place(clip.loopEnd(bpb)),
-              style: _small(look),
-              align: TextAlign.left,
-              onTyped: typed((x, b) => b > x.loopStart
-                  ? x.copyWith(bars: (b - x.loopStart) / bpb)
-                  : x))),
       _row(
           look,
           "Colour",
-          Wrap(spacing: 3, runSpacing: 3, children: [
-            for (var (i, colour) in sectionColors.indexed)
-              GestureDetector(
-                key: ValueKey("clipColour-$i"),
-                onTap: () => c.editClip((x) => x.copyWith(color: i)),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: MenuAnchor(
+              menuChildren: [
+                Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Wrap(spacing: 4, runSpacing: 4, children: [
+                    for (var (i, colour) in sectionColors.indexed)
+                      GestureDetector(
+                        key: ValueKey("clipColour-$i"),
+                        onTap: () => c.editClip((x) => x.copyWith(color: i)),
+                        child: Container(
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
+                              color: Color(colour),
+                              borderRadius: BorderRadius.circular(3),
+                              border: Border.all(
+                                  color: i == clip.color
+                                      ? look.studio.text
+                                      : Colors.transparent,
+                                  width: 2)),
+                        ),
+                      ),
+                  ]),
+                ),
+              ],
+              builder: (context, menu, _) => InkWell(
+                key: const ValueKey("clipColour"),
+                onTap: () => menu.isOpen ? menu.close() : menu.open(),
                 child: Container(
-                  width: 14,
-                  height: 14,
+                  width: 28,
+                  height: 16,
                   decoration: BoxDecoration(
-                      color: Color(colour),
-                      borderRadius: BorderRadius.circular(2),
-                      border: Border.all(
-                          color: i == clip.color
-                              ? look.studio.text
-                              : Colors.transparent,
-                          width: 2)),
+                      color: Color(
+                          sectionColors[clip.color % sectionColors.length]),
+                      borderRadius: BorderRadius.circular(3)),
                 ),
               ),
-          ])),
+            ),
+          )),
     ];
   }
 
@@ -1508,45 +1531,15 @@ class _ClipEditorState extends State<ClipEditor> {
         _row(
             look,
             "Pressed",
-            _drop(
-                look,
-                const ValueKey("clipLaunchMode"),
-                clip.launch,
-                [for (var m in LaunchMode.values) (m.label, m)],
-                (v) => c.editClip((x) => x.copyWith(launch: v)))),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Text(clip.launch.hint,
-              style: _small(look, look.studio.muted).copyWith(fontSize: 10)),
-        ),
-        _row(
-            look,
-            "Legato",
-            Align(
-              alignment: Alignment.centerLeft,
-              child: _pill(look, clip.legato ? "On" : "Off", clip.legato,
-                  () => c.editClip((x) => x.copyWith(legato: !x.legato)),
-                  key: const ValueKey("clipLegato"),
-                  tip: "Take over from where the clip playing on the "
-                      "channel had got to, rather than from the start"),
+            Tooltip(
+              message: clip.launch.hint,
+              child: _drop(
+                  look,
+                  const ValueKey("clipLaunchMode"),
+                  clip.launch,
+                  [for (var m in LaunchMode.values) (m.label, m)],
+                  (v) => c.editClip((x) => x.copyWith(launch: v))),
             )),
-        // How much a pad's velocity (a Push's, launching it) sets how loud it
-        // plays. A click is full velocity.
-        _row(
-            look,
-            "Velocity",
-            _stepper(
-                look,
-                "clipVelocity",
-                "${(clip.velocity * 100).round()}%",
-                clip.velocity <= 0
-                    ? null
-                    : () => c.editClip((x) => x.copyWith(
-                        velocity: ((x.velocity * 10).round() - 1) / 10)),
-                clip.velocity >= 1
-                    ? null
-                    : () => c.editClip((x) => x.copyWith(
-                        velocity: ((x.velocity * 10).round() + 1) / 10)))),
         _row(
             look,
             "Waits for",
@@ -1562,7 +1555,6 @@ class _ClipEditorState extends State<ClipEditor> {
                 (v) => c.editClip((x) => v == null
                     ? x.copyWith(clearQuantise: true)
                     : x.copyWith(quantise: v)))),
-        const SizedBox(height: 4),
         _row(
             look,
             "Then",
@@ -1591,6 +1583,37 @@ class _ClipEditorState extends State<ClipEditor> {
                   (v) => c.editClip((x) => v == null
                       ? x.copyWith(clearFollowBars: true)
                       : x.copyWith(followBars: v)))),
+        // Take over from where the clip playing on the channel had got to.
+        _row(
+            look,
+            "Legato",
+            Tooltip(
+              message: "Take over from where the clip playing on the "
+                  "channel had got to, rather than from the start",
+              child: _drop(
+                  look,
+                  const ValueKey("clipLegato"),
+                  clip.legato,
+                  const [("From its start", false), ("Takes over", true)],
+                  (v) => c.editClip((x) => x.copyWith(legato: v))),
+            )),
+        // How much a pad's velocity (a Push's, launching it) sets how loud
+        // it plays. A click is full velocity.
+        _row(
+            look,
+            "Velocity",
+            Tooltip(
+              message: "How much a pad's velocity sets how loud it plays",
+              child: _drop(
+                  look,
+                  const ValueKey("clipVelocity"),
+                  (clip.velocity * 4).round() / 4,
+                  [
+                    for (var v in const [0.0, 0.25, 0.5, 0.75, 1.0])
+                      ("${(v * 100).round()}%", v)
+                  ],
+                  (v) => c.editClip((x) => x.copyWith(velocity: v))),
+            )),
       ];
 
   List<Widget> _notesColumn(MixerLook look) {
@@ -1760,6 +1783,10 @@ class _SampleView extends StatefulWidget {
 
   /// onSay tells the editor something to show on its line of help.
   final ValueChanged<String?>? onSay;
+
+  /// envelopeName is a channel setting's envelope's name, written over the
+  /// sound.
+  final String? envelopeName;
   const _SampleView(
       {required this.controller,
       required this.clip,
@@ -1767,7 +1794,8 @@ class _SampleView extends StatefulWidget {
       this.envelopeRest = 1,
       this.envelopeLength,
       this.spectral = false,
-      this.onSay});
+      this.onSay,
+      this.envelopeName});
 
   @override
   State<_SampleView> createState() => _SampleViewState();
@@ -1887,12 +1915,13 @@ class _SampleViewState extends State<_SampleView>
             clip.warp ? map.sourceAt(beat) : beat * spb * speed;
         var soundBeats = beatOf(length);
         // In view: the sound, its loop, and a bar more.
+        // In view: the sound and its loop, edge to edge, as the
+        // prototype's.
         var beats = [
-              soundBeats,
-              clip.loopEnd(bpb),
-              clip.start + 1,
-            ].reduce(math.max) +
-            bpb;
+          soundBeats,
+          clip.loopEnd(bpb),
+          clip.start + 1,
+        ].reduce(math.max);
         var fit = size.maxWidth / beats;
         var beatW = fit * _zoom;
         // Kept in reach: never past the end, never before the start.
@@ -2158,13 +2187,22 @@ class _SampleViewState extends State<_SampleView>
                       : clip.curveOf(widget.envelope!),
                   envelopeRest: widget.envelopeRest,
                   envelopeLength: widget.envelopeLength,
+                  envelopeLabel: switch (widget.envelope) {
+                    null => "",
+                    "gain" => "gain envelope · 0 dB down to silence",
+                    "pan" => "pan envelope · left to right",
+                    _ => widget.envelopeName ?? "",
+                  },
+                  gainCurve: clip.envelopes[ClipEnvelope.gain] ?? const [],
+                  panCurve: clip.envelopes[ClipEnvelope.pan] ?? const [],
                   key: clip.warpSignature(spb),
                 ),
               ),
-              // Closer in, further out, and all of it, on the ruler's right.
+              // Closer in, further out, and all of it: in the sound's lower
+              // corner, off the ruler.
               Positioned(
-                right: 4,
-                top: 3,
+                right: 6,
+                bottom: 6,
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   _zoomButton(
                       look,
@@ -2295,6 +2333,14 @@ class _SamplePainter extends CustomPainter {
   /// changes, it is drawn again.
   final String key;
 
+  /// envelopeLabel names the envelope shown, written over the sound.
+  final String envelopeLabel;
+
+  /// gainCurve and panCurve are the clip's own envelopes: the sound drawn
+  /// as they make it, shown or not, as the prototype's is (Ken: the
+  /// envelope did not change the look of the sound).
+  final List<ControlPoint> gainCurve, panCurve;
+
   _SamplePainter({
     this.scroll = 0,
     this.step = 1,
@@ -2324,6 +2370,9 @@ class _SamplePainter extends CustomPainter {
     this.envelope,
     this.envelopeRest = 1,
     this.envelopeLength,
+    this.envelopeLabel = "",
+    this.gainCurve = const [],
+    this.panCurve = const [],
     this.fadeIn = 0,
     this.fadeOut = 0,
     this.fadeCurve = FadeCurve.smooth,
@@ -2366,21 +2415,29 @@ class _SamplePainter extends CustomPainter {
     var first = (loop ? math.min(start, loopStart) : start) * beatW;
     canvas.drawRect(Rect.fromLTRB(0, top, first, h), dim);
     canvas.drawRect(Rect.fromLTRB(loopEnd * beatW, top, size.width, h), dim);
-    // The beats and bars, numbered.
+    // The quarters of each beat, faint, where there is room.
+    if (beatW >= 24) {
+      var quarter = Paint()..color = studio.edge.withValues(alpha: 0.16);
+      for (var q = 0; q <= beats * 4; q++) {
+        if (q % 4 == 0) continue;
+        var x = q * beatW / 4;
+        canvas.drawLine(Offset(x, top), Offset(x, h), quarter);
+      }
+    }
+    // The beats and bars, the bars numbered.
     var label = TextPainter(textDirection: TextDirection.ltr);
     var every = beatW * beatsPerBar < 28 ? 4 : 1;
     for (var b = 0; b <= beats; b++) {
       var x = b * beatW;
       var bar = b % beatsPerBar == 0;
-      canvas.drawLine(
-          Offset(x, bar ? rulerH - 8 : rulerH - 4),
-          Offset(x, h),
-          Paint()
-            ..color = bar ? studio.edge : studio.edge.withValues(alpha: 0.35));
+      canvas.drawLine(Offset(x, bar ? 9 : rulerH - 7), Offset(x, rulerH),
+          Paint()..color = studio.edge.withValues(alpha: bar ? 1 : 0.7));
+      canvas.drawLine(Offset(x, top), Offset(x, h),
+          Paint()..color = studio.edge.withValues(alpha: bar ? 0.75 : 0.35));
       if (bar && (b ~/ beatsPerBar) % every == 0) {
         label.text = TextSpan(
             text: "${b ~/ beatsPerBar + 1}",
-            style: TextStyle(fontSize: 10, color: studio.muted));
+            style: TextStyle(fontSize: 10.5, color: studio.text));
         label.layout();
         label.paint(canvas, Offset(x + 3, rulerH - 14));
       }
@@ -2392,18 +2449,20 @@ class _SamplePainter extends CustomPainter {
         canvas.drawLine(
             Offset(b * beatW, top - 5), Offset(b * beatW, top), tick);
       }
-      var pin = Paint()..color = const Color(0xFFF2D14B);
+      var pin = Paint()..color = _fadeInk;
       for (var b in markers) {
         var x = b * beatW;
+        // A flag on its staff, as the prototype's.
         canvas.drawPath(
             Path()
-              ..moveTo(x - 5, rulerH + 2)
-              ..lineTo(x + 5, rulerH + 2)
-              ..lineTo(x, rulerH + 11)
+              ..moveTo(x, rulerH + 1)
+              ..lineTo(x + 7, rulerH + 1)
+              ..lineTo(x + 7, rulerH + 8)
+              ..lineTo(x, rulerH + 13)
               ..close(),
             pin);
-        canvas.drawLine(Offset(x, rulerH + 11), Offset(x, h),
-            Paint()..color = pin.color.withValues(alpha: 0.35));
+        canvas.drawLine(Offset(x, rulerH + 1), Offset(x, h),
+            Paint()..color = _fadeInk.withValues(alpha: 0.4));
       }
     }
     // Its spectrum, where each moment of it falls: a column of the picture
@@ -2463,8 +2522,23 @@ class _SamplePainter extends CustomPainter {
           for (var k = a; k < b; k++) {
             v = math.max(v, side[k]);
           }
-          var y = math.min(1.0, v * gain) * half;
           var beat = x / beatW;
+          // As warp.dart's _envelop makes it: its gain squared, its pan a
+          // balance.
+          var shaped = 1.0;
+          if (gainCurve.isNotEmpty) {
+            var g = curveAt(gainCurve, beat, 1);
+            shaped = g * g;
+          }
+          if (panCurve.isNotEmpty) {
+            var pan = curveAt(panCurve, beat, 0.5);
+            if (stereo) {
+              shaped *= k0 == 0
+                  ? (pan > 0.5 ? 2 * (1 - pan) : 1)
+                  : (pan < 0.5 ? 2 * pan : 1);
+            }
+          }
+          var y = math.min(1.0, v * gain * shaped) * half;
           canvas.drawLine(Offset(x, mid - y), Offset(x, mid + y),
               beat < first || beat > loopEnd ? outside : wave);
         }
@@ -2487,31 +2561,40 @@ class _SamplePainter extends CustomPainter {
     }
     // The loop's bar over the ruler, and its end's grip.
     var brace = Paint()
-      ..color = loop ? studio.on : studio.muted.withValues(alpha: 0.6);
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTRB(loopStart * beatW, 2, loopEnd * beatW, 9),
-            const Radius.circular(2)),
-        brace);
-    canvas.drawRect(Rect.fromLTWH(loopEnd * beatW - 3, 0, 3, rulerH), brace);
+      ..color = (loop ? studio.on : studio.muted).withValues(alpha: 0.45);
+    var loopGrip = Paint()..color = loop ? studio.on : studio.muted;
+    canvas.drawRect(
+        Rect.fromLTRB(loopStart * beatW, 2, loopEnd * beatW, 8), brace);
+    canvas.drawRect(Rect.fromLTWH(loopStart * beatW - 2, 1, 4, 9), loopGrip);
+    canvas.drawRect(Rect.fromLTWH(loopEnd * beatW - 2, 1, 4, 9), loopGrip);
     // The start's flag.
     var sx = start * beatW;
     canvas.drawPath(
         Path()
-          ..moveTo(sx, 10)
-          ..lineTo(sx + 9, 15)
-          ..lineTo(sx, 20)
+          ..moveTo(sx, 11)
+          ..lineTo(sx + 7, 15)
+          ..lineTo(sx, 19)
           ..close(),
         Paint()..color = studio.text);
-    canvas.drawLine(Offset(sx, 10), Offset(sx, h),
-        Paint()..color = studio.text.withValues(alpha: 0.5));
+    canvas.drawLine(Offset(sx, 11), Offset(sx, h),
+        Paint()..color = studio.text.withValues(alpha: 0.35));
     // The envelope: a line through its points, held flat before the first
     // and after the last, over the sound dimmed.
     if (envelope case var points?) {
-      canvas.drawRect(Rect.fromLTRB(0, top, size.width, h),
-          Paint()..color = Colors.black.withValues(alpha: 0.35));
       double y(double v) => top + 6 + (1 - v) * math.max(1, h - top - 12);
-      const colour = Color(0xFFFF6F61);
+      const colour = _envelopeInk;
+      if (envelopeLabel.isNotEmpty) {
+        var tp = TextPainter(
+            text: TextSpan(
+                text: envelopeLabel,
+                style: const TextStyle(
+                    fontSize: 10.5,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                    color: colour)),
+            textDirection: TextDirection.ltr)
+          ..layout();
+        tp.paint(canvas, Offset(left + 8, top + 4));
+      }
       var line = Paint()
         ..color = colour
         ..strokeWidth = 2
@@ -2619,6 +2702,9 @@ class _SamplePainter extends CustomPainter {
       old.playLength != playLength ||
       old.hits.length != hits.length ||
       old.envelope != envelope ||
+      old.gainCurve != gainCurve ||
+      old.panCurve != panCurve ||
+      old.envelopeLabel != envelopeLabel ||
       old.envelopeLength != envelopeLength ||
       old.envelopeRest != envelopeRest ||
       old.studio != studio;

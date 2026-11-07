@@ -726,14 +726,22 @@ void main() {
       expect(find.byKey(const ValueKey("audioColumn")), findsOneWidget);
       expect(find.byKey(const ValueKey("clipSample")), findsOneWidget);
       expect(find.byKey(const ValueKey("clipEditorName")), findsOneWidget);
-      // Start a sixteenth on -- said in seconds too -- then the loop's
-      // position.
-      await tester.tap(find.byKey(const ValueKey("clipStart-up")));
-      await tester.pump();
+      // Its start typed a sixteenth on -- said in seconds too -- as the
+      // prototype's readouts are, then its loop's.
+      Future<void> type(String key, String text) async {
+        await tester.ensureVisible(find.byKey(ValueKey(key)));
+        await tester.pump();
+        await tester.tap(find.byKey(ValueKey(key)));
+        await tester.pump();
+        await tester.enterText(find.byKey(const ValueKey("typedPlace")), text);
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pump();
+      }
+
+      await type("clipStart", "1.1.2");
       expect(c.session.at("a", 0)!.start, 0.25);
       expect(find.textContaining("1.1.2 · 0.1"), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey("clipLoopStart-up")));
-      await tester.pump();
+      await type("clipLoopStart", "1.2");
       expect(c.session.at("a", 0)!.loopStart, 1);
       // Gain down, on its slider.
       var gain = find.byKey(const ValueKey("clipGain"));
@@ -767,8 +775,8 @@ void main() {
       await tester.pump();
       await idle(tester);
       var ruler = tester.getRect(find.byKey(const ValueKey("clipSample")));
-      // In view: eight seconds of sound, sixteen beats, and a bar more.
-      var beatW = ruler.width / 20;
+      // In view: eight seconds of sound, sixteen beats, edge to edge.
+      var beatW = ruler.width / 16;
       // The loop's end, dragged two beats on: two bars and a half.
       var end = ruler.topLeft + Offset(8 * beatW, 12);
       var g = await tester.startGesture(end);
@@ -800,7 +808,7 @@ void main() {
       await tester.pump();
       await idle(tester);
       var ruler = tester.getRect(find.byKey(const ValueKey("clipSample")));
-      var fitW = ruler.width / 20;
+      var fitW = ruler.width / 16;
       expect(find.text("1×"), findsOneWidget);
       for (var i = 0; i < 3; i++) {
         await tester.tap(find.byKey(const ValueKey("clipZoomIn")));
@@ -890,7 +898,7 @@ void main() {
       // The fade in's amber grip, at the top of the sound, dragged a beat
       // on: half a second at 120.
       var view = tester.getRect(find.byKey(const ValueKey("clipSample")));
-      var beatW = view.width / 20;
+      var beatW = view.width / 16;
       var g = await tester.startGesture(view.topLeft + const Offset(1, 44));
       await g.moveBy(Offset(beatW, 0));
       await g.moveBy(const Offset(0.2, 0));
@@ -1010,7 +1018,7 @@ void main() {
       var view = tester.getRect(find.byKey(const ValueKey("clipSample")));
       var clip = c.session.at("a", 0)!;
       var beats =
-          [clip.warpMap.beatAt(4.8), clip.loopEnd(4), 1.0].reduce(math.max) + 4;
+          [clip.warpMap.beatAt(4.8), clip.loopEnd(4), 1.0].reduce(math.max);
       var beatW = view.width / beats;
       await tester.tapAt(view.topLeft + Offset(1.5 * beatW, 32));
       await tester.pump();
@@ -1029,8 +1037,7 @@ void main() {
       // Right-clicked, taken out. Moved, the marker stretched the sound,
       // and the view with it: measured again.
       clip = c.session.at("a", 0)!;
-      beats =
-          [clip.warpMap.beatAt(4.8), clip.loopEnd(4), 1.0].reduce(math.max) + 4;
+      beats = [clip.warpMap.beatAt(4.8), clip.loopEnd(4), 1.0].reduce(math.max);
       beatW = view.width / beats;
       var now = clip.markers.single.beat;
       await tester.tapAt(view.topLeft + Offset(now * beatW, 32),
@@ -1204,16 +1211,16 @@ void main() {
       c.openClipEditor("a", 0);
       await tester.pump();
       await idle(tester);
-      var up = find.byKey(const ValueKey("clipVelocity-up"));
-      await tester.ensureVisible(up);
+      var list = find.byKey(const ValueKey("clipVelocity"));
+      await tester.ensureVisible(list);
       await tester.pump();
       expect(find.text("0%"), findsOneWidget, reason: "none, to begin with");
-      await tester.tap(up);
-      await tester.pump();
-      await tester.tap(up);
-      await tester.pump();
-      expect(c.session.at("a", 0)!.velocity, closeTo(0.2, 1e-9));
-      expect(find.text("20%"), findsOneWidget);
+      await tester.tap(list);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text("25%").last);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(c.session.at("a", 0)!.velocity, closeTo(0.25, 1e-9));
+      expect(find.text("25%"), findsOneWidget);
       expect(tester.takeException(), isNull);
       await done(tester, c);
     });
@@ -1231,9 +1238,8 @@ void main() {
       await tester.pump();
       var view = tester.getRect(find.byKey(const ValueKey("clipSample")));
       var clip = c.session.at("a", 0)!;
-      // In view: sixteen beats of sound, and a bar more.
-      var beats =
-          [16.0, clip.loopEnd(4), 1.0].reduce((a, b) => a > b ? a : b) + 4;
+      // In view: sixteen beats of sound, edge to edge.
+      var beats = [16.0, clip.loopEnd(4), 1.0].reduce((a, b) => a > b ? a : b);
       var beatW = view.width / beats;
       // A point two beats in, half way down the sound.
       var top = view.top + 40, bottom = view.bottom;
@@ -1263,6 +1269,28 @@ void main() {
       await done(tester, c);
     });
 
+    // Ken: "the envelope settings don't update the look of the audio".
+    testWidgets("its gain envelope turns its drawn sound down where it dips",
+        (tester) async {
+      var c = await show(tester);
+      c.openClipEditor("a", 0);
+      await tester.pump();
+      await idle(tester);
+      // Its painter, with the envelope it draws the sound through.
+      CustomPainter painter() => tester
+          .widget<CustomPaint>(find.byKey(const ValueKey("clipSample")))
+          .painter!;
+      var before = painter();
+      c.editClip((x) => x.withCurve("gain", const [(0, 1), (8, 0.2)]));
+      await tester.pump();
+      var after = painter();
+      expect(after.shouldRepaint(before), isTrue,
+          reason: "drawn again with the envelope");
+      expect((after as dynamic).gainCurve, hasLength(2),
+          reason: "shown or not, the sound is drawn as it plays");
+      await done(tester, c);
+    });
+
     // Ken: a clip's envelope of a setting of its channel, its own length.
     testWidgets("a clip's envelope can move its channel's settings",
         (tester) async {
@@ -1284,8 +1312,7 @@ void main() {
           reason: "a setting's envelope can have a length of its own");
       var view = tester.getRect(find.byKey(const ValueKey("clipSample")));
       var clip = c.session.at("a", 0)!;
-      var beats =
-          [16.0, clip.loopEnd(4), 1.0].reduce((a, b) => a > b ? a : b) + 4;
+      var beats = [16.0, clip.loopEnd(4), 1.0].reduce((a, b) => a > b ? a : b);
       var beatW = view.width / beats;
       var top = view.top + 40, bottom = view.bottom;
       var middle = top + 6 + (bottom - top - 12) / 2;
@@ -1401,7 +1428,7 @@ void main() {
       await tester.pump();
       var clip = c.session.at("a", 0)!;
       var beats =
-          [clip.warpMap.beatAt(8), clip.loopEnd(4), 1.0].reduce(math.max) + 4;
+          [clip.warpMap.beatAt(8), clip.loopEnd(4), 1.0].reduce(math.max);
       var x = view.left + 2 * view.width / beats;
       await tester.tapAt(Offset(x, view.top + 32));
       await tester.pump(const Duration(milliseconds: 80));

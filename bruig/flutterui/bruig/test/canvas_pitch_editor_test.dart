@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/pitch_edit.dart';
+import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/pitch_editing.dart';
@@ -91,6 +92,24 @@ void main() {
       expect(edit.copyWith(madeWith: edit.key).stale, isFalse);
     });
 
+    test("a start moved by Quantise timing: kept, and where it is heard from",
+        () {
+      const n = PitchNote(1, 2, 60);
+      var moved = n.copyWith(startAt: 1.2);
+      expect(moved.edited, isTrue);
+      expect(moved.heardStart, 1.2);
+      expect(PitchNote.fromJson(moved.toJson()), moved);
+      // Stretched from 1.2 to its end: half way there is 0.4 of the way
+      // through what was sung.
+      expect(moved.sourceAt(1.6), closeTo(1.5, 1e-9));
+      expect(moved.sourceAt(1.1), isNull,
+          reason: "silence before, moved later");
+      expect(moved.sourceAt(0.5), 0.5, reason: "before the note, as it was");
+      expect(n.copyWith(startAt: 0.8).sourceAt(0.8), 1,
+          reason: "moved earlier: it starts there");
+      expect(moved.copyWith(clearStartAt: true).startAt, isNull);
+    });
+
     test("each note's own retune, vibrato, formant, slide and drawing kept",
         () {
       var n = const PitchNote(0, 1, 60.3).copyWith(
@@ -168,6 +187,28 @@ void main() {
       expect(pitchAround(out, 0.5), closeTo(220, 4));
     });
 
+    test("moved later in time: quiet till then, its own sound after", () {
+      // A second of A3, from 0.2 s; the rest silent.
+      var x = sung([(0, 0.2), (220, 1), (0, 0.3)]);
+      var track = pitchTrackOfPcm(x);
+      var n = findNotes(track).first;
+      var out = retuneTake(x, track, [n.copyWith(startAt: n.start + 0.2)]);
+      expect(out.length, x.length, reason: "its timing kept overall");
+      double loud(double from, double to) {
+        var most = 0.0;
+        for (var i = (from * rate).round(); i < (to * rate).round(); i++) {
+          most = math.max(most, out[i].abs());
+        }
+        return most;
+      }
+
+      expect(loud(n.start + 0.03, n.start + 0.17), lessThan(0.02),
+          reason: "silent where it no longer is");
+      expect(loud(n.start + 0.25, n.start + 0.6), greaterThan(0.1));
+      expect(pitchAround(out, n.start + 0.5), closeTo(220, 6),
+          reason: "stretched, its pitch the same");
+    });
+
     test("its formant moved, its pitch kept", () {
       var x = sung([(220, 1)]);
       var track = pitchTrackOfPcm(x);
@@ -187,6 +228,7 @@ void main() {
 
   group("in the controller", () {
     late CanvasController c;
+    late FakeEngine engine;
     var stored = <String, Float32List>{};
     var x = sung([(220, 0.6), (293.66, 0.6)]);
 
@@ -213,7 +255,7 @@ void main() {
                     timed: true,
                     playlist: [MediaSource(assetId: "take.wav", length: 1.2)])),
           ]),
-          audioEngine: FakeEngine({"take.wav": 1.2}));
+          audioEngine: engine = FakeEngine({"take.wav": 1.2}));
       addTearDown(c.dispose);
     });
 
@@ -356,9 +398,46 @@ void main() {
       await tester.tap(find.byKey(const ValueKey("pitchHearCorrected")));
       await tester.pump();
       expect(c.pitchSourceOf("v")!.assetId, made);
+      // A key pressed sounds its note, through the channel; let go, stops.
+      engine.notes.clear();
+      var keys = tester.getRect(find.byKey(const ValueKey("pitchKeys")));
+      var press = await tester.startGesture(keys.topLeft + const Offset(10, 5));
+      await tester.pump();
+      expect(engine.notes.single.$1, "v");
+      expect(engine.notes.single.$3, greaterThan(0));
+      await press.up();
+      await tester.pump();
+      expect(engine.notes.last.$3, 0, reason: "let go");
+      // Quantise timing, nothing picked: every start on a sixteenth of the
+      // song.
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const ValueKey("pitchQuantise")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("pitchQuantise")));
+      await tester.pump();
+      var sixteenth = 0.5 / 4;
+      for (var n in c.pitchEditOf("v")!.notes) {
+        var q = n.heardStart / sixteenth;
+        expect(q, closeTo(q.roundToDouble(), 1e-6), reason: "${n.heardStart}");
+      }
       expect(tester.takeException(), isNull);
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpWidget(const SizedBox());
+    });
+
+    test("its lyrics: the words of the take its Speech spoke", () {
+      c.setSpeech(
+          "v",
+          SpeechSpec(lines: [
+            const SpeechLine("Oh I fly").withSlot(
+                0,
+                const SpeechTake("take.wav", 1.2, [
+                  (text: "Oh", start: 0.0, end: 0.5),
+                  (text: "fly", start: 0.6, end: 1.2),
+                ])),
+          ]));
+      expect(c.pitchWordsOf("v")!.map((w) => w.text), ["Oh", "fly"]);
     });
   });
 }

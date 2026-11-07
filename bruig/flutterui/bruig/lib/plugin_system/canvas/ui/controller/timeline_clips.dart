@@ -64,6 +64,21 @@ extension CanvasTimelineClips on CanvasController {
     _setTimelineClip(e, change(timelineClipOf(e)), transient: transient);
   }
 
+  /// setTimelineRecording makes [e]'s clip from recording [assetId] -- the
+  /// Pitch editor's notes made, or its original back -- with [pitch] the
+  /// notes as they now are: the notes first, then the clip's settings over
+  /// them, made again. Used where the sound is a clip.
+  void setTimelineRecording(AudioElement e, String assetId,
+      {PitchEdit? pitch, bool clearPitch = false, bool transient = false}) {
+    var clip = timelineClipOf(e);
+    var sound = clip.sound;
+    if (sound == null) return;
+    _setTimelineClip(e, clip.copyWith(sound: sound.copyWith(assetId: assetId)),
+        pitch: pitch, clearPitch: clearPitch, transient: transient);
+    // A transient change is made too: the Pitch editor's own making is.
+    if (transient && clip.needsRender) _renderTimelineSoon(e.id);
+  }
+
   /// _timelineOwner is the sound on the timeline whose clip is [id], or
   /// null.
   AudioElement? _timelineOwner(String id) {
@@ -81,7 +96,10 @@ extension CanvasTimelineClips on CanvasController {
   /// needs nothing made, or as last rendered. An undo step unless
   /// [transient]; rendered again a moment after the last change.
   void _setTimelineClip(AudioElement e, SessionClip clip,
-      {bool transient = false, bool render = true}) {
+      {bool transient = false,
+      bool render = true,
+      PitchEdit? pitch,
+      bool clearPitch = false}) {
     var spb = math.max(0.001, _document.audio.secondsPerBeat);
     var bpb = _document.audio.beatsPerBar;
     var sound = clip.sound;
@@ -106,6 +124,10 @@ extension CanvasTimelineClips on CanvasController {
       // Being made: what it played until it is.
       played = was.copyWith(clip: clip);
     }
+    // The Pitch editor's notes stay on what it plays: they come first, the
+    // clip's settings after (see setTimelineRecording).
+    played = played.copyWith(
+        pitch: clearPitch ? null : pitch ?? was.pitch, clearPitch: clearPitch);
     replaceElement(
         e.copyWith(
             clip: e.clip.copyWith(
@@ -122,6 +144,25 @@ extension CanvasTimelineClips on CanvasController {
   /// the timeline plays.
   SessionClip _rendered(SessionClip clip) =>
       clip.copyWith(fadeIn: 0, fadeOut: 0, fade: false);
+
+  /// refreshTimelineClips lays every sound on the timeline that is a clip
+  /// out again at the song's tempo as it is now -- where it plays from and
+  /// to -- and makes again those whose sound was made at another.
+  void refreshTimelineClips() {
+    var spb = _document.audio.secondsPerBeat;
+    for (var e in [..._document.elements]) {
+      if (e is! AudioElement || e.instrument != null) continue;
+      if (e.clip.playlist.isEmpty || e.clip.playlist.first.clip == null) {
+        continue;
+      }
+      var clip = timelineClipOf(e);
+      _setTimelineClip(e, clip, transient: true, render: false);
+      if (clip.needsRender &&
+          clip.warpedFor != _rendered(clip).warpSignature(spb)) {
+        unawaited(renderTimelineClip(e.id));
+      }
+    }
+  }
 
   void _renderTimelineSoon(String id) {
     _timelineRenders[this]?.cancel();

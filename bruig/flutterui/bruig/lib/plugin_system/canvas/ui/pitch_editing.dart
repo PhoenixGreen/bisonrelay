@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/pitch_edit.dart';
+import 'package:bruig/plugin_system/canvas/model/speech_spec.dart'
+    show TimedWord;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/foundation.dart';
 
@@ -46,6 +48,11 @@ final Expando<Map<String, String>> _asSung = Expando("pitchAsSung");
 void pitchTrackSeed(String assetId, List<double?> track) =>
     _tracks[assetId] = track;
 
+/// _recordingOf is the recording [source] was made from: before its notes
+/// were moved, and before any clip settings over it.
+String _recordingOf(MediaSource source) =>
+    source.pitch?.original ?? source.clip?.sound?.assetId ?? source.assetId;
+
 extension PitchEditing on CanvasController {
   /// notesToMidi makes a MIDI channel playing [key]'s recording's notes --
   /// as edited in the Pitch editor, or as sung -- each on the nearest note
@@ -68,8 +75,9 @@ extension PitchEditing on CanvasController {
         if (n.end > source.start)
           MidiNote(
               snapNote(n.target, root, steps).round().clamp(0, 127),
-              (n.start - source.start).clamp(0.0, double.infinity),
-              n.length,
+              // Where it is heard: its timing quantised, or as sung.
+              (n.heardStart - source.start).clamp(0.0, double.infinity),
+              n.end - n.heardStart,
               100),
     ];
     var made = newInstrument(document);
@@ -108,9 +116,31 @@ extension PitchEditing on CanvasController {
   List<double?>? pitchTrackOf(String key) {
     var source = pitchSourceOf(key);
     if (source == null) return null;
-    var id = source.pitch?.original ?? source.assetId;
+    var id = _recordingOf(source);
     if (_tracks[id] case var t?) return t;
     if (!_unread.contains(id) && _reading.add(id)) unawaited(_read(id));
+    return null;
+  }
+
+  /// pitchWordsOf is the words said in [key]'s recording, timed in it --
+  /// where it is a take its Speech spoke -- for the notes' lyrics, or null.
+  List<TimedWord>? pitchWordsOf(String key) {
+    var source = pitchSourceOf(key);
+    var spec = speechOf(key);
+    if (source == null || spec == null) return null;
+    var ids = {
+      _recordingOf(source),
+      source.assetId,
+      if (source.clip?.sound?.assetId case var id?) id,
+    };
+    for (var take in [
+      ...spec.takes,
+      for (var line in spec.lines) ...line.takes,
+    ]) {
+      for (var t in [take, if (take.spoken case var s?) s]) {
+        if (ids.contains(t.assetId) && t.words.isNotEmpty) return t.words;
+      }
+    }
     return null;
   }
 
@@ -119,7 +149,7 @@ extension PitchEditing on CanvasController {
   bool pitchUnreadable(String key) {
     var source = pitchSourceOf(key);
     if (source == null) return false;
-    return _unread.contains(source.pitch?.original ?? source.assetId);
+    return _unread.contains(_recordingOf(source));
   }
 
   Future<void> _read(String id) async {
@@ -166,7 +196,7 @@ extension PitchEditing on CanvasController {
     _setSource(
         key,
         source.copyWith(
-            pitch: PitchEdit(source.assetId, notes: findNotes(track))));
+            pitch: PitchEdit(_recordingOf(source), notes: findNotes(track))));
     return true;
   }
 
@@ -195,7 +225,8 @@ extension PitchEditing on CanvasController {
     var held = _asSung[this] ??= {};
     if (asSung == held.containsKey(key)) return;
     if (asSung) {
-      held[key] = source.assetId;
+      // What its notes made: under a clip's settings, the clip's recording.
+      held[key] = source.clip?.sound?.assetId ?? source.assetId;
       _setSource(key, source.copyWith(assetId: edit.original), transient: true);
     } else {
       var made = held.remove(key)!;
@@ -215,6 +246,15 @@ extension PitchEditing on CanvasController {
   void _setSource(String key, MediaSource next, {bool transient = false}) {
     var e = pitchElementOf(key);
     if (e == null) return;
+    // A sound that is a clip: what the notes make is what its clip is made
+    // from, its settings over them.
+    if (e.clip.playlist.first.clip != null) {
+      setTimelineRecording(e, next.assetId,
+          pitch: next.pitch,
+          clearPitch: next.pitch == null,
+          transient: transient);
+      return;
+    }
     replaceElement(
         e.copyWith(
             clip:
@@ -255,7 +295,7 @@ extension PitchEditing on CanvasController {
     var held = _asSung[this];
     if (held != null && held.containsKey(key)) {
       held[key] = id;
-      id = now.assetId;
+      id = now.clip?.sound?.assetId ?? now.assetId;
     }
     _setSource(key,
         now.copyWith(assetId: id, pitch: now.pitch!.copyWith(madeWith: made)),
