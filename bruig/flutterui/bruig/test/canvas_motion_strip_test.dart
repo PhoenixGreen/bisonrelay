@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -87,17 +88,46 @@ void main() {
   // starts on the defaults, not on what the one before it dragged them to.
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets("its triangle launches the slot; its name opens it",
+  // Ken, 2026-11-08: a click on its name picks it; a double-click opens it.
+  testWidgets(
+      "its triangle launches the slot; its name picks it, double-clicked opens",
       (tester) async {
     var c = await pumpBoth(tester);
     expect(find.byKey(const ValueKey("motionStrip-a")), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey("motionLaunch-a-0")));
     await frames(tester);
     expect(c.motionSlotState("a", 0), MotionSlotState.playing);
-    await tester.tap(find.byKey(const ValueKey("motionName-a-0")));
+    var name = find.byKey(const ValueKey("motionName-a-0"));
+    await tester.tap(name);
+    await tester.pump(const Duration(milliseconds: 400));
+    await frames(tester);
+    expect((c.pickedMotion, c.animationOpen), ("go", false));
+    await tester.tap(name);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(name);
     await frames(tester);
     expect((c.pickedMotion, c.animationOpen), ("go", true));
     c.pause();
+  });
+
+  testWidgets("a picked slot goes with Delete or Backspace", (tester) async {
+    var c = await pumpBoth(tester);
+    c.newClip("a", slot: 1);
+    await frames(tester);
+    var rows = [0, 1];
+    for (var (i, key) in [
+      (rows[0], LogicalKeyboardKey.delete),
+      (rows[1], LogicalKeyboardKey.backspace),
+    ]) {
+      await tester.tap(find.byKey(ValueKey("motionName-a-$i")));
+      await tester.pump(const Duration(milliseconds: 400));
+      await frames(tester);
+      await tester.sendKeyEvent(key);
+      await frames(tester);
+      expect(c.motionOf("a").slot(i), isNull, reason: "$key");
+    }
+    c.undo();
+    expect(c.motionOf("a").slot(1), isNotNull, reason: "one step each");
   });
 
   testWidgets("an empty slot, double-clicked, makes a clip in it",
@@ -111,13 +141,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     await tester.tap(slot);
     await frames(tester);
-    await tester.tap(find.text("Arriving").first);
-    await frames(tester);
-    await tester.tap(find.byKey(const ValueKey("slotMotion-Pop")));
-    await frames(tester);
-    expect(c.motionOf("a").slot(row)?.name, "Pop");
+    // A clip at once, no list to pick from (Ken).
+    var made = c.motionOf("a").slot(row);
+    expect(made, isNotNull);
     expect(c.slotsShown, row + 2, reason: "and one more slot shown");
-    expect(c.animationOpen, isTrue, reason: "opened to be shaped");
+    expect(c.pickedMotion, made!.id);
+    expect(c.animationOpen, isFalse, reason: "a double-click on it opens it");
   });
 
   testWidgets("a layer's fader sets how much it counts", (tester) async {
@@ -166,7 +195,7 @@ void main() {
     c.pause();
   });
 
-  testWidgets("an empty slot beside the rows makes a clip, and opens it",
+  testWidgets("an empty slot beside the rows, double-clicked, makes a clip",
       (tester) async {
     var c = await pumpBoth(tester);
     await tester.tap(find.byKey(const ValueKey("slotsToggle")));
@@ -175,12 +204,15 @@ void main() {
       for (var i = 0; i < c.session.rows; i++)
         if (c.motionOf("a").slot(i) == null) i
     ].first;
-    await tester.tap(find.byKey(ValueKey("rowSlotNew-a-$empty")));
+    var cell = find.byKey(ValueKey("rowSlotNew-a-$empty"));
+    await tester.tap(cell);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(cell);
     await frames(tester);
     var made = c.motionOf("a").slot(empty);
     expect(made, isNotNull, reason: "a clip in the slot pressed");
     expect(c.pickedMotion, made!.id);
-    expect(c.animationOpen, isTrue);
+    expect(c.animationOpen, isFalse);
   });
 
   testWidgets("the strips and the slots each have a grip", (tester) async {
@@ -282,8 +314,9 @@ void main() {
     c.nextLaneSize();
     await frames(tester);
     expect(tester.getSize(slot), size);
-    // Pressed where it has scrolled to, it still opens.
+    // Pressed where it has scrolled to, it is still picked.
     await tester.tap(slot);
+    await tester.pump(const Duration(milliseconds: 400));
     await frames(tester);
     expect(c.pickedMotion, c.motionOf("a").slot(1)!.id);
     expect(tester.takeException(), isNull);

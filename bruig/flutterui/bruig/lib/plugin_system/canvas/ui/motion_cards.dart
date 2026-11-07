@@ -1,0 +1,713 @@
+import 'dart:math' as math;
+
+import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
+    show Quantise;
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show boxOf;
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
+import 'package:flutter/material.dart';
+
+// motion_cards.dart is the Motion chain's Source and Output as the chain
+// prototype draws them (Ken, 2026-11-08: "the motion panel design is very
+// off"): Timing, Launch and Place as studio cards with a screen, knobs and
+// lists -- every setting the old sections had -- and the Output: how much of
+// it is seen, and whether it is shown at all.
+
+/// ClipEdit changes the clip shown: live while a knob is dragged, one undo
+/// step otherwise.
+typedef ClipEdit = void Function(MotionClip Function(MotionClip) change,
+    {bool live});
+
+/// StudioDrop is a list to pick from, as the prototype's cards have them: a
+/// small name over a boxed choice. [key] is the box's; each item is keyed
+/// "[key]-[value's index]".
+class StudioDrop<T> extends StatelessWidget {
+  final String label;
+  final T value;
+  final List<(T, String)> options;
+  final ValueChanged<T> onChanged;
+  final double width;
+  const StudioDrop(
+      {required this.label,
+      required this.value,
+      required this.options,
+      required this.onChanged,
+      this.width = 150,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var s = look.studio;
+    var name = (key as ValueKey?)?.value ?? label;
+    var shown =
+        options.where((o) => o.$1 == value).firstOrNull?.$2 ?? options.first.$2;
+    return SizedBox(
+      width: width,
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (label.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10, color: s.muted)),
+              ),
+            MenuAnchor(
+              style: chainMenuStyle(look),
+              menuChildren: [
+                for (var (i, (v, t)) in options.indexed)
+                  chainMenuItem(look,
+                      key: ValueKey("$name-$i"),
+                      text: t,
+                      current: v == value,
+                      onPressed: () => onChanged(v)),
+              ],
+              builder: (context, menu, _) => InkWell(
+                key: key == null ? null : ValueKey("$name-open"),
+                borderRadius: BorderRadius.circular(4),
+                onTap: () => menu.isOpen ? menu.close() : menu.open(),
+                child: Container(
+                  height: 22,
+                  padding: const EdgeInsets.only(left: 7, right: 2),
+                  decoration: BoxDecoration(
+                      color: s.inset,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: s.edge)),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text(shown,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 11, color: s.text)),
+                    ),
+                    Icon(Icons.arrow_drop_down, size: 15, color: s.muted),
+                  ]),
+                ),
+              ),
+            ),
+          ]),
+    );
+  }
+}
+
+const _motionAccent = Color(0xFF3FB08D);
+
+/// MotionTimingCard is when [clip] plays: its length and whether it loops;
+/// what it shows before it starts and after it ends; and, placed on the
+/// timeline, where its start and end are pinned.
+class MotionTimingCard extends StatelessWidget {
+  final CanvasController controller;
+  final CanvasElement element;
+  final MotionClip clip;
+  final ClipEdit edit;
+  final double height;
+  final bool folded;
+  final VoidCallback onFold;
+  const MotionTimingCard(
+      {required this.controller,
+      required this.element,
+      required this.clip,
+      required this.edit,
+      required this.height,
+      required this.folded,
+      required this.onFold,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var skin = DeviceSkin.studio(look.studio);
+    var c = clip, e = element;
+    var placeId = controller.pickedPlacement;
+    var p = placeId == null ? null : e.base.motion.placement(placeId);
+    var span = placeId == null ? null : controller.spanOf(placeId);
+    var pins = <(String, String)>[
+      ("", "Where it is put"),
+      ("sceneStart", "The scene's start"),
+      for (var a in controller.document.actions)
+        (
+          "marker:${markerKey(a)}",
+          "Marker ${a.label.isEmpty ? a.frame + 1 : a.label}"
+        ),
+      for (var o in controller.document.elements)
+        for (var x in o.base.motion.placed)
+          if (x.id != placeId)
+            (
+              "after:${x.id}",
+              "End of ${o.name.isEmpty ? o.id : o.name} · ${o.base.motion.clip(x.clip)?.name ?? ""}"
+            ),
+    ];
+    var ends = [
+      ("", "Its own length"),
+      ("sceneEnd", "The scene's end"),
+      for (var x in pins.skip(2)) x,
+    ];
+    String pinKey(ClipPin? pin) => switch (pin?.kind) {
+          null => "",
+          PinKind.sceneStart => "sceneStart",
+          PinKind.sceneEnd => "sceneEnd",
+          PinKind.marker => "marker:${pin!.target}",
+          PinKind.after => "after:${pin!.target}",
+        };
+    ClipPin? pinOf(String v) {
+      if (v.isEmpty) return null;
+      if (v == "sceneStart") return const ClipPin(PinKind.sceneStart);
+      if (v == "sceneEnd") return const ClipPin(PinKind.sceneEnd);
+      var parts = v.split(":");
+      return ClipPin(parts[0] == "marker" ? PinKind.marker : PinKind.after,
+          target: parts.sublist(1).join(":"));
+    }
+
+    List<Widget> controls(DeviceTier tier) => [
+          DevicePack(key: const ValueKey("motionTimingPack"), children: [
+            DeviceKnob(
+              key: const ValueKey("animClipLength"),
+              label: "Length",
+              text: "${c.length.toStringAsFixed(2)}s",
+              value: c.length,
+              initial: 1,
+              min: 0.05,
+              max: 30,
+              log: true,
+              accent: _motionAccent,
+              ink: skin.ink,
+              onChanged: (v, {transient = false}) => edit(
+                  (x) => x.retimed((v * 100).roundToDouble() / 100),
+                  live: transient),
+              onCommit: controller.endInteraction,
+            ),
+            StudioDrop<bool>(
+              key: const ValueKey("animClipLoop"),
+              label: "Plays",
+              value: c.loop,
+              options: const [(false, "Once"), (true, "Round and round")],
+              onChanged: (v) => edit((x) => x.copyWith(loop: v)),
+            ),
+            if (!c.isSound) ...[
+              StudioDrop<ClipHold>(
+                key: const ValueKey("animBefore"),
+                label: "Before it starts",
+                value: c.before,
+                options: const [
+                  (ClipHold.rest, "As it is"),
+                  (ClipHold.first, "Holds its first frame")
+                ],
+                onChanged: (h) => edit((x) => x.copyWith(before: h)),
+              ),
+              StudioDrop<ClipHold>(
+                key: const ValueKey("animAfter"),
+                label: "After it ends",
+                value: c.after,
+                options: const [
+                  (ClipHold.rest, "Back as it is"),
+                  (ClipHold.last, "Holds its last frame")
+                ],
+                onChanged: (h) => edit((x) => x.copyWith(after: h)),
+              ),
+            ],
+            if (p != null && span != null) ...[
+              StudioDrop<String>(
+                key: const ValueKey("animStartPin"),
+                label: "Pinned to",
+                width: 200,
+                value: pins.any((x) => x.$1 == pinKey(p.startPin))
+                    ? pinKey(p.startPin)
+                    : "",
+                options: pins,
+                onChanged: (v) => controller.pinPlacement(e.id, p.id, pinOf(v)),
+              ),
+              StudioDrop<String>(
+                key: const ValueKey("animEndPin"),
+                label: "Ends at",
+                width: 200,
+                value: ends.any((x) => x.$1 == pinKey(p.endPin))
+                    ? pinKey(p.endPin)
+                    : "",
+                options: ends,
+                onChanged: (v) =>
+                    controller.pinPlacement(e.id, p.id, pinOf(v), end: true),
+              ),
+            ],
+          ]),
+        ];
+    return DeviceFrame(
+      id: "motionTiming",
+      title: "Timing",
+      help: "How long it is and whether it repeats; what it shows before it "
+          "starts and after it ends. Placed on the timeline, its start and "
+          "end can be pinned to markers, the scene, or another clip's end.",
+      skin: skin,
+      icon: Icons.schedule,
+      accent: _motionAccent,
+      folded: folded,
+      onFold: onFold,
+      width: 320,
+      besideDisplay: 240,
+      besideSettings: 300,
+      height: height,
+      summary: "${c.length.toStringAsFixed(2)} s${c.loop ? " · loops" : ""}",
+      foldedBody: const SizedBox(),
+      body: const SizedBox.shrink(),
+      controls: controls,
+      // Where it sits, and -- placed -- its span in words at the foot.
+      display: Stack(fit: StackFit.expand, children: [
+        CustomPaint(
+          key: const ValueKey("motionTimingSpan"),
+          painter: _SpanPainter(
+              span == null ? null : (span.start, span.end),
+              controller.document.frames /
+                  math.max(1, controller.document.frameRate),
+              c.length,
+              c.loop,
+              look.studio),
+          child: const SizedBox.expand(),
+        ),
+        if (p != null && span != null)
+          Positioned(
+            left: 6,
+            right: 6,
+            bottom: 4,
+            child: Text(
+                "${span.start.toStringAsFixed(2)}–${span.end.toStringAsFixed(2)} s · "
+                "${c.loop ? "repeats to fill it" : "retimed to fit: ${span.speed.toStringAsFixed(2)}×"}",
+                key: const ValueKey("animSpanText"),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 10.5, color: look.studio.muted)),
+          ),
+      ]),
+    );
+  }
+}
+
+/// _SpanPainter is where the clip sits in its scene: placed, its span along
+/// the scene; in a slot, its own length, repeated where it loops.
+class _SpanPainter extends CustomPainter {
+  final (double, double)? span;
+  final double scene, length;
+  final bool loop;
+  final StudioColors studio;
+  _SpanPainter(this.span, this.scene, this.length, this.loop, this.studio);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var w = size.width, h = size.height;
+    canvas.drawRect(Offset.zero & size, Paint()..color = studio.display);
+    var grid = Paint()..color = Colors.white.withValues(alpha: 0.05);
+    for (var i = 1; i < 8; i++) {
+      canvas.drawRect(Rect.fromLTWH(i * w / 8, 0, 1, h), grid);
+    }
+    var tp = TextPainter(
+        text: TextSpan(
+            text: span == null ? "in a slot: its own length" : "scene start",
+            style: TextStyle(fontSize: 10, color: studio.muted)),
+        textDirection: TextDirection.ltr)
+      ..layout();
+    tp.paint(canvas, const Offset(6, 5));
+    var fill = Paint()..color = _motionAccent.withValues(alpha: 0.3);
+    var edge = Paint()
+      ..style = PaintingStyle.stroke
+      ..color = _motionAccent;
+    var total = math.max(0.1, span == null ? length * (loop ? 3 : 1.5) : scene);
+    var parts = span == null
+        ? [
+            for (var i = 0; i < (loop ? 3 : 1); i++)
+              (i * length, (i + 1) * length)
+          ]
+        : [span!];
+    for (var (i, (a, b)) in parts.indexed) {
+      var r = Rect.fromLTRB(w * a / total + 4, h * 0.42,
+          math.max(w * a / total + 8, w * b / total - 2), h * 0.62);
+      canvas.drawRect(
+          r,
+          i == 0
+              ? fill
+              : (Paint()..color = fill.color.withValues(alpha: 0.12)));
+      canvas.drawRect(r, edge);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_SpanPainter old) =>
+      old.span != span || old.length != length || old.loop != loop;
+}
+
+/// MotionLaunchCard is what starts [clip] from its slot: the triggers it
+/// answers -- listed on its screen -- and a press's way, what it waits for
+/// and what comes after it.
+class MotionLaunchCard extends StatelessWidget {
+  final CanvasController controller;
+  final CanvasElement element;
+  final MotionClip clip;
+  final ClipEdit edit;
+  final double height;
+  final bool folded;
+  final VoidCallback onFold;
+  final String Function(ClipTrigger) triggerName;
+  const MotionLaunchCard(
+      {required this.controller,
+      required this.element,
+      required this.clip,
+      required this.edit,
+      required this.height,
+      required this.folded,
+      required this.onFold,
+      required this.triggerName,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var s = look.studio;
+    var skin = DeviceSkin.studio(s);
+    var c = clip, e = element;
+    var mates = [
+      for (var o in e.base.motion.clips)
+        if (o.id != c.id) o
+    ];
+    var adds = <(String, String)>[
+      ("", "Add a trigger…"),
+      (ClipTriggerKind.sceneStarts.name, ClipTriggerKind.sceneStarts.label),
+      for (var o in controller.document.elements)
+        (
+          "${ClipTriggerKind.clicked.name}:${o.id}",
+          "Clicked: ${o.name.isEmpty ? o.id : o.name}"
+        ),
+      for (var key in const ["Space", "Enter", "A", "D"])
+        ("${ClipTriggerKind.key.name}:$key", "Key pressed: $key"),
+      for (var o in controller.document.elements)
+        for (var x in o.base.motion.clips)
+          if (x.id != c.id)
+            ("${ClipTriggerKind.clipEnds.name}:${x.id}", "When ${x.name} ends"),
+      (ClipTriggerKind.touched.name, ClipTriggerKind.touched.label),
+      for (var n in controller.document.counts)
+        (
+          "${ClipTriggerKind.count.name}:${n.id}",
+          "${n.name.isEmpty ? n.id : n.name} changes"
+        ),
+    ];
+    // Its screen: the triggers, a row each, as the prototype lists them.
+    var screen = Container(
+      color: s.display,
+      padding: const EdgeInsets.all(6),
+      child: ListView(children: [
+        for (var (i, t) in c.triggers.indexed)
+          Container(
+            key: ValueKey("animTrigger-$i"),
+            height: 24,
+            margin: const EdgeInsets.only(bottom: 3),
+            padding: const EdgeInsets.only(left: 8),
+            color: s.raised,
+            child: Row(children: [
+              Expanded(
+                child: Text(triggerName(t),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11, color: s.text)),
+              ),
+              // A count's: any change, or as it reaches a number.
+              if (t.kind == ClipTriggerKind.count)
+                StudioDrop<double>(
+                  key: ValueKey("animTriggerAmount-$i"),
+                  label: "",
+                  width: 72,
+                  value: t.amount,
+                  options: [
+                    (0, "Any"),
+                    for (var n in const [
+                      1.0,
+                      3.0,
+                      5.0,
+                      10.0,
+                      20.0,
+                      50.0,
+                      100.0
+                    ])
+                      (n, "At ${n.round()}"),
+                    if (![0.0, 1.0, 3.0, 5.0, 10.0, 20.0, 50.0, 100.0]
+                        .contains(t.amount))
+                      (t.amount, "At ${t.amount.round()}"),
+                  ],
+                  onChanged: (v) => edit((x) => x.copyWith(triggers: [
+                        for (var (j, y) in x.triggers.indexed)
+                          j == i
+                              ? ClipTrigger(y.kind,
+                                  target: y.target, amount: v.roundToDouble())
+                              : y,
+                      ])),
+                ),
+              IconButton(
+                key: ValueKey("animTriggerRemove-$i"),
+                visualDensity: VisualDensity.compact,
+                iconSize: 13,
+                icon: Icon(Icons.close, color: s.muted),
+                tooltip: "Remove",
+                onPressed: () => edit(
+                    (x) => x.copyWith(triggers: [...x.triggers]..removeAt(i))),
+              ),
+            ]),
+          ),
+        if (c.triggers.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(6),
+            child: Text("Only its slot starts it: add a trigger below.",
+                style: TextStyle(fontSize: 11, color: s.muted)),
+          ),
+      ]),
+    );
+    List<Widget> controls(DeviceTier tier) => [
+          DevicePack(key: const ValueKey("motionLaunchPack"), children: [
+            StudioDrop<ClipLaunch>(
+              key: const ValueKey("animLaunch"),
+              label: "Pressed",
+              value: c.launch,
+              options: [for (var l in ClipLaunch.values) (l, l.label)],
+              onChanged: (l) => edit((x) => x.copyWith(launch: l)),
+            ),
+            StudioDrop<String>(
+              key: const ValueKey("animQuantise"),
+              label: "Waits for",
+              value: c.quantise ?? "",
+              options: [
+                ("", "The timeline's setting"),
+                for (var q in Quantise.values)
+                  (
+                    q.name,
+                    q == Quantise.off ? "Nothing" : "The next ${q.label}"
+                  ),
+              ],
+              onChanged: (q) =>
+                  edit((x) => x.copyWith(quantise: () => q.isEmpty ? null : q)),
+            ),
+            StudioDrop<String>(
+              key: const ValueKey("animThen"),
+              label: "Then",
+              value:
+                  c.then == ClipThen.play ? "play:${c.thenClip}" : c.then.name,
+              options: [
+                for (var t in ClipThen.values)
+                  if (t != ClipThen.play) (t.name, t.label),
+                for (var o in mates) ("play:${o.id}", "Plays ${o.name}"),
+              ],
+              onChanged: (v) => edit((x) => v.startsWith("play:")
+                  ? x.copyWith(then: ClipThen.play, thenClip: v.substring(5))
+                  : x.copyWith(then: ClipThen.fromName(v), thenClip: "")),
+            ),
+            StudioDrop<String>(
+              key: const ValueKey("animTriggerAdd"),
+              label: "Also starts when",
+              width: 200,
+              value: "",
+              options: adds,
+              onChanged: (v) {
+                if (v.isEmpty) return;
+                var parts = v.split(":");
+                var kind = ClipTriggerKind.fromName(parts[0])!;
+                edit((x) => x.copyWith(triggers: [
+                      ...x.triggers,
+                      ClipTrigger(kind,
+                          target: parts.length > 1
+                              ? parts.sublist(1).join(":")
+                              : ""),
+                    ]));
+              },
+            ),
+          ]),
+        ];
+    return DeviceFrame(
+      id: "motionLaunch",
+      title: "Launch",
+      help: "What starts it from its slot besides a press: the scene "
+          "starting, a click, a key, another clip ending, a player's touch, "
+          "a count. A press starts it, plays it while held, toggles it or "
+          "repeats it; Then says what comes after.",
+      skin: skin,
+      icon: Icons.bolt,
+      accent: _motionAccent,
+      folded: folded,
+      onFold: onFold,
+      width: 320,
+      besideDisplay: 240,
+      besideSettings: 300,
+      height: height,
+      summary: "${c.launch.label} · ${c.triggers.length} trigger"
+          "${c.triggers.length == 1 ? "" : "s"}",
+      foldedBody: const SizedBox(),
+      body: const SizedBox.shrink(),
+      controls: controls,
+      display: screen,
+    );
+  }
+}
+
+/// MotionPlaceCard is where [clip] moves from: where the element is, so one
+/// clip works on any element, or to set places on the page.
+class MotionPlaceCard extends StatelessWidget {
+  final CanvasController controller;
+  final CanvasElement element;
+  final MotionClip clip;
+  final ClipEdit edit;
+  final double height;
+  final bool folded;
+  final VoidCallback onFold;
+  const MotionPlaceCard(
+      {required this.controller,
+      required this.element,
+      required this.clip,
+      required this.edit,
+      required this.height,
+      required this.folded,
+      required this.onFold,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var skin = DeviceSkin.studio(look.studio);
+    var c = clip, e = element;
+    return DeviceFrame(
+      id: "motionPlace",
+      title: "Place",
+      help: "From where it is, one clip works on any element, wherever it "
+          "stands. To set places, its keys are spots on the page.",
+      skin: skin,
+      icon: Icons.place_outlined,
+      accent: _motionAccent,
+      folded: folded,
+      onFold: onFold,
+      width: 200,
+      height: height,
+      summary: c.absolute ? "To set places" : "From where it is",
+      foldedBody: const SizedBox(),
+      body: const SizedBox.shrink(),
+      controls: (tier) => [
+        StudioDrop<bool>(
+          key: const ValueKey("animPlace"),
+          label: "Moves",
+          value: c.absolute,
+          options: const [(false, "From where it is"), (true, "To set places")],
+          onChanged: (abs) {
+            // Every key kept where it lands, written the other way.
+            var box = boxOf(e);
+            MotionKey turn(MotionKey k, double by) => switch (k.value) {
+                  MotionNumber(:var value) => k.copyWith(
+                      value: MotionNumber(abs ? value + by : value - by)),
+                  _ => k,
+                };
+            edit((x) => x.copyWith(absolute: abs, keys: {
+                  for (var MapEntry(:key, :value) in x.keys.entries)
+                    key: key == MotionProp.x
+                        ? [for (var k in value) turn(k, box.center.dx)]
+                        : key == MotionProp.y
+                            ? [for (var k in value) turn(k, box.center.dy)]
+                            : value,
+                }));
+          },
+        ),
+      ],
+    );
+  }
+}
+
+/// MotionOutputCard is where the chain ends, as the prototype's Output: how
+/// much of the element is seen, and whether it is shown at all.
+class MotionOutputCard extends StatelessWidget {
+  final CanvasController controller;
+  final CanvasElement element;
+  final double height;
+  final bool folded;
+  final VoidCallback onFold;
+  const MotionOutputCard(
+      {required this.controller,
+      required this.element,
+      required this.height,
+      required this.folded,
+      required this.onFold,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var s = look.studio;
+    var skin = DeviceSkin.studio(s);
+    var e = element;
+    var elements = controller.document.elements;
+    var at = elements.indexWhere((x) => x.id == e.id);
+    var under = at > 0 ? elements[at - 1] : null;
+    void write(CanvasElement next, {bool transient = false}) {
+      controller.beginInteraction();
+      controller.replaceElement(next, transient: true);
+      if (!transient) controller.endInteraction();
+    }
+
+    Widget row(String label, String value) => Row(children: [
+          Expanded(
+              child: Text(label,
+                  style: TextStyle(fontSize: 10.5, color: s.muted))),
+          Flexible(
+            child: Text(value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 10.5, color: s.text)),
+          ),
+        ]);
+    return DeviceFrame(
+      id: "motionOutput",
+      title: "Output",
+      help: "Where its chain ends: how much of it is seen, whether it is "
+          "shown, and what it is drawn over.",
+      skin: skin,
+      icon: Icons.output,
+      accent: const Color(0xFFCFCBDF),
+      folded: folded,
+      onFold: onFold,
+      width: 190,
+      height: height,
+      summary: "${(e.opacity * 100).round()}% seen",
+      foldedBody: const SizedBox(),
+      body: const SizedBox.shrink(),
+      controls: (tier) => [
+        DeviceKnob(
+          key: const ValueKey("motionOutputOpacity"),
+          label: "Opacity",
+          text: "${(e.opacity * 100).round()}%",
+          value: e.opacity,
+          initial: 1,
+          min: 0,
+          max: 1,
+          accent: const Color(0xFFCFCBDF),
+          ink: skin.ink,
+          onChanged: (v, {transient = false}) => write(
+              e.withBase(opacity: (v * 100).roundToDouble() / 100),
+              transient: transient),
+          onCommit: controller.endInteraction,
+        ),
+        StudioDrop<bool>(
+          key: const ValueKey("motionOutputShown"),
+          label: "Shown",
+          width: 160,
+          value: e.visible,
+          options: const [(true, "Yes"), (false, "Hidden")],
+          onChanged: (v) => write(e.withBase(visible: v)),
+        ),
+        SizedBox(
+          width: 160,
+          child: row(
+              "Drawn over",
+              under == null
+                  ? "the page"
+                  : (under.name.isEmpty ? under.id : under.name)),
+        ),
+      ],
+    );
+  }
+}

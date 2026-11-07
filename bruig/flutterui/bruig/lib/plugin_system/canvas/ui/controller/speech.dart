@@ -983,7 +983,10 @@ extension CanvasSpeech on CanvasController {
     _partTimer?.cancel();
     for (var e in [..._document.elements]) {
       if (e is! AudioElement) continue;
-      var part = e.instrument;
+      // As its macros turn it: see macroedPart.
+      var part = e.instrument == null
+          ? null
+          : macroedPart(CanvasController._channelOf(e), e.instrument!);
       var spb = _document.audio.secondsPerBeat;
       if (part == null || !part.needsPlayingAt(spb)) continue;
       var signature = part.signatureAt(spb);
@@ -1005,7 +1008,10 @@ extension CanvasSpeech on CanvasController {
         // same: changed again meanwhile, that change plays next.
         var now = _document.elementById(e.id);
         if (now is! AudioElement ||
-            now.instrument?.signatureAt(spb) != signature) {
+            now.instrument == null ||
+            macroedPart(CanvasController._channelOf(now), now.instrument!)
+                    .signatureAt(spb) !=
+                signature) {
           continue;
         }
         var clip = now.clip.copyWith(timed: true, playlist: [

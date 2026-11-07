@@ -1657,6 +1657,9 @@ class _ClipSlot extends StatefulWidget {
 }
 
 class _ClipSlotState extends State<_ClipSlot> {
+  /// _keys has the keyboard once the slot is clicked: see SlotKeys.
+  final FocusNode _keys = FocusNode(debugLabel: "clipSlot");
+
   final MenuController _menu = MenuController();
   bool _renaming = false;
   final TextEditingController _name = TextEditingController();
@@ -1668,6 +1671,7 @@ class _ClipSlotState extends State<_ClipSlot> {
   void dispose() {
     _name.dispose();
     _focus.dispose();
+    _keys.dispose();
     super.dispose();
   }
 
@@ -2032,12 +2036,23 @@ class _ClipSlotState extends State<_ClipSlot> {
         ),
       ),
       childWhenDragging: Opacity(opacity: 0.4, child: name),
-      child: GestureDetector(
-        key: ValueKey("clipName-${widget.channel}-${widget.row}"),
-        behavior: HitTestBehavior.opaque,
-        onTap: () => c.selectSlot(widget.channel, widget.row),
-        onDoubleTap: () => c.openClipEditor(widget.channel, widget.row),
-        child: Align(alignment: Alignment.centerLeft, child: name),
+      child: SlotKeys(
+        focus: _keys,
+        onDelete: () {
+          c.beginInteraction();
+          c.setSessionClip(widget.channel, widget.row, null);
+          c.endInteraction();
+        },
+        child: GestureDetector(
+          key: ValueKey("clipName-${widget.channel}-${widget.row}"),
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            c.selectSlot(widget.channel, widget.row);
+            _keys.requestFocus();
+          },
+          onDoubleTap: () => c.openClipEditor(widget.channel, widget.row),
+          child: Align(alignment: Alignment.centerLeft, child: name),
+        ),
       ),
     );
   }
@@ -2388,4 +2403,33 @@ class _CapMark extends CustomPainter {
 
   @override
   bool shouldRepaint(_CapMark old) => old.x != x || old.colour != colour;
+}
+
+/// SlotKeys is a slot taking the keyboard once clicked: Delete or
+/// Backspace empties it (Ken: "with a slot selected a user should be able
+/// to delete it"). [focus] is asked for by the slot's click.
+class SlotKeys extends StatelessWidget {
+  final FocusNode focus;
+  final VoidCallback onDelete;
+  final Widget child;
+  const SlotKeys(
+      {required this.focus,
+      required this.onDelete,
+      required this.child,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) => Focus(
+        focusNode: focus,
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent &&
+              (event.logicalKey == LogicalKeyboardKey.delete ||
+                  event.logicalKey == LogicalKeyboardKey.backspace)) {
+            onDelete();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: child,
+      );
 }

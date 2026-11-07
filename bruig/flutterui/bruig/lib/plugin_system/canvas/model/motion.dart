@@ -300,6 +300,11 @@ class MotionClip {
   final double speed;
   final bool loop;
 
+  /// replace is whether, while it plays, its layer takes the element over
+  /// from the layers under it (as far as its weight goes) rather than
+  /// adding to them: the prototype's Layer: Replace | Add.
+  final bool replace;
+
   /// layer is which of the element's layers it plays on: 0 to
   /// [motionLayers] - 1, or [soundLayer] for a sound.
   final int layer;
@@ -341,6 +346,7 @@ class MotionClip {
     this.length = 1,
     this.speed = 1,
     this.loop = false,
+    this.replace = false,
     this.layer = 0,
     this.before = ClipHold.rest,
     this.after = ClipHold.rest,
@@ -389,6 +395,7 @@ class MotionClip {
     double? length,
     double? speed,
     bool? loop,
+    bool? replace,
     int? layer,
     ClipHold? before,
     ClipHold? after,
@@ -411,6 +418,7 @@ class MotionClip {
         length: (length ?? this.length).clamp(0.02, 3600.0),
         speed: (speed ?? this.speed).clamp(0.05, 20.0),
         loop: loop ?? this.loop,
+        replace: replace ?? this.replace,
         layer: (layer ?? this.layer).clamp(0, soundLayer),
         before: before ?? this.before,
         after: after ?? this.after,
@@ -444,6 +452,7 @@ class MotionClip {
         "length": length,
         if (speed != 1) "speed": speed,
         if (loop) "loop": true,
+        if (replace) "replace": true,
         if (layer != 0) "layer": layer,
         if (before != kind.before) "before": before.name,
         if (after != kind.after) "after": after.name,
@@ -487,6 +496,7 @@ class MotionClip {
       length: jsonDouble(json["length"], 1).clamp(0.02, 3600.0),
       speed: jsonDouble(json["speed"], 1).clamp(0.05, 20.0),
       loop: jsonBool(json["loop"], false),
+      replace: jsonBool(json["replace"], false),
       layer: jsonInt(json["layer"], kind == MotionKind.sound ? soundLayer : 0)
           .clamp(0, soundLayer),
       before: ClipHold.fromName(json["before"], kind.before),

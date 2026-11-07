@@ -1477,6 +1477,29 @@ void main() {
       await done(tester, c);
     });
 
+    // Ken, 2026-11-08: a slot clicked takes Delete or Backspace.
+    testWidgets("a clicked slot goes with Delete or Backspace, one step each",
+        (tester) async {
+      var c = await show(tester);
+      c.setSessionClip(
+          "a", 1, c.session.at("a", 0)!.copyWith(id: "two", name: "Chorus"));
+      await tester.pump();
+      for (var (row, key) in [
+        (1, LogicalKeyboardKey.delete),
+        (0, LogicalKeyboardKey.backspace),
+      ]) {
+        await tester.tap(find.byKey(ValueKey("clipName-a-$row")));
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.sendKeyEvent(key);
+        await tester.pump();
+        expect(c.session.at("a", row), isNull, reason: "$key");
+      }
+      c.undo();
+      expect(c.session.at("a", 0), isNotNull);
+      expect(c.session.at("a", 1), isNull);
+      await done(tester, c);
+    });
+
     // Ken: the prototype's clip editor -- a bar of tools, one column of
     // settings, a line of help.
     testWidgets(

@@ -60,13 +60,21 @@ void main() {
     expect(find.text("Logo"), findsOneWidget);
   });
 
-  testWidgets("a click opens the clip in the Animation panel", (tester) async {
+  // Ken, 2026-11-08: a click picks it; only a double-click opens the
+  // Chain, unless the Chain is out already.
+  testWidgets("a click picks the clip; a double-click opens the Chain",
+      (tester) async {
     var c = await pump(tester);
     var p = c.motionOf("a").placed.single;
     await tester.tapAt(at(tester, c, 2.3));
     await tester.pump(const Duration(milliseconds: 400));
     expect(c.pickedPlacement, p.id);
     expect(c.pickedMotion, p.clip);
+    expect(c.animationOpen, isFalse, reason: "a single click, picked only");
+    await tester.tapAt(at(tester, c, 2.3));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tapAt(at(tester, c, 2.3));
+    await tester.pumpAndSettle();
     expect(c.animationOpen, isTrue);
   });
 
@@ -119,13 +127,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     await tester.tapAt(spot);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey("makeMotion-Pop")));
-    await tester.pumpAndSettle();
+    // A short clip there at once, no list to pick from (Ken).
     var placed = c.motionOf("a").placed;
     expect(placed, hasLength(2));
     var made = placed.last;
-    expect(c.motionOf("a").clip(made.clip)!.name, "Pop");
+    expect(c.motionOf("a").clip(made.clip)!.length, 1);
     expect(c.spanOf(made.id)!.start, closeTo(6, 0.3));
-    expect(c.animationOpen, isTrue, reason: "opened to be shaped");
+    expect(c.pickedPlacement, made.id, reason: "picked, to be set up");
+    expect(c.animationOpen, isFalse,
+        reason: "double-clicked again, it opens in the Chain");
   });
 }

@@ -12,6 +12,9 @@ import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:flutter/gestures.dart' show kSecondaryMouseButton;
+import 'package:bruig/plugin_system/canvas/model/modulation.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -228,5 +231,93 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpWidget(const SizedBox());
+  });
+
+  // Ken, 2026-11-08: "I tried setting up the attack knob from the
+  // instrument by right clicking but nothing happened."
+  group("a macro turning the instrument", () {
+    CanvasController make(FakeEngine engine,
+            {List<MixDevice> devices = const []}) =>
+        CanvasController(
+            CanvasDocument(frames: 100, elements: [
+              AudioElement(const ElementBase(id: "p", name: "Keys"),
+                  clip:
+                      MediaClip(timed: true, mix: ChannelMix(devices: devices)),
+                  instrument: const InstrumentPart()),
+            ]),
+            audioEngine: engine);
+
+    test("played and rendered as the macro has it; its own setting kept",
+        () async {
+      var engine = FakeEngine({});
+      var c = make(engine, devices: [
+        const MixDevice(DeviceKind.macro, id: "d0", values: {
+          "m1": 1
+        }, mods: [
+          ModTarget(instrumentTarget, "attack", 0.5, 0),
+        ]),
+      ]);
+      addTearDown(c.dispose);
+      var e = c.document.elementById("p") as AudioElement;
+      var own = e.instrument!.shape.attack;
+      var turned = c.macroedPart("p", e.instrument!).shape.attack;
+      expect(turned, greaterThan(own * 10),
+          reason: "half its travel up, on a log scale");
+      await c.audio.ready();
+      c.noteOn(e, 60);
+      expect(engine.parts.last.shape.attack, closeTo(turned, 1e-9));
+      expect(
+          (c.document.elementById("p") as AudioElement)
+              .instrument!
+              .shape
+              .attack,
+          own,
+          reason: "the part's own setting stays where it was set");
+    });
+
+    testWidgets("its knob's right-click gives it to a macro", (tester) async {
+      var c = make(FakeEngine({}));
+      addTearDown(c.dispose);
+      c.openEffects("p");
+      tester.view.physicalSize = const Size(2000, 600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: ListenableBuilder(
+                        listenable: c,
+                        builder: (context, _) => ChainPanel(
+                            controller: c, height: 420, onResize: (_) {}))))),
+      ));
+      await tester.pump(const Duration(milliseconds: 300));
+      var attack = find.byKey(const ValueKey("instrumentCardAttack"));
+      await tester.ensureVisible(attack);
+      await tester.pump();
+      await tester.tap(attack, buttons: kSecondaryMouseButton);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("knobMenu-0")));
+      await tester.pump();
+      await tester.pump();
+      var macro =
+          c.devicesOf("p").firstWhere((d) => d.kind == DeviceKind.macro);
+      expect(macro.mods, [const ModTarget(instrumentTarget, "attack", 0.5, 0)],
+          reason: "no macros yet: added, Macro 1 turning it");
+      // Its macro's panel lists the instrument's knobs to turn.
+      var index = c.devicesOf("p").indexOf(macro);
+      expect(find.text("Instrument · Attack"), findsOneWidget,
+          reason: "under Macro 1, what it turns");
+      expect(find.byKey(ValueKey("macroTurns-$index-0")), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 }

@@ -1037,7 +1037,7 @@ extension CanvasSession on CanvasController {
     var e = _instrumentOf(channel);
     if (e == null || clip.notes.isEmpty) return null;
     var spb = _document.audio.secondsPerBeat;
-    var part = e.instrument!;
+    var part = macroedPart(channel, e.instrument!);
     var signature = clip.signature(part, spb);
     if (clip.rendered == signature && clip.sound != null) return clip.sound;
     try {

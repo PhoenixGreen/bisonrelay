@@ -625,7 +625,8 @@ extension CanvasGame on CanvasController {
         // Each stretch from where it was up to where it is, so a note on
         // the very first frame is played, and none twice.
         if (start >= was && start < now) {
-          unawaited(audio.noteOn(channel, part, n.key, n.velocity));
+          unawaited(audio.noteOn(
+              channel, macroedPart(channel, part), n.key, n.velocity));
           _accompanying.add(n.key);
         }
         if (end >= was && end < now && _accompanying.remove(n.key)) {
@@ -744,8 +745,9 @@ extension CanvasGame on CanvasController {
   void _scheduleParts() {
     var waiting = _document.elements.any((e) =>
         e is AudioElement &&
-        (e.instrument?.needsPlayingAt(_document.audio.secondsPerBeat) ??
-            false));
+        e.instrument != null &&
+        macroedPart(CanvasController._channelOf(e), e.instrument!)
+            .needsPlayingAt(_document.audio.secondsPerBeat));
     if (!waiting) return;
     _partTimer?.cancel();
     _partTimer = Timer(const Duration(milliseconds: 300), () {

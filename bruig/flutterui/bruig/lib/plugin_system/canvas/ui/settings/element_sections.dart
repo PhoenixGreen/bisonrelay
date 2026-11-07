@@ -97,12 +97,48 @@ Widget animationPanelSection(
       title: "Animation",
       summary: summary ?? animationSummary(animation),
       remember: "${elementKindKey(e)}.animation",
+      // How it comes in, loops and goes is the Motion chain's now (Ken,
+      // 2026-11-08): its clips' ready-made motions, and the same cards.
       children: [
-        elementAnimationSection(controller, e, animation, write, begin, commit,
-            arrive: arrive, leave: leave, heading: heading, timing: timing),
+        motionChainPointer(controller, e),
+        // Keyframes it still has of its own (older canvases): how each is
+        // left, while the playhead is on one.
+        if (timing && (e.track?.keys.isNotEmpty ?? false))
+          CanvasControlGroup(
+              key: const ValueKey("elementKeyframes"),
+              label: "Keyframes",
+              rule: false,
+              children: keyframeEasingControls(controller, e, begin, commit,
+                  label: "Keyframe")),
         ...elementTimingCards(controller, e),
         ...extra,
       ],
+    );
+
+/// motionChainPointer says where [e]'s animation is set -- the Chain's
+/// Motion view -- and opens it there.
+Widget motionChainPointer(CanvasController controller, CanvasElement e) =>
+    Builder(
+      builder: (context) => CanvasControlGroup(
+        key: const ValueKey("elementAnimationInChain"),
+        label: "In the Chain",
+        help: "How it comes in, loops and goes is set in the Chain's Motion "
+            "view: pick a ready-made motion on its clip, then shape it in "
+            "Curves.",
+        rule: false,
+        children: [
+          CanvasTextButton(
+            key: const ValueKey("elementAnimationOpenChain"),
+            label: "Open its motion",
+            icon: Icons.call_split,
+            grow: false,
+            onPressed: () {
+              controller.selectOnly(e.id);
+              controller.showChain(motion: true);
+            },
+          ),
+        ],
+      ),
     );
 
 /// elementTimingCards are what [e]'s arrival is timed against and does to

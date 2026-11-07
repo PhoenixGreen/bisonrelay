@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
@@ -14,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/render/motion_looks.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Canvas, Paint;
@@ -386,7 +388,7 @@ void main() {
       var c = await pump(tester, clip: true);
       c.pickMotion("a", "go");
       await tester.pump(const Duration(milliseconds: 100));
-      expect(find.byKey(const ValueKey("animDevice-clip")), findsOneWidget);
+      expect(find.byKey(const ValueKey("motionClipsCard")), findsOneWidget);
       // Past the clip's cards, along the row.
       var row = find
           .byWidgetPredicate(
@@ -394,8 +396,12 @@ void main() {
           .first;
       // Jumped, not dragged: a drag there is the Keys editor's.
       var position = tester.state<ScrollableState>(row).position;
-      position.jumpTo(position.maxScrollExtent);
-      await tester.pump();
+      // A lazy row learns how long it is as it lays out: jumped to the end
+      // until the end stays put.
+      for (var i = 0; i < 4; i++) {
+        position.jumpTo(position.maxScrollExtent);
+        await tester.pump();
+      }
       expect(find.byKey(const ValueKey("drawingCard")), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
@@ -579,6 +585,131 @@ void main() {
       expect((back.centreX, back.centreY), (0.2, 0.8));
       expect(SceneTransitionKind.zoomIn.takesCentre, isTrue);
       expect(motionFamily(MotionDeviceKind.lfo), "Modulators");
+    });
+  });
+
+  // Ken, 2026-11-08: the prototype's Motion clips card -- arriving, looping,
+  // leaving among them -- and its Curves tab.
+  group("motion clips", () {
+    /// still is a clip holding x at [x] for four seconds.
+    MotionClip still(String id, double x, {bool replace = false}) => MotionClip(
+            id: id,
+            kind: MotionKind.action,
+            length: 4,
+            replace: replace,
+            keys: {
+              MotionProp.x: [
+                MotionKey(0, MotionNumber(x)),
+                MotionKey(4, MotionNumber(x))
+              ],
+            });
+    CanvasDocument layered({required bool replace}) =>
+        CanvasDocument(frames: 240, frameRate: 24, elements: [
+          ShapeElement(
+              ElementBase(
+                  id: "a",
+                  width: 10,
+                  height: 10,
+                  motion: ElementMotion(clips: [
+                    still("base", 100),
+                    still("over", 30, replace: replace),
+                  ], placed: const [
+                    ClipPlacement(id: "p1", clip: "base", length: 4),
+                    ClipPlacement(id: "p2", clip: "over", layer: 1, length: 4),
+                  ])),
+              fill: const Color(0xFF000000)),
+        ]);
+
+    test("a layer that replaces takes over from the one under it", () {
+      expect(dxAt(layered(replace: false), 24), closeTo(130, 0.01),
+          reason: "added: 100 and 30");
+      expect(dxAt(layered(replace: true), 24), closeTo(30, 0.01),
+          reason: "replacing: its 30 alone");
+      var back = MotionClip.fromJson(still("x", 1, replace: true).toJson());
+      expect(back!.replace, isTrue, reason: "kept with the canvas");
+    });
+
+    testWidgets("its card sets what it is, how it mixes and launches; Curves",
+        (tester) async {
+      var d = CanvasDocument(frames: 240, frameRate: 24, elements: [
+        ShapeElement(
+            ElementBase(
+                id: "a",
+                width: 10,
+                height: 10,
+                motion: ElementMotion(
+                    clips: [still("go", 0)], slots: const ["go", "", "", ""])),
+            fill: const Color(0xFF000000)),
+      ]);
+      var c = CanvasController(d, audioEngine: FakeEngine(const {}));
+      addTearDown(c.dispose);
+      c.selectOnly("a");
+      c.pickMotion("a", "go");
+      tester.view.physicalSize = const Size(2600, 420);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: ListenableBuilder(
+                    listenable: c,
+                    builder: (context, _) =>
+                        AnimationPanel(controller: c, height: 420)))),
+      ));
+      await tester.pump(const Duration(milliseconds: 200));
+      MotionClip clip() => c.document.elementById("a")!.base.motion.clip("go")!;
+      expect(find.byKey(const ValueKey("motionClipsCard")), findsOneWidget);
+      expect(find.byKey(const ValueKey("motionClipsPick-go")), findsOneWidget);
+      expect(find.byKey(const ValueKey("animDevice-arrives")), findsNothing,
+          reason: "how it arrives is its clip's now");
+      void pick<T>(String key, T v) =>
+          tester.widget<StudioDrop<T>>(find.byKey(ValueKey(key))).onChanged(v);
+      pick<MotionKind?>("motionClipsKind", MotionKind.arrive);
+      await tester.pump();
+      expect(clip().kind, MotionKind.arrive);
+      expect(clip().keys, isNotEmpty, reason: "a ready-made arrival");
+      // Its own arrival, a style of the element's, played across the clip
+      // (Ken: converted -- the clip holds it).
+      pick("motionClipsPreset", "own:wipe");
+      await tester.pump();
+      expect(clip().inside["own"], isTrue);
+      expect(clip().keys, isEmpty, reason: "its own, not keys");
+      expect(
+          CanvasController.elementAnimationOf(c.document.elementById("a")!)
+              .preset,
+          ElementAnimationPreset.wipe);
+      c.undo();
+      expect(clip().inside["own"], isNot(true), reason: "one undo, both");
+      expect(
+          CanvasController.elementAnimationOf(c.document.elementById("a")!)
+              .preset,
+          ElementAnimationPreset.none);
+      pick("motionClipsLayer", true);
+      await tester.pump();
+      expect(clip().replace, isTrue);
+      tester
+          .widget<StudioDrop<ClipLaunch>>(
+              find.byKey(const ValueKey("animLaunch")))
+          .onChanged(ClipLaunch.gate);
+      await tester.pump();
+      expect(clip().launch, ClipLaunch.gate);
+      c.undo();
+      expect(clip().launch, ClipLaunch.trigger, reason: "one undo each");
+      // Its Curves, across the panel.
+      c.showMotionCurves("a", "go");
+      await tester.pump();
+      expect(find.byKey(const ValueKey("motionCurves")), findsOneWidget);
+      expect(find.byKey(const ValueKey("motionClipsCard")), findsNothing);
+      c.closeMotionCurves();
+      await tester.pump();
+      expect(find.byKey(const ValueKey("motionClipsCard")), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
     });
   });
 }

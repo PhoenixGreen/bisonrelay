@@ -17,7 +17,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart'
     show Keyframe;
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart'
-    show MidiMonitor, noInput;
+    show MidiMonitor, noInput, instrumentKnobs, instrumentTarget;
 import 'package:bruig/plugin_system/canvas/model/midi_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart'
     show SpeechSpec, VocaliserSpec;
@@ -43,6 +43,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart'
     show CanvasDropdown;
 import 'package:bruig/plugin_system/canvas/ui/device_screens.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
+    show StudioDrop;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -1057,6 +1059,13 @@ class DeviceFrame extends StatelessWidget {
   final VoidCallback? onFreeze;
   final VoidCallback? onUnfreeze;
 
+  /// besideDisplay, given, is how wide its display is on a short card --
+  /// beside its settings, the full height -- and besideSettings how wide
+  /// those settings are, packed rather than in one row that scrolls (Ken,
+  /// 2026-11-08: the motion devices' displays wide, as the prototype's).
+  final double? besideDisplay;
+  final double besideSettings;
+
   const DeviceFrame({
     required this.id,
     required this.title,
@@ -1090,6 +1099,8 @@ class DeviceFrame extends StatelessWidget {
     this.frozen = false,
     this.onFreeze,
     this.onUnfreeze,
+    this.besideDisplay,
+    this.besideSettings = 220,
     super.key,
   });
 
@@ -1559,13 +1570,17 @@ class DeviceFrame extends StatelessWidget {
     // Short, its display goes beside its knobs rather than over them: the
     // card wider, the display still a picture worth looking at.
     var beside = tier == DeviceTier.small && display != null;
+    var packed = beside && besideDisplay != null;
+    var textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.5);
     var w = folded
         ? deviceFoldedWidth
         : tier == DeviceTier.strip
             ? math.min(width, 170.0)
-            : beside
-                ? math.max(width, _besideDisplay + 50.0 * knobCount + 24)
-                : math.max(width, oneRow);
+            : packed
+                ? besideDisplay! + besideSettings * textScale + 21
+                : beside
+                    ? math.max(width, _besideDisplay + 50.0 * knobCount + 24)
+                    : math.max(width, oneRow);
     var header = _bar(context,
         height: barHeight,
         short: short,
@@ -1595,7 +1610,18 @@ class DeviceFrame extends StatelessWidget {
         // card (three to seven), each other setting a row of its own; one
         // row of them on a small card, scrolled where it is too long.
         Widget grid;
-        if (tier == DeviceTier.small) {
+        if (packed) {
+          // Beside a wide display: a knob a cell, the rest the settings'
+          // width, wrapping down rather than scrolling along.
+          grid = Wrap(spacing: 4, runSpacing: 6, children: [
+            for (var k in knobs)
+              SizedBox(
+                  width: _isKnob(k)
+                      ? 50.0 * textScale
+                      : besideSettings * textScale - 14,
+                  child: k),
+          ]);
+        } else if (tier == DeviceTier.small) {
           grid = SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -1683,7 +1709,8 @@ class DeviceFrame extends StatelessWidget {
           return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(7, 5, 0, 6),
-              child: SizedBox(width: _besideDisplay, child: screen),
+              child: SizedBox(
+                  width: besideDisplay ?? _besideDisplay, child: screen),
             ),
             Expanded(
               child: Align(
@@ -3413,7 +3440,14 @@ class DeviceKnob extends StatelessWidget {
   final void Function(double v, {bool transient}) onChanged;
   final VoidCallback onCommit;
 
+  /// menu is its right-click's choices, and modulated whether something
+  /// moves it (a pink ring), as a device's own knobs have.
+  final List<(String, VoidCallback)> menu;
+  final bool modulated;
+
   const DeviceKnob({
+    this.menu = const [],
+    this.modulated = false,
     required this.label,
     required this.text,
     required this.value,
@@ -3432,6 +3466,8 @@ class DeviceKnob extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _Knob(
+        menu: menu,
+        modulated: modulated,
         label: label,
         text: text,
         value: value,
@@ -4816,6 +4852,10 @@ class ParamDevice extends StatelessWidget {
               index: index,
               device: device,
               knobs: [
+                // The instrument's own: its envelope, cutoff and glide.
+                if (controller.instrumentChannel(owner))
+                  for (var k in instrumentKnobs)
+                    (instrumentTarget, k.id, "Instrument · ${k.label}"),
                 for (var (i, d) in devices.indexed)
                   if (i != index && !d.kind.modulates)
                     for (var p in d.kind.params)
@@ -6784,6 +6824,52 @@ class VoiceStartCard extends StatelessWidget {
   }
 }
 
+// ---- Packed settings
+
+/// PackWide marks a setting of a DevicePack that takes the whole row: a
+/// list of chips, a line of text.
+class PackWide extends StatelessWidget {
+  final Widget child;
+  const PackWide(this.child, {super.key});
+
+  @override
+  Widget build(BuildContext context) => child;
+}
+
+/// DevicePack lays a card's settings out as the chain prototype does (Ken,
+/// 2026-11-08: the motion devices as the audio ones, their displays big):
+/// knobs a cell each and the rest in columns -- two on a narrow card,
+/// three on a wide one -- side by side and wrapping, rather than one to a
+/// row. The settings then take a few short rows, and the display above
+/// them keeps the card's height.
+class DevicePack extends StatelessWidget {
+  final List<Widget> children;
+  const DevicePack({required this.children, super.key});
+
+  static const double knobWidth = 54, gap = 8;
+
+  /// columns is how many settings sit across [room].
+  static int columns(double room, double scale) => room >= 370 * scale ? 3 : 2;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
+        var scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.5);
+        var room = box.maxWidth.isFinite ? box.maxWidth : 300.0;
+        var n = columns(room, scale);
+        var cell = ((room - gap * (n - 1)) / n).floorToDouble();
+        return Wrap(spacing: gap, runSpacing: 7, children: [
+          for (var w in children)
+            SizedBox(
+                width: w is PackWide
+                    ? room
+                    : DeviceFrame._isKnob(w)
+                        ? knobWidth * scale
+                        : cell,
+                child: w),
+        ]);
+      });
+}
+
 // ---- The motion chain
 
 /// MotionDeviceCard is one device of an element's motion chain (see
@@ -6875,29 +6961,29 @@ class MotionDeviceCard extends StatelessWidget {
     var reused = controller.motionOf(element).instances != null;
     List<Widget> knobs(DeviceTier tier) => [
           for (var p in d.kind.params)
-            if (motionParamShown(d, p, reused: reused))
-            _Knob(
-              key: ValueKey("mdev-${d.id}-${p.id}"),
-              modulated: moved.contains(p.id),
-              menu: modMenu(p),
-              label: p.label,
-              text: p.reading(d.value(p.id)),
-              value: d.value(p.id),
-              initial: p.initial,
-              range: _Range(p.min, p.max),
-              size: switch (tier) {
-                DeviceTier.large => 46,
-                DeviceTier.medium => 38,
-                _ => 28,
-              },
-              reading: tier != DeviceTier.small,
-              accent: accent,
-              ink: skin.ink,
-              bipolar: p.min < 0 && p.max > 0,
-              onChanged: (v, {transient = false}) =>
-                  write(d.withValue(p.id, v), transient: transient),
-              onCommit: controller.endInteraction,
-            ),
+            if (!p.isChoice && motionParamShown(d, p, reused: reused))
+              _Knob(
+                key: ValueKey("mdev-${d.id}-${p.id}"),
+                modulated: moved.contains(p.id),
+                menu: modMenu(p),
+                label: p.label,
+                text: p.reading(d.value(p.id)),
+                value: d.value(p.id),
+                initial: p.initial,
+                range: _Range(p.min, p.max),
+                size: switch (tier) {
+                  DeviceTier.large => 46,
+                  DeviceTier.medium => 38,
+                  _ => 30,
+                },
+                reading: true,
+                accent: accent,
+                ink: skin.ink,
+                bipolar: p.min < 0 && p.max > 0,
+                onChanged: (v, {transient = false}) =>
+                    write(d.withValue(p.id, v), transient: transient),
+                onCommit: controller.endInteraction,
+              ),
           // What an LFO moves: any knob of the element's other devices.
           if (d.modulates)
             ModTargets(
@@ -6918,36 +7004,50 @@ class MotionDeviceCard extends StatelessWidget {
                   write(d.withMods(mods), transient: transient),
               onCommit: controller.endInteraction,
             ),
-          // What it follows, or looks at.
-          if (d.takesTarget)
-            CanvasDropdown<String>(
-              key: ValueKey("mdevTarget-${d.id}"),
-              label: switch (d.kind) {
-                MotionDeviceKind.followPath => "Path",
-                MotionDeviceKind.followSound ||
-                MotionDeviceKind.follower =>
-                  "Channel",
-                _ => "Looks at",
-              },
-              value: d.target,
-              width: 140,
-              grow: false,
-              options: [
-                ("", "Nothing"),
-                // A sound follows a channel's loudness.
-                if (d.kind == MotionDeviceKind.followSound ||
-                    d.kind == MotionDeviceKind.follower)
-                  for (var ch in controller.timelineChannels) (ch.key, ch.name)
-                else
-                  for (var x in controller.document.elements)
-                    if (x.id != element &&
-                        (d.kind != MotionDeviceKind.followPath ||
-                            x is PathElement ||
-                            x is LineElement))
-                      (x.id, x.name.isEmpty ? x.id : x.name),
-              ],
-              onChanged: (v) => write(d.withTarget(v)),
-            ),
+          // Its choices, and what it follows or looks at: dropdowns side by
+          // side under its knobs, as the prototype's Seed and Follows.
+          if (d.takesTarget ||
+              d.kind.params.any(
+                  (p) => p.isChoice && motionParamShown(d, p, reused: reused)))
+            DevicePack(key: ValueKey("mdevPack-${d.id}"), children: [
+              for (var p in d.kind.params)
+                if (p.isChoice && motionParamShown(d, p, reused: reused))
+                  StudioDrop<int>(
+                    key: ValueKey("mdev-${d.id}-${p.id}"),
+                    label: p.label,
+                    value: d.value(p.id).round(),
+                    options: [for (var (i, ch) in p.choices.indexed) (i, ch)],
+                    onChanged: (i) => write(d.withValue(p.id, i.toDouble())),
+                  ),
+              if (d.takesTarget)
+                StudioDrop<String>(
+                  key: ValueKey("mdevTarget-${d.id}"),
+                  label: switch (d.kind) {
+                    MotionDeviceKind.followPath => "Path",
+                    MotionDeviceKind.followSound ||
+                    MotionDeviceKind.follower =>
+                      "Channel",
+                    _ => "Looks at",
+                  },
+                  value: d.target,
+                  options: [
+                    ("", "Nothing"),
+                    // A sound follows a channel's loudness.
+                    if (d.kind == MotionDeviceKind.followSound ||
+                        d.kind == MotionDeviceKind.follower)
+                      for (var ch in controller.timelineChannels)
+                        (ch.key, ch.name)
+                    else
+                      for (var x in controller.document.elements)
+                        if (x.id != element &&
+                            (d.kind != MotionDeviceKind.followPath ||
+                                x is PathElement ||
+                                x is LineElement))
+                          (x.id, x.name.isEmpty ? x.id : x.name),
+                  ],
+                  onChanged: (v) => write(d.withTarget(v)),
+                ),
+            ]),
           if (d.side == MotionDeviceSide.look &&
               d.kind != MotionDeviceKind.colour &&
               d.kind != MotionDeviceKind.blur)
@@ -6986,10 +7086,18 @@ class MotionDeviceCard extends StatelessWidget {
       powerKey: ValueKey("mdevPower-${d.id}"),
       folded: folded,
       onFold: onFold,
-      width: math.max(220.0, 30.0 + 72 * ((d.kind.params.length + 2) ~/ 2)),
+      // As wide as its knobs on one row, and room for two dropdowns.
+      width: math.max(
+          260.0,
+          16.0 +
+              58 *
+                  d.kind.params.where((p) => !p.isChoice).length *
+                  MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.5)),
       height: height,
       icon: pose ? Icons.timer_outlined : Icons.auto_awesome,
       accent: accent,
+      besideDisplay: 250,
+      besideSettings: 200,
       actions: [
         DeviceMove(
             id: "mdev-${d.id}",

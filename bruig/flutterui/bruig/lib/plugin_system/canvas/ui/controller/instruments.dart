@@ -302,8 +302,35 @@ extension CanvasInstruments on CanvasController {
     }
   }
 
+  /// macroedPart is [part] as channel [channel]'s macros turn it: each
+  /// macro knob given one of the instrument's settings (Ken: the Attack,
+  /// from the Instrument card) moves it from where its own knob is, as a
+  /// macro moves a device's knob. Played and rendered so; the part's own
+  /// settings stay where they were set.
+  InstrumentPart macroedPart(String channel, InstrumentPart part) {
+    var turns = <String, double>{};
+    for (var d in devicesOf(channel)) {
+      if (!d.on || d.kind != DeviceKind.macro) continue;
+      for (var t in d.mods) {
+        if (t.device != instrumentTarget) continue;
+        turns[t.param] =
+            (turns[t.param] ?? 0) + t.depth * macroValue(d.value, t.from) * 2;
+      }
+    }
+    if (turns.isEmpty) return part;
+    var shape = part.shape;
+    for (var MapEntry(key: id, value: by) in turns.entries) {
+      var k = instrumentKnobs.where((k) => k.id == id).firstOrNull;
+      if (k == null) continue;
+      shape = withInstrumentValue(
+          shape, id, turnedBy(k, instrumentValue(part.shape, id), by));
+    }
+    return part.copyWith(shape: shape);
+  }
+
   void _soundOn(AudioElement e, InstrumentPart part, int key, int velocity) {
     var channel = CanvasController._channelOf(e);
+    part = macroedPart(channel, part);
     var keys = liveKeys(part.effects, key, velocity);
     if (arpeggiatorOf(part.effects) case var arp?) {
       var live = _arps[e.id] ??= _LiveArp(Arpeggio(arp));
@@ -355,6 +382,7 @@ extension CanvasInstruments on CanvasController {
         microseconds:
             (stepSeconds * arp.value("gate").clamp(0.1, 1.0) * 1e6).round());
     var channel = CanvasController._channelOf(e);
+    part = macroedPart(channel, part);
     void play() {
       if (live.sounding case var k?) audio.noteOff(channel, k);
       live.sounding = null;

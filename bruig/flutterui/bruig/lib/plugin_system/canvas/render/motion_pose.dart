@@ -89,6 +89,21 @@ class MotionPose {
       sources: s,
       values: values);
 
+  /// toward is this moved [weight] of the way to [p]: [p] replacing it, its
+  /// values over this one's.
+  MotionPose toward(MotionPose p, double weight) {
+    double mix(double a, double b) => a + (b - a) * weight;
+    return MotionPose(
+      dx: mix(dx, p.dx),
+      dy: mix(dy, p.dy),
+      turn: mix(turn, p.turn),
+      scale: mix(scale, p.scale),
+      opacity: mix(opacity, p.opacity),
+      sources: [...sources, ...p.sources],
+      values: weight <= 0 ? values : {...values, ...p.values},
+    );
+  }
+
   /// plus is this with [p] added on top, counted [weight] of the way.
   MotionPose plus(MotionPose p, [double weight = 1]) => MotionPose(
         dx: dx + p.dx * weight,
@@ -318,7 +333,13 @@ MotionPose motionPose(ElementMotion motion, double t, Rect self,
     var p = live != null
         ? livePose(motion, live, layer, clock, self, scene, replaces: replaces)
         : layerPose(motion, layer, t, self, times, scene, replaces: replaces);
-    total = total.plus(p, motion.weight(layer));
+    // A layer playing a clip that replaces takes over from those under it,
+    // as far as its weight goes; otherwise it adds.
+    if (p.sources.any((s) => s.clip.replace)) {
+      total = total.toward(p, motion.weight(layer));
+    } else {
+      total = total.plus(p, motion.weight(layer));
+    }
   }
   return total;
 }

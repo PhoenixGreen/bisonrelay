@@ -4,9 +4,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
@@ -357,63 +355,16 @@ void main() {
       var layer = (c.document.elementById("i")! as ImageElement).stack[1];
       c.editImage("i", layer: layer.id);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey("elementLoopKinds")), findsOneWidget,
-          reason: "the whole picture's loop");
+      // The whole picture's loop is its Motion chain's now (Ken).
+      expect(find.byKey(const ValueKey("elementAnimationOpenChain")),
+          findsOneWidget,
+          reason: "the whole picture's motion, in the Chain");
       expect(find.byKey(const ValueKey("imageLayerLoopKinds")), findsOneWidget,
           reason: "and this layer's");
       await tapKey(tester, "imageLayerLoop-drift");
       var e = c.document.elementById("i")! as ImageElement;
       expect(e.layerById(layer.id)!.loop.preset.drifts, isTrue);
       expect(e.animation.loop.on, isFalse, reason: "the picture's own left");
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets("the kind chosen, pressed again, shuts its card and no more",
-        (tester) async {
-      CanvasSection.openAll = true;
-      addTearDown(() => CanvasSection.openAll = false);
-      var c = await pumpPanel(tester,
-          picture: const ImageElement(
-              ElementBase(id: "i", width: 200, height: 200),
-              assetId: "abcdefghij123456",
-              animation: ElementAnimation(
-                  loop: ElementLoop(preset: LoopPreset.driftLeft))));
-      LoopPreset preset() =>
-          (c.document.elementById("i")! as ImageElement).animation.loop.preset;
-      expect(find.byKey(const ValueKey("elementLoopHow")), findsOneWidget);
-      await tapKey(tester, "elementLoop-drift");
-      expect(find.byKey(const ValueKey("elementLoopHow")), findsNothing);
-      expect(preset(), LoopPreset.driftLeft,
-          reason: "the loop as it was, not the first of its kind");
-      await tapKey(tester, "elementLoop-drift");
-      expect(find.byKey(const ValueKey("elementLoopHow")), findsOneWidget);
-      expect(preset(), LoopPreset.driftLeft);
-      // Another kind opens its card again.
-      await tapKey(tester, "elementLoop-drift");
-      await tapKey(tester, "elementLoop-none");
-      expect(preset(), LoopPreset.none);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets("the kind chosen is in view when the panel opens",
-        (tester) async {
-      CanvasSection.openAll = true;
-      addTearDown(() => CanvasSection.openAll = false);
-      await pumpPanel(tester,
-          picture: const ImageElement(
-              ElementBase(id: "i", width: 200, height: 200),
-              assetId: "abcdefghij123456",
-              animation: ElementAnimation(
-                  loop: ElementLoop(preset: LoopPreset.driftIn))));
-      await tester.pumpAndSettle();
-      var tile = find.byKey(const ValueKey("elementLoop-drift"));
-      var row = find
-          .ancestor(of: tile, matching: find.byType(SingleChildScrollView))
-          .first;
-      var shown = tester.getRect(row), at = tester.getRect(tile);
-      expect(at.left, greaterThanOrEqualTo(shown.left - 0.5));
-      expect(at.right, lessThanOrEqualTo(shown.right + 0.5),
-          reason: "Drift, last in its line, scrolled into view");
       expect(tester.takeException(), isNull);
     });
 
@@ -680,20 +631,15 @@ void main() {
           ImageFilterPreset.sepia);
     });
 
-    testWidgets("the animation's kinds are tiles, with the kind's own card",
+    // Ken, 2026-11-08: how it arrives, loops and leaves is its Motion
+    // chain's, its clip's styles; the section points there.
+    testWidgets("the animation is the Chain's: the section opens it",
         (tester) async {
       var c = await pumpPanel(tester);
       await openSection(tester, "image.picture.animation");
-      ImageElement now() => c.document.elementById("i")! as ImageElement;
-      expect(find.byKey(const ValueKey("elementArriveHow")), findsNothing);
-      await tapKey(tester, "elementArrive-slide");
-      expect(now().animation.on, isTrue);
-      expect(now().animation.preset.family.name, "slide");
-      expect(find.byKey(const ValueKey("elementArriveHow")), findsOneWidget);
-      expect(
-          find.byKey(const ValueKey("elementAnimationLength")), findsOneWidget);
-      await tapKey(tester, "elementArrive-none");
-      expect(now().animation.on, isFalse);
+      await tapKey(tester, "elementAnimationOpenChain");
+      expect(c.chainShowsMotion, isTrue);
+      expect(c.selected?.id, "i");
       expect(tester.takeException(), isNull);
     });
 

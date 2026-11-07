@@ -3,7 +3,10 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/session.dart' show SessionClip;
-import 'package:bruig/plugin_system/canvas/model/devices.dart' show DeviceGroup;
+import 'package:bruig/plugin_system/canvas/model/devices.dart'
+    show DeviceGroup, DeviceKind, MixDevice;
+import 'package:bruig/plugin_system/canvas/model/modulation.dart'
+    show ModTarget, macroKnobs;
 import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart'
     show loadSoundBank;
 import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
@@ -1739,6 +1742,60 @@ class _InstrumentDeviceState extends State<InstrumentDevice> {
     if (!transient) c.endInteraction();
   }
 
+  /// _macroed is whether a macro of the chain turns its setting [id].
+  bool _macroed(String id) => c.devicesOf(widget.channel).any((d) =>
+      d.on &&
+      d.kind == DeviceKind.macro &&
+      d.mods.any((t) => t.device == instrumentTarget && t.param == id));
+
+  /// _macroMenu is its knob [id]'s right-click: turned with any knob of the
+  /// chain's macros, or -- with none yet -- macros added, turning it from
+  /// their first.
+  List<(String, VoidCallback)> _macroMenu(String id) {
+    var devices = c.devicesOf(widget.channel);
+    void give(int at, int knob) {
+      var now = c.devicesOf(widget.channel);
+      if (at >= now.length) return;
+      var m = now[at];
+      if (m.mods.any((t) =>
+          t.device == instrumentTarget && t.param == id && t.from == knob)) {
+        return;
+      }
+      c.beginInteraction();
+      c.setDevicesOf(
+          widget.channel,
+          [...now]..[at] = m.withMods(
+              [...m.mods, ModTarget(instrumentTarget, id, 0.5, knob)]));
+      c.endInteraction();
+    }
+
+    var macros = [
+      for (var (i, d) in devices.indexed)
+        if (d.kind == DeviceKind.macro) i
+    ];
+    if (macros.isEmpty) {
+      return [
+        (
+          "Turn it with Macro 1 (adds the chain's macros)",
+          () {
+            c.beginInteraction();
+            c.setDevicesOf(widget.channel, [
+              ...c.devicesOf(widget.channel),
+              MixDevice(DeviceKind.macro,
+                  mods: [ModTarget(instrumentTarget, id, 0.5, 0)]),
+            ]);
+            c.endInteraction();
+          }
+        ),
+      ];
+    }
+    return [
+      for (var at in macros)
+        for (var k = 0; k < macroKnobs; k++)
+          ("Turn it with Macro ${k + 1}", () => give(at, k)),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     var part = c.instrumentOf(widget.channel)?.instrument;
@@ -1760,6 +1817,9 @@ class _InstrumentDeviceState extends State<InstrumentDevice> {
             {bool log = false}) =>
         DeviceKnob(
           key: ValueKey(key),
+          // Right-click: turned by one of the chain's macros (Ken).
+          menu: _macroMenu(label.toLowerCase()),
+          modulated: _macroed(label.toLowerCase()),
           label: label,
           text: text,
           value: value,

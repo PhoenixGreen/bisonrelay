@@ -340,19 +340,37 @@ class _MotionSlotState extends State<_MotionSlot> {
 
   CanvasController get c => widget.controller;
 
+  /// _pick picks [clip]: shown in the Chain where it is open, without
+  /// opening it (Ken: a single click doesn't open the Chain).
+  void _pick(MotionClip clip) {
+    c.pickMotion(widget.element, clip.id);
+    if (clip.isSound && c.effectsOpen) c.effectsOpen = true;
+    _keys.requestFocus();
+  }
+
+  /// _open opens [clip] in the Chain: a double-click, or its menu's Open.
   void _open(MotionClip clip) {
     c.pickMotion(widget.element, clip.id);
     c.animationOpen = true;
   }
 
-  void _make(MotionPreset? preset) {
+  /// _keys has the keyboard once the slot is clicked: see SlotKeys.
+  final FocusNode _keys = FocusNode(debugLabel: "motionSlot");
+
+  @override
+  void dispose() {
+    _keys.dispose();
+    super.dispose();
+  }
+
+  void _make(MotionPreset? preset, {bool open = true}) {
     var id = c.newClip(widget.element,
         preset: preset,
         kind: _camera ? MotionKind.camera : MotionKind.action,
         slot: widget.row,
         target: preset != null && preset.aims ? _target() : "");
     c.pickMotion(widget.element, id);
-    c.animationOpen = true;
+    if (open) c.animationOpen = true;
   }
 
   String _target() =>
@@ -492,11 +510,16 @@ class _MotionSlotState extends State<_MotionSlot> {
                 ),
               ),
               childWhenDragging: Opacity(opacity: 0.4, child: name),
-              child: GestureDetector(
-                key: ValueKey("motionName-${widget.element}-${widget.row}"),
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _open(clip),
-                child: Align(alignment: Alignment.centerLeft, child: name),
+              child: SlotKeys(
+                focus: _keys,
+                onDelete: () => c.clearMotionSlot(widget.element, widget.row),
+                child: GestureDetector(
+                  key: ValueKey("motionName-${widget.element}-${widget.row}"),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _pick(clip),
+                  onDoubleTap: () => _open(clip),
+                  child: Align(alignment: Alignment.centerLeft, child: name),
+                ),
               ),
             ),
           ),
@@ -546,10 +569,9 @@ class _MotionSlotState extends State<_MotionSlot> {
             },
             onPointerCancel: (_) => _menuAt = null,
             child: GestureDetector(
-              onDoubleTapDown: clip == null
-                  ? (d) => _menu.open(position: d.localPosition)
-                  : null,
-              onDoubleTap: clip == null ? () {} : null,
+              // Empty, double-clicked: a new clip in it at once, picked --
+              // double-clicked again, set up in the Chain (Ken).
+              onDoubleTap: clip == null ? () => _make(null, open: false) : null,
               child: MouseRegion(cursor: SystemMouseCursors.click, child: body),
             ),
           ),

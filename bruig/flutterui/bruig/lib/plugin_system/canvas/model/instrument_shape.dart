@@ -262,3 +262,66 @@ class InstrumentShape {
     );
   }
 }
+
+/// instrumentTarget is the instrument among a chain's devices, as a macro's
+/// targets name it (ModTarget.device): its settings are the part's, not a
+/// device's.
+const String instrumentTarget = "instrument";
+
+/// InstrumentKnob is one of the instrument's settings a macro or a
+/// controller can turn: its range, and whether it turns on a log scale.
+class InstrumentKnob {
+  final String id, label;
+  final double min, max;
+  final bool log;
+  const InstrumentKnob(this.id, this.label, this.min, this.max,
+      {this.log = false});
+}
+
+/// instrumentKnobs are the Instrument card's knobs, as a macro sees them.
+const List<InstrumentKnob> instrumentKnobs = [
+  InstrumentKnob("attack", "Attack", 0.001, 10, log: true),
+  InstrumentKnob("decay", "Decay", 0.01, 20, log: true),
+  InstrumentKnob("sustain", "Sustain", 0, 1),
+  InstrumentKnob("release", "Release", 0.01, 20, log: true),
+  InstrumentKnob("cutoff", "Cutoff", 20, 20000, log: true),
+  InstrumentKnob("glide", "Glide", 0, 5),
+];
+
+/// instrumentValue is setting [id] of [s].
+double instrumentValue(InstrumentShape s, String id) => switch (id) {
+      "attack" => s.attack,
+      "decay" => s.decay,
+      "sustain" => s.sustain,
+      "release" => s.release,
+      "cutoff" => s.cutoff,
+      "glide" => s.glide,
+      _ => 0,
+    };
+
+/// withInstrumentValue is [s] with setting [id] at [v], as its knob sets it:
+/// an envelope knob gives it an envelope of its own, the cutoff a filter.
+InstrumentShape withInstrumentValue(InstrumentShape s, String id, double v) =>
+    switch (id) {
+      "attack" => s.copyWith(attack: v, envelope: true),
+      "decay" => s.copyWith(decay: v, envelope: true),
+      "sustain" => s.copyWith(sustain: v, envelope: true),
+      "release" => s.copyWith(release: v, envelope: true),
+      "cutoff" => s.copyWith(
+          cutoff: v,
+          filter: s.filter == SynthFilter.off ? SynthFilter.lowPass : s.filter),
+      "glide" => s.copyWith(glide: v),
+      _ => s,
+    };
+
+/// turnedBy is [base], setting [k], moved by [amount] -- a share of its
+/// travel, as a chain device's knob is moved (see modulation.dart) -- along
+/// its own scale: a log one for times and frequencies.
+double turnedBy(InstrumentKnob k, double base, double amount) {
+  if (!k.log || k.min <= 0) {
+    return (base + amount * (k.max - k.min) / 2).clamp(k.min, k.max);
+  }
+  var lo = math.log(k.min), hi = math.log(k.max);
+  var at = math.log(base.clamp(k.min, k.max)) + amount * (hi - lo) / 2;
+  return math.exp(at.clamp(lo, hi));
+}

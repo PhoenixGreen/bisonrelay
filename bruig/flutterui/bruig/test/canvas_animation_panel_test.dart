@@ -3,15 +3,16 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:bruig/plugin_system/canvas/model/play.dart';
-import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -21,7 +22,7 @@ import 'package:provider/provider.dart';
 
 Future<(CanvasController, String)> pump(WidgetTester tester,
     {double scale = 1, double height = 360}) async {
-  tester.view.physicalSize = const Size(1600, 900);
+  tester.view.physicalSize = const Size(2400, 900);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   var c =
@@ -63,18 +64,18 @@ void main() {
     var short = sizeAt(280);
     await pump(tester, height: 520);
     expect(sizeAt(520), short, reason: "not shrunk to the panel");
-    expect(find.textContaining("Click a row to add a key"), findsNothing);
+    expect(find.textContaining("How long it is"), findsNothing);
     // Behind its "?", read when clicked.
-    var help = find.byKey(const ValueKey("deviceHelp-anim-keys"));
+    var help = find.byKey(const ValueKey("deviceHelp-motionTiming"));
     expect(help, findsOneWidget);
     await tester.tap(help);
     await tester.pump();
-    expect(find.textContaining("Click a row to add a key"), findsOneWidget);
+    expect(find.textContaining("How long it is"), findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pump();
     // The ones in view: the rest are along the row, built as it scrolls.
-    for (var id in ["clip", "motion"]) {
-      expect(find.byKey(ValueKey("deviceHelp-anim-$id")), findsOneWidget,
+    for (var id in ["motionClips", "motionLaunch"]) {
+      expect(find.byKey(ValueKey("deviceHelp-$id")), findsOneWidget,
           reason: id);
     }
     expect(tester.takeException(), isNull);
@@ -90,7 +91,7 @@ void main() {
     tester.view.physicalSize = const Size(4000, 900);
     await tester.pumpAndSettle();
     tester
-        .widget<CanvasDropdown<String>>(
+        .widget<StudioDrop<String>>(
             find.byKey(const ValueKey("animTriggerAdd")))
         .onChanged("count:coins");
     await tester.pumpAndSettle();
@@ -98,7 +99,7 @@ void main() {
     expect((t.kind, t.target, t.amount), (ClipTriggerKind.count, "coins", 0));
     expect(find.text("Coins changes"), findsOneWidget);
     tester
-        .widget<CanvasNumberField>(
+        .widget<StudioDrop<double>>(
             find.byKey(const ValueKey("animTriggerAmount-0")))
         .onChanged(3);
     await tester.pumpAndSettle();
@@ -114,6 +115,51 @@ void main() {
     expect(find.textContaining("Pick a slot"), findsOneWidget);
   });
 
+  // Ken, 2026-11-08: the motion devices as the audio ones -- displays wide
+  // as the prototype's, settings that do not scroll, choices as dropdowns.
+  for (var scale in [1.0, 1.5]) {
+    testWidgets(
+        "short, a device's display is wide and its settings packed "
+        "(text x$scale)", (tester) async {
+      // The panel at the Chain's M: its cards on the short layout.
+      var (c, clip) = await pump(tester, scale: scale, height: 242);
+      c.setMotionDevices(
+          "a", withMotionDeviceIds([MotionDevice(MotionDeviceKind.oscillate)]));
+      tester.view.physicalSize = const Size(4000, 900);
+      await tester.pumpAndSettle();
+      var id = c.motionDevicesOf("a").single.id;
+      var screen = tester.getSize(find.byKey(ValueKey("mdevScreen-$id")));
+      expect(screen.width, greaterThanOrEqualTo(240));
+      expect(screen.height, greaterThan(150), reason: "the card's height");
+      // Moves is a dropdown, not a knob turned through its words.
+      expect(find.byKey(ValueKey("mdev-$id-moves")), findsOneWidget);
+      expect(tester.widget(find.byKey(ValueKey("mdev-$id-moves"))),
+          isA<StudioDrop<int>>());
+      // Nothing in the cards scrolls along, and nothing is cut.
+      for (var card in [
+        "motionClipsCard",
+        "motionTimingCard",
+        "mdevCard-$id"
+      ]) {
+        expect(
+            find.descendant(
+                of: find.byKey(ValueKey(card)),
+                matching: find.byWidgetPredicate((w) =>
+                    w is SingleChildScrollView &&
+                    w.scrollDirection == Axis.horizontal)),
+            findsNothing,
+            reason: card);
+      }
+      // The clip's name lines up with the dropdowns beside it.
+      var name = tester.getRect(find.byKey(const ValueKey("animClipName")));
+      var layer =
+          tester.getRect(find.byKey(const ValueKey("motionClipsOn-open")));
+      expect(name.top, closeTo(layer.top, 1));
+      expect(name.height, closeTo(layer.height, 1));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets("an element picked, with no clip, shows its first",
       (tester) async {
     var (c, clip) = await pump(tester);
@@ -125,8 +171,9 @@ void main() {
     // names the element).
     expect(
         tester
-            .widget<CanvasTextField>(find.byKey(const ValueKey("animClipName")))
-            .value,
+            .widget<TextField>(find.byKey(const ValueKey("animClipName")))
+            .controller!
+            .text,
         "Pop");
   });
 
@@ -137,10 +184,15 @@ void main() {
     // names the element).
     expect(
         tester
-            .widget<CanvasTextField>(find.byKey(const ValueKey("animClipName")))
-            .value,
+            .widget<TextField>(find.byKey(const ValueKey("animClipName")))
+            .controller!
+            .text,
         "Pop");
-    await tester.tap(find.byKey(const ValueKey("animPreset-Slide in")));
+    // Its Preset dropdown: the ready-made motions of its kind.
+    tester
+        .widget<StudioDrop<String>>(
+            find.byKey(const ValueKey("motionClipsPreset")))
+        .onChanged("p:Slide in");
     await tester.pumpAndSettle();
     var m = c.motionOf("a").clip(clip)!;
     expect(m.preset, "Slide in");
@@ -150,48 +202,74 @@ void main() {
     expect(c.motionOf("a").clip(clip)!.preset, "Pop", reason: "one step");
   });
 
-  testWidgets("a click on a Keys row adds a key, picked to be changed",
+  // Ken, 2026-11-08: the Keys are the Curves tab's, as the prototype's.
+  testWidgets("in Curves, a value given a key, picked and taken away",
       (tester) async {
     var (c, clip) = await pump(tester);
-    var row = find.byKey(const ValueKey("animKeysRow-turn"));
-    var box = tester.getRect(row);
-    await tester.tapAt(Offset(box.left + box.width / 2, box.center.dy));
+    c.showMotionCurves("a", clip);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("curvesAdd-turn")));
     await tester.pumpAndSettle();
     var m = c.motionOf("a").clip(clip)!;
     expect(m.keys[MotionProp.turn], hasLength(1));
     expect(m.edited, isTrue, reason: "keys by hand");
-    expect(find.byKey(const ValueKey("animKeyEase")), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey("animKeyRemove")));
+    // Only Turn shown: its key, at the start, half way up.
+    for (var p in MotionProp.values) {
+      if (p != MotionProp.turn && (m.keys[p]?.isNotEmpty ?? false)) {
+        await tester.tap(find.byKey(ValueKey("curvesValue-${p.name}")));
+        await tester.pump();
+      }
+    }
+    var g = tester.getRect(find.byKey(const ValueKey("curvesGraph")));
+    await tester.tapAt(Offset(g.left + 12, g.top + 34 + (g.height - 54) / 2));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("curvesKeyName")), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("curvesRemove")));
     await tester.pumpAndSettle();
     expect(c.motionOf("a").clip(clip)!.keys[MotionProp.turn], isNull);
   });
 
-  testWidgets("a key dragged along is retimed, as one step", (tester) async {
+  testWidgets("a key dragged along in Curves is retimed, as one step",
+      (tester) async {
     var (c, clip) = await pump(tester);
+    // Across alone, from nought to a hundred over its length.
+    var was = c.motionOf("a").clip(clip)!;
+    c.setMotion(
+        "a",
+        c.motionOf("a").withClip(was.copyWith(keys: {
+              MotionProp.x: [
+                MotionKey(0, MotionNumber(0)),
+                MotionKey(was.length, MotionNumber(100)),
+              ],
+            })));
     var before = c.motionOf("a").clip(clip)!;
-    var prop = before.keys.keys.first;
-    var k = before.keys[prop]!.first; // at 0, the row's left edge
-    var box = tester.getRect(find.byKey(ValueKey("animKeysRow-${prop.name}")));
-    var x = box.left + k.t / before.length * box.width + 2;
-    await tester.timedDragFrom(Offset(x, box.center.dy),
-        Offset(box.width / 4, 0), const Duration(milliseconds: 300));
+    c.showMotionCurves("a", clip);
     await tester.pumpAndSettle();
-    var moved = c.motionOf("a").clip(clip)!.keys[prop]!;
-    expect(moved.map((m) => m.t), isNot(before.keys[prop]!.map((m) => m.t)));
+    var g = tester.getRect(find.byKey(const ValueKey("curvesGraph")));
+    // The first key: at the start, at the foot.
+    var at = Offset(g.left + 12, g.top + 34 + (g.height - 54));
+    await tester.timedDragFrom(
+        at, Offset(g.width / 4, 0), const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    var moved = c.motionOf("a").clip(clip)!.keys[MotionProp.x]!;
+    expect(moved.first.t, greaterThan(0));
     c.undo();
-    expect(c.motionOf("a").clip(clip)!.keys[prop]!.map((m) => m.t),
-        before.keys[prop]!.map((m) => m.t));
+    expect(c.motionOf("a").clip(clip)!.keys[MotionProp.x]!.map((m) => m.t),
+        before.keys[MotionProp.x]!.map((m) => m.t));
   });
 
-  testWidgets("the Keys device is dragged wider", (tester) async {
-    await pump(tester);
-    var keys = find.byKey(const ValueKey("animDevice-keys"));
-    var was = tester.getSize(keys).width;
-    await tester.drag(
-        find.byKey(const ValueKey("animKeysGrip")), const Offset(200, 0));
+  testWidgets("Curves fills the panel; Chain brings the cards back",
+      (tester) async {
+    var (c, clip) = await pump(tester);
+    c.showMotionCurves("a", clip);
     await tester.pumpAndSettle();
-    // Less the drag's slop.
-    expect(tester.getSize(keys).width, closeTo(was + 200, 25));
+    var panel = tester.getRect(find.byKey(const ValueKey("motionCurves")));
+    expect(tester.getSize(find.byKey(const ValueKey("curvesGraph"))).width,
+        greaterThan(panel.width / 2));
+    expect(find.byKey(const ValueKey("motionClipsCard")), findsNothing);
+    c.closeMotionCurves();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("motionClipsCard")), findsOneWidget);
   });
 
   testWidgets("placed, its start is pinned to a marker", (tester) async {
@@ -203,12 +281,8 @@ void main() {
     c.pinPlacement("a", p, ClipPin(PinKind.marker, target: m));
     await tester.pumpAndSettle();
     expect(c.spanOf(p)!.start, 2);
-    // Keys folded, for Timing to be in view beside it.
-    await tester.tap(find.byKey(const ValueKey("deviceFold-anim-keys")));
-    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("animStartPin")), findsOneWidget);
     expect(find.textContaining("2.00–"), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey("deviceFold-anim-keys")));
-    await tester.pumpAndSettle();
   });
 
   for (var scale in [0.65, 1.5]) {
@@ -217,34 +291,6 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
-
-  testWidgets("Keys has the room the others leave; double-clicked, again",
-      (tester) async {
-    await pump(tester);
-    // Its width is kept for the session: as it starts, filling.
-    Future<void> doubleTap() async {
-      await tester.tap(find.byKey(const ValueKey("animKeysGrip")));
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.tap(find.byKey(const ValueKey("animKeysGrip")));
-      await tester.pumpAndSettle();
-    }
-
-    await doubleTap();
-    var keys = find.byKey(const ValueKey("animDevice-keys"));
-    var panel = tester.getRect(find.byKey(const ValueKey("animationPanel")));
-    expect(
-        tester.getSize(keys).width, greaterThanOrEqualTo(panel.width / 2 - 10),
-        reason: "half the panel at least, the devices after it scrolled");
-    expect(tester.getRect(keys).left, lessThan(panel.width / 2),
-        reason: "and in view");
-    var was = tester.getSize(keys).width;
-    await tester.drag(
-        find.byKey(const ValueKey("animKeysGrip")), const Offset(-150, 0));
-    await tester.pumpAndSettle();
-    expect(tester.getSize(keys).width, lessThan(was - 100));
-    await doubleTap();
-    expect(tester.getSize(keys).width, closeTo(was, 1));
-  });
 
   testWidgets("Inside it: an arrival plays the element's own", (tester) async {
     var (c, _) = await pump(tester);

@@ -117,10 +117,16 @@ class FakeEngine implements AudioEngine {
   /// notes is every live note, as (channel, key, velocity) -- nought for a
   /// let-go -- in order.
   final List<(String, int, int)> notes = [];
+
+  /// parts is the part each live note was played on, in order.
+  final List<InstrumentPart> parts = [];
   @override
   void noteOn(String channel, InstrumentPart sound, int key, int velocity,
-          {SoundFont? font}) =>
-      notes.add((channel, key, velocity));
+      {SoundFont? font}) {
+    notes.add((channel, key, velocity));
+    parts.add(sound);
+  }
+
   @override
   void noteOff(String channel, int key) => notes.add((channel, key, 0));
 

@@ -649,6 +649,33 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
+  /// motionCurvesShown is whether the Motion view shows its Curves: the
+  /// picked clip's keys across the whole panel, as the prototype's Curves
+  /// tab (Ken, 2026-11-08).
+  bool get motionCurvesShown => _motionCurves;
+
+  /// showMotionCurves opens the Curves on [clip] of [element].
+  void showMotionCurves(String element, String clip) {
+    pickMotion(element, clip);
+    _motionCurves = true;
+    notifyListeners();
+  }
+
+  void closeMotionCurves() {
+    if (!_motionCurves) return;
+    _motionCurves = false;
+    notifyListeners();
+  }
+
+  /// setElementAnimation sets how element [id] arrives, leaves and loops:
+  /// the cards the Motion chain shows as the sidebar does.
+  void setElementAnimation(String id, ElementAnimation animation) {
+    var e = document.elementById(id);
+    if (e == null) return;
+    replaceElement(CanvasController._withElementAnimation(e, animation),
+        transient: true);
+  }
+
   void toggleEditorWide() {
     _editorWide = !_editorWide;
     _editorWidth = null;

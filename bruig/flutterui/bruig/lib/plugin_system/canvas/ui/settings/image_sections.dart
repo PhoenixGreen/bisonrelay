@@ -26,6 +26,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/paint_brushes.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_saved.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart'
+    show motionChainPointer;
 import 'package:flutter/material.dart';
 
 // image_sections.dart is a picture's panel: its layers, then the picked
@@ -839,8 +841,8 @@ class _Sections {
       summary: summary,
       remember: _remember("animation"),
       children: [
-        elementAnimationSection(controller, e, a,
-            (next) => write(e.copyWith(animation: next)), begin, commit),
+        // The picture's own animation is the Motion chain's (Ken).
+        motionChainPointer(controller, e),
         // The picked layer's own loop, beside the picture's: the picture's
         // moves every layer as one, a layer's moves it alone.
         if (controller.imageEditing == e.id)

@@ -97,6 +97,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
+import 'package:bruig/plugin_system/canvas/model/modulation.dart'
+    show macroValue;
 import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart' show
         ControlAction,
@@ -3522,6 +3524,9 @@ class CanvasController extends ChangeNotifier {
   /// and _abB those heard with their B: see toggleAB.
   final Map<String, Map<String, double>> _abOther = {};
   final Set<String> _abB = {};
+
+  /// _motionCurves is whether the Motion view shows its Curves.
+  bool _motionCurves = false;
 
   /// _presetNames are the presets last put on devices, by "strip|device".
   final Map<String, String> _presetNames = {};

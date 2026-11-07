@@ -280,19 +280,38 @@ extension on _ChainPanelState {
 }
 
 extension on _ChainPanelState {
-  /// _motionTabs are the motion view's: its chain.
-  List<Widget> _motionTabs(MixerLook look) => [
-        const SizedBox(width: 6),
-        Container(width: 1, height: 22, color: look.studio.edge),
-        const SizedBox(width: 4),
+  /// _motionTabs are the motion view's: its chain, and the Curves of the
+  /// clip it shows, as the prototype has them.
+  List<Widget> _motionTabs(MixerLook look) {
+    var e = c.selected;
+    var m = e?.base.motion;
+    var clip = c.pickedMotion ??
+        [
+          for (var s in m?.slots ?? const <String>[])
+            if (s.isNotEmpty) s,
+          for (var p in m?.placed ?? const <ClipPlacement>[]) p.clip,
+        ].firstOrNull;
+    return [
+      const SizedBox(width: 6),
+      Container(width: 1, height: 22, color: look.studio.edge),
+      const SizedBox(width: 4),
+      _ChainTab(
+          id: "chainTabMotionChain",
+          label: "Chain",
+          icon: Icons.call_split,
+          on: !c.motionCurvesShown,
+          look: look,
+          onTap: c.closeMotionCurves),
+      if (e != null && clip != null)
         _ChainTab(
-            id: "chainTabMotionChain",
-            label: "Chain",
-            icon: Icons.call_split,
-            on: true,
+            id: "chainTabCurves",
+            label: "Curves",
+            icon: Icons.show_chart,
+            on: c.motionCurvesShown,
             look: look,
-            onTap: null),
-      ];
+            onTap: () => c.showMotionCurves(e.id, clip)),
+    ];
+  }
 
   /// _soundOwner is the strip whose effects the Chain shows -- what Copy
   /// and Paste work on -- or null showing motion.

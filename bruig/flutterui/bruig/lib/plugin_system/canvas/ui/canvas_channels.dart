@@ -867,27 +867,33 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       bool moving = false,
       Color? accent,
       Widget? beside}) {
-    var row = Row(children: [
-      // An element's own sound: the element's stripe down its left, drawn
-      // over the strip so nothing in it moves.
-      SizedBox(
-          width: width,
-          child: accent == null
-              ? header
-              : DecoratedBox(
-                  position: DecorationPosition.foreground,
-                  decoration: BoxDecoration(
-                      border:
-                          Border(left: BorderSide(color: accent, width: 3))),
-                  child: header)),
-      // The slots beside the rows, when they are: a channel's, or room.
-      if (slotsWidthIn(context, controller) > 0)
+    // The strip and the slots at most as wide as the row: shown alone, the
+    // slots fill to the edge, and a scaled text size can leave them a
+    // fraction of a pixel over it (Ken's 0.109 px).
+    var row = LayoutBuilder(builder: (context, box) {
+      var head = math.min(width, box.maxWidth);
+      var slots = math.min(slotsWidthIn(context, controller),
+          math.max(0.0, box.maxWidth - head));
+      return Row(children: [
+        // An element's own sound: the element's stripe down its left, drawn
+        // over the strip so nothing in it moves.
         SizedBox(
-            width: slotsWidthIn(context, controller),
-            child: beside ?? const SizedBox()),
-      // The frames, unless this is the slots shown alone.
-      Expanded(child: lanesIn(context) ? lane : const SizedBox()),
-    ]);
+            width: head,
+            child: accent == null
+                ? header
+                : DecoratedBox(
+                    position: DecorationPosition.foreground,
+                    decoration: BoxDecoration(
+                        border:
+                            Border(left: BorderSide(color: accent, width: 3))),
+                    child: header)),
+        // The slots beside the rows, when they are: a channel's, or room.
+        if (slots > 0)
+          SizedBox(width: slots, child: beside ?? const SizedBox()),
+        // The frames, unless this is the slots shown alone.
+        Expanded(child: lanesIn(context) ? lane : const SizedBox()),
+      ]);
+    });
     var colors = ThemeNotifier.of(context).colors;
     return SizedBox(
       key: _keyFor(channel),

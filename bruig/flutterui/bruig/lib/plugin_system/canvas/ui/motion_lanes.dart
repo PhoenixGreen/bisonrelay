@@ -4,7 +4,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
-import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart'
     show AssetKind;
@@ -207,8 +206,13 @@ class _MotionLanesState extends State<MotionLanes> {
     return null;
   }
 
-  void _open(CanvasElement e, ClipPlacement p) {
+  /// _open picks placement [p]: in the Chain where the Chain is out, and
+  /// -- [show], a double-click -- bringing the Chain out to it. A single
+  /// click never opens it (Ken).
+  void _open(CanvasElement e, ClipPlacement p, {bool show = false}) {
     controller.pickMotion(e.id, p.clip, placement: p.id);
+    var out = controller.animationOpen || controller.effectsOpen;
+    if (!show && !out) return;
     var c = e.base.motion.clip(p.clip);
     if (c != null && c.isSound) {
       controller.effectsOpen = true;
@@ -290,73 +294,25 @@ class _MotionLanesState extends State<MotionLanes> {
     _dragged = false;
   }
 
-  Future<void> _make(Offset local, Offset global, double width) async {
+  /// _make is a double-click on a row: on a clip, that clip opened in the
+  /// Chain; on an empty spot, a short clip made there at once and picked --
+  /// double-clicked in turn, set up in the Chain (Ken: no list of options).
+  void _make(Offset local, double width) {
     var hit = _hit(local, width);
-    if (hit == null || hit.placement != null) return;
+    if (hit == null) return;
+    if (hit.placement case var p?) {
+      _open(hit.element, p, show: true);
+      return;
+    }
     var e = hit.element;
     var seconds = math.max(0.0, _snap(_seconds(local.dx, width)));
-    var sound = hit.layer == soundLayer;
-    // A camera's moves for a Camera; everything else's for the rest.
-    var camera = e is CameraElement;
-    var presets = [
-      for (var p in motionPresets)
-        if ((p.kind == MotionKind.camera) == camera) p
-    ];
-    var picked = await showMenu<Object>(
-      context: context,
-      position:
-          RelativeRect.fromLTRB(global.dx, global.dy, global.dx, global.dy),
-      items: [
-        if (!sound)
-          for (var kind in camera
-              ? const [MotionKind.camera]
-              : const [
-                  MotionKind.arrive,
-                  MotionKind.loop,
-                  MotionKind.leave,
-                  MotionKind.action
-                ]) ...[
-            PopupMenuItem<Object>(
-                enabled: false,
-                height: 26,
-                child: Text(kind.label.toUpperCase(),
-                    style: const TextStyle(fontSize: 10, letterSpacing: 0.8))),
-            for (var p in presets)
-              if (p.kind == kind)
-                PopupMenuItem<Object>(
-                    key: ValueKey("makeMotion-${p.name}"),
-                    value: p,
-                    height: 30,
-                    child: Text(p.name)),
-          ],
-        PopupMenuItem<Object>(
-            key: const ValueKey("makeMotion-empty"),
-            value: sound
-                ? MotionKind.sound
-                : camera
-                    ? MotionKind.camera
-                    : MotionKind.action,
-            height: 30,
-            child:
-                Text(sound ? "An empty sound clip" : "Empty: keys of my own")),
-      ],
-    );
-    if (picked == null || !mounted) return;
-    var others = [
-      for (var o in controller.document.elements)
-        if (o.id != e.id) o.id
-    ];
-    String clip;
+    var kind = hit.layer == soundLayer
+        ? MotionKind.sound
+        : e is CameraElement
+            ? MotionKind.camera
+            : MotionKind.action;
     controller.beginInteraction();
-    if (picked is MotionPreset) {
-      clip = controller.newClip(e.id,
-          preset: picked,
-          layer: hit.layer,
-          target: picked.aims && others.isNotEmpty ? others.first : "");
-    } else {
-      clip = controller.newClip(e.id,
-          kind: picked as MotionKind, layer: hit.layer);
-    }
+    var clip = controller.newClip(e.id, kind: kind, layer: hit.layer);
     var placed =
         controller.placeClip(e.id, clip, seconds: seconds, layer: hit.layer);
     controller.endInteraction();
@@ -535,8 +491,7 @@ class _MotionLanesState extends State<MotionLanes> {
           supportedDevices: timelinePointers,
           behavior: HitTestBehavior.opaque,
           onTapUp: (d) => _tap(d.localPosition, width),
-          onDoubleTapDown: (d) =>
-              _make(d.localPosition, d.globalPosition, width),
+          onDoubleTapDown: (d) => _make(d.localPosition, width),
           onDoubleTap: () {},
           onHorizontalDragDown: (d) => _down(d.localPosition, width),
           onHorizontalDragUpdate: (d) => _drag(d.localPosition, width),
@@ -625,14 +580,14 @@ class _RowSlots extends StatelessWidget {
               child: GestureDetector(
                 key: ValueKey("rowSlotNew-${element.id}-$i"),
                 behavior: HitTestBehavior.opaque,
-                onTap: () {
+                // Double-clicked: a new clip in it, picked (Ken).
+                onDoubleTap: () {
                   var id = c.newClip(element.id,
                       kind: element is CameraElement
                           ? MotionKind.camera
                           : MotionKind.action,
                       slot: i);
                   c.pickMotion(element.id, id);
-                  c.animationOpen = true;
                 },
               ),
             ),
@@ -641,7 +596,12 @@ class _RowSlots extends StatelessWidget {
               child: GestureDetector(
                 key: ValueKey("rowSlotName-${element.id}-$i"),
                 behavior: HitTestBehavior.opaque,
+                // A click picks it; a double-click opens it in the Chain.
                 onTap: () {
+                  c.pickMotion(element.id, clip.id);
+                  if (c.effectsOpen) c.animationOpen = true;
+                },
+                onDoubleTap: () {
                   c.pickMotion(element.id, clip.id);
                   c.animationOpen = true;
                 },
