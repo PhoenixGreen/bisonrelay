@@ -336,7 +336,23 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       return;
     }
     _pick(lane);
+    // Twice on a sound: open in the clip editor, as a clip in a slot is
+    // (Ken: the two are interchangeable).
+    var now = DateTime.now();
+    var twice = _tappedClip == lane.element.id &&
+        now.difference(_tappedAt) < const Duration(milliseconds: 400);
+    _tappedClip = lane.element.id;
+    _tappedAt = now;
+    if (twice &&
+        controller.timelineSoundOf(channel.key)?.id == lane.element.id) {
+      _tappedClip = null;
+      controller.openClipEditor(channel.key, timelineRow);
+    }
   }
+
+  /// The sound last pressed and when, for a double-click opening it.
+  String? _tappedClip;
+  DateTime _tappedAt = DateTime(0);
 
   /// _pick selects [lane]'s sound, so its settings are the ones on screen.
   /// While every scene plays, a clip on another canvas is lit as picked

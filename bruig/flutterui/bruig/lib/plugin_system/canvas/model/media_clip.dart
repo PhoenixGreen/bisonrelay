@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonBool, jsonDouble, jsonInt, jsonSpec, jsonString, jsonStr;
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/pitch_edit.dart';
+import 'package:bruig/plugin_system/canvas/model/session.dart' show SessionClip;
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart'
     show SpeechLine, SpeechTake;
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
@@ -67,6 +68,12 @@ class MediaSource {
   /// then the recording made with them, and pitch.original the one made.
   final PitchEdit? pitch;
 
+  /// clip is the sound's settings as a clip's -- warp, pitch, gain, fades,
+  /// envelopes, start and loop -- for a sound on the timeline, edited in
+  /// the clip editor as a clip in a slot is; or null. Its own sound is the
+  /// original: [assetId] is then what it renders to (see timeline_clips).
+  final SessionClip? clip;
+
   const MediaSource({
     required this.assetId,
     this.name = "",
@@ -79,6 +86,7 @@ class MediaSource {
     this.height = 0,
     this.fps = 0,
     this.pitch,
+    this.clip,
   });
 
   /// endOr is where playing stops, given the file's real length.
@@ -104,6 +112,8 @@ class MediaSource {
     String? soundId,
     PitchEdit? pitch,
     bool clearPitch = false,
+    SessionClip? clip,
+    bool clearClip = false,
   }) =>
       MediaSource(
         assetId: assetId ?? this.assetId,
@@ -117,6 +127,7 @@ class MediaSource {
         height: height,
         fps: fps,
         pitch: clearPitch ? null : pitch ?? this.pitch,
+        clip: clearClip ? null : clip ?? this.clip,
       );
 
   Map<String, dynamic> toJson() => {
@@ -131,6 +142,7 @@ class MediaSource {
         if (height > 0) "h": height,
         if (fps > 0) "fps": fps,
         if (pitch != null) "pitch": pitch!.toJson(),
+        if (clip != null) "clip": clip!.toJson(),
       };
 
   factory MediaSource.fromJson(Map<String, dynamic> json) {
@@ -149,6 +161,7 @@ class MediaSource {
       height: jsonInt(json["h"], 0),
       fps: math.max(0.0, jsonDouble(json["fps"], 0)),
       pitch: PitchEdit.fromJson(json["pitch"]),
+      clip: SessionClip.fromJson(json["clip"]),
     );
   }
 }
@@ -227,6 +240,8 @@ class MediaClip {
           if (s.soundId.isNotEmpty) s.soundId,
           // The recording its notes were moved from.
           if (s.pitch case var p?) p.original,
+          // Its sound as a clip: the original, and what it rendered to.
+          if (s.clip case var c?) ...c.mediaIds,
         ],
         // Its channel's Speech takes: the Vocaliser sings the latest even
         // when its clip is off the timeline.

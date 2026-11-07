@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart'
     show dbToGain, gainToDb;
@@ -103,18 +104,33 @@ class _AudioClipsDeviceState extends State<AudioClipsDevice> {
         orElse: () => playingRow != null
             ? picks.firstWhere((p) => p.row == playingRow)
             : picks.first);
-    var slot = pick.row == null ? null : c.session.at(channel, pick.row!);
     var lane = pick.lane;
     var timed = lane?.clip;
+    // A sound on the timeline is a clip as one in a slot is (Ken): the same
+    // settings, kept on it.
+    var timedSound = switch (lane?.element) {
+      AudioElement a
+          when a.instrument == null &&
+              a.clip.playlist.isNotEmpty &&
+              a.clip.playlist.first.assetId.isNotEmpty =>
+        a,
+      _ => null,
+    };
+    var slot = pick.row == null
+        ? (timedSound == null ? null : c.timelineClipOf(timedSound))
+        : c.session.at(channel, pick.row!);
     var sound = slot?.sound ?? timed?.playlist.firstOrNull;
     var spb = c.document.audio.secondsPerBeat;
 
     // Its settings, written to the chip picked.
     void setSlot(SessionClip Function(SessionClip clip) change,
         {bool transient = false}) {
-      if (pick.row == null) return;
       if (transient) c.beginInteraction();
-      c.editSlotClip(channel, pick.row!, change, transient: transient);
+      if (pick.row case var row?) {
+        c.editSlotClip(channel, row, change, transient: transient);
+      } else if (timedSound != null && (lane?.editable ?? false)) {
+        c.editTimelineClip(timedSound, change, transient: transient);
+      }
     }
 
     void setTimed(MediaClip Function(MediaClip clip) change,
@@ -163,7 +179,18 @@ class _AudioClipsDeviceState extends State<AudioClipsDevice> {
 
     // Where its sound is played to now, seconds into its file.
     double? playhead;
-    if (slot != null && sound != null) {
+    if (pick.row == null && slot != null && timed != null && sound != null) {
+      // On the timeline: where the playhead is over it.
+      if (c.playing) {
+        var beat =
+            (c.frame - timed.at) / c.document.frameRate / spb + slot.start;
+        if (beat >= slot.start &&
+            beat <= slot.loopEnd(c.document.audio.beatsPerBar)) {
+          playhead = sound.start +
+              (slot.warp ? slot.warpMap.sourceAt(beat) : beat * spb);
+        }
+      }
+    } else if (slot != null && sound != null) {
       if (c.clipState(channel, pick.row!) == ClipState.playing) {
         var beat = c.clipAt(channel);
         if (beat != null) {
@@ -289,12 +316,12 @@ class _AudioClipsDeviceState extends State<AudioClipsDevice> {
       width: 360,
       height: widget.height,
       actions: [
-        if (pick.row != null)
+        if (slot != null)
           IconButton(
             key: const ValueKey("audioClipsEdit"),
             tooltip: "Open it in the clip editor",
             icon: const Icon(Icons.open_in_new),
-            onPressed: () => c.openClipEditor(channel, pick.row!),
+            onPressed: () => c.openClipEditor(channel, pick.row ?? timelineRow),
           ),
       ],
       summary: "${picks.length} clip${picks.length == 1 ? "" : "s"}"

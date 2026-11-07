@@ -707,6 +707,10 @@ extension CanvasTools on CanvasController {
   PianoRollTarget? get clipEditing {
     var t = _clipEditing;
     if (t == null || t.row == null) return null;
+    // A sound on the timeline, as a clip.
+    if (t.row == timelineRow) {
+      return timelineSoundOf(t.channel) == null ? null : t;
+    }
     if (session.at(t.channel, t.row!) == null) return null;
     return t;
   }
@@ -722,13 +726,19 @@ extension CanvasTools on CanvasController {
   /// editedClip is the clip the editor is open on.
   SessionClip? get editedClip {
     var t = clipEditing;
-    return t == null ? null : session.at(t.channel, t.row!);
+    if (t == null) return null;
+    if (t.row == timelineRow) {
+      var e = timelineSoundOf(t.channel);
+      return e == null ? null : timelineClipOf(e);
+    }
+    return session.at(t.channel, t.row!);
   }
 
   /// openClipEditor opens the clip editor on [channel]'s slot [row], in the
   /// effects panel -- a MIDI clip's notes in the piano roll beside it.
   void openClipEditor(String channel, int row) {
-    var clip = session.at(channel, row);
+    var timed = row == timelineRow ? timelineSoundOf(channel) : null;
+    var clip = timed != null ? timelineClipOf(timed) : session.at(channel, row);
     if (clip == null) return;
     _clipEditing = PianoRollTarget(channel, row);
     if (clip.midi && _instrumentOf(channel) != null) {
@@ -758,6 +768,12 @@ extension CanvasTools on CanvasController {
       {bool transient = false}) {
     var t = clipEditing;
     if (t == null) return;
+    if (t.row == timelineRow) {
+      var e = timelineSoundOf(t.channel);
+      if (e == null) return;
+      _setTimelineClip(e, change(timelineClipOf(e)), transient: transient);
+      return;
+    }
     var clip = session.at(t.channel, t.row!)!;
     apply(
         _document.copyWith(
@@ -785,6 +801,18 @@ extension CanvasTools on CanvasController {
     var t = clipEditing;
     var clip = editedClip;
     if (t == null || clip == null) return;
+    // A sound on the timeline plays there: from where it starts.
+    if (t.row == timelineRow) {
+      if (playing) {
+        pause();
+        return;
+      }
+      if (timelineSoundOf(t.channel) case var e?) {
+        frame = e.clip.at.clamp(0, math.max(0, _document.frames - 1));
+      }
+      play();
+      return;
+    }
     var state = clipState(t.channel, t.row!);
     if (state == ClipState.playing || state == ClipState.queued) {
       var ch = _clipChannels[t.channel];
@@ -804,6 +832,7 @@ extension CanvasTools on CanvasController {
   bool get clipPreviewing {
     var t = clipEditing;
     if (t == null) return false;
+    if (t.row == timelineRow) return playing;
     var state = clipState(t.channel, t.row!);
     return state == ClipState.playing || state == ClipState.queued;
   }
@@ -866,6 +895,11 @@ extension CanvasTools on CanvasController {
     if (session.find(id) case (var channel, var row)?) {
       setSessionClip(channel, row, change(session.at(channel, row)!));
       _warpSoon();
+      return;
+    }
+    // A sound on the timeline, as a clip.
+    if (_timelineOwner(id) case var e?) {
+      _setTimelineClip(e, change(timelineClipOf(e)));
     }
   }
 
@@ -987,6 +1021,150 @@ extension CanvasTools on CanvasController {
   /// loop's start where that is earlier, to its loop's end -- as a new file
   /// for an audio clip, or the notes there for a MIDI one, and moves its
   /// start and loop to match. Answers why not.
+  /// _cutsOf is where [clip] is cut into slices [by], in seconds into its
+  /// file, its start and its loop's end included -- or why it cannot be.
+  Future<(List<double>, String?)> _cutsOf(SessionClip clip, SliceBy by) async {
+    var sound = clip.sound;
+    if (sound == null) return (const <double>[], "It has no sound.");
+    var bpb = _document.audio.beatsPerBar;
+    var spb = math.max(0.001, _document.audio.secondsPerBeat);
+    var speed = math.pow(2, (clip.pitch + clip.cents / 100) / 12).toDouble();
+    // Where in the file each beat of it is.
+    double sourceOf(double beat) => clip.warp
+        ? sound.start + clip.warpMap.sourceAt(beat)
+        : sound.start + beat * spb * speed;
+    var from = clip.start, to = clip.loopEnd(bpb);
+    if (to <= from) return (const <double>[], "It plays nothing.");
+    switch (by) {
+      case SliceBy.hits:
+        var audio = await CanvasController.clipAudio(sound.assetId);
+        if (audio == null) {
+          return (const <double>[], "Its sound could not be read.");
+        }
+        var (l, r) = audio;
+        var hits = await Isolate.run(() => onsets(l, r));
+        var a = sourceOf(from), b = sourceOf(to);
+        // No slice shorter than 50ms: a hit read a little late, at its
+        // very start, would otherwise leave a sliver.
+        const least = 0.05;
+        var cuts = [a];
+        for (var h in hits) {
+          if (h - cuts.last >= least && h <= b - least) cuts.add(h);
+        }
+        cuts.add(b);
+        return (cuts, null);
+      case SliceBy.sixteenth || SliceBy.eighth || SliceBy.beat || SliceBy.bar:
+        var step = switch (by) {
+          SliceBy.bar => bpb.toDouble(),
+          SliceBy.beat => 1.0,
+          SliceBy.eighth => 0.5,
+          _ => 0.25,
+        };
+        return (
+          [
+            for (var b = from; b < to - 1e-6; b += step) sourceOf(b),
+            sourceOf(to),
+          ],
+          null
+        );
+    }
+  }
+
+  /// normaliseClip sets the open audio clip's gain so its loudest moment,
+  /// of what it plays, reaches 0 dB. Says what it did.
+  Future<String?> normaliseClip() async {
+    var clip = editedClip;
+    var sound = clip?.sound;
+    if (clip == null || clip.midi || sound == null) return null;
+    var audio = await CanvasController.clipAudio(sound.assetId);
+    if (audio == null) return "Its sound could not be read.";
+    var (l, r) = audio;
+    var a = (sound.start * mixRate).round().clamp(0, l.length);
+    var end = sound.end > 0 ? sound.end : l.length / mixRate;
+    var b = (end * mixRate).round().clamp(a, l.length);
+    var peak = 0.0;
+    for (var i = a; i < b; i++) {
+      peak = math.max(peak, math.max(l[i].abs(), r[i].abs()));
+    }
+    if (peak <= 1e-6) return "It is silent.";
+    var gain = (-20 * math.log(peak) / math.ln10 * 10).round() / 10;
+    _editClipById(clip.id, (x) => x.copyWith(gain: gain));
+    return "Normalised: ${gain >= 0 ? "+" : ""}${gain.toStringAsFixed(1)} dB "
+        "to reach 0 dB";
+  }
+
+  /// sliceToInstrument cuts the open audio clip at its hits into a new
+  /// MIDI channel that plays them, as the prototype's Slice: [pads], each
+  /// slice on a drum pad, struck to its end; else each on a key from C2,
+  /// with a note clip in its first slot playing them where they were. One
+  /// undo step. Says what it did.
+  Future<String?> sliceToInstrument({required bool pads}) async {
+    var t = clipEditing;
+    var clip = editedClip;
+    var sound = clip?.sound;
+    if (t == null || clip == null || clip.midi || sound == null) return null;
+    var (cuts, why) = await _cutsOf(clip, SliceBy.hits);
+    if (why != null) return why;
+    if (cuts.length < 3) return "There is only one slice there.";
+    // A pad a slice, the bottom row first, as a drum kit is played.
+    var padKeys = [
+      for (var row = drumPads.length ~/ 4 - 1; row >= 0; row--)
+        for (var k = 0; k < 4; k++) drumPads[row * 4 + k].$1,
+    ];
+    var count = math.min(cuts.length - 1, pads ? padKeys.length : 128 - 36);
+    var keys = pads
+        ? padKeys.take(count).toList()
+        : [for (var i = 0; i < count; i++) 36 + i];
+    var kit = SliceKit(sound.assetId, cuts.take(count + 1).toList(), keys,
+        oneShot: pads);
+    var name = clip.name.isEmpty ? "Clip" : clip.name;
+    var made = newInstrument(_document);
+    var octaves = math.max(1, (count / 12).ceil());
+    made = made
+        .copyWith(
+            instrument: InstrumentPart(
+                look: pads ? InstrumentLook.drums : InstrumentLook.keyboard,
+                sound: InstrumentSound.slices,
+                slices: kit,
+                lowKey: 36,
+                keys: (12 * octaves + 1).clamp(13, 88)))
+        .rebase(made.base.copyWith(
+            name: "$name ${pads ? "pads" : "slices"}",
+            visible: false)) as AudioElement;
+    beginInteraction();
+    addElement(made, select: false);
+    if (!pads) {
+      // Where each slice falls in the clip, in beats from its start.
+      var bpb = _document.audio.beatsPerBar;
+      var spb = math.max(0.001, _document.audio.secondsPerBeat);
+      var speed = math.pow(2, (clip.pitch + clip.cents / 100) / 12).toDouble();
+      double beatOf(double seconds) => clip.warp
+          ? clip.warpMap.beatAt(seconds - sound.start)
+          : (seconds - sound.start) / speed / spb;
+      var notes = [
+        for (var i = 0; i < count; i++)
+          MidiNote(keys[i], math.max(0.0, beatOf(cuts[i]) - clip.start),
+              math.max(1 / 64, beatOf(cuts[i + 1]) - beatOf(cuts[i])), 100),
+      ];
+      var channel = CanvasController._channelOf(made);
+      setSessionClip(
+          channel,
+          0,
+          SessionClip(
+            id: newElementId(),
+            name: "$name slices",
+            color: clip.color,
+            midi: true,
+            notes: notes,
+            bars: math.max(1 / bpb, (clip.loopEnd(bpb) - clip.start) / bpb),
+          ));
+    }
+    endInteraction();
+    return pads
+        ? "Put $count slices on drum pads, on the channel “${made.name}”"
+        : "Made a note clip of $count slices, on the channel “${made.name}”";
+  }
+
   /// sliceClip cuts the audio clip the editor is open on into slices --
   /// at its hits, or every beat or bar of it as it plays -- each a clip of
   /// its own in the channel's empty slots under it, playing that stretch of
@@ -1000,35 +1178,8 @@ extension CanvasTools on CanvasController {
     var bpb = _document.audio.beatsPerBar;
     var spb = math.max(0.001, _document.audio.secondsPerBeat);
     var speed = math.pow(2, (clip.pitch + clip.cents / 100) / 12).toDouble();
-    // Where in the file each beat of it is.
-    double sourceOf(double beat) => clip.warp
-        ? sound.start + clip.warpMap.sourceAt(beat)
-        : sound.start + beat * spb * speed;
-    var from = clip.start, to = clip.loopEnd(bpb);
-    if (to <= from) return null;
-    var cuts = <double>[];
-    switch (by) {
-      case SliceBy.hits:
-        var audio = await CanvasController.clipAudio(sound.assetId);
-        if (audio == null) return "Its sound could not be read.";
-        var (l, r) = audio;
-        var hits = await Isolate.run(() => onsets(l, r));
-        var a = sourceOf(from), b = sourceOf(to);
-        // No slice shorter than 50ms: a hit read a little late, at its
-        // very start, would otherwise leave a sliver.
-        const least = 0.05;
-        cuts = [a];
-        for (var h in hits) {
-          if (h - cuts.last >= least && h <= b - least) cuts.add(h);
-        }
-        cuts.add(b);
-      case SliceBy.beat || SliceBy.bar:
-        var step = by == SliceBy.bar ? bpb.toDouble() : 1.0;
-        cuts = [
-          for (var b = from; b < to - 1e-6; b += step) sourceOf(b),
-          sourceOf(to),
-        ];
-    }
+    var (cuts, why) = await _cutsOf(clip, by);
+    if (why != null) return why;
     if (cuts.length < 3) return "There is only one slice there.";
     var slices = <SessionClip>[];
     for (var i = 0; i + 1 < cuts.length; i++) {
@@ -1192,6 +1343,7 @@ extension CanvasTools on CanvasController {
       // the clip.
       if (session.find(clip.id) case (var ch, var row)?) {
         var now = session.at(ch, row)!;
+        // (A timeline sound's clip is written by renderTimelineClip.)
         if (now.warpSignature(spb) == signature) {
           apply(
               _document.copyWith(
@@ -1253,6 +1405,18 @@ extension CanvasTools on CanvasController {
   double? get clipPlayhead {
     var t = clipEditing;
     if (t == null) return null;
+    // A sound on the timeline: where the playhead is over it.
+    if (t.row == timelineRow) {
+      var e = timelineSoundOf(t.channel);
+      var clip = editedClip;
+      if (e == null || clip == null || !playing) return null;
+      var spb = math.max(0.001, _document.audio.secondsPerBeat);
+      var beat = (frame - e.clip.at) / _document.frameRate / spb + clip.start;
+      return beat < clip.start ||
+              beat > clip.loopEnd(_document.audio.beatsPerBar)
+          ? null
+          : beat;
+    }
     var ch = _clipChannels[t.channel]?.now;
     if (ch == null || ch.row != t.row) return null;
     return clipAt(t.channel);

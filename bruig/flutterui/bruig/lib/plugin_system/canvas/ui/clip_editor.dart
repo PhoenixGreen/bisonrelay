@@ -16,8 +16,6 @@ import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
     show envelopeLengths, settingLabel;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/controls.dart'
-    show CanvasDropdown;
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
     show dragPointers;
 import 'package:bruig/plugin_system/canvas/ui/piano_roll.dart';
@@ -47,6 +45,9 @@ import 'package:flutter/scheduler.dart';
 // as wide as the strip.
 
 const double _columnW = 220;
+
+/// _fadeInk is the fades and their grips, amber as the prototype's.
+const _fadeInk = Color(0xFFE2B04A);
 
 /// editorNarrowWidth is the clip editor's width in the strip, unwidened.
 const double editorNarrowWidth = 760;
@@ -284,27 +285,590 @@ class _ClipEditorState extends State<ClipEditor> {
           var t = c.clipEditing;
           var clip = c.editedClip;
           if (t == null || clip == null) return const SizedBox();
+          // An audio clip as the prototype's: a bar of tools over its sound,
+          // its settings in one column at the side, a line of help under.
+          if (!clip.midi) return _audioEditor(look, t, clip);
           return _layout(
               look,
               _header(look, t, clip),
               [
                 ("Clip", _clipColumn(look, clip), "clipColumn"),
                 ("Launch", _launchColumn(look, clip), "launchColumn"),
-                clip.midi
-                    ? ("Notes", _notesColumn(look), "notesColumn")
-                    : ("Audio", _audioColumn(look, clip), "audioColumn"),
+                ("Notes", _notesColumn(look), "notesColumn"),
               ],
-              clip.midi
-                  ? PianoRoll(controller: c, inClipEditor: true)
-                  : _SampleView(
-                      controller: c,
-                      clip: clip,
-                      envelope: _envelopes ? _envelopeKey(clip, t) : null,
-                      envelopeRest: _envelopeRest(_envelopeKey(clip, t), t),
-                      envelopeLength: clip.lengthOf(_envelopeKey(clip, t)),
-                      spectral: _spectral));
+              PianoRoll(controller: c, inClipEditor: true));
         },
       );
+
+  // ---- An audio clip, as the prototype's.
+
+  Widget _audioEditor(MixerLook look, PianoRollTarget t, SessionClip clip) {
+    var shut = c.settingsShut("clip");
+    var envKey = _envelopeKey(clip, t);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _audioToolbar(look, t, clip),
+      Container(height: 1, color: look.studio.edge),
+      Expanded(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(
+            child: _SampleView(
+                controller: c,
+                clip: clip,
+                envelope: _envelopes ? envKey : null,
+                envelopeRest: _envelopeRest(envKey, t),
+                envelopeLength: clip.lengthOf(envKey),
+                spectral: _spectral,
+                onSay: (said) => setState(() => _said = said)),
+          ),
+          if (!shut) ...[
+            Container(width: 1, color: look.studio.edge),
+            SizedBox(
+                key: const ValueKey("clipInspector"),
+                width: 252,
+                child: _audioInspector(look, clip)),
+          ],
+        ]),
+      ),
+      Container(height: 1, color: look.studio.edge),
+      _audioStatus(look, t, clip),
+    ]);
+  }
+
+  /// _tb is a button of the audio clip's bar: a word, an icon, or both; lit
+  /// where [on].
+  Widget _tb(MixerLook look, String key, String label, VoidCallback? tap,
+      {bool on = false, IconData? icon, String? tip, bool menu = false}) {
+    var s = look.studio;
+    var ink = tap == null
+        ? s.muted.withValues(alpha: 0.5)
+        : on
+            ? look.colors.onPrimary
+            : s.text;
+    return Tooltip(
+      message: tip ?? label,
+      child: InkWell(
+        key: ValueKey(key),
+        borderRadius: BorderRadius.circular(5),
+        onTap: tap,
+        child: Container(
+          height: 24,
+          padding: EdgeInsets.symmetric(horizontal: label.isEmpty ? 5 : 8),
+          decoration: BoxDecoration(
+              color: on ? look.colors.primary : null,
+              borderRadius: BorderRadius.circular(5)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (icon != null) Icon(icon, size: 14, color: ink),
+            if (icon != null && label.isNotEmpty) const SizedBox(width: 4),
+            if (label.isNotEmpty)
+              Text(label, style: TextStyle(fontSize: 11.5, color: ink)),
+            if (menu) Icon(Icons.arrow_drop_down, size: 16, color: ink),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _tbGroup(MixerLook look, List<Widget> children) => Container(
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+            border: Border.all(color: look.studio.edge),
+            borderRadius: BorderRadius.circular(6)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: children),
+      );
+
+  Widget _tbGap(MixerLook look) => Container(
+      width: 1,
+      height: 18,
+      margin: const EdgeInsets.symmetric(horizontal: 7),
+      color: look.studio.edge);
+
+  Widget _tbLabel(MixerLook look, String text) => Padding(
+        padding: const EdgeInsets.only(right: 4),
+        child: Text(text,
+            style: TextStyle(fontSize: 11, color: look.studio.muted)),
+      );
+
+  Widget _tbReadout(MixerLook look, String key, String text) => Container(
+        key: ValueKey(key),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+            color: look.studio.inset,
+            border: Border.all(color: look.studio.edge),
+            borderRadius: BorderRadius.circular(4)),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 11.5,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                color: look.studio.text)),
+      );
+
+  /// _tbMenu is a button of the bar opening [items] under it.
+  Widget _tbMenu(MixerLook look, String key, String label, List<Widget> items,
+          {IconData? icon, String? tip, bool enabled = true}) =>
+      MenuAnchor(
+        menuChildren: items,
+        builder: (context, menu, _) => _tb(look, key, label,
+            enabled ? () => menu.isOpen ? menu.close() : menu.open() : null,
+            icon: icon, tip: tip, menu: true),
+      );
+
+  MenuItemButton _menuItem(String key, String label, VoidCallback? tap,
+          {bool on = false, String? hint}) =>
+      MenuItemButton(
+        key: ValueKey(key),
+        leadingIcon: Icon(on ? Icons.check : null, size: 14),
+        onPressed: tap,
+        child: hint == null
+            ? Text(label)
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                    Text(label),
+                    Text(hint,
+                        style: const TextStyle(
+                            fontSize: 10.5, color: Color(0xFF9A98A6))),
+                  ]),
+      );
+
+  Widget _audioToolbar(MixerLook look, PianoRollTarget t, SessionClip clip) {
+    var repitch = clip.warp && clip.warpMode == WarpMode.repitch;
+    var envKey = _envelopeKey(clip, t);
+    var setting =
+        _envelopes && ClipEnvelope.values.every((e) => e.name != envKey);
+    var choices = _envelopeChoices(clip, t);
+    var settings = choices
+        .where((ch) => ClipEnvelope.values.every((e) => e.name != ch.$2))
+        .toList();
+    return SizedBox(
+      height: 34,
+      child: Row(children: [
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(children: [
+              // Heard on its own, at once: with the transport stopped the
+              // timeline stays silent (see CanvasController.sessionOnly).
+              _tb(look, "clipPreview", c.clipPreviewing ? "Stop" : "Play",
+                  c.previewClip,
+                  on: c.clipPreviewing,
+                  icon: c.clipPreviewing ? Icons.stop : Icons.play_arrow,
+                  tip: c.clipPreviewing
+                      ? "Stop it"
+                      : "Play it now, round its loop -- the timeline stays "
+                          "quiet"),
+              _tbGap(look),
+              _tb(look, "clipWarp", "Warp",
+                  _busy ? null : () => _run(() => c.setWarp(!clip.warp)),
+                  on: clip.warp,
+                  icon: Icons.timeline,
+                  tip: "Keep the song's tempo: its sound stretched to its "
+                      "beats. Off, it plays at its own speed."),
+              _tbMenu(
+                  look,
+                  "clipWarpMode",
+                  clip.warpMode.label,
+                  [
+                    for (var m in WarpMode.values)
+                      _menuItem(
+                          "clipWarpMode-${m.name}",
+                          m.label,
+                          () => c.editClip(
+                              (x) => x.copyWith(warp: true, warpMode: m)),
+                          on: m == clip.warpMode,
+                          hint: m.hint),
+                  ],
+                  tip: "How it is stretched"),
+              if (c.warping.contains(clip.id))
+                const Padding(
+                  padding: EdgeInsets.only(left: 4),
+                  child: SizedBox.square(
+                      dimension: 10,
+                      child: CircularProgressIndicator(strokeWidth: 1.5)),
+                ),
+              _tbGap(look),
+              _tbLabel(look, "BPM"),
+              _tb(look, "clipBpm-down", "",
+                  () => c.editClip((x) => x.copyWith(bpm: x.bpm - 1)),
+                  icon: Icons.remove, tip: "Slower: a beat a minute less"),
+              _tbReadout(look, "clipBpm", clip.bpm.toStringAsFixed(1)),
+              _tb(look, "clipBpm-up", "",
+                  () => c.editClip((x) => x.copyWith(bpm: x.bpm + 1)),
+                  icon: Icons.add, tip: "Faster: a beat a minute more"),
+              _tb(look, "clipBpmHalve", "÷2",
+                  () => c.editClip((x) => x.copyWith(bpm: x.bpm / 2)),
+                  tip: "Its tempo heard as twice what it is: half it"),
+              _tb(look, "clipBpmDouble", "×2",
+                  () => c.editClip((x) => x.copyWith(bpm: x.bpm * 2)),
+                  tip: "Its tempo heard as half what it is: double it"),
+              _tbGap(look),
+              _tbLabel(look, "Pitch"),
+              _tb(
+                  look,
+                  "clipPitch-down",
+                  "",
+                  repitch
+                      ? null
+                      : () => c.editClip((x) => x.copyWith(pitch: x.pitch - 1)),
+                  icon: Icons.remove,
+                  tip: repitch
+                      ? "In Re-pitch its pitch follows its speed"
+                      : "Down a semitone"),
+              _tbReadout(look, "clipPitch",
+                  "${clip.pitch > 0 ? "+" : ""}${clip.pitch} st"),
+              _tb(
+                  look,
+                  "clipPitch-up",
+                  "",
+                  repitch
+                      ? null
+                      : () => c.editClip((x) => x.copyWith(pitch: x.pitch + 1)),
+                  icon: Icons.add,
+                  tip: repitch
+                      ? "In Re-pitch its pitch follows its speed"
+                      : "Up a semitone"),
+              _tbGap(look),
+              _tb(look, "clipReverse", "Reverse",
+                  _busy ? null : () => _run(c.reverseClip),
+                  on: clip.reversedOf != null,
+                  icon: Icons.west,
+                  tip: "Backwards: a reversed copy of its sound is kept in "
+                      "the library, beside the original"),
+              _tb(look, "clipNormalise", "Normalise",
+                  _busy ? null : () => _run(c.normaliseClip),
+                  tip: "Its gain set so its loudest moment reaches 0 dB"),
+              _tb(look, "clipCrop", "Crop",
+                  _busy ? null : () => _run(c.cropClip),
+                  icon: Icons.crop,
+                  tip: "Keep only what it plays, as a new sound, so the rest "
+                      "stops taking room"),
+              _tbMenu(
+                  look,
+                  "clipSlice",
+                  "Slice",
+                  [
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(12, 6, 12, 2),
+                      child: Text("Into the slots under it, at",
+                          style: TextStyle(
+                              fontSize: 10.5, color: Color(0xFF9A98A6))),
+                    ),
+                    for (var by in SliceBy.values)
+                      _menuItem("clipSlice-${by.name}", by.label,
+                          () => _run(() => c.sliceClip(by))),
+                    const Divider(height: 8),
+                    _menuItem("clipSliceNotes", "Into a note clip",
+                        () => _run(() => c.sliceToInstrument(pads: false)),
+                        hint: "Each hit a note, on a new channel that plays "
+                            "them"),
+                    _menuItem("clipSlicePads", "Into drum pads",
+                        () => _run(() => c.sliceToInstrument(pads: true)),
+                        hint: "Each hit on a pad of a new drum channel"),
+                  ],
+                  icon: Icons.content_cut,
+                  enabled: !_busy,
+                  tip: "Cut it at its hits or on the beat"),
+              _tbMenu(
+                  look,
+                  "clipFadeCurve",
+                  "${clip.fadeCurve.label} fades",
+                  [
+                    for (var f in FadeCurve.values)
+                      _menuItem("clipFadeCurve-${f.name}", f.label,
+                          () => c.editClip((x) => x.copyWith(fadeCurve: f)),
+                          on: f == clip.fadeCurve),
+                    const Divider(height: 8),
+                    _menuItem("clipFade", "A short fade at every cut",
+                        () => c.editClip((x) => x.copyWith(fade: !x.fade)),
+                        on: clip.fade,
+                        hint: "A few milliseconds at its start and its "
+                            "loop's: no click where it is cut"),
+                  ],
+                  icon: Icons.show_chart,
+                  tip: "The way its fades go"),
+              _tbGap(look),
+              _tbLabel(look, "Envelope"),
+              _tbGroup(look, [
+                _tb(look, "clipEnvelope-off", "Off",
+                    () => setState(() => _envelopes = false),
+                    on: !_envelopes),
+                for (var e in ClipEnvelope.values)
+                  _tb(
+                      look,
+                      "clipEnvelope-${e.name}",
+                      e.label,
+                      () => setState(() {
+                            _envelopes = true;
+                            _envelope = e.name;
+                          }),
+                      on: _envelopes && envKey == e.name,
+                      tip: "Its ${e.label.toLowerCase()} changed as it "
+                          "plays: drawn over its sound"),
+                if (settings.isNotEmpty)
+                  _tbMenu(
+                      look,
+                      "clipEnvelopeTarget",
+                      setting
+                          ? choices
+                              .firstWhere((ch) => ch.$2 == envKey,
+                                  orElse: () => ("Setting", envKey))
+                              .$1
+                          : "Setting",
+                      [
+                        for (var (label, k) in settings)
+                          _menuItem(
+                              "clipEnvelopeTarget-$k",
+                              label,
+                              () => setState(() {
+                                    _envelopes = true;
+                                    _envelope = k;
+                                  }),
+                              on: setting && envKey == k),
+                      ],
+                      tip: "A setting of its channel, moved as it plays"),
+              ]),
+              // A setting's envelope: the clip's length, or its own.
+              if (setting) ...[
+                const SizedBox(width: 4),
+                SizedBox(
+                  width: 84,
+                  child: _drop(
+                      look,
+                      const ValueKey("clipEnvelopeLength"),
+                      clip.lengthOf(envKey) ?? 0.0,
+                      [
+                        for (var (beats, label)
+                            in envelopeLengths(c.document.audio.beatsPerBar))
+                          (label, beats ?? 0.0)
+                      ],
+                      (v) => c.editClip(
+                          (x) => x.withLength(envKey, v == 0 ? null : v))),
+                ),
+              ],
+              _tbGap(look),
+              _tbGroup(look, [
+                _tb(look, "clipWave", "",
+                    () => setState(() => _spectral = false),
+                    on: !_spectral, icon: Icons.graphic_eq, tip: "Its wave"),
+                _tb(look, "clipSpectrum", "",
+                    () => setState(() => _spectral = true),
+                    on: _spectral,
+                    icon: Icons.bar_chart,
+                    tip: "Its sound as a spectrogram: low pitches at the "
+                        "bottom, each as bright as it is loud"),
+              ]),
+            ]),
+          ),
+        ),
+        _tb(look, "clipInspectorToggle", "", () => c.toggleSettingsShut("clip"),
+            on: !c.settingsShut("clip"),
+            icon: Icons.view_sidebar_outlined,
+            tip: c.settingsShut("clip")
+                ? "Show the clip's settings"
+                : "Hide the clip's settings"),
+        const SizedBox(width: 6),
+      ]),
+    );
+  }
+
+  /// _slider is a setting of the clip's sound as the prototype draws it: a
+  /// name, a slider and its reading.
+  Widget _slider(
+      MixerLook look,
+      String key,
+      String label,
+      double value,
+      double min,
+      double max,
+      String reading,
+      SessionClip Function(SessionClip x, double v) set) {
+    var s = look.studio;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(children: [
+        SizedBox(
+            width: 60,
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _small(look, s.muted))),
+        Expanded(
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+                trackHeight: 3,
+                overlayShape: SliderComponentShape.noOverlay,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6)),
+            child: Slider(
+              key: ValueKey(key),
+              value: value.clamp(min, max),
+              min: min,
+              max: max,
+              onChangeStart: (_) => c.beginInteraction(),
+              onChanged: (v) => c.editClip((x) => set(x, v), transient: true),
+              onChangeEnd: (_) => c.endInteraction(),
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 50,
+          child: Text(reading,
+              key: ValueKey("$key-reading"),
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              style: _small(look).copyWith(
+                  fontSize: 10.5,
+                  fontFeatures: const [FontFeature.tabularFigures()])),
+        ),
+      ]),
+    );
+  }
+
+  Widget _audioInspector(MixerLook look, SessionClip clip) {
+    var s = look.studio;
+    var help = _small(look, s.muted).copyWith(fontSize: 10.5, height: 1.4);
+    Widget gap() => const SizedBox(height: 10);
+    return Container(
+      color: s.panel,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _head(look, "Clip", key: const ValueKey("clipColumn")),
+          ..._clipColumn(look, clip),
+          // Launched from a slot; one on the timeline plays where it is.
+          if (c.clipEditing?.row != timelineRow) ...[
+            gap(),
+            _head(look, "Launch", key: const ValueKey("launchColumn")),
+            ..._launchColumn(look, clip),
+          ],
+          gap(),
+          _head(look, "Sound", key: const ValueKey("audioColumn")),
+          _slider(
+              look,
+              "clipGain",
+              "Gain",
+              clip.gain,
+              -24,
+              12,
+              "${clip.gain > 0 ? "+" : ""}${clip.gain.toStringAsFixed(1)} dB",
+              (x, v) => x.copyWith(gain: (v * 2).roundToDouble() / 2)),
+          _slider(
+              look,
+              "clipCents",
+              "Detune",
+              clip.cents.toDouble(),
+              -50,
+              50,
+              "${clip.cents > 0 ? "+" : ""}${clip.cents} ct",
+              (x, v) => x.copyWith(cents: v.round())),
+          _slider(
+              look,
+              "clipFadeIn",
+              "Fade in",
+              clip.fadeIn,
+              0,
+              4,
+              clip.fadeIn == 0 ? "None" : _seconds(clip.fadeIn),
+              (x, v) => x.copyWith(fadeIn: (v * 100).roundToDouble() / 100)),
+          _slider(
+              look,
+              "clipFadeOut",
+              "Fade out",
+              clip.fadeOut,
+              0,
+              8,
+              clip.fadeOut == 0 ? "None" : _seconds(clip.fadeOut),
+              (x, v) => x.copyWith(fadeOut: (v * 100).roundToDouble() / 100)),
+          if (!clip.warp && (clip.pitch != 0 || clip.cents != 0))
+            Text("Unwarped, a higher pitch is faster too.", style: help),
+          gap(),
+          _head(look, "Warp markers",
+              end: "${clip.markers.length}",
+              key: const ValueKey("clipMarkersHead")),
+          Text(
+              clip.warp
+                  ? "Click the strip under the ruler to add one; it snaps to "
+                      "the grey hits. Drag it to move the sound, and "
+                      "right-click or double-click it to take it out."
+                  : "Switch Warp on to pin its hits to the beats.",
+              style: help),
+          if (clip.markers.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _pill(look, "Take them all out", false,
+                  () => c.editClip((x) => x.copyWith(markers: const [])),
+                  key: const ValueKey("clipMarkersClear")),
+            ),
+          ],
+          gap(),
+          _head(look, "Slice"),
+          Wrap(spacing: 4, runSpacing: 4, children: [
+            _pill(
+                look,
+                "To a note clip",
+                false,
+                _busy
+                    ? null
+                    : () => _run(() => c.sliceToInstrument(pads: false)),
+                key: const ValueKey("clipSliceNotesButton")),
+            _pill(
+                look,
+                "To drum pads",
+                false,
+                _busy
+                    ? null
+                    : () => _run(() => c.sliceToInstrument(pads: true)),
+                key: const ValueKey("clipSlicePadsButton")),
+          ]),
+          const SizedBox(height: 6),
+          Text(
+              "Each hit becomes a note, or a pad that plays that slice, on a "
+              "new channel.",
+              style: help),
+        ]),
+      ),
+    );
+  }
+
+  Widget _audioStatus(MixerLook look, PianoRollTarget t, SessionClip clip) {
+    var lane = c.timelineChannels.where((l) => l.key == t.channel).firstOrNull;
+    var muted = _small(look, look.studio.muted).copyWith(fontSize: 10.5);
+    var said = _said;
+    return SizedBox(
+      height: 22,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(children: [
+          Text(
+              "${lane?.name ?? ""} · “${clip.name.isEmpty ? "Clip" : clip.name}”",
+              key: const ValueKey("clipEditorName"),
+              style: _small(look).copyWith(fontSize: 10.5)),
+          const SizedBox(width: 12),
+          if (_busy) ...[
+            const SizedBox.square(
+                dimension: 10,
+                child: CircularProgressIndicator(strokeWidth: 1.5)),
+            const SizedBox(width: 6),
+          ],
+          Expanded(
+            child: Text(
+                said ??
+                    "Click the strip under the ruler to add a warp marker; "
+                        "drag the amber squares for the fades; pick Gain or "
+                        "Pan to draw an envelope",
+                key: said == null ? null : const ValueKey("clipEditorSaid"),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: said == null
+                    ? muted
+                    : muted.copyWith(color: look.studio.text)),
+          ),
+        ]),
+      ),
+    );
+  }
 
   /// _layout is the editor: its header over its columns of settings (every
   /// one, wide; narrow, one at a time, picked above it) and what it plays
@@ -564,30 +1128,6 @@ class _ClipEditorState extends State<ClipEditor> {
       );
 
   /// _row is a setting: its name, and what sets it.
-  /// _fadeSteps are the lengths a fade's arrows step through, in seconds.
-  static const _fadeSteps = [
-    0.0,
-    0.01,
-    0.03,
-    0.05,
-    0.1,
-    0.25,
-    0.5,
-    1.0,
-    2.0,
-    4.0
-  ];
-
-  /// _fadeStep is the length [by] steps on from [now]: the next of
-  /// _fadeSteps up, or down.
-  static double _fadeStep(double now, int by) {
-    if (by > 0) {
-      return _fadeSteps.firstWhere((s) => s > now + 1e-9,
-          orElse: () => _fadeSteps.last);
-    }
-    return _fadeSteps.lastWhere((s) => s < now - 1e-9, orElse: () => 0);
-  }
-
   static String _seconds(double s) => s < 1
       ? "${(s * 1000).round()} ms"
       : "${s.toStringAsFixed(s < 10 ? 1 : 0)} s";
@@ -754,49 +1294,6 @@ class _ClipEditorState extends State<ClipEditor> {
                 ? "Stop it"
                 : "Play it now, round its loop -- the timeline stays quiet"),
         const SizedBox(width: 4),
-        // An audio clip's envelopes, over its sound: its own gain or pan,
-        // or one of its channel's settings. A MIDI clip's are in the lanes
-        // under its notes, chosen there.
-        if (!clip.midi) ...[
-          _pill(look, "Envelopes", _envelopes,
-              () => setState(() => _envelopes = !_envelopes),
-              key: const ValueKey("clipEnvelopes"),
-              tip: "Its gain or its pan, or a setting of its channel, "
-                  "changed as it plays: drawn over its sound"),
-          if (_envelopes) ...[
-            const SizedBox(width: 4),
-            Flexible(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 170),
-                child: _drop(
-                    look,
-                    const ValueKey("clipEnvelopeTarget"),
-                    _envelopeKey(clip, t),
-                    _envelopeChoices(clip, t),
-                    (v) => setState(() => _envelope = v)),
-              ),
-            ),
-            // A setting's envelope: the clip's length, or its own.
-            if (ClipEnvelope.values
-                .every((e) => e.name != _envelopeKey(clip, t))) ...[
-              const SizedBox(width: 4),
-              SizedBox(
-                width: 84,
-                child: _drop(
-                    look,
-                    const ValueKey("clipEnvelopeLength"),
-                    clip.lengthOf(_envelopeKey(clip, t)) ?? 0.0,
-                    [
-                      for (var (beats, label)
-                          in envelopeLengths(c.document.audio.beatsPerBar))
-                        (label, beats ?? 0.0)
-                    ],
-                    (v) => c.editClip((x) => x.withLength(
-                        _envelopeKey(clip, t), v == 0 ? null : v))),
-              ),
-            ],
-          ],
-        ],
       ]),
     );
   }
@@ -891,7 +1388,7 @@ class _ClipEditorState extends State<ClipEditor> {
     return [
       _row(
           look,
-          "Start",
+          "Starts",
           Row(children: [
             Expanded(
               // A sixteenth a step, and shown in seconds too: a sound's start is set
@@ -1010,7 +1507,7 @@ class _ClipEditorState extends State<ClipEditor> {
   List<Widget> _launchColumn(MixerLook look, SessionClip clip) => [
         _row(
             look,
-            "Mode",
+            "Pressed",
             _drop(
                 look,
                 const ValueKey("clipLaunchMode"),
@@ -1096,194 +1593,6 @@ class _ClipEditorState extends State<ClipEditor> {
                       : x.copyWith(followBars: v)))),
       ];
 
-  List<Widget> _audioColumn(MixerLook look, SessionClip clip) {
-    // In Re-pitch, as unwarped, its pitch is its speed.
-    var repitch = clip.warp && clip.warpMode == WarpMode.repitch;
-    return [
-      _row(
-          look,
-          "Warp",
-          Row(children: [
-            _pill(look, clip.warp ? "On" : "Off", clip.warp,
-                _busy ? null : () => _run(() => c.setWarp(!clip.warp)),
-                key: const ValueKey("clipWarp"),
-                tip: "Keep the song's tempo: its sound stretched to its "
-                    "beats. Off, it plays at its own speed."),
-            if (c.warping.contains(clip.id)) ...[
-              const SizedBox(width: 6),
-              const SizedBox.square(
-                  dimension: 10,
-                  child: CircularProgressIndicator(strokeWidth: 1.5)),
-            ],
-          ])),
-      if (clip.warp) ...[
-        _row(
-            look,
-            "Mode",
-            _drop(
-                look,
-                const ValueKey("clipWarpMode"),
-                clip.warpMode,
-                [for (var m in WarpMode.values) (m.label, m)],
-                (v) => c.editClip((x) => x.copyWith(warpMode: v)))),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Text(clip.warpMode.hint,
-              style: _small(look, look.studio.muted).copyWith(fontSize: 10)),
-        ),
-        _row(
-            look,
-            "BPM",
-            _stepper(
-                look,
-                "clipBpm",
-                clip.bpm.toStringAsFixed(2),
-                () => c.editClip((x) => x.copyWith(bpm: x.bpm - 1)),
-                () => c.editClip((x) => x.copyWith(bpm: x.bpm + 1)))),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Wrap(spacing: 4, runSpacing: 4, children: [
-            _pill(look, "÷2", false,
-                () => c.editClip((x) => x.copyWith(bpm: x.bpm / 2)),
-                key: const ValueKey("clipBpmHalve"),
-                tip: "Its tempo heard as twice what it is: half it"),
-            _pill(look, "×2", false,
-                () => c.editClip((x) => x.copyWith(bpm: x.bpm * 2)),
-                key: const ValueKey("clipBpmDouble"),
-                tip: "Its tempo heard as half what it is: double it"),
-          ]),
-        ),
-      ],
-      if (!repitch) ...[
-        _row(
-            look,
-            "Pitch",
-            _stepper(
-                look,
-                "clipPitch",
-                "${clip.pitch > 0 ? "+" : ""}${clip.pitch} st",
-                () => c.editClip((x) => x.copyWith(pitch: x.pitch - 1)),
-                () => c.editClip((x) => x.copyWith(pitch: x.pitch + 1)))),
-        _row(
-            look,
-            "Fine",
-            _stepper(
-                look,
-                "clipCents",
-                "${clip.cents > 0 ? "+" : ""}${clip.cents} ct",
-                () => c.editClip((x) => x.copyWith(cents: x.cents - 5)),
-                () => c.editClip((x) => x.copyWith(cents: x.cents + 5)))),
-        if (!clip.warp && (clip.pitch != 0 || clip.cents != 0))
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Text("Unwarped, a higher pitch is faster too.",
-                style: _small(look, look.studio.muted).copyWith(fontSize: 10)),
-          ),
-      ] else
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Text("Re-pitch: its pitch follows its speed.",
-              style: _small(look, look.studio.muted).copyWith(fontSize: 10)),
-        ),
-      _row(
-          look,
-          "Gain",
-          _stepper(
-              look,
-              "clipGain",
-              "${clip.gain > 0 ? "+" : ""}${clip.gain.toStringAsFixed(1)} dB",
-              () => c.editClip((x) => x.copyWith(gain: x.gain - 1)),
-              () => c.editClip((x) => x.copyWith(gain: x.gain + 1)))),
-      // Its fades: in at its start (and its loop's), out at its loop's end.
-      for (var (label, key, value, set) in [
-        (
-          "Fade in",
-          "clipFadeIn",
-          clip.fadeIn,
-          (SessionClip x, double v) => x.copyWith(fadeIn: v)
-        ),
-        (
-          "Fade out",
-          "clipFadeOut",
-          clip.fadeOut,
-          (SessionClip x, double v) => x.copyWith(fadeOut: v)
-        ),
-      ])
-        _row(
-            look,
-            label,
-            _stepper(
-                look,
-                key,
-                value == 0 ? "None" : _seconds(value),
-                value <= 0
-                    ? null
-                    : () => c.editClip((x) => set(x, _fadeStep(value, -1))),
-                () => c.editClip((x) => set(x, _fadeStep(value, 1))))),
-      if (clip.fadeIn > 0 || clip.fadeOut > 0)
-        _row(
-            look,
-            "Curve",
-            _stepper(
-                look,
-                "clipFadeCurve",
-                clip.fadeCurve.label,
-                () => c.editClip((x) => x.copyWith(
-                    fadeCurve: FadeCurve.values[
-                        (x.fadeCurve.index - 1) % FadeCurve.values.length])),
-                () => c.editClip((x) => x.copyWith(
-                    fadeCurve: FadeCurve.values[
-                        (x.fadeCurve.index + 1) % FadeCurve.values.length])))),
-      const SizedBox(height: 4),
-      Wrap(spacing: 4, runSpacing: 4, children: [
-        _pill(look, "Reverse", clip.reversedOf != null,
-            _busy ? null : () => _run(c.reverseClip),
-            key: const ValueKey("clipReverse"),
-            tip: "Backwards: a reversed copy of its sound is kept in the "
-                "library, beside the original"),
-        _pill(look, "Fade", clip.fade,
-            () => c.editClip((x) => x.copyWith(fade: !x.fade)),
-            key: const ValueKey("clipFade"),
-            tip: "A few milliseconds' fade in at its start and its loop's, "
-                "and out at its loop's end: no click where it is cut"),
-        _pill(look, "Spectrum", _spectral,
-            () => setState(() => _spectral = !_spectral),
-            key: const ValueKey("clipSpectrum"),
-            tip: "Its sound as a spectrogram: low pitches at the bottom, "
-                "each as bright as it is loud"),
-        _pill(look, "Crop", false, _busy ? null : () => _run(c.cropClip),
-            key: const ValueKey("clipCrop"),
-            tip: "Keep only what it plays, as a new sound, so the rest "
-                "stops taking room"),
-        // Cut into slices, each a clip in the slots under it.
-        CanvasDropdown<SliceBy?>(
-          key: const ValueKey("clipSlice"),
-          label: "",
-          value: null,
-          width: 130,
-          grow: false,
-          tight: true,
-          enabled: !_busy,
-          options: [
-            (null, "Slice…"),
-            for (var by in SliceBy.values) (by, by.label),
-          ],
-          onChanged: (by) {
-            if (by != null) _run(() => c.sliceClip(by));
-          },
-        ),
-      ]),
-      const SizedBox(height: 10),
-      Text(
-          "Drag the white flag on the ruler for its start, the bar over "
-          "it for its loop, and the bar's end for its length."
-          "${clip.warp ? " Click under the ruler for a warp marker, drag "
-              "it to pull the sound onto a beat, right-click it to take it "
-              "out." : ""}",
-          style: _small(look, look.studio.muted).copyWith(fontSize: 10)),
-    ];
-  }
-
   List<Widget> _notesColumn(MixerLook look) {
     Widget tool(NoteTool t, String tip) =>
         _pill(look, t.label, false, () => c.useNoteTool(t),
@@ -1355,7 +1664,13 @@ class _ClipEditorState extends State<ClipEditor> {
 
 /// _Sound is a stored sound as the editor draws it: the loudest of each of
 /// its slices, how long it is, and where it is struck.
-typedef _Sound = ({Float32List peaks, double seconds, List<double> hits});
+typedef _Sound = ({
+  Float32List peaks,
+  Float32List left,
+  Float32List right,
+  double seconds,
+  List<double> hits
+});
 
 /// _soundsOf are each stored sound, worked out once.
 final Map<String, Future<_Sound?>> _soundsOf = {};
@@ -1405,19 +1720,25 @@ Future<_Sound?> _soundOf(String assetId) => _soundsOf[assetId] ??= () async {
 _Sound _drawingOf(Float32List l, Float32List r) {
   var n = l.length;
   var peaks = Float32List(_peakSlices);
+  var left = Float32List(_peakSlices), right = Float32List(_peakSlices);
   for (var i = 0; i < n; i++) {
-    var v = math.max(l[i].abs(), r[i].abs());
+    var a = l[i].abs(), b = r[i].abs();
     var k = i * _peakSlices ~/ n;
+    if (a > left[k]) left[k] = a;
+    if (b > right[k]) right[k] = b;
+    var v = math.max(a, b);
     if (v > peaks[k]) peaks[k] = v;
   }
   return (
     peaks: peaks,
+    left: left,
+    right: right,
     seconds: n / 48000,
     hits: n == 0 ? const <double>[] : onsets(l, r),
   );
 }
 
-enum _Handle { start, loop, length, marker, point }
+enum _Handle { start, loop, length, marker, point, fadeIn, fadeOut }
 
 /// _SampleView is an audio clip's sound against the song's beats: its
 /// start's flag and its loop's bar on a ruler over it, to drag, and, when
@@ -1436,13 +1757,17 @@ class _SampleView extends StatefulWidget {
 
   /// spectral draws its sound as a spectrogram, under its wave.
   final bool spectral;
+
+  /// onSay tells the editor something to show on its line of help.
+  final ValueChanged<String?>? onSay;
   const _SampleView(
       {required this.controller,
       required this.clip,
       this.envelope,
       this.envelopeRest = 1,
       this.envelopeLength,
-      this.spectral = false});
+      this.spectral = false,
+      this.onSay});
 
   @override
   State<_SampleView> createState() => _SampleViewState();
@@ -1455,6 +1780,10 @@ class _SampleViewState extends State<_SampleView>
   double? _playhead;
   _Handle? _dragging;
   int _marker = 0;
+
+  /// The last marker tapped and when, for a double-click taking it out.
+  int? _tappedMarker;
+  DateTime _tappedAt = DateTime(0);
   double _dragFrom = 0, _valueFrom = 0;
 
   /// _zoom is how far in the sound is drawn (one: all of it in view), and
@@ -1574,7 +1903,12 @@ class _SampleViewState extends State<_SampleView>
         double xOf(double beat) => (beat - scroll) * beatW;
         var step = _step(beatW);
         var markers = clip.warp ? clip.markers : const <WarpMarker>[];
-        var top = _rulerH + (clip.warp ? _markersH : 0);
+        var top = _rulerH + _markersH;
+        var spbNow = math.max(0.001, c.document.audio.secondsPerBeat);
+        // The fades' grips, at the top of the sound: where the fade in
+        // ends and the fade out begins.
+        var fadeInX = xOf(clip.start + clip.fadeIn / spbNow);
+        var fadeOutX = xOf(clip.loopEnd(bpb) - clip.fadeOut / spbNow);
         return GestureDetector(
           supportedDevices: dragPointers,
           key: const ValueKey("clipRuler"),
@@ -1596,9 +1930,26 @@ class _SampleViewState extends State<_SampleView>
                   (x) => x.withCurve(env, [...x.curveOf(env), (beat, value)]));
               return;
             }
-            if (!clip.warp || p.dy < _rulerH || p.dy > top) return;
+            if (p.dy < _rulerH || p.dy > top) return;
+            if (!clip.warp) {
+              widget.onSay?.call("Switch Warp on to place warp markers");
+              return;
+            }
             var beat = beatAt(p.dx);
-            if (_markerNear(markers, beatW, p.dx + scroll * beatW) != null) {
+            if (_markerNear(markers, beatW, p.dx + scroll * beatW)
+                case var i?) {
+              // Twice on it: taken out, as a right-click does.
+              var now = DateTime.now();
+              if (i == _tappedMarker &&
+                  now.difference(_tappedAt) <
+                      const Duration(milliseconds: 400)) {
+                _tappedMarker = null;
+                c.editClip(
+                    (x) => x.copyWith(markers: [...x.markers]..removeAt(i)));
+              } else {
+                _tappedMarker = i;
+                _tappedAt = now;
+              }
               return;
             }
             var seconds = secondOf(beat).clamp(0.0, length);
@@ -1636,6 +1987,19 @@ class _SampleViewState extends State<_SampleView>
               c.beginInteraction();
               return;
             }
+            // The fades' grips.
+            if (p.dy >= top && p.dy <= top + 14) {
+              if ((p.dx - fadeInX).abs() <= 8) {
+                _dragging = _Handle.fadeIn;
+                c.beginInteraction();
+                return;
+              }
+              if ((p.dx - fadeOutX).abs() <= 8) {
+                _dragging = _Handle.fadeOut;
+                c.beginInteraction();
+                return;
+              }
+            }
             if (p.dy > top + 12) return;
             var x = p.dx;
             if (clip.warp && p.dy >= _rulerH && p.dy <= top) {
@@ -1671,6 +2035,23 @@ class _SampleViewState extends State<_SampleView>
             // to nothing.
             var moved = (d.localPosition.dx - _dragFrom) / beatW;
             switch (handle) {
+              case _Handle.fadeIn:
+                var b = beatAt(d.localPosition.dx);
+                var most = (clip.loopEnd(bpb) - clip.start) / 2;
+                var beats = (b - clip.start).clamp(0.0, math.max(0.0, most));
+                c.editClip(
+                    (x) => x.copyWith(
+                        fadeIn: (beats * spbNow * 100).roundToDouble() / 100),
+                    transient: true);
+              case _Handle.fadeOut:
+                var b = beatAt(d.localPosition.dx);
+                var most = (clip.loopEnd(bpb) - clip.start) / 2;
+                var beats =
+                    (clip.loopEnd(bpb) - b).clamp(0.0, math.max(0.0, most));
+                c.editClip(
+                    (x) => x.copyWith(
+                        fadeOut: (beats * spbNow * 100).roundToDouble() / 100),
+                    transient: true);
               case _Handle.start:
                 var v = math.max(0.0, _snap(_valueFrom + moved, step));
                 c.editClip((x) => x.copyWith(start: v), transient: true);
@@ -1744,6 +2125,8 @@ class _SampleViewState extends State<_SampleView>
                   scroll: scroll,
                   step: step,
                   peaks: heard?.peaks,
+                  left: heard?.left,
+                  right: heard?.right,
                   fileSeconds: fileSeconds,
                   playStart: playStart,
                   playLength: length,
@@ -1885,6 +2268,10 @@ class _SamplePainter extends CustomPainter {
   /// snaps to, drawn where it is finer than a beat (nought for none).
   final double scroll, step;
   final Float32List? peaks;
+
+  /// left and right are each side's peaks: drawn as two halves, as the
+  /// prototype's L and R.
+  final Float32List? left, right;
   final double fileSeconds, playStart, playLength;
   final double Function(double beat) secondOf;
   final List<double> hits, markers;
@@ -1912,6 +2299,8 @@ class _SamplePainter extends CustomPainter {
     this.scroll = 0,
     this.step = 1,
     required this.peaks,
+    this.left,
+    this.right,
     required this.fileSeconds,
     required this.playStart,
     required this.playLength,
@@ -2037,34 +2426,63 @@ class _SamplePainter extends CustomPainter {
             paint);
       }
     }
-    // The sound: both sides together, where each moment of it falls.
+    // The sound, where each moment of it falls: each side a half, as the
+    // prototype's L and R -- or, over its spectrum, both together.
     var peaks = this.peaks;
     if (peaks != null && fileSeconds > 0) {
-      var mid = top + (h - top) / 2;
-      var half = (h - top) / 2 - 6;
+      var stereo = spectrum == null && this.left != null && right != null;
+      var sides = stereo ? [this.left!, right!] : [peaks];
+      var band = (h - top) / sides.length;
       var wave = Paint()
-        ..color = studio.text.withValues(alpha: spectrum == null ? 0.75 : 0.12)
+        ..color = spectrum == null
+            ? const Color(0xFF4F8FD6)
+            : studio.text.withValues(alpha: 0.12)
         ..strokeWidth = 1;
+      var outside = Paint()
+        ..color = const Color(0xFF4F8FD6).withValues(alpha: 0.35)
+        ..strokeWidth = 1;
+      var first = loop ? math.min(start, loopStart) : start;
       // Only what is in view, a pixel at a time: zoomed in far, the whole of
       // it is many windows wide.
       var shownTo = left + size.width;
-      for (var x = left.floorToDouble();
-          x < math.min(shownTo, soundBeats * beatW);
-          x += 1) {
-        var from = playStart + secondOf(x / beatW);
-        var to = playStart + secondOf((x + 1) / beatW);
-        if (from >= playStart + playLength) break;
-        var a = (from / fileSeconds * _peakSlices)
-            .floor()
-            .clamp(0, _peakSlices - 1);
-        var b =
-            (to / fileSeconds * _peakSlices).ceil().clamp(a + 1, _peakSlices);
-        var v = 0.0;
-        for (var k = a; k < b; k++) {
-          v = math.max(v, peaks[k]);
+      for (var (k0, side) in sides.indexed) {
+        var mid = top + band * k0 + band / 2;
+        var half = band / 2 - 4;
+        for (var x = left.floorToDouble();
+            x < math.min(shownTo, soundBeats * beatW);
+            x += 1) {
+          var from = playStart + secondOf(x / beatW);
+          var to = playStart + secondOf((x + 1) / beatW);
+          if (from >= playStart + playLength) break;
+          var a = (from / fileSeconds * _peakSlices)
+              .floor()
+              .clamp(0, _peakSlices - 1);
+          var b =
+              (to / fileSeconds * _peakSlices).ceil().clamp(a + 1, _peakSlices);
+          var v = 0.0;
+          for (var k = a; k < b; k++) {
+            v = math.max(v, side[k]);
+          }
+          var y = math.min(1.0, v * gain) * half;
+          var beat = x / beatW;
+          canvas.drawLine(Offset(x, mid - y), Offset(x, mid + y),
+              beat < first || beat > loopEnd ? outside : wave);
         }
-        var y = math.min(1.0, v * gain) * half;
-        canvas.drawLine(Offset(x, mid - y), Offset(x, mid + y), wave);
+        if (stereo) {
+          var tp = TextPainter(
+              text: TextSpan(
+                  text: k0 == 0 ? "L" : "R",
+                  style: TextStyle(fontSize: 10, color: studio.muted)),
+              textDirection: TextDirection.ltr)
+            ..layout();
+          tp.paint(canvas, Offset(left + 3, mid - tp.height / 2));
+        }
+      }
+      if (stereo) {
+        canvas.drawLine(
+            Offset(left, top + band),
+            Offset(left + size.width, top + band),
+            Paint()..color = studio.edge);
       }
     }
     // The loop's bar over the ruler, and its end's grip.
@@ -2151,14 +2569,22 @@ class _SamplePainter extends CustomPainter {
       shade
         ..lineTo(to * beatW, top)
         ..close();
-      canvas.drawPath(shade, Paint()..color = const Color(0x55000000));
+      canvas.drawPath(shade, Paint()..color = const Color(0x44000000));
       canvas.drawPath(
           path,
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.5
-            ..color = studio.text.withValues(alpha: 0.85));
+            ..color = _fadeInk);
     }
+
+    // The fades' grips, amber squares at the top of the sound: dragged,
+    // the fades are longer or shorter.
+    var grip = Paint()..color = _fadeInk;
+    canvas.drawRect(
+        Rect.fromLTWH((start + fadeIn) * beatW - 4, top + 1, 8, 8), grip);
+    canvas.drawRect(
+        Rect.fromLTWH((loopEnd - fadeOut) * beatW - 4, top + 1, 8, 8), grip);
 
     if (fadeIn > 0) {
       ramp(start, start + fadeIn, true);

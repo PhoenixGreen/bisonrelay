@@ -124,7 +124,7 @@ Future<SoundFont?> loadSoundBank() async {
   var l = Float32List(total), r = Float32List(total);
   if (total == 0) return (l, r);
   var sampler = Sampler(
-      font: part.sound == InstrumentSound.bank ? font : null,
+      font: part.sound == InstrumentSound.builtin ? null : font,
       bank: part.bank,
       program: part.program,
       look: part.look,
@@ -167,18 +167,53 @@ Future<SoundFont?> loadSoundBank() async {
 }
 
 /// partWav is [renderPart] as a 16-bit stereo WAV, run in an isolate,
-/// which reads the bank from [bankPath] where the part uses it.
-Future<Uint8List> partWav(InstrumentPart part, {String? bankPath}) =>
-    Isolate.run(() async {
-      SoundFont? font;
-      if (part.sound == InstrumentSound.bank && bankPath != null) {
-        try {
-          font = SoundFont.read(await File(bankPath).readAsBytes());
-        } catch (_) {}
+/// which reads the bank from [bankPath] where the part uses it -- or, a
+/// part of slices, its sound (see sliceAudioReader).
+Future<Uint8List> partWav(InstrumentPart part, {String? bankPath}) async {
+  var kit = part.slices;
+  (Float32List, Float32List)? sound;
+  if (part.sound == InstrumentSound.slices && kit != null) {
+    sound = await sliceAudioReader?.call(kit.assetId);
+  }
+  return Isolate.run(() async {
+    SoundFont? font;
+    if (part.sound == InstrumentSound.bank && bankPath != null) {
+      try {
+        font = SoundFont.read(await File(bankPath).readAsBytes());
+      } catch (_) {}
+    }
+    if (sound case (var l, var r) when kit != null) {
+      font = SoundFont.ofSlices(l, r, kit);
+    }
+    var (l, r) = renderPart(part, font);
+    return wav16(l, r);
+  });
+}
+
+/// sliceAudioReader reads a stored sound as 48kHz stereo, for an
+/// instrument of its slices: set by the canvas (CanvasController.clipAudio).
+Future<(Float32List, Float32List)?> Function(String assetId)? sliceAudioReader;
+
+final Map<String, Future<SoundFont?>> _sliceFonts = {};
+final Map<String, SoundFont> _sliceFontsMade = {};
+
+/// sliceFontOf is [kit] made a bank to play live, made once and kept.
+Future<SoundFont?> sliceFontOf(SliceKit kit) =>
+    _sliceFonts[kit.key] ??= () async {
+      var sound = await sliceAudioReader?.call(kit.assetId);
+      if (sound == null) {
+        _sliceFonts.remove(kit.key);
+        return null;
       }
-      var (l, r) = renderPart(part, font);
-      return wav16(l, r);
-    });
+      var (l, r) = sound;
+      var font = await Isolate.run(() => SoundFont.ofSlices(l, r, kit));
+      _sliceFontsMade[kit.key] = font;
+      return font;
+    }();
+
+/// loadedSliceFont is [kit]'s bank where it has been made already: for a
+/// key to sound at once.
+SoundFont? loadedSliceFont(SliceKit kit) => _sliceFontsMade[kit.key];
 
 /// wav16 is [l] and [r] as a 16-bit stereo WAV at the mix rate, clipped at
 /// full scale.

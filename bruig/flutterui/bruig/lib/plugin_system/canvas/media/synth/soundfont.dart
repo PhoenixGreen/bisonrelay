@@ -1,5 +1,8 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
+
+import 'package:bruig/plugin_system/canvas/model/instrument.dart' show SliceKit;
 
 // soundfont.dart reads a SoundFont 2 bank (see the SoundFont 2.01
 // specification; generator numbers are its own) and resolves what a key and
@@ -188,7 +191,60 @@ class SoundFont {
     return out;
   }
 
-  /// read reads a bank from its bytes. It throws a FormatException for a
+  /// ofSlices is a bank of one preset playing [kit]: each slice of [l] and
+  /// [r] -- a sound at [rate] -- on its own key, at its own pitch, as a
+  /// stereo pair. A one-shot kit's slices ring on to their ends once
+  /// struck; the rest stop a moment after their keys are let go.
+  static SoundFont ofSlices(Float32List l, Float32List r, SliceKit kit,
+      {int rate = 48000}) {
+    var data = <int>[];
+    var headers = <SfSample>[];
+    var zones = <_RawZone>[];
+    for (var i = 0; i < kit.count; i++) {
+      var a = (kit.cuts[i] * rate).round().clamp(0, l.length);
+      var b = (kit.cuts[i + 1] * rate).round().clamp(a, l.length);
+      if (b - a < 8) continue;
+      var key = kit.keys[i];
+      // Held to its end, a pad's; or let go over 30ms.
+      var release = kit.oneShot
+          ? (1200 * math.log((b - a) / rate + 0.05) / math.ln2).round()
+          : (1200 * math.log(0.03) / math.ln2).round();
+      for (var (side, pan) in [(l, -500), (r, 500)]) {
+        var start = data.length;
+        for (var k = a; k < b; k++) {
+          data.add((side[k].clamp(-1.0, 1.0) * 32767).round());
+        }
+        var end = data.length;
+        // A bank's samples are kept apart by 46 silent points.
+        for (var k = 0; k < 46; k++) {
+          data.add(0);
+        }
+        headers.add(SfSample("slice $i", start, end, start, end, rate, key, 0));
+        var gens = Int32List.fromList(Gen.defaults);
+        gens[Gen.keyRange] = key | (key << 8);
+        gens[Gen.sampleId] = headers.length - 1;
+        gens[Gen.pan] = pan;
+        gens[Gen.rootKey] = key;
+        gens[Gen.releaseVolEnv] = release;
+        zones.add(_RawZone(gens, {
+          Gen.keyRange,
+          Gen.sampleId,
+          Gen.pan,
+          Gen.rootKey,
+          Gen.releaseVolEnv,
+        }));
+      }
+    }
+    var instrument = _Instrument("Slices", null, zones);
+    var pg = Int32List.fromList(Gen.defaults)..[Gen.instrument] = 0;
+    var preset = SfPreset._("Slices", 0, 0, null, [
+      _RawZone(pg, {Gen.instrument})
+    ]);
+    return SoundFont._(
+        Int16List.fromList(data), [preset], [instrument], headers, "Slices");
+  }
+
+  /// read reads a bank from its bytes.  /// read reads a bank from its bytes. It throws a FormatException for a
   /// file that is not a bank, and may throw a RangeError for a truncated
   /// one.
   static SoundFont read(Uint8List bytes) {

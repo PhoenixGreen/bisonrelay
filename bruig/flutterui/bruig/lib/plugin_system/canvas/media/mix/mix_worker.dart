@@ -136,6 +136,10 @@ class _Worker {
   /// watchTaps are the channels whose meters between devices are on screen.
   final Set<String> watchTaps = {};
   String? fontPath;
+
+  /// sliceFonts are the banks of instruments of slices, sent from the
+  /// editor with each one's first note.
+  final Map<String, SoundFont> sliceFonts = {};
   SoundFont? _font;
   bool _fontTried = false;
 
@@ -425,17 +429,26 @@ class _Worker {
         var channel = m[1] as String;
         var part = m[2] as InstrumentPart;
         var useFont = m[5] as bool;
+        // An instrument of slices plays its own bank, sent with its first
+        // note.
+        var kit = part.sound == InstrumentSound.slices ? part.slices : null;
+        if (kit != null && m.length > 7 && m[7] is SoundFont) {
+          sliceFonts[kit.key] = m[7] as SoundFont;
+        }
+        var partFont = kit != null
+            ? sliceFonts[kit.key]
+            : useFont && part.sound == InstrumentSound.bank
+                ? font
+                : null;
         var which = "${part.look.name}:${part.sound.name}:${part.bank}:"
-            "${part.program}:$useFont";
+            "${part.program}:$useFont:${kit?.key}";
         var had = live[channel];
         if (had == null || had.$2.which != which || !had.$1.alive) {
           if (had != null) core.stop(had.$1);
           var instrument = _Live(
               which,
               Sampler(
-                  font: useFont && part.sound == InstrumentSound.bank
-                      ? font
-                      : null,
+                  font: partFont,
                   bank: part.bank,
                   program: part.program,
                   look: part.look));

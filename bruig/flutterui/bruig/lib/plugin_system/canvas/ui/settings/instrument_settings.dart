@@ -123,7 +123,10 @@ List<Widget> instrumentSettings(
                 value: part.sound,
                 width: 170,
                 options: [
-                  for (var s in InstrumentSound.values) (s, s.label),
+                  for (var s in InstrumentSound.values)
+                    // Slices only where it was made from a sound.
+                    if (s != InstrumentSound.slices || part.slices != null)
+                      (s, s.label),
                 ],
                 onChanged: (s) => set(part.copyWith(sound: s)),
               ),

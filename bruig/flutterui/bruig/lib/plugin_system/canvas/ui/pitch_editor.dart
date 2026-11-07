@@ -401,7 +401,7 @@ class _PitchEditorState extends State<PitchEditor> {
               ),
             ],
             builder: (context, menu, _) => toggle(
-                "${keyNames[_rootNow]} ${scaleNames[_scaleNow].toLowerCase()} ▾",
+                "${keyNames[_rootNow]} ${scaleNames[_scaleNow].toLowerCase()}",
                 false,
                 () => menu.isOpen ? menu.close() : menu.open(),
                 "pitchKeyScale",

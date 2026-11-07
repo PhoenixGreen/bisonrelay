@@ -193,17 +193,25 @@ class AudioRuntime extends ChangeNotifier {
     var down = _down.putIfAbsent(channel, () => {})..add(key);
     // Started, and the bank read if it is wanted: straight to the engine,
     // with nothing awaited between the key and the sound.
+    var kit = part.sound == InstrumentSound.slices ? part.slices : null;
     if (_started && !_disposed) {
       var bank = part.sound == InstrumentSound.bank;
-      if (!bank || loadedSoundBank != null) {
-        engine.noteOn(channel, part, key, velocity,
-            font: bank ? loadedSoundBank : null);
+      var ready = kit != null
+          ? loadedSliceFont(kit)
+          : bank
+              ? loadedSoundBank
+              : null;
+      if ((!bank && kit == null) || ready != null) {
+        engine.noteOn(channel, part, key, velocity, font: ready);
         return;
       }
     }
     if (!await _ready()) return;
-    var font =
-        part.sound == InstrumentSound.bank ? await loadSoundBank() : null;
+    var font = kit != null
+        ? await sliceFontOf(kit)
+        : part.sound == InstrumentSound.bank
+            ? await loadSoundBank()
+            : null;
     // Let go while the bank was being read: not started at all, or it
     // would never be stopped.
     if (_disposed || !down.contains(key)) return;

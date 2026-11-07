@@ -735,11 +735,16 @@ void main() {
       await tester.tap(find.byKey(const ValueKey("clipLoopStart-up")));
       await tester.pump();
       expect(c.session.at("a", 0)!.loopStart, 1);
-      // Gain down a decibel.
-      await tester.tap(find.byKey(const ValueKey("clipGain-down")));
+      // Gain down, on its slider.
+      var gain = find.byKey(const ValueKey("clipGain"));
+      await tester.ensureVisible(gain);
       await tester.pump();
-      expect(c.session.at("a", 0)!.gain, -1);
+      await tester.drag(gain, const Offset(-30, 0));
+      await tester.pump();
+      expect(c.session.at("a", 0)!.gain, lessThan(0));
       // Then: the next clip, from its dropdown.
+      await tester.ensureVisible(find.byKey(const ValueKey("clipFollow")));
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey("clipFollow")));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.tap(find.text("Next clip").last);
@@ -859,8 +864,13 @@ void main() {
       await type("clipStart", "nonsense");
       expect(c.session.at("a", 0)!.start, 6, reason: "left as it was");
       expect(c.session.at("a", 0)!.fade, isFalse);
-      await tester.tap(find.byKey(const ValueKey("clipFade")));
+      // In the fades' menu on the bar.
+      await tester.ensureVisible(find.byKey(const ValueKey("clipFadeCurve")));
       await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("clipFadeCurve")));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.byKey(const ValueKey("clipFade")));
+      await tester.pump(const Duration(milliseconds: 300));
       var clip = c.session.at("a", 0)!;
       expect(clip.fade, isTrue);
       expect(clip.needsRender, isTrue, reason: "faded in its render");
@@ -877,25 +887,33 @@ void main() {
       c.openClipEditor("a", 0);
       await tester.pump();
       await idle(tester);
-      expect(find.byKey(const ValueKey("clipFadeCurve")), findsNothing,
-          reason: "no curve without a fade");
-      await tester.ensureVisible(find.byKey(const ValueKey("clipFadeIn-up")));
+      // The fade in's amber grip, at the top of the sound, dragged a beat
+      // on: half a second at 120.
+      var view = tester.getRect(find.byKey(const ValueKey("clipSample")));
+      var beatW = view.width / 20;
+      var g = await tester.startGesture(view.topLeft + const Offset(1, 44));
+      await g.moveBy(Offset(beatW, 0));
+      await g.moveBy(const Offset(0.2, 0));
+      await g.up();
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey("clipFadeIn-up")));
+      expect(c.session.at("a", 0)!.fadeIn, closeTo(0.5, 0.03));
+      c.undo();
+      expect(c.session.at("a", 0)!.fadeIn, 0, reason: "one drag, one undo");
+      // And on its slider.
+      var fadeIn = find.byKey(const ValueKey("clipFadeIn"));
+      await tester.ensureVisible(fadeIn);
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey("clipFadeIn-up")));
+      await tester.drag(fadeIn, const Offset(20, 0));
       await tester.pump();
-      expect(c.session.at("a", 0)!.fadeIn, 0.03);
-      expect(
-          (tester.widget<Text>(find.byKey(const ValueKey("clipFadeIn")))).data,
-          "30 ms");
-      await tester
-          .ensureVisible(find.byKey(const ValueKey("clipFadeCurve-up")));
+      expect(c.session.at("a", 0)!.fadeIn, greaterThan(0));
+      // The way they go, from the bar's menu.
+      await tester.ensureVisible(find.byKey(const ValueKey("clipFadeCurve")));
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey("clipFadeCurve-up")));
-      await tester.pump();
-      expect(c.session.at("a", 0)!.fadeCurve, FadeCurve.fast,
-          reason: "on from Smooth, its first");
+      await tester.tap(find.byKey(const ValueKey("clipFadeCurve")));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.byKey(const ValueKey("clipFadeCurve-fast")));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(c.session.at("a", 0)!.fadeCurve, FadeCurve.fast);
       await tester.ensureVisible(find.byKey(const ValueKey("clipSpectrum")));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey("clipSpectrum")));
@@ -907,7 +925,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey("clipSlice")));
       await tester.pump(const Duration(milliseconds: 300));
-      await tester.tap(find.text("Every beat").last);
+      await tester.tap(find.byKey(const ValueKey("clipSlice-beat")));
       await tester.pump(const Duration(milliseconds: 300));
       await idle(tester);
       expect(c.session.at("a", 8)?.name, "Patience 8");
@@ -969,7 +987,6 @@ void main() {
                   assetId: "clicks.wav", name: "Clicks", length: 4.8)));
       c.openClipEditor("a", 0);
       await tester.pump();
-      expect(find.byKey(const ValueKey("clipWarpMode")), findsNothing);
       await tester.tap(find.byKey(const ValueKey("clipWarp")));
       for (var i = 0; i < 40 && !c.session.at("a", 0)!.warp; i++) {
         await tester.runAsync(
@@ -983,8 +1000,7 @@ void main() {
         await tester.pump();
       }
       expect(c.session.at("a", 0)!.bpm, closeTo(100, 0.01));
-      expect(find.text("100.00"), findsOneWidget);
-      expect(find.byKey(const ValueKey("clipWarpMode")), findsOneWidget);
+      expect(find.text("100.0"), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey("clipBpmHalve")));
       await tester.pump();
       expect(c.session.at("a", 0)!.bpm, 50);
@@ -1010,8 +1026,13 @@ void main() {
       await tester.pump();
       expect(c.session.at("a", 0)!.markers.single.beat,
           closeTo(markers.single.beat + 0.5, 0.26));
-      // Right-clicked, taken out.
-      var now = c.session.at("a", 0)!.markers.single.beat;
+      // Right-clicked, taken out. Moved, the marker stretched the sound,
+      // and the view with it: measured again.
+      clip = c.session.at("a", 0)!;
+      beats =
+          [clip.warpMap.beatAt(4.8), clip.loopEnd(4), 1.0].reduce(math.max) + 4;
+      beatW = view.width / beats;
+      var now = clip.markers.single.beat;
       await tester.tapAt(view.topLeft + Offset(now * beatW, 32),
           buttons: kSecondaryMouseButton);
       await tester.pump();
@@ -1203,9 +1224,11 @@ void main() {
       c.openClipEditor("a", 0);
       await tester.pump();
       await idle(tester);
-      await tester.tap(find.byKey(const ValueKey("clipEnvelopes")));
+      await tester
+          .ensureVisible(find.byKey(const ValueKey("clipEnvelope-gain")));
       await tester.pump();
-      expect(find.byKey(const ValueKey("clipEnvelopeTarget")), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey("clipEnvelope-gain")));
+      await tester.pump();
       var view = tester.getRect(find.byKey(const ValueKey("clipSample")));
       var clip = c.session.at("a", 0)!;
       // In view: sixteen beats of sound, and a bar more.
@@ -1213,7 +1236,7 @@ void main() {
           [16.0, clip.loopEnd(4), 1.0].reduce((a, b) => a > b ? a : b) + 4;
       var beatW = view.width / beats;
       // A point two beats in, half way down the sound.
-      var top = view.top + 26, bottom = view.bottom;
+      var top = view.top + 40, bottom = view.bottom;
       var middle = top + 6 + (bottom - top - 12) / 2;
       await tester.tapAt(Offset(view.left + 2 * beatW, middle));
       await tester.pump();
@@ -1247,13 +1270,16 @@ void main() {
       c.openClipEditor("a", 0);
       await tester.pump();
       await idle(tester);
-      await tester.tap(find.byKey(const ValueKey("clipEnvelopes")));
+      // The channel's volume, from the Setting menu.
+      await tester
+          .ensureVisible(find.byKey(const ValueKey("clipEnvelopeTarget")));
       await tester.pump();
-      // The channel's volume, from the list.
       await tester.tap(find.byKey(const ValueKey("clipEnvelopeTarget")));
       await tester.pump(const Duration(milliseconds: 400));
-      await tester.tap(find.text("Channel › Volume").last);
+      await tester.tap(find.byKey(const ValueKey("clipEnvelopeTarget-volume")));
+      // A menu's item acts after the frame it is pressed in.
       await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
       expect(find.byKey(const ValueKey("clipEnvelopeLength")), findsOneWidget,
           reason: "a setting's envelope can have a length of its own");
       var view = tester.getRect(find.byKey(const ValueKey("clipSample")));
@@ -1261,7 +1287,7 @@ void main() {
       var beats =
           [16.0, clip.loopEnd(4), 1.0].reduce((a, b) => a > b ? a : b) + 4;
       var beatW = view.width / beats;
-      var top = view.top + 26, bottom = view.bottom;
+      var top = view.top + 40, bottom = view.bottom;
       var middle = top + 6 + (bottom - top - 12) / 2;
       await tester.tapAt(Offset(view.left + 2 * beatW, middle));
       await tester.pump();
@@ -1271,6 +1297,9 @@ void main() {
       expect(clip.needsRender, isFalse,
           reason: "a setting's envelope is played, not rendered");
       // Its own length: a bar.
+      await tester
+          .ensureVisible(find.byKey(const ValueKey("clipEnvelopeLength")));
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey("clipEnvelopeLength")));
       await tester.pump(const Duration(milliseconds: 400));
       await tester.tap(find.text("1 bar").last);
@@ -1348,6 +1377,49 @@ void main() {
       await done(tester, c);
     });
 
+    // Ken: the prototype's clip editor -- a bar of tools, one column of
+    // settings, a line of help.
+    testWidgets(
+        "the prototype's bar: markers asked for Warp, taken out twice-clicked, "
+        "settings hidden", (tester) async {
+      var c = await show(tester);
+      c.openClipEditor("a", 0);
+      await tester.pump();
+      await idle(tester);
+      var view = tester.getRect(find.byKey(const ValueKey("clipSample")));
+      // Under the ruler, unwarped: it says how.
+      await tester.tapAt(view.topLeft + const Offset(200, 32));
+      await tester.pump();
+      expect(
+          tester
+              .widget<Text>(find.byKey(const ValueKey("clipEditorSaid")))
+              .data,
+          contains("Switch Warp on"));
+      // Warped, a marker put in and clicked twice: taken out.
+      c.editClip((x) => x.copyWith(
+          warp: true, bpm: 120, markers: const [(seconds: 1, beat: 2)]));
+      await tester.pump();
+      var clip = c.session.at("a", 0)!;
+      var beats =
+          [clip.warpMap.beatAt(8), clip.loopEnd(4), 1.0].reduce(math.max) + 4;
+      var x = view.left + 2 * view.width / beats;
+      await tester.tapAt(Offset(x, view.top + 32));
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tapAt(Offset(x, view.top + 32));
+      await tester.pump();
+      expect(c.session.at("a", 0)!.markers, isEmpty);
+      // The settings hidden, and back.
+      expect(find.byKey(const ValueKey("clipInspector")), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey("clipInspectorToggle")));
+      await tester.pump();
+      expect(find.byKey(const ValueKey("clipInspector")), findsNothing);
+      await tester.tap(find.byKey(const ValueKey("clipInspectorToggle")));
+      await tester.pump();
+      expect(find.byKey(const ValueKey("clipInspector")), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await done(tester, c);
+    });
+
     testWidgets("the editor's Play plays it on its own; Stop stops it",
         (tester) async {
       var c = await show(tester);
@@ -1358,7 +1430,7 @@ void main() {
       expect(c.sessionOnly, isTrue, reason: "the timeline stays quiet");
       expect(engine.launches, hasLength(1));
       expect(engine.launches.single.$2, closeTo(0, 0.01), reason: "at once");
-      expect(find.text("■ Stop"), findsOneWidget);
+      expect(find.text("Stop"), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey("clipPreview")));
       await tester.pump();
       expect(c.clipPreviewing, isFalse);

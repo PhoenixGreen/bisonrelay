@@ -156,6 +156,8 @@ const clipBarChoices = [1, 2, 4, 8, 16, 32];
 /// beat, or every bar.
 enum SliceBy {
   hits("At its hits"),
+  sixteenth("Every 1/16"),
+  eighth("Every 1/8"),
   beat("Every beat"),
   bar("Every bar");
 

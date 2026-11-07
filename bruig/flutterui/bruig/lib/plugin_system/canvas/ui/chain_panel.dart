@@ -189,6 +189,11 @@ extension on _ChainPanelState {
     }
     var notes = c.instrumentChannel(key);
     var channel = c.timelineChannels.any((l) => l.key == key);
+    // No clip in a slot: its sound on the timeline, as a clip (Ken: the two
+    // are interchangeable).
+    if (firstClip == null && !notes && c.timelineSoundOf(key) != null) {
+      firstClip = timelineRow;
+    }
     if (!notes && firstClip == null && !channel) return const [];
     var rollOn = c.pianoRollShown && c.pianoRoll?.row == null;
     var clipOn = c.clipEditorShown;

@@ -166,6 +166,7 @@ part 'controller/speech.dart';
 part 'controller/tools.dart';
 part 'controller/mixer.dart';
 part 'controller/keyframes.dart';
+part 'controller/timeline_clips.dart';
 
 // canvas_controller.dart holds everything about the canvas being edited that
 // is not the document itself: the selection, the playhead, the zoom, the undo
@@ -310,6 +311,8 @@ class CanvasController extends ChangeNotifier {
         _frameSource = frameSource {
     // Follow sound reads the recordings this canvas reads.
     motionSoundPeaks = (id) => waveformOf(id);
+    // An instrument of slices plays a stored sound.
+    sliceAudioReader = (id) => CanvasController.clipAudio(id);
   }
 
   CanvasDocument _document;

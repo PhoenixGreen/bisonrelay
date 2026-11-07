@@ -519,12 +519,18 @@ class DartAudioEngine implements AudioEngine {
   /// sounding on the channel, as one more voice through its strip.
   final Map<String, (CoreVoice, _LiveInstrument)> _live = {};
 
+  /// _slicesSent are the instruments of slices whose banks the worker has.
+  final Set<String> _slicesSent = {};
+
   @override
   void noteOn(String channel, InstrumentPart sound, int key, int velocity,
       {SoundFont? font}) {
     if (_remote) {
       // What plays it, not what it plays: a part's notes and curves are
       // not copied to the worker on every key pressed.
+      // An instrument of slices: its bank sent once, and kept there.
+      var kit = sound.sound == InstrumentSound.slices ? sound.slices : null;
+      var send = kit != null && font != null && _slicesSent.add(kit.key);
       _send([
         "noteOn",
         channel,
@@ -533,20 +539,22 @@ class DartAudioEngine implements AudioEngine {
         velocity,
         font != null,
         hostTicks(),
+        send ? font : null,
       ]);
       return;
     }
     _wakeLocal();
     var which = "${sound.look.name}:${sound.sound.name}:${sound.bank}:"
         "${sound.program}:"
-        "${font != null && sound.sound == InstrumentSound.bank}";
+        "${font != null && sound.sound != InstrumentSound.builtin}:"
+        "${sound.slices?.key}";
     var held = _live[channel];
     if (held == null || held.$2.which != which || !held.$1.alive) {
       if (held != null) core.stop(held.$1);
       var instrument = _LiveInstrument(
           which,
           Sampler(
-              font: sound.sound == InstrumentSound.bank ? font : null,
+              font: sound.sound == InstrumentSound.builtin ? null : font,
               bank: sound.bank,
               program: sound.program,
               look: sound.look));

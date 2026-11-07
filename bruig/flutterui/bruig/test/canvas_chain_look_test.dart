@@ -171,6 +171,7 @@ void main() {
         find.byKey(const ValueKey("audioClipsFadeIn")), const Offset(0, -30),
         kind: PointerDeviceKind.mouse);
     await tester.pump();
+    // The timeline's own fade: the same one the clip editor sets.
     expect(clip().fadeIn, greaterThan(0));
     c.undo();
     expect(clip().fadeIn, 0, reason: "one undo step a turn");
@@ -198,8 +199,8 @@ void main() {
     ]) {
       expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
     }
-    expect(find.byKey(const ValueKey("audioClipsTranspose")), findsNothing,
-        reason: "a timeline sound has no transposition here");
+    // A timeline sound is a clip as a slot's is: transposed too.
+    expect(find.byKey(const ValueKey("audioClipsTranspose")), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey("audioClipsChip-0")));
     await tester.pump();
     var transpose = find.byKey(const ValueKey("audioClipsTranspose"));

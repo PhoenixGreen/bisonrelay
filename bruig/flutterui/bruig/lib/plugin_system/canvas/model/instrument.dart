@@ -118,13 +118,74 @@ enum InstrumentSound {
   builtin("Built-in piano"),
 
   /// bank is the General MIDI sound bank, once it has been downloaded.
-  bank("MuseScore General");
+  bank("MuseScore General"),
+
+  /// slices are a sound cut at its hits, each played by a key of its own:
+  /// see SliceKit.
+  slices("Slices of a sound");
 
   final String label;
   const InstrumentSound(this.label);
 
   static InstrumentSound fromName(String? name) =>
       values.firstWhere((s) => s.name == name, orElse: () => builtin);
+}
+
+/// SliceKit is an instrument made of a sound cut into slices -- a clip
+/// sliced "into a note clip" or "into drum pads", as the prototype's -- each
+/// slice played by its own key, at its own pitch, to its end.
+class SliceKit {
+  /// assetId is the stored sound; cuts are where it is cut, in seconds
+  /// into it, first and last included: slice i runs from cuts[i] to
+  /// cuts[i + 1].
+  final String assetId;
+  final List<double> cuts;
+
+  /// keys are the key each slice is played by, in order.
+  final List<int> keys;
+
+  /// oneShot is whether a slice plays to its end once struck, as a drum
+  /// pad's does, rather than stopping when its key is let go.
+  final bool oneShot;
+  const SliceKit(this.assetId, this.cuts, this.keys, {this.oneShot = false});
+
+  int get count => math.min(keys.length, math.max(0, cuts.length - 1));
+
+  /// key is what its sound depends on, for a cache.
+  String get key =>
+      "$assetId|${cuts.join(",")}|${keys.join(",")}|${oneShot ? 1 : 0}";
+
+  Map<String, dynamic> toJson() => {
+        "asset": assetId,
+        "cuts": [for (var c in cuts) (c * 10000).round() / 10000],
+        "keys": keys,
+        if (oneShot) "oneShot": true,
+      };
+
+  static SliceKit? fromJson(Object? json) {
+    if (json is! Map) return null;
+    var asset = json["asset"];
+    if (asset is! String || asset.isEmpty) return null;
+    return SliceKit(
+        asset,
+        [
+          if (json["cuts"] case List list)
+            for (var c in list)
+              if (c is num) c.toDouble(),
+        ],
+        [
+          if (json["keys"] case List list)
+            for (var k in list)
+              if (k is num) k.toInt().clamp(0, 127),
+        ],
+        oneShot: json["oneShot"] == true);
+  }
+
+  @override
+  bool operator ==(Object other) => other is SliceKit && other.key == key;
+
+  @override
+  int get hashCode => key.hashCode;
 }
 
 /// InstrumentLook is what an instrument is played on, and drawn as.
@@ -243,7 +304,11 @@ class InstrumentPart {
     this.monitor = MidiMonitor.auto,
     this.rendered = "",
     this.shape = const InstrumentShape(),
+    this.slices,
   });
+
+  /// slices are what it plays where its sound is [InstrumentSound.slices].
+  final SliceKit? slices;
 
   /// highKey is the keyboard's top key.
   int get highKey => lowKey + keys - 1;
@@ -259,16 +324,18 @@ class InstrumentPart {
 
   /// name is the sound's name: its General MIDI name in the bank, or the
   /// built-in piano.
-  String get name => sound == InstrumentSound.builtin
-      ? switch (look) {
-          InstrumentLook.keyboard => "Piano",
-          InstrumentLook.drums => "Drums",
-          InstrumentLook.guitar => "Guitar",
-          InstrumentLook.bass => "Bass",
-        }
-      : bank == 128
-          ? "Drum kit"
-          : gmPrograms[program.clamp(0, 127)];
+  String get name => sound == InstrumentSound.slices
+      ? "Slices"
+      : sound == InstrumentSound.builtin
+          ? switch (look) {
+              InstrumentLook.keyboard => "Piano",
+              InstrumentLook.drums => "Drums",
+              InstrumentLook.guitar => "Guitar",
+              InstrumentLook.bass => "Bass",
+            }
+          : bank == 128
+              ? "Drum kit"
+              : gmPrograms[program.clamp(0, 127)];
 
   /// signature is a short hash of what the part sounds like: the same
   /// signature is the same file. Worked out once per part (parts never
@@ -282,6 +349,7 @@ class InstrumentPart {
       // The look changes the sound only for the built-in instrument.
       if (sound == InstrumentSound.builtin) look.name,
       sound.name,
+      if (sound == InstrumentSound.slices) slices?.key,
       bank,
       program,
       for (var n in notes) n.toJson(),
@@ -338,6 +406,7 @@ class InstrumentPart {
     MidiMonitor? monitor,
     String? rendered,
     InstrumentShape? shape,
+    SliceKit? slices,
   }) {
     var k = (keys ?? this.keys).clamp(12, 88);
     return InstrumentPart(
@@ -354,6 +423,7 @@ class InstrumentPart {
       monitor: monitor ?? this.monitor,
       rendered: rendered ?? this.rendered,
       shape: shape ?? this.shape,
+      slices: slices ?? this.slices,
     );
   }
 
@@ -371,6 +441,7 @@ class InstrumentPart {
         if (monitor != MidiMonitor.auto) "monitor": monitor.name,
         if (rendered.isNotEmpty) "rendered": rendered,
         if (!shape.plain) "shape": shape.toJson(),
+        if (slices case var k?) "slices": k.toJson(),
       };
 
   factory InstrumentPart.fromJson(Map<String, dynamic> json) =>
@@ -399,6 +470,7 @@ class InstrumentPart {
             MidiMonitor.auto,
         rendered: json["rendered"] is String ? json["rendered"] as String : "",
         shape: InstrumentShape.fromJson(json["shape"]),
+        slices: SliceKit.fromJson(json["slices"]),
       );
 }
 
