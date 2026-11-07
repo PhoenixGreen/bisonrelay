@@ -523,6 +523,157 @@ class DashedAddButton extends StatelessWidget {
   }
 }
 
+/// _PresetPicker is a card's preset on its bar, as the prototype's
+/// "Default ▾": the saved presets of its kind to put on it, Default to
+/// start again from, and Save.
+class _PresetPicker extends StatefulWidget {
+  final DeviceKind kind;
+  final String? name;
+  final void Function(String name, MixDevice preset) onPick;
+  final VoidCallback onDefault;
+  final VoidCallback onSave;
+  const _PresetPicker(
+      {required this.kind,
+      required this.name,
+      required this.onPick,
+      required this.onDefault,
+      required this.onSave,
+      super.key});
+
+  @override
+  State<_PresetPicker> createState() => _PresetPickerState();
+}
+
+class _PresetPickerState extends State<_PresetPicker> {
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var studio = look.studio;
+    var kept = [
+      for (var p in devicePresets.presets)
+        if (presetDevices(p.data) case [var d] when d.kind == widget.kind)
+          (p.name, d),
+    ];
+    return MenuAnchor(
+      style: chainMenuStyle(look),
+      menuChildren: [
+        chainMenuHeading(look, "${widget.kind.label} presets"),
+        chainMenuItem(look,
+            key: const ValueKey("presetDefault"),
+            text: "Default",
+            current: widget.name == null,
+            onPressed: widget.onDefault),
+        for (var (name, d) in kept)
+          chainMenuItem(look,
+              key: ValueKey("preset-$name"),
+              text: name,
+              current: widget.name == name,
+              onPressed: () => widget.onPick(name, d)),
+        chainMenuDivider(look),
+        chainMenuItem(look,
+            key: const ValueKey("presetSave"),
+            text: "Save these settings as a preset",
+            onPressed: widget.onSave),
+      ],
+      builder: (context, menu, _) => GestureDetector(
+        key: widget.key == null
+            ? null
+            : ValueKey("${(widget.key as ValueKey).value}-open"),
+        behavior: HitTestBehavior.opaque,
+        onTap: () async {
+          if (menu.isOpen) {
+            menu.close();
+            return;
+          }
+          await devicePresets.load();
+          if (!mounted) return;
+          setState(() {});
+          menu.open();
+        },
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 82),
+          height: 16,
+          margin: const EdgeInsets.only(right: 3),
+          padding: const EdgeInsets.only(left: 5, right: 1),
+          decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(3),
+              border: Border.all(color: studio.edge)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Flexible(
+              child: Text(widget.name ?? "Default",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 9.5, height: 1.1, color: studio.muted)),
+            ),
+            Icon(Icons.arrow_drop_down, size: 12, color: studio.muted),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// _GainBadge is what a device does to the level, read between it and the
+/// one before while sound passes -- "+2.2" warm, "−4.1" cool -- as the
+/// prototype's gain-change badge; nothing while it is quiet.
+class _GainBadge extends StatefulWidget {
+  final CanvasController controller;
+  final String channel;
+  final String id;
+  const _GainBadge(
+      {required this.controller,
+      required this.channel,
+      required this.id,
+      super.key});
+
+  @override
+  State<_GainBadge> createState() => _GainBadgeState();
+}
+
+class _GainBadgeState extends State<_GainBadge>
+    with SingleTickerProviderStateMixin, _Metered {
+  double? _change;
+
+  @override
+  CanvasController get meteredBy => widget.controller;
+
+  @override
+  void tick() {
+    var i = widget.controller.chainOf(widget.channel).indexOf(widget.id);
+    var taps = widget.controller.deviceLevels(widget.channel);
+    if (i < 0 || i + 1 >= taps.length) {
+      _change = null;
+      return;
+    }
+    double db((double, double) p) => gainToDb(math.max(p.$1, p.$2));
+    var a = db(taps[i]), b = db(taps[i + 1]);
+    var now = a <= -80 || b <= -80 ? null : b - a;
+    // Steadied, so it can be read.
+    _change = now == null
+        ? null
+        : _change == null
+            ? now
+            : _change! + (now - _change!) * 0.15;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var c = _change;
+    if (c == null || c.abs() < 0.05) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Text(
+          "${c >= 0 ? "+" : "−"}${c.abs().toStringAsFixed(1)}",
+          key: ValueKey("deviceGain-${widget.id}"),
+          style: TextStyle(
+              fontSize: 9.5,
+              fontFeatures: const [FontFeature.tabularFigures()],
+              color: c > 0 ? const Color(0xFFE2B04A) : const Color(0xFF7FC8F8))),
+    );
+  }
+}
+
 /// _ABSwitch is a card's A|B: the one heard lit; a press hears the other.
 class _ABSwitch extends StatelessWidget {
   final bool b;
@@ -890,6 +1041,14 @@ class DeviceFrame extends StatelessWidget {
   final VoidCallback? onAB;
   final bool showingB;
 
+  /// extraMenu are more of its ⋯ menu's items, after Reset: its own
+  /// settings that are not knobs (Oversample, Works on, Listens to).
+  final List<Widget> Function(MixerLook look)? extraMenu;
+
+  /// barExtras sit on its bar before A|B: its preset, and what it does to
+  /// the level.
+  final List<Widget> barExtras;
+
   /// frozen is whether it is in the part of its chain frozen into the
   /// channel's sounds (see CanvasController.freezeChain): shown as frozen,
   /// and not to be changed until unfrozen. onFreeze, given, freezes the
@@ -926,6 +1085,8 @@ class DeviceFrame extends StatelessWidget {
     this.onSavePreset,
     this.onAB,
     this.showingB = false,
+    this.extraMenu,
+    this.barExtras = const [],
     this.frozen = false,
     this.onFreeze,
     this.onUnfreeze,
@@ -940,7 +1101,8 @@ class DeviceFrame extends StatelessWidget {
     var tier = DeviceTier.of(height);
     var barHeight =
         tier == DeviceTier.small || tier == DeviceTier.strip ? 24.0 : 28.0;
-    var header = _bar(context, height: barHeight, short: false, full: true);
+    var header = _bar(context,
+        height: barHeight, short: false, full: true, cardWidth: width);
     if (folded) {
       return SizedBox(
         key: ValueKey("device-$id"),
@@ -1128,6 +1290,7 @@ class DeviceFrame extends StatelessWidget {
             text: "Reset every setting",
             onPressed: onReset),
       ...others,
+      ...?extraMenu?.call(look),
     ];
     if (top.isEmpty &&
         removes.isEmpty &&
@@ -1185,8 +1348,30 @@ class DeviceFrame extends StatelessWidget {
 
   /// _bar is the card's top: its power dot, its family's mark, its name in
   /// capitals -- pressed, it folds -- then its buttons and a ⋯ for the rest.
+  /// _presetFits is whether the bar has room for its preset beside its
+  /// name, its A|B and [buttons] more buttons, on a card [width] wide.
+  bool _presetFits(BuildContext context, int buttons, double cardWidth) {
+    var scale = MediaQuery.textScalerOf(context);
+    var tp = TextPainter(
+        text: TextSpan(
+            text: title.toUpperCase(),
+            style: const TextStyle(
+                fontSize: 10.5,
+                letterSpacing: 0.6,
+                fontWeight: FontWeight.w600)),
+        textScaler: scale,
+        maxLines: 1,
+        textDirection: TextDirection.ltr)
+      ..layout();
+    var fixed = 10 + 14 + 20 + 36 + 84 * scale.scale(1) + 30 * (buttons + 2);
+    return tp.width + fixed <= cardWidth;
+  }
+
   Widget _bar(BuildContext context,
-      {required double height, required bool short, required bool full}) {
+      {required double height,
+      required bool short,
+      required bool full,
+      double cardWidth = double.infinity}) {
     var studio = MixerLook.of(context).studio;
     var shown = [
       for (var a in actions)
@@ -1249,8 +1434,17 @@ class DeviceFrame extends StatelessWidget {
         // A strip is too narrow for its buttons: they are for a taller
         // panel.
         if (full) ...[
-          if (onAB != null)
-            _ABSwitch(key: ValueKey("deviceAB-$id"), b: showingB, onTap: onAB!),
+          // Its preset, level change and A|B; the preset left off a card
+          // too narrow for it beside its name (its ⋯ menu saves one).
+          ...[
+            for (var w in barExtras)
+              if (w is! _PresetPicker ||
+                  _presetFits(context, shown.length, cardWidth))
+                w,
+            if (onAB != null)
+              _ABSwitch(
+                  key: ValueKey("deviceAB-$id"), b: showingB, onTap: onAB!),
+          ],
           for (var a in shown) small(a),
           if (help.isNotEmpty)
             MenuAnchor(
@@ -1373,7 +1567,10 @@ class DeviceFrame extends StatelessWidget {
                 ? math.max(width, _besideDisplay + 50.0 * knobCount + 24)
                 : math.max(width, oneRow);
     var header = _bar(context,
-        height: barHeight, short: short, full: tier != DeviceTier.strip);
+        height: barHeight,
+        short: short,
+        full: tier != DeviceTier.strip,
+        cardWidth: w);
     var studio = MixerLook.of(context).studio;
     Widget inside;
     if (folded) {
@@ -4467,6 +4664,25 @@ class ParamDevice extends StatelessWidget {
     String target(DeviceParam p) => AutomationTarget.deviceSetting(
             deviceIdAt(devices, index), device.kind, p.id)
         .id;
+    // A knob's lane, and a controller's knob learnt for it, as the
+    // prototype's right-click.
+    List<(String, VoidCallback)> knobMenu(DeviceParam p) {
+      if (lane == null) return const [];
+      var t = target(p);
+      var cc = controller.controlOf(owner, t);
+      return [
+        ("Show its automation lane", () => controller.showLaneFor(owner, t)),
+        if (cc != null)
+          ("Forget the controller (CC $cc)",
+              () => controller.forgetControl(owner, t))
+        else
+          (
+            "Learn a controller: turn one of its knobs next",
+            () => controller.learnControl(owner, t)
+          ),
+      ];
+    }
+
     var (icon, accent) = deviceGroupLook(device.kind.group);
     var look = MixerLook.of(context);
     var skin = DeviceSkin.studio(look.studio);
@@ -4499,7 +4715,10 @@ class ParamDevice extends StatelessWidget {
                 automated: automated.contains(target(p)),
                 held: held.contains(target(p)),
                 modulated: moved.contains(p.id),
-                menu: device.kind.modulates ? const [] : modMenu(p),
+                menu: [
+                  if (!device.kind.modulates) ...modMenu(p),
+                  ...knobMenu(p),
+                ],
                 label: p.label,
                 text: p.reading(device.value(p.id)),
                 value: device.value(p.id),
@@ -4681,9 +4900,116 @@ class ParamDevice extends StatelessWidget {
       onReset: () => resetDevice(controller, owner, index),
       onSavePreset: () =>
           saveDevicePreset(context, device.kind.label, devices: [device]),
-      onAB: device.kind.params.isEmpty
+      onAB: device.kind.params.isEmpty ||
+              device.kind == DeviceKind.macro ||
+              device.kind == DeviceKind.split
           ? null
           : () => controller.toggleAB(owner, deviceIdAt(devices, index)),
+      barExtras: [
+        if (lane != null)
+          _GainBadge(
+              key: ValueKey("gainBadge-$index"),
+              controller: controller,
+              channel: owner,
+              id: deviceIdAt(devices, index)),
+        if (device.kind != DeviceKind.macro && device.kind != DeviceKind.split)
+          _PresetPicker(
+            key: ValueKey("devicePreset-$index"),
+            kind: device.kind,
+            name: controller.presetNameOf(owner, deviceIdAt(devices, index)),
+            onPick: (name, preset) {
+              var next = device;
+              for (var p in [...device.kind.params, ...deviceExtras]) {
+                next = next.withValue(p.id, preset.value(p.id));
+              }
+              write(next);
+              controller.setPresetName(
+                  owner, deviceIdAt(devices, index), name);
+            },
+            onDefault: () {
+              resetDevice(controller, owner, index);
+              controller.setPresetName(owner, deviceIdAt(devices, index), null);
+            },
+            onSave: () =>
+                saveDevicePreset(context, device.kind.label, devices: [device]),
+          ),
+      ],
+      extraMenu: (look) => [
+        // A drive's harmonics kept from folding back down.
+        if (device.kind.oversamples)
+          SubmenuButton(
+            key: ValueKey("deviceOversample-$index"),
+            style: chainMenuItemStyle(look),
+            menuStyle: chainMenuStyle(look),
+            menuChildren: [
+              for (var (k, label) in const [
+                (1, "Off"),
+                (2, "×2"),
+                (4, "×4"),
+              ])
+                chainMenuItem(look,
+                    key: ValueKey("deviceOversample-$index-$k"),
+                    text: label,
+                    hint: k == 1 ? null : "cleaner, a little more work",
+                    current: (device.value("oversample").round() >= 3
+                            ? 4
+                            : device.value("oversample").round()) ==
+                        k,
+                    onPressed: () =>
+                        write(device.withValue("oversample", k.toDouble()))),
+            ],
+            child: Text(
+                "Oversample: ${device.value("oversample").round() <= 1 ? "off" : "×${device.value("oversample").round() >= 3 ? 4 : 2}"}"),
+          ),
+        // Only the middle of the sound, or only its sides.
+        if (device.kind.worksOnSides)
+          SubmenuButton(
+            key: ValueKey("deviceStereo-$index"),
+            style: chainMenuItemStyle(look),
+            menuStyle: chainMenuStyle(look),
+            menuChildren: [
+              for (var (k, label) in const [
+                (0, "Both sides"),
+                (1, "Mid: what both sides share"),
+                (2, "Side: where they differ"),
+              ])
+                chainMenuItem(look,
+                    key: ValueKey("deviceStereo-$index-$k"),
+                    text: label,
+                    current: device.value("stereo").round() == k,
+                    onPressed: () =>
+                        write(device.withValue("stereo", k.toDouble()))),
+            ],
+            child: Text(
+                "Works on: ${const ["both sides", "mid", "side"][device.value("stereo").round()]}"),
+          ),
+        // What it listens to beside its own sound.
+        if (device.kind == DeviceKind.gate ||
+            device.kind == DeviceKind.follower ||
+            (device.kind == DeviceKind.vocoder &&
+                device.value("carrier").round() == carrierFromChannel))
+          SubmenuButton(
+            key: ValueKey("deviceListens-$index"),
+            style: chainMenuItemStyle(look),
+            menuStyle: chainMenuStyle(look),
+            menuChildren: [
+              if (device.kind != DeviceKind.vocoder)
+                chainMenuItem(look,
+                    key: ValueKey("deviceListens-$index-itself"),
+                    text: "Itself",
+                    current: device.source.isEmpty,
+                    onPressed: () => write(device.withSource(""))),
+              for (var ch in controller.timelineChannels)
+                if (ch.key != owner)
+                  chainMenuItem(look,
+                      key: ValueKey("deviceListens-$index-${ch.key}"),
+                      text: ch.name,
+                      current: device.source == ch.key,
+                      onPressed: () => write(device.withSource(ch.key))),
+            ],
+            child: const Text("Listens to (sidechain)"),
+          ),
+      ],
       showingB: controller.showingB(owner, deviceIdAt(devices, index)),
       skin: skin,
       on: device.on,
@@ -6546,8 +6872,10 @@ class MotionDeviceCard extends StatelessWidget {
       ];
     }
 
+    var reused = controller.motionOf(element).instances != null;
     List<Widget> knobs(DeviceTier tier) => [
           for (var p in d.kind.params)
+            if (motionParamShown(d, p, reused: reused))
             _Knob(
               key: ValueKey("mdev-${d.id}-${p.id}"),
               modulated: moved.contains(p.id),
@@ -6632,10 +6960,26 @@ class MotionDeviceCard extends StatelessWidget {
     return DeviceFrame(
       id: "mdev:${d.id}",
       title: d.kind.label,
-      help: d.kind.side == MotionDeviceSide.pose
-          ? "A move: changes where it is, how it turns and how big, before "
-              "it is drawn."
-          : "A look: changes how it is drawn, after the moves.",
+      help: motionAbout(d.kind),
+      // A copy beside it, and its settings back as they began.
+      onDuplicate: () {
+        var now = controller.motionDevicesOf(element);
+        var i = now.indexWhere((x) => x.id == d.id);
+        if (i < 0) return;
+        controller.beginInteraction();
+        controller.setMotionDevices(
+            element, withMotionDeviceIds([...now]..insert(i + 1, d.withId(""))));
+        controller.endInteraction();
+      },
+      onReset: () {
+        var fresh = MotionDevice(d.kind, on: d.on).withId(d.id);
+        controller.beginInteraction();
+        controller.setMotionDevices(element, [
+          for (var x in controller.motionDevicesOf(element))
+            x.id == d.id ? fresh.withTarget(d.target).withMods(d.mods) : x
+        ]);
+        controller.endInteraction();
+      },
       skin: skin,
       on: d.on,
       onPower: (v) => write(d.switched(v)),
@@ -6668,10 +7012,9 @@ class MotionDeviceCard extends StatelessWidget {
       controls: knobs,
       // A screen where there is something to show without the element:
       // a look on a square, Time's curve, a wave's shape.
-      display: d.side == MotionDeviceSide.look ||
-              d.kind == MotionDeviceKind.time ||
-              d.kind == MotionDeviceKind.wiggle ||
-              d.kind == MotionDeviceKind.oscillate
+      // Every kind has one now (Ken, 2026-11-08: the motion chain as
+      // usable as the sound's): its settings drawn.
+      display: d.kind != MotionDeviceKind.instances
           ? SizedBox.expand(
               child: CustomPaint(
                   key: ValueKey("mdevScreen-${d.id}"),
@@ -6785,6 +7128,121 @@ class _MotionScreen extends CustomPainter {
             ..color = device.on ? accent : accent.withValues(alpha: 0.4));
       return;
     }
+    var ink = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..color = device.on ? accent : accent.withValues(alpha: 0.4);
+    var faint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = accent.withValues(alpha: 0.2);
+    var w = size.width, h = size.height;
+    Path curve(double Function(double u) y, {int steps = 120}) {
+      var path = Path();
+      for (var i = 0; i <= steps; i++) {
+        var u = i / steps;
+        i == 0 ? path.moveTo(u * w, y(u)) : path.lineTo(u * w, y(u));
+      }
+      return path;
+    }
+
+    switch (device.kind) {
+      case MotionDeviceKind.spring:
+        // A step: where its keys go (the dashed line), and it overshooting
+        // and settling there.
+        var k = device.value("stiffness"), damp = device.value("damping");
+        var top = h * 0.25, bottom = h * 0.82;
+        canvas.drawLine(Offset(0, top), Offset(w, top), faint);
+        canvas.drawPath(
+            curve((u) {
+              var t = u * 2.5;
+              var settle = 1 -
+                  math.exp(-t * damp * k * 0.5) * math.cos(t * k * 0.9);
+              return bottom - (bottom - top) * settle;
+            }),
+            ink);
+        return;
+      case MotionDeviceKind.squash:
+        // A ball as it lands: squashed by Amount, more the faster.
+        var a = device.value("amount") * (0.4 + 0.6 * device.value("bySpeed"));
+        var r = math.min(w, h) * 0.22;
+        var floor = h * 0.85;
+        canvas.drawLine(Offset(8, floor), Offset(w - 8, floor), faint);
+        for (var (i, sq) in [0.0, a * 0.5, a].indexed) {
+          var cx = w * (0.22 + 0.28 * i);
+          var rw = r * (1 + sq * 0.6), rh = r * (1 - sq * 0.5);
+          canvas.drawOval(
+              Rect.fromCenter(
+                  center: Offset(cx, floor - rh), width: rw * 2, height: rh * 2),
+              ink..style = i == 2 ? PaintingStyle.fill : PaintingStyle.stroke);
+        }
+        return;
+      case MotionDeviceKind.followPath:
+        // A path, and where along it it starts.
+        Offset at(double u) => Offset(
+            w * (0.1 + 0.8 * u), h * (0.5 - math.sin(u * 2 * math.pi) * 0.3));
+        var path = Path()..moveTo(at(0).dx, at(0).dy);
+        for (var i = 1; i <= 60; i++) {
+          path.lineTo(at(i / 60).dx, at(i / 60).dy);
+        }
+        canvas.drawPath(path, faint..strokeWidth = 2);
+        var start = at(device.value("start"));
+        canvas.drawCircle(start, 6,
+            Paint()..color = device.on ? accent : accent.withValues(alpha: 0.4));
+        if (device.target.isEmpty) _say(canvas, size, "Pick a path below");
+        return;
+      case MotionDeviceKind.lookAt:
+        // It, turned to face what it looks at, with its offset.
+        var me = Offset(w * 0.3, h * 0.6), them = Offset(w * 0.78, h * 0.3);
+        canvas.drawCircle(them, 5, Paint()..color = accent.withValues(alpha: 0.5));
+        var a = math.atan2(them.dy - me.dy, them.dx - me.dx) +
+            device.value("offset") * math.pi / 180;
+        var tip = me + Offset(math.cos(a), math.sin(a)) * math.min(w, h) * 0.3;
+        canvas.drawLine(me, tip, ink);
+        canvas.drawCircle(me, 7, ink..style = PaintingStyle.fill);
+        if (device.target.isEmpty) _say(canvas, size, "Pick what it looks at");
+        return;
+      case MotionDeviceKind.followSound || MotionDeviceKind.follower:
+        // A sound coming and going (faint) and it rising after it,
+        // smoothed as set.
+        var smooth = device.value("smooth");
+        double loud(double u) =>
+            (math.sin(u * 19) * 0.5 + 0.5) * (u % 0.33 < 0.2 ? 1 : 0.15);
+        canvas.drawPath(curve((u) => h * 0.9 - loud(u) * h * 0.7), faint);
+        var env = 0.0, k = 1 - smooth * 0.95;
+        canvas.drawPath(
+            curve((u) {
+              env += (loud(u) - env) * k * 0.25;
+              return h * 0.9 - env * h * 0.7;
+            }),
+            ink);
+        if (device.target.isEmpty) _say(canvas, size, "Pick a channel below");
+        return;
+      case MotionDeviceKind.lfo:
+        // Two of its cycles in its shape.
+        var shape = device.value("shape").round(),
+            phase = device.value("phase");
+        canvas.drawPath(
+            curve((u) => h / 2 - lfoValue(shape, 2 * u + phase) * (h / 2 - 6)),
+            ink);
+        return;
+      case MotionDeviceKind.macro:
+        // Its knobs as bars, as far as each is turned.
+        var bar = (w - 10) / macroKnobs;
+        for (var i = 0; i < macroKnobs; i++) {
+          var full = Rect.fromLTWH(5 + i * bar + 3, 8, bar - 6, h - 16);
+          canvas.drawRect(full, Paint()..color = accent.withValues(alpha: 0.15));
+          var up = device.value("m${i + 1}");
+          canvas.drawRect(
+              Rect.fromLTRB(full.left, full.bottom - full.height * up,
+                  full.right, full.bottom),
+              Paint()..color = accent);
+        }
+        return;
+      default:
+        break;
+    }
     if (device.kind == MotionDeviceKind.time) {
       // Eight seconds along; the moment asked for, up the side.
       const span = 8.0;
@@ -6821,6 +7279,17 @@ class _MotionScreen extends CustomPainter {
     canvas.clipRect(Offset.zero & size);
     paintWithLooks(canvas, box, [device], square);
     canvas.restore();
+  }
+
+  /// _say writes [text] small at the foot: what it is waiting for.
+  void _say(Canvas canvas, Size size, String text) {
+    var tp = TextPainter(
+        text: TextSpan(
+            text: text,
+            style: const TextStyle(fontSize: 10, color: Color(0xFF8E8A9C))),
+        textDirection: TextDirection.ltr)
+      ..layout(maxWidth: size.width - 12);
+    tp.paint(canvas, Offset(6, size.height - tp.height - 4));
   }
 
   @override
@@ -6889,22 +7358,27 @@ class AddMotionDeviceSlot extends StatelessWidget {
       id: pose ? "addMoveOpen" : "addLookOpen",
       title: pose ? "Add a move" : "Add a look",
       height: height,
+      // By family, as the sound chain's "+" lists them.
       groups: [
-        (
-          pose ? "Moves" : "Looks",
-          [
-            for (var k in MotionDeviceKind.on(side))
-              (
-                "addMotion-${k.name}",
-                k.label,
-                () {
-                  controller.beginInteraction();
-                  controller.addMotionDevice(element, k);
-                  controller.endInteraction();
-                }
-              ),
-          ]
-        ),
+        for (var family in {
+          for (var k in MotionDeviceKind.on(side)) motionFamily(k),
+        })
+          (
+            family,
+            [
+              for (var k in MotionDeviceKind.on(side))
+                if (motionFamily(k) == family)
+                  (
+                    "addMotion-${k.name}",
+                    k.label,
+                    () {
+                      controller.beginInteraction();
+                      controller.addMotionDevice(element, k);
+                      controller.endInteraction();
+                    }
+                  ),
+            ]
+          ),
       ],
     );
   }

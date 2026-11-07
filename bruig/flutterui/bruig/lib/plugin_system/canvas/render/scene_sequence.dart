@@ -261,10 +261,10 @@ void paintTransition(
 
     case SceneTransitionKind.zoomIn:
       from();
-      _scaled(canvas, page, 0.6 + 0.4 * t, t, to);
+      _scaled(canvas, page, 0.6 + 0.4 * t, t, to, over);
 
     case SceneTransitionKind.zoomOut:
-      _scaled(canvas, page, 1 + 0.4 * t, 1 - t, from);
+      _scaled(canvas, page, 1 + 0.4 * t, 1 - t, from, over);
       _faded(canvas, page, t, to);
 
     // Everything that covers: a shape in the transition's own colour grows
@@ -753,9 +753,11 @@ void _shifted(ui.Canvas canvas, Rect page, Offset by, void Function() draw) {
 }
 
 void _scaled(ui.Canvas canvas, Rect page, double scale, double alpha,
-    void Function() draw) {
+    void Function() draw, SceneTransition over) {
   canvas.save();
-  var centre = page.center;
+  // About its centre: the middle, or where it was moved to.
+  var centre = Offset(page.left + page.width * over.centreX,
+      page.top + page.height * over.centreY);
   canvas.translate(centre.dx, centre.dy);
   canvas.scale(scale, scale);
   canvas.translate(-centre.dx, -centre.dy);

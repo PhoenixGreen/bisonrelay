@@ -254,6 +254,35 @@ class SongSection {
 }
 
 /// AudioSettings is a document's sound as a production.
+/// ControlLink is a controller's knob learnt for a setting, as the
+/// prototype's "Learn a controller": MIDI control change [cc] turning
+/// [target] (an automation target's id) of channel [channel].
+class ControlLink {
+  final int cc;
+  final String channel;
+  final String target;
+  const ControlLink(this.cc, this.channel, this.target);
+
+  Map<String, dynamic> toJson() => {"cc": cc, "channel": channel, "target": target};
+
+  static ControlLink? fromJson(Object? json) {
+    if (json is! Map) return null;
+    var cc = json["cc"], channel = json["channel"], target = json["target"];
+    if (cc is! int || channel is! String || target is! String) return null;
+    return ControlLink(cc.clamp(0, 127), channel, target);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is ControlLink &&
+      other.cc == cc &&
+      other.channel == channel &&
+      other.target == target;
+
+  @override
+  int get hashCode => Object.hash(cc, channel, target);
+}
+
 class AudioSettings {
   /// tempo is in beats a minute, and beatsPerBar over beatUnit the time
   /// signature: what the timeline counts in bars and beats by.
@@ -275,7 +304,11 @@ class AudioSettings {
   /// editor plays folded down to stereo, and an export writes whole.
   final SpeakerLayout speakers;
 
+  /// controls are the controller knobs learnt for its settings.
+  final List<ControlLink> controls;
+
   const AudioSettings({
+    this.controls = const [],
     this.speakers = SpeakerLayout.stereo,
     this.tempo = 120,
     this.beatsPerBar = 4,
@@ -315,8 +348,10 @@ class AudioSettings {
           AudioOptions? export,
           List<SongSection>? sections,
           Quantise? quantise,
-          SpeakerLayout? speakers}) =>
+          SpeakerLayout? speakers,
+          List<ControlLink>? controls}) =>
       AudioSettings(
+        controls: controls ?? this.controls,
         speakers: speakers ?? this.speakers,
         tempo: (tempo ?? this.tempo).clamp(20.0, 400.0),
         beatsPerBar: (beatsPerBar ?? this.beatsPerBar).clamp(1, 16),
@@ -333,6 +368,7 @@ class AudioSettings {
       export == const AudioOptions() &&
       sections.isEmpty &&
       speakers == SpeakerLayout.stereo &&
+      controls.isEmpty &&
       quantise == Quantise.quarter;
 
   Map<String, dynamic> toJson() => {
@@ -344,6 +380,8 @@ class AudioSettings {
           "sections": [for (var s in sections) s.toJson()],
         if (quantise != Quantise.quarter) "quantise": quantise.name,
         if (speakers != SpeakerLayout.stereo) "speakers": speakers.name,
+        if (controls.isNotEmpty)
+          "controls": [for (var c in controls) c.toJson()],
       };
 
   factory AudioSettings.fromJson(Object? json) {
@@ -361,6 +399,11 @@ class AudioSettings {
       ],
       quantise: Quantise.fromName(jsonStr(json["quantise"])),
       speakers: SpeakerLayout.fromName(jsonStr(json["speakers"])),
+      controls: [
+        if (json["controls"] case List list)
+          for (var raw in list)
+            if (ControlLink.fromJson(raw) case var link?) link,
+      ],
     );
   }
 }

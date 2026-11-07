@@ -83,6 +83,14 @@ const _scales = [
 /// -- an instrument playing the chords, say.
 const vocoderCarriers = ["Noise", "Buzz", "Follow pitch", "Channel"];
 
+/// deviceExtras are the settings any device may have beyond its knobs, set
+/// from its ⋯ menu as the prototype's: Oversample (a drive's) and Works on
+/// (the whole sound, only its middle, or only its sides).
+const List<DeviceParam> deviceExtras = [
+  DeviceParam("oversample", "Oversample", 1, 4, 1, "x"),
+  DeviceParam("stereo", "Works on", 0, 2, 0, "", ["Both sides", "Mid", "Side"]),
+];
+
 /// carrierFromChannel is the Carrier setting that takes another channel.
 const int carrierFromChannel = 3;
 
@@ -312,7 +320,22 @@ enum DeviceKind {
   final List<DeviceParam> params;
   const DeviceKind(this.label, this.group, this.params);
 
-  DeviceParam param(String id) => params.firstWhere((p) => p.id == id);
+  DeviceParam param(String id) => params.firstWhere((p) => p.id == id,
+      orElse: () => deviceExtras.firstWhere((p) => p.id == id));
+
+  /// oversamples is whether it can be run oversampled (its ⋯ menu's
+  /// Oversample): a drive, whose harmonics would otherwise fold back down.
+  bool get oversamples =>
+      this == DeviceKind.saturator || this == DeviceKind.overdrive;
+
+  /// worksOnSides is whether it can be given only the middle or only the
+  /// sides of the sound (its ⋯ menu's Works on): one that changes sound.
+  bool get worksOnSides =>
+      !modulates &&
+      group != DeviceGroup.analysers &&
+      this != DeviceKind.split &&
+      this != DeviceKind.utility &&
+      this != DeviceKind.autoPan;
 
   /// modulates is whether it moves other devices' knobs (see MixDevice.mods)
   /// rather than making or changing sound.
@@ -442,7 +465,7 @@ class MixDevice {
         on: jsonBool(json["on"], true),
         values: {
           if (raw is Map)
-            for (var p in kind.params)
+            for (var p in [...kind.params, ...deviceExtras])
               if (raw[p.id] is num) p.id: jsonDouble(raw[p.id], p.initial),
         },
         source: json["source"] is String ? json["source"] as String : "",

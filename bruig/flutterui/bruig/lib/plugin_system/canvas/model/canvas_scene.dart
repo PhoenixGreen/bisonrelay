@@ -216,6 +216,10 @@ enum SceneTransitionKind {
   /// takesShape is whether a shape decides what opens.
   bool get takesShape => this == shapeWipe;
 
+  /// takesCentre is whether it grows from, or shrinks to, a point that can
+  /// be moved from the middle: a zoom.
+  bool get takesCentre => this == zoomIn || this == zoomOut;
+
   /// takesSoftness is whether its edge can be feathered.
   bool get takesSoftness =>
       this == band ||
@@ -306,6 +310,10 @@ class SceneTransition {
   /// edge.
   final double softness;
 
+  /// centreX and centreY are where a zoom grows from or shrinks to, as
+  /// fractions of the page across and down: the middle by default.
+  final double centreX, centreY;
+
   /// sound is the Audio store id heard as the transition plays, or empty for
   /// silence. It moves with the transition when a scene's length changes.
   /// See CanvasDocument.transitionSounds.
@@ -331,6 +339,8 @@ class SceneTransition {
     this.angle = 0,
     this.radius = 0.5,
     this.softness = 0,
+    this.centreX = 0.5,
+    this.centreY = 0.5,
     this.sound = "",
     this.soundName = "",
     this.soundLength = 0,
@@ -426,6 +436,8 @@ class SceneTransition {
     double? angle,
     double? radius,
     double? softness,
+    double? centreX,
+    double? centreY,
     String? sound,
     String? soundName,
     double? soundLength,
@@ -445,6 +457,8 @@ class SceneTransition {
         angle: angle ?? this.angle,
         radius: radius ?? this.radius,
         softness: softness ?? this.softness,
+        centreX: centreX ?? this.centreX,
+        centreY: centreY ?? this.centreY,
         sound: sound ?? this.sound,
         soundName: soundName ?? this.soundName,
         soundLength: soundLength ?? this.soundLength,
@@ -465,6 +479,8 @@ class SceneTransition {
         if (angle != 0) "angle": angle,
         if (radius != 0.5) "radius": radius,
         if (softness != 0) "softness": softness,
+        if (centreX != 0.5) "centreX": centreX,
+        if (centreY != 0.5) "centreY": centreY,
         if (sound.isNotEmpty) ...{
           "sound": sound,
           if (soundName.isNotEmpty) "soundName": soundName,
@@ -492,6 +508,8 @@ class SceneTransition {
         angle: jsonDouble(json["angle"], 0).clamp(-180.0, 180.0),
         radius: jsonDouble(json["radius"], 0.5).clamp(0.05, 1.0),
         softness: jsonDouble(json["softness"], 0).clamp(0.0, 1.0),
+        centreX: jsonDouble(json["centreX"], 0.5).clamp(0.0, 1.0),
+        centreY: jsonDouble(json["centreY"], 0.5).clamp(0.0, 1.0),
         sound: jsonString(json["sound"], ""),
         soundName: jsonString(json["soundName"], ""),
         soundLength: jsonDouble(json["soundLength"], 0).clamp(0.0, 3600.0),

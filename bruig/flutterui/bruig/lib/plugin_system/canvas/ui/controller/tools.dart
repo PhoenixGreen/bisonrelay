@@ -638,6 +638,17 @@ extension CanvasTools on CanvasController {
     endInteraction();
   }
 
+  /// presetNameOf is the preset last put on device [id] of strip [owner],
+  /// or null for its defaults: what its bar says.
+  String? presetNameOf(String owner, String id) => _presetNames["$owner|$id"];
+
+  void setPresetName(String owner, String id, String? name) {
+    name == null
+        ? _presetNames.remove("$owner|$id")
+        : _presetNames["$owner|$id"] = name;
+    notifyListeners();
+  }
+
   void toggleEditorWide() {
     _editorWide = !_editorWide;
     _editorWidth = null;

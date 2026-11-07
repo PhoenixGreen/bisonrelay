@@ -418,7 +418,8 @@ class _CanvasMixerState extends State<CanvasMixer>
     // The open chain's meters between devices: a channel's only, as only a
     // channel's strip measures each step.
     var open = _editing;
-    if (open != null && channels.containsKey(open)) {
+    if (open != null &&
+        (channels.containsKey(open) || controller.returnOf(open) != null)) {
       var taps = [
         for (var (l, r) in controller.deviceLevels(open))
           (gainToDb(l), gainToDb(r))
@@ -1314,8 +1315,15 @@ class _CanvasMixerState extends State<CanvasMixer>
                 owner: key,
                 height: h),
         ] else if (ret != null) ...[
+          // Its devices with a join before each and after the last: heard
+          // from there, or an analyser put there, as a channel's.
           for (var i = 0; i < controller.devicesOf(key).length; i++)
-            if (i != macroAt) deviceAt(i),
+            if (i != macroAt) ...[
+              _junction(i, h, theme, key),
+              deviceAt(i),
+            ],
+          if (controller.devicesOf(key).isNotEmpty)
+            _junction(controller.devicesOf(key).length, h, theme, key),
           AddDeviceSlot(
               key: const ValueKey("addDeviceSlot"),
               controller: controller,
@@ -1447,17 +1455,34 @@ class _CanvasMixerState extends State<CanvasMixer>
             void set(double db, {bool transient = false}) =>
                 write(mix.copyWith(gainDb: db), transient: transient);
 
+            // Where it goes: the master, or the bus it is routed into.
+            var to = mix.output.isEmpty
+                ? "Master"
+                : controller.document.returns
+                        .where((r) => r.id == mix.output)
+                        .firstOrNull
+                        ?.name ??
+                    "Master";
+            var returns = controller.document.returns;
+            var small = TextStyle(fontSize: 10.5, color: theme.studio.muted);
+            var value = TextStyle(
+                fontSize: 10.5,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                color: theme.studio.text);
             return DeviceFrame(
               id: "meter",
-              title: lane.name,
+              // The prototype's Output: where the chain leaves the channel.
+              title: "Output",
               skin: skin,
               icon: Icons.speaker,
               accent: const Color(0xFFCFCBDF),
-              help: "The channel's own strip: its level, its fader, mute and "
-                  "solo -- as on the mixer.",
+              help: "Where ${lane.name}'s chain ends: its pan, its sends to "
+                  "the returns, its fader, mute and solo -- as on the mixer "
+                  "-- and where it goes.",
               folded: f,
               onFold: fold,
-              width: 150,
+              width:
+                  returns.isEmpty ? 150 : 150 + 52.0 * returns.take(2).length,
               height: h,
               foldedBody: CustomPaint(
                   key: const ValueKey("meterFolded"),
@@ -1518,6 +1543,62 @@ class _CanvasMixerState extends State<CanvasMixer>
                           fontSize: 11,
                           fontFeatures: const [FontFeature.tabularFigures()],
                           color: theme.colors.onSurface)),
+                  // Its sends, a knob each, as the prototype's Send A.
+                  if (returns.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          for (var r in returns.take(2))
+                            SizedBox(
+                              width: 50,
+                              child: DeviceKnob(
+                                key: ValueKey("outputSend-${r.id}"),
+                                label: "Send ${r.name}",
+                                text: (mix.sends[r.id] ?? -60) <= -60
+                                    ? "off"
+                                    : "${mix.sends[r.id]!.toStringAsFixed(1)} dB",
+                                value: mix.sends[r.id] ?? -60,
+                                initial: -60,
+                                min: -60,
+                                max: 6,
+                                size: 24,
+                                accent: const Color(0xFF9A92EA),
+                                ink: theme.studio.text,
+                                onChanged: (v, {transient = false}) => write(
+                                    mix.copyWith(
+                                        sends: {
+                                      ...mix.sends,
+                                      r.id: (v * 2).roundToDouble() / 2,
+                                    }..removeWhere((_, db) => db <= -60)),
+                                    transient: transient),
+                                onCommit: controller.endInteraction,
+                              ),
+                            ),
+                        ]),
+                  ],
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    Text("Peak", style: small),
+                    const Spacer(),
+                    Text(
+                        peak.$1 <= -80 && peak.$2 <= -80
+                            ? "−∞"
+                            : "${math.max(peak.$1, peak.$2).toStringAsFixed(1)} dB",
+                        key: const ValueKey("outputPeak"),
+                        style: value),
+                  ]),
+                  Row(children: [
+                    Text("To", style: small),
+                    const Spacer(),
+                    Flexible(
+                      child: Text(to,
+                          key: const ValueKey("outputTo"),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: value),
+                    ),
+                  ]),
                 ]),
               ),
             );

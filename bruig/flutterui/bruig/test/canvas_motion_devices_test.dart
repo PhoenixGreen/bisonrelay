@@ -3,6 +3,8 @@ import 'dart:ui';
 
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
@@ -465,6 +467,118 @@ void main() {
       expect(c.motionPreview, isNull, reason: "clicked again, whole");
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  // Ken, 2026-11-08: the motion chain's pass against the prototype.
+  group("the pass", () {
+    Future<CanvasController> panel(WidgetTester tester, CanvasDocument d,
+        {String pick = "a"}) async {
+      var c = CanvasController(d, audioEngine: FakeEngine(const {}));
+      addTearDown(c.dispose);
+      c.selectOnly(pick);
+      tester.view.physicalSize = const Size(2400, 300);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: ListenableBuilder(
+                    listenable: c,
+                    builder: (context, _) =>
+                        AnimationPanel(controller: c, height: 300)))),
+      ));
+      await tester.pump(const Duration(milliseconds: 200));
+      return c;
+    }
+
+    testWidgets("a device switched off or a modulator: no join after it",
+        (tester) async {
+      var c = await panel(
+          tester,
+          doc([
+            const MotionDevice(MotionDeviceKind.wiggle, id: "m0", on: false),
+            const MotionDevice(MotionDeviceKind.lfo, id: "m1"),
+            const MotionDevice(MotionDeviceKind.oscillate, id: "m2"),
+          ], clip: false));
+      // Before them, and after the oscillate (two on: the LFO counted).
+      expect(find.byKey(const ValueKey("motionJoin-0")), findsOneWidget);
+      expect(find.byKey(const ValueKey("motionJoin-1")), findsNothing);
+      expect(find.byKey(const ValueKey("motionJoin-2")), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      expect(c.motionPreview, isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets("every move has a screen; Time's Every only while looping",
+        (tester) async {
+      await panel(
+          tester,
+          doc([
+            const MotionDevice(MotionDeviceKind.time, id: "m0"),
+            const MotionDevice(MotionDeviceKind.spring, id: "m1"),
+            const MotionDevice(MotionDeviceKind.lookAt, id: "m2"),
+          ], clip: false));
+      for (var id in ["m0", "m1", "m2"]) {
+        expect(find.byKey(ValueKey("mdevScreen-$id")), findsOneWidget);
+      }
+      expect(find.byKey(const ValueKey("mdev-m0-every")), findsNothing,
+          reason: "Loop is Off");
+      expect(find.byKey(const ValueKey("mdev-m0-speed")), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets("folded on one element is not folded on the next",
+        (tester) async {
+      var d = CanvasDocument(frames: 240, frameRate: 24, elements: [
+        for (var id in ["a", "b"])
+          ShapeElement(
+              ElementBase(
+                  id: id,
+                  width: 10,
+                  height: 10,
+                  motion: const ElementMotion(devices: [
+                    MotionDevice(MotionDeviceKind.wiggle, id: "m0"),
+                  ])),
+              fill: const Color(0xFF000000)),
+      ]);
+      var c = await panel(tester, d);
+      await tester.tap(find.byKey(ValueKey("deviceFold-mdev:m0")));
+      await tester.pump();
+      expect(find.byKey(const ValueKey("mdev-m0-speed")), findsNothing);
+      c.selectOnly("b");
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byKey(const ValueKey("mdev-m0-speed")), findsOneWidget,
+          reason: "b's wiggle is its own");
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets("a camera has no looks to add", (tester) async {
+      var d = CanvasDocument(frames: 240, frameRate: 24, elements: [
+        const CameraElement(ElementBase(id: "cam", width: 160, height: 90)),
+      ]);
+      await panel(tester, d, pick: "cam");
+      expect(find.byKey(const ValueKey("cameraNoLooks")), findsOneWidget);
+      expect(find.byKey(const ValueKey("addMotionLook")), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    test("a shadow turning with it, and a zoom's centre, kept", () {
+      var shadow =
+          const MotionDevice(MotionDeviceKind.shadow, values: {"turns": 1});
+      expect(MotionDevice.fromJson(shadow.toJson())!.value("turns"), 1);
+      var zoom = const SceneTransition(
+          kind: SceneTransitionKind.zoomIn, centreX: 0.2, centreY: 0.8);
+      var back = SceneTransition.fromJson(zoom.toJson());
+      expect((back.centreX, back.centreY), (0.2, 0.8));
+      expect(SceneTransitionKind.zoomIn.takesCentre, isTrue);
+      expect(motionFamily(MotionDeviceKind.lfo), "Modulators");
     });
   });
 }

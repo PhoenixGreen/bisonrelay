@@ -381,9 +381,96 @@ class AutoPan implements DeviceProcessor, Tunable {
 
 /// Saturator drives a sound into a curve: soft (a hyperbolic tangent),
 /// warm (the same, a little lopsided, as valves are), or hard (clipped).
+/// Oversampler runs a shaping [factor] times as fast as the sound, so the
+/// harmonics it makes above half the rate are filtered away rather than
+/// folding back down as harshness: the prototype's Oversample. Each sound
+/// in is filled out to [factor] (a windowed-sinc low-pass), shaped, and
+/// filtered back down. It delays what it makes by [latency] samples, which
+/// the dry sound beside it is delayed by too (see [dry]).
+class Oversampler {
+  final int factor;
+  final Float64List _h;
+  final Float64List _in;
+  final Float64List _made;
+  int _inAt = 0, _madeAt = 0;
+
+  /// _dry delays the sound as it was by [latency], to mix with it.
+  final Float64List _dry = Float64List(latency);
+  int _dryAt = 0;
+
+  /// latency is how many samples late what it makes is.
+  static const int latency = 16;
+
+  Oversampler(this.factor)
+      : _h = _design(factor),
+        _in = Float64List((16 * factor + 1 + factor - 1) ~/ factor + 1),
+        _made = Float64List(16 * factor + 1);
+
+  static Float64List _design(int k) {
+    var taps = 16 * k + 1, m = (taps - 1) / 2;
+    var fc = 0.45 / k;
+    var h = Float64List(taps);
+    var sum = 0.0;
+    for (var t = 0; t < taps; t++) {
+      var x = t - m;
+      var sinc =
+          x == 0 ? 2 * fc : math.sin(2 * math.pi * fc * x) / (math.pi * x);
+      var w = 0.42 -
+          0.5 * math.cos(2 * math.pi * t / (taps - 1)) +
+          0.08 * math.cos(4 * math.pi * t / (taps - 1));
+      h[t] = sinc * w;
+      sum += h[t];
+    }
+    for (var t = 0; t < taps; t++) {
+      h[t] /= sum;
+    }
+    return h;
+  }
+
+  /// run is [x] shaped by [shape], oversampled: [latency] samples late.
+  double run(double x, double Function(double) shape) {
+    var n = _in.length, taps = _h.length;
+    _inAt = (_inAt + 1) % n;
+    _in[_inAt] = x;
+    for (var p = 0; p < factor; p++) {
+      var y = 0.0;
+      for (var j = 0; j * factor + p < taps; j++) {
+        y += _h[j * factor + p] * _in[(_inAt - j + n) % n];
+      }
+      _madeAt = (_madeAt + 1) % taps;
+      _made[_madeAt] = shape(y * factor);
+    }
+    var out = 0.0;
+    for (var t = 0; t < taps; t++) {
+      out += _h[t] * _made[(_madeAt - t + taps) % taps];
+    }
+    return out;
+  }
+
+  /// dry is [x] delayed as what [run] makes is.
+  double dry(double x) {
+    var was = _dry[_dryAt];
+    _dry[_dryAt] = x;
+    _dryAt = (_dryAt + 1) % latency;
+    return was;
+  }
+}
+
+/// _oversamplers are a left and a right for [d]'s Oversample, or null for
+/// none: kept where the factor is the same, made afresh where not.
+(Oversampler, Oversampler)? _oversamplers(
+    MixDevice d, (Oversampler, Oversampler)? was) {
+  var k = d.value("oversample").round();
+  var factor = k >= 3 ? 4 : k;
+  if (factor <= 1) return null;
+  if (was != null && was.$1.factor == factor) return was;
+  return (Oversampler(factor), Oversampler(factor));
+}
+
 class Saturator implements DeviceProcessor, Tunable {
   late double _drive, _out, _mix;
   late int _type;
+  (Oversampler, Oversampler)? _os;
   Saturator(MixDevice d) {
     tune(d);
   }
@@ -394,6 +481,7 @@ class Saturator implements DeviceProcessor, Tunable {
     _out = dbToGain(d.value("output"));
     _mix = d.value("mix");
     _type = d.value("type").round();
+    _os = _oversamplers(d, _os);
   }
 
   double _shape(double x) {
@@ -408,6 +496,13 @@ class Saturator implements DeviceProcessor, Tunable {
 
   @override
   void process(Float32List l, Float32List r, int n) {
+    if (_os case (var ol, var or)) {
+      for (var i = 0; i < n; i++) {
+        l[i] = ol.dry(l[i]) * (1 - _mix) + ol.run(l[i], _shape) * _mix;
+        r[i] = or.dry(r[i]) * (1 - _mix) + or.run(r[i], _shape) * _mix;
+      }
+      return;
+    }
     for (var i = 0; i < n; i++) {
       l[i] = l[i] * (1 - _mix) + _shape(l[i]) * _mix;
       r[i] = r[i] * (1 - _mix) + _shape(r[i]) * _mix;
@@ -427,6 +522,7 @@ double _tanh(double x) {
 class Overdrive implements DeviceProcessor, Tunable {
   late double _gain, _lp, _out, _mix;
   double _fl = 0, _fr = 0;
+  (Oversampler, Oversampler)? _os;
   Overdrive(MixDevice d) {
     tune(d);
   }
@@ -437,13 +533,23 @@ class Overdrive implements DeviceProcessor, Tunable {
     _lp = 1 - math.exp(-2 * math.pi * d.value("tone") / _rate);
     _out = dbToGain(d.value("output"));
     _mix = d.value("mix");
+    _os = _oversamplers(d, _os);
   }
+
+  double _clip(double x) => 2 / math.pi * math.atan(x * _gain);
 
   @override
   void process(Float32List l, Float32List r, int n) {
+    var os = _os;
     for (var i = 0; i < n; i++) {
-      var yl = 2 / math.pi * math.atan(l[i] * _gain);
-      var yr = 2 / math.pi * math.atan(r[i] * _gain);
+      // The clip oversampled where asked; its tone after, at the sound's
+      // own rate, as it was set for.
+      var yl = os == null ? _clip(l[i]) : os.$1.run(l[i], _clip);
+      var yr = os == null ? _clip(r[i]) : os.$2.run(r[i], _clip);
+      if (os != null) {
+        l[i] = os.$1.dry(l[i]);
+        r[i] = os.$2.dry(r[i]);
+      }
       _fl += _lp * (yl - _fl);
       _fr += _lp * (yr - _fr);
       l[i] = l[i] * (1 - _mix) + _fl * _out * _mix;

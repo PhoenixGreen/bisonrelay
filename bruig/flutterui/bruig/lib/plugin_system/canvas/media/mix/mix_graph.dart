@@ -67,6 +67,11 @@ class _Return {
   /// last block, while it is tapped (see MixGraph.tapped).
   List<(double, double)> taps = const [];
 
+  /// sides runs a device on its middle or sides; heard holds the sound
+  /// listened to from a step (see MixGraph.listenAt).
+  final SideRunner sides = SideRunner();
+  Float32List heardL = Float32List(0), heardR = Float32List(0);
+
   _Return(this.spec, int n)
       : chain = [for (var d in spec.devices) DeviceProcessor.of(d)],
         strip = StripProcessor(spec.mix),
@@ -638,9 +643,32 @@ class MixGraph {
       var taps = tapped.contains(ret.spec.id)
           ? <(double, double)>[blockPeaks(b.l, b.r, n)]
           : null;
-      for (var d in ret.chain) {
-        d?.process(b.l, b.r, n);
+      // Its devices' screens and a listen point, as a channel's.
+      var scopes = scoped[ret.spec.id];
+      var listen = listenAt[ret.spec.id];
+      var kept = false;
+      void keep() {
+        if (ret.heardL.length < n) {
+          ret.heardL = Float32List(n);
+          ret.heardR = Float32List(n);
+        }
+        ret.heardL.setRange(0, n, b.l);
+        ret.heardR.setRange(0, n, b.r);
+        kept = true;
+      }
+
+      if (listen == 0) keep();
+      for (var (i, d) in ret.chain.indexed) {
+        var scope = scopes?[deviceIdAt(ret.spec.devices, i)];
+        scope?.before(b.l, b.r, n);
+        if (d != null) ret.sides.run(d, ret.spec.devices[i], b.l, b.r, n);
+        scope?.after(b.l, b.r, n, d);
         taps?.add(blockPeaks(b.l, b.r, n));
+        if (listen == i + 1) keep();
+      }
+      if (kept) {
+        b.l.setRange(0, n, ret.heardL);
+        b.r.setRange(0, n, ret.heardR);
       }
       ret.taps = taps ?? const [];
       ret.strip.process(b.l, b.r, n);

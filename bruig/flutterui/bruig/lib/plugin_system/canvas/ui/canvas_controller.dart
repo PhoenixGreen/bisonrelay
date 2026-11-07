@@ -3510,6 +3510,11 @@ class CanvasController extends ChangeNotifier {
   /// and drawing it costs.
   final Set<String> _analysing = {};
 
+  /// _learning is the setting waiting for a controller's knob, and
+  /// _controlIdle ends a run of turning one as an undo step.
+  (String, String)? _learning;
+  Timer? _controlIdle;
+
   /// _listening is the chain heard from a point: see listenAt.
   (String, int)? _listening;
 
@@ -3517,6 +3522,9 @@ class CanvasController extends ChangeNotifier {
   /// and _abB those heard with their B: see toggleAB.
   final Map<String, Map<String, double>> _abOther = {};
   final Set<String> _abB = {};
+
+  /// _presetNames are the presets last put on devices, by "strip|device".
+  final Map<String, String> _presetNames = {};
 
   double? _editorWidth;
 

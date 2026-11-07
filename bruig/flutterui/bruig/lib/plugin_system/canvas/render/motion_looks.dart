@@ -74,8 +74,11 @@ void _look(ui.Canvas canvas, Rect room, MotionDevice d, void Function() under,
       under();
       canvas.restore();
     case MotionDeviceKind.shadow:
-      // Cast where the light puts it, whichever way the element turns.
-      var angle = (d.value("angle") - 90 - turn) * math.pi / 180;
+      // Cast where the light puts it, whichever way the element turns --
+      // or, Turns with it, as if the light were fixed to the element.
+      var turnsWith = d.value("turns").round() == 1;
+      var angle =
+          (d.value("angle") - 90 - (turnsWith ? 0 : turn)) * math.pi / 180;
       var away = d.value("distance") * k;
       var colour = colourOr(const Color(0xFF000000));
       canvas.save();

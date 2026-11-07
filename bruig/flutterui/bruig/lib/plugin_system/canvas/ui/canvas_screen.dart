@@ -245,6 +245,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     MidiInput.shared.onNote = _controller.midiNote;
     MidiInput.shared.onSustain = _controller.sustain;
     MidiInput.shared.onControl = _controller.midiControl;
+    MidiInput.shared.onCc = _controller.midiCc;
     MidiInput.shared.onPlay = _controller.togglePlay;
     MidiInput.shared.onRecord =
         () => _controller.recording = !_controller.recording;
@@ -374,6 +375,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
       MidiInput.shared.onNote = null;
       MidiInput.shared.onSustain = null;
       MidiInput.shared.onControl = null;
+      MidiInput.shared.onCc = null;
       MidiInput.shared.onPlay = null;
       MidiInput.shared.onRecord = null;
       MidiInput.shared.onClip = null;

@@ -65,6 +65,7 @@ bool _looks(SceneTransition value) {
       kind.takesSpacing ||
       kind.takesRadius ||
       kind.takesAngle ||
+      kind.takesCentre ||
       kind.takesSoftness;
 }
 
@@ -257,6 +258,29 @@ class SceneTransitionPart extends StatelessWidget {
               width: 58,
               onChanged: (v) => write(value.copyWith(angle: v)),
             ),
+          // Where a zoom grows from: the middle, or anywhere on the page.
+          if (value.kind.takesCentre) ...[
+            CanvasNumberField(
+              key: const ValueKey("transitionCentreX"),
+              label: "Centre across",
+              value: value.centreX,
+              min: 0,
+              max: 1,
+              decimals: 2,
+              width: 62,
+              onChanged: (v) => write(value.copyWith(centreX: v)),
+            ),
+            CanvasNumberField(
+              key: const ValueKey("transitionCentreY"),
+              label: "Centre down",
+              value: value.centreY,
+              min: 0,
+              max: 1,
+              decimals: 2,
+              width: 62,
+              onChanged: (v) => write(value.copyWith(centreY: v)),
+            ),
+          ],
           if (value.kind.takesSoftness)
             CanvasNumberField(
               key: const ValueKey("transitionSoftness"),

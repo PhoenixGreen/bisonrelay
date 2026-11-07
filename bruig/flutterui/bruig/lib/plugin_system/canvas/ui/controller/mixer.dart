@@ -112,6 +112,89 @@ extension CanvasMixing on CanvasController {
     notifyListeners();
   }
 
+  /// showLaneFor opens [channel]'s lanes on the timeline with one showing
+  /// [target]: a knob's "Show its automation lane".
+  void showLaneFor(String channel, String target) {
+    var lane = timelineChannels.where((c) => c.key == channel).firstOrNull;
+    if (lane == null) return;
+    var rows = automationRows(lane);
+    if (!rows.contains(target)) rows.add(target);
+    _automationShown.add(channel);
+    notifyListeners();
+  }
+
+  /// learning is the setting a controller's next knob turned is learnt
+  /// for, as (channel, target), or null.
+  (String, String)? get learning => _learning;
+
+  /// learnControl waits for a controller's knob to be turned, to turn
+  /// [target] of [channel] from then on.
+  void learnControl(String channel, String target) {
+    _learning = (channel, target);
+    notifyListeners();
+  }
+
+  /// controlOf is the control change learnt for [target] of [channel], or
+  /// null.
+  int? controlOf(String channel, String target) => _document.audio.controls
+      .where((l) => l.channel == channel && l.target == target)
+      .firstOrNull
+      ?.cc;
+
+  /// forgetControl lets [target] of [channel] go from its controller knob.
+  void forgetControl(String channel, String target) =>
+      setAudio(_document.audio.copyWith(controls: [
+        for (var l in _document.audio.controls)
+          if (l.channel != channel || l.target != target) l,
+      ]));
+
+  /// midiCc is control change [cc] turned to [value], nought to one: learnt
+  /// for what is waiting for one, or turning what it was learnt for. Each
+  /// run of turning is one undo step.
+  void midiCc(int cc, double value) {
+    if (_learning case (var channel, var target)) {
+      _learning = null;
+      setAudio(_document.audio.copyWith(controls: [
+        for (var l in _document.audio.controls)
+          if (l.cc != cc && (l.channel != channel || l.target != target)) l,
+        ControlLink(cc, channel, target),
+      ]));
+      return;
+    }
+    for (var link in _document.audio.controls) {
+      if (link.cc == cc) _turnByControl(link, value);
+    }
+  }
+
+  void _turnByControl(ControlLink link, double height) {
+    var what = AutomationTarget.parse(link.target);
+    var lane = timelineChannels.where((c) => c.key == link.channel).firstOrNull;
+    if (what == null || lane == null) return;
+    var v = what.valueAt(height.clamp(0.0, 1.0));
+    beginInteraction();
+    var mix = mixNow(lane);
+    switch (what.kind) {
+      case AutomationKind.volume:
+        setChannelMix(lane, mix.copyWith(gainDb: v),
+            transient: true, anywhere: true);
+      case AutomationKind.pan:
+        setChannelMix(lane, mix.copyWith(balance: v),
+            transient: true, anywhere: true);
+      case AutomationKind.send:
+        setChannelMix(lane, mix.copyWith(sends: {...mix.sends, what.send: v}),
+            transient: true, anywhere: true);
+      case AutomationKind.device:
+        var devices = devicesOf(link.channel);
+        var i = deviceIndexOf(devices, what.device);
+        if (i < 0) return;
+        setDevicesOf(link.channel,
+            [...devices]..[i] = devices[i].withValue(what.param, v),
+            transient: true);
+    }
+    _controlIdle?.cancel();
+    _controlIdle = Timer(const Duration(milliseconds: 400), endInteraction);
+  }
+
   /// automationLaneOf is [channel]'s lane for [target], or null with none.
   AutomationLane? automationLaneOf(TimelineChannel channel, String target) =>
       channel.mix.automation.where((l) => l.target == target).firstOrNull;

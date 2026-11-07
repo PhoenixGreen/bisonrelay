@@ -203,6 +203,7 @@ class StripProcessor {
   /// "Listen from here". Set by its graph each block.
   int? listenAt;
   Float32List _heardL = Float32List(0), _heardR = Float32List(0);
+  final SideRunner _sides = SideRunner();
 
   /// StripProcessor runs [mix]. With [carry], the strip it replaces, a
   /// device of the same id, kind and source keeps running -- so a chain put
@@ -336,7 +337,9 @@ class StripProcessor {
         var i = deviceIndexOf(_mix.devices, step);
         if (i >= 0 && i < _chain.length) {
           ran = _chain[i];
-          _chain[i]?.process(l, r, n);
+          if (_chain[i] case var p?) {
+            _sides.run(p, _mix.devices[i], l, r, n);
+          }
         }
       }
       scope?.after(l, r, n, ran);
@@ -476,6 +479,42 @@ const int modulationStep = 64;
     if (b > pr) pr = b;
   }
   return (math.min(pl, 1.0), math.min(pr, 1.0));
+}
+
+/// SideRunner runs a device on the whole sound, or -- its Works on set to
+/// Mid or Side, as the prototype's -- on only its middle (what both sides
+/// share) or only its sides (where they differ), the rest passing by.
+class SideRunner {
+  Float32List _a = Float32List(0), _b = Float32List(0), _rest = Float32List(0);
+
+  void run(
+      DeviceProcessor p, MixDevice d, Float32List l, Float32List r, int n) {
+    var mode = d.kind.worksOnSides ? d.value("stereo").round() : 0;
+    if (mode == 0) {
+      p.process(l, r, n);
+      return;
+    }
+    if (_a.length < n) {
+      _a = Float32List(n);
+      _b = Float32List(n);
+      _rest = Float32List(n);
+    }
+    for (var i = 0; i < n; i++) {
+      var mid = (l[i] + r[i]) * 0.5, side = (l[i] - r[i]) * 0.5;
+      var worked = mode == 1 ? mid : side;
+      _a[i] = worked;
+      _b[i] = worked;
+      _rest[i] = mode == 1 ? side : mid;
+    }
+    p.process(_a, _b, n);
+    for (var i = 0; i < n; i++) {
+      var worked = (_a[i] + _b[i]) * 0.5;
+      var mid = mode == 1 ? worked : _rest[i];
+      var side = mode == 1 ? _rest[i] : worked;
+      l[i] = mid + side;
+      r[i] = mid - side;
+    }
+  }
 }
 
 /// Tunable is a device that takes new settings without losing its state (a
@@ -786,6 +825,7 @@ class MasterProcessor {
 
   /// scopes are as a strip's (StripProcessor.scopes).
   Map<String, DeviceScope> scopes = const {};
+  final SideRunner _sides = SideRunner();
 
   MasterProcessor(this.mix, {this.normaliseDb = 0})
       : _eq = EqProcessor(mix.eq),
@@ -812,7 +852,7 @@ class MasterProcessor {
         var i = deviceIndexOf(mix.devices, step);
         if (i >= 0 && i < _devices.length) {
           ran = _devices[i];
-          _devices[i]?.process(l, r, n);
+          if (_devices[i] case var p?) _sides.run(p, mix.devices[i], l, r, n);
         }
       }
       scope?.after(l, r, n, ran);

@@ -331,10 +331,11 @@ class _AnimationPanelState extends State<AnimationPanel> {
         controller: controller,
         element: e.id,
         device: d.id,
-        folded: _folded.contains("mdev:${d.id}"),
-        onFold: () => setState(() => _folded.contains("mdev:${d.id}")
-            ? _folded.remove("mdev:${d.id}")
-            : _folded.add("mdev:${d.id}")),
+        // By element and device: ids start again at m0 on each element.
+        folded: _folded.contains("mdev:${e.id}:${d.id}"),
+        onFold: () => setState(() => _folded.contains("mdev:${e.id}:${d.id}")
+            ? _folded.remove("mdev:${e.id}:${d.id}")
+            : _folded.add("mdev:${e.id}:${d.id}")),
         height: h);
     // How fast it goes after its clips, and after each move: and, clicked,
     // the stage showing it as it is there.
@@ -361,10 +362,10 @@ class _AnimationPanelState extends State<AnimationPanel> {
         key: const ValueKey("instancesCard"),
         controller: controller,
         element: e.id,
-        folded: _folded.contains("instances"),
-        onFold: () => setState(() => _folded.contains("instances")
-            ? _folded.remove("instances")
-            : _folded.add("instances")),
+        folded: _folded.contains("instances:${e.id}"),
+        onFold: () => setState(() => _folded.contains("instances:${e.id}")
+            ? _folded.remove("instances:${e.id}")
+            : _folded.add("instances:${e.id}")),
         height: h,
         canLeft: reused && at > 0,
         canRight: reused && at < moves.length - 1);
@@ -376,8 +377,15 @@ class _AnimationPanelState extends State<AnimationPanel> {
         row.add(instancesCard(i));
         if (reused) row.add(join(++upto));
       } else {
-        if (d.on) upto++;
-        row.addAll([card(d), join(upto)]);
+        row.add(card(d));
+        // Switched off, it passes what it is given, and a modulator moves
+        // knobs, not the element: the join after either would be the one
+        // before it again. A modulator is still counted, as the preview
+        // counts it (MotionPreview.upto).
+        if (d.on) {
+          upto++;
+          if (!d.modulates) row.add(join(upto));
+        }
       }
     }
     return [
@@ -390,17 +398,45 @@ class _AnimationPanelState extends State<AnimationPanel> {
           element: e.id,
           side: MotionDeviceSide.pose,
           height: h),
-      DrawingCard(name: e.name.isEmpty ? e.id : e.name, height: h),
-      _zone("After", "Looks: how it looks once drawn"),
-      for (var d in devices)
-        if (d.side == MotionDeviceSide.look) card(d),
-      AddMotionDeviceSlot(
-          key: const ValueKey("addMotionLook"),
-          controller: controller,
-          element: e.id,
-          side: MotionDeviceSide.look,
-          height: h),
+      // A camera is never drawn: it frames the page. Looks on it would
+      // change nothing, so none are offered.
+      if (e is CameraElement)
+        _cameraNote(h)
+      else ...[
+        DrawingCard(name: e.name.isEmpty ? e.id : e.name, height: h),
+        _zone("After", "Looks: how it looks once drawn"),
+        for (var d in devices)
+          if (d.side == MotionDeviceSide.look) card(d),
+        AddMotionDeviceSlot(
+            key: const ValueKey("addMotionLook"),
+            controller: controller,
+            element: e.id,
+            side: MotionDeviceSide.look,
+            height: h),
+      ],
     ];
+  }
+
+  /// _cameraNote stands where a drawn element's looks would: a camera's
+  /// moves frame the page, and it has no looks of its own.
+  Widget _cameraNote(double h) {
+    var look = MixerLook.of(context);
+    return Container(
+      key: const ValueKey("cameraNoLooks"),
+      width: 170,
+      height: h,
+      padding: const EdgeInsets.all(10),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: look.studio.edge),
+      ),
+      child: Text(
+          "A camera frames the page and is never drawn itself, so it has no "
+          "looks. Its moves above pan, push in and turn the view.",
+          style:
+              TextStyle(fontSize: 10.5, height: 1.4, color: look.studio.muted)),
+    );
   }
 
   /// _zone marks where one part of the chain begins, as the Sound view's

@@ -48,6 +48,11 @@ class MidiInput extends ChangeNotifier {
   /// one.
   void Function(MidiControl control, double value)? onControl;
 
+  /// onCc is handed every control change by its number -- nought to one --
+  /// before it is read as a known controller: for a knob learnt for a
+  /// setting (see CanvasController.midiCc).
+  void Function(int cc, double value)? onCc;
+
   /// onPlay and onRecord are a controller's transport buttons: a Push's.
   void Function()? onPlay;
   void Function()? onRecord;
@@ -169,6 +174,7 @@ class MidiInput extends ChangeNotifier {
       // Control change 64: the sustain pedal, down from 64.
       onSustain?.call(velocity >= 64);
     } else if (kind == 0xB0) {
+      onCc?.call(key, velocity / 127);
       if (MidiControl.ofCc(key) case var c?) onControl?.call(c, velocity / 127);
     } else if (kind == 0xE0) {
       // Pitch bend: fourteen bits, low seven first; 8192 the middle.

@@ -1068,9 +1068,9 @@ void main() {
       var meter = find.byKey(const ValueKey("device-meter"));
       await tester.ensureVisible(meter);
       await tester.pump();
-      expect(find.descendant(of: meter, matching: find.text("BACKDROP")),
+      expect(find.descendant(of: meter, matching: find.text("OUTPUT")),
           findsOneWidget,
-          reason: "the channel's strip, under its name");
+          reason: "the channel's strip: the prototype's Output");
       await done(tester, c);
     });
 

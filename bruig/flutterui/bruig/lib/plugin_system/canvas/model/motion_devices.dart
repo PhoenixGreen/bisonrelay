@@ -97,6 +97,8 @@ enum MotionDeviceKind {
     DeviceParam("blur", "Blur", 0, 60, 10, "px"),
     DeviceParam("angle", "Angle", 0, 360, 135, "°"),
     DeviceParam("strength", "Strength", 0, 1, 0.5),
+    DeviceParam("turns", "Turns with it", 0, 1, 0, "",
+        ["No: the light stays put", "Yes"]),
   ]),
   blur("Blur", MotionDeviceSide.look, [
     DeviceParam("amount", "Amount", 0, 40, 4, "px"),
@@ -298,3 +300,83 @@ List<MotionDevice> motionDevicesInOrder(List<MotionDevice> chain) => [
       for (var d in chain)
         if (d.side == MotionDeviceSide.look) d,
     ];
+
+/// motionFamily is where [kind] is listed when one is added, as the sound
+/// chain's devices are: by what it does.
+String motionFamily(MotionDeviceKind kind) => switch (kind) {
+      MotionDeviceKind.time => "Time",
+      MotionDeviceKind.wiggle ||
+      MotionDeviceKind.oscillate ||
+      MotionDeviceKind.spring ||
+      MotionDeviceKind.squash =>
+        "Movement",
+      MotionDeviceKind.followPath ||
+      MotionDeviceKind.lookAt ||
+      MotionDeviceKind.followSound =>
+        "Follow",
+      MotionDeviceKind.lfo ||
+      MotionDeviceKind.macro ||
+      MotionDeviceKind.follower =>
+        "Modulators",
+      MotionDeviceKind.glow ||
+      MotionDeviceKind.shadow ||
+      MotionDeviceKind.outline =>
+        "Light and edge",
+      MotionDeviceKind.blur || MotionDeviceKind.colour => "Picture",
+      MotionDeviceKind.instances => "Instances",
+    };
+
+/// motionAbout is what [kind] does, in a few words: what its "?" and its
+/// ⋯ menu's "What it does" say.
+String motionAbout(MotionDeviceKind kind) => switch (kind) {
+      MotionDeviceKind.instances =>
+        "Where the element splits into its copies: what is left of it is "
+            "worked out once for all of them, what is right of it for each.",
+      MotionDeviceKind.time =>
+        "Changes time for everything to its left: Speed, an Offset, a Loop "
+            "round a stretch Every so long, and Hold frames for a "
+            "stepped, drawn-by-hand look.",
+      MotionDeviceKind.wiggle =>
+        "A restless drift: moves it about by Amount, Speed times a second, "
+            "with a little Turn. Each its own gives every copy its own.",
+      MotionDeviceKind.oscillate =>
+        "A steady swing: up and down, side to side, in size or in turn, "
+            "Rate times a second.",
+      MotionDeviceKind.spring =>
+        "Overshoots where its keys take it and settles: Stiffness is how "
+            "quickly, Damping how soon it calms.",
+      MotionDeviceKind.followPath =>
+        "Travels along a path or line element, once round in so many "
+            "seconds, turning with it if asked.",
+      MotionDeviceKind.lookAt =>
+        "Turns to face another element, as smoothly as asked, with an "
+            "Offset for an element drawn facing another way.",
+      MotionDeviceKind.squash =>
+        "Squashes and stretches as it moves: more the faster it goes.",
+      MotionDeviceKind.followSound =>
+        "Moves with a channel's loudness: grows, rises, turns or shows "
+            "as it gets louder.",
+      MotionDeviceKind.lfo =>
+        "Moves nothing itself: turns other devices' knobs up and down in a "
+            "wave. Give it knobs below, or right-click a knob.",
+      MotionDeviceKind.macro =>
+        "Eight knobs, each turning any knobs of this chain you give it.",
+      MotionDeviceKind.follower =>
+        "Turns other devices' knobs by how loud a channel is.",
+      MotionDeviceKind.glow => "A soft light round it.",
+      MotionDeviceKind.shadow =>
+        "A shadow under it, Distance away at an Angle, as blurred as asked.",
+      MotionDeviceKind.blur => "Blurs it as a whole.",
+      MotionDeviceKind.colour => "Shifts its hue, saturation and brightness.",
+      MotionDeviceKind.outline => "A line round its edge.",
+    };
+
+/// motionParamShown is whether [p] of [d] does anything as it is set, so
+/// is shown: Time's Every only while it loops, Wiggle's Seed only on an
+/// element with copies.
+bool motionParamShown(MotionDevice d, DeviceParam p, {bool reused = false}) =>
+    switch ((d.kind, p.id)) {
+      (MotionDeviceKind.time, "every") => d.value("loop").round() != 0,
+      (MotionDeviceKind.wiggle, "seed") => reused,
+      _ => true,
+    };
