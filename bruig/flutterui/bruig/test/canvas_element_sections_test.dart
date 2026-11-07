@@ -71,7 +71,8 @@ void main() {
       var all = titles(tester);
       expect(all.first, "Position", reason: "$all");
       expect(all.last, "Presets", reason: "$all");
-      expect(all.length, greaterThan(3), reason: "its own sections: $all");
+      expect(all.length, greaterThanOrEqualTo(3),
+          reason: "its own sections: $all");
       // No rule inside a section: a card is its own edge.
       expect(
           find.descendant(

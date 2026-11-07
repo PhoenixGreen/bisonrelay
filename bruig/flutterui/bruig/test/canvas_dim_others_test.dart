@@ -1,5 +1,4 @@
 import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -8,8 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -50,9 +48,6 @@ ElementTrack _track(CanvasController c, String id) =>
     ElementTrack.empty;
 
 void main() {
-  setUpAll(() => CanvasSection.openAll = true);
-  tearDownAll(() => CanvasSection.openAll = false);
-
   test("what is on the canvas steps back as the next point arrives", () {
     var c = _beats();
     addTearDown(c.dispose);
@@ -87,12 +82,14 @@ void main() {
     expect(_track(c, "second").at(50).opacity, 1);
   });
 
-  testWidgets("the button in the Animation section dims the others",
+  testWidgets("the button in its arrival's Timing dims the others",
       (tester) async {
     var c = _beats();
     addTearDown(c.dispose);
+    var own = ownClipOf(c.document.elementById("second")!, MotionKind.arrive)!;
     c.selectOnly("second");
-    tester.view.physicalSize = const Size(1400, 1800);
+    c.pickMotion("second", own.$1.id, placement: own.$2.id);
+    tester.view.physicalSize = const Size(3000, 420);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(MultiProvider(
@@ -100,14 +97,16 @@ void main() {
         ChangeNotifierProvider<ThemeNotifier>(
             create: (c) => ThemeNotifier(doLoad: false)),
         ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
       ],
-      child:
-          MaterialApp(home: Scaffold(body: CanvasDesignPanel(controller: c))),
+      child: MaterialApp(
+          home: Scaffold(
+              body: ListenableBuilder(
+                  listenable: c,
+                  builder: (context, _) =>
+                      AnimationPanel(controller: c, height: 400)))),
     ));
     await tester.pumpAndSettle();
-    var button = find.byKey(const ValueKey("elementDimOthers"));
+    var button = find.byKey(const ValueKey("animDimOthers"));
     await tester.ensureVisible(button);
     await tester.pumpAndSettle();
     await tester.tap(button);

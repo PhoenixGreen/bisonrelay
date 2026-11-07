@@ -15,8 +15,6 @@ import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/render/element_effects.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
@@ -263,117 +261,7 @@ void main() {
     });
   });
 
-  group("the controls", () {
-    testWidgets(
-        "slide is one choice with a Direction; Delay typed; Preview plays",
-        (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      var c = CanvasController(
-          const CanvasDocument().copyWith(frames: 120).addElement(drawing()));
-      addTearDown(c.dispose);
-      c.selectOnly("v");
-      tester.view.physicalSize = const Size(900, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(panel(c));
-      await tester.pumpAndSettle();
-      VectorElement now() => c.document.elementById("v") as VectorElement;
-
-      Future<void> press(String key) async {
-        var tile = find.byKey(ValueKey(key));
-        await tester.ensureVisible(tile);
-        await tester.pumpAndSettle();
-        await tester.tap(tile);
-        await tester.pumpAndSettle();
-      }
-
-      // The kinds are tiles, in a sectioned panel.
-      await press("elementArrive-slide");
-      expect(now().animation.preset.family, ElementAnimationFamily.slide);
-      expect(find.byKey(const ValueKey("elementAnimationPreset")), findsNothing,
-          reason: "one slide, not four");
-      tester
-          .widget<CanvasDropdown<AnimationDirection>>(
-              find.byKey(const ValueKey("elementAnimationDirection")))
-          .onChanged(AnimationDirection.below);
-      await tester.pumpAndSettle();
-      expect(now().animation.direction, AnimationDirection.below);
-      // The way out, with its own.
-      await press("elementLeave-slide");
-      tester
-          .widget<CanvasDropdown<AnimationDirection>>(
-              find.byKey(const ValueKey("elementAnimationExitDirection")))
-          .onChanged(AnimationDirection.right);
-      await tester.pumpAndSettle();
-      expect(now().animation.exitDirection, AnimationDirection.right);
-      expect(now().animation.direction, AnimationDirection.below,
-          reason: "the way in left as it was");
-      expect(find.byKey(const ValueKey("elementAnimationExitStrength")),
-          findsOneWidget);
-      expect(find.byKey(const ValueKey("elementAnimationStrength")),
-          findsOneWidget);
-
-      // The curve picker draws each curve.
-      expect(
-          find.descendant(
-              of: find.byKey(const ValueKey("elementAnimationEase")),
-              matching: find.byType(EaseCurve)),
-          findsWidgets);
-
-      var delay = tester.widget<CanvasNumberField>(
-          find.byKey(const ValueKey("elementAnimationDelay")));
-      delay.onChanged(12);
-      delay.onCommit!();
-      await tester.pumpAndSettle();
-      var (at, span) = c.elementAnimationSpan(now());
-      expect(at, 12);
-      expect(span, isNotNull);
-
-      var preview = find.byKey(const ValueKey("elementAnimationPreview"));
-      await tester.ensureVisible(preview);
-      await tester.tap(preview);
-      await tester.pump();
-      expect(c.previewing?.id, "v");
-      c.pause();
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets("Stagger gives a drawing with no arrival one, in one step",
-        (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      var c = CanvasController(const CanvasDocument()
-          .copyWith(frames: 120)
-          .addElement(drawing(count: 3)));
-      addTearDown(c.dispose);
-      c.selectOnly("v");
-      tester.view.physicalSize = const Size(900, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(panel(c));
-      await tester.pumpAndSettle();
-      VectorElement now() => c.document.elementById("v") as VectorElement;
-
-      var stagger = find.byKey(const ValueKey("vectorStagger"));
-      if (stagger.evaluate().isEmpty) {
-        var heading = find.byWidgetPredicate(
-            (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
-        await tester.ensureVisible(heading.first);
-        await tester.tap(heading.first);
-        await tester.pumpAndSettle();
-      }
-      await tester.ensureVisible(stagger);
-      await tester.tap(stagger);
-      await tester.pumpAndSettle();
-      expect(now().animation.on, isTrue);
-      expect(sequenced(now().shapes!), isTrue);
-      expect(vectorArrivalSpan(now(), 24), isNotNull);
-      c.undo();
-      expect(now().animation.on, isFalse, reason: "one undo step");
-      expect(sequenced(now().shapes!), isFalse);
-      expect(tester.takeException(), isNull);
-    });
-  });
+  group("the controls", () {});
 
   testWidgets("a layer picked is taken out with Backspace", (tester) async {
     SharedPreferences.setMockInitialValues({});
@@ -401,70 +289,6 @@ void main() {
     expect(now().shapes!.contains(middle), isFalse, reason: "the one picked");
     c.undo();
     expect(now().shapes!.length, 3, reason: "one undo step");
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets("a layer's own animation: Reset, and let go for the drawing's",
-      (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    var c = CanvasController(const CanvasDocument()
-        .copyWith(frames: 120)
-        .addElement(drawing(
-            count: 2,
-            animation: const ElementAnimation(
-                preset: ElementAnimationPreset.fadeIn))));
-    addTearDown(c.dispose);
-    c.selectOnly("v");
-    tester.view.physicalSize = const Size(900, 4000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(panel(c));
-    await tester.pumpAndSettle();
-    VectorElement now() => c.document.elementById("v") as VectorElement;
-
-    // A shape picked, and given its own loop.
-    c.editVector("v");
-    c.pickVectorShape(1);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey("vectorShapeAnimationScope")),
-        findsOneWidget);
-    var family = find.byKey(const ValueKey("elementLoopKinds"));
-    if (family.evaluate().isEmpty) {
-      var heading = find.byWidgetPredicate(
-          (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
-      await tester.ensureVisible(heading.first);
-      await tester.tap(heading.first);
-      await tester.pumpAndSettle();
-    }
-    var tile = find.byKey(ValueKey("elementLoop-motion"));
-    await tester.ensureVisible(tile);
-    await tester.tap(tile);
-    await tester.pumpAndSettle();
-    expect(now().shapes![1].owns, isNotEmpty);
-    var reset = find.byKey(const ValueKey("vectorShapeAnimationReset"));
-    expect(
-        (tester.getCenter(reset).dy -
-                tester
-                    .getCenter(
-                        find.byKey(const ValueKey("vectorShapeAnimationScope")))
-                    .dy)
-            .abs(),
-        lessThan(2),
-        reason: "Reset level with the words beside it");
-    await tester.ensureVisible(reset);
-    await tester.tap(reset);
-    await tester.pumpAndSettle();
-    expect(now().shapes![1].animation, isNull, reason: "back to the drawing's");
-
-    // The picked layer pressed again: the drawing's own animation, no shape
-    // picked.
-    var master = find.byKey(const ValueKey("vectorLayer-1"));
-    await tester.ensureVisible(master);
-    await tester.tap(master);
-    await tester.pumpAndSettle();
-    expect(c.vectorShape, -1);
-    expect(
-        find.byKey(const ValueKey("vectorShapeAnimationScope")), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -496,79 +320,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(lit("selectShapes"), isTrue, reason: "shapes, with Select shapes");
     expect(lit("select"), isFalse);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets("Reset all puts every shape back to the Master, in one step",
-      (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    var e = drawing(count: 3);
-    e = e.copyWith(shapes: [
-      for (var s in e.shapes!)
-        s.copyWith(
-            animation: const ElementAnimation(
-                loop: ElementLoop(preset: LoopPreset.pulse)),
-            owns: {ShapeAnimationPart.looping}),
-    ]);
-    var c = CanvasController(
-        const CanvasDocument().copyWith(frames: 120).addElement(e));
-    addTearDown(c.dispose);
-    c.selectOnly("v");
-    tester.view.physicalSize = const Size(900, 4000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(panel(c));
-    await tester.pumpAndSettle();
-    VectorElement now() => c.document.elementById("v") as VectorElement;
-    var all = find.byKey(const ValueKey("vectorResetAllAnimation"));
-    if (all.evaluate().isEmpty) {
-      var heading = find.byWidgetPredicate(
-          (w) => w is Text && (w.data ?? "").toLowerCase() == "playlist");
-      await tester.ensureVisible(heading.first);
-      await tester.tap(heading.first);
-      await tester.pumpAndSettle();
-    }
-    await tester.ensureVisible(all);
-    await tester.tap(all);
-    await tester.pumpAndSettle();
-    expect(now().shapes!.every((s) => s.animation == null), isTrue);
-    expect(tester.widget<CanvasIconButton>(all).onPressed, isNull,
-        reason: "nothing left to reset");
-    c.undo();
-    expect(now().shapes!.every((s) => s.animation != null), isTrue,
-        reason: "one undo step");
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets("kinds are tiles, Which is under them; numbers, not sliders",
-      (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    var c = CanvasController(const CanvasDocument()
-        .copyWith(frames: 120)
-        .addElement(drawing(
-            animation: const ElementAnimation(
-                preset: ElementAnimationPreset.scaleIn,
-                exit: ElementAnimationPreset.fadeUp,
-                loop: ElementLoop(preset: LoopPreset.shimmer)))));
-    addTearDown(c.dispose);
-    c.selectOnly("v");
-    tester.view.physicalSize = const Size(900, 4000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(panel(c));
-    await tester.pumpAndSettle();
-    // The kinds are tiles, each way; which of the kind is a dropdown of the
-    // card's width under them, and the motion numbers to scrub.
-    expect(find.byKey(const ValueKey("elementArriveKinds")), findsOneWidget);
-    expect(find.byKey(const ValueKey("elementLeaveKinds")), findsOneWidget);
-    var which =
-        tester.getRect(find.byKey(const ValueKey("elementAnimationPreset")));
-    var kinds =
-        tester.getRect(find.byKey(const ValueKey("elementArriveKinds")));
-    expect(which.top, greaterThan(kinds.bottom),
-        reason: "which one, under the kinds");
-    expect(find.byKey(const ValueKey("elementAnimationExit")), findsOneWidget);
-    expect(find.byType(Slider), findsNothing, reason: "numbers to scrub");
     expect(tester.takeException(), isNull);
   });
 }

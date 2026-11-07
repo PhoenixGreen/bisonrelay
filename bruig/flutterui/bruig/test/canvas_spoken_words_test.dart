@@ -1,5 +1,4 @@
 import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/media/speech.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
@@ -8,9 +7,12 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
+    show StudioDrop;
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -109,12 +111,24 @@ void main() {
         "we need the");
   });
 
-  testWidgets("the cue card finds a word and puts the element on it",
-      (tester) async {
-    var c = CanvasController(_doc());
+  testWidgets("its arrival's Timing puts it on a word said", (tester) async {
+    CanvasElement price = withOwnSpan(
+        ShapeElement(const ElementBase(id: "price")),
+        MotionKind.arrive,
+        10,
+        20,
+        24);
+    var c = CanvasController(CanvasDocument(
+        frameRate: 24,
+        scenes: [
+          CanvasScene(id: "a", frames: 300, elements: [price])
+        ],
+        words: _said()));
     addTearDown(c.dispose);
+    var own = ownClipOf(price, MotionKind.arrive)!;
     c.selectOnly("price");
-    tester.view.physicalSize = const Size(1400, 1600);
+    c.pickMotion("price", own.$1.id, placement: own.$2.id);
+    tester.view.physicalSize = const Size(3000, 420);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(MultiProvider(
@@ -122,29 +136,42 @@ void main() {
         ChangeNotifierProvider<ThemeNotifier>(
             create: (c) => ThemeNotifier(doLoad: false)),
         ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
       ],
-      child:
-          MaterialApp(home: Scaffold(body: CanvasDesignPanel(controller: c))),
+      child: MaterialApp(
+          // At the larger text Ken runs: the find box and its list fit.
+          builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: const TextScaler.linear(1.5)),
+              child: child!),
+          home: Scaffold(
+              body: ListenableBuilder(
+                  listenable: c,
+                  builder: (context, _) =>
+                      AnimationPanel(controller: c, height: 400)))),
     ));
     await tester.pumpAndSettle();
 
-    var field = find.byKey(const ValueKey("elementCueWord"));
-    expect(field, findsOneWidget, reason: "offered with no cues at all");
-    tester.widget<CanvasTextField>(field).onChanged("300");
-    await tester.pumpAndSettle();
-    var match = find.byKey(const ValueKey("elementCueWord-220"));
-    await tester.ensureVisible(match);
-    await tester.pumpAndSettle();
-    await tester.tap(match);
+    var drop = find.byKey(const ValueKey("animOnWord"));
+    expect(drop, findsOneWidget, reason: "offered with no cues at all");
+    await tester.enterText(
+        find.descendant(
+            of: find.byKey(const ValueKey("animWordFind")),
+            matching: find.byType(TextField)),
+        "300");
+    await tester.pump();
+    var words = tester.widget<StudioDrop<int>>(drop);
+    expect(words.options.skip(1).map((o) => o.$2).single,
+        startsWith("costs \$300."),
+        reason: "found among every word, said with the one before it");
+    words.onChanged(words.options.last.$1);
     await tester.pumpAndSettle();
 
     expect(c.cues.single.name, "\$300.");
-    expect(
-        c.document.allScenes.single.elements.single.base.track!.keys.first
-            .frame,
-        220);
     expect(c.wordQuery, isEmpty, reason: "the search is cleared after");
+    var moved = c.document.allScenes.single.elements.single;
+    expect(ownSpan(moved, MotionKind.arrive, 24)!.$1, 220);
+    c.undo();
+    expect(c.cues, isEmpty, reason: "the cue and the move are one step");
+    expect(tester.takeException(), isNull);
   });
 }

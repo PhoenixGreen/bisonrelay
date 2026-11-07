@@ -3715,6 +3715,12 @@ class CanvasController extends ChangeNotifier {
       element is VideoElement ||
       element is Character3dElement;
 
+  /// withElementAnimation is [element] with [animation] as its own, for
+  /// the kinds that have one (see animates).
+  static CanvasElement withElementAnimation(
+          CanvasElement element, ElementAnimation animation) =>
+      _withElementAnimation(element, animation);
+
   static CanvasElement _withElementAnimation(
           CanvasElement element, ElementAnimation animation) =>
       switch (element) {

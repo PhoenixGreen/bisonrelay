@@ -4,8 +4,6 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
     show ImageCrop;
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
@@ -23,13 +21,10 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/tablet_input.dart';
-import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:flutter/material.dart';
-import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
-import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 
 // vector_settings.dart is a drawing's settings: which drawing, how it sits in
 // its box, editing it point by point -- and while it is being edited, how
@@ -235,22 +230,8 @@ List<Widget> vectorSettings(
         initiallyOpen: true,
         forceOpen: editing,
         children: drawing),
-    CanvasSection(
-      key: const ValueKey("elementSection-animation"),
-      icon: Icons.play_circle_outline,
-      title: "Animation",
-      summary: animationSummary(e.animation),
-      remember: "vector.animation",
-      children: [
-        _animationSection(
-            controller, e, one ? picked : -1, write, begin, commit),
-        // When each layer comes in -- the picked one's, and all of them at
-        // once -- as a picture's layers have in theirs.
-        if (e.edited && shapes.isNotEmpty)
-          ..._shapeTiming(controller, e, one ? picked : -1, now),
-        ...elementTimingCards(controller, e),
-      ],
-    ),
+    // How it and its shapes come in, loop and go: the Chain's Motion view
+    // (Ken, 2026-11-08).
   ];
 }
 
@@ -427,107 +408,6 @@ Widget vectorCropControls(CanvasController controller, VectorElement e,
           "reference to its file."),
     ],
   );
-}
-
-/// _shapeTiming is when the drawing's layers come in: the picked one's cue
-/// against the one under it -- the first comes in as the drawing's arrival
-/// starts, and has none -- and, for every layer at once, one after another
-/// or all back to the drawing's animation.
-List<Widget> _shapeTiming(CanvasController controller, VectorElement e,
-    int picked, void Function(VectorElement) now) {
-  var groups = vectorDrawn(e.shapes ?? const <VectorShape>[]);
-  var starts = groupStarts(e);
-  var span = vectorArrivalSpan(e, controller.document.frameRate)?.$2;
-  var length = span == null || !e.animation.on ? null : span;
-  // A change to when a layer comes in: in the timeline's frames, and the
-  // arrival fitted round them all again, where there is one -- see
-  // CanvasController.retimeShapes.
-  void retime(VectorElement Function(VectorElement) edit) =>
-      length == null ? now(edit(e)) : controller.retimeShapes(e, edit);
-
-  /// stagger brings the layers in one after another, a little overlapping,
-  /// over the drawing's arrival -- giving it one, in the same change, where
-  /// it has none to stagger them over. See withStagger.
-  void stagger() {
-    if (span != null && e.animation.on) {
-      now(withStagger(e, span));
-      return;
-    }
-    controller.beginInteraction();
-    controller.replaceElement(withStagger(e, controller.defaultAnimationFrames),
-        transient: true);
-    if (controller.document.elementById(e.id) case var fresh?) {
-      controller.applyElementAnimation(fresh,
-          e.animation.on ? e.animation.preset : ElementAnimationPreset.fadeUp);
-    }
-    controller.endInteraction();
-  }
-
-  var at = picked < 0 ? -1 : starts.indexOf(groupOf(e, picked));
-  var animated =
-      e.animation.any || groups.any((d) => d.style.animation != null);
-  return [
-    if (at > 0)
-      CanvasControlGroup(
-        key: const ValueKey("vectorShapeTiming"),
-        label: "This shape",
-        help: "When this layer comes in against the one under it.",
-        rule: false,
-        children: [
-          CanvasDropdown<VectorCue>(
-            key: ValueKey("vectorCue-$at"),
-            label: "Comes in",
-            value: groups[at].style.cue,
-            width: 130,
-            options: [for (var c in VectorCue.values) (c, c.label)],
-            onChanged: (v) => retime((b) => withCue(b, at, cue: v)),
-          ),
-          if (groups[at].style.cue == VectorCue.gap)
-            CanvasStepper(
-              key: ValueKey("vectorGap-$at"),
-              label: "Gap",
-              value: groups[at].style.cueGap.toDouble(),
-              min: -240,
-              max: 240,
-              suffix: " fr",
-              defaultValue: 12,
-              onChanged: (v) => retime((b) => withCue(b, at, gap: v.round())),
-            ),
-        ],
-      ),
-    if (groups.length > 1 || animated)
-      CanvasControlGroup(
-        key: const ValueKey("vectorEveryShapeTiming"),
-        label: groups.length > 1 ? "Every shape" : "Preview",
-        help: "The timing of all the layers at once: one after another, or "
-            "every one back to the drawing's own animation.",
-        rule: false,
-        children: [
-          if (groups.length > 1) ...[
-            CanvasIconButton(
-              key: const ValueKey("vectorStagger"),
-              icon: Icons.stacked_line_chart,
-              tooltip: "Bring the layers in one after another",
-              onPressed: stagger,
-            ),
-            // Every layer back to the drawing's animation, at once.
-            CanvasIconButton(
-              key: const ValueKey("vectorResetAllAnimation"),
-              icon: Icons.restore,
-              tooltip: "Every layer as the drawing",
-              onPressed: (e.shapes ?? const <VectorShape>[])
-                      .any((s) => s.animation != null)
-                  ? () => now(e.copyWith(shapes: [
-                        for (var s in e.shapes!)
-                          s.copyWith(clearAnimation: true),
-                      ]))
-                  : null,
-            ),
-          ],
-          if (animated) previewButton(controller, e),
-        ],
-      ),
-  ];
 }
 
 /// _dormantIf is [settings] as they are, or -- while there is nothing yet
@@ -1639,131 +1519,6 @@ class _PenMeterState extends State<_PenMeter> {
       ),
     );
   }
-}
-
-/// _animationSection is the drawing's Animation section or, with a shape
-/// picked, that shape's: the same controls, setting its own animation. Left
-/// alone a shape animates as the drawing does; the first change here starts
-/// it as a copy of the drawing's with that change. When it comes in stays on
-/// the drawing's keyframes. See VectorShape.animation.
-Widget _animationSection(CanvasController controller, VectorElement e,
-    int picked, SettingsWrite write, VoidCallback begin, VoidCallback commit) {
-  if (!e.edited || picked < 0) {
-    // Its Preview is in the timing card under it: see _shapeTiming.
-    return elementAnimationSection(
-      controller,
-      e,
-      e.animation,
-      (a) => write(e.copyWith(animation: a)),
-      begin,
-      commit,
-    );
-  }
-  var base = groupOf(e, picked);
-  var starts = groupStarts(e);
-  var shape = e.shapes![base];
-  var owns =
-      shape.animation == null ? const <ShapeAnimationPart>{} : shape.owns;
-  // What it does now: the drawing's, with the parts it has made its own.
-  var shown = animatedAs(e.animation, shape.animation, owns);
-
-  /// withOwn is the drawing with the shape animating as [a] -- only the
-  /// parts that differ from what it does now becoming its own; the rest go
-  /// on following the drawing.
-  VectorElement withOwn(ElementAnimation? a) {
-    if (a == null) {
-      return e.withShape(base, shape.copyWith(clearAnimation: true));
-    }
-    var mine = {...owns, ...partsChanged(shown, a)};
-    if (mine.isEmpty) return e;
-    return e.withShape(base, shape.copyWith(animation: a, owns: mine));
-  }
-
-  /// lay gives the shape [next], and, where the drawing has no keyframes
-  /// yet for it to be timed by, lays the drawing's -- [keys] -- in the same
-  /// step.
-  void lay(
-      ElementAnimation next, bool timed, void Function(CanvasElement) keys) {
-    begin();
-    write(withOwn(next));
-    if (!timed) {
-      if (controller.document.elementById(e.id) case var fresh?) keys(fresh);
-    }
-    commit();
-  }
-
-  ElementAnimation choosing(ElementAnimationPreset p, {required bool exit}) =>
-      exit
-          ? shown.copyWith(exit: p)
-          : shown.copyWith(
-              preset: p,
-              ease: p != shown.preset ? p.wants : null,
-              effect: p != shown.preset ? p.effect : null);
-  var closes =
-      ownSpan(e, MotionKind.leave, controller.document.frameRate) != null;
-
-  return elementAnimationSection(
-    controller,
-    e,
-    shown,
-    (a) => write(withOwn(a)),
-    begin,
-    commit,
-    timing: false,
-    arrive: (p) => lay(
-        choosing(p, exit: false),
-        p == ElementAnimationPreset.none || vectorArrivalSpan(e, controller.document.frameRate) != null,
-        (fresh) => controller.applyElementAnimation(fresh, p)),
-    leave: (p) => lay(
-        choosing(p, exit: true),
-        p == ElementAnimationPreset.none || closes,
-        (fresh) => controller.applyElementExit(fresh, p)),
-    heading: [
-      CanvasControlGroup(
-        key: const ValueKey("vectorShapeAnimation"),
-        label: "Shape",
-        hideCaption: true,
-        rule: false,
-        children: [
-          // The words and the button in one row, centred on each other.
-          Builder(
-            builder: (context) =>
-                Row(mainAxisSize: MainAxisSize.min, children: [
-              Flexible(
-                  child: Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: Text(
-                    "Shape ${starts.indexOf(base) + 1} of ${starts.length} · "
-                    "${owns.isEmpty ? "as the drawing" : "own ${[
-                        for (var p in ShapeAnimationPart.values)
-                          if (owns.contains(p)) p.name
-                      ].join(", ")}"}",
-                    key: const ValueKey("vectorShapeAnimationScope"),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall),
-              )),
-              // Back to the drawing's animation, which every shape starts
-              // with.
-              CanvasIconButton(
-                key: const ValueKey("vectorShapeAnimationReset"),
-                icon: Icons.restore,
-                tooltip: "Reset",
-                tight: true,
-                onPressed: owns.isEmpty
-                    ? null
-                    : () {
-                        begin();
-                        write(withOwn(null));
-                        commit();
-                      },
-              ),
-            ]),
-          ),
-        ],
-      ),
-    ],
-  );
 }
 
 /// _textSettings is the text tool's row: the type -- face, weight, slant,

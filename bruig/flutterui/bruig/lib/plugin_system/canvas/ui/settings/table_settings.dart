@@ -488,8 +488,7 @@ List<Widget> tableSettings(
         ),
       ),
       // How it arrives, in a section of its own like a headline's.
-      animationPanelSection(controller, e, e.animation,
-          (a) => write(e.copyWith(animation: a)), begin, commit),
+      // Its animation: the Chain's Motion view (Ken, 2026-11-08).
     ];
 
 /// _columnSizing is which of the three states a table's columns are in:

@@ -2,8 +2,6 @@ import 'dart:convert';
 import 'dart:ui';
 
 import 'package:bruig/components/paint_spec.dart';
-import 'package:bruig/models/snackbar.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -12,18 +10,11 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_loop_test.dart is an element's loop: when it plays, what it does to
 // the element as it goes round, how it is kept, and its controls -- the
@@ -344,156 +335,5 @@ void main() {
     });
   });
 
-  group("the controls", () {
-    testWidgets("the Looping group sets a loop, and the timeline shows it",
-        (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      var c = CanvasController(
-          const CanvasDocument().copyWith(frames: 120).addElement(box()));
-      addTearDown(c.dispose);
-      c.selectOnly("v");
-      tester.view.physicalSize = const Size(1400, 1800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Row(children: [
-          SizedBox(width: 420, child: CanvasDesignPanel(controller: c)),
-          Expanded(
-              child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: CanvasTimeline(
-                      controller: c, height: timelineHeight + 40))),
-        ]))),
-      ));
-      await tester.pumpAndSettle();
-      VectorElement now() => c.document.elementById("v") as VectorElement;
-
-      // Open the Animation section, if it is shut.
-      var family = find.byKey(const ValueKey("elementLoopKinds"));
-      if (family.evaluate().isEmpty) {
-        var heading = find.byWidgetPredicate(
-            (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
-        await tester.ensureVisible(heading.first);
-        await tester.tap(heading.first);
-        await tester.pumpAndSettle();
-      }
-      var tile = find.byKey(ValueKey("elementLoop-motion"));
-      await tester.ensureVisible(tile);
-      await tester.tap(tile);
-      await tester.pumpAndSettle();
-      expect(now().animation.loop.preset, LoopPreset.float);
-      expect(find.byKey(const ValueKey("elementLoopCycle")), findsOneWidget);
-
-      // Its bar, under the keyframes, runs to the scene's end; its end
-      // dragged back to frame 60 stops it there.
-      var strip = tester.getRect(find.byKey(const ValueKey("keyframeStrip")));
-      double xOf(int frame) => strip.left + strip.width * frame / 120;
-      var y = strip.top + 44 + 8;
-      await tester.dragFrom(
-          Offset(xOf(120) - 1, y), Offset(xOf(61) - xOf(120), 0));
-      await tester.pumpAndSettle();
-      expect(now().animation.loop.to, closeTo(60, 1));
-      c.undo();
-      expect(now().animation.loop.to, isNull, reason: "one undo step");
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets("with a shape picked, the Animation section is the shape's",
-        (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      var two = box();
-      two = two.copyWith(shapes: [
-        ...two.shapes!,
-        shapeOf(VectorShapeKind.box, const Rect.fromLTWH(10, 10, 20, 20),
-            fill: const Color(0xFFFF0000)),
-      ]);
-      var c = CanvasController(
-          const CanvasDocument().copyWith(frames: 120).addElement(two));
-      addTearDown(c.dispose);
-      c.selectOnly("v");
-      c.editVector("v");
-      c.pickVectorShape(1);
-      tester.view.physicalSize = const Size(900, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: SizedBox(
-                    width: 420, child: CanvasDesignPanel(controller: c)))),
-      ));
-      await tester.pumpAndSettle();
-      VectorElement now() => c.document.elementById("v") as VectorElement;
-      Text scope() => tester.widget<Text>(
-          find.byKey(const ValueKey("vectorShapeAnimationScope")));
-
-      var family = find.byKey(const ValueKey("elementLoopKinds"));
-      if (family.evaluate().isEmpty) {
-        var heading = find.byWidgetPredicate(
-            (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
-        await tester.ensureVisible(heading.first);
-        await tester.tap(heading.first);
-        await tester.pumpAndSettle();
-      }
-      expect(find.text("Shape arriving"), findsNothing);
-      expect(find.text("Shape looping"), findsNothing);
-      expect(scope().data, contains("as the drawing"));
-
-      var tile = find.byKey(ValueKey("elementLoop-light"));
-      await tester.ensureVisible(tile);
-      await tester.tap(tile);
-      await tester.pumpAndSettle();
-      expect(now().shapes![1].animation?.loop.preset, LoopPreset.shimmer);
-      expect(now().shapes![0].animation, isNull);
-      expect(now().animation.loop.on, isFalse, reason: "not the drawing's");
-      expect(scope().data, contains("own looping"));
-
-      // A way in, with nothing on the timeline to time it by: the drawing
-      // is given one too, in the same step.
-      var fade = find.byKey(const ValueKey("elementArrive-fade"));
-      await tester.ensureVisible(fade);
-      await tester.pumpAndSettle();
-      await tester.tap(fade);
-      await tester.pumpAndSettle();
-      expect(now().shapes![1].animation?.on, isTrue);
-      expect(now().animation.on, isTrue);
-      c.undo();
-      await tester.pumpAndSettle();
-      expect(now().shapes![1].animation?.on, isFalse, reason: "one undo step");
-      expect(now().animation.on, isFalse);
-
-      // Back to the drawing's.
-      var reset = find.byKey(const ValueKey("vectorShapeAnimationReset"));
-      await tester.ensureVisible(reset);
-      await tester.tap(reset);
-      await tester.pumpAndSettle();
-      expect(now().shapes![1].animation, isNull);
-
-      // And the drawing's own, with no shape picked.
-      // The picked layer pressed again lets it go.
-      var drawing = find.byKey(const ValueKey("vectorLayer-1"));
-      await tester.ensureVisible(drawing);
-      await tester.tap(drawing);
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey("vectorShapeAnimationScope")),
-          findsNothing);
-      expect(tester.takeException(), isNull);
-    });
-  });
+  group("the controls", () {});
 }

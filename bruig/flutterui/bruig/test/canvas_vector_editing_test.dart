@@ -652,27 +652,8 @@ void main() {
       expect(shapeHeld(now(), 1), isTrue);
       expect(shapeHeld(now(), 2), isFalse);
 
-      // When one comes in is in Animation now, the picked layer's.
-      c.pickVectorShape(2);
-      await tester.pumpAndSettle();
-      var heading = find.byWidgetPredicate(
-          (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
-      if (find.byKey(const ValueKey("vectorCue-2")).evaluate().isEmpty) {
-        await tester.ensureVisible(heading.first);
-        await tester.tap(heading.first);
-        await tester.pumpAndSettle();
-      }
-      tester
-          .widget<CanvasDropdown<VectorCue>>(
-              find.byKey(const ValueKey("vectorCue-2")))
-          .onChanged(VectorCue.gap);
-      await tester.pumpAndSettle();
-      expect(now().shapes![2].cue, VectorCue.gap);
-      tester
-          .widget<CanvasStepper>(find.byKey(const ValueKey("vectorGap-2")))
-          .onChanged(13);
-      await tester.pumpAndSettle();
-      expect(now().shapes![2].cueGap, 13);
+      // When each comes in is the Chain's Shapes card now (Ken, 2026-11-08):
+      // see canvas_own_style_test.
       expect(tester.takeException(), isNull);
     });
 

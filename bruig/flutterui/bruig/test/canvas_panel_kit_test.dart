@@ -249,16 +249,22 @@ void main() {
     bool open(String section) =>
         find.byKey(ValueKey("sectionBody-$section")).evaluate().isNotEmpty;
 
-    testWidgets("a picture has its seven, each saying how it is set",
+    testWidgets("a picture has its six, each saying how it is set",
         (tester) async {
       await pumpPanel(tester);
       for (var s in [
-        "position", "mask", "retouch", "colour", "effects", "animation", //
+        "position",
+        "mask",
+        "retouch",
+        "colour",
+        "effects",
         "frame",
       ]) {
         expect(find.byKey(ValueKey("imageSection-$s")), findsOneWidget,
             reason: s);
       }
+      expect(find.byKey(const ValueKey("imageSection-animation")), findsNothing,
+          reason: "its animation is the motion chain's");
       expect(find.text("Nothing hidden"), findsOneWidget,
           reason: "the Mask's summary, shut");
       expect(find.text("Whole image"), findsOneWidget, reason: "Frame's tag");
@@ -344,27 +350,6 @@ void main() {
       await typeInto(tester, find.byKey(const ValueKey("cropLeft")), "0.25");
       expect((c.document.elementById("i")! as ImageElement).crop.left,
           closeTo(0.25, 1e-9));
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets("a picked layer loops on its own, beside the picture",
-        (tester) async {
-      CanvasSection.openAll = true;
-      addTearDown(() => CanvasSection.openAll = false);
-      var c = await pumpPanel(tester);
-      var layer = (c.document.elementById("i")! as ImageElement).stack[1];
-      c.editImage("i", layer: layer.id);
-      await tester.pumpAndSettle();
-      // The whole picture's loop is its Motion chain's now (Ken).
-      expect(find.byKey(const ValueKey("elementAnimationOpenChain")),
-          findsOneWidget,
-          reason: "the whole picture's motion, in the Chain");
-      expect(find.byKey(const ValueKey("imageLayerLoopKinds")), findsOneWidget,
-          reason: "and this layer's");
-      await tapKey(tester, "imageLayerLoop-drift");
-      var e = c.document.elementById("i")! as ImageElement;
-      expect(e.layerById(layer.id)!.loop.preset.drifts, isTrue);
-      expect(e.animation.loop.on, isFalse, reason: "the picture's own left");
       expect(tester.takeException(), isNull);
     });
 
@@ -629,18 +614,6 @@ void main() {
       await tester.pumpAndSettle();
       expect((c.document.elementById("i")! as ImageElement).filter,
           ImageFilterPreset.sepia);
-    });
-
-    // Ken, 2026-11-08: how it arrives, loops and leaves is its Motion
-    // chain's, its clip's styles; the section points there.
-    testWidgets("the animation is the Chain's: the section opens it",
-        (tester) async {
-      var c = await pumpPanel(tester);
-      await openSection(tester, "image.picture.animation");
-      await tapKey(tester, "elementAnimationOpenChain");
-      expect(c.chainShowsMotion, isTrue);
-      expect(c.selected?.id, "i");
-      expect(tester.takeException(), isNull);
     });
 
     testWidgets("a dropdown's arrows step through its options", (tester) async {

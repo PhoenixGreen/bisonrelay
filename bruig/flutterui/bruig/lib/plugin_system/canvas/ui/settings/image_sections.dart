@@ -63,7 +63,6 @@ List<Widget> imagePanel(
         s.retouch(),
         s.colour(),
         s.effects(),
-        s.animation(),
         s.frame(),
       ],
     _ => [
@@ -71,7 +70,6 @@ List<Widget> imagePanel(
         s.blend(),
         s.mask(),
         if (picked.kind != LayerKind.adjustment) s.effects(),
-        s.animation(),
         s.frame(),
       ],
   };

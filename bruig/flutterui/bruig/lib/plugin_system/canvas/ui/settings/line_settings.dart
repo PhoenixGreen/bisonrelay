@@ -206,8 +206,8 @@ List<Widget> lineSettings(
             ],
           ),
         ]),
-    animationPanelSection(controller, e, e.animation,
-        (a) => write(e.copyWith(animation: a)), begin, commit),
+    // How it comes in, loops and goes: the Chain's Motion view (Ken,
+    // 2026-11-08), not a section here.
   ];
 }
 

@@ -214,8 +214,8 @@ List<Widget> pathSettings(
         children: [_pathNodeList(controller, e, relink)]),
     // A path that carries a follower still carries it: this is the line
     // itself coming on, not the thing travelling along it.
-    animationPanelSection(controller, e, e.animation,
-        (a) => write(e.copyWith(animation: a)), begin, commit),
+    // How it comes in, loops and goes: the Chain's Motion view (Ken,
+    // 2026-11-08), not a section here.
   ];
 }
 

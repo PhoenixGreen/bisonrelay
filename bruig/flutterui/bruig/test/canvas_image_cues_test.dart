@@ -285,37 +285,6 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets("Stagger brings the layers in one after another",
-        (tester) async {
-      var c = await pumpPanel(
-          tester,
-          ImageElement(
-              const ElementBase(id: "i", x: 0, y: 0, width: 100, height: 100),
-              assetId: "red",
-              layers: [ImageLayer.base, _picture("blue")]));
-      await openSection(tester, "image.picture.animation");
-      await tapKey(tester, "imageLayersStagger");
-      var e = c.document.elementById("i")! as ImageElement;
-      expect(e.animation.on, isTrue, reason: "an arrival to stagger over");
-      expect(layersSequenced(e.stack), isTrue);
-      c.undo();
-      expect(
-          (c.document.elementById("i")! as ImageElement).animation.on, isFalse,
-          reason: "one step");
-
-      // And the picked layer's cue is chosen in its Animation.
-      await tapKey(tester, "imageLayersStagger");
-      var top = (c.document.elementById("i")! as ImageElement).stack.last;
-      await tapKey(tester, "imageLayer-${top.id}");
-      await openSection(tester, "image.picture.animation");
-      await tapKey(tester, "imageLayerCue-${top.id}");
-      await tester.tap(find.text(top.cue.next.label).last);
-      await tester.pumpAndSettle();
-      expect((c.document.elementById("i")! as ImageElement).stack.last.cue,
-          top.cue.next);
-      expect(tester.takeException(), isNull);
-    });
-
     testWidgets("a look is kept, and worn by another picture", (tester) async {
       var root = Directory.systemTemp.createTempSync("looks");
       addTearDown(() => root.deleteSync(recursive: true));

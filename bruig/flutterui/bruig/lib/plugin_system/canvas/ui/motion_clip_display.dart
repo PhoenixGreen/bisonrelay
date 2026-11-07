@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_curves.dart'
     show curveColour;
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
+import 'package:bruig/plugin_system/canvas/ui/own_style.dart' show OwnStyle;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -107,6 +108,16 @@ class _MotionClipDisplayState extends State<MotionClipDisplay>
     return _view ?? (hasPath ? ClipView.path : ClipView.graph);
   }
 
+  /// _ownSays is what a text's or a chart's own style is called, for its
+  /// screen.
+  String _ownSays(MotionClip c) {
+    var style = OwnStyle.of(widget.element);
+    if (style == null) return "";
+    var leaving = c.kind == MotionKind.leave;
+    var name = style.labelOf(style.preset(leaving: leaving));
+    return "${leaving ? "Its own way out" : "Its own arrival"}: $name";
+  }
+
   ClipLayout _layoutFor(MotionClip c, Size size) {
     var doc = widget.controller.document;
     return ClipLayout(c, _shown(c), size, boxOf(widget.element),
@@ -129,7 +140,14 @@ class _MotionClipDisplayState extends State<MotionClipDisplay>
         painter: _ClipPainter(
           clip: c,
           layout: layout,
-          own: own ? CanvasController.elementAnimationOf(widget.element) : null,
+          // A box's own style drawn as frames; the words' and a chart's,
+          // named (their pieces are timed against the page, not a box).
+          own: own && CanvasController.animates(widget.element)
+              ? CanvasController.elementAnimationOf(widget.element)
+              : null,
+          ownSays: own && !CanvasController.animates(widget.element)
+              ? _ownSays(c)
+              : null,
           box: boxOf(widget.element),
           at: _preview ??
               (c == null || c.length <= 0
@@ -676,6 +694,9 @@ class _ClipPainter extends CustomPainter {
   final MotionClip? clip;
   final ClipLayout? layout;
   final ElementAnimation? own;
+
+  /// ownSays names an own style there are no frames of here.
+  final String? ownSays;
   final Rect box;
   final double at;
   final bool playing;
@@ -686,6 +707,7 @@ class _ClipPainter extends CustomPainter {
       {required this.clip,
       required this.layout,
       required this.own,
+      this.ownSays,
       required this.box,
       required this.at,
       required this.playing,
@@ -712,6 +734,24 @@ class _ClipPainter extends CustomPainter {
     var c = clip;
     if (c == null) return;
     if (own != null) return _paintOwn(canvas, size, c);
+    if (ownSays case var says?) {
+      var tp = TextPainter(
+          text: TextSpan(
+              text: says,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: studio.text)),
+          textAlign: TextAlign.center,
+          textDirection: TextDirection.ltr)
+        ..layout(maxWidth: size.width - 24);
+      tp.paint(
+          canvas,
+          Offset(
+              (size.width - tp.width) / 2, (size.height - tp.height) / 2 - 6));
+      _say(canvas, size, "Its words or bars, as the page plays it");
+      return;
+    }
     var l = layout;
     if (l == null || c.keys.isEmpty) {
       _say(canvas, size, "No keys: pick a preset, or add them in Curves");
@@ -994,6 +1034,7 @@ class _ClipPainter extends CustomPainter {
       old.hover != hover ||
       old.picked != picked ||
       old.own != own ||
+      old.ownSays != ownSays ||
       old.playing != playing ||
       old.layout?.size != layout?.size ||
       old.layout?.view != layout?.view ||

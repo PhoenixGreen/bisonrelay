@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_clip_display.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/own_style.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -289,11 +290,16 @@ class MotionClipsCard extends StatelessWidget {
     var e = element;
     var animates = CanvasController.animates(e);
     var a = CanvasController.elementAnimationOf(e);
+    // Its own animation, whichever kind: a box's, the words', a chart's
+    // (Ken, 2026-11-08: text and chart too, as the sidebar had them).
+    var styled = OwnStyle.of(e);
     var own = c.inside["own"] == true;
     var arriving = c.kind == MotionKind.arrive;
-    var ownKind = animates && (arriving || c.kind == MotionKind.leave);
-    var chosen = arriving ? a.preset : a.exit;
-    void style(ElementAnimation next, {bool asOwn = true}) {
+    var leaving = c.kind == MotionKind.leave;
+    var ownKind = styled != null && (arriving || leaving);
+    // [make] is given the element as it is once the clip is its own, so
+    // writing the style back does not undo that.
+    void styleTo(CanvasElement Function(OwnStyle s) make, {bool asOwn = true}) {
       // One step: the clip made its own, and the style chosen.
       if (asOwn) {
         edit(
@@ -306,22 +312,28 @@ class MotionClipsCard extends StatelessWidget {
       } else {
         controller.beginInteraction();
       }
-      controller.setElementAnimation(e.id, next);
+      var now = controller.document.elementById(e.id);
+      if (now != null) {
+        controller.replaceElement(make(OwnStyle(now)), transient: true);
+      }
       controller.endInteraction();
     }
+
+    void style(ElementAnimation next, {bool asOwn = true}) =>
+        styleTo((s) => CanvasController.withElementAnimation(s.element, next),
+            asOwn: asOwn);
 
     var presets = presetsFor(c.kind);
     if (presets.isEmpty && !ownKind && c.kind != MotionKind.loop) {
       return const [];
     }
     var preset = presetNamed(c.preset);
-    var value = own
-        ? "own:${chosen.name}"
+    var value = own && styled != null
+        ? "own:${styled.preset(leaving: leaving)}"
         : !c.edited && c.preset.isNotEmpty
             ? "p:${c.preset}"
             : "";
     var directed = arriving ? a.arrivalDirected : a.exitDirected;
-    var strengthens = arriving ? a.arrivalStrengthens : a.exitStrengthens;
     return [
       StudioDrop<String>(
         key: const ValueKey("motionClipsPreset"),
@@ -331,14 +343,12 @@ class MotionClipsCard extends StatelessWidget {
           ("", c.edited ? "Its own keys" : "None"),
           for (var p in presets) ("p:${p.name}", p.name),
           if (ownKind)
-            for (var p in ElementAnimationPreset.values)
-              if (p != ElementAnimationPreset.none)
-                ("own:${p.name}", "Its own: ${p.label}"),
+            for (var (name, label) in styled.presets(leaving: leaving))
+              ("own:$name", "Its own: $label"),
         ],
         onChanged: (v) {
           if (v.startsWith("own:")) {
-            var p = ElementAnimationPreset.values.byName(v.substring(4));
-            style(arriving ? a.copyWith(preset: p) : a.copyWith(exit: p));
+            styleTo((s) => s.withPreset(v.substring(4), leaving: leaving));
           } else if (v.startsWith("p:")) {
             var p = presetNamed(v.substring(2));
             if (p == null) return;
@@ -357,7 +367,7 @@ class MotionClipsCard extends StatelessWidget {
           options: [for (var w in preset.ways) (w, w.label)],
           onChanged: (w) => edit((x) => preset.onto(x, way: w)),
         ),
-      if (own && directed)
+      if (own && animates && directed)
         StudioDrop<AnimationDirection?>(
           key: const ValueKey("ownDirection"),
           label: arriving ? "Comes from" : "Goes to",
@@ -374,39 +384,18 @@ class MotionClipsCard extends StatelessWidget {
                   : a.copyWith(exitDirection: d),
               asOwn: false),
         ),
-      if (own && strengthens)
-        DeviceKnob(
-          key: const ValueKey("ownStrength"),
-          label: "How far",
-          text: "${((arriving ? a.strength : a.exitStrength) * 100).round()}%",
-          value: arriving ? a.strength : a.exitStrength,
-          initial: 1,
-          min: 0.25,
-          max: 3,
-          accent: const Color(0xFF3FB08D),
-          ink: look.studio.text,
-          onChanged: (v, {transient = false}) {
-            controller.beginInteraction();
-            controller.setElementAnimation(
-                e.id,
-                arriving
-                    ? a.copyWith(strength: v)
-                    : a.copyWith(exitStrength: v));
-            if (!transient) controller.endInteraction();
-          },
-          onCommit: controller.endInteraction,
-        ),
-      if (animates && c.kind == MotionKind.loop)
+      if (styled != null && c.kind == MotionKind.loop)
         StudioDrop<LoopPreset>(
           key: const ValueKey("ownLoop"),
           label: "Its own loop",
-          value: a.loop.preset,
+          value: styled.loop.preset,
           options: [
             for (var p in LoopPreset.values)
               (p, p == LoopPreset.none ? "None" : p.label)
           ],
-          onChanged: (p) =>
-              style(a.copyWith(loop: a.loop.copyWith(preset: p)), asOwn: false),
+          onChanged: (p) => styleTo(
+              (s) => s.withLoop(s.loop.copyWith(preset: p)),
+              asOwn: false),
         ),
     ];
   }
@@ -419,7 +408,17 @@ class MotionClipsCard extends StatelessWidget {
     if (c.isSound) return null;
     var e = element;
     if (c.inside["own"] == true && c.keys.isEmpty) {
-      if (!CanvasController.animates(e)) return null;
+      var styled = OwnStyle.of(e);
+      if (styled == null) return null;
+      if (!CanvasController.animates(e)) {
+        var leaving = c.kind == MotionKind.leave;
+        if (styled.strength(leaving: leaving) == 1) return null;
+        return () {
+          controller.beginInteraction();
+          controller.replaceElement(styled.withStrength(1, leaving: leaving));
+          controller.endInteraction();
+        };
+      }
       var a = CanvasController.elementAnimationOf(e);
       var arriving = c.kind == MotionKind.arrive;
       var changed = arriving

@@ -1,6 +1,5 @@
 import 'dart:ui' as ui;
 import 'package:bruig/components/color_picker.dart';
-import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/components/paint_spec.dart';
@@ -232,55 +231,6 @@ void main() {
     expect(blueDots, greaterThan(0), reason: "the fade reached the dots");
     expect(baseChanged, lessThan(a.length ~/ 4 ~/ 200),
         reason: "and not the base between them");
-  });
-
-  testWidgets("a layer's gap fits a narrow sidebar", (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    var e = drawing();
-    e = e.copyWith(shapes: [
-      e.shapes![0],
-      e.shapes![1].copyWith(cue: VectorCue.gap, cueGap: -120),
-    ]);
-    var c = CanvasController(const CanvasDocument().addElement(e));
-    addTearDown(c.dispose);
-    c.selectOnly("v");
-    tester.view.physicalSize = const Size(260, 2400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-          home: Scaffold(
-              body: SizedBox(
-                  width: 240,
-                  child: SingleChildScrollView(
-                      child: ListenableBuilder(
-                          listenable: c,
-                          builder: (context, _) => Column(
-                              children: elementSettings(
-                                  context, c, c.selected!))))))),
-    ));
-    await tester.pumpAndSettle();
-    // The gap is the picked layer's, in Animation.
-    c.editVector("v");
-    c.pickVectorShape(1);
-    await tester.pumpAndSettle();
-    if (find.byKey(const ValueKey("vectorGap-1")).evaluate().isEmpty) {
-      var heading = find.byWidgetPredicate(
-          (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
-      await tester.ensureVisible(heading.first);
-      await tester.tap(heading.first);
-      await tester.pumpAndSettle();
-    }
-    expect(find.byKey(const ValueKey("vectorGap-1")), findsOneWidget);
-    expect(find.byKey(const ValueKey("vectorLayers")), findsOneWidget);
-    expect(tester.takeException(), isNull, reason: "no overflow");
   });
 
   testWidgets("a channel's number is dragged, held a moment first",

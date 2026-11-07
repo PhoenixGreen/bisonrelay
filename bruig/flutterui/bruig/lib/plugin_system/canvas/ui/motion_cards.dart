@@ -216,6 +216,30 @@ class MotionTimingCard extends StatelessWidget {
               ),
             ],
             if (p != null && span != null) ...[
+              // Where it starts, as a number: the sidebar's Delay (Ken,
+              // 2026-11-08). Moved here, it lets go of its pins.
+              DeviceKnob(
+                key: const ValueKey("animStart"),
+                label: "Starts",
+                text: "${span.start.toStringAsFixed(2)}s",
+                value: span.start,
+                initial: 0,
+                min: 0,
+                max: math.max(
+                    1.0,
+                    controller.document.frames /
+                        math.max(1, controller.document.frameRate)),
+                accent: _motionAccent,
+                ink: skin.ink,
+                onChanged: (v, {transient = false}) {
+                  controller.beginInteraction();
+                  controller.movePlacement(
+                      e.id, p.id, (v * 20).roundToDouble() / 20,
+                      transient: true);
+                  if (!transient) controller.endInteraction();
+                },
+                onCommit: controller.endInteraction,
+              ),
               StudioDrop<String>(
                 key: const ValueKey("animStartPin"),
                 label: "Pinned to",
@@ -237,6 +261,64 @@ class MotionTimingCard extends StatelessWidget {
                 onChanged: (v) =>
                     controller.pinPlacement(e.id, p.id, pinOf(v), end: true),
               ),
+            ],
+            // Its own arrival tied to a word cue, or said on a word, and the
+            // rest dimmed as it arrives: the sidebar's, in the chain.
+            if (c.inside["own"] == true && c.kind == MotionKind.arrive) ...[
+              if (controller.cues.isNotEmpty)
+                StudioDrop<String>(
+                  key: const ValueKey("animWordCue"),
+                  label: "On word cue",
+                  value: controller.cues.any((q) => q.id == e.base.cue)
+                      ? e.base.cue
+                      : "",
+                  options: [
+                    ("", "None"),
+                    for (var q in controller.cues) (q.id, q.name),
+                  ],
+                  onChanged: (v) =>
+                      controller.cueTo(e.id, v.isEmpty ? null : v),
+                ),
+              if (controller.words.isNotEmpty) ...[
+                // Found by what is said, among every word; with nothing
+                // looked for, the first of them in order.
+                _WordFind(
+                    key: const ValueKey("animWordFind"),
+                    query: controller.wordQuery,
+                    onChanged: (v) => controller.wordQuery = v),
+                StudioDrop<int>(
+                  key: const ValueKey("animOnWord"),
+                  label: "On a word",
+                  value: -1,
+                  options: [
+                    (
+                      -1,
+                      controller.wordQuery.isNotEmpty &&
+                              controller
+                                  .wordsMatching(controller.wordQuery)
+                                  .isEmpty
+                          ? "Not said"
+                          : "Pick a word…"
+                    ),
+                    for (var w in controller.wordQuery.isEmpty
+                        ? controller.words.take(200)
+                        : controller.wordsMatching(controller.wordQuery,
+                            most: 60))
+                      (
+                        controller.words.indexOf(w),
+                        "${controller.wordQuery.isEmpty ? w.text : controller.wordInContext(w)} · ${(w.frame / math.max(1, controller.document.frameRate)).toStringAsFixed(1)}s"
+                      ),
+                  ],
+                  onChanged: (i) {
+                    if (i < 0) return;
+                    controller.cueOnWord(e.id, controller.words[i]);
+                    controller.wordQuery = "";
+                  },
+                ),
+              ],
+              PackWide(_DimButton(
+                  key: const ValueKey("animDimOthers"),
+                  onTap: () => controller.dimOthers(e.id))),
             ],
           ]),
         ];
@@ -286,6 +368,96 @@ class MotionTimingCard extends StatelessWidget {
                 style: TextStyle(fontSize: 10.5, color: look.studio.muted)),
           ),
       ]),
+    );
+  }
+}
+
+/// _DimButton fades everything already on the canvas as the element
+/// arrives, and keeps it there.
+/// _WordFind is a one-line box to look for a word said by: what is typed
+/// narrows "On a word" to the words it is found in.
+class _WordFind extends StatefulWidget {
+  final String query;
+  final ValueChanged<String> onChanged;
+  const _WordFind({required this.query, required this.onChanged, super.key});
+
+  @override
+  State<_WordFind> createState() => _WordFindState();
+}
+
+class _WordFindState extends State<_WordFind> {
+  late final _text = TextEditingController(text: widget.query);
+
+  @override
+  void didUpdateWidget(_WordFind old) {
+    super.didUpdateWidget(old);
+    if (widget.query != _text.text) _text.text = widget.query;
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var s = MixerLook.of(context).studio;
+    return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 3),
+            child: Text("Find a word",
+                maxLines: 1, style: TextStyle(fontSize: 10, color: s.muted)),
+          ),
+          Container(
+            height: 22,
+            width: 140,
+            padding: const EdgeInsets.symmetric(horizontal: 7),
+            alignment: Alignment.centerLeft,
+            decoration: BoxDecoration(
+                color: s.inset,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: s.edge)),
+            child: TextField(
+              controller: _text,
+              maxLines: 1,
+              style: TextStyle(fontSize: 11, color: s.text),
+              decoration: InputDecoration.collapsed(
+                  hintText: "what is said",
+                  hintStyle: TextStyle(fontSize: 11, color: s.muted)),
+              onChanged: widget.onChanged,
+            ),
+          ),
+        ]);
+  }
+}
+
+class _DimButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _DimButton({required this.onTap, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var s = MixerLook.of(context).studio;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Material(
+        color: s.raised,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(4),
+            side: BorderSide(color: s.edge)),
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Text("Dim the others as it arrives",
+                style: TextStyle(fontSize: 10.5, color: s.text)),
+          ),
+        ),
+      ),
     );
   }
 }

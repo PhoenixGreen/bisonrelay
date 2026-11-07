@@ -145,12 +145,14 @@ void main() {
       (tester) async {
     settingsAsMenu.value = true;
     var c = await pumpPanel(tester);
-    await tapKey(tester, "menuTab-image.picture.animation");
-    expect(shownBodies(tester), ["image.picture.animation"]);
+    // Position, which both have (Animation, once the example, is the
+    // Chain's now: Ken, 2026-11-08).
+    await tapKey(tester, "menuTab-image.picture.position");
+    expect(shownBodies(tester), ["image.picture.position"]);
     c.selectOnly("s");
     await tester.pumpAndSettle();
-    expect(shownBodies(tester).single, endsWith("animation"),
-        reason: "the shape's Animation, picked by the same name");
+    expect(shownBodies(tester).single, endsWith("position"),
+        reason: "the shape's Position, picked by the same name");
     expect(tester.takeException(), isNull);
   });
 

@@ -173,6 +173,8 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
         onCommit: commit,
       ),
       poseDot,
+      ...keyframeEasingControls(controller, e, begin, commit,
+          label: "Keyframe"),
     ]);
   }
 
@@ -298,6 +300,11 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
         ),
         anchorButtons(controller, e, write, begin, commit),
         poseDot,
+        // How it leaves the keyframe it is on, beside the dot that makes it
+        // (Ken, 2026-11-08: the Animation section is gone; its motion is the
+        // Chain's, and the keyframes it still has are eased here).
+        ...keyframeEasingControls(controller, e, begin, commit,
+            label: "Keyframe"),
         // How it is slanted, after how it is turned -- and the switch that
         // makes the side handles slant it, for a screen with no keys to hold.
         const CanvasLineBreak(),

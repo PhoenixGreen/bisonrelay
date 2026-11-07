@@ -10,9 +10,11 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart' show StudioDrop;
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/vocal_cues_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -188,12 +190,17 @@ void main() {
     expect(c.cues, isEmpty);
   });
 
-  testWidgets("an element's settings tie it to a cue", (tester) async {
-    var c = CanvasController(_two());
+  testWidgets("its arrival's Timing ties it to a cue", (tester) async {
+    CanvasElement one = withOwnSpan(
+        ShapeElement(const ElementBase(id: "one")), MotionKind.arrive, 20, 30, 24);
+    var c = CanvasController(
+        CanvasDocument(frames: 100, frameRate: 24, elements: [one]));
     addTearDown(c.dispose);
     var cue = c.addCue(name: "line", frame: 50);
+    var own = ownClipOf(one, MotionKind.arrive)!;
     c.selectOnly("one");
-    tester.view.physicalSize = const Size(1400, 1600);
+    c.pickMotion("one", own.$1.id, placement: own.$2.id);
+    tester.view.physicalSize = const Size(3000, 420);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(MultiProvider(
@@ -201,19 +208,21 @@ void main() {
         ChangeNotifierProvider<ThemeNotifier>(
             create: (c) => ThemeNotifier(doLoad: false)),
         ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
       ],
-      child:
-          MaterialApp(home: Scaffold(body: CanvasDesignPanel(controller: c))),
+      child: MaterialApp(
+          home: Scaffold(
+              body: ListenableBuilder(
+                  listenable: c,
+                  builder: (context, _) =>
+                      AnimationPanel(controller: c, height: 400)))),
     ));
     await tester.pumpAndSettle();
-    var dropdown = find.descendant(
-        of: find.byKey(const ValueKey("elementCue")),
-        matching: find.byType(CanvasDropdown<String>));
-    expect(dropdown, findsOneWidget);
-    tester.widget<CanvasDropdown<String>>(dropdown).onChanged(cue.id);
+    var drop = find.byKey(const ValueKey("animWordCue"));
+    expect(drop, findsOneWidget);
+    tester.widget<StudioDrop<String>>(drop).onChanged(cue.id);
     await tester.pumpAndSettle();
-    expect(_firstKey(c, "one"), 50);
+    var moved = c.document.elementById("one")!;
+    expect(ownSpan(moved, MotionKind.arrive, 24), (50, 10));
+    expect(moved.base.cue, cue.id);
   });
 }

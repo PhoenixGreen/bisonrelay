@@ -20,6 +20,8 @@ import 'package:bruig/plugin_system/canvas/ui/motion_clips_card.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_curves.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/own_style.dart';
+import 'package:bruig/plugin_system/canvas/ui/parts_card.dart';
 import 'package:bruig/plugin_system/canvas/ui/scene_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -278,6 +280,18 @@ class _AnimationPanelState extends State<AnimationPanel> {
           // prototype has it. Its keys are the Curves tab's.
           _zone("Source", "Its clips: what it plays, when and where"),
           _clipsCard(e, c),
+          // The rest of its own style, beside the clip playing it: what the
+          // sidebar's Animation section had (Ken, 2026-11-08).
+          if (OwnStyleCard.shows(e, c))
+            OwnStyleCard(
+                key: const ValueKey("ownStyleCard"),
+                controller: controller,
+                element: e,
+                clip: c,
+                folded: shut("ownStyle"),
+                onFold: fold("ownStyle"),
+                height: h),
+          if (PartsCard.shows(e)) _partsCard(e),
           if (c.kind == MotionKind.model) _motionDevice(e, c, colors),
           MotionTimingCard(
               key: const ValueKey("motionTimingCard"),
@@ -326,6 +340,18 @@ class _AnimationPanelState extends State<AnimationPanel> {
       onFold: () => setState(() => _folded.contains("output:${e.id}")
           ? _folded.remove("output:${e.id}")
           : _folded.add("output:${e.id}")));
+
+  /// _partsCard is [e]'s layers or shapes, each in its own time: see
+  /// PartsCard.
+  Widget _partsCard(CanvasElement e) => PartsCard(
+      key: const ValueKey("partsCard"),
+      controller: controller,
+      element: e,
+      folded: _folded.contains("parts:${e.id}"),
+      onFold: () => setState(() => _folded.contains("parts:${e.id}")
+          ? _folded.remove("parts:${e.id}")
+          : _folded.add("parts:${e.id}")),
+      height: widget.height - 40);
 
   /// _instancesCard is [e]'s copies, the chain's first card: see
   /// InstancesCard.
@@ -504,6 +530,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
               _instancesCard(e),
               _zone("Source", "Its clips: what it plays, when and where"),
               _clipsCard(e, null),
+              if (PartsCard.shows(e)) _partsCard(e),
               ..._chain(e),
               _outputCard(e),
             ].expand((w) => [w, const SizedBox(width: 6)]).toList(),

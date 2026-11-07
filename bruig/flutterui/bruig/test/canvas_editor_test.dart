@@ -4,7 +4,6 @@ import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'dart:math' as math;
 import 'package:bruig/storage_manager.dart';
@@ -48,6 +47,7 @@ import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/own_style.dart' show OwnStyle;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
@@ -3160,10 +3160,8 @@ void main() {
         "Order",
         "Special cells",
         "Style",
-        // Then how it arrives -- a handful of choices made once and then
-        // left alone, like a headline's -- and the designs saved, as on
-        // every element.
-        "Animation",
+        // The designs saved, as on every element; how it arrives is the
+        // Chain's (Ken, 2026-11-08).
         "Presets",
       ]);
     });
@@ -3572,8 +3570,10 @@ void main() {
     /// outlives the test.
     /// showAnimation is the Animation section, open: every section is open
     /// in these tests, and nothing needs shutting after.
+    // Ken, 2026-11-08: the Animation section is gone (its motion is the
+    // Chain's); a keyframe's easing is beside the keyframe dot, in Position.
     Future<Future<void> Function()> showAnimation(WidgetTester tester) async {
-      var section = find.byKey(const ValueKey("elementSection-animation"));
+      var section = find.byKey(const ValueKey("elementSection-position"));
       await tester.ensureVisible(section);
       await tester.pumpAndSettle();
       return () async {};
@@ -4407,7 +4407,7 @@ void main() {
       await panel(tester);
 
       var panelWidth = tester.getSize(find.byType(CanvasLayersPanel)).width;
-      for (var name in ["source", "chart", "animation"]) {
+      for (var name in ["source", "chart"]) {
         var section = find.byKey(ValueKey("elementSection-$name"));
         await tester.ensureVisible(section);
         await tester.pumpAndSettle();
@@ -4668,18 +4668,6 @@ void main() {
   });
 
   group("a chart's animation", () {
-    /// openAnimation opens the section if it is not already open.
-    ///
-    /// Whether a section is open is remembered for the session, deliberately
-    /// -- somebody who opens the animation settings is working on animation
-    /// -- so a test cannot assume it starts closed and cannot simply tap the
-    /// heading, which would shut one a previous test left open.
-    Future<void> openAnimation(WidgetTester tester) async {
-      var section = find.byKey(const ValueKey("elementSection-animation"));
-      await tester.ensureVisible(section);
-      await tester.pumpAndSettle();
-    }
-
     (CanvasController, ChartElement) build({int frames = 1}) {
       var document = CanvasDocument(frames: frames);
       var chart = ChartElement(
@@ -4802,68 +4790,6 @@ void main() {
       var back = controller.document.elements.single as ChartElement;
       expect(back.animation.on, isFalse);
       expect(back.track, isNull);
-    });
-
-    testWidgets("the presets offered suit the chart", (tester) async {
-      // A sweep round a bar chart is a sweep round a rectangle, and a wipe
-      // across a pie is worse.
-      var (controller, _) = build(frames: 24);
-      addTearDown(controller.dispose);
-      controller.selectOnly("c");
-      await pump(tester, CanvasDesignPanel(controller: controller));
-
-      await openAnimation(tester);
-
-      // Read off the control rather than off an open menu, the same way the
-      // text element's presets are checked: a dropdown builds the items it
-      // can see.
-      List<String> offered() => [
-            for (var tile in tester
-                .widget<CanvasTiles<ChartAnimationPreset>>(
-                    find.byKey(const ValueKey("chartArriveKinds")))
-                .tiles)
-              tile.label,
-          ];
-
-      expect(offered().first, "None",
-          reason: "the way to have none of it comes first");
-      expect(offered(), contains("Grow"));
-      expect(offered(), contains("Wipe across"));
-      expect(offered(), isNot(contains("Sweep round")),
-          reason: "not on a bar chart");
-
-      controller.replaceElement(
-          (controller.document.elements.single as ChartElement)
-              .copyWith(type: ChartType.pie));
-      await tester.pumpAndSettle();
-      expect(offered(), contains("Sweep round"));
-      expect(offered(), isNot(contains("Wipe across")),
-          reason: "nor a wipe across a circle");
-    });
-
-    testWidgets("the gap is only offered where there is something to space",
-        (tester) async {
-      var (controller, chart) = build(frames: 24);
-      addTearDown(controller.dispose);
-      controller.selectOnly("c");
-      await pump(tester, CanvasDesignPanel(controller: controller));
-
-      await openAnimation(tester);
-      expect(find.text("Gap"), findsNothing, reason: "no preset yet");
-
-      controller.applyChartAnimation(chart, ChartAnimationPreset.grow);
-      await tester.pumpAndSettle();
-      expect(find.text("Gap"), findsOneWidget);
-      expect(find.text("Curve"), findsOneWidget);
-      expect(find.text("Length"), findsOneWidget,
-          reason: "and how long it takes, as every other element has");
-
-      controller.applyChartAnimation(
-          chartIn(controller), ChartAnimationPreset.wipe);
-      await tester.pumpAndSettle();
-      expect(find.text("Gap"), findsNothing,
-          reason: "one edge crossing everything has nothing to space out");
-      expect(find.text("Curve"), findsOneWidget);
     });
   });
 
@@ -5606,97 +5532,7 @@ void main() {
     });
   });
 
-  group("a text element's animation", () {
-    /// open scrolls the settings to the animation section and opens it, if it
-    /// is not open already.
-    ///
-    /// A section remembers whether it was open and the memory outlives one
-    /// test, so tapping unconditionally shuts the one the test before left
-    /// open -- and everything inside it is then nowhere to be found.
-    Future<void> open(WidgetTester tester) async {
-      var kinds = find.byKey(const ValueKey("textArriveKinds"));
-      await tester.ensureVisible(kinds);
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets("choosing one applies it and lays its arrival", (tester) async {
-      // The same gesture a chart's animation is chosen with: a preset with
-      // nothing pinning the reveal channel draws exactly what a still element
-      // draws, and asking somebody to key a channel they have never heard of
-      // is asking them to know how this is implemented.
-      var element = TextElement(
-        const ElementBase(id: "t", x: 40, y: 40, width: 300, height: 120),
-        text: "A headline",
-      );
-      var controller = CanvasController(
-          const CanvasDocument(frames: 24, frameRate: 12).addElement(element));
-      addTearDown(controller.dispose);
-      controller.selectOnly("t");
-      await pump(tester, CanvasDesignPanel(controller: controller));
-      await open(tester);
-      // The family first. Choosing one applies its first preset, so the
-      // canvas shows something at once rather than waiting for a second
-      // choice.
-      var kind = find.byKey(const ValueKey("textArrive-sequential"));
-      await tester.ensureVisible(kind);
-      await tester.pumpAndSettle();
-      await tester.tap(kind);
-      await tester.pumpAndSettle();
-
-      var after = controller.document.elements.single as TextElement;
-      expect(after.animation.preset.family, TextAnimationFamily.sequential);
-      expect(ownSpan(after, MotionKind.arrive, 12), isNotNull,
-          reason: "and it has a length on the timeline");
-
-      // Then which one, out of that family alone.
-      var which = find.byKey(const ValueKey("textAnimationPreset"));
-      await tester.ensureVisible(which);
-      await tester.pumpAndSettle();
-      await tester.tap(which);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("Word by word").last);
-      await tester.pumpAndSettle();
-
-      expect(
-          (controller.document.elements.single as TextElement).animation.preset,
-          TextAnimationPreset.words);
-    });
-
-    testWidgets("the list is grouped, because thirty names is a wall",
-        (tester) async {
-      var element = TextElement(
-        const ElementBase(id: "t", x: 40, y: 40, width: 300, height: 120),
-        text: "A headline",
-        animation: const TextAnimation(preset: TextAnimationPreset.fadeIn),
-      );
-      var controller = CanvasController(
-          const CanvasDocument(frames: 24, frameRate: 12).addElement(element));
-      addTearDown(controller.dispose);
-      controller.selectOnly("t");
-      await pump(tester, CanvasDesignPanel(controller: controller));
-
-      await open(tester);
-
-      // Read off the controls rather than off an open menu: a dropdown builds
-      // the items it can see, and thirty of them do not fit on a screen.
-      var families = tester.widget<CanvasTiles<TextAnimationFamily?>>(
-          find.byKey(const ValueKey("textArriveKinds")));
-      var kinds = [for (var tile in families.tiles) tile.label];
-      expect(kinds.first, "None",
-          reason: "the way to have none of it comes first");
-      for (var family in TextAnimationFamily.values) {
-        expect(kinds, contains(family.label));
-      }
-
-      // And the second box holds that family alone, not all thirty.
-      var which = tester.widget<CanvasDropdown<TextAnimationPreset>>(
-          find.byKey(const ValueKey("textAnimationPreset")));
-      expect(which.options.length,
-          TextAnimationPreset.inFamily(TextAnimationFamily.fade).length);
-      expect(which.options.length, lessThan(8),
-          reason: "a family, not the whole list");
-    });
-  });
+  group("a text element's animation", () {});
 
   group("a chart's own data source", () {
     // A chart used to have two ways to get numbers: typed in, or read off a
@@ -5807,7 +5643,6 @@ void main() {
       var wanted = [
         "Data source",
         "Chart",
-        "Animation",
       ];
       expect([for (var w in wanted) headings.contains(w)], everyElement(isTrue),
           reason: "$headings");
@@ -5878,26 +5713,15 @@ void main() {
           reason: "and the supply is still the series");
     });
 
-    testWidgets("which end a chart empties from is its own switch",
-        (tester) async {
-      // Not eight more entries in the preset list: "which preset" and "which
-      // end it starts from" are different questions, and the list is long
-      // enough already.
-      var controller = await panel(tester);
-      await open(tester, "ANIMATION", "Goes off");
-      expect(find.text("In the same order"), findsNothing,
-          reason: "there is no way out to order yet");
-
-      var chart = controller.document.elements.single as ChartElement;
-      controller.applyChartExit(chart, ChartAnimationPreset.grow);
-      await tester.pumpAndSettle();
-
-      await tester.ensureVisible(find.text("In the same order"));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("In the same order"));
-      await tester.pumpAndSettle();
-
-      var after = controller.document.elements.single as ChartElement;
+    // Ken, 2026-11-08: the way out's order is the chain's own style card's
+    // now; the same switch, read and written through OwnStyle.
+    test("which end a chart empties from is its own switch", () {
+      var chart = ChartElement(const ElementBase(id: "c"),
+          data: ChartData.parse("Cat\tA\nx\t10\ny\t6"));
+      var style = OwnStyle(chart);
+      expect(style.inOrder, isFalse);
+      var after = style.withPreset("grow", leaving: true) as ChartElement;
+      after = OwnStyle(after).withInOrder(true) as ChartElement;
       expect(after.animation.exitInOrder, isTrue);
       expect(after.animation.leaving.flipOrder, isTrue,
           reason: "which is what the painter draws the way out with");
@@ -6788,7 +6612,6 @@ void main() {
         "Box and columns",
         "On a line",
         "Parts of the text",
-        "Animation",
         "Presets",
       ]);
       expect(
