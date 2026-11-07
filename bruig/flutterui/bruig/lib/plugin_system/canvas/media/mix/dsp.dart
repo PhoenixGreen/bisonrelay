@@ -263,13 +263,10 @@ class StripProcessor {
   }
 
   /// shape is the strip before its fader, where a pre-fader send is taken.
-  /// A muted strip is silent from here on, sends included.
+  /// A muted strip still runs its chain -- its meters between devices show
+  /// the sound going through, as Ken expects -- and is silenced at its
+  /// fader (see level), its sends too (MixGraph._send).
   void shape(Float32List l, Float32List r, int n) {
-    if (_mix.mute) {
-      l.fillRange(0, n, 0);
-      r.fillRange(0, n, 0);
-      return;
-    }
     // Moved by its modulators every so often within the block, so a knob
     // they turn glides rather than steps; all at once with none.
     var every = _modulating ? modulationStep : n;
@@ -406,7 +403,11 @@ class StripProcessor {
   /// level is the fader and balance, ramped from the last block's over this
   /// one so a level moved by automation does not click.
   void level(Float32List l, Float32List r, int n) {
-    if (_mix.mute) return;
+    if (_mix.mute) {
+      l.fillRange(0, n, 0);
+      r.fillRange(0, n, 0);
+      return;
+    }
     var (gl, gr) = _mix.gains;
     if (gl == _gl && gr == _gr) {
       if (gl != 1 || gr != 1) _scale(l, r, n, gl, gr);

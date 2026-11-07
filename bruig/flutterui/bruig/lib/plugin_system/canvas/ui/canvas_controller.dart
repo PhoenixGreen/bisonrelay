@@ -3274,6 +3274,11 @@ class CanvasController extends ChangeNotifier {
 
   final Map<String, TakeReading> _readings = {};
 
+  /// _readingTakes are the takes being read now, and _unreadTakes those
+  /// whose sound could not be read: said so, rather than "Reading…" for
+  /// ever (Ken's Phrasing that did nothing).
+  final Set<String> _readingTakes = {}, _unreadTakes = {};
+
   Timer? _shapeTimer;
 
   final Map<String, Future<SpeechTake?>> _shaping = {};
@@ -3489,6 +3494,11 @@ class CanvasController extends ChangeNotifier {
 
   bool _editorWide = true;
 
+  /// _settingsShut is, by editor -- "roll" a part's piano roll, "clip" a
+  /// slot's clip -- whether its columns of settings are folded away to a
+  /// strip. The roll's start folded, as Ken asked: the notes first.
+  final Map<String, bool> _settingsShut = {"roll": true};
+
   double? _editorWidth;
 
   PianoRollTarget? _clipEditing;
@@ -3503,6 +3513,12 @@ class CanvasController extends ChangeNotifier {
   /// together a chord, and the cursor moves on when all are let go.
   /// [_stepAt] is where the chord being held goes; [_stepHeld] its keys.
   bool _rollStep = false;
+
+  /// keysHeld ticks when a key is pressed or let go live: what the stage
+  /// draws held keys by. A key played is heard at once -- the sound sent
+  /// before anything else -- and only the stage is redrawn for it, not the
+  /// whole editor (Ken: 200ms between a key and its note).
+  final ValueNotifier<int> keysHeld = ValueNotifier(0);
 
   /// _freezing are the channels being frozen now: see freezeChain.
   final Set<String> _freezing = {};

@@ -10,7 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
 
 /// PitchNote is one note of a recording: from [start] to [end] seconds into
 /// the original, sung at [sung] (a MIDI note, fractional: its mean), and
-/// what is done to it.
+/// what is done to it, as the prototype's Pitch editor does.
 class PitchNote {
   final double start, end;
   final double sung;
@@ -22,15 +22,38 @@ class PitchNote {
   /// nought to one: Melodyne's pitch centre.
   final double straighten;
 
-  /// wobble is how much of its own drift and vibrato round its middle is
-  /// kept: one as sung, nought flat.
-  final double wobble;
+  /// wobble is how much of its slow drift round its middle is kept, and
+  /// vibrato how much of its quick swing: one as sung, nought flat.
+  final double wobble, vibrato;
 
   /// gainDb is how much louder (softer, negative).
   final double gainDb;
 
+  /// retuneMs is how long it takes to reach its note from the pitch sung,
+  /// from its start: nought at once, longer as a singer's ear would.
+  final double retuneMs;
+
+  /// formant is its voice's colour moved, in semitones: up thinner, down
+  /// deeper, its pitch the same.
+  final double formant;
+
+  /// slideMs is how long it glides in from the note before it.
+  final double slideMs;
+
+  /// curve is a pitch drawn over it -- (seconds into the original, MIDI
+  /// note) -- heard in place of its note where it is drawn.
+  final List<(double, double)> curve;
+
   const PitchNote(this.start, this.end, this.sung,
-      {this.shift = 0, this.straighten = 0, this.wobble = 1, this.gainDb = 0});
+      {this.shift = 0,
+      this.straighten = 0,
+      this.wobble = 1,
+      this.vibrato = 1,
+      this.gainDb = 0,
+      this.retuneMs = 0,
+      this.formant = 0,
+      this.slideMs = 0,
+      this.curve = const []});
 
   double get length => end - start;
 
@@ -41,7 +64,33 @@ class PitchNote {
 
   /// edited is whether anything is done to it.
   bool get edited =>
-      shift != 0 || straighten != 0 || wobble != 1 || gainDb != 0;
+      shift != 0 ||
+      straighten != 0 ||
+      wobble != 1 ||
+      vibrato != 1 ||
+      gainDb != 0 ||
+      retuneMs != 0 ||
+      formant != 0 ||
+      slideMs != 0 ||
+      curve.isNotEmpty;
+
+  /// movedTo is it moved onto [note], its middle drawn right onto it.
+  PitchNote movedTo(double note) =>
+      copyWith(straighten: 1, shift: note - sung.roundToDouble());
+
+  /// drawnAt is the pitch drawn at [t] seconds, or null where none is.
+  double? drawnAt(double t) {
+    if (curve.length < 2 || t < curve.first.$1 || t > curve.last.$1) {
+      return null;
+    }
+    for (var i = 1; i < curve.length; i++) {
+      var (t1, m1) = curve[i];
+      if (t > t1) continue;
+      var (t0, m0) = curve[i - 1];
+      return t1 <= t0 ? m1 : m0 + (m1 - m0) * (t - t0) / (t1 - t0);
+    }
+    return curve.last.$2;
+  }
 
   PitchNote copyWith(
           {double? start,
@@ -50,12 +99,25 @@ class PitchNote {
           double? shift,
           double? straighten,
           double? wobble,
-          double? gainDb}) =>
+          double? vibrato,
+          double? gainDb,
+          double? retuneMs,
+          double? formant,
+          double? slideMs,
+          List<(double, double)>? curve}) =>
       PitchNote(start ?? this.start, end ?? this.end, sung ?? this.sung,
           shift: (shift ?? this.shift).clamp(-24.0, 24.0),
           straighten: (straighten ?? this.straighten).clamp(0.0, 1.0),
           wobble: (wobble ?? this.wobble).clamp(0.0, 2.0),
-          gainDb: (gainDb ?? this.gainDb).clamp(-24.0, 12.0));
+          vibrato: (vibrato ?? this.vibrato).clamp(0.0, 2.0),
+          gainDb: (gainDb ?? this.gainDb).clamp(-24.0, 12.0),
+          retuneMs: (retuneMs ?? this.retuneMs).clamp(0.0, 400.0),
+          formant: (formant ?? this.formant).clamp(-12.0, 12.0),
+          slideMs: (slideMs ?? this.slideMs).clamp(0.0, 400.0),
+          curve: curve ?? this.curve);
+
+  /// reset is it as sung, where it is.
+  PitchNote get reset => PitchNote(start, end, sung);
 
   Map<String, dynamic> toJson() => {
         "s": _r(start),
@@ -64,7 +126,17 @@ class PitchNote {
         if (shift != 0) "shift": _r(shift),
         if (straighten != 0) "straighten": _r(straighten),
         if (wobble != 1) "wobble": _r(wobble),
+        // Written always where it differs from the drift's: a file from
+        // before, with no vibrato of its own, kept both by its wobble.
+        if (vibrato != wobble) "vibrato": _r(vibrato),
         if (gainDb != 0) "gain": _r(gainDb),
+        if (retuneMs != 0) "retune": _r(retuneMs),
+        if (formant != 0) "formant": _r(formant),
+        if (slideMs != 0) "slide": _r(slideMs),
+        if (curve.isNotEmpty)
+          "curve": [
+            for (var (t, m) in curve) [_r(t), _r(m)]
+          ],
       };
 
   static double _r(double v) => (v * 1000).round() / 1000;
@@ -73,11 +145,21 @@ class PitchNote {
     if (json is! Map) return null;
     var s = jsonDouble(json["s"], -1), e = jsonDouble(json["e"], -1);
     if (s < 0 || e <= s) return null;
+    var wobble = jsonDouble(json["wobble"], 1);
     return PitchNote(s, e, jsonDouble(json["p"], 60)).copyWith(
         shift: jsonDouble(json["shift"], 0),
         straighten: jsonDouble(json["straighten"], 0),
-        wobble: jsonDouble(json["wobble"], 1),
-        gainDb: jsonDouble(json["gain"], 0));
+        wobble: wobble,
+        vibrato: jsonDouble(json["vibrato"], wobble),
+        gainDb: jsonDouble(json["gain"], 0),
+        retuneMs: jsonDouble(json["retune"], 0),
+        formant: jsonDouble(json["formant"], 0),
+        slideMs: jsonDouble(json["slide"], 0),
+        curve: [
+          if (json["curve"] case List points)
+            for (var p in points)
+              if (p case [num t, num m]) (t.toDouble(), m.toDouble()),
+        ]);
   }
 
   @override
@@ -89,11 +171,24 @@ class PitchNote {
       other.shift == shift &&
       other.straighten == straighten &&
       other.wobble == wobble &&
-      other.gainDb == gainDb;
+      other.vibrato == vibrato &&
+      other.gainDb == gainDb &&
+      other.retuneMs == retuneMs &&
+      other.formant == formant &&
+      other.slideMs == slideMs &&
+      _sameCurve(other.curve, curve);
+
+  static bool _sameCurve(List<(double, double)> a, List<(double, double)> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 
   @override
-  int get hashCode =>
-      Object.hash(start, end, sung, shift, straighten, wobble, gainDb);
+  int get hashCode => Object.hash(start, end, sung, shift, straighten, wobble,
+      vibrato, gainDb, retuneMs, formant, slideMs, curve.length);
 }
 
 /// PitchEdit is a recording's notes and what is done to them: kept on its
@@ -129,8 +224,14 @@ class PitchEdit {
     if (at <= n.start + 0.02 || at >= n.end - 0.02) return this;
     return copyWith(notes: [
       ...notes.take(i),
-      n.copyWith(end: at),
-      n.copyWith(start: at),
+      n.copyWith(end: at, curve: [
+        for (var p in n.curve)
+          if (p.$1 <= at) p
+      ]),
+      n.copyWith(start: at, curve: [
+        for (var p in n.curve)
+          if (p.$1 >= at) p
+      ]),
       ...notes.skip(i + 1),
     ]);
   }
@@ -143,7 +244,7 @@ class PitchEdit {
     var sung = (a.sung * a.length + b.sung * b.length) / (a.length + b.length);
     return copyWith(notes: [
       ...notes.take(i),
-      a.copyWith(end: b.end, sung: sung),
+      a.copyWith(end: b.end, sung: sung, curve: [...a.curve, ...b.curve]),
       ...notes.skip(i + 2),
     ]);
   }

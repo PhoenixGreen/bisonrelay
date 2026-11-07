@@ -572,9 +572,9 @@ extension CanvasTools on CanvasController {
       foldedDevices.remove(device);
       _effectsFocus = device;
       _effectsFocusCount++;
-      // Speech and its Vocaliser are the Speech view's; anything else is in
-      // the chain.
-      _speechShown = device == "speech" || device == "vocaliser";
+      // Speech is the Speech view's; anything else -- its Vocaliser too --
+      // is in the chain.
+      _speechShown = device == "speech";
       _pitchShown = false;
       _instrumentShown = false;
     }
@@ -589,6 +589,15 @@ extension CanvasTools on CanvasController {
   /// editorWide is whether the editor in the effects strip -- a clip's, or
   /// a part's piano roll -- is widened: every setting, and the most room.
   bool get editorWide => _editorWide;
+
+  /// settingsShut is whether editor [kind]'s settings -- "roll" or "clip"
+  /// -- are folded away: see _settingsShut.
+  bool settingsShut(String kind) => _settingsShut[kind] ?? false;
+
+  void toggleSettingsShut(String kind) {
+    _settingsShut[kind] = !settingsShut(kind);
+    notifyListeners();
+  }
 
   void toggleEditorWide() {
     _editorWide = !_editorWide;
@@ -753,6 +762,18 @@ extension CanvasTools on CanvasController {
     apply(
         _document.copyWith(
             session: session.put(t.channel, t.row!, change(clip))),
+        transient: transient);
+    if (!transient) _warpSoon();
+  }
+
+  /// editSlotClip changes the clip in slot [row] of [channel] -- open in
+  /// the editor or not, as the Clips card does -- as editClip does.
+  void editSlotClip(
+      String channel, int row, SessionClip Function(SessionClip clip) change,
+      {bool transient = false}) {
+    var clip = session.at(channel, row);
+    if (clip == null) return;
+    apply(_document.copyWith(session: session.put(channel, row, change(clip))),
         transient: transient);
     if (!transient) _warpSoon();
   }

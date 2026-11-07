@@ -554,6 +554,7 @@ class CanvasStageState extends State<CanvasStage>
     TabletInput.instance.start();
     controller.addListener(_onChanged);
     controller.images.addListener(_onChanged);
+    controller.keysHeld.addListener(_onChanged);
     // Scrolled by hand (a scroll bar, two fingers, the wheel), the view is
     // where it is scrolled to: see _followScroll.
     _scroll.addListener(_followScroll);
@@ -580,8 +581,10 @@ class CanvasStageState extends State<CanvasStage>
     if (oldWidget.controller != controller) {
       oldWidget.controller.removeListener(_onChanged);
       oldWidget.controller.images.removeListener(_onChanged);
+      oldWidget.controller.keysHeld.removeListener(_onChanged);
       controller.addListener(_onChanged);
       controller.images.addListener(_onChanged);
+      controller.keysHeld.addListener(_onChanged);
     }
   }
 
@@ -603,6 +606,7 @@ class CanvasStageState extends State<CanvasStage>
     _scroll.dispose();
     _scrollX.dispose();
     controller.removeListener(_onChanged);
+    controller.keysHeld.removeListener(_onChanged);
     controller.images.removeListener(_onChanged);
     VideoKey.ready.removeListener(_onChanged);
     AdjustShader.ready.removeListener(_onChanged);

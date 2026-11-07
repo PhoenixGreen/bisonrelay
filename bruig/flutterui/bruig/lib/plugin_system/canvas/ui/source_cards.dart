@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart'
+    show dbToGain, gainToDb;
+import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
@@ -15,9 +19,11 @@ import 'package:flutter/material.dart';
 /// audioColour is an audio channel's colour, as the prototype's.
 const audioColour = Color(0xFF4F8FD6);
 
-/// AudioClipsDevice is an audio channel's Clips: its sounds on the timeline,
-/// one at a time -- its shape, its level and its fades -- and the clips in
-/// its slots, opened in the clip editor.
+/// AudioClipsDevice is an audio channel's Clips, as the prototype's: its
+/// sounds -- on the timeline, and in its slots -- as a row of chips, one
+/// picked; the picked one's shape over its knobs (Gain, and a slot clip's
+/// Transpose; its fades) and a slot clip's Warp, with the Clip and Warp
+/// pages of its screen. A slot's chip launches it, the one playing ringed.
 class AudioClipsDevice extends StatefulWidget {
   final CanvasController controller;
   final String channel;
@@ -40,44 +46,86 @@ class AudioClipsDevice extends StatefulWidget {
   State<AudioClipsDevice> createState() => _AudioClipsDeviceState();
 }
 
+/// _Pick is a chip of the card: a sound on the timeline, or a slot.
+typedef _Pick = ({TimedLane? lane, int? row});
+
 class _AudioClipsDeviceState extends State<AudioClipsDevice> {
   CanvasController get c => widget.controller;
+  String get channel => widget.channel;
 
-  /// _shown is which of the channel's sounds the card shows and sets.
-  int _shown = 0;
+  /// _picked is the chip picked: a slot's row, or a timeline sound's index
+  /// (as -1 - index); null for the playing slot, or else the first.
+  int? _picked;
+
+  /// _warpPage is whether the screen shows its warp markers.
+  bool _warpPage = false;
+
+  /// _tick redraws the playhead while something plays.
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(milliseconds: 60), (_) {
+      if (mounted && (c.playing || c.clipPlaying(channel))) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  List<_Pick> _picks() {
+    var lane = c.timelineChannels.where((l) => l.key == channel).firstOrNull;
+    return [
+      for (var l in lane?.lanes ?? const <TimedLane>[]) (lane: l, row: null),
+      for (var (row, s) in (c.session.slots[channel] ?? const []).indexed)
+        if (s != null && !s.midi) (lane: null, row: row),
+    ];
+  }
+
+  int _keyOf(_Pick p, List<_Pick> all) =>
+      p.row ?? -1 - all.where((q) => q.row == null).toList().indexOf(p);
 
   @override
   Widget build(BuildContext context) {
     var studio = MixerLook.of(context).studio;
-    var lane =
-        c.timelineChannels.where((l) => l.key == widget.channel).firstOrNull;
-    if (lane == null) return const SizedBox();
-    var sounds = lane.lanes;
-    var at = _shown.clamp(0, sounds.length - 1);
-    var sound = sounds[at];
-    var clip = sound.clip;
-    var source = clip.playlist.firstOrNull;
-    var slots = [
-      for (var (row, s)
-          in (c.session.slots[widget.channel] ?? const []).indexed)
-        if (s != null && !s.midi) row
-    ];
-    var length = clip.playlist.fold(
-        0.0,
-        (sum, s) =>
-            sum + math.max(0.0, (s.end > 0 ? s.end : s.length) - s.start));
+    var picks = _picks();
+    if (picks.isEmpty) return const SizedBox();
+    var playingRow = [
+      for (var p in picks)
+        if (p.row case var r? when c.clipState(channel, r) == ClipState.playing)
+          r
+    ].firstOrNull;
+    var pick = picks.firstWhere((p) => _keyOf(p, picks) == _picked,
+        orElse: () => playingRow != null
+            ? picks.firstWhere((p) => p.row == playingRow)
+            : picks.first);
+    var slot = pick.row == null ? null : c.session.at(channel, pick.row!);
+    var lane = pick.lane;
+    var timed = lane?.clip;
+    var sound = slot?.sound ?? timed?.playlist.firstOrNull;
+    var spb = c.document.audio.secondsPerBeat;
 
-    // Its level and fades, written to the sound shown.
-    void set(MediaClip Function(MediaClip clip) change,
+    // Its settings, written to the chip picked.
+    void setSlot(SessionClip Function(SessionClip clip) change,
         {bool transient = false}) {
-      if (!sound.editable) return;
+      if (pick.row == null) return;
       if (transient) c.beginInteraction();
-      c.setTimedClip(sound.element, change(clip), transient: transient);
+      c.editSlotClip(channel, pick.row!, change, transient: transient);
+    }
+
+    void setTimed(MediaClip Function(MediaClip clip) change,
+        {bool transient = false}) {
+      if (lane == null || !lane.editable || timed == null) return;
+      if (transient) c.beginInteraction();
+      c.setTimedClip(lane.element, change(timed), transient: transient);
       if (!transient) c.endInteraction();
     }
 
     var muted = TextStyle(fontSize: 10, color: studio.muted);
-    var strong = TextStyle(fontSize: 10.5, color: studio.text);
     Widget knob(
             DeviceTier tier,
             String key,
@@ -87,7 +135,7 @@ class _AudioClipsDeviceState extends State<AudioClipsDevice> {
             double initial,
             double min,
             double max,
-            MediaClip Function(double v) change) =>
+            void Function(double v, {bool transient}) change) =>
         DeviceKnob(
           key: ValueKey(key),
           label: label,
@@ -96,6 +144,7 @@ class _AudioClipsDeviceState extends State<AudioClipsDevice> {
           initial: initial,
           min: min,
           max: max,
+          bipolar: min < 0 && max > 0,
           size: switch (tier) {
             DeviceTier.large => 46,
             DeviceTier.medium => 38,
@@ -103,19 +152,135 @@ class _AudioClipsDeviceState extends State<AudioClipsDevice> {
           },
           accent: audioColour,
           ink: studio.text,
-          onChanged: (v, {transient = false}) =>
-              set((_) => change(v), transient: transient),
+          onChanged: change,
           onCommit: c.endInteraction,
         );
     String seconds(double s) =>
-        s < 1 ? "${(s * 1000).round()} ms" : "${s.toStringAsFixed(1)} s";
-    var peaks = source == null ? null : c.waveformOf(source.assetId);
+        s < 1 ? "${(s * 1000).round()} ms" : "${s.toStringAsFixed(2)} s";
+    String db(double v) => v <= -60
+        ? "−∞ dB"
+        : "${v >= 0 ? "" : "−"}${v.abs().toStringAsFixed(1)} dB";
+
+    // Where its sound is played to now, seconds into its file.
+    double? playhead;
+    if (slot != null && sound != null) {
+      if (c.clipState(channel, pick.row!) == ClipState.playing) {
+        var beat = c.clipAt(channel);
+        if (beat != null) {
+          playhead = sound.start +
+              (slot.warp ? slot.warpMap.sourceAt(beat) : beat * spb);
+        }
+      }
+    } else if (lane != null && timed != null && sound != null && c.playing) {
+      var t = (c.frame - timed.at) / c.document.frameRate + sound.start;
+      var end = sound.end > 0 ? sound.end : sound.length;
+      if (t >= sound.start && t <= end) playhead = t;
+    }
+    var fileLength = sound == null || sound.length <= 0 ? 1.0 : sound.length;
+    var fadeIn = slot?.fadeIn ?? timed?.fadeIn ?? 0;
+    var fadeOut = slot?.fadeOut ?? timed?.fadeOut ?? 0;
+    var span = sound == null
+        ? 1.0
+        : math.max(
+            0.01, (sound.end > 0 ? sound.end : sound.length) - sound.start);
+    var warpOn = slot != null && slot.warp;
+    var slotCount = picks.where((p) => p.row != null).length;
+    var playingCount = playingRow == null ? 0 : 1;
+
+    Widget chip(_Pick p) {
+      var k = _keyOf(p, picks);
+      var on = identical(p, pick) || _keyOf(pick, picks) == k;
+      var clip = p.row == null ? null : c.session.at(channel, p.row!);
+      var state = p.row == null ? null : c.clipState(channel, p.row!);
+      var playingNow = state == ClipState.playing || state == ClipState.queued;
+      var name = clip != null
+          ? (clip.name.isEmpty ? "Slot ${p.row! + 1}" : clip.name)
+          : (p.lane!.clip.playlist.firstOrNull?.name.isNotEmpty ?? false)
+              ? p.lane!.clip.playlist.first.name
+              : p.lane!.element.name;
+      return Padding(
+        padding: const EdgeInsets.only(right: 4),
+        child: Material(
+          color: on ? audioColour.withValues(alpha: 0.35) : studio.raised,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(4),
+              side: BorderSide(
+                  color: playingNow
+                      ? const Color(0xFF3FB950)
+                      : on
+                          ? audioColour
+                          : studio.edge,
+                  width: playingNow ? 1.6 : 1)),
+          child: InkWell(
+            key: ValueKey("audioClipsChip-$k"),
+            borderRadius: BorderRadius.circular(4),
+            onTap: () => setState(() => _picked = k),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (p.row != null)
+                  // Launched, or stopped where it plays.
+                  InkWell(
+                    key: ValueKey("audioClipsLaunch-${p.row}"),
+                    onTap: () {
+                      setState(() => _picked = k);
+                      playingNow
+                          ? c.stopChannelClips(channel)
+                          : c.launchClip(channel, p.row!);
+                    },
+                    child: Icon(
+                        playingNow
+                            ? Icons.radio_button_checked
+                            : Icons.play_arrow,
+                        size: 14,
+                        color:
+                            playingNow ? const Color(0xFF3FB950) : studio.text),
+                  )
+                else
+                  Tooltip(
+                    message: "On the timeline",
+                    child: Icon(Icons.view_timeline_outlined,
+                        size: 13, color: studio.muted),
+                  ),
+                const SizedBox(width: 3),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 96),
+                  child: Text(name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10.5, color: studio.text)),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      );
+    }
+
+    var peaks = sound == null ? null : c.waveformOf(sound.assetId);
+    Widget page(String label, bool on, VoidCallback tap, String key) => InkWell(
+          key: ValueKey(key),
+          onTap: tap,
+          borderRadius: BorderRadius.circular(4),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: on ? studio.raised : studio.display.withValues(alpha: 0.6),
+              border: Border.all(color: on ? studio.text : studio.edge),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: 10, color: on ? studio.text : studio.muted)),
+          ),
+        );
+    var showWarp = _warpPage && slot != null;
     return DeviceFrame(
       id: "audioClips",
       title: "Clips",
-      help: "What the channel plays: its sounds on the timeline, one at a "
-          "time here -- its level and its fades -- and the clips in its "
-          "slots, opened in the clip editor.",
+      help: "What the channel plays: its sounds on the timeline and in its "
+          "slots, one picked at a time -- its gain, pitch and fades, and how "
+          "a slot clip keeps to the tempo. ▶ on a slot launches it.",
       skin: widget.skin,
       icon: Icons.graphic_eq,
       accent: audioColour,
@@ -124,31 +289,35 @@ class _AudioClipsDeviceState extends State<AudioClipsDevice> {
       width: 360,
       height: widget.height,
       actions: [
-        if (slots.isNotEmpty)
+        if (pick.row != null)
           IconButton(
             key: const ValueKey("audioClipsEdit"),
-            tooltip: "Open the first clip in its slot",
+            tooltip: "Open it in the clip editor",
             icon: const Icon(Icons.open_in_new),
-            onPressed: () => c.openClipEditor(widget.channel, slots.first),
+            onPressed: () => c.openClipEditor(channel, pick.row!),
           ),
       ],
-      summary: "${sounds.length} sound${sounds.length == 1 ? "" : "s"}"
-          "${slots.isEmpty ? "" : " · ${slots.length} in slots"}",
+      summary: "${picks.length} clip${picks.length == 1 ? "" : "s"}"
+          "${slotCount == 0 ? "" : " · $playingCount playing"}",
       foldedBody: const SizedBox(),
       display: Stack(children: [
         Positioned.fill(
           child: CustomPaint(
             key: const ValueKey("audioClipsWave"),
             painter: _WavePainter(peaks,
-                start: source == null || source.length <= 0
-                    ? 0
-                    : source.start / source.length,
-                end: source == null || source.length <= 0
+                start: sound == null ? 0 : sound.start / fileLength,
+                end: sound == null
                     ? 1
-                    : (source.end > 0 ? source.end : source.length) /
-                        source.length,
-                fadeIn: length <= 0 ? 0 : clip.fadeIn / length,
-                fadeOut: length <= 0 ? 0 : clip.fadeOut / length,
+                    : (sound.end > 0 ? sound.end : sound.length) / fileLength,
+                fadeIn: fadeIn / span,
+                fadeOut: fadeOut / span,
+                playhead: playhead == null ? null : playhead / fileLength,
+                markers: showWarp
+                    ? [
+                        for (var m in slot.markers)
+                          (sound!.start + m.seconds) / fileLength
+                      ]
+                    : const [],
                 accent: audioColour,
                 back: studio.display,
                 line: studio.edge),
@@ -161,83 +330,166 @@ class _AudioClipsDeviceState extends State<AudioClipsDevice> {
           child: Row(children: [
             Expanded(
               child: Text(
-                  source == null
-                      ? sound.element.name
-                      : source.name.isEmpty
-                          ? sound.element.name
-                          : source.name,
+                  sound == null || sound.name.isEmpty
+                      ? (lane?.element.name ?? slot?.name ?? "")
+                      : sound.name,
                   key: const ValueKey("audioClipsName"),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 10, color: studio.text)),
             ),
-            // One sound of several: the others, stepped through.
-            if (sounds.length > 1) ...[
-              _step(studio, "audioClipsPrev", Icons.chevron_left,
-                  at > 0 ? () => setState(() => _shown = at - 1) : null),
-              Text("${at + 1} of ${sounds.length}", style: muted),
-              _step(
-                  studio,
-                  "audioClipsNext",
-                  Icons.chevron_right,
-                  at < sounds.length - 1
-                      ? () => setState(() => _shown = at + 1)
-                      : null),
+            if (slot != null) ...[
+              page("Clip", !_warpPage, () => setState(() => _warpPage = false),
+                  "audioClipsPageClip"),
+              const SizedBox(width: 3),
+              page("Warp", _warpPage, () => setState(() => _warpPage = true),
+                  "audioClipsPageWarp"),
             ],
           ]),
         ),
+        if (showWarp)
+          Positioned(
+            left: 6,
+            right: 6,
+            bottom: 4,
+            child: Text(
+                warpOn
+                    ? "${slot.markers.length} warp marker"
+                        "${slot.markers.length == 1 ? "" : "s"} · "
+                        "${slot.warpMode.label}"
+                    : "Warp off: it plays at its own speed",
+                key: const ValueKey("audioClipsWarpReadout"),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: muted),
+          ),
       ]),
       controls: (tier) => [
-        knob(
-            tier,
-            "audioClipsLevel",
-            "Level",
-            "${(clip.volume * 100).round()}%",
-            clip.volume,
-            0.8,
-            0,
-            1,
-            (v) => clip.copyWith(volume: v)),
-        knob(tier, "audioClipsFadeIn", "Fade in", seconds(clip.fadeIn),
-            clip.fadeIn, 0, 0, 4, (v) => clip.copyWith(fadeIn: v)),
-        knob(tier, "audioClipsFadeOut", "Fade out", seconds(clip.fadeOut),
-            clip.fadeOut, 0, 0, 8, (v) => clip.copyWith(fadeOut: v)),
-        SizedBox(
-          width: 150,
-          child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(children: [
-                  SizedBox(width: 44, child: Text("Length", style: muted)),
-                  Text(seconds(length), style: strong),
-                ]),
-                const SizedBox(height: 3),
-                Row(children: [
-                  SizedBox(width: 44, child: Text("Slots", style: muted)),
-                  Flexible(
-                    child: Text(
-                        slots.isEmpty ? "none" : "${slots.length} clips",
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: strong),
-                  ),
-                ]),
-              ]),
-        ),
+        // The chips: each sound, picked; a slot's launched. Short, its
+        // knobs only.
+        if (tier != DeviceTier.small)
+          SizedBox(
+            width: 344,
+            child: SingleChildScrollView(
+              key: const ValueKey("audioClipsChips"),
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [for (var p in picks) chip(p)]),
+            ),
+          ),
+        if (slot != null) ...[
+          knob(
+              tier,
+              "audioClipsGain",
+              "Gain",
+              db(slot.gain),
+              slot.gain,
+              0,
+              -36,
+              12,
+              (v, {transient = false}) => setSlot(
+                  (x) => x.copyWith(gain: (v * 10).roundToDouble() / 10),
+                  transient: transient)),
+          knob(
+              tier,
+              "audioClipsTranspose",
+              "Transpose",
+              "${slot.pitch > 0 ? "+" : slot.pitch < 0 ? "−" : ""}${slot.pitch.abs()} st",
+              slot.pitch.toDouble(),
+              0,
+              -24,
+              24,
+              (v, {transient = false}) => setSlot(
+                  (x) => x.copyWith(pitch: v.round()),
+                  transient: transient)),
+          knob(
+              tier,
+              "audioClipsFadeIn",
+              "Fade in",
+              seconds(slot.fadeIn),
+              slot.fadeIn,
+              0,
+              0,
+              4,
+              (v, {transient = false}) =>
+                  setSlot((x) => x.copyWith(fadeIn: v), transient: transient)),
+          knob(
+              tier,
+              "audioClipsFadeOut",
+              "Fade out",
+              seconds(slot.fadeOut),
+              slot.fadeOut,
+              0,
+              0,
+              8,
+              (v, {transient = false}) =>
+                  setSlot((x) => x.copyWith(fadeOut: v), transient: transient)),
+          if (tier != DeviceTier.small)
+            SizedBox(
+              width: 344,
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Warp", style: muted),
+                    const SizedBox(height: 3),
+                    DeviceChoices(options: [
+                      (
+                        const ValueKey("audioClipsWarp-off"),
+                        "Off",
+                        !slot.warp,
+                        () => setSlot((x) => x.copyWith(warp: false))
+                      ),
+                      for (var m in WarpMode.values)
+                        (
+                          ValueKey("audioClipsWarp-${m.name}"),
+                          m.label,
+                          slot.warp && slot.warpMode == m,
+                          () => setSlot(
+                              (x) => x.copyWith(warp: true, warpMode: m))
+                        ),
+                    ]),
+                  ]),
+            ),
+        ] else if (timed != null) ...[
+          knob(
+              tier,
+              "audioClipsGain",
+              "Gain",
+              db(gainToDb(timed.volume)),
+              gainToDb(timed.volume).clamp(-60.0, 0.0),
+              gainToDb(0.8),
+              -60,
+              0,
+              (v, {transient = false}) => setTimed(
+                  (x) => x.copyWith(volume: v <= -59.5 ? 0 : dbToGain(v)),
+                  transient: transient)),
+          knob(
+              tier,
+              "audioClipsFadeIn",
+              "Fade in",
+              seconds(timed.fadeIn),
+              timed.fadeIn,
+              0,
+              0,
+              4,
+              (v, {transient = false}) =>
+                  setTimed((x) => x.copyWith(fadeIn: v), transient: transient)),
+          knob(
+              tier,
+              "audioClipsFadeOut",
+              "Fade out",
+              seconds(timed.fadeOut),
+              timed.fadeOut,
+              0,
+              0,
+              8,
+              (v, {transient = false}) => setTimed(
+                  (x) => x.copyWith(fadeOut: v),
+                  transient: transient)),
+        ],
       ],
       body: const SizedBox(),
     );
   }
-
-  Widget _step(StudioColors studio, String key, IconData icon,
-          VoidCallback? onTap) =>
-      InkWell(
-        key: ValueKey(key),
-        onTap: onTap,
-        child: Icon(icon,
-            size: 15, color: onTap == null ? studio.muted : studio.text),
-      );
 }
 
 /// _WavePainter draws a sound's shape across its file, the part played
@@ -245,12 +497,19 @@ class _AudioClipsDeviceState extends State<AudioClipsDevice> {
 class _WavePainter extends CustomPainter {
   final Float32List? peaks;
   final double start, end, fadeIn, fadeOut;
+
+  /// playhead is where it is played to, and markers its warp markers, as
+  /// parts of its file.
+  final double? playhead;
+  final List<double> markers;
   final Color accent, back, line;
   _WavePainter(this.peaks,
       {required this.start,
       required this.end,
       required this.fadeIn,
       required this.fadeOut,
+      this.playhead,
+      this.markers = const [],
       required this.accent,
       required this.back,
       required this.line});
@@ -263,12 +522,24 @@ class _WavePainter extends CustomPainter {
     var mid = size.height / 2 + 6;
     var half = math.max(1.0, size.height / 2 - 14);
     var p = peaks;
+    var w = size.width - 8;
     if (p == null || p.isEmpty) {
       canvas.drawLine(
           Offset(4, mid), Offset(size.width - 4, mid), Paint()..color = line);
+      for (var m in markers) {
+        canvas.drawLine(
+            Offset(4 + m * w, 18),
+            Offset(4 + m * w, size.height - 16),
+            Paint()..color = const Color(0xFFE5A23C));
+      }
+      if (playhead case var at?) {
+        canvas.drawLine(
+            Offset(4 + at * w, 4),
+            Offset(4 + at * w, size.height - 4),
+            Paint()..color = const Color(0xFFFFFFFF));
+      }
       return;
     }
-    var w = size.width - 8;
     for (var x = 0; x < w; x++) {
       var i = (x / w * p.length).floor().clamp(0, p.length - 1);
       var t = x / w;
@@ -296,6 +567,24 @@ class _WavePainter extends CustomPainter {
       canvas.drawLine(
           Offset(b - span * fadeOut, mid - half), Offset(b, mid + half), ramp);
     }
+    for (var m in markers) {
+      var x = 4 + m * w;
+      canvas.drawLine(
+          Offset(x, 18),
+          Offset(x, size.height - 16),
+          Paint()
+            ..color = const Color(0xFFE5A23C)
+            ..strokeWidth = 1.5);
+    }
+    if (playhead case var at?) {
+      var x = 4 + at * w;
+      canvas.drawLine(
+          Offset(x, 4),
+          Offset(x, size.height - 4),
+          Paint()
+            ..color = const Color(0xFFFFFFFF)
+            ..strokeWidth = 1.5);
+    }
   }
 
   @override
@@ -305,5 +594,7 @@ class _WavePainter extends CustomPainter {
       old.end != end ||
       old.fadeIn != fadeIn ||
       old.fadeOut != fadeOut ||
+      old.playhead != playhead ||
+      old.markers.length != markers.length ||
       old.accent != accent;
 }

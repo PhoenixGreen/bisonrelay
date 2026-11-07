@@ -624,7 +624,13 @@ void main() {
       c.setRollContent(notes: const [MidiNote(60, 0, 1)]);
       await tester.pump();
       expect(find.byKey(const ValueKey("device-roll")), findsOneWidget);
+      // Folded away at first, as Ken asked -- the notes first -- and
+      // opened from the strip at its side.
+      expect(find.byKey(const ValueKey("partColumn")), findsNothing);
+      await tester.tap(find.byKey(const ValueKey("editorSettingsOpen")));
+      await tester.pump();
       expect(find.byKey(const ValueKey("partColumn")), findsOneWidget);
+      expect(c.settingsShut("roll"), isFalse, reason: "and kept so");
       // Its notes' tools, as a clip's: their column picked where the panel
       // shows one column at a time.
       if (find.byKey(const ValueKey("clipShow-2")).evaluate().isNotEmpty) {
@@ -688,7 +694,17 @@ void main() {
         // this text size, one at a time where not -- and nothing spills.
         await open(tester, scale: scale);
         expect(tester.takeException(), isNull);
+        // Folded, and open.
+        expect(
+            find.byKey(const ValueKey("editorSettingsOpen")), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey("editorSettingsOpen")));
+        await tester.pump();
+        expect(tester.takeException(), isNull);
         expect(find.byKey(const ValueKey("partColumn")), findsOneWidget);
+        // Folded again from the open columns.
+        await tester.tap(find.byKey(const ValueKey("editorSettingsShut")));
+        await tester.pump();
+        expect(find.byKey(const ValueKey("partColumn")), findsNothing);
         await done(tester);
       });
     }

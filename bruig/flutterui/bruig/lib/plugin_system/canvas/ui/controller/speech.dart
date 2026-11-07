@@ -14,6 +14,12 @@ extension CanvasSpeech on CanvasController {
   void setSpeech(String channel, SpeechSpec? spec, {bool transient = false}) {
     var lane = timelineChannels.where((c) => c.key == channel).firstOrNull;
     if (lane == null) return;
+    // Taken off: its view and its Phrasing go with it, back to the chain --
+    // not left open on a "Speak a script" with no tab to leave by.
+    if (spec == null) {
+      _speechShown = false;
+      if (_phrasing?.channel == channel) _phrasing = null;
+    }
     setChannelMix(
         lane,
         spec == null
@@ -305,15 +311,52 @@ extension CanvasSpeech on CanvasController {
   /// _readSpoken reads [spoken] -- a take as the voice spoke it -- once:
   /// its sound, or null where its file could not be.
   Future<Float32List?> _readSpoken(SpeechTake spoken) async {
-    var pcm = await CanvasController.takeAudio(spoken.assetId);
-    if (pcm == null || _disposed) return pcm;
-    if (!_readings.containsKey(spoken.assetId)) {
+    var id = spoken.assetId;
+    Float32List? pcm;
+    try {
+      pcm = await CanvasController.takeAudio(id);
+    } catch (exception) {
+      debugPrint("A take could not be read: $exception");
+    }
+    if (_disposed) return pcm;
+    if (pcm == null) {
+      if (_unreadTakes.add(id)) notifyListeners();
+      return null;
+    }
+    if (!_readings.containsKey(id) && _readingTakes.add(id)) {
       var words = spoken.words;
-      _readings[spoken.assetId] = await Isolate.run(() => readTake(pcm, words));
+      var sound = pcm;
+      try {
+        _readings[id] = await Isolate.run(() => readTake(sound, words));
+      } catch (exception) {
+        debugPrint("A take could not be read: $exception");
+        _unreadTakes.add(id);
+      } finally {
+        _readingTakes.remove(id);
+      }
       if (!_disposed) notifyListeners();
     }
     return pcm;
   }
+
+  /// readPhrasingTake starts reading the take Phrasing is open on, where it
+  /// is not read or being read: one spoken after Phrasing was opened.
+  void readPhrasingTake() {
+    var spoken = phrasingTake?.asSpoken;
+    if (spoken == null) return;
+    var id = spoken.assetId;
+    if (_readings.containsKey(id) ||
+        _readingTakes.contains(id) ||
+        _unreadTakes.contains(id)) {
+      return;
+    }
+    unawaited(_readSpoken(spoken));
+  }
+
+  /// phrasingUnread is whether the take Phrasing is open on could not be
+  /// read.
+  bool get phrasingUnread =>
+      _unreadTakes.contains(phrasingTake?.asSpoken.assetId);
 
   /// shapeWords shapes several words of the take Phrasing is open on, by
   /// their places in it, as one change. Its sound is made again a moment

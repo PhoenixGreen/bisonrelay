@@ -132,11 +132,16 @@ class FakeEngine implements AudioEngine {
   void setPlacement(String key, Heard? heard) =>
       heard == null ? placements.remove(key) : placements[key] = heard;
 
-  @override
-  (double, double) levels([String? channel]) => (0.5, 0.5);
+  /// heardLevels is how loud levels says every strip is, and heardTaps
+  /// what deviceLevels says of each step of a strip -- set by a test.
+  (double, double) heardLevels = (0.5, 0.5);
+  List<(double, double)> heardTaps = const [];
 
   @override
-  List<(double, double)> deviceLevels(String channel) => const [];
+  (double, double) levels([String? channel]) => heardLevels;
+
+  @override
+  List<(double, double)> deviceLevels(String channel) => heardTaps;
 
   @override
   double reduction(String channel) => 0;
@@ -197,6 +202,11 @@ class FakeEngine implements AudioEngine {
     voices.add(v);
     return v;
   }
+
+  /// routed is each voice put through another channel, as it was asked.
+  final List<(AudioVoice, String?)> routed = [];
+  @override
+  void route(AudioVoice voice, String? channel) => routed.add((voice, channel));
 
   @override
   void volume(AudioVoice voice, double to, {double fade = 0}) {

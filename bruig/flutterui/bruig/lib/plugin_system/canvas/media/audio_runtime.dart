@@ -45,6 +45,10 @@ class _Playing {
   int index = 0;
   AudioVoice? voice;
 
+  /// routedTo is the channel [voice] was sent through: see setMix, which
+  /// puts it through another once that is known.
+  String? routedTo;
+
   /// playing is false while paused, and once the list has run out.
   bool playing = false;
   bool muted;
@@ -426,6 +430,20 @@ class AudioRuntime extends ChangeNotifier {
       _masterSignature = signature;
       if (_started) engine.setMaster(sound);
     }
+    // A sound started before its channel was known -- straight to the
+    // master, round its chain -- goes through it now, rather than until it
+    // is stopped and started again (Ken's "sometimes the signal does not
+    // come through the chain").
+    if (_started) {
+      for (var p in _sounds.values) {
+        var voice = p.voice;
+        if (voice == null) continue;
+        var through = _channelFor(p.element.id);
+        if (through == p.routedTo) continue;
+        engine.route(voice, through);
+        p.routedTo = through;
+      }
+    }
   }
 
   List<ReturnChannel> _returns = const [];
@@ -759,10 +777,12 @@ class AudioRuntime extends ChangeNotifier {
     // cut into mid-swing clicks.
     var at = from ?? source.start;
     if (fadeIn <= 0 && at > source.start + 0.001) fadeIn = declickSeconds;
+    var through = _channelFor(p.element.id);
     var voice = engine.play(track,
         volume: fadeIn > 0 ? 0 : p.heard,
         at: from ?? source.start,
-        channel: _channelFor(p.element.id));
+        channel: through);
+    p.routedTo = through;
     if (voice == null) {
       p.playing = false;
       notifyListeners();

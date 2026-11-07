@@ -457,6 +457,30 @@ class MixGraph {
   (double, double) levels([String? key]) =>
       key == null ? _masterLevels : (_levels[key] ?? (0, 0));
 
+  /// quiet sets every meter to silence: each strip's level, the master's,
+  /// and the levels between devices -- as the mix rests, so what is read
+  /// while it renders nothing is not the last moment it heard (Ken's meters
+  /// stood where they were when he pressed stop).
+  void quiet() {
+    _levels.updateAll((key, level) => (0.0, 0.0));
+    _masterLevels = (0, 0);
+    List<(double, double)> zero(List<(double, double)> taps) =>
+        [for (var _ in taps) (0.0, 0.0)];
+    for (var s in _strips.values) {
+      s.taps = zero(s.taps);
+    }
+    for (var s in _scene ?? const <StripProcessor>[]) {
+      s.taps = zero(s.taps);
+    }
+    for (var r in _returns) {
+      r.taps = zero(r.taps);
+    }
+    _master.taps = zero(_master.taps);
+    for (var m in _masters) {
+      m.taps = zero(m.taps);
+    }
+  }
+
   /// begin clears every input for a block of [n].
   void begin(int n) {
     _direct

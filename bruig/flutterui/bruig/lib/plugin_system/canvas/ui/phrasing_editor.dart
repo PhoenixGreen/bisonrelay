@@ -189,11 +189,21 @@ class _PhrasingLanesState extends State<PhrasingLanes>
     var words = spoken.words;
     var reading = c.readingOf(take);
     if (words.isEmpty || reading == null) {
+      // Spoken since Phrasing opened: read now.
+      if (words.isNotEmpty && !c.phrasingUnread) {
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => c.readPhrasingTake());
+      }
       return Center(
           child: Text(
               words.isEmpty
-                  ? "This take has no words to shape."
-                  : "Reading the take…",
+                  ? "This take has no words to shape: speak it again."
+                  : c.phrasingUnread
+                      ? "This take's sound could not be read: speak it "
+                          "again, or pick another."
+                      : "Reading the take…",
+              key: const ValueKey("phrasingWaiting"),
+              textAlign: TextAlign.center,
               style: k.text(11, colour: s.muted)));
     }
     var shapes = [for (var i = 0; i < words.length; i++) take.shapeOf(i)];

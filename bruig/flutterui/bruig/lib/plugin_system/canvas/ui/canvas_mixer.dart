@@ -295,6 +295,7 @@ class _CanvasMixerState extends State<CanvasMixer>
     super.initState();
     _ticker = createTicker(_meter)..start();
     controller.addListener(_wakeIfPlaying);
+    controller.keysHeld.addListener(_wakeIfPlaying);
   }
 
   /// The meters move only while there is sound to show: a ticker asks for a
@@ -307,7 +308,13 @@ class _CanvasMixerState extends State<CanvasMixer>
   void _wake() {
     _resting?.cancel();
     _resting = null;
-    if (!_ticker.isActive) _ticker.start();
+    if (_ticker.isActive) return;
+    // A ticker's time starts again from nought each start: _last, from the
+    // run before, held every frame back until this run had lasted as long
+    // -- Ken's strip, master and panner meters standing dead while the
+    // devices' own (fresh) meters moved.
+    _last = Duration.zero;
+    _ticker.start();
   }
 
   void _rest() {
@@ -340,6 +347,7 @@ class _CanvasMixerState extends State<CanvasMixer>
   @override
   void dispose() {
     controller.removeListener(_wakeIfPlaying);
+    controller.keysHeld.removeListener(_wakeIfPlaying);
     _resting?.cancel();
     _clipScrolls.dispose();
     _ticker.dispose();
@@ -515,11 +523,32 @@ class _CanvasMixerState extends State<CanvasMixer>
             if (widget.only == null || l.key == widget.only) l,
         ];
         var editing = _editing;
+        var focused = false;
         if (widget.effects &&
             controller.effectsFocusCount != _focusSeen &&
             controller.effectsFocus != null) {
           _focusSeen = controller.effectsFocusCount;
           _scrollTo(controller.effectsFocus!);
+          focused = true;
+        }
+        // Each chain where it was left (Ken): switching channels and back,
+        // the meters he was watching are still in view -- unless a device
+        // was asked for, which is scrolled to.
+        var chainKey =
+            editing == null ? null : "$editing|${controller.speechShown}";
+        if (widget.effects && chainKey != _chainKey) {
+          if (_chainKey case var was? when _chainScroll.hasClients) {
+            _chainOffsets[was] = _chainScroll.offset;
+          }
+          _chainKey = chainKey;
+          var back = chainKey == null ? null : _chainOffsets[chainKey];
+          if (!focused) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted || !_chainScroll.hasClients) return;
+              _chainScroll.jumpTo((back ?? 0)
+                  .clamp(0.0, _chainScroll.position.maxScrollExtent));
+            });
+          }
         }
         TimelineChannel? lane;
         if (editing != null && editing != _master) {
@@ -1220,23 +1249,6 @@ class _CanvasMixerState extends State<CanvasMixer>
                     folded: f,
                     onFold: fold,
                     height: h)),
-          if (controller.speechOf(key) != null &&
-              controller.vocaliserOf(key) == null)
-            VoiceStartCard(
-                key: const ValueKey("speechSing"),
-                controller: controller,
-                channel: key,
-                height: h,
-                sing: true)
-          else if (controller.vocaliserOf(key) != null)
-            device(
-                "vocaliser",
-                (f, fold) => VocaliserDevice(
-                    controller: controller,
-                    channel: key,
-                    folded: f,
-                    onFold: fold,
-                    height: h)),
         ],
         // A return's devices, a channel's own or the master's (a chorus, a gate),
         // then a way to add another, then its EQ and compressor.
@@ -1264,6 +1276,19 @@ class _CanvasMixerState extends State<CanvasMixer>
                   : "Effects",
               const Color(0xFF4F8FD6),
               h),
+          // A voice's Vocaliser, first of its effects: added from the "+"
+          // when it is wanted, not opened with the Speech.
+          if (lane != null &&
+              !controller.speechShown &&
+              controller.vocaliserOf(key) != null)
+            device(
+                "vocaliser",
+                (f, fold) => VocaliserDevice(
+                    controller: controller,
+                    channel: key,
+                    folded: f,
+                    onFold: fold,
+                    height: h)),
           for (var (i, step) in controller.chainOf(key).indexed) ...[
             // The way to add one where it will go: before the EQ and
             // compressor when they are last (see chainOrder).
@@ -1555,6 +1580,11 @@ class _CanvasMixerState extends State<CanvasMixer>
       690 + 480 * math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
 
   final ScrollController _chainScroll = ScrollController();
+
+  /// _chainOffsets are where each chain was scrolled to when it was left,
+  /// by its key and view; _chainKey the one shown.
+  final Map<String, double> _chainOffsets = {};
+  String? _chainKey;
 }
 
 typedef _MixWrite<T> = void Function(T next, {bool transient});
@@ -2054,6 +2084,9 @@ Widget _slot(MixerLook theme, String label, bool on, Widget trailing,
 
 class _Toggle extends StatelessWidget {
   final String label;
+
+  /// icon, given, is drawn rather than [label]: the scene's on/off switch.
+  final IconData? icon;
   final bool on;
   final Color onColor;
 
@@ -2069,6 +2102,7 @@ class _Toggle extends StatelessWidget {
     this.onInk,
     this.height = 20,
     this.fontSize = 10,
+    this.icon,
     required this.label,
     required this.on,
     required this.onColor,
@@ -2090,14 +2124,20 @@ class _Toggle extends StatelessWidget {
             child: SizedBox(
               height: height,
               child: Center(
-                child: Text(label,
-                    style: TextStyle(
-                        fontSize: fontSize,
-                        height: 1,
-                        fontWeight: FontWeight.w700,
+                child: icon != null
+                    ? Icon(icon,
+                        size: height * 0.62,
                         color: on
                             ? onInk ?? const Color(0xFFFFFFFF)
-                            : theme.colors.onSurfaceVariant)),
+                            : theme.colors.onSurfaceVariant)
+                    : Text(label,
+                        style: TextStyle(
+                            fontSize: fontSize,
+                            height: 1,
+                            fontWeight: FontWeight.w700,
+                            color: on
+                                ? onInk ?? const Color(0xFFFFFFFF)
+                                : theme.colors.onSurfaceVariant)),
               ),
             ),
           ),

@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/media/speech_downloads.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_engines.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_finish.dart'
     show lineGap;
+import 'package:bruig/plugin_system/canvas/model/instrument.dart' show MidiNote;
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
@@ -1630,8 +1631,11 @@ class _SpeechDeviceState extends State<SpeechDevice> {
         Tooltip(
           message: phrasingOn
               ? "Back to the sections"
-              : "Shape the picked take's words: each one's pitch, length "
-                  "and loudness",
+              : line == null
+                  ? "Phrasing shapes a spoken take's words: write a script "
+                      "and speak it first"
+                  : "Shape the picked take's words: each one's pitch, "
+                      "length and loudness",
           child: Material(
             color: phrasingOn ? s.on : Colors.transparent,
             borderRadius: BorderRadius.circular(4),
@@ -1766,55 +1770,67 @@ class _VocaliserDeviceState extends State<VocaliserDevice> {
     var spec = c.vocaliserOf(widget.channel);
     if (spec == null) return const SizedBox();
     var look = MixerLook.of(context);
-    var skin = DeviceSkin.themed(look.colors);
-    TextStyle small([Color? colour]) =>
-        TextStyle(fontSize: 11, color: colour ?? skin.ink);
+    var studio = look.studio;
     var tunes = c.midiChannels;
     var melody = tunes.any((t) => t.$1 == spec.melody)
         ? spec.melody
         : tunes.firstOrNull?.$1;
     var sings = c.singsWhat(widget.channel);
     var busy = c.singing.contains(widget.channel);
-
-    Widget slider(String label, String reading, double value, double max,
-            ValueChanged<double> onChanged,
-            {required Key key}) =>
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(children: [
-            Expanded(child: Text(label, style: small())),
-            Text(reading, style: small(skin.dim)),
-          ]),
-          SizedBox(
-            height: 22,
-            child: Slider(
-              key: key,
-              value: value.clamp(0, max),
-              max: max,
-              onChanged: (v) {
-                c.beginInteraction();
-                onChanged(v);
-              },
-              onChangeEnd: (_) => c.endInteraction(),
-            ),
-          ),
-        ]);
-
+    var notes = melody == null
+        ? const <MidiNote>[]
+        : c.instrumentOf(melody)?.instrument?.notes ?? const <MidiNote>[];
+    var muted = TextStyle(fontSize: 10, color: studio.muted);
+    Widget knob(
+            DeviceTier tier,
+            String key,
+            String label,
+            String text,
+            double value,
+            double initial,
+            double max,
+            VocaliserSpec Function(double) change) =>
+        DeviceKnob(
+          key: ValueKey(key),
+          label: label,
+          text: text,
+          value: value,
+          initial: initial,
+          min: 0,
+          max: max,
+          size: switch (tier) {
+            DeviceTier.large => 46,
+            DeviceTier.medium => 38,
+            _ => 28,
+          },
+          accent: voiceColour,
+          ink: studio.text,
+          onChanged: (v, {transient = false}) {
+            c.beginInteraction();
+            _set(change(v), transient: true);
+            if (!transient) c.endInteraction();
+          },
+          onCommit: c.endInteraction,
+        );
     return DeviceFrame(
       id: "vocaliser",
       title: "Vocaliser",
-      skin: skin,
+      help: "Sings this channel's Speech to a MIDI channel's notes: each "
+          "word on its note, with a vibrato and a glide between. Sing makes "
+          "it a new clip, where the tune starts.",
+      skin: DeviceSkin.studio(studio),
+      icon: Icons.music_note,
+      accent: voiceColour,
       folded: widget.folded,
       onFold: widget.onFold,
-      width: 260,
+      width: 340,
       height: widget.height,
       actions: [
         IconButton(
           key: const ValueKey("vocaliserRemove"),
           tooltip: "Take the Vocaliser off. What it sang stays on the "
               "timeline.",
-          iconSize: 14,
-          visualDensity: VisualDensity.compact,
-          icon: Icon(Icons.close, color: skin.ink),
+          icon: const Icon(Icons.close),
           onPressed: () {
             c.beginInteraction();
             c.setVocaliser(widget.channel, null);
@@ -1822,61 +1838,51 @@ class _VocaliserDeviceState extends State<VocaliserDevice> {
           },
         ),
       ],
+      summary: melody == null
+          ? "No MIDI channel to sing"
+          : "Sings ${tunes.firstWhere((t) => t.$1 == melody).$2}",
       foldedBody: const SizedBox(),
-      body: Padding(
-        padding: const EdgeInsets.all(10),
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // All but Sing scroll in what room it leaves.
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                        sings ??
-                            "Sings this channel's Speech: speak a take "
-                                "first.",
-                        style: small(skin.dim)),
-                    const SizedBox(height: 10),
-                    Text("To the notes of", style: small(skin.dim)),
-                    DropdownButton<String>(
-                      key: const ValueKey("vocaliserMelody"),
-                      isExpanded: true,
-                      isDense: true,
-                      value: melody,
-                      hint: Text("No MIDI channel yet", style: small(skin.dim)),
-                      style: small(),
-                      dropdownColor: look.colors.surfaceContainerHigh,
-                      items: [
-                        for (var (key, name) in tunes)
-                          DropdownMenuItem(value: key, child: Text(name)),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) _set(spec.copyWith(melody: v));
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    slider(
-                        "Vibrato",
-                        "${(spec.vibrato * 100).round()}%",
-                        spec.vibrato,
-                        1,
-                        (v) => _set(spec.copyWith(vibrato: v), transient: true),
-                        key: const ValueKey("vocaliserVibrato")),
-                    slider(
-                        "Glide",
-                        "${(spec.glide * 1000).round()} ms",
-                        spec.glide,
-                        0.5,
-                        (v) => _set(spec.copyWith(glide: v), transient: true),
-                        key: const ValueKey("vocaliserGlide")),
-                  ]),
-            ),
+      // The tune it sings: the notes, with the vibrato and the glide
+      // between them, as it will sing them.
+      display: Stack(children: [
+        Positioned.fill(
+          child: CustomPaint(
+            key: const ValueKey("vocaliserMelodyLine"),
+            painter: _MelodyPainter(notes,
+                vibrato: spec.vibrato,
+                glide: spec.glide,
+                accent: voiceColour,
+                back: studio.display,
+                line: studio.edge),
           ),
-          const SizedBox(height: 4),
-          FilledButton.icon(
+        ),
+        Positioned(
+          left: 6,
+          top: 4,
+          right: 6,
+          child: IgnorePointer(
+            child: Text(
+                _problem ??
+                    sings ??
+                    "Sings this channel's Speech: speak a take first",
+                key: const ValueKey("vocaliserStatus"),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _problem != null
+                    ? const TextStyle(fontSize: 10, color: Color(0xFFFF8A80))
+                    : muted),
+          ),
+        ),
+        // Sing, on the tune it sings: always in reach, whatever the height.
+        Positioned(
+          right: 6,
+          bottom: 6,
+          child: FilledButton.icon(
             key: const ValueKey("vocaliserSing"),
+            style: FilledButton.styleFrom(
+                backgroundColor: voiceColour,
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap),
             onPressed: busy || sings == null || melody == null ? null : _sing,
             icon: busy
                 ? const SizedBox.square(
@@ -1885,17 +1891,111 @@ class _VocaliserDeviceState extends State<VocaliserDevice> {
                 : const Icon(Icons.music_note, size: 16),
             label: Text(busy ? "Singing…" : "Sing"),
           ),
-          const SizedBox(height: 4),
-          Text(_problem ?? "Into a new clip, where the tune starts.",
-              key: const ValueKey("vocaliserStatus"),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style:
-                  small(_problem != null ? const Color(0xFFFF8A80) : skin.dim)),
-        ]),
-      ),
+        ),
+      ]),
+      controls: (tier) => [
+        knob(
+            tier,
+            "vocaliserVibrato",
+            "Vibrato",
+            "${(spec.vibrato * 100).round()}%",
+            spec.vibrato,
+            0.3,
+            1,
+            (v) => spec.copyWith(vibrato: v)),
+        knob(
+            tier,
+            "vocaliserGlide",
+            "Glide",
+            "${(spec.glide * 1000).round()} ms",
+            spec.glide,
+            0.06,
+            0.5,
+            (v) => spec.copyWith(glide: v)),
+        SizedBox(
+          width: 170,
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text("Sings the notes of", style: muted),
+                const SizedBox(height: 3),
+                tunes.isEmpty
+                    ? Text("No MIDI channel yet",
+                        key: const ValueKey("vocaliserMelody"), style: muted)
+                    : DeviceChoices(options: [
+                        for (var (key, name) in tunes)
+                          (
+                            ValueKey("vocaliserMelody-$key"),
+                            name,
+                            key == melody,
+                            () => _set(spec.copyWith(melody: key)),
+                          ),
+                      ]),
+              ]),
+        ),
+      ],
+      body: const SizedBox(),
     );
   }
+}
+
+/// _MelodyPainter draws the tune a Vocaliser sings: each note a line at its
+/// pitch, swinging by the vibrato, sliding in from the last by the glide.
+class _MelodyPainter extends CustomPainter {
+  final List<MidiNote> notes;
+  final double vibrato, glide;
+  final Color accent, back, line;
+  _MelodyPainter(this.notes,
+      {required this.vibrato,
+      required this.glide,
+      required this.accent,
+      required this.back,
+      required this.line});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(4)),
+        Paint()..color = back);
+    if (notes.isEmpty) return;
+    var sorted = [...notes]..sort((a, b) => a.start.compareTo(b.start));
+    var end = sorted.map((n) => n.end).reduce(math.max);
+    var low = sorted.map((n) => n.key).reduce(math.min) - 2;
+    var high = sorted.map((n) => n.key).reduce(math.max) + 2;
+    if (end <= 0) return;
+    double x(double t) => 6 + (size.width - 12) * t / end;
+    double y(double key) =>
+        8 + (size.height - 30) * (high - key) / math.max(1, high - low);
+    var path = Path();
+    double? lastKey;
+    for (var n in sorted) {
+      var from = lastKey ?? n.key.toDouble();
+      // Sliding in from the last note over the glide, then held with its
+      // vibrato.
+      var slide = math.min(glide, n.length / 2);
+      path.moveTo(x(n.start), y(from));
+      path.lineTo(x(n.start + slide), y(n.key.toDouble()));
+      for (var t = n.start + slide; t < n.end; t += end / 400) {
+        var swing = vibrato * 0.5 * math.sin((t - n.start) * 2 * math.pi * 5.5);
+        path.lineTo(x(t), y(n.key + swing));
+      }
+      lastKey = n.key.toDouble();
+    }
+    canvas.drawPath(
+        path,
+        Paint()
+          ..color = accent
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2);
+  }
+
+  @override
+  bool shouldRepaint(_MelodyPainter old) =>
+      !identical(old.notes, notes) ||
+      old.vibrato != vibrato ||
+      old.glide != glide ||
+      old.accent != accent;
 }
 
 /// voiceColour is a voice channel's colour, as the prototype's.

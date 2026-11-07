@@ -353,4 +353,54 @@ void main() {
       }
     });
   });
+
+  // Ken: a muted channel's chain showed nothing. Muted, it is silent where
+  // it leaves -- its fader -- and its meters between devices still move.
+  test("a muted channel's chain still shows its sound, and it is silent out",
+      () {
+    var g = MixGraph()
+      ..setMaster(const MasterMix(limiter: false))
+      ..setChannel(
+          "a",
+          const ChannelMix(
+              mute: true, devices: [MixDevice(DeviceKind.utility, id: "d0")]));
+    g.tapped.add("a");
+    const n = 4800;
+    var tone = sine(n, 440, 0.3);
+    var l = Float32List(n), r = Float32List(n);
+    for (var b = 0; b < 3; b++) {
+      g.begin(n);
+      var (il, ir) = g.input("a", n);
+      il.setRange(0, n, tone);
+      ir.setRange(0, n, tone);
+      g.finish(l, r, n);
+    }
+    expect(g.tapsOf("a").last.$1, closeTo(0.3, 0.01), reason: "in the chain");
+    expect(g.levels("a").$1, 0, reason: "silent out of its fader");
+    expect(g.levels().$1, 0, reason: "nothing on the master");
+  });
+
+  // Ken: pressed stop, the chain's meters stood where they were -- the
+  // mix rested on the last moment it heard.
+  test("resting, the mix reads as silence, not its last moment", () {
+    var g = MixGraph()
+      ..setMaster(const MasterMix(limiter: false))
+      ..setChannel("a",
+          const ChannelMix(devices: [MixDevice(DeviceKind.utility, id: "d0")]));
+    g.tapped.addAll(["a", masterTapKey]);
+    const n = 4800;
+    var tone = sine(n, 440, 0.3);
+    var l = Float32List(n), r = Float32List(n);
+    g.begin(n);
+    var (il, ir) = g.input("a", n);
+    il.setRange(0, n, tone);
+    ir.setRange(0, n, tone);
+    g.finish(l, r, n);
+    expect(g.levels("a").$1, greaterThan(0.2));
+    g.quiet();
+    expect(g.levels("a"), (0.0, 0.0));
+    expect(g.levels(), (0.0, 0.0));
+    expect(g.tapsOf("a").every((t) => t == (0.0, 0.0)), isTrue);
+    expect(g.tapsOf("a"), isNotEmpty, reason: "the same steps, at silence");
+  });
 }

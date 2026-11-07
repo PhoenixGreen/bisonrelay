@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/export/video_export.dart'
 import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
     show Wave, LoudnessReading;
 import 'package:bruig/plugin_system/canvas/media/mix/click_track.dart';
+import 'package:bruig/plugin_system/canvas/media/latency_log.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_core.dart';
@@ -310,7 +311,9 @@ class DartAudioEngine implements AudioEngine {
     if (stream == null || _held) return;
     if (core.voices.every((v) => v.paused)) {
       if (_quiet > mixRate) {
-        // Rested: no timer on the editor's isolate while nothing sounds.
+        // Rested: no timer on the editor's isolate while nothing sounds,
+        // and its meters to silence rather than where they last stood.
+        core.graph.quiet();
         _pump?.cancel();
         _pump = null;
         return;
@@ -462,6 +465,11 @@ class DartAudioEngine implements AudioEngine {
   }
 
   @override
+  void route(AudioVoice voice, String? channel) {
+    if (_on(voice, ["route", channel]) case var c?) c.channel = channel;
+  }
+
+  @override
   void stopIn(AudioVoice voice, double delay) {
     if (_on(voice, ["stopIn", delay]) case var c?) core.stopIn(c, delay);
   }
@@ -523,7 +531,8 @@ class DartAudioEngine implements AudioEngine {
         sound.copyWith(notes: const [], controls: const {}),
         key,
         velocity,
-        font != null
+        font != null,
+        hostTicks(),
       ]);
       return;
     }

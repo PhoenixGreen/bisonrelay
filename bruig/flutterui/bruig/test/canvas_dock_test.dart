@@ -515,8 +515,8 @@ void main() {
       expect(c.speechOf("v"), isNotNull);
       expect(c.speechShown, isTrue, reason: "its script, to be written");
       expect(find.byKey(const ValueKey("device-speech")), findsOneWidget);
-      expect(find.byKey(const ValueKey("speechSing")), findsOneWidget,
-          reason: "Sing it, after the speech");
+      expect(find.byKey(const ValueKey("speechSing")), findsNothing,
+          reason: "the Vocaliser is added among the effects, not here");
       // On the chain, its generator: the Speech card, in its zone.
       await tester.tap(find.byKey(const ValueKey("chainTabDevices")));
       await tester.pump(const Duration(milliseconds: 300));

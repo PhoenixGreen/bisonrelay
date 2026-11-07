@@ -4,8 +4,10 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_runtime.dart';
@@ -154,5 +156,111 @@ void main() {
         ]));
     expect(sceneDrawnDiffers(doc, edited, 0), isFalse);
     expect(sceneDrawnDiffers(doc, edited, 1), isTrue);
+  });
+
+  // Ken's strip, master and panner meters stood dead while the devices'
+  // own moved: a ticker's time starts from nought each time it starts, and
+  // the last read kept from the run before held every frame back until the
+  // new run had lasted as long.
+  group("the meters move again after resting", () {
+    Future<(CanvasController, FakeEngine)> open(
+        WidgetTester tester, String chain) async {
+      var engine = FakeEngine({"t": 20})..heardTaps = [(0.5, 0.5), (0.5, 0.5)];
+      var c = CanvasController(
+          CanvasDocument(frames: 100, elements: [
+            AudioElement(const ElementBase(id: "a", name: "Guitar"),
+                clip: const MediaClip(
+                    playlist: [MediaSource(assetId: "t", length: 20)],
+                    timed: true)),
+          ]),
+          audioEngine: engine);
+      addTearDown(c.dispose);
+      await tester.runAsync(() => c.audio.ready());
+      c.openEffects(chain);
+      tester.view.physicalSize = const Size(1600, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: ListenableBuilder(
+                    listenable: c,
+                    builder: (context, _) => Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              CanvasMixer.effects(
+                                  controller: c,
+                                  height: 360,
+                                  onResize: (_) {},
+                                  onClose: () {}),
+                            ])))),
+      ));
+      return (c, engine);
+    }
+
+    // Sound for a while, then quiet long enough to rest, then sound again.
+    Future<void> soundRestSound(WidgetTester tester, FakeEngine engine,
+        {Future<void> Function()? resting}) async {
+      for (var i = 0; i < 40; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      engine
+        ..heardLevels = (0, 0)
+        ..heardTaps = [(0, 0), (0, 0)];
+      // The held peaks fall a step a reading: long enough for them all to
+      // reach the floor, and the meters to rest.
+      for (var i = 0; i < 160; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(SchedulerBinding.instance.hasScheduledFrame, isFalse,
+          reason: "resting");
+      await resting?.call();
+      engine
+        ..heardLevels = (0.5, 0.5)
+        ..heardTaps = [(0.5, 0.5), (0.5, 0.5)];
+      // The slow check wakes it; a few frames on.
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    testWidgets("the levels between a channel's devices", (tester) async {
+      var (c, engine) = await open(tester, "a");
+      String reading() => tester
+          .widget<Tooltip>(find.descendant(
+              of: find.byKey(const ValueKey("junction-0")),
+              matching: find.byType(Tooltip)))
+          .message!;
+      await soundRestSound(tester, engine, resting: () async {
+        expect(reading(), startsWith("−∞"), reason: "fallen as it rested");
+      });
+      expect(reading(), startsWith("-6.0 dB"),
+          reason: "moving again at once, not after as long as it ran before");
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets("the master's meter", (tester) async {
+      var (c, engine) = await open(tester, mixerMasterKey);
+      var loudest = find.byKey(const ValueKey("meterLoudest-masterMeter"));
+      String reading() => tester
+          .widget<Text>(
+              find.descendant(of: loudest, matching: find.byType(Text)))
+          .data!;
+      await soundRestSound(tester, engine, resting: () async {
+        // Cleared while it rests, so what it reads next is new.
+        await tester.ensureVisible(loudest);
+        await tester.pump();
+        await tester.tap(loudest);
+        await tester.pump();
+        expect(reading(), "−∞  −∞");
+      });
+      expect(reading(), "-6.0  -6.0");
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 }

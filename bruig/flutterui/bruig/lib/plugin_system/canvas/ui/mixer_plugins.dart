@@ -36,6 +36,7 @@ import 'package:bruig/plugin_system/canvas/render/motion_looks.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
     show automationColour;
+import 'package:bruig/plugin_system/canvas/ui/autotune_card.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart'
     show CanvasDropdown;
@@ -920,37 +921,43 @@ class DeviceFrame extends StatelessWidget {
         key: ValueKey("deviceFold-$id"),
         behavior: HitTestBehavior.opaque,
         onTap: onFold,
-        child: Column(children: [
-          if (icon != null) ...[
-            const SizedBox(height: 4),
-            chainIconOr(icon!, size: 14, color: accent ?? studio.muted),
-          ],
-          const SizedBox(height: 8),
-          Expanded(
-            child: RotatedBox(
-              quarterTurns: 1,
-              child: Text(title.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 10.5,
-                      letterSpacing: 0.8,
-                      fontWeight: FontWeight.w600,
-                      color: studio.text)),
+        // What it shows folded -- a meter, a curve -- at its foot, as the
+        // prototype's level does: as much of the card as is left over its
+        // name, up to 90. Measured from the card itself: a LayoutBuilder in
+        // the column is told nothing of its height, and took 80 a short
+        // card did not have.
+        child: LayoutBuilder(builder: (context, box) {
+          var room = box.maxHeight.isFinite ? box.maxHeight : 200.0;
+          var fixed = (icon != null ? 18.0 : 0) + 8 + 6;
+          var foot = math.min(
+              math.min(90.0, room * 0.4), math.max(0.0, room - fixed - 30));
+          return Column(children: [
+            if (icon != null) ...[
+              const SizedBox(height: 4),
+              chainIconOr(icon!, size: 14, color: accent ?? studio.muted),
+            ],
+            const SizedBox(height: 8),
+            Expanded(
+              child: RotatedBox(
+                quarterTurns: 1,
+                child: Text(title.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        letterSpacing: 0.8,
+                        fontWeight: FontWeight.w600,
+                        color: studio.text)),
+              ),
             ),
-          ),
-          // What it shows folded -- a meter, a curve -- at its foot, as the
-          // prototype's level does.
-          LayoutBuilder(builder: (context, box) {
-            var room = box.maxHeight.isFinite ? box.maxHeight : 200.0;
-            return SizedBox(
+            SizedBox(
               width: 26,
-              height: math.min(90.0, math.max(0.0, room * 0.4)),
+              height: math.max(0.0, foot),
               child: ClipRect(child: foldedBody),
-            );
-          }),
-          const SizedBox(height: 6),
-        ]),
+            ),
+            const SizedBox(height: 6),
+          ]);
+        }),
       ),
     );
   }
@@ -1481,7 +1488,12 @@ mixin _Metered<T extends StatefulWidget>
     _resting?.cancel();
     _resting = null;
     _quietTicks = 0;
-    if (!_ticker.isActive) _ticker.start();
+    if (_ticker.isActive) return;
+    // A ticker's time starts again from nought each start: the last read,
+    // from the run before, would hold every frame back until this run had
+    // lasted as long.
+    _last = Duration.zero;
+    _ticker.start();
   }
 
   @override
@@ -3978,6 +3990,9 @@ class ParamDevice extends StatelessWidget {
     super.key,
   });
 
+  /// _autoTuneWidth is the Auto-tune's card: room for its twelve keys.
+  static const double _autoTuneWidth = 330;
+
   /// _range is how a knob turns for [p]: times and frequencies on a log
   /// scale, everything else in a straight line.
   static _Range _range(DeviceParam p) {
@@ -4055,9 +4070,28 @@ class ParamDevice extends StatelessWidget {
     var (icon, accent) = deviceGroupLook(device.kind.group);
     var look = MixerLook.of(context);
     var skin = DeviceSkin.studio(look.studio);
+    var autoTune = device.kind == DeviceKind.autoTune;
+    // Tall, with its text at size, Notes to MIDI is a button at its foot,
+    // as the prototype's; shorter, or its text larger, an icon on its bar,
+    // leaving its screen the room.
+    var roomy = DeviceTier.of(height) == DeviceTier.large &&
+        MediaQuery.textScalerOf(context).scale(10) <= 12;
+    // Auto-tune's notes made a MIDI channel, as the prototype's foot.
+    void notesToMidi() {
+      var why = controller.notesToMidi(owner,
+          root: device.value("key").round(), steps: autoTuneSteps(device));
+      try {
+        var snack = SnackBarModel.of(context);
+        why == null
+            ? snack.success("Its notes are on a new MIDI channel")
+            : snack.error(why);
+      } catch (_) {}
+    }
+
     List<Widget> knobs(DeviceTier tier) => [
           for (var p in params)
-            if (paramShown(device, p))
+            if (paramShown(device, p) &&
+                !(autoTune && (p.id == "key" || p.id == "scale")))
               _Knob(
                 key: ValueKey("device-$index-${p.id}"),
                 automated: automated.contains(target(p)),
@@ -4082,6 +4116,51 @@ class ParamDevice extends StatelessWidget {
                     write(device.withValue(p.id, v), transient: transient),
                 onCommit: controller.endInteraction,
               ),
+          // Short, its knobs only, as the prototype's.
+          // Medium, or its text large, its key and scale as lists on one
+          // row; tall, as the prototype's rows of buttons.
+          if (autoTune && tier != DeviceTier.small) ...[
+            if (tier == DeviceTier.medium ||
+                MediaQuery.textScalerOf(context).scale(10) > 12)
+              AutoTuneKeyScaleRow(
+                  key: ValueKey("autoTuneKeyScaleRow-$index"),
+                  device: device,
+                  index: index,
+                  width: _autoTuneWidth - 16,
+                  onPick: (param, v) =>
+                      write(device.withValue(param, v.toDouble())))
+            else ...[
+              AutoTuneKey(
+                  key: ValueKey("autoTuneKeyRow-$index"),
+                  device: device,
+                  index: index,
+                  width: _autoTuneWidth - 16,
+                  onPick: (k) => write(device.withValue("key", k.toDouble()))),
+              AutoTuneScale(
+                  key: ValueKey("autoTuneScaleRow-$index"),
+                  device: device,
+                  index: index,
+                  width: _autoTuneWidth - 16,
+                  onPick: (k) =>
+                      write(device.withValue("scale", k.toDouble()))),
+            ],
+            if (roomy && controller.pitchElementOf(owner) != null)
+              SizedBox(
+                width: _autoTuneWidth - 16,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton(
+                    key: ValueKey("menu-autoTuneToMidi-$index"),
+                    style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        textStyle: const TextStyle(fontSize: 11)),
+                    onPressed: notesToMidi,
+                    child: const Text("Notes to MIDI"),
+                  ),
+                ),
+              ),
+          ],
           if (device.kind == DeviceKind.vocoder &&
               device.value("carrier").round() == carrierFromChannel)
             _sourceChannel(context, device, write),
@@ -4190,39 +4269,36 @@ class ParamDevice extends StatelessWidget {
                       device.value("mode").round() == 0
                           ? device.branches.length + 1
                           : 2)
-          : math.max(220.0, 24.0 + 72 * columns),
+          : autoTune
+              ? _autoTuneWidth
+              : math.max(220.0, 24.0 + 72 * columns),
       height: height,
       actions: [
         // Auto-tune's notes: in the Pitch editor, or made a MIDI channel.
-        if (device.kind == DeviceKind.autoTune &&
-            controller.pitchElementOf(owner) != null) ...[
-          IconButton(
-            key: ValueKey("autoTunePitch-$index"),
-            tooltip: "Open the Pitch editor",
-            icon: const Icon(Icons.open_in_new),
-            onPressed: () => controller.showPitch(owner),
+        if (autoTune)
+          Tooltip(
+            message: "How far behind it puts what it hears",
+            child: Text("${autoTuneLatencyMs.round()} ms",
+                key: ValueKey("autoTuneLatency-$index"),
+                style: TextStyle(
+                    fontSize: 10,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    color: skin.ink.withValues(alpha: 0.7))),
           ),
+        if (autoTune && !roomy && controller.pitchElementOf(owner) != null)
           IconButton(
             key: ValueKey("menu-autoTuneToMidi-$index"),
             tooltip: "Notes to MIDI",
             icon: const Icon(Icons.piano),
-            onPressed: () {
-              var scale = device.value("scale").round();
-              var why = controller.notesToMidi(owner,
-                  root: device.value("key").round(),
-                  steps: scale == 0
-                      ? const []
-                      : scaleSteps[
-                          (scale - 1).clamp(0, scaleSteps.length - 1)]);
-              try {
-                var snack = SnackBarModel.of(context);
-                why == null
-                    ? snack.success("Its notes are on a new MIDI channel")
-                    : snack.error(why);
-              } catch (_) {}
-            },
+            onPressed: notesToMidi,
           ),
-        ],
+        if (autoTune && controller.pitchElementOf(owner) != null)
+          IconButton(
+            key: ValueKey("autoTunePitch-$index"),
+            tooltip: "Open its notes in the Pitch editor",
+            icon: const Icon(Icons.open_in_new),
+            onPressed: () => controller.showPitch(owner),
+          ),
         ...deviceMoveButtons(controller, owner, index, _headerInkLight),
         IconButton(
           key: ValueKey("deviceRemove-$index"),
@@ -4254,19 +4330,27 @@ class ParamDevice extends StatelessWidget {
       // A split's branches are its picture: they have the room.
       display: device.kind == DeviceKind.split
           ? null
-          : DeviceLevels(
-              key: ValueKey("deviceLevels-$index"),
-              controller: controller,
-              // Measured on any strip: a channel's, a return's, the
-              // master's or a scene's bus.
-              channel: owner,
-              // Its place in the chain, where its levels are read: the EQ and
-              // compressor can be before it.
-              index:
-                  controller.chainOf(owner).indexOf(deviceIdAt(devices, index)),
-              device: device,
-              accent: accent,
-              back: look.studio.display),
+          : autoTune
+              ? AutoTuneScreen(
+                  key: ValueKey("autoTuneScreen-$index"),
+                  controller: controller,
+                  owner: owner,
+                  device: device,
+                  index: index)
+              : DeviceLevels(
+                  key: ValueKey("deviceLevels-$index"),
+                  controller: controller,
+                  // Measured on any strip: a channel's, a return's, the
+                  // master's or a scene's bus.
+                  channel: owner,
+                  // Its place in the chain, where its levels are read: the EQ and
+                  // compressor can be before it.
+                  index: controller
+                      .chainOf(owner)
+                      .indexOf(deviceIdAt(devices, index)),
+                  device: device,
+                  accent: accent,
+                  back: look.studio.display),
       summary: [
         for (var p in params.where((p) => paramShown(device, p)).take(2))
           "${p.label} ${p.reading(device.value(p.id))}"
@@ -4409,6 +4493,25 @@ class AddDeviceSlot extends StatelessWidget {
                     },
                     () => controller.restorePart(owner, part),
                   ),
+              ]
+            ),
+          // A voice can be sung: the Vocaliser, among its effects.
+          if (lane != null &&
+              controller.speechOf(owner) != null &&
+              controller.vocaliserOf(owner) == null)
+            (
+              "Voice",
+              [
+                (
+                  "addDevice-vocaliser",
+                  "Vocaliser",
+                  () {
+                    controller.beginInteraction();
+                    controller.setVocaliser(owner, const VocaliserSpec());
+                    controller.endInteraction();
+                    controller.openEffects(owner, device: "vocaliser");
+                  }
+                ),
               ]
             ),
           if (canSpeak)

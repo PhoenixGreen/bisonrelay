@@ -257,6 +257,11 @@ abstract class AudioEngine {
   /// volume moves [voice] to [to], over [fade] seconds.
   void volume(AudioVoice voice, double to, {double fade = 0});
 
+  /// route sends [voice] through channel [channel]'s strip from now on --
+  /// or straight to the master, with null: a sound started before its
+  /// channel was known is put through its chain once it is.
+  void route(AudioVoice voice, String? channel);
+
   void pause(AudioVoice voice, bool paused);
 
   /// seek moves [voice] to [at] seconds into its file.
@@ -783,6 +788,10 @@ class SoLoudAudioEngine implements AudioEngine {
 
   @override
   double get latency => 0;
+
+  /// route: SoLoud's own engine routes by bus when a sound is opened.
+  @override
+  void route(AudioVoice voice, String? channel) {}
 
   @override
   void volume(AudioVoice voice, double to, {double fade = 0}) {

@@ -316,6 +316,8 @@ class _ClipEditorState extends State<ClipEditor> {
         _column(look, title, children, key: ValueKey(key)),
     ];
     var shown = _shown.clamp(0, columns.length - 1);
+    var kind = widget.part ? "roll" : "clip";
+    var shut = c.settingsShut(kind);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (header != null) header,
       Expanded(
@@ -324,9 +326,16 @@ class _ClipEditorState extends State<ClipEditor> {
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(child: editor),
           Container(width: 1, color: look.studio.edge),
-          if (widget.wide) ...[
-            // Folded to one column, for more of what it plays.
-            _columnsButton(look, wide: true),
+          if (shut)
+            // Folded away: a strip naming them, to open them again.
+            _shutStrip(look, settings.map((s) => s.$1).join(" · "), kind)
+          else if (widget.wide) ...[
+            // Hidden, or folded to one column, for more of what it plays.
+            Column(children: [
+              const SizedBox(height: 4),
+              _foldButton(look, kind),
+              Expanded(child: _columnsButton(look, wide: true)),
+            ]),
             ...columns,
           ] else
             SizedBox(
@@ -346,6 +355,7 @@ class _ClipEditorState extends State<ClipEditor> {
                           ]),
                         ),
                         if (widget.canWiden) _columnsButton(look, wide: false),
+                        _foldButton(look, kind),
                       ]),
                     ),
                     Expanded(child: columns[shown]),
@@ -355,6 +365,51 @@ class _ClipEditorState extends State<ClipEditor> {
       ),
     ]);
   }
+
+  /// _shutStrip is the settings folded away: a narrow strip, their names
+  /// written down it, that opens them again.
+  Widget _shutStrip(MixerLook look, String names, String kind) => Tooltip(
+        message: "Show $names",
+        child: InkWell(
+          key: const ValueKey("editorSettingsOpen"),
+          onTap: () => c.toggleSettingsShut(kind),
+          child: SizedBox(
+            width: 24,
+            child: Column(children: [
+              const SizedBox(height: 6),
+              Icon(Icons.chevron_left, size: 16, color: look.studio.muted),
+              const SizedBox(height: 6),
+              Expanded(
+                child: RotatedBox(
+                  quarterTurns: 1,
+                  child: Text(names,
+                      maxLines: 1,
+                      overflow: TextOverflow.fade,
+                      softWrap: false,
+                      style:
+                          TextStyle(fontSize: 10.5, color: look.studio.muted)),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      );
+
+  /// _foldButton folds the settings away, for the most room for what it
+  /// plays.
+  Widget _foldButton(MixerLook look, String kind) => Tooltip(
+        message: "Hide the settings",
+        child: InkWell(
+          key: const ValueKey("editorSettingsShut"),
+          borderRadius: BorderRadius.circular(5),
+          onTap: () => c.toggleSettingsShut(kind),
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: Icon(Icons.last_page, size: 16, color: look.studio.muted),
+          ),
+        ),
+      );
 
   /// _columnsButton shows every column of settings, or folds them to one --
   /// the one picked above it -- for more room for what it plays.

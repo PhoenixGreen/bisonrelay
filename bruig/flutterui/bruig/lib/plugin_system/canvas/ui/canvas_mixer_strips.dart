@@ -479,10 +479,11 @@ class _StripPan extends StatelessWidget {
 /// _onToggle is a column's switch, its number or letter on it: lit while it
 /// is heard, dark while it is muted (Ableton's track activator).
 Widget _onToggle(MixerLook theme, String label, bool muted, VoidCallback onTap,
-        {required Key key, required String what}) =>
+        {required Key key, required String what, IconData? icon}) =>
     _Toggle(
         key: key,
         label: label,
+        icon: icon,
         on: !muted,
         onColor: theme.studio.on,
         onInk: theme.studio.onOn,
@@ -1168,9 +1169,11 @@ class _SceneStrip extends StatelessWidget {
       miniMixer: () => _miniMixerBand(theme,
           bare: bands.bare,
           buttons: [
-            _onToggle(theme, "S", mix.mute,
+            _onToggle(theme, "On", mix.mute,
                 () => onChanged(mix.copyWith(mute: !mix.mute)),
-                key: const ValueKey("sceneMute"), what: what),
+                key: const ValueKey("sceneMute"),
+                what: what,
+                icon: Icons.power_settings_new),
           ],
           db: mix.gainDb,
           level: level,
@@ -1190,9 +1193,11 @@ class _SceneStrip extends StatelessWidget {
             onCommit: onCommit,
             onOpenPanner: () => onOpen("panner"),
           ),
-          on: _onToggle(theme, "S", mix.mute,
+          on: _onToggle(theme, "On", mix.mute,
               () => onChanged(mix.copyWith(mute: !mix.mute)),
-              key: const ValueKey("sceneMute"), what: what),
+              key: const ValueKey("sceneMute"),
+              what: what,
+              icon: Icons.power_settings_new),
         ),
         fader: _faderOf(
             theme,

@@ -19,7 +19,6 @@ import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
         chainMenuStyle,
         dragPointers;
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/pitch_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
 
@@ -196,11 +195,10 @@ extension on _ChainPanelState {
     var speechOn = c.speechShown;
     var pitchOn = c.pitchShown;
     var instrumentOn = c.instrumentShown;
-    // A recording to tune: a channel's sound, not an instrument's. A
-    // voice's pitch is its Speech's Phrasing (Ken), not the Pitch editor.
+    // No Pitch tab, as the prototype has none (Ken): pitch is the device's
+    // that has it -- a voice's Speech's Phrasing button, Auto-tune's way
+    // into the Pitch editor.
     var voice = channel && !notes && c.speechOf(key) != null;
-    var tunable = channel && !notes && !voice && c.pitchElementOf(key) != null;
-    var phrasingOn = speechOn && c.phrasing?.channel == key;
     Widget tab(String id, String label, IconData icon, bool on,
             VoidCallback onTap) =>
         Padding(
@@ -269,21 +267,9 @@ extension on _ChainPanelState {
             () => c.openClipEditor(key, row)),
       // Speech makes a voice channel's clips: chosen for it, as an
       // instrument is, from the Add menu's Generators.
-      if (voice) ...[
-        tab("chainTabSpeech", "Speech", Icons.record_voice_over,
-            speechOn && !phrasingOn, () {
-          c.closePhrasing();
-          c.showSpeech(key);
-        }),
-        // Its pitch: the Speech's Phrasing, on the section picked there.
-        tab("chainTabPitch", "Pitch", Icons.multiline_chart, phrasingOn, () {
-          c.showSpeech(key);
-          c.openPhrasing(key, 0, 0);
-        }),
-      ],
-      if (tunable)
-        tab("chainTabPitch", "Pitch", Icons.multiline_chart, pitchOn,
-            () => c.showPitch(key)),
+      if (voice)
+        tab("chainTabSpeech", "Speech", Icons.record_voice_over, speechOn,
+            () => c.showSpeech(key)),
     ];
   }
 }

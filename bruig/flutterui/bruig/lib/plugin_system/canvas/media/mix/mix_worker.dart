@@ -17,6 +17,7 @@ import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart'
     show SpeakerGroup;
+import 'package:bruig/plugin_system/canvas/media/latency_log.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
 // mix_worker.dart runs the mix in an isolate of its own. It renders ahead
@@ -177,6 +178,9 @@ class _Worker {
   /// sends something. Left running, the reports woke the editor fifty times
   /// a second for as long as the app was open.
   void _park() {
+    // Its meters to silence first: the last report is what is read until
+    // it wakes again.
+    core.graph.quiet();
     _snapshot();
     _pump?.cancel();
     _report?.cancel();
@@ -367,6 +371,8 @@ class _Worker {
         if (_voice(m[1]) case var v?) core.stop(v);
       case "stopSoftly":
         if (_voice(m[1]) case var v?) core.stopSoftly(v, m[2] as double);
+      case "route":
+        if (_voice(m[1]) case var v?) v.channel = m[2] as String?;
       case "volume":
         if (_voice(m[1]) case var v?) {
           core.volume(v, m[2] as double, fade: m[3] as double);
@@ -440,8 +446,16 @@ class _Worker {
         had.$2.sampler
           ..shape = part.shape
           ..noteOn(m[3] as int, m[4] as int);
+        var waiting = _stream == null ? 0 : _ahead;
         // Into the next block now, rather than at the pump's next tick.
         _fill();
+        if (m.length > 6 && m[6] is int) {
+          latencyLog(
+              "mix key=${m[3]} editor->mix=${sinceMs(m[6] as int).toStringAsFixed(1)}ms "
+              "queued-before=${(waiting * 1000 / mixRate).toStringAsFixed(1)}ms "
+              "queued-after=${((_stream == null ? 0 : _ahead) * 1000 / mixRate).toStringAsFixed(1)}ms "
+              "load=${_load.toStringAsFixed(2)}");
+        }
       case "noteOff":
         live[m[1]]?.$2.sampler.noteOff(m[2] as int);
       case "control":

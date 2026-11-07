@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/pitch_editing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -89,6 +90,55 @@ void main() {
       expect(edit.stale, isTrue);
       expect(edit.copyWith(madeWith: edit.key).stale, isFalse);
     });
+
+    test("each note's own retune, vibrato, formant, slide and drawing kept",
+        () {
+      var n = const PitchNote(0, 1, 60.3).copyWith(
+          wobble: 0.5,
+          vibrato: 0.2,
+          retuneMs: 80,
+          formant: -3,
+          slideMs: 120,
+          curve: const [(0.1, 61), (0.5, 63)]);
+      expect(n.edited, isTrue);
+      var back = PitchNote.fromJson(n.toJson())!;
+      expect(back, n);
+      expect(back.drawnAt(0.3), closeTo(62, 1e-9));
+      expect(back.drawnAt(0.7), isNull, reason: "only where it is drawn");
+      // A file from before: its one wobble kept both.
+      var old = PitchNote.fromJson({"s": 0, "e": 1, "p": 60, "wobble": 0.3})!;
+      expect(old.vibrato, 0.3);
+      expect(old.wobble, 0.3);
+      expect(n.movedTo(67).target, 67);
+      expect(n.reset.edited, isFalse);
+      // Split, the drawing goes with each half.
+      var cut = PitchEdit("a.wav", notes: [n]).split(0, 0.3);
+      expect(cut.notes[0].curve, [(0.1, 61.0)]);
+      expect(cut.notes[1].curve, [(0.5, 63.0)]);
+    });
+
+    test("heard: drawn, drifting, retuned and slid in", () {
+      const n = PitchNote(1, 2, 60, shift: 2);
+      // As sung 60.4 drifting at 60.2: the drift and the swing round it
+      // kept as asked.
+      expect(pitchHeardAt(n, 1.5, 60.4, 60.2), closeTo(62.4, 1e-9));
+      expect(pitchHeardAt(n.copyWith(vibrato: 0), 1.5, 60.4, 60.2),
+          closeTo(62.2, 1e-9));
+      expect(pitchHeardAt(n.copyWith(vibrato: 0, wobble: 0), 1.5, 60.4, 60.2),
+          closeTo(62, 1e-9));
+      // Retuned over 100ms: still near as sung at its start, there after.
+      var slow = n.copyWith(retuneMs: 100, vibrato: 0, wobble: 0);
+      expect(pitchHeardAt(slow, 1.0, 60, 60), closeTo(60, 1e-9));
+      expect(pitchHeardAt(slow, 1.6, 60, 60), closeTo(62, 0.01));
+      // Slid in from the note before.
+      var slid = n.copyWith(slideMs: 200, vibrato: 0, wobble: 0);
+      expect(pitchHeardAt(slid, 1.0, 60, 60, before: 55), closeTo(55, 1e-9));
+      expect(pitchHeardAt(slid, 1.1, 60, 60, before: 55), closeTo(58.5, 1e-9));
+      expect(pitchHeardAt(slid, 1.3, 60, 60, before: 55), closeTo(62, 1e-9));
+      // Drawn: what is drawn.
+      var drawn = n.copyWith(curve: const [(1.2, 64), (1.6, 66)]);
+      expect(pitchHeardAt(drawn, 1.4, 60, 60), closeTo(65, 1e-9));
+    });
   });
 
   group("the sound", () {
@@ -116,6 +166,22 @@ void main() {
       var n = findNotes(track).single;
       var out = retuneTake(x, track, [n.copyWith(straighten: 1)]);
       expect(pitchAround(out, 0.5), closeTo(220, 4));
+    });
+
+    test("its formant moved, its pitch kept", () {
+      var x = sung([(220, 1)]);
+      var track = pitchTrackOfPcm(x);
+      var n = findNotes(track).single;
+      for (var f in [-4.0, 4.0]) {
+        var out = retuneTake(x, track, [n.copyWith(formant: f)]);
+        expect(pitchAround(out, 0.5), closeTo(220, 5), reason: "at $f st");
+        // And the sound changed: not the same samples.
+        var diff = 0.0;
+        for (var i = 20000; i < 22000; i++) {
+          diff += (out[i] - x[i]).abs();
+        }
+        expect(diff, greaterThan(1), reason: "its colour moved at $f st");
+      }
     });
   });
 
@@ -209,22 +275,87 @@ void main() {
       var grid = find.byKey(const ValueKey("pitchGrid"));
       await tester.ensureVisible(grid);
       await tester.pump();
-      var top = tester.getTopLeft(grid);
-      // Rows from 4 over the highest note: the first note's row.
-      var edit = c.pitchEditOf("v")!;
-      var high = edit.notes.map((n) => n.sung).reduce(math.max) + 4;
-      var low = edit.notes.map((n) => n.sung).reduce(math.min) - 4;
-      // A semitone's height: the grid fills the room it has.
-      var tone = tester.getSize(grid).height /
-          (high.ceilToDouble() - low.floorToDouble());
-      var y = (high.ceilToDouble() - note.target) * tone + tone / 2;
-      var at = top + Offset((note.start + note.length / 2) * 120, y);
-      await tester.dragFrom(at, Offset(0, -2 * tone));
+      // Where a note is: its rows from three under the lowest to three
+      // over the highest, filling the grid; its time across it.
+      Offset at(PitchNote n, double target) {
+        var edit = c.pitchEditOf("v")!;
+        var high =
+            edit.notes.map((n) => math.max(n.sung, n.target)).reduce(math.max) +
+                3;
+        var low =
+            edit.notes.map((n) => math.min(n.sung, n.target)).reduce(math.min) -
+                3;
+        var top = high.ceilToDouble(), bottom = low.floorToDouble();
+        var size = tester.getSize(grid);
+        var tone = size.height / (top - bottom);
+        var perSecond = size.width / (pitchTrackOfPcm(x).length * 0.02);
+        return tester.getTopLeft(grid) +
+            Offset((n.start + n.length / 2) * perSecond,
+                (top - target) * tone + tone / 2);
+      }
+
+      double tone() {
+        var edit = c.pitchEditOf("v")!;
+        var high =
+            edit.notes.map((n) => math.max(n.sung, n.target)).reduce(math.max) +
+                3;
+        var low =
+            edit.notes.map((n) => math.min(n.sung, n.target)).reduce(math.min) -
+                3;
+        return tester.getSize(grid).height /
+            (high.ceilToDouble() - low.floorToDouble());
+      }
+
+      // Two rows up, onto the scale (C major, the editor's own here).
+      await tester.dragFrom(at(note, note.target), Offset(0, -2 * tone()));
       await tester.pump(const Duration(milliseconds: 100));
       var moved = c.pitchEditOf("v")!.notes.first;
       expect(moved.target, closeTo(note.target.roundToDouble() + 2, 1e-6),
-          reason: "two rows up: a tone, on the semitones");
+          reason: "two rows up: a tone, on the scale");
       expect(find.byKey(const ValueKey("pitchInspector")), findsOneWidget);
+      expect(find.byKey(const ValueKey("pitchPickedTitle")), findsOneWidget,
+          reason: "the note picked, its own settings shown");
+      expect(find.byKey(const ValueKey("pitchRetune")), findsOneWidget);
+      expect(find.byKey(const ValueKey("pitchFormant")), findsOneWidget);
+      // Up a note from the keyboard: the next of the scale, B to C.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+      expect(c.pitchEditOf("v")!.notes.first.target, closeTo(60, 1e-6));
+      // Twice on it: back to the nearest note to where it was sung.
+      var first = c.pitchEditOf("v")!.notes.first;
+      await tester.tapAt(at(first, first.target));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(at(first, first.target));
+      await tester.pump();
+      expect(c.pitchEditOf("v")!.notes.first.target,
+          closeTo(note.sung.roundToDouble(), 1e-6));
+      // Drawn over by hand: a pitch of its own.
+      await tester.tap(find.byKey(const ValueKey("pitchTool-draw")));
+      await tester.pump();
+      var second = c.pitchEditOf("v")!.notes[1];
+      var from = at(second, second.target) - const Offset(30, 0);
+      await tester.dragFrom(from, const Offset(60, -10));
+      await tester.pump();
+      expect(c.pitchEditOf("v")!.notes[1].curve.length, greaterThan(1));
+      // Every note onto the scale: Correct every note.
+      await tester.ensureVisible(find.byKey(const ValueKey("pitchCorrectAll")));
+      await tester.tap(find.byKey(const ValueKey("pitchCorrectAll")));
+      await tester.pump();
+      for (var n in c.pitchEditOf("v")!.notes) {
+        expect(n.target, closeTo(n.target.roundToDouble(), 1e-6));
+      }
+      // Heard as sung, and corrected again.
+      await tester.runAsync(() => c.renderPitch("v"));
+      await tester.pump();
+      var made = c.pitchSourceOf("v")!.assetId;
+      await tester.ensureVisible(find.byKey(const ValueKey("pitchHearSung")));
+      await tester.tap(find.byKey(const ValueKey("pitchHearSung")));
+      await tester.pump();
+      expect(c.pitchSourceOf("v")!.assetId, "take.wav");
+      expect(c.pitchHeardAsSung("v"), isTrue);
+      await tester.tap(find.byKey(const ValueKey("pitchHearCorrected")));
+      await tester.pump();
+      expect(c.pitchSourceOf("v")!.assetId, made);
       expect(tester.takeException(), isNull);
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpWidget(const SizedBox());

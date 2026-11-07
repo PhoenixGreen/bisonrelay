@@ -13,6 +13,9 @@ import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:bruig/plugin_system/canvas/ui/phrasing_editor.dart';
+import 'package:bruig/plugin_system/canvas/model/session.dart';
+import 'package:bruig/plugin_system/canvas/ui/pitch_editing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
@@ -156,7 +159,7 @@ void main() {
     expect(x("chainZone-Macros"), lessThan(x("chainZone-Source")));
     expect(x("chainZone-Source"), lessThan(x("chainZone-Effects")));
     MediaClip clip() => (c.document.elements.single as AudioElement).clip;
-    var level = find.byKey(const ValueKey("audioClipsLevel"));
+    var level = find.byKey(const ValueKey("audioClipsGain"));
     await tester.ensureVisible(level);
     await tester.pump();
     var was = clip().volume;
@@ -171,6 +174,98 @@ void main() {
     expect(clip().fadeIn, greaterThan(0));
     c.undo();
     expect(clip().fadeIn, 0, reason: "one undo step a turn");
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // Ken: the Clips device was missing much of the prototype's.
+  testWidgets(
+      "Clips: a chip a sound, its slot clips launched, transposed, warped",
+      (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    for (var (i, n) in ["Bed A", "Sting"].indexed) {
+      c.clipFromSound("m", i, MediaSource(assetId: "t", length: 8, name: n));
+    }
+    c.openEffects("m");
+    await show(tester, c, height: 400);
+    // The timeline's sound and the two slots.
+    for (var k in [
+      "audioClipsChip--1",
+      "audioClipsChip-0",
+      "audioClipsChip-1"
+    ]) {
+      expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
+    }
+    expect(find.byKey(const ValueKey("audioClipsTranspose")), findsNothing,
+        reason: "a timeline sound has no transposition here");
+    await tester.tap(find.byKey(const ValueKey("audioClipsChip-0")));
+    await tester.pump();
+    var transpose = find.byKey(const ValueKey("audioClipsTranspose"));
+    await tester.ensureVisible(transpose);
+    await tester.pump();
+    await tester.drag(transpose, const Offset(0, -40),
+        kind: PointerDeviceKind.mouse);
+    await tester.pump();
+    expect(c.session.at("m", 0)!.pitch, greaterThan(0));
+    // Warped, in Tones; its Warp page says so.
+    var tones = find.byKey(const ValueKey("audioClipsWarp-tones"));
+    await tester.ensureVisible(tones);
+    await tester.pump();
+    await tester.tap(tones);
+    await tester.pump();
+    expect(c.session.at("m", 0)!.warp, isTrue);
+    expect(c.session.at("m", 0)!.warpMode, WarpMode.tones);
+    await tester.tap(find.byKey(const ValueKey("audioClipsPageWarp")));
+    await tester.pump();
+    expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey("audioClipsWarpReadout")))
+            .data,
+        contains("Tones"));
+    // Launched from its chip.
+    await tester.tap(find.byKey(const ValueKey("audioClipsLaunch-1")));
+    await tester.pump();
+    expect(c.clipState("m", 1), anyOf(ClipState.playing, ClipState.queued));
+    c.stopAllClips();
+    c.pause();
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets("Auto-tune: its notes, its key and scale as buttons, Live",
+      (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    c.setDevicesOf("m", const [MixDevice(DeviceKind.autoTune, id: "d0")]);
+    pitchTrackSeed("t", [
+      for (var i = 0; i < 100; i++) i % 25 > 20 ? null : 60.3 + (i ~/ 25) * 2,
+    ]);
+    c.openEffects("m");
+    await show(tester, c, height: 420);
+    expect(find.byKey(const ValueKey("autoTuneNotesView-0")), findsOneWidget,
+        reason: "a recording: its notes first");
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey("autoTuneCaption-0")))
+            .data,
+        contains("corrected"));
+    // D, then minor.
+    var d = find.byKey(const ValueKey("autoTuneKey-0-2"));
+    await tester.ensureVisible(d);
+    await tester.pump();
+    await tester.tap(d);
+    await tester.pump();
+    expect(c.devicesOf("m").single.value("key"), 2);
+    await tester.tap(find.byKey(const ValueKey("autoTuneScale-0-2")));
+    await tester.pump();
+    expect(c.devicesOf("m").single.value("scale"), 2);
+    await tester.tap(find.byKey(const ValueKey("autoTuneLive-0")));
+    await tester.pump();
+    expect(find.byKey(const ValueKey("autoTuneHeard-0")), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpWidget(const SizedBox());
@@ -326,23 +421,75 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  // Ken: a voice's Pitch is its Speech's Phrasing.
-  testWidgets("a voice channel's Pitch tab opens its Speech's Phrasing",
+  // Ken: no Pitch tab, as the prototype has none -- a voice's pitch is its
+  // Speech's Phrasing button.
+  testWidgets("there is no Pitch tab; a voice's pitch is its Phrasing",
       (tester) async {
     var c = make();
     addTearDown(c.dispose);
-    c.setSpeech("m", const SpeechSpec());
+    c.setSpeech("m", const SpeechSpec(script: "Hello there."));
     c.openEffects("m");
     await show(tester, c);
-    await tester.tap(find.byKey(const ValueKey("chainTabPitch")));
-    await tester.pump();
-    expect(c.speechShown, isTrue);
-    expect(c.phrasing?.channel, "m");
-    expect(c.pitchShown, isFalse, reason: "not the recording's Pitch editor");
+    expect(find.byKey(const ValueKey("chainTabPitch")), findsNothing);
     await tester.tap(find.byKey(const ValueKey("chainTabSpeech")));
     await tester.pump();
+    expect(find.byKey(const ValueKey("speechPhrasing")), findsOneWidget,
+        reason: "its pitch: Phrasing, on the Speech itself");
+    await tester.tap(find.byKey(const ValueKey("speechPhrasing")));
+    await tester.pump();
+    await tester.pump();
+    expect(c.phrasing?.channel, "m", reason: "Ken: Phrasing did nothing");
+    expect(find.byType(PhrasingLanes), findsOneWidget);
+    // Taken off: back to the chain, not left on "Speak a script".
+    c.setSpeech("m", null);
+    await tester.pump();
+    expect(c.speechShown, isFalse);
     expect(c.phrasing, isNull);
+    expect(find.byKey(const ValueKey("speechStart")), findsNothing);
     await tester.pump(const Duration(seconds: 1));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // Ken: each channel's chain where he left it, switching channels.
+  testWidgets("each channel's chain is scrolled where it was left",
+      (tester) async {
+    var c = CanvasController(
+        CanvasDocument(frames: 100, elements: [
+          AudioElement(const ElementBase(id: "m", name: "Music"),
+              clip: MediaClip(
+                  playlist: const [MediaSource(assetId: "t", length: 8)],
+                  timed: true,
+                  mix: ChannelMix(devices: [
+                    for (var i = 0; i < 8; i++)
+                      MixDevice(DeviceKind.chorus, id: "d$i"),
+                  ]))),
+          AudioElement(const ElementBase(id: "b", name: "Beat"),
+              clip: const MediaClip(
+                  playlist: [MediaSource(assetId: "t", length: 8)],
+                  timed: true)),
+        ]),
+        audioEngine: FakeEngine({"t": 8}));
+    addTearDown(c.dispose);
+    c.openEffects("m");
+    await show(tester, c);
+    ScrollPosition position() => tester
+        .state<ScrollableState>(find
+            .descendant(
+                of: find.byKey(const ValueKey("effectsChain")),
+                matching: find.byType(Scrollable))
+            .first)
+        .position;
+    position().jumpTo(700);
+    await tester.pump();
+    c.openEffects("b");
+    await tester.pump();
+    await tester.pump();
+    expect(position().pixels, 0, reason: "another chain, from its start");
+    c.openEffects("m");
+    await tester.pump();
+    await tester.pump();
+    expect(position().pixels, 700, reason: "back where it was left");
+    await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpWidget(const SizedBox());
   });
 

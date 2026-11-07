@@ -240,6 +240,39 @@ void main() {
       return c;
     }
 
+    // Ken: Phrasing "did nothing" -- a take whose sound could not be read
+    // left it on "Reading the take…" for ever.
+    test("a take that cannot be read says so", () async {
+      var was = CanvasController.takeAudio;
+      CanvasController.takeAudio = (id) async => null;
+      addTearDown(() => CanvasController.takeAudio = was);
+      var c = make();
+      addTearDown(c.dispose);
+      c.openPhrasing("a", 0, 0);
+      for (var i = 0; i < 20 && !c.phrasingUnread; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(c.phrasingUnread, isTrue);
+      expect(c.readingOf(c.phrasingTake!), isNull);
+    });
+
+    test("a take spoken after Phrasing opened is read then", () async {
+      var c = make();
+      addTearDown(c.dispose);
+      var spec = c.speechOf("a")!;
+      // No take yet: Phrasing open on the empty slot.
+      c.setSpeech("a", spec.withLines([const SpeechLine("one two three.")]));
+      c.openPhrasing("a", 0, 0);
+      expect(c.phrasingTake, isNull);
+      c.setSpeech("a", spec);
+      expect(c.readingOf(c.phrasingTake!), isNull);
+      c.readPhrasingTake();
+      for (var i = 0; i < 50 && c.readingOf(c.phrasingTake!) == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(c.readingOf(c.phrasingTake!), isNotNull);
+    });
+
     test("shaped, made again, undone, and reset", () async {
       var c = make();
       addTearDown(c.dispose);

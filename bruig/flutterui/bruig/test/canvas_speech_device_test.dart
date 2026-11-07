@@ -972,7 +972,9 @@ esac
       // button scroll in what room is left, and nothing overflows.
       var c = make();
       addTearDown(c.dispose);
-      tester.view.physicalSize = const Size(1200, 400);
+      // Side by side: the Vocaliser is a card of the chain's now, as wide
+      // as its knobs and its tune.
+      tester.view.physicalSize = const Size(1700, 400);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       // Our own voices downloaded and not, and the expressive voices.

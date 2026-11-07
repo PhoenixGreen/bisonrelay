@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:bruig/plugin_system/canvas/media/latency_log.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_midi_command/flutter_midi_command.dart';
 import 'package:bruig/plugin_system/canvas/media/push_surface.dart';
@@ -118,7 +119,18 @@ class MidiInput extends ChangeNotifier {
       var id = device.id;
       _packets = _midi.onMidiPacketReceived?.listen((p) {
         if (p.device.id != id) return;
-        handle(p.data);
+        // Ken's latency: how late a key reached the editor, and how long
+        // it took to hand on (see latency_log.dart).
+        var data = p.data;
+        var keyDown =
+            data.length >= 3 && (data[0] & 0xF0) == 0x90 && data[2] > 0;
+        var arrived = keyDown ? hostTicks() : 0;
+        handle(data);
+        if (keyDown) {
+          latencyLog("midi key=${data[1]} "
+              "keyboard->editor=${(sinceMs(p.timestamp) - sinceMs(arrived)).toStringAsFixed(1)}ms "
+              "handled=${sinceMs(arrived).toStringAsFixed(1)}ms");
+        }
       });
       if (isPush(device.name)) {
         usePush(PushSurface(

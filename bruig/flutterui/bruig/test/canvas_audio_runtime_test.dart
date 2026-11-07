@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/canvas/media/audio_runtime.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'canvas_audio_fake.dart';
@@ -239,5 +240,20 @@ void main() {
     expect(back.acrossPages, isFalse);
     expect(const MediaClip().toJson(), isEmpty,
         reason: "a clip nobody has touched writes nothing");
+  });
+
+  // Ken: sometimes a sound played but not through its chain until stopped
+  // and started again -- started before its channel was known.
+  test("a sound started before its channel is known goes through it once it "
+      "is", () async {
+    var e = sound("s", MediaClip(playlist: [file("a.mp3")]));
+    runtime.setMix(const {}, master: const MasterMix());
+    await runtime.play(e);
+    expect(engine.routed, isEmpty);
+    runtime.setMix(const {"s": ChannelMix()}, master: const MasterMix());
+    expect(engine.routed.single.$2, "s");
+    // Told again, nothing changes: it is through it already.
+    runtime.setMix(const {"s": ChannelMix()}, master: const MasterMix());
+    expect(engine.routed, hasLength(1));
   });
 }

@@ -25,12 +25,21 @@ import 'package:flutter/foundation.dart';
 final Map<String, List<double?>> _tracks = {};
 final Set<String> _reading = {};
 
+/// _unread are the recordings whose pitch could not be read: said so,
+/// rather than "Reading its pitch…" for ever.
+final Set<String> _unread = {};
+
 /// pitchTracksRead goes up as each recording's pitch is read, for an
 /// editor waiting on one to draw it.
 final ValueNotifier<int> pitchTracksRead = ValueNotifier(0);
 
 /// _renders are each controller's waits before making a recording again.
 final Expando<Timer> _renders = Expando("pitchRenders");
+
+/// _asSung are, by controller, the channels heard as sung -- the Pitch
+/// editor's Hear: As sung -- each with the recording made from its notes,
+/// to go back to.
+final Expando<Map<String, String>> _asSung = Expando("pitchAsSung");
 
 /// pitchTrackSeed puts [track] in for [assetId], as read: for tests.
 @visibleForTesting
@@ -101,20 +110,45 @@ extension PitchEditing on CanvasController {
     if (source == null) return null;
     var id = source.pitch?.original ?? source.assetId;
     if (_tracks[id] case var t?) return t;
-    if (_reading.add(id)) unawaited(_read(id));
+    if (!_unread.contains(id) && _reading.add(id)) unawaited(_read(id));
     return null;
+  }
+
+  /// pitchUnreadable is whether [key]'s recording's pitch could not be
+  /// read: its file missing, or not a sound.
+  bool pitchUnreadable(String key) {
+    var source = pitchSourceOf(key);
+    if (source == null) return false;
+    return _unread.contains(source.pitch?.original ?? source.assetId);
   }
 
   Future<void> _read(String id) async {
     try {
       var pcm = await CanvasController.takeAudio(id);
-      if (pcm == null) return;
+      if (pcm == null) {
+        _unread.add(id);
+        return;
+      }
       var reading = await Isolate.run(() => readTake(pcm, const []));
       _tracks[id] = reading.pitch;
-      pitchTracksRead.value++;
+    } catch (exception) {
+      debugPrint("A recording's pitch could not be read: $exception");
+      _unread.add(id);
     } finally {
       _reading.remove(id);
+      pitchTracksRead.value++;
     }
+  }
+
+  /// pitchPlayhead is where the playhead is in [key]'s recording, in
+  /// seconds from the start of its file, or null where it is not over it.
+  double? pitchPlayhead(String key) {
+    var e = pitchElementOf(key);
+    var source = e?.clip.playlist.first;
+    if (e == null || source == null) return null;
+    var t = (frame - e.clip.at) / document.frameRate + source.start;
+    var end = source.end > 0 ? source.end : source.length;
+    return t < source.start || t > end ? null : t;
   }
 
   /// pitchEditOf is [key]'s recording's notes, as edited, or null where
@@ -148,11 +182,33 @@ extension PitchEditing on CanvasController {
     _renderSoon(key);
   }
 
+  /// pitchHeardAsSung is whether [key]'s recording is heard as sung, its
+  /// notes as they were: see hearPitchAsSung.
+  bool pitchHeardAsSung(String key) => _asSung[this]?.containsKey(key) ?? false;
+
+  /// hearPitchAsSung plays [key]'s recording as sung, or -- not [asSung]
+  /// -- as its notes make it: to hear the difference. Not a change to undo.
+  void hearPitchAsSung(String key, bool asSung) {
+    var source = pitchSourceOf(key);
+    var edit = source?.pitch;
+    if (source == null || edit == null) return;
+    var held = _asSung[this] ??= {};
+    if (asSung == held.containsKey(key)) return;
+    if (asSung) {
+      held[key] = source.assetId;
+      _setSource(key, source.copyWith(assetId: edit.original), transient: true);
+    } else {
+      var made = held.remove(key)!;
+      _setSource(key, source.copyWith(assetId: made), transient: true);
+    }
+  }
+
   /// forgetPitch puts [key]'s recording back as it was made.
   void forgetPitch(String key) {
     var source = pitchSourceOf(key);
     var edit = source?.pitch;
     if (source == null || edit == null) return;
+    _asSung[this]?.remove(key);
     _setSource(key, source.copyWith(assetId: edit.original, clearPitch: true));
   }
 
@@ -195,6 +251,12 @@ extension PitchEditing on CanvasController {
     // Changed again meanwhile: made next.
     var now = pitchSourceOf(key);
     if (now?.pitch == null || now!.pitch!.key != made) return;
+    // Heard as sung: kept to go back to, the original still playing.
+    var held = _asSung[this];
+    if (held != null && held.containsKey(key)) {
+      held[key] = id;
+      id = now.assetId;
+    }
     _setSource(key,
         now.copyWith(assetId: id, pitch: now.pitch!.copyWith(madeWith: made)),
         transient: true);

@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_chain_helpers.dart';
 
 // canvas_vocaliser_test.dart is speech sung: a take's words as syllables,
 // a melody one note at a time, and each syllable moved onto its note.
@@ -200,12 +201,13 @@ void main() {
       expect(await d.sing("a"), contains("pick a MIDI channel"));
     });
 
-    testWidgets("Sing it from the Speech view, sung from, and on the strip",
+    // Ken: the Vocaliser is added among the effects when it is wanted, not
+    // opened with the Speech.
+    testWidgets("added from the chain's +, sung from, and on the strip",
         (tester) async {
       var c = make();
       c.setVocaliser("a", null);
-      // It sings the speech: in the Speech view, after it.
-      c.showSpeech("a");
+      c.openEffects("a");
       tester.view.physicalSize = const Size(1600, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -235,11 +237,16 @@ void main() {
                             ])))),
       ));
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey("speechSingButton")));
+      expect(find.byKey(const ValueKey("device-vocaliser")), findsNothing);
+      await openAdd(tester, find.byKey(const ValueKey("addDeviceOpen")).first);
+      await tester.tap(find.byKey(const ValueKey("addDevice-vocaliser")));
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
       expect(c.vocaliserOf("a"), isNotNull);
+      expect(c.speechShown, isFalse, reason: "in the chain, not the Speech");
+      await tester.ensureVisible(find.byKey(const ValueKey("vocaliserSing")));
+      await tester.pump();
       expect(find.byKey(const ValueKey("device-vocaliser")), findsOneWidget);
       expect(
           find.descendant(

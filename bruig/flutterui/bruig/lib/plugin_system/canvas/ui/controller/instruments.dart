@@ -166,7 +166,17 @@ extension CanvasInstruments on CanvasController {
     } else if (_recording && playing && _recordsInto(e)) {
       (_take[e.id] ??= {})[key] = (_nowInPart(e), velocity);
     }
-    notifyListeners();
+    _keysChanged();
+  }
+
+  /// _keysChanged tells of a key pressed or let go: only the stage, which
+  /// lights it, while nothing else shows it -- the whole editor while it
+  /// is being recorded, practised or stepped in.
+  void _keysChanged() {
+    keysHeld.value++;
+    if (_recording || _clipRecord != null || _practice != null || _rollStep) {
+      notifyListeners();
+    }
   }
 
   /// armed is which MIDI channels are armed, by channel key: what a MIDI
@@ -379,7 +389,7 @@ extension CanvasInstruments on CanvasController {
       var length = math.max(0.02, _nowInPart(e) - start);
       (_taken[e.id] ??= []).add(MidiNote(key, start, length, velocity));
     }
-    notifyListeners();
+    _keysChanged();
   }
 
   /// _nowInPart is where the playhead is in [e]'s part, in seconds.
