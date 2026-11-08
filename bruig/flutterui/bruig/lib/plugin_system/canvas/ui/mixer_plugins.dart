@@ -2267,6 +2267,14 @@ class _EqDeviceState extends State<EqDevice>
             on: eq.on,
             powerKey: const ValueKey("eqOn"),
             onPower: (v) => _write(eq.copyWith(on: v)),
+            // A second set of bands to compare by ear, and back to flat.
+            onAB: () => widget.controller.toggleABOf(
+                "${widget.channel ?? mixerMasterKey}|eq",
+                eq,
+                (o) => _write(o as Eq, transient: true)),
+            showingB: widget.controller
+                .showingBOf("${widget.channel ?? mixerMasterKey}|eq"),
+            onReset: () => _write(const Eq().copyWith(on: eq.on)),
             folded: widget.folded,
             onFold: widget.onFold,
             width: EqDevice.width,
@@ -2890,6 +2898,17 @@ class _CompDeviceState extends State<CompDevice>
             on: comp.on,
             powerKey: const ValueKey("compOn"),
             onPower: (v) => _write(comp.copyWith(on: v)),
+            onAB: () => widget.controller.toggleABOf(
+                "${widget.channel ?? mixerMasterKey}|comp",
+                comp,
+                (o) => _write(o as Dynamics, transient: true)),
+            showingB: widget.controller
+                .showingBOf("${widget.channel ?? mixerMasterKey}|comp"),
+            // The master's glue starts gentler than a channel's compressor.
+            onReset: () => _write((widget.channel == null
+                    ? const MasterMix().comp
+                    : const Dynamics())
+                .copyWith(on: comp.on)),
             folded: widget.folded,
             onFold: widget.onFold,
             width: CompDevice.width,
@@ -4091,6 +4110,19 @@ class _LimiterDeviceState extends State<LimiterDevice> {
       onPower: (v) => _write(m.copyWith(limiter: v)),
       onReset: () => _write(m.copyWith(
           ceilingDb: -1, limiterAheadMs: 5, limiterReleaseMs: 50)),
+      onAB: () => widget.controller.toggleABOf(
+          "$mixerMasterKey|limiter",
+          (m.ceilingDb, m.limiterAheadMs, m.limiterReleaseMs),
+          (o) {
+        var (ceiling, ahead, release) = o as (double, double, double);
+        _write(
+            widget.controller.document.masterMix.copyWith(
+                ceilingDb: ceiling,
+                limiterAheadMs: ahead,
+                limiterReleaseMs: release),
+            transient: true);
+      }),
+      showingB: widget.controller.showingBOf("$mixerMasterKey|limiter"),
       folded: widget.folded,
       onFold: widget.onFold,
       width: LimiterDevice.width,
@@ -4313,6 +4345,12 @@ class _DuckDeviceState extends State<DuckDevice>
             on: duck.on,
             powerKey: const ValueKey("duckOn"),
             onPower: (v) => write(duck.copyWith(on: v)),
+            onAB: () => widget.controller.toggleABOf(
+                "${widget.channel}|duck",
+                duck,
+                (o) => write(o as Ducking, transient: true)),
+            showingB: widget.controller.showingBOf("${widget.channel}|duck"),
+            onReset: () => write(Ducking(on: duck.on, except: duck.except)),
             folded: widget.folded,
             onFold: widget.onFold,
             width: DuckDevice.width,
@@ -4909,12 +4947,16 @@ class ParamDevice extends StatelessWidget {
       } catch (_) {}
     }
 
+    // A setting that is one of a few -- a filter's type, an LFO's shape --
+    // is a list, not a knob: the prototype's dropdowns.
+    bool listed(DeviceParam p) =>
+        paramShown(device, p) &&
+        device.kind != DeviceKind.split &&
+        device.kind != DeviceKind.macro &&
+        !(autoTune && (p.id == "key" || p.id == "scale"));
     List<Widget> knobs(DeviceTier tier) => [
           for (var p in params)
-            if (paramShown(device, p) &&
-                device.kind != DeviceKind.split &&
-                device.kind != DeviceKind.macro &&
-                !(autoTune && (p.id == "key" || p.id == "scale")))
+            if (listed(p) && !p.isChoice)
               _Knob(
                 key: ValueKey("device-$index-${p.id}"),
                 automated: automated.contains(target(p)),
@@ -4942,6 +4984,22 @@ class ParamDevice extends StatelessWidget {
                     write(device.withValue(p.id, v), transient: transient),
                 onCommit: controller.endInteraction,
               ),
+          if (params.any((p) => listed(p) && p.isChoice))
+            DevicePack(key: ValueKey("deviceChoices-$index"), children: [
+              for (var p in params)
+                if (listed(p) && p.isChoice)
+                  StudioDrop<int>(
+                    key: ValueKey("device-$index-${p.id}"),
+                    label: p.label,
+                    value: device
+                        .value(p.id)
+                        .round()
+                        .clamp(0, p.choices.length - 1),
+                    options: [for (var (i, ch) in p.choices.indexed) (i, ch)],
+                    onChanged: (i) =>
+                        write(device.withValue(p.id, i.toDouble())),
+                  ),
+            ]),
           // Short, its knobs only, as the prototype's.
           // Medium, or its text large, its key and scale as lists on one
           // row; tall, as the prototype's rows of buttons.

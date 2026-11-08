@@ -580,11 +580,14 @@ extension CanvasMixing on CanvasController {
   /// listenAt hears channel [channel] from step [step] of its chain, as the
   /// prototype's "Listen from here"; null, all of it again.
   void listenAt(String channel, int? step) {
+    // The master is heard at its taps' key ("", masterTapKey), as its
+    // levels are read.
+    String engineKey(String k) => k == mixerMasterKey ? "" : k;
     if (_listening case (var was, _) when was != channel) {
-      _audio?.listenAt(was, null);
+      _audio?.listenAt(engineKey(was), null);
     }
     _listening = step == null ? null : (channel, step);
-    _audio?.listenAt(channel, step);
+    _audio?.listenAt(engineKey(channel), step);
     notifyListeners();
   }
 

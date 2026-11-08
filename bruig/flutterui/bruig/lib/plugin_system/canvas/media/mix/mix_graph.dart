@@ -388,6 +388,9 @@ class MixGraph {
       // An odd speaker out -- none in the layouts there are -- runs alone.
       b ??= Float32List(n);
       strip.tapping = k == 0 && tapped.contains(sceneBusKey);
+      // Every pair listened to at the same point, so a 5.1 scene bus is
+      // heard from one place.
+      strip.listenAt = listenAt[sceneBusKey];
       strip.scopes = k == 0 ? scoped[sceneBusKey] ?? const {} : const {};
       strip.process(a, b, n);
       if (k == 0) {
@@ -700,6 +703,7 @@ class MixGraph {
       l.setRange(0, n, _out[0]);
       r.setRange(0, n, _out[1]);
       _master.tapping = tapped.contains(masterTapKey);
+      _master.listenAt = listenAt[masterTapKey];
       _master.scopes = scoped[masterTapKey] ?? const {};
       _master.process(l, r, n, limit: limit);
       _publishMaster(l, r, n);
@@ -720,6 +724,7 @@ class MixGraph {
       // The front pair's measured between its devices, as a stereo
       // master's is.
       _masters[k].tapping = k == 0 && tapped.contains(masterTapKey);
+      _masters[k].listenAt = listenAt[masterTapKey];
       _masters[k].scopes =
           k == 0 ? scoped[masterTapKey] ?? const {} : const {};
       _masters[k].process(a, b, n, limit: limit);

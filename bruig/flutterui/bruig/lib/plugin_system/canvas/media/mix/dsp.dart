@@ -831,6 +831,12 @@ class MasterProcessor {
 
   /// scopes are as a strip's (StripProcessor.scopes).
   Map<String, DeviceScope> scopes = const {};
+
+  /// listenAt, set, is the step of its chain heard in place of its end, as
+  /// a strip's is (StripProcessor.listenAt). Its gain and limiter still
+  /// follow: what is listened to never comes out louder than the mix.
+  int? listenAt;
+  Float32List _heardL = Float32List(0), _heardR = Float32List(0);
   final SideRunner _sides = SideRunner();
 
   MasterProcessor(this.mix, {this.normaliseDb = 0})
@@ -848,6 +854,20 @@ class MasterProcessor {
     // In the order it was arranged in (see MasterMix.chain); the limiter
     // last, always.
     var taps = tapping ? <(double, double)>[blockPeaks(l, r, n)] : null;
+    var listen = listenAt;
+    var kept = false;
+    void keep() {
+      if (_heardL.length < n) {
+        _heardL = Float32List(n);
+        _heardR = Float32List(n);
+      }
+      _heardL.setRange(0, n, l);
+      _heardR.setRange(0, n, r);
+      kept = true;
+    }
+
+    if (listen == 0) keep();
+    var at = 0;
     for (var step in mix.chain) {
       var scope = scopes.isEmpty ? null : scopes[step];
       scope?.before(l, r, n);
@@ -866,6 +886,12 @@ class MasterProcessor {
       }
       scope?.after(l, r, n, ran);
       taps?.add(blockPeaks(l, r, n));
+      if (listen == ++at) keep();
+    }
+    // Heard from where it was listened to: what the rest did is not.
+    if (kept) {
+      l.setRange(0, n, _heardL);
+      r.setRange(0, n, _heardR);
     }
     this.taps = taps ?? const [];
     var g = dbToGain(mix.gainDb + normaliseDb);

@@ -638,6 +638,23 @@ extension CanvasTools on CanvasController {
     endInteraction();
   }
 
+  /// showingBOf is whether the card kept as [key] is heard with its second
+  /// set: see toggleABOf.
+  bool showingBOf(String key) => _abB.contains(key);
+
+  /// toggleABOf is toggleAB for a card whose settings are a whole thing --
+  /// a strip's EQ or compressor, the master's limiter, a Ducker: [now] is
+  /// what it is set to, and [apply] puts the other set on it (transient; the
+  /// one undo step is this). Pressed first, B starts as a copy of A.
+  void toggleABOf(String key, Object now, void Function(Object other) apply) {
+    var other = _abSets[key] ?? now;
+    _abSets[key] = now;
+    if (!_abB.remove(key)) _abB.add(key);
+    beginInteraction();
+    apply(other);
+    endInteraction();
+  }
+
   /// presetNameOf is the preset last put on device [id] of strip [owner],
   /// or null for its defaults: what its bar says.
   String? presetNameOf(String owner, String id) => _presetNames["$owner|$id"];

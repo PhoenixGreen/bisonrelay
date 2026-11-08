@@ -427,11 +427,14 @@ class _CanvasMixerState extends State<CanvasMixer>
         math.max(db.$2, held.$2 - 0.66),
       );
     }
-    // The open chain's meters between devices: a channel's only, as only a
-    // channel's strip measures each step.
+    // The open chain's meters between devices: a channel's, a return's,
+    // the scene bus's and the master's, each measured at every step.
     var open = _editing;
     if (open != null &&
-        (channels.containsKey(open) || controller.returnOf(open) != null)) {
+        (channels.containsKey(open) ||
+            controller.returnOf(open) != null ||
+            open == _master ||
+            open == sceneBusKey)) {
       var taps = [
         for (var (l, r) in controller.deviceLevels(open))
           (gainToDb(l), gainToDb(r))
@@ -1320,8 +1323,9 @@ class _CanvasMixerState extends State<CanvasMixer>
                   owner: key,
                   height: h),
             // A part of the strip taken out is not shown, nor its meter.
-            if (lane != null && !controller.partRemoved(key, step))
-              _junction(i, h, theme, key),
+            // The master and the scene bus are measured between their
+            // devices as a channel is.
+            if (!controller.partRemoved(key, step)) _junction(i, h, theme, key),
             if (controller.partRemoved(key, step))
               const SizedBox.shrink()
             else if (step == chainEq)
@@ -1332,8 +1336,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                 when at >= 0 && at != macroAt)
               deviceAt(at),
           ],
-          if (lane != null)
-            _junction(controller.chainOf(key).length, h, theme, key),
+          _junction(controller.chainOf(key).length, h, theme, key),
           if (_addAt(controller.chainOf(key)) == controller.chainOf(key).length)
             AddDeviceSlot(
                 key: const ValueKey("addDeviceSlot"),
@@ -1634,16 +1637,19 @@ class _CanvasMixerState extends State<CanvasMixer>
             );
           }),
         ],
-        device(
-            "masterMeter",
-            (f, fold) => MeterDevice(
-                controller: controller,
-                channel: null,
-                id: "masterMeter",
-                title: "Master meter",
-                folded: f,
-                onFold: fold,
-                height: h)),
+        // The master's own meter, on the master's chain only: a channel's
+        // or a bus's chain ends at its Output (Ken, 2026-11-08).
+        if (isMaster)
+          device(
+              "masterMeter",
+              (f, fold) => MeterDevice(
+                  controller: controller,
+                  channel: null,
+                  id: "masterMeter",
+                  title: "Master meter",
+                  folded: f,
+                  onFold: fold,
+                  height: h)),
       ];
       // The devices' own lists still scroll; only the chain itself is not
       // dragged.

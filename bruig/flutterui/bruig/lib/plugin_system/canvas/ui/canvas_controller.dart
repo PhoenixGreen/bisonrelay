@@ -3536,6 +3536,11 @@ class CanvasController extends ChangeNotifier {
   final Map<String, Map<String, double>> _abOther = {};
   final Set<String> _abB = {};
 
+  /// _abSets are the other sets of the cards whose settings are not one
+  /// device's knobs -- an EQ's bands, a compressor's, a limiter's: see
+  /// toggleABOf.
+  final Map<String, Object> _abSets = {};
+
   /// _motionCurves is whether the Motion view shows its Curves.
   bool _motionCurves = false;
 

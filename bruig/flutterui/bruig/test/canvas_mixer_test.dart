@@ -1124,14 +1124,15 @@ void main() {
         (tester) async {
       var c = await show(tester);
       await openOn(tester, "strip-v", "eqSlot");
-      for (var d in ["eq", "comp", "duck", "meter", "masterMeter"]) {
+      for (var d in ["eq", "comp", "duck", "meter"]) {
         expect(find.byKey(ValueKey("device-$d")), findsOneWidget, reason: d);
       }
-      expect(find.byKey(const ValueKey("device-limiter")), findsNothing,
-          reason: "the master's");
+      for (var d in ["limiter", "masterMeter"]) {
+        expect(find.byKey(ValueKey("device-$d")), findsNothing,
+            reason: "the master's");
+      }
       var order = [
-        for (var d in ["eq", "comp", "duck", "meter", "masterMeter"])
-          leftOf(tester, d)
+        for (var d in ["eq", "comp", "duck", "meter"]) leftOf(tester, d)
       ];
       expect([...order]..sort(), order, reason: "left to right as it sounds");
 
@@ -1240,6 +1241,80 @@ void main() {
       expect(c.document.masterMix.eq.on, isTrue);
       await tapOn(tester, find.byKey(const ValueKey("limitOn")));
       expect(c.document.masterMix.limiter, isFalse);
+      await done(tester, c);
+    });
+
+    // The prototype's A|B and Reset on the strip's own cards too, not only
+    // on the devices put in (Ken's audit, 2026-11-08).
+    testWidgets("a channel's EQ compares A|B; its Ducker resets",
+        (tester) async {
+      var c = await show(tester);
+      await openOn(tester, "strip-v", "eqSlot");
+      ChannelMix mix() => (c.document.elements.first as VideoElement).clip.mix;
+      await tapOn(tester, find.byKey(const ValueKey("deviceAB-eq")));
+      expect(c.showingBOf("v|eq"), isTrue, reason: "B, a copy of A");
+      expect(mix().eq.on, isFalse);
+      await tapOn(tester, find.byKey(const ValueKey("eqOn")));
+      expect(mix().eq.on, isTrue, reason: "B changed");
+      await tapOn(tester, find.byKey(const ValueKey("deviceAB-eq")));
+      expect(mix().eq.on, isFalse, reason: "A, as it was");
+      await tapOn(tester, find.byKey(const ValueKey("deviceAB-eq")));
+      expect(mix().eq.on, isTrue, reason: "and B again");
+      c.undo();
+      expect(mix().eq.on, isFalse, reason: "a swap is one undo step");
+
+      c.setChannelMix(c.timelineChannels.firstWhere((l) => l.key == "v"),
+          mix().copyWith(duck: mix().duck.copyWith(on: true, depthDb: -30)),
+          anywhere: true);
+      await tester.pump();
+      await revealInMenu(tester, "deviceReset-duck");
+      await tapOn(tester, find.byKey(const ValueKey("deviceReset-duck")));
+      expect(mix().duck.depthDb, const Ducking().depthDb);
+      expect(mix().duck.on, isTrue, reason: "reset, not switched off");
+      await done(tester, c);
+    });
+
+    testWidgets("the master's limiter compares A|B; its glue resets",
+        (tester) async {
+      var c = await show(tester);
+      await tester.tap(find.byKey(const ValueKey("masterEqSlot")));
+      await tester.pump(const Duration(milliseconds: 300));
+      MasterMix m() => c.document.masterMix;
+      await tapOn(tester, find.byKey(const ValueKey("deviceAB-limiter")));
+      c.setMasterMix(m().copyWith(ceilingDb: -3, limiterReleaseMs: 200));
+      await tester.pump();
+      await tapOn(tester, find.byKey(const ValueKey("deviceAB-limiter")));
+      expect((m().ceilingDb, m().limiterReleaseMs), (-1.0, 50.0), reason: "A");
+      await tapOn(tester, find.byKey(const ValueKey("deviceAB-limiter")));
+      expect((m().ceilingDb, m().limiterReleaseMs), (-3.0, 200.0), reason: "B");
+
+      c.setMasterMix(m().copyWith(comp: m().comp.copyWith(threshold: -30)));
+      await tester.pump();
+      await revealInMenu(tester, "deviceReset-comp");
+      await tapOn(tester, find.byKey(const ValueKey("deviceReset-comp")));
+      expect(m().comp.threshold, const MasterMix().comp.threshold,
+          reason: "the master's own glue, not a channel's compressor");
+      await done(tester, c);
+    });
+
+    testWidgets("the master's joins: measured and listened to, as a channel's",
+        (tester) async {
+      var c = await show(tester);
+      await tester.runAsync(() => c.audio.ready());
+      await tester.tap(find.byKey(const ValueKey("masterEqSlot")));
+      await tester.pump(const Duration(milliseconds: 300));
+      var join = find.byKey(const ValueKey("junction-0"));
+      expect(join, findsOneWidget, reason: "before its first device");
+      expect(find.byKey(const ValueKey("device-masterMeter")), findsOneWidget,
+          reason: "the master keeps its own meter");
+      await tester.ensureVisible(join);
+      await tester.tap(join);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("junctionListen-0")));
+      await tester.pump();
+      await tester.pump();
+      expect(engine.listened, {"": 0}, reason: "the master's own tap key");
+      expect(c.listening, (mixerMasterKey, 0));
       await done(tester, c);
     });
 

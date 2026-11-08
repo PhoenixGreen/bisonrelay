@@ -362,6 +362,10 @@ void main() {
         expect(find.byKey(const ValueKey("device-sceneSound")), findsOneWidget);
         expect(find.byKey(const ValueKey("sceneSoundScreen")), findsOneWidget);
         expect(find.byKey(const ValueKey("device-busOutput")), findsOneWidget);
+        expect(find.byKey(const ValueKey("device-masterMeter")), findsNothing,
+            reason: "the master's meter is the master's");
+        expect(find.byKey(const ValueKey("junction-0")), findsOneWidget,
+            reason: "measured between its devices, as a channel is");
         expect(find.text("Master"), findsWidgets);
         // Its Output's level is the bus's fader, one step a turn.
         await tester

@@ -121,6 +121,52 @@ void main() {
     expect(peakOut(), closeTo(0.05, 0.01));
   });
 
+  // The same join on the master's chain and the scene bus's (Ken,
+  // 2026-11-08: meters and listening between their devices too).
+  for (var bus in ["master", "scene"]) {
+    test("the $bus's chain heard from a step", () {
+      const gain = MixDevice(DeviceKind.utility, values: {"gain": -20});
+      var g = MixGraph();
+      if (bus == "master") {
+        g
+          ..setMaster(const MasterMix(limiter: false, devices: [gain]))
+          ..setChannel("a", const ChannelMix());
+      } else {
+        g
+          ..setMaster(const MasterMix(limiter: false))
+          ..setChannel("a", const ChannelMix())
+          ..setScene(const ChannelMix(devices: [gain]), {"a"});
+      }
+      var key = bus == "master" ? masterTapKey : sceneBusKey;
+      g.tapped.add(key);
+      const n = 4800;
+      double peakOut() {
+        var l = Float32List(n), r = Float32List(n);
+        g.begin(n);
+        var (il, ir) = g.input("a", n);
+        var x = _tone(n, 0.5);
+        il.setRange(0, n, x);
+        ir.setRange(0, n, x);
+        g.finish(l, r, n);
+        return l.map((v) => v.abs()).reduce(math.max);
+      }
+
+      peakOut();
+      expect(peakOut(), closeTo(0.05, 0.01), reason: "twenty down, through it");
+      var taps = g.tapsOf(key);
+      expect(taps.length, greaterThanOrEqualTo(2),
+          reason: "measured coming in and after each step");
+      expect(taps.first.$1, greaterThan(taps.last.$1 * 5),
+          reason: "louder before the gain than after");
+      g.listenAt[key] = 0;
+      peakOut();
+      expect(peakOut(), closeTo(0.5, 0.02), reason: "heard before it");
+      g.listenAt.remove(key);
+      peakOut();
+      expect(peakOut(), closeTo(0.05, 0.01));
+    });
+  }
+
   group("its display", () {
     CanvasController make(FakeEngine engine) => CanvasController(
         CanvasDocument(
