@@ -64,6 +64,11 @@ class MixCore {
   final Map<String, Float32List> _recent = {};
   static const int spectrumSize = 512;
 
+  /// spectraWanted, set, are the only channels (the master as "") whose
+  /// spectrum is read -- the worker's watched ones -- so the rest are not
+  /// kept at every block. Null keeps every one's, for whoever asks.
+  Set<String>? spectraWanted;
+
   Float32List _tl = Float32List(0), _tr = Float32List(0);
 
   List<CoreVoice> get voices => List.unmodifiable(_voices);
@@ -192,10 +197,13 @@ class MixCore {
       }
     }
     graph.finish(l, r, n);
+    var wanted = spectraWanted;
     for (var e in graph.heard.entries) {
-      _remember(e.key, e.value.$1, e.value.$2, n);
+      if (wanted == null || wanted.contains(e.key)) {
+        _remember(e.key, e.value.$1, e.value.$2, n);
+      }
     }
-    _remember("", l, r, n);
+    if (wanted == null || wanted.contains("")) _remember("", l, r, n);
   }
 
   /// _read reads [want] frames of [v] into the start of _tl and _tr, going

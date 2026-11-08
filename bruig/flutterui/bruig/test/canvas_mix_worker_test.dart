@@ -119,4 +119,40 @@ void main() {
     expect(reports.length, greaterThan(resting));
     send.send(const ["dispose"]);
   });
+
+  // Ken's systems review, 2026-11-08: everything ever watched was measured
+  // for as long as the app ran.
+  test("a reading let go of is no longer measured", () async {
+    var from = ReceivePort();
+    var isolate = await Isolate.spawn(mixWorkerMain, from.sendPort);
+    addTearDown(() {
+      isolate.kill();
+      from.close();
+    });
+    var replies = StreamController<List>.broadcast();
+    var to = Completer<SendPort>();
+    from.listen((m) {
+      if (m is SendPort) {
+        to.complete(m);
+      } else if (m is List) {
+        replies.add(m);
+      }
+    });
+    var send = await to.future;
+    Stream<MixSnapshot> snaps() => replies.stream
+        .where((m) => m.first == "snapshot")
+        .map((m) => m[1] as MixSnapshot);
+    send.send(["channel", "a", const ChannelMix()]);
+    send.send(["watch", "levels", "a"]);
+    send.send(["watch", "taps", "a"]);
+    await snaps()
+        .firstWhere((s) => s.levels.containsKey("a"))
+        .timeout(const Duration(seconds: 5));
+    send.send(["unwatch", "levels", "a"]);
+    send.send(["unwatch", "taps", "a"]);
+    var after = await snaps().skip(2).first.timeout(const Duration(seconds: 5));
+    expect(after.levels.containsKey("a"), isFalse);
+    expect(after.taps.containsKey("a"), isFalse);
+    send.send(const ["dispose"]);
+  });
 }

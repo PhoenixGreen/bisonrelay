@@ -9,7 +9,6 @@ import 'package:bruig/plugin_system/canvas/export/video_export.dart'
 import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
     show Wave, LoudnessReading;
 import 'package:bruig/plugin_system/canvas/media/mix/click_track.dart';
-import 'package:bruig/plugin_system/canvas/media/latency_log.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_core.dart';
@@ -143,7 +142,15 @@ class DartAudioEngine implements AudioEngine {
   int _nextTrack = 1, _nextVoice = 1;
   final Map<int, Completer<int?>> _opening = {};
   final Set<int> _seen = {}, _stopped = {};
-  final Set<String> _watching = {};
+
+  /// _watching is each reading the worker has been asked for -- what, of
+  /// which channel -- and _askedAt when the editor last read it. One not
+  /// read for a while (its panel shut) is let go of (see _sweep): the worker
+  /// measured everything ever asked for, for as long as the app ran (Ken's
+  /// systems review, 2026-11-08).
+  final Map<String, (String, String?)> _watching = {};
+  final Map<String, int> _askedAt = {};
+  Timer? _sweeping;
 
   bool get _remote => _to != null;
 
@@ -304,7 +311,9 @@ class DartAudioEngine implements AudioEngine {
     var stream = _stream;
     if (stream == null || _held) return;
     if (core.voices.every((v) => v.paused)) {
-      if (_quiet > mixRate) {
+      // Rested once its tails have rung out too, or after twenty seconds of
+      // one that never does: see the worker's _fill.
+      if ((_quiet > mixRate && !core.graph.ringing) || _quiet > 20 * mixRate) {
         // Rested: no timer on the editor's isolate while nothing sounds,
         // and its meters to silence rather than where they last stood.
         core.graph.quiet();
@@ -349,6 +358,8 @@ class DartAudioEngine implements AudioEngine {
   void dispose() {
     _pump?.cancel();
     _pump = null;
+    _sweeping?.cancel();
+    _sweeping = null;
     if (_remote) {
       _send(const ["dispose"]);
       _isolate?.kill(priority: Isolate.beforeNextEvent);
@@ -520,7 +531,6 @@ class DartAudioEngine implements AudioEngine {
         key,
         velocity,
         font != null,
-        hostTicks(),
         send ? font : null,
       ]);
       return;
@@ -571,7 +581,27 @@ class DartAudioEngine implements AudioEngine {
 
   /// _watch asks the worker, once, to report [what] of [channel].
   void _watch(String what, String? channel) {
-    if (_watching.add("$what:$channel")) _send(["watch", what, channel]);
+    var key = "$what:$channel";
+    _askedAt[key] = _clock.elapsedMilliseconds;
+    if (_watching.containsKey(key)) return;
+    _watching[key] = (what, channel);
+    _send(["watch", what, channel]);
+    _sweeping ??= Timer.periodic(const Duration(seconds: 1), (_) => _sweep());
+  }
+
+  /// _sweep lets go of what has not been read for two seconds.
+  void _sweep() {
+    var now = _clock.elapsedMilliseconds;
+    for (var MapEntry(:key, value: (what, channel)) in [..._watching.entries]) {
+      if (now - (_askedAt[key] ?? 0) < 2000) continue;
+      _watching.remove(key);
+      _askedAt.remove(key);
+      _send(["unwatch", what, channel]);
+    }
+    if (_watching.isEmpty) {
+      _sweeping?.cancel();
+      _sweeping = null;
+    }
   }
 
   @override
@@ -618,7 +648,8 @@ class DartAudioEngine implements AudioEngine {
       core.graph.scope(channel, id, false);
       return;
     }
-    if (_watching.remove("scope:$id:$channel")) {
+    _askedAt.remove("scope:$id:$channel");
+    if (_watching.remove("scope:$id:$channel") != null) {
       _send(["unwatch", "scope:$id", channel]);
     }
   }

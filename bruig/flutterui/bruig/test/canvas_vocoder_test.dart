@@ -268,4 +268,22 @@ void main() {
       });
     }
   });
+
+  // Ken's systems review, 2026-11-08: a knob turned started it again.
+  test("a knob turned as it plays keeps what its bands have heard", () {
+    const d = MixDevice(DeviceKind.vocoder, values: {"carrier": 0});
+    var v = Vocoder(d);
+    const n = 4800;
+    var l = Float32List(n), r = Float32List(n);
+    for (var i = 0; i < n; i++) {
+      l[i] = r[i] = 0.4 * math.sin(2 * math.pi * 300 * i / 48000);
+    }
+    v.process(l, r, n);
+    var heard = v.reading.reduce(math.max);
+    expect(heard, greaterThan(0));
+    v.tune(d.withValue("mix", 0.5).withValue("release", 120));
+    expect(v.reading.reduce(math.max), heard, reason: "its bands kept");
+    v.tune(d.withValue("bands", 24));
+    expect(v.reading.length, 48, reason: "made again: more bands");
+  });
 }

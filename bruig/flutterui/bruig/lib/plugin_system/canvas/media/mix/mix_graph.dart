@@ -530,6 +530,11 @@ class MixGraph {
   /// off now, or 0 with none.
   double reductionOf(String key) => _stripOf(key)?.compressor?.reductionDb ?? 0;
 
+  /// ringing is whether what leaves the master can still be heard -- a
+  /// reverb's or a delay's tail after its sound has stopped -- over about
+  /// −90 dB: not to be cut off by resting (see the mix engine's _fill).
+  bool get ringing => math.max(_masterLevels.$1, _masterLevels.$2) > 3e-5;
+
   (double, double) levels([String? key]) =>
       key == null ? _masterLevels : (_levels[key] ?? (0, 0));
 

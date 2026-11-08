@@ -161,4 +161,24 @@ void main() {
     expect(loudest, greaterThan(0.1),
         reason: "what it held back still heard; a new one would be silent");
   });
+
+  test("a reverb's tail is heard as ringing until it has died away", () {
+    var g = MixGraph()
+      ..setMaster(const MasterMix(limiter: false))
+      ..setChannel(
+          "a",
+          const ChannelMix(devices: [
+            MixDevice(DeviceKind.reverb, values: {"size": 0.9})
+          ]));
+    for (var i = 0; i < 20; i++) {
+      _block(g, 0.3);
+    }
+    _block(g, 0);
+    expect(g.ringing, isTrue, reason: "the tail after the sound");
+    // Forty seconds of silence after it.
+    for (var i = 0; i < 4000; i++) {
+      _block(g, 0);
+    }
+    expect(g.ringing, isFalse, reason: "rung out: the engine may rest");
+  });
 }

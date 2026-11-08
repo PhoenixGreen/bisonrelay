@@ -62,7 +62,7 @@ List<double> _bandPass(double hz, double q) {
 /// _coef is a one-pole follower coefficient for a time of [ms].
 double _coef(double ms) => math.exp(-1 / (ms / 1000 * _rate));
 
-class Vocoder implements Sidechained, Readable {
+class Vocoder implements Sidechained, Readable, Tunable {
   /// reading is each band's voice, then each band's carrier, as loud as it
   /// is now: what its screen draws.
   @override
@@ -73,9 +73,13 @@ class Vocoder implements Sidechained, Readable {
 
   @override
   final String? source;
-  final int _carrier;
-  final double _note, _up, _down, _unvoiced, _mix;
+  int _carrier;
+  double _note, _up, _down, _unvoiced, _mix;
   final List<_Band> _voice, _carry;
+
+  /// _shape is what its bands were made from: their count, their range and
+  /// the formant shift. Changed, they are made again (see tune).
+  (int, double, double, double) _shape = (0, 0, 0, 0);
 
   // The voice's highs, for the hiss of an s or a t the carrier lacks.
   final Biquad _hiss;
@@ -111,18 +115,54 @@ class Vocoder implements Sidechained, Readable {
         _hiss = Biquad(_highPass(5000)),
         _step = 0,
         _toStep = 0 {
+    _makeBands(d);
+    _step = _toStep = 440 * math.pow(2, (_note - 69) / 12) / _rate;
+  }
+
+  /// _makeBands makes its bands as [d] sets them -- each as loud as the
+  /// one it replaces, where there are as many, so a knob turned does not
+  /// drop the sound.
+  void _makeBands(MixDevice d) {
     var bands = d.value("bands").round();
     var low = d.value("low"), high = d.value("high");
+    var shape = (bands, low, high, d.value("formant"));
+    if (shape == _shape) return;
+    _shape = shape;
+    var was = (
+      [for (var b in _voice) b.env],
+      [for (var b in _carry) b.env],
+    );
+    _voice.clear();
+    _carry.clear();
     var ratio = math.pow(high / low, 1 / (bands - 1)).toDouble();
     // Each band as wide as the step to the next.
     var q = math.sqrt(ratio) / (ratio - 1);
     var shift = math.pow(2, d.value("formant") / 12).toDouble();
     for (var i = 0; i < bands; i++) {
       var hz = low * math.pow(ratio, i);
-      _voice.add(_Band(hz, q));
-      _carry.add(_Band(math.min(hz * shift, _rate * 0.45), q));
+      _voice.add(_Band(hz, q)..env = i < was.$1.length ? was.$1[i] : 0);
+      _carry.add(_Band(math.min(hz * shift, _rate * 0.45), q)
+        ..env = i < was.$2.length ? was.$2[i] : 0);
     }
-    _step = _toStep = 440 * math.pow(2, (_note - 69) / 12) / _rate;
+  }
+
+  /// tune takes [d]'s settings as it plays: its levels and times in place,
+  /// its bands made again only where their count, range or formant moved
+  /// -- so a knob turned, or an LFO on one, does not start it again (Ken's
+  /// systems review, 2026-11-08).
+  @override
+  void tune(MixDevice d) {
+    _carrier = d.value("carrier").round();
+    _note = d.value("note");
+    _up = _coef(d.value("attack"));
+    _down = _coef(d.value("release"));
+    _unvoiced = d.value("unvoiced");
+    _mix = d.value("mix");
+    // On one note: there at once. Following the voice, it finds its own.
+    if (_carrier != 2) {
+      _step = _toStep = 440 * math.pow(2, (_note - 69) / 12) / _rate;
+    }
+    _makeBands(d);
   }
 
   static List<double> _highPass(double hz) {

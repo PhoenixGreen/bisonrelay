@@ -18,7 +18,6 @@ import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart'
     show SpeakerGroup;
-import 'package:bruig/plugin_system/canvas/media/latency_log.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
 // mix_worker.dart runs the mix in an isolate of its own. It renders ahead
@@ -175,6 +174,8 @@ class _Worker {
   final Float32List _interleaved = Float32List(block * 2);
 
   _Worker(this.port) {
+    // Only the spectra on screen kept, block by block.
+    core.spectraWanted = watchSpectra;
     _wake();
   }
 
@@ -230,11 +231,18 @@ class _Worker {
     var hash = _stream;
     if (held || _renewing) return;
     // A second with nothing to be heard -- or nowhere to send it -- and it
-    // rests.
+    // rests: once its tails have rung out too, or after twenty seconds of
+    // one that never does (Ken's systems review, 2026-11-08: a long
+    // reverb was cut off at a second, and the rest of it heard on the next
+    // play).
     if (hash == null || _silent) {
       var now = _clock.elapsedMicroseconds;
       _quietSince ??= now;
-      if (now - _quietSince! > 1000000) {
+      var quietFor = now - _quietSince!;
+      var rest = hash == null
+          ? quietFor > 1000000
+          : (quietFor > 1000000 && !core.graph.ringing) || quietFor > 20000000;
+      if (rest) {
         _park();
         return;
       }
@@ -449,11 +457,28 @@ class _Worker {
             ? core.graph.listenAt.remove(key)
             : core.graph.listenAt[key] = step;
       case "unwatch":
+        // Not read for a while: no longer measured (see the engine's
+        // _sweep).
         var key = (m[2] as String?) ?? snapshotMaster;
-        if (m[1] case String what when what.startsWith("scope:")) {
-          var id = what.substring(6);
-          watchScopes.remove((key, id));
-          core.graph.scope(key, id, false);
+        switch (m[1]) {
+          case "levels":
+            watchLevels.remove(key);
+          case "spectrum":
+            watchSpectra.remove(key);
+          case "pitch":
+            watchPitches.remove(key);
+          case "loudness":
+            watchLoudness.remove(key);
+          case String what when what.startsWith("wave:"):
+            watchWaves.removeWhere(
+                (w) => w.$1.name == what.substring(5) && w.$2 == key);
+          case "taps":
+            watchTaps.remove(key);
+            core.graph.tapped.remove(key);
+          case String what when what.startsWith("scope:"):
+            var id = what.substring(6);
+            watchScopes.remove((key, id));
+            core.graph.scope(key, id, false);
         }
       case "noteOn":
         var channel = m[1] as String;
@@ -462,8 +487,8 @@ class _Worker {
         // An instrument of slices plays its own bank, sent with its first
         // note.
         var kit = part.sound == InstrumentSound.slices ? part.slices : null;
-        if (kit != null && m.length > 7 && m[7] is SoundFont) {
-          sliceFonts[kit.key] = m[7] as SoundFont;
+        if (kit != null && m.length > 6 && m[6] is SoundFont) {
+          sliceFonts[kit.key] = m[6] as SoundFont;
         }
         var partFont = kit != null
             ? sliceFonts[kit.key]
@@ -489,16 +514,8 @@ class _Worker {
         had.$2.sampler
           ..shape = part.shape
           ..noteOn(m[3] as int, m[4] as int);
-        var waiting = _stream == null ? 0 : _ahead;
         // Into the next block now, rather than at the pump's next tick.
         _fill();
-        if (m.length > 6 && m[6] is int) {
-          latencyLog(
-              "mix key=${m[3]} editor->mix=${sinceMs(m[6] as int).toStringAsFixed(1)}ms "
-              "queued-before=${(waiting * 1000 / mixRate).toStringAsFixed(1)}ms "
-              "queued-after=${((_stream == null ? 0 : _ahead) * 1000 / mixRate).toStringAsFixed(1)}ms "
-              "load=${_load.toStringAsFixed(2)}");
-        }
       case "noteOff":
         live[m[1]]?.$2.sampler.noteOff(m[2] as int);
       case "control":
