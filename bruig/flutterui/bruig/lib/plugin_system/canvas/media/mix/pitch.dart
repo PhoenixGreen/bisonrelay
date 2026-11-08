@@ -121,6 +121,13 @@ class AutoTune implements DeviceProcessor, Tunable {
   static const int _size = 8192;
   static const int _window = 2048;
 
+  /// _hop is how often it listens for the pitch sung, in samples: every
+  /// ninetieth of a second -- what pitch trackers step by, and quick enough
+  /// to follow a note sung -- where every 256 (half that) was twice the work
+  /// for nothing heard (Ken, 2026-11-08: "reduce this to a more optimal
+  /// amount").
+  static const int _hop = 512;
+
   int _root;
   List<int> _steps;
   double _amount;
@@ -209,10 +216,10 @@ class AutoTune implements DeviceProcessor, Tunable {
       slow = midi;
       _held = 0;
     } else {
-      // Heard every 256 samples: a tenth of a second's smoothing.
-      const k = 256 / (0.1 * 48000);
+      // Heard every [_hop] samples: a tenth of a second's smoothing.
+      const k = _hop / (0.1 * 48000);
       slow += (midi - slow) * k;
-      _held += 256;
+      _held += _hop;
     }
     _slow = slow;
     // The note sung goes onto the scale; its vibrato is kept, by Vibrato.
@@ -231,7 +238,7 @@ class AutoTune implements DeviceProcessor, Tunable {
       _inL[k] = l[i];
       _inR[k] = r[i];
       _t++;
-      if (++_sinceHeard >= 256 && _t > _window) {
+      if (++_sinceHeard >= _hop && _t > _window) {
         _sinceHeard = 0;
         _listen();
       }
@@ -274,14 +281,28 @@ class AutoTune implements DeviceProcessor, Tunable {
 /// keeping the [heard] pitch for the panel to read when [pitch].
 class PitchListener implements DeviceProcessor {
   final Float32List _buffer = Float32List(2048);
+  final Float32List _ordered = Float32List(2048);
   int _at = 0, _since = 0;
   PitchReading? heard;
   final bool pitch;
   PitchListener({this.pitch = false});
 
+  /// _askedAt is when its reading was last asked for (see asked), on
+  /// [_clock]. Not asked for in a second -- nothing showing it -- it stops
+  /// listening, and starts again when it is (Ken, 2026-11-08).
+  int _askedAt = -1 << 40;
+  static final Stopwatch _clock = Stopwatch()..start();
+
+  /// asked notes its reading being read: by a tuner's screen, through
+  /// MixGraph.pitchOf.
+  void asked() => _askedAt = _clock.elapsedMilliseconds;
+
+  /// listening is whether it is worth working out: shown somewhere lately.
+  bool get listening => pitch && _clock.elapsedMilliseconds - _askedAt < 1000;
+
   @override
   void process(Float32List l, Float32List r, int n) {
-    if (!pitch) return;
+    if (!listening) return;
     for (var i = 0; i < n; i++) {
       _buffer[_at] = (l[i] + r[i]) * 0.5;
       _at = (_at + 1) % _buffer.length;
@@ -289,10 +310,9 @@ class PitchListener implements DeviceProcessor {
     _since += n;
     if (_since < 1024) return;
     _since = 0;
-    var ordered = Float32List(_buffer.length);
     for (var i = 0; i < _buffer.length; i++) {
-      ordered[i] = _buffer[(_at + i) % _buffer.length];
+      _ordered[i] = _buffer[(_at + i) % _buffer.length];
     }
-    heard = detectPitch(ordered);
+    heard = detectPitch(_ordered);
   }
 }

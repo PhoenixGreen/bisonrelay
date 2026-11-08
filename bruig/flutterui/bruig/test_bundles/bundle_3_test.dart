@@ -4,14 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'reset.dart';
 import '../test/builtin_presets_test.dart' as t0;
 import '../test/canvas_audio_runtime_test.dart' as t1;
-import '../test/canvas_background_foundation_test.dart' as t2;
-import '../test/canvas_background_marks_test.dart' as t3;
-import '../test/canvas_background_surface_test.dart' as t4;
-import '../test/canvas_blend_camera_test.dart' as t5;
-import '../test/canvas_candlestick_test.dart' as t6;
-import '../test/canvas_character3d_element_test.dart' as t7;
-import '../test/canvas_chart_band_test.dart' as t8;
-import '../test/canvas_chart_grid_test.dart' as t9;
+import '../test/canvas_background_marks_test.dart' as t2;
+import '../test/canvas_background_surface_test.dart' as t3;
+import '../test/canvas_blend_camera_test.dart' as t4;
+import '../test/canvas_candlestick_test.dart' as t5;
+import '../test/canvas_character3d_element_test.dart' as t6;
+import '../test/canvas_chart_band_test.dart' as t7;
+import '../test/canvas_chart_grid_test.dart' as t8;
+import '../test/canvas_device_scope_test.dart' as t9;
 import '../test/canvas_document_export_test.dart' as t10;
 import '../test/canvas_drag_presets_test.dart' as t11;
 import '../test/canvas_ducking_test.dart' as t12;
@@ -66,35 +66,35 @@ void main() {
     setUpAll(betweenFiles);
     t1.main();
   });
-  group('canvas_background_foundation_test.dart', () {
+  group('canvas_background_marks_test.dart', () {
     setUpAll(betweenFiles);
     t2.main();
   });
-  group('canvas_background_marks_test.dart', () {
+  group('canvas_background_surface_test.dart', () {
     setUpAll(betweenFiles);
     t3.main();
   });
-  group('canvas_background_surface_test.dart', () {
+  group('canvas_blend_camera_test.dart', () {
     setUpAll(betweenFiles);
     t4.main();
   });
-  group('canvas_blend_camera_test.dart', () {
+  group('canvas_candlestick_test.dart', () {
     setUpAll(betweenFiles);
     t5.main();
   });
-  group('canvas_candlestick_test.dart', () {
+  group('canvas_character3d_element_test.dart', () {
     setUpAll(betweenFiles);
     t6.main();
   });
-  group('canvas_character3d_element_test.dart', () {
+  group('canvas_chart_band_test.dart', () {
     setUpAll(betweenFiles);
     t7.main();
   });
-  group('canvas_chart_band_test.dart', () {
+  group('canvas_chart_grid_test.dart', () {
     setUpAll(betweenFiles);
     t8.main();
   });
-  group('canvas_chart_grid_test.dart', () {
+  group('canvas_device_scope_test.dart', () {
     setUpAll(betweenFiles);
     t9.main();
   });

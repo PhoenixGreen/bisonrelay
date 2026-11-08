@@ -251,6 +251,30 @@ void main() {
       ..setChannel(
           "a", const ChannelMix(devices: [MixDevice(DeviceKind.tuner)]));
     var x = tone(196, 0.5); // G3
+    void play({required bool shown}) {
+      for (var at = 0; at + 512 <= x.length; at += 512) {
+        // Its screen reads it every frame, so it listens.
+        if (shown) g.pitchOf("a");
+        g.begin(512);
+        var (l, r) = g.input("a", 512);
+        l.setRange(0, 512, x, at);
+        r.setRange(0, 512, x, at);
+        g.finish(Float32List(512), Float32List(512), 512);
+      }
+    }
+
+    play(shown: true);
+    expect(g.pitchOf("a")!.hz, closeTo(196, 1));
+    expect(g.pitchOf("b"), isNull);
+  });
+
+  // Ken, 2026-11-08: a tuner nothing shows need not listen.
+  test("a tuner nothing reads hears nothing, and costs nothing", () {
+    var g = MixGraph()
+      ..setMaster(const MasterMix(limiter: false))
+      ..setChannel(
+          "a", const ChannelMix(devices: [MixDevice(DeviceKind.tuner)]));
+    var x = tone(196, 0.5);
     for (var at = 0; at + 512 <= x.length; at += 512) {
       g.begin(512);
       var (l, r) = g.input("a", 512);
@@ -258,8 +282,7 @@ void main() {
       r.setRange(0, 512, x, at);
       g.finish(Float32List(512), Float32List(512), 512);
     }
-    expect(g.pitchOf("a")!.hz, closeTo(196, 1));
-    expect(g.pitchOf("b"), isNull);
+    expect(g.pitchOf("a"), isNull, reason: "not listening: never shown");
   });
 
   testWidgets("the Tuner shows the note, and how far off", (tester) async {

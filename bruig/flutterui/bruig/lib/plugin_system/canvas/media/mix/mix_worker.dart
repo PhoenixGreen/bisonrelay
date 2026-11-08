@@ -9,11 +9,11 @@ import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
     show Wave, LoudnessReading;
 import 'package:bruig/plugin_system/canvas/media/mix/click_track.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/live_instrument.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_core.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart' show DeviceKind;
 import 'package:bruig/plugin_system/canvas/model/mix.dart' show ChannelMix;
-import 'package:bruig/plugin_system/canvas/media/synth/sampler.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart'
@@ -102,35 +102,12 @@ class _WTrack {
       };
 }
 
-class _Live implements TrackSource {
-  final String which;
-  final Sampler sampler;
-  _Live(this.which, this.sampler);
-
-  @override
-  int get frames => 1 << 40;
-
-  @override
-  int read(Float32List l, Float32List r, int n) {
-    l.fillRange(0, n, 0);
-    r.fillRange(0, n, 0);
-    sampler.render(l, r, n);
-    return n;
-  }
-
-  @override
-  void seek(int frame) {}
-
-  @override
-  void close() => sampler.allOff();
-}
-
 class _Worker {
   final SendPort port;
   final MixCore core = MixCore();
   final Map<int, _WTrack> tracks = {};
   final Map<int, CoreVoice> voices = {};
-  final Map<String, (CoreVoice, _Live)> live = {};
+  final Map<String, (CoreVoice, LiveInstrument)> live = {};
   final Set<String> watchLevels = {}, watchSpectra = {}, watchPitches = {};
 
   /// watchWaves are the analysers whose sound is on screen, as (kind,
@@ -206,7 +183,7 @@ class _Worker {
   /// and instruments with no note sounding.
   bool get _silent => core.voices.every((v) {
         var t = v.track;
-        return v.paused || (t is _Live && t.sampler.sounding == 0);
+        return v.paused || (t is LiveInstrument && t.sampler.sounding == 0);
       });
 
   // Safe off the main isolate once the main one has started the engine --
@@ -495,18 +472,12 @@ class _Worker {
             : useFont && part.sound == InstrumentSound.bank
                 ? font
                 : null;
-        var which = "${part.look.name}:${part.sound.name}:${part.bank}:"
-            "${part.program}:$useFont:${kit?.key}";
         var had = live[channel];
-        if (had == null || had.$2.which != which || !had.$1.alive) {
+        if (had == null ||
+            had.$2.which != liveWhich(part, partFont) ||
+            !had.$1.alive) {
           if (had != null) core.stop(had.$1);
-          var instrument = _Live(
-              which,
-              Sampler(
-                  font: partFont,
-                  bank: part.bank,
-                  program: part.program,
-                  look: part.look));
+          var instrument = LiveInstrument.of(part, partFont);
           had =
               (core.play(instrument, volume: 1, channel: channel), instrument);
           live[channel] = had;

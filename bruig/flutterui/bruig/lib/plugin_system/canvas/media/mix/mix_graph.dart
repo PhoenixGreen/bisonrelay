@@ -470,7 +470,11 @@ class MixGraph {
         ? _shownMaster.devices
         : _stripOf(key)?.devices ?? const <DeviceProcessor>[];
     for (var d in devices) {
-      if (d case PitchListener l when l.pitch) return l.heard;
+      if (d case PitchListener l when l.pitch) {
+        // Read: it goes on listening (see PitchListener.asked).
+        l.asked();
+        return l.heard;
+      }
       if (d case AutoTune a) return a.heard;
     }
     return null;

@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
     show Wave, LoudnessReading;
 import 'package:bruig/plugin_system/canvas/media/mix/click_track.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/live_instrument.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_core.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart'
@@ -18,7 +19,6 @@ import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
-import 'package:bruig/plugin_system/canvas/media/synth/sampler.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
@@ -51,30 +51,6 @@ class _Track extends AudioTrack {
         (_, MemoryTrack h) => MemoryTrack(h.l, h.r),
         _ => FileTrack.open(path),
       };
-}
-
-/// _LiveInstrument is a sampler played live, as an endless track.
-class _LiveInstrument implements TrackSource {
-  final String which;
-  final Sampler sampler;
-  _LiveInstrument(this.which, this.sampler);
-
-  @override
-  int get frames => 1 << 40;
-
-  @override
-  int read(Float32List l, Float32List r, int n) {
-    l.fillRange(0, n, 0);
-    r.fillRange(0, n, 0);
-    sampler.render(l, r, n);
-    return n;
-  }
-
-  @override
-  void seek(int frame) {}
-
-  @override
-  void close() => sampler.allOff();
 }
 
 class _Voice extends AudioVoice {
@@ -510,7 +486,7 @@ class DartAudioEngine implements AudioEngine {
 
   /// _live is each channel's instrument played live: a sampler always
   /// sounding on the channel, as one more voice through its strip.
-  final Map<String, (CoreVoice, _LiveInstrument)> _live = {};
+  final Map<String, (CoreVoice, LiveInstrument)> _live = {};
 
   /// _slicesSent are the instruments of slices whose banks the worker has.
   final Set<String> _slicesSent = {};
@@ -536,20 +512,12 @@ class DartAudioEngine implements AudioEngine {
       return;
     }
     _wakeLocal();
-    var which = "${sound.look.name}:${sound.sound.name}:${sound.bank}:"
-        "${sound.program}:"
-        "${font != null && sound.sound != InstrumentSound.builtin}:"
-        "${sound.slices?.key}";
     var held = _live[channel];
-    if (held == null || held.$2.which != which || !held.$1.alive) {
+    if (held == null ||
+        held.$2.which != liveWhich(sound, font) ||
+        !held.$1.alive) {
       if (held != null) core.stop(held.$1);
-      var instrument = _LiveInstrument(
-          which,
-          Sampler(
-              font: sound.sound == InstrumentSound.builtin ? null : font,
-              bank: sound.bank,
-              program: sound.program,
-              look: sound.look));
+      var instrument = LiveInstrument.of(sound, font);
       held = (core.play(instrument, volume: 1, channel: channel), instrument);
       _live[channel] = held;
     }
