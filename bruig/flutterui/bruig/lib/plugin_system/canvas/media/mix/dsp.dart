@@ -618,8 +618,6 @@ class SideKey {
   /// stretch reading on from the last.
   int _at = 0, _length = 0;
 
-  bool get fed => _fed;
-
   void feed(Float32List l, Float32List r, int n) {
     if (_peaks.length < n) _peaks = Float32List(n);
     for (var i = 0; i < n; i++) {

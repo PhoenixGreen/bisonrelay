@@ -1347,11 +1347,6 @@ extension CanvasSpeech on CanvasController {
     notifyListeners();
   }
 
-  /// channelLevels is how loud [channel] is now: what comes out of its
-  /// strip, which every sound on it plays through.
-  (double, double) channelLevels(TimelineChannel channel) =>
-      levels(channel.key);
-
   /// _setClips writes several clips at once, as one change: every sound on a
   /// channel when its strip is changed, say. Media on the backdrop has a lane
   /// of its own and is written through the backdrop.

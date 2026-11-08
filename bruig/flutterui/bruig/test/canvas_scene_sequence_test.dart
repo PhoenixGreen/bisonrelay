@@ -5,6 +5,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
@@ -73,6 +76,56 @@ Future<Map<int, int>> _ink(CanvasDocument document, int at,
 }
 
 void main() {
+  // Ken's systems review, 2026-11-08: played as a run of scenes, what was
+  // launched from a slot was stepped but never drawn.
+  test("a run of scenes draws what plays from slots", () async {
+    var box = ShapeElement(
+        const ElementBase(
+            id: "b",
+            x: 0,
+            y: 0,
+            width: 40,
+            height: 40,
+            motion: ElementMotion(clips: [
+              MotionClip(id: "go", length: 1, keys: {
+                MotionProp.x: [
+                  MotionKey(0, MotionNumber(100)),
+                  MotionKey(1, MotionNumber(100)),
+                ],
+              }),
+            ])),
+        fill: const Color(0xFF000000));
+    var doc = CanvasDocument(
+        frameRate: 10,
+        background: const CanvasBackground(
+            spec: ProceduralSpec(background: Color(0xFFFFFFFF))),
+        scenes: [
+          CanvasScene(id: "a", frames: 20, elements: [box]),
+          const CanvasScene(id: "c", frames: 20),
+        ]);
+    var player = MotionPlayer()..step(doc, 0, 0);
+    player.launch(doc, 0, "b", "go", 0);
+    player.step(doc, 0, 0.5);
+    Future<int> redAt(int x, {bool live = true}) async {
+      var rec = ui.PictureRecorder();
+      paintSequenceFrame(ui.Canvas(rec), doc, 5,
+          liveMotion: live ? player : null);
+      var size = doc.size.size;
+      var img = await rec
+          .endRecording()
+          .toImage(size.width.round(), size.height.round());
+      var px = (await img.toByteData())!.buffer.asUint8List();
+      return px[(20 * size.width.round() + x) * 4];
+    }
+
+    // A black box on a white page.
+    expect(await redAt(20, live: false), lessThan(60),
+        reason: "on its timeline: where it is set");
+    expect(await redAt(120, live: false), greaterThan(200));
+    expect(await redAt(120), lessThan(60), reason: "launched: moved on");
+    expect(await redAt(20), greaterThan(200), reason: "and gone from there");
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
   const red = 0xFF0000FF;
 

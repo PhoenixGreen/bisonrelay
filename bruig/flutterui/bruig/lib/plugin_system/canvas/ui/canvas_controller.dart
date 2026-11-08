@@ -3183,7 +3183,7 @@ class CanvasController extends ChangeNotifier {
   /// on its frame -- with the transition after it and when it began, on
   /// the game's clock: drawn giving way to the one arrived at. See
   /// gameChange.
-  (CanvasDocument, int, SceneTransition, double)? _gameLeft;
+  (CanvasDocument, int, SceneTransition, double, LiveMotion)? _gameLeft;
   Timer? _gameTimer;
   final Stopwatch _gameWatch = Stopwatch();
 

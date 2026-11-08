@@ -639,10 +639,8 @@ extension on _ChainPanelState {
                 key: const ValueKey("chainCopyMotion"),
                 text: "Copy this chain",
                 hint: "${c.motionDevicesOf(c.selected!.id).length} devices",
-                onPressed: () => _ChainPanelState._copiedMotion = [
-                      for (var d in c.motionDevicesOf(c.selected!.id))
-                        if (d.kind != MotionDeviceKind.instances) d,
-                    ]),
+                onPressed: () => _ChainPanelState._copiedMotion =
+                    c.motionDevicesOf(c.selected!.id)),
             chainMenuItem(look,
                 key: const ValueKey("chainPasteMotion"),
                 text: "Paste a chain here",
@@ -750,7 +748,6 @@ const _tabIcons = {
   "chainTabInstrument": "keys",
   "chainTabClip": "wave",
   "chainTabSpeech": "voice",
-  "chainTabPitch": "note",
 };
 
 /// _chainKindColours are the colours of what the Chain can show, as the

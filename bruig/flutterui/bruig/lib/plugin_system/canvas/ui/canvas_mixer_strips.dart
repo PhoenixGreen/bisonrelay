@@ -678,35 +678,18 @@ class _ChannelStrip extends StatelessWidget {
                 () => onOpenDevice?.call("vocaliser"),
                 onRemove: () => onRemoveDevice?.call("vocaliser"),
                 key: const ValueKey("vocaliserSlot")),
-          for (var (i, d) in mix.devices.indexed)
-            _slot(
-                theme,
-                d.kind.label,
-                d.on,
-                Icon(Icons.circle,
-                    size: 7, color: d.on ? theme.studio.on : colors.outline),
-                () => onOpenDevice?.call(deviceKey(deviceIdAt(mix.devices, i))),
-                onRemove: () =>
-                    onRemoveDevice?.call(deviceKey(deviceIdAt(mix.devices, i))),
-                key: ValueKey("chanDevice-$i")),
-          _slot(
-              theme,
-              "EQ",
-              mix.eq.on,
-              CustomPaint(
-                  size: const Size(40, 14),
-                  painter: _MiniCurve(mix.eq, colors)),
-              onOpenEq,
-              key: const ValueKey("eqSlot")),
-          _slot(
-              theme,
-              "Comp",
-              mix.comp.on,
-              Icon(Icons.circle,
-                  size: 7,
-                  color: mix.comp.on ? theme.studio.on : colors.outline),
-              onOpenComp,
-              key: const ValueKey("compSlot")),
+          ..._chainSlots(theme,
+              chain: mix.chain,
+              devices: mix.devices,
+              eq: mix.eq,
+              comp: mix.comp,
+              devicePrefix: "chanDevice",
+              eqKey: "eqSlot",
+              compKey: "compSlot",
+              onEq: onOpenEq,
+              onComp: onOpenComp,
+              onDevice: (key) => onOpenDevice?.call(key),
+              onRemove: (key) => onRemoveDevice?.call(key)),
           // Whether this channel turns the others down while it is heard (see
           // Ducking), on the channel that is listened for: the voice.
           _slot(
@@ -952,17 +935,18 @@ class _ReturnStrip extends StatelessWidget {
       // A return plays what is sent to it, not clips of its own.
       clips: () => const SizedBox(),
       devices: () => _band(_slots([
-        for (var (i, d) in ret.devices.indexed)
-          _slot(
-              theme,
-              d.kind.label,
-              d.on,
-              Icon(Icons.circle,
-                  size: 7, color: d.on ? theme.studio.on : colors.outline),
-              () => onOpen(deviceKey(deviceIdAt(ret.devices, i))),
-              onRemove: () =>
-                  onRemoveDevice?.call(deviceKey(deviceIdAt(ret.devices, i))),
-              key: ValueKey("returnDevice-$i")),
+        ..._chainSlots(theme,
+            chain: ret.chainMix.chain,
+            devices: ret.devices,
+            eq: mix.eq,
+            comp: mix.comp,
+            devicePrefix: "returnDevice",
+            eqKey: "returnEq",
+            compKey: "returnComp",
+            onEq: () => onOpen("eq"),
+            onComp: () => onOpen("comp"),
+            onDevice: onOpen,
+            onRemove: (key) => onRemoveDevice?.call(key)),
         _slot(
             theme,
             "Add a device",
@@ -970,22 +954,6 @@ class _ReturnStrip extends StatelessWidget {
             Icon(Icons.add, size: 12, color: colors.onSurfaceVariant),
             () => onOpen(null),
             key: const ValueKey("returnAddDevice")),
-        _slot(
-            theme,
-            "EQ",
-            mix.eq.on,
-            CustomPaint(
-                size: const Size(40, 14), painter: _MiniCurve(mix.eq, colors)),
-            () => onOpen("eq"),
-            key: const ValueKey("returnEq")),
-        _slot(
-            theme,
-            "Comp",
-            mix.comp.on,
-            Icon(Icons.circle,
-                size: 7, color: mix.comp.on ? theme.studio.on : colors.outline),
-            () => onOpen("comp"),
-            key: const ValueKey("returnComp")),
       ])),
       miniMixer: () => _miniMixerBand(theme,
           bare: bands.bare,
@@ -1109,38 +1077,18 @@ class _SceneStrip extends StatelessWidget {
       // Its clips are its channels': it plays what is in the scene.
       clips: () => const SizedBox(),
       devices: () => _band(_slots([
-        for (var step in chain)
-          if (step == chainEq)
-            _slot(
-                theme,
-                "EQ",
-                mix.eq.on,
-                CustomPaint(
-                    size: const Size(40, 14),
-                    painter: _MiniCurve(mix.eq, colors)),
-                () => onOpen("eq"),
-                key: const ValueKey("sceneEq"))
-          else if (step == chainComp)
-            _slot(
-                theme,
-                "Comp",
-                mix.comp.on,
-                Icon(Icons.circle,
-                    size: 7,
-                    color: mix.comp.on ? theme.studio.on : colors.outline),
-                () => onOpen("comp"),
-                key: const ValueKey("sceneComp"))
-          else if (deviceIndexOf(devices, step) case var i when i >= 0)
-            _slot(
-                theme,
-                devices[i].kind.label,
-                devices[i].on,
-                Icon(Icons.circle,
-                    size: 7,
-                    color: devices[i].on ? theme.studio.on : colors.outline),
-                () => onOpen(deviceKey(step)),
-                onRemove: () => onRemoveDevice?.call(deviceKey(step)),
-                key: ValueKey("sceneDevice-$i")),
+        ..._chainSlots(theme,
+            chain: chain,
+            devices: devices,
+            eq: mix.eq,
+            comp: mix.comp,
+            devicePrefix: "sceneDevice",
+            eqKey: "sceneEq",
+            compKey: "sceneComp",
+            onEq: () => onOpen("eq"),
+            onComp: () => onOpen("comp"),
+            onDevice: onOpen,
+            onRemove: (key) => onRemoveDevice?.call(key)),
         _slot(
             theme,
             "Add a device",
@@ -1277,36 +1225,19 @@ class _MasterStrip extends StatelessWidget {
         ),
         clips: scenes,
         devices: () => _band(_slots([
-          // Its own devices first, as they are played.
-          for (var (i, d) in mix.devices.indexed)
-            _slot(
-                theme,
-                d.kind.label,
-                d.on,
-                Icon(Icons.circle,
-                    size: 7, color: d.on ? theme.studio.on : colors.outline),
-                () => onOpenDevice?.call(deviceKey(deviceIdAt(mix.devices, i))),
-                onRemove: () =>
-                    onRemoveDevice?.call(deviceKey(deviceIdAt(mix.devices, i))),
-                key: ValueKey("masterDevice-$i")),
-          _slot(
-              theme,
-              "EQ",
-              mix.eq.on,
-              CustomPaint(
-                  size: const Size(40, 14),
-                  painter: _MiniCurve(mix.eq, colors)),
-              onOpenEq,
-              key: const ValueKey("masterEqSlot")),
-          _slot(
-              theme,
-              "Glue",
-              mix.comp.on,
-              Icon(Icons.circle,
-                  size: 7,
-                  color: mix.comp.on ? theme.studio.on : colors.outline),
-              onOpenComp,
-              key: const ValueKey("masterCompSlot")),
+          ..._chainSlots(theme,
+              chain: mix.chain,
+              devices: mix.devices,
+              eq: mix.eq,
+              comp: mix.comp,
+              devicePrefix: "masterDevice",
+              eqKey: "masterEqSlot",
+              compKey: "masterCompSlot",
+              compLabel: "Glue",
+              onEq: onOpenEq,
+              onComp: onOpenComp,
+              onDevice: (key) => onOpenDevice?.call(key),
+              onRemove: (key) => onRemoveDevice?.call(key)),
           _slot(
               theme,
               "Limit",
@@ -1314,8 +1245,9 @@ class _MasterStrip extends StatelessWidget {
               Text("${dbText(mix.ceilingDb)} dBTP", style: small()),
               () => onChanged(mix.copyWith(limiter: !mix.limiter)),
               key: const ValueKey("limiterSlot")),
-          // The loudness the whole mix is aimed at, measured from its own editor
-          // (see _LoudnessEditor). Reaching it in an export is a publish setting.
+          // The loudness the whole mix is aimed at, measured from its own
+          // editor (see _LoudnessDevice). Reaching it in an export is a
+          // publish setting.
           _slot(
               theme,
               "Loudness",
@@ -1565,6 +1497,61 @@ mixin _OnSessionPulse<T extends StatefulWidget> on State<T> {
     _sessionPulse.removeListener(_beat);
     super.dispose();
   }
+}
+
+/// _chainSlots is a strip's devices, EQ and compressor as slots, in the
+/// order its chain runs them -- as the Chain shows them (Ken's systems
+/// review, 2026-11-08: the strips listed the EQ and compressor last
+/// whatever the order). [devicePrefix], [eqKey] and [compKey] are each
+/// strip's own keys.
+List<Widget> _chainSlots(
+  MixerLook theme, {
+  required List<String> chain,
+  required List<MixDevice> devices,
+  required Eq eq,
+  required Dynamics comp,
+  required String devicePrefix,
+  required String eqKey,
+  required String compKey,
+  String compLabel = "Comp",
+  required VoidCallback onEq,
+  required VoidCallback onComp,
+  required void Function(String key) onDevice,
+  void Function(String key)? onRemove,
+}) {
+  var colors = theme.colors;
+  return [
+    for (var step in chain)
+      if (step == chainEq)
+        _slot(
+            theme,
+            "EQ",
+            eq.on,
+            CustomPaint(
+                size: const Size(40, 14), painter: _MiniCurve(eq, colors)),
+            onEq,
+            key: ValueKey(eqKey))
+      else if (step == chainComp)
+        _slot(
+            theme,
+            compLabel,
+            comp.on,
+            Icon(Icons.circle,
+                size: 7, color: comp.on ? theme.studio.on : colors.outline),
+            onComp,
+            key: ValueKey(compKey))
+      else if (deviceIndexOf(devices, step) case var i when i >= 0)
+        _slot(
+            theme,
+            devices[i].kind.label,
+            devices[i].on,
+            Icon(Icons.circle,
+                size: 7,
+                color: devices[i].on ? theme.studio.on : colors.outline),
+            () => onDevice(deviceKey(step)),
+            onRemove: onRemove == null ? null : () => onRemove(deviceKey(step)),
+            key: ValueKey("$devicePrefix-$i")),
+  ];
 }
 
 /// _blinkOn is whether something waiting for a bar is lit at this moment:

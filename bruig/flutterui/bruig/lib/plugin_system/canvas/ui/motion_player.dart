@@ -113,6 +113,19 @@ Iterable<CanvasElement> _elementsOf(CanvasDocument doc) => [
       if (!doc.editingMaster) ...?doc.masterScene?.elements,
     ];
 
+/// _FrozenLive is a MotionPlayer's plays as they were at one moment.
+class _FrozenLive implements LiveMotion {
+  @override
+  final double clock;
+  @override
+  final Offset? pointer;
+  final Map<String, MotionLive> _of;
+  _FrozenLive(this.clock, this.pointer, this._of);
+
+  @override
+  MotionLive? of(String element) => _of[element];
+}
+
 class MotionPlayer implements LiveMotion {
   final Map<String, _Playing> _of = {};
   final List<MotionPlayed> _log = [];
@@ -131,6 +144,11 @@ class MotionPlayer implements LiveMotion {
 
   @override
   MotionLive? of(String element) => _of[element]?.live;
+
+  /// frozen is what is playing now, held as it is: for a scene being left,
+  /// drawn as it was while the next one's clips start (see gameChange).
+  LiveMotion frozen() => _FrozenLive(_clock, pointer,
+      {for (var MapEntry(:key, :value) in _of.entries) key: value.live});
 
   /// offTimeline is whether any element has left its timeline for its
   /// slots: what Back to the timeline lights for.

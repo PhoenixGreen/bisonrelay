@@ -456,14 +456,8 @@ class _CanvasMixerState extends State<CanvasMixer>
     var moved = false;
     for (var key in keys) {
       // A channel is as loud as its strip: every sound on it is mixed there.
-      var (l, r) = key == _master
-          ? controller.levels()
-          : returns.contains(key) ||
-                  key == sceneBusKey ||
-                  key == limitKey ||
-                  speakers.contains(key)
-              ? controller.levels(key)
-              : controller.channelLevels(channels[key]!);
+      var (l, r) =
+          key == _master ? controller.levels() : controller.levels(key);
       var db = (gainToDb(l), gainToDb(r));
       var was = _now[key];
       if (was == null ||

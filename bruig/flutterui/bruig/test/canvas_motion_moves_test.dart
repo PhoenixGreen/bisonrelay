@@ -62,7 +62,6 @@ void main() {
 
   test("wiggle wanders, the same each time; each instance its own", () {
     var d = doc(const [
-      MotionDevice(MotionDeviceKind.instances, id: "m0"),
       MotionDevice(MotionDeviceKind.wiggle,
           id: "m1", values: {"amount": 20, "seed": 1}),
     ], instances: const InstanceSet().withCount(2, gap: 0));
@@ -73,7 +72,6 @@ void main() {
     expect(pose(d, 30, instance: 0).dx, isNot(pose(d, 30, instance: 1).dx),
         reason: "each its own seed");
     var same = doc(const [
-      MotionDevice(MotionDeviceKind.instances, id: "m0"),
       MotionDevice(MotionDeviceKind.wiggle,
           id: "m1", values: {"amount": 20, "seed": 0}),
     ], instances: const InstanceSet().withCount(2, gap: 0));

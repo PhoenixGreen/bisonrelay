@@ -131,7 +131,8 @@ class StagePainter extends CustomPainter {
   /// gameChange is the scene a game is leaving while its transition plays
   /// -- as it was seen, its frame, the transition and how far through --
   /// drawn giving way to [document]. See CanvasController.gameChange.
-  final (CanvasDocument, int, SceneTransition, double)? gameChange;
+  final (CanvasDocument, int, SceneTransition, double, LiveMotion)?
+      gameChange;
 
   /// trail is whether the one element selected shows its trail and onion
   /// skin: the Chain open on its motion. See _paintTrail.
@@ -484,7 +485,9 @@ class StagePainter extends CustomPainter {
             images: images,
             backgrounds: backgrounds,
             audioState: audioState,
-            videoShow: videoShow);
+            videoShow: videoShow,
+            liveMotion: liveMotion,
+            counterValue: counterValue);
       }
       canvas.restore();
       canvas.restore();
@@ -540,11 +543,17 @@ class StagePainter extends CustomPainter {
           clipOp: ui.ClipOp.difference);
       _paintContents(canvas, document, frame);
       canvas.restore();
-    } else if (gameChange case (var left, var leftAt, var over, var t)?) {
-      // A game gone on to another scene: the one it left giving way.
+    } else if (gameChange
+        case (var left, var leftAt, var over, var t, var leftLive)?) {
+      // A game gone on to another scene: the one it left giving way -- framed
+      // by its own camera, and its elements as their slots had them as it
+      // was left (Ken's systems review, 2026-11-08: it jumped to an
+      // unframed page, its moves snapped back).
       paintTransition(canvas, Offset.zero & docSize, over, t,
-          from: () =>
-              _paintContents(canvas, left, leftAt, part: CanvasPaintPart.all),
+          from: () => _paintContents(canvas, left, leftAt,
+              part: CanvasPaintPart.all,
+              camera: sceneFraming(left, leftAt, live: leftLive),
+              live: leftLive),
           to: () => _paintContents(canvas, document, frame,
               part: CanvasPaintPart.all, camera: camera));
     } else {
@@ -690,7 +699,8 @@ class StagePainter extends CustomPainter {
   /// shows it, over its own backdrop, or with [part] all, with it.
   void _paintContents(Canvas canvas, CanvasDocument document, int frame,
       {CanvasPaintPart part = CanvasPaintPart.contents,
-      (double, Offset)? camera}) {
+      (double, Offset)? camera,
+      LiveMotion? live}) {
     paintCanvasDocument(canvas, document,
         frame: frame,
         part: part,
@@ -702,7 +712,7 @@ class StagePainter extends CustomPainter {
         skipElement: editingItem == null ? editingText : null,
         skipTextItem: editingItem,
         counterValue: counterValue,
-        liveMotion: liveMotion,
+        liveMotion: live ?? liveMotion,
         counterPressed: counterPressed,
         counterRunning: counterRunning,
         audioState: audioState,

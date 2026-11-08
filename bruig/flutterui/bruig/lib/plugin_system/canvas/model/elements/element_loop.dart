@@ -10,7 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 // after it has arrived, or on its own -- until the scene ends, or for so
 // many times. A third thing beside its arrival and exit.
 
-/// LoopFamily is a kind of loop, as the Animation section groups them.
+/// LoopFamily is a kind of loop, as the Own style card groups them.
 enum LoopFamily {
   motion("Motion"),
   light("Light & colour"),

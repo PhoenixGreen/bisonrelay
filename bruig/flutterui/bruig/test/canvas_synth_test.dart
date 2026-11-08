@@ -143,6 +143,43 @@ double _rms(Float32List x, int from, int to) {
 }
 
 void main() {
+  // Ken's systems review, 2026-11-08.
+  group("a part rendered as it is played live", () {
+    double rms(Float32List x, double from, double to) {
+      var a = (from * 48000).round(), b = (to * 48000).round();
+      var sum = 0.0;
+      for (var i = a; i < b; i++) {
+        sum += x[i] * x[i];
+      }
+      return math.sqrt(sum / (b - a));
+    }
+
+    test("two notes on one key: the first let go does not cut the second",
+        () {
+      var (l, _) = renderPart(
+          const InstrumentPart(notes: [
+            MidiNote(60, 0, 1),
+            MidiNote(60, 0.5, 1),
+          ]),
+          null);
+      var (alone, _) = renderPart(
+          const InstrumentPart(notes: [MidiNote(60, 0, 1)]), null);
+      expect(rms(l, 1.1, 1.4), greaterThan(rms(alone, 1.1, 1.4) * 3),
+          reason: "the second still held after the first is let go");
+    });
+
+    test("a controller's curve read on as it plays, as it is read anywhere",
+        () {
+      var points = <ControlPoint>[(0.2, 0.1), (0.5, 0.9), (0.5, 0.3), (2, 0.6)];
+      var cursor = ControlCursor(points, 0);
+      for (var t = 0.0; t < 3; t += 0.01) {
+        expect(cursor.at(t), closeTo(controlAt(points, t, 0), 1e-12),
+            reason: "at $t");
+      }
+      expect(ControlCursor(const [], 0.4).at(1), 0.4);
+    });
+  });
+
   group("a SoundFont bank", () {
     test("is read: its preset, its instrument's zone, its sample", () {
       var font = SoundFont.read(tinyBank());
@@ -260,8 +297,8 @@ void main() {
       expect(a.copyWith(program: 40).signature, isNot(a.signature));
       expect(a.copyWith(notes: const [MidiNote(62, 0, 1)]).signature,
           isNot(a.signature));
-      expect(a.needsPlaying, isTrue);
-      expect(a.copyWith(rendered: a.signature).needsPlaying, isFalse);
+      expect(a.needsPlayingAt(0.5), isTrue);
+      expect(a.copyWith(rendered: a.signature).needsPlayingAt(0.5), isFalse);
       var back = InstrumentPart.fromJson(a.toJson());
       expect(back.notes, a.notes);
     });

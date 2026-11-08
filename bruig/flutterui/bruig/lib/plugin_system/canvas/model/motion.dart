@@ -787,14 +787,9 @@ class ElementMotion {
         if (d.on && d.side == MotionDeviceSide.pose) d,
     ];
     // Its Instances only with instances, and always first (Ken, 2026-11-08):
-    // every copy has the whole chain, each with what it has of its own. One
-    // kept further along from before is taken as first.
-    var rest = [
-      for (var d in poses)
-        if (d.kind != MotionDeviceKind.instances) d
-    ];
-    if (instances == null) return rest;
-    return [const MotionDevice(MotionDeviceKind.instances), ...rest];
+    // every copy has the whole chain, each with what it has of its own.
+    if (instances == null) return poses;
+    return [const MotionDevice(MotionDeviceKind.instances), ...poses];
   }
 
   /// looks are its look devices switched on, in the order they run.
@@ -979,7 +974,11 @@ class ElementMotion {
       devices: withMotionDeviceIds([
         if (json["devices"] case List raw)
           for (var d in raw)
-            if (MotionDevice.fromJson(d) case var device?) device,
+            // An Instances kept as a device, from before its copies were
+            // the chain's first card: dropped, as it stands for nothing.
+            if (MotionDevice.fromJson(d) case var device?
+                when device.kind != MotionDeviceKind.instances)
+              device,
       ]),
       instances: InstanceSet.fromJson(json["instances"]),
       kept: json["kept"] == true,

@@ -454,9 +454,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
     var reused = e.base.motion.instances != null;
     var moves = [
       for (var d in devices)
-        if (d.side == MotionDeviceSide.pose &&
-            d.kind != MotionDeviceKind.instances)
-          d,
+        if (d.side == MotionDeviceSide.pose) d,
     ];
     // Each join counts the moves switched on before it, as the chain runs --
     // the Instances step first of them, reused.
@@ -817,9 +815,9 @@ class _AnimationPanelState extends State<AnimationPanel> {
             ? null
             : arriving
                 ? "Its own arrival: its words, pieces or layers come in as its "
-                    "Animation settings say, across this clip. Before the "
-                    "clip, it is not there yet."
-                : "Its own way out: it goes as its Animation settings say, "
+                    "Own style card says, across this clip. Before the clip, "
+                    "it is not there yet."
+                : "Its own way out: it goes as its Own style card says, "
                     "across this clip.");
   }
 

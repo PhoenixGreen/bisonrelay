@@ -382,10 +382,8 @@ class InstrumentPart {
           ? signature
           : "$signature@${secondsPerBeat.toStringAsFixed(4)}";
 
-  /// needsPlaying is whether the clip's file is not this part's.
-  bool get needsPlaying => notes.isNotEmpty && rendered != signature;
-
-  /// needsPlayingAt is [needsPlaying] at a tempo; see [signatureAt].
+  /// needsPlayingAt is whether the part's file is not this part's at a
+  /// tempo of [secondsPerBeat] a beat (see [signatureAt]).
   bool needsPlayingAt(double secondsPerBeat) =>
       notes.isNotEmpty && rendered != signatureAt(secondsPerBeat);
 
@@ -723,6 +721,29 @@ double controlAt(List<ControlPoint> points, double t, double rest) {
     }
   }
   return points.last.$2;
+}
+
+/// ControlCursor reads [points] as controlAt does, for times that only go
+/// on -- a part rendered from its start -- from where it last was rather
+/// than from the curve's start each time (Ken's systems review, 2026-11-08:
+/// a long take's mod wheel was read from its first point at every block).
+class ControlCursor {
+  final List<ControlPoint> points;
+  final double rest;
+  int _i = 1;
+  ControlCursor(this.points, this.rest);
+
+  double at(double t) {
+    if (points.isEmpty) return rest;
+    if (t <= points.first.$1) return points.first.$2;
+    while (_i < points.length && t >= points[_i].$1) {
+      _i++;
+    }
+    if (_i >= points.length) return points.last.$2;
+    var (t0, v0) = points[_i - 1];
+    var (t1, v1) = points[_i];
+    return t1 <= t0 ? v1 : v0 + (v1 - v0) * (t - t0) / (t1 - t0);
+  }
 }
 
 /// controlsToJson and controlsFromJson keep a part's or a clip's curves.

@@ -57,6 +57,54 @@ MotionTimes motionTimesOf(CanvasDocument doc) {
   return times;
 }
 
+/// masterTimesOf is where the master's own clips play, under a run of
+/// scenes: on the run's clock, as the master is drawn (see paintCanvasDocument)
+/// -- the run's length its end, its own markers its markers -- not on the
+/// scene's (Ken's systems review, 2026-11-08). Null where the master is not
+/// drawn on that clock: no scenes, a book, or the master being edited.
+MotionTimes? masterTimesOf(CanvasDocument doc) {
+  var master = doc.masterScene;
+  if (master == null || doc.editingMaster || !doc.hasScenes || doc.isPages) {
+    return null;
+  }
+  var elements = master.elements;
+  if (_masterTimes[elements] case (var f, var r, var a, var known)
+      when f == doc.sequenceFrames &&
+          r == doc.frameRate &&
+          identical(a, master.actions)) {
+    return known;
+  }
+  var rate = math.max(1, doc.frameRate);
+  var times = MotionTimes(
+    sceneEnd: doc.sequenceFrames / rate,
+    markers: {for (var a in master.actions) markerKey(a): a.frame / rate},
+    placements: {
+      for (var e in elements)
+        for (var p in e.base.motion.placed)
+          if (e.base.motion.clip(p.clip) case var c?) p.id: (p, c),
+    },
+  );
+  _masterTimes[elements] =
+      (doc.sequenceFrames, doc.frameRate, master.actions, times);
+  _onMaster[elements] = {for (var e in elements) e.id};
+  return times;
+}
+
+final Expando<(int, int, Object, MotionTimes)> _masterTimes =
+    Expando("masterTimes");
+final Expando<Set<String>> _onMaster = Expando("onMaster");
+
+/// _timesFor is where [e]'s clips play: the master's own clock for one on
+/// the master under a run of scenes, else the scene's.
+MotionTimes _timesFor(CanvasDocument doc, CanvasElement e) {
+  if (masterTimesOf(doc) case var m?) {
+    if (_onMaster[doc.masterScene!.elements]?.contains(e.id) ?? false) {
+      return m;
+    }
+  }
+  return motionTimesOf(doc);
+}
+
 /// settledFrameOf is the frame [doc] opens on: everything arrived, by the
 /// clips that play its arrivals.
 int settledFrameOf(CanvasDocument doc) {
@@ -107,7 +155,7 @@ MotionPose motionPoseIn(CanvasDocument doc, CanvasElement e, int frame,
   var motion = e.base.motion;
   if (motion.isEmpty) return MotionPose.rest;
   var rate = math.max(1, doc.frameRate);
-  return motionPose(motion, frame / rate, boxOf(e), motionTimesOf(doc),
+  return motionPose(motion, frame / rate, boxOf(e), _timesFor(doc, e),
       motionSceneOf(doc, frame, depth: depth),
       live: live,
       clock: clock,
@@ -286,6 +334,41 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
     size = set.items[instance].own["drawSize"] ?? size;
   }
   return size == 1 ? pose : pose.copyWith(scale: pose.scale * size);
+}
+
+/// stampsCopies is whether [e]'s copies can be drawn once and stamped at
+/// each place (InstanceSet.uniform): alike in their own values, and with
+/// nothing that works each one out from where it is or who it is -- a
+/// Wiggle each its own, a Look at, a Follow path, a Spring after another
+/// element, a clip's key at a place (off the page's edge, beside another),
+/// or a copy playing a clip of its own (Ken's systems review, 2026-11-08:
+/// stamped, every copy wiggled as one and a touched coin never popped).
+bool stampsCopies(CanvasElement e, LiveMotion? live) {
+  var m = e.base.motion;
+  var set = m.instances;
+  if (set == null || !set.uniform) return false;
+  for (var d in m.devices) {
+    if (!d.on) continue;
+    switch (d.kind) {
+      case MotionDeviceKind.wiggle when d.value("seed").round() == 1:
+      case MotionDeviceKind.lookAt:
+      case MotionDeviceKind.followPath:
+      case MotionDeviceKind.spring when d.value("follows").round() == 1:
+        return false;
+      default:
+    }
+  }
+  for (var c in m.clips) {
+    for (var keys in c.keys.values) {
+      if (keys.any((k) => k.value is MotionPlace)) return false;
+    }
+  }
+  if (live != null) {
+    for (var item in set.items) {
+      if (live.of(instanceKey(e.id, item.id)) != null) return false;
+    }
+  }
+  return true;
 }
 
 /// movesAtAll is whether anything moves [e] beyond its keyframes: its

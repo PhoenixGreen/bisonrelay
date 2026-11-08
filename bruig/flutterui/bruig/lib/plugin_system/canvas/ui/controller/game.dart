@@ -31,17 +31,20 @@ extension CanvasGame on CanvasController {
   /// as it was last seen and on which frame, the transition, and how far
   /// through it is (0 to 1, eased) -- or null, none playing. A game's next
   /// scene arrives as the timeline's does.
-  (CanvasDocument, int, SceneTransition, double)? get gameChange {
+  ///
+  /// With what its elements were playing from their slots as it was left,
+  /// held there: the next scene's start clears them.
+  (CanvasDocument, int, SceneTransition, double, LiveMotion)? get gameChange {
     var left = _gameLeft;
     if (left == null || !gaming) return null;
-    var (from, at, over, began) = left;
+    var (from, at, over, began, live) = left;
     var length = over.frames / math.max(1, _document.frameRate);
     var t = length <= 0 ? 1.0 : (_gameClock - began) / length;
     if (t >= 1) {
       _gameLeft = null;
       return null;
     }
-    return (from, at, over, over.ease.apply(t.clamp(0.0, 1.0)));
+    return (from, at, over, over.ease.apply(t.clamp(0.0, 1.0)), live);
   }
 
   /// _gameLeaving keeps the scene being left, as it was last seen, for its
@@ -58,7 +61,7 @@ extension CanvasGame on CanvasController {
     var over = _document.transitionAfter(_document.at);
     _gameLeft = seen == null || over.kind == SceneTransitionKind.cut
         ? null
-        : (seen, _frame, over, _gameClock);
+        : (seen, _frame, over, _gameClock, motionPlayer.frozen());
   }
 
   /// makingGame is whether the canvas is being made into a game -- see

@@ -718,6 +718,21 @@ class CanvasStageState extends State<CanvasStage>
     if (!document.game || controller.gaming || document.editingMaster) {
       return null;
     }
+    // Asked several times a build: worked out once for each document,
+    // frame and moment of what plays live.
+    var key = (document, controller.frame, controller.liveMotion?.clock);
+    if (_levelOf case (var k, var known)
+        when identical(k.$1, key.$1) && k.$2 == key.$2 && k.$3 == key.$3) {
+      return known;
+    }
+    var made = _levelNow();
+    _levelOf = (key, made);
+    return made;
+  }
+
+  ((CanvasDocument, int, double?), Rect?)? _levelOf;
+
+  Rect? _levelNow() {
     var page = Offset.zero & document.size.size;
     var reach = page;
     var frame = controller.frame;

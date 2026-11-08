@@ -166,23 +166,22 @@ void main() {
     });
 
     // Rule 3's movable split is gone (Ken, 2026-11-08): Instances is
-    // always first, wherever an older canvas kept it.
+    // always first. One an older canvas kept as a device, wherever it was,
+    // is dropped as the canvas is read.
     test("Instances is first of the chain, wherever it was kept", () {
       var time = const MotionDevice(MotionDeviceKind.time,
           id: "m0", values: {"speed": 2});
-      var kept = doc(three(), devices: [
-        time,
-        const MotionDevice(MotionDeviceKind.instances, id: "m1")
+      var old = const ElementMotion(devices: [
+        MotionDevice(MotionDeviceKind.time, id: "m0", values: {"speed": 2}),
+        MotionDevice(MotionDeviceKind.instances, id: "m1"),
       ]);
-      var first = doc(three(), devices: [
-        const MotionDevice(MotionDeviceKind.instances, id: "m1"),
-        time
-      ]);
+      var read = ElementMotion.fromJson(old.toJson());
+      expect(read.devices.map((d) => d.kind), [MotionDeviceKind.time]);
+      var chain = doc(three(), devices: [time]);
       // Time speeds each copy's moment up: 4 s asked for, less copy 2's
       // second, 3 s in.
-      expect(dx(kept, 48, 2), closeTo(100 + 75, 0.01));
-      expect(dx(first, 48, 2), closeTo(100 + 75, 0.01));
-      expect(kept.elementById("a")!.base.motion.poseDevices.first.kind,
+      expect(dx(chain, 48, 2), closeTo(100 + 75, 0.01));
+      expect(chain.elementById("a")!.base.motion.poseDevices.first.kind,
           MotionDeviceKind.instances);
     });
 
@@ -611,6 +610,82 @@ void main() {
       await tester.tapAt(s.toStagePoint(const Offset(300, 400)));
       await tester.pumpAndSettle();
       expect(c.motionOf("a").instances!.count, 2);
+    });
+  });
+
+  // Ken's systems review, 2026-11-08: a game's scene left snapped its
+  // slot-launched elements back as the next one's start cleared them.
+  test("what plays, frozen, outlasts the player being cleared", () {
+    var doc = CanvasDocument(elements: [
+      ShapeElement(const ElementBase(
+          id: "coin",
+          width: 20,
+          height: 20,
+          motion: ElementMotion(clips: [MotionClip(id: "pop", length: 1)]))),
+    ]);
+    var p = MotionPlayer()..step(doc, 0, 0);
+    p.launch(doc, 0, "coin", "pop", 0);
+    p.step(doc, 0, 0.5);
+    var held = p.frozen();
+    p.clear();
+    expect(p.of("coin"), isNull);
+    expect(held.of("coin"), isNotNull);
+    expect(held.clock, 0.5);
+  });
+
+  // Ken's systems review, 2026-11-08: stamped, every copy wiggled as one.
+  group("drawn once and stamped, or each in turn", () {
+    ShapeElement coins({List<MotionDevice> devices = const []}) => ShapeElement(
+        ElementBase(
+            id: "coin",
+            x: 0,
+            y: 100,
+            width: 20,
+            height: 20,
+            motion: ElementMotion(
+                devices: devices,
+                instances: const InstanceSet(items: [
+                  ElementInstance("i0"),
+                  ElementInstance("i1", dx: 100),
+                ]))),
+        fill: const Color(0xFF000000));
+    const each = MotionDevice(MotionDeviceKind.wiggle,
+        id: "w", values: {"seed": 1, "amount": 30, "speed": 3});
+
+    test("only where they would look the same", () {
+      expect(stampsCopies(coins(), null), isTrue);
+      expect(stampsCopies(coins(devices: [each]), null), isFalse,
+          reason: "a wiggle each its own");
+      expect(stampsCopies(coins(devices: [each.withValue("seed", 0)]), null),
+          isTrue,
+          reason: "a wiggle the same for all");
+      expect(
+          stampsCopies(
+              coins(devices: const [
+                MotionDevice(MotionDeviceKind.lookAt, id: "l")
+              ]),
+              null),
+          isFalse);
+    });
+
+    test("each its own wiggle, each drawn where its own puts it", () async {
+      var e = coins(devices: [each]);
+      var doc = CanvasDocument(frames: 100, elements: [e]);
+      var p0 = poseWithMotion(e, 7, doc, instance: 0);
+      var p1 = poseWithMotion(e, 7, doc, instance: 1);
+      expect((p0.dx - (p1.dx - 100)).abs(), greaterThan(1),
+          reason: "the two wiggle apart");
+      var rec = PictureRecorder();
+      paintElement(Canvas(rec), e, 7, document: doc);
+      var img = await rec.endRecording().toImage(300, 300);
+      var px = (await img.toByteData())!.buffer.asUint8List();
+      bool inked(double x, double y) =>
+          px[(y.round() * 300 + x.round()) * 4 + 3] > 128;
+      // Each copy's middle, where its own pose has it.
+      for (var p in [p0, p1]) {
+        expect(inked(10 + p.dx, 110 + p.dy), isTrue,
+            reason: "drawn at (${p.dx}, ${p.dy})");
+      }
     });
   });
 

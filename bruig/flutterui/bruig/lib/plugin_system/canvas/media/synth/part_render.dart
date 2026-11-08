@@ -143,16 +143,34 @@ Future<SoundFont?> loadSoundBank() async {
   var bl = Float32List(block), br = Float32List(block);
   var next = 0;
   var at = 0;
-  var curves = part.controls.entries.where((e) => e.value.isNotEmpty).toList();
+  var curves = [
+    for (var e in part.controls.entries)
+      if (e.value.isNotEmpty) (e.key, ControlCursor(e.value, e.key.rest)),
+  ];
+  // How many notes hold each key: two overlapping on one key -- a chord's
+  // and a scale's both landing there, or drawn so -- are let go by the last
+  // of them, as keys played live are, not cut short by the first.
+  var holding = <int, int>{};
   while (at < total) {
     // Controllers are set before this block's notes, so a pedal down at a
     // note's start holds it.
-    for (var e in curves) {
-      sampler.control(e.key, controlAt(e.value, at / mixRate, e.key.rest));
+    for (var (control, cursor) in curves) {
+      sampler.control(control, cursor.at(at / mixRate));
     }
     while (next < events.length && events[next].$1 <= at) {
       var (_, on, n) = events[next++];
-      on ? sampler.noteOn(n.key, n.velocity) : sampler.noteOff(n.key);
+      if (on) {
+        holding[n.key] = (holding[n.key] ?? 0) + 1;
+        sampler.noteOn(n.key, n.velocity);
+      } else {
+        var left = (holding[n.key] ?? 1) - 1;
+        if (left <= 0) {
+          holding.remove(n.key);
+          sampler.noteOff(n.key);
+        } else {
+          holding[n.key] = left;
+        }
+      }
     }
     var until = next < events.length ? events[next].$1 : total;
     var n = math.max(1, math.min(block, math.min(until, total) - at));

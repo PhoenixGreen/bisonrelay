@@ -6,9 +6,10 @@ import 'package:bruig/plugin_system/canvas/render/camera_3d.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
-    show cameraOf, sceneFraming;
+    show sceneFraming, LiveMotion;
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 
@@ -127,6 +128,13 @@ void paintSequenceFrame(
   /// backdrop is the background every scene shares, already rasterised for
   /// an export -- see ExportBackdrop. Null draws each scene's own.
   ui.Image? backdrop,
+
+  /// liveMotion and counterValue are what plays from slots and what the
+  /// live counters show, as the editor and the player have them -- so a
+  /// run of scenes is drawn as one scene is (Ken's systems review,
+  /// 2026-11-08). Null in an export, which plays the timeline alone.
+  LiveMotion? liveMotion,
+  double Function(CounterElement)? counterValue,
 }) {
   var place = placeInSequence(doc, at);
   var scenes = doc.allScenes;
@@ -141,8 +149,6 @@ void paintSequenceFrame(
   }
 
   void drawScene(int index, int frame) {
-    var camera = scenes[index].camera;
-    var length = math.max(1, scenes[index].frames - 1);
     // Each scene with its own backdrop (CanvasDocument.backgroundOf), not the
     // document's, which is whichever scene was edited last.
     var shown = doc
@@ -150,7 +156,7 @@ void paintSequenceFrame(
         .copyWith(onMaster: false, background: doc.backgroundOf(index));
     directedBy(
         shown,
-        null,
+        liveMotion,
         () => paintCanvasDocument(canvas, shown,
             frame: frame,
             images: images,
@@ -158,11 +164,10 @@ void paintSequenceFrame(
             audioState: audioState,
             videoShow: videoShow,
             backdrop: backdrop,
+            liveMotion: liveMotion,
+            counterValue: counterValue,
             // Its Camera, which takes over, or its slow move.
-            camera: cameraOf(shown) != null
-                ? sceneFraming(shown, frame)
-                : camera?.at(frame / length, doc.size.rect,
-                    seconds: frame / math.max(1, doc.frameRate))));
+            camera: sceneFraming(shown, frame, live: liveMotion)));
   }
 
   if (!place.changing) {

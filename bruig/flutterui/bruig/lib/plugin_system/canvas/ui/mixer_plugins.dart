@@ -1543,7 +1543,7 @@ class DeviceFrame extends StatelessWidget {
     );
   }
 
-  /// _menuKey is whether [w] goes behind the bar's ⋯ rather than on it: the
+  /// _inMenu is whether [w] goes behind the bar's ⋯ rather than on it: the
   /// arrows that move a device along the chain, and what takes it out.
   static bool _inMenu(Widget w) {
     if (w is DeviceMove) return true;
@@ -3517,7 +3517,7 @@ class _CompDeviceState extends State<CompDevice>
   }
 }
 
-/// _Choices is a setting that is one of a few, as the prototype draws one:
+/// DeviceChoices is a setting that is one of a few, as the prototype draws one:
 /// joined buttons, the one chosen filled.
 class DeviceChoices extends StatelessWidget {
   /// options are each one's key, name, whether it is chosen, and its press.
@@ -7921,7 +7921,6 @@ class MotionDeviceCard extends StatelessWidget {
       extraMenu: pose &&
               d.on &&
               !d.modulates &&
-              d.kind != MotionDeviceKind.instances &&
               d.kind != MotionDeviceKind.follower
           ? (look) => [
                 chainMenuItem(look,
@@ -7981,13 +7980,11 @@ class MotionDeviceCard extends StatelessWidget {
       // a look on a square, Time's curve, a wave's shape.
       // Every kind has one now (Ken, 2026-11-08: the motion chain as
       // usable as the sound's): its settings drawn.
-      display: d.kind != MotionDeviceKind.instances
-          ? SizedBox.expand(
-              child: CustomPaint(
-                  key: ValueKey("mdevScreen-${d.id}"),
-                  painter: _MotionScreen(d, look.studio.display, accent)),
-            )
-          : null,
+      display: SizedBox.expand(
+        child: CustomPaint(
+            key: ValueKey("mdevScreen-${d.id}"),
+            painter: _MotionScreen(d, look.studio.display, accent)),
+      ),
       summary: [
         for (var p in d.kind.params.take(2))
           "${p.label} ${p.reading(d.value(p.id))}"
@@ -8244,7 +8241,10 @@ class _MotionScreen extends CustomPainter {
     if (!device.on) return square();
     canvas.save();
     canvas.clipRect(Offset.zero & size);
-    paintWithLooks(canvas, box, [device], square);
+    paintWithLooks(canvas, box, [device],
+        (on) => on.drawRRect(
+            RRect.fromRectAndRadius(box, Radius.circular(side * 0.12)),
+            Paint()..color = accent));
     canvas.restore();
   }
 

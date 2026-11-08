@@ -260,7 +260,7 @@ void main() {
       expect(now.clip.playlist.single.assetId, "0123456789abcdef.wav");
       expect(now.clip.playlist.single.length,
           closeTo(1 + InstrumentPart.releaseTail, 1e-9));
-      expect(now.instrument!.needsPlaying, isFalse);
+      expect(now.instrument!.needsPlayingAt(0.5), isFalse);
       // Undo takes back the notes, not the playing of them.
       c.undo();
       expect(piano(c).instrument!.notes, isEmpty);
@@ -290,7 +290,7 @@ void main() {
       await c.renderParts();
       await c.renderParts();
       expect(banks, [null], reason: "once, on the piano -- not over and over");
-      expect(piano(c).instrument!.needsPlaying, isTrue);
+      expect(piano(c).instrument!.needsPlayingAt(0.5), isTrue);
     });
   });
 

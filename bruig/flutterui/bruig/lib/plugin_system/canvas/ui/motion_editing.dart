@@ -174,10 +174,7 @@ extension MotionEditing on CanvasController {
     setMotion(
         element,
         set == null
-            ? m.copyWith(clearInstances: true, devices: [
-                for (var d in m.devices)
-                  if (d.kind != MotionDeviceKind.instances) d
-              ])
+            ? m.copyWith(clearInstances: true)
             : m.copyWith(instances: set),
         transient: transient);
   }
@@ -196,25 +193,6 @@ extension MotionEditing on CanvasController {
       element,
       (motionOf(element).instances ?? const InstanceSet())
           .withCount(count, gap: _stepOf(element)));
-
-  /// moveInstances moves [element]'s Instances [by] places among its
-  /// moves: where its instances split from what they share.
-  void moveInstances(String element, int by) {
-    var m = motionOf(element);
-    if (m.instances == null) return;
-    var devices = withMotionDeviceIds(m.devices);
-    var stored =
-        devices.where((d) => d.kind == MotionDeviceKind.instances).firstOrNull;
-    if (stored == null) {
-      // First of its moves until now: put where it is, to be moved.
-      devices = withMotionDeviceIds(
-          [const MotionDevice(MotionDeviceKind.instances), ...devices]);
-      stored = devices.first;
-      setMotion(element, m.copyWith(devices: motionDevicesInOrder(devices)),
-          transient: true);
-    }
-    moveMotionDevice(element, stored.id, by);
-  }
 
   /// layOutInstances places [element]'s instances by [layout].
   void layOutInstances(String element, InstanceLayout layout) {

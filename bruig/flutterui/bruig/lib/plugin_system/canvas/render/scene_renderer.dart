@@ -660,7 +660,7 @@ void paintElement(
           backgrounds: backgrounds,
           instance: which,
           blended: true);
-      if (set.uniform) {
+      if (stampsCopies(element, liveMotion)) {
         // Alike but for where they are: drawn once, and stamped at each
         // place.
         var rec = ui.PictureRecorder();
@@ -1147,7 +1147,19 @@ void paintElement(
       var rate = math.max(1, frameRate).toDouble();
       velocity = Offset(pose.dx - before.dx, pose.dy - before.dy) * rate;
     }
-    paintWithLooks(canvas, bounds, looks, drawn,
+    // Drawn onto whatever the looks hand it -- a recording, laid twice --
+    // by pointing this element's canvas there for the while.
+    var onto = canvas;
+    void drawnOn(ui.Canvas on) {
+      canvas = on;
+      try {
+        drawn();
+      } finally {
+        canvas = onto;
+      }
+    }
+
+    paintWithLooks(canvas, bounds, looks, drawnOn,
         turn: element.rotation + pose.rotate,
         scale: pose.scale,
         velocity: velocity);

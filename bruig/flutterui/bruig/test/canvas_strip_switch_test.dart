@@ -1,10 +1,12 @@
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -65,6 +67,57 @@ void main() {
     expect(c.document.masterMix.eq.on, masterOn, reason: "the master's kept");
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets("a strip lists its chain in the order it runs", (tester) async {
+    var c = CanvasController(
+        CanvasDocument(frames: 100, elements: [
+          AudioElement(const ElementBase(id: "a", name: "A"),
+              clip: const MediaClip(
+                  playlist: [MediaSource(assetId: "t", length: 8)],
+                  timed: true,
+                  mix: ChannelMix(
+                      devices: [MixDevice(DeviceKind.chorus, id: "d0")]))),
+        ]),
+        audioEngine: FakeEngine({"t": 8}));
+    addTearDown(c.dispose);
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: ListenableBuilder(
+                  listenable: c,
+                  builder: (context, _) => Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            CanvasMixer(
+                                controller: c,
+                                height: 520,
+                                onResize: (_) {},
+                                onClose: () {}),
+                          ])))),
+    ));
+    await tester.pump(const Duration(milliseconds: 300));
+    var key = c.timelineChannels.single.key;
+    double y(String k) => tester
+        .getTopLeft(find.descendant(
+            of: find.byKey(ValueKey("strip-$key")),
+            matching: find.byKey(ValueKey(k))))
+        .dy;
+    expect(y("chanDevice-0"), lessThan(y("eqSlot")));
+    c.moveDevice(key, chainEq, -1);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(y("eqSlot"), lessThan(y("chanDevice-0")),
+        reason: "as the Chain has it: the EQ moved first");
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
 }

@@ -13,6 +13,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart'
+    show paintSequenceFrame;
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart';
@@ -266,6 +268,16 @@ class _PlayedPainter extends CustomPainter {
     canvas.save();
     canvas.clipRect(Offset.zero & size);
     canvas.scale(size.width / page.width, size.height / page.height);
+    // Played as a run of scenes, as the editor plays them: each giving way
+    // to the next by its transition (it only cut before).
+    if (c.previewAt case var at?) {
+      paintSequenceFrame(canvas, doc, at,
+          images: c.images,
+          liveMotion: c.liveMotion,
+          counterValue: c.counterValue);
+      canvas.restore();
+      return;
+    }
     // On a 3D stage, its Camera is the stage's: see camera_3d.
     directedBy(
         doc,

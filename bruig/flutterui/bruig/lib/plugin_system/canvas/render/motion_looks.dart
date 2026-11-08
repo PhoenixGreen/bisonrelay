@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:flutter/painting.dart';
+import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 // motion_looks.dart draws an element's looks: the devices right of its
 // drawing in its Chain's Motion view (glow, shadow, blur, colour, outline).
@@ -35,26 +36,52 @@ double looksReach(List<MotionDevice> looks) {
 /// [velocity] is how fast it moves, in the page's pixels a second: what a
 /// Blur's Motion blur smears it along.
 void paintWithLooks(ui.Canvas canvas, Rect bounds, List<MotionDevice> looks,
-    void Function() paint,
+    void Function(ui.Canvas on) paint,
     {double turn = 0, double scale = 1, Offset velocity = Offset.zero}) {
   var reach = looksReach(looks);
   var room = bounds.inflate(reach / math.max(0.05, scale) + 2);
   var k = 1 / math.max(0.05, scale);
-  void drawn(int i) {
+  void drawn(ui.Canvas on, int i) {
     if (i < 0) {
-      paint();
+      paint(on);
       return;
     }
-    _look(canvas, room, looks[i], () => drawn(i - 1), turn, k, velocity);
+    _look(on, room, looks[i], (c) => drawn(c, i - 1), turn, k, velocity);
   }
 
-  drawn(looks.length - 1);
+  drawn(canvas, looks.length - 1);
 }
 
 /// _look draws [under] -- everything to its left -- with look [d] on it.
 /// [k] turns the page's pixels into the canvas's, as it is sized.
-void _look(ui.Canvas canvas, Rect room, MotionDevice d, void Function() under,
-    double turn, double k, Offset velocity) {
+void _look(ui.Canvas canvas, Rect room, MotionDevice d,
+    void Function(ui.Canvas on) draw, double turn, double k, Offset velocity) {
+  void under() => draw(canvas);
+  // What is under it, recorded once for a look that lays it twice -- a
+  // shadow, a glow, an outline, then the element over it -- so three of
+  // them draw the element once each, not eight times (Ken's systems
+  // review, 2026-11-08).
+  //
+  // Recorded in the canvas's own transform, so what is drawn at the size it
+  // is seen (a 3D model, a raster) is as sharp; laid back through the
+  // inverse of it.
+  var seen = canvas.getTransform();
+  ui.Picture recorded() {
+    var rec = ui.PictureRecorder();
+    draw(ui.Canvas(rec)..transform(seen));
+    return rec.endRecording();
+  }
+
+  // A copy: fromFloat64List wraps the list it is given, and inverting it
+  // would turn [seen] round too.
+  var back = Matrix4.fromFloat64List(seen.sublist(0))..invert();
+  void lay(ui.Picture picture) {
+    canvas.save();
+    canvas.transform(back.storage);
+    canvas.drawPicture(picture);
+    canvas.restore();
+  }
+
   Color colourOr(Color fallback) =>
       d.colour == null ? fallback : Color(d.colour!);
   ui.ImageFilter blurOf(double px) => ui.ImageFilter.blur(
@@ -98,6 +125,7 @@ void _look(ui.Canvas canvas, Rect room, MotionDevice d, void Function() under,
           (d.value("angle") - 90 - (turnsWith ? 0 : turn)) * math.pi / 180;
       var away = d.value("distance") * k;
       var colour = colourOr(const Color(0xFF000000));
+      var picture = recorded();
       canvas.save();
       canvas.translate(math.cos(angle) * away, math.sin(angle) * away);
       canvas.saveLayer(
@@ -107,10 +135,11 @@ void _look(ui.Canvas canvas, Rect room, MotionDevice d, void Function() under,
             ..colorFilter = ColorFilter.mode(
                 colour.withValues(alpha: colour.a * d.value("strength")),
                 BlendMode.srcIn));
-      under();
+      lay(picture);
       canvas.restore();
       canvas.restore();
-      under();
+      lay(picture);
+      picture.dispose();
     case MotionDeviceKind.glow:
       // Its own colours, spread and laid under it, unless given one.
       var strength = d.value("strength");
@@ -122,10 +151,12 @@ void _look(ui.Canvas canvas, Rect room, MotionDevice d, void Function() under,
       } else {
         glow.color = Color.fromRGBO(255, 255, 255, strength);
       }
+      var picture = recorded();
       canvas.saveLayer(room, glow);
-      under();
+      lay(picture);
       canvas.restore();
-      under();
+      lay(picture);
+      picture.dispose();
     case MotionDeviceKind.outline:
       var width = d.value("width");
       if (width <= 0) return under();
@@ -141,9 +172,11 @@ void _look(ui.Canvas canvas, Rect room, MotionDevice d, void Function() under,
                     outer: blurOf(width * soft), inner: spread)
             ..colorFilter = ColorFilter.mode(
                 colourOr(const Color(0xFF000000)), BlendMode.srcIn));
-      under();
+      var picture = recorded();
+      lay(picture);
       canvas.restore();
-      under();
+      lay(picture);
+      picture.dispose();
     default:
       // A pose device: nothing to how it looks.
       under();

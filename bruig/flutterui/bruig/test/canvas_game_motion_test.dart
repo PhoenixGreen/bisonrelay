@@ -287,7 +287,7 @@ void main() {
       expect(c.document.at, 1, reason: "on to the next");
       var change = c.gameChange;
       expect(change, isNotNull, reason: "giving way, not cut");
-      var (left, _, over, t) = change!;
+      var (left, _, over, t, _) = change!;
       expect(left.at, 0, reason: "the scene it left, as it was seen");
       expect(left.elementById("hero"), isNotNull, reason: "its own things");
       expect(over.kind, SceneTransitionKind.fade);

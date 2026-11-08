@@ -360,7 +360,6 @@ class _MotionSlotState extends State<_MotionSlot> with _OnSessionPulse {
   /// opening it (Ken: a single click doesn't open the Chain).
   void _pick(MotionClip clip) {
     c.pickMotion(widget.element, clip.id);
-    if (clip.isSound && c.effectsOpen) c.effectsOpen = true;
     _keys.requestFocus();
   }
 
