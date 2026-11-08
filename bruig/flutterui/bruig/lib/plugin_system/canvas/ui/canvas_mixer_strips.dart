@@ -498,19 +498,12 @@ Widget _onToggle(MixerLook theme, String label, bool muted, VoidCallback onTap,
         onTap: onTap);
 
 /// _faderOf is a column's fader and its reading, for the mixer band.
-Widget _faderOf(
-        MixerLook theme,
-        double db,
-        (double, double) level,
-        (double, double) peak,
-        _MixWrite<double> onChanged,
-        VoidCallback onCommit,
-        {bool wide = false,
-        bool narrow = false}) =>
+Widget _faderOf(MixerLook theme, double db, _Meter meter,
+        _MixWrite<double> onChanged, VoidCallback onCommit,
+        {bool wide = false, bool narrow = false}) =>
     _Fader(
       db: db,
-      level: level,
-      peak: peak,
+      meter: meter,
       theme: theme,
       wide: wide,
       small: true,
@@ -535,8 +528,7 @@ class _ChannelStrip extends StatelessWidget {
   /// armed, and [armed] whether it is.
   final bool midi;
   final bool armed;
-  final (double, double) level;
-  final (double, double) peak;
+  final _Meter meter;
   final MixerLook theme;
   final _Bands bands;
   final _MixWrite<ChannelMix> onChanged;
@@ -591,8 +583,7 @@ class _ChannelStrip extends StatelessWidget {
     required this.mix,
     required this.editable,
     required this.soloed,
-    required this.level,
-    required this.peak,
+    required this.meter,
     required this.theme,
     required this.bands,
     required this.onChanged,
@@ -758,8 +749,7 @@ class _ChannelStrip extends StatelessWidget {
             if (midi) _ArmToggle(theme: theme, armed: armed, onTap: onArm),
           ],
           db: mix.gainDb,
-          level: level,
-          peak: peak,
+          meter: meter,
           onDb: (db, {transient = false}) =>
               onChanged(mix.copyWith(gainDb: db), transient: transient),
           onCommit: onCommit),
@@ -795,8 +785,7 @@ class _ChannelStrip extends StatelessWidget {
         fader: _faderOf(
             theme,
             mix.gainDb,
-            level,
-            peak,
+            meter,
             (db, {transient = false}) =>
                 onChanged(mix.copyWith(gainDb: db), transient: transient),
             onCommit,
@@ -879,8 +868,7 @@ class _ArmToggle extends StatelessWidget {
 class _ReturnStrip extends StatelessWidget {
   final String letter;
   final ReturnChannel ret;
-  final (double, double) level;
-  final (double, double) peak;
+  final _Meter meter;
   final MixerLook theme;
   final _Bands bands;
   final _MixWrite<ReturnChannel> onChanged;
@@ -898,8 +886,7 @@ class _ReturnStrip extends StatelessWidget {
   const _ReturnStrip({
     required this.letter,
     required this.ret,
-    required this.level,
-    required this.peak,
+    required this.meter,
     required this.theme,
     required this.bands,
     required this.onChanged,
@@ -1008,8 +995,7 @@ class _ReturnStrip extends StatelessWidget {
                 key: const ValueKey("returnMute"), what: "This return"),
           ],
           db: mix.gainDb,
-          level: level,
-          peak: peak,
+          meter: meter,
           onDb: (db, {transient = false}) =>
               set(mix.copyWith(gainDb: db), transient: transient),
           onCommit: onCommit),
@@ -1031,8 +1017,7 @@ class _ReturnStrip extends StatelessWidget {
         fader: _faderOf(
             theme,
             mix.gainDb,
-            level,
-            peak,
+            meter,
             (db, {transient = false}) =>
                 set(mix.copyWith(gainDb: db), transient: transient),
             onCommit,
@@ -1060,8 +1045,7 @@ class _SceneStrip extends StatelessWidget {
   final String name;
   final ChannelMix mix;
   final List<String> chain;
-  final (double, double) level;
-  final (double, double) peak;
+  final _Meter meter;
   final MixerLook theme;
   final _Bands bands;
   final _MixWrite<ChannelMix> onChanged;
@@ -1077,8 +1061,7 @@ class _SceneStrip extends StatelessWidget {
     required this.name,
     required this.mix,
     required this.chain,
-    required this.level,
-    required this.peak,
+    required this.meter,
     required this.theme,
     required this.bands,
     required this.onChanged,
@@ -1176,8 +1159,7 @@ class _SceneStrip extends StatelessWidget {
                 icon: Icons.power_settings_new),
           ],
           db: mix.gainDb,
-          level: level,
-          peak: peak,
+          meter: meter,
           onDb: (db, {transient = false}) =>
               onChanged(mix.copyWith(gainDb: db), transient: transient),
           onCommit: onCommit),
@@ -1202,8 +1184,7 @@ class _SceneStrip extends StatelessWidget {
         fader: _faderOf(
             theme,
             mix.gainDb,
-            level,
-            peak,
+            meter,
             (db, {transient = false}) =>
                 onChanged(mix.copyWith(gainDb: db), transient: transient),
             onCommit,
@@ -1225,8 +1206,7 @@ class _SceneStrip extends StatelessWidget {
 class _MasterStrip extends StatelessWidget {
   final MasterMix mix;
   final SpeakerLayout speakers;
-  final (double, double) level;
-  final (double, double) peak;
+  final _Meter meter;
   final MixerLook theme;
   final _Bands bands;
   final _MixWrite<MasterMix> onChanged;
@@ -1251,8 +1231,7 @@ class _MasterStrip extends StatelessWidget {
   const _MasterStrip({
     required this.mix,
     required this.speakers,
-    required this.level,
-    required this.peak,
+    required this.meter,
     required this.theme,
     required this.bands,
     required this.onChanged,
@@ -1349,8 +1328,7 @@ class _MasterStrip extends StatelessWidget {
             bare: bands.bare,
             buttons: const [],
             db: mix.gainDb,
-            level: level,
-            peak: peak,
+            meter: meter,
             onDb: (db, {transient = false}) =>
                 onChanged(mix.copyWith(gainDb: db), transient: transient),
             onCommit: onCommit),
@@ -1377,8 +1355,7 @@ class _MasterStrip extends StatelessWidget {
           fader: _faderOf(
               theme,
               mix.gainDb,
-              level,
-              peak,
+              meter,
               (db, {transient = false}) =>
                   onChanged(mix.copyWith(gainDb: db), transient: transient),
               onCommit,
@@ -1556,6 +1533,40 @@ class _ClipScrolls {
   }
 }
 
+/// _OnSessionPulse builds a slot again on each beat of the session's pulse
+/// (see _sessionPulse) while [_pulses]: waiting to blink, or playing to go
+/// round. The desk is not built again for it.
+mixin _OnSessionPulse<T extends StatefulWidget> on State<T> {
+  bool get _pulses;
+
+  /// _slotNow is the slot's state now, and _slotWas what it was built
+  /// with: changed on a beat -- a clip played out, the playhead moving on
+  /// -- it is built again even once it no longer pulses.
+  Object? get _slotNow;
+  Object? _slotWas;
+
+  void _beat() {
+    if (!mounted) return;
+    var now = _slotNow;
+    if (_pulses || now != _slotWas) {
+      _slotWas = now;
+      setState(() {});
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _sessionPulse.addListener(_beat);
+  }
+
+  @override
+  void dispose() {
+    _sessionPulse.removeListener(_beat);
+    super.dispose();
+  }
+}
+
 /// _blinkOn is whether something waiting for a bar is lit at this moment:
 /// a quarter of a second on, a quarter off.
 bool get _blinkOn => DateTime.now().millisecondsSinceEpoch ~/ 250 % 2 == 0;
@@ -1656,7 +1667,23 @@ class _ClipSlot extends StatefulWidget {
   State<_ClipSlot> createState() => _ClipSlotState();
 }
 
-class _ClipSlotState extends State<_ClipSlot> {
+class _ClipSlotState extends State<_ClipSlot> with _OnSessionPulse {
+  @override
+  Object? get _slotNow =>
+      widget.controller.clipState(widget.channel, widget.row);
+
+  @override
+  bool get _pulses =>
+      switch (widget.controller.clipState(widget.channel, widget.row)) {
+        ClipState.queued ||
+        ClipState.playing ||
+        ClipState.stopping ||
+        ClipState.recordQueued ||
+        ClipState.recording =>
+          true,
+        _ => false,
+      };
+
   /// _keys has the keyboard once the slot is clicked: see SlotKeys.
   final FocusNode _keys = FocusNode(debugLabel: "clipSlot");
 
@@ -2307,16 +2334,14 @@ Widget _miniMixerBand(
   bool bare = false,
   required List<Widget?> buttons,
   required double db,
-  required (double, double) level,
-  required (double, double) peak,
+  required _Meter meter,
   required _MixWrite<double> onDb,
   required VoidCallback onCommit,
 }) =>
     bare
         ? _MiniFader(
             db: db,
-            level: level,
-            peak: peak,
+            meter: meter,
             theme: theme,
             onChanged: onDb,
             onCommit: onCommit)
@@ -2357,8 +2382,7 @@ Widget _miniMixerBand(
             Expanded(
               child: _MiniFader(
                   db: db,
-                  level: level,
-                  peak: peak,
+                  meter: meter,
                   theme: theme,
                   onChanged: onDb,
                   onCommit: onCommit),
@@ -2369,16 +2393,14 @@ Widget _miniMixerBand(
 /// dragged sideways it sets the level, double-clicked it is nought.
 class _MiniFader extends StatelessWidget {
   final double db;
-  final (double, double) level;
-  final (double, double) peak;
+  final _Meter meter;
   final MixerLook theme;
   final _MixWrite<double> onChanged;
   final VoidCallback onCommit;
 
   const _MiniFader({
     required this.db,
-    required this.level,
-    required this.peak,
+    required this.meter,
     required this.theme,
     required this.onChanged,
     required this.onCommit,
@@ -2401,8 +2423,7 @@ class _MiniFader extends StatelessWidget {
             cursor: SystemMouseCursors.resizeLeftRight,
             child: CustomPaint(
               size: Size(w, box.maxHeight),
-              painter:
-                  _MeterPainter(level, peak, theme.studio, horizontal: true),
+              painter: _MeterPainter(meter, theme.studio, horizontal: true),
               foregroundPainter:
                   _CapMark((1 - faderPosition(db)) * w, theme.studio.text),
             ),

@@ -319,6 +319,26 @@ void main() {
       expect(engine.last.volume, closeTo(0.3, 1e-9));
     });
 
+    // Ken's systems review, 2026-11-08: a sound whose file had gone was
+    // tried again at every frame, telling the whole editor each time.
+    test("a missing file is not tried again at every frame", () async {
+      var gone = AudioRuntime(engine: engine, locate: (id) async => null);
+      addTearDown(gone.dispose);
+      var told = 0;
+      gone.addListener(() => told++);
+      var e = AudioElement(const ElementBase(id: "t", visible: false),
+          clip: const MediaClip(
+              timed: true, playlist: [MediaSource(assetId: "nowhere")]));
+      for (var f = 0; f < 30; f++) {
+        gone.cue(e, ClipMoment(0, f / 30, 1), playing: true);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(told, lessThanOrEqualTo(2),
+          reason: "tried once, not thirty times");
+      expect(engine.voices, isEmpty);
+    });
+
     // Played from part way through a sound, it starts silent and rises over
     // a few milliseconds: a waveform cut into mid-swing clicks. From the top
     // it starts at its level, the file itself starting from silence.

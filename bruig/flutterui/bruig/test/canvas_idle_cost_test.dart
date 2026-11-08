@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_runtime.dart';
 import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/model/automation.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -305,6 +306,61 @@ void main() {
       expect(tester.widget<FractionallySizedBox>(level).heightFactor,
           closeTo(0.9, 0.02),
           reason: "half the gain, six down of sixty");
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    // Ken's systems review, 2026-11-08: the whole mixer was built again
+    // thirty times a second for its meters.
+    testWidgets("the meters move without the desk built again", (tester) async {
+      var (c, engine) = await open(tester, "a");
+      String reading() => tester
+          .widget<Tooltip>(find.descendant(
+              of: find.byKey(const ValueKey("junction-0")),
+              matching: find.byType(Tooltip)))
+          .message!;
+      engine.heardTaps = [(0.5, 0.5), (0.5, 0.5)];
+      await tester.pump(const Duration(milliseconds: 100));
+      var before = mixerDeskBuilds;
+      for (var i = 0; i < 10; i++) {
+        var v = i.isEven ? 0.5 : 0.1;
+        engine
+          ..heardLevels = (v, v)
+          ..heardTaps = [(v, v), (v, v)];
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(reading(), startsWith("-20.0 dB"), reason: "the joins read on");
+      expect(mixerDeskBuilds - before, 0,
+          reason: "a second of meters, and the desk not built once");
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets("playing, the desk follows the playhead only when automated",
+        (tester) async {
+      var (c, _) = await open(tester, "a");
+      c.play();
+      addTearDown(c.pause);
+      await tester.pump(const Duration(milliseconds: 100));
+      var before = mixerDeskBuilds, from = c.frame;
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(c.frame, greaterThan(from), reason: "it plays");
+      expect(mixerDeskBuilds - before, 0,
+          reason: "nothing on it moves with the playhead");
+      // A fader on a lane: the strip shows it moving, so the desk follows.
+      var lane = c.timelineChannels.single;
+      c.setChannelMix(
+          lane,
+          lane.mix.copyWith(automation: const [
+            AutomationLane("volume", [(0, -20), (20, 0)])
+          ]));
+      await tester.pump(const Duration(milliseconds: 50));
+      before = mixerDeskBuilds;
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(mixerDeskBuilds - before, greaterThan(2));
+      c.pause();
       await tester.pumpWidget(const SizedBox());
     });
 

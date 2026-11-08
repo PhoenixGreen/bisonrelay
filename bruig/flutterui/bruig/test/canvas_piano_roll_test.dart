@@ -253,6 +253,23 @@ void main() {
       await tester.pump();
     }
 
+    // Ken's systems review, 2026-11-08: every note laid out again at every
+    // frame of play.
+    testWidgets("playing, only its playhead moves", (tester) async {
+      await open(tester);
+      c.play();
+      addTearDown(c.pause);
+      await tester.pump(const Duration(milliseconds: 50));
+      var builds = pianoRollBuilds, moved = c.playheadMoved.value;
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(c.playheadMoved.value, greaterThan(moved), reason: "it plays");
+      expect(pianoRollBuilds - builds, 0, reason: "the notes not laid again");
+      c.pause();
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets("the lanes start folded, a bar to open them by",
         (tester) async {
       await open(tester, lanes: false);

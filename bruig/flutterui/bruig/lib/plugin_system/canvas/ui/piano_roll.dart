@@ -207,6 +207,47 @@ class _PianoRollState extends State<PianoRoll> {
     for (var s in [_grid1, _ruler, _laneScroll, _laneScroll2]) {
       s.addListener(() => _follow(s));
     }
+    c.addListener(_changed);
+  }
+
+  /// _changes tells the roll to be built again: on every change the canvas
+  /// tells of but the playhead moving on, which only its line follows (see
+  /// _HeadPainter). Ken's systems review, 2026-11-08: every note was laid
+  /// out again at every frame of play.
+  final ValueNotifier<int> _changes = ValueNotifier(0);
+
+  void _changed() {
+    if (c.notifyingPlayhead) return;
+    _changes.value++;
+  }
+
+  /// _built is the roll as last built, handed back while nothing it shows
+  /// has changed -- whatever holds it is built again at every frame of
+  /// play. Let go of on a change of its own, of what it is given, or of
+  /// what it inherits.
+  Widget? _built;
+
+  @override
+  void setState(VoidCallback fn) {
+    _built = null;
+    super.setState(fn);
+  }
+
+  @override
+  void didUpdateWidget(PianoRoll old) {
+    super.didUpdateWidget(old);
+    if (old.controller != widget.controller ||
+        old.inClipEditor != widget.inClipEditor) {
+      old.controller.removeListener(_changed);
+      widget.controller.addListener(_changed);
+      _built = null;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _built = null;
   }
 
   void _follow(ScrollController lead) {
@@ -223,6 +264,8 @@ class _PianoRollState extends State<PianoRoll> {
 
   @override
   void dispose() {
+    c.removeListener(_changed);
+    _changes.dispose();
     _vertical.dispose();
     _grid1.dispose();
     _ruler.dispose();
@@ -748,9 +791,10 @@ class _PianoRollState extends State<PianoRoll> {
   // ---- Building
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-        listenable: c,
+  Widget build(BuildContext context) => _built ??= ListenableBuilder(
+        listenable: _changes,
         builder: (context, _) {
+          pianoRollBuilds++;
           var content = c.rollContent;
           var look = MixerLook.of(context);
           if (content == null) return const SizedBox();
@@ -798,7 +842,6 @@ class _PianoRollState extends State<PianoRoll> {
             var tallest = (room - _splitH - _gridLeast) / _lanes.length;
             var open = showLanes && _lanesOpen && tallest >= _laneLeast;
             var laneH = open ? math.min(_laneTall, tallest) : 0.0;
-            var head = c.rollPlayhead ?? c.rollCursor;
             return Focus(
               focusNode: _focus,
               onKeyEvent: _onKey,
@@ -843,7 +886,10 @@ class _PianoRollState extends State<PianoRoll> {
                                   size: Size(width, _rulerH),
                                   painter: _RulerPainter(content.beats, _beatW,
                                       c.document.audio.beatsPerBar, look.studio,
-                                      clip: content.clip, head: head),
+                                      clip: content.clip),
+                                  foregroundPainter: _HeadPainter(
+                                      c, _beatW, look.studio,
+                                      marker: true),
                                 ),
                               ),
                             ),
@@ -927,13 +973,13 @@ class _PianoRollState extends State<PianoRoll> {
                                           ghosts: _ghostNotes(),
                                           root: root,
                                           steps: _scale ? steps : null,
-                                          playhead: head,
-                                          playing: c.rollPlayhead != null,
                                           box: _drag == _Drag.box
                                               ? Rect.fromPoints(_from, _to)
                                               : null,
                                           studio: look.studio,
                                         ),
+                                        foregroundPainter: _HeadPainter(
+                                            c, _beatW, look.studio),
                                       ),
                                     ),
                                   ),
@@ -1903,10 +1949,8 @@ class _RulerPainter extends CustomPainter {
   final StudioColors studio;
   final bool clip;
 
-  /// head is the playhead, in beats: a marker on the ruler.
-  final double head;
   _RulerPainter(this.beats, this.beatW, this.beatsPerBar, this.studio,
-      {required this.clip, required this.head});
+      {required this.clip});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1931,22 +1975,11 @@ class _RulerPainter extends CustomPainter {
       )..layout();
       tp.paint(canvas, Offset(b * beatW + 3, 8));
     }
-    var x = head * beatW;
-    canvas.drawPath(
-        Path()
-          ..moveTo(x - 5, size.height - 9)
-          ..lineTo(x + 5, size.height - 9)
-          ..lineTo(x, size.height)
-          ..close(),
-        Paint()..color = studio.text);
   }
 
   @override
   bool shouldRepaint(_RulerPainter old) =>
-      old.beats != beats ||
-      old.beatW != beatW ||
-      old.clip != clip ||
-      old.head != head;
+      old.beats != beats || old.beatW != beatW || old.clip != clip;
 }
 
 class _GridPainter extends CustomPainter {
@@ -1961,14 +1994,10 @@ class _GridPainter extends CustomPainter {
   final int root;
   final List<int>? steps;
 
-  /// playhead is the playhead, in beats: brighter while playing.
-  final double? playhead;
-  final bool playing;
   final Rect? box;
   final StudioColors studio;
 
   _GridPainter({
-    this.playing = false,
     required this.notes,
     required this.keys,
     required this.rowH,
@@ -1980,7 +2009,6 @@ class _GridPainter extends CustomPainter {
     this.ghosts = const [],
     required this.root,
     required this.steps,
-    required this.playhead,
     required this.box,
     required this.studio,
   });
@@ -2094,18 +2122,56 @@ class _GridPainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..color = studio.on);
     }
-    if (playhead case var p?) {
-      canvas.drawLine(
-          Offset(p * beatW, 0),
-          Offset(p * beatW, size.height),
-          Paint()
-            ..strokeWidth = playing ? 2 : 1
-            ..color = studio.text.withValues(alpha: playing ? 0.8 : 0.5));
-    }
   }
 
   @override
   bool shouldRepaint(_GridPainter old) => true;
+}
+
+/// _HeadPainter is the playhead over the grid -- a line, brighter while it
+/// plays -- or over the ruler, a marker: painted again each time it moves
+/// on (CanvasController.playheadMoved), with nothing under it built again.
+/// pianoRollBuilds counts the roll built, for a test that playing does not
+/// build it again at every frame.
+@visibleForTesting
+int pianoRollBuilds = 0;
+
+class _HeadPainter extends CustomPainter {
+  final CanvasController c;
+  final double beatW;
+  final StudioColors studio;
+  final bool marker;
+  _HeadPainter(this.c, this.beatW, this.studio, {this.marker = false})
+      : super(repaint: c.playheadMoved);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var playing = c.rollPlayhead;
+    var x = (playing ?? c.rollCursor) * beatW;
+    if (marker) {
+      canvas.drawPath(
+          Path()
+            ..moveTo(x - 5, size.height - 9)
+            ..lineTo(x + 5, size.height - 9)
+            ..lineTo(x, size.height)
+            ..close(),
+          Paint()..color = studio.text);
+      return;
+    }
+    canvas.drawLine(
+        Offset(x, 0),
+        Offset(x, size.height),
+        Paint()
+          ..strokeWidth = playing != null ? 2 : 1
+          ..color = studio.text.withValues(alpha: playing != null ? 0.8 : 0.5));
+  }
+
+  @override
+  bool shouldRepaint(_HeadPainter old) =>
+      old.c != c ||
+      old.beatW != beatW ||
+      old.studio != studio ||
+      old.marker != marker;
 }
 
 class _VelocityPainter extends CustomPainter {

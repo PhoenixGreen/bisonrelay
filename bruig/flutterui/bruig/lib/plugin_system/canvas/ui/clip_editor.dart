@@ -216,6 +216,68 @@ class ClipEditor extends StatefulWidget {
 class _ClipEditorState extends State<ClipEditor> {
   CanvasController get c => widget.controller;
 
+  @override
+  void initState() {
+    super.initState();
+    c.addListener(_changed);
+  }
+
+  @override
+  void dispose() {
+    c.removeListener(_changed);
+    _changes.dispose();
+    super.dispose();
+  }
+
+  /// _changes tells the editor to be built again: on every change the
+  /// canvas tells of but the playhead moving on -- its waveform's playhead
+  /// moves by itself -- unless that took its clip from waiting to playing,
+  /// or from playing to stopped (Ken's systems review, 2026-11-08).
+  final ValueNotifier<int> _changes = ValueNotifier(0);
+  Object? _stateWas;
+
+  Object? get _clipStateNow => switch (c.clipEditing) {
+        PianoRollTarget(:var channel, row: var row?) =>
+          c.clipState(channel, row),
+        _ => null,
+      };
+
+  void _changed() {
+    var now = _clipStateNow;
+    if (c.notifyingPlayhead && now == _stateWas) return;
+    _stateWas = now;
+    _changes.value++;
+  }
+
+  /// _built is the editor as last built, handed back while nothing it
+  /// shows has changed: see CanvasMixer's.
+  Widget? _built;
+
+  @override
+  void setState(VoidCallback fn) {
+    _built = null;
+    super.setState(fn);
+  }
+
+  @override
+  void didUpdateWidget(ClipEditor old) {
+    super.didUpdateWidget(old);
+    if (old.controller != widget.controller ||
+        old.wide != widget.wide ||
+        old.part != widget.part ||
+        old.canWiden != widget.canWiden) {
+      old.controller.removeListener(_changed);
+      widget.controller.addListener(_changed);
+      _built = null;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _built = null;
+  }
+
   /// _said is what the last Reverse, Crop or Warp had to say, and _busy
   /// whether one is still working.
   String? _said;
@@ -256,8 +318,8 @@ class _ClipEditorState extends State<ClipEditor> {
   }
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-        listenable: c,
+  Widget build(BuildContext context) => _built ??= ListenableBuilder(
+        listenable: _changes,
         builder: (context, _) {
           var look = MixerLook.of(context);
           if (widget.part) {

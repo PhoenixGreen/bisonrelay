@@ -222,10 +222,15 @@ class _CanvasMixerState extends State<CanvasMixer>
   CanvasController get controller => widget.controller;
   late final Ticker _ticker;
 
+  /// _board is every strip's meter. It notifies as they move, and only what
+  /// shows a level listens: the desk is not built again thirty times a
+  /// second for them (Ken's systems review, 2026-11-08).
+  final _MeterBoard _board = _MeterBoard();
+
   /// _peaks is each strip's held peak, per side, in decibels; they fall back
-  /// slowly, as a meter's peak hold does.
-  final Map<String, (double, double)> _peaks = {};
-  final Map<String, (double, double)> _now = {};
+  /// slowly, as a meter's peak hold does. _now is each one's level.
+  Map<String, (double, double)> get _peaks => _board.peaks;
+  Map<String, (double, double)> get _now => _board.now;
 
   /// _editing is the strip whose chain of effects is shown: in the effects
   /// panel the controller's effectsOf, and never among the strips, whose
@@ -298,7 +303,7 @@ class _CanvasMixerState extends State<CanvasMixer>
       // Hidden from the Chain's ⋯: a gap between devices, no more.
       !controller.chainMeters
           ? const SizedBox(width: 4)
-          : _Junction(
+          : _metered(() => _Junction(
               i,
               i < _taps.length ? _taps[i] : (-90.0, -90.0),
               i < _tapPeaks.length ? _tapPeaks[i] : (-90.0, -90.0),
@@ -311,7 +316,12 @@ class _CanvasMixerState extends State<CanvasMixer>
               onListen: () => controller.listenAt(
                   key, controller.listening == (key, i) ? null : i),
               onAnalyser: (kind) =>
-                  controller.insertDevice(key, MixDevice(kind), i));
+                  controller.insertDevice(key, MixDevice(kind), i)));
+
+  /// _metered is [make]'s widget built again as the meters move: one that
+  /// shows a level as more than a bar (see _MeterPainter), or many of them.
+  Widget _metered(Widget Function() make) =>
+      ListenableBuilder(listenable: _board, builder: (context, _) => make());
 
   Loudness? _measured;
   bool _measuring = false;
@@ -325,6 +335,7 @@ class _CanvasMixerState extends State<CanvasMixer>
     super.initState();
     _ticker = createTicker(_meter)..start();
     controller.addListener(_wakeIfPlaying);
+    controller.addListener(_changed);
     controller.keysHeld.addListener(_wakeIfPlaying);
   }
 
@@ -362,6 +373,24 @@ class _CanvasMixerState extends State<CanvasMixer>
 
   bool get _sounding => controller.playing || controller.sessionActive;
 
+  /// _deskChanges tells the desk to be built again: on every change the
+  /// canvas tells of but the playhead moving on, which it follows only where
+  /// a strip is automated (Ken's systems review, 2026-11-08: the whole mixer
+  /// was built at every frame of play). The meters and the slots have their
+  /// own beats (_board, _sessionPulse).
+  final _MeterBoard _deskChanges = _MeterBoard();
+  String _channelsWere = "";
+  bool _sessionWas = false;
+
+  void _changed() {
+    if (controller.notifyingPlayhead && !controller.mixFollowsPlayhead) {
+      // A channel come or gone under the playhead is still shown.
+      var now = [for (var l in controller.timelineChannels) l.key].join("|");
+      if (now == _channelsWere) return;
+    }
+    _deskChanges.moved();
+  }
+
   /// _wakeIfPlaying wakes the meters on any change the canvas tells of --
   /// a key pressed, a clip launched, playing -- rather than waiting for the
   /// slow check: Ken's channel meters stood still while he played keys. At
@@ -378,9 +407,12 @@ class _CanvasMixerState extends State<CanvasMixer>
   void dispose() {
     controller.removeListener(_wakeIfPlaying);
     controller.keysHeld.removeListener(_wakeIfPlaying);
+    controller.removeListener(_changed);
+    _deskChanges.dispose();
     _resting?.cancel();
     _clipScrolls.dispose();
     _ticker.dispose();
+    _board.dispose();
     _chainScroll.dispose();
     super.dispose();
   }
@@ -488,11 +520,17 @@ class _CanvasMixerState extends State<CanvasMixer>
       ];
       _taps = taps;
     }
-    // Clips waiting for a bar blink, and playing ones go round.
-    if (controller.sessionActive) moved = true;
-    if (moved && mounted) setState(() {});
-    // Nothing playing and every meter down: rest.
+    // Clips waiting for a bar blink, and playing ones go round: the slots
+    // listen for it, not the desk.
+    // And once more as the session stops: its last slots shown stopped.
+    var session = controller.sessionActive;
+    if (session || _sessionWas) _sessionPulse.moved();
+    _sessionWas = session;
+    if (moved && mounted) _board.moved();
+    // Nothing playing -- no slot waiting either -- and every meter down:
+    // rest.
     if (!moved &&
+        !session &&
         !_sounding &&
         _peaks.values.every((p) => math.max(p.$1, p.$2) <= _floor)) {
       _rest();
@@ -520,7 +558,41 @@ class _CanvasMixerState extends State<CanvasMixer>
   /// and dials read the pointer in their own coordinates, so they stay under
   /// it.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => _built ??= _build(context);
+
+  /// _built is the desk as last built, handed back while nothing it shows
+  /// has changed: whatever holds the mixer is built again at every frame of
+  /// play, and the desk need not be with it. Let go of on a change of its
+  /// own (setState), of what it is given, or of what it inherits -- and the
+  /// desk's own beat (_deskChanges) builds it again from inside.
+  Widget? _built;
+
+  @override
+  void setState(VoidCallback fn) {
+    _built = null;
+    super.setState(fn);
+  }
+
+  @override
+  void didUpdateWidget(CanvasMixer old) {
+    super.didUpdateWidget(old);
+    if (old.controller != widget.controller ||
+        old.height != widget.height ||
+        old.only != widget.only ||
+        old.embedded != widget.embedded ||
+        old.effects != widget.effects ||
+        old.resizable != widget.resizable) {
+      _built = null;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _built = null;
+  }
+
+  Widget _build(BuildContext context) {
     var zoom = MediaQuery.textScalerOf(context).scale(1);
     // Never so far that the desk is left less than its least height: a
     // mixer folded to one line, zoomed, would be too short for its names.
@@ -568,8 +640,11 @@ class _CanvasMixerState extends State<CanvasMixer>
   Widget _desk(BuildContext context, double zoom) {
     var theme = MixerLook.of(context);
     return ListenableBuilder(
-      listenable: controller,
+      listenable: _deskChanges,
       builder: (context, _) {
+        mixerDeskBuilds++;
+        _channelsWere =
+            [for (var l in controller.timelineChannels) l.key].join("|");
         var lanes = [
           for (var l in controller.timelineChannels)
             if (widget.only == null || l.key == widget.only) l,
@@ -849,8 +924,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                                 controller.document.kind),
                             mix: controller.sceneBus,
                             chain: controller.chainOf(sceneBusKey),
-                            level: _now[sceneBusKey] ?? (-90, -90),
-                            peak: _peaks[sceneBusKey] ?? (-90, -90),
+                            meter: _Meter(_board, sceneBusKey),
                             theme: theme,
                             bands: bands,
                             narrow: narrow.contains(sceneBusKey),
@@ -875,8 +949,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                           key: const ValueKey("strip-master"),
                           mix: master,
                           speakers: controller.document.audio.speakers,
-                          level: _now[_master] ?? (-90, -90),
-                          peak: _peaks[_master] ?? (-90, -90),
+                          meter: _Meter(_board, _master),
                           theme: theme,
                           bands: bands,
                           narrow: narrow.contains(_master),
@@ -995,8 +1068,7 @@ class _CanvasMixerState extends State<CanvasMixer>
       onOpenDevice: (id) => controller.openEffects(lane.key, device: id),
       onRemoveDevice: (id) => _removeDevice(lane.key, id),
       armed: controller.armed.contains(lane.key),
-      level: _now[lane.key] ?? (-90, -90),
-      peak: _peaks[lane.key] ?? (-90, -90),
+      meter: _Meter(_board, lane.key),
       theme: theme,
       bands: bands,
       narrow: controller.narrowStrips.contains(lane.key),
@@ -1032,8 +1104,7 @@ class _CanvasMixerState extends State<CanvasMixer>
         key: ValueKey("strip-${ret.id}"),
         letter: returnLetter(index),
         ret: ret,
-        level: _now[ret.id] ?? (-90, -90),
-        peak: _peaks[ret.id] ?? (-90, -90),
+        meter: _Meter(_board, ret.id),
         theme: theme,
         bands: bands,
         narrow: controller.narrowStrips.contains(ret.id),
@@ -1212,14 +1283,14 @@ class _CanvasMixerState extends State<CanvasMixer>
           chainZone("Source", const Color(0xFF3FB08D), h),
           device(
               "busSource",
-              (f, fold) => _BusSourceDevice(
+              (f, fold) => _metered(() => _BusSourceDevice(
                   controller: controller,
                   ret: isMaster ? null : ret,
                   levels: _now,
                   theme: theme,
                   folded: f,
                   onFold: fold,
-                  height: h)),
+                  height: h))),
         ],
         // A scene's bus: everything heard in it, summed -- its Source, as
         // the prototype has it.
@@ -1227,13 +1298,13 @@ class _CanvasMixerState extends State<CanvasMixer>
           chainZone("Source", _sceneColour, h),
           device(
               "sceneSound",
-              (f, fold) => _SceneSoundDevice(
+              (f, fold) => _metered(() => _SceneSoundDevice(
                   controller: controller,
                   levels: _now,
                   theme: theme,
                   folded: f,
                   onFold: fold,
-                  height: h)),
+                  height: h))),
         ],
         // An audio channel's sounds -- on the timeline and in its slots --
         // before anything is done to them.
@@ -1404,12 +1475,12 @@ class _CanvasMixerState extends State<CanvasMixer>
         if (isMaster) ...[
           device(
               "limiter",
-              (f, fold) => LimiterDevice(
+              (f, fold) => _metered(() => LimiterDevice(
                   controller: controller,
                   folded: f,
                   onFold: fold,
                   height: h,
-                  reductionDb: (_now[limitKey] ?? (0.0, 0.0)).$1)),
+                  reductionDb: (_now[limitKey] ?? (0.0, 0.0)).$1))),
           device(
               "loudness",
               (f, fold) => _LoudnessDevice(
@@ -1426,7 +1497,7 @@ class _CanvasMixerState extends State<CanvasMixer>
           // Where it is heard: the speakers, each one's level.
           device(
               "output",
-              (f, fold) => _MasterOutputDevice(
+              (f, fold) => _metered(() => _MasterOutputDevice(
                     controller: controller,
                     levels: [
                       for (var c = 0;
@@ -1439,7 +1510,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                     folded: f,
                     onFold: fold,
                     height: h,
-                  )),
+                  ))),
         ],
         // Where it is heard from, big enough to place it by: the room, its
         // speakers and the channel among them, stereo or surround.
@@ -1477,8 +1548,7 @@ class _CanvasMixerState extends State<CanvasMixer>
               // The channel's own strip, as on the mixer (panning, mute and solo,
               // fader and meter), under its name.
               (f, fold) {
-            var level = _now[key] ?? (-90.0, -90.0);
-            var peak = _peaks[key] ?? (-90.0, -90.0);
+            var meter = _Meter(_board, key);
             var mix = lane.mix;
             void write(ChannelMix next, {bool transient = false}) {
               controller.beginInteraction();
@@ -1521,7 +1591,7 @@ class _CanvasMixerState extends State<CanvasMixer>
               height: h,
               foldedBody: CustomPaint(
                   key: const ValueKey("meterFolded"),
-                  painter: _MeterPainter(level, peak, theme.studio)),
+                  painter: _MeterPainter(meter, theme.studio)),
               body: Padding(
                 padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                 child: Column(children: [
@@ -1561,8 +1631,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                   Expanded(
                     child: _Fader(
                       db: mix.gainDb,
-                      level: level,
-                      peak: peak,
+                      meter: meter,
                       theme: theme,
                       wide: true,
                       onChanged: set,
@@ -1616,12 +1685,18 @@ class _CanvasMixerState extends State<CanvasMixer>
                   Row(children: [
                     Text("Peak", style: small),
                     const Spacer(),
-                    Text(
-                        peak.$1 <= -80 && peak.$2 <= -80
-                            ? "−∞"
-                            : "${math.max(peak.$1, peak.$2).toStringAsFixed(1)} dB",
-                        key: const ValueKey("outputPeak"),
-                        style: value),
+                    // Read again as the meters move, not the card.
+                    ListenableBuilder(
+                        listenable: _board,
+                        builder: (context, _) {
+                          var peak = meter.peak;
+                          return Text(
+                              peak.$1 <= -80 && peak.$2 <= -80
+                                  ? "−∞"
+                                  : "${math.max(peak.$1, peak.$2).toStringAsFixed(1)} dB",
+                              key: const ValueKey("outputPeak"),
+                              style: value);
+                        }),
                   ]),
                   Row(children: [
                     Text("To", style: small),
@@ -1643,7 +1718,7 @@ class _CanvasMixerState extends State<CanvasMixer>
           if (isScene) chainZone("Output", const Color(0xFFCFCBDF), h),
           device("busOutput", (f, fold) {
             var mix = isScene ? controller.sceneBus : ret!.mix;
-            return _BusOutputDevice(
+            return _metered(() => _BusOutputDevice(
               id: "busOutput",
               mix: mix,
               level: _now[key] ?? (-90.0, -90.0),
@@ -1663,7 +1738,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                 if (!transient) controller.endInteraction();
               },
               onCommit: controller.endInteraction,
-            );
+            ));
           }),
         ],
         // The master's own meter, on the master's chain only: a channel's
@@ -1880,8 +1955,7 @@ class _DbReadingState extends State<DbReading> {
 
 class _Fader extends StatelessWidget {
   final double db;
-  final (double, double) level;
-  final (double, double) peak;
+  final _Meter meter;
   final MixerLook theme;
   final _MixWrite<double> onChanged;
   final VoidCallback onCommit;
@@ -1895,8 +1969,7 @@ class _Fader extends StatelessWidget {
 
   const _Fader({
     required this.db,
-    required this.level,
-    required this.peak,
+    required this.meter,
     required this.theme,
     required this.onChanged,
     required this.onCommit,
@@ -1945,7 +2018,7 @@ class _Fader extends StatelessWidget {
                           ? 22
                           : 14,
                   h),
-              painter: _MeterPainter(level, peak, theme.studio),
+              painter: _MeterPainter(meter, theme.studio),
             ),
           ]);
         },
@@ -2162,7 +2235,8 @@ class _Junction extends StatelessWidget {
                       width: 9,
                       height: math.min(150.0, math.max(30.0, height - 80)),
                       child: CustomPaint(
-                          painter: _MeterPainter(level, peak, colors)),
+                          painter: _MeterPainter(
+                              _Meter.fixed(level, peak), colors)),
                     ),
                     const SizedBox(height: 3),
                     SizedBox(
@@ -2199,14 +2273,20 @@ class _Junction extends StatelessWidget {
 }
 
 class _MeterPainter extends CustomPainter {
-  final (double, double) level;
-  final (double, double) peak;
+  final _Meter meter;
   final StudioColors colors;
 
   /// horizontal lays it on its side: nought on the right, the left side's
   /// bar above the right's.
   final bool horizontal;
-  _MeterPainter(this.level, this.peak, this.colors, {this.horizontal = false});
+
+  /// Painted again as [meter]'s board moves, without the widget it is in
+  /// being built again.
+  _MeterPainter(this.meter, this.colors, {this.horizontal = false})
+      : super(repaint: meter.board);
+
+  (double, double) get level => meter.level;
+  (double, double) get peak => meter.peak;
 
   /// _fill is how far a meter is lit: it reads from minus sixty to nought, in
   /// segments, green, then amber for the last nine decibels, then red at the
@@ -2256,7 +2336,50 @@ class _MeterPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_MeterPainter old) =>
-      old.level != level || old.peak != peak || old.colors != colors;
+      !identical(old.meter.board, meter.board) ||
+      old.meter.key != meter.key ||
+      old.level != level ||
+      old.peak != peak ||
+      old.colors != colors ||
+      old.horizontal != horizontal;
+}
+
+/// mixerDeskBuilds counts the desk built, for a test that the meters move
+/// without it.
+@visibleForTesting
+int mixerDeskBuilds = 0;
+
+/// _MeterBoard is a desk's meters: each strip's level and held peak, in
+/// decibels, by its key. It notifies as they move -- about thirty times a
+/// second while there is sound -- and only the meters and readings listen.
+class _MeterBoard extends ChangeNotifier {
+  final Map<String, (double, double)> now = {};
+  final Map<String, (double, double)> peaks = {};
+  void moved() => notifyListeners();
+}
+
+/// _sessionPulse beats while the session plays: a slot waiting for its bar
+/// blinks on it, and a playing one's ring goes round.
+final _MeterBoard _sessionPulse = _MeterBoard();
+
+/// _Meter is one meter: strip [key]'s on [board], read as it is painted --
+/// or, fixed, the level and peak it was made with (a join's, built again
+/// as its board moves).
+class _Meter {
+  final _MeterBoard? board;
+  final String key;
+  final (double, double) _level, _peak;
+  const _Meter(_MeterBoard this.board, this.key)
+      : _level = (-90.0, -90.0),
+        _peak = (-90.0, -90.0);
+  const _Meter.fixed(this._level, this._peak)
+      : board = null,
+        key = "";
+
+  (double, double) get level =>
+      board == null ? _level : board!.now[key] ?? (-90.0, -90.0);
+  (double, double) get peak =>
+      board == null ? _peak : board!.peaks[key] ?? (-90.0, -90.0);
 }
 
 /// _MiniCurve is an EQ drawn small, on a strip's EQ slot.

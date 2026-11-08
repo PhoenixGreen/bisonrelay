@@ -428,6 +428,10 @@ class CanvasController extends ChangeNotifier {
   /// _viewOnly is set only while [_notifyView] is running.
   bool _viewOnly = false;
 
+  /// _playheadOnly is set only while the playhead's moving on is told of:
+  /// see notifyingPlayhead.
+  bool _playheadOnly = false;
+
   @override
   void notifyListeners() {
     if (_disposed) return;
@@ -3640,6 +3644,11 @@ class CanvasController extends ChangeNotifier {
   /// before anything else -- and only the stage is redrawn for it, not the
   /// whole editor (Ken: 200ms between a key and its note).
   final ValueNotifier<int> keysHeld = ValueNotifier(0);
+
+  /// playheadMoved goes up each time the playhead moves on as it plays: what
+  /// draws the playhead alone listens to it (the piano roll's line), rather
+  /// than being built again with everything else.
+  final ValueNotifier<int> playheadMoved = ValueNotifier(0);
 
   /// _freezing are the channels being frozen now: see freezeChain.
   final Set<String> _freezing = {};

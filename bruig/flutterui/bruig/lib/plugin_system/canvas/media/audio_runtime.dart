@@ -67,6 +67,12 @@ class _Playing {
   /// sound nobody wants any more.
   int generation = 0;
 
+  /// missing is when file [missingIndex] of its list was last found not to
+  /// be there: not asked for again on every frame (each try told the whole
+  /// editor of it, twice), but after a while, in case it has come.
+  Stopwatch? missing;
+  int missingIndex = -1;
+
   /// timed is a sound the playhead drives -- see AudioRuntime.cue -- which
   /// never moves itself on, and gain its fade at the moment the playhead is
   /// at.
@@ -549,6 +555,11 @@ class AudioRuntime extends ChangeNotifier {
       return;
     }
     if (!alive || p.index != moment.index) {
+      if (p.missing case var since?
+          when p.missingIndex == moment.index &&
+              since.elapsed < const Duration(seconds: 2)) {
+        return;
+      }
       unawaited(_start(p, moment.index,
           from: moment.time, fades: false, asked: Stopwatch()..start()));
       return;
@@ -779,6 +790,8 @@ class AudioRuntime extends ChangeNotifier {
       if (p.index < list.length - 1) {
         await _start(p, p.index + 1);
       } else {
+        p.missing = Stopwatch()..start();
+        p.missingIndex = p.index;
         p.playing = false;
         notifyListeners();
       }

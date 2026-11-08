@@ -336,7 +336,21 @@ class _MotionSlot extends StatefulWidget {
   State<_MotionSlot> createState() => _MotionSlotState();
 }
 
-class _MotionSlotState extends State<_MotionSlot> {
+class _MotionSlotState extends State<_MotionSlot> with _OnSessionPulse {
+  @override
+  Object? get _slotNow =>
+      widget.controller.motionSlotState(widget.element, widget.row);
+
+  @override
+  bool get _pulses =>
+      switch (widget.controller.motionSlotState(widget.element, widget.row)) {
+        MotionSlotState.queued ||
+        MotionSlotState.playing ||
+        MotionSlotState.stopping =>
+          true,
+        _ => false,
+      };
+
   final MenuController _menu = MenuController();
   Offset? _menuAt;
 

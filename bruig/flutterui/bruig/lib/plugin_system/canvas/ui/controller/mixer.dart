@@ -221,6 +221,22 @@ extension CanvasMixing on CanvasController {
     setAutomation(channel, lanes, transient: transient);
   }
 
+  /// mixFollowsPlayhead is whether a strip shows something the playhead
+  /// moves: a lane of automation, or the envelope of a clip playing in a
+  /// slot (see mixNow).
+  bool get mixFollowsPlayhead {
+    for (var l in timelineChannels) {
+      if (l.mix.automation.isNotEmpty) return true;
+    }
+    for (var MapEntry(key: channel, value: ch) in _clipChannels.entries) {
+      if (ch.now case var play?
+          when session.at(channel, play.row)?.automation.isNotEmpty ?? false) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// mixNow is [channel]'s mix as it plays now: its own, with each lane's
   /// setting put in but for those held by hand. What its strip shows.
   ChannelMix mixNow(TimelineChannel channel) {

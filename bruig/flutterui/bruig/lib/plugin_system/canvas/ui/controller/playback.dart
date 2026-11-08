@@ -620,12 +620,23 @@ extension CanvasPlayback on CanvasController {
   /// (see revision) -- the settings column, built at every frame of play,
   /// was most of what playing cost. Turned to another scene, everything.
   void _notifyPlayhead(bool turned) {
+    playheadMoved.value++;
     if (turned) {
       notifyListeners();
     } else {
-      _notifyView();
+      _playheadOnly = true;
+      try {
+        _notifyView();
+      } finally {
+        _playheadOnly = false;
+      }
     }
   }
+
+  /// notifyingPlayhead is whether what is being told of now is the playhead
+  /// moving on, and nothing else: what does not follow it (the mixer, with
+  /// nothing automated) need not be built again.
+  bool get notifyingPlayhead => _playheadOnly;
 
   /// counterTicks counts how many times the running counters have moved, so
   /// the stage's painter can tell something changed: counts are not in the
