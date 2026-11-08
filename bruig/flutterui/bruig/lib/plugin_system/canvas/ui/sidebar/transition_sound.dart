@@ -16,10 +16,17 @@ class CanvasTransitionSound extends StatefulWidget {
   /// onEvery puts [value]'s sound on every transition of the document.
   final ValueChanged<SceneTransition> onEvery;
 
+  /// onHear plays [value]'s sound on its own, or stops it -- [hearing]
+  /// while it plays -- to try it before keeping it.
+  final VoidCallback? onHear;
+  final bool hearing;
+
   const CanvasTransitionSound(
       {required this.value,
       required this.onChanged,
       required this.onEvery,
+      this.onHear,
+      this.hearing = false,
       super.key});
 
   @override
@@ -76,6 +83,13 @@ class _CanvasTransitionSoundState extends State<CanvasTransitionSound> {
                 sound: a.id, soundName: a.name, soundLength: a.length));
           },
         ),
+        if (widget.onHear case var hear? when known)
+          CanvasIconButton(
+            key: const ValueKey("transitionSoundHear"),
+            icon: widget.hearing ? Icons.stop : Icons.play_arrow,
+            tooltip: widget.hearing ? "Stop it" : "Hear it",
+            onPressed: hear,
+          ),
         if (t.sound.isNotEmpty) ...[
           CanvasNumberField(
             key: const ValueKey("transitionSoundVolume"),

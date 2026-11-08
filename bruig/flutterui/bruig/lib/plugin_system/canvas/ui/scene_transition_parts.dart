@@ -301,6 +301,9 @@ class SceneTransitionPart extends StatelessWidget {
             value: value,
             onChanged: write,
             onEvery: (t) => target.controller.soundEveryTransition(t),
+            hearing: target.controller.hearingSound(value.sound),
+            onHear: () => target.controller
+                .hearSound(value.sound, volume: value.soundVolume),
           ),
         ]),
       TransitionPart.source => column([

@@ -328,6 +328,9 @@ class _SceneTransitionCardState extends State<SceneTransitionCard>
                 value: value,
                 onChanged: (t) => write(t),
                 onEvery: (t) => c.soundEveryTransition(t),
+                hearing: c.hearingSound(value.sound),
+                onHear: () =>
+                    c.hearSound(value.sound, volume: value.soundVolume),
               ),
             )),
         ];

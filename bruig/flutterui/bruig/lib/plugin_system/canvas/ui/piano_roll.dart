@@ -1565,11 +1565,17 @@ class _PianoRollState extends State<PianoRoll> {
                     color: studio.text)),
             const SizedBox(width: 12),
           ],
-          // A part's Play, first where it is always in sight: the timeline
-          // from the playhead.
+          // Its Play, first where it is always in sight: a part's, the
+          // timeline from the playhead; a slot's clip's, it alone, round its
+          // loop, the timeline quiet -- as the clip editor's bar has it.
           if (widget.inClipEditor && c.pianoRoll?.row == null) ...[
             pill(c.playing ? "■ Stop" : "▶ Play", c.playing, c.togglePlay,
                 key: const ValueKey("partPlay")),
+            const SizedBox(width: 8),
+          ] else if (widget.inClipEditor) ...[
+            pill(c.clipPreviewing ? "■ Stop" : "▶ Play", c.clipPreviewing,
+                c.previewClip,
+                key: const ValueKey("clipPreview")),
             const SizedBox(width: 8),
           ],
           // The tools, as the prototype groups them: an icon each and the

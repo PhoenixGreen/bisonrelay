@@ -354,9 +354,12 @@ class _ClipEditorState extends State<ClipEditor> {
           // An audio clip as the prototype's: a bar of tools over its sound,
           // its settings in one column at the side, a line of help under.
           if (!clip.midi) return _audioEditor(look, t, clip);
+          // Its notes under one bar, as an audio clip's sound is: its Play
+          // first on the roll's own, next to the tools; no title row above
+          // (Ken, 2026-11-08: "an extra header row ... looks strange").
           return _layout(
               look,
-              _header(look, t, clip),
+              null,
               [
                 ("Clip", _clipColumn(look, clip), "clipColumn"),
                 ("Launch", _launchColumn(look, clip), "launchColumn"),
@@ -1351,78 +1354,6 @@ class _ClipEditorState extends State<ClipEditor> {
           ]),
         ),
       );
-
-  Widget _header(MixerLook look, PianoRollTarget t, SessionClip clip) {
-    var lane = c.timelineChannels.where((l) => l.key == t.channel).firstOrNull;
-    var sound = clip.sound;
-    return Container(
-      height: 34,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: look.studio.edge))),
-      child: Row(children: [
-        Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-                color: Color(sectionColors[clip.color % sectionColors.length]),
-                borderRadius: BorderRadius.circular(2))),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(clip.name.isEmpty ? "Clip" : clip.name,
-              key: const ValueKey("clipEditorName"),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: look.studio.text)),
-        ),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(
-              [
-                lane?.name ?? "",
-                "slot ${t.row! + 1}",
-                if (!clip.midi && sound != null)
-                  "${sound.name.isEmpty ? "sound" : sound.name}"
-                      "${sound.length > 0 ? " · ${sound.length.toStringAsFixed(1)} s" : ""}",
-              ].where((p) => p.isNotEmpty).join(" · "),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: _small(look, look.studio.muted)),
-        ),
-        const Spacer(),
-        if (_busy)
-          const Padding(
-            padding: EdgeInsets.only(right: 8),
-            child: SizedBox.square(
-                dimension: 12,
-                child: CircularProgressIndicator(strokeWidth: 2)),
-          ),
-        if (_said case var said?)
-          Flexible(
-            child: Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Text(said,
-                  key: const ValueKey("clipEditorSaid"),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _small(look, const Color(0xFFFF8A80))),
-            ),
-          ),
-        // Heard on its own, at once: with the transport stopped the timeline
-        // stays silent (see CanvasController.sessionOnly).
-        _pill(look, c.clipPreviewing ? "■ Stop" : "▶ Play", c.clipPreviewing,
-            c.previewClip,
-            key: const ValueKey("clipPreview"),
-            tip: c.clipPreviewing
-                ? "Stop it"
-                : "Play it now, round its loop -- the timeline stays quiet"),
-        const SizedBox(width: 4),
-      ]),
-    );
-  }
 
   /// _envelopeChoices are what an audio clip's envelope can change: its own
   /// gain and pan, drawn into its sound, then its channel's settings, moved

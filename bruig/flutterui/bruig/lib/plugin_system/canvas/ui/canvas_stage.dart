@@ -72,7 +72,7 @@ import 'package:bruig/plugin_system/canvas/render/vector_painter.dart'
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart'
-    show InstanceSet;
+    show CopyValue, InstanceSet;
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart'
     show MotionEditing;
 import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
@@ -115,6 +115,12 @@ enum _DragMode {
 
   /// skew is a side handle dragged to slant the element. See _applySkew.
   skew,
+
+  /// copySize and copyTurn are the box of the one copy picked (see _oneCopy)
+  /// taken by a handle: a corner or side sizes that copy alone, the ring
+  /// turns it -- its own Size and Turn. See _applyCopyBox.
+  copySize,
+  copyTurn,
 
   /// warpMove, warpScale and warpTurn carry a warp grid's picked points:
   /// dragged, sized about the middle of their box, or turned about it.
@@ -1000,6 +1006,11 @@ class CanvasStageState extends State<CanvasStage>
     // An element reused: each copy its own thing on the canvas, outlined
     // and picked alone -- the box round them all only with every one picked
     // in its Instances (Ken: the box was clutter, and in the way).
+    // One copy picked: a box of its own, to size, turn and move it by
+    // (Ken, 2026-11-08: "Individual instances should get a box").
+    if (_oneCopy case (var e, var i)?) {
+      return e.boundsWith(_copyPose(e, i));
+    }
     if (elements.length == 1) {
       var e = elements.first;
       if (e.base.motion.instances case var set? when set.count > 1) {
@@ -1017,6 +1028,25 @@ class CanvasStageState extends State<CanvasStage>
     }
     return box;
   }
+
+  /// _oneCopy is the one copy picked of the one element selected, reused,
+  /// as (the element, the copy's index): the one copy that has a box.
+  (CanvasElement, int)? get _oneCopy {
+    var elements = _chosen;
+    if (elements.length != 1) return null;
+    var e = elements.first;
+    var set = e.base.motion.instances;
+    if (set == null || set.count < 2) return null;
+    var picked = controller.pickedCopiesOf(e.id);
+    if (picked.length != 1) return null;
+    var i = set.items.indexWhere((x) => x.id == picked.first);
+    return i < 0 ? null : (e, i);
+  }
+
+  /// _copyPose is copy [i] of [e] as it is on this frame.
+  Keyframe _copyPose(CanvasElement e, int i) =>
+      poseWithMotion(e, controller.frame, controller.document,
+          live: controller.liveMotion, instance: i);
 
   /// _boxIsNotTheShape marks the elements whose selection box is bigger than
   /// what the pointer can actually land on -- see _onPointerDown.
@@ -1042,10 +1072,17 @@ class CanvasStageState extends State<CanvasStage>
 
   /// _rotationOfSelection is the single selected element's rotation, or zero
   /// when several are chosen.
-  double get _rotationOfSelection => _chosen.length == 1
-      ? _chosen.first.movedRotationAt(controller.frame, controller.document,
-            live: controller.liveMotion) * math.pi / 180
-      : 0;
+  double get _rotationOfSelection {
+    if (_oneCopy case (var e, var i)?) {
+      return (e.rotation + _copyPose(e, i).rotate) * math.pi / 180;
+    }
+    return _chosen.length == 1
+        ? _chosen.first.movedRotationAt(controller.frame, controller.document,
+                live: controller.liveMotion) *
+            math.pi /
+            180
+        : 0;
+  }
 
   /// _skewOfSelection is the single selected element's slant, in degrees,
   /// across and down, or nothing when several are chosen.
@@ -1957,6 +1994,16 @@ class CanvasStageState extends State<CanvasStage>
             handle == StageHandle.bottomCenter ||
             handle == StageHandle.centerLeft ||
             handle == StageHandle.centerRight;
+        // The one copy's box sizes and turns that copy: its own values, as
+        // its Instances card sets them. It has no slant of its own.
+        if (_oneCopy case (var e, var i)?) {
+          _beginCopyBox(e, i,
+              handle == StageHandle.rotate
+                  ? _DragMode.copyTurn
+                  : _DragMode.copySize,
+              handle);
+          return;
+        }
         var skewing = side &&
             _chosen.length == 1 &&
             (controller.skewHandles || HardwareKeyboard.instance.isMetaPressed);
@@ -2326,6 +2373,49 @@ class CanvasStageState extends State<CanvasStage>
       return true;
     }
     return false;
+  }
+
+  /// _copyPivot is what the one copy's box sizes and turns about, while a
+  /// handle of it is held: its anchor, which stays where it is (see
+  /// CanvasElement.boundsWith). _copySize and _copyTurn are its own Size and
+  /// Turn as the drag began.
+  Offset _copyPivot = Offset.zero;
+  double _copySize = 1, _copyTurn = 0;
+
+  void _beginCopyBox(
+      CanvasElement e, int i, _DragMode mode, StageHandle? handle) {
+    var set = e.base.motion.instances!;
+    _mode = mode;
+    _handle = handle;
+    _copyPivot = e.anchorIn(e.boundsWith(_copyPose(e, i)));
+    _copySize = set.sizeOf(i);
+    _copyTurn = set.turnOf(i);
+    controller.beginInteraction();
+  }
+
+  /// _applyCopyBox sizes or turns the one copy picked as its handle is
+  /// dragged to [doc]. Sized evenly, by how much farther from its anchor the
+  /// pointer is along the line it was pressed on (a copy has one Size);
+  /// turned by the angle swept, to fifteen degrees with Shift.
+  void _applyCopyBox(Offset doc) {
+    var e = controller.selected;
+    if (e == null) return;
+    var from = _dragStart - _copyPivot, to = doc - _copyPivot;
+    if (_mode == _DragMode.copyTurn) {
+      var swept = (math.atan2(to.dy, to.dx) - math.atan2(from.dy, from.dx)) *
+          180 /
+          math.pi;
+      var turn = _copyTurn + swept;
+      if (_shiftHeld) turn = (turn / 15).round() * 15;
+      turn = (turn + 180) % 360 - 180;
+      controller.setCopyOwn(e.id, CopyValue.turn.name, turn, transient: true);
+      return;
+    }
+    var along = from.distanceSquared;
+    if (along < 1e-6) return;
+    var f = (to.dx * from.dx + to.dy * from.dy) / along;
+    var size = (_copySize * f).clamp(CopyValue.size.min, CopyValue.size.max);
+    controller.setCopyOwn(e.id, CopyValue.size.name, size, transient: true);
   }
 
   /// _moveCopies puts the copies being dragged [delta] from where they
@@ -5096,6 +5186,8 @@ class CanvasStageState extends State<CanvasStage>
     switch (_mode) {
       case _DragMode.copies:
         _moveCopies(delta);
+      case _DragMode.copySize || _DragMode.copyTurn:
+        _applyCopyBox(doc);
       case _DragMode.move:
         _applyMove(delta);
       case _DragMode.resize:
@@ -5813,6 +5905,8 @@ class CanvasStageState extends State<CanvasStage>
     }
     _pressedCopy = null;
     if (_mode == _DragMode.copies ||
+        _mode == _DragMode.copySize ||
+        _mode == _DragMode.copyTurn ||
         _mode == _DragMode.move ||
         _mode == _DragMode.anchor ||
         _mode == _DragMode.resize ||

@@ -363,6 +363,14 @@ void main() {
       c.pickStrip(sceneBusKey);
       expect(c.selection, isEmpty, reason: "the element let go");
       expect(c.selectedChannel, sceneBusKey);
+      // The Chain on motion: the scene's own motion chain, as a click on
+      // the scene on the timeline opens (Ken, 2026-11-08).
+      expect(c.animationOpen, isTrue);
+      expect(c.pickedScene, c.document.at);
+      // On sound, its bus.
+      c.effectsOpen = true;
+      c.pickStrip(mixerMasterKey);
+      c.pickStrip(sceneBusKey);
       expect((c.effectsOpen, c.animationOpen), (true, false),
           reason: "the Chain on the scene bus's sound");
       expect(c.effectsOf, sceneBusKey);

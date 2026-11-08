@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/camera_section.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
@@ -140,6 +142,87 @@ void main() {
       var back = CanvasDocument.decode(d.encode())!.allScenes.first.camera!;
       expect(back.toZoom, 1.3);
       expect(back.toX, 0.4);
+    });
+
+    // Ken, 2026-11-08: pushed in, the box round the element selected was
+    // left where the element was set, not where the camera showed it.
+    testWidgets("the box round the selected goes with the camera",
+        (tester) async {
+      var c = CanvasController(CanvasDocument(
+        frames: 10,
+        background: const CanvasBackground(
+            spec: ProceduralSpec(background: Color(0xFFFFFFFF))),
+        scenes: [
+          CanvasScene(
+              id: "a",
+              frames: 10,
+              camera: const SceneCamera(fromZoom: 2, toZoom: 2),
+              elements: [
+                ShapeElement(
+                    const ElementBase(
+                        id: "box", x: 560, y: 300, width: 100, height: 100),
+                    fill: const Color(0xFF000000)),
+              ]),
+        ],
+      ));
+      addTearDown(c.dispose);
+      c.selectOnly("box");
+      c.cameraView = true;
+      tester.view.physicalSize = const Size(1000, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SizedBox(
+                    width: 1000,
+                    height: 700,
+                    child: CanvasStage(controller: c)))),
+      ));
+      await tester.pumpAndSettle();
+      var paint = find.byWidgetPredicate(
+          (w) => w is CustomPaint && w.painter is StagePainter);
+      var p = tester.widget<CustomPaint>(paint).painter as StagePainter;
+      var (zoom, focus) = p.camera!;
+      expect(zoom, closeTo(2, 1e-6));
+      // Where the camera shows the box's left edge.
+      var mid = c.document.size.rect.center;
+      Offset seen(Offset onPage) =>
+          (mid + (onPage - focus) * zoom) * p.scale + p.origin;
+      var size = tester.getSize(paint);
+      var rec = ui.PictureRecorder();
+      p.paint(ui.Canvas(rec), size);
+      var img = await tester.runAsync(() =>
+          rec.endRecording().toImage(size.width.round(), size.height.round()));
+      var px = (await tester.runAsync(() => img!.toByteData()))!
+          .buffer
+          .asUint8List();
+      // The selection's blue, a line a pixel wide drawn between pixels.
+      bool blueNear(Offset at) {
+        for (var dy = -2; dy <= 2; dy++) {
+          for (var dx = -3; dx <= 3; dx++) {
+            var x = at.dx.round() + dx, y = at.dy.round() + dy;
+            if (x < 0 || y < 0 || x >= size.width || y >= size.height) {
+              continue;
+            }
+            var i = (y * size.width.round() + x) * 4;
+            if (px[i + 2] > 0xB0 && px[i + 2] > px[i] + 0x50) return true;
+          }
+        }
+        return false;
+      }
+
+      // A quarter down its left edge: clear of the handle at its middle.
+      expect(blueNear(seen(const Offset(560, 325))), isTrue,
+          reason: "the box's edge where the camera shows the element");
+      // Not where the element is set on the page, unmoved by the camera.
+      expect(blueNear(const Offset(560, 325) * p.scale + p.origin), isFalse);
+      await tester.pumpWidget(const SizedBox());
     });
 
     testWidgets("the Animation panel, a scene picked, sets a push in",

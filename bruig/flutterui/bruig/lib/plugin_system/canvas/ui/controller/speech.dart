@@ -670,6 +670,24 @@ extension CanvasSpeech on CanvasController {
     return _hear(file, assetId, at: at);
   }
 
+  /// hearSound plays the Audio library's sound [assetId] on its own, at
+  /// [volume] -- a transition's, to try it before keeping it (Ken,
+  /// 2026-11-08) -- or, playing, stops it. Found as a take is, the library
+  /// first; answers why not, where it could not.
+  Future<String?> hearSound(String assetId, {double volume = 1}) async {
+    var what = "sound:$assetId";
+    if (_speechHeard == what) {
+      stopHearing();
+      return null;
+    }
+    var file = await CanvasController.takePath(assetId);
+    if (file == null) return "The sound's file could not be found.";
+    return _hear(file, what, volume: volume);
+  }
+
+  /// hearingSound is whether [assetId] is being heard on its own.
+  bool hearingSound(String assetId) => _speechHeard == "sound:$assetId";
+
   /// heardSeconds is how far into what is being heard on its own it has
   /// played -- or null, with nothing heard.
   double? get heardSeconds {
@@ -678,14 +696,15 @@ extension CanvasSpeech on CanvasController {
     return audio.engine.position(v);
   }
 
-  Future<String?> _hear(String file, String what, {double at = 0}) async {
+  Future<String?> _hear(String file, String what,
+      {double at = 0, double volume = 1}) async {
     stopHearing();
     var engine = audio.engine;
     if (!await engine.start()) return "There is no sound to play it on.";
     var track = await engine.open(file);
     if (track == null || _disposed) return "It could not be played.";
     _heardTrack = track;
-    _heardVoice = engine.play(track, volume: 1, at: at);
+    _heardVoice = engine.play(track, volume: volume, at: at);
     _speechHeard = what;
     _heardWatch = Timer.periodic(const Duration(milliseconds: 250), (_) {
       var v = _heardVoice;

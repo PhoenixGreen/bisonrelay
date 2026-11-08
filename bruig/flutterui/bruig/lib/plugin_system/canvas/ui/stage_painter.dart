@@ -586,8 +586,13 @@ class StagePainter extends CustomPainter {
     }
     _paintGuides(canvas);
     _paintFraming(canvas);
-    _paintSelection(canvas);
-    _paintAnchors(canvas);
+    // The box and handles round what is selected, through the scene's
+    // camera as the page is drawn -- so a push in does not leave the box
+    // behind (Ken, 2026-11-08).
+    _throughCamera(canvas, () {
+      _paintSelection(canvas);
+      _paintAnchors(canvas);
+    });
     _paintKnife(canvas);
     if (caret case (var top, var bottom)?) {
       canvas.drawLine(
@@ -906,6 +911,31 @@ class StagePainter extends CustomPainter {
     }
   }
 
+  /// _throughCamera paints [marks] -- drawn in the stage's own space, from
+  /// the page by [scale] and [origin] -- moved as the scene's [camera] moves
+  /// what is on the page (see paintCanvasDocument's framing): the page's
+  /// middle to the camera's focus, closer by its zoom.
+  void _throughCamera(Canvas canvas, void Function() marks) {
+    if (camera case (var zoom, var focus)?) {
+      var mid = document.size.rect.center;
+      canvas.save();
+      canvas.translate(origin.dx, origin.dy);
+      canvas.scale(scale);
+      canvas.translate(mid.dx, mid.dy);
+      canvas.scale(zoom);
+      canvas.translate(-focus.dx, -focus.dy);
+      canvas.scale(1 / scale);
+      canvas.translate(-origin.dx, -origin.dy);
+      try {
+        marks();
+      } finally {
+        canvas.restore();
+      }
+      return;
+    }
+    marks();
+  }
+
   void _paintSelection(Canvas canvas) {
     if (!showHelpers) return;
 
@@ -1148,10 +1178,15 @@ class StagePainter extends CustomPainter {
           box.top * scale + origin.dy, box.right * scale + origin.dx,
           box.bottom * scale + origin.dy);
       var picked = pickedCopies.contains(copy.id);
-      canvas.drawRRect(
+      // The one picked has the selection's box and handles instead (see
+      // CanvasStage's _oneCopy): its number on it, no ring under the box.
+      var boxed = picked && pickedCopies.length == 1;
+      if (!boxed) {
+        canvas.drawRRect(
           RRect.fromRectAndRadius(r.inflate(picked ? 3 : 1),
               const Radius.circular(3)),
-          picked ? ring : faint);
+            picked ? ring : faint);
+      }
       if (!picked) continue;
       var tp = TextPainter(
           text: TextSpan(

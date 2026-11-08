@@ -21,6 +21,8 @@ import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart'
+    show StageHandle;
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -506,11 +508,59 @@ void main() {
       await tester.tapAt(s.toStagePoint(copy(1)));
       await tester.pumpAndSettle();
       expect(c.pickedCopiesOf("a"), {"i1"});
-      expect(box(), isNull, reason: "one picked, its own ring");
+      expect(box(), const Rect.fromLTWH(350, 100, 100, 100),
+          reason: "one picked, a box of its own");
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
       expect(c.pickedCopiesOf("a"), isEmpty);
       expect(box(), isNull, reason: "Escape: all again, but no box");
+    });
+
+    // Ken, 2026-11-08: "Individual instances should get a box when
+    // selected this allows users to resize, move, rotate".
+    testWidgets("one copy picked: its box sizes and turns it alone",
+        (tester) async {
+      var (c, s) = await stage(tester);
+      await tester.tapAt(s.toStagePoint(copy(1)));
+      await tester.pumpAndSettle();
+      expect(c.pickedCopiesOf("a"), {"i1"});
+      var scale =
+          (s.toStagePoint(const Offset(100, 0)) - s.toStagePoint(Offset.zero))
+                  .dx /
+              100;
+      // A corner pulled out to twice as far from its middle: twice the size.
+      var corner = s.handleAt(StageHandle.bottomRight);
+      await tester.timedDragFrom(corner, const Offset(50, 50) * scale,
+          const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      var set = c.motionOf("a").instances!;
+      expect(set.sizeOf(1), closeTo(2, 0.02));
+      expect(set.sizeOf(0), 1, reason: "the others keep theirs");
+      expect(set.sizeOf(2), 1);
+      expect(c.document.elementById("a")!.bounds,
+          const Rect.fromLTWH(100, 100, 100, 100),
+          reason: "the element itself is not resized");
+      expect(
+          s.handleAt(StageHandle.bottomRight),
+          offsetMoreOrLessEquals(s.toStagePoint(const Offset(500, 250)),
+              epsilon: 1),
+          reason: "the box goes with it");
+      // The ring, from above its middle round to its right: a quarter turn.
+      var mid = s.toStagePoint(copy(1));
+      var ring = s.handleAt(StageHandle.rotate);
+      var to = mid + Offset((ring - mid).distance, 0);
+      await tester.timedDragFrom(
+          ring, to - ring, const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      set = c.motionOf("a").instances!;
+      expect(set.turnOf(1), closeTo(90, 1));
+      expect(set.turnOf(0), 0);
+      expect(c.document.elementById("a")!.rotation, 0);
+      c.undo();
+      expect(c.motionOf("a").instances!.turnOf(1), 0, reason: "one step");
+      expect(c.motionOf("a").instances!.sizeOf(1), closeTo(2, 0.02));
+      c.undo();
+      expect(c.motionOf("a").instances!.sizeOf(1), 1);
     });
 
     testWidgets("a click picks a copy; Shift-click another; Escape, all",

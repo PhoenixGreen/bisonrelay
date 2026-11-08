@@ -1770,17 +1770,30 @@ extension CanvasTools on CanvasController {
     // Pressed again -- every press on a strip picks it, a fader grabbed
     // too -- with nothing to change: nothing told (Ken's systems review,
     // 2026-11-08: each press rebuilt the editor once or twice over).
+    // The scene's strip, with the Chain on its motion: the scene's own
+    // chain -- its clips, transition and camera -- as a click on the scene
+    // on the timeline opens (Ken, 2026-11-08); on its sound, its bus.
+    var sceneMotion = key == sceneBusKey && _animationOpen;
     if (picked &&
         selectedChannel == key &&
         _effectsOf == key &&
-        (!chainOut || (_effectsOpen && !_animationOpen && !_chainMotion))) {
+        (!chainOut ||
+            (sceneMotion
+                ? pickedScene == _document.at
+                : _effectsOpen && !_animationOpen && !_chainMotion))) {
       return;
     }
     if (!picked) element ? selectOnly(owner) : clearSelection();
     _effectsOf = key;
     selectedChannel = key;
     // Told once: by opening the chain where it is out, or here.
-    chainOut ? openEffects(key) : notifyListeners();
+    if (sceneMotion) {
+      pickScene(_document.at);
+    } else if (chainOut) {
+      openEffects(key);
+    } else {
+      notifyListeners();
+    }
   }
 
   /// effectsOf is the strip whose chain of effects the effects panel shows,

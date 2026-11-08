@@ -301,7 +301,27 @@ void main() {
         (tester) async {
       await open(tester, row: 0);
       expect(find.byKey(const ValueKey("rollGrid")), findsOneWidget);
-      expect(find.text("Chords"), findsOneWidget);
+      // No title row above the roll (Ken, 2026-11-08): the clip's Play is
+      // first in the roll's own toolbar, beside its tools.
+      expect(find.text("Chords"), findsNothing);
+      expect(find.byKey(const ValueKey("clipEditorName")), findsNothing);
+      var play = find.byKey(const ValueKey("clipPreview"));
+      expect(play, findsOneWidget);
+      var tool = find.byKey(const ValueKey("rollSelect"));
+      expect(tester.getCenter(play).dy, closeTo(tester.getCenter(tool).dy, 2),
+          reason: "on the tools' row");
+      expect(tester.getCenter(play).dx, lessThan(tester.getCenter(tool).dx),
+          reason: "first, before the tools");
+      expect(
+          tester.getTopLeft(play).dy,
+          lessThan(
+              tester.getTopLeft(find.byKey(const ValueKey("rollRuler"))).dy));
+      await tester.tap(play);
+      await tester.pump();
+      expect(c.clipPreviewing, isTrue);
+      await tester.tap(play);
+      await tester.pump();
+      expect(c.clipPreviewing, isFalse);
       expect(c.rollContent!.beats, 8, reason: "two bars of four");
       // In the clip's editor, first in the channel's effects strip; closed
       // from its bar.
