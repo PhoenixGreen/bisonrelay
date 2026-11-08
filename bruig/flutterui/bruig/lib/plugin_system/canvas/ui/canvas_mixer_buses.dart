@@ -103,13 +103,101 @@ class _SceneSoundDevice extends StatelessWidget {
   }
 }
 
+/// _BusSourceDevice is where a return's or the master's sound comes from,
+/// as the prototype's From sends and Every channel: each channel sending to
+/// the return (by how much), or everything summed into the master, with its
+/// level now.
+class _BusSourceDevice extends StatelessWidget {
+  final CanvasController controller;
+
+  /// ret is the return it starts; null, the master.
+  final ReturnChannel? ret;
+  final Map<String, (double, double)> levels;
+  final MixerLook theme;
+  final bool folded;
+  final VoidCallback onFold;
+  final double height;
+  const _BusSourceDevice(
+      {required this.controller,
+      required this.ret,
+      required this.levels,
+      required this.theme,
+      required this.folded,
+      required this.onFold,
+      required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    var c = controller;
+    var skin = DeviceSkin.studio(theme.studio);
+    var r = ret;
+    String db(double v) {
+      var sign = v > 0
+          ? "+"
+          : v < 0
+              ? "−"
+              : "";
+      return "$sign${v.abs().toStringAsFixed(v.abs() < 10 ? 1 : 0)} dB";
+    }
+
+    var rows = r != null
+        ? <(String, String)>[
+            for (var ch in c.timelineChannels)
+              if (ch.mix.sendDb(r.id) case var sent?)
+                (ch.key, "${ch.name}  ${db(sent)}"),
+          ]
+        : <(String, String)>[
+            for (var ch in c.timelineChannels) (ch.key, ch.name),
+            for (var x in c.document.returns) (x.id, x.name),
+            if (levels.containsKey(sceneBusKey)) (sceneBusKey, "Scene bus"),
+          ];
+    var master = r == null;
+    var accent = master ? const Color(0xFFCFCBDF) : const Color(0xFF3FB08D);
+    return DeviceFrame(
+      id: "busSource",
+      title: master ? "Every channel" : "From sends",
+      help: master
+          ? "Everything summed into the master: each channel, return and "
+              "the scene's bus, with its level now."
+          : "What comes into this return: each channel that sends to it, "
+              "and by how much. A channel's send is set on its strip.",
+      skin: skin,
+      folded: folded,
+      onFold: onFold,
+      width: 260,
+      height: height,
+      icon: master ? Icons.merge_type : Icons.call_received,
+      accent: accent,
+      summary: rows.isEmpty
+          ? (master ? "Nothing heard yet" : "Nothing sends to it")
+          : "${rows.length} ${master ? "summed" : "sending"}",
+      foldedBody: const SizedBox(),
+      body: const SizedBox.shrink(),
+      display: CustomPaint(
+        key: const ValueKey("busSourceScreen"),
+        painter: _SumScreen([
+          for (var (k, n) in rows) (n, (levels[k] ?? (-90.0, -90.0)).$1),
+        ], master ? "every channel, summed" : "sent to ${r.name}", theme.studio,
+            empty: master
+                ? "Nothing heard yet"
+                : "Nothing sends to it: turn up a channel's send"),
+        child: const SizedBox.expand(),
+      ),
+    );
+  }
+}
+
 /// _SumScreen is a bar for each of [rows] -- a name and its level now, in
 /// dB -- as the prototype's Sum view draws them.
 class _SumScreen extends CustomPainter {
   final List<(String, double)> rows;
   final String caption;
   final StudioColors studio;
-  _SumScreen(this.rows, this.caption, this.studio);
+
+  /// empty is what it says with nothing to show.
+  final String empty;
+  _SumScreen(this.rows, this.caption, this.studio,
+      {this.empty = "Nothing heard in it yet"});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -137,7 +225,7 @@ class _SumScreen extends CustomPainter {
     }
     var tp = TextPainter(
         text: TextSpan(
-            text: shown.isEmpty ? "Nothing heard in it yet" : caption,
+            text: shown.isEmpty ? empty : caption,
             style: TextStyle(fontSize: 10, color: studio.muted)),
         maxLines: 1,
         ellipsis: "…",

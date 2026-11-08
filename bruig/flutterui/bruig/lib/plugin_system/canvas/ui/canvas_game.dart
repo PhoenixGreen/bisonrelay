@@ -507,7 +507,8 @@ class GameRun extends ChangeNotifier {
         var key = (e.id, name);
         now.add(key);
         if (_touching.contains(key)) continue;
-        if (_startsOnTouch(t)) events.add(GameEvent(touched: t.id));
+        // One copy of an element reused touched: that copy, by its key.
+        if (_startsOnTouch(t)) events.add(GameEvent(touched: name));
         var touched = t.base.play;
         if (!touched.as.touched) continue;
         if (touched.sound.isNotEmpty) {
@@ -617,12 +618,15 @@ class GameRun extends ChangeNotifier {
       // A pickup taken is gone until the game starts again -- once a clip
       // it started (a coin's pop) has played.
       if (gone.contains(e.id) && !(playing?.call(e.id) ?? false)) continue;
-      // An element reused: its instances taken are gone, the rest stay.
+      // An element reused: its instances taken are gone, the rest stay --
+      // each one taken until the clip its touch started has played.
       if (e.base.motion.instances case var set?
           when !(playing?.call(e.id) ?? false)) {
         var left = [
           for (var item in set.items)
-            if (!gone.contains(instanceKey(e.id, item.id))) item,
+            if (!gone.contains(instanceKey(e.id, item.id)) ||
+                (playing?.call(instanceKey(e.id, item.id)) ?? false))
+              item,
         ];
         if (left.isEmpty) continue;
         if (left.length < set.items.length) {

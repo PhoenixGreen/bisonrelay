@@ -13,7 +13,8 @@ enum CameraMove {
   pullOut("Pull out"),
   driftLeft("Drift left"),
   driftRight("Drift right"),
-  driftUp("Drift up");
+  driftUp("Drift up"),
+  orbit("Orbit");
 
   final String label;
   const CameraMove(this.label);
@@ -33,12 +34,15 @@ enum CameraMove {
         SceneCamera(fromZoom: z, toZoom: z, fromX: 0.5 - d, toX: 0.5 + d),
       driftUp =>
         SceneCamera(fromZoom: z, toZoom: z, fromY: 0.5 + d, toY: 0.5 - d),
+      orbit => SceneCamera(
+          fromZoom: z, toZoom: z, fromX: 0.5 + d, toX: 0.5 + d, orbit: true),
     };
   }
 
   /// of is which move [c] is, as near as can be said.
   static CameraMove of(SceneCamera? c) {
     if (c == null) return still;
+    if (c.orbit) return orbit;
     if (c.toZoom > c.fromZoom + 0.001) return pushIn;
     if (c.fromZoom > c.toZoom + 0.001) return pullOut;
     if (c.toX < c.fromX) return driftLeft;

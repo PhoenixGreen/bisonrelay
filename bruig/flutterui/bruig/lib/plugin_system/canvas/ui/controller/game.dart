@@ -27,6 +27,39 @@ extension CanvasGame on CanvasController {
   /// -- or null, not playing.
   CanvasDocument? get gameView => _gameView;
 
+  /// gameChange is the scene a game is leaving, while its transition plays:
+  /// as it was last seen and on which frame, the transition, and how far
+  /// through it is (0 to 1, eased) -- or null, none playing. A game's next
+  /// scene arrives as the timeline's does.
+  (CanvasDocument, int, SceneTransition, double)? get gameChange {
+    var left = _gameLeft;
+    if (left == null || !gaming) return null;
+    var (from, at, over, began) = left;
+    var length = over.frames / math.max(1, _document.frameRate);
+    var t = length <= 0 ? 1.0 : (_gameClock - began) / length;
+    if (t >= 1) {
+      _gameLeft = null;
+      return null;
+    }
+    return (from, at, over, over.ease.apply(t.clamp(0.0, 1.0)));
+  }
+
+  /// _gameLeaving keeps the scene being left, as it was last seen, for its
+  /// transition to play from -- where there is one to play.
+  void _gameLeaving() {
+    // As last seen -- or, left on its very first step, as it is now.
+    var seen = _gameView ??
+        switch (_game) {
+          var run? => spoken(
+              run.view(_document, frame: _frame, playing: _touchClipPlaying)),
+          null => null,
+        };
+    var over = _document.transitionAfter(_document.at);
+    _gameLeft = seen == null || over.kind == SceneTransitionKind.cut
+        ? null
+        : (seen, _frame, over, _gameClock);
+  }
+
   /// makingGame is whether the canvas is being made into a game -- see
   /// CanvasDocument.game. Stopped being one, it stops being played.
   set makingGame(bool on) {
@@ -91,6 +124,7 @@ extension CanvasGame on CanvasController {
       _game?.dispose();
       _game = null;
       _gameView = null;
+      _gameLeft = null;
       _gamePaused = false;
       if (playing) pause();
       if (_sceneBeforeGame case var at? when at != _document.at) {
@@ -154,6 +188,7 @@ extension CanvasGame on CanvasController {
           gaming = false;
           return;
         }
+        _gameLeaving();
         goToScene(next);
         frame = 0;
         run.newScene();
@@ -243,6 +278,7 @@ extension CanvasGame on CanvasController {
   void _gameScene(GameRun run, String id) {
     var to = _document.sceneIndexNamed(id);
     if (to < 0) return;
+    _gameLeaving();
     goToScene(to);
     // From its beginning, not the frame it was left on while it was made.
     frame = 0;
@@ -254,7 +290,9 @@ extension CanvasGame on CanvasController {
   /// _touchClipPlaying is whether [id] is playing a clip a touch started --
   /// a coin's pop -- for which a pickup taken stays in view.
   bool _touchClipPlaying(String id) {
-    var e = _document.elementById(id);
+    // One copy of an element reused, by its key: its element's clips.
+    var at = id.indexOf("#");
+    var e = _document.elementById(at > 0 ? id.substring(0, at) : id);
     if (e == null) return false;
     var onTouch = {
       for (var c in e.base.motion.clips)

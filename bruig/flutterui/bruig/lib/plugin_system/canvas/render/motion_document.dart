@@ -190,6 +190,34 @@ class _CopyLive implements LiveMotion {
   }
 }
 
+/// _CopyPlays is [live] as one copy of element [id] sees it: what the copy
+/// plays of its own, by [key] in [raw], laid over the element's, layer by
+/// layer -- an empty layer of the copy's is the element's.
+class _CopyPlays implements LiveMotion {
+  final LiveMotion live, raw;
+  final String id, key;
+  _CopyPlays(this.live, this.raw, this.id, this.key);
+
+  @override
+  double get clock => live.clock;
+
+  @override
+  MotionLive? of(String element) {
+    var base = live.of(element);
+    if (element != id) return base;
+    var own = raw.of(key);
+    if (own == null) return base;
+    if (base == null) return own;
+    var n = math.max(own.plays.length, base.plays.length);
+    return MotionLive(plays: [
+      for (var i = 0; i < n; i++) own.play(i) ?? base.play(i),
+    ], carry: [
+      for (var i = 0; i < n; i++)
+        own.play(i) != null ? own.left(i) : base.left(i),
+    ]);
+  }
+}
+
 class _ShiftedLive implements LiveMotion {
   final LiveMotion live;
   final double by;
@@ -287,6 +315,12 @@ Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
           ? null
           : liveForCopy(live, set.startOf(instance), set.speedOf(instance),
               e.base.motion);
+      // And what this copy plays of its own -- a coin's pop when it alone is
+      // taken -- over the element's, layer by layer, on the real clock.
+      var own = instanceKey(e.id, set.items[instance].id);
+      if (live != null && shifted != null && live.of(own) != null) {
+        shifted = _CopyPlays(shifted, live, e.id, own);
+      }
       // Its clips worked out from where this copy stands: a place such as
       // "off the left edge" is past the page's edge from the copy, not
       // from the element (Ken: Slide in left copies on the page).
@@ -746,8 +780,9 @@ Rect cameraFrame(CameraElement cam, int frame, CanvasDocument doc,
     if (isStageScene(doc)) return null;
     return cameraFraming(cam, frame, doc, live: live);
   }
-  return doc.scene.camera
-      ?.at(frame / math.max(1, doc.frames - 1), doc.size.rect);
+  return doc.scene.camera?.at(
+      frame / math.max(1, doc.frames - 1), doc.size.rect,
+      seconds: frame / math.max(1, doc.frameRate));
 }
 
 /// cameraMostZoom is the closest [doc]'s camera ever comes: its frame, and

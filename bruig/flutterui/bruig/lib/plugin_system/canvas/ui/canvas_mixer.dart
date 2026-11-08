@@ -1179,6 +1179,21 @@ class _CanvasMixerState extends State<CanvasMixer>
           else
             _MacrosStart(controller: controller, owner: key, height: h),
         ],
+        // A return's and the master's Source: what comes into them, as the
+        // prototype's From sends and Every channel.
+        if (isMaster || (ret != null && lane == null)) ...[
+          chainZone("Source", const Color(0xFF3FB08D), h),
+          device(
+              "busSource",
+              (f, fold) => _BusSourceDevice(
+                  controller: controller,
+                  ret: isMaster ? null : ret,
+                  levels: _now,
+                  theme: theme,
+                  folded: f,
+                  onFold: fold,
+                  height: h)),
+        ],
         // A scene's bus: everything heard in it, summed -- its Source, as
         // the prototype has it.
         if (isScene) ...[
@@ -2048,6 +2063,9 @@ class _Junction extends StatelessWidget {
       required this.onListen,
       required this.onAnalyser});
 
+  /// clipped is whether the peak held has reached nought decibels.
+  bool get clipped => peak.$1 >= 0 || peak.$2 >= 0;
+
   /// reading is its level and the peak held, in decibels.
   String get reading =>
       "${level.$1 <= -80 ? "−∞" : level.$1.toStringAsFixed(1)} dB · hold "
@@ -2099,12 +2117,50 @@ class _Junction extends StatelessWidget {
                           border: Border.all(
                               color: const Color(0xFFE2B04A), width: 1.5))
                       : null,
-                  child: SizedBox(
-                    width: 9,
-                    height: math.min(150.0, math.max(30.0, height - 60)),
-                    child: CustomPaint(
-                        painter: _MeterPainter(level, peak, colors)),
-                  ),
+                  // Its clip light over it and the peak held under it, as
+                  // the prototype's joins: lit red once it reaches 0 dB.
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      key: ValueKey("junctionClip-$index"),
+                      width: 7,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 3),
+                      decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(1),
+                          color: clipped
+                              ? const Color(0xFFE5484D)
+                              : colors.edge),
+                    ),
+                    SizedBox(
+                      width: 9,
+                      height: math.min(150.0, math.max(30.0, height - 80)),
+                      child: CustomPaint(
+                          painter: _MeterPainter(level, peak, colors)),
+                    ),
+                    const SizedBox(height: 3),
+                    SizedBox(
+                      width: 16,
+                      height: 10,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                            peak.$1 <= -80
+                                ? "—"
+                                : peak.$1.round().toString().replaceFirst(
+                                    "-", "−"),
+                            key: ValueKey("junctionDb-$index"),
+                            textScaler: TextScaler.noScaling,
+                            style: TextStyle(
+                                fontSize: 8,
+                                color: clipped
+                                    ? const Color(0xFFE5484D)
+                                    : colors.muted,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures()
+                                ])),
+                      ),
+                    ),
+                  ]),
                 ),
               ),
             ),
@@ -2731,6 +2787,7 @@ class _MasterOutputDevice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var audio = controller.document.audio;
+    var master = controller.document.masterMix;
     var layout = audio.speakers;
     var hear = controller.hear;
     var small = TextStyle(fontSize: 11, color: skin.ink.withValues(alpha: 0.7));
@@ -2746,7 +2803,8 @@ class _MasterOutputDevice extends StatelessWidget {
       icon: Icons.speaker,
       folded: folded,
       onFold: onFold,
-      width: 70.0 + 26 * layout.channels + (layout.isSurround ? 90 : 60),
+      width: math.max(
+          190.0, 70.0 + 26 * layout.channels + (layout.isSurround ? 90 : 60)),
       height: height,
       foldedBody: Center(
         child: RotatedBox(
@@ -2771,6 +2829,46 @@ class _MasterOutputDevice extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
+          // The master's Out, and how loud it is now, as the prototype's
+          // Output: the fader at the end of everything.
+          Row(children: [
+            DeviceKnob(
+              key: const ValueKey("outputOut"),
+              label: "Out",
+              text: "${dbText(master.gainDb)} dB",
+              value: master.gainDb.clamp(-24.0, 12.0),
+              initial: 0,
+              min: -24,
+              max: 12,
+              size: 30,
+              accent: const Color(0xFFCFCBDF),
+              ink: skin.ink,
+              bipolar: true,
+              onChanged: (v, {transient = false}) {
+                controller.beginInteraction();
+                controller.setMasterMix(
+                    controller.document.masterMix
+                        .copyWith(gainDb: (v * 10).roundToDouble() / 10),
+                    transient: true);
+                if (!transient) controller.endInteraction();
+              },
+              onCommit: controller.endInteraction,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                  key: const ValueKey("outputLufs"),
+                  switch (controller.loudness(mixerMasterKey)?.shortTerm) {
+                    var l? when l.isFinite => "${l.toStringAsFixed(1)} LUFS",
+                    _ => "— LUFS",
+                  },
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: small.copyWith(
+                      fontFeatures: const [FontFeature.tabularFigures()])),
+            ),
+          ]),
+          const SizedBox(height: 6),
           CanvasDropdown<SpeakerLayout>(
             key: const ValueKey("outputSpeakers"),
             label: "Speakers",

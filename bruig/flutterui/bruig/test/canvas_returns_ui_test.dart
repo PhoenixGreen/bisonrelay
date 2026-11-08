@@ -7,6 +7,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+    show DeviceFrame;
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -161,6 +163,27 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(c.returnOf("returnA")!.devices.map((d) => d.kind),
         [DeviceKind.delay]);
+    expect(tester.takeException(), isNull);
+    await done(tester);
+  });
+
+  // The prototype's Source on a bus (Ken's audit, 2026-11-08): a return
+  // starts From sends, the master with Every channel.
+  testWidgets("a return's chain starts with what sends to it", (tester) async {
+    var c = controller();
+    var voice = c.timelineChannels.single;
+    c.setChannelMix(voice, voice.mix.withSend("returnA", -12), anywhere: true);
+    c.openEffects("returnA");
+    await show(tester, c, effects: true);
+    await tester.pump(const Duration(milliseconds: 300));
+    DeviceFrame card() => tester.widget<DeviceFrame>(find.byWidgetPredicate(
+        (w) => w is DeviceFrame && w.id == "busSource"));
+    expect(card().title, "From sends");
+    expect(card().summary, "1 sending", reason: "the voice, at its send");
+    c.openEffects(mixerMasterKey);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(card().title, "Every channel");
+    expect(card().summary, contains("summed"));
     expect(tester.takeException(), isNull);
     await done(tester);
   });

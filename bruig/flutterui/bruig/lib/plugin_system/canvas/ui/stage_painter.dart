@@ -27,6 +27,8 @@ import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart'
+    show SceneTransition;
 import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
 import 'package:flutter/foundation.dart'
     show ValueListenable, listEquals, setEquals;
@@ -125,6 +127,11 @@ class StagePainter extends CustomPainter {
   /// pickedCopies are the copies picked of the one element selected, reused:
   /// ringed, every other copy of it outlined faintly. See _paintCopies.
   final Set<String> pickedCopies;
+
+  /// gameChange is the scene a game is leaving while its transition plays
+  /// -- as it was seen, its frame, the transition and how far through --
+  /// drawn giving way to [document]. See CanvasController.gameChange.
+  final (CanvasDocument, int, SceneTransition, double)? gameChange;
 
   /// trail is whether the one element selected shows its trail and onion
   /// skin: the Chain open on its motion. See _paintTrail.
@@ -382,6 +389,7 @@ class StagePainter extends CustomPainter {
     required this.selection,
     this.pickedCopies = const {},
     this.trail = false,
+    this.gameChange,
     required this.selectionBounds,
     required this.selectionRotation,
     this.touchAreas = const [],
@@ -532,6 +540,13 @@ class StagePainter extends CustomPainter {
           clipOp: ui.ClipOp.difference);
       _paintContents(canvas, document, frame);
       canvas.restore();
+    } else if (gameChange case (var left, var leftAt, var over, var t)?) {
+      // A game gone on to another scene: the one it left giving way.
+      paintTransition(canvas, Offset.zero & docSize, over, t,
+          from: () =>
+              _paintContents(canvas, left, leftAt, part: CanvasPaintPart.all),
+          to: () => _paintContents(canvas, document, frame,
+              part: CanvasPaintPart.all, camera: camera));
     } else {
       _paintContents(canvas, document, frame,
           part: CanvasPaintPart.all, camera: camera);
@@ -1857,6 +1872,7 @@ class StagePainter extends CustomPainter {
       !setEquals(old.selection, selection) ||
       !setEquals(old.pickedCopies, pickedCopies) ||
       old.trail != trail ||
+      old.gameChange != gameChange ||
       old.selectionBounds != selectionBounds ||
       old.selectionSkew != selectionSkew ||
       old.marquee != marquee;

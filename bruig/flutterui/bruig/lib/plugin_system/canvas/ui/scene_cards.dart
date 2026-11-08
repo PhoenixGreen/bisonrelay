@@ -483,7 +483,15 @@ class SceneCameraCard extends StatelessWidget {
     var camera = doc.allScenes[scene].camera;
     var move = CameraMove.of(camera);
     var strength = CameraMove.strengthOf(camera);
+    var shake = camera?.shake ?? 0;
     var open = doc.at == scene;
+    // A move, with the shake it had: still and shaking is a camera too.
+    SceneCamera? moved(CameraMove m, double strength, double shake) {
+      var next = m.camera(strength);
+      if (shake <= 0) return next;
+      return (next ?? const SceneCamera(toZoom: 1)).copyWith(shake: shake);
+    }
+
     return DeviceFrame(
       id: "sceneCamera",
       title: "Camera",
@@ -504,7 +512,7 @@ class SceneCameraCard extends StatelessWidget {
         c.setSceneCamera(scene, null);
         c.endInteraction();
       },
-      summary: move.label,
+      summary: shake > 0 ? "${move.label}, shaking" : move.label,
       foldedBody: const SizedBox(),
       body: const SizedBox.shrink(),
       controls: (tier) => [
@@ -522,7 +530,7 @@ class SceneCameraCard extends StatelessWidget {
             onChanged: (v, {transient = false}) {
               if (move == CameraMove.still) return;
               c.beginInteraction();
-              c.setSceneCamera(scene, move.camera(v), transient: true);
+              c.setSceneCamera(scene, moved(move, v, shake), transient: true);
               if (!transient) c.endInteraction();
             },
             onCommit: c.endInteraction,
@@ -534,9 +542,28 @@ class SceneCameraCard extends StatelessWidget {
             options: [for (var m in CameraMove.values) (m, m.label)],
             onChanged: (m) {
               c.beginInteraction();
-              c.setSceneCamera(scene, m.camera(strength));
+              c.setSceneCamera(scene, moved(m, strength, shake));
               c.endInteraction();
             },
+          ),
+          DeviceKnob(
+            key: const ValueKey("cameraShake"),
+            label: "Shake",
+            text: "${(shake * 100).round()}%",
+            value: shake,
+            initial: 0,
+            min: 0,
+            max: 1,
+            accent: sceneAccent,
+            ink: skin.ink,
+            onChanged: (v, {transient = false}) {
+              c.beginInteraction();
+              c.setSceneCamera(
+                  scene, moved(move, strength, (v * 100).roundToDouble() / 100),
+                  transient: true);
+              if (!transient) c.endInteraction();
+            },
+            onCommit: c.endInteraction,
           ),
           if (camera != null && open)
             StudioDrop<bool>(

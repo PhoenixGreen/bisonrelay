@@ -161,7 +161,8 @@ void paintSequenceFrame(
             // Its Camera, which takes over, or its slow move.
             camera: cameraOf(shown) != null
                 ? sceneFraming(shown, frame)
-                : camera?.at(frame / length, doc.size.rect)));
+                : camera?.at(frame / length, doc.size.rect,
+                    seconds: frame / math.max(1, doc.frameRate))));
   }
 
   if (!place.changing) {

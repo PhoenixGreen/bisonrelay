@@ -241,6 +241,14 @@ void main() {
       });
       expect(reading(), startsWith("-6.0 dB"),
           reason: "moving again at once, not after as long as it ran before");
+      // The peak held under it, and its clip light dark below nought.
+      expect(
+          tester.widget<Text>(find.byKey(const ValueKey("junctionDb-0"))).data,
+          "−6");
+      var lamp = tester
+          .widget<Container>(find.byKey(const ValueKey("junctionClip-0")));
+      expect((lamp.decoration as BoxDecoration).color,
+          isNot(const Color(0xFFE5484D)));
       await tester.pumpWidget(const SizedBox());
     });
 

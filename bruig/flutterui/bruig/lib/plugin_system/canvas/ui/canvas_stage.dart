@@ -6475,6 +6475,7 @@ class CanvasStageState extends State<CanvasStage>
                         // open on its motion.
                         trail: controller.motionTrail &&
                             controller.chainShowsMotion,
+                        gameChange: controller.gameChange,
                         pickedCopies: controller.selected == null
                             ? const {}
                             : controller.pickedCopiesOf(controller.selected!.id),

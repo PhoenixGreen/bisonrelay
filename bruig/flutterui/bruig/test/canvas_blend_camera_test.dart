@@ -14,6 +14,8 @@ import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/camera_section.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+    show DeviceKnob;
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
     show StudioDrop;
@@ -170,6 +172,75 @@ void main() {
       await tester.pumpAndSettle();
       var camera = c.document.allScenes.first.camera!;
       expect(camera.toZoom, greaterThan(camera.fromZoom));
+    });
+    // The prototype's Camera: Orbit among its moves, and a Shake.
+    test("orbits once round, and shakes without showing the page edge", () {
+      const page = Rect.fromLTWH(0, 0, 800, 450);
+      var round = CameraMove.orbit.camera(0.3)!;
+      expect(CameraMove.of(round), CameraMove.orbit);
+      var (z0, a) = round.at(0, page);
+      var (_, b) = round.at(0.5, page);
+      var (_, back) = round.at(1, page);
+      expect(z0, greaterThan(1));
+      expect(a.dx, greaterThan(page.center.dx), reason: "starts right");
+      expect(b.dx, lessThan(page.center.dx), reason: "half way: left");
+      expect((back - a).distance, lessThan(1), reason: "and round again");
+
+      var shaken = const SceneCamera(toZoom: 1, shake: 1);
+      var seen = <Offset>{};
+      for (var f = 0; f < 24; f++) {
+        var (zoom, at) = shaken.at(f / 23, page, seconds: f / 24);
+        expect(zoom, greaterThan(1), reason: "room to shake in");
+        var hx = page.width / 2 / zoom, hy = page.height / 2 / zoom;
+        expect(at.dx - hx, greaterThanOrEqualTo(-1e-9));
+        expect(at.dx + hx, lessThanOrEqualTo(page.width + 1e-9));
+        expect(at.dy - hy, greaterThanOrEqualTo(-1e-9));
+        expect(at.dy + hy, lessThanOrEqualTo(page.height + 1e-9));
+        seen.add(at);
+      }
+      expect(seen.length, greaterThan(10), reason: "it moves");
+      var kept = SceneCamera.fromJson(shaken.copyWith(orbit: true).toJson())!;
+      expect((kept.shake, kept.orbit), (1.0, true));
+    });
+
+    testWidgets("the Camera card's Shake, kept through a change of move",
+        (tester) async {
+      var c = CanvasController(scene(null));
+      addTearDown(c.dispose);
+      c.pickScene(0);
+      tester.view.physicalSize = const Size(1600, 600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: Align(
+                    alignment: Alignment.topLeft,
+                    child: ListenableBuilder(
+                        listenable: c,
+                        builder: (context, _) =>
+                            AnimationPanel(controller: c, height: 360))))),
+      ));
+      await tester.pumpAndSettle();
+      tester
+          .widget<DeviceKnob>(find.byKey(const ValueKey("cameraShake")))
+          .onChanged(0.5);
+      await tester.pumpAndSettle();
+      expect(c.document.allScenes.first.camera?.shake, 0.5,
+          reason: "still, and shaking");
+      tester
+          .widget<StudioDrop<CameraMove>>(
+              find.byKey(const ValueKey("cameraMove")))
+          .onChanged(CameraMove.orbit);
+      await tester.pumpAndSettle();
+      var camera = c.document.allScenes.first.camera!;
+      expect((camera.orbit, camera.shake), (true, 0.5));
+      expect(tester.takeException(), isNull);
     });
   });
 }

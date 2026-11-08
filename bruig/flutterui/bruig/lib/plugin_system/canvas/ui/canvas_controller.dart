@@ -3132,6 +3132,12 @@ class CanvasController extends ChangeNotifier {
 
   GameRun? _game;
   CanvasDocument? _gameView;
+
+  /// _gameLeft is the scene a game has just left -- as it was last seen,
+  /// on its frame -- with the transition after it and when it began, on
+  /// the game's clock: drawn giving way to the one arrived at. See
+  /// gameChange.
+  (CanvasDocument, int, SceneTransition, double)? _gameLeft;
   Timer? _gameTimer;
   final Stopwatch _gameWatch = Stopwatch();
 

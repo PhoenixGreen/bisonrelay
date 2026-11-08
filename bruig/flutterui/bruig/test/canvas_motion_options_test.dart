@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';

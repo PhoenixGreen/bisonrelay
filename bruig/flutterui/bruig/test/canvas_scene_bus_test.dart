@@ -16,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
+import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
     show DeviceKnob;
@@ -351,6 +352,43 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       return c;
     }
+
+    // The prototype's who menu lists the scene's bus among the buses.
+    testWidgets("the Chain's who menu opens the scene's bus", (tester) async {
+      var c = CanvasController(doc(), audioEngine: FakeEngine({"t": 2}));
+      addTearDown(c.dispose);
+      c.openEffects(c.timelineChannels.first.key);
+      tester.view.physicalSize = const Size(1800, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: ListenableBuilder(
+                        listenable: c,
+                        builder: (context, _) => ChainPanel(
+                            controller: c, height: 360, onResize: (_) {}))))),
+      ));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.byKey(const ValueKey("chainWho")));
+      await tester.pump(const Duration(milliseconds: 300));
+      var scene = find.byKey(const ValueKey("chainWho-scene"));
+      expect(scene, findsOneWidget);
+      expect(find.text("Rain bus"), findsOneWidget);
+      await tester.tap(scene);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(c.effectsOf ?? c.effectsChannel, sceneBusKey);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 600));
+    });
 
     // Ken, 2026-11-08: the prototype's scene chain -- a Source of everything
     // heard in it, and an Output.

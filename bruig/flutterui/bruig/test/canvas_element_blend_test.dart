@@ -54,7 +54,7 @@ void main() {
     expect(screened, [255, 0, 255], reason: "screened: both, brighter");
 
     var e = _box("r", red, blend: LayerBlend.multiply);
-    expect(elementFromJson(e.toJson())!.base.blend, LayerBlend.multiply);
+    expect(elementFromJson(e.toJson()).base.blend, LayerBlend.multiply);
     expect(_box("b", blue).toJson().toString(), isNot(contains("blend")),
         reason: "normal, as before, saved as it was");
   });

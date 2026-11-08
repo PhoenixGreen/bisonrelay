@@ -562,6 +562,15 @@ class SceneCamera {
   final double toY;
   final SceneTransitionEase ease;
 
+  /// orbit goes once round the point it looks at over the scene, as far
+  /// out as [fromX] is from the middle, instead of from one framing to the
+  /// other.
+  final bool orbit;
+
+  /// shake is how much it shakes (0 to 1): a few pixels' jitter, as a hand
+  /// held camera's -- or a hit's, all the way up.
+  final double shake;
+
   const SceneCamera({
     this.fromZoom = 1,
     this.fromX = 0.5,
@@ -570,16 +579,40 @@ class SceneCamera {
     this.toX = 0.5,
     this.toY = 0.5,
     this.ease = SceneTransitionEase.smooth,
+    this.orbit = false,
+    this.shake = 0,
   });
 
   /// at is the framing [t] of the way through the scene: a zoom, and the
   /// point of [page] at the middle of the picture -- held far enough in from
   /// the edges that the picture never runs off the page.
-  (double, Offset) at(double t, Rect page) {
+  ///
+  /// [seconds] into the scene times its shake; without it, [t] does.
+  (double, Offset) at(double t, Rect page, {double? seconds}) {
     var e = ease.apply(t.clamp(0.0, 1.0));
     var zoom = math.max(1.0, fromZoom + (toZoom - fromZoom) * e);
-    var x = (fromX + (toX - fromX) * e) * page.width;
-    var y = (fromY + (toY - fromY) * e) * page.height;
+    var fx = fromX + (toX - fromX) * e, fy = fromY + (toY - fromY) * e;
+    if (orbit) {
+      // Round the middle, as far out as it starts, once over the scene.
+      var r = math.max((fromX - 0.5).abs(), 0.04);
+      var a = 2 * math.pi * e;
+      fx = 0.5 + r * math.cos(a);
+      fy = 0.5 + r * math.sin(a) * page.width / math.max(1, page.height);
+    }
+    if (shake > 0) {
+      // Room to shake in: closer by as much, so the page never shows its
+      // edge; then a quick jitter, a few sines out of step.
+      zoom = math.max(zoom, 1 + shake * 0.06);
+      var s = (seconds ?? t * 10) * 9;
+      double jitter(double k) =>
+          math.sin(s * 1.7 + k) * 0.5 +
+          math.sin(s * 3.1 + k * 2) * 0.3 +
+          math.sin(s * 5.3 + k * 3) * 0.2;
+      fx += jitter(0) * shake * 0.012;
+      fy += jitter(4) * shake * 0.012 * page.width / math.max(1, page.height);
+    }
+    var x = fx * page.width;
+    var y = fy * page.height;
     var hx = page.width / 2 / zoom, hy = page.height / 2 / zoom;
     return (
       zoom,
@@ -596,6 +629,8 @@ class SceneCamera {
     double? toX,
     double? toY,
     SceneTransitionEase? ease,
+    bool? orbit,
+    double? shake,
   }) =>
       SceneCamera(
         fromZoom: fromZoom ?? this.fromZoom,
@@ -605,12 +640,16 @@ class SceneCamera {
         toX: toX ?? this.toX,
         toY: toY ?? this.toY,
         ease: ease ?? this.ease,
+        orbit: orbit ?? this.orbit,
+        shake: (shake ?? this.shake).clamp(0.0, 1.0),
       );
 
   Map<String, dynamic> toJson() => {
         "from": [fromZoom, fromX, fromY],
         "to": [toZoom, toX, toY],
         if (ease != SceneTransitionEase.smooth) "ease": ease.name,
+        if (orbit) "orbit": true,
+        if (shake > 0) "shake": shake,
       };
 
   static SceneCamera? fromJson(Object? json) {
@@ -629,6 +668,10 @@ class SceneCamera {
       toX: to[1].clamp(0.0, 1.0),
       toY: to[2].clamp(0.0, 1.0),
       ease: SceneTransitionEase.fromName(jsonStr(json["ease"])),
+      orbit: json["orbit"] == true,
+      shake: json["shake"] is num
+          ? (json["shake"] as num).toDouble().clamp(0.0, 1.0)
+          : 0,
     );
   }
 }

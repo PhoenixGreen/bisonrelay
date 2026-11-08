@@ -1,7 +1,10 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart'
+    show Keyframe;
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
@@ -258,6 +261,89 @@ void main() {
           reason: "a count's trigger, on the master's HUD");
       step(1.5);
       expect(c.gameView!.elementById("coin"), isNull, reason: "then gone");
+    });
+
+    // Sky Isles v7 (2026-11-08): a game's next scene arrives through the
+    // transition set after the one it leaves, as the timeline's does.
+    test("the next scene arrives through its transition", () {
+      game(CanvasDocument(game: true, frameRate: 24, scenes: [
+        CanvasScene(
+            id: "one",
+            transition: const SceneTransition(
+                kind: SceneTransitionKind.fade, frames: 24),
+            elements: [
+              box("hero", 100, 640, 40, 80, play: hero),
+              box("flag", 110, 680, 30, 30,
+                  play: const PlaySpec(
+                      as: PlayAs.pickup,
+                      touched: GameEffect(does: GameDoes.next))),
+            ]),
+        CanvasScene(id: "two", elements: [
+          box("hero2", 100, 640, 40, 80, play: hero),
+        ]),
+      ]));
+      c.gaming = true;
+      step(0.1);
+      expect(c.document.at, 1, reason: "on to the next");
+      var change = c.gameChange;
+      expect(change, isNotNull, reason: "giving way, not cut");
+      var (left, _, over, t) = change!;
+      expect(left.at, 0, reason: "the scene it left, as it was seen");
+      expect(left.elementById("hero"), isNotNull, reason: "its own things");
+      expect(over.kind, SceneTransitionKind.fade);
+      expect(t, inInclusiveRange(0.0, 0.5));
+      step(1.1);
+      expect(c.gameChange, isNull, reason: "a second, and it has arrived");
+    });
+
+    // Sky Isles v7 (2026-11-08): a level's coins as one element, reused --
+    // the one touched pops alone and goes; the rest float on.
+    test("one of a coin's copies taken pops alone, the others stay", () {
+      var collect = presetNamed("Collect")!
+          .clip("pop", layer: 1)
+          .copyWith(triggers: const [ClipTrigger(ClipTriggerKind.touched)]);
+      var float = presetNamed("Float")!
+          .clip("float")
+          .copyWith(triggers: const [ClipTrigger(ClipTriggerKind.sceneStarts)]);
+      CanvasElement coin =
+          box("coin", 110, 680, 30, 30, play: pickup, clips: [float, collect]);
+      coin = coin.withBase(
+          motion: coin.base.motion.copyWith(
+              instances: const InstanceSet(items: [
+        ElementInstance("c0"),
+        ElementInstance("c1", dx: 300),
+        ElementInstance("c2", dx: 600),
+      ])));
+      game(CanvasDocument(
+        game: true,
+        counts: const [coins],
+        scenes: [
+          CanvasScene(id: "one", elements: [
+            box("hero", 100, 640, 40, 80, play: hero),
+            coin,
+          ]),
+        ],
+      ));
+      c.gaming = true;
+      step(0.1);
+      expect(c.game!.countOf(c.document, "coins"), 1, reason: "one taken");
+      expect(c.motionPlayer.isPlaying("coin#c0"), isTrue,
+          reason: "its pop, its own");
+      expect(c.motionPlayer.isPlaying("coin", only: {"pop"}), isFalse,
+          reason: "not every copy's");
+      var seen = c.gameView!.elementById("coin")!;
+      expect(seen.base.motion.instances!.count, 3,
+          reason: "the one taken seen while it pops");
+      step(0.2);
+      var e = c.document.elementById("coin")!;
+      Keyframe pose(int i) => poseWithMotion(e, c.frame, c.document,
+          live: c.liveMotion, instance: i);
+      expect((pose(0).scale - pose(1).scale).abs(), greaterThan(0.01),
+          reason: "the taken one popping, the next not");
+      expect(pose(1).dy, isNot(0), reason: "the others float on");
+      step(1.5);
+      var left = c.gameView!.elementById("coin")!.base.motion.instances!;
+      expect([for (var i in left.items) i.id], ["c1", "c2"]);
     });
   });
 }

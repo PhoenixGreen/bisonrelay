@@ -22,6 +22,8 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+    show DeviceKnob;
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -1271,6 +1273,24 @@ void main() {
       await tapOn(tester, find.byKey(const ValueKey("deviceReset-duck")));
       expect(mix().duck.depthDb, const Ducking().depthDb);
       expect(mix().duck.on, isTrue, reason: "reset, not switched off");
+      await done(tester, c);
+    });
+
+    testWidgets("the master's Output has its Out and how loud it is",
+        (tester) async {
+      var c = await show(tester);
+      await tester.tap(find.byKey(const ValueKey("masterEqSlot")));
+      await tester.pump(const Duration(milliseconds: 300));
+      var out = find.byKey(const ValueKey("outputOut"));
+      await tester.ensureVisible(out);
+      await tester.pump();
+      tester.widget<DeviceKnob>(out).onChanged(-3.04);
+      await tester.pump();
+      expect(c.document.masterMix.gainDb, -3.0);
+      expect(find.byKey(const ValueKey("outputLufs")), findsOneWidget);
+      c.undo();
+      expect(c.document.masterMix.gainDb, 0, reason: "one step");
+      expect(tester.takeException(), isNull);
       await done(tester, c);
     });
 

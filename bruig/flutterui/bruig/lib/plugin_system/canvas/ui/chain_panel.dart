@@ -713,6 +713,13 @@ class _ChainWho extends StatelessWidget {
               text: r.name,
               current: shown == r.id,
               onPressed: () => c.openEffects(r.id)),
+        // The scene's own bus, where the canvas has scenes to have one.
+        if (c.document.hasScenes || c.document.masterOn)
+          chainMenuItem(look,
+              key: const ValueKey("chainWho-scene"),
+              text: "${c.document.nameOf(c.document.at)} bus",
+              current: shown == sceneBusKey,
+              onPressed: () => c.openEffects(sceneBusKey)),
         chainMenuItem(look,
             key: const ValueKey("chainWho-master"),
             text: "Master",

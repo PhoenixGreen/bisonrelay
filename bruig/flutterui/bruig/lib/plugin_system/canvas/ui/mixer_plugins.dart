@@ -7356,6 +7356,11 @@ class MotionDeviceCard extends StatelessWidget {
         ]);
         controller.endInteraction();
       },
+      // A second set of its knobs to compare, as a sound device's A|B.
+      onAB: () => controller.toggleABOf("$element|mdev:${d.id}", d,
+          (o) => write((o as MotionDevice).switched(d.on).withTarget(d.target),
+              transient: true)),
+      showingB: controller.showingBOf("$element|mdev:${d.id}"),
       // What it does made keys, for an EPUB, and it switched off.
       extraMenu: pose &&
               d.on &&

@@ -96,11 +96,16 @@ String motionKeyName(LogicalKeyboardKey k) => k == LogicalKeyboardKey.space
 
 /// _elementIn is [id] among [doc]'s elements, or the master's drawn with
 /// them -- a game's HUD plays its clips as a scene's elements do.
-CanvasElement? _elementIn(CanvasDocument doc, String id) =>
-    doc.elementById(id) ??
-    (doc.editingMaster
-        ? null
-        : doc.masterScene?.elements.where((e) => e.id == id).firstOrNull);
+/// An id can be one copy of an element reused (see instanceKey): what that
+/// copy plays alone, its element's.
+CanvasElement? _elementIn(CanvasDocument doc, String id) {
+  var at = id.indexOf("#");
+  if (at > 0) id = id.substring(0, at);
+  return doc.elementById(id) ??
+      (doc.editingMaster
+          ? null
+          : doc.masterScene?.elements.where((e) => e.id == id).firstOrNull);
+}
 
 /// _elementsOf are [doc]'s elements, and the master's drawn with them.
 Iterable<CanvasElement> _elementsOf(CanvasDocument doc) => [
@@ -261,9 +266,14 @@ class MotionPlayer implements LiveMotion {
             t.kind == kind &&
             counted(t) &&
             (t.target.isEmpty
-                ? kind != ClipTriggerKind.touched || e.id == target
+                ? kind != ClipTriggerKind.touched ||
+                    e.id == target ||
+                    target.startsWith("${e.id}#")
                 : t.target == target))) {
-          launch(doc, frame, e.id, c.id, at);
+          // One copy touched plays it alone, by its own key.
+          var copy =
+              kind == ClipTriggerKind.touched && target.startsWith("${e.id}#");
+          launch(doc, frame, copy ? target : e.id, c.id, at);
         }
       }
     }

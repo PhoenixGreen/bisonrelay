@@ -127,4 +127,43 @@ void main() {
     expect(c.motionOf("a").clips, hasLength(2));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets("a move device compares A|B", (tester) async {
+    var c = _with(const [MotionDevice(MotionDeviceKind.wiggle, id: "m")]);
+    addTearDown(c.dispose);
+    c.selectOnly("a");
+    c.pickMotion("a", "go", placement: "p");
+    tester.view.physicalSize = const Size(3000, 420);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: ListenableBuilder(
+                  listenable: c,
+                  builder: (context, _) =>
+                      AnimationPanel(controller: c, height: 400)))),
+    ));
+    await tester.pumpAndSettle();
+    var id = c.motionDevicesOf("a").single.id;
+    double amount() => c.motionDevicesOf("a").single.value("amount");
+    var ab = find.byKey(ValueKey("deviceAB-mdev:$id"));
+    await tester.tap(ab);
+    await tester.pumpAndSettle();
+    c.setMotionDevices(
+        "a", [c.motionDevicesOf("a").single.withValue("amount", 80)]);
+    await tester.pumpAndSettle();
+    await tester.tap(ab);
+    await tester.pumpAndSettle();
+    expect(amount(), 12, reason: "A, as it began");
+    await tester.tap(ab);
+    await tester.pumpAndSettle();
+    expect(amount(), 80, reason: "B");
+    expect(tester.takeException(), isNull);
+  });
 }
