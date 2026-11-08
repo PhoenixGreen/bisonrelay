@@ -133,6 +133,26 @@ void main() {
       expect(played, isEmpty, reason: "no note played in Session mode");
     });
 
+    // Ken's systems review, 2026-11-08: a pad held across the switch.
+    test("a pad held as the mode changes is let go as it was pressed", () {
+      var pressed = <(int, int, int)>[];
+      var played = <(int, int)>[];
+      push.onClip = (c, r, v) => pressed.add((c, r, v));
+      push.onNote = (k, v) => played.add((k, v));
+      // Pressed as a note, let go in Session mode: the note stops.
+      push.handle(m([0x90, 92, 100]));
+      push.session = true;
+      push.handle(m([0x80, 92, 0]));
+      expect(played.map((p) => p.$2), [100, 0]);
+      expect(pressed, isEmpty, reason: "no slot let go it never pressed");
+      // Pressed as a slot, let go in Note mode: the slot is let go.
+      push.handle(m([0x90, 93, 90]));
+      push.session = false;
+      push.handle(m([0x80, 93, 0]));
+      expect(pressed, [(1, 0, 90), (1, 0, 0)]);
+      expect(played, hasLength(2), reason: "and no note");
+    });
+
     test("only the pads that changed are lit again", () {
       push.handle(m([0xB0, PushButton.session, 127]));
       sent.clear();

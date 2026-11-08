@@ -8,7 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/surround.dart';
 export 'package:bruig/plugin_system/canvas/model/surround.dart'
     show SurroundPan, SpeakerLayout;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonBool, jsonDouble, jsonSpec, jsonStr;
+    show jsonBool, jsonDouble, jsonInt, jsonSpec, jsonStr;
 
 // mix.dart is the mix settings: each channel strip and the master strip.
 //
@@ -107,6 +107,10 @@ class Eq {
   /// gainDb is the level after the bands.
   final double gainDb;
 
+  /// stereo is what it works on, as a device's Works on: the whole sound
+  /// (0), its middle (1) or its sides (2).
+  final int stereo;
+
   const Eq({
     this.on = false,
     this.lowCut = const EqBand(30, on: false),
@@ -118,6 +122,7 @@ class Eq {
     this.high = const EqBand(8000),
     this.highCut = const EqBand(18000, on: false),
     this.gainDb = 0,
+    this.stereo = 0,
   });
 
   EqBand band(EqSlot slot) => switch (slot) {
@@ -162,6 +167,7 @@ class Eq {
     EqBand? high,
     EqBand? highCut,
     double? gainDb,
+    int? stereo,
   }) =>
       Eq(
         on: on ?? this.on,
@@ -174,12 +180,14 @@ class Eq {
         high: high ?? this.high,
         highCut: highCut ?? this.highCut,
         gainDb: gainDb ?? this.gainDb,
+        stereo: (stereo ?? this.stereo).clamp(0, 2),
       );
 
   Map<String, dynamic> toJson() => {
         if (on) "on": true,
         for (var slot in EqSlot.values) slot.name: band(slot).toJson(),
         if (gainDb != 0) "gain": gainDb,
+        if (stereo != 0) "stereo": stereo,
       };
 
   factory Eq.fromJson(Map<String, dynamic> json) {
@@ -195,6 +203,7 @@ class Eq {
       high: read(EqSlot.high),
       highCut: read(EqSlot.highCut),
       gainDb: jsonDouble(json["gain"], 0).clamp(-12.0, 12.0),
+      stereo: jsonInt(json["stereo"], 0).clamp(0, 2),
     );
   }
 
@@ -409,7 +418,11 @@ class Dynamics {
     this.mix = 1,
     this.autoGain = AutoGain.off,
     this.source = "",
+    this.stereo = 0,
   });
+
+  /// stereo is what it works on: see Eq.stereo.
+  final int stereo;
 
   /// sidechain is the channel it listens to, while it is on and has one.
   String? get sidechain => on && source.isNotEmpty ? source : null;
@@ -425,6 +438,7 @@ class Dynamics {
     double? mix,
     AutoGain? autoGain,
     String? source,
+    int? stereo,
   }) =>
       Dynamics(
         on: on ?? this.on,
@@ -437,6 +451,7 @@ class Dynamics {
         mix: mix ?? this.mix,
         autoGain: autoGain ?? this.autoGain,
         source: source ?? this.source,
+        stereo: (stereo ?? this.stereo).clamp(0, 2),
       );
 
   Map<String, dynamic> toJson() => {
@@ -450,6 +465,7 @@ class Dynamics {
         if (mix != 1) "mix": mix,
         if (autoGain != AutoGain.off) "autoGain": autoGain.name,
         if (source.isNotEmpty) "source": source,
+        if (stereo != 0) "stereo": stereo,
       };
 
   factory Dynamics.fromJson(Map<String, dynamic> json) => Dynamics(
@@ -463,6 +479,7 @@ class Dynamics {
         mix: jsonDouble(json["mix"], 1).clamp(0.0, 1.0),
         autoGain: AutoGain.fromName(jsonStr(json["autoGain"])),
         source: jsonStr(json["source"]) ?? "",
+        stereo: jsonInt(json["stereo"], 0).clamp(0, 2),
       );
 
   /// reducedDb is [input] dB after threshold, ratio and knee, before

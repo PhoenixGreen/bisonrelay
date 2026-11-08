@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -228,6 +229,84 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
       }
     }
+
+    // The chain prototype's gain badges, on the master's chain too, and on
+    // its EQ: what each does to the level.
+    testWidgets("the master's devices and EQ say what they do to the level",
+        (tester) async {
+      var (c, engine) = await open(tester, mixerMasterKey);
+      c.setMasterMix(c.document.masterMix.copyWith(
+          devices: const [MixDevice(DeviceKind.saturator, id: "d0")]));
+      var chain = c.chainOf(mixerMasterKey);
+      var at = chain.indexOf("d0"), eq = chain.indexOf(chainEq);
+      var taps = [for (var i = 0; i <= chain.length; i++) (0.5, 0.5)];
+      taps[at + 1] = (0.25, 0.25);
+      if (eq == at + 1) taps[eq + 1] = (0.5, 0.5);
+      engine.heardTaps = taps;
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(
+          tester.widget<Text>(find.byKey(const ValueKey("deviceGain-d0"))).data,
+          "−6.0",
+          reason: "half the gain, on the master's chain");
+      if (eq == at + 1) {
+        expect(
+            tester
+                .widget<Text>(find.byKey(const ValueKey("deviceGain-eq")))
+                .data,
+            "+6.0");
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    // The chain prototype's clip lights: lit once a join clips, until its
+    // lights are cleared from a join's menu.
+    testWidgets("a join that clipped stays lit until cleared", (tester) async {
+      var (c, engine) = await open(tester, "a");
+      Color lamp() => (tester
+              .widget<Container>(find.byKey(const ValueKey("junctionClip-0")))
+              .decoration as BoxDecoration)
+          .color!;
+      engine.heardTaps = [(1.4, 1.4), (1.4, 1.4)];
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      engine.heardTaps = [(0.1, 0.1), (0.1, 0.1)];
+      for (var i = 0; i < 40; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(lamp(), const Color(0xFFE5484D), reason: "four seconds on, lit");
+      await tester.tap(find.byKey(const ValueKey("junction-0")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("junctionClear-0")));
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(lamp(), isNot(const Color(0xFFE5484D)), reason: "cleared");
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    // The chain prototype: a folded card keeps a meter at its foot.
+    testWidgets("a folded device shows its level as the sound leaves it",
+        (tester) async {
+      var (c, engine) = await open(tester, "a");
+      c.setDevicesOf("a", const [MixDevice(DeviceKind.reverb)]);
+      var id = deviceIdAt(c.devicesOf("a"), 0);
+      c.foldDevice(deviceKey(id), true);
+      engine.heardTaps = [for (var i = 0; i < 8; i++) (0.5, 0.5)];
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      var level = find.descendant(
+          of: find.byKey(const ValueKey("foldedLevel-0")),
+          matching: find.byType(FractionallySizedBox));
+      expect(level, findsOneWidget, reason: "folded, a meter at its foot");
+      expect(tester.widget<FractionallySizedBox>(level).heightFactor,
+          closeTo(0.9, 0.02),
+          reason: "half the gain, six down of sixty");
+      await tester.pumpWidget(const SizedBox());
+    });
 
     testWidgets("the levels between a channel's devices", (tester) async {
       var (c, engine) = await open(tester, "a");

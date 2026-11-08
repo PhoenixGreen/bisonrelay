@@ -38,6 +38,16 @@ class Biquad {
         a1 = c[3],
         a2 = c[4];
 
+  /// carryFrom takes on [was]'s state: a section retuned goes on from where
+  /// the one it replaces was, rather than from silence -- a knob turned
+  /// does not click.
+  void carryFrom(Biquad was) {
+    _l1 = was._l1;
+    _l2 = was._l2;
+    _r1 = was._r1;
+    _r2 = was._r2;
+  }
+
   void process(Float32List l, Float32List r, int n) {
     for (var i = 0; i < n; i++) {
       var x = l[i];
@@ -59,9 +69,19 @@ class EqProcessor {
   final List<Biquad> _sections;
   final double _gain;
 
-  EqProcessor(Eq eq, {double sampleRate = 48000})
-      : _sections = [for (var c in eqBiquads(eq, sampleRate)) Biquad(c)],
-        _gain = eq.on ? dbToGain(eq.gainDb) : 1;
+  /// With [carry], the EQ it replaces, its sections go on from that one's
+  /// state where they are the same sections (see Biquad.carryFrom).
+  EqProcessor(Eq eq, {EqProcessor? carry})
+      : _sections = [
+          for (var c in eqBiquads(eq, mixRate.toDouble())) Biquad(c)
+        ],
+        _gain = eq.on ? dbToGain(eq.gainDb) : 1 {
+    if (carry != null && carry._sections.length == _sections.length) {
+      for (var i = 0; i < _sections.length; i++) {
+        _sections[i].carryFrom(carry._sections[i]);
+      }
+    }
+  }
 
   void process(Float32List l, Float32List r, int n) {
     for (var s in _sections) {
@@ -78,7 +98,7 @@ class EqProcessor {
 class Compressor {
   final Dynamics d;
   final double _attack, _release, _makeup;
-  double _reduction = 0;
+  double _reduction;
 
   /// source is the channel it listens to rather than its own sound (see
   /// Dynamics.sidechain), fed into [key] before each block.
@@ -88,11 +108,14 @@ class Compressor {
   /// reductionDb is how many decibels it is taking off now: its meter.
   double get reductionDb => _reduction;
 
-  Compressor(this.d, {double sampleRate = 48000})
-      : _attack = _coefficient(d.attackMs, sampleRate),
-        _release = _coefficient(d.releaseMs, sampleRate),
+  /// With [carry], the one it replaces, it goes on turning down as far as
+  /// that one was, so a knob turned does not jump the level.
+  Compressor(this.d, {Compressor? carry})
+      : _attack = _coefficient(d.attackMs, mixRate.toDouble()),
+        _release = _coefficient(d.releaseMs, mixRate.toDouble()),
         _makeup = dbToGain(d.totalMakeupDb),
-        source = d.sidechain;
+        source = d.sidechain,
+        _reduction = carry?._reduction ?? 0;
 
   void process(Float32List l, Float32List r, int n) {
     var wet = d.mix.clamp(0.0, 1.0);
@@ -128,18 +151,28 @@ class Limiter {
   /// sound down, one for not at all.
   double least = 1;
 
+  /// With [carry], the one it replaces, what that one held back is still
+  /// heard and its gain goes on from where it was -- where the lookahead
+  /// is as long; a new one would drop the few milliseconds in it.
   Limiter(double ceilingDb,
-      {double sampleRate = 48000, double aheadMs = 5, double releaseMs = 50})
+      {double aheadMs = 5, double releaseMs = 50, Limiter? carry})
       : ceiling = dbToGain(ceilingDb),
-        _ahead = math.max(1, (aheadMs / 1000 * sampleRate).round()),
+        _ahead = math.max(1, (aheadMs / 1000 * mixRate).round()),
         // A quarter of the lookahead: all but settled by the time the peak
         // that asked for it is heard.
-        _attack = _coefficient(aheadMs / 4, sampleRate),
-        _release = _coefficient(releaseMs, sampleRate),
-        _dl = Float32List(math.max(1, (aheadMs / 1000 * sampleRate).round())),
-        _dr = Float32List(math.max(1, (aheadMs / 1000 * sampleRate).round())),
-        _peaks =
-            Float32List(math.max(1, (aheadMs / 1000 * sampleRate).round()));
+        _attack = _coefficient(aheadMs / 4, mixRate.toDouble()),
+        _release = _coefficient(releaseMs, mixRate.toDouble()),
+        _dl = Float32List(math.max(1, (aheadMs / 1000 * mixRate).round())),
+        _dr = Float32List(math.max(1, (aheadMs / 1000 * mixRate).round())),
+        _peaks = Float32List(math.max(1, (aheadMs / 1000 * mixRate).round())) {
+    if (carry != null && carry._ahead == _ahead) {
+      _dl.setAll(0, carry._dl);
+      _dr.setAll(0, carry._dr);
+      _peaks.setAll(0, carry._peaks);
+      _at = carry._at;
+      _gain = carry._gain;
+    }
+  }
 
   void process(Float32List l, Float32List r, int n) {
     least = 1;
@@ -167,6 +200,27 @@ class Limiter {
 
 /// StripProcessor is a channel strip: its devices, EQ and compressor in the
 /// order set, then the fader and balance. A muted strip is silent.
+/// carriedDevice is the running processor, among [was] (the specs a
+/// chain was built from) and [chain] (what runs them), that device [id]
+/// can go on as, now set as [now] -- the same kind, listening to the same
+/// channel, retuned where it can be -- or null for a new one. So a chain
+/// rebuilt keeps its delays' and reverbs' tails.
+DeviceProcessor? carriedDevice(List<MixDevice>? was,
+    List<DeviceProcessor?>? chain, String id, MixDevice now) {
+  if (was == null || chain == null || !now.on) return null;
+  var j = deviceIndexOf(was, id);
+  if (j < 0 || j >= chain.length) return null;
+  var then = was[j], running = chain[j];
+  if (running == null || !then.on || then.kind != now.kind) return null;
+  if (then.source != now.source) return null;
+  if (running is Tunable) {
+    // Set again even as it is: an LFO may have left it somewhere else.
+    (running as Tunable).tune(now);
+    return running;
+  }
+  return then == now ? running : null;
+}
+
 class StripProcessor {
   ChannelMix _mix;
   final EqProcessor _eq;
@@ -211,42 +265,29 @@ class StripProcessor {
   Float32List _heardL = Float32List(0), _heardR = Float32List(0);
   final SideRunner _sides = SideRunner();
 
+  /// _eqSides and _compSides run its EQ and compressor on what they work on
+  /// -- the whole sound, its middle or its sides (Eq.stereo).
+  final SideRunner _eqSides = SideRunner(), _compSides = SideRunner();
+
   /// StripProcessor runs [mix]. With [carry], the strip it replaces, a
   /// device of the same id, kind and source keeps running -- so a chain put
   /// in another order keeps its delays' and reverbs' tails.
   StripProcessor(ChannelMix mix, {StripProcessor? carry})
       : _mix = mix,
-        _eq = EqProcessor(mix.eq),
-        _comp = mix.comp.on ? Compressor(mix.comp) : null,
+        _eq = EqProcessor(mix.eq, carry: carry?._eq),
+        _comp = mix.comp.on ? Compressor(mix.comp, carry: carry?._comp) : null,
         _chain = [
           for (var (i, d) in mix.devices.indexed)
-            _carried(carry, deviceIdAt(mix.devices, i), d) ??
+            carriedDevice(carry?._mix.devices, carry?._chain,
+                    deviceIdAt(mix.devices, i), d) ??
                 DeviceProcessor.of(d)
         ],
-        _gl = mix.gains.$1,
-        _gr = mix.gains.$2 {
+        // Its fader where the strip it replaces left it, ramped on from
+        // there (see level).
+        _gl = carry?._gl ?? (mix.mute ? 0 : mix.gains.$1),
+        _gr = carry?._gr ?? (mix.mute ? 0 : mix.gains.$2) {
     tapping = carry?.tapping ?? false;
     _clock = carry?._clock ?? 0;
-  }
-
-  static DeviceProcessor? _carried(
-      StripProcessor? was, String id, MixDevice now) {
-    if (was == null || !now.on) return null;
-    var j = deviceIndexOf(was._mix.devices, id);
-    if (j < 0 || j >= was._chain.length) return null;
-    var then = was._mix.devices[j], running = was._chain[j];
-    if (running == null || !then.on || then.kind != now.kind) return null;
-    if (then.source != now.source) return null;
-    if (then == now) {
-      // Set again as it is: an LFO may have left it somewhere else.
-      if (running is Tunable) (running as Tunable).tune(now);
-      return running;
-    }
-    if (running is Tunable) {
-      (running as Tunable).tune(now);
-      return running;
-    }
-    return null;
   }
 
   ChannelMix get mix => _mix;
@@ -335,10 +376,12 @@ class StripProcessor {
       scope?.before(l, r, n);
       Object? ran;
       if (step == chainEq) {
-        _eq.process(l, r, n);
+        _eqSides.runOn(_mix.eq.stereo, _eq.process, l, r, n);
       } else if (step == chainComp) {
         ran = _comp;
-        _comp?.process(l, r, n);
+        if (_comp case var c?) {
+          _compSides.runOn(_mix.comp.stereo, c.process, l, r, n);
+        }
       } else {
         var i = deviceIndexOf(_mix.devices, step);
         if (i >= 0 && i < _chain.length) {
@@ -451,15 +494,17 @@ class StripProcessor {
 
   /// level is the fader and balance, ramped from the last block's over this
   /// one so a level moved by automation does not click.
+  /// Muted, it ramps down to silence over the block, and back up when let
+  /// go, so a mute or a solo does not click.
   void level(Float32List l, Float32List r, int n) {
-    if (_mix.mute) {
-      l.fillRange(0, n, 0);
-      r.fillRange(0, n, 0);
-      return;
-    }
-    var (gl, gr) = _mix.gains;
+    var (gl, gr) = _mix.mute ? (0.0, 0.0) : _mix.gains;
     if (gl == _gl && gr == _gr) {
-      if (gl != 1 || gr != 1) _scale(l, r, n, gl, gr);
+      if (gl == 0 && gr == 0) {
+        l.fillRange(0, n, 0);
+        r.fillRange(0, n, 0);
+      } else if (gl != 1 || gr != 1) {
+        _scale(l, r, n, gl, gr);
+      }
       return;
     }
     var dl = (gl - _gl) / n, dr = (gr - _gr) / n;
@@ -496,8 +541,31 @@ class SideRunner {
   void run(
       DeviceProcessor p, MixDevice d, Float32List l, Float32List r, int n) {
     var mode = d.kind.worksOnSides ? d.value("stereo").round() : 0;
+    runOn(mode, p.process, l, r, n);
+    // Its Out, after it.
+    if (d.kind.hasOut) {
+      var out = d.value("out");
+      if (out != 0) {
+        var g = dbToGain(out);
+        for (var i = 0; i < n; i++) {
+          l[i] *= g;
+          r[i] *= g;
+        }
+      }
+    }
+  }
+
+  /// runOn runs [process] on the whole sound (mode 0), or on only its
+  /// middle (1) or its sides (2), the rest passing by: a device's Works on,
+  /// and a strip's EQ's and compressor's.
+  void runOn(
+      int mode,
+      void Function(Float32List l, Float32List r, int n) process,
+      Float32List l,
+      Float32List r,
+      int n) {
     if (mode == 0) {
-      p.process(l, r, n);
+      process(l, r, n);
       return;
     }
     if (_a.length < n) {
@@ -512,7 +580,7 @@ class SideRunner {
       _b[i] = worked;
       _rest[i] = mode == 1 ? side : mid;
     }
-    p.process(_a, _b, n);
+    process(_a, _b, n);
     for (var i = 0; i < n; i++) {
       var worked = (_a[i] + _b[i]) * 0.5;
       var mid = mode == 1 ? worked : _rest[i];
@@ -805,6 +873,10 @@ class Delay implements DeviceProcessor, Tunable {
 /// asked for, and the limiter last.
 class MasterProcessor {
   final MasterMix mix;
+
+  /// _g is the gain the last block ended on: the fader and normaliser,
+  /// ramped from there to where they are now.
+  double _g;
   final EqProcessor _eq;
   final Compressor? _glue;
   final Limiter? _limiter;
@@ -839,14 +911,31 @@ class MasterProcessor {
   Float32List _heardL = Float32List(0), _heardR = Float32List(0);
   final SideRunner _sides = SideRunner();
 
-  MasterProcessor(this.mix, {this.normaliseDb = 0})
-      : _eq = EqProcessor(mix.eq),
-        _glue = mix.comp.on ? Compressor(mix.comp) : null,
+  /// _eqSides and _compSides run its EQ and compressor on what they work on
+  /// -- the whole sound, its middle or its sides (Eq.stereo).
+  final SideRunner _eqSides = SideRunner(), _compSides = SideRunner();
+
+  /// With [carry], the master it replaces, it goes on from that one's state
+  /// -- its EQ, glue, limiter, fader and the devices it still has -- so a
+  /// knob turned on the master as it plays does not drop or click.
+  MasterProcessor(this.mix, {this.normaliseDb = 0, MasterProcessor? carry})
+      : _eq = EqProcessor(mix.eq, carry: carry?._eq),
+        _glue = mix.comp.on ? Compressor(mix.comp, carry: carry?._glue) : null,
         _limiter = mix.limiter
             ? Limiter(mix.ceilingDb,
-                aheadMs: mix.limiterAheadMs, releaseMs: mix.limiterReleaseMs)
+                aheadMs: mix.limiterAheadMs,
+                releaseMs: mix.limiterReleaseMs,
+                carry: carry?._limiter)
             : null,
-        _devices = [for (var d in mix.devices) DeviceProcessor.of(d)];
+        _devices = [
+          for (var (i, d) in mix.devices.indexed)
+            carriedDevice(carry?.mix.devices, carry?._devices,
+                    deviceIdAt(mix.devices, i), d) ??
+                DeviceProcessor.of(d)
+        ],
+        _g = carry?._g ?? dbToGain(mix.gainDb + normaliseDb) {
+    tapping = carry?.tapping ?? false;
+  }
 
   /// process runs the master on a block, the limiter only when [limit]. The
   /// measuring pass leaves it out, as a loudness normaliser measures.
@@ -873,10 +962,12 @@ class MasterProcessor {
       scope?.before(l, r, n);
       Object? ran;
       if (step == chainEq) {
-        _eq.process(l, r, n);
+        _eqSides.runOn(mix.eq.stereo, _eq.process, l, r, n);
       } else if (step == chainComp) {
         ran = _glue;
-        _glue?.process(l, r, n);
+        if (_glue case var g?) {
+          _compSides.runOn(mix.comp.stereo, g.process, l, r, n);
+        }
       } else {
         var i = deviceIndexOf(mix.devices, step);
         if (i >= 0 && i < _devices.length) {
@@ -895,7 +986,17 @@ class MasterProcessor {
     }
     this.taps = taps ?? const [];
     var g = dbToGain(mix.gainDb + normaliseDb);
-    if (g != 1) _scale(l, r, n, g, g);
+    if (g != _g) {
+      var d = (g - _g) / n;
+      for (var i = 0; i < n; i++) {
+        var k = _g + d * (i + 1);
+        l[i] *= k;
+        r[i] *= k;
+      }
+      _g = g;
+    } else if (g != 1) {
+      _scale(l, r, n, g, g);
+    }
     if (limit) _limiter?.process(l, r, n);
   }
 

@@ -39,6 +39,15 @@ extension CanvasMixing on CanvasController {
     notifyListeners();
   }
 
+  /// backToAutomationFor hands [target] of [channel] alone back to its
+  /// lane, where a hand was holding it: the prototype's knob menu "Back to
+  /// its automation".
+  void backToAutomationFor(String channel, String target) {
+    if (_overridden[channel]?.remove(target) != true) return;
+    _applyMix();
+    notifyListeners();
+  }
+
   /// automationArmed is the control bar's Arm automation: while it is on
   /// and the timeline plays, a setting moved by hand writes its lane --
   /// starting one, if it has none -- rather than being held.
@@ -405,12 +414,31 @@ extension CanvasMixing on CanvasController {
   void setMasterMix(MasterMix mix, {bool transient = false}) =>
       apply(_document.copyWith(masterMix: mix), transient: transient);
 
-  /// audioTempo is the document's tempo, for the LFOs set to Sync.
-  double get audioTempo => _document.audio.tempo;
-
   /// sceneBus is the bus of the scene being shown -- see CanvasScene.bus --
   /// which every sound in it goes through on its way to the master.
   ChannelMix get sceneBus => _document.scene.bus;
+
+  /// writeStripPart sets strip [owner]'s own EQ, compressor or Ducker --
+  /// the master's (mixerMasterKey), the scene's bus, a return's or a
+  /// channel's, wherever its sound is -- as one undo step. A part the strip
+  /// does not have is left alone: only a channel has a Ducker.
+  void writeStripPart(String owner, {Eq? eq, Dynamics? comp, Ducking? duck}) {
+    beginInteraction();
+    if (owner == mixerMasterKey) {
+      setMasterMix(_document.masterMix.copyWith(eq: eq, comp: comp),
+          transient: true);
+    } else if (owner == sceneBusKey) {
+      setSceneBus(sceneBus.copyWith(eq: eq, comp: comp), transient: true);
+    } else if (returnOf(owner) case var ret?) {
+      setReturn(ret.copyWith(mix: ret.mix.copyWith(eq: eq, comp: comp)),
+          transient: true);
+    } else if (timelineChannels.where((l) => l.key == owner).firstOrNull
+        case var lane?) {
+      setChannelMix(lane, lane.mix.copyWith(eq: eq, comp: comp, duck: duck),
+          transient: true, anywhere: true);
+    }
+    endInteraction();
+  }
 
   /// setSceneBus changes the shown scene's bus.
   void setSceneBus(ChannelMix bus, {bool transient = false}) => apply(
@@ -462,15 +490,11 @@ extension CanvasMixing on CanvasController {
 
   /// chainOf is strip [key]'s chain in the order it runs: device ids, and
   /// chainEq and chainComp for its EQ and compressor (see ChannelMix.chain).
-  /// A return's is its devices alone: its EQ and compressor are its strip's,
-  /// after them.
+  /// A return's as a channel's, from its devices and its strip.
   List<String> chainOf(String key) {
     if (key == mixerMasterKey) return _document.masterMix.chain;
     if (key == sceneBusKey) return sceneBus.chain;
-    if (returnOf(key) case var r?) {
-      var d = withDeviceIds(r.devices);
-      return [for (var i = 0; i < d.length; i++) deviceIdAt(d, i)];
-    }
+    if (returnOf(key) case var r?) return r.chainMix.chain;
     var lane = timelineChannels.where((c) => c.key == key).firstOrNull;
     return lane == null ? const [] : mixNow(lane).chain;
   }
@@ -503,8 +527,12 @@ extension CanvasMixing on CanvasController {
           sceneBus.copyWith(
               devices: sorted, order: chain, compFirst: compFirstIn(chain)),
           transient: true);
-    } else if (returnOf(key) != null) {
-      setDevicesOf(key, sorted, transient: true);
+    } else if (returnOf(key) case var r?) {
+      setReturn(
+          r.copyWith(
+              devices: sorted,
+              mix: r.mix.copyWith(order: chain, compFirst: compFirstIn(chain))),
+          transient: true);
     } else if (timelineChannels.where((c) => c.key == key).firstOrNull
         case var lane?) {
       var shown = mixNow(lane);
@@ -679,9 +707,7 @@ extension CanvasMixing on CanvasController {
         var mix = _withClipAutomation(lane.channelKey,
             automatedAt(lane.clip.mix, now, except: held), held);
         // Its LFOs set to Sync at the tempo's rate: the engine knows none.
-        return mix.copyWith(
-            devices: tempoSynced(mix.devices, audioTempo,
-                beatsPerBar: _document.audio.beatsPerBar));
+        return mix.copyWith(devices: _document.synced(mix.devices));
       });
     }
     audio.setMix(strips,
@@ -690,11 +716,10 @@ extension CanvasMixing on CanvasController {
           for (var key in _solo)
             if (strips.containsKey(key)) key,
         },
-        master: _document.masterMix,
-        returns: _document.returns,
-        sceneBus: sceneBus.copyWith(
-            devices: tempoSynced(sceneBus.devices, audioTempo,
-                beatsPerBar: _document.audio.beatsPerBar)),
+        master: _document.syncedMaster,
+        returns: _document.syncedReturns,
+        sceneBus:
+            sceneBus.copyWith(devices: _document.synced(sceneBus.devices)),
         sceneChannels: inScene,
         speakers: _document.audio.speakers,
         hear: _hear,

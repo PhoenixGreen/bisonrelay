@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_motion_options_test.dart is the motion devices' options the
@@ -119,5 +120,29 @@ void main() {
 
     expect(await leftOfIt(0), 255, reason: "sharp: white beside it");
     expect(await leftOfIt(1), lessThan(250), reason: "smeared into it");
+  });
+
+  test("Look at the pointer: faces it, and only that hands it over", () {
+    var d = _doc(const [
+      MotionDevice(MotionDeviceKind.lookAt, id: "l", target: lookAtPointer),
+    ], by: 0);
+    var e = d.elementById("a")!;
+    // Straight below its middle (120, 120): a quarter turn.
+    var p = poseWithMotion(e, 0, d, live: const PointerLive(Offset(120, 400)));
+    expect(p.rotate, closeTo(90, 1e-6));
+    expect(poseWithMotion(e, 0, d).rotate, 0, reason: "no pointer, still");
+
+    var c = CanvasController(d);
+    addTearDown(c.dispose);
+    expect(c.liveMotion, isNull);
+    c.stagePointer = const Offset(500, 120);
+    expect(c.liveMotion?.pointer, const Offset(500, 120));
+    c.stagePointer = null;
+    expect(c.liveMotion, isNull, reason: "off the page");
+    var plain = CanvasController(_doc(const []));
+    addTearDown(plain.dispose);
+    plain.stagePointer = const Offset(10, 10);
+    expect(plain.liveMotion, isNull,
+        reason: "nothing faces it: the timeline as it was");
   });
 }

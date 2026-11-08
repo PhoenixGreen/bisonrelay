@@ -31,6 +31,10 @@ class _Branch {
   List<DeviceProcessor?> chain;
   Float32List l = Float32List(1024), r = Float32List(1024);
 
+  /// _sides runs each device on what it works on, and its Out after it, as
+  /// a chain's own devices are (SideRunner.run).
+  final SideRunner _sides = SideRunner();
+
   _Branch(this.spec)
       : chain = [for (var d in spec.devices) DeviceProcessor.of(d)];
 
@@ -46,8 +50,8 @@ class _Branch {
       r.fillRange(0, n, 0);
       return;
     }
-    for (var p in chain) {
-      p?.process(l, r, n);
+    for (var (i, p) in chain.indexed) {
+      if (p != null) _sides.run(p, spec.devices[i], l, r, n);
     }
     var g = dbToGain(spec.gainDb);
     if (g != 1) {

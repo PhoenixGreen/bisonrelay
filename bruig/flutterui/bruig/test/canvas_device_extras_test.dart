@@ -235,6 +235,221 @@ void main() {
 
   // Ken, 2026-11-08: "I tried setting up the attack knob from the
   // instrument by right clicking but nothing happened."
+  // The chain prototype's knob menu: automate it, a new LFO on it, a
+  // macro's knob, and back where it began (Ken's handoff list, 2026-11-08).
+  testWidgets("a device knob's right-click: automate, LFO, macro, reset",
+      (tester) async {
+    var c = CanvasController(
+        CanvasDocument(frames: 100, elements: [
+          AudioElement(const ElementBase(id: "m", name: "Music"),
+              clip: const MediaClip(
+                  playlist: [MediaSource(assetId: "t", length: 8)],
+                  timed: true,
+                  mix: ChannelMix(devices: [
+                    MixDevice(DeviceKind.saturator,
+                        id: "d0", values: {"drive": 20}),
+                  ]))),
+        ]),
+        audioEngine: FakeEngine({"t": 8}));
+    addTearDown(c.dispose);
+    c.openEffects("m");
+    tester.view.physicalSize = const Size(1800, 600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: ListenableBuilder(
+                      listenable: c,
+                      builder: (context, _) => ChainPanel(
+                          controller: c, height: 420, onResize: (_) {}))))),
+    ));
+    await tester.pump(const Duration(milliseconds: 300));
+    Future<void> pick(String text) async {
+      var drive = find.byKey(const ValueKey("device-0-drive"));
+      await tester.ensureVisible(drive);
+      await tester.pump();
+      await tester.tap(drive, buttons: kSecondaryMouseButton);
+      await tester.pump();
+      await tester.tap(find.text(text).last);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    MixDevice sat() =>
+        c.devicesOf("m").firstWhere((d) => d.kind == DeviceKind.saturator);
+    var lane = c.timelineChannels.single;
+    var target =
+        AutomationTarget.deviceSetting("d0", DeviceKind.saturator, "drive").id;
+
+    // Back where it began -- before it has a lane, which would hold a
+    // hand's change over it instead.
+    await pick("Reset");
+    expect(sat().value("drive"), DeviceKind.saturator.param("drive").initial);
+    c.undo();
+    expect(sat().value("drive"), 20);
+
+    await pick("Automate it");
+    expect(c.automationLaneOf(c.timelineChannels.single, target)?.points,
+        [(0.0, 20.0)],
+        reason: "a lane begun where it is");
+    expect(c.automationShown, contains(lane.key));
+
+    await pick("Move it with a new LFO");
+    var lfo = c.devicesOf("m").firstWhere((d) => d.kind == DeviceKind.lfo);
+    expect(lfo.mods, [const ModTarget("d0", "drive")]);
+
+    await pick("Add it to a macro");
+    var macro = c.devicesOf("m").firstWhere((d) => d.kind == DeviceKind.macro);
+    expect(macro.mods, [const ModTarget("d0", "drive", 0.5, 0)]);
+
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // The chain prototype's header chips: what the chain is doing, each
+  // undone by a press -- and how far it delays the sound.
+  testWidgets("the header's chips: listening, automation held, the delay",
+      (tester) async {
+    var c = CanvasController(
+        CanvasDocument(frames: 100, elements: [
+          AudioElement(const ElementBase(id: "m", name: "Music"),
+              clip: const MediaClip(
+                  playlist: [MediaSource(assetId: "t", length: 8)],
+                  timed: true)),
+        ]),
+        audioEngine: FakeEngine({"t": 8}));
+    addTearDown(c.dispose);
+    c.openEffects("m");
+    tester.view.physicalSize = const Size(1800, 600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: ListenableBuilder(
+                      listenable: c,
+                      builder: (context, _) => ChainPanel(
+                          controller: c, height: 420, onResize: (_) {}))))),
+    ));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey("chainListening")), findsNothing);
+    c.listenAt("m", 0);
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey("chainListening")));
+    await tester.pump();
+    expect(c.listening, isNull, reason: "pressed, it stops");
+
+    c.overridden["m"] = {"volume"};
+    c.listenAt("m", null);
+    await tester.pump();
+    expect(find.text("Back to automation (1)"), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("chainBackToAutomation")));
+    await tester.pump();
+    expect(c.anyOverridden, isFalse);
+
+    // The ⋯'s switches: the meters between devices, the macros.
+    Future<void> menu(String key) async {
+      await tester.tap(find.byKey(const ValueKey("chainMore")));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.byKey(ValueKey(key)));
+      await tester.pump(const Duration(milliseconds: 300));
+      // A menu's item acts as the menu shuts: a frame later.
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    expect(find.byKey(const ValueKey("junction-0")), findsOneWidget);
+    await menu("chainMeters");
+    expect(c.chainMeters, isFalse);
+    expect(find.byKey(const ValueKey("junction-0")), findsNothing);
+    await menu("chainMeters");
+    expect(find.byKey(const ValueKey("junction-0")), findsOneWidget);
+    expect(find.byKey(const ValueKey("chainZone-Macros")), findsOneWidget);
+    await menu("chainMacros");
+    expect(find.byKey(const ValueKey("chainZone-Macros")), findsNothing);
+    await menu("chainMacros");
+    await menu("chainBadges");
+    expect(c.chainBadges, isFalse);
+    await menu("chainBadges");
+
+    expect(find.byKey(const ValueKey("chainDelay")), findsNothing,
+        reason: "a channel with nothing that looks ahead");
+    c.openEffects(mixerMasterKey);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text("Delays it 5 ms"), findsOneWidget,
+        reason: "the master's limiter looks five ahead");
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 500));
+  });
+
+  // Ken, 2026-11-08: the header ran 11 px over with its chips, narrow.
+  for (var scale in [1.0, 1.5]) {
+    for (var width in [520.0, 640.0, 760.0, 900.0]) {
+      testWidgets("the header fits $width wide at $scale, chips and all",
+          (tester) async {
+        var c = CanvasController(
+            CanvasDocument(frames: 100, elements: [
+              AudioElement(const ElementBase(id: "m", name: "Music"),
+                  clip: const MediaClip(
+                      playlist: [MediaSource(assetId: "t", length: 8)],
+                      timed: true)),
+            ]),
+            audioEngine: FakeEngine({"t": 8}));
+        addTearDown(c.dispose);
+        tester.view.physicalSize = Size(width, 600);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ThemeNotifier>(
+                create: (c) => ThemeNotifier(doLoad: false)),
+            ChangeNotifierProvider<SnackBarModel>(
+                create: (c) => SnackBarModel()),
+          ],
+          child: MaterialApp(
+              builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(context)
+                      .copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!),
+              home: Scaffold(
+                  body: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: ListenableBuilder(
+                          listenable: c,
+                          builder: (context, _) => ChainPanel(
+                              controller: c, height: 420, onResize: (_) {}))))),
+        ));
+        for (var chain in [mixerMasterKey, "m"]) {
+          c.openEffects(chain);
+          c.listenAt(chain, 0);
+          await tester.pump(const Duration(milliseconds: 300));
+          expect(tester.takeException(), isNull, reason: "$chain, listening");
+          c.listenAt(chain, null);
+          await tester.pump(const Duration(milliseconds: 300));
+          expect(tester.takeException(), isNull, reason: "$chain, no chips");
+        }
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump(const Duration(milliseconds: 500));
+      });
+    }
+  }
+
   group("a macro turning the instrument", () {
     CanvasController make(FakeEngine engine,
             {List<MixDevice> devices = const []}) =>

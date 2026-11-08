@@ -89,6 +89,9 @@ const vocoderCarriers = ["Noise", "Buzz", "Follow pitch", "Channel"];
 const List<DeviceParam> deviceExtras = [
   DeviceParam("oversample", "Oversample", 1, 4, 1, "x"),
   DeviceParam("stereo", "Works on", 0, 2, 0, "", ["Both sides", "Mid", "Side"]),
+  // Out: how loud what it gives on is, after it -- the prototype's trim at
+  // the foot of every effect.
+  DeviceParam("out", "Out", -12, 12, 0, "dB"),
 ];
 
 /// carrierFromChannel is the Carrier setting that takes another channel.
@@ -327,6 +330,11 @@ enum DeviceKind {
   /// Oversample): a drive, whose harmonics would otherwise fold back down.
   bool get oversamples =>
       this == DeviceKind.saturator || this == DeviceKind.overdrive;
+
+  /// hasOut is whether it has an Out trim (see deviceExtras): every effect
+  /// that changes the sound and has no output level of its own.
+  bool get hasOut =>
+      worksOnSides && !params.any((p) => p.id == "output" || p.id == "gain");
 
   /// worksOnSides is whether it can be given only the middle or only the
   /// sides of the sound (its ⋯ menu's Works on): one that changes sound.
@@ -710,6 +718,11 @@ class ReturnChannel {
   }
 
   String toKey() => toJson().toString();
+
+  /// chainMix is its strip with its devices on it: what runs, its EQ and
+  /// compressor among its devices in the order they were put, as a
+  /// channel's (ChannelMix.chain).
+  ChannelMix get chainMix => mix.copyWith(devices: devices);
 }
 
 /// returnLetter is the letter a return goes by, from its place: A, B, C.

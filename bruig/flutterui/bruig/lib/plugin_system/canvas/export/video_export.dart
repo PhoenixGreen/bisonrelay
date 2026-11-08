@@ -403,12 +403,12 @@ Future<({List<String> inputs, List<String> output})> _soundArgs(
   if (sounds.isEmpty) return none;
   var document = media!.document;
   var mixed = path.join(work, "mix.wav");
-  var ok = await renderMixWav(sounds, document.masterMix,
+  var ok = await renderMixWav(sounds, document.syncedMaster,
       seconds: document.playFrames /
           (document.frameRate <= 0 ? 1 : document.frameRate),
       ffmpeg: ffmpeg,
       out: mixed,
-      returns: document.returns,
+      returns: document.syncedReturns,
       scenes: sceneBuses(document),
       // An MP4's AAC and a WebM's Opus both carry surround.
       speakers: document.audio.speakers);

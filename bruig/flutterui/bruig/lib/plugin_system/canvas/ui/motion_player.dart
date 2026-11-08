@@ -1,5 +1,5 @@
 import 'dart:math' as math;
-import 'dart:ui' show Rect;
+import 'dart:ui' show Offset, Rect;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -123,6 +123,11 @@ class MotionPlayer implements LiveMotion {
 
   @override
   double get clock => _clock;
+
+  /// pointer is where the pointer is over the page: see LiveMotion.pointer.
+  /// Set by the stage as it moves.
+  @override
+  Offset? pointer;
 
   @override
   MotionLive? of(String element) => _of[element]?.live;
@@ -368,7 +373,13 @@ class MotionPlayer implements LiveMotion {
       return;
     }
     if (c.loop) return;
-    var end = play.start + _playedFor(c, motion);
+    // One copy's own play (a coin touched: "el#copy") is that copy's
+    // alone, played as it is: done at its own length, not the slowest
+    // copy's.
+    var end = play.start +
+        (id.contains("#")
+            ? c.length / math.max(0.01, c.speed)
+            : _playedFor(c, motion));
     if (now < end - 1e-9) return;
     if (c.after == ClipHold.last) {
       l.carry = clipPose(c, c.length, box, scene,

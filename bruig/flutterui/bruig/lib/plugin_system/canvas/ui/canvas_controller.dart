@@ -154,7 +154,13 @@ import 'package:bruig/plugin_system/canvas/model/instances.dart'
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
     show ClipTriggerKind, MotionKind;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
-    show LiveMotion, MotionPreview, motionSoundPeaks, settledFrameOf;
+    show
+        LiveMotion,
+        MotionPreview,
+        PointerLive,
+        facesPointer,
+        motionSoundPeaks,
+        settledFrameOf;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart'
     show HardwareKeyboard, KeyDownEvent, KeyEvent, KeyRepeatEvent, KeyUpEvent, LogicalKeyboardKey;
@@ -461,6 +467,7 @@ class CanvasController extends ChangeNotifier {
         when _selection.length != 1 || _selection.first != of) {
       _copiesOf = null;
       _pickedCopies = {};
+      _allCopiesChosen = false;
       if (_placingCopies == of) _placingCopies = null;
     }
     if (!_viewOnly) _revision++;
@@ -907,6 +914,34 @@ class CanvasController extends ChangeNotifier {
   /// chainShowsMotion is whether the Chain panel shows its motion rather
   /// than its sound.
   bool get chainShowsMotion => _animationOpen;
+
+  /// chainMeters, chainBadges and chainMacros are what the Chain shows
+  /// besides its devices -- the meters between them, what each does to the
+  /// level, the Macros zone -- each hidden from its ⋯ for room, as the
+  /// prototype's. The reader's view, not the canvas's.
+  bool get chainMeters => _chainMeters;
+  bool _chainMeters = true;
+  set chainMeters(bool on) {
+    if (on == _chainMeters) return;
+    _chainMeters = on;
+    notifyListeners();
+  }
+
+  bool get chainBadges => _chainBadges;
+  bool _chainBadges = true;
+  set chainBadges(bool on) {
+    if (on == _chainBadges) return;
+    _chainBadges = on;
+    notifyListeners();
+  }
+
+  bool get chainMacros => _chainMacros;
+  bool _chainMacros = true;
+  set chainMacros(bool on) {
+    if (on == _chainMacros) return;
+    _chainMacros = on;
+    notifyListeners();
+  }
 
   /// motionTrail is whether the stage shows the element whose motion the
   /// Chain is open on with its trail and onion skin: the path its middle
@@ -3032,6 +3067,11 @@ class CanvasController extends ChangeNotifier {
   /// _held is each instrument's keys held down live, by element id.
   final Map<String, Set<int>> _held = {};
 
+  /// _pressedOn is each instrument with keys held, as it was when they were
+  /// pressed: let go through it whatever has changed since -- the scene
+  /// turned, the element deleted -- so no note is left ringing.
+  final Map<String, AudioElement> _pressedOn = {};
+
   static String _channelOf(AudioElement e) =>
       e.clip.channel.isEmpty ? e.id : e.clip.channel;
 
@@ -3132,6 +3172,11 @@ class CanvasController extends ChangeNotifier {
 
   GameRun? _game;
   CanvasDocument? _gameView;
+
+  /// _stagePointer and the two after it: see stagePointer.
+  Offset? _stagePointer;
+  CanvasDocument? _facesPointerOf;
+  bool _facesPointerWas = false;
 
   /// _gameLeft is the scene a game has just left -- as it was last seen,
   /// on its frame -- with the transition after it and when it began, on
@@ -3567,6 +3612,9 @@ class CanvasController extends ChangeNotifier {
   /// its chain edits; none picked is all of them. See controller/copies.dart.
   String? _copiesOf;
   Set<String> _pickedCopies = {};
+
+  /// _allCopiesChosen is All pressed in its Instances: see allCopiesChosen.
+  bool _allCopiesChosen = false;
 
   /// _placingCopies is the element whose copies a click on the canvas
   /// places, one a click: see placingCopies.

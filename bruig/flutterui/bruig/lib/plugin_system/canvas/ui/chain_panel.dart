@@ -1,3 +1,8 @@
+import 'package:bruig/plugin_system/canvas/model/modulation.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/model/devices.dart' show DeviceKind;
+import 'package:bruig/plugin_system/canvas/ui/autotune_card.dart'
+    show autoTuneLatencyMs;
 import 'package:bruig/plugin_system/canvas/ui/chain_icons.dart';
 import 'package:bruig/plugin_system/canvas/ui/device_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -59,6 +64,10 @@ class _ChainPanelState extends State<ChainPanel> {
   /// _copied is a chain copied by the header's ⋯, to paste into another.
   static List<MixDevice>? _copied;
 
+  /// _copiedMotion is an element's motion chain copied, to paste on
+  /// another's.
+  static List<MotionDevice>? _copiedMotion;
+
   /// _dragFrom is the height and the pointer's place when a drag of the
   /// header began; measured from there, so no move between frames is lost.
   (double, double)? _dragFrom;
@@ -112,47 +121,81 @@ class _ChainPanelState extends State<ChainPanel> {
                   ),
                   // One row, as the prototype has it: what it shows, its sound
                   // or motion, its views; then how tall it is.
-                  child: Row(children: [
-                    // What it shows and its views take what room is spare; its
-                    // heights and the rest keep to the far right.
-                    Expanded(
-                      child: Row(children: [
-                        _ChainWho(controller: c, look: look),
-                        const SizedBox(width: 6),
-                        _ChainSwitch(
-                            motion: motion,
-                            look: look,
-                            onChanged: (m) => c.showChain(motion: m)),
-                        Flexible(
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child:
-                                Row(mainAxisSize: MainAxisSize.min, children: [
-                              if (motion)
-                                ..._motionTabs(look)
-                              else
-                                ..._editorTabs(look),
-                            ]),
-                          ),
-                        ),
-                        // A word on what it shows, where there is one: a scene's
-                        // next, a clip's place, an element with none.
-                        if (chainNote(c) case var note?)
-                          Flexible(
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 10),
-                              child: Text(note,
-                                  key: const ValueKey("chainNote"),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      fontSize: 11, color: look.studio.muted)),
+                  child: LayoutBuilder(
+                      builder: (context, bar) => Row(children: [
+                            // What it shows and its views take what room is
+                            // spare; its
+                            // heights and the rest keep to the far right.
+                            Expanded(
+                              // Narrow, its name gives way and its switch is
+                              // its
+                              // marks alone (Ken: the header ran over, narrow).
+                              child: LayoutBuilder(
+                                  builder: (context, box) => Row(children: [
+                                        Flexible(
+                                            child: _ChainWho(
+                                                controller: c, look: look)),
+                                        const SizedBox(width: 6),
+                                        _ChainSwitch(
+                                            motion: motion,
+                                            look: look,
+                                            compact: box.maxWidth < 440,
+                                            onChanged: (m) =>
+                                                c.showChain(motion: m)),
+                                        Flexible(
+                                          child: SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (motion)
+                                                    ..._motionTabs(look)
+                                                  else
+                                                    ..._editorTabs(look),
+                                                ]),
+                                          ),
+                                        ),
+                                        // A word on what it shows, where there
+                                        // is one: a scene's
+                                        // next, a clip's place, an element with
+                                        // none.
+                                        if (chainNote(c) case var note?)
+                                          Flexible(
+                                            child: Padding(
+                                              padding: const EdgeInsets.only(
+                                                  left: 10),
+                                              child: Text(note,
+                                                  key: const ValueKey(
+                                                      "chainNote"),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                      fontSize: 11,
+                                                      color:
+                                                          look.studio.muted)),
+                                            ),
+                                          ),
+                                        // Shrinking with the panel, scrolled
+                                        // rather than
+                                        // pushed out of it (Ken: 11 px over,
+                                        // narrow).
+                                        if (_chips(look, motion) case var chips
+                                            when chips.isNotEmpty)
+                                          Flexible(
+                                            child: SingleChildScrollView(
+                                              key: const ValueKey("chainChips"),
+                                              scrollDirection: Axis.horizontal,
+                                              child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: chips),
+                                            ),
+                                          ),
+                                      ])),
                             ),
-                          ),
-                      ]),
-                    ),
-                    ..._sizeControls(look),
-                  ]),
+                            ..._sizeControls(look, narrow: bar.maxWidth < 760),
+                          ])),
                 ),
               ),
             ),
@@ -381,10 +424,63 @@ extension on _ChainPanelState {
     }
   }
 
+  /// _chips are what the chain is doing beyond its settings, each a chip
+  /// that undoes it, as the prototype's header has them: heard from a join,
+  /// knobs held off their automation, the canvas showing part of a chain --
+  /// and how far the chain delays the sound.
+  List<Widget> _chips(MixerLook look, bool motion) {
+    var owner = _soundOwner;
+    var delay = owner == null ? 0.0 : _delayOf(owner);
+    return [
+      if (!motion && c.listening != null)
+        _TextChip(
+            id: "chainListening",
+            text: "Listening from a join · stop",
+            look: look,
+            onTap: () => c.listenAt(c.listening!.$1, null)),
+      if (!motion && c.anyOverridden)
+        _TextChip(
+            id: "chainBackToAutomation",
+            text: "Back to automation "
+                "(${c.overridden.values.fold(0, (a, s) => a + s.length)})",
+            look: look,
+            onTap: c.backToArrangement),
+      if (motion && c.motionPreview != null)
+        _TextChip(
+            id: "chainPreviewing",
+            text: "The canvas shows the chain to a join · stop",
+            look: look,
+            onTap: () => c.previewMotionFrom(c.motionPreview!.$1, null)),
+      if (!motion && delay >= 0.5)
+        _TextChip(
+            id: "chainDelay",
+            text: "Delays it ${delay.round()} ms",
+            tip: "How far behind this chain puts the sound: a limiter's "
+                "look-ahead, an auto-tune's listening.",
+            look: look),
+    ];
+  }
+
+  /// _delayOf is how many milliseconds [owner]'s chain delays its sound:
+  /// the master's limiter's look-ahead, each auto-tune's.
+  double _delayOf(String owner) {
+    var ms = 0.0;
+    if (owner == mixerMasterKey) {
+      var m = c.document.masterMix;
+      if (m.limiter) ms += m.limiterAheadMs;
+    }
+    for (var d in c.devicesOf(owner)) {
+      if (d.on && d.kind == DeviceKind.autoTune) ms += autoTuneLatencyMs;
+    }
+    return ms;
+  }
+
   /// _sizeControls are the header's right end: how much each device shows
   /// at this height, the heights to pick from, filling the window, and the
   /// rest behind its "more" button.
-  List<Widget> _sizeControls(MixerLook look) {
+  ///
+  /// [narrow] leaves out its word on the devices' size, for the room.
+  List<Widget> _sizeControls(MixerLook look, {bool narrow = false}) {
     // The devices' room: the panel less its header and the lane's padding,
     // as the strip's devices are given it.
     var lane = widget.height - ChainPanel.headerHeight - 14;
@@ -406,14 +502,15 @@ extension on _ChainPanelState {
       DeviceTier.strip => "Strip",
     };
     return [
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: Tooltip(
-          message: "How much each device shows at this height",
-          child: Text("$tierName · ${widget.height.round()} px",
-              key: const ValueKey("chainTier"), style: mono),
+      if (!narrow)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Tooltip(
+            message: "How much each device shows at this height",
+            child: Text("$tierName · ${widget.height.round()} px",
+                key: const ValueKey("chainTier"), style: mono),
+          ),
         ),
-      ),
       _Segments(
         look: look,
         items: [
@@ -457,6 +554,25 @@ extension on _ChainPanelState {
               key: const ValueKey("chainUnfoldAll"),
               text: "Unfold every device",
               onPressed: () => _foldEvery(false)),
+          // What it shows besides its devices, each hidden for room.
+          if (!c.chainShowsMotion) ...[
+            chainMenuItem(look,
+                key: const ValueKey("chainMeters"),
+                text: c.chainMeters
+                    ? "Hide the meters between devices"
+                    : "Show the meters between devices",
+                onPressed: () => c.chainMeters = !c.chainMeters),
+            chainMenuItem(look,
+                key: const ValueKey("chainBadges"),
+                text: c.chainBadges
+                    ? "Hide the level badges"
+                    : "Show the level badges",
+                onPressed: () => c.chainBadges = !c.chainBadges),
+          ],
+          chainMenuItem(look,
+              key: const ValueKey("chainMacros"),
+              text: c.chainMacros ? "Hide the macros" : "Show the macros",
+              onPressed: () => c.chainMacros = !c.chainMacros),
           if (c.chainShowsMotion)
             chainMenuItem(look,
                 key: const ValueKey("chainTrail"),
@@ -513,6 +629,57 @@ extension on _ChainPanelState {
                               for (var d in _ChainPanelState._copied!)
                                 d.withId(""),
                             ]));
+                        c.endInteraction();
+                      }),
+          ],
+          // An element's motion chain, copied to another, as a sound's is.
+          if (c.chainShowsMotion && c.selected != null) ...[
+            chainMenuDivider(look),
+            chainMenuItem(look,
+                key: const ValueKey("chainCopyMotion"),
+                text: "Copy this chain",
+                hint: "${c.motionDevicesOf(c.selected!.id).length} devices",
+                onPressed: () => _ChainPanelState._copiedMotion = [
+                      for (var d in c.motionDevicesOf(c.selected!.id))
+                        if (d.kind != MotionDeviceKind.instances) d,
+                    ]),
+            chainMenuItem(look,
+                key: const ValueKey("chainPasteMotion"),
+                text: "Paste a chain here",
+                hint: _ChainPanelState._copiedMotion == null
+                    ? "nothing copied"
+                    : null,
+                onPressed: _ChainPanelState._copiedMotion == null
+                    ? null
+                    : () {
+                        // After its own, each with an id of its own; a
+                        // modulator still moving what it moved where the
+                        // pasted ids allow.
+                        var id = c.selected!.id;
+                        var own = c.motionDevicesOf(id);
+                        var copied = _ChainPanelState._copiedMotion!;
+                        var all = withMotionDeviceIds([
+                          ...own,
+                          for (var d in copied) d.withId(""),
+                        ]);
+                        // Each pasted device's new id, by its old one: a
+                        // modulator pasted moves the pasted knobs.
+                        var renamed = {
+                          for (var (i, d) in copied.indexed)
+                            d.id: all[own.length + i].id,
+                        };
+                        all = [
+                          for (var d in all)
+                            d.modulates && !own.contains(d)
+                                ? d.withMods([
+                                    for (var m in d.mods)
+                                      ModTarget(renamed[m.device] ?? m.device,
+                                          m.param, m.depth, m.from),
+                                  ])
+                                : d,
+                        ];
+                        c.beginInteraction();
+                        c.setMotionDevices(id, motionDevicesInOrder(all));
                         c.endInteraction();
                       }),
           ],
@@ -668,35 +835,43 @@ class _ChainWho extends StatelessWidget {
         key: const ValueKey("chainWho"),
         borderRadius: BorderRadius.circular(6),
         onTap: () => menu.isOpen ? menu.close() : menu.open(),
-        child: Container(
-          height: 24,
-          padding: const EdgeInsets.fromLTRB(6, 0, 4, 0),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                    color: colour, borderRadius: BorderRadius.circular(3))),
-            const SizedBox(width: 6),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 160),
-              child: Text(name,
-                  key: const ValueKey("chainWhoName"),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: look.studio.text)),
-            ),
-            if (kind.isNotEmpty) ...[
-              const SizedBox(width: 6),
-              Text(kind,
-                  style: TextStyle(fontSize: 11, color: look.studio.muted)),
-            ],
-            Icon(Icons.expand_more, size: 15, color: look.studio.muted),
-          ]),
-        ),
+        child: LayoutBuilder(builder: (context, box) {
+          // Squeezed, its parts go: what kind it is, then its name, then
+          // its mark -- the arrow to pick another kept longest.
+          var room = box.maxWidth;
+          if (room < 26) return const SizedBox(width: 0, height: 24);
+          return Container(
+            height: 24,
+            padding: const EdgeInsets.fromLTRB(6, 0, 4, 0),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (room >= 46) ...[
+                Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                        color: colour, borderRadius: BorderRadius.circular(3))),
+                const SizedBox(width: 6),
+              ],
+              if (room >= 60)
+                Flexible(
+                  child: Text(name,
+                      key: const ValueKey("chainWhoName"),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: look.studio.text)),
+                ),
+              if (kind.isNotEmpty && room >= 150) ...[
+                const SizedBox(width: 6),
+                Text(kind,
+                    style: TextStyle(fontSize: 11, color: look.studio.muted)),
+              ],
+              Icon(Icons.expand_more, size: 15, color: look.studio.muted),
+            ]),
+          );
+        }),
       ),
       menuChildren: [
         _heading("Channels"),
@@ -836,6 +1011,52 @@ class _Segments extends StatelessWidget {
 }
 
 /// _IconChip is a small square button of the header's: filled when [on].
+/// _TextChip is a word in the header that does something when pressed --
+/// or, without [onTap], just says it.
+class _TextChip extends StatelessWidget {
+  final String id, text;
+  final String? tip;
+  final MixerLook look;
+  final VoidCallback? onTap;
+  const _TextChip(
+      {required this.id,
+      required this.text,
+      required this.look,
+      this.tip,
+      this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget chip = Container(
+      height: 20,
+      margin: const EdgeInsets.only(left: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 7),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: onTap == null
+            ? null
+            : const Color(0xFFE2B04A).withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+            color: onTap == null ? look.studio.edge : const Color(0xFFE2B04A)),
+      ),
+      child: Text(text,
+          maxLines: 1,
+          style: TextStyle(fontSize: 10.5, color: look.studio.text)),
+    );
+    if (onTap != null) {
+      chip = InkWell(
+          key: ValueKey(id),
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: chip);
+    } else {
+      chip = KeyedSubtree(key: ValueKey(id), child: chip);
+    }
+    return tip == null ? chip : Tooltip(message: tip!, child: chip);
+  }
+}
+
 class _IconChip extends StatelessWidget {
   final String id, tip;
   final IconData icon;
@@ -880,28 +1101,41 @@ class _ChainSwitch extends StatelessWidget {
   final bool motion;
   final MixerLook look;
   final ValueChanged<bool> onChanged;
+
+  /// compact shows its marks alone, its words in their tooltips: a narrow
+  /// header's.
+  final bool compact;
   const _ChainSwitch(
-      {required this.motion, required this.look, required this.onChanged});
+      {required this.motion,
+      required this.look,
+      required this.onChanged,
+      this.compact = false});
 
   @override
   Widget build(BuildContext context) {
-    Widget side(String label, IconData icon, bool on, bool value) => InkWell(
-          key: ValueKey(value ? "chainShowMotion" : "chainShowSound"),
-          onTap: on ? null : () => onChanged(value),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9),
-            color: on ? look.colors.primary : null,
-            alignment: Alignment.center,
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              chainIconOr(icon,
-                  size: 14,
-                  color: on ? look.colors.onPrimary : look.studio.text),
-              const SizedBox(width: 5),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      color: on ? look.colors.onPrimary : look.studio.text)),
-            ]),
+    Widget side(String label, IconData icon, bool on, bool value) => Tooltip(
+          message: compact ? label : "",
+          child: InkWell(
+            key: ValueKey(value ? "chainShowMotion" : "chainShowSound"),
+            onTap: on ? null : () => onChanged(value),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 9),
+              color: on ? look.colors.primary : null,
+              alignment: Alignment.center,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                chainIconOr(icon,
+                    size: 14,
+                    color: on ? look.colors.onPrimary : look.studio.text),
+                if (!compact) ...[
+                  const SizedBox(width: 5),
+                  Text(label,
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          color:
+                              on ? look.colors.onPrimary : look.studio.text)),
+                ],
+              ]),
+            ),
           ),
         );
     return Container(

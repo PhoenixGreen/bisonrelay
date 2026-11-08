@@ -13,8 +13,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
-import 'package:bruig/plugin_system/canvas/model/devices.dart'
-    show tempoSynced;
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/render/sound_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
@@ -355,9 +353,8 @@ class ExportMedia {
                 fadeOut: length < span ? 0 : clip.fadeOut,
                 volume: clip.volume,
                 // Its LFOs set to Sync at the tempo's rate.
-                mix: clip.mix.copyWith(
-                    devices: tempoSynced(clip.mix.devices, document.audio.tempo,
-                        beatsPerBar: document.audio.beatsPerBar)),
+                mix: clip.mix
+                    .copyWith(devices: document.synced(clip.mix.devices)),
                 channel:
                     clip.channel.isNotEmpty ? clip.channel : p.element.id,
                 clock: p.start / _rate,
@@ -449,7 +446,11 @@ List<SceneBus> sceneBuses(CanvasDocument document) {
   return [
     for (var (i, s) in scenes.indexed)
       if (document.hasScenes ? document.startOfScene(i) : 0 case var from)
-        (from: from / rate, until: (from + s.frames) / rate, bus: s.bus),
+        (
+          from: from / rate,
+          until: (from + s.frames) / rate,
+          bus: s.bus.copyWith(devices: document.synced(s.bus.devices)),
+        ),
   ];
 }
 
@@ -472,11 +473,11 @@ Future<Uint8List?> renderSoundtrack(CanvasDocument document,
     work = await Directory.systemTemp.createTemp("canvas-soundtrack");
     var mixed = path.join(work.path, "mix.wav");
     // A book's player is a browser's: two speakers, folded down.
-    if (!await renderMixWav(sounds, document.masterMix,
+    if (!await renderMixWav(sounds, document.syncedMaster,
         seconds: seconds,
         ffmpeg: ffmpeg,
         out: mixed,
-        returns: document.returns,
+        returns: document.syncedReturns,
         scenes: sceneBuses(document),
         speakers: document.audio.speakers,
         fold: true)) {
@@ -552,11 +553,11 @@ Future<Loudness?> measureMix(CanvasDocument document,
         (document.frameRate <= 0 ? 1 : document.frameRate);
     work = await Directory.systemTemp.createTemp("canvas-measure");
     var mixed = path.join(work.path, "mix.wav");
-    if (!await renderMixWav(sounds, document.masterMix,
+    if (!await renderMixWav(sounds, document.syncedMaster,
         seconds: seconds,
         ffmpeg: ffmpeg,
         out: mixed,
-        returns: document.returns,
+        returns: document.syncedReturns,
         scenes: sceneBuses(document),
         // Every speaker: ffmpeg's meter weights them as BS.1770 says.
         speakers: document.audio.speakers)) {

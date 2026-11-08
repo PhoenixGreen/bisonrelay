@@ -171,12 +171,25 @@ class _AnimationPanelState extends State<AnimationPanel> {
   }
 
   /// _sceneBody is a scene picked from the timeline, as a chain like every
-  /// other (Ken, 2026-11-08: the prototype's scene design): how it gives
-  /// way to the next, and its camera's slow move, each a studio card.
+  /// other (Ken, 2026-11-08: the prototype's scene design): its own clips
+  /// -- a Camera's, keying its zoom and where it looks -- how it gives way
+  /// to the next, its camera's slow move, and its Output.
   Widget _sceneBody(BuildContext context, int index) {
     var studio = MixerLook.of(context).studio;
     var master = controller.document.editingMaster;
     var h = widget.height - 40;
+    var camera = master ? null : sceneCameraOf(controller, index);
+    // Its clips edited where they are: on the scene open.
+    var keyed = camera != null && controller.document.at == index;
+    MotionClip? firstClip(CanvasElement e) {
+      var m = e.base.motion;
+      return [
+        for (var s in m.slots)
+          if (s.isNotEmpty) s,
+        for (var p in m.placed) p.clip,
+      ].map(m.clip).whereType<MotionClip>().firstOrNull;
+    }
+
     bool shut(String id) => _folded.contains("$id:scene$index");
     VoidCallback fold(String id) => () => setState(() => shut(id)
         ? _folded.remove("$id:scene$index")
@@ -189,6 +202,25 @@ class _AnimationPanelState extends State<AnimationPanel> {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
         children: [
+          // Source: its own clips, as an element's (the master's are its
+          // elements': it has no camera of its own).
+          if (!master) ...[
+            _zone("Source", "Its clips: a camera keyed over it"),
+            if (keyed) ...[
+              _clipsCard(camera, firstClip(camera)),
+              MotionJoin(
+                  key: const ValueKey("sceneJoin-0"),
+                  controller: controller,
+                  element: camera.id,
+                  upto: 0,
+                  height: h),
+            ] else
+              SceneAddCamera(
+                  key: const ValueKey("sceneAddCameraCard"),
+                  controller: controller,
+                  scene: index,
+                  height: h),
+          ],
           _zone("Transition", "How it gives way to the next"),
           SceneTransitionCard(
               key: const ValueKey("sceneTransitionCard"),
@@ -200,14 +232,28 @@ class _AnimationPanelState extends State<AnimationPanel> {
           // The master has no camera of its own: each scene has its move.
           if (!master) ...[
             _zone("Camera", "Its slow move over the scene"),
-            SceneCameraCard(
-                key: const ValueKey("sceneCameraCard"),
-                controller: controller,
-                scene: index,
-                folded: shut("camera"),
-                onFold: fold("camera"),
-                height: h),
+            if (camera != null)
+              SceneCameraNote(
+                  key: const ValueKey("sceneCameraNote"),
+                  camera: camera,
+                  height: h)
+            else
+              SceneCameraCard(
+                  key: const ValueKey("sceneCameraCard"),
+                  controller: controller,
+                  scene: index,
+                  folded: shut("camera"),
+                  onFold: fold("camera"),
+                  height: h),
           ],
+          _zone("Output", "Where it is shown, and what comes after"),
+          SceneOutputCard(
+              key: const ValueKey("sceneOutputCard"),
+              controller: controller,
+              scene: index,
+              folded: shut("output"),
+              onFold: fold("output"),
+              height: h),
         ].expand((w) => [w, const SizedBox(width: 6)]).toList(),
       ),
     );

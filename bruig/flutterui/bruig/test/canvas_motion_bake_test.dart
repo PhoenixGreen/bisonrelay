@@ -7,10 +7,13 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/model/modulation.dart';
+import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart' hide Canvas, Paint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -164,6 +167,159 @@ void main() {
     await tester.tap(ab);
     await tester.pumpAndSettle();
     expect(amount(), 80, reason: "B");
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets("a join's right click previews from there, with its trail",
+      (tester) async {
+    var c = _with(const [MotionDevice(MotionDeviceKind.wiggle, id: "m")]);
+    addTearDown(c.dispose);
+    c.selectOnly("a");
+    c.pickMotion("a", "go", placement: "p");
+    c.motionTrail = false;
+    tester.view.physicalSize = const Size(3000, 420);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: ListenableBuilder(
+                  listenable: c,
+                  builder: (context, _) =>
+                      AnimationPanel(controller: c, height: 400)))),
+    ));
+    await tester.pumpAndSettle();
+    var join = find.byKey(const ValueKey("motionJoin-1"));
+    expect(join, findsOneWidget);
+    await tester.tap(join, buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("motionJoinTrail-1")));
+    await tester.pumpAndSettle();
+    expect(c.motionPreview, ("a", 1));
+    expect(c.motionTrail, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  // The chain prototype's knob menu and presets on motion devices too.
+  testWidgets("a motion knob's menu: a new LFO, a macro, reset; presets",
+      (tester) async {
+    var c = _with(const [
+      MotionDevice(MotionDeviceKind.wiggle, id: "m", values: {"amount": 40})
+    ]);
+    addTearDown(c.dispose);
+    c.selectOnly("a");
+    c.pickMotion("a", "go", placement: "p");
+    tester.view.physicalSize = const Size(3000, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: ListenableBuilder(
+                  listenable: c,
+                  builder: (context, _) =>
+                      AnimationPanel(controller: c, height: 400)))),
+    ));
+    await tester.pumpAndSettle();
+    var id = c.motionDevicesOf("a").single.id;
+    Future<void> pick(String text) async {
+      await tester.tap(find.byKey(ValueKey("mdev-$id-amount")),
+          buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(text).last);
+      await tester.pumpAndSettle();
+    }
+
+    MotionDevice wiggle() => c
+        .motionDevicesOf("a")
+        .firstWhere((d) => d.kind == MotionDeviceKind.wiggle);
+    await pick("Move it with a new LFO");
+    var lfo = c
+        .motionDevicesOf("a")
+        .firstWhere((d) => d.kind == MotionDeviceKind.lfo);
+    expect(lfo.mods.single.device, id);
+    expect(lfo.mods.single.param, "amount");
+    await pick("Add it to a macro");
+    var macro = c
+        .motionDevicesOf("a")
+        .firstWhere((d) => d.kind == MotionDeviceKind.macro);
+    expect(macro.mods.single.param, "amount");
+    await pick("Reset");
+    expect(
+        wiggle().value("amount"),
+        MotionDeviceKind.wiggle.params
+            .firstWhere((p) => p.id == "amount")
+            .initial);
+    expect(find.byKey(ValueKey("mdevPreset-$id-open")), findsOneWidget,
+        reason: "its presets, as a sound device's");
+    expect(tester.takeException(), isNull);
+  });
+
+  // The chain prototype's ⋯: a motion chain copied onto another element,
+  // its LFO moving the pasted Wiggle.
+  testWidgets("a motion chain copied and pasted onto another element",
+      (tester) async {
+    var c =
+        CanvasController(CanvasDocument(frames: 96, frameRate: 24, elements: [
+      ShapeElement(const ElementBase(
+          id: "a",
+          motion: ElementMotion(devices: [
+            MotionDevice(MotionDeviceKind.wiggle, id: "w"),
+            MotionDevice(MotionDeviceKind.lfo,
+                id: "l", mods: [ModTarget("w", "amount")]),
+          ]))),
+      ShapeElement(const ElementBase(id: "b")),
+    ]));
+    addTearDown(c.dispose);
+    c.selectOnly("a");
+    c.animationOpen = true;
+    tester.view.physicalSize = const Size(1800, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: ListenableBuilder(
+                      listenable: c,
+                      builder: (context, _) => ChainPanel(
+                          controller: c, height: 400, onResize: (_) {}))))),
+    ));
+    await tester.pumpAndSettle();
+    Future<void> menu(String key) async {
+      await tester.tap(find.byKey(const ValueKey("chainMore")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey(key)));
+      await tester.pumpAndSettle();
+    }
+
+    await menu("chainCopyMotion");
+    c.selectOnly("b");
+    await tester.pumpAndSettle();
+    await menu("chainPasteMotion");
+    var pasted = c.motionDevicesOf("b");
+    var wiggle = pasted.firstWhere((d) => d.kind == MotionDeviceKind.wiggle);
+    var lfo = pasted.firstWhere((d) => d.kind == MotionDeviceKind.lfo);
+    expect(lfo.mods.single.device, wiggle.id,
+        reason: "its LFO moves the pasted Wiggle, not a's");
+    c.undo();
+    expect(c.motionDevicesOf("b"), isEmpty, reason: "one undo step");
     expect(tester.takeException(), isNull);
   });
 }

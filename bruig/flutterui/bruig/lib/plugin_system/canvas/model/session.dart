@@ -504,10 +504,12 @@ class SessionClip {
       );
 
   /// signature is what a MIDI clip's sound is rendered from with [part]'s
-  /// instrument; when it changes, it is rendered again.
+  /// instrument; when it changes, it is rendered again. The instrument as
+  /// a part's own signature has it (its shape, its slices, its groove: Ken's
+  /// systems review found a clip kept playing its old Attack), then the
+  /// clip's own notes.
   String signature(InstrumentPart part, double secondsPerBeat) =>
-      "${part.sound.name}:${part.look.name}:${part.bank}:${part.program}:"
-      "${part.effects.where((e) => e.on).join(";")}:"
+      "${part.copyWith(notes: const [], controls: const {}).signatureAt(secondsPerBeat)}:"
       "$secondsPerBeat:$bars:"
       "${notes.map((n) => n.toJson().join(",")).join(";")}:"
       "${controls.isEmpty ? "" : controlsToJson(controls)}";

@@ -1,11 +1,14 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart'
     show paintTransition;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/scene_transition_parts.dart';
@@ -704,6 +707,205 @@ class CopyButtonLike extends StatelessWidget {
               style: TextStyle(
                   fontSize: 10, color: onTap == null ? s.muted : s.text)),
         ),
+      ),
+    );
+  }
+}
+
+/// sceneCameraOf is the Camera element framing scene [index] -- its first
+/// shown one, as cameraOf has it -- or null with none.
+CameraElement? sceneCameraOf(CanvasController c, int index) {
+  var doc = c.document;
+  if (index < 0 || index >= doc.allScenes.length) return null;
+  var elements = doc.at == index ? doc.elements : doc.allScenes[index].elements;
+  return elements
+      .whereType<CameraElement>()
+      .where((e) => e.visible)
+      .firstOrNull;
+}
+
+/// _SceneRow is a card's label and what it is: the Output's rows.
+Widget _sceneRow(MixerLook look, String label, String value, {Key? key}) =>
+    Row(key: key, children: [
+      Expanded(
+          child: Text(label,
+              style: TextStyle(fontSize: 10.5, color: look.studio.muted))),
+      Flexible(
+        child: Text(value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.end,
+            style: TextStyle(fontSize: 10.5, color: look.studio.text)),
+      ),
+    ]);
+
+/// SceneAddCamera is a scene's Source with nothing in it yet: the chain
+/// prototype's "+" -- a Camera put on the scene, whose clips key its zoom
+/// and where it looks over the scene, are then the Source. A scene not
+/// open is opened first: its elements are edited where they are.
+class SceneAddCamera extends StatelessWidget {
+  final CanvasController controller;
+  final int scene;
+  final double height;
+  const SceneAddCamera(
+      {required this.controller,
+      required this.scene,
+      required this.height,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var c = controller;
+    var open = c.document.at == scene && !c.document.editingMaster;
+    var name = c.document.allScenes[scene].name;
+    return DeviceFrame(
+      id: "sceneAddCamera",
+      title: "Keyed camera",
+      help: "Its own clips: put a Camera on the ${c.document.kind.one} and "
+          "key how close it is and where it looks, over time. Its clips are "
+          "then this chain's Source, and frame the ${c.document.kind.one} in "
+          "place of the Camera card's slow move.",
+      skin: DeviceSkin.studio(look.studio),
+      folded: false,
+      onFold: () {},
+      width: 200,
+      height: height,
+      icon: Icons.add,
+      accent: sceneAccent,
+      summary: "none yet",
+      foldedBody: const SizedBox(),
+      body: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                  open
+                      ? "Key its zoom and where it looks: a Camera, its clips "
+                          "the Source."
+                      : "Open $name to give it a camera of its own.",
+                  style: TextStyle(fontSize: 10.5, color: look.studio.muted)),
+              const SizedBox(height: 8),
+              CopyButtonLike(
+                  key: const ValueKey("sceneAddCamera"),
+                  label: open ? "+ Camera" : "Open $name",
+                  onTap: () {
+                    if (!open) {
+                      c.goToScene(scene);
+                      c.pickScene(scene);
+                      return;
+                    }
+                    c.addElement(newElement(ElementKind.camera, c.document));
+                    // Back on the scene's chain, its Source the new camera.
+                    c.pickScene(scene);
+                  }),
+            ]),
+      ),
+    );
+  }
+}
+
+/// SceneCameraNote stands in for the Camera card while a Camera element
+/// frames the scene: its clips do, and the slow move is not used.
+class SceneCameraNote extends StatelessWidget {
+  final CameraElement camera;
+  final double height;
+  const SceneCameraNote(
+      {required this.camera, required this.height, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var name = camera.name.isEmpty ? "Camera" : camera.name;
+    return DeviceFrame(
+      id: "sceneCamera",
+      title: "Camera",
+      help: "",
+      skin: DeviceSkin.studio(look.studio),
+      folded: false,
+      onFold: () {},
+      width: 180,
+      height: height,
+      icon: Icons.videocam_outlined,
+      accent: sceneAccent,
+      summary: "by $name",
+      foldedBody: const SizedBox(),
+      body: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Text(
+            "Framed by $name: its clips move it. The slow move is kept for "
+            "when it is gone or hidden.",
+            style: TextStyle(fontSize: 10.5, color: look.studio.muted)),
+      ),
+    );
+  }
+}
+
+/// SceneOutputCard is where a scene's chain ends, as an element's Output
+/// is: which scenes it is shown in, how long it is, and what comes after.
+class SceneOutputCard extends StatelessWidget {
+  final CanvasController controller;
+  final int scene;
+  final bool folded;
+  final VoidCallback onFold;
+  final double height;
+  const SceneOutputCard(
+      {required this.controller,
+      required this.scene,
+      required this.folded,
+      required this.onFold,
+      required this.height,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var doc = controller.document;
+    var master = doc.editingMaster;
+    var scenes = doc.allScenes;
+    var me = scenes[scene];
+    var seconds = me.frames / (doc.frameRate <= 0 ? 1 : doc.frameRate);
+    var over = doc.transitionAfter(scene);
+    var next = scene + 1 < scenes.length ? scenes[scene + 1] : null;
+    String then() {
+      if (me.holds) return "holds at its end";
+      if (next == null) return "the end";
+      var into = next.name.isEmpty ? "the next" : next.name;
+      return over.on ? "$into, by ${over.kind.label.toLowerCase()}" : into;
+    }
+
+    var shown = master ? "every ${doc.kind.one}" : "${me.name} only";
+    return DeviceFrame(
+      id: "sceneOutput",
+      title: "Output",
+      help: "Where the ${doc.kind.one}'s chain ends: where it is shown, how "
+          "long it is and what comes after it.",
+      skin: DeviceSkin.studio(look.studio),
+      folded: folded,
+      onFold: onFold,
+      width: 200,
+      height: height,
+      icon: Icons.output,
+      accent: const Color(0xFFCFCBDF),
+      summary: shown,
+      foldedBody: const SizedBox(),
+      body: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          _sceneRow(look, "Shown", shown,
+              key: const ValueKey("sceneOutputShown")),
+          const SizedBox(height: 6),
+          if (!master) ...[
+            _sceneRow(look, "Length",
+                me.frames <= 1 ? "a still" : "${seconds.toStringAsFixed(1)} s",
+                key: const ValueKey("sceneOutputLength")),
+            const SizedBox(height: 6),
+            _sceneRow(look, "Then", then(),
+                key: const ValueKey("sceneOutputThen")),
+          ],
+        ]),
       ),
     );
   }

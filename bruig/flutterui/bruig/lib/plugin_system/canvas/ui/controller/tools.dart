@@ -1755,10 +1755,23 @@ extension CanvasTools on CanvasController {
   /// pickStrip picks the channel [key] -- or the master, mixerMasterKey --
   /// from the mixer: picked on the timeline too, and its chain the one the
   /// effects panel shows.
+  ///
+  /// One thing is picked in the mixer at a time (Ken, 2026-11-08): the
+  /// strip alone -- or, an element's own sound, with its element, the two
+  /// being one thing. With the Chain out, its chain comes up: the master's,
+  /// a scene's bus, a return's, a channel's.
   void pickStrip(String key) {
-    if (selectedChannel == key && _effectsOf == key) return;
+    var owner = key.startsWith("snd-") ? key.substring(4) : null;
+    if (owner != null && _document.elementById(owner) != null) {
+      if (!(_selection.length == 1 && _selection.first == owner)) {
+        selectOnly(owner);
+      }
+    } else if (_selection.isNotEmpty) {
+      clearSelection();
+    }
     _effectsOf = key;
     selectedChannel = key;
+    if (_animationOpen || _effectsOpen) openEffects(key);
     notifyListeners();
   }
 

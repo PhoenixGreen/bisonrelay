@@ -103,14 +103,13 @@ extension CanvasInstruments on CanvasController {
     _counterTimer = null;
     for (var MapEntry(key: id, value: live) in _arps.entries) {
       live.timer?.cancel();
-      if ((live.sounding, _document.elementById(id))
-          case (var k?, AudioElement e)) {
+      if ((live.sounding, _instrumentHeld(id)) case (var k?, var e?)) {
         audio.noteOff(CanvasController._channelOf(e), k);
       }
     }
     _arps.clear();
     for (var MapEntry(key: id, value: held) in _sounded.entries) {
-      if (_document.elementById(id) case AudioElement e) {
+      if (_instrumentHeld(id) case var e?) {
         var channel = CanvasController._channelOf(e);
         for (var k in held.values.expand((keys) => keys)) {
           audio.noteOff(channel, k);
@@ -120,6 +119,12 @@ extension CanvasInstruments on CanvasController {
     _sounded.clear();
     _soundCount.clear();
     _sustained.clear();
+    // Nothing is held on a page left: a key let go after is let go of
+    // nothing, and the pedal is up when it comes back.
+    _held.clear();
+    _pressedOn.clear();
+    _take.clear();
+    _sustain = false;
     stopAudio();
     clearRenderCaches();
     images.release();
@@ -153,7 +158,11 @@ extension CanvasInstruments on CanvasController {
   void noteOn(AudioElement e, int key, {int velocity = 100}) {
     var part = e.instrument;
     if (part == null) return;
+    // Struck again while the pedal holds it: the held note let go, and
+    // played again, as a piano's would be.
+    if (_sustained[e.id]?.remove(key) ?? false) _release(e, key);
     if (!(_held.putIfAbsent(e.id, () => {})).add(key)) return;
+    _pressedOn[e.id] = e;
     _heard();
     _soundOn(e, part, key, velocity);
     if (_practice != null) _practiceHeard(e, key);
@@ -202,10 +211,9 @@ extension CanvasInstruments on CanvasController {
   void midiNote(int key, int velocity, {String? from}) {
     if (velocity <= 0) {
       // Let go wherever it was pressed, whatever has changed since.
-      for (var e in [..._document.elements]) {
-        if (e is AudioElement && (_held[e.id]?.contains(key) ?? false)) {
-          noteOff(e, key);
-        }
+      for (var MapEntry(key: id, value: keys) in [..._held.entries]) {
+        if (!keys.contains(key)) continue;
+        if (_instrumentHeld(id) case var e?) noteOff(e, key);
       }
       return;
     }
@@ -294,8 +302,8 @@ extension CanvasInstruments on CanvasController {
     var let = {..._sustained};
     _sustained.clear();
     for (var entry in let.entries) {
-      var e = _document.elementById(entry.key);
-      if (e is! AudioElement) continue;
+      var e = _instrumentHeld(entry.key);
+      if (e == null) continue;
       for (var key in entry.value) {
         noteOff(e, key);
       }
@@ -349,16 +357,19 @@ extension CanvasInstruments on CanvasController {
 
   void _soundOff(AudioElement e, int key) {
     var channel = CanvasController._channelOf(e);
-    if (_arps[e.id] case var live?) {
-      live.pressed.remove(key);
+    // Let go as it was sounded -- by the arpeggiator, or as the notes the
+    // effects made of it -- whatever the effects are now: an arpeggiator
+    // put on or taken off while it was held.
+    var arped = false;
+    if (_arps[e.id] case var live? when live.pressed.remove(key) != null) {
+      arped = true;
       if (live.pressed.isEmpty) {
         live.timer?.cancel();
         _arps.remove(e.id);
         if (live.sounding case var k?) audio.noteOff(channel, k);
       }
-      return;
     }
-    var keys = _sounded[e.id]?.remove(key) ?? [key];
+    var keys = _sounded[e.id]?.remove(key) ?? (arped ? const <int>[] : [key]);
     var counts = _soundCount[channel] ?? {};
     for (var k in keys) {
       var n = (counts[k] ?? 1) - 1;
@@ -409,7 +420,23 @@ extension CanvasInstruments on CanvasController {
       _sustained.putIfAbsent(e.id, () => {}).add(key);
       return;
     }
+    _release(e, key);
+  }
+
+  /// _instrumentHeld is instrument [id] as it is now, or -- gone from the
+  /// scene shown -- as it was when its keys were pressed.
+  AudioElement? _instrumentHeld(String id) =>
+      _document.elementById(id) is AudioElement
+          ? _document.elementById(id) as AudioElement
+          : _pressedOn[id];
+
+  /// _release lets go of [key] on [e], the pedal or not.
+  void _release(AudioElement e, int key) {
     if (!(_held[e.id]?.remove(key) ?? false)) return;
+    if (_held[e.id]?.isEmpty ?? false) {
+      _held.remove(e.id);
+      _pressedOn.remove(e.id);
+    }
     stepNoteOff(key);
     _soundOff(e, key);
     _clipNoteOff(e, key);

@@ -20,13 +20,15 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
   var key = motionStripKey(e.id);
   var narrow = controller.narrowStrips.contains(key);
   // Pressed anywhere, as a channel's strip is: the element picked, and no
-  // channel with it.
+  // channel with it but its own sound's, the two being one thing.
   void pick() {
     if (!(controller.selection.length == 1 &&
         controller.selection.first == e.id)) {
       controller.selectOnly(e.id);
     }
-    controller.selectedChannel = null;
+    var own = "snd-${e.id}";
+    controller.selectedChannel =
+        controller.timelineChannels.any((l) => l.key == own) ? own : null;
   }
 
   return KeyedSubtree(

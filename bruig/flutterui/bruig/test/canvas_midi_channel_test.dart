@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
@@ -176,6 +177,63 @@ void main() {
       c.midiNote(60, 0);
       expect(engine.notes.where((n) => n.$3 == 0).map((n) => n.$2),
           [60, 64, 67]);
+    });
+
+    // Ken's systems review, 2026-11-08: notes left ringing.
+    test("a key held as the scene turns is let go when it comes up",
+        () async {
+      var c = CanvasController(
+          CanvasDocument(
+              frames: 100,
+              audio: const AudioSettings(tempo: 120),
+              scenes: [
+                CanvasScene(id: "a", elements: [keys("p")]),
+                const CanvasScene(id: "b"),
+              ]),
+          audioEngine: engine);
+      addTearDown(c.dispose);
+      var e = c.document.elements.single as AudioElement;
+      c.noteOn(e, 60);
+      await settle();
+      c.goToScene(1);
+      c.midiNote(60, 0);
+      await settle();
+      expect(engine.notes.where((n) => n.$3 == 0).map((n) => n.$2), [60]);
+      // And pressed again on the scene it is on, it sounds.
+      c.goToScene(0);
+      c.noteOn(c.document.elements.single as AudioElement, 60);
+      await settle();
+      expect(engine.notes.where((n) => n.$2 == 60 && n.$3 > 0), hasLength(2));
+    });
+
+    test("struck again under the pedal, a key sounds again", () async {
+      var c = make([keys("p")]);
+      addTearDown(c.dispose);
+      var e = c.document.elements.single as AudioElement;
+      c.sustain(true);
+      c.noteOn(e, 60);
+      c.noteOff(e, 60);
+      await settle();
+      expect(engine.notes.map((n) => n.$3 > 0), [true], reason: "held");
+      c.noteOn(e, 60);
+      await settle();
+      expect(engine.notes.map((n) => n.$3 > 0), [true, false, true],
+          reason: "the held note let go, and struck again");
+      c.sustain(false);
+    });
+
+    test("a knob turned on the instrument does not cut a held key", () async {
+      var c = make([keys("p")]);
+      addTearDown(c.dispose);
+      var e = c.document.elements.single as AudioElement;
+      c.noteOn(e, 60);
+      c.setChannelPart(c.timelineChannels.single.key,
+          (p) => p.copyWith(monitor: MidiMonitor.input));
+      await settle();
+      expect(engine.notes.where((n) => n.$3 == 0), isEmpty);
+      c.noteOff(c.document.elements.single as AudioElement, 60);
+      await settle();
+      expect(engine.notes.where((n) => n.$3 == 0).map((n) => n.$2), [60]);
     });
 
     test("two keys sounding one note: the first let go does not stop it",
@@ -457,6 +515,65 @@ void main() {
       c.undo();
       expect(part().swing, 0, reason: "each one undo step");
       expect(part().quantise, 0.75);
+      // Its slots' note clips as chips, and the picked one's Length.
+      c.newMidiClip("p", 0);
+      await tester.pump();
+      expect(find.byKey(const ValueKey("noteClipsChip-0")), findsOneWidget);
+      tester
+          .widget<StudioDrop<double>>(
+              find.byKey(const ValueKey("noteClipsLength")))
+          .onChanged(4);
+      await tester.pump();
+      expect(c.session.at("p", 0)!.bars, 4);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+    });
+
+    // The chain prototype's joins on a MIDI chain: the notes passing as
+    // dots, a chord's made three.
+    testWidgets("its joins show the notes passing, a chord's three",
+        (tester) async {
+      var c = CanvasController(
+          CanvasDocument(frames: 100, elements: [
+            keys("p",
+                effects: const [MidiEffect(MidiEffectKind.chord)],
+                notes: const [MidiNote(60, 0, 2)])
+          ]),
+          audioEngine: FakeEngine({}));
+      tester.view.physicalSize = const Size(1800, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      c.openEffects("p");
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: ListenableBuilder(
+                        listenable: c,
+                        builder: (context, _) => CanvasMixer.effects(
+                            controller: c,
+                            height: 380,
+                            onResize: (_) {},
+                            onClose: () {}))))),
+      ));
+      await tester.pump();
+      String says(int upto) => tester
+          .widget<Tooltip>(find
+              .ancestor(
+                  of: find.byKey(ValueKey("noteJoin-$upto")).first,
+                  matching: find.byType(Tooltip))
+              .first)
+          .message!;
+      expect(says(0), "1 note passing", reason: "before its effects");
+      expect(says(1), "3 notes passing", reason: "after the chord");
       expect(tester.takeException(), isNull);
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pumpWidget(const SizedBox());

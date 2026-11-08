@@ -704,13 +704,25 @@ void main() {
               matching: find.byType(TooltipVisibility))
           .first);
       expect(hidden.visible, isFalse);
+      // Its "?" where its bar has room; its ⋯ "What it does" always.
       var help = find.byKey(ValueKey("deviceHelp-${deviceKey("d0")}"));
-      await tester.ensureVisible(help);
-      await tester.pump();
-      await tester.tap(help);
-      await tester.pump();
-      expect(find.byKey(ValueKey("deviceHelpText-${deviceKey("d0")}")),
-          findsOneWidget);
+      if (help.evaluate().isNotEmpty) {
+        await tester.ensureVisible(help);
+        await tester.pump();
+        await tester.tap(help);
+        await tester.pump();
+        expect(find.byKey(ValueKey("deviceHelpText-${deviceKey("d0")}")),
+            findsOneWidget);
+      } else {
+        var more = find.byKey(ValueKey("deviceMore-${deviceKey("d0")}"));
+        await tester.ensureVisible(more);
+        await tester.pump();
+        await tester.tap(more);
+        await tester.pump();
+        await tester
+            .tap(find.byKey(ValueKey("deviceAbout-${deviceKey("d0")}")));
+        await tester.pump();
+      }
       expect(find.textContaining("Thickens the sound"), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });

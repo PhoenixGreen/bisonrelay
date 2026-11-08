@@ -2,7 +2,8 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
-import 'package:bruig/plugin_system/canvas/model/session.dart' show SessionClip;
+import 'package:bruig/plugin_system/canvas/model/session.dart'
+    show SessionClip, clipBarChoices;
 import 'package:bruig/plugin_system/canvas/model/devices.dart'
     show DeviceGroup, DeviceKind, MixDevice;
 import 'package:bruig/plugin_system/canvas/model/modulation.dart'
@@ -11,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart'
     show loadSoundBank;
 import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
 import 'package:bruig/plugin_system/canvas/render/instrument_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
+    show StudioDrop;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
@@ -2029,7 +2032,7 @@ class _InstrumentDeviceState extends State<InstrumentDevice> {
 /// NoteClipsDevice is a MIDI channel's source, first in its chain as the
 /// prototype's Note clips: its part's notes, drawn small; how long it is
 /// and how many clips its slots hold; and the way into the piano roll.
-class NoteClipsDevice extends StatelessWidget {
+class NoteClipsDevice extends StatefulWidget {
   final CanvasController controller;
   final String channel;
   final bool folded;
@@ -2048,15 +2051,32 @@ class NoteClipsDevice extends StatelessWidget {
   });
 
   @override
+  State<NoteClipsDevice> createState() => _NoteClipsDeviceState();
+}
+
+class _NoteClipsDeviceState extends State<NoteClipsDevice> {
+  /// _picked is the slot whose clip the card's Length sets, by its row.
+  int? _picked;
+
+  @override
   Widget build(BuildContext context) {
-    var c = controller;
+    var c = widget.controller;
+    var channel = widget.channel;
+    var skin = widget.skin;
+    var folded = widget.folded;
+    var onFold = widget.onFold;
+    var height = widget.height;
     var studio = MixerLook.of(context).studio;
     var part = c.instrumentOf(channel)?.instrument;
     var notes = part?.notes ?? const <MidiNote>[];
+    // Each note clip in its slots, by its row.
+    var slots = c.session.slots[channel] ?? const <SessionClip?>[];
     var clips = [
-      for (var s in c.session.slots[channel] ?? const <SessionClip?>[])
-        if (s != null && s.midi) s
+      for (var (row, s) in slots.indexed)
+        if (s != null && s.midi) (row, s)
     ];
+    var picked =
+        clips.where((x) => x.$1 == _picked).firstOrNull ?? clips.firstOrNull;
     var seconds = notes.isEmpty
         ? 0.0
         : notes.map((n) => n.start + n.length).reduce(math.max);
@@ -2165,8 +2185,97 @@ class NoteClipsDevice extends StatelessWidget {
                     clips.isEmpty ? "no note clips" : "${clips.length} clips"),
               ]),
         ),
+        // Its slots' note clips, as the prototype's chips: pressed to
+        // launch or stop, picked for their Length.
+        if (clips.isNotEmpty && tier != DeviceTier.small)
+          SizedBox(
+            width: 260,
+            child: SingleChildScrollView(
+              key: const ValueKey("noteClipsChips"),
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                for (var (row, clip) in clips)
+                  _noteChip(c, row, clip, picked?.$1 == row, studio),
+              ]),
+            ),
+          ),
+        if (picked case (var row, var clip))
+          StudioDrop<double>(
+            key: const ValueKey("noteClipsLength"),
+            label: "Length",
+            width: 120,
+            value: clipBarChoices.contains(clip.bars.round()) &&
+                    clip.bars == clip.bars.roundToDouble()
+                ? clip.bars
+                : -1,
+            options: [
+              if (!(clipBarChoices.contains(clip.bars.round()) &&
+                  clip.bars == clip.bars.roundToDouble()))
+                (-1, "${clip.bars} bars"),
+              for (var b in clipBarChoices)
+                (b.toDouble(), b == 1 ? "1 bar" : "$b bars"),
+            ],
+            onChanged: (b) {
+              if (b <= 0) return;
+              c.setSessionClip(channel, row, clip.copyWith(bars: b));
+            },
+          ),
       ],
       body: const SizedBox(),
+    );
+  }
+
+  /// _noteChip is one note clip of the slots: its name, a play mark that
+  /// launches or stops it, ringed while it plays.
+  Widget _noteChip(CanvasController c, int row, SessionClip clip, bool on,
+      StudioColors studio) {
+    var state = c.clipState(widget.channel, row);
+    var playing = state == ClipState.playing || state == ClipState.queued;
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Material(
+        color: on ? midiColour.withValues(alpha: 0.35) : studio.raised,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(4),
+            side: BorderSide(
+                color: playing
+                    ? const Color(0xFF3FB950)
+                    : on
+                        ? midiColour
+                        : studio.edge,
+                width: playing ? 1.6 : 1)),
+        child: InkWell(
+          key: ValueKey("noteClipsChip-$row"),
+          borderRadius: BorderRadius.circular(4),
+          onTap: () => setState(() => _picked = row),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              InkWell(
+                key: ValueKey("noteClipsLaunch-$row"),
+                onTap: () {
+                  setState(() => _picked = row);
+                  playing
+                      ? c.stopChannelClips(widget.channel)
+                      : c.launchClip(widget.channel, row);
+                },
+                child: Icon(
+                    playing ? Icons.radio_button_checked : Icons.play_arrow,
+                    size: 14,
+                    color: playing ? const Color(0xFF3FB950) : studio.text),
+              ),
+              const SizedBox(width: 3),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 96),
+                child: Text(clip.name.isEmpty ? "Slot ${row + 1}" : clip.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10.5, color: studio.text)),
+              ),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 }

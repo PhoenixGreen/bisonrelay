@@ -353,6 +353,23 @@ void main() {
       return c;
     }
 
+    // Ken, 2026-11-08: one strip picked at a time -- an element's own sound
+    // with its element the one exception -- and its chain brought up.
+    test("picking a strip picks it alone, and brings its chain up", () {
+      var c = CanvasController(doc(), audioEngine: FakeEngine({"t": 2}));
+      addTearDown(c.dispose);
+      c.selectOnly("rain");
+      c.animationOpen = true;
+      c.pickStrip(sceneBusKey);
+      expect(c.selection, isEmpty, reason: "the element let go");
+      expect(c.selectedChannel, sceneBusKey);
+      expect((c.effectsOpen, c.animationOpen), (true, false),
+          reason: "the Chain on the scene bus's sound");
+      expect(c.effectsOf, sceneBusKey);
+      c.pickStrip(mixerMasterKey);
+      expect(c.effectsOf, mixerMasterKey, reason: "the master's chain");
+    });
+
     // The prototype's who menu lists the scene's bus among the buses.
     testWidgets("the Chain's who menu opens the scene's bus", (tester) async {
       var c = CanvasController(doc(), audioEngine: FakeEngine({"t": 2}));

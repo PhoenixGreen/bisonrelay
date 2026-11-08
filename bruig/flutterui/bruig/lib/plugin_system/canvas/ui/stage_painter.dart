@@ -941,6 +941,7 @@ class StagePainter extends CustomPainter {
     // box round the lot (see chosenOutlines). No handles on these: the
     // group is what is resized.
     _paintChosenBoxes(canvas);
+    _paintWholeChain(canvas);
     _paintTrail(canvas);
     _paintCopies(canvas);
 
@@ -1015,6 +1016,29 @@ class StagePainter extends CustomPainter {
       canvas.drawPath(
           Path()..addPolygon([for (var p in corners) p * scale + origin], true),
           paint);
+    }
+  }
+
+  /// _paintWholeChain draws the element whose chain is previewed from a
+  /// join faintly as its whole chain has it, under where the join leaves
+  /// it -- the prototype's faint whole chain, to compare the two.
+  void _paintWholeChain(Canvas canvas) {
+    if (liveMotion case MotionPreview(:var element, :var playing)) {
+      var e = document.elementById(element);
+      if (e == null) return;
+      canvas.save();
+      canvas.translate(origin.dx, origin.dy);
+      canvas.scale(scale);
+      canvas.saveLayer(null, Paint()..color = const Color(0x40000000));
+      paintElement(canvas, e, frame,
+          frameRate: math.max(1, document.frameRate),
+          images: images,
+          document: document,
+          liveMotion: playing,
+          backgrounds: backgrounds,
+          editing: true);
+      canvas.restore();
+      canvas.restore();
     }
   }
 

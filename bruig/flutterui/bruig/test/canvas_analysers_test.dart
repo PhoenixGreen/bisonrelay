@@ -333,7 +333,8 @@ void main() {
       var g = played();
       for (var (key, steps) in [
         ("a", ChannelMix(devices: devices).chain.length),
-        ("fx", devices.length),
+        // A return's chain as a channel's: its EQ and compressor too.
+        ("fx", ChannelMix(devices: devices).chain.length),
         (masterTapKey, MasterMix(devices: devices).chain.length),
       ]) {
         var taps = g.tapsOf(key);

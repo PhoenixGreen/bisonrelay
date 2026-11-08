@@ -119,6 +119,10 @@ MotionPose motionPoseIn(CanvasDocument doc, CanvasElement e, int frame,
 abstract class LiveMotion {
   double get clock;
 
+  /// pointer is where the pointer is over the page, in its coordinates, for
+  /// a Look at that faces it -- or null, off the page, or in an export.
+  Offset? get pointer;
+
   /// of is what [element] is playing from its slots, or null for an
   /// element on its timeline.
   MotionLive? of(String element);
@@ -132,10 +136,14 @@ class MotionPreview implements LiveMotion {
   final LiveMotion? playing;
   final String element;
   final int upto;
-  const MotionPreview(this.playing, this.element, this.upto);
+  final Offset? pointerAt;
+  const MotionPreview(this.playing, this.element, this.upto, {this.pointerAt});
 
   @override
   double get clock => playing?.clock ?? 0;
+
+  @override
+  Offset? get pointer => playing?.pointer ?? pointerAt;
 
   @override
   MotionLive? of(String element) => playing?.of(element);
@@ -166,6 +174,9 @@ class _CopyLive implements LiveMotion {
 
   @override
   double get clock => live.clock;
+
+  @override
+  Offset? get pointer => live.pointer;
 
   @override
   MotionLive? of(String element) {
@@ -202,6 +213,9 @@ class _CopyPlays implements LiveMotion {
   double get clock => live.clock;
 
   @override
+  Offset? get pointer => live.pointer;
+
+  @override
   MotionLive? of(String element) {
     var base = live.of(element);
     if (element != id) return base;
@@ -225,6 +239,9 @@ class _ShiftedLive implements LiveMotion {
 
   @override
   double get clock => live.clock + by;
+
+  @override
+  Offset? get pointer => live.pointer;
 
   @override
   MotionLive? of(String element) => live.of(element);
@@ -465,9 +482,11 @@ Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
           rotate: turned ? p.rotate + angle * 180 / math.pi : p.rotate);
     case MotionDeviceKind.lookAt:
       var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
-      var aim = d.target == lookAtCamera
-          ? _cameraCentre(doc, frame)
-          : _centreOf(doc, d.target, frame);
+      var aim = switch (d.target) {
+        lookAtCamera => _cameraCentre(doc, frame),
+        lookAtPointer => live?.pointer,
+        var id => _centreOf(doc, id, frame),
+      };
       if (aim == null || d.target == e.id) return p;
       var me = Offset(e.x + e.width / 2 + p.dx, e.y + e.height / 2 + p.dy);
       // Facing right when it looks straight ahead, as it is drawn.
@@ -554,6 +573,35 @@ int _looking = 0;
 /// _centreOf is the middle of element [id] on [frame], as it moves.
 /// lookAtCamera is the target a Look at is given to face the camera.
 const lookAtCamera = "@camera";
+
+/// lookAtPointer is the target it is given to face the pointer, while it
+/// is over the page (see LiveMotion.pointer).
+const lookAtPointer = "@pointer";
+
+/// PointerLive is nothing playing from its slots, with the pointer over
+/// the page: what the stage hands the renderer for a Look at the pointer.
+class PointerLive implements LiveMotion {
+  @override
+  final Offset? pointer;
+  const PointerLive(this.pointer);
+
+  @override
+  double get clock => 0;
+
+  @override
+  MotionLive? of(String element) => null;
+}
+
+/// facesPointer is whether anything in [doc] looks at the pointer: only
+/// then is the pointer handed to the renderer, and the stage drawn again
+/// as it moves.
+bool facesPointer(CanvasDocument doc) => [
+      ...doc.elements,
+      ...?doc.masterScene?.elements,
+    ].any((e) => e.base.motion.devices.any((d) =>
+        d.on &&
+        d.kind == MotionDeviceKind.lookAt &&
+        d.target == lookAtPointer));
 
 /// _cameraCentre is the middle of what the scene's camera shows on
 /// [frame], or of the page with none.

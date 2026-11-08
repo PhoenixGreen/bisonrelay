@@ -169,6 +169,10 @@ class PushSurface {
   /// key it started whatever has been moved since.
   final Map<int, int> _down = {};
 
+  /// _clipDown is each pad held in Session mode, and the slot it pressed:
+  /// let go, that slot is let go, whichever mode the Push is in by then.
+  final Map<int, (int, int)> _clipDown = {};
+
   /// _values are the encoders' controllers where they have been turned to.
   final Map<MidiControl, double> _values = {
     for (var c in MidiControl.values) c: c.rest,
@@ -271,20 +275,27 @@ class PushSurface {
     var kind = data[0] & 0xF0, a = data[1] & 0x7F, b = data[2] & 0x7F;
     if ((kind == 0x90 || kind == 0x80) && a >= 36 && a <= 99) {
       var on = kind == 0x90 && b > 0;
-      if (session) {
-        var (column, row) = slotOf(a);
-        onClip?.call(column, row, on ? b : 0);
+      // Let go as it was pressed (Ken's systems review, 2026-11-08): a pad
+      // held across a switch between Note and Session left a note ringing,
+      // or a gate clip playing.
+      if (!on) {
+        if (_clipDown.remove(a) case (var column, var row)) {
+          onClip?.call(column, row, 0);
+        }
+        if (_down.remove(a) case var key?) onNote?.call(key, 0);
+        if (!session) send(Uint8List.fromList([0x90, a, colourOf(a)]));
         return true;
       }
-      if (on) {
-        var key = keyOf(a);
-        if (key == null) return true;
-        _down[a] = key;
-        onNote?.call(key, b);
-      } else {
-        var key = _down.remove(a);
-        if (key != null) onNote?.call(key, 0);
+      if (session) {
+        var (column, row) = slotOf(a);
+        _clipDown[a] = (column, row);
+        onClip?.call(column, row, b);
+        return true;
       }
+      var key = keyOf(a);
+      if (key == null) return true;
+      _down[a] = key;
+      onNote?.call(key, b);
       send(Uint8List.fromList([0x90, a, colourOf(a)]));
       return true;
     }

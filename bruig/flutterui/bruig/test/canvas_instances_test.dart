@@ -20,7 +20,9 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Canvas, Paint;
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
@@ -485,6 +487,33 @@ void main() {
     // The copies' middles: 150,150 · 400,150 · 650,150.
     Offset copy(int i) => Offset(150 + 250.0 * i, 150);
 
+    // Ken, 2026-11-08: each copy its own thing on the canvas -- the box
+    // round them all only with All chosen in its Instances.
+    testWidgets("the box round every copy only with All chosen",
+        (tester) async {
+      var (c, s) = await stage(tester);
+      Rect? box() => tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((p) => p.painter)
+          .whereType<StagePainter>()
+          .single
+          .selectionBounds;
+      c.selectOnly("a");
+      await tester.pumpAndSettle();
+      expect(box(), isNull, reason: "selected: each copy outlined alone");
+      c.pickAllCopies("a");
+      await tester.pumpAndSettle();
+      expect(box(), isNotNull, reason: "All chosen: the box round them all");
+      await tester.tapAt(s.toStagePoint(copy(1)));
+      await tester.pumpAndSettle();
+      expect(c.pickedCopiesOf("a"), {"i1"});
+      expect(box(), isNull, reason: "one picked, its own ring");
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(c.pickedCopiesOf("a"), isEmpty);
+      expect(box(), isNull, reason: "Escape: all again, but no box");
+    });
+
     testWidgets("a click picks a copy; Shift-click another; Escape, all",
         (tester) async {
       var (c, s) = await stage(tester);
@@ -583,6 +612,35 @@ void main() {
       await tester.pumpAndSettle();
       expect(c.motionOf("a").instances!.count, 2);
     });
+  });
+
+  // Ken's systems review, 2026-11-08: a coin touched held its pop for as
+  // long as the latest-starting copy would have taken.
+  test("one copy's own play ends at its own length", () {
+    var doc = CanvasDocument(elements: [
+      ShapeElement(const ElementBase(
+          id: "coin",
+          width: 20,
+          height: 20,
+          motion: ElementMotion(
+              clips: [MotionClip(id: "pop", length: 1)],
+              instances: InstanceSet(items: [
+                ElementInstance("i0"),
+                ElementInstance("i1", start: 5),
+              ])))),
+    ]);
+    var p = MotionPlayer()..step(doc, 0, 0);
+    p.launch(doc, 0, instanceKey("coin", "i0"), "pop", 0);
+    p.step(doc, 0, 0);
+    expect(p.isPlaying(instanceKey("coin", "i0")), isTrue);
+    p.step(doc, 0, 1.2);
+    expect(p.isPlaying(instanceKey("coin", "i0")), isFalse,
+        reason: "done at one second, not six");
+    // The element's own play waits for its last copy.
+    p.launch(doc, 0, "coin", "pop", 2);
+    p.step(doc, 0, 2);
+    p.step(doc, 0, 4);
+    expect(p.isPlaying("coin"), isTrue);
   });
 
   group("in a game", () {

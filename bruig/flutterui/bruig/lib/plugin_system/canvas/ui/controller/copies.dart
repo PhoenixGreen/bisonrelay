@@ -36,6 +36,7 @@ extension CanvasCopies on CanvasController {
       _copiesOf = element;
       _pickedCopies = {};
     }
+    _allCopiesChosen = false;
     if (toggle) {
       _pickedCopies.contains(id)
           ? _pickedCopies.remove(id)
@@ -51,11 +52,27 @@ extension CanvasCopies on CanvasController {
     if (!_selection.contains(element)) selectOnly(element);
     _copiesOf = element;
     _pickedCopies = {...ids};
+    _allCopiesChosen = false;
     notifyListeners();
   }
 
-  /// pickAllCopies goes back to editing every copy of [element].
-  void pickAllCopies(String element) => pickCopies(element, const {});
+  /// pickAllCopies goes back to editing every copy of [element] -- chosen
+  /// as all of them, so the box round them all is drawn (allCopiesChosen).
+  void pickAllCopies(String element) {
+    pickCopies(element, const {});
+    _allCopiesChosen = true;
+    notifyListeners();
+  }
+
+  /// allCopiesChosen is whether [element]'s copies were all chosen at once,
+  /// by All in its Instances: only then is the box round them all drawn on
+  /// the canvas, each copy otherwise its own thing (Ken, 2026-11-08). Any
+  /// copy picked since, or the selection changed, and it is not.
+  bool allCopiesChosen(String element) =>
+      _allCopiesChosen &&
+      _copiesOf == element &&
+      _selection.contains(element) &&
+      pickedCopiesOf(element).isEmpty;
 
   /// placingCopies is the element a click on the canvas places a copy of,
   /// or null. Set to start placing; Escape, or the button again, stops.

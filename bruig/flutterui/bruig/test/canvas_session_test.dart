@@ -72,6 +72,22 @@ Uint8List wav(int frames) {
 }
 
 void main() {
+  // Ken's systems review, 2026-11-08: a slot's MIDI clip went on playing
+  // its old sound after the instrument's Attack was turned.
+  test("a MIDI clip is played again when its instrument's shape changes", () {
+    const clip = SessionClip(id: "c", notes: [MidiNote(60, 0, 1)]);
+    const part = InstrumentPart();
+    var plain = clip.signature(part, 0.5);
+    expect(clip.signature(part, 0.5), plain, reason: "the same, the same");
+    expect(
+        clip.signature(
+            part.copyWith(shape: const InstrumentShape(attack: 0.4)), 0.5),
+        isNot(plain));
+    expect(clip.signature(part.copyWith(quantise: 0.25, swing: 0.3), 0.5),
+        isNot(plain),
+        reason: "its groove");
+  });
+
   group("the grid", () {
     test("a clip and the scenes are saved and read back", () {
       const clip = SessionClip(

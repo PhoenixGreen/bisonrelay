@@ -101,7 +101,7 @@ double snapNote(double midi, int root, List<int> steps) {
 /// [_amount], easing the correction in over the retune time (zero gives the
 /// robotic sound). Slices are taken [latency] behind the input and emitted
 /// [_settle] behind where they are laid, a fixed delay of the two together.
-class AutoTune implements DeviceProcessor {
+class AutoTune implements DeviceProcessor, Tunable {
   static const int latency = 1024;
 
   /// _settle is how far behind the newest slice output is read: at least
@@ -111,16 +111,16 @@ class AutoTune implements DeviceProcessor {
   static const int _size = 8192;
   static const int _window = 2048;
 
-  final int _root;
-  final List<int> _steps;
-  final double _amount;
-  final double _ease;
+  int _root;
+  List<int> _steps;
+  double _amount;
+  double _ease;
 
   /// _retuneMs, _humanise and _vibrato: see the device's knobs. _slow is
   /// the pitch heard, smoothed over about a tenth of a second -- the note
   /// being sung, without its vibrato -- and _held how long it has been on
   /// one note, in samples.
-  final double _retuneMs, _humanise, _vibrato;
+  double _retuneMs, _humanise, _vibrato;
   double? _slow;
   int _held = 0;
   double _easeNow = 0;
@@ -142,20 +142,35 @@ class AutoTune implements DeviceProcessor {
   PitchReading? heard;
 
   AutoTune(MixDevice d)
-      : _root = d.value("key").round(),
-        _steps = d.value("scale").round() == 0
-            ? const []
-            : scaleSteps[
-                (d.value("scale").round() - 1).clamp(0, scaleSteps.length - 1)],
+      : _root = _rootOf(d),
+        _steps = _stepsOf(d),
         _amount = d.value("amount"),
         _retuneMs = d.value("retune"),
         _humanise = d.value("humanise"),
         _vibrato = d.value("vibrato"),
         // Retune time as a per-sample one-pole coefficient.
-        _ease = d.value("retune") <= 0
-            ? 0
-            : math.exp(-1 / (d.value("retune") / 1000 * 48000)) {
+        _ease = _easeFor(d.value("retune")) {
     _easeNow = _ease;
+  }
+
+  static int _rootOf(MixDevice d) => d.value("key").round();
+  static List<int> _stepsOf(MixDevice d) => d.value("scale").round() == 0
+      ? const []
+      : scaleSteps[
+          (d.value("scale").round() - 1).clamp(0, scaleSteps.length - 1)];
+
+  /// tune takes [d]'s settings as it plays: what it has heard and what it
+  /// holds back are kept, so a knob turned -- or an LFO on it -- does not
+  /// leave a gap while it listens again.
+  @override
+  void tune(MixDevice d) {
+    _root = _rootOf(d);
+    _steps = _stepsOf(d);
+    _amount = d.value("amount");
+    _retuneMs = d.value("retune");
+    _humanise = d.value("humanise");
+    _vibrato = d.value("vibrato");
+    _ease = _easeFor(d.value("retune"));
   }
 
   /// _easeFor is the retune's per-sample coefficient for [ms].

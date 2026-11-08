@@ -94,11 +94,11 @@ Future<CanvasExport?> renderAudio(CanvasDocument document,
         (document.frameRate <= 0 ? 1 : document.frameRate);
     work = await Directory.systemTemp.createTemp("canvas-audio");
     var mixed = path.join(work.path, "mix.wav");
-    if (!await renderMixWav(sounds, document.masterMix,
+    if (!await renderMixWav(sounds, document.syncedMaster,
         seconds: seconds,
         ffmpeg: ffmpeg,
         out: mixed,
-        returns: document.returns,
+        returns: document.syncedReturns,
         scenes: sceneBuses(document),
         speakers: document.audio.speakers,
         fold: !options.format.carriesSurround)) {

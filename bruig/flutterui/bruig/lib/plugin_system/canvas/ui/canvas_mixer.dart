@@ -243,7 +243,7 @@ class _CanvasMixerState extends State<CanvasMixer>
 
   void _scrollTo(String device) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      var at = _devices[device]?.currentContext;
+      var at = _devices["${controller.effectsOf}|$device"]?.currentContext;
       if (at != null && at.mounted) {
         // Into view only if it is not: a scroll view takes no presses while it
         // moves, so scrolling to a device already in view would swallow the
@@ -274,9 +274,13 @@ class _CanvasMixerState extends State<CanvasMixer>
         _Opened.loudness => "loudness",
       };
 
-  /// _devices finds each device in the chain, to scroll to it.
+  /// _devices finds each device in the chain, to scroll to it, by strip and
+  /// id: "eq" on one strip is not the same card as on another, and a card
+  /// kept across strips would keep the first one's state (Ken's systems
+  /// review, 2026-11-08: the EQ went on writing to the master).
   final Map<String, GlobalKey> _devices = {};
-  GlobalKey _deviceKey(String id) => _devices[id] ??= GlobalKey();
+  GlobalKey _deviceKey(String strip, String id) =>
+      _devices["$strip|$id"] ??= GlobalKey();
 
   /// _addAt is where in [chain] a device put on goes: before the EQ and
   /// compressor where they end it, else at the end -- see chainOrder.
@@ -290,19 +294,31 @@ class _CanvasMixerState extends State<CanvasMixer>
 
   /// _junction is the meter at step [i] of the open chain [key]: clicked,
   /// listened to from there, or an analyser put there.
-  Widget _junction(int i, double h, MixerLook theme, String key) => _Junction(
-      i,
-      i < _taps.length ? _taps[i] : (-90.0, -90.0),
-      i < _tapPeaks.length ? _tapPeaks[i] : (-90.0, -90.0),
-      theme.studio,
-      h,
-      listening: controller.listening == (key, i),
-      onListen: () =>
-          controller.listenAt(key, controller.listening == (key, i) ? null : i),
-      onAnalyser: (kind) => controller.insertDevice(key, MixDevice(kind), i));
+  Widget _junction(int i, double h, MixerLook theme, String key) =>
+      // Hidden from the Chain's ⋯: a gap between devices, no more.
+      !controller.chainMeters
+          ? const SizedBox(width: 4)
+          : _Junction(
+              i,
+              i < _taps.length ? _taps[i] : (-90.0, -90.0),
+              i < _tapPeaks.length ? _tapPeaks[i] : (-90.0, -90.0),
+              theme.studio,
+              h,
+              latched: _clipped.contains((key, i)),
+              onClear: () =>
+                  setState(() => _clipped.removeWhere((x) => x.$1 == key)),
+              listening: controller.listening == (key, i),
+              onListen: () => controller.listenAt(
+                  key, controller.listening == (key, i) ? null : i),
+              onAnalyser: (kind) =>
+                  controller.insertDevice(key, MixDevice(kind), i));
 
   Loudness? _measured;
   bool _measuring = false;
+
+  /// _clipped are the joins that have clipped, by strip and place: their
+  /// lights kept lit, as the prototype's, until cleared from a join's menu.
+  final Set<(String, int)> _clipped = {};
 
   @override
   void initState() {
@@ -374,6 +390,10 @@ class _CanvasMixerState extends State<CanvasMixer>
   List<(double, double)> _taps = const [];
   List<(double, double)> _tapPeaks = const [];
 
+  /// _tapsOf is the strip [_taps] and [_tapPeaks] were measured on: another
+  /// opened starts its joins afresh, not from the last one's held peaks.
+  String? _tapsOf;
+
   /// _last and _meter read every strip's level, about thirty times a second.
   Duration _last = Duration.zero;
   void _meter(Duration now) {
@@ -439,12 +459,23 @@ class _CanvasMixerState extends State<CanvasMixer>
         for (var (l, r) in controller.deviceLevels(open))
           (gainToDb(l), gainToDb(r))
       ];
-      if (taps.length != _taps.length ||
-          [
-            for (var i = 0; i < taps.length; i++)
-              (taps[i].$1 - _taps[i].$1).abs() > 0.3
-          ].any((x) => x)) {
+      if (_tapsOf != open) {
+        _tapsOf = open;
+        _taps = _tapPeaks = const [];
+      }
+      if (taps.length != _taps.length) {
         moved = true;
+      } else {
+        for (var i = 0; i < taps.length && !moved; i++) {
+          if ((taps[i].$1 - _taps[i].$1).abs() > 0.3 ||
+              (taps[i].$2 - _taps[i].$2).abs() > 0.3) {
+            moved = true;
+          }
+        }
+      }
+      // A join that has clipped stays lit, until its lights are cleared.
+      for (var (i, t) in taps.indexed) {
+        if ((t.$1 >= 0 || t.$2 >= 0) && _clipped.add((open, i))) moved = true;
       }
       _tapPeaks = [
         for (var (i, t) in taps.indexed)
@@ -1041,7 +1072,7 @@ class _CanvasMixerState extends State<CanvasMixer>
       Widget device(String id,
               Widget Function(bool folded, VoidCallback onFold) make) =>
           KeyedSubtree(
-            key: _deviceKey(id),
+            key: _deviceKey(key, id),
             child: make(folded.contains(id),
                 () => controller.foldDevice(id, !folded.contains(id))),
           );
@@ -1081,11 +1112,6 @@ class _CanvasMixerState extends State<CanvasMixer>
                   onFold: fold,
                   height: h));
       var ret = isMaster ? null : controller.returnOf(key);
-      var compFirst = isMaster
-          ? master.compFirst
-          : isScene
-              ? controller.sceneBus.compFirst
-              : ret?.mix.compFirst ?? lane!.mix.compFirst;
       var skin = DeviceSkin.themed(theme.colors);
       // The editor (a clip's, opened from its slot, or a part's piano roll)
       // first in its channel's strip.
@@ -1172,7 +1198,8 @@ class _CanvasMixerState extends State<CanvasMixer>
           .devicesOf(key)
           .indexWhere((d) => d.kind == DeviceKind.macro);
       var chain = <Widget>[
-        if (lane != null || isMaster || isScene || ret != null) ...[
+        if (controller.chainMacros &&
+            (lane != null || isMaster || isScene || ret != null)) ...[
           chainZone("Macros", const Color(0xFFA7A3B8), h),
           if (macroAt >= 0)
             deviceAt(macroAt)
@@ -1238,6 +1265,10 @@ class _CanvasMixerState extends State<CanvasMixer>
                   onFold: fold,
                   height: h,
                   skin: skin)),
+          // Between each two of its note devices, the notes passing as dots,
+          // as the prototype's joins on a MIDI chain: the effects before
+          // each done to them.
+          NoteJoin(controller: controller, channel: key, upto: 0, height: h),
           chainZone("Before", midiColour, h),
           device(
               "midiIn",
@@ -1247,9 +1278,10 @@ class _CanvasMixerState extends State<CanvasMixer>
                   folded: f,
                   onFold: fold,
                   height: h)),
+          NoteJoin(controller: controller, channel: key, upto: 0, height: h),
           for (var i = 0;
               i < controller.instrumentOf(key)!.instrument!.effects.length;
-              i++)
+              i++) ...[
             device(
                 "midi$i",
                 (f, fold) => MidiEffectDevice(
@@ -1259,6 +1291,9 @@ class _CanvasMixerState extends State<CanvasMixer>
                     folded: f,
                     onFold: fold,
                     height: h)),
+            NoteJoin(
+                controller: controller, channel: key, upto: i + 1, height: h),
+          ],
           AddMidiEffectSlot(
               key: const ValueKey("addMidiEffectSlot"),
               controller: controller,
@@ -1291,12 +1326,10 @@ class _CanvasMixerState extends State<CanvasMixer>
                   height: h,
                   skin: skin)),
         ],
-        // A return's devices, a channel's own or the master's (a chorus, a gate),
-        // then a way to add another, then its EQ and compressor.
-        // A channel's and the master's chain in the order it runs, its EQ and
-        // compressor among its devices wherever they were put, a meter
-        // between each two of a channel's; then a way to add another. A
-        // return's devices, then its strip's EQ and compressor.
+        // A channel's, a return's, the scene bus's and the master's chain in
+        // the order it runs, its EQ and compressor among its devices
+        // wherever they were put, a join between each two; then a way to add
+        // another.
         // Turned down by a voice: the Ducker first, as the dips are made to
         // the channel's sounds as they come in.
         if (lane != null &&
@@ -1310,7 +1343,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                   folded: f,
                   onFold: fold,
                   height: h)),
-        if (lane != null || isMaster || isScene) ...[
+        if (lane != null || isMaster || isScene || ret != null) ...[
           chainZone(
               lane != null && controller.instrumentChannel(key)
                   ? "After"
@@ -1358,25 +1391,6 @@ class _CanvasMixerState extends State<CanvasMixer>
                 controller: controller,
                 owner: key,
                 height: h),
-        ] else if (ret != null) ...[
-          // Its devices with a join before each and after the last: heard
-          // from there, or an analyser put there, as a channel's.
-          for (var i = 0; i < controller.devicesOf(key).length; i++)
-            if (i != macroAt) ...[
-              _junction(i, h, theme, key),
-              deviceAt(i),
-            ],
-          if (controller.devicesOf(key).isNotEmpty)
-            _junction(controller.devicesOf(key).length, h, theme, key),
-          AddDeviceSlot(
-              key: const ValueKey("addDeviceSlot"),
-              controller: controller,
-              owner: key,
-              height: h),
-          for (var (step, card) in compFirst
-              ? [(chainComp, comp), (chainEq, eq)]
-              : [(chainEq, eq), (chainComp, comp)])
-            if (!controller.partRemoved(key, step)) card,
         ],
         if (lane != null && !controller.partRemoved(key, stripDuck))
           device(
@@ -2058,13 +2072,21 @@ class _Junction extends StatelessWidget {
   final bool listening;
   final VoidCallback onListen;
   final ValueChanged<DeviceKind> onAnalyser;
+
+  /// latched is whether it has clipped since its lights were last cleared,
+  /// and onClear clears every join's of the chain.
+  final bool latched;
+  final VoidCallback onClear;
   const _Junction(this.index, this.level, this.peak, this.colors, this.height,
       {required this.listening,
       required this.onListen,
-      required this.onAnalyser});
+      required this.onAnalyser,
+      this.latched = false,
+      required this.onClear});
 
-  /// clipped is whether the peak held has reached nought decibels.
-  bool get clipped => peak.$1 >= 0 || peak.$2 >= 0;
+  /// clipped is whether it has reached nought decibels: held, or since its
+  /// lights were cleared.
+  bool get clipped => latched || peak.$1 >= 0 || peak.$2 >= 0;
 
   /// reading is its level and the peak held, in decibels.
   String get reading =>
@@ -2084,6 +2106,11 @@ class _Junction extends StatelessWidget {
                 ? "Stop listening here"
                 : "Listen from here (what comes after unheard)",
             onPressed: onListen),
+        if (latched)
+          chainMenuItem(look,
+              key: ValueKey("junctionClear-$index"),
+              text: "Clear the clip lights",
+              onPressed: onClear),
         chainMenuDivider(look),
         chainMenuHeading(look, "Add an analyser here"),
         for (var kind in const [
@@ -2258,7 +2285,7 @@ class _MiniCurve extends CustomPainter {
 
   @override
   bool shouldRepaint(_MiniCurve old) =>
-      old.eq.toJson().toString() != eq.toJson().toString();
+      !identical(old.eq, eq);
 }
 
 Widget _slot(MixerLook theme, String label, bool on, Widget trailing,
@@ -3426,7 +3453,7 @@ class _BigRoomPainter extends CustomPainter {
   @override
   bool shouldRepaint(_BigRoomPainter old) =>
       old.layout != layout ||
-      old.mix.toJson().toString() != mix.toJson().toString() ||
+      !identical(old.mix, mix) ||
       old.placed != placed ||
       !listEquals(old.lights, lights) ||
       old.studio != studio;

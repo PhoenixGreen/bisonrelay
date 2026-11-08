@@ -982,6 +982,18 @@ class CanvasStageState extends State<CanvasStage>
         (elements.first as TeamElement).linked) {
       return null;
     }
+    // An element reused: each copy its own thing on the canvas, outlined
+    // and picked alone -- the box round them all only with every one picked
+    // in its Instances (Ken: the box was clutter, and in the way).
+    if (elements.length == 1) {
+      var e = elements.first;
+      if (e.base.motion.instances case var set? when set.count > 1) {
+        if (!controller.allCopiesChosen(e.id) &&
+            controller.pickedCopiesOf(e.id).length < set.count) {
+          return null;
+        }
+      }
+    }
     // Where they are on this frame, not where they rest (see
     // CanvasElement.boundsAt), so the box moves with an animated element.
     var box = _visualBounds(elements.first);
@@ -5844,6 +5856,8 @@ class CanvasStageState extends State<CanvasStage>
   /// _updateHover keeps the renderer told which button is under the pointer.
   void _updateHover(Offset stage) {
     _hoverAt = stage;
+    // For a Look at that faces the pointer.
+    controller.stagePointer = _toDocument(stage);
     // The tile to be laid follows the pointer over a map being painted.
     controller.tilePaint?.hoverAt(_toDocument(stage));
     // The brush's ring follows the pointer.
@@ -6372,8 +6386,9 @@ class CanvasStageState extends State<CanvasStage>
           controller.placingCopies = null;
         } else if (controller.selected case var e?
             when controller.copiesPicked(e.id)) {
-          // Copies picked: back to all of them, then the element.
-          controller.pickAllCopies(e.id);
+          // Copies picked: back to all of them, then the element -- each
+          // still its own on the canvas, no box round them all.
+          controller.pickCopies(e.id, const {});
         } else {
           controller.clearSelection();
         }
@@ -6426,6 +6441,7 @@ class CanvasStageState extends State<CanvasStage>
                 onPointerPanZoomEnd: _onPinchEnd,
                 child: MouseRegion(
                   cursor: _cursor(),
+                  onExit: (_) => controller.stagePointer = null,
                   // Clipped to the stage's own box as well as the frame inside it: a
                   // CustomPainter may draw outside its bounds, and a zoomed canvas would
                   // paint over the sidebar, the band and the timeline.

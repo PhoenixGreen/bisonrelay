@@ -279,6 +279,20 @@ class CanvasDocument {
   /// is summed through. See mix.dart.
   final MasterMix masterMix;
 
+  /// synced is [devices] with each LFO set to Sync given its rate at this
+  /// document's tempo, as the engine -- which knows no tempo -- runs it:
+  /// for every strip, played and exported alike (see tempoSynced).
+  List<MixDevice> synced(List<MixDevice> devices) =>
+      tempoSynced(devices, audio.tempo, beatsPerBar: audio.beatsPerBar);
+
+  /// syncedMaster and syncedReturns are the master and the returns as the
+  /// engine runs them: see [synced].
+  MasterMix get syncedMaster =>
+      masterMix.copyWith(devices: synced(masterMix.devices));
+  List<ReturnChannel> get syncedReturns => [
+        for (var r in returns) r.copyWith(devices: synced(r.devices)),
+      ];
+
   /// audio is its sound as a production: tempo, time signature, and how it
   /// is written when published. See audio_settings.dart.
   final AudioSettings audio;

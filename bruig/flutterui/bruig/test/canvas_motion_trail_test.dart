@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
@@ -112,6 +113,80 @@ void main() {
     await tester.pumpAndSettle();
     expect(painter().trail, isFalse, reason: "hidden from the ⋯");
     expect(await greenThere(), lessThanOrEqualTo(8));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets("previewed from a join, the whole chain is faint under it",
+      (tester) async {
+    // An oscillation a quarter of the way round: 200 across.
+    var c = CanvasController(
+        CanvasDocument(frames: 240, frameRate: 24, elements: [
+          ShapeElement(
+              const ElementBase(
+                  id: "a",
+                  x: 50,
+                  y: 300,
+                  width: 40,
+                  height: 40,
+                  motion: ElementMotion(devices: [
+                    MotionDevice(MotionDeviceKind.oscillate,
+                        id: "o",
+                        values: {"amount": 200, "moves": 1, "phase": 0.25})
+                  ])),
+              fill: const Color(0xFFFF0000)),
+        ]),
+        audioEngine: FakeEngine(const {}));
+    addTearDown(c.dispose);
+    c.selectOnly("a");
+    var key = GlobalKey<CanvasStageState>();
+    var shot = GlobalKey();
+    tester.view.physicalSize = const Size(900, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: RepaintBoundary(
+                  key: shot,
+                  child: SizedBox(
+                      width: 900,
+                      height: 700,
+                      child: ListenableBuilder(
+                          listenable: c,
+                          builder: (context, _) =>
+                              CanvasStage(key: key, controller: c)))))),
+    ));
+    await tester.pumpAndSettle();
+    Future<int> redAt(Offset doc) async {
+      var at = key.currentState!.toStagePoint(doc);
+      var boundary =
+          shot.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      var red = 0;
+      await tester.runAsync(() async {
+        var image = await boundary.toImage();
+        var raw = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+        red = raw.getUint8((at.dy.round() * image.width + at.dx.round()) * 4);
+      });
+      return red;
+    }
+
+    var page = await redAt(const Offset(500, 320));
+    var moved = await redAt(const Offset(270, 320));
+    expect(moved, greaterThan(200), reason: "the chain moves it 200 across");
+    expect(await redAt(const Offset(70, 320)), lessThan(page + 30),
+        reason: "and nothing is left where it is set");
+    c.previewMotionFrom("a", 0);
+    await tester.pumpAndSettle();
+    expect(await redAt(const Offset(70, 320)), greaterThan(200),
+        reason: "before the oscillation: where it is set");
+    var faint = await redAt(const Offset(270, 320));
+    expect(faint, greaterThan(page + 20), reason: "the whole chain, faint");
+    expect(faint, lessThan(moved - 60), reason: "but only faint");
     expect(tester.takeException(), isNull);
   });
 }

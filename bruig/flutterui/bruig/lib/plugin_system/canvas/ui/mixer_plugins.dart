@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/ui/chain_icons.dart';
+import 'package:bruig/plugin_system/canvas/model/strip_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/device_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/pitch_editing.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart'
@@ -33,7 +34,7 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
-    show lookAtCamera, motionSpeedAt, retimed;
+    show lookAtCamera, lookAtPointer, motionSpeedAt, retimed;
 import 'package:bruig/plugin_system/canvas/render/motion_looks.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
@@ -592,25 +593,229 @@ class _PresetPickerState extends State<_PresetPicker> {
           setState(() {});
           menu.open();
         },
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 82),
-          height: 16,
-          margin: const EdgeInsets.only(right: 3),
-          padding: const EdgeInsets.only(left: 5, right: 1),
-          decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(3),
-              border: Border.all(color: studio.edge)),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Flexible(
-              child: Text(widget.name ?? "Default",
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 9.5, height: 1.1, color: studio.muted)),
-            ),
-            Icon(Icons.arrow_drop_down, size: 12, color: studio.muted),
-          ]),
+        child: _presetLabel(context, widget.name ?? "Default", studio),
+      ),
+    );
+  }
+}
+
+/// _FoldedLevel is a folded device's level as the sound leaves it -- the
+/// join after it, [at] -- as a slim meter at the foot of its card, as the
+/// prototype's folded cards have.
+class _FoldedLevel extends StatefulWidget {
+  final CanvasController controller;
+  final String owner;
+  final int at;
+  const _FoldedLevel(
+      {required this.controller,
+      required this.owner,
+      required this.at,
+      super.key});
+
+  @override
+  State<_FoldedLevel> createState() => _FoldedLevelState();
+}
+
+class _FoldedLevelState extends State<_FoldedLevel>
+    with SingleTickerProviderStateMixin, _Metered {
+  double _db = -90;
+
+  @override
+  CanvasController get meteredBy => widget.controller;
+
+  @override
+  void tick() {
+    var taps = widget.controller.deviceLevels(widget.owner);
+    var at = widget.at;
+    _db = at > 0 && at < taps.length
+        ? gainToDb(math.max(taps[at].$1, taps[at].$2))
+        : -90;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var studio = MixerLook.of(context).studio;
+    var u = ((_db + 60) / 60).clamp(0.0, 1.0);
+    return Center(
+      child: Container(
+        width: 6,
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        alignment: Alignment.bottomCenter,
+        decoration: BoxDecoration(
+            color: studio.display, borderRadius: BorderRadius.circular(3)),
+        child: FractionallySizedBox(
+          heightFactor: u,
+          child: Container(
+            decoration: BoxDecoration(
+                color: _db >= 0
+                    ? const Color(0xFFE5484D)
+                    : const Color(0xFF3FB08D),
+                borderRadius: BorderRadius.circular(3)),
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// _PresetCompact tells a preset picker under it to show its mark alone,
+/// its name in its tooltip: a card too narrow for "Default ▾".
+class _PresetCompact extends InheritedWidget {
+  const _PresetCompact({required super.child});
+
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_PresetCompact>() != null;
+
+  @override
+  bool updateShouldNotify(_PresetCompact old) => false;
+}
+
+/// _presetLabel is a preset picker's face: "Default ▾", or -- compact --
+/// its mark alone, the preset's name in its tooltip.
+Widget _presetLabel(BuildContext context, String name, StudioColors studio) {
+  if (_PresetCompact.of(context)) {
+    return Tooltip(
+      message: "Presets: $name",
+      child: Container(
+        width: 18,
+        height: 16,
+        margin: const EdgeInsets.only(right: 3),
+        decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(3),
+            border: Border.all(color: studio.edge)),
+        child: Icon(Icons.tune, size: 11, color: studio.muted),
+      ),
+    );
+  }
+  return Container(
+    constraints: const BoxConstraints(maxWidth: 82),
+    height: 16,
+    margin: const EdgeInsets.only(right: 3),
+    padding: const EdgeInsets.only(left: 5, right: 1),
+    decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(3),
+        border: Border.all(color: studio.edge)),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Flexible(
+        child: Text(name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 9.5, height: 1.1, color: studio.muted)),
+      ),
+      Icon(Icons.arrow_drop_down, size: 12, color: studio.muted),
+    ]),
+  );
+}
+
+/// worksOnMenu is a card's ⋯ "Works on": the whole sound, only its
+/// middle (what both sides share) or only its sides (where they differ),
+/// as [value] says -- for a device, and a strip's EQ and compressor.
+Widget worksOnMenu(MixerLook look,
+        {required String id,
+        required int value,
+        required ValueChanged<int> onPick}) =>
+    SubmenuButton(
+      key: ValueKey(id),
+      style: chainMenuItemStyle(look),
+      menuStyle: chainMenuStyle(look),
+      menuChildren: [
+        for (var (k, label) in const [
+          (0, "Both sides"),
+          (1, "Mid: what both sides share"),
+          (2, "Side: where they differ"),
+        ])
+          chainMenuItem(look,
+              key: ValueKey("$id-$k"),
+              text: label,
+              current: value == k,
+              onPressed: () => onPick(k)),
+      ],
+      child: Text(
+          "Works on: ${const ["both sides", "mid", "side"][value.clamp(0, 2)]}"),
+    );
+
+/// _stripKept are the saved presets of a strip's [part], by name.
+List<(String, Map<String, dynamic>)> _stripKept(StripPart part) => [
+      for (var p in devicePresets.presets)
+        if (stripPresetOf(p.data) case (var of, var value) when of == part)
+          (p.name, value),
+    ];
+
+/// _StripPresetPicker is the Presets ▾ of a strip's own card -- its EQ,
+/// compressor, limiter or Ducker -- as a device's: Default, the starting
+/// points it comes with, the ones saved, and Save.
+class _StripPresetPicker extends StatefulWidget {
+  /// label is what it is the presets of: "EQ", "Wiggle".
+  final String label;
+
+  /// kept are the saved presets it offers, by name, as written: asked for
+  /// as it opens, once they are read.
+  final List<(String, Map<String, dynamic>)> Function() kept;
+
+  /// name is the preset last put on, or null for its own settings.
+  final String? name;
+
+  /// builtIn are its starting points, by name, as written (see toJson).
+  final List<(String, Map<String, dynamic>)> builtIn;
+  final void Function(String name, Map<String, dynamic> value) onPick;
+  final VoidCallback onDefault;
+  final VoidCallback onSave;
+  const _StripPresetPicker(
+      {required this.label,
+      required this.kept,
+      required this.name,
+      required this.builtIn,
+      required this.onPick,
+      required this.onDefault,
+      required this.onSave,
+      super.key});
+
+  @override
+  State<_StripPresetPicker> createState() => _StripPresetPickerState();
+}
+
+class _StripPresetPickerState extends State<_StripPresetPicker> {
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    var studio = look.studio;
+    var kept = widget.kept();
+    var id = (widget.key as ValueKey?)?.value ?? "stripPreset";
+    return MenuAnchor(
+      style: chainMenuStyle(look),
+      menuChildren: [
+        chainMenuHeading(look, "${widget.label} presets"),
+        chainMenuItem(look,
+            key: ValueKey("$id-default"),
+            text: "Default",
+            current: widget.name == null,
+            onPressed: widget.onDefault),
+        for (var (name, value) in [...widget.builtIn, ...kept])
+          chainMenuItem(look,
+              key: ValueKey("$id-$name"),
+              text: name,
+              current: widget.name == name,
+              onPressed: () => widget.onPick(name, value)),
+        chainMenuDivider(look),
+        chainMenuItem(look,
+            key: ValueKey("$id-save"),
+            text: "Save these settings as a preset",
+            onPressed: widget.onSave),
+      ],
+      builder: (context, menu, _) => GestureDetector(
+        key: ValueKey("$id-open"),
+        behavior: HitTestBehavior.opaque,
+        onTap: () async {
+          if (menu.isOpen) {
+            menu.close();
+            return;
+          }
+          await devicePresets.load();
+          if (!mounted) return;
+          setState(() {});
+          menu.open();
+        },
+        child: _presetLabel(context, widget.name ?? "Default", studio),
       ),
     );
   }
@@ -662,6 +867,7 @@ class _GainBadgeState extends State<_GainBadge>
   @override
   Widget build(BuildContext context) {
     var c = _change;
+    if (!widget.controller.chainBadges) return const SizedBox.shrink();
     if (c == null || c.abs() < 0.05) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(right: 4),
@@ -674,6 +880,102 @@ class _GainBadgeState extends State<_GainBadge>
               color: c > 0 ? const Color(0xFFE2B04A) : const Color(0xFF7FC8F8))),
     );
   }
+}
+
+/// NoteJoin is a join on a MIDI chain: the notes passing there as dots,
+/// one lit for each -- what is sounding now, done to by the first [upto]
+/// of its MIDI effects (a chord adds notes, a scale moves them).
+class NoteJoin extends StatefulWidget {
+  final CanvasController controller;
+  final String channel;
+  final int upto;
+  final double height;
+  const NoteJoin(
+      {super.key,
+      required this.controller,
+      required this.channel,
+      required this.upto,
+      required this.height});
+
+  @override
+  State<NoteJoin> createState() => _NoteJoinState();
+}
+
+class _NoteJoinState extends State<NoteJoin>
+    with SingleTickerProviderStateMixin, _Metered {
+  int _notes = 0;
+
+  @override
+  CanvasController get meteredBy => widget.controller;
+
+  @override
+  void tick() {
+    var e = widget.controller.instrumentOf(widget.channel);
+    var part = e?.instrument;
+    if (e == null || part == null) {
+      _notes = 0;
+      return;
+    }
+    var keys = widget.controller.audioState(e).keys;
+    var effects = part.effects.take(widget.upto).toList();
+    _notes = effects.isEmpty
+        ? keys.length
+        : {
+            for (var k in keys)
+              for (var (out, _) in liveKeys(effects, k, 96)) out,
+          }.length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.controller.chainMeters) return const SizedBox(width: 4);
+    tick();
+    var studio = MixerLook.of(context).studio;
+    const dots = 6;
+    return Tooltip(
+      message: _notes == 0
+          ? "No notes passing"
+          : "$_notes note${_notes == 1 ? "" : "s"} passing",
+      child: SizedBox(
+        key: ValueKey("noteJoin-${widget.upto}"),
+        width: 16,
+        height: widget.height,
+        child: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            for (var i = 0; i < dots; i++)
+              Container(
+                width: 5,
+                height: 5,
+                margin: const EdgeInsets.symmetric(vertical: 2),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: dots - 1 - i < _notes
+                      ? midiColour
+                      : studio.edge.withValues(alpha: 0.6),
+                ),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// _ReadingBadge is a card's reading in its bar, as _GainBadge's: a turn
+/// down, cool.
+class _ReadingBadge extends StatelessWidget {
+  final String text;
+  const _ReadingBadge({required this.text, super.key});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(right: 4),
+        child: Text(text,
+            style: const TextStyle(
+                fontSize: 9.5,
+                fontFeatures: [FontFeature.tabularFigures()],
+                color: Color(0xFF7FC8F8))),
+      );
 }
 
 /// _ABSwitch is a card's A|B: the one heard lit; a press hears the other.
@@ -1264,11 +1566,7 @@ class DeviceFrame extends StatelessWidget {
     for (var w in actions.where(_inMenu)) {
       if (w is DeviceMove) {
         for (var (left, can) in [(true, w.canLeft), (false, w.canRight)]) {
-          VoidCallback? go = !can
-              ? null
-              : w.onMove == null
-                  ? w.onSwap
-                  : () => w.onMove!(left ? -1 : 1);
+          VoidCallback? go = !can ? null : () => w.onMove(left ? -1 : 1);
           moves.add(chainMenuItem(look,
               key: ValueKey("deviceMove${left ? "Left" : "Right"}-${w.id}"),
               text: left ? "Move left" : "Move right",
@@ -1363,25 +1661,43 @@ class DeviceFrame extends StatelessWidget {
     ];
   }
 
-  /// _bar is the card's top: its power dot, its family's mark, its name in
-  /// capitals -- pressed, it folds -- then its buttons and a ⋯ for the rest.
-  /// _presetFits is whether the bar has room for its preset beside its
-  /// name, its A|B and [buttons] more buttons, on a card [width] wide.
-  bool _presetFits(BuildContext context, int buttons, double cardWidth) {
-    var scale = MediaQuery.textScalerOf(context);
-    var tp = TextPainter(
-        text: TextSpan(
-            text: title.toUpperCase(),
-            style: const TextStyle(
-                fontSize: 10.5,
-                letterSpacing: 0.6,
-                fontWeight: FontWeight.w600)),
-        textScaler: scale,
-        maxLines: 1,
-        textDirection: TextDirection.ltr)
-      ..layout();
-    var fixed = 10 + 14 + 20 + 36 + 84 * scale.scale(1) + 30 * (buttons + 2);
-    return tp.width + fixed <= cardWidth;
+  /// _barRoom is what the bar has room for beside its switch, its mark, a
+  /// short name, its A|B, its [buttons] and its ⋯ ([more]) -- measured,
+  /// each button its tap target's 48 -- given out in order: a reading (a
+  /// gain badge comes and goes with the sound, so its room is kept), the
+  /// presets whole or as their mark, then the help, which the ⋯ also says.
+  ({bool badges, bool preset, bool compactPreset, bool help}) _barRoom(
+      BuildContext context, int buttons, bool more, double cardWidth) {
+    var scale = MediaQuery.textScalerOf(context).scale(1);
+    var badges = barExtras.where((w) => w is _GainBadge || w is _ReadingBadge);
+    var pickers =
+        barExtras.where((w) => w is _PresetPicker || w is _StripPresetPicker);
+    // Anything else it has there -- a latency, a mark -- always shown.
+    var others = barExtras.length - badges.length - pickers.length;
+    var room = cardWidth -
+        (72 * scale * others +
+            10 +
+            (on != null ? 25 : 0) +
+            (icon != null ? 20 : 0) +
+            52 * scale +
+            (onAB != null ? 36 : 0) +
+            48 * (buttons + (more ? 1 : 0)));
+    bool take(double w) {
+      if (room < w) return false;
+      room -= w;
+      return true;
+    }
+
+    var hasBadges = badges.isEmpty || take(badges.length * 44 * scale);
+    var whole = pickers.isNotEmpty && take(86 * scale);
+    var compact = !whole && pickers.isNotEmpty && take(23);
+    var help = take(48);
+    return (
+      badges: hasBadges && badges.isNotEmpty,
+      preset: whole,
+      compactPreset: compact,
+      help: help,
+    );
   }
 
   Widget _bar(BuildContext context,
@@ -1396,6 +1712,7 @@ class DeviceFrame extends StatelessWidget {
     ];
     var look = MixerLook.of(context);
     var menu = _menuItems(look);
+    var bar = _barRoom(context, shown.length, menu.isNotEmpty, cardWidth);
     Widget small(Widget child) => IconButtonTheme(
           data: IconButtonThemeData(
               style: IconButton.styleFrom(
@@ -1451,19 +1768,28 @@ class DeviceFrame extends StatelessWidget {
         // A strip is too narrow for its buttons: they are for a taller
         // panel.
         if (full) ...[
-          // Its preset, level change and A|B; the preset left off a card
-          // too narrow for it beside its name (its ⋯ menu saves one).
+          // Its reading, its presets and A|B; what the bar has no room for
+          // left off, in this order: the help (its ⋯ says what it does),
+          // then the presets as their mark alone, then the reading.
           ...[
             for (var w in barExtras)
-              if (w is! _PresetPicker ||
-                  _presetFits(context, shown.length, cardWidth))
+              if (w is _GainBadge || w is _ReadingBadge)
+                if (bar.badges) w else const SizedBox.shrink()
+              else if (w is _PresetPicker || w is _StripPresetPicker)
+                if (bar.preset)
+                  w
+                else if (bar.compactPreset)
+                  _PresetCompact(child: w)
+                else
+                  const SizedBox.shrink()
+              else
                 w,
             if (onAB != null)
               _ABSwitch(
                   key: ValueKey("deviceAB-$id"), b: showingB, onTap: onAB!),
           ],
           for (var a in shown) small(a),
-          if (help.isNotEmpty)
+          if (help.isNotEmpty && bar.help)
             MenuAnchor(
               style: chainMenuStyle(look),
               builder: (context, controller, _) => small(IconButton(
@@ -1802,25 +2128,22 @@ class _Power extends StatelessWidget {
       );
 }
 
-/// DeviceMove is the pair of arrows on a device that can change places with
-/// its neighbour: the EQ and the compressor.
+/// DeviceMove is the pair of arrows on a device that moves it along its
+/// chain (in its ⋯ menu as Move left and Move right).
 class DeviceMove extends StatelessWidget {
   final bool canLeft, canRight;
-  final VoidCallback onSwap;
   final Color ink;
   final String id;
 
-  /// onMove, given, moves it a place along the chain -- minus one to the
-  /// left -- rather than swapping it with its neighbour.
-  final void Function(int by)? onMove;
+  /// onMove moves it a place along the chain, minus one to the left.
+  final void Function(int by) onMove;
 
   const DeviceMove(
       {required this.id,
       required this.canLeft,
       required this.canRight,
-      required this.onSwap,
+      required this.onMove,
       required this.ink,
-      this.onMove,
       super.key});
 
   @override
@@ -1830,11 +2153,7 @@ class DeviceMove extends StatelessWidget {
             message: left ? "Move earlier in the chain" : "Move later",
             child: GestureDetector(
               key: ValueKey("deviceMove${left ? "Left" : "Right"}-$id"),
-              onTap: !can
-                  ? null
-                  : onMove == null
-                      ? onSwap
-                      : () => onMove!(left ? -1 : 1),
+              onTap: !can ? null : () => onMove(left ? -1 : 1),
               child: Icon(left ? Icons.chevron_left : Icons.chevron_right,
                   size: 18, color: can ? ink : ink.withValues(alpha: 0.25)),
             ),
@@ -1865,11 +2184,6 @@ class _Strip {
 
   bool get gone =>
       channel != null && !_scene && _lane == null && _return == null;
-
-  /// inChain is whether its EQ and compressor have places in a chain with
-  /// its devices: a channel's and the master's do; a return's are its
-  /// strip's, after its devices, and only change places with each other.
-  bool get inChain => _return == null;
 
   /// canMove is whether [step] (chainEq, chainComp) can go left, and right.
   (bool, bool) canMove(String step) {
@@ -1927,33 +2241,6 @@ class _Strip {
   String get name => _scene
       ? controller.document.scene.saysAt(controller.document.at)
       : _lane?.name ?? _return?.name ?? "";
-
-  bool get compFirst => channel == null
-      ? controller.document.masterMix.compFirst
-      : _mix?.compFirst ?? false;
-
-  /// swap puts the compressor before the EQ, or back after it.
-  void swap() {
-    controller.beginInteraction();
-    if (channel == null) {
-      var m = controller.document.masterMix;
-      controller.setMasterMix(m.copyWith(compFirst: !m.compFirst),
-          transient: true);
-    } else if (_scene) {
-      var b = controller.sceneBus;
-      controller.setSceneBus(b.copyWith(compFirst: !b.compFirst),
-          transient: true);
-    } else if (_lane case var lane?) {
-      controller.setChannelMix(
-          lane, lane.mix.copyWith(compFirst: !lane.mix.compFirst),
-          transient: true, anywhere: true);
-    } else if (_return case var ret?) {
-      controller.setReturn(
-          ret.copyWith(mix: ret.mix.copyWith(compFirst: !ret.mix.compFirst)),
-          transient: true);
-    }
-    controller.endInteraction();
-  }
 
   (double, double) get levels =>
       channel == null ? controller.levels() : controller.levels(channel);
@@ -2205,7 +2492,8 @@ class EqDevice extends StatefulWidget {
 
 class _EqDeviceState extends State<EqDevice>
     with SingleTickerProviderStateMixin, _Metered {
-  late final _Strip strip = _Strip(widget.controller, widget.channel);
+  // Made again each time: the card may be given another strip.
+  _Strip get strip => _Strip(widget.controller, widget.channel);
 
   @override
   CanvasController get meteredBy => widget.controller;
@@ -2242,7 +2530,6 @@ class _EqDeviceState extends State<EqDevice>
         builder: (context, _) {
           if (strip.gone) return const SizedBox.shrink();
           var eq = strip.eq;
-          var first = !strip.compFirst;
           var look = MixerLook.of(context);
           var studio = look.studio;
           var picked = _picked ?? EqSlot.mid;
@@ -2275,6 +2562,40 @@ class _EqDeviceState extends State<EqDevice>
             showingB: widget.controller
                 .showingBOf("${widget.channel ?? mixerMasterKey}|eq"),
             onReset: () => _write(const Eq().copyWith(on: eq.on)),
+            // On the whole sound, its middle or its sides.
+            extraMenu: (look) => [
+              worksOnMenu(look,
+                  id: "eqStereo",
+                  value: eq.stereo,
+                  onPick: (k) => _write(eq.copyWith(stereo: k))),
+            ],
+            barExtras: [
+              _GainBadge(
+                  key: const ValueKey("gainBadge-eq"),
+                  controller: widget.controller,
+                  channel: widget.channel ?? mixerMasterKey,
+                  id: chainEq),
+              _StripPresetPicker(
+                key: const ValueKey("stripPreset-eq"),
+                label: StripPart.eq.label,
+                kept: () => _stripKept(StripPart.eq),
+                name: widget.controller
+                    .presetNameOf(widget.channel ?? mixerMasterKey, "eq"),
+                builtIn: [for (var (n, v) in eqPresets) (n, v.toJson())],
+                onPick: (name, value) {
+                  _write(Eq.fromJson(value));
+                  widget.controller.setPresetName(
+                      widget.channel ?? mixerMasterKey, "eq", name);
+                },
+                onDefault: () {
+                  _write(const Eq().copyWith(on: eq.on));
+                  widget.controller.setPresetName(
+                      widget.channel ?? mixerMasterKey, "eq", null);
+                },
+                onSave: () =>
+                    saveStripPreset(context, StripPart.eq, eq.toJson()),
+              ),
+            ],
             folded: widget.folded,
             onFold: widget.onFold,
             width: EqDevice.width,
@@ -2290,11 +2611,9 @@ class _EqDeviceState extends State<EqDevice>
                 ),
               DeviceMove(
                   id: "eq",
-                  canLeft: strip.inChain ? strip.canMove(chainEq).$1 : !first,
-                  canRight: strip.inChain ? strip.canMove(chainEq).$2 : first,
-                  onSwap: strip.swap,
-                  onMove:
-                      strip.inChain ? (by) => strip.move(chainEq, by) : null,
+                  canLeft: strip.canMove(chainEq).$1,
+                  canRight: strip.canMove(chainEq).$2,
+                  onMove: (by) => strip.move(chainEq, by),
                   ink: studio.text),
             ],
             summary: [
@@ -2790,7 +3109,7 @@ class _EqGraph extends CustomPainter {
   bool shouldRepaint(_EqGraph old) =>
       old.spectrum != spectrum ||
       old.picked != picked ||
-      old.eq.toJson().toString() != eq.toJson().toString();
+      !identical(old.eq, eq);
 }
 
 // ---- Compressor
@@ -2829,7 +3148,8 @@ class CompDevice extends StatefulWidget {
 
 class _CompDeviceState extends State<CompDevice>
     with SingleTickerProviderStateMixin, _Metered {
-  late final _Strip strip = _Strip(widget.controller, widget.channel);
+  // Made again each time: the card may be given another strip.
+  _Strip get strip => _Strip(widget.controller, widget.channel);
 
   @override
   CanvasController get meteredBy => widget.controller;
@@ -2875,7 +3195,6 @@ class _CompDeviceState extends State<CompDevice>
                   comp.mix *
                       (comp.reducedDb(_input) + comp.totalMakeupDb - _input)
               : _input;
-          var first = strip.compFirst;
           var look = MixerLook.of(context);
           var studio = look.studio;
           var hooks = widget.channel == null
@@ -2909,6 +3228,42 @@ class _CompDeviceState extends State<CompDevice>
                     ? const MasterMix().comp
                     : const Dynamics())
                 .copyWith(on: comp.on)),
+            extraMenu: (look) => [
+              worksOnMenu(look,
+                  id: "compStereo",
+                  value: comp.stereo,
+                  onPick: (k) => _write(comp.copyWith(stereo: k))),
+            ],
+            barExtras: [
+              _GainBadge(
+                  key: const ValueKey("gainBadge-comp"),
+                  controller: widget.controller,
+                  channel: widget.channel ?? mixerMasterKey,
+                  id: chainComp),
+              _StripPresetPicker(
+                key: const ValueKey("stripPreset-comp"),
+                label: StripPart.comp.label,
+                kept: () => _stripKept(StripPart.comp),
+                name: widget.controller
+                    .presetNameOf(widget.channel ?? mixerMasterKey, "comp"),
+                builtIn: [for (var (n, v) in compPresets) (n, v.toJson())],
+                onPick: (name, value) {
+                  _write(Dynamics.fromJson(value));
+                  widget.controller.setPresetName(
+                      widget.channel ?? mixerMasterKey, "comp", name);
+                },
+                onDefault: () {
+                  _write((widget.channel == null
+                          ? const MasterMix().comp
+                          : const Dynamics())
+                      .copyWith(on: comp.on));
+                  widget.controller.setPresetName(
+                      widget.channel ?? mixerMasterKey, "comp", null);
+                },
+                onSave: () =>
+                    saveStripPreset(context, StripPart.comp, comp.toJson()),
+              ),
+            ],
             folded: widget.folded,
             onFold: widget.onFold,
             width: CompDevice.width,
@@ -2925,11 +3280,9 @@ class _CompDeviceState extends State<CompDevice>
                 ),
               DeviceMove(
                   id: "comp",
-                  canLeft: strip.inChain ? strip.canMove(chainComp).$1 : !first,
-                  canRight: strip.inChain ? strip.canMove(chainComp).$2 : first,
-                  onSwap: strip.swap,
-                  onMove:
-                      strip.inChain ? (by) => strip.move(chainComp, by) : null,
+                  canLeft: strip.canMove(chainComp).$1,
+                  canRight: strip.canMove(chainComp).$2,
+                  onMove: (by) => strip.move(chainComp, by),
                   ink: studio.text),
             ],
             summary: "${comp.threshold.round()} dB · "
@@ -3796,7 +4149,7 @@ class _TransferCurve extends CustomPainter {
   @override
   bool shouldRepaint(_TransferCurve old) =>
       old.input != input ||
-      old.comp.toJson().toString() != comp.toJson().toString();
+      !identical(old.comp, comp);
 }
 
 /// _LedMeter is a level meter of lit segments: green, then amber, then red
@@ -3864,7 +4217,7 @@ class _MiniCurve extends CustomPainter {
 
   @override
   bool shouldRepaint(_MiniCurve old) =>
-      old.eq.toJson().toString() != eq.toJson().toString();
+      !identical(old.eq, eq);
 }
 
 /// _ReductionBar is gain reduction as a bar falling from the top: twenty
@@ -3917,7 +4270,8 @@ class MeterDevice extends StatefulWidget {
 
 class _MeterDeviceState extends State<MeterDevice>
     with SingleTickerProviderStateMixin, _Metered {
-  late final _Strip strip = _Strip(widget.controller, widget.channel);
+  // Made again each time: the card may be given another strip.
+  _Strip get strip => _Strip(widget.controller, widget.channel);
 
   @override
   CanvasController get meteredBy => widget.controller;
@@ -4131,6 +4485,45 @@ class _LimiterDeviceState extends State<LimiterDevice> {
       besideSettings: 180,
       // Its look-ahead delays the whole mix by as much.
       barExtras: [
+        // How far it is holding the mix down now.
+        if (_reduction > 0.05 && widget.controller.chainBadges)
+          _ReadingBadge(
+              key: const ValueKey("gainBadge-limiter"),
+              text: "−${_reduction.toStringAsFixed(1)}"),
+        _StripPresetPicker(
+          key: const ValueKey("stripPreset-limiter"),
+          label: StripPart.limiter.label,
+                kept: () => _stripKept(StripPart.limiter),
+          name: c.presetNameOf(mixerMasterKey, "limiter"),
+          builtIn: [
+            for (var (n, v) in limiterPresets)
+              (
+                n,
+                {
+                  "ceiling": v.ceilingDb,
+                  "ahead": v.aheadMs,
+                  "release": v.releaseMs
+                }
+              ),
+          ],
+          onPick: (name, value) {
+            _write(m.copyWith(
+                ceilingDb: (value["ceiling"] as num?)?.toDouble(),
+                limiterAheadMs: (value["ahead"] as num?)?.toDouble(),
+                limiterReleaseMs: (value["release"] as num?)?.toDouble()));
+            c.setPresetName(mixerMasterKey, "limiter", name);
+          },
+          onDefault: () {
+            _write(m.copyWith(
+                ceilingDb: -1, limiterAheadMs: 5, limiterReleaseMs: 50));
+            c.setPresetName(mixerMasterKey, "limiter", null);
+          },
+          onSave: () => saveStripPreset(context, StripPart.limiter, {
+            "ceiling": m.ceilingDb,
+            "ahead": m.limiterAheadMs,
+            "release": m.limiterReleaseMs,
+          }),
+        ),
         Container(
           key: const ValueKey("limitLatency"),
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
@@ -4287,7 +4680,8 @@ class DuckDevice extends StatefulWidget {
 
 class _DuckDeviceState extends State<DuckDevice>
     with SingleTickerProviderStateMixin, _Metered {
-  late final _Strip strip = _Strip(widget.controller, widget.channel);
+  // Made again each time: the card may be given another strip.
+  _Strip get strip => _Strip(widget.controller, widget.channel);
 
   @override
   CanvasController get meteredBy => widget.controller;
@@ -4351,6 +4745,34 @@ class _DuckDeviceState extends State<DuckDevice>
                 (o) => write(o as Ducking, transient: true)),
             showingB: widget.controller.showingBOf("${widget.channel}|duck"),
             onReset: () => write(Ducking(on: duck.on, except: duck.except)),
+            barExtras: [
+              // How far it is turning the others down now.
+              if (_now > 0.05 && widget.controller.chainBadges)
+                _ReadingBadge(
+                    key: const ValueKey("gainBadge-duck"),
+                    text: "−${_now.toStringAsFixed(1)}"),
+              _StripPresetPicker(
+                key: const ValueKey("stripPreset-duck"),
+                label: StripPart.duck.label,
+                kept: () => _stripKept(StripPart.duck),
+                name: widget.controller
+                    .presetNameOf(widget.channel, "duck"),
+                builtIn: [for (var (n, v) in duckPresets) (n, v.toJson())],
+                onPick: (name, value) {
+                  // Its own list of who is not turned down is kept.
+                  write(Ducking.fromJson(value).copyWith(except: duck.except));
+                  widget.controller
+                      .setPresetName(widget.channel, "duck", name);
+                },
+                onDefault: () {
+                  write(Ducking(on: duck.on, except: duck.except));
+                  widget.controller
+                      .setPresetName(widget.channel, "duck", null);
+                },
+                onSave: () =>
+                    saveStripPreset(context, StripPart.duck, duck.toJson()),
+              ),
+            ],
             folded: widget.folded,
             onFold: widget.onFold,
             width: DuckDevice.width,
@@ -4803,7 +5225,7 @@ class _DuckShape extends CustomPainter {
   @override
   bool shouldRepaint(_DuckShape old) =>
       old.name != name ||
-      old.duck.toJson().toString() != duck.toJson().toString();
+      !identical(old.duck, duck);
 }
 
 /// ParamDevice is a device in a return's chain, drawn from its kind's table
@@ -4910,14 +5332,81 @@ class ParamDevice extends StatelessWidget {
     // A knob's lane, and a controller's knob learnt for it, as the
     // prototype's right-click.
     List<(String, VoidCallback)> knobMenu(DeviceParam p) {
-      if (lane == null) return const [];
+      var me = deviceIdAt(devices, index);
+      // What the prototype's knob menu has on every strip: an LFO of its
+      // own, a macro's knob, and back where it began.
+      var anyStrip = <(String, VoidCallback)>[
+        if (!device.kind.modulates && !p.isChoice) ...[
+          (
+            "Move it with a new LFO",
+            () {
+              controller.beginInteraction();
+              controller.setDevicesOf(
+                  owner,
+                  withDeviceIds([
+                    ...controller.devicesOf(owner),
+                    const MixDevice(DeviceKind.lfo)
+                        .withMods([ModTarget(me, p.id)]),
+                  ]));
+              controller.endInteraction();
+            }
+          ),
+          (
+            "Add it to a macro",
+            () {
+              var now = controller.devicesOf(owner);
+              var at = now.indexWhere((d) => d.kind == DeviceKind.macro);
+              var macro = at >= 0 ? now[at] : const MixDevice(DeviceKind.macro);
+              // Its first knob turning nothing yet -- or the first.
+              var used = {for (var m in macro.mods) m.from};
+              var k = [for (var k = 0; k < macroKnobs; k++) k]
+                      .where((k) => !used.contains(k))
+                      .firstOrNull ??
+                  0;
+              var next =
+                  macro.withMods([...macro.mods, ModTarget(me, p.id, 0.5, k)]);
+              controller.beginInteraction();
+              controller.setDevicesOf(
+                  owner,
+                  withDeviceIds(
+                      at >= 0 ? ([...now]..[at] = next) : [...now, next]));
+              controller.endInteraction();
+            }
+          ),
+        ],
+        ("Reset", () => write(device.withValue(p.id, p.initial))),
+      ];
+      if (lane == null) return anyStrip;
       var t = target(p);
       var cc = controller.controlOf(owner, t);
+      var laned =
+          controller.automationLaneOf(lane, t)?.points.isNotEmpty ?? false;
       return [
         ("Show its automation lane", () => controller.showLaneFor(owner, t)),
+        if (!laned)
+          (
+            "Automate it",
+            () {
+              // A lane begun where it is now, and shown to be drawn on.
+              controller.beginInteraction();
+              controller.setAutomationPoints(
+                  lane, t, [(0.0, device.value(p.id))],
+                  transient: true);
+              controller.endInteraction();
+              controller.showLaneFor(owner, t);
+            }
+          ),
+        if (controller.overridden[owner]?.contains(t) ?? false)
+          (
+            "Back to its automation",
+            () => controller.backToAutomationFor(owner, t)
+          ),
+        ...anyStrip,
         if (cc != null)
-          ("Forget the controller (CC $cc)",
-              () => controller.forgetControl(owner, t))
+          (
+            "Forget the controller (CC $cc)",
+            () => controller.forgetControl(owner, t)
+          )
         else
           (
             "Learn a controller: turn one of its knobs next",
@@ -4954,8 +5443,13 @@ class ParamDevice extends StatelessWidget {
         device.kind != DeviceKind.split &&
         device.kind != DeviceKind.macro &&
         !(autoTune && (p.id == "key" || p.id == "scale"));
+    // Its own knobs, then the Out trim at its foot if it has one.
+    var turned = [
+      ...params,
+      if (device.kind.hasOut) deviceExtras.firstWhere((p) => p.id == "out"),
+    ];
     List<Widget> knobs(DeviceTier tier) => [
-          for (var p in params)
+          for (var p in turned)
             if (listed(p) && !p.isChoice)
               _Knob(
                 key: ValueKey("device-$index-${p.id}"),
@@ -5173,8 +5667,9 @@ class ParamDevice extends StatelessWidget {
           ? null
           : () => controller.toggleAB(owner, deviceIdAt(devices, index)),
       barExtras: [
-        if (lane != null)
-          _GainBadge(
+        // What it does to the level, on any strip: a channel's, the
+        // master's, a scene's bus or a return.
+        _GainBadge(
               key: ValueKey("gainBadge-$index"),
               controller: controller,
               channel: owner,
@@ -5230,26 +5725,10 @@ class ParamDevice extends StatelessWidget {
           ),
         // Only the middle of the sound, or only its sides.
         if (device.kind.worksOnSides)
-          SubmenuButton(
-            key: ValueKey("deviceStereo-$index"),
-            style: chainMenuItemStyle(look),
-            menuStyle: chainMenuStyle(look),
-            menuChildren: [
-              for (var (k, label) in const [
-                (0, "Both sides"),
-                (1, "Mid: what both sides share"),
-                (2, "Side: where they differ"),
-              ])
-                chainMenuItem(look,
-                    key: ValueKey("deviceStereo-$index-$k"),
-                    text: label,
-                    current: device.value("stereo").round() == k,
-                    onPressed: () =>
-                        write(device.withValue("stereo", k.toDouble()))),
-            ],
-            child: Text(
-                "Works on: ${const ["both sides", "mid", "side"][device.value("stereo").round()]}"),
-          ),
+          worksOnMenu(look,
+              id: "deviceStereo-$index",
+              value: device.value("stereo").round(),
+              onPick: (k) => write(device.withValue("stereo", k.toDouble()))),
         // What it listens to beside its own sound.
         if (device.kind == DeviceKind.gate ||
             device.kind == DeviceKind.follower ||
@@ -5291,7 +5770,7 @@ class ParamDevice extends StatelessWidget {
               ? MacroPanel.width
               : autoTune
               ? _autoTuneWidth
-              : math.max(220.0, 24.0 + 72 * columns),
+              : math.max(240.0, 24.0 + 72 * columns),
       height: height,
       actions: [
         // Auto-tune's notes: in the Pitch editor, or made a MIDI channel.
@@ -5335,7 +5814,13 @@ class ParamDevice extends StatelessWidget {
           },
         ),
       ],
-      foldedBody: const SizedBox(),
+      // Folded, its level as it leaves it, at its foot.
+      foldedBody: _FoldedLevel(
+          key: ValueKey("foldedLevel-$index"),
+          controller: controller,
+          owner: owner,
+          at: controller.chainOf(owner).indexOf(deviceIdAt(devices, index)) +
+              1),
       body: Padding(
         padding: const EdgeInsets.all(8),
         child: Wrap(
@@ -7188,6 +7673,19 @@ class MotionDeviceCard extends StatelessWidget {
         controller.endInteraction();
       }
 
+      // A modulator of its own, made for it, as a sound knob's menu has.
+      void added(MotionDeviceKind kind, ModTarget t) {
+        var now = controller.motionDevicesOf(element);
+        controller.beginInteraction();
+        controller.setMotionDevices(
+            element,
+            motionDevicesInOrder(withMotionDeviceIds(
+                [...now, MotionDevice(kind).withMods([t])])));
+        controller.endInteraction();
+      }
+
+      var macro =
+          all.where((m) => m.kind == MotionDeviceKind.macro).firstOrNull;
       return [
         for (var m in all)
           if (m.id != d.id && m.modulates)
@@ -7202,6 +7700,28 @@ class MotionDeviceCard extends StatelessWidget {
                 "Move with ${m.kind.label}",
                 () => moveWith(m, ModTarget(d.id, p.id))
               ),
+        if (!p.isChoice) ...[
+          (
+            "Move it with a new LFO",
+            () => added(MotionDeviceKind.lfo, ModTarget(d.id, p.id))
+          ),
+          (
+            "Add it to a macro",
+            () {
+              if (macro == null) {
+                return added(
+                    MotionDeviceKind.macro, ModTarget(d.id, p.id, 0.5, 0));
+              }
+              var used = {for (var t in macro.mods) t.from};
+              var k = [for (var k = 0; k < macroKnobs; k++) k]
+                      .where((k) => !used.contains(k))
+                      .firstOrNull ??
+                  0;
+              moveWith(macro, ModTarget(d.id, p.id, 0.5, k));
+            }
+          ),
+        ],
+        ("Reset", () => write(d.withValue(p.id, p.initial))),
       ];
     }
 
@@ -7306,8 +7826,10 @@ class MotionDeviceCard extends StatelessWidget {
                   options: [
                     ("", "Nothing"),
                     // Facing the camera, wherever it is pointed.
-                    if (d.kind == MotionDeviceKind.lookAt)
+                    if (d.kind == MotionDeviceKind.lookAt) ...[
                       (lookAtCamera, "The camera"),
+                      (lookAtPointer, "The pointer"),
+                    ],
                     // A sound follows a channel's loudness.
                     if (d.kind == MotionDeviceKind.followSound ||
                         d.kind == MotionDeviceKind.follower)
@@ -7337,6 +7859,40 @@ class MotionDeviceCard extends StatelessWidget {
       id: "mdev:${d.id}",
       title: d.kind.label,
       help: motionAbout(d.kind),
+      // Its presets, as a sound device's: Default, those saved of its
+      // kind, and Save -- a preset's knobs put on, its target kept.
+      barExtras: [
+        _StripPresetPicker(
+          key: ValueKey("mdevPreset-${d.id}"),
+          label: d.kind.label,
+          kept: () => [
+            for (var p in devicePresets.presets)
+              if (motionPresetOf(p.data) case var m? when m.kind == d.kind)
+                (p.name, p.data["motion"] as Map<String, dynamic>),
+          ],
+          name: controller.presetNameOf(element, "mdev:${d.id}"),
+          builtIn: const [],
+          onPick: (name, value) {
+            var m = MotionDevice.fromJson(value);
+            if (m == null) return;
+            var next = d;
+            for (var p in d.kind.params) {
+              next = next.withValue(p.id, m.value(p.id));
+            }
+            write(next);
+            controller.setPresetName(element, "mdev:${d.id}", name);
+          },
+          onDefault: () {
+            write(MotionDevice(d.kind, on: d.on)
+                .withId(d.id)
+                .withTarget(d.target)
+                .withMods(d.mods));
+            controller.setPresetName(element, "mdev:${d.id}", null);
+          },
+          onSave: () => saveMotionPreset(context, d),
+        ),
+      ],
+      onSavePreset: () => saveMotionPreset(context, d),
       // A copy beside it, and its settings back as they began.
       onDuplicate: () {
         var now = controller.motionDevicesOf(element);
@@ -7390,8 +7946,9 @@ class MotionDeviceCard extends StatelessWidget {
       folded: folded,
       onFold: onFold,
       // As wide as its knobs on one row, and room for two dropdowns.
+      // Wide enough for its presets' mark beside its name and its A|B.
       width: math.max(
-          260.0,
+          280.0,
           16.0 +
               58 *
                   d.kind.params.where((p) => !p.isChoice).length *
@@ -7406,7 +7963,6 @@ class MotionDeviceCard extends StatelessWidget {
             id: "mdev-${d.id}",
             canLeft: at > 0,
             canRight: at < side.length - 1,
-            onSwap: () {},
             onMove: (by) => controller.moveMotionDevice(element, d.id, by),
             ink: _headerInkLight),
         IconButton(
@@ -7811,43 +8367,66 @@ class _MotionJoinState extends State<MotionJoin>
           "size ${_pose.scale.toStringAsFixed(2)} · turn ${_pose.rotate.round()}° · "
           "${_speed.round()} px/s\n"
           "${on ? "Showing it as it is here. Click to show it whole." : "Click to show it on the stage as it is here."}",
-      child: InkWell(
-        key: ValueKey("motionJoin-${widget.upto}"),
-        onTap: () =>
-            c.previewMotionFrom(widget.element, on ? null : widget.upto),
-        child: Container(
-          width: 22,
-          height: widget.height,
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-          decoration: BoxDecoration(
-            color: on ? look.colors.primary.withValues(alpha: 0.25) : null,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Column(children: [
-            Icon(on ? Icons.visibility : Icons.visibility_outlined,
-                size: 11, color: on ? look.colors.primary : look.studio.muted),
-            const SizedBox(height: 4),
-            Expanded(
-              child: Container(
-                width: 6,
-                alignment: Alignment.bottomCenter,
-                decoration: BoxDecoration(
-                  color: look.studio.display,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-                child: FractionallySizedBox(
-                  key: ValueKey("motionJoinBar-${widget.upto}"),
-                  heightFactor: fill,
+      // A right click: preview from here, or with its trail on the stage
+      // as well, as the prototype's join menu.
+      child: MenuAnchor(
+        style: chainMenuStyle(look),
+        menuChildren: [
+          chainMenuItem(look,
+              key: ValueKey("motionJoinPreview-${widget.upto}"),
+              text: on ? "Show the whole chain again" : "Preview from here",
+              hint: "on the canvas",
+              onPressed: () =>
+                  c.previewMotionFrom(widget.element, on ? null : widget.upto)),
+          chainMenuItem(look,
+              key: ValueKey("motionJoinTrail-${widget.upto}"),
+              text: "Preview from here, with its trail", onPressed: () {
+            c.motionTrail = true;
+            c.previewMotionFrom(widget.element, widget.upto);
+          }),
+        ],
+        builder: (context, menu, _) => GestureDetector(
+          onSecondaryTap: () => menu.isOpen ? menu.close() : menu.open(),
+          child: InkWell(
+            key: ValueKey("motionJoin-${widget.upto}"),
+            onTap: () =>
+                c.previewMotionFrom(widget.element, on ? null : widget.upto),
+            child: Container(
+              width: 22,
+              height: widget.height,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+              decoration: BoxDecoration(
+                color: on ? look.colors.primary.withValues(alpha: 0.25) : null,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Column(children: [
+                Icon(on ? Icons.visibility : Icons.visibility_outlined,
+                    size: 11,
+                    color: on ? look.colors.primary : look.studio.muted),
+                const SizedBox(height: 4),
+                Expanded(
                   child: Container(
+                    width: 6,
+                    alignment: Alignment.bottomCenter,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF6FA8FF),
+                      color: look.studio.display,
                       borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: FractionallySizedBox(
+                      key: ValueKey("motionJoinBar-${widget.upto}"),
+                      heightFactor: fill,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6FA8FF),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ]),
             ),
-          ]),
+          ),
         ),
       ),
     );

@@ -10,9 +10,35 @@ extension CanvasSession on CanvasController {
   LiveMotion? get liveMotion {
     LiveMotion? playing = motionPlayer.offTimeline ? motionPlayer : null;
     if (_motionPreview case (var e, var upto)) {
-      return MotionPreview(playing, e, upto);
+      return MotionPreview(playing, e, upto, pointerAt: _stagePointer);
+    }
+    // Nothing off its timeline, but something facing the pointer: the
+    // pointer alone, so the rest plays from the timeline as it would.
+    if (playing == null && _stagePointer != null && _facesPointer) {
+      return PointerLive(_stagePointer);
     }
     return playing;
+  }
+
+  /// stagePointer is where the pointer is over the page, in its
+  /// coordinates, or null off it: for a Look at that faces it. The stage
+  /// is drawn again as it moves only where something does.
+  Offset? get stagePointer => _stagePointer;
+  set stagePointer(Offset? at) {
+    if (at == _stagePointer) return;
+    _stagePointer = at;
+    motionPlayer.pointer = at;
+    if (_facesPointer) _notifyView();
+  }
+
+  /// _facesPointer is facesPointer of the document, worked out once for
+  /// each version of it: the pointer moves far more often than it changes.
+  bool get _facesPointer {
+    if (!identical(_facesPointerOf, _document)) {
+      _facesPointerOf = _document;
+      _facesPointerWas = facesPointer(_document);
+    }
+    return _facesPointerWas;
   }
 
   /// motionPreview is the element and join the stage previews its motion
@@ -429,6 +455,8 @@ extension CanvasSession on CanvasController {
     for (var key in [..._clipChannels.keys]) {
       _stopChannelAt(key, at);
     }
+    // A Repeat pad still held repeats nothing more.
+    _repeats.clear();
     motionPlayer.stopAll(at);
     _motionStep();
     if (_clipRecord != null) _endClipRecord();
@@ -754,6 +782,8 @@ extension CanvasSession on CanvasController {
       ch.now = null;
     }
     _clipChannels.clear();
+    // Held Repeat pads too: their next repeat was on the clock now stopped.
+    _repeats.clear();
     if (_clipRecord case var rec?) {
       if (rec.started) {
         _finishClipRecord(rec, now, launch: false);
@@ -816,8 +846,12 @@ extension CanvasSession on CanvasController {
       rec.notes.add(MidiNote(h.key, start,
           math.max(0.02, (until - rec.from) / spb - start), velocity));
     }
-    var bars = math.max(1.0,
-        ((until - rec.from) / math.max(0.05, _barSeconds)).roundToDouble());
+    // To the end of the bar it reached, as Stop record ends it (see
+    // _endClipRecord): stopped part way into a bar, its notes stay inside.
+    var bars = math
+        .max(
+            1, ((until - rec.from) / math.max(0.05, _barSeconds) - 0.02).ceil())
+        .toDouble();
     var index = timelineChannels.indexWhere((c) => c.key == rec.channel);
     var clip = SessionClip(
       id: newElementId(),
@@ -1027,11 +1061,8 @@ extension CanvasSession on CanvasController {
       {bool transient = false}) {
     var e = _instrumentOf(channel);
     if (e == null) return;
-    // A held key let go first: sounding through the old effects, it would
-    // never be let go through the new.
-    for (var key in [...?_held[e.id]]) {
-      noteOff(e, key);
-    }
+    // Held keys go on sounding: each is let go as it was sounded (see
+    // _soundOff), so a knob turned while a chord is held does not cut it.
     setInstrument(e, change(e.instrument!), transient: transient);
   }
 

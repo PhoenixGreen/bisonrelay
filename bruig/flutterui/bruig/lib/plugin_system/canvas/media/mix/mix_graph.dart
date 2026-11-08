@@ -58,33 +58,19 @@ class _Bus {
   }
 }
 
+/// _Return is a return as it runs: a channel's strip over its devices,
+/// EQ and compressor in the order they were put (ReturnChannel.chainMix),
+/// fed from its bus of what was sent to it.
 class _Return {
   final ReturnChannel spec;
-
-  /// chain is a processor for each of its devices, by place: null for one
-  /// switched off.
-  final List<DeviceProcessor?> chain;
   final StripProcessor strip;
   final _Bus bus;
 
-  /// taps are the peaks coming in and after each of its devices on the
-  /// last block, while it is tapped (see MixGraph.tapped).
-  List<(double, double)> taps = const [];
+  /// structure is what its strip was built from, but for settings it can
+  /// be retuned to (see MixGraph._structureOf).
+  final String structure;
 
-  /// sides runs a device on its middle or sides; heard holds the sound
-  /// listened to from a step (see MixGraph.listenAt).
-  final SideRunner sides = SideRunner();
-  Float32List heardL = Float32List(0), heardR = Float32List(0);
-
-  _Return(this.spec, int n)
-      : chain = [for (var d in spec.devices) DeviceProcessor.of(d)],
-        strip = StripProcessor(spec.mix),
-        bus = _Bus(n);
-
-  List<DeviceProcessor> get devices => [
-        for (var d in chain)
-          if (d != null) d,
-      ];
+  _Return(this.spec, this.strip, this.bus, this.structure);
 }
 
 /// masterTapKey is the master's key among MixGraph.tapped: the empty
@@ -135,7 +121,10 @@ class MixGraph {
   /// turn-down among the levels ([limitKey], as a gain), and what leaves
   /// it measured for the Loudness card (see loudnessOf).
   void _publishMaster(Float32List l, Float32List r, int n) {
-    var g = _master.limited;
+    // In surround, the most any pair's limiter turned down.
+    var g = _layout.isSurround
+        ? _masters.fold(1.0, (least, m) => math.min(least, m.limited))
+        : _master.limited;
     _levels[limitKey] = (g, g);
     _loudness.process(l, r, n);
   }
@@ -166,29 +155,20 @@ class MixGraph {
     _strips.remove(key);
     _signatures.remove(key);
     _structures.remove(key);
+    // Its input too: a gate or a vocoder listening to it then hears it
+    // gone, as an export (which never had it) does, not silence.
+    _inputs.remove(key);
+    _pans.remove(key);
+    _placed.remove(key);
+    _levels.remove(key);
   }
 
   void setChannel(String key, ChannelMix mix) {
-    // Speech and vocaliser settings do not change the sound here, and
-    // automation arrives already applied, so none of them resets the strip.
-    var json = mix.toJson()
-      ..remove("speech")
-      ..remove("vocaliser")
-      ..remove("automation");
+    var json = _soundOf(mix);
     var signature = json.toString();
     if (_signatures[key] == signature) return;
     _signatures[key] = signature;
-    // A strip differing only in levels, sends and device settings (as when
-    // automation plays) is retuned, so reverb tails and the like carry on.
-    var structure = (json
-          ..remove("gain")
-          ..remove("balance")
-          ..remove("sends")
-          ..["devices"] = [
-            for (var (i, d) in mix.devices.indexed)
-              [deviceIdAt(mix.devices, i), d.kind.name, d.on, d.source]
-          ])
-        .toString();
+    var structure = _structureOf(mix, json);
     var strip = _strips[key];
     if (strip != null && _structures[key] == structure) {
       strip.retune(mix);
@@ -198,6 +178,36 @@ class MixGraph {
     _strips[key] = StripProcessor(mix, carry: strip);
   }
 
+  /// _soundOf is [mix]'s settings that change its sound here. Speech and
+  /// vocaliser settings do not, and automation arrives already applied, so
+  /// none of them resets a strip -- a channel's, a return's or a bus's.
+  static Map<String, dynamic> _soundOf(ChannelMix mix) => mix.toJson()
+    ..remove("speech")
+    ..remove("vocaliser")
+    ..remove("automation");
+
+  /// _structureOf is [mix] -- as [json], its settings that change the
+  /// sound -- but for what a running strip can be retuned to: a strip
+  /// differing only in levels, sends and device settings (as when
+  /// automation plays) is retuned, so reverb tails and the like carry on.
+  static String _structureOf(ChannelMix mix, Map<String, dynamic> json) =>
+      (Map.of(json)
+            ..remove("gain")
+            ..remove("balance")
+            ..remove("sends")
+            // Read as it runs (MixGraph.finish, StripProcessor.level): a
+            // mute, a solo, its place round the room, where it goes.
+            ..remove("mute")
+            ..remove("surround")
+            ..remove("lfe")
+            ..remove("duck")
+            ..remove("output")
+            ..["devices"] = [
+              for (var (i, d) in mix.devices.indexed)
+                [deviceIdAt(mix.devices, i), d.kind.name, d.on, d.source]
+            ])
+          .toString();
+
   /// setScene sets the bus of the scene playing, and [channels], the
   /// channels heard through it -- the scene's own, not the master's.
   void setScene(ChannelMix bus, Set<String> channels) {
@@ -206,17 +216,7 @@ class MixGraph {
     // As for a channel (see setChannel): differing only in its fader and
     // its devices' settings, the same strips are retuned, and the fader
     // ramps.
-    var signature = bus.isDefault
-        ? ""
-        : (bus.toJson()
-              ..remove("gain")
-              ..remove("balance")
-              ..remove("sends")
-              ..["devices"] = [
-                for (var (i, d) in bus.devices.indexed)
-                  [deviceIdAt(bus.devices, i), d.kind.name, d.on, d.source]
-              ])
-            .toString();
+    var signature = bus.isDefault ? "" : _structureOf(bus, _soundOf(bus));
     if (signature == _sceneSignature) {
       if (_scene case var strips?) {
         for (var s in strips) {
@@ -249,7 +249,23 @@ class MixGraph {
     var signature = [for (var r in returns) r.toKey()].join("|");
     if (signature == _returnsSignature) return;
     _returnsSignature = signature;
-    _returns = [for (var r in returns) _Return(r, 1024)];
+    // Each retuned or rebuilt as a channel's strip is (see setChannel), so
+    // a knob turned on a return's reverb does not cut its tail.
+    var was = {for (var r in _returns) r.spec.id: r};
+    _returns = [
+      for (var r in returns)
+        () {
+          var mix = r.chainMix;
+          var structure = _structureOf(mix, _soundOf(mix));
+          var old = was[r.id];
+          if (old != null && old.structure == structure) {
+            old.strip.retune(mix);
+            return _Return(r, old.strip, old.bus, structure);
+          }
+          return _Return(r, StripProcessor(mix, carry: old?.strip),
+              old?.bus ?? _Bus(1024), structure);
+        }(),
+    ];
   }
 
   void setMaster(MasterMix mix, {double normaliseDb = 0}) {
@@ -258,7 +274,7 @@ class MixGraph {
     _masterSignature = signature;
     _masterMix = mix;
     _normaliseDb = normaliseDb;
-    _master = MasterProcessor(mix, normaliseDb: normaliseDb);
+    _master = MasterProcessor(mix, normaliseDb: normaliseDb, carry: _master);
     _buildMasters();
   }
 
@@ -280,10 +296,15 @@ class MixGraph {
   }
 
   void _buildMasters() {
+    // Each pair carried on from the one it replaces, as the stereo master
+    // is (see setMaster).
+    var was = _masters;
     _masters = _layout.isSurround
         ? [
             for (var k = 0; k < (_layout.channels + 1) ~/ 2; k++)
-              MasterProcessor(_masterMix, normaliseDb: _normaliseDb)
+              MasterProcessor(_masterMix,
+                  normaliseDb: _normaliseDb,
+                  carry: k < was.length ? was[k] : null)
           ]
         : [];
     _lfeFilter = _layout.lfe == null ? null : Biquad(lowPass(120));
@@ -410,14 +431,17 @@ class MixGraph {
     }
   }
 
+  /// _shownMaster is the master whose devices its cards read: in surround,
+  /// the front pair's, the one that runs (the stereo master does not).
+  MasterProcessor get _shownMaster =>
+      _layout.isSurround && _masters.isNotEmpty ? _masters.first : _master;
+
   /// pitchOf is the pitch heard by strip [key]'s first tuner or Auto-tune
   /// (the master's with no key), or null.
   PitchReading? pitchOf([String? key]) {
     var devices = key == null
-        ? _master.devices
-        : _stripOf(key)?.devices ??
-            _returns.where((r) => r.spec.id == key).firstOrNull?.devices ??
-            const <DeviceProcessor>[];
+        ? _shownMaster.devices
+        : _stripOf(key)?.devices ?? const <DeviceProcessor>[];
     for (var d in devices) {
       if (d case PitchListener l when l.pitch) return l.heard;
       if (d case AutoTune a) return a.heard;
@@ -427,10 +451,8 @@ class MixGraph {
 
   /// _devicesOf are strip [key]'s processors (the master's with no key).
   List<DeviceProcessor> _devicesOf(String? key) => key == null
-      ? _master.devices
-      : _stripOf(key)?.devices ??
-          _returns.where((r) => r.spec.id == key).firstOrNull?.devices ??
-          const <DeviceProcessor>[];
+      ? _shownMaster.devices
+      : _stripOf(key)?.devices ?? const <DeviceProcessor>[];
 
   /// waveOf is what strip [key]'s first analyser of [kind] (a Scope or a
   /// Stereo Image) last heard, or null with none.
@@ -493,14 +515,16 @@ class MixGraph {
           ? _masters.firstOrNull?.taps ?? const []
           : _master.taps;
     }
-    return _stripOf(key)?.taps ??
-        _returns.where((r) => r.spec.id == key).firstOrNull?.taps ??
-        const [];
+    return _stripOf(key)?.taps ?? const [];
   }
 
-  /// _stripOf is channel [key]'s strip, or the scene bus's front pair's.
+  /// _stripOf is channel [key]'s strip, a return's, or the scene bus's
+  /// front pair's.
   StripProcessor? _stripOf(String key) =>
-      _strips[key] ?? (key == sceneBusKey ? _scene?.firstOrNull : null);
+      _strips[key] ??
+      (key == sceneBusKey
+          ? _scene?.firstOrNull
+          : _returns.where((r) => r.spec.id == key).firstOrNull?.strip);
 
   /// reductionOf is how many decibels channel [key]'s compressor is taking
   /// off now, or 0 with none.
@@ -525,7 +549,7 @@ class MixGraph {
       s.taps = zero(s.taps);
     }
     for (var r in _returns) {
-      r.taps = zero(r.taps);
+      r.strip.taps = zero(r.strip.taps);
     }
     _master.taps = zero(_master.taps);
     for (var m in _masters) {
@@ -593,14 +617,17 @@ class MixGraph {
     }
     // A vocoder's carrier channel, as it came in -- before its own strip,
     // so a muted carrier still carries.
+    var everyStrip = [
+      ..._strips.values,
+      for (var ret in _returns) ret.strip,
+      ...?_scene,
+    ];
     for (var devices in [
-      for (var strip in _strips.values) strip.devices,
+      for (var strip in everyStrip) strip.devices,
       // And those in a split's branches.
-      for (var strip in _strips.values)
+      for (var strip in everyStrip)
         for (var split in strip.devices.whereType<SplitProcessor>())
           split.inner.toList(),
-      for (var ret in _returns) ret.devices,
-      for (var strip in _scene ?? const <StripProcessor>[]) strip.devices,
     ]) {
       for (var d in devices) {
         if (d is! Sidechained) continue;
@@ -615,11 +642,7 @@ class MixGraph {
     }
     // A compressor listening to another channel: a channel there but
     // silent this block is listened to as silence; one gone, not at all.
-    for (var comp in [
-      for (var strip in _strips.values) strip.compressor,
-      for (var ret in _returns) ret.strip.compressor,
-      for (var strip in _scene ?? const <StripProcessor>[]) strip.compressor,
-    ]) {
+    for (var comp in [for (var strip in everyStrip) strip.compressor]) {
       var source = comp?.source;
       if (comp == null || source == null) continue;
       var from = _inputs[source];
@@ -662,39 +685,12 @@ class MixGraph {
     _runScene(n);
     for (var ret in _returns) {
       var b = ret.bus;
-      // Measured between its devices while they are on screen.
-      var taps = tapped.contains(ret.spec.id)
-          ? <(double, double)>[blockPeaks(b.l, b.r, n)]
-          : null;
-      // Its devices' screens and a listen point, as a channel's.
-      var scopes = scoped[ret.spec.id];
-      var listen = listenAt[ret.spec.id];
-      var kept = false;
-      void keep() {
-        if (ret.heardL.length < n) {
-          ret.heardL = Float32List(n);
-          ret.heardR = Float32List(n);
-        }
-        ret.heardL.setRange(0, n, b.l);
-        ret.heardR.setRange(0, n, b.r);
-        kept = true;
-      }
-
-      if (listen == 0) keep();
-      for (var (i, d) in ret.chain.indexed) {
-        var scope = scopes?[deviceIdAt(ret.spec.devices, i)];
-        scope?.before(b.l, b.r, n);
-        if (d != null) ret.sides.run(d, ret.spec.devices[i], b.l, b.r, n);
-        scope?.after(b.l, b.r, n, d);
-        taps?.add(blockPeaks(b.l, b.r, n));
-        if (listen == i + 1) keep();
-      }
-      if (kept) {
-        b.l.setRange(0, n, ret.heardL);
-        b.r.setRange(0, n, ret.heardR);
-      }
-      ret.taps = taps ?? const [];
-      ret.strip.process(b.l, b.r, n);
+      // Measured, screened and listened to as a channel's strip is.
+      ret.strip
+        ..tapping = tapped.contains(ret.spec.id)
+        ..scopes = scoped[ret.spec.id] ?? const {}
+        ..listenAt = listenAt[ret.spec.id]
+        ..process(b.l, b.r, n);
       _levels[ret.spec.id] = _peaks(b.l, b.r, n);
       heard[ret.spec.id] = (b.l, b.r);
       _land(ret.spec.id, ret.spec.mix, b, n);
@@ -745,6 +741,9 @@ class MixGraph {
         r[i] += o[i] * gr;
       }
     }
+    // Its cards' readings, as a stereo master's: the limiting, and the
+    // loudness of what is heard.
+    _publishMaster(l, r, n);
     _masterLevels = _peaks(l, r, n);
   }
 
