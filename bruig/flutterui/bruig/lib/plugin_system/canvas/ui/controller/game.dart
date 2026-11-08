@@ -47,6 +47,7 @@ extension CanvasGame on CanvasController {
   /// _gameLeaving keeps the scene being left, as it was last seen, for its
   /// transition to play from -- where there is one to play.
   void _gameLeaving() {
+    _gameSceneEndSounds();
     // As last seen -- or, left on its very first step, as it is now.
     var seen = _gameView ??
         switch (_game) {
@@ -185,6 +186,8 @@ extension CanvasGame on CanvasController {
       if (event.next) {
         var next = _document.at + 1;
         if (next >= _document.allScenes.length) {
+          // Past the last: the game over, as its last scene ends.
+          _gameSceneEndSounds();
           gaming = false;
           return;
         }
@@ -210,6 +213,7 @@ extension CanvasGame on CanvasController {
         fireMotionTrigger(ClipTriggerKind.count, id, value.toDouble());
       }
       if (event.stop) {
+        _gameSceneEndSounds();
         gaming = false;
         return;
       }
@@ -462,6 +466,16 @@ extension CanvasGame on CanvasController {
   void _gameSceneSounds() {
     for (var MapEntry(key: channel, value: does)
         in _document.scene.gameSounds.entries) {
+      gameSound(does == "stop" ? gameSoundStop(channel) : does);
+    }
+  }
+
+  /// _gameSceneEndSounds is what each channel does as the game leaves the
+  /// scene showing -- for another, or ending on it: see
+  /// CanvasScene.gameSoundsAtEnd.
+  void _gameSceneEndSounds() {
+    for (var MapEntry(key: channel, value: does)
+        in _document.scene.gameSoundsAtEnd.entries) {
       gameSound(does == "stop" ? gameSoundStop(channel) : does);
     }
   }

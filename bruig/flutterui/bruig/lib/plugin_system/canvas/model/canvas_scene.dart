@@ -716,6 +716,11 @@ class CanvasScene {
   /// slot; a channel not here keeps playing. See CanvasController.gameSound.
   final Map<String, String> gameSounds;
 
+  /// gameSoundsAtEnd are what each mixer channel does as a game leaves
+  /// this scene -- for the next, or ending on it -- as [gameSounds] says
+  /// for its start (Ken: the meadow's music stopped as it ends).
+  final Map<String, String> gameSoundsAtEnd;
+
   /// cover marks this canvas as the outside of a document rather than one of
   /// its leaves; see PageCover. Kept on the scene, not as a position on the
   /// document, so it survives reordering. Read only when the document is
@@ -751,6 +756,7 @@ class CanvasScene {
     this.backgroundOff = false,
     this.masterOff = false,
     this.gameSounds = const {},
+    this.gameSoundsAtEnd = const {},
     this.transition,
     this.cover = PageCover.none,
     this.camera,
@@ -784,6 +790,7 @@ class CanvasScene {
     bool? backgroundOff,
     bool? masterOff,
     Map<String, String>? gameSounds,
+    Map<String, String>? gameSoundsAtEnd,
     SceneTransition? transition,
     bool clearTransition = false,
     PageCover? cover,
@@ -802,6 +809,7 @@ class CanvasScene {
         backgroundOff: backgroundOff ?? this.backgroundOff,
         masterOff: masterOff ?? this.masterOff,
         gameSounds: gameSounds ?? this.gameSounds,
+        gameSoundsAtEnd: gameSoundsAtEnd ?? this.gameSoundsAtEnd,
         transition: clearTransition ? null : (transition ?? this.transition),
         cover: cover ?? this.cover,
         camera: clearCamera ? null : (camera ?? this.camera),
@@ -819,6 +827,7 @@ class CanvasScene {
         if (backgroundOff) "backgroundOff": true,
         if (masterOff) "masterOff": true,
         if (gameSounds.isNotEmpty) "gameSounds": gameSounds,
+        if (gameSoundsAtEnd.isNotEmpty) "gameSoundsEnd": gameSoundsAtEnd,
         if (transition != null) "transition": transition!.toJson(),
         if (cover.isCover) "cover": cover.name,
         if (camera != null) "camera": camera!.toJson(),
@@ -854,6 +863,11 @@ class CanvasScene {
       masterOff: jsonBool(json["masterOff"], false),
       gameSounds: {
         if (json["gameSounds"] case Map raw)
+          for (var MapEntry(:key, :value) in raw.entries)
+            if (key is String && value is String) key: value,
+      },
+      gameSoundsAtEnd: {
+        if (json["gameSoundsEnd"] case Map raw)
           for (var MapEntry(:key, :value) in raw.entries)
             if (key is String && value is String) key: value,
       },

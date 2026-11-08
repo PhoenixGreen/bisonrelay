@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/mix.dart' show sceneBusKey;
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -164,6 +165,30 @@ void main() {
     expect(c.pickedScene, 1);
     expect(c.animationOpen, isTrue);
     expect(c.effectsOpen, isFalse);
+  });
+
+  // Ken, 2026-11-08: with the Chain out, one click is enough.
+  testWidgets("with the Chain out, one click opens the scene's chain",
+      (tester) async {
+    var c = await show(tester);
+    await tapPlayAll(tester);
+    c.animationOpen = true;
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey("sceneBox2")));
+    await tester.pump();
+    expect(c.sceneAt, 2);
+    expect(c.pickedScene, 2, reason: "its motion, at one click");
+    // On sound, the scene's bus.
+    await tester.pump(const Duration(milliseconds: 600));
+    c.openEffects(c.timelineChannels.isEmpty
+        ? mixerMasterKey
+        : c.timelineChannels.first.key);
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey("sceneBox1")));
+    await tester.pump();
+    expect(c.sceneAt, 1);
+    expect(c.effectsOf ?? c.effectsChannel, sceneBusKey);
+    await tester.pump(const Duration(milliseconds: 600));
   });
 
   test("a scene in the Animation panel gives way to a clip or a selection", () {

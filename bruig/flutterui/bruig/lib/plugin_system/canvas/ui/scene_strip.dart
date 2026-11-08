@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/mix.dart' show sceneBusKey;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
@@ -256,8 +257,16 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
       key: ValueKey("sceneBox$index"),
       behavior: HitTestBehavior.opaque,
       onTap: () {
+        var chainOut = controller.animationOpen || controller.effectsOpen;
+        var second = _double.isSecond(index);
         _open(index);
-        if (_double.isSecond(index)) controller.pickScene(index);
+        // With the Chain out, one click opens the scene's chain in it -- its
+        // sound bus, where the Chain is on sound; shut, a double click.
+        if (chainOut && controller.effectsOpen && !controller.animationOpen) {
+          controller.openEffects(sceneBusKey);
+        } else if (chainOut || second) {
+          controller.pickScene(index);
+        }
       },
       child: Container(
         clipBehavior: Clip.antiAlias,

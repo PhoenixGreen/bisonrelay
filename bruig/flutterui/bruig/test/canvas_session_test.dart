@@ -25,6 +25,7 @@ import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart' show GameEvent;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -841,6 +842,81 @@ void main() {
       expect(c.playing, isTrue, reason: "a Loop back is not a Stop");
       expect(c.clipState("music", 0), ClipState.playing,
           reason: "nor does it stop the slots");
+    });
+
+    // Ken, playing Sky Isles v7: the meadow's music played on into the
+    // caves. A scene says what each channel does as it ends, too.
+    test("a scene's music stops as the game leaves it, and starts again",
+        () async {
+      var hero = ShapeElement(const ElementBase(
+          id: "hero",
+          x: 100,
+          y: 600,
+          width: 40,
+          height: 60,
+          play: PlaySpec(as: PlayAs.platformer)));
+      var c = CanvasController(
+          CanvasDocument(
+              frameRate: 30,
+              audio: const AudioSettings(tempo: 120),
+              game: true,
+              scenes: [
+                CanvasScene(
+                    id: "one", frames: 60, elements: [sound("music"), hero]),
+                CanvasScene(id: "two", frames: 60, elements: [hero]),
+                CanvasScene(id: "three", frames: 60, elements: [hero]),
+              ]),
+          audioEngine: engine);
+      addTearDown(c.dispose);
+      c.clipFromSound("music", 0, c.soundsOf("music").single);
+      var theme = gameSoundSlot(c.session.at("music", 0)!.id);
+      var d = c.document;
+      d = d.withScene(
+          0,
+          d.allScenes[0].copyWith(
+              gameSounds: {"music": theme},
+              gameSoundsAtEnd: {"music": "stop"}));
+      d = d.withScene(2, d.allScenes[2].copyWith(gameSounds: {"music": theme}));
+      c.apply(d);
+      expect(
+          CanvasScene.fromJson(c.document.allScenes[0].toJson())
+              .gameSoundsAtEnd,
+          {"music": "stop"});
+      c.clockForTest = () => micros;
+      c.gameClockForTest = () => micros;
+      c.gaming = true;
+      addTearDown(() => c.gaming = false);
+      void run(double seconds) {
+        var to = micros + (seconds * 1e6).round();
+        while (micros < to) {
+          micros += 33333;
+          c.tickClockForTest();
+          c.stepGame(1 / 30);
+        }
+      }
+
+      run(0.2);
+      await settle();
+      run(0.1);
+      expect(c.clipState("music", 0), ClipState.playing, reason: "its music");
+      // On to the next by hand, as a flag would.
+      c.game!.events.add(const GameEvent(next: true));
+      run(0.1);
+      await settle();
+      run(0.5);
+      expect(c.document.at, 1);
+      expect(c.clipState("music", 0),
+          isNot(anyOf(ClipState.playing, ClipState.queued)),
+          reason: "stopped as the first scene ended");
+      // On to the third, where it starts again.
+      c.game!.events.add(const GameEvent(next: true));
+      run(0.3);
+      await settle();
+      run(0.2);
+      expect(c.document.at, 2);
+      expect(
+          c.clipState("music", 0), anyOf(ClipState.playing, ClipState.queued),
+          reason: "the third scene's own start");
     });
 
     // Ken: ending a game, a hit was sometimes heard once more after it.

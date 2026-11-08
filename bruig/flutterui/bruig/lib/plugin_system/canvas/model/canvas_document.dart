@@ -1262,6 +1262,7 @@ class CanvasDocument {
       !s.backgroundOff &&
       !s.masterOff &&
       s.gameSounds.isEmpty &&
+      s.gameSoundsAtEnd.isEmpty &&
       !s.cover.isCover &&
       s.camera == null;
 

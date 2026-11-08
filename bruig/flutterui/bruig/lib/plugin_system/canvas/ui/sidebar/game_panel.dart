@@ -238,8 +238,10 @@ class CanvasGamePanel extends StatelessWidget {
                             "scene, a level each."),
                   ]),
             ]),
-      if (!doc.editingMaster && controller.timelineChannels.isNotEmpty)
+      if (!doc.editingMaster && controller.timelineChannels.isNotEmpty) ...[
         _sceneSounds(),
+        _sceneSounds(atEnd: true),
+      ],
       GameSection(
         key: const ValueKey("gameSection-counts"),
         title: "Counts",
@@ -273,11 +275,15 @@ class CanvasGamePanel extends StatelessWidget {
   /// _sceneSounds is what each mixer channel does as the game comes to the
   /// scene showing: keeps playing, stops, or plays one of its slots -- see
   /// CanvasScene.gameSounds.
-  Widget _sceneSounds() {
+  ///
+  /// [atEnd] is the same as the game leaves the scene: see
+  /// CanvasScene.gameSoundsAtEnd.
+  Widget _sceneSounds({bool atEnd = false}) {
     var doc = controller.document;
     var scene = doc.scene;
     var session = controller.session;
-    var set = scene.gameSounds;
+    var set = atEnd ? scene.gameSoundsAtEnd : scene.gameSounds;
+    var tag = atEnd ? "sceneSoundEnd" : "sceneSound";
     void write(String channel, String does) {
       var next = {...set};
       if (does.isEmpty) {
@@ -286,25 +292,30 @@ class CanvasGamePanel extends StatelessWidget {
         next[channel] = does;
       }
       var d = controller.document;
-      controller.apply(d.withScene(d.at, d.scene.copyWith(gameSounds: next)));
+      controller.apply(d.withScene(
+          d.at,
+          atEnd
+              ? d.scene.copyWith(gameSoundsAtEnd: next)
+              : d.scene.copyWith(gameSounds: next)));
     }
 
     var changed = set.length;
     return GameSection(
-      key: const ValueKey("gameSection-sceneSounds"),
-      title: "When ${doc.nameOf(doc.at)} starts",
+      key: ValueKey(
+          atEnd ? "gameSection-sceneSoundsEnd" : "gameSection-sceneSounds"),
+      title: "When ${doc.nameOf(doc.at)} ${atEnd ? "ends" : "starts"}",
       summary: changed == 0
           ? "every channel keeps playing"
           : "$changed channel${changed == 1 ? "" : "s"} changed",
       children: [
         CanvasControlGroup(
-            label: "When it starts",
+            label: atEnd ? "When it ends" : "When it starts",
             hideCaption: true,
             rule: false,
             children: [
               for (var ch in controller.timelineChannels)
                 CanvasDropdown<String>(
-                  key: ValueKey("sceneSound-${ch.key}"),
+                  key: ValueKey("$tag-${ch.key}"),
                   label: ch.name,
                   value: () {
                     var v = set[ch.key] ?? "";
@@ -328,12 +339,15 @@ class CanvasGamePanel extends StatelessWidget {
                   ],
                   onChanged: (v) => write(ch.key, v),
                 ),
-              const CanvasHint(
-                  "What each channel of the mixer does as the game comes to "
-                  "this scene: its music changed, a narrator's line. A slot "
-                  "plays at once in a game, unless its own Launch waits for "
-                  "a beat or a bar -- music on the bar, with Fade, changes "
-                  "without a click."),
+              CanvasHint(atEnd
+                  ? "What each channel does as the game leaves this scene -- "
+                      "for the next, or ending on it: a level's music "
+                      "stopped, a sting played."
+                  : "What each channel of the mixer does as the game comes "
+                      "to this scene: its music changed, a narrator's line. "
+                      "A slot plays at once in a game, unless its own Launch "
+                      "waits for a beat or a bar -- music on the bar, with "
+                      "Fade, changes without a click."),
             ]),
       ],
     );

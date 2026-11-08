@@ -712,23 +712,36 @@ class _LanesPainter extends CustomPainter {
         if (rect.right < 0 || rect.left > size.width) continue;
         _clip(canvas, rect, c, p, s);
       }
-      // An element reused: where each instance starts, as ticks along the
-      // foot of its one row -- from its first clip, or the scene's start.
+      // An element reused: where each copy's clips start, as numbered
+      // ticks along the foot of its row, from its first clip -- only with a
+      // clip on the timeline for them to start (Ken: without one, three
+      // blue lines that meant nothing).
       if (m.instances case var set? when set.count > 1) {
         var from = [
           for (var p in m.placed)
             if (times.span(p.id) case var s?) s.start
         ].fold<double?>(null, (a, b) => a == null ? b : math.min(a, b));
         var starts = [for (var i = 0; i < set.count; i++) set.startOf(i)];
-        if (starts.any((t) => t > 0)) {
+        if (from != null && starts.any((t) => t > 0)) {
           var tick = Paint()
             ..color = colors.primary
             ..strokeWidth = 1.5;
-          for (var t in starts) {
-            var tx = x((from ?? 0) + t);
+          for (var (i, t) in starts.indexed) {
+            var tx = x(from + t);
             if (tx < 0 || tx > size.width) continue;
             canvas.drawLine(
                 Offset(tx, y + h - 7), Offset(tx, y + h - 1.5), tick);
+            var tp = TextPainter(
+                text: TextSpan(
+                    text: "${i + 1}",
+                    style: TextStyle(
+                        fontSize: 8,
+                        color: colors.primary,
+                        fontWeight: FontWeight.w700)),
+                textDirection: TextDirection.ltr,
+                textScaler: TextScaler.noScaling)
+              ..layout();
+            tp.paint(canvas, Offset(tx + 2, y + h - 2 - tp.height));
           }
         }
       }

@@ -1764,6 +1764,12 @@ void main() {
       await tester.tap(find.text("Stops").last);
       await tester.pumpAndSettle();
       expect(c.document.scene.gameSounds, {"fx": "stop"});
+      // And as it ends.
+      await tap(tester, "sceneSoundEnd-fx");
+      await tester.tap(find.text("Stops").last);
+      await tester.pumpAndSettle();
+      expect(c.document.scene.gameSoundsAtEnd, {"fx": "stop"});
+      expect(c.document.scene.gameSounds, {"fx": "stop"}, reason: "apart");
 
       c.selectOnly("coin");
       await tester.pumpAndSettle();
