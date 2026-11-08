@@ -6471,6 +6471,10 @@ class CanvasStageState extends State<CanvasStage>
                         videoShow: controller.videoShow,
                         audioRevision: controller.audioRevision,
                         selection: {for (var e in _chosen) e.id},
+                        // Its trail and onion skin while the Chain is
+                        // open on its motion.
+                        trail: controller.motionTrail &&
+                            controller.chainShowsMotion,
                         pickedCopies: controller.selected == null
                             ? const {}
                             : controller.pickedCopiesOf(controller.selected!.id),

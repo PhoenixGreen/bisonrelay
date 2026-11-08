@@ -457,6 +457,13 @@ extension on _ChainPanelState {
               key: const ValueKey("chainUnfoldAll"),
               text: "Unfold every device",
               onPressed: () => _foldEvery(false)),
+          if (c.chainShowsMotion)
+            chainMenuItem(look,
+                key: const ValueKey("chainTrail"),
+                text: c.motionTrail
+                    ? "Hide its trail and onion skin"
+                    : "Show its trail and onion skin",
+                onPressed: () => c.motionTrail = !c.motionTrail),
           if (_soundOwner case var owner?) ...[
             chainMenuDivider(look),
             if (c.frozenSteps(owner).isNotEmpty)

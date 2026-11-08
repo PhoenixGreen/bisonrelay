@@ -33,7 +33,7 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
-    show motionSpeedAt, retimed;
+    show lookAtCamera, motionSpeedAt, retimed;
 import 'package:bruig/plugin_system/canvas/render/motion_looks.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
@@ -5955,6 +5955,7 @@ class MidiEffectDevice extends StatelessWidget {
       controller.endInteraction();
     }
 
+    var abKey = "$channel|midi$index|${effect.kind.name}";
     return DeviceFrame(
       id: "midi$index",
       title: effect.kind.label,
@@ -5963,6 +5964,11 @@ class MidiEffectDevice extends StatelessWidget {
           saveDevicePreset(context, effect.kind.label, midi: [effect]),
       onReset: () =>
           edit((e) => e..[index] = MidiEffect(e[index].kind, on: e[index].on)),
+      // Kept by its place and kind: another effect moved into its place
+      // starts its own A and B.
+      onAB: () => controller.toggleABOf(abKey, effect,
+          (o) => write((o as MidiEffect).switched(effect.on), transient: true)),
+      showingB: controller.showingBOf(abKey),
       help: "Done to the notes before the instrument plays them.",
       skin: DeviceSkin.silver,
       icon: Icons.grid_view,
@@ -5998,24 +6004,38 @@ class MidiEffectDevice extends StatelessWidget {
       ].join(" · "),
       controls: (tier) => [
         for (var p in params)
-          _Knob(
-            key: ValueKey("midi-$index-${p.id}"),
-            label: p.label,
-            text: p.reading(effect.value(p.id)),
-            value: effect.value(p.id),
-            initial: p.initial,
-            range: _Range(p.min, p.max),
-            size: switch (tier) {
-              DeviceTier.large => 46,
-              DeviceTier.medium => 38,
-              _ => 28,
-            },
-            reading: tier != DeviceTier.small,
-            accent: midiColour,
-            onChanged: (v, {transient = false}) =>
-                write(effect.withValue(p.id, v), transient: transient),
-            onCommit: controller.endInteraction,
-          ),
+          if (!p.isChoice)
+            _Knob(
+              key: ValueKey("midi-$index-${p.id}"),
+              label: p.label,
+              text: p.reading(effect.value(p.id)),
+              value: effect.value(p.id),
+              initial: p.initial,
+              range: _Range(p.min, p.max),
+              size: switch (tier) {
+                DeviceTier.large => 46,
+                DeviceTier.medium => 38,
+                _ => 28,
+              },
+              reading: tier != DeviceTier.small,
+              accent: midiColour,
+              onChanged: (v, {transient = false}) =>
+                  write(effect.withValue(p.id, v), transient: transient),
+              onCommit: controller.endInteraction,
+            ),
+        // A rate, a mode, a scale: chosen from a list, as a sound device's.
+        if (params.any((p) => p.isChoice))
+          DevicePack(key: ValueKey("midiChoices-$index"), children: [
+            for (var p in params)
+              if (p.isChoice)
+                StudioDrop<int>(
+                  key: ValueKey("midi-$index-${p.id}"),
+                  label: p.label,
+                  value: effect.choice(p.id).clamp(0, p.choices.length - 1),
+                  options: [for (var (i, ch) in p.choices.indexed) (i, ch)],
+                  onChanged: (i) => write(effect.withValue(p.id, i.toDouble())),
+                ),
+          ]),
       ],
       body: const SizedBox(),
     );
@@ -7279,11 +7299,15 @@ class MotionDeviceCard extends StatelessWidget {
                     MotionDeviceKind.followSound ||
                     MotionDeviceKind.follower =>
                       "Channel",
+                    MotionDeviceKind.spring => "Chases",
                     _ => "Looks at",
                   },
                   value: d.target,
                   options: [
                     ("", "Nothing"),
+                    // Facing the camera, wherever it is pointed.
+                    if (d.kind == MotionDeviceKind.lookAt)
+                      (lookAtCamera, "The camera"),
                     // A sound follows a channel's loudness.
                     if (d.kind == MotionDeviceKind.followSound ||
                         d.kind == MotionDeviceKind.follower)
@@ -7332,6 +7356,28 @@ class MotionDeviceCard extends StatelessWidget {
         ]);
         controller.endInteraction();
       },
+      // What it does made keys, for an EPUB, and it switched off.
+      extraMenu: pose &&
+              d.on &&
+              !d.modulates &&
+              d.kind != MotionDeviceKind.instances &&
+              d.kind != MotionDeviceKind.follower
+          ? (look) => [
+                chainMenuItem(look,
+                    key: ValueKey("mdevBake-${d.id}"),
+                    text: "Bake into keys",
+                    hint: "for EPUB", onPressed: () {
+                  var why = controller.bakeMotionDevice(element, d.id);
+                  try {
+                    var snack = SnackBarModel.of(context);
+                    why == null
+                        ? snack.success("Baked: the ${d.kind.label} is keys "
+                            "in a clip now, and switched off")
+                        : snack.error(why);
+                  } catch (_) {}
+                }),
+              ]
+          : null,
       skin: skin,
       on: d.on,
       onPower: (v) => write(d.switched(v)),

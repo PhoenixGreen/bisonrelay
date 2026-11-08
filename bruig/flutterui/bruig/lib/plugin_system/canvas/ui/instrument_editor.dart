@@ -1869,6 +1869,12 @@ class _InstrumentDeviceState extends State<InstrumentDevice> {
       icon: Icons.piano,
       accent: midiColour,
       glows: true,
+      // How it plays its notes -- envelope, filter, voices, glide -- with a
+      // second set to compare, or back to plain; the sound itself kept.
+      onAB: () => c.toggleABOf("${widget.channel}|instrument", s,
+          (o) => _set((_) => o as InstrumentShape, transient: true)),
+      showingB: c.showingBOf("${widget.channel}|instrument"),
+      onReset: () => _set((_) => const InstrumentShape()),
       folded: widget.folded,
       onFold: widget.onFold,
       width: 392,
@@ -2103,6 +2109,45 @@ class NoteClipsDevice extends StatelessWidget {
         ),
       ),
       controls: (tier) => [
+        // Its feel as it plays, as the prototype's: pulled onto the grid,
+        // and swung. The notes drawn are left as they are.
+        if (part != null)
+          for (var (key, label, value, change) in [
+            (
+              "noteQuantise",
+              "Quantise",
+              part.quantise,
+              (InstrumentPart p, double v) => p.copyWith(quantise: v)
+            ),
+            (
+              "noteSwing",
+              "Swing",
+              part.swing,
+              (InstrumentPart p, double v) => p.copyWith(swing: v)
+            ),
+          ])
+            DeviceKnob(
+              key: ValueKey(key),
+              label: label,
+              text: "${(value * 100).round()}%",
+              value: value,
+              initial: 0,
+              min: 0,
+              max: 1,
+              size: switch (tier) {
+                DeviceTier.large => 46,
+                DeviceTier.medium => 38,
+                _ => 28,
+              },
+              accent: midiColour,
+              ink: studio.text,
+              onChanged: (v, {transient = false}) {
+                c.beginInteraction();
+                c.setChannelPart(channel, (p) => change(p, v), transient: true);
+                if (!transient) c.endInteraction();
+              },
+              onCommit: c.endInteraction,
+            ),
         SizedBox(
           width: 170,
           child: Column(

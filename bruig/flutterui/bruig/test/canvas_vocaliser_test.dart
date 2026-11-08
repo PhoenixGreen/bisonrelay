@@ -201,6 +201,61 @@ void main() {
       expect(await d.sing("a"), contains("pick a MIDI channel"));
     });
 
+    // A|B and Reset on its card (Ken's audit, 2026-11-08): its vibrato and
+    // glide compared, the tune it sings to kept.
+    testWidgets("its card compares A|B and resets, keeping its tune",
+        (tester) async {
+      var c = make();
+      c.setVocaliser(
+          "a", c.vocaliserOf("a")!.copyWith(vibrato: 0.3, glide: 0.06));
+      c.openEffects("a");
+      tester.view.physicalSize = const Size(1600, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: ListenableBuilder(
+                        listenable: c,
+                        builder: (context, _) => CanvasMixer.effects(
+                            controller: c,
+                            height: 380,
+                            onResize: (_) {},
+                            onClose: () {}))))),
+      ));
+      await tester.pump();
+      var tune = c.vocaliserOf("a")!.melody;
+      var ab = find.byKey(const ValueKey("deviceAB-vocaliser"));
+      await tester.ensureVisible(ab);
+      await tester.pump();
+      await tester.tap(ab);
+      await tester.pump();
+      c.setVocaliser("a", c.vocaliserOf("a")!.copyWith(vibrato: 0.9));
+      await tester.pump();
+      await tester.tap(ab);
+      await tester.pump();
+      expect(c.vocaliserOf("a")!.vibrato, closeTo(0.3, 1e-9), reason: "A");
+      await tester.tap(ab);
+      await tester.pump();
+      expect(c.vocaliserOf("a")!.vibrato, closeTo(0.9, 1e-9), reason: "B");
+      await revealInMenu(tester, "deviceReset-vocaliser");
+      await tester.tap(find.byKey(const ValueKey("deviceReset-vocaliser")));
+      await tester.pump();
+      await tester.pump();
+      expect(c.vocaliserOf("a")!.vibrato, const VocaliserSpec().vibrato);
+      expect(c.vocaliserOf("a")!.melody, tune, reason: "its tune kept");
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpWidget(const SizedBox());
+    });
+
     // Ken: the Vocaliser is added among the effects when it is wanted, not
     // opened with the Speech.
     testWidgets("added from the chain's +, sung from, and on the strip",

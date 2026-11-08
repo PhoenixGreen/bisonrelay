@@ -290,6 +290,15 @@ class InstrumentPart {
   /// See instrument_shape.dart.
   final InstrumentShape shape;
 
+  /// quantise and swing are its feel as it plays, as the prototype's Note
+  /// clips card: how far (0 to 1) each note is pulled onto the sixteenth
+  /// grid, and how far every second sixteenth is pushed late (at 1, a third
+  /// of a step). The notes themselves are left as drawn.
+  final double quantise, swing;
+
+  /// grooved is whether [quantise] or [swing] changes what it plays.
+  bool get grooved => quantise > 0 || swing > 0;
+
   const InstrumentPart({
     this.look = InstrumentLook.keyboard,
     this.sound = InstrumentSound.builtin,
@@ -305,6 +314,8 @@ class InstrumentPart {
     this.rendered = "",
     this.shape = const InstrumentShape(),
     this.slices,
+    this.quantise = 0,
+    this.swing = 0,
   });
 
   /// slices are what it plays where its sound is [InstrumentSound.slices].
@@ -358,6 +369,7 @@ class InstrumentPart {
       if (controls.isNotEmpty) controlsToJson(controls),
       // As it is by default, nothing: a part from before keeps its file.
       if (!shape.plain) shape.toJson(),
+      if (grooved) "groove $quantise $swing",
     ]);
     return sha256.convert(utf8.encode(text)).toString().substring(0, 16);
   }
@@ -365,9 +377,10 @@ class InstrumentPart {
   /// signatureAt is [signature] at a tempo of [secondsPerBeat] a beat: an
   /// arpeggiator's steps follow the tempo, so its part sounds different at
   /// another. Without one, the tempo changes nothing.
-  String signatureAt(double secondsPerBeat) => arpeggiatorOf(effects) == null
-      ? signature
-      : "$signature@${secondsPerBeat.toStringAsFixed(4)}";
+  String signatureAt(double secondsPerBeat) =>
+      arpeggiatorOf(effects) == null && !grooved
+          ? signature
+          : "$signature@${secondsPerBeat.toStringAsFixed(4)}";
 
   /// needsPlaying is whether the clip's file is not this part's.
   bool get needsPlaying => notes.isNotEmpty && rendered != signature;
@@ -379,7 +392,8 @@ class InstrumentPart {
   /// played is the part as its instrument plays it: its notes through its
   /// effects, at [secondsPerBeat] a beat.
   InstrumentPart played(double secondsPerBeat) {
-    var heard = notesHeard(notes);
+    var heard = groovedNotes(notesHeard(notes), secondsPerBeat,
+        quantise: quantise, swing: swing);
     if (effects.isEmpty) {
       return identical(heard, notes) ? this : copyWith(notes: heard);
     }
@@ -407,6 +421,8 @@ class InstrumentPart {
     String? rendered,
     InstrumentShape? shape,
     SliceKit? slices,
+    double? quantise,
+    double? swing,
   }) {
     var k = (keys ?? this.keys).clamp(12, 88);
     return InstrumentPart(
@@ -424,6 +440,8 @@ class InstrumentPart {
       rendered: rendered ?? this.rendered,
       shape: shape ?? this.shape,
       slices: slices ?? this.slices,
+      quantise: (quantise ?? this.quantise).clamp(0.0, 1.0),
+      swing: (swing ?? this.swing).clamp(0.0, 1.0),
     );
   }
 
@@ -442,6 +460,8 @@ class InstrumentPart {
         if (rendered.isNotEmpty) "rendered": rendered,
         if (!shape.plain) "shape": shape.toJson(),
         if (slices case var k?) "slices": k.toJson(),
+        if (quantise > 0) "quantise": quantise,
+        if (swing > 0) "swing": swing,
       };
 
   factory InstrumentPart.fromJson(Map<String, dynamic> json) =>
@@ -471,7 +491,32 @@ class InstrumentPart {
         rendered: json["rendered"] is String ? json["rendered"] as String : "",
         shape: InstrumentShape.fromJson(json["shape"]),
         slices: SliceKit.fromJson(json["slices"]),
+        quantise: jsonDouble(json["quantise"], 0),
+        swing: jsonDouble(json["swing"], 0),
       );
+}
+
+/// groovedNotes is [notes] (in seconds, at [secondsPerBeat] a beat) with a
+/// feel: each pulled [quantise] of the way onto the nearest sixteenth, and
+/// those on every second sixteenth pushed [swing] of a third of a step late.
+/// Each keeps its length; with neither, [notes] as they are.
+List<MidiNote> groovedNotes(List<MidiNote> notes, double secondsPerBeat,
+    {double quantise = 0, double swing = 0}) {
+  if (notes.isEmpty || (quantise <= 0 && swing <= 0)) return notes;
+  var grid = secondsPerBeat / 4;
+  if (grid <= 0) return notes;
+  return [
+    for (var n in notes)
+      () {
+        var step = (n.start / grid).round();
+        var start = n.start + (step * grid - n.start) * quantise;
+        // Swung only what sits on an off-beat sixteenth once pulled in.
+        if (swing > 0 && step.isOdd && (start - step * grid).abs() < grid / 4) {
+          start += swing * grid / 3;
+        }
+        return n.copyWith(start: math.max(0.0, start));
+      }(),
+  ]..sort((a, b) => a.start.compareTo(b.start));
 }
 
 /// noInput is a MIDI channel's input when it takes none.

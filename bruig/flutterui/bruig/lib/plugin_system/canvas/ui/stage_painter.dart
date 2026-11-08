@@ -7,6 +7,8 @@ import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart'
+    show Keyframe;
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
@@ -123,6 +125,10 @@ class StagePainter extends CustomPainter {
   /// pickedCopies are the copies picked of the one element selected, reused:
   /// ringed, every other copy of it outlined faintly. See _paintCopies.
   final Set<String> pickedCopies;
+
+  /// trail is whether the one element selected shows its trail and onion
+  /// skin: the Chain open on its motion. See _paintTrail.
+  final bool trail;
   final Rect? selectionBounds;
   final double selectionRotation;
 
@@ -375,6 +381,7 @@ class StagePainter extends CustomPainter {
     this.audioRevision = 0,
     required this.selection,
     this.pickedCopies = const {},
+    this.trail = false,
     required this.selectionBounds,
     required this.selectionRotation,
     this.touchAreas = const [],
@@ -919,6 +926,7 @@ class StagePainter extends CustomPainter {
     // box round the lot (see chosenOutlines). No handles on these: the
     // group is what is resized.
     _paintChosenBoxes(canvas);
+    _paintTrail(canvas);
     _paintCopies(canvas);
 
     var centre = bounds.center * scale + origin;
@@ -993,6 +1001,79 @@ class StagePainter extends CustomPainter {
           Path()..addPolygon([for (var p in corners) p * scale + origin], true),
           paint);
     }
+  }
+
+  /// _paintTrail draws the one element selected as it moves, while its
+  /// motion is open in the Chain: the path its middle takes three seconds
+  /// either side of now, dashed, and faint copies of it where it was a
+  /// moment before -- the prototype's trail and onion skin. Nothing for an
+  /// element that stands still.
+  void _paintTrail(Canvas canvas) {
+    if (!trail || selection.length != 1) return;
+    var e = document.elementById(selection.first);
+    if (e == null || e.base.motion.isEmpty || e is CameraElement) return;
+    var rate = math.max(1, document.frameRate);
+    var last = math.max(0, document.frames - 1);
+    Keyframe at(int f) => poseWithMotion(e, f, document,
+        live: liveMotion == null
+            ? null
+            : liveShifted(liveMotion!, (f - frame) / rate));
+    var reach = rate * 3, step = math.max(1, rate ~/ 12);
+    var points = <Offset>[
+      for (var f = math.max(0, frame - reach);
+          f <= math.min(last, frame + reach);
+          f += step)
+        e.boundsWith(at(f)).center * scale + origin,
+    ];
+    if (points.length < 2) return;
+    var moved = points.any((p) => (p - points.first).distance > 1);
+    if (!moved) return;
+    var line = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..color = const Color(0x7762C9A0);
+    // Dashed: four on, five off, along the whole path.
+    var on = true;
+    var left = 4.0;
+    for (var i = 0; i < points.length - 1; i++) {
+      var a = points[i], b = points[i + 1];
+      var length = (b - a).distance;
+      var done = 0.0;
+      while (done < length) {
+        var run = math.min(left, length - done);
+        var p = a + (b - a) * (done / length);
+        var q = a + (b - a) * ((done + run) / length);
+        if (on) canvas.drawLine(p, q, line);
+        done += run;
+        left -= run;
+        if (left <= 0) {
+          on = !on;
+          left = on ? 4 : 5;
+        }
+      }
+    }
+    // Where it was a moment before, fading the further back.
+    var gap = math.max(1, (rate * 0.09).round());
+    canvas.save();
+    canvas.translate(origin.dx, origin.dy);
+    canvas.scale(scale);
+    for (var q = 4; q >= 1; q--) {
+      var f = frame - q * gap;
+      if (f < 0) continue;
+      canvas.saveLayer(
+          null, Paint()..color = Color.fromRGBO(0, 0, 0, 0.32 - q * 0.06));
+      paintElement(canvas, e, f,
+          frameRate: rate,
+          images: images,
+          document: document,
+          liveMotion: liveMotion == null
+              ? null
+              : liveShifted(liveMotion!, (f - frame) / rate),
+          backgrounds: backgrounds,
+          editing: true);
+      canvas.restore();
+    }
+    canvas.restore();
   }
 
   /// _paintCopies shows the one element selected, reused, as its copies
@@ -1775,6 +1856,7 @@ class StagePainter extends CustomPainter {
       // A new set each build: the same ids are the same selection.
       !setEquals(old.selection, selection) ||
       !setEquals(old.pickedCopies, pickedCopies) ||
+      old.trail != trail ||
       old.selectionBounds != selectionBounds ||
       old.selectionSkew != selectionSkew ||
       old.marquee != marquee;

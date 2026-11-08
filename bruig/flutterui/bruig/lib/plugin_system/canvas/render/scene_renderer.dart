@@ -22,6 +22,8 @@ import 'package:bruig/plugin_system/canvas/render/vrm/character3d_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/parallax_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_looks.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart'
+    show MotionDeviceKind;
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -607,9 +609,37 @@ void paintElement(
   /// instance is which of an element reused to draw (see instances.dart);
   /// null draws every one, and -1 the element as placed, as one.
   int? instance,
+
+  /// blended is set where the element's blend is already being laid on,
+  /// so it is drawn into that once.
+  bool blended = false,
 }) {
   // A camera frames the picture and is never in it: see cameraFrame.
   if (element is CameraElement) return;
+  // Laid over what is under it by its Output's blend: drawn on its own,
+  // then combined. Every instance together, as the one element it is.
+  if (!blended && element.base.blend != LayerBlend.normal) {
+    canvas.saveLayer(null, Paint()..blendMode = element.base.blend.flutter);
+    paintElement(canvas, element, frame,
+        frameRate: frameRate,
+        images: images,
+        hovered: hovered,
+        editing: editing,
+        skipTextItem: skipTextItem,
+        document: document,
+        counterValue: counterValue,
+        liveMotion: liveMotion,
+        counterPressed: counterPressed,
+        counterRunning: counterRunning,
+        audioState: audioState,
+        videoShow: videoShow,
+        poseOutside: poseOutside,
+        backgrounds: backgrounds,
+        instance: instance,
+        blended: true);
+    canvas.restore();
+    return;
+  }
   // An element reused: each of its instances.
   if (instance == null && document != null) {
     if (element.base.motion.instances case var set? when set.count > 0) {
@@ -628,7 +658,8 @@ void paintElement(
           videoShow: videoShow,
           poseOutside: poseOutside,
           backgrounds: backgrounds,
-          instance: which);
+          instance: which,
+          blended: true);
       if (set.uniform) {
         // Alike but for where they are: drawn once, and stamped at each
         // place.
@@ -1103,8 +1134,20 @@ void paintElement(
   if (looks.isEmpty) {
     drawn();
   } else {
+    // How fast it moves, for a Blur's Motion blur: only asked for one.
+    var velocity = Offset.zero;
+    if (document != null &&
+        looks.any(
+            (d) => d.kind == MotionDeviceKind.blur && d.value("motion") > 0)) {
+      var before = poseWithMotion(element, frame - 1, document,
+          live: liveMotion, instance: instance);
+      var rate = math.max(1, frameRate).toDouble();
+      velocity = Offset(pose.dx - before.dx, pose.dy - before.dy) * rate;
+    }
     paintWithLooks(canvas, bounds, looks, drawn,
-        turn: element.rotation + pose.rotate, scale: pose.scale);
+        turn: element.rotation + pose.rotate,
+        scale: pose.scale,
+        velocity: velocity);
   }
 
   if (layered) canvas.restore();

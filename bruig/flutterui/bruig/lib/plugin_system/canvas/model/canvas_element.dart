@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/layer_blend.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/stage_spot.dart';
 
@@ -144,6 +145,10 @@ class ElementBase {
   /// say.
   final double opacity;
 
+  /// blend is how the element is laid over what is under it: its motion
+  /// chain's Output.
+  final LayerBlend blend;
+
   final bool visible;
 
   /// locked keeps an element out of the way of the pointer, so a pitch or a
@@ -228,6 +233,7 @@ class ElementBase {
     this.skewX = 0,
     this.skewY = 0,
     this.opacity = 1,
+    this.blend = LayerBlend.normal,
     this.visible = true,
     this.locked = false,
     this.lockAspect = false,
@@ -257,6 +263,7 @@ class ElementBase {
     double? skewX,
     double? skewY,
     double? opacity,
+    LayerBlend? blend,
     bool? visible,
     bool? locked,
     bool? lockAspect,
@@ -291,6 +298,7 @@ class ElementBase {
         skewX: (skewX ?? this.skewX).clamp(-maxSkew, maxSkew),
         skewY: (skewY ?? this.skewY).clamp(-maxSkew, maxSkew),
         opacity: opacity ?? this.opacity,
+        blend: blend ?? this.blend,
         visible: visible ?? this.visible,
         locked: locked ?? this.locked,
         lockAspect: lockAspect ?? this.lockAspect,
@@ -319,6 +327,8 @@ class ElementBase {
       skewX: _d(json["skx"], 0).clamp(-maxSkew, maxSkew),
       skewY: _d(json["sky"], 0).clamp(-maxSkew, maxSkew),
       opacity: _d(json["opacity"], 1).clamp(0.0, 1.0),
+      blend: LayerBlend.fromName(
+          json["blend"] is String ? json["blend"] as String : null),
       visible: _b(json["visible"], true),
       locked: _b(json["locked"], false),
       lockAspect: _b(json["aspect"], false),
@@ -359,6 +369,7 @@ class ElementBase {
         if (skewX != 0) "skx": skewX,
         if (skewY != 0) "sky": skewY,
         if (opacity != 1) "opacity": opacity,
+        if (blend != LayerBlend.normal) "blend": blend.name,
         if (!visible) "visible": false,
         if (locked) "locked": true,
         "aspect": lockAspect,
@@ -726,6 +737,7 @@ abstract class CanvasElement {
     double? skewX,
     double? skewY,
     double? opacity,
+    LayerBlend? blend,
     bool? visible,
     bool? locked,
     bool? lockAspect,
@@ -758,6 +770,7 @@ abstract class CanvasElement {
         skewX: skewX,
         skewY: skewY,
         opacity: opacity,
+        blend: blend,
         visible: visible,
         locked: locked,
         lockAspect: lockAspect,

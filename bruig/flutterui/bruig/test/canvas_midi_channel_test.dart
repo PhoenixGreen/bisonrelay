@@ -10,6 +10,10 @@ import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/midi_effects.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+    show DeviceKnob;
+import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
+    show StudioDrop;
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -290,6 +294,62 @@ void main() {
     });
   });
 
+  // The prototype's Note clips card: a feel the notes are played with,
+  // the notes as drawn left alone (Ken's audit, 2026-11-08).
+  group("quantise and swing", () {
+    const spb = 0.5; // 120 a minute: a sixteenth is an eighth of a second.
+    test("pulled onto the sixteenths by as much as asked", () {
+      var notes = const [MidiNote(60, 0.04, 0.1), MidiNote(62, 0.27, 0.1)];
+      var half = groovedNotes(notes, spb, quantise: 0.5);
+      expect(half[0].start, closeTo(0.02, 1e-9));
+      expect(half[1].start, closeTo(0.26, 1e-9));
+      var all = groovedNotes(notes, spb, quantise: 1);
+      expect([for (var n in all) n.start], [0.0, 0.25]);
+      expect([for (var n in all) n.length], [0.1, 0.1], reason: "lengths kept");
+      expect(
+        identical(groovedNotes(notes, spb), notes),
+        isTrue,
+        reason: "with neither, nothing done",
+      );
+    });
+
+    test("every second sixteenth swung late", () {
+      var straight = [for (var i = 0; i < 4; i++) MidiNote(60, i * 0.125, 0.1)];
+      var swung = groovedNotes(straight, spb, swing: 1);
+      expect(
+        [for (var n in swung) n.start],
+        [
+          0.0,
+          closeTo(0.125 + 0.125 / 3, 1e-9),
+          0.25,
+          closeTo(0.375 + 0.125 / 3, 1e-9),
+        ],
+      );
+    });
+
+    test("the part plays with it, kept, and its file made again", () {
+      var part = const InstrumentPart(
+        notes: [MidiNote(60, 0.04, 0.1), MidiNote(62, 0.125, 0.1)],
+      );
+      var felt = part.copyWith(quantise: 1, swing: 0.5);
+      expect(felt.played(spb).notes.first.start, 0.0);
+      expect(felt.notes.first.start, 0.04, reason: "the notes as drawn");
+      expect(felt.signature, isNot(part.signature));
+      expect(
+        felt.signatureAt(spb),
+        isNot(felt.signatureAt(0.4)),
+        reason: "the grid is the tempo's",
+      );
+      var back = InstrumentPart.fromJson(felt.toJson());
+      expect((back.quantise, back.swing), (1.0, 0.5));
+      expect(
+        part.toJson().containsKey("quantise"),
+        isFalse,
+        reason: "a part from before is saved as it was",
+      );
+    });
+  });
+
   group("the chain", () {
     testWidgets("a MIDI channel's chain starts with its In and MIDI effects",
         (tester) async {
@@ -336,5 +396,141 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       c.dispose();
     });
+
+    testWidgets("the Note clips card sets its quantise and swing", (
+      tester,
+    ) async {
+      var c = CanvasController(
+        CanvasDocument(
+          frames: 100,
+          elements: [
+            keys("p", notes: const [MidiNote(60, 0.04, 0.2)]),
+          ],
+        ),
+        audioEngine: FakeEngine({}),
+      );
+      tester.view.physicalSize = const Size(1600, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      c.openEffects("p");
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false),
+            ),
+            ChangeNotifierProvider<SnackBarModel>(
+              create: (c) => SnackBarModel(),
+            ),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.bottomCenter,
+                child: ListenableBuilder(
+                  listenable: c,
+                  builder: (context, _) => CanvasMixer.effects(
+                    controller: c,
+                    height: 380,
+                    onResize: (_) {},
+                    onClose: () {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      InstrumentPart part() =>
+          (c.document.elements.single as AudioElement).instrument!;
+      tester
+          .widget<DeviceKnob>(find.byKey(const ValueKey("noteQuantise")))
+          .onChanged(0.75);
+      await tester.pump();
+      tester
+          .widget<DeviceKnob>(find.byKey(const ValueKey("noteSwing")))
+          .onChanged(0.4);
+      await tester.pump();
+      expect((part().quantise, part().swing), (0.75, 0.4));
+      expect(part().notes.single.start, 0.04, reason: "the notes untouched");
+      c.undo();
+      expect(part().swing, 0, reason: "each one undo step");
+      expect(part().quantise, 0.75);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+    });
+
+    // Its rate and style chosen from lists, and a second set to compare,
+    // as a sound device's (Ken's audit, 2026-11-08).
+    for (var scale in [1.0, 1.5]) {
+      testWidgets("an arpeggiator's choices are lists, and it has A|B, at "
+          "$scale", (tester) async {
+        var c = CanvasController(
+            CanvasDocument(frames: 100, elements: [
+              keys("p",
+                  effects: const [MidiEffect(MidiEffectKind.arpeggiator)])
+            ]),
+            audioEngine: FakeEngine({}));
+        tester.view.physicalSize = const Size(1600, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        c.openEffects("p");
+        await tester.pumpWidget(MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ThemeNotifier>(
+                create: (c) => ThemeNotifier(doLoad: false)),
+            ChangeNotifierProvider<SnackBarModel>(
+                create: (c) => SnackBarModel()),
+          ],
+          child: MaterialApp(
+              builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(context)
+                      .copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!),
+              home: Scaffold(
+                  body: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: ListenableBuilder(
+                          listenable: c,
+                          builder: (context, _) => CanvasMixer.effects(
+                              controller: c,
+                              height: 380,
+                              onResize: (_) {},
+                              onClose: () {}))))),
+        ));
+        await tester.pump();
+        MidiEffect arp() => (c.document.elements.single as AudioElement)
+            .instrument!
+            .effects
+            .single;
+        var rate = tester.widget<StudioDrop<int>>(
+            find.byKey(const ValueKey("midi-0-rate")));
+        expect([for (var o in rate.options) o.$2], arpRateNames);
+        expect(find.byKey(const ValueKey("midi-0-style")), findsOneWidget);
+        rate.onChanged(1);
+        await tester.pump();
+        expect(arp().choice("rate"), 1);
+
+        await tester.tap(find.byKey(const ValueKey("deviceAB-midi0")));
+        await tester.pump();
+        tester
+            .widget<StudioDrop<int>>(find.byKey(const ValueKey("midi-0-rate")))
+            .onChanged(5);
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey("deviceAB-midi0")));
+        await tester.pump();
+        expect(arp().choice("rate"), 1, reason: "A");
+        await tester.tap(find.byKey(const ValueKey("deviceAB-midi0")));
+        await tester.pump();
+        expect(arp().choice("rate"), 5, reason: "B");
+        expect(tester.takeException(), isNull);
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pumpWidget(const SizedBox());
+        c.dispose();
+      });
+    }
   });
 }

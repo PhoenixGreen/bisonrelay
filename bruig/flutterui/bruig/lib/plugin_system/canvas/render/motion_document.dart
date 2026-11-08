@@ -305,6 +305,35 @@ Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
     case MotionDeviceKind.time:
       var rate = math.max(1, doc.frameRate).toDouble();
       var t = frame / rate, tt = retimed(d, t);
+      // Continue: past its stretch, on at the speed it ended going -- its
+      // last two frames inside it, as what ends there may let go at once.
+      var every = d.value("every");
+      var last = (every * rate).round() - 1;
+      if (d.value("loop").round() == 3 && tt * rate > last && last > 0) {
+        var end = _pulled(
+            e,
+            last,
+            doc,
+            live == null ? null : liveShifted(live, last / rate - t),
+            devices,
+            i - 1,
+            instance);
+        var before = _pulled(
+            e,
+            last - 1,
+            doc,
+            live == null ? null : liveShifted(live, (last - 1) / rate - t),
+            devices,
+            i - 1,
+            instance);
+        var steps = tt * rate - last;
+        return end.copyWith(
+            dx: end.dx + (end.dx - before.dx) * steps,
+            dy: end.dy + (end.dy - before.dy) * steps,
+            rotate: end.rotate + (end.rotate - before.rotate) * steps,
+            scale:
+                math.max(0.0, end.scale + (end.scale - before.scale) * steps));
+      }
       // What plays live is asked at its own clock, moved alike.
       var shifted = live == null ? null : liveShifted(live, tt - t);
       return _pulled(
@@ -347,6 +376,22 @@ Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
       var wd = w0 * math.sqrt(1 - z * z);
       var dt = 1 / rate;
       var base = _pulled(e, frame, doc, live, devices, i - 1, instance);
+      // Following another: where it was, a moment ago and before, chased.
+      if (d.value("follows").round() == 1 && d.target.isNotEmpty) {
+        var me = Offset(e.x + e.width / 2, e.y + e.height / 2);
+        var fx = 0.0, fy = 0.0, fsum = 0.0;
+        for (var j = 0; j < 16; j++) {
+          var tau = j * dt;
+          var h = math.exp(-z * w0 * tau) * math.sin(wd * (tau + dt));
+          var at = _centreOf(doc, d.target, frame - j);
+          if (at == null) return base;
+          fx += (at.dx - me.dx) * h;
+          fy += (at.dy - me.dy) * h;
+          fsum += h;
+        }
+        if (fsum.abs() < 1e-4) return base;
+        return base.copyWith(dx: fx / fsum, dy: fy / fsum);
+      }
       var dx = 0.0, dy = 0.0, sc = 0.0, turn = 0.0, sum = 0.0;
       for (var j = 0; j < 16; j++) {
         var tau = j * dt;
@@ -386,7 +431,9 @@ Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
           rotate: turned ? p.rotate + angle * 180 / math.pi : p.rotate);
     case MotionDeviceKind.lookAt:
       var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
-      var aim = _centreOf(doc, d.target, frame);
+      var aim = d.target == lookAtCamera
+          ? _cameraCentre(doc, frame)
+          : _centreOf(doc, d.target, frame);
       if (aim == null || d.target == e.id) return p;
       var me = Offset(e.x + e.width / 2 + p.dx, e.y + e.height / 2 + p.dy);
       // Facing right when it looks straight ahead, as it is drawn.
@@ -471,6 +518,21 @@ Float32List? Function(String assetId)? motionSoundPeaks;
 int _looking = 0;
 
 /// _centreOf is the middle of element [id] on [frame], as it moves.
+/// lookAtCamera is the target a Look at is given to face the camera.
+const lookAtCamera = "@camera";
+
+/// _cameraCentre is the middle of what the scene's camera shows on
+/// [frame], or of the page with none.
+Offset? _cameraCentre(CanvasDocument doc, int frame) {
+  if (_looking > 3) return doc.size.rect.center;
+  _looking++;
+  try {
+    return sceneFraming(doc, frame)?.$2 ?? doc.size.rect.center;
+  } finally {
+    _looking--;
+  }
+}
+
 Offset? _centreOf(CanvasDocument doc, String id, int frame) {
   var t = doc.elementById(id);
   if (t == null) return null;

@@ -1989,6 +1989,18 @@ class _VocaliserDeviceState extends State<VocaliserDevice> {
       skin: DeviceSkin.studio(studio),
       icon: Icons.music_note,
       accent: voiceColour,
+      // Its vibrato and glide compared A|B, or back as they start; the
+      // tune it sings to kept.
+      onAB: () => c.toggleABOf("${widget.channel}|vocaliser", spec, (o) {
+        var other = o as VocaliserSpec;
+        _set(other.copyWith(melody: spec.melody), transient: true);
+      }),
+      showingB: c.showingBOf("${widget.channel}|vocaliser"),
+      onReset: () {
+        c.beginInteraction();
+        _set(VocaliserSpec(melody: spec.melody), transient: true);
+        c.endInteraction();
+      },
       folded: widget.folded,
       onFold: widget.onFold,
       width: 340,

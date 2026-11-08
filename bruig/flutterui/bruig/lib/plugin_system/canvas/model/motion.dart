@@ -75,7 +75,8 @@ sealed class MotionValue {
       var kind = MotionPlaceKind.fromName(json["place"]);
       if (kind != null) {
         return MotionPlace(kind,
-            target: json["of"] is String ? json["of"] as String : "");
+            target: json["of"] is String ? json["of"] as String : "",
+            by: jsonDouble(json["by"], 0).clamp(-4000.0, 4000.0));
       }
     }
     return MotionNumber(fallback);
@@ -102,17 +103,51 @@ class MotionPlace extends MotionValue {
 
   /// target is the element it is worked out from, by id, where it names one.
   final String target;
-  const MotionPlace(this.kind, {this.target = ""});
+
+  /// by is how many pixels on from the place it is, the way the place
+  /// moves it (across, or up and down for above and below the page): the
+  /// prototype's Place Offset.
+  final double by;
+  const MotionPlace(this.kind, {this.target = "", this.by = 0});
+
+  /// moves is whether the place moves an element along [prop]: an edge
+  /// along its own axis, a place by another element along both.
+  bool moves(MotionProp prop) => switch (kind) {
+        MotionPlaceKind.offLeft ||
+        MotionPlaceKind.offRight =>
+          prop == MotionProp.x,
+        MotionPlaceKind.offTop ||
+        MotionPlaceKind.offBottom =>
+          prop == MotionProp.y,
+        _ => prop == MotionProp.x || prop == MotionProp.y,
+      };
+
+  /// offsets is the axis [by] is along.
+  MotionProp get offsets =>
+      kind == MotionPlaceKind.offTop || kind == MotionPlaceKind.offBottom
+          ? MotionProp.y
+          : MotionProp.x;
+
+  MotionPlace copyWith({MotionPlaceKind? kind, String? target, double? by}) =>
+      MotionPlace(kind ?? this.kind,
+          target: target ?? this.target, by: by ?? this.by);
 
   @override
-  Object toJson() => {"place": kind.name, if (target.isNotEmpty) "of": target};
+  Object toJson() => {
+        "place": kind.name,
+        if (target.isNotEmpty) "of": target,
+        if (by != 0) "by": by,
+      };
 
   @override
   bool operator ==(Object other) =>
-      other is MotionPlace && other.kind == kind && other.target == target;
+      other is MotionPlace &&
+      other.kind == kind &&
+      other.target == target &&
+      other.by == by;
 
   @override
-  int get hashCode => Object.hash(kind, target);
+  int get hashCode => Object.hash(kind, target, by);
 }
 
 /// MotionKey is where a property is at [t] seconds into the clip, and the

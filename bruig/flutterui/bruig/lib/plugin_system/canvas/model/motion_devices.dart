@@ -33,7 +33,8 @@ enum MotionDeviceKind {
   time("Time", MotionDeviceSide.pose, [
     DeviceParam("speed", "Speed", 0.1, 4, 1, "×"),
     DeviceParam("offset", "Offset", -10, 10, 0, "s"),
-    DeviceParam("loop", "Loop", 0, 2, 0, "", ["Off", "Cycle", "Ping-pong"]),
+    DeviceParam(
+        "loop", "Loop", 0, 3, 0, "", ["Off", "Cycle", "Ping-pong", "Continue"]),
     DeviceParam("every", "Every", 0.1, 30, 2, "s"),
     DeviceParam("hold", "Hold frames", 1, 6, 1, "#"),
   ]),
@@ -53,6 +54,9 @@ enum MotionDeviceKind {
   spring("Spring", MotionDeviceSide.pose, [
     DeviceParam("stiffness", "Stiffness", 1, 40, 12, "#"),
     DeviceParam("damping", "Damping", 0, 1, 0.35),
+    // Its own keys, sprung; or another element (its target), chased.
+    DeviceParam(
+        "follows", "Follows", 0, 1, 0, "", ["Its keys", "Another element"]),
   ]),
   followPath("Follow path", MotionDeviceSide.pose, [
     DeviceParam("start", "Start along", 0, 1, 0),
@@ -102,6 +106,8 @@ enum MotionDeviceKind {
   ]),
   blur("Blur", MotionDeviceSide.look, [
     DeviceParam("amount", "Amount", 0, 40, 4, "px"),
+    // Smeared along the way it moves, by how fast.
+    DeviceParam("motion", "Motion blur", 0, 1, 0),
   ]),
   colour("Colour", MotionDeviceSide.look, [
     DeviceParam("hue", "Hue", -180, 180, 0, "°"),
@@ -163,6 +169,7 @@ class MotionDevice {
   bool get takesTarget =>
       kind == MotionDeviceKind.followPath ||
       kind == MotionDeviceKind.lookAt ||
+      (kind == MotionDeviceKind.spring && value("follows").round() == 1) ||
       kind == MotionDeviceKind.followSound ||
       kind == MotionDeviceKind.follower;
 

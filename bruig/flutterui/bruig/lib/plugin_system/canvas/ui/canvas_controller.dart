@@ -908,6 +908,18 @@ class CanvasController extends ChangeNotifier {
   /// than its sound.
   bool get chainShowsMotion => _animationOpen;
 
+  /// motionTrail is whether the stage shows the element whose motion the
+  /// Chain is open on with its trail and onion skin: the path its middle
+  /// takes, and faint copies of where it was a moment before. On until
+  /// hidden, as the prototype's.
+  bool get motionTrail => _motionTrail;
+  bool _motionTrail = true;
+  set motionTrail(bool on) {
+    if (on == _motionTrail) return;
+    _motionTrail = on;
+    notifyListeners();
+  }
+
   /// _chainOpensOnMotion is the view the Chain's button opens it on: what
   /// is picked -- an element drawn on the canvas its motion, a channel or a
   /// sound its sound -- or, with neither, the view it was last on. It never

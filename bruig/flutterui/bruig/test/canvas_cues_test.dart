@@ -11,7 +11,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart' show StudioDrop;
+import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
+    show StudioDrop;
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -192,7 +193,11 @@ void main() {
 
   testWidgets("its arrival's Timing ties it to a cue", (tester) async {
     CanvasElement one = withOwnSpan(
-        ShapeElement(const ElementBase(id: "one")), MotionKind.arrive, 20, 30, 24);
+        ShapeElement(const ElementBase(id: "one")),
+        MotionKind.arrive,
+        20,
+        30,
+        24);
     var c = CanvasController(
         CanvasDocument(frames: 100, frameRate: 24, elements: [one]));
     addTearDown(c.dispose);

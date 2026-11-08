@@ -181,35 +181,41 @@ double motionValue(MotionClip c, MotionProp prop, MotionValue v, Rect self,
       if (c.absolute && prop == MotionProp.x) return value - self.center.dx;
       if (c.absolute && prop == MotionProp.y) return value - self.center.dy;
       return value;
-    case MotionPlace(:var kind, :var target):
-      var across = prop == MotionProp.x;
-      switch (kind) {
-        case MotionPlaceKind.offLeft:
-          return across ? -self.right - 14 : 0;
-        case MotionPlaceKind.offRight:
-          return across ? scene.page.width - self.left + 14 : 0;
-        case MotionPlaceKind.offTop:
-          return across ? 0 : -self.bottom - 14;
-        case MotionPlaceKind.offBottom:
-          return across ? 0 : scene.page.height - self.top + 14;
-        case MotionPlaceKind.beside:
-          var o = scene.boundsOf(target);
-          if (o == null) return 0;
-          if (!across) return o.center.dy - self.center.dy;
-          var side = o.center.dx >= self.center.dx ? -1 : 1;
-          return o.center.dx -
-              self.center.dx +
-              side * (o.width / 2 + self.width / 2 + 4);
-        case MotionPlaceKind.ground:
-          var o = scene.boundsOf(target);
-          if (o == null) return 0;
-          return across ? o.center.dx - self.center.dx : o.bottom - self.bottom;
-        case MotionPlaceKind.on:
-          var at =
-              scene.drawnAt?.call(target) ?? scene.boundsOf(target)?.center;
-          if (at == null) return 0;
-          return across ? at.dx - self.center.dx : at.dy - self.center.dy;
-      }
+    case MotionPlace(:var kind, :var target, :var by):
+      var on = by != 0 && prop == v.offsets ? by : 0.0;
+      return _placed(kind, target, prop, self, scene) + on;
+  }
+}
+
+/// _placed is how far [kind] of [target] is from [self] along [prop].
+double _placed(MotionPlaceKind kind, String target, MotionProp prop, Rect self,
+    MotionScene scene) {
+  var across = prop == MotionProp.x;
+  switch (kind) {
+    case MotionPlaceKind.offLeft:
+      return across ? -self.right - 14 : 0;
+    case MotionPlaceKind.offRight:
+      return across ? scene.page.width - self.left + 14 : 0;
+    case MotionPlaceKind.offTop:
+      return across ? 0 : -self.bottom - 14;
+    case MotionPlaceKind.offBottom:
+      return across ? 0 : scene.page.height - self.top + 14;
+    case MotionPlaceKind.beside:
+      var o = scene.boundsOf(target);
+      if (o == null) return 0;
+      if (!across) return o.center.dy - self.center.dy;
+      var side = o.center.dx >= self.center.dx ? -1 : 1;
+      return o.center.dx -
+          self.center.dx +
+          side * (o.width / 2 + self.width / 2 + 4);
+    case MotionPlaceKind.ground:
+      var o = scene.boundsOf(target);
+      if (o == null) return 0;
+      return across ? o.center.dx - self.center.dx : o.bottom - self.bottom;
+    case MotionPlaceKind.on:
+      var at = scene.drawnAt?.call(target) ?? scene.boundsOf(target)?.center;
+      if (at == null) return 0;
+      return across ? at.dx - self.center.dx : at.dy - self.center.dy;
   }
 }
 

@@ -20,6 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_chain_helpers.dart';
 
 // canvas_instrument_shape_test.dart is how an instrument plays its sound
 // (instrument_shape.dart), as the sampler does it: its own volume envelope,
@@ -360,6 +361,37 @@ void main() {
       expect(shape(c).plain, isTrue);
       expect(tester.takeException(), isNull);
       // The knobs' double-click waits out its moment.
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    // The prototype's A|B and Reset on the instrument's card too (Ken's
+    // audit, 2026-11-08): how it plays compared, the sound kept.
+    testWidgets("its card compares A|B and resets to plain", (tester) async {
+      var c = make();
+      addTearDown(c.dispose);
+      c.openEffects("p");
+      await show(tester, c);
+      var ab = find.byKey(const ValueKey("deviceAB-instrumentCard"));
+      await tester.ensureVisible(ab);
+      await tester.pump();
+      await tester.tap(ab);
+      await tester.pump();
+      c.setInstrumentShape("p", (x) => x.copyWith(attack: 1.5, envelope: true));
+      await tester.pump();
+      await tester.tap(ab);
+      await tester.pump();
+      expect(shape(c).plain, isTrue, reason: "A, as it was");
+      await tester.tap(ab);
+      await tester.pump();
+      expect(shape(c).attack, 1.5, reason: "B");
+      await revealInMenu(tester, "deviceReset-instrumentCard");
+      await tester
+          .tap(find.byKey(const ValueKey("deviceReset-instrumentCard")));
+      await tester.pump();
+      await tester.pump();
+      expect(shape(c).plain, isTrue);
+      expect(tester.takeException(), isNull);
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pumpWidget(const SizedBox());
     });

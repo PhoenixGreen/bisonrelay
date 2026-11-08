@@ -19,7 +19,7 @@ double looksReach(List<MotionDevice> looks) {
     reach += switch (d.kind) {
       MotionDeviceKind.glow => d.value("radius") * 2,
       MotionDeviceKind.shadow => d.value("distance") + d.value("blur") * 2,
-      MotionDeviceKind.blur => d.value("amount") * 2,
+      MotionDeviceKind.blur => d.value("amount") * 2 + d.value("motion") * 40,
       MotionDeviceKind.outline => d.value("width") * (1 + d.value("softness")),
       _ => 0.0,
     };
@@ -31,9 +31,12 @@ double looksReach(List<MotionDevice> looks) {
 /// a canvas already moved, turned and sized as it is -- with [looks] on it,
 /// in order. [turn] (degrees) and [scale] are how it is turned and sized,
 /// so that a shadow falls the same way, and as far, however it turns.
+///
+/// [velocity] is how fast it moves, in the page's pixels a second: what a
+/// Blur's Motion blur smears it along.
 void paintWithLooks(ui.Canvas canvas, Rect bounds, List<MotionDevice> looks,
     void Function() paint,
-    {double turn = 0, double scale = 1}) {
+    {double turn = 0, double scale = 1, Offset velocity = Offset.zero}) {
   var reach = looksReach(looks);
   var room = bounds.inflate(reach / math.max(0.05, scale) + 2);
   var k = 1 / math.max(0.05, scale);
@@ -42,7 +45,7 @@ void paintWithLooks(ui.Canvas canvas, Rect bounds, List<MotionDevice> looks,
       paint();
       return;
     }
-    _look(canvas, room, looks[i], () => drawn(i - 1), turn, k);
+    _look(canvas, room, looks[i], () => drawn(i - 1), turn, k, velocity);
   }
 
   drawn(looks.length - 1);
@@ -51,7 +54,7 @@ void paintWithLooks(ui.Canvas canvas, Rect bounds, List<MotionDevice> looks,
 /// _look draws [under] -- everything to its left -- with look [d] on it.
 /// [k] turns the page's pixels into the canvas's, as it is sized.
 void _look(ui.Canvas canvas, Rect room, MotionDevice d, void Function() under,
-    double turn, double k) {
+    double turn, double k, Offset velocity) {
   Color colourOr(Color fallback) =>
       d.colour == null ? fallback : Color(d.colour!);
   ui.ImageFilter blurOf(double px) => ui.ImageFilter.blur(
@@ -69,8 +72,22 @@ void _look(ui.Canvas canvas, Rect room, MotionDevice d, void Function() under,
       canvas.restore();
     case MotionDeviceKind.blur:
       var amount = d.value("amount");
-      if (amount <= 0) return under();
-      canvas.saveLayer(room, Paint()..imageFilter = blurOf(amount));
+      // Motion blur: a fiftieth of a second's travel, along it -- turned
+      // into the element's own way round, as the canvas is.
+      var smear = d.value("motion");
+      var a = -turn * math.pi / 180;
+      var along = Offset(velocity.dx * math.cos(a) - velocity.dy * math.sin(a),
+              velocity.dx * math.sin(a) + velocity.dy * math.cos(a)) *
+          (smear / 50);
+      var sx = amount + along.dx.abs(), sy = amount + along.dy.abs();
+      if (sx <= 0.01 && sy <= 0.01) return under();
+      canvas.saveLayer(
+          room.inflate(math.max(along.dx.abs(), along.dy.abs()) * k),
+          Paint()
+            ..imageFilter = ui.ImageFilter.blur(
+                sigmaX: math.max(0.01, sx * k / 2),
+                sigmaY: math.max(0.01, sy * k / 2),
+                tileMode: TileMode.decal));
       under();
       canvas.restore();
     case MotionDeviceKind.shadow:

@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart' show freeId;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 
@@ -49,6 +50,81 @@ extension MotionEditing on CanvasController {
           {bool transient = false}) =>
       setMotion(element, motionOf(element).copyWith(devices: devices),
           transient: transient);
+
+  /// bakeMotionDevice turns what pose device [device] of [element] does
+  /// into keys: a clip over the whole scene, on a layer of its own, of how
+  /// far it moves, turns and sizes the element each frame -- and the device
+  /// switched off, the prototype's "Bake into keys" (for an EPUB, which plays
+  /// keys). The clip is at the start of the chain, so what is left of the
+  /// device now has it too. Null when done; otherwise why not.
+  String? bakeMotionDevice(String element, String device) {
+    var e = document.elementById(element);
+    if (e == null) return "It is gone";
+    var m = e.base.motion;
+    var poses = m.poseDevices;
+    var k = poses.indexWhere((d) => d.id == device);
+    if (k < 0)
+      return "Only a device that moves it can be baked, while it is on";
+    var rate = math.max(1, document.frameRate);
+    var frames = math.max(2, document.frames);
+    var end = (frames - 1) / rate;
+    // Free all the way through: a clip on a layer gives way to the next one
+    // to start on it.
+    int? layer;
+    for (var l = motionLayers - 1; l >= 0; l--) {
+      if (!m.placed.any((p) => p.layer == l)) {
+        layer = l;
+        break;
+      }
+    }
+    if (layer == null) {
+      return "Every layer has clips on it: empty one to bake into";
+    }
+    var samples = {for (var p in MotionProp.values) p: <double>[]};
+    for (var f = 0; f < frames; f++) {
+      var before = poseWithMotion(e, f, document, upto: k);
+      var after = poseWithMotion(e, f, document, upto: k + 1);
+      double ratio(double a, double b) => a.abs() < 1e-9 ? 1 : b / a;
+      samples[MotionProp.x]!.add(after.dx - before.dx);
+      samples[MotionProp.y]!.add(after.dy - before.dy);
+      samples[MotionProp.turn]!.add(after.rotate - before.rotate);
+      samples[MotionProp.scale]!.add(ratio(before.scale, after.scale));
+      samples[MotionProp.opacity]!.add(ratio(before.opacity, after.opacity));
+    }
+    var keys = <MotionProp, List<MotionKey>>{};
+    for (var MapEntry(key: prop, value: v) in samples.entries) {
+      var eps =
+          prop == MotionProp.scale || prop == MotionProp.opacity ? 0.002 : 0.05;
+      if (v.every((x) => (x - prop.rest).abs() < eps)) continue;
+      keys[prop] = [
+        for (var i in keptSamples(v, eps))
+          MotionKey(i / rate, MotionNumber(v[i]))
+      ];
+    }
+    if (keys.isEmpty) return "It moves nothing here to bake";
+    var d = poses[k];
+    var id = freeId(m, "baked-${d.kind.name}");
+    var clip = MotionClip.ofKind(id, MotionKind.action,
+            name: "Baked ${d.kind.label.toLowerCase()}", layer: layer)
+        .copyWith(
+      length: math.max(1 / rate, end),
+      keys: keys,
+      before: ClipHold.first,
+      after: ClipHold.last,
+    );
+    var placement =
+        ClipPlacement(id: freeId(m, "$id-p"), clip: id, layer: layer, start: 0);
+    var motion = m.withClip(clip).copyWith(
+      placed: [...m.placed, placement],
+      devices: [
+        for (var x in m.devices) x.id == device ? x.switched(false) : x
+      ],
+    );
+    beginInteraction();
+    setMotion(element, motion, transient: true);
+    endInteraction();
+    return null;
+  }
 
   /// addMotionDevice puts a [kind] on [element]: last of its side -- the
   /// last pose device, before the drawing, or the last look -- and returns
@@ -481,4 +557,31 @@ CanvasDocument everyMotion(
     }
   }
   return next;
+}
+
+/// keptSamples are the frames of [v] to keep as keys: the first, the last,
+/// and each where a straight line from the last kept one would miss by more
+/// than [eps] -- so a steady move is two keys, and a wiggle all it needs.
+List<int> keptSamples(List<double> v, double eps) {
+  if (v.length <= 2) return [for (var i = 0; i < v.length; i++) i];
+  var kept = [0];
+  var from = 0;
+  for (var i = 2; i < v.length; i++) {
+    // Would a line from the last kept to i pass near every one between?
+    var ok = true;
+    for (var j = from + 1; j < i; j++) {
+      var u = (j - from) / (i - from);
+      var line = v[from] + (v[i] - v[from]) * u;
+      if ((v[j] - line).abs() > eps) {
+        ok = false;
+        break;
+      }
+    }
+    if (!ok) {
+      kept.add(i - 1);
+      from = i - 1;
+    }
+  }
+  kept.add(v.length - 1);
+  return kept;
 }

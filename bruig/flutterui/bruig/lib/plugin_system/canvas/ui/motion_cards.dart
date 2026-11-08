@@ -2,12 +2,15 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
     show Quantise;
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart'
+    show KeyframeEasing;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show boxOf;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart' show CopyValue;
+import 'package:bruig/plugin_system/canvas/model/layer_blend.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
@@ -747,6 +750,12 @@ class MotionPlaceCard extends StatelessWidget {
     var look = MixerLook.of(context);
     var skin = DeviceSkin.studio(look.studio);
     var c = clip, e = element;
+    var leaving = c.kind == MotionKind.leave;
+    var place = placeOf(c);
+    var others = [
+      for (var x in controller.document.elements)
+        if (x.id != e.id) x,
+    ];
     return DeviceFrame(
       id: "motionPlace",
       title: "Place",
@@ -757,12 +766,70 @@ class MotionPlaceCard extends StatelessWidget {
       accent: _motionAccent,
       folded: folded,
       onFold: onFold,
-      width: 200,
+      width: 240,
       height: height,
-      summary: c.absolute ? "To set places" : "From where it is",
+      summary: switch (placeOf(c)) {
+        var p? => "${leaving ? "To" : "From"} ${p.kind.label.toLowerCase()}",
+        null => c.absolute ? "To set places" : "From where it is",
+      },
       foldedBody: const SizedBox(),
       body: const SizedBox.shrink(),
       controls: (tier) => [
+        // Where it comes from -- or, leaving, goes to -- worked out as it
+        // plays: an edge, beside another element, on its ground. The
+        // prototype's From and Offset.
+        DevicePack(key: const ValueKey("animPlacePack"), children: [
+          StudioDrop<String>(
+            key: const ValueKey("animPlaceFrom"),
+            label: leaving ? "To" : "From",
+            value: place?.kind.name ?? "",
+            options: [
+              ("", "Where it is"),
+              for (var k in _placeKinds) (k.name, k.label),
+            ],
+            onChanged: (name) {
+              var kind = MotionPlaceKind.fromName(name);
+              var target = kind != null && kind.needsTarget
+                  ? (place?.target.isNotEmpty == true
+                      ? place!.target
+                      : others.firstOrNull?.id ?? "")
+                  : "";
+              edit((x) => withPlace(x, kind, boxOf(e),
+                  target: target, by: place?.by ?? 0));
+            },
+          ),
+          if (place != null && place.kind.needsTarget)
+            StudioDrop<String>(
+              key: const ValueKey("animPlaceOf"),
+              label: "Of",
+              value:
+                  others.any((x) => x.id == place.target) ? place.target : "",
+              options: [
+                if (!others.any((x) => x.id == place.target)) ("", "Pick one"),
+                for (var x in others) (x.id, x.name.isEmpty ? x.id : x.name),
+              ],
+              onChanged: (id) => edit((x) =>
+                  withPlace(x, place.kind, boxOf(e), target: id, by: place.by)),
+            ),
+          if (place != null)
+            DeviceKnob(
+              key: const ValueKey("animPlaceOffset"),
+              label: "Offset",
+              text: "${place.by.round()} px",
+              value: place.by.clamp(-200.0, 200.0),
+              initial: 0,
+              min: -200,
+              max: 200,
+              accent: _motionAccent,
+              ink: skin.ink,
+              bipolar: true,
+              onChanged: (v, {transient = false}) => edit(
+                  (x) => withPlace(x, place.kind, boxOf(e),
+                      target: place.target, by: v.roundToDouble()),
+                  live: transient),
+              onCommit: controller.endInteraction,
+            ),
+        ]),
         StudioDrop<bool>(
           key: const ValueKey("animPlace"),
           label: "Moves",
@@ -789,6 +856,71 @@ class MotionPlaceCard extends StatelessWidget {
       ],
     );
   }
+}
+
+/// _placeKinds are the places From offers: the edges, and by another.
+const _placeKinds = [
+  MotionPlaceKind.offLeft,
+  MotionPlaceKind.offRight,
+  MotionPlaceKind.offTop,
+  MotionPlaceKind.offBottom,
+  MotionPlaceKind.beside,
+  MotionPlaceKind.ground,
+];
+
+/// placeOf is the place [c] comes from -- its first keys across and up and
+/// down -- or, leaving, goes to (its last): null for where it is.
+MotionPlace? placeOf(MotionClip c) {
+  var leaving = c.kind == MotionKind.leave;
+  for (var prop in const [MotionProp.x, MotionProp.y]) {
+    var keys = c.keys[prop];
+    if (keys == null || keys.isEmpty) continue;
+    if ((leaving ? keys.last : keys.first).value case MotionPlace p) return p;
+  }
+  return null;
+}
+
+/// withPlace is [c] coming from [kind] -- or, leaving, going to it -- of
+/// [target], [by] pixels on: its first keys across and up and down made the
+/// place (its last, leaving), keys made where it has none. Null puts it
+/// back where it is ([box], the element's, for a clip of set places).
+MotionClip withPlace(MotionClip c, MotionPlaceKind? kind, Rect box,
+    {String target = "", double by = 0}) {
+  var leaving = c.kind == MotionKind.leave;
+  var place = kind == null ? null : MotionPlace(kind, target: target, by: by);
+  var keys = {...c.keys};
+  for (var prop in const [MotionProp.x, MotionProp.y]) {
+    // Where it is, in the clip's own terms: nought from it, or its centre.
+    var still = MotionNumber(!c.absolute
+        ? 0
+        : prop == MotionProp.x
+            ? box.center.dx
+            : box.center.dy);
+    var want = place != null && place.moves(prop) ? place : null;
+    var list = [...?keys[prop]];
+    if (list.isEmpty) {
+      if (want == null) continue;
+      var end = math.max(0.05, c.length);
+      keys[prop] = leaving
+          ? [
+              MotionKey(0, still),
+              MotionKey(end, want, ease: KeyframeEasing.easeIn),
+            ]
+          : [
+              MotionKey(0, want),
+              MotionKey(end, still, ease: KeyframeEasing.easeOut),
+            ];
+      continue;
+    }
+    var at = leaving ? list.length - 1 : 0;
+    if (want != null) {
+      list[at] = list[at].copyWith(value: want);
+    } else if (list[at].value is MotionPlace) {
+      list[at] = list[at].copyWith(value: still);
+    }
+    keys[prop] = list;
+  }
+  return c.copyWith(keys: keys, edited: true);
 }
 
 /// MotionOutputCard is where the chain ends, as the prototype's Output: how
@@ -845,7 +977,7 @@ class MotionOutputCard extends StatelessWidget {
       onFold: onFold,
       width: 190,
       height: height,
-      summary: "${(e.opacity * 100).round()}% seen",
+      summary: "${(e.opacity * 100).round()}% · ${e.base.blend.label}",
       foldedBody: const SizedBox(),
       body: const SizedBox.shrink(),
       controls: (tier) => [
@@ -895,6 +1027,15 @@ class MotionOutputCard extends StatelessWidget {
           value: e.visible,
           options: const [(true, "Yes"), (false, "Hidden")],
           onChanged: (v) => write(e.withBase(visible: v)),
+        ),
+        // How it is laid over what is under it, as the prototype's Blend.
+        StudioDrop<LayerBlend>(
+          key: const ValueKey("motionOutputBlend"),
+          label: "Blend",
+          width: 160,
+          value: e.base.blend,
+          options: [for (var b in LayerBlend.values) (b, b.label)],
+          onChanged: (b) => write(e.withBase(blend: b)),
         ),
         SizedBox(
           width: 160,
