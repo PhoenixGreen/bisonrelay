@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_graph.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
@@ -194,5 +195,57 @@ void main() {
     var up = _block(g, 0.5);
     expect(up.first, lessThan(0.01), reason: "from where it was");
     expect(up.last, closeTo(0.5, 0.01), reason: "to where it is set");
+  });
+
+  test("the limiter keeps its loudest as it goes: the gain it always had", () {
+    // As it was: the whole window looked through at every sample.
+    (Float32List, Float32List) byScanning(Float32List l, Float32List r) {
+      const ahead = 240;
+      var ceiling = dbToGain(-1);
+      double coefficient(double ms) => math.exp(-1 / (ms / 1000 * 48000));
+      var attack = coefficient(5 / 4), release = coefficient(50);
+      var dl = Float32List(ahead), dr = Float32List(ahead);
+      var peaks = Float32List(ahead);
+      var at = 0;
+      var gain = 1.0;
+      var ol = Float32List(l.length), or = Float32List(r.length);
+      for (var i = 0; i < l.length; i++) {
+        peaks[at] = math.max(l[i].abs(), r[i].abs());
+        var loudest = 0.0;
+        for (var p in peaks) {
+          if (p > loudest) loudest = p;
+        }
+        var want = loudest > ceiling ? ceiling / loudest : 1.0;
+        gain = want + (want < gain ? attack : release) * (gain - want);
+        var outL = dl[at], outR = dr[at];
+        dl[at] = l[i];
+        dr[at] = r[i];
+        at = (at + 1) % ahead;
+        ol[i] = (outL * gain).clamp(-ceiling, ceiling);
+        or[i] = (outR * gain).clamp(-ceiling, ceiling);
+      }
+      return (ol, or);
+    }
+
+    var rnd = math.Random(7);
+    const n = 48000;
+    var l = Float32List(n), r = Float32List(n);
+    for (var i = 0; i < n; i++) {
+      // Bursts over the ceiling, and quiet between.
+      var loud = (i ~/ 3000).isEven ? 1.6 : 0.3;
+      l[i] = (rnd.nextDouble() * 2 - 1) * loud;
+      r[i] = (rnd.nextDouble() * 2 - 1) * loud;
+    }
+    var (wl, wr) = byScanning(l, r);
+    var limiter = Limiter(-1);
+    var gl = Float32List.fromList(l), gr = Float32List.fromList(r);
+    for (var at = 0; at < n; at += 480) {
+      limiter.process(Float32List.sublistView(gl, at, at + 480),
+          Float32List.sublistView(gr, at, at + 480), 480);
+    }
+    for (var i = 0; i < n; i++) {
+      expect(gl[i], closeTo(wl[i], 1e-6), reason: "left at $i");
+      expect(gr[i], closeTo(wr[i], 1e-6), reason: "right at $i");
+    }
   });
 }

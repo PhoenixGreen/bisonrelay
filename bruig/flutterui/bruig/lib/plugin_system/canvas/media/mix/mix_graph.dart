@@ -93,6 +93,11 @@ const String masterTapKey = "";
 /// as the last block ended.
 class _Pan {
   Float64List fromL, fromR;
+
+  /// made is what [fromL] and [fromR] were worked out from -- the layout,
+  /// where it is heard from, its surround pan -- so a block with none of
+  /// them changed uses them again rather than making them anew.
+  Object? made;
   _Pan(int speakers)
       : fromL = Float64List(speakers),
         fromR = Float64List(speakers);
@@ -375,8 +380,14 @@ class MixGraph {
       {List<Float32List>? into}) {
     var speakers = into ?? _out;
     var count = _layout.channels;
-    var (tl, tr) = _targets(key, mix);
     var pan = _pans[key];
+    // Worked out again only when what they come from has changed: every
+    // channel's, at every block, before (Ken's systems review, 2026-11-08).
+    var made =
+        (_layout, _placed[key], _layout.isSurround ? mix.surround : null);
+    var (tl, tr) = pan != null && pan.made == made
+        ? (pan.fromL, pan.fromR)
+        : _targets(key, mix);
     if (pan == null) {
       pan = _Pan(count)
         ..fromL = tl
@@ -402,7 +413,8 @@ class MixGraph {
     }
     pan
       ..fromL = tl
-      ..fromR = tr;
+      ..fromR = tr
+      ..made = made;
     var lfe = _layout.lfe;
     if (lfe != null && mix.lfeDb != null) {
       var g = dbToGain(mix.lfeDb!) / 2;

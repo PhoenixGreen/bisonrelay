@@ -566,7 +566,8 @@ Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
         for (var j = 0; j < 16; j++) {
           var tau = j * dt;
           var h = math.exp(-z * w0 * tau) * math.sin(wd * (tau + dt));
-          var at = _centreOf(doc, d.target, frame - j);
+          var at = _centreOf(doc, d.target, frame - j,
+              live: live == null ? null : liveShifted(live, -tau));
           if (at == null) return base;
           fx += (at.dx - me.dx) * h;
           fy += (at.dy - me.dy) * h;
@@ -615,9 +616,9 @@ Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
     case MotionDeviceKind.lookAt:
       var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
       var aim = switch (d.target) {
-        lookAtCamera => _cameraCentre(doc, frame),
+        lookAtCamera => _cameraCentre(doc, frame, live: live),
         lookAtPointer => live?.pointer,
-        var id => _centreOf(doc, id, frame),
+        var id => _centreOf(doc, id, frame, live: live),
       };
       if (aim == null || d.target == e.id) return p;
       var me = Offset(e.x + e.width / 2 + p.dx, e.y + e.height / 2 + p.dy);
@@ -737,23 +738,29 @@ bool facesPointer(CanvasDocument doc) => [
 
 /// _cameraCentre is the middle of what the scene's camera shows on
 /// [frame], or of the page with none.
-Offset? _cameraCentre(CanvasDocument doc, int frame) {
+/// _cameraCentre and _centreOf are where the camera looks, and where
+/// element [id] is, on [frame] -- what plays from slots ([live]) moving them
+/// too, so a Look at or a Spring after a launched element follows it where
+/// it is, not where its timeline would have it (Ken's systems review,
+/// 2026-11-08).
+Offset? _cameraCentre(CanvasDocument doc, int frame, {LiveMotion? live}) {
   if (_looking > 3) return doc.size.rect.center;
   _looking++;
   try {
-    return sceneFraming(doc, frame)?.$2 ?? doc.size.rect.center;
+    return sceneFraming(doc, frame, live: live)?.$2 ?? doc.size.rect.center;
   } finally {
     _looking--;
   }
 }
 
-Offset? _centreOf(CanvasDocument doc, String id, int frame) {
+Offset? _centreOf(CanvasDocument doc, String id, int frame,
+    {LiveMotion? live}) {
   var t = doc.elementById(id);
   if (t == null) return null;
   if (_looking > 3) return t.bounds.center;
   _looking++;
   try {
-    return t.boundsWith(poseWithMotion(t, frame, doc)).center;
+    return t.boundsWith(poseWithMotion(t, frame, doc, live: live)).center;
   } finally {
     _looking--;
   }

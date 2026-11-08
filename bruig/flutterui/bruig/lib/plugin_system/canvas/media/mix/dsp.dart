@@ -147,6 +147,13 @@ class Limiter {
   int _at = 0;
   double _gain = 1;
 
+  /// _loudest is the loudest in [_peaks] and _loudestAt where it is: kept
+  /// as each sample comes, the window looked through again only when the
+  /// loudest leaves it -- rather than at every sample (Ken's systems
+  /// review, 2026-11-08), for the same gain.
+  double _loudest = 0;
+  int _loudestAt = 0;
+
   /// least is the lowest gain of the last block: how far it turned the
   /// sound down, one for not at all.
   double least = 1;
@@ -171,6 +178,8 @@ class Limiter {
       _peaks.setAll(0, carry._peaks);
       _at = carry._at;
       _gain = carry._gain;
+      _loudest = carry._loudest;
+      _loudestAt = carry._loudestAt;
     }
   }
 
@@ -179,11 +188,22 @@ class Limiter {
     for (var i = 0; i < n; i++) {
       // What comes in now is heard [_ahead] samples later; the gain is
       // worked out from the loudest of everything in that window.
-      _peaks[_at] = math.max(l[i].abs(), r[i].abs());
-      var loudest = 0.0;
-      for (var p in _peaks) {
-        if (p > loudest) loudest = p;
+      var peak = math.max(l[i].abs(), r[i].abs());
+      _peaks[_at] = peak;
+      if (peak >= _loudest) {
+        _loudest = peak;
+        _loudestAt = _at;
+      } else if (_loudestAt == _at) {
+        // The loudest has just left the window: the next loudest found.
+        _loudest = 0;
+        for (var j = 0; j < _peaks.length; j++) {
+          if (_peaks[j] > _loudest) {
+            _loudest = _peaks[j];
+            _loudestAt = j;
+          }
+        }
       }
+      var loudest = _loudest;
       var want = loudest > ceiling ? ceiling / loudest : 1.0;
       _gain = want + (want < _gain ? _attack : _release) * (_gain - want);
       if (_gain < least) least = _gain;

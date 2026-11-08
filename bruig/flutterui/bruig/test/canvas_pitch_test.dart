@@ -55,7 +55,74 @@ double pitchAt(Float32List x, double second) {
   return detectPitch(Float32List.sublistView(x, from, from + 2048))!.hz;
 }
 
+/// _fullSearch is detectPitch as it was, working out every lag before
+/// looking for the dip: what its early stop must agree with exactly.
+PitchReading? _fullSearch(Float32List x) {
+  const rate = 48000.0, minHz = 60.0, maxHz = 1200.0, threshold = 0.15;
+  var maxLag = math.min((rate / minHz).floor(), x.length ~/ 2);
+  var minLag = math.max(2, (rate / maxHz).floor());
+  if (maxLag <= minLag + 2) return null;
+  var w = x.length - maxLag;
+  var energy = 0.0;
+  for (var i = 0; i < w; i++) {
+    energy += x[i] * x[i];
+  }
+  if (energy / w < 1e-7) return null;
+  var d = Float64List(maxLag + 1);
+  for (var tau = 1; tau <= maxLag; tau++) {
+    var sum = 0.0;
+    for (var i = 0; i < w; i++) {
+      var diff = x[i] - x[i + tau];
+      sum += diff * diff;
+    }
+    d[tau] = sum;
+  }
+  var cmnd = Float64List(maxLag + 1)..[0] = 1;
+  var running = 0.0;
+  for (var tau = 1; tau <= maxLag; tau++) {
+    running += d[tau];
+    cmnd[tau] = running == 0 ? 1 : d[tau] * tau / running;
+  }
+  var tau = -1;
+  for (var t = minLag; t < maxLag; t++) {
+    if (cmnd[t] < threshold) {
+      while (t + 1 < maxLag && cmnd[t + 1] < cmnd[t]) {
+        t++;
+      }
+      tau = t;
+      break;
+    }
+  }
+  if (tau < 0) return null;
+  var better = tau.toDouble();
+  if (tau > 1 && tau < maxLag) {
+    var a = cmnd[tau - 1], b = cmnd[tau], c = cmnd[tau + 1];
+    var den = a + c - 2 * b;
+    if (den.abs() > 1e-12) better = tau + 0.5 * (a - c) / den;
+  }
+  return (hz: rate / better, clarity: (1 - cmnd[tau]).clamp(0.0, 1.0));
+}
+
 void main() {
+  // Ken's systems review, 2026-11-08: it stops at the dip now, rather than
+  // working out every lag -- and must hear exactly what it heard before.
+  test("stopped at its dip, it hears what the full search heard", () {
+    var r = math.Random(3);
+    for (var trial = 0; trial < 300; trial++) {
+      var hz = 50 + r.nextDouble() * 1400;
+      var noise = r.nextDouble() * 0.6;
+      var x = Float32List(2048);
+      for (var i = 0; i < x.length; i++) {
+        x[i] = math.sin(2 * math.pi * hz * i / 48000) * 0.5 +
+            math.sin(2 * math.pi * hz * 2 * i / 48000) * 0.2 +
+            (r.nextDouble() - 0.5) * noise;
+      }
+      var fast = detectPitch(x), full = _fullSearch(x);
+      expect(fast?.hz, full?.hz, reason: "$hz Hz, noise $noise");
+      expect(fast?.clarity, full?.clarity);
+    }
+  });
+
   test("YIN hears a note's pitch, and nothing in silence", () {
     for (var hz in [82.4, 110.0, 220.0, 440.0, 880.0]) {
       var p = detectPitch(Float32List.sublistView(tone(hz, 0.1), 0, 2048))!;

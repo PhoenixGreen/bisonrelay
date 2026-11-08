@@ -613,6 +613,45 @@ void main() {
     });
   });
 
+  // Ken's systems review, 2026-11-08: a Look at aimed where its target's
+  // timeline had it, not where a slot had sent it.
+  test("a Look at follows a target launched from its slot", () {
+    var doc = CanvasDocument(elements: [
+      ShapeElement(const ElementBase(
+          id: "eye",
+          x: 0,
+          y: 0,
+          width: 20,
+          height: 20,
+          motion: ElementMotion(devices: [
+            MotionDevice(MotionDeviceKind.lookAt,
+                id: "l", target: "ball", values: {"smooth": 0}),
+          ]))),
+      ShapeElement(const ElementBase(
+          id: "ball",
+          x: 300,
+          y: 0,
+          width: 20,
+          height: 20,
+          motion: ElementMotion(clips: [
+            MotionClip(id: "drop", length: 1, keys: {
+              MotionProp.y: [
+                MotionKey(0, MotionNumber(300)),
+                MotionKey(1, MotionNumber(300)),
+              ],
+            }),
+          ]))),
+    ]);
+    var eye = doc.elementById("eye")!;
+    var still = poseWithMotion(eye, 0, doc).rotate;
+    expect(still, closeTo(0, 1e-6), reason: "the ball level with it");
+    var p = MotionPlayer()..step(doc, 0, 0);
+    p.launch(doc, 0, "ball", "drop", 0);
+    p.step(doc, 0, 0.5);
+    var after = poseWithMotion(eye, 0, doc, live: p).rotate;
+    expect(after, closeTo(45, 1), reason: "the ball dropped, down and across");
+  });
+
   // Ken's systems review, 2026-11-08: a game's scene left snapped its
   // slot-launched elements back as the next one's start cleared them.
   test("what plays, frozen, outlasts the player being cleared", () {

@@ -19,6 +19,10 @@ import 'package:bruig/plugin_system/canvas/model/midi_effects.dart'
 /// PitchReading is what YIN heard: the pitch in Hz and its clarity, 0 to 1.
 typedef PitchReading = ({double hz, double clarity});
 
+/// _cmnd is detectPitch's row, each lag's cumulative mean normalised
+/// difference: kept between calls rather than made at every one.
+Float64List _cmnd = Float64List(0);
+
 /// detectPitch finds [x]'s pitch at [rate] samples a second, between
 /// [minHz] and [maxHz]; null where nothing repeats clearly enough.
 PitchReading? detectPitch(Float32List x,
@@ -36,32 +40,38 @@ PitchReading? detectPitch(Float32List x,
     energy += x[i] * x[i];
   }
   if (energy / w < 1e-7) return null;
-  var d = Float64List(maxLag + 1);
-  for (var tau = 1; tau <= maxLag; tau++) {
+  // Worked out lag by lag, and no further than the dip it settles in: the
+  // cumulative mean at a lag needs only the lags before it, so stopping
+  // there gives what working out every lag gave, for a fraction of the
+  // work at a voice's pitches (Ken's systems review, 2026-11-08: an
+  // Auto-tune took a good share of a core). Its rows kept between calls.
+  if (_cmnd.length < maxLag + 1) _cmnd = Float64List(maxLag + 1);
+  var cmnd = _cmnd..[0] = 1;
+  var running = 0.0;
+  var tau = -1;
+  var through = 0;
+  void lag(int t) {
     var sum = 0.0;
     for (var i = 0; i < w; i++) {
-      var diff = x[i] - x[i + tau];
+      var diff = x[i] - x[i + t];
       sum += diff * diff;
     }
-    d[tau] = sum;
+    running += sum;
+    cmnd[t] = running == 0 ? 1 : sum * t / running;
+    through = t;
   }
-  // The cumulative mean normalised difference.
-  var cmnd = Float64List(maxLag + 1)..[0] = 1;
-  var running = 0.0;
-  for (var tau = 1; tau <= maxLag; tau++) {
-    running += d[tau];
-    cmnd[tau] = running == 0 ? 1 : d[tau] * tau / running;
-  }
-  var tau = -1;
-  for (var t = minLag; t < maxLag; t++) {
-    if (cmnd[t] < threshold) {
-      // On to the bottom of the dip.
-      while (t + 1 < maxLag && cmnd[t + 1] < cmnd[t]) {
-        t++;
-      }
-      tau = t;
-      break;
+
+  for (var t = 1; t <= maxLag; t++) {
+    lag(t);
+    if (t < minLag || t >= maxLag || cmnd[t] >= threshold) continue;
+    // Under the threshold: on to the bottom of the dip.
+    lag(t + 1);
+    while (t + 1 < maxLag && cmnd[t + 1] < cmnd[t]) {
+      t++;
+      if (t + 1 <= maxLag && through < t + 1) lag(t + 1);
     }
+    tau = t;
+    break;
   }
   if (tau < 0) return null;
   // Between samples: a parabola through the dip and its neighbours.
