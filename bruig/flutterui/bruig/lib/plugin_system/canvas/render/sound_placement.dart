@@ -17,14 +17,17 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 
 /// heardAt is where [e]'s sound, placed by [place], is heard from on
 /// [frame] -- or null where it is not placed, or what it is placed by is
-/// not there.
+/// not there. With [live], what plays from slots moves it too, so the sound
+/// of an element launched across the page goes with it (Ken, 2026-11-08);
+/// an export plays its timeline, and has none.
 Heard? heardAt(
-    CanvasDocument doc, CanvasElement e, SoundPlacement place, int frame) {
+    CanvasDocument doc, CanvasElement e, SoundPlacement place, int frame,
+    {LiveMotion? live}) {
   switch (place.by) {
     case PlaceBy.off:
       return null;
     case PlaceBy.canvas:
-      return _across(doc, e, place, frame);
+      return _across(doc, e, place, frame, live: live);
     case PlaceBy.stage:
       return _onStage(doc, place.stage, place.x, place.y, place.z, place,
           frame);
@@ -42,18 +45,19 @@ Heard? heardAt(
           return heard;
         }
       }
-      return _across(doc, other, place, frame);
+      return _across(doc, other, place, frame, live: live);
   }
 }
 
 /// _across is [e]'s place across the canvas on [frame], as its clips and
 /// keyframes move it.
 Heard _across(
-    CanvasDocument doc, CanvasElement e, SoundPlacement place, int frame) {
+    CanvasDocument doc, CanvasElement e, SoundPlacement place, int frame,
+    {LiveMotion? live}) {
   double centreOf(int? instance) =>
       e.x +
       e.width / 2 +
-      poseWithMotion(e, frame, doc, instance: instance).dx;
+      poseWithMotion(e, frame, doc, instance: instance, live: live).dx;
   // An element reused is heard from the middle of its instances.
   var set = e.base.motion.instances;
   var centre = set == null || set.count == 0

@@ -651,6 +651,37 @@ void main() {
     expect(a, isNot(closeTo(b, 1e-6)));
   });
 
+  // Ken, 2026-11-08: a sound placed by its element's place on the page
+  // goes with it when a slot sends it across.
+  test("a sound placed on the page follows its element launched from a slot",
+      () {
+    var doc = CanvasDocument(elements: [
+      ShapeElement(const ElementBase(
+          id: "car",
+          x: 0,
+          y: 0,
+          width: 20,
+          height: 20,
+          motion: ElementMotion(clips: [
+            MotionClip(id: "drive", length: 1, keys: {
+              MotionProp.x: [
+                MotionKey(0, MotionNumber(1200)),
+                MotionKey(1, MotionNumber(1200)),
+              ],
+            }),
+          ]))),
+    ]);
+    var car = doc.elementById("car")!;
+    const place = SoundPlacement(by: PlaceBy.canvas, arc: 60);
+    var still = heardAt(doc, car, place, 0)!.angle;
+    expect(still, lessThan(-20), reason: "at the left edge, from the left");
+    var p = MotionPlayer()..step(doc, 0, 0);
+    p.launch(doc, 0, "car", "drive", 0);
+    p.step(doc, 0, 0.5);
+    expect(heardAt(doc, car, place, 0, live: p)!.angle, greaterThan(still + 20),
+        reason: "driven right by its slot, heard from further right");
+  });
+
   // Ken's systems review, 2026-11-08: "on" another element went where its
   // timeline had it, not where a slot had sent it.
   test("a place on a launched element is where that element is", () {

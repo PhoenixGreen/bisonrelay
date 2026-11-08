@@ -143,7 +143,44 @@ class MixGraph {
         ? _masters.fold(1.0, (least, m) => math.min(least, m.limited))
         : _master.limited;
     _levels[limitKey] = (g, g);
-    _loudness.process(l, r, n);
+    if (meterMaster) _loudness.process(l, r, n);
+  }
+
+  /// meterMaster is whether what leaves the master is measured for its
+  /// Loudness card: not in an export, where no card reads it (Ken's
+  /// systems review, 2026-11-08).
+  bool meterMaster = true;
+
+  /// _listeners are the devices that listen to another channel (a vocoder's
+  /// carrier, a gate's key -- in split branches too) and the compressors
+  /// that do: found once, and again only after a strip has changed (see
+  /// _stripsChanged), rather than at every block.
+  (List<Sidechained>, List<Compressor>)? _listeners;
+
+  /// _stripsChanged lets [_listeners] go, as a strip has been made or
+  /// retuned: what runs in it may be new.
+  void _stripsChanged() => _listeners = null;
+
+  (List<Sidechained>, List<Compressor>) _findListeners() {
+    var everyStrip = [
+      ..._strips.values,
+      for (var ret in _returns) ret.strip,
+      ...?_scene,
+    ];
+    return (
+      [
+        for (var strip in everyStrip) ...[
+          ...strip.devices.whereType<Sidechained>(),
+          // And those in a split's branches.
+          for (var split in strip.devices.whereType<SplitProcessor>())
+            ...split.inner.whereType<Sidechained>(),
+        ],
+      ],
+      [
+        for (var strip in everyStrip)
+          if (strip.compressor case var c? when c.source != null) c,
+      ],
+    );
   }
   (double, double) _masterLevels = (0, 0);
 
@@ -169,6 +206,7 @@ class MixGraph {
   /// removeChannel stops running channel [key]'s strip: gone from the
   /// canvas, its sounds go to the master.
   void removeChannel(String key) {
+    _stripsChanged();
     _strips.remove(key);
     _signatures.remove(key);
     _structures.remove(key);
@@ -188,6 +226,7 @@ class MixGraph {
     var signature = json.toString();
     if (_signatures[key] == signature) return;
     _signatures[key] = signature;
+    _stripsChanged();
     var structure = _structureOf(mix, json);
     var strip = _strips[key];
     if (strip != null && _structures[key] == structure) {
@@ -233,6 +272,7 @@ class MixGraph {
   void setScene(ChannelMix bus, Set<String> channels) {
     _sceneKeys = channels;
     if (identical(bus, _sceneMix)) return;
+    _stripsChanged();
     // As for a channel (see setChannel): differing only in its fader and
     // its devices' settings, the same strips are retuned, and the fader
     // ramps.
@@ -253,6 +293,7 @@ class MixGraph {
   }
 
   void _buildScene({List<StripProcessor>? carry}) {
+    _stripsChanged();
     if (_sceneSignature.isEmpty) {
       _scene = null;
       return;
@@ -269,6 +310,7 @@ class MixGraph {
     var signature = [for (var r in returns) r.toKey()].join("|");
     if (signature == _returnsSignature) return;
     _returnsSignature = signature;
+    _stripsChanged();
     // Each retuned or rebuilt as a channel's strip is (see setChannel), so
     // a knob turned on a return's reverb does not cut its tail.
     var was = {for (var r in _returns) r.spec.id: r};
@@ -653,34 +695,21 @@ class MixGraph {
     }
     // A vocoder's carrier channel, as it came in -- before its own strip,
     // so a muted carrier still carries.
-    var everyStrip = [
-      ..._strips.values,
-      for (var ret in _returns) ret.strip,
-      ...?_scene,
-    ];
-    for (var devices in [
-      for (var strip in everyStrip) strip.devices,
-      // And those in a split's branches.
-      for (var strip in everyStrip)
-        for (var split in strip.devices.whereType<SplitProcessor>())
-          split.inner.toList(),
-    ]) {
-      for (var d in devices) {
-        if (d is! Sidechained) continue;
-        var from = _inputs[d.source];
-        if (from != null) {
-          d.feed(from.l, from.r, n);
-        } else if (_strips.containsKey(d.source)) {
-          if (d is Gate) d.silence(n);
-          if (d is Follower) d.silence(n);
-        }
+    var (sidechained, keyed) = _listeners ??= _findListeners();
+    for (var d in sidechained) {
+      var from = _inputs[d.source];
+      if (from != null) {
+        d.feed(from.l, from.r, n);
+      } else if (_strips.containsKey(d.source)) {
+        if (d is Gate) d.silence(n);
+        if (d is Follower) d.silence(n);
       }
     }
     // A compressor listening to another channel: a channel there but
     // silent this block is listened to as silence; one gone, not at all.
-    for (var comp in [for (var strip in everyStrip) strip.compressor]) {
-      var source = comp?.source;
-      if (comp == null || source == null) continue;
+    for (var comp in keyed) {
+      var source = comp.source;
+      if (source == null) continue;
       var from = _inputs[source];
       if (from != null) {
         comp.key.feed(from.l, from.r, n);

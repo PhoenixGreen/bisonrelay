@@ -407,7 +407,21 @@ extension CanvasInstruments on CanvasController {
     }
 
     play();
-    return Timer.periodic(step, (_) => play());
+    // While the transport plays, the steps after the first on its grid --
+    // as a rendered arpeggio's are, from nought -- rather than counted
+    // from the key (Ken, 2026-11-08). The first is at once, so a key is
+    // heard when it is pressed; a grid step too close after it waits for
+    // the next.
+    if (!playing || stepSeconds <= 0) {
+      return Timer.periodic(step, (_) => play());
+    }
+    var toNext = stepSeconds - _sessionNow % stepSeconds;
+    if (toNext < stepSeconds * 0.3) toNext += stepSeconds;
+    return Timer(Duration(microseconds: (toNext * 1e6).round()), () {
+      if (_arps[e.id] != live) return;
+      play();
+      live.timer = Timer.periodic(step, (_) => play());
+    });
   }
 
   /// noteOff lets [key] go.

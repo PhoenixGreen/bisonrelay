@@ -86,6 +86,32 @@ void main() {
       expect([for (var n in down) n.key], [76, 72, 64, 60]);
     });
 
+    // Ken, 2026-11-08: as it plays live -- and as Ableton's does.
+    test("a key added to a held chord joins its pattern where it has got to",
+        () {
+      const arp = MidiEffect(MidiEffectKind.arpeggiator);
+      // C held, E and G added a step and two in: sixteenths at 120.
+      var played = applyMidiEffects(const [
+        MidiNote(60, 0, 1),
+        MidiNote(64, 0.125, 0.875),
+        MidiNote(67, 0.25, 0.75),
+      ], [
+        arp
+      ], 0.5);
+      expect([for (var n in played.take(5)) n.key], [60, 64, 67, 60, 64],
+          reason: "on round, not back to the bottom at each added key");
+      // Let go of altogether, it starts again from the bottom.
+      var again = applyMidiEffects(const [
+        MidiNote(60, 0, 0.25),
+        MidiNote(64, 0, 0.25),
+        MidiNote(60, 0.5, 0.25),
+        MidiNote(64, 0.5, 0.25),
+      ], [
+        arp
+      ], 0.5);
+      expect([for (var n in again) n.key], [60, 64, 60, 64]);
+    });
+
     test("the effects are saved with the part", () {
       var part = const InstrumentPart(
           monitor: MidiMonitor.input,

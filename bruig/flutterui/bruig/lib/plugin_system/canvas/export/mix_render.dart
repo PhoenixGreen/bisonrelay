@@ -154,7 +154,9 @@ void _pass(
     bool fold,
     void Function(List<Float32List> out, int n) take,
     {bool limit = true}) {
+  // No Loudness card reads an export's master: not measured.
   var graph = MixGraph()
+    ..meterMaster = false
     ..setSpeakers(speakers)
     ..setReturns(returns)
     ..setMaster(master, normaliseDb: normaliseDb);

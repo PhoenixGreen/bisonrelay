@@ -768,7 +768,8 @@ extension CanvasMixing on CanvasController {
     for (var lane in [...timedLanes, ...interactiveLanes]) {
       var place = lane.clip.place;
       if (place.isOff || out.containsKey(lane.channelKey)) continue;
-      if (heardAt(_document, lane.element, place, _frame) case var h?) {
+      if (heardAt(_document, lane.element, place, _frame, live: liveMotion)
+          case var h?) {
         out[lane.channelKey] = h;
       }
     }

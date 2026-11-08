@@ -302,7 +302,6 @@ List<MidiNote> applyMidiEffects(
   var end = out.map((n) => n.end).reduce(math.max);
   var played = <MidiNote>[];
   var byStart = [...out]..sort((a, b) => a.start.compareTo(b.start));
-  List<int>? was;
   // On the step grid counted from nought, as the transport's is.
   var t = (byStart.first.start / step).floor() * step;
   for (; t < end - 1e-6; t += step) {
@@ -311,24 +310,17 @@ List<MidiNote> applyMidiEffects(
         if (n.start <= t + 1e-6 && n.end > t + 1e-6) n,
     ];
     var keys = [for (var n in held) n.key];
+    // Every key let go, it starts again from the top; a key added to those
+    // held joins the pattern where it has got to -- as it plays live, and
+    // as Ableton's does (Ken, 2026-11-08).
     if (keys.isEmpty) {
       player.reset();
-      was = null;
       continue;
     }
-    // A new chord starts its pattern again.
-    if (was == null || !_sameKeys(was, keys)) player.reset();
-    was = keys;
     var key = player.next(keys);
     if (key == null) continue;
     var velocity = held.map((n) => n.velocity).reduce(math.max);
     played.add(MidiNote(key, t, step * gate, velocity));
   }
   return played;
-}
-
-bool _sameKeys(List<int> a, List<int> b) {
-  if (a.length != b.length) return false;
-  var sa = {...a};
-  return b.every(sa.contains);
 }
