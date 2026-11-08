@@ -56,6 +56,18 @@ class _Bus {
       r[i] += from.r[i] * g;
     }
   }
+
+  /// addRamped adds [from] at a gain moving from [was] to [g] over the
+  /// block, so a send turned (or automated) does not step.
+  void addRamped(_Bus from, int n, double was, double g) {
+    if (was == g) return addScaled(from, n, g);
+    var d = (g - was) / n;
+    for (var i = 0; i < n; i++) {
+      var k = was + d * (i + 1);
+      l[i] += from.l[i] * k;
+      r[i] += from.r[i] * k;
+    }
+  }
 }
 
 /// _Return is a return as it runs: a channel's strip over its devices,
@@ -158,6 +170,9 @@ class MixGraph {
     // Its input too: a gate or a vocoder listening to it then hears it
     // gone, as an export (which never had it) does, not silence.
     _inputs.remove(key);
+    _sending.remove(key);
+    _sendsMet.removeWhere((id) => id.startsWith("$key>"));
+    _sendGains.removeWhere((id, _) => id.startsWith("$key>"));
     _pans.remove(key);
     _placed.remove(key);
     _levels.remove(key);
@@ -669,9 +684,9 @@ class MixGraph {
       strip.scopes = scoped[entry.key] ?? const {};
       strip.listenAt = listenAt[entry.key];
       strip.shape(b.l, b.r, n);
-      _send(strip.mix, b, n, pre: true);
+      _send(entry.key, strip.mix, b, n, pre: true);
       strip.level(b.l, b.r, n);
-      _send(strip.mix, b, n, pre: false);
+      _send(entry.key, strip.mix, b, n, pre: false);
       _levels[entry.key] = _peaks(b.l, b.r, n);
       heard[entry.key] = (b.l, b.r);
       // Out into a return, as a group bus, rather than to the master.
@@ -754,15 +769,37 @@ class MixGraph {
 
   /// _send adds [mix]'s sends from [from] into the returns that take them
   /// at this point, [pre] or post fader.
-  void _send(ChannelMix mix, _Bus from, int n, {required bool pre}) {
-    if (mix.sends.isEmpty || mix.mute) return;
+  ///
+  /// Each from where the last block left it, ramped -- a send turned, or
+  /// moved by a lane, or the channel muted -- as a fader is (Ken's systems
+  /// review, 2026-11-08: a send stepped at each block).
+  void _send(String key, ChannelMix mix, _Bus from, int n,
+      {required bool pre}) {
+    if (mix.sends.isEmpty && !_sending.contains(key)) return;
+    var any = false;
     for (var ret in _returns) {
       if (ret.spec.pre != pre) continue;
+      var id = "$key>${ret.spec.id}";
       var db = mix.sends[ret.spec.id];
-      if (db == null) continue;
-      ret.bus.addScaled(from, n, dbToGain(db));
+      var g = db == null || mix.mute ? 0.0 : dbToGain(db);
+      // A send's first block starts it where it is set; after that, one
+      // not sounding before rises from silence.
+      var was = _sendGains[id] ?? (_sendsMet.add(id) ? g : 0.0);
+      if (was == 0 && g == 0) {
+        _sendGains.remove(id);
+        continue;
+      }
+      any = true;
+      ret.bus.addRamped(from, n, was, g);
+      _sendGains[id] = g;
     }
+    any ? _sending.add(key) : _sending.remove(key);
   }
+
+  /// _sendGains are each send's gain as the last block ended, by
+  /// "channel>return"; _sending the channels with one still sounding.
+  final Map<String, double> _sendGains = {};
+  final Set<String> _sending = {}, _sendsMet = {};
 
   static (double, double) _peaks(Float32List l, Float32List r, int n) {
     var pl = 0.0, pr = 0.0;

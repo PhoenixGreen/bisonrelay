@@ -306,6 +306,23 @@ void main() {
           reason: "let go, it stops");
     });
 
+    // Ken's systems review, 2026-11-08: the live arpeggiator played the
+    // key's own velocity, not what the Velocity effect made of it.
+    test("a live arpeggio is as loud as its effects make it", () async {
+      var c = make([
+        keys("p", effects: const [
+          MidiEffect(MidiEffectKind.velocity, values: {"low": 40, "high": 40}),
+          MidiEffect(MidiEffectKind.arpeggiator, values: {"rate": 0}),
+        ]),
+      ]);
+      addTearDown(c.dispose);
+      var e = c.document.elements.single as AudioElement;
+      c.noteOn(e, 60, velocity: 120);
+      await settle();
+      expect(engine.notes.where((n) => n.$3 > 0).map((n) => n.$3), [40]);
+      c.noteOff(e, 60);
+    });
+
     test("a part is played into a file through its effects", () async {
       var renderer = CanvasController.partRenderer;
       var store = CanvasController.partStore;

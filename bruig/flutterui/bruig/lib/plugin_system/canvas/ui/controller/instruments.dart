@@ -336,7 +336,7 @@ extension CanvasInstruments on CanvasController {
     if (arpeggiatorOf(part.effects) case var arp?) {
       var live = _arps[e.id] ??= _LiveArp(Arpeggio(arp));
       live.pressed[key] = [for (var (k, _) in keys) k];
-      live.velocity = velocity;
+      live.velocities[key] = keys.fold(1, (m, kv) => math.max(m, kv.$2));
       live.timer ??= _startArp(e, live);
       return;
     }
@@ -356,6 +356,7 @@ extension CanvasInstruments on CanvasController {
     var arped = false;
     if (_arps[e.id] case var live? when live.pressed.remove(key) != null) {
       arped = true;
+      live.velocities.remove(key);
       if (live.pressed.isEmpty) {
         live.timer?.cancel();
         _arps.remove(e.id);
@@ -394,9 +395,11 @@ extension CanvasInstruments on CanvasController {
       var key = live.player.next(held);
       if (key == null) return;
       live.sounding = key;
+      var step = ++live.played;
       unawaited(audio.noteOn(channel, part, key, live.velocity));
       Timer(gate, () {
-        if (live.sounding == key) {
+        // This step's gate, not a later step's on the same key.
+        if (live.played == step && live.sounding == key) {
           audio.noteOff(channel, key);
           live.sounding = null;
         }

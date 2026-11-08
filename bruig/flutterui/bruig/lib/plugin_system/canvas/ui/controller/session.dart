@@ -176,14 +176,17 @@ extension CanvasSession on CanvasController {
     notifyListeners();
   }
 
-  /// _sessionNow is where the session's clock is: the playhead, in seconds.
-  /// The session keeps time with the timeline, so a clip launched on a bar
-  /// is on the timeline's bar.
+  /// _sessionNow is where the session's clock is, in seconds. Playing, it
+  /// keeps time with the timeline from where Play was pressed, so a clip
+  /// launched on a bar is on the timeline's bar -- and goes on through a
+  /// loop back (see _sessionClock).
   double get _sessionNow => gaming
       ? _gameClock
       : _sessionOnly
           ? _sessionSeconds
-          : (_frame + betweenFrames) / math.max(1, _document.frameRate);
+          : playing
+              ? _sessionClock + betweenFrames / math.max(1, _document.frameRate)
+              : (_frame + betweenFrames) / math.max(1, _document.frameRate);
 
   /// _gameClock is a game's slots' own clock: seconds since it started. Not
   /// the playhead's, which a Loop on the game's timeline sends back, taking

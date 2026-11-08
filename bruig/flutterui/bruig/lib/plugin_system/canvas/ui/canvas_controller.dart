@@ -3145,6 +3145,13 @@ class CanvasController extends ChangeNotifier {
   /// _sessionSeconds is the slots' own clock, playing on their own.
   double _sessionSeconds = 0;
 
+  /// _sessionClock is the session's clock while the timeline plays: where
+  /// the playhead was as Play was pressed, moved on a frame at every frame
+  /// played -- not sent back with the playhead by a Loop or a Jump, or to
+  /// nought at each scene of a run (Ken's systems review, 2026-11-08: a clip
+  /// waiting for the loop's end never came, and one playing never ended).
+  double _sessionClock = 0;
+
   /// _offTimeline are the channels that have left the timeline for their
   /// slots, as Ableton's tracks do: a clip launched there while the
   /// timeline plays silences the channel's timeline -- and it stays silent,
@@ -4357,10 +4364,21 @@ class _ClipPlayed {
 class _LiveArp {
   final Arpeggio player;
   final Map<int, List<int>> pressed = {};
-  int velocity = 100;
+
+  /// velocities are each key's notes' loudest, through the channel's
+  /// Velocity effect: a step is played as loud as the loudest held, as the
+  /// rendered arpeggiator plays it.
+  final Map<int, int> velocities = {};
   int? sounding;
+
+  /// played is the steps sounded so far: a step's gate lets go of that step
+  /// alone, not the same key struck again on the next.
+  int played = 0;
+
   Timer? timer;
   _LiveArp(this.player);
+
+  int get velocity => velocities.values.fold(1, math.max);
 }
 
 /// PianoRollTarget is what the piano roll edits: MIDI channel [channel]'s

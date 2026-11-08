@@ -615,6 +615,43 @@ void main() {
       c.pause();
     });
 
+    // Ken's systems review, 2026-11-08: the session ran on the playhead,
+    // so a Loop on the timeline sent every slot back with it.
+    test("a Loop on the timeline does not send the slots back", () async {
+      var c = CanvasController(
+          CanvasDocument(
+              frames: 120 * 60,
+              frameRate: 120,
+              audio: const AudioSettings(tempo: 120),
+              // Round the first second for ever.
+              actions: const [
+                TimelineAction(
+                    frame: 120, kind: TimelineActionKind.loop, target: 0),
+              ],
+              elements: [
+                sound("a")
+              ]),
+          audioEngine: engine);
+      addTearDown(c.dispose);
+      c.clockForTest = () => micros;
+      c.clipFromSound("a", 0, c.soundsOf("a").single);
+      c.setSessionClip(
+          "a", 0, c.session.at("a", 0)!.copyWith(loop: false, bars: 1));
+      c.play();
+      at(c, 0.25);
+      c.pressClip("a", 0);
+      await settle();
+      // Launched on the next bar, two seconds in -- which the playhead,
+      // going round its one second, never reaches.
+      at(c, 2.2);
+      expect(c.clipState("a", 0), ClipState.playing,
+          reason: "its bar came, on the session's own clock");
+      at(c, 4.3);
+      expect(c.clipState("a", 0), ClipState.stopped, reason: "and it ended");
+      expect(c.frame, lessThan(121), reason: "the playhead going round");
+      c.pause();
+    });
+
     test("a clip played once ends after its length", () async {
       var c = make([sound("a")]);
       addTearDown(c.dispose);

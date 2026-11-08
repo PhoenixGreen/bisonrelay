@@ -181,4 +181,18 @@ void main() {
     }
     expect(g.ringing, isFalse, reason: "rung out: the engine may rest");
   });
+
+  test("a send turned as it plays ramps rather than steps", () {
+    var g = MixGraph()
+      ..setMaster(const MasterMix(limiter: false))
+      ..setReturns(const [ReturnChannel("fx", name: "Plain", pre: true)])
+      ..setChannel("a", const ChannelMix(gainDb: -120, sends: {"fx": -120}));
+    for (var i = 0; i < 4; i++) {
+      _block(g, 0.5);
+    }
+    g.setChannel("a", const ChannelMix(gainDb: -120, sends: {"fx": 0}));
+    var up = _block(g, 0.5);
+    expect(up.first, lessThan(0.01), reason: "from where it was");
+    expect(up.last, closeTo(0.5, 0.01), reason: "to where it is set");
+  });
 }

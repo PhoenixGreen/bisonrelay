@@ -35,7 +35,12 @@ Future<bool> renderMixWav(List<ExportSound> sounds, MasterMix master,
     Isolate.run(() => _render(sounds, master, returns, scenes, seconds,
         ffmpeg, out, speakers, fold));
 
-const int _block = 4096;
+/// _block is how much is rendered at a time: automation, places and the
+/// scene's bus are set once a block, so it is about as often as the editor
+/// sets them while it plays, once a frame -- at 4096 (85ms) a filter swept
+/// by a lane stepped in an export as it did not in the editor (Ken's
+/// systems review, 2026-11-08).
+const int _block = 1024;
 
 /// _Stretch is one decoded stretch and where it starts, in frames.
 class _Stretch {

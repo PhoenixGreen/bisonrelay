@@ -78,6 +78,8 @@ extension CanvasPlayback on CanvasController {
     }
     if (playing) return;
     _playedFrom = (_document.at, _frame);
+    // The session's clock from the playhead: see _sessionClock.
+    _sessionClock = _frame / math.max(1, _document.frameRate);
     // Sounds that start by themselves start with the canvas -- before the
     // checks below, since a page that is a still is still a page with music
     // on it.
@@ -514,6 +516,8 @@ extension CanvasPlayback on CanvasController {
   /// Markers apply after the advance, so a stop on frame 30 means "having
   /// reached 30, stop".
   void _step() {
+    // The session's clock goes on a frame, wherever the playhead goes.
+    _sessionClock += 1 / math.max(1, _document.frameRate);
     // Previewing one element: it alone moves on, and the playhead stays.
     if (_previewing case var one?) {
       if (one.frame + 1 > _previewingEnd) {
