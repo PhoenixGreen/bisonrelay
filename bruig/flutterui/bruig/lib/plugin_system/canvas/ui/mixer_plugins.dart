@@ -845,6 +845,16 @@ class _GainBadgeState extends State<_GainBadge>
   @override
   CanvasController get meteredBy => widget.controller;
 
+  /// Hidden from the Chain's ⋯, it reads nothing.
+  @override
+  bool get metering => widget.controller.chainBadges;
+
+  @override
+  void didUpdateWidget(_GainBadge old) {
+    super.didUpdateWidget(old);
+    meterAgain();
+  }
+
   @override
   void tick() {
     var i = widget.controller.chainOf(widget.channel).indexOf(widget.id);
@@ -890,12 +900,17 @@ class NoteJoin extends StatefulWidget {
   final String channel;
   final int upto;
   final double height;
+
+  /// name tells it from the other joins in its keys: by default how many
+  /// effects are before it.
+  final String? name;
   const NoteJoin(
       {super.key,
       required this.controller,
       required this.channel,
       required this.upto,
-      required this.height});
+      required this.height,
+      this.name});
 
   @override
   State<NoteJoin> createState() => _NoteJoinState();
@@ -907,6 +922,35 @@ class _NoteJoinState extends State<NoteJoin>
 
   @override
   CanvasController get meteredBy => widget.controller;
+
+  /// Hidden from the Chain's ⋯, it reads nothing.
+  @override
+  bool get metering => widget.controller.chainMeters;
+
+  @override
+  void didUpdateWidget(NoteJoin old) {
+    super.didUpdateWidget(old);
+    meterAgain();
+  }
+
+  // Counted again as keys go down and up -- live keys sound nothing a
+  // meter would wake for -- and once to begin with.
+  @override
+  void initState() {
+    super.initState();
+    tick();
+    widget.controller.keysHeld.addListener(_keys);
+  }
+
+  void _keys() {
+    if (mounted && metering) setState(tick);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.keysHeld.removeListener(_keys);
+    super.dispose();
+  }
 
   @override
   void tick() {
@@ -929,7 +973,6 @@ class _NoteJoinState extends State<NoteJoin>
   @override
   Widget build(BuildContext context) {
     if (!widget.controller.chainMeters) return const SizedBox(width: 4);
-    tick();
     var studio = MixerLook.of(context).studio;
     const dots = 6;
     return Tooltip(
@@ -937,7 +980,7 @@ class _NoteJoinState extends State<NoteJoin>
           ? "No notes passing"
           : "$_notes note${_notes == 1 ? "" : "s"} passing",
       child: SizedBox(
-        key: ValueKey("noteJoin-${widget.upto}"),
+        key: ValueKey("noteJoin-${widget.name ?? widget.upto}"),
         width: 16,
         height: widget.height,
         child: Center(
@@ -2952,18 +2995,24 @@ class _BandIcon extends CustomPainter {
 /// paintedLabel is [text] in [style], laid out: kept, as the meters and
 /// graphs paint the same few labels on every frame they move, and laying
 /// them out again each time was much of what those frames cost.
-TextPainter paintedLabel(String text, TextStyle style) {
-  var key = (text, style);
+///
+/// With [maxWidth] it is laid out no wider, on one line ended with an
+/// ellipsis where it runs over.
+TextPainter paintedLabel(String text, TextStyle style, {double? maxWidth}) {
+  var width = maxWidth == null ? null : math.max(0.0, maxWidth);
+  var key = (text, style, width);
   var kept = _labels[key];
   if (kept != null) return kept;
   if (_labels.length > 400) _labels.clear();
   return _labels[key] = TextPainter(
       text: TextSpan(text: text, style: style),
+      maxLines: width == null ? null : 1,
+      ellipsis: width == null ? null : "…",
       textDirection: TextDirection.ltr)
-    ..layout();
+    ..layout(maxWidth: width ?? double.infinity);
 }
 
-final _labels = <(String, TextStyle), TextPainter>{};
+final _labels = <(String, TextStyle, double?), TextPainter>{};
 
 class _EqGraph extends CustomPainter {
   final Eq eq;
@@ -4637,15 +4686,11 @@ class _LimitHistory extends CustomPainter {
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, 2),
         Paint()..color = const Color(0xFFE5534B));
     var now = history.isEmpty ? 0.0 : history.last;
-    var tp = TextPainter(
-        text: TextSpan(
-            text: "ceiling ${ceiling.toStringAsFixed(1)} dB · "
-                "${now < -0.05 ? "down ${(-now).toStringAsFixed(1)} dB" : "not turning down"}",
-            style: TextStyle(fontSize: 10, color: studio.muted)),
-        maxLines: 1,
-        ellipsis: "…",
-        textDirection: TextDirection.ltr)
-      ..layout(maxWidth: size.width - 12);
+    var tp = paintedLabel(
+        "ceiling ${ceiling.toStringAsFixed(1)} dB · "
+        "${now < -0.05 ? "down ${(-now).toStringAsFixed(1)} dB" : "not turning down"}",
+        TextStyle(fontSize: 10, color: studio.muted),
+        maxWidth: size.width - 12);
     tp.paint(canvas, Offset(6, size.height - tp.height - 4));
   }
 
@@ -5196,13 +5241,8 @@ class _DuckShape extends CustomPainter {
     var from = lead + duck.attack, to = from + hold;
     canvas.drawRect(Rect.fromLTRB(x(from), pad, x(to), pad + h),
         Paint()..color = const Color(0xFFE08A1E).withValues(alpha: 0.18));
-    var tp = TextPainter(
-        text: TextSpan(
-            text: name, style: const TextStyle(fontSize: 9, color: _faceDim)),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-        ellipsis: "…")
-      ..layout(maxWidth: math.max(0, x(to) - x(from) - 4));
+    var tp = paintedLabel(name, const TextStyle(fontSize: 9, color: _faceDim),
+        maxWidth: x(to) - x(from) - 4);
     tp.paint(canvas, Offset(x(from) + 2, pad + h - tp.height - 2));
     var env = duckEnvelope([(from, to)],
         gain: dbToGain(duck.depthDb),
@@ -7476,15 +7516,12 @@ class _LevelsPainter extends CustomPainter {
   }
 
   void _label(Canvas canvas, String text, double x, double y, Color colour) {
-    var tp = TextPainter(
-        text: TextSpan(
-            text: text,
-            style: TextStyle(
-                fontSize: 10,
-                color: colour,
-                fontFeatures: const [FontFeature.tabularFigures()])),
-        textDirection: TextDirection.ltr)
-      ..layout();
+    var tp = paintedLabel(
+        text,
+        TextStyle(
+            fontSize: 10,
+            color: colour,
+            fontFeatures: const [FontFeature.tabularFigures()]));
     tp.paint(canvas, Offset(x, y));
   }
 
@@ -9064,11 +9101,7 @@ class _SplitPicture extends CustomPainter {
     var w = size.width, h = size.height;
     canvas.drawRect(Offset.zero & size, Paint()..color = back);
     void label(String text, double x, double y, Color colour) {
-      var tp = TextPainter(
-          text: TextSpan(
-              text: text, style: TextStyle(fontSize: 9, color: colour)),
-          textDirection: TextDirection.ltr)
-        ..layout();
+      var tp = paintedLabel(text, TextStyle(fontSize: 9, color: colour));
       tp.paint(canvas, Offset(x, y - tp.height / 2));
     }
 

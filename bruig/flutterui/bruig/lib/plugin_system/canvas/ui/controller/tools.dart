@@ -1762,17 +1762,25 @@ extension CanvasTools on CanvasController {
   /// a scene's bus, a return's, a channel's.
   void pickStrip(String key) {
     var owner = key.startsWith("snd-") ? key.substring(4) : null;
-    if (owner != null && _document.elementById(owner) != null) {
-      if (!(_selection.length == 1 && _selection.first == owner)) {
-        selectOnly(owner);
-      }
-    } else if (_selection.isNotEmpty) {
-      clearSelection();
+    var element = owner != null && _document.elementById(owner) != null;
+    var picked = element
+        ? _selection.length == 1 && _selection.first == owner
+        : _selection.isEmpty;
+    var chainOut = _animationOpen || _effectsOpen;
+    // Pressed again -- every press on a strip picks it, a fader grabbed
+    // too -- with nothing to change: nothing told (Ken's systems review,
+    // 2026-11-08: each press rebuilt the editor once or twice over).
+    if (picked &&
+        selectedChannel == key &&
+        _effectsOf == key &&
+        (!chainOut || (_effectsOpen && !_animationOpen && !_chainMotion))) {
+      return;
     }
+    if (!picked) element ? selectOnly(owner) : clearSelection();
     _effectsOf = key;
     selectedChannel = key;
-    if (_animationOpen || _effectsOpen) openEffects(key);
-    notifyListeners();
+    // Told once: by opening the chain where it is out, or here.
+    chainOut ? openEffects(key) : notifyListeners();
   }
 
   /// effectsOf is the strip whose chain of effects the effects panel shows,

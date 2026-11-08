@@ -769,8 +769,7 @@ class _CanvasMixerState extends State<CanvasMixer>
     // set it, so the faders all start on one line.
     var devicesWanted = [
       for (var l in lanes)
-        _ChannelStrip.devicesWanted(returns.length,
-            narrow: narrow.contains(l.key),
+        _ChannelStrip.devicesWanted(
             part: controller.instrumentOf(l.key)?.instrument,
             devices: l.mix.devices.length +
                 (l.mix.speech == null ? 0 : 1) +
@@ -1233,13 +1232,13 @@ class _CanvasMixerState extends State<CanvasMixer>
         "clip" => LayoutBuilder(
             builder: (context, box) => ClipEditor(
                 controller: controller,
-                wide: controller.editorWide && _roomForAll(context, box),
-                canWiden: _roomForAll(context, box))),
+                wide: controller.editorWide && _roomForAll(box),
+                canWiden: _roomForAll(box))),
         "roll" => LayoutBuilder(
             builder: (context, box) => ClipEditor(
                 controller: controller,
-                wide: controller.editorWide && _roomForAll(context, box),
-                canWiden: _roomForAll(context, box),
+                wide: controller.editorWide && _roomForAll(box),
+                canWiden: _roomForAll(box),
                 part: true)),
         _ => null,
       };
@@ -1333,7 +1332,13 @@ class _CanvasMixerState extends State<CanvasMixer>
           // Between each two of its note devices, the notes passing as dots,
           // as the prototype's joins on a MIDI chain: the effects before
           // each done to them.
-          NoteJoin(controller: controller, channel: key, upto: 0, height: h),
+          // The notes as they come, before MIDI In picks what it hears.
+          NoteJoin(
+              controller: controller,
+              channel: key,
+              upto: 0,
+              height: h,
+              name: "in"),
           chainZone("Before", midiColour, h),
           device(
               "midiIn",
@@ -1785,10 +1790,9 @@ class _CanvasMixerState extends State<CanvasMixer>
 
   /// _roomForAll is whether an editor [box] wide has room for every column
   /// of its settings -- three, 690 together -- and what it edits beside
-  /// them, at the text's size.
-  static bool _roomForAll(BuildContext context, BoxConstraints box) =>
-      box.maxWidth >=
-      690 + 480 * math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
+  /// them. At the desk's own size: the desk is zoomed as a whole for the
+  /// text's (see build).
+  static bool _roomForAll(BoxConstraints box) => box.maxWidth >= 690 + 480;
 
   final ScrollController _chainScroll = ScrollController();
 
@@ -3094,14 +3098,13 @@ class _SpeakerMetersPainter extends CustomPainter {
         canvas.drawRect(Rect.fromLTWH(x, h * (1 - u), w - 6, h * u),
             Paint()..color = colour.withValues(alpha: heard ? 1 : 0.3));
       }
-      var label = TextPainter(
-          text: TextSpan(
-              text: name,
-              style: TextStyle(
-                  fontSize: 9.5,
-                  color: studio.muted.withValues(alpha: heard ? 1 : 0.5))),
-          textDirection: TextDirection.ltr)
-        ..layout(maxWidth: w);
+      // Kept, as it is painted at the meters' rate.
+      var label = paintedLabel(
+          name,
+          TextStyle(
+              fontSize: 9.5,
+              color: studio.muted.withValues(alpha: heard ? 1 : 0.5)),
+          maxWidth: w);
       label.paint(canvas, Offset(c * w + (w - label.width) / 2, h + 2));
     }
   }

@@ -214,23 +214,13 @@ class _SumScreen extends CustomPainter {
           Rect.fromLTRB(
               bar.left, bar.bottom - bar.height * u, bar.right, bar.bottom),
           Paint()..color = const Color(0xFF3FB08D));
-      var tp = TextPainter(
-          text: TextSpan(
-              text: name, style: TextStyle(fontSize: 10, color: studio.text)),
-          maxLines: 1,
-          ellipsis: "…",
-          textDirection: TextDirection.ltr)
-        ..layout(maxWidth: size.width - 34);
+      var tp = paintedLabel(name, TextStyle(fontSize: 10, color: studio.text),
+          maxWidth: size.width - 34);
       tp.paint(canvas, Offset(26, y + (each - tp.height) / 2));
     }
-    var tp = TextPainter(
-        text: TextSpan(
-            text: shown.isEmpty ? empty : caption,
-            style: TextStyle(fontSize: 10, color: studio.muted)),
-        maxLines: 1,
-        ellipsis: "…",
-        textDirection: TextDirection.ltr)
-      ..layout(maxWidth: size.width - 12);
+    var tp = paintedLabel(shown.isEmpty ? empty : caption,
+        TextStyle(fontSize: 10, color: studio.muted),
+        maxWidth: size.width - 12);
     tp.paint(canvas, Offset(6, size.height - tp.height - 4));
   }
 
@@ -587,29 +577,21 @@ class _LoudnessScreen extends CustomPainter {
                       ? accent
                       : const Color(0xFF3FB08D));
       }
-      var tp = TextPainter(
-          text: TextSpan(
-              text: "$label ${v.isFinite ? v.toStringAsFixed(1) : "–"}",
-              style: TextStyle(fontSize: 9.5, color: studio.muted)),
-          textDirection: TextDirection.ltr)
-        ..layout();
+      var tp = paintedLabel("$label ${v.isFinite ? v.toStringAsFixed(1) : "–"}",
+          TextStyle(fontSize: 9.5, color: studio.muted));
       tp.paint(canvas, Offset(x + (w - tp.width) / 2, bottom + 4));
     }
     var line = say ??
         "target ${target.round()} · true peak "
             "${reading.peak.isFinite ? reading.peak.toStringAsFixed(1) : "–"} dBTP";
-    var tp = TextPainter(
-        text: TextSpan(
-            text: line,
-            style: TextStyle(
-                fontSize: 10,
-                color: reading.peak > ceiling
-                    ? const Color(0xFFE5534B)
-                    : studio.muted)),
-        maxLines: 1,
-        ellipsis: "…",
-        textDirection: TextDirection.ltr)
-      ..layout(maxWidth: size.width - 120);
+    var tp = paintedLabel(
+        line,
+        TextStyle(
+            fontSize: 10,
+            color: reading.peak > ceiling
+                ? const Color(0xFFE5534B)
+                : studio.muted),
+        maxWidth: size.width - 120);
     tp.paint(canvas, const Offset(6, 7));
   }
 

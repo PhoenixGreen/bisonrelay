@@ -476,8 +476,9 @@ class MotionPlayer implements LiveMotion {
       for (var l in p.layers) {
         var play = l.play;
         if (l.taking == null || play == null) continue;
-        var e =
-            doc.elements.where((e) => e.id == l.taking!.element).firstOrNull;
+        // The master's too, and a copy's own (Ken's systems review,
+        // 2026-11-08: they were never closed, so never kept).
+        var e = _elementIn(doc, l.taking!.element);
         _close(l, e?.base.motion.clip(play.clip), now);
       }
     }
@@ -494,19 +495,42 @@ CanvasDocument writeMotionTakes(
     CanvasDocument doc, List<MotionPlayed> takes, String Function() newId) {
   var next = doc;
   for (var t in takes) {
+    // A copy's own play -- a coin touched -- is that copy's alone: on the
+    // element's timeline every copy would play it, so it is not written.
+    if (t.element.contains("#")) continue;
     var e = next.elementById(t.element);
+    // One on the master: on the master's timeline, which runs through
+    // every scene -- so as far along it as this scene starts.
+    var onMaster = false;
+    if (e == null && !next.editingMaster) {
+      e = next.masterScene?.elements
+          .where((x) => x.id == t.element)
+          .firstOrNull;
+      onMaster = e != null;
+    }
     var c = e?.base.motion.clip(t.clip);
     if (e == null || c == null || t.end - t.start < 0.02) continue;
+    var shift = onMaster && next.hasScenes && !next.isPages
+        ? next.startOfScene(next.at) / math.max(1, next.frameRate)
+        : 0.0;
     var whole = !t.loop && t.to >= c.length - 1e-6;
     var p = ClipPlacement(
       id: newId(),
       clip: t.clip,
       layer: t.layer,
-      start: t.start,
+      start: t.start + shift,
       length: t.end - t.start,
       to: t.loop || whole ? null : math.max(0.02, t.to),
     );
-    next = next.withElement(e.withBase(motion: e.base.motion.withPlacement(p)));
+    var moved = e.withBase(motion: e.base.motion.withPlacement(p));
+    if (onMaster) {
+      var master = next.master!;
+      next = next.withMaster(master.copyWith(elements: [
+        for (var x in master.elements) x.id == moved.id ? moved : x,
+      ]));
+    } else {
+      next = next.withElement(moved);
+    }
   }
   return next;
 }

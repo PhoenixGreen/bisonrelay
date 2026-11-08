@@ -256,51 +256,25 @@ extension on _ChainPanelState {
     var voice = channel && !notes && c.speechOf(key) != null;
     Widget tab(String id, String label, IconData icon, bool on,
             VoidCallback onTap) =>
-        Padding(
-          padding: const EdgeInsets.only(left: 2),
-          child: InkWell(
-            key: ValueKey(id),
-            borderRadius: BorderRadius.circular(6),
-            onTap: on
-                ? null
-                : () {
-                    // An editor wants room; back on the chain, the height it
-                    // had.
-                    if (id == "chainTabDevices") {
-                      if (_chainHeight case var was?) widget.onResize(was);
-                      _chainHeight = null;
-                    } else if (_chainHeight == null &&
-                        !c.chainFull &&
-                        widget.height < _ChainPanelState.editorLeast - 20) {
-                      _chainHeight = widget.height;
-                      widget.onResize(_ChainPanelState.editorLeast);
-                    }
-                    onTap();
-                  },
-            child: Container(
-              height: 24,
-              padding: const EdgeInsets.symmetric(horizontal: 9),
-              decoration: BoxDecoration(
-                color: on ? look.studio.raised : null,
-                borderRadius: BorderRadius.circular(6),
-                border: on
-                    ? Border(
-                        bottom:
-                            BorderSide(color: look.colors.primary, width: 2))
-                    : null,
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                ChainIcon(_tabIcons[id] ?? chainIconFor(icon) ?? "plus",
-                    size: 14, color: on ? look.studio.text : look.studio.muted),
-                const SizedBox(width: 5),
-                Text(label,
-                    style: TextStyle(
-                        fontSize: 11.5,
-                        color: on ? look.studio.text : look.studio.muted)),
-              ]),
-            ),
-          ),
-        );
+        _ChainTab(
+            id: id,
+            label: label,
+            icon: icon,
+            on: on,
+            look: look,
+            onTap: () {
+              // An editor wants room; back on the chain, the height it had.
+              if (id == "chainTabDevices") {
+                if (_chainHeight case var was?) widget.onResize(was);
+                _chainHeight = null;
+              } else if (_chainHeight == null &&
+                  !c.chainFull &&
+                  widget.height < _ChainPanelState.editorLeast - 20) {
+                _chainHeight = widget.height;
+                widget.onResize(_ChainPanelState.editorLeast);
+              }
+              onTap();
+            });
     return [
       const SizedBox(width: 6),
       Container(width: 1, height: 22, color: look.studio.edge),

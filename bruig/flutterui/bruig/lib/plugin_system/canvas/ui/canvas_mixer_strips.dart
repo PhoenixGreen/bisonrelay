@@ -604,8 +604,7 @@ class _ChannelStrip extends StatelessWidget {
   });
 
   /// devicesWanted is how tall its devices band would be to show them all.
-  static double devicesWanted(int returns,
-          {bool narrow = false, InstrumentPart? part, int devices = 0}) =>
+  static double devicesWanted({InstrumentPart? part, int devices = 0}) =>
       _slotsHeight(3 + devices + (part == null ? 0 : 1 + part.effects.length));
 
   @override
