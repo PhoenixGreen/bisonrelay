@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/media/midi_input.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
@@ -206,20 +207,23 @@ void main() {
       expect(engine.notes.where((n) => n.$2 == 60 && n.$3 > 0), hasLength(2));
     });
 
-    test("struck again under the pedal, a key sounds again", () async {
+    // Ken, 2026-11-08: one sustain pedal, the instrument's own.
+    test("the pedal is the instrument's: its keys let go at once", () async {
       var c = make([keys("p")]);
       addTearDown(c.dispose);
       var e = c.document.elements.single as AudioElement;
-      c.sustain(true);
+      var channel = c.timelineChannels.single.key;
+      c.midiControl(MidiControl.sustain, 1);
       c.noteOn(e, 60);
+      await settle();
       c.noteOff(e, 60);
-      await settle();
-      expect(engine.notes.map((n) => n.$3 > 0), [true], reason: "held");
       c.noteOn(e, 60);
       await settle();
+      expect(engine.controls.last, (channel, MidiControl.sustain, 1.0),
+          reason: "the instrument holds the sound");
       expect(engine.notes.map((n) => n.$3 > 0), [true, false, true],
-          reason: "the held note let go, and struck again");
-      c.sustain(false);
+          reason: "let go and struck again, as played");
+      expect(c.heldKeys("p"), {60});
     });
 
     test("a knob turned on the instrument does not cut a held key", () async {
@@ -257,19 +261,24 @@ void main() {
       expect(engine.notes.where((n) => n.$3 == 0).map((n) => n.$2), [60]);
     });
 
-    test("the sustain pedal holds what is let go until it is let up",
-        () async {
+    test("pressed, let go and pressed as the engine starts: one sound", () async {
       var c = make([keys("p")]);
       addTearDown(c.dispose);
-      c.sustain(true);
-      c.midiNote(60, 100);
-      c.midiNote(60, 0);
+      var e = c.document.elements.single as AudioElement;
+      c.noteOn(e, 60);
+      c.noteOff(e, 60);
+      c.noteOn(e, 60);
       await settle();
-      expect(engine.notes.where((n) => n.$3 == 0), isEmpty);
-      expect(c.heldKeys("p"), {60}, reason: "still down, as far as it goes");
-      c.sustain(false);
-      expect(engine.notes.where((n) => n.$3 == 0).map((n) => n.$2), [60]);
-      expect(c.heldKeys("p"), isEmpty);
+      expect(engine.notes, hasLength(1),
+          reason: "the second press heard, the first never: none left ringing");
+    });
+
+    test("a keyboard's pedal reaches the instrument as its Sustain", () {
+      var got = <(MidiControl, double)>[];
+      var midi = MidiInput()..onControl = (c, v) => got.add((c, v));
+      midi.handle(Uint8List.fromList([0xB0, 64, 127]));
+      midi.handle(Uint8List.fromList([0xB0, 64, 0]));
+      expect(got, [(MidiControl.sustain, 1.0), (MidiControl.sustain, 0.0)]);
     });
 
     test("an arpeggiator plays held keys one at a time, live", () async {

@@ -243,7 +243,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
     super.initState();
     // A MIDI keyboard plays this canvas's instruments while it is open.
     MidiInput.shared.onNote = _controller.midiNote;
-    MidiInput.shared.onSustain = _controller.sustain;
     MidiInput.shared.onControl = _controller.midiControl;
     MidiInput.shared.onCc = _controller.midiCc;
     MidiInput.shared.onPlay = _controller.togglePlay;
@@ -373,7 +372,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
   void dispose() {
     if (MidiInput.shared.onNote == _controller.midiNote) {
       MidiInput.shared.onNote = null;
-      MidiInput.shared.onSustain = null;
       MidiInput.shared.onControl = null;
       MidiInput.shared.onCc = null;
       MidiInput.shared.onPlay = null;

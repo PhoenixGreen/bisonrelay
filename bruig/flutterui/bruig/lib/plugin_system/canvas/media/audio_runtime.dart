@@ -138,11 +138,6 @@ class AudioRuntime extends ChangeNotifier {
   (double, int)? _clickMetre;
   int _clickGeneration = 0;
 
-  /// metronomeUnavailable is set once the engine has said it has no
-  /// metronome -- SoLoud's buses -- so the button can say why it is silent.
-  bool get metronomeUnavailable => _noClick;
-  bool _noClick = false;
-
   /// metronome is the click as it should be now: sounding from [at] seconds,
   /// a beat every [secondsPerBeat] in bars of [beatsPerBar], or -- not [on]
   /// -- silent. Called whenever the playhead moves, as cue is: a click that
@@ -176,13 +171,6 @@ class AudioRuntime extends ChangeNotifier {
     () async {
       if (!await _ready() || generation != _clickGeneration) return;
       var track = _click ??= engine.metronome(secondsPerBeat, beatsPerBar);
-      if (track == null) {
-        if (!_noClick) {
-          _noClick = true;
-          notifyListeners();
-        }
-        return;
-      }
       _clickVoice = engine.play(track, volume: 1, at: at);
     }();
   }
@@ -192,6 +180,7 @@ class AudioRuntime extends ChangeNotifier {
   Future<void> noteOn(
       String channel, InstrumentPart part, int key, int velocity) async {
     var down = _down.putIfAbsent(channel, () => {})..add(key);
+    var press = _presses[(channel, key)] = ++_pressed;
     // Started, and the bank read if it is wanted: straight to the engine,
     // with nothing awaited between the key and the sound.
     var kit = part.sound == InstrumentSound.slices ? part.slices : null;
@@ -214,10 +203,17 @@ class AudioRuntime extends ChangeNotifier {
             ? await loadSoundBank()
             : null;
     // Let go while the bank was being read: not started at all, or it
-    // would never be stopped.
-    if (_disposed || !down.contains(key)) return;
+    // would never be stopped. Pressed again meanwhile, that press is the
+    // one heard: two would sound for the one let-go to come.
+    if (_disposed || !down.contains(key) || _presses[(channel, key)] != press) {
+      return;
+    }
     engine.noteOn(channel, part, key, velocity, font: font);
   }
+
+  /// _presses is each key's latest press, numbered by [_pressed].
+  final Map<(String, int), int> _presses = {};
+  int _pressed = 0;
 
   void noteOff(String channel, int key) {
     _down[channel]?.remove(key);
@@ -225,9 +221,20 @@ class AudioRuntime extends ChangeNotifier {
   }
 
   /// control sets a controller of channel [channel]'s instrument, live.
+  ///
+  /// Moved before the engine has started -- the pedal down before the first
+  /// key of a page -- it is kept, and set as the engine starts.
   void control(String channel, MidiControl control, double value) {
-    if (_started) engine.control(channel, control, value);
+    if (_started) {
+      engine.control(channel, control, value);
+      return;
+    }
+    _controlsWaiting[(channel, control)] = value;
+    _ready();
   }
+
+  /// _controlsWaiting are the controllers moved before the engine started.
+  final Map<(String, MidiControl), double> _controlsWaiting = {};
 
   /// _down is the keys held on each channel, live.
   final Map<String, Set<int>> _down = {};
@@ -305,7 +312,7 @@ class AudioRuntime extends ChangeNotifier {
   /// _channels is what each mixer channel was last set to, and _master the
   /// master, so the same mix set again every frame costs a comparison
   /// rather than calls into the engine.
-  final Map<String, ChannelSound> _channels = {};
+  final Map<String, ChannelMix> _channels = {};
 
   /// _routes is the channel each sound plays through -- see setMix.
   final Map<String, String> _routes = {};
@@ -319,7 +326,7 @@ class AudioRuntime extends ChangeNotifier {
 
   /// _mixOwners is which runtime last set each engine's mix.
   static final Expando<AudioRuntime> _mixOwners = Expando();
-  MasterSound? _master;
+  MasterMix? _master;
   String _masterSignature = "";
   bool _started = false;
 
@@ -406,33 +413,18 @@ class AudioRuntime extends ChangeNotifier {
     for (var entry in channels.entries) {
       var mix = entry.value;
       var silent = mix.mute || (soloing && !solo.contains(entry.key));
-      var (l, r) = silent ? (0.0, 0.0) : mix.gains;
-      var sound = ChannelSound(
-        left: l,
-        right: r,
-        eq: mix.eq.flat ? null : eqBandGains(mix.eq),
-        comp: mix.comp.on ? mix.comp : null,
-        compFirst: mix.compFirst,
-        mix: silent ? mix.copyWith(mute: true) : mix,
-      );
+      var sound = silent ? mix.copyWith(mute: true) : mix;
       // The whole strip: a send, a surround pan or the LFE changed alone is
       // a change the engine has to hear of too.
-      var signature = "$l|$r|$silent|${mix.toJson()}";
+      var signature = "$silent|${mix.toJson()}";
       _channels[entry.key] = sound;
       if (_channelSignature[entry.key] == signature) continue;
       _channelSignature[entry.key] = signature;
       if (_started) engine.setChannel(entry.key, sound);
     }
-    var sound = MasterSound(
-      volume: dbToGain(master.gainDb),
-      eq: master.eq.flat ? null : eqBandGains(master.eq),
-      comp: master.comp.on ? master.comp : null,
-      ceilingDb: master.limiter ? master.ceilingDb : null,
-      compFirst: master.compFirst,
-      // Never brought to a target while playing: that is measured over the
-      // whole mix, which the editor has not heard yet.
-      mix: master.copyWith(normalise: false),
-    );
+    // Never brought to a target while playing: that is measured over the
+    // whole mix, which the editor has not heard yet.
+    var sound = master.copyWith(normalise: false);
     var signature = master.toJson().toString();
     _master = sound;
     if (signature != _masterSignature) {
@@ -716,6 +708,11 @@ class AudioRuntime extends ChangeNotifier {
         engine.setChannel(entry.key, entry.value);
       }
       if (_master case var m?) engine.setMaster(m);
+      for (var MapEntry(key: (channel, control), value: v)
+          in _controlsWaiting.entries) {
+        engine.control(channel, control, v);
+      }
+      _controlsWaiting.clear();
       engine.setReturns(_returns);
       engine.setScene(_sceneBus, _sceneChannels);
       engine.setSpeakers(_speakers);

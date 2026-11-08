@@ -30,8 +30,7 @@ import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart'
 // dart_audio_engine.dart plays the editor's sound through the mix engine:
 // MixCore renders it a block at a time and one SoLoud stream carries it to
 // the sound card. The editor so hears the same arithmetic an export renders
-// with (see mix_render.dart), including sends, which SoLoud's buses cannot
-// play.
+// with (see mix_render.dart), sends included.
 //
 // The stream is kept [lead] seconds ahead of the speakers. A voice's
 // position is where it has been heard to (rendered less what SoLoud has not
@@ -102,12 +101,6 @@ class _RemoteTrack extends AudioTrack {
 /// sharedMixEngine is the one mix engine: one stream to the sound card,
 /// whichever canvas is open.
 final DartAudioEngine sharedMixEngine = DartAudioEngine();
-
-/// useMixEngine is the switch in Settings > Plugins > Canvas: whether the
-/// editor plays through the mix engine rather than SoLoud's own buses. Read
-/// when a canvas first opens its sound, so a change applies from the next
-/// canvas opened.
-bool useMixEngine = true;
 
 /// useMixWorker is whether the mix renders in an isolate of its own (see
 /// mix_worker.dart) rather than on the UI's, where a slow frame could leave
@@ -407,7 +400,7 @@ class DartAudioEngine implements AudioEngine {
       };
 
   @override
-  AudioTrack? metronome(double secondsPerBeat, int beatsPerBar) {
+  AudioTrack metronome(double secondsPerBeat, int beatsPerBar) {
     var click = ClickTrack(secondsPerBeat, beatsPerBar);
     if (_remote) {
       var id = _nextTrack++;
@@ -479,25 +472,13 @@ class DartAudioEngine implements AudioEngine {
   double get latency => _ahead / mixRate;
 
   @override
-  void setChannel(String key, ChannelSound sound) {
-    var mix = sound.mix ?? _fromLevels(sound);
+  void setChannel(String key, ChannelMix mix) {
     _remote ? _send(["channel", key, mix]) : core.setChannel(key, mix);
   }
 
   @override
   void removeChannel(String key) =>
       _remote ? _send(["removeChannel", key]) : core.removeChannel(key);
-
-  /// _fromLevels is a strip for a sound handed over without its mix: its
-  /// levels as fader and balance, and nothing else.
-  static ChannelMix _fromLevels(ChannelSound sound) {
-    var loud = math.max(sound.left, sound.right);
-    if (loud <= 0) return const ChannelMix(mute: true);
-    var balance = sound.left >= sound.right
-        ? -(1 - sound.right / loud)
-        : 1 - sound.left / loud;
-    return ChannelMix(gainDb: gainToDb(loud), balance: balance);
-  }
 
   @override
   void setReturns(List<ReturnChannel> returns) =>
@@ -584,12 +565,7 @@ class DartAudioEngine implements AudioEngine {
       : core.graph.setPlacement(key, heard);
 
   @override
-  void setMaster(MasterSound sound) {
-    var mix = sound.mix ??
-        MasterMix(
-            gainDb: gainToDb(sound.volume),
-            limiter: sound.ceilingDb != null,
-            ceilingDb: sound.ceilingDb ?? -1);
+  void setMaster(MasterMix mix) {
     _remote ? _send(["master", mix]) : core.setMaster(mix);
   }
 

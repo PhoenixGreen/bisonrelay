@@ -698,7 +698,7 @@ void paintElement(
   }
   // Its clips' moves over any legacy track. See motion_document.dart.
   var pose = poseWithMotion(element, frame, document,
-      live: liveMotion, instance: instance);
+      live: liveMotion, instance: instance, frameRate: frameRate);
   var outer = poseOutside ? Keyframe.rest : pose;
   var alpha = (element.opacity * outer.opacity).clamp(0.0, 1.0);
   // A closing stretch with no exit chosen fades rather than doing nothing:
@@ -870,19 +870,22 @@ void paintElement(
     canvas.translate(-a.dx, -a.dy);
   }
 
-  // Its loop, over its pose: moved, turned and sized about the loop's own
-  // pivot, and faded with the rest. See ElementLoop.
-  if (_wholeLoop(element) case var loop? when loop.on) {
-    var swing = loop.poseAt(frame,
-        arrived: arrivalEnd(element, frameRate),
-        last: (document?.frames ?? (1 << 30)) - 1);
-    if (swing != null) {
-      _applyLoopPose(canvas, bounds, swing,
-          anchor: element.anchorCentred
-              ? null
-              : Offset(element.base.anchorX, element.base.anchorY));
-      alpha = (alpha * swing.opacity).clamp(0.0, 1.0);
-    }
+  // Its moving loop's turn and size about the loop's own pivot: its move
+  // and fade are in the pose already (see poseWithMotion), so whatever
+  // follows the element sees them.
+  if (pose.values[KeyframeChannel.loopTurn] case var turn?) {
+    _applyLoopPose(
+        canvas,
+        bounds,
+        LoopPose(
+            turn: turn,
+            sx: pose.values[KeyframeChannel.loopSx] ?? 1,
+            sy: pose.values[KeyframeChannel.loopSy] ?? 1,
+            pivot: Offset(pose.values[KeyframeChannel.loopPivotX] ?? 0.5,
+                pose.values[KeyframeChannel.loopPivotY] ?? 0.5)),
+        anchor: element.anchorCentred
+            ? null
+            : Offset(element.base.anchorX, element.base.anchorY));
   }
 
   // A video laid on as light or shade is composited through the same layer
@@ -1076,7 +1079,7 @@ void paintElement(
                     // Where it stands as its clips -- live ones too -- have
                     // it, and drawn as everything else is: figures on a map
                     // are drawn only here.
-                    var dy = !f.base.motion.moves
+                    var dy = !movesAtAll(f)
                         ? f.track?.at(frame).dy ?? 0
                         : poseWithMotion(f, frame, document, live: liveMotion)
                             .dy;
@@ -1116,7 +1119,7 @@ void paintElement(
 
   // A loop that draws -- light swept through it, its outline run round, a
   // ripple -- draws it itself; anything else, it is simply drawn.
-  var looping = _wholeLoop(element);
+  var looping = wholeLoopOf(element);
   var phase = looping == null || !looping.on || looping.preset.moves
       ? null
       : looping.phaseAt(frame,
@@ -3162,10 +3165,10 @@ void _paintArrowHead(
 bool _ownShapes(VectorElement e) => vectorDrawn(e.shapes ?? const [])
     .any((d) => d.style.animation != null && d.style.owns.isNotEmpty);
 
-/// _wholeLoop is [element]'s loop where it loops as one -- for a drawing
+/// wholeLoopOf is [element]'s loop where it loops as one -- for a drawing
 /// with shapes of their own, each shape loops on its own instead, those
 /// left as the drawing with the drawing's loop. See _paintVectorInTurn.
-ElementLoop? _wholeLoop(CanvasElement element) {
+ElementLoop? wholeLoopOf(CanvasElement element) {
   if (element is VectorElement && _ownShapes(element)) return null;
   // The words' and a chart's are in animations of their own.
   if (element is TextElement) return element.animation.loop;

@@ -7,7 +7,6 @@ import 'dart:math' as math;
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
-import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_runtime.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -44,18 +43,6 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 // in the editor and in an export, that the runtime routes each sound through
 // its strip, and the panel that sets them.
 
-/// soloudResponseDb is what SoLoud's band EQ does at [f] given [gains] at its
-/// band centres -- its own blend (see soloudBlend), so the curve it is handed
-/// can be checked against the curve an export applies.
-double soloudResponseDb(List<double> gains, double f) {
-  var w = soloudBlend(f, eqBandCentres(gains.length));
-  var g = 0.0;
-  for (var i = 0; i < gains.length; i++) {
-    g += gains[i] * w[i];
-  }
-  return 20 * math.log(g) / math.ln10;
-}
-
 const song = "aaaaaaaaaaaaaaaa.mp3";
 
 void main() {
@@ -77,58 +64,6 @@ void main() {
           reason: "the bell's centre");
       expect(eq.responseDb(20000), closeTo(3, 0.5), reason: "over the shelf");
       expect(eq.responseDb(500), closeTo(0, 0.8), reason: "between them");
-    });
-
-    // The claim the whole mixer rests on: the editor sounds like the export.
-    // The export runs these biquads; the editor runs SoLoud's EQ, which is a
-    // row of sixty-four flat bands, given the gains that fit this curve best.
-    // At the farthest the editor's controls go -- twelve decibels either way,
-    // on any band -- the two stay within about a decibel of each other. (A
-    // notch narrower than the editor can make would miss by more: the bands
-    // are a tenth of an octave wide, and that is SoLoud's own limit.)
-    test("the editor's bands follow the export's curve to about a decibel", () {
-      for (var eq in const [
-        Eq(on: true, mid: EqBand(1000, gainDb: 12, q: 1)),
-        Eq(on: true, mid: EqBand(3000, gainDb: -12, q: 1)),
-        Eq(on: true, mid: EqBand(8000, gainDb: -12, q: 1)),
-        Eq(
-            on: true,
-            low: EqBand(60, gainDb: 12),
-            high: EqBand(12000, gainDb: -12)),
-        Eq(
-            on: true,
-            low: EqBand(300, gainDb: -12),
-            mid: EqBand(2500, gainDb: 12),
-            high: EqBand(6000, gainDb: 12)),
-      ]) {
-        var gains = eqBandGains(eq);
-        var worst = 0.0;
-        for (var i = 0; i <= 400; i++) {
-          var f = 40 * math.pow(15000 / 40, i / 400).toDouble();
-          worst = math.max(
-              worst, (soloudResponseDb(gains, f) - eq.responseDb(f)).abs());
-        }
-        expect(worst, lessThan(1.1), reason: "${eq.toJson()}");
-      }
-    });
-
-    test("fitted, not sampled: better than the curve at the centres", () {
-      const eq = Eq(on: true, mid: EqBand(3000, gainDb: -12, q: 1));
-      double worstOf(List<double> gains) {
-        var worst = 0.0;
-        for (var i = 0; i <= 400; i++) {
-          var f = 40 * math.pow(15000 / 40, i / 400).toDouble();
-          worst = math.max(
-              worst, (soloudResponseDb(gains, f) - eq.responseDb(f)).abs());
-        }
-        return worst;
-      }
-
-      var sampled = [
-        for (var f in eqBandCentres(soloudBands))
-          math.pow(10, eq.responseDb(f) / 20).toDouble()
-      ];
-      expect(worstOf(eqBandGains(eq)), lessThan(worstOf(sampled)));
     });
 
     test("and is run as a filter for each band shaping the sound", () {
@@ -236,21 +171,6 @@ void main() {
     });
   });
 
-  test("a strip above nought is its volume, its pan held to one", () {
-    // Reported: a fader above nought threw in SoLoud's pan, which takes
-    // nothing over one -- and the throw lost the strip's EQ and compressor.
-    var (gl, gr) = const ChannelMix(gainDb: 6, balance: 0.5).gains;
-    var (volume, left, right) = busLevels(gl, gr);
-    expect(volume, greaterThan(1));
-    for (var side in [left, right]) {
-      expect(side, inInclusiveRange(-1, 1));
-    }
-    expect(volume * left, closeTo(gl, 1e-9));
-    expect(volume * right, closeTo(gr, 1e-9));
-    expect(busLevels(0, 0), (0.0, 1.0, 1.0), reason: "muted: silent, centred");
-    expect(busLevels(1, 1), (1.0, 1.0, 1.0));
-  });
-
   group("the order of the EQ and the compressor", () {
     test("is the strip's, in the export", () {
       // A lift into a hard compressor comes out different from the same
@@ -288,23 +208,6 @@ void main() {
           ChannelMix.fromJson(const ChannelMix(compFirst: true).toJson())
               .compFirst,
           isTrue);
-    });
-
-    test("and in playing: SoLoud's filters are put back in that order", () {
-      // A filter switched on lands last: one out of place is switched off,
-      // with everything after it, and they go back on in order.
-      void steps(List<String> have, List<String> want, List<String> off,
-          List<String> on) {
-        var (o, n) = reorderSteps(have, want);
-        expect([o, n], [off, on], reason: "$have to $want");
-      }
-
-      steps(["eq", "comp"], ["eq", "comp"], [], []);
-      steps(["eq", "comp"], ["comp", "eq"], ["eq", "comp"], ["comp", "eq"]);
-      // The limiter on, then the EQ switched on: it must go before it.
-      steps(["limiter"], ["eq", "limiter"], ["limiter"], ["eq", "limiter"]);
-      steps(["eq", "comp", "limiter"], ["eq", "limiter"], ["comp", "limiter"],
-          ["limiter"]);
     });
   });
 
@@ -491,8 +394,7 @@ void main() {
       expect(engine.onChannel[engine.voices[0]], "a");
       expect(engine.onChannel[engine.voices[1]], isNull,
           reason: "no strip, straight to the master");
-      expect(engine.channels["a"]!.left, 0);
-      expect(engine.channels["a"]!.right, 1);
+      expect(engine.channels["a"]!.balance, 1);
     });
 
     test("sounds on one channel share that channel's strip", () async {
@@ -517,8 +419,8 @@ void main() {
       await runtime.play(sound("a"));
       runtime.setMix(const {"a": ChannelMix(), "b": ChannelMix()},
           solo: {"b"}, master: const MasterMix());
-      expect(engine.channels["a"]!.left, 0);
-      expect(engine.channels["b"]!.left, 1);
+      expect(engine.channels["a"]!.mute, isTrue);
+      expect(engine.channels["b"]!.mute, isFalse);
     });
 
     test("the master's EQ, glue and limiter reach the engine", () async {
@@ -529,10 +431,10 @@ void main() {
               comp: const MasterMix().comp.copyWith(on: true)));
       await runtime.play(sound("a"));
       var master = engine.master!;
-      expect(master.volume, closeTo(0.501, 0.001));
-      expect(master.eq, hasLength(soloudBands));
-      expect(master.comp, isNotNull);
-      expect(master.ceilingDb, -1);
+      expect(master.gainDb, -6);
+      expect(master.eq.on, isTrue);
+      expect(master.comp.on, isTrue);
+      expect((master.limiter, master.ceilingDb), (true, -1.0));
     });
 
     test("the same mix set again is not sent again", () async {

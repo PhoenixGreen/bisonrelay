@@ -315,10 +315,6 @@ extension CanvasPlayback on CanvasController {
     notifyListeners();
   }
 
-  /// metronomeAvailable is false where the engine has no click to play --
-  /// SoLoud's buses, with the mix engine switched off.
-  bool get metronomeAvailable => !(_audio?.metronomeUnavailable ?? false);
-
   void _syncMetronome() {
     var on = playing &&
         _metronome &&

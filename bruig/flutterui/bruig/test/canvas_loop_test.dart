@@ -10,6 +10,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/model/instances.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
@@ -124,6 +126,43 @@ void main() {
       expect(await topmost(floating, 0), 100, reason: "where it starts");
       // A quarter of the way round, it is up by 6% of its 40.
       expect(await topmost(floating, 10), closeTo(100 - 2.4, 1));
+    });
+  });
+
+  // Ken, 2026-11-08: a moving loop is in the element's motion, not put on
+  // as it is drawn -- so what follows the element sees it.
+  group("a moving loop in the element's motion", () {
+    test("its move is the pose's: its box goes with it", () {
+      var e = box(loop: const ElementLoop(preset: LoopPreset.float, cycle: 40));
+      var doc = CanvasDocument(frames: 100, elements: [e]);
+      expect(poseWithMotion(e, 0, doc).dy, closeTo(0, 1e-9));
+      // A quarter round: up by 6% of its 40.
+      expect(poseWithMotion(e, 10, doc).dy, closeTo(-2.4, 0.5));
+      expect(e.movedBoundsAt(10, doc).top, closeTo(100 - 2.4, 0.5));
+    });
+
+    test("its turn about its own pivot, for the renderer", () {
+      var e = box(loop: const ElementLoop(preset: LoopPreset.swing, cycle: 40));
+      var doc = CanvasDocument(frames: 100, elements: [e]);
+      var v = poseWithMotion(e, 10, doc).values;
+      expect(v[KeyframeChannel.loopTurn], isNot(0));
+      expect(v[KeyframeChannel.loopPivotY], 0, reason: "it hangs from its top");
+    });
+
+    test("a copy's loop starts as much later as the copy", () {
+      CanvasElement e =
+          box(loop: const ElementLoop(preset: LoopPreset.float, cycle: 40));
+      e = e.withBase(
+          motion: const ElementMotion(
+              instances: InstanceSet(items: [
+        ElementInstance("i0"),
+        ElementInstance("i1", start: 10 / 24),
+      ])));
+      var doc = CanvasDocument(frames: 100, frameRate: 24, elements: [e]);
+      expect(poseWithMotion(e, 10, doc, instance: 1).dy, closeTo(0, 1e-9),
+          reason: "only just begun");
+      expect(poseWithMotion(e, 20, doc, instance: 1).dy,
+          closeTo(poseWithMotion(e, 10, doc, instance: 0).dy, 1e-9));
     });
   });
 

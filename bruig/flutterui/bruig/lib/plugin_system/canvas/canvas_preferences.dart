@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:bruig/plugin_system/canvas/media/mix/dart_audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/storage_manager.dart';
@@ -37,7 +36,6 @@ class CanvasPreferences extends ChangeNotifier {
   static const _keyframesShownKey = "canvasKeyframesShown";
   static const _cuesShownKey = "canvasCuesShown";
   static const _studioLookKey = "canvasStudioLook";
-  static const _mixEngineKey = "canvasMixEngine";
   static const _studioOverridesKey = "canvasStudioColours";
   static const _menuHiddenKey = "canvasMenuHidden";
   static const _mixerBandsKey = "canvasMixerBands";
@@ -318,16 +316,6 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveBool(_cuesShownKey, value);
   }
 
-  /// mixEngine is whether the editor plays through the mix engine rather
-  /// than SoLoud's own buses -- see dart_audio_engine.dart. On by default.
-  bool get mixEngine => useMixEngine;
-  set mixEngine(bool value) {
-    if (useMixEngine == value) return;
-    useMixEngine = value;
-    StorageManager.saveBool(_mixEngineKey, value);
-    notifyListeners();
-  }
-
   /// studioLook is where the mixer's and the effects' colours come from,
   /// and studioOverrides any of them changed by hand. See StudioColors.
   StudioLook get studioLook => _studioLook;
@@ -455,8 +443,6 @@ class CanvasPreferences extends ChangeNotifier {
     } catch (_) {
       // Nothing kept yet.
     }
-    useMixEngine =
-        await StorageManager.readBool(_mixEngineKey, defaultVal: true);
     _studioLook =
         StudioLook.fromName(await StorageManager.readString(_studioLookKey));
     try {

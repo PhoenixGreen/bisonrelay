@@ -4,7 +4,8 @@ import 'package:bruig/plugin_system/canvas/media/mix/device_scope.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/analysers.dart'
     show Wave, LoudnessReading;
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
-import 'package:bruig/plugin_system/canvas/model/mix.dart' show ChannelMix;
+import 'package:bruig/plugin_system/canvas/model/mix.dart'
+    show ChannelMix, MasterMix;
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
@@ -69,25 +70,25 @@ class FakeEngine implements AudioEngine {
   final List<(double, int)> clicks = [];
 
   @override
-  AudioTrack? metronome(double secondsPerBeat, int beatsPerBar) {
+  AudioTrack metronome(double secondsPerBeat, int beatsPerBar) {
     clicks.add((secondsPerBeat, beatsPerBar));
     return FakeTrack("metronome", 24 * 3600);
   }
 
   /// channels is every mixer channel as last set, master the master, and
   /// onChannel which channel each voice was played through.
-  final Map<String, ChannelSound> channels = {};
-  MasterSound? master;
+  final Map<String, ChannelMix> channels = {};
+  MasterMix? master;
   final Map<FakeVoice, String?> onChannel = {};
 
   @override
-  void setChannel(String key, ChannelSound sound) => channels[key] = sound;
+  void setChannel(String key, ChannelMix mix) => channels[key] = mix;
 
   @override
   void removeChannel(String key) => channels.remove(key);
 
   @override
-  void setMaster(MasterSound sound) => master = sound;
+  void setMaster(MasterMix mix) => master = mix;
 
   /// returns is the returns as last set -- see AudioEngine.setReturns.
   List<ReturnChannel> returns = const [];

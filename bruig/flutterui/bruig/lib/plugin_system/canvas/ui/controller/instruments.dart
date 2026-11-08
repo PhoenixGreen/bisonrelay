@@ -8,8 +8,7 @@ extension CanvasInstruments on CanvasController {
   /// audio is what is playing. Made the first time anything asks, so a
   /// canvas with no sound on it never opens a sound device.
   AudioRuntime get audio => _audio ??= AudioRuntime(
-      engine: _audioEngine ??
-          (useMixEngine ? sharedMixEngine : SoLoudAudioEngine()),
+      engine: _audioEngine ?? sharedMixEngine,
       locate: (id) => CanvasMedia.existingPath(MediaKind.audio, id))
     ..addListener(notifyListeners);
 
@@ -118,13 +117,18 @@ extension CanvasInstruments on CanvasController {
     }
     _sounded.clear();
     _soundCount.clear();
-    _sustained.clear();
     // Nothing is held on a page left: a key let go after is let go of
     // nothing, and the pedal is up when it comes back.
     _held.clear();
     _pressedOn.clear();
     _take.clear();
-    _sustain = false;
+    // The pedal let up on every instrument: a page left with it down would
+    // come back holding every key let go.
+    for (var e in _document.elements) {
+      if (e is AudioElement && e.instrument != null) {
+        _audio?.control(CanvasController._channelOf(e), MidiControl.sustain, 0);
+      }
+    }
     stopAudio();
     clearRenderCaches();
     images.release();
@@ -158,9 +162,6 @@ extension CanvasInstruments on CanvasController {
   void noteOn(AudioElement e, int key, {int velocity = 100}) {
     var part = e.instrument;
     if (part == null) return;
-    // Struck again while the pedal holds it: the held note let go, and
-    // played again, as a piano's would be.
-    if (_sustained[e.id]?.remove(key) ?? false) _release(e, key);
     if (!(_held.putIfAbsent(e.id, () => {})).add(key)) return;
     _pressedOn[e.id] = e;
     _heard();
@@ -274,9 +275,16 @@ extension CanvasInstruments on CanvasController {
   }
 
   /// controlOn moves [control] on instrument [e] alone -- its editor's bend
-  /// and mod wheels -- heard at once.
-  void controlOn(AudioElement e, MidiControl control, double value) =>
-      audio.control(CanvasController._channelOf(e), control, value);
+  /// and mod wheels and its Sustain -- heard at once, and recorded as a
+  /// keyboard's are.
+  void controlOn(AudioElement e, MidiControl control, double value) {
+    audio.control(CanvasController._channelOf(e), control, value);
+    if (_recording && playing && _recordsInto(e)) {
+      (_controlTake[e.id] ??= {})
+          .putIfAbsent(control, () => [])
+          .add((_nowInPart(e), value));
+    }
+  }
 
   /// liveScale is the scale a keyboard plays in -- a Push's pads are laid
   /// out in it: the Scale effect of the channel it plays, or C major.
@@ -293,21 +301,6 @@ extension CanvasInstruments on CanvasController {
       }
     }
     return (0, scaleSteps[0]);
-  }
-
-  void sustain(bool down) {
-    if (_sustain == down) return;
-    _sustain = down;
-    if (down) return;
-    var let = {..._sustained};
-    _sustained.clear();
-    for (var entry in let.entries) {
-      var e = _instrumentHeld(entry.key);
-      if (e == null) continue;
-      for (var key in entry.value) {
-        noteOff(e, key);
-      }
-    }
   }
 
   /// macroedPart is [part] as channel [channel]'s macros turn it: each
@@ -415,13 +408,10 @@ extension CanvasInstruments on CanvasController {
   }
 
   /// noteOff lets [key] go.
-  void noteOff(AudioElement e, int key) {
-    if (_sustain && (_held[e.id]?.contains(key) ?? false)) {
-      _sustained.putIfAbsent(e.id, () => {}).add(key);
-      return;
-    }
-    _release(e, key);
-  }
+  /// The sustain pedal is the instrument's own (MidiControl.sustain): it
+  /// holds the sound of a key let go, and is recorded as it is moved, so a
+  /// take keeps the notes as long as they were played.
+  void noteOff(AudioElement e, int key) => _release(e, key);
 
   /// _instrumentHeld is instrument [id] as it is now, or -- gone from the
   /// scene shown -- as it was when its keys were pressed.

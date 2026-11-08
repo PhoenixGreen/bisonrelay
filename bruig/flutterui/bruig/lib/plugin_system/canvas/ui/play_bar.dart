@@ -247,10 +247,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
           ),
           TransportButton(
             key: const ValueKey("metronome"),
-            tooltip: controller.metronomeAvailable
-                ? "Metronome: a click on every beat while it plays"
-                : "The metronome needs the mix engine: Settings > Plugins > "
-                    "Canvas > Play through the mix engine",
+            tooltip: "Metronome: a click on every beat while it plays",
             on: controller.metronome,
             onPressed: () => controller.metronome = !controller.metronome,
             child: const MetronomeIcon(),

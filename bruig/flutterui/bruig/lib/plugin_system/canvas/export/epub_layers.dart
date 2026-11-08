@@ -431,7 +431,7 @@ Future<StageResult?> buildEpubStage(
     }
     await flatten();
     var region = _regionFor(e, pixels, pageBox, document,
-        moves: e.track != null || e.base.motion.moves);
+        moves: e.track != null || movesAtAll(e));
     var maker = _LayerMaker(
         e, page, frames, pixels, images, sheets, start, region, pageBox,
         films: changing.contains(e.id) ? films : null,

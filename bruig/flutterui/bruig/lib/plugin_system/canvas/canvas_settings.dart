@@ -66,25 +66,6 @@ class CanvasSettingsSection extends StatelessWidget {
             color: TextColor.onSurfaceVariant,
           ),
         ),
-        Row(children: [
-          const Expanded(child: Txt.M("Play through the mix engine")),
-          Switch(
-            key: const ValueKey("mixEngine"),
-            value: prefs.mixEngine,
-            onChanged: (v) => prefs.mixEngine = v,
-          ),
-        ]),
-        Padding(
-          padding: const EdgeInsets.only(right: 60, bottom: 8),
-          child: Txt.S(
-            "On: the editor's sound goes through the same mixer an export "
-            "is made with, so what you hear is what is exported, sends and "
-            "returns included. Off: the older engine, which plays each "
-            "channel through SoLoud's own filters and cannot play a send. "
-            "Takes effect for the next canvas opened.",
-            color: TextColor.onSurfaceVariant,
-          ),
-        ),
         const SizedBox(height: 8),
         const Txt.M("Studio colours"),
         Padding(

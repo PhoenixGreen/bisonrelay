@@ -40,9 +40,6 @@ class MidiInput extends ChangeNotifier {
   /// nought -- on the chosen device. Set by the canvas that is open.
   void Function(int key, int velocity)? onNote;
 
-  /// onSustain is handed the sustain pedal, down or up.
-  void Function(bool down)? onSustain;
-
   /// onControl is handed the other controllers a keyboard sends -- the mod
   /// wheel, the pitch bend, an expression pedal, volume, pan -- nought to
   /// one.
@@ -156,8 +153,9 @@ class MidiInput extends ChangeNotifier {
   }
 
   /// handle reads one MIDI message, on any channel: keys go to [onNote],
-  /// the sustain pedal to [onSustain], other controllers and pitch bend to
-  /// [onControl]; the rest is ignored.
+  /// controllers -- the sustain pedal among them, which the instrument
+  /// holds its notes for -- and pitch bend to [onControl]; the rest is
+  /// ignored.
   @visibleForTesting
   void handle(Uint8List data) {
     if (data.length < 3) return;
@@ -170,9 +168,6 @@ class MidiInput extends ChangeNotifier {
       onNote?.call(key, velocity);
     } else if (kind == 0x80) {
       onNote?.call(key, 0);
-    } else if (kind == 0xB0 && key == 64) {
-      // Control change 64: the sustain pedal, down from 64.
-      onSustain?.call(velocity >= 64);
     } else if (kind == 0xB0) {
       onCc?.call(key, velocity / 127);
       if (MidiControl.ofCc(key) case var c?) onControl?.call(c, velocity / 127);

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/automation.dart';
@@ -13,15 +12,14 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
 // mix.dart is the mix settings: each channel strip and the master strip.
 //
 // media/mix/dsp.dart is the arithmetic that runs them. A mix also plays
-// through SoLoud's filters and Web Audio (interactive EPUB), so each setting
-// is defined here in terms all of them can be told exactly:
+// through Web Audio (interactive EPUB), so each setting is defined here in
+// terms both can be told exactly:
 //
 // - the EQ is RBJ biquads, which dsp.dart runs and Web Audio's
-//   BiquadFilterNode is. SoLoud's band EQ is given a fit of the curve
-//   ([eqBandGains]);
+//   BiquadFilterNode is;
 // - balance is a gain per side ([ChannelMix.gains]), not a "pan" each
 //   player would read by its own law;
-// - the compressor and limiter take the parameters all three share.
+// - the compressor and limiter take the parameters both share.
 
 /// EqKind is what a band of the EQ does: a cut, a shelf or a bell.
 enum EqKind { lowCut, lowShelf, bell, highShelf, highCut }
@@ -254,120 +252,6 @@ List<_Biquad> _sections(EqSlot slot, EqBand b, double fs) =>
                 high: slot.kind == EqKind.lowCut),
         ],
     };
-
-/// eqBandCentres is where SoLoud places [bands] EQ bands: log-spaced from
-/// 30 Hz to 16 kHz.
-List<double> eqBandCentres(int bands) => [
-      for (var i = 0; i < bands; i++)
-        bands == 1 ? 1000.0 : 30.0 * math.pow(16000 / 30, i / (bands - 1)),
-    ];
-
-/// soloudBands is how many bands the editor's EQ is given: SoLoud's most.
-const int soloudBands = 64;
-
-/// soloudBlend is how SoLoud's band EQ weighs its bands at [f]: a triangle
-/// round each centre to the midpoints either side, linear in hertz,
-/// normalised to sum to one. Mirrors SoLoud's parametric_eq_filter.cpp.
-List<double> soloudBlend(double f, List<double> centres,
-    {double nyquist = 24000}) {
-  var n = centres.length;
-  var weights = List<double>.filled(n, 0);
-  var sum = 0.0;
-  for (var b = 0; b < n; b++) {
-    var c = centres[b];
-    var lo = b == 0 ? 0.0 : (centres[b - 1] + c) / 2;
-    var hi = b == n - 1 ? nyquist : math.min(nyquist, (c + centres[b + 1]) / 2);
-    var w = 0.0;
-    if (f <= c && c - lo > 0) {
-      var x = 1 - (c - f) / (c - lo);
-      if (x >= 0) w = math.max(x, 0.001);
-    } else if (f > c && hi - c > 0) {
-      var x = 1 - (f - c) / (hi - c);
-      if (x >= 0) w = math.max(x, 0.001);
-    }
-    weights[b] = w;
-    sum += w;
-  }
-  if (sum > 0) {
-    for (var b = 0; b < n; b++) {
-      weights[b] /= sum;
-    }
-  }
-  return weights;
-}
-
-/// eqBandGains is what to give SoLoud's band EQ so that it follows [eq]'s
-/// curve: linear gains, nought to four, one per band.
-///
-/// Fitted, not sampled: SoLoud blends bands linearly between centres, so a
-/// curve sampled at the centres is off by up to 3.5 dB between them for a
-/// narrow cut. This is a least-squares fit over 30 Hz to 16 kHz, weighted so
-/// errors count in dB. Cached, as the audio runtime asks every tick.
-List<double> eqBandGains(Eq eq, {int bands = soloudBands}) {
-  var key = "$bands ${jsonEncode(eq.toJson())}";
-  if (_fitted[key] case var known?) return known;
-  if (_fitted.length >= 64) _fitted.remove(_fitted.keys.first);
-  return _fitted[key] = List.unmodifiable(_fitBandGains(eq, bands));
-}
-
-final Map<String, List<double>> _fitted = {};
-
-List<double> _fitBandGains(Eq eq, int bands) {
-  var centres = eqBandCentres(bands);
-  const points = 480;
-  var rows = <List<double>>[];
-  var targets = <double>[];
-  var weights = <double>[];
-  for (var i = 0; i <= points; i++) {
-    var f = 30 * math.pow(16000 / 30, i / points).toDouble();
-    var t = math.pow(10, eq.responseDb(f) / 20).toDouble();
-    rows.add(soloudBlend(f, centres));
-    targets.add(t);
-    weights.add(1 / (t * t));
-  }
-  // Normal equations (A^T W A) g = A^T W t, with a little ridge so a band no
-  // point reaches still has an answer.
-  var n = bands;
-  var m = List.generate(n, (_) => List<double>.filled(n + 1, 0));
-  for (var r = 0; r < rows.length; r++) {
-    var row = rows[r], w = weights[r];
-    for (var a = 0; a < n; a++) {
-      if (row[a] == 0) continue;
-      var wa = w * row[a];
-      for (var b = 0; b < n; b++) {
-        if (row[b] != 0) m[a][b] += wa * row[b];
-      }
-      m[a][n] += wa * targets[r];
-    }
-  }
-  for (var a = 0; a < n; a++) {
-    m[a][a] += 1e-6;
-  }
-  // Gaussian elimination with partial pivoting.
-  for (var col = 0; col < n; col++) {
-    var pivot = col;
-    for (var r = col + 1; r < n; r++) {
-      if (m[r][col].abs() > m[pivot][col].abs()) pivot = r;
-    }
-    var swap = m[col];
-    m[col] = m[pivot];
-    m[pivot] = swap;
-    var p = m[col][col];
-    if (p.abs() < 1e-12) continue;
-    for (var r = 0; r < n; r++) {
-      if (r == col) continue;
-      var f = m[r][col] / p;
-      if (f == 0) continue;
-      for (var c = col; c <= n; c++) {
-        m[r][c] -= f * m[col][c];
-      }
-    }
-  }
-  return [
-    for (var a = 0; a < n; a++)
-      (m[a][a].abs() < 1e-12 ? 1.0 : m[a][n] / m[a][a]).clamp(0.0, 4.0),
-  ];
-}
 
 /// AutoGain is a compressor's own makeup: none, enough that 0 dB in comes out
 /// at 0 dB, or enough that −12 dB does.

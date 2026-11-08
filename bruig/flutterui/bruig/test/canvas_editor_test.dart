@@ -1426,8 +1426,7 @@ void main() {
           find.textContaining("does not go through the proxy"), findsOneWidget,
           reason: "the reason it is off is the reason it is a decision");
 
-      // The switch on the fetching row: Canvas's own is first, and the
-      // audio engine's comes after.
+      // The switch on the fetching row.
       await tester.tap(find.descendant(
           of: find.ancestor(
               of: find.text("Let a canvas fetch data"),
@@ -1435,7 +1434,6 @@ void main() {
           matching: find.byType(Switch)));
       await tester.pumpAndSettle();
       expect(prefs.allowFetching, isTrue);
-      expect(prefs.mixEngine, isTrue, reason: "and nothing else changed");
     });
   });
 

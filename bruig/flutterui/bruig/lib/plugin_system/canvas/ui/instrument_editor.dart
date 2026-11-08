@@ -932,7 +932,7 @@ class _KeyboardState extends State<_Keyboard> {
     for (var k in [..._held.keys]) {
       _off(k, force: true);
     }
-    if (_sustain) c.sustain(false);
+    if (_sustain) c.controlOn(widget.element, MidiControl.sustain, 0);
     _focus.dispose();
     super.dispose();
   }
@@ -1174,7 +1174,8 @@ class _KeyboardState extends State<_Keyboard> {
                               pill("instrumentSustain", "Sustain", _sustain,
                                   () {
                                 setState(() => _sustain = !_sustain);
-                                c.sustain(_sustain);
+                                c.controlOn(widget.element, MidiControl.sustain,
+                                    _sustain ? 1 : 0);
                               }),
                             ],
                           ]),

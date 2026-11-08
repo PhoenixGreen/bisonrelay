@@ -345,7 +345,7 @@ void main() {
       at(c, 0.25);
       var half = AutomationTarget.volume.valueAt(0.55);
       expect(heard(), closeTo(half, 1.5));
-      expect(engine.channels["a"]!.mix!.gainDb, closeTo(half, 1.5),
+      expect(engine.channels["a"]!.gainDb, closeTo(half, 1.5),
           reason: "what the channel plays, not only what it shows");
       at(c, 0.75);
       expect(heard(), closeTo(AutomationTarget.volume.valueAt(0.9), 1.5));

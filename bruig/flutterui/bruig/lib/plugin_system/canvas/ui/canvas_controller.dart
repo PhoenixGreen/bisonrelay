@@ -3080,9 +3080,6 @@ class CanvasController extends ChangeNotifier {
   /// _controlTake is each instrument's controllers moved while recording.
   final Map<String, Map<MidiControl, List<ControlPoint>>> _controlTake = {};
 
-  bool _sustain = false;
-  final Map<String, Set<int>> _sustained = {};
-
   /// _sounded is what each key held sounds as, through the channel's MIDI
   /// effects -- a chord's keys, kept to a scale -- and _soundCount how many
   /// held keys sound each, so one let go does not stop another's.

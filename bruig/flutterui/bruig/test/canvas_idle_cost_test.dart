@@ -131,11 +131,11 @@ void main() {
     await editor.ready();
     await preview.ready();
     editor.setMix(const {}, master: const MasterMix(gainDb: -3));
-    expect(engine.master?.volume, closeTo(dbToGain(-3), 1e-9));
+    expect(engine.master?.gainDb, -3);
     preview.setMix(const {}, master: const MasterMix(gainDb: -12));
     // Back to the editor, its master unchanged: sent again all the same.
     editor.setMix(const {}, master: const MasterMix(gainDb: -3));
-    expect(engine.master?.volume, closeTo(dbToGain(-3), 1e-9),
+    expect(engine.master?.gainDb, -3,
         reason: "not left playing through the preview's");
     // A preview gone takes its strips with it.
     preview.setMix({"bus": const ChannelMix()}, master: const MasterMix());

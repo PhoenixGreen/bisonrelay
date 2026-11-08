@@ -16,8 +16,9 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart'
-    show pathPointsOf;
+    show pathPointsOf, wholeLoopOf;
 
 // motion_document.dart joins clips to a document: where every placed clip in
 // the scene plays, worked out once per scene, and an element's pose with its
@@ -257,9 +258,14 @@ class _ShiftedLive implements LiveMotion {
 /// [instance] is which of an element reused (see instances.dart) -- its
 /// place, start and size put on at its Instances device (rule 3); null for
 /// the element as it is placed, as one.
+///
+/// [frameRate] is the rate a lone element is drawn at, for its loop.
 Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
-    {LiveMotion? live, int? upto, int? instance}) {
-  if (doc == null) return e.track?.at(frame) ?? Keyframe.rest;
+    {LiveMotion? live, int? upto, int? instance, int? frameRate}) {
+  if (doc == null) {
+    return _withLoop(e, frame, frameRate ?? defaultFrameRate, 1 << 30,
+        e.track?.at(frame) ?? Keyframe.rest, instance);
+  }
   if (live case MotionPreview p when upto == null && p.element == e.id) {
     upto = p.upto;
   }
@@ -270,6 +276,8 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
   var pose = devices.isEmpty
       ? _clipPose(e, frame, doc, live)
       : _pulled(e, frame, doc, live, devices, devices.length - 1, instance);
+  pose = _withLoop(
+      e, frame, math.max(1, doc.frameRate), doc.frames - 1, pose, instance);
   // Drawn at its Drawing's size -- a copy's own, where it has one.
   var m = e.base.motion;
   var size = m.drawSize;
@@ -278,6 +286,47 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
     size = set.items[instance].own["drawSize"] ?? size;
   }
   return size == 1 ? pose : pose.copyWith(scale: pose.scale * size);
+}
+
+/// movesAtAll is whether anything moves [e] beyond its keyframes: its
+/// motion (see ElementMotion.moves), or a loop that moves it.
+bool movesAtAll(CanvasElement e) {
+  if (e.base.motion.moves) return true;
+  var loop = wholeLoopOf(e);
+  return loop != null && loop.on && loop.preset.moves;
+}
+
+/// _withLoop is [pose] with [e]'s moving loop on it (see ElementLoop): its
+/// move and fade the pose's own, so what follows the element -- a Look at,
+/// a Spring, its trail, its box on the stage, a copy -- sees them; its turn
+/// and size about the loop's own pivot as channels the renderer turns it
+/// by. One motion path: the loop is not put on again as it is drawn. A
+/// copy's loop starts as much later as the copy does.
+Keyframe _withLoop(CanvasElement e, int frame, int rate, int last,
+    Keyframe pose, int? instance) {
+  var loop = wholeLoopOf(e);
+  if (loop == null || !loop.on || !loop.preset.moves) return pose;
+  var at = frame;
+  if (e.base.motion.instances case var set?
+      when instance != null && instance >= 0 && instance < set.count) {
+    at -= (set.startOf(instance) * rate).round();
+  }
+  var swing = loop.poseAt(at, arrived: arrivalEnd(e, rate), last: last);
+  if (swing == null) return pose;
+  var box = boxOf(e);
+  return pose.copyWith(
+    dx: pose.dx + swing.dx * box.width,
+    dy: pose.dy + swing.dy * box.height,
+    opacity: pose.opacity * swing.opacity,
+    values: {
+      ...pose.values,
+      KeyframeChannel.loopTurn: swing.turn,
+      KeyframeChannel.loopSx: swing.sx,
+      KeyframeChannel.loopSy: swing.sy,
+      KeyframeChannel.loopPivotX: swing.pivot.dx,
+      KeyframeChannel.loopPivotY: swing.pivot.dy,
+    },
+  );
 }
 
 /// withOwnValues is [d] as copy [instance] of [set] has it: each knob it has
@@ -744,7 +793,7 @@ extension MovedElement on CanvasElement {
     if (this case CameraElement cam) {
       return cameraFrame(cam, frame, doc, live: live);
     }
-    if (!base.motion.moves) return boundsAt(frame);
+    if (!movesAtAll(this)) return boundsAt(frame);
     // An element reused is all of its instances.
     if (base.motion.instances case var set?) {
       Rect? all;

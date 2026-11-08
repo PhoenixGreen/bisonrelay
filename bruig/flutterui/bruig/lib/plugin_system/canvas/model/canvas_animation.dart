@@ -522,6 +522,16 @@ class KeyframeChannel {
   /// ball squashing as it goes. One is as it is. See the Squash device.
   static const String squash = "squash";
   static const String squashAngle = "squashAngle";
+
+  /// loopTurn, loopSx and loopSy are how a moving loop (see ElementLoop)
+  /// turns and sizes the element about [loopPivotX], [loopPivotY] -- the
+  /// loop's own pivot, a share of its box: a swing hangs from its top. Its
+  /// moving and fading are the pose's own (see poseWithMotion).
+  static const String loopTurn = "loopTurn";
+  static const String loopSx = "loopSx";
+  static const String loopSy = "loopSy";
+  static const String loopPivotX = "loopPivotX";
+  static const String loopPivotY = "loopPivotY";
 }
 
 /// bounceOut is the classic four-stage bounce -- the one curve a keyframe's
