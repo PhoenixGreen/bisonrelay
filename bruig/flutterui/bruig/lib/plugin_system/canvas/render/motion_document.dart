@@ -128,8 +128,11 @@ int settledFrameOf(CanvasDocument doc) {
 Rect boxOf(CanvasElement e) => Rect.fromLTWH(e.x, e.y, e.width, e.height);
 
 /// motionSceneOf is what places are worked out against in [doc]: its page,
-/// its elements' boxes, and -- for "on" -- where each is drawn on [frame].
-MotionScene motionSceneOf(CanvasDocument doc, int frame, {int depth = 0}) =>
+/// its elements' boxes, and -- for "on" -- where each is drawn on [frame],
+/// with what it plays from its slots in [live] (Ken's systems review,
+/// 2026-11-08: "on" a launched element went where its timeline had it).
+MotionScene motionSceneOf(CanvasDocument doc, int frame,
+        {int depth = 0, LiveMotion? live}) =>
     MotionScene(
       page: doc.size.size,
       boundsOf: (id) => switch (doc.elementById(id)) {
@@ -143,20 +146,26 @@ MotionScene motionSceneOf(CanvasDocument doc, int frame, {int depth = 0}) =>
           : (id) {
               var o = doc.elementById(id);
               if (o == null) return null;
-              var p = motionPoseIn(doc, o, frame, depth: depth + 1);
+              var p = motionPoseIn(doc, o, frame,
+                  depth: depth + 1,
+                  live: live?.of(o.id),
+                  clock: live?.clock ?? 0,
+                  all: live);
               var k = o.track?.at(frame) ?? Keyframe.rest;
               return boxOf(o).center + Offset(k.dx + p.dx, k.dy + p.dy);
             },
     );
 
-/// motionPoseIn is what [e]'s placed clips make of it on [frame] of [doc].
+/// motionPoseIn is what [e]'s placed clips make of it on [frame] of [doc]
+/// -- [live] what it plays from its slots, and [all] what everything does,
+/// for a place "on" another.
 MotionPose motionPoseIn(CanvasDocument doc, CanvasElement e, int frame,
-    {MotionLive? live, double clock = 0, int depth = 0}) {
+    {MotionLive? live, double clock = 0, int depth = 0, LiveMotion? all}) {
   var motion = e.base.motion;
   if (motion.isEmpty) return MotionPose.rest;
   var rate = math.max(1, doc.frameRate);
   return motionPose(motion, frame / rate, boxOf(e), _timesFor(doc, e),
-      motionSceneOf(doc, frame, depth: depth),
+      motionSceneOf(doc, frame, depth: depth, live: all),
       live: live,
       clock: clock,
       replaces: motion.clips.any((c) => c.kind == MotionKind.camera));
@@ -891,8 +900,9 @@ Keyframe _clipPose(
   var pose = e.track?.at(frame) ?? Keyframe.rest;
   if (e.base.motion.isEmpty) return pose;
   var off = live?.of(e.id);
-  var moved = motionPoseIn(doc, e, frame, live: off, clock: live?.clock ?? 0)
-      .onto(pose);
+  var moved =
+      motionPoseIn(doc, e, frame, live: off, clock: live?.clock ?? 0, all: live)
+          .onto(pose);
   // The stretch its arrival plays over, in this document's frames.
   if (moved.values[revealFrom] case var from?) {
     var rate = math.max(1, doc.frameRate);
@@ -1033,7 +1043,8 @@ List<ModelPlay> modelPlaysAt(CanvasElement e, int frame, CanvasDocument doc,
   var motion = e.base.motion;
   if (motion.isEmpty) return const [];
   var off = live?.of(e.id);
-  var pose = motionPoseIn(doc, e, frame, live: off, clock: live?.clock ?? 0);
+  var pose = motionPoseIn(doc, e, frame,
+      live: off, clock: live?.clock ?? 0, all: live);
   return [
     for (var s in pose.sources)
       if (s.clip.kind == MotionKind.model)

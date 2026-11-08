@@ -651,6 +651,51 @@ void main() {
     expect(a, isNot(closeTo(b, 1e-6)));
   });
 
+  // Ken's systems review, 2026-11-08: "on" another element went where its
+  // timeline had it, not where a slot had sent it.
+  test("a place on a launched element is where that element is", () {
+    var doc = CanvasDocument(elements: [
+      ShapeElement(const ElementBase(
+          id: "cam",
+          x: 0,
+          y: 0,
+          width: 20,
+          height: 20,
+          motion: ElementMotion(clips: [
+            MotionClip(id: "follow", length: 4, keys: {
+              MotionProp.x: [
+                MotionKey(0, MotionPlace(MotionPlaceKind.on, target: "ball")),
+                MotionKey(4, MotionPlace(MotionPlaceKind.on, target: "ball")),
+              ],
+            }),
+          ], placed: [
+            ClipPlacement(id: "p", clip: "follow"),
+          ]))),
+      ShapeElement(const ElementBase(
+          id: "ball",
+          x: 100,
+          y: 0,
+          width: 20,
+          height: 20,
+          motion: ElementMotion(clips: [
+            MotionClip(id: "roll", length: 1, keys: {
+              MotionProp.x: [
+                MotionKey(0, MotionNumber(200)),
+                MotionKey(1, MotionNumber(200)),
+              ],
+            }),
+          ]))),
+    ]);
+    var cam = doc.elementById("cam")!;
+    expect(poseWithMotion(cam, 12, doc).dx, closeTo(100, 1),
+        reason: "on the ball where it is set");
+    var p = MotionPlayer()..step(doc, 0, 0);
+    p.launch(doc, 0, "ball", "roll", 0);
+    p.step(doc, 0, 0.5);
+    expect(poseWithMotion(cam, 12, doc, live: p).dx, closeTo(300, 1),
+        reason: "on the ball where its slot has rolled it");
+  });
+
   // Ken's systems review, 2026-11-08: a Look at aimed where its target's
   // timeline had it, not where a slot had sent it.
   test("a Look at follows a target launched from its slot", () {

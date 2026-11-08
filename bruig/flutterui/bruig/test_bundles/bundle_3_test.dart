@@ -20,9 +20,9 @@ import '../test/canvas_file_player_test.dart' as t14;
 import '../test/canvas_gradient_paint_test.dart' as t15;
 import '../test/canvas_guides_test.dart' as t16;
 import '../test/canvas_image_adjust_test.dart' as t17;
-import '../test/canvas_image_brush_test.dart' as t18;
-import '../test/canvas_image_frame_test.dart' as t19;
-import '../test/canvas_image_mask_tools_test.dart' as t20;
+import '../test/canvas_image_frame_test.dart' as t18;
+import '../test/canvas_image_mask_tools_test.dart' as t19;
+import '../test/canvas_instances_test.dart' as t20;
 import '../test/canvas_instrument_shape_test.dart' as t21;
 import '../test/canvas_library_test.dart' as t22;
 import '../test/canvas_mix_decode_test.dart' as t23;
@@ -47,11 +47,11 @@ import '../test/chat_spacing_images_test.dart' as t41;
 import '../test/feed_render_scope_test.dart' as t42;
 import '../test/header_label_test.dart' as t43;
 import '../test/image_header_test.dart' as t44;
-import '../test/library_name_test.dart' as t45;
-import '../test/markdown_nav_test.dart' as t46;
-import '../test/markdown_title_test.dart' as t47;
-import '../test/page_partials_test.dart' as t48;
-import '../test/page_size_test.dart' as t49;
+import '../test/markdown_nav_test.dart' as t45;
+import '../test/markdown_title_test.dart' as t46;
+import '../test/page_partials_test.dart' as t47;
+import '../test/page_size_test.dart' as t48;
+import '../test/png_fixture_test.dart' as t49;
 import '../test/post_reorder_hint_test.dart' as t50;
 import '../test/post_storage_test.dart' as t51;
 import '../test/refusal_text_test.dart' as t52;
@@ -130,15 +130,15 @@ void main() {
     setUpAll(betweenFiles);
     t17.main();
   });
-  group('canvas_image_brush_test.dart', () {
+  group('canvas_image_frame_test.dart', () {
     setUpAll(betweenFiles);
     t18.main();
   });
-  group('canvas_image_frame_test.dart', () {
+  group('canvas_image_mask_tools_test.dart', () {
     setUpAll(betweenFiles);
     t19.main();
   });
-  group('canvas_image_mask_tools_test.dart', () {
+  group('canvas_instances_test.dart', () {
     setUpAll(betweenFiles);
     t20.main();
   });
@@ -238,23 +238,23 @@ void main() {
     setUpAll(betweenFiles);
     t44.main();
   });
-  group('library_name_test.dart', () {
+  group('markdown_nav_test.dart', () {
     setUpAll(betweenFiles);
     t45.main();
   });
-  group('markdown_nav_test.dart', () {
+  group('markdown_title_test.dart', () {
     setUpAll(betweenFiles);
     t46.main();
   });
-  group('markdown_title_test.dart', () {
+  group('page_partials_test.dart', () {
     setUpAll(betweenFiles);
     t47.main();
   });
-  group('page_partials_test.dart', () {
+  group('page_size_test.dart', () {
     setUpAll(betweenFiles);
     t48.main();
   });
-  group('page_size_test.dart', () {
+  group('png_fixture_test.dart', () {
     setUpAll(betweenFiles);
     t49.main();
   });
