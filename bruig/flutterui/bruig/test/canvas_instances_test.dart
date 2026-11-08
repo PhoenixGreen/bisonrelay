@@ -613,6 +613,44 @@ void main() {
     });
   });
 
+  // Ken's systems review, 2026-11-08: a Spring worked its chain out again
+  // for sixteen frames at every frame; its poses are kept per document now.
+  test("a Spring's kept poses are the ones worked out fresh", () {
+    CanvasDocument withSpring(double stiffness) => CanvasDocument(elements: [
+          ShapeElement(ElementBase(
+              id: "s",
+              width: 20,
+              height: 20,
+              motion: ElementMotion(clips: const [
+                MotionClip(id: "go", length: 1, keys: {
+                  MotionProp.x: [
+                    MotionKey(0, MotionNumber(0)),
+                    MotionKey(1, MotionNumber(200)),
+                  ],
+                }),
+              ], placed: const [
+                ClipPlacement(id: "p", clip: "go")
+              ], devices: [
+                MotionDevice(MotionDeviceKind.spring,
+                    id: "sp", values: {"stiffness": stiffness}),
+              ]))),
+        ]);
+    var doc = withSpring(12);
+    var e = doc.elementById("s")!;
+    // Fresh: with something live (the pointer) nothing is kept.
+    const fresh = PointerLive(null);
+    for (var f = 0; f < 40; f++) {
+      expect(poseWithMotion(e, f, doc).dx,
+          closeTo(poseWithMotion(e, f, doc, live: fresh).dx, 1e-9),
+          reason: "frame $f");
+    }
+    // Another document -- stiffer -- is not answered from the last one's.
+    var stiff = withSpring(30);
+    var a = poseWithMotion(e, 10, doc).dx;
+    var b = poseWithMotion(stiff.elementById("s")!, 10, stiff).dx;
+    expect(a, isNot(closeTo(b, 1e-6)));
+  });
+
   // Ken's systems review, 2026-11-08: a Look at aimed where its target's
   // timeline had it, not where a slot had sent it.
   test("a Look at follows a target launched from its slot", () {

@@ -435,6 +435,37 @@ MotionDevice withOwnValues(MotionDevice d, InstanceSet? set, int? instance) {
 Keyframe _pulled(CanvasElement e, int frame, CanvasDocument doc,
     LiveMotion? live, List<MotionDevice> devices, int i, int? instance) {
   if (i < 0) return _clipPose(e, frame, doc, live);
+  // Kept for this document, where nothing plays live: a Spring asks for
+  // the sixteen frames before each it is asked for, a Squash and a Time
+  // the one before, and the next frame asks for nearly all of them again
+  // (Ken's systems review, 2026-11-08). Not where Follow sound reads a
+  // recording's shape from outside the document.
+  if (live != null ||
+      devices.any((d) => d.kind == MotionDeviceKind.followSound)) {
+    return _pulledNow(e, frame, doc, live, devices, i, instance);
+  }
+  var kept = _pulledKept[e];
+  if (kept == null ||
+      !identical(kept.$1, doc) ||
+      !identical(kept.$2, devices)) {
+    kept = (doc, devices, <(int?, int, int), Keyframe>{});
+    _pulledKept[e] = kept;
+  }
+  var key = (instance, i, frame);
+  if (kept.$3[key] case var known?) return known;
+  if (kept.$3.length > 4096) kept.$3.clear();
+  return kept.$3[key] = _pulledNow(e, frame, doc, null, devices, i, instance);
+}
+
+/// _pulledKept is each element's poses worked out by _pulled, for the
+/// document and the chain they were worked out in: by copy, device and
+/// frame.
+final Expando<
+        (CanvasDocument, List<MotionDevice>, Map<(int?, int, int), Keyframe>)>
+    _pulledKept = Expando("pulled");
+
+Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
+    LiveMotion? live, List<MotionDevice> devices, int i, int? instance) {
   // Its knobs where its LFOs have them at this moment -- and, for one copy
   // of an element reused, where that copy has its own (see instances.dart).
   var d = withOwnValues(

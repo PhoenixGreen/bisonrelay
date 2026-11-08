@@ -780,8 +780,17 @@ class ElementMotion {
   /// a chain, or one kept when its last clip went.
   bool get channelled => !isEmpty || kept || devices.isNotEmpty;
 
-  /// poseDevices are its pose devices switched on, in the order they run.
-  List<MotionDevice> get poseDevices {
+  /// poseDevices are its pose devices switched on, in the order they run:
+  /// made once for each motion (it never changes), as a pose is asked for
+  /// many times a frame and its poses are kept by this list (see
+  /// motion_document.dart's _pulled).
+  List<MotionDevice> get poseDevices =>
+      _poseDevices[this] ??= List.unmodifiable(_makePoseDevices());
+
+  static final Expando<List<MotionDevice>> _poseDevices =
+      Expando("poseDevices");
+
+  List<MotionDevice> _makePoseDevices() {
     var poses = [
       for (var d in devices)
         if (d.on && d.side == MotionDeviceSide.pose) d,
