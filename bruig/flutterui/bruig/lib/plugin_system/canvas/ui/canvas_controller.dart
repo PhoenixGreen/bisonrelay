@@ -3615,6 +3615,11 @@ class CanvasController extends ChangeNotifier {
   /// _motionCurves is whether the Motion view shows its Curves.
   bool _motionCurves = false;
 
+  /// _trackCurves is whether the Motion view shows the Curves of what the
+  /// Keyframes card edits, and _trackCurvesFrame the keyframe it opened on.
+  bool _trackCurves = false;
+  int? _trackCurvesFrame;
+
   /// _copiesOf and _pickedCopies are the copies of an element reused that
   /// are picked -- on the canvas or in its Instances card -- and so what
   /// its chain edits; none picked is all of them. See controller/copies.dart.

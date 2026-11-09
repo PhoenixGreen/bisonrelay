@@ -64,8 +64,8 @@ class KeyframesCard extends StatefulWidget {
   final bool folded;
   final VoidCallback onFold;
 
-  /// onCurves opens the Curves on the picked keyframes' values.
-  final VoidCallback? onCurves;
+  /// onCurves opens the Curves, on the picked keyframe where there is one.
+  final ValueChanged<int?>? onCurves;
   const KeyframesCard(
       {required this.controller,
       required this.height,
@@ -164,7 +164,8 @@ class _KeyframesCardState extends State<KeyframesCard> {
                 () => setState(() => _lanes = !_lanes),
                 lit: _lanes),
           if (!t.points && widget.onCurves != null)
-            bar("Curves", const ValueKey("keyframesCurves"), widget.onCurves!),
+            bar("Curves", const ValueKey("keyframesCurves"),
+                () => widget.onCurves!(_sel.isEmpty ? null : _sel.first)),
         ],
         display: _display(t, studio),
         controls: (tier) => [_inspector(t, studio)],
@@ -527,7 +528,8 @@ class _KeyframesCardState extends State<KeyframesCard> {
         act("Spread evenly", const ValueKey("keyframesSpread"),
             () => _spread(t)),
       if (!t.points && picked.length == 1 && widget.onCurves != null)
-        act("Curves", const ValueKey("keyframesOpenCurves"), widget.onCurves!),
+        act("Curves", const ValueKey("keyframesOpenCurves"),
+            () => widget.onCurves!(picked.first.frame)),
       if (!t.points) act("Copy", const ValueKey("keyframesCopy"), _copy),
       act("Delete", const ValueKey("keyframesDelete"), _remove, danger: true),
     ]);

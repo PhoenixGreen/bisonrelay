@@ -678,6 +678,28 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
+  /// trackCurvesShown is whether the Motion view shows the Curves of the
+  /// Keyframes card's keyframes -- an element's own, or a team player's --
+  /// across the panel, as a clip's Curves (Ken, 2026-11-09).
+  bool get trackCurvesShown => _trackCurves;
+
+  /// trackCurvesFrame is the keyframe the Curves opened on, picked there.
+  int? get trackCurvesFrame => _trackCurvesFrame;
+
+  /// showTrackCurves opens them, on the keyframe at [frame] where given.
+  void showTrackCurves({int? frame}) {
+    _trackCurves = true;
+    _trackCurvesFrame = frame;
+    _motionCurves = false;
+    notifyListeners();
+  }
+
+  void closeTrackCurves() {
+    if (!_trackCurves) return;
+    _trackCurves = false;
+    notifyListeners();
+  }
+
   void closeMotionCurves() {
     if (!_motionCurves) return;
     _motionCurves = false;

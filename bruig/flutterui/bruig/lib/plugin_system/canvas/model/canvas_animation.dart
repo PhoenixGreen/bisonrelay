@@ -258,6 +258,12 @@ class ElementTrack {
   /// pose holds, and after the last the last does; nothing extrapolates.
   Keyframe at(int frame) => _withHeldValues(frame, _poseAt(frame));
 
+  /// between is the pose part way through a frame, [frame] fractional: the
+  /// same curve [at] reads whole frames of, for drawing it smoothly (the
+  /// Curves).
+  Keyframe between(double frame) =>
+      _withHeldValues(frame.floor(), _poseAt(frame));
+
   /// _withHeldValues fills in any extra channel this frame's pose does not
   /// name itself, from the last keyframe that did, so channels hold past
   /// their last key as the pose does.
@@ -274,7 +280,7 @@ class ElementTrack {
     return pose.copyWith(values: {...held, ...pose.values});
   }
 
-  Keyframe _poseAt(int frame) {
+  Keyframe _poseAt(num frame) {
     if (keys.isEmpty) return Keyframe.rest;
     if (frame <= keys.first.frame) return keys.first;
     if (frame >= keys.last.frame) return keys.last;

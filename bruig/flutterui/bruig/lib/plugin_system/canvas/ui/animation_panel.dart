@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
+import 'package:bruig/plugin_system/canvas/ui/track_curves.dart';
 import 'package:bruig/plugin_system/canvas/ui/keyframes_card.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -268,6 +269,15 @@ class _AnimationPanelState extends State<AnimationPanel> {
     var picked = _picked;
     var hint = TextStyle(fontSize: 11.5, color: colors.onSurfaceVariant);
     // An element with no clips still has a chain: its moves and its looks.
+    // The Keyframes card's Curves, across the whole panel (Ken,
+    // 2026-11-09), while what it edits is picked.
+    if (controller.trackCurvesShown &&
+        controller.keyframeTarget?.points == false) {
+      return TrackCurves(
+          key: const ValueKey("trackCurvesPanel"),
+          controller: controller,
+          height: widget.height);
+    }
     if (picked == null && controller.selected != null) {
       return _chainOnly(context, controller.selected!);
     }
@@ -395,6 +405,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
         key: const ValueKey("keyframesCard"),
         controller: controller,
         height: widget.height - 40,
+        onCurves: (frame) => controller.showTrackCurves(frame: frame),
         folded: folded,
         onFold: () => setState(() =>
             _folded.contains(mark) ? _folded.remove(mark) : _folded.add(mark)));
