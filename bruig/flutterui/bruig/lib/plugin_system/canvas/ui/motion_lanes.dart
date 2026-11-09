@@ -497,8 +497,9 @@ class _MotionLanesState extends State<MotionLanes> {
                     fontSize: 9, height: 1.4, color: Color(0xFFE2B04A))),
           ),
       ],
-      // Its motion: shown as on; switching a row's motion off is to come.
-      motion: RowToggle(ValueKey("rowMotion-${e.id}"), on: true),
+      // Its motion, switched off and on: drawn as if it had none.
+      motion: RowToggle(ValueKey("rowMotion-${e.id}"),
+          on: !m.off, onTap: () => controller.switchMotion(e.id, m.off)),
       sound: own == null
           ? null
           : RowToggle(ValueKey("rowMute-${e.id}"),

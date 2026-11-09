@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
@@ -732,9 +734,27 @@ class ElementMotion {
   final List<String> slots;
   final List<ClipPlacement> placed;
 
-  /// weights are each layer's weight, 0 to 1: the layer faders on the
-  /// element's strip.
+  /// weights are each layer's weight, 0 to 1, as the strip's cross-fader
+  /// and pins leave them (see crossFade) -- before [amount] and [off]: read
+  /// [weight] for what plays.
   final List<double> weights;
+
+  /// pins are the layers pinned on the strip's cross-fader, bit i layer i:
+  /// each played in full, the fader blending the others (Ken, 2026-11-08).
+  final int pins;
+
+  /// fade is where the cross-fader stands, 0 to 1, along the layers in use
+  /// that are not pinned.
+  final double fade;
+
+  /// amount is how much of its motion is seen, 0 to 1: every layer's
+  /// weight scaled by it.
+  final double amount;
+
+  /// off is its motion switched off (the ◆ on its row and strip): drawn as
+  /// if it had none -- its layers, its pose devices but its copies, and its
+  /// looks. Its sound is its own.
+  final bool off;
 
   /// output is the sound channel the element's own sound goes into, by
   /// name, or "" for its own lane.
@@ -765,6 +785,10 @@ class ElementMotion {
     this.slots = const [],
     this.placed = const [],
     this.weights = const [1, 1, 1],
+    this.pins = 0,
+    this.fade = 0,
+    this.amount = 1,
+    this.off = false,
     this.output = "",
     this.devices = const [],
     this.instances,
@@ -792,8 +816,9 @@ class ElementMotion {
 
   List<MotionDevice> _makePoseDevices() {
     var poses = [
-      for (var d in devices)
-        if (d.on && d.side == MotionDeviceSide.pose) d,
+      if (!off)
+        for (var d in devices)
+          if (d.on && d.side == MotionDeviceSide.pose) d,
     ];
     // Its Instances only with instances, and always first (Ken, 2026-11-08):
     // every copy has the whole chain, each with what it has of its own.
@@ -803,8 +828,9 @@ class ElementMotion {
 
   /// looks are its look devices switched on, in the order they run.
   List<MotionDevice> get looks => [
-        for (var d in devices)
-          if (d.on && d.side == MotionDeviceSide.look) d,
+        if (!off)
+          for (var d in devices)
+            if (d.on && d.side == MotionDeviceSide.look) d,
       ];
 
   /// moves is whether anything of its motion can move it: a clip, or a pose
@@ -828,8 +854,48 @@ class ElementMotion {
   MotionClip? slot(int i) =>
       i >= 0 && i < slots.length && slots[i].isNotEmpty ? clip(slots[i]) : null;
 
-  double weight(int layer) =>
+  /// weight is how much [layer] plays: its fader's weight, by [amount],
+  /// and none while [off].
+  double weight(int layer) => off ? 0 : layerWeight(layer) * amount;
+
+  /// layerWeight is [layer]'s weight as the cross-fader and pins leave it.
+  double layerWeight(int layer) =>
       layer >= 0 && layer < weights.length ? weights[layer] : 1;
+
+  /// isPinned is whether [layer] is pinned on the cross-fader.
+  bool isPinned(int layer) => pins & (1 << layer) != 0;
+
+  /// layersInUse are the motion layers something is on, a clip or a
+  /// placement, lowest first: what the cross-fader spans.
+  List<int> get layersInUse => [
+        for (var l = 0; l < motionLayers; l++)
+          if (placed.any((p) => p.layer == l) || clips.any((c) => c.layer == l))
+            l,
+      ];
+
+  /// freeLayers are those of [layersInUse] not pinned: the cross-fader's.
+  List<int> get freeLayers => [
+        for (var l in layersInUse)
+          if (!isPinned(l)) l
+      ];
+
+  /// faded is this with the cross-fader at [to], its weights following.
+  ElementMotion faded(double to) {
+    var f = to.clamp(0.0, 1.0).toDouble();
+    return copyWith(fade: f, weights: crossFade(layersInUse, pins, f));
+  }
+
+  /// pinnedAs is this with [layer] pinned or not, its weights following.
+  /// Every layer in use pinned leaves nothing to fade: refused, as the
+  /// prototype does.
+  ElementMotion pinnedAs(int layer, bool pinned) {
+    var next = pinned ? pins | (1 << layer) : pins & ~(1 << layer);
+    var used = layersInUse;
+    if (used.isNotEmpty && used.every((l) => next & (1 << l) != 0)) {
+      return this;
+    }
+    return copyWith(pins: next, weights: crossFade(used, next, fade));
+  }
 
   /// hasSound is whether any clip is a sound, giving it a sound lane and
   /// fader.
@@ -840,6 +906,10 @@ class ElementMotion {
     List<String>? slots,
     List<ClipPlacement>? placed,
     List<double>? weights,
+    int? pins,
+    double? fade,
+    double? amount,
+    bool? off,
     String? output,
     List<MotionDevice>? devices,
     InstanceSet? instances,
@@ -852,6 +922,10 @@ class ElementMotion {
         slots: slots ?? this.slots,
         placed: placed ?? this.placed,
         weights: weights ?? this.weights,
+        pins: pins ?? this.pins,
+        fade: fade ?? this.fade,
+        amount: amount ?? this.amount,
+        off: off ?? this.off,
         output: output ?? this.output,
         devices: devices == null ? this.devices : withMotionDeviceIds(devices),
         instances: clearInstances ? null : instances ?? this.instances,
@@ -943,6 +1017,10 @@ class ElementMotion {
         if (slots.isNotEmpty) "slots": slots,
         if (placed.isNotEmpty) "placed": [for (var p in placed) p.toJson()],
         if (weights.any((w) => w != 1)) "weights": weights,
+        if (pins != 0) "pins": pins,
+        if (fade != 0) "fade": fade,
+        if (amount != 1) "amount": amount,
+        if (off) "off": true,
         if (output.isNotEmpty) "output": output,
         if (devices.isNotEmpty) "devices": [for (var d in devices) d.toJson()],
         if (instances != null) "instances": instances!.toJson(),
@@ -979,6 +1057,12 @@ class ElementMotion {
           else
             1.0,
       ],
+      pins: json["pins"] is int
+          ? (json["pins"] as int) & ((1 << motionLayers) - 1)
+          : 0,
+      fade: jsonDouble(json["fade"], 0).clamp(0.0, 1.0),
+      amount: jsonDouble(json["amount"], 1).clamp(0.0, 1.0),
+      off: json["off"] == true,
       output: jsonString(json["output"], ""),
       devices: withMotionDeviceIds([
         if (json["devices"] case List raw)
@@ -994,6 +1078,29 @@ class ElementMotion {
       drawSize: jsonDouble(json["drawSize"], 1).clamp(0.05, 8.0),
     );
   }
+}
+
+/// crossFade is each layer's weight for the strip's cross-fader at [fade]
+/// over [used] layers, [pins] pinned (the prototype's weights(), Ken
+/// 2026-11-08): a pinned layer plays in full; the free ones are spread along
+/// the fader, it blending between the two it stands between; one free layer
+/// plays in full. A layer not in use keeps 1, there being nothing on it.
+List<double> crossFade(List<int> used, int pins, double fade) {
+  var w = List<double>.filled(motionLayers, 1);
+  var free = [
+    for (var l in used)
+      if (pins & (1 << l) == 0) l
+  ];
+  if (free.length < 2) return w;
+  for (var l in free) {
+    w[l] = 0;
+  }
+  var x = fade.clamp(0.0, 1.0) * (free.length - 1);
+  var i = math.min(x.floor(), free.length - 2);
+  var f = x - i;
+  w[free[i]] = 1 - f;
+  w[free[i + 1]] = f;
+  return w;
 }
 
 /// MotionTimes resolves where placed clips are, following their pins. One

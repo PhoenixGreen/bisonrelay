@@ -101,7 +101,7 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
                       key: ValueKey("layerFader-${e.id}-$layer"),
                       label: "L${layer + 1}",
                       short: narrow,
-                      value: e.base.motion.weight(layer),
+                      value: e.base.motion.layerWeight(layer),
                       theme: theme,
                       onChanged: (v) {
                         controller.beginInteraction();
@@ -120,7 +120,7 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(2),
                     child: LinearProgressIndicator(
-                      value: e.base.motion.weight(layer),
+                      value: e.base.motion.layerWeight(layer),
                       minHeight: 6,
                       color: theme.studio.on,
                       backgroundColor: theme.studio.inset,

@@ -508,6 +508,28 @@ extension MotionEditing on CanvasController {
     setMotion(element, next);
   }
 
+  /// fadeLayers moves [element]'s cross-fader to [to], 0 to 1.
+  void fadeLayers(String element, double to, {bool transient = false}) =>
+      setMotion(element, motionOf(element).faded(to), transient: transient);
+
+  /// pinLayer pins [layer] of [element] on its cross-fader, or unpins it.
+  void pinLayer(String element, int layer, bool pinned) {
+    var m = motionOf(element);
+    var next = m.pinnedAs(layer, pinned);
+    if (!identical(next, m)) setMotion(element, next);
+  }
+
+  /// setMotionAmount sets how much of [element]'s motion is seen, 0 to 1.
+  void setMotionAmount(String element, double amount,
+          {bool transient = false}) =>
+      setMotion(
+          element, motionOf(element).copyWith(amount: amount.clamp(0.0, 1.0)),
+          transient: transient);
+
+  /// switchMotion switches [element]'s motion on or off: the ◆.
+  void switchMotion(String element, bool on) =>
+      setMotion(element, motionOf(element).copyWith(off: !on));
+
   /// weighLayer sets how much [layer] of [element] counts, 0 to 1.
   void weighLayer(String element, int layer, double weight,
       {bool transient = false}) {
