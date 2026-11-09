@@ -352,8 +352,12 @@ void main() {
       var file = File(
           "${root.path}/my-posts/$notesFolderName/Document - Mastering Go.md");
       // The write is real I/O, which no spinner shows: under a loaded full
-      // run it can land after the idle wait, so wait for the file itself.
-      for (var i = 0; i < _idleCeiling && !file.existsSync(); i++) {
+      // run it can land after the idle wait, so wait for the file itself,
+      // and what is in it.
+      bool written() =>
+          file.existsSync() && file.readAsStringSync() == "the bit about ports";
+      // Its contents too: the file can be there before they are.
+      for (var i = 0; i < _idleCeiling && !written(); i++) {
         await tester.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 10)));
         await tester.pump();
