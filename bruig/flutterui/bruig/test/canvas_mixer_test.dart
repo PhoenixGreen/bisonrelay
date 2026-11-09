@@ -45,6 +45,18 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 
 const song = "aaaaaaaaaaaaaaaa.mp3";
 
+/// chooseBand picks [state] for band [name] from the mixer's rail: its
+/// button, then the choice (the approved design: Show, Minimise or Hide).
+Future<void> chooseBand(
+    WidgetTester tester, String name, BandState state) async {
+  await tester.tap(find.byKey(ValueKey("section-$name")));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 200));
+  await tester.tap(find.byKey(ValueKey("section-$name-${state.name}")));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 200));
+}
+
 void main() {
   group("the EQ means one thing", () {
     test("flat is flat, and off is off", () {
@@ -1674,8 +1686,7 @@ void main() {
       expect(three, lessThan(150), reason: "three slots, the sends, gaps");
 
       // The mixer minimised: its row, and the devices have more room.
-      await tester.tap(find.byKey(const ValueKey("section-mixer")));
-      await tester.pump();
+      await chooseBand(tester, "mixer", BandState.minimised);
       expect(c.bandState(MixerSection.mixer), BandState.minimised);
       expect(inStrip("fader"), findsNothing);
       expect(inStrip("miniFader"), findsOneWidget);
@@ -1691,29 +1702,22 @@ void main() {
       expect(c.timelineChannels.single.mix.gainDb, lessThan(-3));
 
       // Then hidden; then shown again.
-      await tester.tap(find.byKey(const ValueKey("section-mixer")));
-      await tester.pump();
+      await chooseBand(tester, "mixer", BandState.hidden);
       expect(c.bandState(MixerSection.mixer), BandState.hidden);
       expect(inStrip("miniFader"), findsNothing);
-      await tester.tap(find.byKey(const ValueKey("section-mixer")));
-      await tester.pump();
+      await chooseBand(tester, "mixer", BandState.shown);
       expect(c.bandState(MixerSection.mixer), BandState.shown);
       expect(inStrip("fader"), findsOneWidget);
 
       // The clips minimised: one slot and its stop.
-      await tester.tap(find.byKey(const ValueKey("section-clips")));
-      await tester.pump();
+      await chooseBand(tester, "clips", BandState.minimised);
       expect(c.bandState(MixerSection.clips), BandState.minimised);
       expect(inStrip("clipStop-v"), findsOneWidget);
 
       // Never the last band hidden: with the others hidden, the mixer's
       // button goes back to shown rather than hiding it.
-      await tester.tap(find.byKey(const ValueKey("section-clips")));
-      await tester.pump(); // clips hidden
-      for (var i = 0; i < 2; i++) {
-        await tester.tap(find.byKey(const ValueKey("section-devices")));
-        await tester.pump();
-      }
+      await chooseBand(tester, "clips", BandState.hidden);
+      await chooseBand(tester, "devices", BandState.hidden);
       expect({
         for (var s in MixerSection.values)
           if (c.bandState(s) != BandState.hidden) s
@@ -1723,29 +1727,33 @@ void main() {
       },
           reason: "the sends showing do not count: a mixer of dials alone "
               "is no mixer");
-      await tester.tap(find.byKey(const ValueKey("section-mixer")));
-      await tester.pump();
+      await chooseBand(tester, "mixer", BandState.minimised);
       expect(c.bandState(MixerSection.mixer), BandState.minimised);
-      await tester.tap(find.byKey(const ValueKey("section-mixer")));
-      await tester.pump();
-      expect(c.bandState(MixerSection.mixer), BandState.shown,
+      await chooseBand(tester, "mixer", BandState.hidden);
+      expect(c.bandState(MixerSection.mixer), BandState.minimised,
           reason: "the last band showing stays");
 
       // Ken: the sends, a band of their own under S -- shown and hidden.
       expect(inStrip("sendsBand"), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey("section-sends")));
-      await tester.pump();
+      await chooseBand(tester, "sends", BandState.hidden);
       expect(c.bandState(MixerSection.sends), BandState.hidden);
       expect(inStrip("sendsBand"), findsNothing);
+      await chooseBand(tester, "sends", BandState.shown);
+      expect(c.bandState(MixerSection.sends), BandState.shown);
       await tester.tap(find.byKey(const ValueKey("section-sends")));
       await tester.pump();
-      expect(c.bandState(MixerSection.sends), BandState.shown,
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(
+          find.byKey(const ValueKey("section-sends-minimised")), findsNothing,
           reason: "never minimised");
+      await tester.tapAt(Offset.zero);
+      await tester.pump();
       expect(inStrip("sendsBand"), findsOneWidget);
-      // Under the mixer's button on the rail.
+      // Over the mixer's button on the rail, as the band is over the
+      // mixer in every strip.
       expect(
           tester.getRect(find.byKey(const ValueKey("section-sends"))).top,
-          greaterThan(
+          lessThan(
               tester.getRect(find.byKey(const ValueKey("section-mixer"))).top));
       expect(tester.takeException(), isNull);
       await done(tester, c);
@@ -1882,14 +1890,38 @@ void main() {
       expect(
           inStrip("mute").top, greaterThanOrEqualTo(inStrip("balance").bottom),
           reason: "under the pan");
-      // The rail's buttons drawn half size, but pressed anywhere near.
-      var rail = find.byKey(const ValueKey("section-mixer"));
-      var dot = find.descendant(of: rail, matching: find.byType(Container));
-      expect(tester.getRect(dot.first).width, lessThanOrEqualTo(12));
-      await tester.tapAt(tester.getRect(rail).topLeft + const Offset(2, 2));
+      await done(tester, c);
+    });
+
+    // The approved design: the rail on the left, a button per band in the
+    // strips' order, and folded away to a thin strip.
+    testWidgets("the rail is on the left, in the bands' order, and folds",
+        (tester) async {
+      var c = make();
+      await show(tester, c);
+      var rail = tester.getRect(find.byKey(const ValueKey("mixerRail")));
+      expect(
+          rail.right,
+          lessThanOrEqualTo(
+              tester.getRect(find.byKey(const ValueKey("strip-v"))).left));
+      double top(String band) =>
+          tester.getRect(find.byKey(ValueKey("section-$band"))).top;
+      expect(top("clips"), lessThan(top("devices")));
+      expect(top("devices"), lessThan(top("sends")));
+      expect(top("sends"), lessThan(top("mixer")));
+      expect(find.byKey(const ValueKey("help-mixerRail")), findsOneWidget);
+
+      var wide = tester.getRect(find.byKey(const ValueKey("strip-v"))).left;
+      await tester.tap(find.byKey(const ValueKey("railFold")));
       await tester.pump();
-      expect(c.bandState(MixerSection.mixer), BandState.minimised,
-          reason: "a press at its corner, off the dot, still counts");
+      expect(c.mixerRailFolded, isTrue);
+      expect(find.byKey(const ValueKey("section-mixer")), findsNothing);
+      expect(tester.getRect(find.byKey(const ValueKey("strip-v"))).left,
+          lessThan(wide),
+          reason: "the strips have the room");
+      await tester.tap(find.byKey(const ValueKey("railFold")));
+      await tester.pump();
+      expect(find.byKey(const ValueKey("section-mixer")), findsOneWidget);
       await done(tester, c);
     });
 

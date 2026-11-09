@@ -217,6 +217,33 @@ void main() {
     expect(c.motionOf("a").amount, 1, reason: "a drag is one undo");
   });
 
+  // The rail's Motion slots (the approved design): each slot row's motion
+  // part shown, thin, or not at all.
+  testWidgets("the rail shows, thins or hides the motion slots",
+      (tester) async {
+    var c = await pumpBoth(tester);
+    Future<void> choose(BandState state) async {
+      await tester.tap(find.byKey(const ValueKey("section-motion")));
+      await frames(tester);
+      await tester.tap(find.byKey(ValueKey("section-motion-${state.name}")));
+      await frames(tester);
+    }
+
+    var slot = find.byKey(const ValueKey("motionSlot-a-0"));
+    expect(slot, findsOneWidget);
+    var whole = tester.getRect(find.byKey(const ValueKey("scene-1"))).top -
+        tester.getRect(find.byKey(const ValueKey("scene-0"))).top;
+    await choose(BandState.minimised);
+    expect(c.motionSlots, BandState.minimised);
+    var thin = tester.getRect(find.byKey(const ValueKey("scene-1"))).top -
+        tester.getRect(find.byKey(const ValueKey("scene-0"))).top;
+    expect(thin, lessThan(whole), reason: "each row the shorter");
+    await choose(BandState.hidden);
+    expect(slot, findsNothing);
+    await choose(BandState.shown);
+    expect(slot, findsOneWidget);
+  });
+
   testWidgets("a slot dragged onto the element's row is placed there",
       (tester) async {
     var c = await pumpBoth(tester);

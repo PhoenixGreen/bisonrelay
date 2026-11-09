@@ -854,11 +854,58 @@ class _CanvasMixerState extends State<CanvasMixer>
             sendsH: sendsH,
             bare: bare,
             clipRows: controller.slotsShown,
-            motion: withMotion);
+            motion: withMotion,
+            motionSlots: controller.motionSlots);
         // The channels on the left, scrolled; the returns, the scene's bus,
         // the master and the rail pinned on the right as wide as they are --
         // or, where that leaves no room for a channel, scrolled themselves.
-        return CustomMultiChildLayout(
+        // The rail first, on the left (the approved design).
+        var rail = widget.embedded || bare
+            ? null
+            : _BandRail(
+                theme: theme,
+                folded: controller.mixerRailFolded,
+                onFold: () => controller.mixerRailFolded =
+                    !controller.mixerRailFolded,
+                bands: [
+                  if (withMotion)
+                    _RailBand("motion", "Motion", Icons.animation,
+                        controller.motionSlots,
+                        (s) => controller.motionSlots = s),
+                  for (var s in [
+                    MixerSection.clips,
+                    MixerSection.devices,
+                    MixerSection.sends,
+                    MixerSection.mixer,
+                  ])
+                    _RailBand(
+                        s.name,
+                        switch (s) {
+                          MixerSection.clips => "Sound",
+                          MixerSection.devices => "Devices",
+                          MixerSection.sends => "Sends",
+                          MixerSection.mixer => "Mixer",
+                        },
+                        switch (s) {
+                          MixerSection.clips => Icons.grid_view,
+                          MixerSection.devices => Icons.tune,
+                          MixerSection.sends => Icons.call_made,
+                          MixerSection.mixer => Icons.equalizer,
+                        },
+                        states[s]!,
+                        (state) => controller.setMixerSection(s, state),
+                        canMinimise: s != MixerSection.sends),
+                ],
+                returnsShown: controller.returnsShown,
+                onReturns: () =>
+                    controller.returnsShown = !controller.returnsShown,
+                allNarrow: _allKeys(lanes, rows).every(narrow.contains),
+                onNarrowAll: () {
+                  var keys = _allKeys(lanes, rows);
+                  controller.setAllNarrow(keys, !keys.every(narrow.contains));
+                },
+              );
+        var desk = CustomMultiChildLayout(
             delegate: _PinnedRight(leftLeast: 124),
             children: [
               LayoutId(
@@ -1029,28 +1076,16 @@ class _CanvasMixerState extends State<CanvasMixer>
                           selected: controller.selectedChannel == _master,
                           onSelect: () => controller.pickStrip(_master),
                         ),
-                        if (!widget.embedded && !bare) ...[
-                          const SizedBox(width: 6),
-                          _SectionRail(
-                            states: states,
-                            theme: theme,
-                            onToggle: controller.toggleMixerSection,
-                            returnsShown: controller.returnsShown,
-                            onReturns: () => controller.returnsShown =
-                                !controller.returnsShown,
-                            allNarrow:
-                                _allKeys(lanes, rows).every(narrow.contains),
-                            onNarrowAll: () {
-                              var keys = _allKeys(lanes, rows);
-                              controller.setAllNarrow(
-                                  keys, !keys.every(narrow.contains));
-                            },
-                          ),
-                        ],
                       ]),
                 ),
               ),
             ]);
+        if (rail == null) return desk;
+        return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          rail,
+          const SizedBox(width: 6),
+          Expanded(child: desk),
+        ]);
       }),
     );
   }

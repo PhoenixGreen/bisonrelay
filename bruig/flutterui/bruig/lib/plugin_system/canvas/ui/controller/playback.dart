@@ -361,6 +361,45 @@ extension CanvasPlayback on CanvasController {
   List<String> get mixerBandNames =>
       [for (var s in MixerSection.values) _bandStates[s]!.name];
 
+  /// setMixerSection shows [section] as [state], from the rail's choice:
+  /// the sends are never minimised (there is nothing smaller of a dial),
+  /// and the last of the clips, devices and mixer bands showing is never
+  /// hidden.
+  void setMixerSection(MixerSection section, BandState state) {
+    var next = state;
+    if (section == MixerSection.sends && next == BandState.minimised) {
+      next = BandState.hidden;
+    }
+    if (next == BandState.hidden &&
+        CanvasController._mainBands.contains(section) &&
+        CanvasController._mainBands
+            .where((s) => s != section)
+            .every((s) => _bandStates[s] == BandState.hidden)) {
+      return;
+    }
+    if (_bandStates[section] == next) return;
+    _bandStates[section] = next;
+    notifyListeners();
+  }
+
+  /// motionSlots is how the slot rows' motion parts show: whole, as a thin
+  /// line, or not at all -- the rail's Motion slots (the approved design).
+  BandState get motionSlots => _motionSlots;
+  set motionSlots(BandState state) {
+    if (state == _motionSlots) return;
+    _motionSlots = state;
+    notifyListeners();
+  }
+
+  /// mixerRailFolded is the mixer's rail folded to a thin strip, for the
+  /// strips' room.
+  bool get mixerRailFolded => _mixerRailFolded;
+  set mixerRailFolded(bool folded) {
+    if (folded == _mixerRailFolded) return;
+    _mixerRailFolded = folded;
+    notifyListeners();
+  }
+
   /// toggleMixerSection is a band's rail button: shown, then minimised, then
   /// hidden, then shown again (the sends only shown and hidden). The last of
   /// the clips, devices and mixer bands showing is never hidden: it goes back

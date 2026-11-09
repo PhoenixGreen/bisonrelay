@@ -70,14 +70,8 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
                   element: e.id,
                   row: row,
                   theme: theme),
-              (row) => bands.motionClip > 0
-                  ? const SizedBox()
-                  : _MotionSlot(
-                      key: ValueKey("motionSlot-${e.id}-$row"),
-                      controller: controller,
-                      element: e.id,
-                      row: row,
-                      theme: theme),
+              // No sound of its own: nothing under its motion part.
+              (row) => const SizedBox(),
               Tooltip(
                 message: "Stop this element's clips, on the next bar",
                 child: Material(

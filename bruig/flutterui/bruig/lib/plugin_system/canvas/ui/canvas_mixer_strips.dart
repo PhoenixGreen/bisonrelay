@@ -114,9 +114,16 @@ class _Bands {
       {double sendsH = 0,
       bool bare = false,
       int clipRows = _clipRowsWanted,
-      bool motion = false}) {
+      bool motion = false,
+      BandState motionSlots = BandState.shown}) {
     var mh = motion ? motionHalfHeight + _motionGap : 0.0;
-    var mc = motion ? _motionClipH + _motionClipGap : 0.0;
+    var mc = !motion
+        ? 0.0
+        : switch (motionSlots) {
+            BandState.shown => _motionClipH + _motionClipGap,
+            BandState.minimised => _motionClipMini + _motionClipGap,
+            BandState.hidden => 0.0,
+          };
     var mixerLeast = _mixerMinH + mh;
     var mixerMost = _mixerCapH + mh;
     bool whole(MixerSection s) => states[s] == BandState.shown;
@@ -217,6 +224,7 @@ const double _miniMixerH = 34;
 /// minimised mixer.
 const double _motionGap = 4;
 const double _motionClipH = 14;
+const double _motionClipMini = 4;
 const double _motionClipGap = 2;
 const double _motionLineH = 18;
 
@@ -1489,131 +1497,212 @@ class _MasterStrip extends StatelessWidget {
   }
 }
 
-/// _SectionRail is the rail down the mixer's right edge: a button for each
-/// band, lit while it is shown; then the returns, shown or hidden; then
-/// every column narrow or wide together.
-class _SectionRail extends StatelessWidget {
-  final Map<MixerSection, BandState> states;
+/// _RailBand is one of the rail's bands: Motion slots (the slot rows'
+/// motion parts) or one of the mixer's sections.
+class _RailBand {
+  final String key;
+  final String label;
+  final IconData icon;
+  final BandState state;
+  final bool canMinimise;
+  final ValueChanged<BandState> onChoose;
+  const _RailBand(this.key, this.label, this.icon, this.state, this.onChoose,
+      {this.canMinimise = true});
+}
+
+/// _railWidth is the rail open; _railFoldedWidth folded to its strip.
+const double _railWidth = 50;
+const double _railFoldedWidth = 14;
+
+/// _BandRail is the rail on the mixer's left (the approved design): a
+/// button for each band, its icon and name over three bars of how it shows
+/// (three shown, one minimised, none hidden), pressed for a choice of Show,
+/// Minimise or Hide; under a line, the returns and every column narrow; a
+/// "?" at the foot. The arrow at its top folds it to a thin strip. Short of
+/// height, the names go.
+class _BandRail extends StatelessWidget {
+  final List<_RailBand> bands;
   final MixerLook theme;
-  final ValueChanged<MixerSection> onToggle;
+  final bool folded;
+  final VoidCallback onFold;
   final bool returnsShown;
   final VoidCallback onReturns;
   final bool allNarrow;
   final VoidCallback onNarrowAll;
 
-  const _SectionRail({
-    required this.states,
+  const _BandRail({
+    required this.bands,
     required this.theme,
-    required this.onToggle,
+    required this.folded,
+    required this.onFold,
     required this.returnsShown,
     required this.onReturns,
     required this.allNarrow,
     required this.onNarrowAll,
   });
 
-  Widget _button(
-      {required Key key,
-      required String tip,
-      required bool lit,
-      bool half = false,
-      required Widget Function(Color ink) child,
-      required VoidCallback onTap}) {
-    // Half lit (a band minimised) is a ring in the lit colour.
-    var ink = lit
-        ? theme.studio.onOn
-        : half
-            ? theme.studio.on
-            : theme.colors.onSurfaceVariant;
-    // Drawn half size, but pressed anywhere in a square twenty across.
-    return Tooltip(
-      message: tip,
-      child: GestureDetector(
-        key: key,
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: SizedBox.square(
-            dimension: 20,
-            child: Center(
-              child: Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: lit
-                      ? theme.studio.on
-                      : theme.colors.surfaceContainerHighest,
-                  border: half
-                      ? Border.all(color: theme.studio.on, width: 1.5)
-                      : null,
-                ),
-                child: Center(child: child(ink)),
+  @override
+  Widget build(BuildContext context) {
+    var studio = theme.studio;
+    if (folded) {
+      return SizedBox(
+        key: const ValueKey("mixerRail"),
+        width: _railFoldedWidth,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: InkWell(
+            key: const ValueKey("railFold"),
+            onTap: onFold,
+            child: SizedBox(
+                width: _railFoldedWidth,
+                height: 22,
+                child:
+                    Icon(Icons.chevron_right, size: 12, color: studio.muted)),
+          ),
+        ),
+      );
+    }
+    return SizedBox(
+      key: const ValueKey("mixerRail"),
+      width: _railWidth,
+      child: LayoutBuilder(builder: (context, box) {
+        var named = box.maxHeight >= 330;
+        return SingleChildScrollView(
+          child: Column(children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: InkWell(
+                key: const ValueKey("railFold"),
+                onTap: onFold,
+                child: SizedBox(
+                    width: 22,
+                    height: 20,
+                    child: Icon(Icons.chevron_left,
+                        size: 12, color: studio.muted)),
               ),
             ),
-          ),
+            for (var b in bands) _bandButton(b, named),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Divider(height: 1, color: studio.edge),
+            ),
+            _toggle(
+                key: const ValueKey("showReturns"),
+                icon: Icons.call_split,
+                label: "Returns",
+                on: returnsShown,
+                named: named,
+                onTap: onReturns),
+            _toggle(
+                key: const ValueKey("narrowAll"),
+                icon: Icons.compress,
+                label: "Narrow",
+                on: allNarrow,
+                named: named,
+                onTap: onNarrowAll),
+            const SizedBox(height: 4),
+            const HelpNote(
+              id: "mixerRail",
+              size: 14,
+              title: "What the strips show",
+              paragraphs: [
+                "These buttons choose what every strip shows, top to bottom: "
+                    "the motion slots, the sound slots, the devices, the sends "
+                    "and the mixer.",
+                "Press one to choose Show, Minimise or Hide. The bars under "
+                    "each show which: three for shown, one for minimised, "
+                    "none for hidden.",
+                "Under the line, Returns shows the return channels beside "
+                    "the master, and Narrow makes every strip narrow. The "
+                    "arrow at the top folds this column away.",
+              ],
+            ),
+          ]),
+        );
+      }),
+    );
+  }
+
+  Widget _bandButton(_RailBand b, bool named) {
+    var studio = theme.studio;
+    var lit = b.state != BandState.hidden;
+    var ink = lit ? studio.text : studio.muted;
+    var bars = switch (b.state) {
+      BandState.shown => 3,
+      BandState.minimised => 1,
+      BandState.hidden => 0,
+    };
+    Widget choice(BandState s, String label, IconData icon) => MenuItemButton(
+          key: ValueKey("section-${b.key}-${s.name}"),
+          leadingIcon: Icon(icon, size: 14),
+          trailingIcon: b.state == s ? const Icon(Icons.check, size: 12) : null,
+          onPressed: () => b.onChoose(s),
+          child: Text(label, style: const TextStyle(fontSize: 12)),
+        );
+    return MenuAnchor(
+      menuChildren: [
+        choice(BandState.shown, "Show", Icons.view_agenda_outlined),
+        if (b.canMinimise)
+          choice(BandState.minimised, "Minimise", Icons.horizontal_rule),
+        choice(BandState.hidden, "Hide", Icons.visibility_off_outlined),
+      ],
+      builder: (context, menu, _) => InkWell(
+        key: ValueKey("section-${b.key}"),
+        borderRadius: BorderRadius.circular(4),
+        onTap: () => menu.isOpen ? menu.close() : menu.open(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Column(children: [
+            Icon(b.icon, size: 14, color: ink),
+            if (named)
+              Text(b.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.clip,
+                  softWrap: false,
+                  style: TextStyle(fontSize: 8.5, color: ink)),
+            const SizedBox(height: 2),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              for (var i = 0; i < 3; i++)
+                Container(
+                  width: 8,
+                  height: 2,
+                  margin: const EdgeInsets.symmetric(horizontal: 1),
+                  color: i < bars ? studio.on : studio.edge,
+                ),
+            ]),
+          ]),
         ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        width: 20,
-        // Scrolled, in a mixer shrunk to its least: its buttons are taller than
-        // one band.
-        child: SingleChildScrollView(
-            child: Column(children: [
-          for (var s in MixerSection.values)
-            _button(
-              key: ValueKey("section-${s.name}"),
-              tip: "${s.label}: ${switch (states[s]!) {
-                BandState.shown when s == MixerSection.sends =>
-                  "shown. Press to hide",
-                BandState.shown => "shown. Press to minimise",
-                BandState.minimised => "minimised. Press to hide",
-                BandState.hidden => "hidden. Press to show",
-              }} them in every column",
-              lit: states[s] == BandState.shown,
-              half: states[s] == BandState.minimised,
-              onTap: () => onToggle(s),
-              child: (ink) => Text(s.letter,
-                  style: TextStyle(
-                      fontSize: 7,
-                      height: 1,
-                      fontWeight: FontWeight.w700,
-                      color: ink)),
-            ),
-          const SizedBox(height: 4),
-          _button(
-            key: const ValueKey("showReturns"),
-            tip: returnsShown
-                ? "Hide the returns, for the channels' room. What is sent "
-                    "to them is still heard."
-                : "Show the returns, beside the master",
-            lit: returnsShown,
-            onTap: onReturns,
-            child: (ink) => Text("R",
-                style: TextStyle(
-                    fontSize: 7,
-                    height: 1,
-                    fontWeight: FontWeight.w700,
-                    color: ink)),
-          ),
-          _button(
-            key: const ValueKey("narrowAll"),
-            tip: allNarrow
-                ? "Make every column wide"
-                : "Make every column narrow",
-            lit: allNarrow,
-            onTap: onNarrowAll,
-            // Squeezed from the sides: narrower.
-            child: (ink) => RotatedBox(
-                quarterTurns: 1,
-                child: Icon(Icons.compress, size: 8, color: ink)),
-          ),
-        ])),
-      );
+  Widget _toggle(
+      {required Key key,
+      required IconData icon,
+      required String label,
+      required bool on,
+      required bool named,
+      required VoidCallback onTap}) {
+    var studio = theme.studio;
+    var ink = on ? studio.on : studio.muted;
+    return InkWell(
+      key: key,
+      borderRadius: BorderRadius.circular(4),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Column(children: [
+          Icon(icon, size: 13, color: ink),
+          if (named)
+            Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.clip,
+                softWrap: false,
+                style: TextStyle(fontSize: 8.5, color: ink)),
+        ]),
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1769,7 +1858,17 @@ Widget _clipColumn(ScrollController scroll, int rows,
                   children: [
                       SizedBox(
                           height: motion - _motionClipGap,
-                          child: motionRow?.call(i) ?? const SizedBox()),
+                          child: motion - _motionClipGap >= _motionClipH
+                              ? motionRow?.call(i) ?? const SizedBox()
+                              // Minimised: the top of it, its colour.
+                              : ClipRect(
+                                  child: OverflowBox(
+                                      alignment: Alignment.topCenter,
+                                      minHeight: _motionClipH,
+                                      maxHeight: _motionClipH,
+                                      child: IgnorePointer(
+                                          child: motionRow?.call(i) ??
+                                              const SizedBox())))),
                       const SizedBox(height: _motionClipGap),
                       Expanded(child: row(i)),
                     ]),

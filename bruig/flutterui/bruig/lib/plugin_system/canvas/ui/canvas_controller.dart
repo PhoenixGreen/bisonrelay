@@ -3715,6 +3715,9 @@ class CanvasController extends ChangeNotifier {
 
   bool _allFolded = false;
 
+  BandState _motionSlots = BandState.shown;
+  bool _mixerRailFolded = false;
+
   /// allFolded is whether the All group -- the master canvas's rows, there
   /// in every scene -- is folded away under its heading, on the timeline as
   /// in the mixer (Ken, 2026-11-08). The reader's, for this session.
