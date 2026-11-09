@@ -1893,6 +1893,47 @@ void main() {
       await done(tester, c);
     });
 
+    // The approved design: short of room, the bands step down a band at a
+    // time -- the devices to a line, the sends hidden, the mixer minimised
+    // on its side (Ken) -- each lit amber on the rail, and grow back.
+    testWidgets("short of room, the bands step down, lit amber, and grow back",
+        (tester) async {
+      var c = make();
+      var height = ValueNotifier(700.0);
+      await show(tester, c, height: height);
+      Finder inStrip(String key) => find.descendant(
+          of: find.byKey(const ValueKey("strip-v")),
+          matching: find.byKey(ValueKey(key)));
+      expect(find.byKey(const ValueKey("railAuto-sends")), findsNothing);
+      expect(inStrip("sendsBand"), findsOneWidget);
+      expect(inStrip("balance"), findsOneWidget);
+
+      height.value = 380;
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(c.bandState(MixerSection.sends), BandState.shown,
+          reason: "what was chosen is kept");
+      expect(inStrip("sendsBand"), findsNothing, reason: "hidden for room");
+      expect(find.byKey(const ValueKey("railAuto-sends")), findsOneWidget);
+      expect(find.byKey(const ValueKey("railAuto-devices")), findsOneWidget);
+
+      height.value = 280;
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey("railAuto-mixer")), findsOneWidget);
+      expect(inStrip("balance"), findsNothing,
+          reason: "minimised, on its side: no pan row");
+      expect(inStrip("miniFader"), findsOneWidget,
+          reason: "the minimised mixer, its meter on its side");
+
+      height.value = 700;
+      await tester.pump();
+      expect(inStrip("sendsBand"), findsOneWidget, reason: "grown back");
+      expect(inStrip("balance"), findsOneWidget);
+      expect(find.byKey(const ValueKey("railAuto-mixer")), findsNothing);
+      await done(tester, c);
+    });
+
     // The approved design: the rail on the left, a button per band in the
     // strips' order, and folded away to a thin strip.
     testWidgets("the rail is on the left, in the bands' order, and folds",

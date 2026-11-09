@@ -849,8 +849,43 @@ class _CanvasMixerState extends State<CanvasMixer>
           for (var e in rows)
             e.id: lanes.indexWhere((l) => l.key == elementSoundKey(e.id))
         };
+        // What was chosen, stepped down a band at a time while it does not
+        // fit (the approved design): the devices to a line, the sends
+        // hidden, the mixer minimised -- on its side, as it always was
+        // (Ken) -- the devices hidden, and last the slots. Each stepped band
+        // is lit amber on the rail; all grow back as soon as they fit.
+        var inner = box.maxHeight - 14;
+        var fitted = Map.of(states);
+        var auto = <MixerSection>{};
+        double need() => _Bands.need(fitted,
+            devicesWanted: devicesWanted,
+            devicesCap: devicesCap,
+            sendsH: sendsH,
+            bare: bare,
+            motion: withMotion,
+            motionSlots: controller.motionSlots);
+        void stepDown(MixerSection s, BandState to) {
+          var now = fitted[s]!;
+          if (now == BandState.hidden || now == to) return;
+          if (to == BandState.minimised && now != BandState.shown) return;
+          fitted[s] = to;
+          auto.add(s);
+        }
+
+        if (!widget.embedded && !widget.effects && !bare) {
+          for (var (s, to) in [
+            (MixerSection.devices, BandState.minimised),
+            (MixerSection.sends, BandState.hidden),
+            (MixerSection.mixer, BandState.minimised),
+            (MixerSection.devices, BandState.hidden),
+            (MixerSection.clips, BandState.hidden),
+          ]) {
+            if (need() <= inner) break;
+            stepDown(s, to);
+          }
+        }
         var bands = _Bands.fit(
-            box.maxHeight - 14, states, devicesWanted, devicesCap,
+            inner, fitted, devicesWanted, devicesCap,
             sendsH: sendsH,
             bare: bare,
             clipRows: controller.slotsShown,
@@ -894,7 +929,8 @@ class _CanvasMixerState extends State<CanvasMixer>
                         },
                         states[s]!,
                         (state) => controller.setMixerSection(s, state),
-                        canMinimise: s != MixerSection.sends),
+                        canMinimise: s != MixerSection.sends,
+                        auto: auto.contains(s)),
                 ],
                 returnsShown: controller.returnsShown,
                 onReturns: () =>

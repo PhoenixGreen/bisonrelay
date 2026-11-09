@@ -99,6 +99,44 @@ class _Bands {
       this.motion = 0,
       this.motionClip = 0});
 
+  /// need is the least [states] take of a column's height: the head, the
+  /// gaps, and each band at its least -- as fit gives them.
+  static double need(Map<MixerSection, BandState> states,
+      {required double devicesWanted,
+      required double devicesCap,
+      double sendsH = 0,
+      bool bare = false,
+      bool motion = false,
+      BandState motionSlots = BandState.shown}) {
+    var mc = !motion
+        ? 0.0
+        : switch (motionSlots) {
+            BandState.shown => _motionClipH + _motionClipGap,
+            BandState.minimised => _motionClipMini + _motionClipGap,
+            BandState.hidden => 0.0,
+          };
+    var mh = motion ? motionHalfHeight + _motionGap : 0.0;
+    var total = bare ? 0.0 : _headH;
+    for (var s in MixerSection.values) {
+      var st = states[s]!;
+      if (st == BandState.hidden) continue;
+      if (s == MixerSection.sends && sendsH <= 0) continue;
+      total += _bandGap;
+      total += switch (s) {
+        MixerSection.clips => _clipsLeast + mc,
+        MixerSection.devices =>
+          st == BandState.shown ? math.min(devicesWanted, devicesCap) : _slotH,
+        MixerSection.sends => sendsH,
+        MixerSection.mixer => st == BandState.shown
+            ? _mixerMinH + mh
+            : bare
+                ? _bareMixerH
+                : _miniMixerH + (motion ? _motionLineH : 0),
+      };
+    }
+    return total;
+  }
+
   /// _Bands.fit shares [inner], a column's height inside its frame, among the
   /// bands as [states] says. A minimised band has its least (a clip slot and
   /// its stop, a device slot, the mixer as a row) and the whole ones share the
@@ -1506,8 +1544,11 @@ class _RailBand {
   final BandState state;
   final bool canMinimise;
   final ValueChanged<BandState> onChoose;
+
+  /// auto is it stepped down for room, below what was chosen: lit amber.
+  final bool auto;
   const _RailBand(this.key, this.label, this.icon, this.state, this.onChoose,
-      {this.canMinimise = true});
+      {this.canMinimise = true, this.auto = false});
 }
 
 /// _railWidth is the rail open; _railFoldedWidth folded to its strip.
@@ -1661,15 +1702,22 @@ class _BandRail extends StatelessWidget {
                   softWrap: false,
                   style: TextStyle(fontSize: 8.5, color: ink)),
             const SizedBox(height: 2),
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              for (var i = 0; i < 3; i++)
-                Container(
-                  width: 8,
-                  height: 2,
-                  margin: const EdgeInsets.symmetric(horizontal: 1),
-                  color: i < bars ? studio.on : studio.edge,
-                ),
-            ]),
+            Row(
+                key: b.auto ? ValueKey("railAuto-${b.key}") : null,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var i = 0; i < 3; i++)
+                    Container(
+                      width: 8,
+                      height: 2,
+                      margin: const EdgeInsets.symmetric(horizontal: 1),
+                      color: i < bars
+                          ? (b.auto ? const Color(0xFFF2A33D) : studio.on)
+                          : b.auto
+                              ? const Color(0x66F2A33D)
+                              : studio.edge,
+                    ),
+                ]),
           ]),
         ),
       ),
