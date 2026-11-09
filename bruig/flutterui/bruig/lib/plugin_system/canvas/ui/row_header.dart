@@ -21,6 +21,99 @@ const soundColour = Color(0xFF4F8FD6);
 /// sceneColour is the Scenes row's.
 const sceneColour = Color(0xFF5A9FA8);
 
+/// The amber of something off the timeline, playing from its slots: as
+/// Back to timeline's on the play bar.
+const _slotsInk = Color(0xFFF6C46A);
+const _slotsFill = Color(0xFF3A2A10);
+const _slotsLine = Color(0xFF7A5A1E);
+
+/// SlotsReturn is a row's own way back to the timeline while it plays from
+/// its slots: what Back to timeline's list does for it, on its row.
+class SlotsReturn extends StatelessWidget {
+  final VoidCallback onTap;
+
+  /// compact is the arrow alone, on a row of one line.
+  final bool compact;
+  const SlotsReturn({super.key, required this.onTap, this.compact = false});
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: _slotsFill,
+        shape: RoundedRectangleBorder(
+            side: const BorderSide(color: _slotsLine),
+            borderRadius: BorderRadius.circular(5)),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(5),
+          child: SizedBox(
+            height: 18,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 5),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.subdirectory_arrow_left,
+                    size: 10, color: _slotsInk),
+                if (!compact) ...[
+                  const SizedBox(width: 3),
+                  const Text("slots",
+                      maxLines: 1,
+                      style: TextStyle(fontSize: 9.5, color: _slotsInk)),
+                ],
+              ]),
+            ),
+          ),
+        ),
+      );
+}
+
+/// SlotsStripes is laid over a row's frames while it plays from its slots:
+/// amber stripes, its timeline not being what is heard, and -- with [note]
+/// -- saying so.
+class SlotsStripes extends StatelessWidget {
+  final bool note;
+  const SlotsStripes({super.key, this.note = true});
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+        child: Stack(children: [
+          const Positioned.fill(child: CustomPaint(painter: _Stripes())),
+          if (note)
+            Positioned(
+              right: 8,
+              top: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                    color: const Color(0xEE241A0B),
+                    border: Border.all(color: _slotsLine),
+                    borderRadius: BorderRadius.circular(5)),
+                child: const Text("playing from slots",
+                    maxLines: 1,
+                    style: TextStyle(fontSize: 10, color: _slotsInk)),
+              ),
+            ),
+        ]),
+      );
+}
+
+class _Stripes extends CustomPainter {
+  const _Stripes();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.clipRect(Offset.zero & size);
+    var paint = Paint()
+      ..color = const Color(0x14F2A33D)
+      ..strokeWidth = 5;
+    for (var x = -size.height; x < size.width; x += 14) {
+      canvas.drawLine(
+          Offset(x, size.height), Offset(x + size.height, 0), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_Stripes old) => false;
+}
+
 /// RowBand is a band of a row the header names, level with it: [top] and
 /// [height] within the row. [weight] is a motion layer's share playing, drawn
 /// as a small bar (striped where [pinned]); otherwise a dot of [dot].
@@ -76,6 +169,11 @@ class RowHeader extends StatelessWidget {
   final bool joinsBelow;
   final bool continued;
 
+  /// back is the row's way back to the timeline while it plays from its
+  /// slots (a [SlotsReturn]): on the name's line on a short row, after what
+  /// it is on a tall one.
+  final SlotsReturn? back;
+
   /// meter is the channel whose level the meter shows, where something is
   /// heard; [controller] reads it.
   final String? meter;
@@ -97,6 +195,7 @@ class RowHeader extends StatelessWidget {
     this.selected = false,
     this.joinsBelow = false,
     this.continued = false,
+    this.back,
     this.meter,
     this.controller,
     super.key,
@@ -117,36 +216,55 @@ class RowHeader extends StatelessWidget {
       child: Row(children: [
         if (fold != null) fold!,
         const SizedBox(width: 2),
-        Flexible(child: name),
-        // Beside the name on a short row, giving way as the name does.
-        if (oneLine && buttons && badges.isNotEmpty)
-          Flexible(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const NeverScrollableScrollPhysics(),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                for (var b in badges) ...[const SizedBox(width: 4), b],
-              ]),
-            ),
-          ),
-        const Spacer(),
+        // The name has the room the buttons leave, before any gap.
+        Expanded(
+          child: Row(children: [
+            Flexible(child: name),
+            // Beside the name on a short row, giving way as the name does.
+            if (oneLine && buttons && badges.isNotEmpty)
+              Flexible(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const NeverScrollableScrollPhysics(),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    for (var b in badges) ...[const SizedBox(width: 4), b],
+                  ]),
+                ),
+              ),
+          ]),
+        ),
+        // On a short row, the way back is its arrow alone.
+        if (oneLine && buttons && back != null) ...[
+          const SizedBox(width: 4),
+          SlotsReturn(key: back!.key, onTap: back!.onTap, compact: true),
+          const SizedBox(width: 4),
+        ],
         if (buttons) _Toggles(motion: motion, sound: sound, solo: solo),
       ]),
     );
     var line2 = !oneLine && width >= 132
-        ? Row(children: [
-            const SizedBox(width: 20),
-            for (var b in badges) ...[b, const SizedBox(width: 5)],
-            // What it is has the room its tools leave.
-            Expanded(
-              child: Text(kind,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style:
-                      TextStyle(fontSize: 10, color: colors.onSurfaceVariant)),
-            ),
-            for (var t in tools) ...[const SizedBox(width: 3), t],
-          ])
+        ? LayoutBuilder(
+            builder: (context, box) => Row(children: [
+                  const SizedBox(width: 20),
+                  for (var b in badges) ...[b, const SizedBox(width: 5)],
+                  // What it is has the room its tools leave.
+                  Expanded(
+                    child: Text(kind,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 10, color: colors.onSurfaceVariant)),
+                  ),
+                  // The arrow alone where the line is short of room.
+                  if (back != null) ...[
+                    const SizedBox(width: 3),
+                    box.maxWidth >= 200
+                        ? back!
+                        : SlotsReturn(
+                            key: back!.key, onTap: back!.onTap, compact: true),
+                  ],
+                  for (var t in tools) ...[const SizedBox(width: 3), t],
+                ]))
         : null;
     var sb = bands.where((b) => b.dot == soundColour).firstOrNull;
     return Container(

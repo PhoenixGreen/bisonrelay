@@ -279,6 +279,19 @@ extension CanvasSession on CanvasController {
     ];
   }
 
+  /// fromSlotsOf is the row playing from its slots that [key] -- an
+  /// element's id or a channel's -- is part of, an element's own sound being
+  /// the element's; null where it plays from the timeline. Its row is
+  /// striped and has its own way back (see row_header.dart).
+  OffTimelineItem? fromSlotsOf(String key) {
+    for (var item in offTimelineItems) {
+      if (!item.isHeld && (item.key == key || "snd-${item.key}" == key)) {
+        return item;
+      }
+    }
+    return null;
+  }
+
   /// backToTimelineFor sends [item] alone back to the timeline: a row's
   /// clips stopped and its timeline heard again, or a channel's settings
   /// handed back to their lanes.

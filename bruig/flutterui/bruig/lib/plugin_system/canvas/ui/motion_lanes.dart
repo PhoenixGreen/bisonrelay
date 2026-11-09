@@ -401,8 +401,28 @@ class _MotionLanesState extends State<MotionLanes> {
                   controller.addElementSound(
                       hit.element.id, asset.source, frame);
                 },
-                builder: (context, over, _) =>
-                    _lanes(over.isNotEmpty, rows, height, width, colors),
+                builder: (context, over, _) {
+                  var lanes =
+                      _lanes(over.isNotEmpty, rows, height, width, colors);
+                  // A row playing from its slots, striped (row_header.dart).
+                  var top = 0.0;
+                  var striped = <Widget>[];
+                  for (var e in rows) {
+                    var h = _rowHeight(e);
+                    if (controller.fromSlotsOf(e.id) != null) {
+                      striped.add(Positioned(
+                          left: 0,
+                          right: 0,
+                          top: top,
+                          height: h,
+                          child: SlotsStripes(
+                              key: ValueKey("rowFromSlots-${e.id}"))));
+                    }
+                    top += h;
+                  }
+                  if (striped.isEmpty) return lanes;
+                  return Stack(children: [lanes, ...striped]);
+                },
               );
             }),
           ),
@@ -440,6 +460,12 @@ class _MotionLanesState extends State<MotionLanes> {
       height: _rowHeight(e),
       selected: controller.selection.contains(e.id),
       joinsBelow: heard,
+      back: switch (controller.fromSlotsOf(e.id)) {
+        var item? => SlotsReturn(
+            key: ValueKey("rowBack-${e.id}"),
+            onTap: () => controller.backToTimelineFor(item)),
+        _ => null,
+      },
       fold: InkWell(
         key: ValueKey("motionFold-${e.id}"),
         onTap: () => setState(() => _flipped.contains(e.id)

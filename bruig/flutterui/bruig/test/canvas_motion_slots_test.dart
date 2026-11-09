@@ -1,3 +1,4 @@
+import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -6,9 +7,13 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_player.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
 // The elements' slots through the controller, on its clock: a slot pressed
 // with nothing playing plays the slots alone; a cue launches its row of
@@ -85,6 +90,54 @@ void main() {
     expect(c.offTimeline, isTrue);
     c.pause();
     expect(c.liveMotion, isNull, reason: "playing only them, back after");
+  });
+
+  // The approved design (2026-11-08): a row off the timeline says so on the
+  // timeline -- striped amber, "playing from slots" -- with its own way back.
+  testWidgets("on the timeline, a row playing from its slots is striped",
+      (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    c.play();
+    c.pressMotionSlot("a", 0);
+    at(c, 2);
+    c.pause();
+    expect([for (var i in c.offTimelineItems) i.key], ["a"]);
+    tester.view.physicalSize = const Size(1400, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomCenter,
+            child: CanvasTimeline(controller: c, height: 400),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("rowFromSlots-a")), findsOneWidget);
+    expect(find.text("playing from slots"), findsOneWidget);
+    expect(find.byKey(const ValueKey("rowFromSlots-b")), findsNothing,
+        reason: "b is on its timeline");
+    var stripes = tester.getRect(find.byKey(const ValueKey("rowFromSlots-a")));
+    var row = tester.getRect(find.byKey(const ValueKey("motionRow-a")));
+    expect(stripes.top, closeTo(row.top, 0.5), reason: "level with its row");
+    expect(stripes.left, greaterThanOrEqualTo(row.right),
+        reason: "over the frames, not the header");
+
+    // Sent back from its own row.
+    await tester.tap(find.byKey(const ValueKey("rowBack-a")));
+    await tester.pumpAndSettle();
+    expect(c.offTimeline, isFalse);
+    expect(find.byKey(const ValueKey("rowFromSlots-a")), findsNothing);
+    expect(find.byKey(const ValueKey("rowBack-a")), findsNothing);
   });
 
   test("a cue launches its row of every element's slots", () {

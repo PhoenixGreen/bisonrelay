@@ -772,6 +772,14 @@ class _CanvasChannelsState extends State<CanvasChannels> {
         _row(channel.key, _heightOf(channel.key), width,
             moving: channel.key == _moving,
             accent: owned ? accent ?? theme.colors.primary : null,
+            // Playing from its slots: striped, saying so on its own row, or
+            // on its element's above.
+            over: controller.fromSlotsOf(channel.key) == null
+                ? null
+                : SlotsStripes(
+                    key: ValueKey("rowFromSlots-${channel.key}"),
+                    note: !owned ||
+                        controller.timelineShow == TimelineShow.sound),
             beside: controller.slotsBeside
                 ? SessionRowSlots(controller: controller, channel: channel.key)
                 : null,
@@ -779,6 +787,13 @@ class _CanvasChannelsState extends State<CanvasChannels> {
               key: ValueKey("channelStrip-${channel.key}"),
               controller: controller,
               owned: owned && controller.timelineShow != TimelineShow.sound,
+              onBack: switch (controller.fromSlotsOf(channel.key)) {
+                var item?
+                    when !owned ||
+                        controller.timelineShow == TimelineShow.sound =>
+                  () => controller.backToTimelineFor(item),
+                _ => null,
+              },
               channel: channel,
               mix: controller.mixNow(channel),
               automation: controller.automationShown.contains(channel.key),
@@ -962,7 +977,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       required Widget lane,
       bool moving = false,
       Color? accent,
-      Widget? beside}) {
+      Widget? beside,
+      Widget? over}) {
     // The strip and the slots at most as wide as the row: shown alone, the
     // slots fill to the edge, and a scaled text size can leave them a
     // fraction of a pixel over it (Ken's 0.109 px).
@@ -987,7 +1003,15 @@ class _CanvasChannelsState extends State<CanvasChannels> {
         if (slots > 0)
           SizedBox(width: slots, child: beside ?? const SizedBox()),
         // The frames, unless this is the slots shown alone.
-        Expanded(child: lanesIn(context) ? lane : const SizedBox()),
+        Expanded(
+            child: !lanesIn(context)
+                ? const SizedBox()
+                : over == null
+                    ? lane
+                    : Stack(children: [
+                        Positioned.fill(child: lane),
+                        Positioned.fill(child: over),
+                      ])),
       ]);
     });
     var colors = ThemeNotifier.of(context).colors;
@@ -1829,9 +1853,13 @@ class _ChannelHeader extends StatelessWidget {
   /// same row: only its band's label and meter, the name being above.
   final bool owned;
 
+  /// onBack sends it back to the timeline, while it plays from its slots.
+  final VoidCallback? onBack;
+
   const _ChannelHeader({
     this.controller,
     this.owned = false,
+    this.onBack,
     required this.mix,
     required this.automation,
     required this.onAutomation,
@@ -1963,8 +1991,9 @@ class _ChannelHeader extends StatelessWidget {
             theme: theme,
             onTap: onLock,
           ),
-          // The level typed, as the mixer's fader: on the widest strip.
-          if (width >= 230) reading,
+          // The level typed, as the mixer's fader: on the widest strip,
+          // giving its room to the way back while it plays from its slots.
+          if (width >= 230 && onBack == null) reading,
         ],
         sound: RowToggle(const ValueKey("channelMute"),
             on: !mix.mute, onTap: () => onMix(mix.copyWith(mute: !mix.mute))),
@@ -1976,6 +2005,10 @@ class _ChannelHeader extends StatelessWidget {
         meter: channel.key,
         controller: controller,
         continued: owned,
+        back: onBack == null
+            ? null
+            : SlotsReturn(
+                key: ValueKey("rowBack-${channel.key}"), onTap: onBack!),
       ),
     );
 
