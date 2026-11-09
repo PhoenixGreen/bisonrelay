@@ -1617,7 +1617,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                 ? _transportHeight + (_collapsed ? 0 : _stripGap)
                 : 0);
         var tall = math.max(box.maxHeight, least);
-        var column = Column(children: [
+        Widget column = Column(children: [
           if (_barAbove) ...[
             bar,
             if (!_collapsed) const SizedBox(height: _stripGap),
@@ -1628,6 +1628,25 @@ class CanvasTimelineState extends State<CanvasTimeline> {
             bar,
           ],
         ]);
+        // The playhead: one line from the ruler down through every row
+        // under it, unbroken (the approved design, 2026-11-08), over the
+        // frames only. The rows draw none of their own.
+        if (!_collapsed && !widget.slotsOnly) {
+          column = Stack(fit: StackFit.expand, children: [
+            column,
+            Positioned(
+              left: 0,
+              right: 0,
+              top: _barAbove ? _transportHeight + _stripGap : 0,
+              bottom: (_barBelow ? _transportHeight + _stripGap : 0) +
+                  _scrollbarHeight,
+              child: _PlayheadLine(
+                  left: _leftW,
+                  x: (w) => _xFor(controller.frame, w),
+                  colour: theme.colors.primary),
+            ),
+          ]);
+        }
         if (tall <= box.maxHeight) return column;
         return ClipRect(
           child: OverflowBox(
@@ -1907,6 +1926,38 @@ int rulerNumber(int frame, int origin) => frame + origin + 1;
 
 /// _TimelinePainter draws the ruler, its markers and cues, the keyframe row
 /// and the playhead.
+/// _PlayheadLine is the playhead down the whole timeline body: from the
+/// ruler through every row, over the frames right of [left], at [x] of the
+/// frames' width.
+class _PlayheadLine extends StatelessWidget {
+  final double left;
+  final double Function(double width) x;
+  final Color colour;
+
+  const _PlayheadLine(
+      {required this.left, required this.x, required this.colour});
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+        child: LayoutBuilder(builder: (context, box) {
+          var width = box.maxWidth - left;
+          if (width <= 0) return const SizedBox.shrink();
+          var at = x(width);
+          if (at < 0 || at > width) return const SizedBox.shrink();
+          return Stack(children: [
+            Positioned(
+              key: const ValueKey("timelinePlayhead"),
+              left: left + at - 1,
+              width: 2,
+              top: 0,
+              bottom: 0,
+              child: ColoredBox(color: colour),
+            ),
+          ]);
+        }),
+      );
+}
+
 class _TimelinePainter extends CustomPainter {
   final TimelineView view;
   final int frames;

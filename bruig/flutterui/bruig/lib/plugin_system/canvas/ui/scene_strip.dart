@@ -231,16 +231,7 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
           child: _grip(i, width, colors),
         ));
       }
-      // The playhead, through the boxes as it is through the ruler.
-      if (playhead >= 0 && playhead <= width) {
-        children.add(Positioned(
-          left: playhead - 0.75,
-          width: 1.5,
-          top: 0,
-          bottom: 0,
-          child: IgnorePointer(child: ColoredBox(color: colors.primary)),
-        ));
-      }
+      // No playhead of its own: the timeline draws one down every row.
 
       return ClipRect(
         child: Stack(key: const ValueKey("sceneStrip"), children: children),

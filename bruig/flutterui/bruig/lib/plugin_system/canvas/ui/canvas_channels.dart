@@ -1432,7 +1432,6 @@ class _LanePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    var w = size.width;
     var top = 3.0, bottom = size.height - 3;
     // Zoomed in, a clip reaches past either edge: drawn, and cut off there.
     canvas.clipRect(Offset.zero & size);
@@ -1457,15 +1456,7 @@ class _LanePainter extends CustomPainter {
 
     // No line under the lane: the channels' lines are their strips', and the
     // one across the whole timeline is the keyframes' -- see CanvasTimeline.
-
-    // The playhead, through every lane, as on the strip above.
-    var head = view.centreOf(frame, w);
-    canvas.drawLine(
-        Offset(head, 0),
-        Offset(head, size.height),
-        Paint()
-          ..color = colors.primary
-          ..strokeWidth = 1.5);
+    // No playhead either: the timeline draws one down every row.
   }
 
   void _paintClip(

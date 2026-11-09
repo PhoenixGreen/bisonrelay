@@ -534,14 +534,7 @@ class _LanePainter extends CustomPainter {
         canvas.drawCircle(at, 3.2, Paint()..color = line);
       }
     }
-    if (head >= 0 && head <= size.width) {
-      canvas.drawLine(
-          Offset(head, 0),
-          Offset(head, size.height),
-          Paint()
-            ..strokeWidth = 1.5
-            ..color = colors.onSurface.withValues(alpha: 0.7));
-    }
+    // No playhead of its own: the timeline draws one down every row.
   }
 
   @override

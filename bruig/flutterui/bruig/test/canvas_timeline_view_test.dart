@@ -386,6 +386,50 @@ void main() {
           reason: "the first channel sits close under the strip");
     });
 
+    // The approved design (2026-11-08): the playhead one line from the ruler
+    // down through every row, not a piece drawn by each.
+    testWidgets("the playhead is one line from the ruler through every row",
+        (tester) async {
+      var c = await show(tester,
+          elements: [channel("a", "Music"), channel("b", "Rain")]);
+      var strip = tester.getRect(find.byKey(const ValueKey("keyframeStrip")));
+      var at = strip.left + strip.width * 0.4;
+      await tester.tapAt(Offset(at, strip.top + 5));
+      await tester.pump();
+      expect(c.frame, greaterThan(0));
+      var line = find.byKey(const ValueKey("timelinePlayhead"));
+      expect(line, findsOneWidget);
+      var head = tester.getRect(line);
+      expect(head.center.dx, closeTo(at, strip.width / 100),
+          reason: "under where the ruler was clicked");
+      expect(head.top, lessThanOrEqualTo(strip.top + 0.5),
+          reason: "from the ruler");
+      for (var id in ["a", "b"]) {
+        var lane = tester.getRect(find.byKey(ValueKey("lane-$id")));
+        expect(head.top, lessThanOrEqualTo(lane.top));
+        expect(head.bottom, greaterThanOrEqualTo(lane.bottom),
+            reason: "down through $id's row, unbroken");
+      }
+
+      // Off the frames shown, there is none.
+      c.askTimelineZoom(4);
+      await tester.pumpAndSettle();
+      c.frame = 99;
+      await tester.pump();
+      var shown = tester.getRect(find.byKey(const ValueKey("keyframeStrip")));
+      if (find
+          .byKey(const ValueKey("timelinePlayhead"))
+          .evaluate()
+          .isNotEmpty) {
+        var x = tester
+            .getRect(find.byKey(const ValueKey("timelinePlayhead")))
+            .center
+            .dx;
+        expect(x, inInclusiveRange(shown.left - 1, shown.right + 1),
+            reason: "never over the headers");
+      }
+    });
+
     // A channel's strip: an edge in its colour, S1 (the scene its clips are
     // on), its name when there is
     // room for a second line (double-clicked to rename it), its level, and
