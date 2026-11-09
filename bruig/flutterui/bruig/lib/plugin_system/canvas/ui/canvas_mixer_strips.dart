@@ -1995,6 +1995,11 @@ class _ClipScrolls {
   final Map<String, ScrollController> _of = {};
   bool _syncing = false;
 
+  /// following is a column being moved along with another, right now: its
+  /// jump ends at no speed, and it does not settle on a row of its own
+  /// (see _RowSnap).
+  static bool following = false;
+
   ScrollController of(String column) =>
       _of[column] ??= ScrollController()..addListener(() => _follow(column));
 
@@ -2003,6 +2008,7 @@ class _ClipScrolls {
     var lead = _of[column];
     if (lead == null || !lead.hasClients) return;
     _syncing = true;
+    following = true;
     for (var e in _of.entries) {
       if (e.key == column || !e.value.hasClients) continue;
       var p = e.value.position;
@@ -2010,6 +2016,7 @@ class _ClipScrolls {
       if ((p.pixels - to).abs() > 0.5) e.value.jumpTo(to);
     }
     _syncing = false;
+    following = false;
   }
 
   void dispose() {
@@ -2128,35 +2135,61 @@ Widget _clipColumn(ScrollController scroll, int rows,
         double clip = _clipH,
         bool stop = true}) =>
     LayoutBuilder(builder: (context, box) {
-      var slots = ListView.builder(
+      var extent = clip + _clipGap + motion;
+      // The wheel a row a notch, as a fling ends on one: taken on the row,
+      // before the list's own scrolling (the first to ask has it).
+      void wheel(PointerSignalEvent event) {
+        if (event is! PointerScrollEvent || !scroll.hasClients) return;
+        var d = event.scrollDelta.dy;
+        if (d == 0) return;
+        GestureBinding.instance.pointerSignalResolver.register(event, (e) {
+          var p = scroll.position;
+          var now = (p.pixels / extent).round() * extent;
+          var to = (now + (d > 0 ? extent : -extent))
+              .clamp(p.minScrollExtent, p.maxScrollExtent)
+              .toDouble();
+          scroll.jumpTo(to);
+        });
+      }
+
+      Widget slots = ListView.builder(
+        // Built again at a new row height: a list keeps its physics while
+        // only their numbers change.
+        key: ValueKey(extent),
         controller: scroll,
         padding: EdgeInsets.zero,
-        physics: const ClampingScrollPhysics(),
-        itemExtent: clip + _clipGap + motion,
+        // Rows come to rest on whole rows (the approved design).
+        physics: _RowSnap(extent),
+        itemExtent: extent,
         itemCount: rows,
-        itemBuilder: (context, i) => Padding(
-          padding: const EdgeInsets.only(bottom: _clipGap),
-          child: motion == 0 || whole
-              ? row(i)
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                      SizedBox(
-                          height: motion - _motionClipGap,
-                          child: motion - _motionClipGap >= _motionClipH
-                              ? motionRow?.call(i) ?? const SizedBox()
-                              // Minimised: the top of it, its colour.
-                              : ClipRect(
-                                  child: OverflowBox(
-                                      alignment: Alignment.topCenter,
-                                      minHeight: _motionClipH,
-                                      maxHeight: _motionClipH,
-                                      child: IgnorePointer(
-                                          child: motionRow?.call(i) ??
-                                              const SizedBox())))),
-                      const SizedBox(height: _motionClipGap),
-                      Expanded(child: row(i)),
-                    ]),
+        itemBuilder: (context, i) => Listener(
+          // The whole row, its gaps and an empty part too.
+          behavior: HitTestBehavior.opaque,
+          onPointerSignal: wheel,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: _clipGap),
+            child: motion == 0 || whole
+                ? row(i)
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                        SizedBox(
+                            height: motion - _motionClipGap,
+                            child: motion - _motionClipGap >= _motionClipH
+                                ? motionRow?.call(i) ?? const SizedBox()
+                                // Minimised: the top of it, its colour.
+                                : ClipRect(
+                                    child: OverflowBox(
+                                        alignment: Alignment.topCenter,
+                                        minHeight: _motionClipH,
+                                        maxHeight: _motionClipH,
+                                        child: IgnorePointer(
+                                            child: motionRow?.call(i) ??
+                                                const SizedBox())))),
+                        const SizedBox(height: _motionClipGap),
+                        Expanded(child: row(i)),
+                      ]),
+          ),
         ),
       );
       // Squeezed past the stop's room: the slots alone, rather than a
@@ -2168,6 +2201,39 @@ Widget _clipColumn(ScrollController scroll, int rows,
         SizedBox(height: _stopH, child: foot),
       ]);
     });
+
+/// _RowSnap is the slots' scrolling: let go, they come to rest with a whole
+/// row at the top, rather than part of one.
+class _RowSnap extends ClampingScrollPhysics {
+  final double extent;
+  const _RowSnap(this.extent, {super.parent});
+
+  @override
+  _RowSnap applyTo(ScrollPhysics? ancestor) =>
+      _RowSnap(extent, parent: buildParent(ancestor));
+
+  @override
+  Simulation? createBallisticSimulation(
+      ScrollMetrics position, double velocity) {
+    // Not when moved along with another column: only the column let go
+    // settles, and the rest follow it.
+    if (extent <= 0 ||
+        _ClipScrolls.following ||
+        position.outOfRange ||
+        position.maxScrollExtent <= position.minScrollExtent) {
+      return super.createBallisticSimulation(position, velocity);
+    }
+    var target =
+        ((position.pixels + velocity * 0.15) / extent).round() * extent;
+    target = target
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
+    var tolerance = toleranceFor(position);
+    if ((target - position.pixels).abs() < tolerance.distance) return null;
+    return ScrollSpringSimulation(spring, position.pixels, target, velocity,
+        tolerance: tolerance);
+  }
+}
 
 /// _ClipBand is a channel's clip slots: a row for each scene, and its stop
 /// button under them.

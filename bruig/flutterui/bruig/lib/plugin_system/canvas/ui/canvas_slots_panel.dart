@@ -47,10 +47,15 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
   final _ClipScrolls _scrolls = _ClipScrolls();
   final ScrollController _across = ScrollController();
 
+  /// _joins scrolls the Scenes column by itself: it is not on the cue rows,
+  /// and with fewer rows it would hold the others back.
+  final ScrollController _joins = ScrollController();
+
   @override
   void dispose() {
     _scrolls.dispose();
     _across.dispose();
+    _joins.dispose();
     super.dispose();
   }
 
@@ -422,7 +427,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
       edge: sceneColour,
       head: _head(theme, "Scenes", ["transitions, not in cues"]),
       slots: _clipColumn(
-        _scrolls.of("scenes"),
+        _joins,
         joins,
         (i) => _JoinSlot(
             key: ValueKey("join-$i"),

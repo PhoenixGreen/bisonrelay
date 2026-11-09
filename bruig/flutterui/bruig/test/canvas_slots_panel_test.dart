@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -140,6 +141,43 @@ void main() {
     expect(c.motionSlots, BandState.hidden);
     expect(find.byKey(const ValueKey("motionSlot-coin-0")), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  // The approved design: the slots come to rest on whole rows, and the
+  // wheel moves them a row a notch.
+  testWidgets("the slots come to rest on whole rows", (tester) async {
+    var c = await pump(tester, height: 260);
+    c.slotsPanelSize = 2;
+    for (var i = 0; i < 6; i++) {
+      c.addClipScene();
+    }
+    await tester.pumpAndSettle();
+    var step = tester.getRect(find.byKey(const ValueKey("clip-m-1"))).top -
+        tester.getRect(find.byKey(const ValueKey("clip-m-0"))).top;
+    var list = find.descendant(
+        of: find.byKey(const ValueKey("slotsColumn-m")),
+        matching: find.byType(Scrollable));
+    double offset() =>
+        tester.state<ScrollableState>(list.first).position.pixels;
+    await tester.drag(list.first, Offset(0, -step * 1.4));
+    await tester.pumpAndSettle();
+    expect(offset() % step, closeTo(0, 0.5), reason: "on a whole row");
+    expect(offset(), greaterThan(0));
+    expect(offset(), greaterThan(0));
+
+    var before = offset();
+    var at = tester.getCenter(list.first);
+    var mouse = TestPointer(7, PointerDeviceKind.mouse);
+    mouse.hover(at);
+    await tester.sendEventToBinding(mouse.scroll(const Offset(0, 30)));
+    await tester.pumpAndSettle();
+    expect(offset() - before, closeTo(step, 0.5), reason: "a row a notch");
+    // Every column with it.
+    var cues = find.descendant(
+        of: find.byKey(const ValueKey("slotsCues")),
+        matching: find.byType(Scrollable));
+    expect(tester.state<ScrollableState>(cues.first).position.pixels,
+        closeTo(offset(), 0.5));
   });
 
   testWidgets("the cue column is dragged wider or narrower", (tester) async {

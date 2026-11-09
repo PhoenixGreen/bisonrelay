@@ -225,6 +225,9 @@ enum _Opened {
 class _CanvasMixerState extends State<CanvasMixer>
     with SingleTickerProviderStateMixin {
   CanvasController get controller => widget.controller;
+  /// _joinScroll scrolls the Scenes strip's joins by themselves: they are
+  /// not on the cue rows the other columns scroll along.
+  final ScrollController _joinScroll = ScrollController();
   late final Ticker _ticker;
 
   /// _board is every strip's meter. It notifies as they move, and only what
@@ -413,6 +416,7 @@ class _CanvasMixerState extends State<CanvasMixer>
     controller.removeListener(_wakeIfPlaying);
     controller.keysHeld.removeListener(_wakeIfPlaying);
     controller.removeListener(_changed);
+    _joinScroll.dispose();
     _deskChanges.dispose();
     _resting?.cancel();
     _clipScrolls.dispose();
@@ -1099,7 +1103,8 @@ class _CanvasMixerState extends State<CanvasMixer>
                             joins: controller.document.allScenes.length < 2
                                 ? null
                                 : () => _clipColumn(
-                                    _clipScrolls.of("scene"),
+                                    // Its own: not on the cue rows.
+                                    _joinScroll,
                                     controller.document.allScenes.length - 1,
                                     (i) => _JoinSlot(
                                         key: ValueKey("join-$i"),
