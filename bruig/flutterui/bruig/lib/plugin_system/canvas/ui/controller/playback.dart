@@ -403,6 +403,37 @@ extension CanvasPlayback on CanvasController {
     notifyListeners();
   }
 
+  /// slotsCueWidth is the Slots panel's cue column, 40 to 240 (120 at
+  /// first): as the mixer's, but its own.
+  double get slotsCueWidth => _slotsCueWidth;
+  set slotsCueWidth(double width) {
+    var w = width
+        .clamp(CanvasController.cueColumnLeast, CanvasController.cueColumnMost)
+        .toDouble();
+    if (w == _slotsCueWidth) return;
+    _slotsCueWidth = w;
+    notifyListeners();
+  }
+
+  /// slotsPanelSize is how tall the Slots panel's slots are: 0 to 2, small
+  /// to large, or 3, filling the panel's height (the approved design).
+  int get slotsPanelSize => _slotsPanelSize;
+  set slotsPanelSize(int size) {
+    var s = size.clamp(0, 3);
+    if (s == _slotsPanelSize) return;
+    _slotsPanelSize = s;
+    notifyListeners();
+  }
+
+  /// slotsPanelNarrow is every column of the Slots panel narrow: 84 wide,
+  /// no pictures.
+  bool get slotsPanelNarrow => _slotsPanelNarrow;
+  set slotsPanelNarrow(bool narrow) {
+    if (narrow == _slotsPanelNarrow) return;
+    _slotsPanelNarrow = narrow;
+    notifyListeners();
+  }
+
   /// mixerRailFolded is the mixer's rail folded to a thin strip, for the
   /// strips' room.
   bool get mixerRailFolded => _mixerRailFolded;

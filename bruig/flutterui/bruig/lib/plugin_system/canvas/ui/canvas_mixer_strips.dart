@@ -2065,17 +2065,22 @@ bool get _blinkOn => DateTime.now().millisecondsSinceEpoch ~/ 250 % 2 == 0;
 ///
 /// With [motion], each row is a motion part ([motionRow], or nothing) over
 /// its sound part ([row]); [whole] is a row that is both (the cue launch).
+///
+/// [clip] is the sound part's height (the Slots panel's are taller), and
+/// [stop] whether the stop goes under the slots here.
 Widget _clipColumn(ScrollController scroll, int rows,
         Widget Function(int row) row, Widget foot,
         {double motion = 0,
         Widget Function(int row)? motionRow,
-        bool whole = false}) =>
+        bool whole = false,
+        double clip = _clipH,
+        bool stop = true}) =>
     LayoutBuilder(builder: (context, box) {
       var slots = ListView.builder(
         controller: scroll,
         padding: EdgeInsets.zero,
         physics: const ClampingScrollPhysics(),
-        itemExtent: _clipH + _clipGap + motion,
+        itemExtent: clip + _clipGap + motion,
         itemCount: rows,
         itemBuilder: (context, i) => Padding(
           padding: const EdgeInsets.only(bottom: _clipGap),
@@ -2104,7 +2109,7 @@ Widget _clipColumn(ScrollController scroll, int rows,
       );
       // Squeezed past the stop's room: the slots alone, rather than a
       // stop button running out of the band.
-      if (box.maxHeight < _slotGap + _stopH + 4) return slots;
+      if (!stop || box.maxHeight < _slotGap + _stopH + 4) return slots;
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Expanded(child: slots),
         const SizedBox(height: _slotGap),

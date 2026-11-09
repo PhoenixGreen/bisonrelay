@@ -66,6 +66,7 @@ import 'package:flutter/scheduler.dart';
 part 'canvas_mixer_strips.dart';
 part 'canvas_mixer_motion.dart';
 part 'canvas_mixer_buses.dart';
+part 'canvas_slots_panel.dart';
 
 // canvas_mixer.dart is the mixer panel: a column for each channel, each
 // return and the master (the columns are canvas_mixer_strips.dart), resized

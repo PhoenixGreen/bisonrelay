@@ -3718,6 +3718,9 @@ class CanvasController extends ChangeNotifier {
   BandState _motionSlots = BandState.shown;
   bool _mixerRailFolded = false;
   double _cueColumnWidth = 96;
+  double _slotsCueWidth = 120;
+  int _slotsPanelSize = 1;
+  bool _slotsPanelNarrow = false;
 
   /// cueColumnLeast and cueColumnMost are how narrow and wide the mixer's
   /// cue column goes.

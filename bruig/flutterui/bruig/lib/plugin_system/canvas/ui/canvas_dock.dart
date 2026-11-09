@@ -366,12 +366,12 @@ class CanvasDockState extends State<CanvasDock> {
             onResize: resize,
             showBar: false,
           ),
-        DockPanel.slots => CanvasTimeline(
+        // A clip launcher of its own (the approved design), not the
+        // timeline's rows with slots beside them.
+        DockPanel.slots => CanvasSlotsPanel(
             controller: controller,
             height: height,
             onResize: resize,
-            showBar: false,
-            slotsOnly: true,
           ),
         DockPanel.mixer => CanvasMixer(
             controller: controller,
