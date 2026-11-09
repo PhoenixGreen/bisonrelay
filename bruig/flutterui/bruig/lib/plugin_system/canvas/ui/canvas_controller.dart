@@ -3703,8 +3703,6 @@ class CanvasController extends ChangeNotifier {
 
   String? _effectsOf;
 
-  bool _keyframesShown = true;
-
   bool _cuesShown = true;
 
   /// foldedDevices is which of the mixer's devices are folded down to their

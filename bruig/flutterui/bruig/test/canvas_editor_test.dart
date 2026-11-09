@@ -1360,16 +1360,21 @@ void main() {
       expect(later.timeline, isFalse, reason: "until it has read the disk");
     });
 
-    test("the timeline's rows are all shown, then as they were left", () async {
-      SharedPreferences.setMockInitialValues({});
+    test("the timeline's cues are shown, then as they were left", () async {
+      // And the keyframe row's old setting deleted: the row is gone
+      // (keyframing is the Chain's, 2026-11-09).
+      SharedPreferences.setMockInitialValues(
+          {"flutter.canvasKeyframesShown": false});
       var prefs = CanvasPreferences();
       addTearDown(prefs.dispose);
-      expect([prefs.keyframesShown, prefs.cuesShown], [true, true]);
-      prefs.keyframesShown = false;
+      expect(prefs.cuesShown, isTrue);
+      prefs.cuesShown = false;
       var back = CanvasPreferences();
       addTearDown(back.dispose);
       await back.load();
-      expect([back.keyframesShown, back.cuesShown], [false, true]);
+      expect(back.cuesShown, isFalse);
+      var stored = await SharedPreferences.getInstance();
+      expect(stored.containsKey("canvasKeyframesShown"), isFalse);
 
       // Handed to the page's controller as it opens, without a word to
       // anyone listening: that runs while the page is being built.
@@ -1377,8 +1382,8 @@ void main() {
       addTearDown(c.dispose);
       var told = 0;
       c.addListener(() => told++);
-      c.restoreShown(keyframes: back.keyframesShown, cues: back.cuesShown);
-      expect([c.keyframesShown, c.cuesShown], [false, true]);
+      c.restoreShown(cues: back.cuesShown);
+      expect(c.cuesShown, isFalse);
       expect(told, 0);
     });
   });
@@ -1557,117 +1562,9 @@ void main() {
       return (controller, path);
     }
 
-    // A path's points on the bar's diamond (whether it offers Add or Remove,
-    // and adding and removing one with it): the bar control was removed for
-    // the clips system. The points are still on the strip; see the drag below.
-
-    testWidgets("a point drags along the strip to retime it", (tester) async {
-      var (controller, _) = withPath();
-      addTearDown(controller.dispose);
-      await pump(tester, CanvasTimeline(controller: controller));
-
-      // The ruler is the strip's own CustomPaint, and the marks sit at
-      // _rulerHeight + 14 down it -- see _keyframeAt, which is what this is
-      // exercising.
-      var ruler = find.byKey(const ValueKey("keyframeStrip"));
-      var box = tester.getRect(ruler);
-      // The same mapping _xFor uses, so the drag starts exactly on the mark.
-      double xFor(int frame) => box.left + frame / 30 * box.width;
-
-      await tester.dragFrom(
-        Offset(xFor(10), box.top + 22 + 14),
-        Offset(xFor(15) - xFor(10), 0),
-      );
-      await tester.pumpAndSettle();
-
-      var after = controller.document.elements.single as PathElement;
-      expect(after.nodes[1].frame, greaterThan(10),
-          reason: "the middle point moved later");
-      expect(after.nodes[1].frame, lessThanOrEqualTo(20),
-          reason: "clamped by its neighbour rather than reordering the curve");
-      expect(after.nodes[0].frame, 0, reason: "the others stayed put");
-      expect(after.nodes[2].frame, 20);
-    });
-
-    testWidgets("the bar between a pair drags both ends", (tester) async {
-      // A chart's entrance is two keyframes that mean nothing apart, so they
-      // are joined on the strip and the bar moves both. Dragging either mark
-      // still changes the length -- that is the next test.
-      var document = const CanvasDocument(frames: 30, frameRate: 12);
-      var chart = ChartElement(
-        const ElementBase(id: "c", width: 400, height: 300),
-        data: ChartData.parse("Cat\tA\nx\t10"),
-      );
-      var controller = CanvasController(document.addElement(chart));
-      addTearDown(controller.dispose);
-      controller.selectOnly("c");
-      controller.frame = 4;
-      // A pair of arrival keyframes, as a canvas not yet converted has.
-      controller.replaceElement(controller.document.elementById("c")!.withBase(
-              track: ElementTrack(const [
-            Keyframe(frame: 4, values: {KeyframeChannel.reveal: 0}),
-            Keyframe(frame: 16, values: {KeyframeChannel.reveal: 1}),
-          ])));
-
-      await pump(tester, CanvasTimeline(controller: controller));
-      var before = bandsIn(controller.document.elementById("c")!.track).single;
-
-      var ruler = find.byKey(const ValueKey("keyframeStrip"));
-      var box = tester.getRect(ruler);
-      var frames = controller.document.frames;
-      double xFor(int frame) => box.left + frame / frames * box.width;
-
-      // From the middle of the bar, which is the part that is neither end.
-      var middle = (before.from + before.to) ~/ 2;
-      await tester.dragFrom(
-        Offset(xFor(middle), box.top + 22 + 14),
-        Offset(xFor(middle - 3) - xFor(middle), 0),
-      );
-      await tester.pumpAndSettle();
-
-      var after = bandsIn(controller.document.elementById("c")!.track).single;
-      expect(after.from, lessThan(before.from), reason: "it moved earlier");
-      expect(after.length, before.length,
-          reason: "and kept its length, which is what a pair is for");
-    });
-
-    testWidgets("and an end still drags on its own, to change the length",
-        (tester) async {
-      var document = const CanvasDocument(frames: 30, frameRate: 12);
-      var chart = ChartElement(
-        const ElementBase(id: "c", width: 400, height: 300),
-        data: ChartData.parse("Cat\tA\nx\t10"),
-      );
-      var controller = CanvasController(document.addElement(chart));
-      addTearDown(controller.dispose);
-      controller.selectOnly("c");
-      controller.frame = 0;
-      // A pair of arrival keyframes, as a canvas not yet converted has.
-      controller.replaceElement(controller.document.elementById("c")!.withBase(
-              track: ElementTrack(const [
-            Keyframe(frame: 4, values: {KeyframeChannel.reveal: 0}),
-            Keyframe(frame: 16, values: {KeyframeChannel.reveal: 1}),
-          ])));
-
-      await pump(tester, CanvasTimeline(controller: controller));
-      var before = bandsIn(controller.document.elementById("c")!.track).single;
-
-      var ruler = find.byKey(const ValueKey("keyframeStrip"));
-      var box = tester.getRect(ruler);
-      var frames = controller.document.frames;
-      double xFor(int frame) => box.left + frame / frames * box.width;
-
-      await tester.dragFrom(
-        Offset(xFor(before.to), box.top + 22 + 14),
-        Offset(xFor(before.to - 5) - xFor(before.to), 0),
-      );
-      await tester.pumpAndSettle();
-
-      var after = bandsIn(controller.document.elementById("c")!.track).single;
-      expect(after.from, before.from, reason: "the other end stayed put");
-      expect(after.length, lessThan(before.length),
-          reason: "so the animation is shorter");
-    });
+    // Its points are retimed on the Chain's Keyframes card now, keyframing
+    // being the Chain's (Ken, 2026-11-09): see
+    // canvas_keyframes_card_test.dart. The ruler still scrubs.
 
     testWidgets("a drag away from the marks still scrubs", (tester) async {
       var (controller, _) = withPath();
@@ -1677,9 +1574,8 @@ void main() {
       var ruler = find.byKey(const ValueKey("keyframeStrip"));
       var box = tester.getRect(ruler);
 
-      // On the ruler's numbers, above the keyframe row: that is where the
-      // playhead is grabbed, and a drag starting there scrubs even if it
-      // happens to begin above a mark.
+      // On the ruler: the playhead is grabbed there, and nothing on the
+      // path is retimed.
       await tester.dragFrom(
           Offset(box.left + 12, box.top + 4), const Offset(200, 0));
       await tester.pumpAndSettle();
@@ -1778,90 +1674,6 @@ void main() {
       await tester.tap(find.byTooltip("Hide the area outside the canvas"));
       await tester.pumpAndSettle();
       expect(controller.showOverspill, isFalse);
-    });
-  });
-
-  group("selecting a keyframe", () {
-    (CanvasController, CanvasElement) animated() {
-      var document = const CanvasDocument(frames: 30);
-      var element = newElement(ElementKind.shape, document);
-      var controller = CanvasController(document.addElement(element));
-      controller.selectOnly(element.id);
-      controller.setKeyframe(element.id, const Keyframe(frame: 0));
-      controller.setKeyframe(element.id, const Keyframe(frame: 10, dx: 40));
-      controller.setKeyframe(element.id, const Keyframe(frame: 20, dx: 80));
-      return (controller, element);
-    }
-
-    /// tapMark clicks the mark at [frame] on the strip.
-    Future<void> tapMark(WidgetTester tester, int frame, int frames) async {
-      var ruler = find.byKey(const ValueKey("keyframeStrip"));
-      var box = tester.getRect(ruler);
-      await tester.tapAt(
-          Offset(box.left + frame / frames * box.width, box.top + 22 + 14));
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets("delete takes the keyframe, not the element", (tester) async {
-      // The canvas's own Delete removes what is selected there, and with a
-      // keyframe picked out that is the wrong thing by a long way: one is a
-      // pose, the other is the whole element and everything on it.
-      var (controller, element) = animated();
-      addTearDown(controller.dispose);
-      await pump(tester, CanvasTimeline(controller: controller));
-
-      await tapMark(tester, 10, 30);
-      expect(controller.frame, 10, reason: "clicking a mark goes to it");
-
-      await tester.sendKeyEvent(LogicalKeyboardKey.delete);
-      await tester.pumpAndSettle();
-
-      expect(controller.document.elements.length, 1,
-          reason: "the element is still there");
-      var track = controller.document.elementById(element.id)!.track!;
-      expect(track.keyAt(10), isNull, reason: "but that pose is gone");
-      expect(track.keyAt(0), isNotNull);
-      expect(track.keyAt(20), isNotNull);
-    });
-
-    testWidgets("delete does nothing with no mark picked out", (tester) async {
-      var (controller, element) = animated();
-      addTearDown(controller.dispose);
-      await pump(tester, CanvasTimeline(controller: controller));
-
-      // Focus the strip without landing on a mark *or* on the bar between
-      // two of them: a stretch where something happens is a bar now, and
-      // clicking one takes both of its ends. Past the last mark there is
-      // neither.
-      await tapMark(tester, 25, 30);
-      await tester.sendKeyEvent(LogicalKeyboardKey.delete);
-      await tester.pumpAndSettle();
-
-      expect(
-          controller.document.elementById(element.id)!.track!.keys.length, 3);
-    });
-
-    testWidgets("the selection is dropped when the row changes",
-        (tester) async {
-      // A frame number means nothing once the strip is showing somebody
-      // else's keyframes, and a stale one would put Delete on a mark the
-      // reader never picked.
-      var (controller, element) = animated();
-      addTearDown(controller.dispose);
-      var other = newElement(ElementKind.text, controller.document);
-      controller.apply(controller.document.addElement(other));
-      await pump(tester, CanvasTimeline(controller: controller));
-
-      await tapMark(tester, 10, 30);
-      controller.selectOnly(other.id);
-      await tester.pumpAndSettle();
-
-      await tester.sendKeyEvent(LogicalKeyboardKey.delete);
-      await tester.pumpAndSettle();
-
-      expect(controller.document.elementById(element.id)!.track!.keys.length, 3,
-          reason: "the other element's keyframes were left alone");
-      expect(controller.document.elements.length, 2);
     });
   });
 

@@ -1,6 +1,8 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/keyframes_card.dart';
@@ -101,6 +103,23 @@ void main() {
           reason: "no empty track kept");
     });
 
+    test("the loop: shown where the element loops, its ends moved", () {
+      var c = make();
+      addTearDown(c.dispose);
+      expect(c.keyframeLoop, isNull, reason: "no loop yet");
+      c.setElementLoop(
+          c.selected!,
+          const ElementLoop(
+              preset: LoopPreset.float, cycle: 10, from: 10, to: 59));
+      expect(c.keyframeLoop, (10, 59, 10, 0));
+      c.moveKeyframeLoopEnd(true, 80);
+      expect(c.keyframeLoop!.$2, 79, reason: "it stops before the frame");
+      c.moveKeyframeLoopEnd(false, 30);
+      expect(c.keyframeLoop!.$1, 30);
+      c.moveKeyframeLoopEnd(false, 95);
+      expect(c.keyframeLoop!.$1, 79, reason: "never past its stop");
+    });
+
     test("eased from the picked keyframes", () {
       var c = make();
       addTearDown(c.dispose);
@@ -110,8 +129,9 @@ void main() {
   });
 
   group("the card", () {
-    Future<CanvasController> show(WidgetTester tester) async {
-      var c = make();
+    Future<CanvasController> show(WidgetTester tester,
+        {CanvasController Function()? making}) async {
+      var c = (making ?? make)();
       addTearDown(c.dispose);
       tester.view.physicalSize = const Size(1000, 500);
       tester.view.devicePixelRatio = 1.0;
@@ -181,12 +201,87 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
       await tester.pump();
       expect(framesOf(c), [0, 24]);
+      expect(c.document.elementById("logo"), isNotNull,
+          reason: "the keyframe, not the element");
       expect(find.byKey(const ValueKey("keyframesSaid")), findsOneWidget);
       c.frame = 60;
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey("keyframesHere")));
       await tester.pump();
       expect(framesOf(c), [0, 24, 60]);
+    });
+
+    testWidgets("the band between a pair moves both, keeping its length",
+        (tester) async {
+      var c = await show(tester);
+      var from = markAt(tester, 36);
+      var to = markAt(tester, 46);
+      var g = await tester.startGesture(from);
+      await tester.pump();
+      await g.moveTo(Offset.lerp(from, to, 0.5)!);
+      await tester.pump();
+      await g.moveTo(to);
+      await tester.pump();
+      await g.up();
+      await tester.pump();
+      expect(framesOf(c), [0, 34, 58]);
+    });
+
+    testWidgets("a path's points: dragged, a point is retimed", (tester) async {
+      var c = await show(tester, making: () {
+        var c = CanvasController(CanvasDocument(frames: 100, elements: [
+          PathElement(const ElementBase(id: "p", width: 200, height: 200),
+              nodes: const [
+                PathNode(x: 0, y: 0, frame: 0),
+                PathNode(x: 0.5, y: 0.5, frame: 30),
+                PathNode(x: 1, y: 1, frame: 60),
+              ]),
+        ]));
+        c.selectOnly("p");
+        return c;
+      });
+      expect(c.keyframeTarget!.points, isTrue);
+      expect(find.byKey(const ValueKey("keyframesCurves")), findsNothing,
+          reason: "a path's points have times only");
+      var from = markAt(tester, 30);
+      var to = markAt(tester, 40);
+      var g = await tester.startGesture(from);
+      await tester.pump();
+      await g.moveTo(Offset.lerp(from, to, 0.5)!);
+      await tester.pump();
+      await g.moveTo(to);
+      await tester.pump();
+      await g.up();
+      await tester.pump();
+      var path = c.document.elementById("p") as PathElement;
+      expect([for (var n in path.nodes) n.frame], [0, 40, 60]);
+    });
+
+    testWidgets("the loop's row: its stop dragged later, as one change",
+        (tester) async {
+      var c = await show(tester);
+      c.setElementLoop(
+          c.selected!,
+          const ElementLoop(
+              preset: LoopPreset.float, cycle: 10, from: 10, to: 59));
+      await tester.pump();
+      // The loop's row is under the keyframes' lane, its stop's handle at
+      // the frame after the last it plays.
+      Offset loopAt(int f) => markAt(tester, f) + const Offset(0, 14 + 7);
+      var undoBefore = c.canUndo;
+      var g = await tester.startGesture(loopAt(60));
+      await tester.pump();
+      await g.moveTo(loopAt(70));
+      await tester.pump();
+      await g.moveTo(loopAt(80));
+      await tester.pump();
+      await g.up();
+      await tester.pump();
+      expect(c.keyframeLoop!.$2, 79);
+      expect(c.canUndo, isTrue);
+      c.undo();
+      expect(c.keyframeLoop!.$2, 59, reason: "one undo puts it back");
+      expect(undoBefore, isTrue);
     });
 
     testWidgets("a box picks several; Spread evenly evens them out",

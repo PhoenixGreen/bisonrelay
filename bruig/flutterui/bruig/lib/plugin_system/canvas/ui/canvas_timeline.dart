@@ -5,7 +5,6 @@ import 'package:bruig/storage_manager.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/help_note.dart';
@@ -14,7 +13,6 @@ import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart'
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/ui/scene_strip.dart';
 import 'package:bruig/plugin_system/canvas/ui/slots_window.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/play_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_columns.dart';
@@ -22,7 +20,6 @@ import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_timeline.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -79,16 +76,10 @@ const double _stripPadBottom = 6;
 /// _stripGap is the room between the play bar and the ruler under it.
 const double _stripGap = 8;
 
-/// _markRow is where the keyframes sit inside the strip, and _stripHeight is
-/// tall enough for them with air under. Every hit test and the painter read
-/// these, so a mark cannot be drawn somewhere the pointer is not looking for
-/// it. Markers are flags on the ruler: see _paintMarkers.
-const double _markRow = _rulerHeight + 14;
-
-/// _loopBelow is how far under the keyframes the selected element's loop
-/// bar runs.
-const double _loopBelow = 8;
-const double _stripHeight = _markRow + 12;
+/// _stripHeight is the strip: the ruler, with its markers and cues. The
+/// keyframes are the Chain's (Ken, 2026-11-09: "I'd like keyframing done in
+/// the chain"): see keyframes_card.dart.
+const double _stripHeight = _rulerHeight + 2;
 
 /// _notesGutter is the empty band kept along the bottom of the strip, clear
 /// of the notes button (a 24px wedge in the content area's bottom-left
@@ -112,28 +103,6 @@ enum _BracePart { start, end, whole }
 /// _rulerHeight is the frame numbers and the playhead.
 const double _rulerHeight = 30;
 
-/// _markGrabWidth and _markGrabHeight are how close the pointer has to be to
-/// a keyframe mark to take hold of it rather than scrub: generous across,
-/// since marks crowd on a squeezed timeline, and tall enough to cover the
-/// mark and the air either side.
-const double _markGrabWidth = 9;
-const double _markGrabHeight = 12;
-
-/// _pathDriving is the path that owns a row's keyframes, if one does. A
-/// followed element's track is written by the path and rewritten whenever a
-/// point moves, so the strip shows nothing for it and says where the timing
-/// lives instead. Shared by the strip and the ruler under it.
-PathElement? _pathDriving(CanvasController controller) {
-  var team = controller.focusedTeam;
-  var index = controller.focusedPlayer;
-  if (team != null && index != null) {
-    return controller.pathDriving(team.id, playerIndex: index);
-  }
-  var element = controller.selected;
-  if (element == null || element is PathElement) return null;
-  return controller.pathDriving(element.id);
-}
-
 /// timelineHelp is the timeline's "?".
 const timelineHelp = [
   "One row for each element: its motion over its sound. The channel height "
@@ -143,8 +112,8 @@ const timelineHelp = [
       "Command and the scroll wheel, or a pinch.",
   "Drag a clip to move it. Click a row's header to pick it for the Chain; "
       "its buttons switch its motion and its sound off, and solo it.",
-  "Keyframes are made in the Chain's editors. The keyframe row, for what "
-      "still has one, is in the play bar's settings.",
+  "Keyframes are made in the Chain: its Keyframes card, first in the "
+      "Motion view, and their Curves.",
 ];
 
 class CanvasTimeline extends StatefulWidget {
@@ -184,33 +153,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
 
   CanvasController get controller => widget.controller;
 
-  /// _dragBand is the pair of frames being dragged as one, or null: a chart's
-  /// entrance is two keyframes that are meaningless apart, so the bar joining
-  /// them moves both. See KeyframeBand.
-  List<int>? _dragBand;
-
-  /// _pressedBand is the band the pointer went down on, found on the press
-  /// for the same reason as _pressedFrame.
-  List<int>? _pressedBand;
-
-  /// _bandAnchor is the frame the band drag last acted from.
-  int _bandAnchor = 0;
-
-  /// _dragKey is the frame of the mark being dragged along the ruler, or null
-  /// while the drag is an ordinary scrub.
-  int? _dragKey;
-
-  /// _pressedFrame is the mark under the pointer when it went down: a
-  /// horizontal drag is only recognised once the pointer has travelled, by
-  /// which time its reported start is past what it was aimed at. See
-  /// onHorizontalDragDown.
-  int? _pressedFrame;
-
-  /// _pressedLoop and _dragLoop are the end of the loop's bar a press is on
-  /// and a drag is moving (false its start, true its end), or null.
-  bool? _pressedLoop;
-  bool? _dragLoop;
-
   /// _pressedBrace and _dragBrace are the part of the loop brace (the control
   /// bar's Loop, along the top of the ruler) a press is on and the one being
   /// dragged; _braceFrom where the drag took hold, and _braceWas the loop
@@ -220,22 +162,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   int _braceFrom = 0;
   (int, int) _braceWas = (0, 1);
 
-  /// _selectedKeys are the frames of the marks that have been clicked. Shift
-  /// picks up another; clicking the bar between a pair picks up both ends.
-  /// Cleared whenever the row changes underneath it, so Delete never lands on
-  /// a mark that is not there.
-  final Set<int> _selectedKeys = {};
-
-  /// _copied is what was last copied: each keyframe, and how far it sits after
-  /// the first of them, so a paste at the playhead keeps the run's shape.
-  List<(int, Keyframe)> _copied = const [];
-
-  /// _shiftHeld is whether a click adds to the selection rather than starting
-  /// a new one.
-  bool get _shiftHeld => HardwareKeyboard.instance.isShiftPressed;
-
-  /// _focus is what lets Delete reach this strip. Requested when a mark is
-  /// clicked, because a mark is not a widget and cannot take focus itself.
+  /// _focus is what lets the transport's keys reach the timeline.
   final FocusNode _focus = FocusNode();
 
   @override
@@ -306,9 +233,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
       var factor = controller.timelineZoomFactor;
       factor == 0 ? _setView(TimelineView.whole(_total)) : _zoomBy(factor);
     }
-    // A mark that is no longer on this row cannot stay selected, or Delete
-    // would take a keyframe the reader never picked.
-    _selectedKeys.removeWhere((at) => _targetTrack?.keyAt(at) == null);
     setState(() {});
   }
 
@@ -319,22 +243,9 @@ class CanvasTimelineState extends State<CanvasTimeline> {
 
   double _xFor(int frame, double width) => _sceneView.centreOf(frame, width);
 
-  /// _marquee is the stretch being dragged out over the keyframes to select
-  /// them, as two x positions, or null; _pressedMarquee is whether the press
-  /// was on empty strip below the ruler, where a drag selects rather than
-  /// scrubs.
-  (double, double)? _marquee;
-  bool _pressedMarquee = false;
-
-  /// _narrowTo is a mark pressed while it was one of several picked: a click
-  /// on it picks it alone, a drag from it moves them all. Which it was is
-  /// only known when the pointer comes up.
-  int? _narrowTo;
-  List<int>? _narrowBand;
-
   /// _pressX is where the pointer went down on the strip. A drag is only
-  /// recognised some way past it, so a drag that starts a box or moves a
-  /// selection measures from here, not from where it was recognised.
+  /// recognised some way past it, so a drag of the loop brace measures from
+  /// here, not from where it was recognised.
   double _pressX = 0;
 
   /// _lastHead is where the playhead was on the last build, in the frames
@@ -387,11 +298,9 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   /// channel part of the timeline rather than having a divider").
   double get _sceneGap => 0;
 
-  /// _keysShown is whether the keyframe row is under the ruler, and _keysRoom
-  /// the strip's height with it or without (the ruler alone, with its
-  /// playhead, markers and cues).
-  bool get _keysShown => controller.keyframesShown;
-  double get _keysRoom => _keysShown ? _stripHeight : _rulerHeight + 2;
+  /// _keysRoom is the strip's height: the ruler, with its playhead, markers
+  /// and cues.
+  double get _keysRoom => _stripHeight;
 
   /// _ranRun is whether the last build ran along the whole run, so a view
   /// zoomed in one way of counting is not kept for the other.
@@ -492,50 +401,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     if (next != _viewNow) _setView(next);
   }
 
-  /// _targetName is what the keyframe controls are pointed at, for the
-  /// tooltips: a player when one has been clicked, otherwise the element.
-  String? get _targetName {
-    var team = controller.focusedTeam;
-    var index = controller.focusedPlayer;
-    if (team != null && index != null && index < team.players.length) {
-      var spot = team.players[index];
-      var who = spot.name.isNotEmpty ? spot.name : "#${spot.number}";
-      return "$who (${team.name})";
-    }
-    return controller.selected?.name;
-  }
-
-  /// _targetTrack is the track the keyframe controls read and write. A player
-  /// has no id and cannot be selected, so the focused player is what says the
-  /// controls are about them; everything goes through this rather than
-  /// controller.selected, so a player's keyframes behave as an element's do.
-  ElementTrack? get _targetTrack {
-    var team = controller.focusedTeam;
-    var index = controller.focusedPlayer;
-    if (team != null && index != null && index < team.players.length) {
-      return team.players[index].track;
-    }
-    // A path's marks are its points. Its own track is empty (what moves is
-    // the follower, whose keyframes the path writes), so without this a
-    // selected path would show a bare strip.
-    var path = _selectedPath;
-    if (path != null) {
-      return ElementTrack([for (var n in path.nodes) Keyframe(frame: n.frame)]);
-    }
-    // Nothing for whatever a path is driving: those marks belong to the
-    // route, and the copy shown would be overwritten.
-    if (_drivingPath != null) return null;
-    return controller.selected?.track;
-  }
-
-  /// _selectedPath is the selected element when it is a path.
-  PathElement? get _selectedPath {
-    var element = controller.selected;
-    return element is PathElement ? element : null;
-  }
-
-  PathElement? get _drivingPath => _pathDriving(controller);
-
   /// _pressedFlag and _dragFlag are the frame of the flag pressed on the
   /// ruler, and of the one being dragged: see _flagAt.
   int? _pressedFlag;
@@ -571,161 +436,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     return true;
   }
 
-  /// _retime moves a mark from one frame to another: one entry point for the
-  /// three things a mark can belong to, since the ruler dragging it does not
-  /// know which it holds.
-  void _retime(int from, int to) {
-    if (from == to) return;
-
-    var path = _selectedPath;
-    if (path != null) {
-      var index = path.nodes.indexWhere((n) => n.frame == from);
-      if (index < 0) return;
-      var next = path.retimeNode(index, to);
-      controller.replaceElement(next);
-      // Re-baked, or the follower would go on running the old timing while
-      // the point sits somewhere else.
-      controller.applyPathFollow(next);
-      return;
-    }
-
-    var track = _targetTrack;
-    var key = track?.keyAt(from);
-    if (track == null || key == null) return;
-    // Not through _removeTargetKey and the like, which route a path to its
-    // points; a path has been dealt with above.
-    var moved = track.withoutFrame(from).withKey(key.copyWith(frame: to));
-    var team = controller.focusedTeam;
-    var index = controller.focusedPlayer;
-    if (team != null && index != null) {
-      controller.replaceElement(
-          team.withPlayer(index, team.players[index].copyWith(track: moved)));
-      return;
-    }
-    var element = controller.selected;
-    if (element != null) {
-      controller.replaceElement(element.withBase(track: moved));
-    }
-  }
-
-  /// _copyKeys puts the selected keyframes on this strip's own clipboard, not
-  /// the system's: they are pasted elsewhere on this timeline a moment later.
-  /// Relative to the first, so the run keeps its shape wherever it lands.
-  void _copyKeys() {
-    var track = _targetTrack;
-    if (track == null || _selectedKeys.isEmpty) return;
-    var frames = _selectedKeys.toList()..sort();
-    var first = frames.first;
-    var copied = <(int, Keyframe)>[];
-    for (var at in frames) {
-      var key = track.keyAt(at);
-      if (key != null) copied.add((at - first, key));
-    }
-    if (copied.isEmpty) return;
-    setState(() => _copied = copied);
-    _say(copied.length == 1
-        ? "Keyframe copied. Move the playhead and paste it."
-        : "${copied.length} keyframes copied. Move the playhead and paste "
-            "them.");
-  }
-
-  /// _pasteKeys lays the copied run down with its first keyframe on the
-  /// playhead. Refused rather than merged where it would land on keyframes
-  /// already there: two on one frame is one, and eating one end of a pair
-  /// leaves half an animation.
-  void _pasteKeys() {
-    var track = _targetTrack;
-    if (track == null || _copied.isEmpty) return;
-    var at = controller.frame;
-    var last = controller.document.frames - 1;
-
-    var wanted = [for (var (offset, _) in _copied) at + offset];
-    if (wanted.last > last) {
-      _say("There is not room for that before the end of the timeline.");
-      return;
-    }
-    var taken = [
-      for (var frame in wanted)
-        if (track.keyAt(frame) != null) frame,
-    ];
-    if (taken.isNotEmpty) {
-      _say(taken.length == 1
-          ? "There is already a keyframe on frame ${taken.first}. Keyframes "
-              "cannot sit on top of each other -- move the playhead clear of "
-              "the ones that are there."
-          : "Frames ${taken.join(", ")} already have keyframes. Keyframes "
-              "cannot sit on top of each other -- move the playhead clear of "
-              "the ones that are there.");
-      return;
-    }
-
-    controller.beginInteraction();
-    var next = track;
-    for (var (offset, key) in _copied) {
-      next = next.withKey(key.copyWith(frame: at + offset));
-    }
-    _writeTrack(next);
-    controller.endInteraction();
-    setState(() {
-      _selectedKeys
-        ..clear()
-        ..addAll(wanted);
-    });
-  }
-
-  /// _writeTrack puts a whole track back on whatever the strip is pointed at.
-  void _writeTrack(ElementTrack track) {
-    var team = controller.focusedTeam;
-    var index = controller.focusedPlayer;
-    if (team != null && index != null) {
-      controller.replaceElement(
-          team.withPlayer(index, team.players[index].copyWith(track: track)));
-      return;
-    }
-    var element = controller.selected;
-    if (element != null) {
-      controller.replaceElement(element.withBase(track: track));
-    }
-  }
-
-  /// _say puts a message where the reader is looking, which for a refusal is
-  /// the only way they learn why nothing happened.
-  void _say(String message) {
-    if (!mounted) return;
-    SnackBarModel.of(context, listen: false).success(message);
-  }
-
-  /// _pathKeyframe adds or removes a point when a path is selected: for a path
-  /// the diamond's "something here" is a point. Not through setKeyframe, which
-  /// would write a pose onto the path's own track, where nothing reads it.
-  bool _pathKeyframe({required bool add, int? at}) {
-    var path = _selectedPath;
-    if (path == null) return false;
-    PathElement next;
-    if (add) {
-      next = path.insertAtFrame(controller.frame);
-    } else {
-      var index = path.nodeIndexAtFrame(at ?? controller.frame);
-      next = index == null ? path : path.withoutNode(index);
-    }
-    if (identical(next, path)) return true;
-    controller.replaceElement(next);
-    controller.applyPathFollow(next);
-    return true;
-  }
-
-  void _removeTargetKey(int frame) {
-    if (_pathKeyframe(add: false, at: frame)) return;
-    var team = controller.focusedTeam;
-    var index = controller.focusedPlayer;
-    if (team != null && index != null) {
-      controller.removePlayerKeyframe(team.id, index, frame);
-      return;
-    }
-    var element = controller.selected;
-    if (element != null) controller.removeKeyframe(element.id, frame);
-  }
-
   @override
   // No hover tips on the timeline (the approved design): a "?" explains.
   Widget build(BuildContext context) =>
@@ -736,8 +446,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     var document = controller.document;
     var actionHere =
         document.actions.where((a) => a.frame == controller.frame).firstOrNull;
-    var keyHere = _targetTrack?.keyAt(controller.frame);
-    var target = _targetName;
 
     // A view put back (the canvas opened as it was left) taken up. The
     // frames on screen are all of them or the stretch zoomed to, to the end
@@ -783,8 +491,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
               child: TimelineColumns(
                 slotsWidth: _slotsW,
                 headerWidth: controller.headerWidth,
-                child: _body(
-                    context, theme, document, actionHere, keyHere, target),
+                child: _body(context, theme, document, actionHere),
               ),
             );
           },
@@ -1093,6 +800,33 @@ class CanvasTimelineState extends State<CanvasTimeline> {
             ]),
           ),
         ),
+      // A drawing's shapes (none, the one picked, or all of them) on lanes
+      // of their own over the channels, and a picture's layers.
+      if (width >= 60 &&
+          (vectorLanesFor(controller) != null ||
+              imageLanesFor(controller) != null)) ...[
+        const SizedBox(width: 4),
+        InkResponse(
+          key: const ValueKey("vectorLanesToggle"),
+          radius: 12,
+          onTap: () => controller.vectorLanes = controller.vectorLanes.next,
+          child: Tooltip(
+            message: imageLanesFor(controller) != null
+                ? imageLanesLabel(controller.vectorLanes.next)
+                : controller.vectorLanes.next.label,
+            child: Icon(
+                switch (controller.vectorLanes) {
+                  VectorLanes.none => Icons.chevron_right,
+                  VectorLanes.picked => Icons.expand_more,
+                  VectorLanes.all => Icons.unfold_more,
+                },
+                size: 14,
+                color: controller.vectorLanes == VectorLanes.none
+                    ? colors.onSurfaceVariant
+                    : colors.primary),
+          ),
+        ),
+      ],
       const Spacer(),
       if (width >= 140)
         const HelpNote(
@@ -1101,17 +835,14 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     ]);
   }
 
-  /// _stripHeader is the column beside the keyframe strip, the width of the
-  /// channels' strips under it: the framing and the channel height, and what
-  /// each row of marks is.
-  Widget _stripHeader(ThemeNotifier theme, String? target) {
+  /// _stripHeader is the column beside the ruler, the width of the channels'
+  /// strips under it: the framing and the channel height.
+  Widget _stripHeader(ThemeNotifier theme) {
     var colors = theme.colors;
-    var muted = TextStyle(fontSize: 10, color: colors.onSurfaceVariant);
-    // Narrowed, the labels go and the icons stay.
-    var named = controller.headerWidth >= 64;
     return Container(
       width: controller.headerWidth,
-      padding: EdgeInsets.only(left: 4, right: named ? 8 : 2),
+      padding:
+          EdgeInsets.only(left: 4, right: controller.headerWidth >= 64 ? 8 : 2),
       decoration: BoxDecoration(
           border: Border(right: BorderSide(color: colors.outlineVariant))),
       child: Stack(children: [
@@ -1121,8 +852,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
           top: 0,
           height: _rulerHeight,
           // Ken, 2026-11-08: no zoom buttons -- zoom with Command and the
-          // wheel, or a pinch -- and no keyframe button (its row is in the
-          // play bar's settings). The framing as three small icons and the
+          // wheel, or a pinch -- and no keyframe button (keyframing is the
+          // Chain's, 2026-11-09). The framing as three small icons and the
           // channel height as one button stepping S, M, L; inside the
           // header's width, whatever it is, never over the ruler.
           child: ClipRect(
@@ -1130,54 +861,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                 builder: (context, box) => _corner(box.maxWidth, colors)),
           ),
         ),
-        if (_keysShown)
-          Positioned(
-            left: 0,
-            right: 0,
-            top: _markRow - 8,
-            height: 16,
-            child: Row(children: [
-              // A drawing's shapes (none, the one picked, or all of them) on lanes of
-              // their own under these keyframes, and a picture's layers.
-              if (vectorLanesFor(controller) != null ||
-                  imageLanesFor(controller) != null)
-                InkResponse(
-                  key: const ValueKey("vectorLanesToggle"),
-                  radius: 12,
-                  onTap: () =>
-                      controller.vectorLanes = controller.vectorLanes.next,
-                  child: Tooltip(
-                    message: imageLanesFor(controller) != null
-                        ? imageLanesLabel(controller.vectorLanes.next)
-                        : controller.vectorLanes.next.label,
-                    child: Icon(
-                        switch (controller.vectorLanes) {
-                          VectorLanes.none => Icons.chevron_right,
-                          VectorLanes.picked => Icons.expand_more,
-                          VectorLanes.all => Icons.unfold_more,
-                        },
-                        size: 14,
-                        color: controller.vectorLanes == VectorLanes.none
-                            ? colors.onSurfaceVariant
-                            : colors.primary),
-                  ),
-                )
-              else
-                Icon(Icons.diamond_outlined,
-                    size: 11, color: colors.onSurfaceVariant),
-              if (named) ...[
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(target ?? "Keyframes",
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: muted.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: colors.onSurface)),
-                ),
-              ],
-            ]),
-          ),
       ]),
     );
   }
@@ -1191,13 +874,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   /// taking it from the channels. See CanvasSceneStrip.
   bool get _showScenes => _runs && !_collapsed;
 
-  Widget _body(
-      BuildContext context,
-      ThemeNotifier theme,
-      CanvasDocument document,
-      TimelineAction? actionHere,
-      Keyframe? keyHere,
-      String? target) {
+  Widget _body(BuildContext context, ThemeNotifier theme,
+      CanvasDocument document, TimelineAction? actionHere) {
     // The play bar, where it is drawn here: over the timeline, or under it.
     var bar = CanvasPlayBar(controller: controller);
     // Everything under the bar: the strip, the channels and the scroll bar.
@@ -1215,7 +893,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                     bottom: BorderSide(
                         color: theme.colors.outline.withValues(alpha: 0.8)))),
             child: Row(children: [
-              _stripHeader(theme, target),
+              _stripHeader(theme),
               // Over the slots beside the rows: a launch for each cue.
               if (_slotsW > 0) _cueLaunches(theme),
               Expanded(
@@ -1225,133 +903,36 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                     supportedDevices: timelinePointers,
                     behavior: HitTestBehavior.opaque,
                     onTapDown: (details) {
-                      // The brace is switched on the release, and leaves playing alone: a
-                      // loop is set while listening.
+                      // The brace is switched on the release, and leaves
+                      // playing alone: a loop is set while listening.
                       if (_braceAt(
                               details.localPosition, constraints.maxWidth) !=
                           null) {
                         return;
                       }
                       controller.pause();
-                      // Selected on the press and the playhead moved on the release: moved
-                      // on the press, it would jump at the start of every drag. A drag
-                      // never reaches onTapUp.
-                      var mark = _keyframeAt(
-                          details.localPosition, constraints.maxWidth);
-                      var band = mark != null
-                          ? null
-                          : _bandAt(
-                              details.localPosition, constraints.maxWidth);
-                      setState(() {
-                        _narrowTo = null;
-                        _narrowBand = null;
-                        if (mark != null &&
-                            !_shiftHeld &&
-                            _selectedKeys.length > 1 &&
-                            _selectedKeys.contains(mark)) {
-                          // Pressed on one of several picked: it may be the start of dragging
-                          // them all, so they stay picked. A click picks this one alone; see
-                          // onTapUp.
-                          _narrowTo = mark;
-                        } else if (mark != null) {
-                          // Shift adds to the selection; an ordinary click starts
-                          // a new one.
-                          if (!_shiftHeld) _selectedKeys.clear();
-                          if (!_selectedKeys.add(mark) && _shiftHeld) {
-                            _selectedKeys.remove(mark);
-                          }
-                        } else if (band != null &&
-                            !_shiftHeld &&
-                            _selectedKeys.length > band.length &&
-                            band.every(_selectedKeys.contains)) {
-                          // The bar of a pair that is part of a bigger selection: kept, so
-                          // dragging it drags them all.
-                          _narrowBand = band;
-                        } else if (band != null) {
-                          // Both ends: the bar says the two belong together.
-                          if (!_shiftHeld) _selectedKeys.clear();
-                          _selectedKeys.addAll(band);
-                        } else {
-                          _selectedKeys.clear();
-                        }
-                      });
                     },
                     onTapUp: (details) {
-                      // Focus is asked for here rather than on the press: the press is
-                      // followed by the framework handing focus to the enclosing scope,
-                      // and without focus the strip never sees Delete, copy or paste.
-                      if (_narrowTo case var only?) {
-                        setState(() => _selectedKeys
-                          ..clear()
-                          ..add(only));
-                        _narrowTo = null;
-                      }
-                      if (_narrowBand case var pair?) {
-                        setState(() => _selectedKeys
-                          ..clear()
-                          ..addAll(pair));
-                        _narrowBand = null;
-                      }
-                      if (_selectedKeys.isNotEmpty) {
-                        FocusScope.of(context).requestFocus(_focus);
-                      }
-                      // A click after all. A mark puts the playhead on itself; anywhere else
-                      // scrubs. A click on the brace switches the loop off, as Ableton's
-                      // does; the Loop button puts it back.
+                      // A click on the brace switches the loop off, as
+                      // Ableton's does; the Loop button puts it back.
+                      // Anywhere else scrubs.
                       if (_braceAt(
                               details.localPosition, constraints.maxWidth) !=
                           null) {
                         controller.looping = !controller.looping;
                         return;
                       }
-                      var mark = _keyframeAt(
-                          details.localPosition, constraints.maxWidth);
-                      if (mark != null) {
-                        controller.frame = mark;
-                      } else {
-                        _scrubTo(
-                            details.localPosition.dx, constraints.maxWidth);
-                      }
+                      _scrubTo(details.localPosition.dx, constraints.maxWidth);
                     },
-                    // A drag that starts on a mark retimes that mark; anywhere else it
-                    // scrubs, decided once at the start. The mark is found on the press,
-                    // not the drag start: a horizontal drag is only recognised after about
-                    // eighteen pixels, past whatever it was aimed at.
+                    // A drag that starts on the loop brace or a flag moves
+                    // it; anywhere else it scrubs, decided once at the
+                    // start, from where the press was.
                     onHorizontalDragDown: (details) {
                       _pressX = details.localPosition.dx;
-                      // The loop brace along the top of the ruler wins:
-                      // it is what the press is on.
                       _pressedBrace =
                           _braceAt(details.localPosition, constraints.maxWidth);
-                      // An end of the loop's bar, under the keyframes.
-                      _pressedLoop = _loopEndAt(
-                          details.localPosition, constraints.maxWidth);
-                      // A flag on the ruler first: it is what the press is
-                      // on, and dragged, it moves.
                       _pressedFlag =
                           _flagAt(details.localPosition, constraints.maxWidth);
-                      _pressedFrame = _pressedFlag != null
-                          ? null
-                          : _keyframeAt(
-                              details.localPosition, constraints.maxWidth);
-                      // The bar between a pair, when the press was not on either end. A
-                      // mark wins: dragging an end changes the animation's length, dragging
-                      // the middle moves it.
-                      _pressedBand = _pressedFrame != null
-                          ? null
-                          : _bandAt(
-                              details.localPosition, constraints.maxWidth);
-                      // Empty strip under the ruler: a drag there draws a
-                      // box over the keyframes and selects what it covers.
-                      // On the ruler, a drag still scrubs.
-                      _pressedMarquee = _pressedLoop == null &&
-                          _pressedFlag == null &&
-                          _pressedFrame == null &&
-                          _pressedBand == null &&
-                          _targetTrack != null &&
-                          _keysShown &&
-                          details.localPosition.dy > _rulerHeight &&
-                          details.localPosition.dy < _keysRoom;
                     },
                     onHorizontalDragStart: (details) {
                       _dragBrace = _pressedBrace;
@@ -1362,41 +943,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                         return;
                       }
                       controller.pause();
-                      _dragLoop = _pressedLoop;
-                      if (_dragLoop != null) {
-                        controller.beginInteraction();
-                        return;
-                      }
                       _dragFlag = _pressedFlag;
                       if (_dragFlag != null) controller.beginInteraction();
-                      _dragKey = _pressedFrame;
-                      _dragBand = _pressedBand;
-                      _bandAnchor = _frameAt(_pressX, constraints.maxWidth);
-                      // A mark that is one of several selected takes the rest with it,
-                      // keeping their spacing.
-                      var grabbed = _pressedFrame != null
-                          ? {_pressedFrame!}
-                          : (_pressedBand?.toSet() ?? const <int>{});
-                      if (_selectedKeys.length > 1 &&
-                          grabbed.isNotEmpty &&
-                          _selectedKeys.containsAll(grabbed)) {
-                        _dragKey = null;
-                        _dragBand = (_selectedKeys.toList()..sort());
-                      }
-                      _narrowTo = null;
-                      _narrowBand = null;
-                      // A keyframe, or several, moved by a drag is one
-                      // change however many frames it passes through.
-                      if (_dragKey != null || _dragBand != null) {
-                        controller.beginInteraction();
-                      }
-                      if (_pressedMarquee) {
-                        var x = _pressX;
-                        setState(() {
-                          _marquee = (x, x);
-                          if (!_shiftHeld) _selectedKeys.clear();
-                        });
-                      }
                     },
                     onHorizontalDragUpdate: (details) {
                       var at = _frameAt(
@@ -1405,79 +953,14 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                         _moveBrace(part, at);
                         return;
                       }
-                      if (_dragLoop != null) {
-                        _moveLoopEnd(_dragLoop!, at);
-                        return;
-                      }
                       if (_dragFlag != null) {
                         if (_moveAction(_dragFlag!, at)) _dragFlag = at;
                         return;
                       }
-                      if (_dragBand != null) {
-                        _shiftBand(at);
-                        return;
-                      }
-                      if (_marquee case (var from, _)) {
-                        _selectWithin(from, details.localPosition.dx,
-                            constraints.maxWidth);
-                        return;
-                      }
-                      if (_dragKey == null) {
-                        _scrubTo(
-                            details.localPosition.dx, constraints.maxWidth);
-                        return;
-                      }
-                      _retime(_dragKey!, at);
-                      _dragKey = at;
+                      _scrubTo(details.localPosition.dx, constraints.maxWidth);
                     },
-                    onHorizontalDragEnd: (_) {
-                      if (_dragKey != null || _dragBand != null) {
-                        controller.endInteraction();
-                      }
-                      if (_marquee != null) {
-                        setState(() => _marquee = null);
-                        if (_selectedKeys.isNotEmpty) {
-                          FocusScope.of(context).requestFocus(_focus);
-                        }
-                      }
-                      _pressedMarquee = false;
-                      _dragBrace = null;
-                      _pressedBrace = null;
-                      if (_dragLoop != null) controller.endInteraction();
-                      _dragLoop = null;
-                      _pressedLoop = null;
-                      if (_dragFlag != null) controller.endInteraction();
-                      _dragFlag = null;
-                      _pressedFlag = null;
-                      _dragKey = null;
-                      _dragBand = null;
-                      _pressedFrame = null;
-                      _pressedBand = null;
-                    },
-                    onHorizontalDragCancel: () {
-                      if (_dragKey != null || _dragBand != null) {
-                        controller.endInteraction();
-                      }
-                      if (_marquee != null) {
-                        setState(() => _marquee = null);
-                        if (_selectedKeys.isNotEmpty) {
-                          FocusScope.of(context).requestFocus(_focus);
-                        }
-                      }
-                      _pressedMarquee = false;
-                      _dragBrace = null;
-                      _pressedBrace = null;
-                      if (_dragLoop != null) controller.endInteraction();
-                      _dragLoop = null;
-                      _pressedLoop = null;
-                      if (_dragFlag != null) controller.endInteraction();
-                      _dragFlag = null;
-                      _pressedFlag = null;
-                      _dragKey = null;
-                      _dragBand = null;
-                      _pressedFrame = null;
-                      _pressedBand = null;
-                    },
+                    onHorizontalDragEnd: (_) => _dragDone(),
+                    onHorizontalDragCancel: _dragDone,
                     child: CustomPaint(
                       key: const ValueKey("keyframeStrip"),
                       size: Size(constraints.maxWidth, constraints.maxHeight),
@@ -1488,7 +971,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                         origin: _origin,
                         frames: _total - _origin,
                         scene: _runs ? _total - _origin : document.frames,
-                        marks: _markRow,
                         // The joins go with the scene strip they sit over.
                         sceneStarts: _runs && !document.editingMaster
                             ? [
@@ -1505,16 +987,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                         bars: document.kind.isAudio ? document.audio : null,
                         brace: controller.looping ? controller.loopRange : null,
                         looping: controller.looping,
-                        // The focused player's, when one is focused (see _targetTrack): the
-                        // same keyframes the diamond button adds and removes.
-                        keyframes: _keysShown
-                            ? _targetTrack?.keys ?? const []
-                            : const [],
-                        bands: _keysShown ? _bands : const [],
-                        loop: _keysShown ? _loopBar : null,
-                        selected: _selectedKeys,
                         actions: document.actions,
-                        marquee: _marquee,
                         cues: [
                           if (controller.cuesShown)
                             for (var c in document.cues)
@@ -1654,78 +1127,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     // before the app's text-editing shortcuts, so the arrows and space
     // would otherwise scrub and play.
     if (isTypingInAField()) return KeyEventResult.ignored;
-    // Delete on a selected mark removes the keyframe, not the element the
-    // canvas's own Delete would take.
-    if (event.logicalKey == LogicalKeyboardKey.delete ||
-        event.logicalKey == LogicalKeyboardKey.backspace) {
-      if (_selectedKeys.isEmpty) return KeyEventResult.ignored;
-      // Highest first, so removing one does not move the next.
-      for (var at in _selectedKeys.toList()..sort((a, b) => b - a)) {
-        _removeTargetKey(at);
-      }
-      setState(_selectedKeys.clear);
-      return KeyEventResult.handled;
-    }
-
-    // Copy and paste, on the strip's own selection. The canvas has its own
-    // pair for elements; which answers depends on where the focus is.
-    var meta = HardwareKeyboard.instance.isMetaPressed ||
-        HardwareKeyboard.instance.isControlPressed;
-    // Only with marks to copy, and marks to paste onto something that takes
-    // them: otherwise the keys go on to the page, which copies what is
-    // selected (a sound clicked on the timeline, say).
-    var clipChosen = controller.selectedElements
-            .any((e) => e is AudioElement && e.clip.timed) ||
-        // A clip picked on another canvas: the master's, from a scene.
-        controller.clipSelection.length > controller.selection.length;
-    if (meta &&
-        event.logicalKey == LogicalKeyboardKey.keyC &&
-        _selectedKeys.isNotEmpty) {
-      _copyKeys();
-      return KeyEventResult.handled;
-    }
-    if (meta &&
-        event.logicalKey == LogicalKeyboardKey.keyV &&
-        _copied.isNotEmpty &&
-        !clipChosen) {
-      _pasteKeys();
-      return KeyEventResult.handled;
-    }
-
     return transportKey(controller, event) ?? KeyEventResult.ignored;
-  }
-
-  /// _keyframeAt is the mark under [local], or null. Only in the keyframe
-  /// row's own band (see _markRow): a drag starting on the ruler's numbers
-  /// is a scrub, since that is where the playhead is grabbed.
-  int? _keyframeAt(Offset local, double width) {
-    var keys = _targetTrack?.keys ?? const <Keyframe>[];
-    if (keys.isEmpty || !_keysShown) return null;
-    if ((local.dy - _markRow).abs() > _markGrabHeight) return null;
-
-    int? best;
-    var nearest = _markGrabWidth;
-    for (var key in keys) {
-      var distance = (local.dx - _xFor(key.frame, width)).abs();
-      if (distance > nearest) continue;
-      nearest = distance;
-      best = key.frame;
-    }
-    return best;
-  }
-
-  /// _loopBar is the selected element's loop on the timeline (where it starts
-  /// and stops, its cycle and its gap), or null where it has none.
-  (int, int, int, int)? get _loopBar {
-    if (controller.focusedPlayer != null || _selectedPath != null) return null;
-    var element = controller.selected;
-    if (element == null || !CanvasController.loops(element)) return null;
-    var loop = CanvasController.elementLoopOf(element);
-    if (!loop.on) return null;
-    var (start, end) = loop.span(
-        arrived: arrivalEnd(element, controller.document.frameRate),
-        last: controller.document.frames - 1);
-    return (start, end, loop.cycle, loop.gap);
   }
 
   /// _braceAt is which part of the loop brace is under [local]: an end, which
@@ -1769,103 +1171,13 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     }
   }
 
-  /// _loopEndAt is which end of the loop's bar is under [local] (false its
-  /// start, true its end), or null for neither.
-  bool? _loopEndAt(Offset local, double width) {
-    var bar = _loopBar;
-    if (bar == null || !_keysShown) return null;
-    if ((local.dy - _markRow - _loopBelow).abs() > 6) return null;
-    var (start, end, _, _) = bar;
-    if ((local.dx - _xFor(end + 1, width)).abs() <= 7) return true;
-    if ((local.dx - _xFor(start, width)).abs() <= 7) return false;
-    return null;
-  }
-
-  /// _moveLoopEnd puts the end of the loop's bar being dragged on [frame]:
-  /// its start, or where it stops, never past each other.
-  void _moveLoopEnd(bool end, int frame) {
-    var element = controller.selected;
-    var bar = _loopBar;
-    if (element == null || bar == null) return;
-    var loop = CanvasController.elementLoopOf(element);
-    var (start, stop, _, _) = bar;
-    controller.setElementLoop(
-        element,
-        end
-            ? loop.copyWith(to: math.max(start, frame - 1), repeats: 0)
-            : loop.copyWith(from: math.min(stop, frame)),
-        transient: true);
-  }
-
-  /// _bands is the pairs of keyframes on the target that belong together:
-  /// only an element's own, since a player's track has no channel with two
-  /// ends and a path's marks are its points.
-  List<KeyframeBand> get _bands {
-    if (controller.focusedPlayer != null) return const [];
-    if (_selectedPath != null) return const [];
-    return bandsIn(controller.selected?.track);
-  }
-
-  /// _bandAt is the band under [local], or null: on the keyframe row, and
-  /// only between the two marks, so an end can still be dragged alone.
-  List<int>? _bandAt(Offset local, double width) {
-    if (!_keysShown) return null;
-    if ((local.dy - _markRow).abs() > _markGrabHeight) return null;
-    for (var band in _bands) {
-      if (!band.real) continue;
-      var from = _xFor(band.from, width);
-      var to = _xFor(band.to, width);
-      if (local.dx < from + _markGrabWidth) continue;
-      if (local.dx > to - _markGrabWidth) continue;
-      return [band.from, band.to];
-    }
-    return null;
-  }
-
-  /// _shiftBand moves both ends of the band being dragged.
-  void _shiftBand(int to) {
-    var band = _dragBand;
-    var element = controller.selected;
-    if (band == null || element == null) return;
-
-    var delta = to - _bandAnchor;
-    if (delta == 0) return;
-    // Clamped rather than refused, so a band dragged at the end of the
-    // timeline slides up against it.
-    var last = controller.document.frames - 1;
-    var lowest = band.reduce(math.min);
-    var highest = band.reduce(math.max);
-    if (lowest + delta < 0) delta = -lowest;
-    if (highest + delta > last) delta = last - highest;
-    if (delta == 0) return;
-
-    controller.shiftKeyframes(element.id, band, delta);
-    setState(() {
-      _dragBand = [for (var f in band) f + delta];
-      _bandAnchor += delta;
-      // What was selected and moved is still selected, where it went.
-      if (band.every(_selectedKeys.contains)) {
-        _selectedKeys
-          ..removeAll(band)
-          ..addAll(_dragBand!);
-      }
-    });
-  }
-
-  /// _selectWithin selects every keyframe between two x positions: the box
-  /// dragged out over the strip.
-  void _selectWithin(double from, double to, double width) {
-    var track = _targetTrack;
-    if (track == null) return;
-    var a = _frameAt(math.min(from, to), width);
-    var b = _frameAt(math.max(from, to), width);
-    setState(() {
-      _marquee = (from, to);
-      if (!_shiftHeld) _selectedKeys.clear();
-      for (var k in track.keys) {
-        if (k.frame >= a && k.frame <= b) _selectedKeys.add(k.frame);
-      }
-    });
+  /// _dragDone ends a drag on the strip: a flag moved is one change.
+  void _dragDone() {
+    _dragBrace = null;
+    _pressedBrace = null;
+    if (_dragFlag != null) controller.endInteraction();
+    _dragFlag = null;
+    _pressedFlag = null;
   }
 }
 
@@ -1950,25 +1262,12 @@ class _TimelinePainter extends CustomPainter {
   /// otherwise.
   final int origin;
 
-  /// marks is how far down the keyframes are drawn: under the scene strip,
-  /// where it shows.
-  final double marks;
-
   /// sceneStarts is where each scene starts, in this painter's frames: just
   /// the one, at nought, unless the timeline runs along every scene. Each
   /// later one is marked on the ruler, over its join in the scene strip.
   final List<int> sceneStarts;
   final int frame;
   final int frameRate;
-  final List<Keyframe> keyframes;
-
-  /// bands are the pairs that belong together, drawn as a bar joining them.
-  /// See KeyframeBand.
-  final List<KeyframeBand> bands;
-
-  /// selected is the frames of the marks that have been clicked, drawn
-  /// with a ring so it is obvious which one Delete will take.
-  final Set<int> selected;
   final List<TimelineAction> actions;
 
   /// cues are the run's cues, each at its frame in this painter's frames,
@@ -1976,15 +1275,6 @@ class _TimelinePainter extends CustomPainter {
   final List<(int, String)> cues;
   final ColorScheme colors;
   final double Function(int) xFor;
-
-  /// loop is the selected element's loop, where it has one: the frame it
-  /// starts on, the one it stops on, its cycle and its gap. Drawn as a thin
-  /// bar under the keyframes, ticked where each go round starts.
-  final (int, int, int, int)? loop;
-
-  /// marquee is the box being dragged out to select keyframes, as two x
-  /// positions, or null.
-  final (double, double)? marquee;
 
   /// bars is a piece of sound's tempo, metre and structure: its ruler is
   /// counted in bars and beats, with its sections laid along it. Null for
@@ -2000,19 +1290,13 @@ class _TimelinePainter extends CustomPainter {
     this.bars,
     this.brace,
     this.looping = false,
-    this.loop,
-    this.marquee,
     required this.view,
     required this.frames,
     required this.scene,
     this.origin = 0,
-    this.marks = _markRow,
     this.sceneStarts = const [0],
     required this.frame,
     required this.frameRate,
-    required this.bands,
-    required this.keyframes,
-    required this.selected,
     required this.actions,
     this.cues = const [],
     required this.colors,
@@ -2172,37 +1456,8 @@ class _TimelinePainter extends CustomPainter {
             ..color = lit.withValues(alpha: looping ? 1 : 0.4));
     }
 
-    // The bars first, under the marks they join: a chart's entrance and exit
-    // are each two keyframes that mean nothing apart. See _shiftBand.
-    _paintBands(canvas, y: marks);
-    _paintLoop(canvas, y: marks + _loopBelow);
-
-    _paintMarks(
-      canvas,
-      size,
-      y: marks,
-      frames: [for (var k in keyframes) k.frame],
-      // Muted, the weight of the transport's icons: the accent is kept for
-      // the selected mark.
-      color: colors.onSurfaceVariant.withValues(alpha: 0.65),
-      diamond: true,
-      selected: selected,
-      selectedColor: colors.primary,
-    );
     _paintMarkers(canvas);
     _paintCues(canvas);
-    if (marquee case (var a, var b)) {
-      var box = Rect.fromLTRB(
-          math.min(a, b), _rulerHeight + 1, math.max(a, b), size.height - 1);
-      canvas.drawRect(
-          box, Paint()..color = colors.primary.withValues(alpha: 0.12));
-      canvas.drawRect(
-          box,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..color = colors.primary.withValues(alpha: 0.6));
-    }
-
     // The playhead last, over everything, so it can be found at a glance.
     var x = xFor(frame);
     canvas.drawLine(
@@ -2297,105 +1552,6 @@ class _TimelinePainter extends CustomPainter {
 
   /// _paintLoop draws the loop's bar: from where it starts to where it
   /// stops, a tick where each go round starts, and a grip at each end.
-  void _paintLoop(Canvas canvas, {required double y}) {
-    var span = loop;
-    if (span == null) return;
-    var (start, end, cycle, gap) = span;
-    var from = xFor(start), to = xFor(end + 1);
-    var ink = colors.primary;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-          Rect.fromLTRB(from, y - 2, to, y + 2), const Radius.circular(2)),
-      Paint()..color = ink.withValues(alpha: 0.35),
-    );
-    var tick = Paint()
-      ..color = ink.withValues(alpha: 0.8)
-      ..strokeWidth = 1;
-    var period = math.max(1, cycle + gap);
-    // No closer than four pixels apart, on a loop zoomed out a long way.
-    var every =
-        math.max(1, (4 / math.max(0.0001, xFor(1) - xFor(0)) / period).ceil());
-    for (var f = start, i = 0; f <= end; f += period, i++) {
-      if (i % every != 0) continue;
-      var x = xFor(f);
-      canvas.drawLine(Offset(x, y - 3), Offset(x, y + 3), tick);
-    }
-    for (var x in [from, to]) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromCenter(center: Offset(x, y), width: 4, height: 9),
-            const Radius.circular(1.5)),
-        Paint()..color = ink,
-      );
-    }
-  }
-
-  /// _paintBands draws the bar between each pair: translucent, so the ruler's
-  /// ticks under it still show where the animation starts.
-  void _paintBands(Canvas canvas, {required double y}) {
-    var colour = colors.primary;
-    for (var band in bands) {
-      if (!band.real) continue;
-      var from = xFor(band.from);
-      var to = xFor(band.to);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTRB(from, y - 5, to, y + 5), const Radius.circular(5)),
-        Paint()..color = colour.withValues(alpha: 0.22),
-      );
-    }
-  }
-
-  void _paintMarks(
-    Canvas canvas,
-    Size size, {
-    required double y,
-    required List<int> frames,
-    required Color color,
-    required bool diamond,
-
-    /// selected is drawn in [selectedColor] instead of [color]: the colour is
-    /// the whole signal.
-    Set<int> selected = const {},
-    Color? selectedColor,
-  }) {
-    if (y > size.height) return;
-    var paint = Paint()..color = color;
-    var chosen = Paint()..color = selectedColor ?? color;
-    for (var f in frames) {
-      var x = xFor(f);
-      var ink = selected.contains(f) ? chosen : paint;
-      if (diamond) {
-        canvas.drawPath(
-          Path()
-            ..moveTo(x, y - 5)
-            ..lineTo(x + 5, y)
-            ..lineTo(x, y + 5)
-            ..lineTo(x - 5, y)
-            ..close(),
-          ink,
-        );
-      } else {
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-              Rect.fromCenter(center: Offset(x, y), width: 9, height: 9),
-              const Radius.circular(2)),
-          ink,
-        );
-      }
-    }
-  }
-
-  /// _sameBands compares two lists of pairs by what is in them: they are made
-  /// fresh on every build, so identity would repaint the strip every frame.
-  static bool _sameBands(List<KeyframeBand> a, List<KeyframeBand> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i].from != b[i].from || a[i].to != b[i].to) return false;
-    }
-    return true;
-  }
-
   @override
   bool shouldRepaint(_TimelinePainter old) =>
       old.bars?.toJson().toString() != bars?.toJson().toString() ||
@@ -2403,19 +1559,13 @@ class _TimelinePainter extends CustomPainter {
       old.scene != scene ||
       old.origin != origin ||
       !listEquals(old.sceneStarts, sceneStarts) ||
-      old.marks != marks ||
       old.view != view ||
       old.frame != frame ||
       old.frameRate != frameRate ||
-      old.keyframes != keyframes ||
-      !_sameBands(old.bands, bands) ||
-      !setEquals(old.selected, selected) ||
       old.actions != actions ||
       !listEquals(old.cues, cues) ||
-      old.marquee != marquee ||
       old.brace != brace ||
-      old.looping != looping ||
-      old.loop != loop;
+      old.looping != looping;
 }
 
 /// _TimelineScrollbar shows which stretch of the timeline is on screen, and

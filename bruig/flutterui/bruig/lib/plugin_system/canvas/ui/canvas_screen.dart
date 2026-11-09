@@ -231,7 +231,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// or hidden: the preferences skip a value that has not changed.
   void _keepShown() {
     var prefs = Provider.of<CanvasPreferences>(context, listen: false);
-    prefs.keyframesShown = _controller.keyframesShown;
     prefs.cuesShown = _controller.cuesShown;
     // And the mixer's bands (C, D, M) and its returns (R): set up once.
     prefs.mixerBands = _controller.mixerBandNames;
@@ -281,8 +280,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     for (var fit in CanvasFit.values) {
       if (fit.name == prefs.fit) _controller.restoreFit(fit);
     }
-    _controller.restoreShown(
-        keyframes: prefs.keyframesShown, cues: prefs.cuesShown);
+    _controller.restoreShown(cues: prefs.cuesShown);
     // The mixer as it was left: its bands, its returns, its height and the
     // effects panel's.
     _controller.restoreMixer(prefs.mixerBands, prefs.returnsShown);

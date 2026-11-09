@@ -183,6 +183,41 @@ extension CanvasKeyframes on CanvasController {
   int get defaultAnimationFrames =>
       math.max(2, (_document.frameRate * chartAnimationSeconds).round());
 
+  /// keyframeLoop is the picked element's loop as the Keyframes card shows
+  /// it (where it starts, where it stops, its cycle and its gap), or null
+  /// where it has none, or the card is on a player or a path. It was a bar
+  /// under the timeline's keyframe row, until keyframing moved to the Chain
+  /// (Ken, 2026-11-09).
+  (int, int, int, int)? get keyframeLoop {
+    var t = keyframeTarget;
+    if (t == null || t.points || t.player != null) return null;
+    var element = selected;
+    if (element == null || !CanvasController.loops(element)) return null;
+    var loop = CanvasController.elementLoopOf(element);
+    if (!loop.on) return null;
+    var (start, end) = loop.span(
+        arrived: arrivalEnd(element, document.frameRate),
+        last: document.frames - 1);
+    return (start, end, loop.cycle, loop.gap);
+  }
+
+  /// moveKeyframeLoopEnd puts an end of the loop's bar on [frame]: its start,
+  /// or ([end]) where it stops, never past each other. Transient: the drag
+  /// is one change, between beginInteraction and endInteraction.
+  void moveKeyframeLoopEnd(bool end, int frame) {
+    var element = selected;
+    var bar = keyframeLoop;
+    if (element == null || bar == null) return;
+    var loop = CanvasController.elementLoopOf(element);
+    var (start, stop, _, _) = bar;
+    setElementLoop(
+        element,
+        end
+            ? loop.copyWith(to: math.max(start, frame - 1), repeats: 0)
+            : loop.copyWith(from: math.min(stop, frame)),
+        transient: true);
+  }
+
   /// setElementLoop gives [element] [loop] -- [transient] while a drag on
   /// its bar is still making it. See ElementLoop.
   void setElementLoop(CanvasElement element, ElementLoop loop,

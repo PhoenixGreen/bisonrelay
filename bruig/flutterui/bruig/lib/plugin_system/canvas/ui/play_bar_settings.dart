@@ -265,17 +265,6 @@ class _Panel extends StatelessWidget {
                     on: controller.barBelow,
                     onChanged: (_) => onBarBelow(),
                   ),
-                  // The keyframe row: what still has keyframes on the
-                  // timeline -- a background, a stage, scenery, a team's
-                  // players, a path's points -- now the timeline's corner has
-                  // no button for it (Ken, 2026-11-08).
-                  _Switch(
-                    key: const ValueKey("keyframesShownItem"),
-                    icon: Icons.diamond_outlined,
-                    label: "The keyframe row",
-                    on: controller.keyframesShown,
-                    onChanged: (v) => controller.keyframesShown = v,
-                  ),
                   caption("Show"),
                   Wrap(spacing: 5, children: [
                     for (var kind in TimelineShow.values)

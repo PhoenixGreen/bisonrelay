@@ -276,32 +276,23 @@ void main() {
       expect(cuesDrawn(), isEmpty);
     });
 
-    testWidgets("the keyframe row is hidden from the play bar's settings",
-        (tester) async {
-      var c = await show(tester, elements: [channel("a", "Music")]);
-      // Not in the timeline's corner now (Ken, 2026-11-08).
-      expect(find.byKey(const ValueKey("keyframesShown")), findsNothing);
-      var strip =
-          tester.getSize(find.byKey(const ValueKey("keyframeStrip"))).height;
-      var lane = tester.getRect(find.byKey(const ValueKey("lane-a"))).top;
-      await tapTimelineItem(tester, "keyframesShownItem");
-      await tester.pump();
-      expect(c.keyframesShown, isFalse);
+    testWidgets(
+        "no keyframe row: the strip is the ruler, and nothing in the play "
+        "bar's settings brings one back", (tester) async {
+      // Keyframing is the Chain's (Ken, 2026-11-09): see
+      // canvas_keyframes_card_test.dart.
+      await show(tester, elements: [channel("a", "Music")]);
       expect(tester.getSize(find.byKey(const ValueKey("keyframeStrip"))).height,
-          lessThan(strip - 20));
-      expect(tester.getRect(find.byKey(const ValueKey("lane-a"))).top,
-          lessThan(lane - 20),
-          reason: "the channels have the room");
-      await tapTimelineItem(tester, "keyframesShownItem");
-      await tester.pump();
-      expect(tester.getSize(find.byKey(const ValueKey("keyframeStrip"))).height,
-          strip);
+          lessThan(36));
+      await openMore(tester);
+      expect(find.byKey(const ValueKey("keyframesShownItem")), findsNothing);
+      await closeMore(tester);
       expect(tester.takeException(), isNull);
     });
 
     testWidgets(
-        "every scene playing, the scenes are the first row over the channels,"
-        " with the keyframes shown or hidden", (tester) async {
+        "every scene playing, the scenes are the first row over the channels",
+        (tester) async {
       var c = await show(tester,
           document: const CanvasDocument(frameRate: 10, scenes: [
             CanvasScene(id: "a", frames: 50),
@@ -317,17 +308,11 @@ void main() {
                 ...(w.painter as dynamic).sceneStarts as List,
           ];
       expect(joins(), hasLength(2), reason: "a join on the ruler per scene");
-      for (var keys in [true, false]) {
-        c.keyframesShown = keys;
-        await tester.pump();
-        var strip = tester.getRect(find.byType(CanvasSceneStrip));
-        var frames =
-            tester.getRect(find.byKey(const ValueKey("keyframeStrip")));
-        expect(frames.bottom - strip.bottom, lessThan(8),
-            reason: "the scenes are the bottom of the strip, over the "
-                "channels (keyframes shown: $keys)");
-        expect(find.byKey(const ValueKey("sceneStripLabel")), findsOneWidget);
-      }
+      var strip = tester.getRect(find.byType(CanvasSceneStrip));
+      var frames = tester.getRect(find.byKey(const ValueKey("keyframeStrip")));
+      expect(strip.top, greaterThanOrEqualTo(frames.bottom - 1),
+          reason: "the scenes are under the ruler, the first of the rows");
+      expect(find.byKey(const ValueKey("sceneStripLabel")), findsOneWidget);
       c.playAll = false;
       await tester.pump();
       expect(find.byType(CanvasSceneStrip), findsNothing);

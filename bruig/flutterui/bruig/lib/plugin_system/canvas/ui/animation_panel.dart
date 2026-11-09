@@ -398,7 +398,9 @@ class _AnimationPanelState extends State<AnimationPanel> {
   /// Folded at first where there are no keyframes yet, there being nothing
   /// to see; opened at first where there are.
   Widget _keyframesCard() {
-    var empty = controller.keyframeTarget?.track.isEmpty ?? true;
+    // Folded at first with nothing on it: no keyframes, and no loop.
+    var empty = (controller.keyframeTarget?.track.isEmpty ?? true) &&
+        controller.keyframeLoop == null;
     var mark = empty ? "keyframes:open" : "keyframes:shut";
     var folded = empty ? !_folded.contains(mark) : _folded.contains(mark);
     return KeyframesCard(

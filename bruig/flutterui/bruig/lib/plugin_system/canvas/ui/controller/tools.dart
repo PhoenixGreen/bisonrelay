@@ -1828,21 +1828,10 @@ extension CanvasTools on CanvasController {
     notifyListeners();
   }
 
-  /// keyframesShown is whether the timeline shows its row of keyframes:
-  /// hidden for room, the ruler and the channels stay.
-  bool get keyframesShown => _keyframesShown;
-
-  set keyframesShown(bool shown) {
-    if (shown == _keyframesShown) return;
-    _keyframesShown = shown;
-    notifyListeners();
-  }
-
-  /// restoreShown puts back which timeline rows were showing, as the
-  /// preferences kept them -- without notifying, as restoreFit, because it
+  /// restoreShown puts back whether the cues were showing, as the
+  /// preferences kept it -- without notifying, as restoreFit, because it
   /// runs while the page is being built.
-  void restoreShown({required bool keyframes, required bool cues}) {
-    _keyframesShown = keyframes;
+  void restoreShown({required bool cues}) {
     _cuesShown = cues;
   }
 

@@ -33,6 +33,8 @@ class CanvasPreferences extends ChangeNotifier {
   static const _elevenLabsKeyKey = "canvasElevenLabsKey";
   static const _publishKey = "canvasPublish";
   static const _timelineHeightKey = "canvasTimelineHeight";
+
+  /// _keyframesShownKey was the timeline's keyframe row shown: only deleted.
   static const _keyframesShownKey = "canvasKeyframesShown";
   static const _cuesShownKey = "canvasCuesShown";
   static const _studioLookKey = "canvasStudioLook";
@@ -308,17 +310,8 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_canvasViewsKey, jsonEncode(_canvasViews));
   }
 
-  /// keyframesShown and cuesShown are which of the timeline's rows
-  /// (keyframes, cues on the ruler) were showing. All shown to
-  /// begin with.
-  bool get keyframesShown => _keyframesShown;
-  bool _keyframesShown = true;
-  set keyframesShown(bool value) {
-    if (_keyframesShown == value) return;
-    _keyframesShown = value;
-    StorageManager.saveBool(_keyframesShownKey, value);
-  }
-
+  /// cuesShown is whether the cues were marked on the timeline's ruler.
+  /// Shown to begin with.
   bool get cuesShown => _cuesShown;
   bool _cuesShown = true;
   set cuesShown(bool value) {
@@ -391,8 +384,11 @@ class CanvasPreferences extends ChangeNotifier {
     if (await StorageManager.exists(_elevenLabsKeyKey)) {
       await StorageManager.deleteData(_elevenLabsKeyKey);
     }
-    _keyframesShown =
-        await StorageManager.readBool(_keyframesShownKey, defaultVal: true);
+    // The timeline's keyframe row is gone (keyframing is the Chain's,
+    // 2026-11-09): whether it was shown, deleted.
+    if (await StorageManager.exists(_keyframesShownKey)) {
+      await StorageManager.deleteData(_keyframesShownKey);
+    }
     _cuesShown = await StorageManager.readBool(_cuesShownKey, defaultVal: true);
     _timelineHeight =
         double.tryParse(await StorageManager.readString(_timelineHeightKey)) ??

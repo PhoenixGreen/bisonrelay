@@ -78,7 +78,7 @@ class KeyframesCard extends StatefulWidget {
   State<KeyframesCard> createState() => _KeyframesCardState();
 }
 
-enum _DragKind { scrub, move, box }
+enum _DragKind { scrub, move, box, loop }
 
 class _KeyframesCardState extends State<KeyframesCard> {
   CanvasController get c => widget.controller;
@@ -93,7 +93,14 @@ class _KeyframesCardState extends State<KeyframesCard> {
   int? _pressed;
   bool _moved = false;
 
+  /// _loopEnd is the end of the loop's bar being dragged: its stop (true)
+  /// or its start.
+  bool _loopEnd = false;
+
   static const double _labelW = 70, _rulerH = 16, _allH = 28, _laneH = 20;
+
+  /// _loopH is the loop's row, under the keyframes, where the element loops.
+  static const double _loopH = 14;
 
   @override
   void dispose() {
@@ -221,6 +228,7 @@ class _KeyframesCardState extends State<KeyframesCard> {
                   playhead: c.frame,
                   rate: c.document.frameRate,
                   picked: {..._sel},
+                  loop: c.keyframeLoop,
                   by: _drag == _DragKind.move ? _by : 0,
                   box: _drag == _DragKind.box ? (_from, _from + _by) : null,
                   studio: studio,
@@ -284,6 +292,22 @@ class _KeyframesCardState extends State<KeyframesCard> {
         mark = k.frame;
       }
     }
+    // The loop's row: an end of its bar, dragged, moves it.
+    var loop = c.keyframeLoop;
+    if (loop != null &&
+        at.dy >= _rulerH + _allH &&
+        at.dy < _rulerH + _allH + _loopH) {
+      var (start, stop, _, _) = loop;
+      var toStop = (at.dx - _x(stop + 1, w)).abs();
+      var toStart = (at.dx - _x(start, w)).abs();
+      if (math.min(toStop, toStart) <= 7) {
+        _loopEnd = toStop <= toStart;
+        _drag = _DragKind.loop;
+        c.beginInteraction();
+        setState(() {});
+        return;
+      }
+    }
     var shift = HardwareKeyboard.instance.isShiftPressed;
     if (mark != null && at.dy < _rulerH + _allH) {
       if (shift) {
@@ -325,6 +349,8 @@ class _KeyframesCardState extends State<KeyframesCard> {
       case _DragKind.move:
         _by = f - _from;
         _moved = _moved || _by != 0;
+      case _DragKind.loop:
+        c.moveKeyframeLoopEnd(_loopEnd, f);
       case null:
         break;
     }
@@ -334,6 +360,7 @@ class _KeyframesCardState extends State<KeyframesCard> {
   void _up(KeyframeTarget t) {
     var drag = _drag;
     _drag = null;
+    if (drag == _DragKind.loop) c.endInteraction();
     if (drag == _DragKind.move) {
       if (!_moved) {
         // A click on a mark: the playhead to it, as the timeline's row did.
@@ -606,6 +633,9 @@ class _LanesPainter extends CustomPainter {
   final Set<int> picked;
   final int by;
   final (int, int)? box;
+
+  /// loop is the element's loop, where it has one: from, to, cycle, gap.
+  final (int, int, int, int)? loop;
   final StudioColors studio;
   _LanesPainter(
       {required this.track,
@@ -617,12 +647,14 @@ class _LanesPainter extends CustomPainter {
       required this.picked,
       required this.by,
       required this.box,
+      this.loop,
       required this.studio});
 
   static const double labelW = _KeyframesCardState._labelW;
   static const double rulerH = _KeyframesCardState._rulerH;
   static const double allH = _KeyframesCardState._allH;
   static const double laneH = _KeyframesCardState._laneH;
+  static const double loopH = _KeyframesCardState._loopH;
 
   double _x(num f, double w) => labelW + f / frames * (w - labelW - 6);
 
@@ -655,9 +687,17 @@ class _LanesPainter extends CustomPainter {
     var rows = [
       (points ? "Points" : "Keyframes", rulerH, allH, null),
       for (var (i, l) in lanes.indexed)
-        (l.$2, rulerH + allH + i * laneH, laneH, l.$3),
+        (
+          l.$2,
+          rulerH + allH + (loop == null ? 0 : loopH) + i * laneH,
+          laneH,
+          l.$3
+        ),
     ];
     var keys = track.keys;
+    // The stretches something changes over, as bandsIn has it: not one that
+    // reads the same at both ends, nor one leaving a held keyframe.
+    var travels = {for (var b in bandsIn(track)) b.from};
     var band = Paint()..color = motionColour.withValues(alpha: 0.45);
     var bandPicked = Paint()..color = studio.on.withValues(alpha: 0.5);
     for (var (name, top, h, read) in rows) {
@@ -667,8 +707,10 @@ class _LanesPainter extends CustomPainter {
       var mid = top + h / 2;
       for (var i = 1; i < keys.length; i++) {
         var a = keys[i - 1], b = keys[i];
-        var changes =
-            points || (read == null ? !_samePose(a, b) : read(a) != read(b));
+        var changes = points ||
+            (read == null
+                ? travels.contains(a.frame)
+                : a.easing != KeyframeEasing.hold && read(a) != read(b));
         if (!changes) continue;
         var both = picked.contains(a.frame) && picked.contains(b.frame);
         var thick = read == null ? 2.0 : 4.0;
@@ -706,6 +748,9 @@ class _LanesPainter extends CustomPainter {
         }
       }
     }
+    if (loop case (var start, var end, var cycle, var gap)) {
+      _paintLoop(canvas, w, start, end, cycle, gap);
+    }
     if (box case (var a, var b)) {
       var l = _x(math.min(a, b), w), r = _x(math.max(a, b), w);
       var rect = Rect.fromLTRB(l, rulerH, r, size.height);
@@ -725,16 +770,41 @@ class _LanesPainter extends CustomPainter {
           ..strokeWidth = 2);
   }
 
-  static bool _samePose(Keyframe a, Keyframe b) =>
-      a.dx == b.dx &&
-      a.dy == b.dy &&
-      a.scale == b.scale &&
-      a.rotate == b.rotate &&
-      a.opacity == b.opacity &&
-      _sameValues(a.values, b.values);
-
-  static bool _sameValues(Map<String, double> a, Map<String, double> b) =>
-      a.length == b.length && a.keys.every((k) => a[k] == b[k]);
+  /// _paintLoop is the loop's row: a bar from where it starts to where it
+  /// stops, ticked where each go round starts, a handle at each end.
+  void _paintLoop(
+      Canvas canvas, double w, int start, int end, int cycle, int gap) {
+    var top = rulerH + allH;
+    var y = top + loopH / 2;
+    canvas.drawLine(Offset(0, top + loopH), Offset(w, top + loopH),
+        Paint()..color = studio.edge.withValues(alpha: 0.6));
+    _label(canvas, "Loop", Offset(6, y - 6), studio.muted);
+    var from = _x(start, w), to = _x(end + 1, w);
+    var ink = studio.on;
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTRB(from, y - 2, to, y + 2), const Radius.circular(2)),
+        Paint()..color = ink.withValues(alpha: 0.35));
+    var tick = Paint()
+      ..color = ink.withValues(alpha: 0.8)
+      ..strokeWidth = 1;
+    var period = math.max(1, cycle + gap);
+    // No closer than four pixels apart, on a long loop.
+    var every = math.max(
+        1, (4 / math.max(0.0001, _x(1, w) - _x(0, w)) / period).ceil());
+    for (var f = start, i = 0; f <= end; f += period, i++) {
+      if (i % every != 0) continue;
+      var x = _x(f, w);
+      canvas.drawLine(Offset(x, y - 3), Offset(x, y + 3), tick);
+    }
+    for (var x in [from, to]) {
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              Rect.fromCenter(center: Offset(x, y), width: 4, height: 9),
+              const Radius.circular(1.5)),
+          Paint()..color = ink);
+    }
+  }
 
   void _diamond(Canvas canvas, Offset at, double r, Color colour) {
     var path = Path()
