@@ -647,6 +647,16 @@ class _CanvasChannelsState extends State<CanvasChannels> {
               : controller.timelineChannels)
             if (!transitions.contains(ch)) ch
         ]);
+        // The All group's: on the master canvas, there in every scene.
+        var everyScene = {
+          for (var r in rows)
+            if (r.group == RowGroup.all)
+              for (var ch in r.channels) ch.key
+        };
+        var inAll = [
+          for (var ch in channels)
+            if (everyScene.contains(ch.key)) ch
+        ];
         var width = controller.headerWidth;
         return Stack(key: _stack, children: [
           ListView(
@@ -682,9 +692,20 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                     ..._channelRows(channel, width, theme, channels,
                         movable: false, owned: true),
               ],
-              if (show != TimelineShow.animation)
+              if (show != TimelineShow.animation) ...[
                 for (var channel in channels)
-                  ..._channelRows(channel, width, theme, channels),
+                  if (!everyScene.contains(channel.key))
+                    ..._channelRows(channel, width, theme, channels),
+                // The All group, last, under a heading that folds it away
+                // (Ken, 2026-11-08).
+                if (inAll.isNotEmpty) ...[
+                  _allHeading(theme, inAll.length),
+                  if (!controller.allFolded)
+                    for (var channel in inAll)
+                      ..._channelRows(channel, width, theme, channels,
+                          all: true),
+                ],
+              ],
               _row(_newLane, channelsLaneHeight, width,
                   header: _EmptyHeader(
                       width: width,
@@ -713,6 +734,51 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   /// _channelRows is [channel]'s row and, opened under it, its automation.
   /// [movable] is whether its strip is dragged to move it among the others:
   /// not an element's own sound, which stays under the element.
+  /// _allHeading is the All group's heading: "All scenes", how many rows
+  /// are in it, and an arrow folding them away.
+  Widget _allHeading(ThemeNotifier theme, int count) {
+    var colors = theme.colors;
+    var folded = controller.allFolded;
+    return Container(
+      key: const ValueKey("allGroupHeading"),
+      height: 24,
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerLowest,
+        border: Border(
+            bottom: BorderSide(color: colors.outline.withValues(alpha: 0.5))),
+      ),
+      child: InkWell(
+        key: const ValueKey("allGroupFold"),
+        onTap: () => controller.allFolded = !folded,
+        child: Row(children: [
+          const SizedBox(width: 6),
+          Icon(folded ? Icons.chevron_right : Icons.expand_more,
+              size: 14, color: colors.onSurfaceVariant),
+          const SizedBox(width: 4),
+          Text("All scenes",
+              maxLines: 1,
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: colors.onSurface)),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5),
+            decoration: BoxDecoration(
+                color: colors.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(6)),
+            child: Text("$count",
+                key: const ValueKey("allGroupCount"),
+                style: TextStyle(
+                    fontSize: 9.5,
+                    height: 1.4,
+                    color: colors.onSurfaceVariant)),
+          ),
+        ]),
+      ),
+    );
+  }
+
   /// _scenesHeader is the Scenes row's header (row_header.dart): its
   /// count, the scene's motion (its camera and transitions) shown, and its
   /// sound button the transitions' sounds'.
@@ -767,7 +833,10 @@ class _CanvasChannelsState extends State<CanvasChannels> {
 
   List<Widget> _channelRows(TimelineChannel channel, double width,
           ThemeNotifier theme, List<TimelineChannel> channels,
-          {bool movable = true, bool owned = false, Color? accent}) =>
+          {bool movable = true,
+          bool owned = false,
+          bool all = false,
+          Color? accent}) =>
       [
         _row(channel.key, _heightOf(channel.key), width,
             moving: channel.key == _moving,
@@ -801,7 +870,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
               // Which canvas its clips are on -- M for the master,
               // S1 for the first scene -- beside the band whose
               // colour says sound or video.
-              label: channel.sceneLabel,
+              // In the All group, tagged so.
+              label: all ? "All" : channel.sceneLabel,
               width: width,
               height: _heightOf(channel.key),
               selected: controller.selectedChannels.contains(channel.key),

@@ -3713,6 +3713,18 @@ class CanvasController extends ChangeNotifier {
 
   double _headerWidth = 240;
 
+  bool _allFolded = false;
+
+  /// allFolded is whether the All group -- the master canvas's rows, there
+  /// in every scene -- is folded away under its heading, on the timeline as
+  /// in the mixer (Ken, 2026-11-08). The reader's, for this session.
+  bool get allFolded => _allFolded;
+  set allFolded(bool folded) {
+    if (folded == _allFolded) return;
+    _allFolded = folded;
+    notifyListeners();
+  }
+
   /// _waveforms is each stored sound's shape, read once and kept -- see
   /// waveformOf.
   static final Map<String, Float32List?> _waveforms = {};
