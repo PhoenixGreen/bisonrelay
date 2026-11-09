@@ -35,13 +35,11 @@ const double _clipsLeast = _clipH + _clipGap + _slotGap + _stopH;
 /// _mixerMinH is the least a mixer band is given (its left column and a
 /// fader still worth dragging), and _mixerCapH the most before the room
 /// left goes to the clips instead.
-const double _mixerMinH = 120;
-const double _mixerCapH = 230;
-
-/// _leftW and _leftH are the mixer band's left column: pan, then, a little
-/// way under it, on, solo and arm, each half a full button's size.
-const double _leftW = 24;
-const double _leftH = 30 + 10 + 12 + 4 + 12 + 4 + 12;
+// Both grown by the sound half's label, pan and switch rows over the
+// fader (the approved design), so the fader keeps its room.
+const double _mixerMinH = 120 + _soundRowsH;
+const double _mixerCapH = 230 + _soundRowsH;
+const double _soundRowsH = 30;
 
 /// _buttonW and _buttonH are those buttons'.
 const double _buttonW = 18;
@@ -318,61 +316,103 @@ List<Widget> _slots(List<Widget> slots) => [
       ],
     ];
 
-/// _mixerBand is the mixer band: [left] (pan, on, solo, arm) beside the
-/// fader, with its reading under it.
+/// _mixerBand is a strip's sound half, row for row as the motion half over
+/// it (the approved design, 2026-11-08): SOUND and the level; the pan, a
+/// slider centred as the cross-fader is; the switches -- on, solo, arm --
+/// as chips; then the fader on its meter, with the room left.
 Widget _mixerBand({
   required Widget left,
   required Widget fader,
   required Widget reading,
   bool narrow = false,
 }) =>
-    Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SizedBox(
-        width: _leftW,
-        // Shrunk rather than overflowing, in a band shorter than the column
-        // (a short desk zoomed comes near it).
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.topCenter,
-            child: SizedBox(width: _leftW, height: _leftH, child: left),
-          ),
-        ),
-      ),
-      SizedBox(width: narrow ? 2 : 4),
-      Expanded(
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(child: fader),
-          const SizedBox(height: 3),
-          reading,
-        ]),
-      ),
-    ]);
+    Builder(builder: (context) {
+      var studio = MixerLook.of(context).studio;
+      var parts = left is _SoundLeft ? left : null;
+      var chips = [
+        if (parts?.on case var on?) on,
+        if (parts?.solo case var solo?) solo,
+        if (parts?.arm case var arm?) arm,
+      ];
+      return Column(
+          key: const ValueKey("soundHalf"),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: 14,
+              child: Row(children: [
+                // The label gives way first: the level is the number.
+                Flexible(
+                  child: Text(narrow ? "SND" : "SOUND",
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.clip,
+                      style: TextStyle(
+                          fontSize: 9,
+                          letterSpacing: narrow ? 0 : 0.6,
+                          fontWeight: FontWeight.w600,
+                          color: studio.muted)),
+                ),
+                const SizedBox(width: 2),
+                // Bounded, as the level becomes a field to type into.
+                Expanded(
+                  child:
+                      Align(alignment: Alignment.centerRight, child: reading),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 3),
+            if (parts != null) ...[
+              SizedBox(height: _panH, child: parts.pan),
+              const SizedBox(height: 4),
+              // Its room kept with no switches (the master), so every
+              // fader starts on one line.
+              SizedBox(
+                height: _chipH,
+                child: Row(children: [
+                  for (var (i, c) in chips.indexed) ...[
+                    if (i > 0) SizedBox(width: narrow ? 2 : 3),
+                    Expanded(child: c),
+                  ],
+                ]),
+              ),
+              const SizedBox(height: 4),
+            ] else ...[
+              left,
+              const SizedBox(height: 4),
+            ],
+            Expanded(child: fader),
+          ]);
+    });
 
-/// _leftColumn stacks the mixer band's left column: [pan], 30 high; then,
-/// a little way under it, on, solo and arm, each in its place whether it is
-/// there or not, so every column's line up.
+/// _panH and _chipH are the sound half's pan and switch rows.
+const double _panH = 28;
+const double _chipH = 14;
+
+/// _SoundLeft is what a strip has besides its fader: its pan, and the on,
+/// solo and arm switches it has; laid out by _mixerBand.
+class _SoundLeft extends StatelessWidget {
+  final Widget pan;
+  final Widget? on, solo, arm;
+  const _SoundLeft({required this.pan, this.on, this.solo, this.arm});
+
+  // Shown alone, as it once was: the pan over the switches.
+  @override
+  Widget build(BuildContext context) => Column(children: [
+        SizedBox(height: _panH, child: pan),
+        for (var b in [on, solo, arm])
+          if (b != null) SizedBox(height: _chipH, child: b),
+      ]);
+}
+
+/// _leftColumn is a strip's pan and switches, for _mixerBand.
 Widget _leftColumn({
   required Widget pan,
   Widget? on,
   Widget? solo,
   Widget? arm,
-}) {
-  Widget button(Widget? child) => SizedBox(
-      height: _buttonH,
-      child: Center(child: SizedBox(width: _buttonW, child: child)));
-  return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-    SizedBox(height: 30, child: pan),
-    const SizedBox(height: 10),
-    button(on),
-    const SizedBox(height: 4),
-    button(solo),
-    const SizedBox(height: 4),
-    button(arm),
-  ]);
-}
+}) =>
+    _SoundLeft(pan: pan, on: on, solo: solo, arm: arm);
 
 /// _StripPan is where a column is heard from, in its left column. Stereo,
 /// a knob: dragged up to turn right, double-clicked to centre. In surround,
@@ -408,28 +448,47 @@ class _StripPan extends StatelessWidget {
           ? "C"
           : "${b < 0 ? "L" : "R"}${(b.abs() * 100).round()}";
       return Tooltip(
-        message: "Pan: drag up to turn right, down to turn left. "
-            "Double-click for the centre.",
-        child: GestureDetector(
-          supportedDevices: dragPointers,
-          key: const ValueKey("balance"),
-          onVerticalDragUpdate: (d) => onChanged(
-              mix.copyWith(balance: (b - d.delta.dy / 80).clamp(-1.0, 1.0)),
-              transient: true),
-          onVerticalDragEnd: (_) => onCommit(),
-          onDoubleTap: () => onChanged(mix.copyWith(balance: 0)),
-          child: MouseRegion(
-            cursor: SystemMouseCursors.resizeUpDown,
-            child: Column(children: [
-              CustomPaint(
-                  size: const Size(21, 21),
-                  painter: _KnobPainter(b, theme.colors)),
-              const SizedBox(height: 1),
-              FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(reading,
-                      key: const ValueKey("panReading"), style: small)),
-            ]),
+        message: "Pan: drag left or right. Double-click for the centre.",
+        child: LayoutBuilder(
+          builder: (context, box) => GestureDetector(
+            supportedDevices: dragPointers,
+            key: const ValueKey("balance"),
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragUpdate: (d) => onChanged(
+                mix.copyWith(
+                    balance: (mix.balance +
+                            d.delta.dx * 2 / math.max(24, box.maxWidth - 12))
+                        .clamp(-1.0, 1.0)),
+                transient: true),
+            onHorizontalDragEnd: (_) => onCommit(),
+            onDoubleTap: () => onChanged(mix.copyWith(balance: 0)),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.resizeLeftRight,
+              child: Column(children: [
+                SizedBox(
+                  height: 14,
+                  child: CustomPaint(
+                      size: Size.infinite,
+                      painter: _PanTrackPainter(b, theme.studio)),
+                ),
+                SizedBox(
+                  height: 12,
+                  child: Row(children: [
+                    Text("L", style: small.copyWith(color: theme.studio.muted)),
+                    Expanded(
+                      child: Center(
+                        child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(reading,
+                                key: const ValueKey("panReading"),
+                                style: small)),
+                      ),
+                    ),
+                    Text("R", style: small.copyWith(color: theme.studio.muted)),
+                  ]),
+                ),
+              ]),
+            ),
           ),
         ),
       );
@@ -2433,4 +2492,44 @@ class _CapMark extends CustomPainter {
 
   @override
   bool shouldRepaint(_CapMark old) => old.x != x || old.colour != colour;
+}
+
+/// _PanTrackPainter is the pan slider: a groove with its centre marked, the
+/// stretch from the centre to the pan filled, and the thumb.
+class _PanTrackPainter extends CustomPainter {
+  final double balance;
+  final StudioColors studio;
+  _PanTrackPainter(this.balance, this.studio);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var mid = size.height / 2;
+    var span = size.width - 12;
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromLTRB(0, mid - 2, size.width, mid + 2),
+            const Radius.circular(2)),
+        Paint()..color = studio.inset);
+    var centre = 6 + span / 2;
+    canvas.drawLine(
+        Offset(centre, mid - 5),
+        Offset(centre, mid + 5),
+        Paint()
+          ..color = studio.muted
+          ..strokeWidth = 1);
+    var x = 6 + span * (balance.clamp(-1.0, 1.0) + 1) / 2;
+    canvas.drawRect(
+        Rect.fromLTRB(
+            math.min(centre, x), mid - 2, math.max(centre, x), mid + 2),
+        Paint()..color = studio.on.withValues(alpha: 0.6));
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromCenter(
+                center: Offset(x, mid), width: 8, height: size.height - 2),
+            const Radius.circular(2)),
+        Paint()..color = studio.text);
+  }
+
+  @override
+  bool shouldRepaint(_PanTrackPainter old) =>
+      old.balance != balance || old.studio != studio;
 }

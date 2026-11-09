@@ -747,8 +747,7 @@ void main() {
       await done(tester, c);
     });
 
-    testWidgets("a strip's pan knob says Pan, and reads where it is",
-        (tester) async {
+    testWidgets("a strip's pan slider reads where it is", (tester) async {
       var c = await show(tester);
       var strip = find.byKey(const ValueKey("strip-v"));
       var knob = find.descendant(
@@ -761,10 +760,10 @@ void main() {
           isTrue);
       expect(
           find.descendant(of: strip, matching: find.text("C")), findsOneWidget);
-      await tester.drag(knob, const Offset(0, -40));
+      await tester.drag(knob, const Offset(60, 0));
       await tester.pump();
       var b = (c.document.elements.first as VideoElement).clip.mix.balance;
-      expect(b, greaterThan(0.1), reason: "dragged up, turned right");
+      expect(b, greaterThan(0.1), reason: "dragged right, turned right");
       expect(
           find.descendant(
               of: strip, matching: find.text("R${(b * 100).round()}")),
@@ -1666,7 +1665,7 @@ void main() {
           matching: find.byKey(ValueKey(key)));
       Rect devicesBand() {
         var top = tester.getRect(inStrip("chanDevice-0")).top;
-        var bottom = tester.getRect(inStrip("fader")).top;
+        var bottom = tester.getRect(inStrip("soundHalf")).top;
         return Rect.fromLTRB(0, top, 1, bottom);
       }
 
@@ -1865,20 +1864,24 @@ void main() {
       await done(tester, c);
     });
 
-    testWidgets("the buttons and the fader are half size; the pan has room",
+    testWidgets("the switches are chips on one line under the pan",
         (tester) async {
       var c = make();
       await show(tester, c);
       Rect inStrip(String k) => tester.getRect(find.descendant(
           of: find.byKey(const ValueKey("strip-keys")),
           matching: find.byKey(ValueKey(k))));
-      expect(inStrip("mute").height, lessThanOrEqualTo(12));
-      expect(inStrip("solo").width, lessThanOrEqualTo(18));
-      expect(inStrip("arm").height, lessThanOrEqualTo(12));
+      expect(inStrip("mute").height, lessThanOrEqualTo(14));
+      expect(inStrip("arm").height, lessThanOrEqualTo(14));
       expect(inStrip("fader").width, lessThanOrEqualTo(26));
-      expect(inStrip("mute").top - inStrip("balance").bottom,
-          greaterThanOrEqualTo(8),
-          reason: "a gap between the pan and the buttons");
+      // On, solo and arm in a row, as the layer chips are over them.
+      expect(
+          inStrip("solo").center.dy, closeTo(inStrip("mute").center.dy, 0.5));
+      expect(inStrip("arm").center.dy, closeTo(inStrip("mute").center.dy, 0.5));
+      expect(inStrip("solo").left, greaterThan(inStrip("mute").right));
+      expect(
+          inStrip("mute").top, greaterThanOrEqualTo(inStrip("balance").bottom),
+          reason: "under the pan");
       // The rail's buttons drawn half size, but pressed anywhere near.
       var rail = find.byKey(const ValueKey("section-mixer"));
       var dot = find.descendant(of: rail, matching: find.byType(Container));

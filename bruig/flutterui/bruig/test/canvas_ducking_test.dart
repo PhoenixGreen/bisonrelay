@@ -282,6 +282,13 @@ void main() {
         (tester) async {
       // The width of the sidebar it was reported overflowing in.
       var c = await pane(tester, width: 300);
+      // Down the master's devices, which scroll where the band is short:
+      // the band brought into view first.
+      await tester.ensureVisible(find.byKey(const ValueKey("masterEqSlot")));
+      await tester.pump();
+      await tester.drag(
+          find.byKey(const ValueKey("masterEqSlot")), const Offset(0, -80));
+      await tester.pump();
       await tester.ensureVisible(find.byKey(const ValueKey("loudnessSlot")));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey("loudnessSlot")));

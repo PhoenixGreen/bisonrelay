@@ -556,7 +556,13 @@ class _CanvasMixerState extends State<CanvasMixer>
   /// and dials read the pointer in their own coordinates, so they stay under
   /// it.
   @override
-  Widget build(BuildContext context) => _built ??= _build(context);
+  // No hover tips in the mixer (the approved design): a "?" explains. The
+  // effects keep theirs, as does a sound's own settings.
+  Widget build(BuildContext context) {
+    var built = _built ??= _build(context);
+    if (widget.effects || widget.embedded) return built;
+    return TooltipVisibility(visible: false, child: built);
+  }
 
   /// _built is the desk as last built, handed back while nothing it shows
   /// has changed: whatever holds the mixer is built again at every frame of
