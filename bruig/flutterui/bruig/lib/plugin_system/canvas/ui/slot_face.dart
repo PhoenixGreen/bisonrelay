@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/ui/row_header.dart'
     show motionColour;
+import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
 
 // slot_face.dart is a slot's look, one design everywhere the slots are --
@@ -22,11 +23,6 @@ const slotInk = Color(0xFF10101A);
 
 /// slotPlayingInk is the play mark of a slot playing.
 const slotPlayingInk = Color(0xFF9BF0A6);
-
-const _motionWell = Color(0xFF171A2A);
-const _soundWell = Color(0xFF181528);
-const _soundWellEdge = Color(0xFF24203A);
-const _emptyMark = Color(0xFF2E2A44);
 
 /// soundSlotColour is a sound slot's colour by what the channel is, as the
 /// prototype has them: an instrument's notes amber, speech pink, an
@@ -81,14 +77,16 @@ class SlotFace extends StatelessWidget {
             ? const _CutCorners(5)
             : RoundedRectangleBorder(borderRadius: BorderRadius.circular(4));
         if (colour == null) {
+          // A dark well in the studio palette (or the theme's, as chosen).
+          var studio = StudioColors.of(context);
           return DecoratedBox(
             decoration: ShapeDecoration(
-              color: motion ? _motionWell : _soundWell,
+              color: studio.inset,
               shape: motion
                   ? shape
                   : RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(4),
-                      side: const BorderSide(color: _soundWellEdge)),
+                      side: BorderSide(color: studio.edge)),
             ),
             child: Row(children: [
               const SizedBox(width: 6),
@@ -97,7 +95,7 @@ class SlotFace extends StatelessWidget {
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
-                        color: _emptyMark,
+                        color: studio.edge,
                         borderRadius: BorderRadius.circular(1)),
                   ),
               const Spacer(),

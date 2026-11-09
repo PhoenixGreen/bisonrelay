@@ -96,6 +96,40 @@ void main() {
     expect(1200 - settings.right, lessThan(24));
   });
 
+  // Ken, 2026-11-09: the timing menu as the prototype's -- the length, its
+  // frames a second and how long it runs; the tempo, time and quantise;
+  // and the loop, switched on there too -- for any canvas.
+  testWidgets("the timing: length, rate, tempo, time, quantise and the loop",
+      (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    await pumpBar(tester, c);
+    await tester.tap(find.byKey(const ValueKey("timingMenu")));
+    await tester.pumpAndSettle();
+    for (var key in [
+      "canvasFrames",
+      "canvasFrameRate",
+      "timingRuns",
+      "audioTempo",
+      "audioSignature",
+      "audioQuantise",
+      "metronome",
+      "timingLoop",
+      "loopFrom",
+      "loopLength",
+    ]) {
+      expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
+    }
+    expect(find.text("Timing"), findsOneWidget);
+    expect(c.looping, isFalse);
+    await tester.tap(find.byKey(const ValueKey("timingLoop")));
+    await tester.pumpAndSettle();
+    expect(c.looping, isTrue);
+    await tester.tap(find.byKey(const ValueKey("timingClose")));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("timingLoop")), findsNothing);
+  });
+
   testWidgets("no hover tips; the ? opens its note and closes it again",
       (tester) async {
     var c = make();

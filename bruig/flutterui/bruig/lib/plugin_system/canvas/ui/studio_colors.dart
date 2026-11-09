@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -179,4 +180,94 @@ class MixerLook {
     var studio = StudioColors.of(context);
     return MixerLook(studio.scheme(Theme.of(context).colorScheme), studio);
   }
+}
+
+/// StudioScope draws [child] in the studio palette, as the mixer is drawn
+/// (Ken, 2026-11-09: "all 3 panels should have the studio theme applied"):
+/// under it the app's theme has its colours swapped for the studio's, so
+/// whatever asks the theme for a colour -- the timeline's rows and lanes,
+/// the Slots panel -- gets the studio's, and follows it as it is changed in
+/// Settings > Plugins > Canvas. Sizes, the text size and the rest stay the
+/// app's.
+class StudioScope extends StatefulWidget {
+  final Widget child;
+  const StudioScope({required this.child, super.key});
+
+  @override
+  State<StudioScope> createState() => _StudioScopeState();
+}
+
+class _StudioScopeState extends State<StudioScope> {
+  _StudioThemeNotifier? _notifier;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    var parent = ThemeNotifier.of(context);
+    var scheme = StudioColors.of(context).scheme(parent.colors);
+    var now = _notifier;
+    if (now != null && now.parent == parent && now.colors == scheme) return;
+    // A new one when the palette or the app's theme changes: what reads it
+    // through the provider is told so.
+    _notifier = _StudioThemeNotifier(parent, scheme);
+    if (now != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => now.dispose());
+    }
+  }
+
+  @override
+  void dispose() {
+    _notifier?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var notifier = _notifier!;
+    return ChangeNotifierProvider<ThemeNotifier>.value(
+      value: notifier,
+      child: Theme(data: notifier.theme, child: widget.child),
+    );
+  }
+}
+
+/// _StudioThemeNotifier is the app's theme with the studio's colours: see
+/// StudioScope.
+class _StudioThemeNotifier extends ThemeNotifier {
+  final ThemeNotifier parent;
+  final ThemeData _studio;
+
+  _StudioThemeNotifier(this.parent, ColorScheme scheme)
+      : _studio = parent.theme.copyWith(
+            colorScheme: scheme,
+            scaffoldBackgroundColor: scheme.surface,
+            canvasColor: scheme.surface),
+        super(doLoad: false);
+
+  @override
+  ThemeData get theme => _studio;
+
+  @override
+  ColorScheme get colors => _studio.colorScheme;
+
+  @override
+  Brightness get brightness => _studio.brightness;
+
+  @override
+  AppTheme get fullTheme => parent.fullTheme;
+
+  @override
+  double get fontScale => parent.fontScale;
+
+  @override
+  CustomColors get extraColors => parent.extraColors;
+
+  @override
+  CustomTextStyles get extraTextStyles => parent.extraTextStyles;
+
+  @override
+  String get chatImageSize => parent.chatImageSize;
+
+  @override
+  bool get themeLoaded => parent.themeLoaded;
 }

@@ -317,7 +317,9 @@ void main() {
       ]) {
         expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
       }
-      expect(find.byKey(const ValueKey("canvasFrames")), findsNothing);
+      // The timing is the prototype's for any canvas (Ken, 2026-11-09): a
+      // piece of sound has its length too.
+      expect(find.byKey(const ValueKey("canvasFrames")), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey("metronome")));
       await tester.pumpAndSettle();
       expect(c.metronome, isTrue);
@@ -354,8 +356,10 @@ void main() {
       for (var key in ["canvasFrames", "canvasFrameRate"]) {
         expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
       }
+      // And a document of scenes its tempo: its slots launch on bars too
+      // (the prototype's timing, Ken 2026-11-09).
       for (var key in ["audioTempo", "metronome"]) {
-        expect(find.byKey(ValueKey(key)), findsNothing, reason: key);
+        expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
       }
       await closeTiming(tester);
 

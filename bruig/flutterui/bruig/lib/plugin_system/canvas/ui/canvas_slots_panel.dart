@@ -27,13 +27,6 @@ const double _slotsHeadH = 40;
 /// _footH is the stop row under the slots.
 const double _footH = 26;
 
-/// The grid's colours, as the prototype's: the lines between cells, the
-/// cells, and the heads.
-const _gridLine = Color(0xFF110F20);
-const _cell = Color(0xFF1D1A30);
-const _raised = Color(0xFF211E33);
-const _raised2 = Color(0xFF2A2640);
-
 /// CanvasSlotsPanel is the Slots panel, [height] tall, its top edge
 /// dragged to [onResize].
 class CanvasSlotsPanel extends StatefulWidget {
@@ -85,7 +78,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
       key: const ValueKey("slotsPanel"),
       height: widget.height,
       decoration: BoxDecoration(
-        color: _gridLine,
+        color: theme.studio.inset,
         border: Border(top: BorderSide(color: colors.outlineVariant)),
       ),
       child: Stack(children: [
@@ -137,7 +130,8 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
             height: 22,
             padding: const EdgeInsets.symmetric(horizontal: 7),
             decoration: BoxDecoration(
-              color: lit ? studio.on.withValues(alpha: 0.18) : _raised2,
+              color:
+                  lit ? studio.on.withValues(alpha: 0.18) : theme.studio.inset,
               borderRadius: BorderRadius.circular(5),
               border: lit ? Border.all(color: studio.on) : null,
             ),
@@ -168,7 +162,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
       height: 30,
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        color: _raised,
+        color: theme.studio.raised,
         border: Border(bottom: BorderSide(color: colors.outlineVariant)),
       ),
       child: Row(children: [
@@ -337,12 +331,14 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
         const SizedBox(height: 1),
         Expanded(
             child: ColoredBox(
-                color: _cell,
+                color: theme.studio.strip,
                 child: Padding(
                     padding: const EdgeInsets.fromLTRB(2, 2, 2, 0),
                     child: slots))),
         const SizedBox(height: 1),
-        SizedBox(height: _footH, child: ColoredBox(color: _cell, child: foot)),
+        SizedBox(
+            height: _footH,
+            child: ColoredBox(color: theme.studio.strip, child: foot)),
       ]),
     );
   }
@@ -363,7 +359,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
     var studio = theme.studio;
     var narrow = controller.slotsPanelNarrow;
     return Container(
-      color: picked ? const Color(0xFF2C2847) : _raised,
+      color: picked ? theme.studio.edge : theme.studio.raised,
       child: Stack(children: [
         Positioned(
             left: 0,
@@ -426,7 +422,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
   Widget _stop(MixerLook theme, Key key, bool lit, VoidCallback onTap) =>
       Center(
         child: Material(
-          color: lit ? const Color(0xFF3B2C46) : _raised2,
+          color: lit ? theme.studio.edge : theme.studio.inset,
           borderRadius: BorderRadius.circular(3),
           child: InkWell(
             key: key,

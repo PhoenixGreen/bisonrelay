@@ -89,6 +89,9 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
   /// each layout to know whether the panels' buttons fit with their names.
   final GlobalKey _leftKey = GlobalKey(), _centreKey = GlobalKey();
 
+  /// _timingMenu is the timing's panel, closed by its own close too.
+  final MenuController _timingMenu = MenuController();
+
   /// _wideNeeds is how wide the bar must be for the buttons' names, as last
   /// measured with them; null until measured. _wideFor is what it was
   /// measured for -- the text's size and which buttons there are -- so a
@@ -212,120 +215,125 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
     var (loopFrom, loopLength) = controller.loopRange;
     var looping = controller.looping;
 
+    // The timing, as the prototype's panel has it: how long the canvas is
+    // and how fast, how long that runs; the tempo, time and quantise the
+    // bars are counted in (and the slots launch on); then the loop.
     Widget timing() {
-      if (sound) {
-        return TransportGroup(children: [
-          // Taps of the beat the time signature counts; the tempo is in quarter
-          // notes, as it is everywhere else.
-          TapTempoButton(
-              onTempo: (bpm) =>
-                  writeAudio(audio.copyWith(tempo: bpm * audio.beatUnit / 4))),
-          CanvasNumberField(
-            key: const ValueKey("audioTempo"),
-            label: "Tempo (BPM)",
-            value: audio.tempo,
-            min: 20,
-            max: 400,
-            decimals: 2,
-            width: 64,
-            grow: false,
-            onChanged: (v) {
-              controller.beginInteraction();
-              controller.apply(
-                  document.copyWith(audio: audio.copyWith(tempo: v)),
-                  transient: true);
-            },
-            onCommit: controller.endInteraction,
-          ),
-          CanvasDropdown<String>(
-            key: const ValueKey("audioSignature"),
-            label: "Time signature",
-            value: audio.signature,
-            width: 64,
-            options: [
-              for (var (b, u) in timeSignatures) ("$b/$u", "$b/$u"),
-              if (!timeSignatures
-                  .any((t) => "${t.$1}/${t.$2}" == audio.signature))
-                (audio.signature, audio.signature),
-            ],
-            onChanged: (v) {
-              var parts = v.split("/");
-              writeAudio(audio.copyWith(
-                  beatsPerBar: int.parse(parts[0]),
-                  beatUnit: int.parse(parts[1])));
-            },
-          ),
-          TransportButton(
-            key: const ValueKey("metronome"),
-            tooltip: "Metronome: a click on every beat while it plays",
-            on: controller.metronome,
-            onPressed: () => controller.metronome = !controller.metronome,
-            child: const MetronomeIcon(),
-          ),
-          CanvasDropdown<Quantise>(
-            key: const ValueKey("audioQuantise"),
-            label: "Quantise",
-            value: audio.quantise,
-            width: 74,
-            options: [for (var q in Quantise.values) (q, q.label)],
-            onChanged: (q) => writeAudio(audio.copyWith(quantise: q)),
-          ),
-        ]);
-      }
-      return TransportGroup(children: [
-        // The master canvas is as long as the scenes it covers, so it has no
-        // length of its own to set.
-        if (document.editingMaster)
-          TransportReadout(
-            key: const ValueKey("canvasFramesMaster"),
-            caption: "LENGTH",
-            value: "${document.frames}",
-            tooltip: "How long the whole sequence runs: every scene end to "
-                "end. The master canvas is as long as what it covers, so "
-                "this follows the scenes rather than being set here.",
-          )
-        else
-          CanvasNumberField(
-            key: const ValueKey("canvasFrames"),
-            label: "Length",
-            value: document.frames.toDouble(),
-            min: 1,
-            max: maxFrameCount.toDouble(),
-            width: 68,
-            grow: false,
-            onChanged: (v) {
-              controller.beginInteraction();
-              controller.setSceneLength(v.round(), transient: true);
-            },
-            onCommit: controller.endInteraction,
-          ),
-        CanvasNumberField(
-          key: const ValueKey("canvasFrameRate"),
-          label: "Per second",
-          value: document.frameRate.toDouble(),
-          min: 1,
-          max: 60,
-          width: 48,
-          grow: false,
-          onChanged: (v) {
-            controller.beginInteraction();
-            controller.apply(document.copyWith(frameRate: v.round()),
-                transient: true);
-          },
-          onCommit: controller.endInteraction,
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text(
-              document.isAnimated
-                  ? "${document.durationSeconds.toStringAsFixed(1)}s"
-                  : "Still",
-              maxLines: 1,
-              softWrap: false,
-              style: TextStyle(
-                  fontSize: 11, color: theme.colors.onSurfaceVariant)),
-        ),
-      ]);
+      Widget length = document.editingMaster
+          // The master canvas is as long as the scenes it covers, so it has
+          // no length of its own to set.
+          ? TransportReadout(
+              key: const ValueKey("canvasFramesMaster"),
+              caption: "LENGTH",
+              value: "${document.frames}",
+              tooltip: "How long the whole sequence runs: every scene end "
+                  "to end. The master canvas is as long as what it covers, "
+                  "so this follows the scenes rather than being set here.",
+            )
+          : CanvasNumberField(
+              key: const ValueKey("canvasFrames"),
+              label: "Length",
+              value: document.frames.toDouble(),
+              min: 1,
+              max: maxFrameCount.toDouble(),
+              width: 68,
+              grow: false,
+              onChanged: (v) {
+                controller.beginInteraction();
+                controller.setSceneLength(v.round(), transient: true);
+              },
+              onCommit: controller.endInteraction,
+            );
+      var runs = TransportReadout(
+        key: const ValueKey("timingRuns"),
+        caption: "RUNS",
+        value: document.isAnimated
+            ? "${document.durationSeconds.toStringAsFixed(1)} s"
+            : "Still",
+        tooltip: "How long it runs, at its frames a second",
+      );
+      return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TransportGroup(children: [
+              length,
+              CanvasNumberField(
+                key: const ValueKey("canvasFrameRate"),
+                label: "Per second",
+                value: document.frameRate.toDouble(),
+                min: 1,
+                max: 60,
+                width: 48,
+                grow: false,
+                onChanged: (v) {
+                  controller.beginInteraction();
+                  controller.apply(document.copyWith(frameRate: v.round()),
+                      transient: true);
+                },
+                onCommit: controller.endInteraction,
+              ),
+              runs,
+            ]),
+            const SizedBox(height: 8),
+            TransportGroup(children: [
+              // Taps of the beat the time signature counts; the tempo is in
+              // quarter notes, as it is everywhere else.
+              TapTempoButton(
+                  onTempo: (bpm) => writeAudio(
+                      audio.copyWith(tempo: bpm * audio.beatUnit / 4))),
+              CanvasNumberField(
+                key: const ValueKey("audioTempo"),
+                label: "Tempo (BPM)",
+                value: audio.tempo,
+                min: 20,
+                max: 400,
+                decimals: 2,
+                width: 64,
+                grow: false,
+                onChanged: (v) {
+                  controller.beginInteraction();
+                  controller.apply(
+                      document.copyWith(audio: audio.copyWith(tempo: v)),
+                      transient: true);
+                },
+                onCommit: controller.endInteraction,
+              ),
+              CanvasDropdown<String>(
+                key: const ValueKey("audioSignature"),
+                label: "Time signature",
+                value: audio.signature,
+                width: 64,
+                options: [
+                  for (var (b, u) in timeSignatures) ("$b/$u", "$b/$u"),
+                  if (!timeSignatures
+                      .any((t) => "${t.$1}/${t.$2}" == audio.signature))
+                    (audio.signature, audio.signature),
+                ],
+                onChanged: (v) {
+                  var parts = v.split("/");
+                  writeAudio(audio.copyWith(
+                      beatsPerBar: int.parse(parts[0]),
+                      beatUnit: int.parse(parts[1])));
+                },
+              ),
+              CanvasDropdown<Quantise>(
+                key: const ValueKey("audioQuantise"),
+                label: "Quantise",
+                value: audio.quantise,
+                width: 74,
+                options: [for (var q in Quantise.values) (q, q.label)],
+                onChanged: (q) => writeAudio(audio.copyWith(quantise: q)),
+              ),
+              TransportButton(
+                key: const ValueKey("metronome"),
+                tooltip: "Metronome: a click on every beat while it plays",
+                on: controller.metronome,
+                onPressed: () => controller.metronome = !controller.metronome,
+                child: const MetronomeIcon(),
+              ),
+            ]),
+          ]);
     }
 
     var timelinePlays = controller.playing && !controller.sessionOnly;
@@ -396,6 +404,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
         ]);
     // Where the playhead is; pressed, the timing it is counted in.
     var readout = MenuAnchor(
+      controller: _timingMenu,
       menuChildren: [
         Padding(
           padding: const EdgeInsets.all(10),
@@ -403,8 +412,51 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Its title, and a close (the prototype's).
+                SizedBox(
+                  height: 24,
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text("Timing",
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: theme.colors.onSurface)),
+                    const SizedBox(width: 24),
+                    InkWell(
+                      key: const ValueKey("timingClose"),
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: _timingMenu.close,
+                      child: Icon(Icons.close,
+                          size: 14, color: theme.colors.onSurfaceVariant),
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 6),
                 timing(),
                 const SizedBox(height: 8),
+                SizedBox(
+                    width: 300,
+                    child:
+                        Divider(height: 1, color: theme.colors.outlineVariant)),
+                const SizedBox(height: 6),
+                // The loop: switched on here as by the loop button.
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  SizedBox(
+                    height: 24,
+                    child: FittedBox(
+                      child: Switch(
+                        key: const ValueKey("timingLoop"),
+                        value: looping,
+                        onChanged: (v) => controller.looping = v,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text("Loop",
+                      style: TextStyle(
+                          fontSize: 11, color: theme.colors.onSurface)),
+                ]),
+                const SizedBox(height: 6),
                 TransportGroup(children: [
                   TransportReadout(
                     key: const ValueKey("loopFrom"),

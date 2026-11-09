@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
+import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
@@ -360,24 +361,32 @@ class CanvasDockState extends State<CanvasDock> {
     return RepaintBoundary(
       key: ValueKey("dockPanel-${panel.name}"),
       child: switch (panel) {
-        DockPanel.timeline => CanvasTimeline(
-            controller: controller,
-            height: height,
-            onResize: resize,
-            showBar: false,
+        // The timeline, the slots and the mixer in the studio palette --
+        // or the app's theme, as chosen in Settings (Ken, 2026-11-09).
+        DockPanel.timeline => StudioScope(
+            child: CanvasTimeline(
+              controller: controller,
+              height: height,
+              onResize: resize,
+              showBar: false,
+            ),
           ),
         // A clip launcher of its own (the approved design), not the
         // timeline's rows with slots beside them.
-        DockPanel.slots => CanvasSlotsPanel(
-            controller: controller,
-            height: height,
-            onResize: resize,
+        DockPanel.slots => StudioScope(
+            child: CanvasSlotsPanel(
+              controller: controller,
+              height: height,
+              onResize: resize,
+            ),
           ),
-        DockPanel.mixer => CanvasMixer(
-            controller: controller,
-            height: height,
-            onResize: resize,
-            onClose: () => controller.mixerOpen = false,
+        DockPanel.mixer => StudioScope(
+            child: CanvasMixer(
+              controller: controller,
+              height: height,
+              onResize: resize,
+              onClose: () => controller.mixerOpen = false,
+            ),
           ),
         DockPanel.chain => ChainPanel(
             controller: controller,

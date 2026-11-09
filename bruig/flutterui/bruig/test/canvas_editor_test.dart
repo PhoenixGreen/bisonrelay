@@ -1194,7 +1194,7 @@ void main() {
           tester, find.byKey(const ValueKey("canvasFrameRate")), "30");
       await tester.pump();
       expect(controller.document.frameRate, 30);
-      expect(find.text("0.8s"), findsOneWidget);
+      expect(find.text("0.8 s"), findsOneWidget);
     });
 
     testWidgets("the playhead and the length are one editable control",

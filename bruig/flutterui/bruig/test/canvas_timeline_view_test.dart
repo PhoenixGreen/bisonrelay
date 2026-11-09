@@ -530,7 +530,7 @@ void main() {
       await show(tester);
       await openTiming(tester);
       var rate = tester.getRect(find.byKey(const ValueKey("canvasFrameRate")));
-      var seconds = tester.getRect(find.text("10.0s"));
+      var seconds = tester.getRect(find.byKey(const ValueKey("timingRuns")));
       expect(seconds.center.dy, closeTo(rate.center.dy, 3));
     });
 

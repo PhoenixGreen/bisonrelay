@@ -2847,7 +2847,7 @@ Widget _cueGo(bool lit, StudioColors studio) => Container(
       width: 16,
       height: 16,
       decoration: BoxDecoration(
-          color: lit ? const Color(0xFF2E7D4F) : const Color(0xFF2A2640),
+          color: lit ? const Color(0xFF2E7D4F) : studio.raised,
           borderRadius: BorderRadius.circular(4)),
       child: Icon(Icons.play_arrow, size: 10, color: studio.text),
     );
@@ -2930,7 +2930,7 @@ class _SceneSlotState extends State<_SceneSlot> {
           // while its row plays, and the cue's name.
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF1D1A30),
+              color: studio.strip,
               borderRadius: BorderRadius.circular(3),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 6),
