@@ -841,9 +841,20 @@ class _CanvasMixerState extends State<CanvasMixer>
         var bare =
             !widget.embedded && !widget.effects && controller.mixerSmallest;
         // The column's height inside its padding and its edge.
+        // Elements with strips: every column a motion half over its sound
+        // half, every slot row a motion part over its sound part.
+        var withMotion = rows.isNotEmpty && show != TimelineShow.sound;
+        // Each element's own sound's place among the lanes, -1 for none.
+        var ownLane = {
+          for (var e in rows)
+            e.id: lanes.indexWhere((l) => l.key == elementSoundKey(e.id))
+        };
         var bands = _Bands.fit(
             box.maxHeight - 14, states, devicesWanted, devicesCap,
-            sendsH: sendsH, bare: bare, clipRows: controller.slotsShown);
+            sendsH: sendsH,
+            bare: bare,
+            clipRows: controller.slotsShown,
+            motion: withMotion);
         // The channels on the left, scrolled; the returns, the scene's bus,
         // the master and the rail pinned on the right as wide as they are --
         // or, where that leaves no room for a channel, scrolled themselves.
@@ -873,21 +884,35 @@ class _CanvasMixerState extends State<CanvasMixer>
                           // The elements' strips first, as the timeline has
                           // their rows: their animation slots on the same cue
                           // rows, and each one's own sound beside it.
-                          for (var e in rows) ...[
-                            if (show != TimelineShow.sound)
+                          // One strip each (the approved design): its
+                          // motion half over its own sound's half, its motion
+                          // slots over its sound slots; with no sound of its
+                          // own, or the motion alone shown, its motion strip.
+                          for (var e in rows)
+                            if (show != TimelineShow.animation &&
+                                (ownLane[e.id] ?? -1) >= 0)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                // The element's strip, with its motion;
+                                // only the sound shown, the sound's alone.
+                                child: KeyedSubtree(
+                                  key: show == TimelineShow.sound
+                                      ? null
+                                      : ValueKey("motionStrip-${e.id}"),
+                                  child: _channelStrip(theme,
+                                      lanes[ownLane[e.id]!], ownLane[e.id]!,
+                                      bands,
+                                      element: show == TimelineShow.sound
+                                          ? null
+                                          : e),
+                                ),
+                              )
+                            else if (show != TimelineShow.sound)
                               Padding(
                                 padding: const EdgeInsets.only(right: 8),
                                 child: _elementStrip(controller, theme, e,
                                     bands, _clipScrolls.of("motion:${e.id}")),
                               ),
-                            if (show != TimelineShow.animation)
-                              for (var (i, lane) in lanes.indexed)
-                                if (lane.key == elementSoundKey(e.id))
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: _channelStrip(theme, lane, i, bands),
-                                  ),
-                          ],
                           // Then the sounds that are nobody's, the All
                           // group's last; none shows only the animation.
                           if (show != TimelineShow.animation)
@@ -999,6 +1024,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                           scenes: () => _SceneBand(
                               controller: controller,
                               theme: theme,
+                              motion: bands.motionClip,
                               scroll: _clipScrolls.of(_master)),
                           selected: controller.selectedChannel == _master,
                           onSelect: () => controller.pickStrip(_master),
@@ -1072,8 +1098,10 @@ class _CanvasMixerState extends State<CanvasMixer>
       (controller.document.hasScenes || controller.document.masterOn);
 
   Widget _channelStrip(
-      MixerLook theme, TimelineChannel lane, int index, _Bands bands) {
+      MixerLook theme, TimelineChannel lane, int index, _Bands bands,
+      {CanvasElement? element}) {
     var e = lane.first.element;
+    var narrowNow = controller.narrowStrips.contains(lane.key);
     // As it plays now: a setting a lane moves, where the lane has it, and a
     // hand on one holds it there. See changeChannelMix.
     var shown = controller.mixNow(lane);
@@ -1115,11 +1143,39 @@ class _CanvasMixerState extends State<CanvasMixer>
       onOpenComp: () => _open(lane.key, _Opened.comp),
       onOpenDuck: () => _open(lane.key, _Opened.duck),
       onOpenPanner: () => controller.openEffects(lane.key, device: "panner"),
+      // Its element's motion, where it is an element's own sound.
+      motion: element == null
+          ? null
+          : () => _MotionHalf(
+              controller: controller,
+              element: element,
+              narrow: narrowNow,
+              theme: theme),
+      leadSlot: element == null
+          ? null
+          : _ElementSoundBand(
+              controller: controller, element: element, theme: theme),
+      motionLine: element == null
+          ? null
+          : () => _MotionLine(
+              controller: controller,
+              element: element,
+              narrow: narrowNow,
+              theme: theme),
       clips: () => _ClipBand(
           controller: controller,
           channel: lane.key,
           theme: theme,
-          scroll: _clipScrolls.of(lane.key)),
+          scroll: _clipScrolls.of(lane.key),
+          motion: bands.motionClip,
+          motionRow: element == null
+              ? null
+              : (row) => _MotionSlot(
+                  key: ValueKey("motionSlot-${element.id}-$row"),
+                  controller: controller,
+                  element: element.id,
+                  row: row,
+                  theme: theme)),
       selected: controller.selectedChannel == lane.key,
       onSelect: () => controller.pickStrip(lane.key),
       onRename: (name) => controller.renameChannel(lane, name),

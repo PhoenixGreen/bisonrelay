@@ -85,8 +85,19 @@ class _Bands {
   /// bare is the mixer at its smallest: no column has its head (its name
   /// and the arrow that narrows it).
   final bool bare;
+
+  /// motion is the room every column's motion half takes over its sound
+  /// half, and motionClip each slot row's motion part over its sound part:
+  /// nought where no element has a strip (the approved design: one strip,
+  /// one column of slots, per element; the sound halves on one line).
+  final double motion;
+  final double motionClip;
   const _Bands(this.clips, this.devices, this.mixer,
-      {this.miniMixer = false, this.sends, this.bare = false});
+      {this.miniMixer = false,
+      this.sends,
+      this.bare = false,
+      this.motion = 0,
+      this.motionClip = 0});
 
   /// _Bands.fit shares [inner], a column's height inside its frame, among the
   /// bands as [states] says. A minimised band has its least (a clip slot and
@@ -100,7 +111,14 @@ class _Bands {
   /// rather than squeezing them.
   factory _Bands.fit(double inner, Map<MixerSection, BandState> states,
       double devicesWanted, double devicesCap,
-      {double sendsH = 0, bool bare = false, int clipRows = _clipRowsWanted}) {
+      {double sendsH = 0,
+      bool bare = false,
+      int clipRows = _clipRowsWanted,
+      bool motion = false}) {
+    var mh = motion ? motionHalfHeight + _motionGap : 0.0;
+    var mc = motion ? _motionClipH + _motionClipGap : 0.0;
+    var mixerLeast = _mixerMinH + mh;
+    var mixerMost = _mixerCapH + mh;
     bool whole(MixerSection s) => states[s] == BandState.shown;
     bool mini(MixerSection s) => states[s] == BandState.minimised;
     var clips = whole(MixerSection.clips);
@@ -119,25 +137,33 @@ class _Bands {
     double? c, d;
     var fixed = sends ?? 0.0;
     if (mini(MixerSection.clips)) {
-      c = _clipsLeast;
+      c = _clipsLeast + mc;
       fixed += c;
     }
     if (mini(MixerSection.devices)) {
       d = _slotH;
       fixed += d;
     }
-    if (mini(MixerSection.mixer)) fixed += bare ? _bareMixerH : _miniMixerH;
+    if (mini(MixerSection.mixer)) {
+      fixed += bare ? _bareMixerH : _miniMixerH + (motion ? _motionLineH : 0);
+    }
+    // Too short for even the least of each with the motion's parts: the
+    // motion's parts go first.
+    if (motion && fixed > avail) {
+      return _Bands.fit(inner, states, devicesWanted, devicesCap,
+          sendsH: sendsH, bare: bare, clipRows: clipRows);
+    }
     var free = math.max(0.0, avail - fixed);
     var want =
         clips && mixer ? math.min(devicesWanted, devicesCap) : devicesWanted;
     var clipsWanted =
-        math.min(clipRows, _clipRowsWanted) * (_clipH + _clipGap) -
+        math.min(clipRows, _clipRowsWanted) * (_clipH + _clipGap + mc) -
             _clipGap +
             _slotGap +
             _stopH;
     if (!mixer) {
       if (clips && devices) {
-        d = math.min(want, math.max(0.0, free - _clipsLeast));
+        d = math.min(want, math.max(0.0, free - _clipsLeast - mc));
         c = free - d;
       } else if (clips) {
         c = free;
@@ -145,15 +171,19 @@ class _Bands {
         d = free;
       }
       return _Bands(c, d, false,
-          miniMixer: mini(MixerSection.mixer), sends: sends, bare: bare);
+          miniMixer: mini(MixerSection.mixer),
+          sends: sends,
+          bare: bare,
+          motion: mh,
+          motionClip: mc);
     }
     var wanted = (clips ? clipsWanted : 0) + (devices ? want : 0);
     var forMixer = free - wanted;
     double mixerH;
-    if (forMixer < _mixerMinH) {
-      mixerH = math.min(_mixerMinH, free);
+    if (forMixer < mixerLeast) {
+      mixerH = math.min(mixerLeast, free);
     } else if (clips) {
-      mixerH = math.min(forMixer, _mixerCapH);
+      mixerH = math.min(forMixer, mixerMost);
     } else {
       mixerH = forMixer;
     }
@@ -164,8 +194,8 @@ class _Bands {
       // A slot and the stop under it, at the least, taken from the devices,
       // which scroll: shared by what each wanted, a long chain would leave the
       // clips a sliver.
-      if (c < _clipsLeast && rest > _clipsLeast) {
-        c = _clipsLeast;
+      if (c < _clipsLeast + mc && rest > _clipsLeast + mc) {
+        c = _clipsLeast + mc;
         d = rest - c;
       }
     } else if (devices) {
@@ -173,13 +203,22 @@ class _Bands {
     } else if (clips) {
       c = rest;
     }
-    return _Bands(c, d, true, sends: sends, bare: bare);
+    return _Bands(c, d, true,
+        sends: sends, bare: bare, motion: mh, motionClip: mc);
   }
 }
 
 /// _miniMixerH is the mixer band minimised: a row of its buttons over a
 /// meter on its side, which is the fader too.
 const double _miniMixerH = 34;
+
+/// _motionGap is under the motion half; _motionClipH a slot row's motion
+/// part, _motionClipGap under it; _motionLineH the motion's line over a
+/// minimised mixer.
+const double _motionGap = 4;
+const double _motionClipH = 14;
+const double _motionClipGap = 2;
+const double _motionLineH = 18;
 
 /// _bareMixerH is it at the mixer's smallest: the meter alone.
 const double _bareMixerH = 12;
@@ -204,6 +243,13 @@ class _StripFrame extends StatelessWidget {
   /// miniMixer is the mixer band minimised: see _miniMixerBand.
   final Widget Function() miniMixer;
 
+  /// motion is the motion half over the sound half, where the column has
+  /// one (an element's), and motionLine it over a minimised mixer; without
+  /// one, a well saying [noMotion] keeps the sound halves on one line.
+  final Widget Function()? motion;
+  final Widget Function()? motionLine;
+  final String noMotion;
+
   /// narrow is whether the column is narrow, and onNarrow (the arrow in its
   /// head, keyed [narrowKey]) makes it the other.
   final bool narrow;
@@ -225,12 +271,16 @@ class _StripFrame extends StatelessWidget {
     required this.mixer,
     required this.miniMixer,
     this.sends,
+    this.motion,
+    this.motionLine,
+    this.noMotion = "No motion",
   });
 
   @override
   Widget build(BuildContext context) {
     var colors = theme.colors;
     var studio = theme.studio;
+    var withMotion = bands.motion > 0;
     return Container(
       width: narrow ? _narrowW : width,
       padding: const EdgeInsets.all(6),
@@ -286,11 +336,44 @@ class _StripFrame extends StatelessWidget {
         ],
         if (bands.mixer) ...[
           const SizedBox(height: _bandGap),
-          Expanded(child: mixer()),
+          // Short of room, the motion half goes first, then the sound half
+          // is drawn smaller rather than overflowing.
+          Expanded(
+            child: LayoutBuilder(builder: (context, box) {
+              var sound = box.maxHeight;
+              var both = withMotion &&
+                  box.maxHeight >= motionHalfHeight + _motionGap + _soundLeast;
+              if (both) sound -= motionHalfHeight + _motionGap;
+              Widget half = sound >= _soundLeast
+                  ? mixer()
+                  : FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.topCenter,
+                      child: SizedBox(
+                          width: box.maxWidth,
+                          height: _soundLeast,
+                          child: mixer()));
+              return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (both) ...[
+                      SizedBox(
+                          height: motionHalfHeight,
+                          child: motion?.call() ?? _Well(noMotion, theme)),
+                      const SizedBox(height: _motionGap),
+                    ],
+                    Expanded(child: half),
+                  ]);
+            }),
+          ),
         ],
         if (bands.miniMixer) ...[
           const Spacer(),
           const SizedBox(height: _bandGap),
+          if (withMotion && !bands.bare)
+            SizedBox(
+                height: _motionLineH,
+                child: motionLine?.call() ?? const SizedBox()),
           SizedBox(
               height: bands.bare ? _bareMixerH : _miniMixerH,
               child: miniMixer()),
@@ -298,6 +381,28 @@ class _StripFrame extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// _Well is a recessed well saying what a half of a strip has not: "No
+/// motion", "No sound", or nothing (the returns and the master).
+class _Well extends StatelessWidget {
+  final String text;
+  final MixerLook theme;
+  const _Well(this.text, this.theme);
+
+  @override
+  Widget build(BuildContext context) => Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+            color: theme.studio.inset, borderRadius: BorderRadius.circular(4)),
+        child: text.isEmpty
+            ? null
+            : Text(text,
+                maxLines: 1,
+                overflow: TextOverflow.clip,
+                softWrap: false,
+                style: TextStyle(fontSize: 9.5, color: theme.studio.muted)),
+      );
 }
 
 /// _band is a column of [children] in a band: scrolled when the band is
@@ -388,6 +493,10 @@ Widget _mixerBand({
 /// _panH and _chipH are the sound half's pan and switch rows.
 const double _panH = 28;
 const double _chipH = 14;
+
+/// _soundLeast is the least a sound half is drawn at: its rows, and a
+/// fader still worth dragging.
+const double _soundLeast = 14 + 3 + _panH + 4 + _chipH + 4 + 30;
 
 /// _SoundLeft is what a strip has besides its fader: its pan, and the on,
 /// solo and arm switches it has; laid out by _mixerBand.
@@ -627,7 +736,19 @@ class _ChannelStrip extends StatelessWidget {
   /// its slot.
   final ValueChanged<String>? onRemoveDevice;
 
+  /// motion and motionLine are its element's motion half and line, where
+  /// it is an element's own sound: the element and its sound one strip.
+  final Widget Function()? motion;
+  final Widget Function()? motionLine;
+
+  /// leadSlot is its element's first device slot: where the element's sound
+  /// goes, the master or a return it shares.
+  final Widget? leadSlot;
+
   const _ChannelStrip({
+    this.motion,
+    this.motionLine,
+    this.leadSlot,
     this.automated = const {},
     this.held = const {},
     this.returns = const [],
@@ -670,6 +791,8 @@ class _ChannelStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     var colors = theme.colors;
     var body = _StripFrame(
+      motion: motion,
+      motionLine: motionLine,
       narrow: narrow,
       onNarrow: onNarrow,
       narrowKey: ValueKey("narrow-$channelKey"),
@@ -691,6 +814,7 @@ class _ChannelStrip extends StatelessWidget {
       clips: clips,
       devices: () => _band([
         ..._slots([
+          if (leadSlot case var lead?) lead,
           // A MIDI channel's In and its MIDI effects, first: what is done
           // to its notes before they are played.
           if (part case var p?) ...[
@@ -954,6 +1078,7 @@ class _ReturnStrip extends StatelessWidget {
     void set(ChannelMix next, {bool transient = false}) =>
         onChanged(ret.copyWith(mix: next), transient: transient);
     var body = _StripFrame(
+      noMotion: "",
       narrow: narrow,
       onNarrow: onNarrow,
       narrowKey: ValueKey("narrow-${ret.id}"),
@@ -1107,6 +1232,7 @@ class _SceneStrip extends StatelessWidget {
     var devices = withDeviceIds(mix.devices);
     const what = "This scene";
     var body = _StripFrame(
+      noMotion: "",
       narrow: narrow,
       onNarrow: onNarrow,
       narrowKey: const ValueKey("narrow-scene"),
@@ -1265,6 +1391,7 @@ class _MasterStrip extends StatelessWidget {
     return Listener(
       onPointerDown: (_) => onSelect(),
       child: _StripFrame(
+        noMotion: "",
         narrow: narrow,
         onNarrow: onNarrow,
         narrowKey: const ValueKey("narrow-master"),
@@ -1618,18 +1745,34 @@ bool get _blinkOn => DateTime.now().millisecondsSinceEpoch ~/ 250 % 2 == 0;
 
 /// _clipColumn lays a column of clip rows out: [row] for each scene, a
 /// slot's height and gap apart, scrolled by [scroll], over [foot].
+///
+/// With [motion], each row is a motion part ([motionRow], or nothing) over
+/// its sound part ([row]); [whole] is a row that is both (the cue launch).
 Widget _clipColumn(ScrollController scroll, int rows,
-        Widget Function(int row) row, Widget foot) =>
+        Widget Function(int row) row, Widget foot,
+        {double motion = 0,
+        Widget Function(int row)? motionRow,
+        bool whole = false}) =>
     LayoutBuilder(builder: (context, box) {
       var slots = ListView.builder(
         controller: scroll,
         padding: EdgeInsets.zero,
         physics: const ClampingScrollPhysics(),
-        itemExtent: _clipH + _clipGap,
+        itemExtent: _clipH + _clipGap + motion,
         itemCount: rows,
         itemBuilder: (context, i) => Padding(
           padding: const EdgeInsets.only(bottom: _clipGap),
-          child: row(i),
+          child: motion == 0 || whole
+              ? row(i)
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                      SizedBox(
+                          height: motion - _motionClipGap,
+                          child: motionRow?.call(i) ?? const SizedBox()),
+                      const SizedBox(height: _motionClipGap),
+                      Expanded(child: row(i)),
+                    ]),
         ),
       );
       // Squeezed past the stop's room: the slots alone, rather than a
@@ -1650,11 +1793,18 @@ class _ClipBand extends StatelessWidget {
   final MixerLook theme;
   final ScrollController scroll;
 
+  /// motion and motionRow are each row's motion part, over its sound slot:
+  /// see _clipColumn.
+  final double motion;
+  final Widget Function(int row)? motionRow;
+
   const _ClipBand({
     required this.controller,
     required this.channel,
     required this.theme,
     required this.scroll,
+    this.motion = 0,
+    this.motionRow,
   });
 
   @override
@@ -1669,6 +1819,8 @@ class _ClipBand extends StatelessWidget {
           channel: channel,
           row: row,
           theme: theme),
+      motion: motion,
+      motionRow: motionRow,
       Tooltip(
         message: "Stop this channel's clips, on the next bar",
         child: Material(
@@ -2173,10 +2325,14 @@ class _SceneBand extends StatelessWidget {
   final MixerLook theme;
   final ScrollController scroll;
 
+  /// motion is the rows' motion part: a cue's launch is the whole row.
+  final double motion;
+
   const _SceneBand({
     required this.controller,
     required this.theme,
     required this.scroll,
+    this.motion = 0,
   });
 
   @override
@@ -2190,6 +2346,8 @@ class _SceneBand extends StatelessWidget {
           controller: controller,
           row: row,
           theme: theme),
+      motion: motion,
+      whole: true,
       Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Expanded(
           child: Tooltip(

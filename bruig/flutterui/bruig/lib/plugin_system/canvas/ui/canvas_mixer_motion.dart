@@ -63,12 +63,21 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
             clips: () => _clipColumn(
               scroll,
               controller.slotsShown,
-              (row) => _MotionSlot(
+              motion: bands.motionClip,
+              motionRow: (row) => _MotionSlot(
                   key: ValueKey("motionSlot-${e.id}-$row"),
                   controller: controller,
                   element: e.id,
                   row: row,
                   theme: theme),
+              (row) => bands.motionClip > 0
+                  ? const SizedBox()
+                  : _MotionSlot(
+                      key: ValueKey("motionSlot-${e.id}-$row"),
+                      controller: controller,
+                      element: e.id,
+                      row: row,
+                      theme: theme),
               Tooltip(
                 message: "Stop this element's clips, on the next bar",
                 child: Material(
@@ -91,19 +100,18 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
             ),
             devices: () => _ElementSoundBand(
                 controller: controller, element: e, theme: theme),
-            mixer: () => Align(
-              alignment: Alignment.topCenter,
-              child: _MotionHalf(
-                  controller: controller,
-                  element: e,
-                  narrow: narrow,
-                  theme: theme),
-            ),
-            miniMixer: () => _MotionLine(
+            motion: () => _MotionHalf(
                 controller: controller,
                 element: e,
                 narrow: narrow,
                 theme: theme),
+            mixer: () => _Well("No sound", theme),
+            motionLine: () => _MotionLine(
+                controller: controller,
+                element: e,
+                narrow: narrow,
+                theme: theme),
+            miniMixer: () => const SizedBox(),
           )));
 }
 

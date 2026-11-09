@@ -169,15 +169,33 @@ void main() {
         reason: "a sound that is nobody's is still shown");
   });
 
-  testWidgets("in the mixer its sound's strip is beside its own",
+  // The approved design (Ken, 2026-11-08): one strip per element, its
+  // motion half over its own sound's half.
+  testWidgets("in the mixer an element and its sound are one strip",
       (tester) async {
     await pumpBoth(tester);
     var strip = tester.getRect(find.byKey(const ValueKey("motionStrip-a")));
     var own =
         tester.getRect(find.byKey(ValueKey("strip-${elementSoundKey("a")}")));
     var music = tester.getRect(find.byKey(const ValueKey("strip-m")));
-    expect(own.left, greaterThan(strip.left));
-    expect(own.left - strip.right, lessThan(12), reason: "next to it");
+    expect(own, strip, reason: "the one strip");
+    var motion = tester.getRect(find.byKey(const ValueKey("motionHalf-a")));
+    var sound = tester.getRect(find.descendant(
+        of: find.byKey(const ValueKey("motionStrip-a")),
+        matching: find.byKey(const ValueKey("soundHalf"))));
+    expect(motion.bottom, lessThanOrEqualTo(sound.top),
+        reason: "its motion over its sound");
+    var musicSound = tester.getRect(find.descendant(
+        of: find.byKey(const ValueKey("strip-m")),
+        matching: find.byKey(const ValueKey("soundHalf"))));
+    expect(musicSound.top, closeTo(sound.top, 0.5),
+        reason: "a sound with no motion has a well there: the sound halves "
+            "start on one line");
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey("strip-m")),
+            matching: find.text("No motion")),
+        findsOneWidget);
     expect(music.left, greaterThan(own.right),
         reason: "the sounds that are nobody's after the elements', as on the "
             "timeline (see canvas_rows.dart)");
