@@ -130,6 +130,25 @@ void main() {
     expect(find.byKey(const ValueKey("timingLoop")), findsNothing);
   });
 
+  // The prototype's transport starts with To the start.
+  testWidgets("To the start puts the playhead on the first frame",
+      (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    await pumpBar(tester, c);
+    c.frame = 50;
+    await tester.pump();
+    var start = tester.getRect(find.byKey(const ValueKey("toStart")));
+    expect(
+        start.right,
+        lessThanOrEqualTo(
+            tester.getRect(find.byKey(const ValueKey("play"))).left),
+        reason: "first, before play");
+    await tester.tap(find.byKey(const ValueKey("toStart")));
+    await tester.pump();
+    expect(c.frame, 0);
+  });
+
   testWidgets("no hover tips; the ? opens its note and closes it again",
       (tester) async {
     var c = make();

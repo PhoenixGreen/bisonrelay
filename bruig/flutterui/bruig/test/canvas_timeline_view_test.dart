@@ -386,6 +386,13 @@ void main() {
           reason: "the first channel sits close under the strip");
     });
 
+    // The approved design: no hover tips on the timeline -- a "?" explains.
+    testWidgets("the timeline shows no hover tips", (tester) async {
+      await show(tester, elements: [channel("a", "Music")]);
+      var strip = find.byKey(const ValueKey("keyframeStrip"));
+      expect(TooltipVisibility.of(tester.element(strip)), isFalse);
+    });
+
     // The approved design (2026-11-08): the playhead one line from the ruler
     // down through every row, not a piece drawn by each.
     testWidgets("the playhead is one line from the ruler through every row",

@@ -102,8 +102,16 @@ class MotionLanes extends StatefulWidget {
   /// under them, as CanvasChannels lays them -- or null for every one.
   final String? only;
 
+  /// alt is a row of the timeline's every other, tinted (the approved
+  /// design's alternate rows).
+  final bool alt;
+
   const MotionLanes(
-      {required this.controller, required this.view, this.only, super.key});
+      {required this.controller,
+      required this.view,
+      this.only,
+      this.alt = false,
+      super.key});
 
   @override
   State<MotionLanes> createState() => _MotionLanesState();
@@ -568,6 +576,7 @@ class _MotionLanesState extends State<MotionLanes> {
                   : "motionLanesPaint-${widget.only}"),
               size: Size(width, height),
               painter: _LanesPainter(
+                alt: widget.alt,
                 rows: rows,
                 folded: {
                   for (var e in rows)
@@ -728,8 +737,10 @@ class _LanesPainter extends CustomPainter {
   final String? picked;
   final ColorScheme colors;
   final TextScaler textScaler;
+  final bool alt;
 
   _LanesPainter({
+    this.alt = false,
     required this.rows,
     required this.folded,
     required this.lane,
@@ -746,6 +757,23 @@ class _LanesPainter extends CustomPainter {
     // A clip starting before the frames shown, zoomed in, is drawn from
     // where it starts: kept to the lanes, not over the strips beside them.
     canvas.clipRect(Offset.zero & size);
+    // Every other row tinted, and a faint line at every second, as the
+    // sound lanes have (the approved design's grid).
+    if (alt) {
+      canvas.drawRect(Offset.zero & size,
+          Paint()..color = colors.onSurface.withValues(alpha: 0.025));
+    }
+    var x0 = x(0), step = x(1) - x0;
+    if (step > 8) {
+      var grid = Paint()
+        ..color = colors.outlineVariant.withValues(alpha: 0.35)
+        ..strokeWidth = 1;
+      for (var s = math.max(0, (-x0 / step).ceil());; s++) {
+        var gx = x0 + s * step;
+        if (gx > size.width) break;
+        canvas.drawLine(Offset(gx, 0), Offset(gx, size.height), grid);
+      }
+    }
     var y = 0.0;
     var line = Paint()..color = colors.outlineVariant.withValues(alpha: 0.5);
     for (var e in rows) {

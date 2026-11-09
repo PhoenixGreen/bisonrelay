@@ -682,21 +682,26 @@ class _CanvasChannelsState extends State<CanvasChannels> {
               if (widget.leading case var leading?) leading,
               // Each element's rows, with its own sound's channel under
               // them; then the canvas's other channels.
-              for (var e in grouped) ...[
+              for (var (k, e) in grouped.indexed) ...[
                 if (show != TimelineShow.sound)
-                  MotionLanes(controller: controller, view: _view, only: e.id),
+                  MotionLanes(
+                      controller: controller,
+                      view: _view,
+                      only: e.id,
+                      alt: k.isOdd),
                 // At the channel height S, an element's row is its motion
                 // alone (Ken, 2026-11-08); its sound from M up.
                 if (show != TimelineShow.animation &&
                     (controller.laneSize > 0 || show == TimelineShow.sound))
                   for (var channel in owned[e.id] ?? const <TimelineChannel>[])
                     ..._channelRows(channel, width, theme, channels,
-                        movable: false, owned: true),
+                        movable: false, owned: true, alt: k.isOdd),
               ],
               if (show != TimelineShow.animation) ...[
-                for (var channel in channels)
+                for (var (j, channel) in channels.indexed)
                   if (!everyScene.contains(channel.key))
-                    ..._channelRows(channel, width, theme, channels),
+                    ..._channelRows(channel, width, theme, channels,
+                        alt: (grouped.length + j).isOdd),
                 // The All group, last, under a heading that folds it away
                 // (Ken, 2026-11-08).
                 if (inAll.isNotEmpty) ...[
@@ -837,9 +842,11 @@ class _CanvasChannelsState extends State<CanvasChannels> {
           {bool movable = true,
           bool owned = false,
           bool all = false,
+          bool alt = false,
           Color? accent}) =>
       [
         _row(channel.key, _heightOf(channel.key), width,
+            alt: alt,
             moving: channel.key == _moving,
             accent: owned ? accent ?? theme.colors.primary : null,
             // Playing from its slots: striped, saying so on its own row, or
@@ -1049,7 +1056,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       bool moving = false,
       Color? accent,
       Widget? beside,
-      Widget? over}) {
+      Widget? over,
+      bool alt = false}) {
     // The strip and the slots at most as wide as the row: shown alone, the
     // slots fill to the edge, and a scaled text size can leave them a
     // fraction of a pixel over it (Ken's 0.109 px).
@@ -1078,7 +1086,15 @@ class _CanvasChannelsState extends State<CanvasChannels> {
             child: !lanesIn(context)
                 ? const SizedBox()
                 : over == null
-                    ? lane
+                    // Every other row tinted (the approved design).
+                    ? alt
+                        ? ColoredBox(
+                            color: ThemeNotifier.of(context)
+                                .colors
+                                .onSurface
+                                .withValues(alpha: 0.025),
+                            child: lane)
+                        : lane
                     : Stack(children: [
                         Positioned.fill(child: lane),
                         Positioned.fill(child: over),

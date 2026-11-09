@@ -16,6 +16,8 @@ import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
+import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+    show MacroPanel;
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
@@ -539,5 +541,39 @@ void main() {
       expect(padAt(true), closeTo(0.05, 1e-3), reason: "open with the kick");
       expect(padAt(false), lessThan(0.001), reason: "shut without it");
     });
+  });
+
+  // Ken's log, 2026-11-09: a macro's eight knobs ran 278 pixels past a card
+  // 170 wide. Narrower than all of them, they go onto more rows.
+  testWidgets("a macro's knobs fit a narrow card", (tester) async {
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 170,
+              child: SingleChildScrollView(
+                child: MacroPanel(
+                  index: 0,
+                  device: const MixDevice(DeviceKind.macro),
+                  knobs: const [],
+                  accent: Colors.amber,
+                  ink: Colors.white,
+                  onChanged: (_, {transient = false}) {},
+                  onCommit: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
   });
 }

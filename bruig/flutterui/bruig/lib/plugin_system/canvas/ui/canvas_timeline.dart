@@ -727,7 +727,11 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  // No hover tips on the timeline (the approved design): a "?" explains.
+  Widget build(BuildContext context) =>
+      TooltipVisibility(visible: false, child: Builder(builder: _build));
+
+  Widget _build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var document = controller.document;
     var actionHere =

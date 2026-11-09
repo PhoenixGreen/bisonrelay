@@ -361,8 +361,12 @@ class _MacroPanelState extends State<MacroPanel> {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(Icons.add, size: 13, color: studio.muted),
             const SizedBox(width: 3),
-            Text("Add a knob to turn",
-                style: TextStyle(fontSize: 10.5, color: studio.text)),
+            Flexible(
+              child: Text("Add a knob to turn",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 10.5, color: studio.text)),
+            ),
             Icon(Icons.arrow_drop_down, size: 14, color: studio.muted),
           ]),
         ),
@@ -375,9 +379,14 @@ class _MacroPanelState extends State<MacroPanel> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              for (var k = 0; k < macroKnobs; k++) column(k),
-            ]),
+            // Onto more rows where it is narrower than all of them (Ken's
+            // log: 278 pixels past a 170-wide card).
+            Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                runSpacing: 6,
+                children: [
+                  for (var k = 0; k < macroKnobs; k++) column(k),
+                ]),
             const SizedBox(height: 6),
             // The picked one: what it turns, and how far each.
             Container(
@@ -392,17 +401,22 @@ class _MacroPanelState extends State<MacroPanel> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(children: [
-                      Expanded(
-                        child: Text("MACRO ${picked + 1} TURNS",
-                            style: TextStyle(
-                                fontSize: 10,
-                                letterSpacing: 0.8,
-                                fontWeight: FontWeight.w600,
-                                color: studio.muted)),
-                      ),
-                      add,
-                    ]),
+                    // Its add button under its name where the card is
+                    // narrow.
+                    Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          Text("MACRO ${picked + 1} TURNS",
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  letterSpacing: 0.8,
+                                  fontWeight: FontWeight.w600,
+                                  color: studio.muted)),
+                          add,
+                        ]),
                     const SizedBox(height: 4),
                     if (turns.isEmpty)
                       Text(

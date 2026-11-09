@@ -343,6 +343,14 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
     // there shows on the bar, lit, to be turned off here.
     var back = controller.offTimeline || controller.anyOverridden;
     Widget transportMin() => TransportGroup(children: [
+          // To the start (the prototype's first button): the playhead to
+          // the first frame.
+          TransportButton(
+            key: const ValueKey("toStart"),
+            icon: Icons.skip_previous,
+            tooltip: "To the start",
+            onPressed: () => controller.stepFrame(-controller.frame),
+          ),
           TransportButton(
             key: const ValueKey("play"),
             icon: timelinePlays ? Icons.pause : Icons.play_arrow,
@@ -685,13 +693,24 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
             const SizedBox(width: 12),
             // In the middle: the transport, where the playhead is, and the
             // markers -- always in the same place, whatever is either side.
-            Row(key: _centreKey, mainAxisSize: MainAxisSize.min, children: [
-              transportMin(),
-              readout,
-              if (!compact) _tempo(theme, document),
-              const SizedBox(width: 4),
-              marker,
-            ]),
+            // Never past the bar: the first frame, before it has measured
+            // itself compact, a hair smaller rather than overflowing.
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: math.max(0.0, room - 24)),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                    key: _centreKey,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      transportMin(),
+                      readout,
+                      if (!compact) _tempo(theme, document),
+                      const SizedBox(width: 4),
+                      marker,
+                    ]),
+              ),
+            ),
             const SizedBox(width: 12),
             // On the right: Back to the timeline beside the middle, when
             // something has left it; then what is lit, the "?" and the
