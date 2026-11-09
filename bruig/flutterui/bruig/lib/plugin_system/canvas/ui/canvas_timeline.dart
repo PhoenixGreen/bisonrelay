@@ -273,8 +273,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   bool _overBar(double dy) {
     if (!widget.showBar) return false;
     if (!_barBelow) return dy < _stripTop;
-    var height = math.max(timelineCollapsedHeight, widget.height) +
-        (_showScenes ? sceneStripHeight : 0);
+    var height = math.max(timelineCollapsedHeight, widget.height);
     var bottomPad = _stripPadBottom + _notesGutter - _scrollbarHeight;
     return dy > height - bottomPad - _transportHeight - _stripGap;
   }
@@ -398,11 +397,10 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   TimelineView get _sceneView =>
       TimelineView(_viewNow.first - _origin, _viewNow.span);
 
-  /// _sceneGap is the room the scene strip takes under the keyframes, while
-  /// it shows, and _scenesTop where its boxes start: the first row over the
-  /// channels.
-  double get _sceneGap => _showScenes ? sceneStripHeight : 0;
-  double get _scenesTop => _keysRoom - 1 + sceneStripLead;
+  /// _sceneGap is the room the scene strip took under the keyframes: none,
+  /// the scenes being the first of the rows now (Ken, 2026-11-08, "the scene
+  /// channel part of the timeline rather than having a divider").
+  double get _sceneGap => 0;
 
   /// _keysShown is whether the keyframe row is under the ruler, and _keysRoom
   /// the strip's height with it or without (the ruler alone, with its
@@ -1145,25 +1143,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                 builder: (context, box) => _corner(box.maxWidth, colors)),
           ),
         ),
-        if (_showScenes)
-          Positioned(
-            left: 0,
-            right: 0,
-            top: _scenesTop,
-            height: sceneBoxHeight,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                named
-                    ? "Scenes ${controller.scenes.length}"
-                    : "${controller.scenes.length}",
-                key: const ValueKey("sceneStripLabel"),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: muted,
-              ),
-            ),
-          ),
         if (_keysShown)
           Positioned(
             left: 0,
@@ -1569,19 +1548,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                         ),
                       ),
                     ),
-                    // The scenes, under the keyframes and over the channels,
-                    // on the ruler's own scale.
-                    if (_showScenes)
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        top: _scenesTop,
-                        height: sceneBoxHeight,
-                        child: CanvasSceneStrip(
-                            controller: controller,
-                            view: _viewNow,
-                            origin: _origin),
-                      ),
                   ]),
                 )),
             ]),
@@ -1598,6 +1564,11 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                 // The elements' rows, each with its own sound under it:
                 // see motion_lanes.dart and element_sound.dart.
                 motionRows: true,
+                // The scenes, the first row, on the ruler's own scale.
+                scenesLane: _showScenes && !widget.slotsOnly
+                    ? CanvasSceneStrip(
+                        controller: controller, view: _viewNow, origin: _origin)
+                    : null,
                 leading: widget.slotsOnly
                     ? null
                     : Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1626,10 +1597,9 @@ class CanvasTimelineState extends State<CanvasTimeline> {
         ),
     ];
     return Container(
-      height: (widget.showBar
-              ? math.max(timelineCollapsedHeight, widget.height)
-              : widget.height) +
-          (_showScenes ? sceneStripHeight : 0),
+      height: widget.showBar
+          ? math.max(timelineCollapsedHeight, widget.height)
+          : widget.height,
       padding: const EdgeInsets.fromLTRB(10, _stripPadTop, 10,
           _stripPadBottom + _notesGutter - _scrollbarHeight),
       decoration: BoxDecoration(

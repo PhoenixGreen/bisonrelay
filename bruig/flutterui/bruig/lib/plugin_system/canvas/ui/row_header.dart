@@ -18,6 +18,9 @@ import 'package:flutter/material.dart';
 const motionColour = Color(0xFF3FB08D);
 const soundColour = Color(0xFF4F8FD6);
 
+/// sceneColour is the Scenes row's.
+const sceneColour = Color(0xFF5A9FA8);
+
 /// RowBand is a band of a row the header names, level with it: [top] and
 /// [height] within the row. [weight] is a motion layer's share playing, drawn
 /// as a small bar (striped where [pinned]); otherwise a dot of [dot].
@@ -115,9 +118,17 @@ class RowHeader extends StatelessWidget {
         if (fold != null) fold!,
         const SizedBox(width: 2),
         Flexible(child: name),
-        if (oneLine && buttons) ...[
-          for (var b in badges) ...[const SizedBox(width: 4), b],
-        ],
+        // Beside the name on a short row, giving way as the name does.
+        if (oneLine && buttons && badges.isNotEmpty)
+          Flexible(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const NeverScrollableScrollPhysics(),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                for (var b in badges) ...[const SizedBox(width: 4), b],
+              ]),
+            ),
+          ),
         const Spacer(),
         if (buttons) _Toggles(motion: motion, sound: sound, solo: solo),
       ]),

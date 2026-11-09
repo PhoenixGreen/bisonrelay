@@ -18,6 +18,8 @@ import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart'
     show MotionLanes;
 import 'package:bruig/plugin_system/canvas/ui/canvas_rows.dart';
 import 'package:bruig/plugin_system/canvas/ui/row_header.dart';
+import 'package:bruig/plugin_system/canvas/ui/scene_strip.dart'
+    show sceneBoxHeight, sceneStripHeight, sceneStripLead;
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart'
     show soundOwnerOf;
 import 'package:bruig/plugin_system/canvas/model/session.dart'
@@ -104,8 +106,14 @@ class CanvasChannels extends StatefulWidget {
   /// shapes, where they are shown. See VectorShapeLanes.
   final Widget? leading;
 
+  /// scenesLane is the scenes' strip, while every scene plays: the first
+  /// row, "Scenes", with the transitions' sounds as its sound under it --
+  /// the scenes and their transitions one channel (Ken, 2026-11-08).
+  final Widget? scenesLane;
+
   const CanvasChannels(
-      {required this.controller,
+      {this.scenesLane,
+      required this.controller,
       required this.view,
       this.leading,
       this.motionRows = false,
@@ -622,18 +630,44 @@ class _CanvasChannelsState extends State<CanvasChannels> {
             for (var r in rows)
               if (r.element case var e?) e.id: r.channels,
         };
-        // The others: the ones whose strips move among themselves.
-        var channels = _withMoving(widget.motionRows
-            ? [
+        // The transitions' sounds: the Scenes row's own, where it is.
+        var transitions = widget.scenesLane == null
+            ? const <TimelineChannel>[]
+            : [
                 for (var r in rows)
-                  if (r.element == null) ...r.channels
-              ]
-            : controller.timelineChannels);
+                  if (r.transitions) ...r.channels
+              ];
+        // The others: the ones whose strips move among themselves.
+        var channels = _withMoving([
+          for (var ch in widget.motionRows
+              ? [
+                  for (var r in rows)
+                    if (r.element == null) ...r.channels
+                ]
+              : controller.timelineChannels)
+            if (!transitions.contains(ch)) ch
+        ]);
         var width = controller.headerWidth;
         return Stack(key: _stack, children: [
           ListView(
             padding: EdgeInsets.zero,
             children: [
+              // The scenes, first: their strip with its header, and the
+              // transitions' sounds under it as the same row, from M up.
+              if (widget.scenesLane case var lane?) ...[
+                _row("scenes", sceneStripHeight, width,
+                    header: _scenesHeader(theme, width, transitions),
+                    lane: Padding(
+                      padding: const EdgeInsets.only(top: sceneStripLead),
+                      child: Align(
+                          alignment: Alignment.topLeft,
+                          child: SizedBox(height: sceneBoxHeight, child: lane)),
+                    )),
+                if (show != TimelineShow.animation && controller.laneSize > 0)
+                  for (var channel in transitions)
+                    ..._channelRows(channel, width, theme, channels,
+                        movable: false, owned: true, accent: sceneColour),
+              ],
               if (widget.leading case var leading?) leading,
               // Each element's rows, with its own sound's channel under
               // them; then the canvas's other channels.
@@ -679,13 +713,65 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   /// _channelRows is [channel]'s row and, opened under it, its automation.
   /// [movable] is whether its strip is dragged to move it among the others:
   /// not an element's own sound, which stays under the element.
+  /// _scenesHeader is the Scenes row's header (row_header.dart): its
+  /// count, the scene's motion (its camera and transitions) shown, and its
+  /// sound button the transitions' sounds'.
+  Widget _scenesHeader(
+      ThemeNotifier theme, double width, List<TimelineChannel> transitions) {
+    var colors = theme.colors;
+    var heard = transitions.isNotEmpty &&
+        controller.laneSize > 0 &&
+        controller.timelineShow != TimelineShow.animation;
+    var scenes = controller.document.allScenes.length;
+    void mute(TimelineChannel ch) {
+      var now = controller.mixNow(ch);
+      controller.beginInteraction();
+      controller.changeChannelMix(ch, now, now.copyWith(mute: !now.mute),
+          transient: true);
+      controller.endInteraction();
+    }
+
+    return RowHeader(
+      key: const ValueKey("scenesHeader"),
+      colour: sceneColour,
+      width: width,
+      height: sceneStripHeight,
+      joinsBelow: heard,
+      name: Text("Scenes",
+          key: const ValueKey("sceneStripLabel"),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: colors.onSurface)),
+
+      motion: const RowToggle(ValueKey("rowMotion-scenes"), on: true),
+      // The transitions' sounds are made from the transitions, not kept as
+      // a channel to change: their button shows them heard, and switches
+      // them only where they can be.
+      sound: transitions.isEmpty
+          ? null
+          : RowToggle(const ValueKey("rowMute-scenes"),
+              on: !controller.mixNow(transitions.first).mute,
+              onTap: transitions.first.editable
+                  ? () => mute(transitions.first)
+                  : null),
+      // How many, beside the row, so the name keeps its room.
+      bands: [
+        RowBand(0, sceneStripHeight, "$scenes scene${scenes == 1 ? "" : "s"}",
+            sceneColour)
+      ],
+    );
+  }
+
   List<Widget> _channelRows(TimelineChannel channel, double width,
           ThemeNotifier theme, List<TimelineChannel> channels,
-          {bool movable = true, bool owned = false}) =>
+          {bool movable = true, bool owned = false, Color? accent}) =>
       [
         _row(channel.key, _heightOf(channel.key), width,
             moving: channel.key == _moving,
-            accent: owned ? theme.colors.primary : null,
+            accent: owned ? accent ?? theme.colors.primary : null,
             beside: controller.slotsBeside
                 ? SessionRowSlots(controller: controller, channel: channel.key)
                 : null,

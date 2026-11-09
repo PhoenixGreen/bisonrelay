@@ -78,22 +78,66 @@ void main() {
     for (var i = 0; i < 3; i++) {
       expect(find.byKey(ValueKey("sceneBox$i")), findsOneWidget);
     }
-    expect(find.text("Scenes 3"), findsOneWidget);
+    // The first of the rows (Ken, 2026-11-08: "the scene channel part of
+    // the timeline rather than having a divider"), with a header as every
+    // row has: its name and how many.
+    expect(find.byKey(const ValueKey("scenesHeader")), findsOneWidget);
+    expect(find.text("Scenes"), findsWidgets);
+    expect(find.text("3 scenes"), findsOneWidget);
     expect(tester.getSize(find.byType(CanvasTimeline)).height,
-        closeTo(before + sceneStripHeight, 0.5),
-        reason: "the timeline grows by the strip, the channels keep theirs");
+        closeTo(before, 0.5),
+        reason: "a row among the rows: the timeline keeps its height");
 
-    // Under the keyframes: the first row over the channels.
+    // Under the keyframes, over the channels.
     var strip = rectOf(tester, "keyframeStrip");
     var box = rectOf(tester, "sceneBox0");
-    var keyframes = tester.getRect(find.text("Keyframes"));
-    expect(box.top, greaterThan(keyframes.bottom), reason: "under the keys");
-    expect(strip.bottom - box.bottom, lessThan(8),
-        reason: "at the bottom of the strip, over the channels");
+    var header = tester.getRect(find.byKey(const ValueKey("scenesHeader")));
+    expect(box.top, greaterThanOrEqualTo(strip.bottom - 1),
+        reason: "under the ruler and the keys");
+    expect((box.center.dy - header.center.dy).abs(), lessThan(8),
+        reason: "level with its header, as a row");
     expect(tester.takeException(), isNull);
 
     await playAll(tester);
     expect(find.byType(CanvasSceneStrip), findsNothing);
+  });
+
+  // Ken, 2026-11-08: the scenes and their transitions one channel -- the
+  // transitions' sounds the Scenes row's sound, not a channel of their own.
+  testWidgets("the transitions' sounds are the Scenes row's own sound",
+      (tester) async {
+    var c = await show(tester);
+    c.setDefaultTransition(const SceneTransition(
+        kind: SceneTransitionKind.fade,
+        sound: "whoosh.mp3",
+        soundName: "Whoosh",
+        soundLength: 2));
+    await playAll(tester);
+    var key = c.timelineChannels
+        .firstWhere((ch) => ch.lanes
+            .every((l) => l.element.id.startsWith(transitionSoundPrefix)))
+        .key;
+    var strip = find.byKey(ValueKey("channelStrip-$key"));
+    expect(strip, findsOneWidget, reason: "at M, under the scenes");
+    var header = tester.getRect(find.byKey(const ValueKey("scenesHeader")));
+    expect(tester.getRect(strip).top, closeTo(header.bottom, 1),
+        reason: "straight under the Scenes row, as its sound");
+    expect(
+        find.descendant(
+            of: strip, matching: find.byKey(const ValueKey("channelMute"))),
+        findsNothing,
+        reason: "its sound button is on the Scenes header");
+
+    expect(find.byKey(const ValueKey("rowMute-scenes")), findsOneWidget,
+        reason: "the Scenes row says its sound is heard");
+
+    // At S, the scenes alone.
+    while (c.laneSize != 0) {
+      c.nextLaneSize();
+    }
+    await tester.pump();
+    expect(strip, findsNothing);
+    expect(find.byKey(const ValueKey("scenesHeader")), findsOneWidget);
   });
 
   testWidgets("its button is on the play bar, beside Loop", (tester) async {

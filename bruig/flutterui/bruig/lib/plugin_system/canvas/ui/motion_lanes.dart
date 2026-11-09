@@ -339,7 +339,6 @@ class _MotionLanesState extends State<MotionLanes> {
     var height = rows.fold(0.0, (a, e) => a + _rowHeight(e));
     var label = TextStyle(
         fontSize: 11, color: colors.onSurface, fontWeight: FontWeight.w600);
-    var small = TextStyle(fontSize: 9.5, color: colors.onSurfaceVariant);
     return SizedBox(
       key: const ValueKey("motionLanes"),
       height: height,
