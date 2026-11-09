@@ -1883,7 +1883,9 @@ void main() {
           matching: find.byKey(ValueKey(k))));
       expect(inStrip("mute").height, lessThanOrEqualTo(14));
       expect(inStrip("arm").height, lessThanOrEqualTo(14));
-      expect(inStrip("fader").width, lessThanOrEqualTo(26));
+      // The fader a well (Ken, 2026-11-09): the meter in it, the cap over
+      // it, the decibels beside it on a wide strip.
+      expect(inStrip("fader").width, lessThanOrEqualTo(80));
       // On, solo and arm in a row, as the layer chips are over them.
       expect(
           inStrip("solo").center.dy, closeTo(inStrip("mute").center.dy, 0.5));

@@ -2230,6 +2230,59 @@ class _Fader extends StatelessWidget {
           void at(double y) =>
               onChanged(faderDb(((y - 6) / (h - 12)).clamp(0.0, 1.0)),
                   transient: true);
+          // A strip's: one well (the approved design, Ken 2026-11-09) -- the
+          // meter inside it, the cap riding over it, and on a wide strip
+          // the decibels beside it.
+          if (small) {
+            var width = labels ? _wellWideW : _wellNarrowW;
+            return Center(
+              child: GestureDetector(
+                supportedDevices: dragPointers,
+                key: const ValueKey("fader"),
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragStart: (d) => at(d.localPosition.dy),
+                onVerticalDragUpdate: (d) => at(d.localPosition.dy),
+                onVerticalDragEnd: (_) => onCommit(),
+                onDoubleTap: () => onChanged(0),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.resizeUpDown,
+                  child: SizedBox(
+                    width: width,
+                    height: h,
+                    child: Stack(children: [
+                      if (labels)
+                        Positioned.fill(
+                          child: CustomPaint(
+                              painter: _WellScale(theme.studio, width / 2)),
+                        ),
+                      // The meter's well, in the middle.
+                      Positioned(
+                        left: width / 2 - _wellMeterW / 2,
+                        width: _wellMeterW,
+                        top: 0,
+                        bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: theme.studio.inset,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: theme.studio.edge),
+                          ),
+                          child: CustomPaint(
+                              size: Size.infinite,
+                              painter: _MeterPainter(meter, theme.studio,
+                                  inset: 0)),
+                        ),
+                      ),
+                      Positioned.fill(
+                        child: CustomPaint(painter: _WellCap(db, theme.studio)),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+            );
+          }
           return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             GestureDetector(
               supportedDevices: dragPointers,
@@ -2268,6 +2321,84 @@ class _Fader extends StatelessWidget {
           ]);
         },
       );
+}
+
+/// _wellWideW and _wellNarrowW are a strip's fader well with its scale and
+/// without; _wellMeterW the meter's well in the middle of it.
+const double _wellWideW = 78;
+const double _wellNarrowW = 32;
+const double _wellMeterW = 14;
+
+/// _WellScale is a strip fader's decibels, down the left of its cap: each
+/// mark's number with a short line, nought brighter.
+class _WellScale extends CustomPainter {
+  final StudioColors colors;
+  final double centre;
+  _WellScale(this.colors, this.centre);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.height < 70) return;
+    var right = centre - 18;
+    for (var m in _FaderPainter._marks) {
+      var y = 6 + faderPosition(m) * (size.height - 12);
+      var unity = m == 0;
+      var ink = unity ? colors.text : colors.muted;
+      canvas.drawLine(Offset(right - 3, y), Offset(right, y),
+          Paint()
+            ..strokeWidth = 1
+            ..color = ink);
+      var label = paintedLabel(
+          m > 0 ? "+${m.round()}" : "${m.round()}".replaceAll("-", "−"),
+          TextStyle(
+              fontSize: 8,
+              height: 1,
+              fontFeatures: const [FontFeature.tabularFigures()],
+              color: ink));
+      label.paint(canvas,
+          Offset(right - 5 - label.width, y - label.height / 2));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_WellScale old) =>
+      old.colors != colors || old.centre != centre;
+}
+
+/// _WellCap is a strip fader's cap, riding over its well where the level
+/// is: light, rounded, a line across its middle.
+class _WellCap extends CustomPainter {
+  final double db;
+  final StudioColors colors;
+  _WellCap(this.db, this.colors);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var y = 6 + faderPosition(db) * (size.height - 12);
+    var cap = Rect.fromCenter(
+        center: Offset(size.width / 2, y), width: 30, height: 12);
+    var rrect = RRect.fromRectAndRadius(cap, const Radius.circular(3));
+    canvas.drawRRect(
+        rrect.shift(const Offset(0, 1)),
+        Paint()
+          ..color = const Color(0xAA000000)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5));
+    canvas.drawRRect(
+        rrect,
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFE6E8EC), Color(0xFFADB2BA)],
+          ).createShader(cap));
+    canvas.drawLine(Offset(cap.left + 5, y), Offset(cap.right - 5, y),
+        Paint()
+          ..strokeWidth = 1
+          ..color = const Color(0xFF4A4D55));
+  }
+
+  @override
+  bool shouldRepaint(_WellCap old) => old.db != db || old.colors != colors;
 }
 
 /// _FaderPainter is the fader: a slot with the decibels marked down its
@@ -2525,9 +2656,13 @@ class _MeterPainter extends CustomPainter {
   /// bar above the right's.
   final bool horizontal;
 
+  /// inset is the room above and below its bars: none in a fader's well.
+  final double inset;
+
   /// Painted again as [meter]'s board moves, without the widget it is in
   /// being built again.
-  _MeterPainter(this.meter, this.colors, {this.horizontal = false})
+  _MeterPainter(this.meter, this.colors,
+      {this.horizontal = false, this.inset = 6})
       : super(repaint: meter.board);
 
   (double, double) get level => meter.level;
@@ -2549,7 +2684,7 @@ class _MeterPainter extends CustomPainter {
       canvas.restore();
       return;
     }
-    _paint(canvas, size);
+    _paint(canvas, size, inset: inset);
   }
 
   void _paint(Canvas canvas, Size size, {double inset = 6}) {
