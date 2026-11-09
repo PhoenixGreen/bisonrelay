@@ -161,17 +161,11 @@ class CanvasTimeline extends StatefulWidget {
   /// itself, along every panel (see CanvasPlayBar), and passes false.
   final bool showBar;
 
-  /// slotsOnly is the timeline showing the slots alone: each row's name
-  /// and its slots, with no frames -- the Slots panel where the timeline's
-  /// rows are not beside it. See CanvasController.slotsWithRows.
-  final bool slotsOnly;
-
   const CanvasTimeline({
     required this.controller,
     this.height = timelineHeight,
     this.onResize,
     this.showBar = true,
-    this.slotsOnly = false,
     super.key,
   });
 
@@ -297,18 +291,9 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   /// taken up: see CanvasController.askTimelineZoom.
   int _zoomSeen = -1;
 
-  /// _bodyWidth is how wide the timeline was last laid out, for the slots
-  /// shown alone to fill.
-  double _bodyWidth = 0;
-
-  /// _slotsW is the slots' column here: beside the rows, as the controller
-  /// has it, or, the slots shown alone, as many as fit.
-  double get _slotsW => widget.slotsOnly
-      ? math.min(
-          controller.slotsContent,
-          math.max(CanvasController.slotsColumnMin,
-              _bodyWidth - 20 - controller.headerWidth))
-      : controller.slotsWidth;
+  /// _slotsW is the slots' column beside the rows, as the controller has it.
+  /// (The Slots panel is a launcher of its own: see CanvasSlotsPanel.)
+  double get _slotsW => controller.slotsWidth;
 
   /// _leftW is everything left of the frames: the strips, then the slots.
   double get _leftW => controller.headerWidth + _slotsW;
@@ -787,7 +772,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
       child: Stack(children: [
         LayoutBuilder(
           builder: (context, box) {
-            _bodyWidth = box.maxWidth;
             return Listener(
               onPointerSignal: (e) => _onSignal(e, box.maxWidth),
               onPointerPanZoomStart: (_) => _pinch = 1,
@@ -795,7 +779,6 @@ class CanvasTimelineState extends State<CanvasTimeline> {
               child: TimelineColumns(
                 slotsWidth: _slotsW,
                 headerWidth: controller.headerWidth,
-                lanes: !widget.slotsOnly,
                 child: _body(
                     context, theme, document, actionHere, keyHere, target),
               ),
@@ -805,7 +788,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
         // The line between the slots and the time, where the slots are out
         // beside the rows: dragged, the slots' column is wider or narrower,
         // the slots themselves one size.
-        if (!_collapsed && !widget.slotsOnly && _slotsW > 0)
+        if (!_collapsed && _slotsW > 0)
           Positioned(
             left: 10 + _leftW - 5,
             top: _stripTop,
@@ -1231,325 +1214,321 @@ class CanvasTimelineState extends State<CanvasTimeline> {
               _stripHeader(theme, target),
               // Over the slots beside the rows: a launch for each cue.
               if (_slotsW > 0) _cueLaunches(theme),
-              if (widget.slotsOnly)
-                const Spacer()
-              else
-                Expanded(
-                    child: LayoutBuilder(
-                  builder: (context, constraints) => Stack(children: [
-                    GestureDetector(
-                      supportedDevices: timelinePointers,
-                      behavior: HitTestBehavior.opaque,
-                      onTapDown: (details) {
-                        // The brace is switched on the release, and leaves playing alone: a
-                        // loop is set while listening.
-                        if (_braceAt(
-                                details.localPosition, constraints.maxWidth) !=
-                            null) {
-                          return;
-                        }
-                        controller.pause();
-                        // Selected on the press and the playhead moved on the release: moved
-                        // on the press, it would jump at the start of every drag. A drag
-                        // never reaches onTapUp.
-                        var mark = _keyframeAt(
-                            details.localPosition, constraints.maxWidth);
-                        var band = mark != null
-                            ? null
-                            : _bandAt(
-                                details.localPosition, constraints.maxWidth);
-                        setState(() {
-                          _narrowTo = null;
-                          _narrowBand = null;
-                          if (mark != null &&
-                              !_shiftHeld &&
-                              _selectedKeys.length > 1 &&
-                              _selectedKeys.contains(mark)) {
-                            // Pressed on one of several picked: it may be the start of dragging
-                            // them all, so they stay picked. A click picks this one alone; see
-                            // onTapUp.
-                            _narrowTo = mark;
-                          } else if (mark != null) {
-                            // Shift adds to the selection; an ordinary click starts
-                            // a new one.
-                            if (!_shiftHeld) _selectedKeys.clear();
-                            if (!_selectedKeys.add(mark) && _shiftHeld) {
-                              _selectedKeys.remove(mark);
-                            }
-                          } else if (band != null &&
-                              !_shiftHeld &&
-                              _selectedKeys.length > band.length &&
-                              band.every(_selectedKeys.contains)) {
-                            // The bar of a pair that is part of a bigger selection: kept, so
-                            // dragging it drags them all.
-                            _narrowBand = band;
-                          } else if (band != null) {
-                            // Both ends: the bar says the two belong together.
-                            if (!_shiftHeld) _selectedKeys.clear();
-                            _selectedKeys.addAll(band);
-                          } else {
-                            _selectedKeys.clear();
+              Expanded(
+                  child: LayoutBuilder(
+                builder: (context, constraints) => Stack(children: [
+                  GestureDetector(
+                    supportedDevices: timelinePointers,
+                    behavior: HitTestBehavior.opaque,
+                    onTapDown: (details) {
+                      // The brace is switched on the release, and leaves playing alone: a
+                      // loop is set while listening.
+                      if (_braceAt(
+                              details.localPosition, constraints.maxWidth) !=
+                          null) {
+                        return;
+                      }
+                      controller.pause();
+                      // Selected on the press and the playhead moved on the release: moved
+                      // on the press, it would jump at the start of every drag. A drag
+                      // never reaches onTapUp.
+                      var mark = _keyframeAt(
+                          details.localPosition, constraints.maxWidth);
+                      var band = mark != null
+                          ? null
+                          : _bandAt(
+                              details.localPosition, constraints.maxWidth);
+                      setState(() {
+                        _narrowTo = null;
+                        _narrowBand = null;
+                        if (mark != null &&
+                            !_shiftHeld &&
+                            _selectedKeys.length > 1 &&
+                            _selectedKeys.contains(mark)) {
+                          // Pressed on one of several picked: it may be the start of dragging
+                          // them all, so they stay picked. A click picks this one alone; see
+                          // onTapUp.
+                          _narrowTo = mark;
+                        } else if (mark != null) {
+                          // Shift adds to the selection; an ordinary click starts
+                          // a new one.
+                          if (!_shiftHeld) _selectedKeys.clear();
+                          if (!_selectedKeys.add(mark) && _shiftHeld) {
+                            _selectedKeys.remove(mark);
                           }
+                        } else if (band != null &&
+                            !_shiftHeld &&
+                            _selectedKeys.length > band.length &&
+                            band.every(_selectedKeys.contains)) {
+                          // The bar of a pair that is part of a bigger selection: kept, so
+                          // dragging it drags them all.
+                          _narrowBand = band;
+                        } else if (band != null) {
+                          // Both ends: the bar says the two belong together.
+                          if (!_shiftHeld) _selectedKeys.clear();
+                          _selectedKeys.addAll(band);
+                        } else {
+                          _selectedKeys.clear();
+                        }
+                      });
+                    },
+                    onTapUp: (details) {
+                      // Focus is asked for here rather than on the press: the press is
+                      // followed by the framework handing focus to the enclosing scope,
+                      // and without focus the strip never sees Delete, copy or paste.
+                      if (_narrowTo case var only?) {
+                        setState(() => _selectedKeys
+                          ..clear()
+                          ..add(only));
+                        _narrowTo = null;
+                      }
+                      if (_narrowBand case var pair?) {
+                        setState(() => _selectedKeys
+                          ..clear()
+                          ..addAll(pair));
+                        _narrowBand = null;
+                      }
+                      if (_selectedKeys.isNotEmpty) {
+                        FocusScope.of(context).requestFocus(_focus);
+                      }
+                      // A click after all. A mark puts the playhead on itself; anywhere else
+                      // scrubs. A click on the brace switches the loop off, as Ableton's
+                      // does; the Loop button puts it back.
+                      if (_braceAt(
+                              details.localPosition, constraints.maxWidth) !=
+                          null) {
+                        controller.looping = !controller.looping;
+                        return;
+                      }
+                      var mark = _keyframeAt(
+                          details.localPosition, constraints.maxWidth);
+                      if (mark != null) {
+                        controller.frame = mark;
+                      } else {
+                        _scrubTo(
+                            details.localPosition.dx, constraints.maxWidth);
+                      }
+                    },
+                    // A drag that starts on a mark retimes that mark; anywhere else it
+                    // scrubs, decided once at the start. The mark is found on the press,
+                    // not the drag start: a horizontal drag is only recognised after about
+                    // eighteen pixels, past whatever it was aimed at.
+                    onHorizontalDragDown: (details) {
+                      _pressX = details.localPosition.dx;
+                      // The loop brace along the top of the ruler wins:
+                      // it is what the press is on.
+                      _pressedBrace =
+                          _braceAt(details.localPosition, constraints.maxWidth);
+                      // An end of the loop's bar, under the keyframes.
+                      _pressedLoop = _loopEndAt(
+                          details.localPosition, constraints.maxWidth);
+                      // A flag on the ruler first: it is what the press is
+                      // on, and dragged, it moves.
+                      _pressedFlag =
+                          _flagAt(details.localPosition, constraints.maxWidth);
+                      _pressedFrame = _pressedFlag != null
+                          ? null
+                          : _keyframeAt(
+                              details.localPosition, constraints.maxWidth);
+                      // The bar between a pair, when the press was not on either end. A
+                      // mark wins: dragging an end changes the animation's length, dragging
+                      // the middle moves it.
+                      _pressedBand = _pressedFrame != null
+                          ? null
+                          : _bandAt(
+                              details.localPosition, constraints.maxWidth);
+                      // Empty strip under the ruler: a drag there draws a
+                      // box over the keyframes and selects what it covers.
+                      // On the ruler, a drag still scrubs.
+                      _pressedMarquee = _pressedLoop == null &&
+                          _pressedFlag == null &&
+                          _pressedFrame == null &&
+                          _pressedBand == null &&
+                          _targetTrack != null &&
+                          _keysShown &&
+                          details.localPosition.dy > _rulerHeight &&
+                          details.localPosition.dy < _keysRoom;
+                    },
+                    onHorizontalDragStart: (details) {
+                      _dragBrace = _pressedBrace;
+                      if (_dragBrace != null) {
+                        // Moved while it plays: a loop is set by ear.
+                        _braceFrom = _frameAt(_pressX, constraints.maxWidth);
+                        _braceWas = controller.loopRange;
+                        return;
+                      }
+                      controller.pause();
+                      _dragLoop = _pressedLoop;
+                      if (_dragLoop != null) {
+                        controller.beginInteraction();
+                        return;
+                      }
+                      _dragFlag = _pressedFlag;
+                      if (_dragFlag != null) controller.beginInteraction();
+                      _dragKey = _pressedFrame;
+                      _dragBand = _pressedBand;
+                      _bandAnchor = _frameAt(_pressX, constraints.maxWidth);
+                      // A mark that is one of several selected takes the rest with it,
+                      // keeping their spacing.
+                      var grabbed = _pressedFrame != null
+                          ? {_pressedFrame!}
+                          : (_pressedBand?.toSet() ?? const <int>{});
+                      if (_selectedKeys.length > 1 &&
+                          grabbed.isNotEmpty &&
+                          _selectedKeys.containsAll(grabbed)) {
+                        _dragKey = null;
+                        _dragBand = (_selectedKeys.toList()..sort());
+                      }
+                      _narrowTo = null;
+                      _narrowBand = null;
+                      // A keyframe, or several, moved by a drag is one
+                      // change however many frames it passes through.
+                      if (_dragKey != null || _dragBand != null) {
+                        controller.beginInteraction();
+                      }
+                      if (_pressedMarquee) {
+                        var x = _pressX;
+                        setState(() {
+                          _marquee = (x, x);
+                          if (!_shiftHeld) _selectedKeys.clear();
                         });
-                      },
-                      onTapUp: (details) {
-                        // Focus is asked for here rather than on the press: the press is
-                        // followed by the framework handing focus to the enclosing scope,
-                        // and without focus the strip never sees Delete, copy or paste.
-                        if (_narrowTo case var only?) {
-                          setState(() => _selectedKeys
-                            ..clear()
-                            ..add(only));
-                          _narrowTo = null;
-                        }
-                        if (_narrowBand case var pair?) {
-                          setState(() => _selectedKeys
-                            ..clear()
-                            ..addAll(pair));
-                          _narrowBand = null;
-                        }
+                      }
+                    },
+                    onHorizontalDragUpdate: (details) {
+                      var at = _frameAt(
+                          details.localPosition.dx, constraints.maxWidth);
+                      if (_dragBrace case var part?) {
+                        _moveBrace(part, at);
+                        return;
+                      }
+                      if (_dragLoop != null) {
+                        _moveLoopEnd(_dragLoop!, at);
+                        return;
+                      }
+                      if (_dragFlag != null) {
+                        if (_moveAction(_dragFlag!, at)) _dragFlag = at;
+                        return;
+                      }
+                      if (_dragBand != null) {
+                        _shiftBand(at);
+                        return;
+                      }
+                      if (_marquee case (var from, _)) {
+                        _selectWithin(from, details.localPosition.dx,
+                            constraints.maxWidth);
+                        return;
+                      }
+                      if (_dragKey == null) {
+                        _scrubTo(
+                            details.localPosition.dx, constraints.maxWidth);
+                        return;
+                      }
+                      _retime(_dragKey!, at);
+                      _dragKey = at;
+                    },
+                    onHorizontalDragEnd: (_) {
+                      if (_dragKey != null || _dragBand != null) {
+                        controller.endInteraction();
+                      }
+                      if (_marquee != null) {
+                        setState(() => _marquee = null);
                         if (_selectedKeys.isNotEmpty) {
                           FocusScope.of(context).requestFocus(_focus);
                         }
-                        // A click after all. A mark puts the playhead on itself; anywhere else
-                        // scrubs. A click on the brace switches the loop off, as Ableton's
-                        // does; the Loop button puts it back.
-                        if (_braceAt(
-                                details.localPosition, constraints.maxWidth) !=
-                            null) {
-                          controller.looping = !controller.looping;
-                          return;
+                      }
+                      _pressedMarquee = false;
+                      _dragBrace = null;
+                      _pressedBrace = null;
+                      if (_dragLoop != null) controller.endInteraction();
+                      _dragLoop = null;
+                      _pressedLoop = null;
+                      if (_dragFlag != null) controller.endInteraction();
+                      _dragFlag = null;
+                      _pressedFlag = null;
+                      _dragKey = null;
+                      _dragBand = null;
+                      _pressedFrame = null;
+                      _pressedBand = null;
+                    },
+                    onHorizontalDragCancel: () {
+                      if (_dragKey != null || _dragBand != null) {
+                        controller.endInteraction();
+                      }
+                      if (_marquee != null) {
+                        setState(() => _marquee = null);
+                        if (_selectedKeys.isNotEmpty) {
+                          FocusScope.of(context).requestFocus(_focus);
                         }
-                        var mark = _keyframeAt(
-                            details.localPosition, constraints.maxWidth);
-                        if (mark != null) {
-                          controller.frame = mark;
-                        } else {
-                          _scrubTo(
-                              details.localPosition.dx, constraints.maxWidth);
-                        }
-                      },
-                      // A drag that starts on a mark retimes that mark; anywhere else it
-                      // scrubs, decided once at the start. The mark is found on the press,
-                      // not the drag start: a horizontal drag is only recognised after about
-                      // eighteen pixels, past whatever it was aimed at.
-                      onHorizontalDragDown: (details) {
-                        _pressX = details.localPosition.dx;
-                        // The loop brace along the top of the ruler wins:
-                        // it is what the press is on.
-                        _pressedBrace = _braceAt(
-                            details.localPosition, constraints.maxWidth);
-                        // An end of the loop's bar, under the keyframes.
-                        _pressedLoop = _loopEndAt(
-                            details.localPosition, constraints.maxWidth);
-                        // A flag on the ruler first: it is what the press is
-                        // on, and dragged, it moves.
-                        _pressedFlag = _flagAt(
-                            details.localPosition, constraints.maxWidth);
-                        _pressedFrame = _pressedFlag != null
-                            ? null
-                            : _keyframeAt(
-                                details.localPosition, constraints.maxWidth);
-                        // The bar between a pair, when the press was not on either end. A
-                        // mark wins: dragging an end changes the animation's length, dragging
-                        // the middle moves it.
-                        _pressedBand = _pressedFrame != null
-                            ? null
-                            : _bandAt(
-                                details.localPosition, constraints.maxWidth);
-                        // Empty strip under the ruler: a drag there draws a
-                        // box over the keyframes and selects what it covers.
-                        // On the ruler, a drag still scrubs.
-                        _pressedMarquee = _pressedLoop == null &&
-                            _pressedFlag == null &&
-                            _pressedFrame == null &&
-                            _pressedBand == null &&
-                            _targetTrack != null &&
-                            _keysShown &&
-                            details.localPosition.dy > _rulerHeight &&
-                            details.localPosition.dy < _keysRoom;
-                      },
-                      onHorizontalDragStart: (details) {
-                        _dragBrace = _pressedBrace;
-                        if (_dragBrace != null) {
-                          // Moved while it plays: a loop is set by ear.
-                          _braceFrom = _frameAt(_pressX, constraints.maxWidth);
-                          _braceWas = controller.loopRange;
-                          return;
-                        }
-                        controller.pause();
-                        _dragLoop = _pressedLoop;
-                        if (_dragLoop != null) {
-                          controller.beginInteraction();
-                          return;
-                        }
-                        _dragFlag = _pressedFlag;
-                        if (_dragFlag != null) controller.beginInteraction();
-                        _dragKey = _pressedFrame;
-                        _dragBand = _pressedBand;
-                        _bandAnchor = _frameAt(_pressX, constraints.maxWidth);
-                        // A mark that is one of several selected takes the rest with it,
-                        // keeping their spacing.
-                        var grabbed = _pressedFrame != null
-                            ? {_pressedFrame!}
-                            : (_pressedBand?.toSet() ?? const <int>{});
-                        if (_selectedKeys.length > 1 &&
-                            grabbed.isNotEmpty &&
-                            _selectedKeys.containsAll(grabbed)) {
-                          _dragKey = null;
-                          _dragBand = (_selectedKeys.toList()..sort());
-                        }
-                        _narrowTo = null;
-                        _narrowBand = null;
-                        // A keyframe, or several, moved by a drag is one
-                        // change however many frames it passes through.
-                        if (_dragKey != null || _dragBand != null) {
-                          controller.beginInteraction();
-                        }
-                        if (_pressedMarquee) {
-                          var x = _pressX;
-                          setState(() {
-                            _marquee = (x, x);
-                            if (!_shiftHeld) _selectedKeys.clear();
-                          });
-                        }
-                      },
-                      onHorizontalDragUpdate: (details) {
-                        var at = _frameAt(
-                            details.localPosition.dx, constraints.maxWidth);
-                        if (_dragBrace case var part?) {
-                          _moveBrace(part, at);
-                          return;
-                        }
-                        if (_dragLoop != null) {
-                          _moveLoopEnd(_dragLoop!, at);
-                          return;
-                        }
-                        if (_dragFlag != null) {
-                          if (_moveAction(_dragFlag!, at)) _dragFlag = at;
-                          return;
-                        }
-                        if (_dragBand != null) {
-                          _shiftBand(at);
-                          return;
-                        }
-                        if (_marquee case (var from, _)) {
-                          _selectWithin(from, details.localPosition.dx,
-                              constraints.maxWidth);
-                          return;
-                        }
-                        if (_dragKey == null) {
-                          _scrubTo(
-                              details.localPosition.dx, constraints.maxWidth);
-                          return;
-                        }
-                        _retime(_dragKey!, at);
-                        _dragKey = at;
-                      },
-                      onHorizontalDragEnd: (_) {
-                        if (_dragKey != null || _dragBand != null) {
-                          controller.endInteraction();
-                        }
-                        if (_marquee != null) {
-                          setState(() => _marquee = null);
-                          if (_selectedKeys.isNotEmpty) {
-                            FocusScope.of(context).requestFocus(_focus);
-                          }
-                        }
-                        _pressedMarquee = false;
-                        _dragBrace = null;
-                        _pressedBrace = null;
-                        if (_dragLoop != null) controller.endInteraction();
-                        _dragLoop = null;
-                        _pressedLoop = null;
-                        if (_dragFlag != null) controller.endInteraction();
-                        _dragFlag = null;
-                        _pressedFlag = null;
-                        _dragKey = null;
-                        _dragBand = null;
-                        _pressedFrame = null;
-                        _pressedBand = null;
-                      },
-                      onHorizontalDragCancel: () {
-                        if (_dragKey != null || _dragBand != null) {
-                          controller.endInteraction();
-                        }
-                        if (_marquee != null) {
-                          setState(() => _marquee = null);
-                          if (_selectedKeys.isNotEmpty) {
-                            FocusScope.of(context).requestFocus(_focus);
-                          }
-                        }
-                        _pressedMarquee = false;
-                        _dragBrace = null;
-                        _pressedBrace = null;
-                        if (_dragLoop != null) controller.endInteraction();
-                        _dragLoop = null;
-                        _pressedLoop = null;
-                        if (_dragFlag != null) controller.endInteraction();
-                        _dragFlag = null;
-                        _pressedFlag = null;
-                        _dragKey = null;
-                        _dragBand = null;
-                        _pressedFrame = null;
-                        _pressedBand = null;
-                      },
-                      child: CustomPaint(
-                        key: const ValueKey("keyframeStrip"),
-                        size: Size(constraints.maxWidth, constraints.maxHeight),
-                        painter: _TimelinePainter(
-                          view: _sceneView,
-                          // Ticks along the whole of what is laid out (the run, where the
-                          // timeline runs), counted from the scene's own start.
-                          origin: _origin,
-                          frames: _total - _origin,
-                          scene: _runs ? _total - _origin : document.frames,
-                          marks: _markRow,
-                          // The joins go with the scene strip they sit over.
-                          sceneStarts: _runs && !document.editingMaster
-                              ? [
-                                  for (var i = 0;
-                                      i < document.allScenes.length;
-                                      i++)
-                                    document.startOfScene(i) - _origin,
-                                ]
-                              : const [0],
-                          frame: controller.frame,
-                          frameRate: document.frameRate,
-                          // A piece of sound is counted in bars and beats,
-                          // under its structure.
-                          bars: document.kind.isAudio ? document.audio : null,
-                          brace:
-                              controller.looping ? controller.loopRange : null,
-                          looping: controller.looping,
-                          // The focused player's, when one is focused (see _targetTrack): the
-                          // same keyframes the diamond button adds and removes.
-                          keyframes: _keysShown
-                              ? _targetTrack?.keys ?? const []
-                              : const [],
-                          bands: _keysShown ? _bands : const [],
-                          loop: _keysShown ? _loopBar : null,
-                          selected: _selectedKeys,
-                          actions: document.actions,
-                          marquee: _marquee,
-                          cues: [
-                            if (controller.cuesShown)
-                              for (var c in document.cues)
-                                (
-                                  c.frame -
-                                      (document.editingMaster
-                                          ? 0
-                                          : document.startOfScene(document.at)),
-                                  c.name
-                                ),
-                          ],
-                          colors: theme.colors,
-                          xFor: (f) => _xFor(f, constraints.maxWidth),
-                        ),
+                      }
+                      _pressedMarquee = false;
+                      _dragBrace = null;
+                      _pressedBrace = null;
+                      if (_dragLoop != null) controller.endInteraction();
+                      _dragLoop = null;
+                      _pressedLoop = null;
+                      if (_dragFlag != null) controller.endInteraction();
+                      _dragFlag = null;
+                      _pressedFlag = null;
+                      _dragKey = null;
+                      _dragBand = null;
+                      _pressedFrame = null;
+                      _pressedBand = null;
+                    },
+                    child: CustomPaint(
+                      key: const ValueKey("keyframeStrip"),
+                      size: Size(constraints.maxWidth, constraints.maxHeight),
+                      painter: _TimelinePainter(
+                        view: _sceneView,
+                        // Ticks along the whole of what is laid out (the run, where the
+                        // timeline runs), counted from the scene's own start.
+                        origin: _origin,
+                        frames: _total - _origin,
+                        scene: _runs ? _total - _origin : document.frames,
+                        marks: _markRow,
+                        // The joins go with the scene strip they sit over.
+                        sceneStarts: _runs && !document.editingMaster
+                            ? [
+                                for (var i = 0;
+                                    i < document.allScenes.length;
+                                    i++)
+                                  document.startOfScene(i) - _origin,
+                              ]
+                            : const [0],
+                        frame: controller.frame,
+                        frameRate: document.frameRate,
+                        // A piece of sound is counted in bars and beats,
+                        // under its structure.
+                        bars: document.kind.isAudio ? document.audio : null,
+                        brace: controller.looping ? controller.loopRange : null,
+                        looping: controller.looping,
+                        // The focused player's, when one is focused (see _targetTrack): the
+                        // same keyframes the diamond button adds and removes.
+                        keyframes: _keysShown
+                            ? _targetTrack?.keys ?? const []
+                            : const [],
+                        bands: _keysShown ? _bands : const [],
+                        loop: _keysShown ? _loopBar : null,
+                        selected: _selectedKeys,
+                        actions: document.actions,
+                        marquee: _marquee,
+                        cues: [
+                          if (controller.cuesShown)
+                            for (var c in document.cues)
+                              (
+                                c.frame -
+                                    (document.editingMaster
+                                        ? 0
+                                        : document.startOfScene(document.at)),
+                                c.name
+                              ),
+                        ],
+                        colors: theme.colors,
+                        xFor: (f) => _xFor(f, constraints.maxWidth),
                       ),
                     ),
-                  ]),
-                )),
+                  ),
+                ]),
+              )),
             ]),
           ),
         ),
@@ -1565,21 +1544,17 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                 // see motion_lanes.dart and element_sound.dart.
                 motionRows: true,
                 // The scenes, the first row, on the ruler's own scale.
-                scenesLane: _showScenes && !widget.slotsOnly
+                scenesLane: _showScenes
                     ? CanvasSceneStrip(
                         controller: controller, view: _viewNow, origin: _origin)
                     : null,
-                leading: widget.slotsOnly
-                    ? null
-                    : Column(mainAxisSize: MainAxisSize.min, children: [
-                        VectorShapeLanes(
-                            controller: controller, view: _sceneView),
-                        ImageLayerLanes(
-                            controller: controller, view: _sceneView),
-                      ]))),
+                leading: Column(mainAxisSize: MainAxisSize.min, children: [
+                  VectorShapeLanes(controller: controller, view: _sceneView),
+                  ImageLayerLanes(controller: controller, view: _sceneView),
+                ]))),
       // Which stretch of the timeline is on screen, and a handle to move
       // it: under the frames, not the strip column.
-      if (!_collapsed && !widget.slotsOnly)
+      if (!_collapsed)
         SizedBox(
           height: _scrollbarHeight,
           child: Row(children: [
@@ -1612,7 +1587,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
       // that least and cut off at the bottom, rather than overflowing.
       child: LayoutBuilder(builder: (context, box) {
         var least = (_collapsed ? 0.0 : _keysRoom - 1 + _sceneGap) +
-            (!_collapsed && !widget.slotsOnly ? _scrollbarHeight : 0) +
+            (!_collapsed ? _scrollbarHeight : 0) +
             (_barAbove || _barBelow
                 ? _transportHeight + (_collapsed ? 0 : _stripGap)
                 : 0);
@@ -1631,7 +1606,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
         // The playhead: one line from the ruler down through every row
         // under it, unbroken (the approved design, 2026-11-08), over the
         // frames only. The rows draw none of their own.
-        if (!_collapsed && !widget.slotsOnly) {
+        if (!_collapsed) {
           column = Stack(fit: StackFit.expand, children: [
             column,
             Positioned(
