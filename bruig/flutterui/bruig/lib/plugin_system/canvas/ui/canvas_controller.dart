@@ -3715,6 +3715,10 @@ class CanvasController extends ChangeNotifier {
 
   bool _allFolded = false;
 
+  /// _keyClipboard is the keyframes copied in the Chain's Keyframes card,
+  /// each relative to the first: see copyTargetKeys.
+  List<(int, Keyframe)> _keyClipboard = const [];
+
   BandState _motionSlots = BandState.shown;
   bool _mixerRailFolded = false;
   double _cueColumnWidth = 96;

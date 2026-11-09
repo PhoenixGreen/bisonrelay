@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
+import 'package:bruig/plugin_system/canvas/ui/keyframes_card.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/copies_cards.dart';
@@ -318,6 +319,11 @@ class _AnimationPanelState extends State<AnimationPanel> {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
         children: [
+          // Its keyframes first (Ken, 2026-11-09: keyframing in the Chain).
+          if (controller.keyframeTarget != null) ...[
+            _zone("Keyframes", "When its keyframes are: picked, moved, copied"),
+            _keyframesCard(),
+          ],
           // The element and its copies first: what the rest edits (Ken,
           // 2026-11-08).
           _zone("Copies", "The element and its copies: which the chain edits"),
@@ -374,6 +380,24 @@ class _AnimationPanelState extends State<AnimationPanel> {
         ].expand((w) => [w, const SizedBox(width: 6)]).toList(),
       ),
     );
+  }
+
+  /// _keyframesCard is the Keyframes card: the picked element's own
+  /// keyframes, a team player's, or a path's points (see KeyframesCard).
+  ///
+  /// Folded at first where there are no keyframes yet, there being nothing
+  /// to see; opened at first where there are.
+  Widget _keyframesCard() {
+    var empty = controller.keyframeTarget?.track.isEmpty ?? true;
+    var mark = empty ? "keyframes:open" : "keyframes:shut";
+    var folded = empty ? !_folded.contains(mark) : _folded.contains(mark);
+    return KeyframesCard(
+        key: const ValueKey("keyframesCard"),
+        controller: controller,
+        height: widget.height - 40,
+        folded: folded,
+        onFold: () => setState(() =>
+            _folded.contains(mark) ? _folded.remove(mark) : _folded.add(mark)));
   }
 
   /// _outputCard is where [e]'s chain ends (see MotionOutputCard).
@@ -569,6 +593,11 @@ class _AnimationPanelState extends State<AnimationPanel> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
             children: [
+              if (controller.keyframeTarget != null) ...[
+                _zone("Keyframes",
+                    "When its keyframes are: picked, moved, copied"),
+                _keyframesCard(),
+              ],
               _zone("Copies",
                   "The element and its copies: which the chain edits"),
               _instancesCard(e),

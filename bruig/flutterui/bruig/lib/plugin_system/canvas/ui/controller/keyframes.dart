@@ -4,6 +4,24 @@ part of '../canvas_controller.dart';
 // Part of CanvasController: the state is the class's, in
 // canvas_controller.dart; these are its methods.
 
+/// KeyframeTarget is what the Chain's Keyframes card edits (Ken, 2026-11-09:
+/// keyframing in the Chain): a team's focused player, a path's points (their
+/// times only), or the picked element's own keyframes.
+class KeyframeTarget {
+  /// name is who it is, kind what ("Image", "Team", "Path").
+  final String name;
+  final String kind;
+  final ElementTrack track;
+
+  /// points is a path's points: timed, holding no values.
+  final bool points;
+
+  /// player is the team's player, by index, where it is one.
+  final int? player;
+  const KeyframeTarget(this.name, this.kind, this.track,
+      {this.points = false, this.player});
+}
+
 extension CanvasKeyframes on CanvasController {
   /// setKeyframe writes the pose at the current frame for one element.
   void setKeyframe(String id, Keyframe key) {
@@ -609,4 +627,207 @@ extension CanvasKeyframes on CanvasController {
       next.isEmpty
           ? element.withBase(clearTrack: true)
           : element.withBase(track: next);
+
+  // ---- the Chain's Keyframes card ----------------------------------------
+
+  /// keyframeTarget is what the Keyframes card edits, or null: nothing
+  /// picked, or what is picked moved by a path, whose points are its timing.
+  KeyframeTarget? get keyframeTarget {
+    var team = focusedTeam;
+    var index = focusedPlayer;
+    if (team != null && index != null && index < team.players.length) {
+      if (pathDriving(team.id, playerIndex: index) != null) return null;
+      var spot = team.players[index];
+      var teamName = team.base.name.isEmpty ? team.id : team.base.name;
+      return KeyframeTarget(
+          "$teamName · ${spot.name}", "Team", spot.track ?? ElementTrack.empty,
+          player: index);
+    }
+    var e = selected;
+    if (e == null) return null;
+    var name = e.base.name.isEmpty ? e.id : e.base.name;
+    if (e is PathElement) {
+      return KeyframeTarget(name, "Path",
+          ElementTrack([for (var n in e.nodes) Keyframe(frame: n.frame)]),
+          points: true);
+    }
+    if (pathDriving(e.id) != null) return null;
+    return KeyframeTarget(name, e.kind.label, e.track ?? ElementTrack.empty);
+  }
+
+  /// writeTargetTrack puts [track] back on the Keyframes card's target --
+  /// none at all once it is empty, so no empty track is saved. Not for a
+  /// path, whose points are written by moveTargetKeyframes.
+  void writeTargetTrack(ElementTrack track) {
+    var team = focusedTeam;
+    var index = focusedPlayer;
+    if (team != null && index != null && index < team.players.length) {
+      var spot = team.players[index];
+      replaceElement(team.withPlayer(
+          index,
+          track.isEmpty
+              ? spot.copyWith(clearTrack: true)
+              : spot.copyWith(track: track)));
+      return;
+    }
+    var e = selected;
+    if (e == null || e is PathElement) return;
+    replaceElement(withTrackOrNone(e, track));
+  }
+
+  /// moveTargetKeyframes moves the keyframes at [frames] by [by], keeping
+  /// their spacing: all of them, or -- where one would land on another
+  /// keyframe, or off the scene -- none, and false.
+  bool moveTargetKeyframes(List<int> frames, int by) {
+    var t = keyframeTarget;
+    if (t == null || frames.isEmpty) return false;
+    if (by == 0) return true;
+    var moving = frames.toSet();
+    var last = _document.frames - 1;
+    var rest = {
+      for (var k in t.track.keys)
+        if (!moving.contains(k.frame)) k.frame
+    };
+    for (var f in moving) {
+      var to = f + by;
+      if (to < 0 || to > last || rest.contains(to)) return false;
+    }
+    var e = selected;
+    if (t.points && e is PathElement) {
+      // One point at a time, the far end first, so none passes another.
+      var order = moving.toList()..sort();
+      if (by > 0) order = order.reversed.toList();
+      var path = e;
+      for (var f in order) {
+        var i = path.nodeIndexAtFrame(f);
+        if (i == null) return false;
+        path = path.retimeNode(i, f + by);
+      }
+      replaceElement(path);
+      applyPathFollow(path);
+      return true;
+    }
+    var next = t.track;
+    var keys = [
+      for (var f in moving)
+        if (t.track.keyAt(f) case var k?) k
+    ];
+    for (var k in keys) {
+      next = next.withoutFrame(k.frame);
+    }
+    for (var k in keys) {
+      next = next.withKey(k.copyWith(frame: k.frame + by));
+    }
+    writeTargetTrack(next);
+    return true;
+  }
+
+  /// removeTargetKeyframes deletes the keyframes at [frames] (a path's
+  /// points there).
+  void removeTargetKeyframes(Iterable<int> frames) {
+    var t = keyframeTarget;
+    if (t == null) return;
+    var e = selected;
+    if (t.points && e is PathElement) {
+      var path = e;
+      for (var f in frames.toList()..sort((a, b) => b - a)) {
+        var i = path.nodeIndexAtFrame(f);
+        if (i != null) path = path.withoutNode(i);
+      }
+      replaceElement(path);
+      applyPathFollow(path);
+      return;
+    }
+    var next = t.track;
+    for (var f in frames) {
+      next = next.withoutFrame(f);
+    }
+    writeTargetTrack(next);
+  }
+
+  /// toggleTargetKeyframe is the card's diamond: a keyframe at the playhead
+  /// taken away, or one put there holding the pose there (a point, on a
+  /// path). Its values are set in the element's settings, or in Curves.
+  void toggleTargetKeyframe() {
+    var t = keyframeTarget;
+    if (t == null) return;
+    var e = selected;
+    if (t.points && e is PathElement) {
+      var i = e.nodeIndexAtFrame(_frame);
+      var next = i == null ? e.insertAtFrame(_frame) : e.withoutNode(i);
+      if (identical(next, e)) return;
+      replaceElement(next);
+      applyPathFollow(next);
+      return;
+    }
+    if (t.track.keyAt(_frame) != null) {
+      writeTargetTrack(t.track.withoutFrame(_frame));
+    } else {
+      writeTargetTrack(t.track.withKey(t.track.isEmpty
+          ? Keyframe(frame: _frame)
+          : t.track.at(_frame).copyWith(frame: _frame)));
+    }
+  }
+
+  /// copyTargetKeys keeps the keyframes at [frames], each relative to the
+  /// first, to be pasted at the playhead: their number.
+  int copyTargetKeys(Iterable<int> frames) {
+    var t = keyframeTarget;
+    if (t == null || t.points) return 0;
+    var sorted = frames.toList()..sort();
+    if (sorted.isEmpty) return 0;
+    _keyClipboard = [
+      for (var f in sorted)
+        if (t.track.keyAt(f) case var k?) (f - sorted.first, k)
+    ];
+    return _keyClipboard.length;
+  }
+
+  /// hasCopiedKeys is whether there are keyframes to paste.
+  bool get hasCopiedKeys => _keyClipboard.isNotEmpty;
+
+  /// pasteTargetKeys lays the copied keyframes down from the playhead,
+  /// keeping their spacing: the frames they landed on, or why not (there
+  /// is not room before the scene ends, or a keyframe is already there).
+  (List<int>, String?) pasteTargetKeys() {
+    var t = keyframeTarget;
+    if (t == null || t.points || _keyClipboard.isEmpty) return (const [], null);
+    var at = _frame;
+    var wanted = [for (var (offset, _) in _keyClipboard) at + offset];
+    if (wanted.last > _document.frames - 1) {
+      return (const [], "There is not room for that before the scene ends.");
+    }
+    var taken = [
+      for (var f in wanted)
+        if (t.track.keyAt(f) != null) f
+    ];
+    if (taken.isNotEmpty) {
+      return (
+        const [],
+        "Frame${taken.length == 1 ? "" : "s"} ${taken.join(", ")} already "
+            "${taken.length == 1 ? "has a keyframe" : "have keyframes"}: move "
+            "the playhead clear of them."
+      );
+    }
+    var next = t.track;
+    for (var (offset, k) in _keyClipboard) {
+      next = next.withKey(k.copyWith(frame: at + offset));
+    }
+    writeTargetTrack(next);
+    return (wanted, null);
+  }
+
+  /// easeTargetKeyframes sets how each keyframe at [frames] eases to the
+  /// next.
+  void easeTargetKeyframes(Iterable<int> frames, KeyframeEasing easing) {
+    var t = keyframeTarget;
+    if (t == null || t.points) return;
+    var next = t.track;
+    for (var f in frames) {
+      if (t.track.keyAt(f) case var k?) {
+        next = next.withKey(k.copyWith(easing: easing));
+      }
+    }
+    writeTargetTrack(next);
+  }
 }
