@@ -18,7 +18,8 @@ import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart'
-    show MotionSlotDrag, motionKindColours, motionRowsOf;
+    show MotionSlotDrag, motionKindColours;
+import 'package:bruig/plugin_system/canvas/ui/canvas_rows.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_player.dart'
     show MotionSlotState;
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
@@ -792,10 +793,37 @@ class _CanvasMixerState extends State<CanvasMixer>
                 : 0.0);
     // The elements, outside a sound's own settings and the effects; and
     // which of the channels are theirs.
-    var rows = widget.embedded || widget.effects
-        ? const <CanvasElement>[]
-        : motionRowsOf(controller);
-    var ownedKeys = {for (var e in rows) elementSoundKey(e.id)};
+    // The rows every panel shows (see canvas_rows.dart): each element's strip
+    // with its own sound's beside it, then the sounds that are nobody's --
+    // in the timeline's order, so a row is in the same place in both.
+    var canvasRows = widget.embedded || widget.effects
+        ? const <CanvasRow>[]
+        : canvasRowsOf(controller);
+    var rows = [
+      for (var r in canvasRows)
+        if (r.element case var e?) e
+    ];
+    var ownedKeys = {
+      for (var r in canvasRows)
+        if (r.element != null)
+          for (var c in r.channels) c.key
+    };
+    // The sounds that are nobody's, each with its place among the strips'
+    // lanes: in the rows' order, or -- with no rows, in a sound's own
+    // settings or the effects -- every lane as it comes.
+    var loose = canvasRows.isEmpty
+        ? [
+            for (var (i, l) in lanes.indexed)
+              if (!ownedKeys.contains(l.key)) (i, l)
+          ]
+        : [
+            for (var r in canvasRows)
+              if (r.element == null)
+                for (var c in r.channels)
+                  if (lanes.indexWhere((l) => l.key == c.key) case var i
+                      when i >= 0)
+                    (i, lanes[i])
+          ];
     var show = controller.timelineShow;
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
@@ -833,18 +861,9 @@ class _CanvasMixerState extends State<CanvasMixer>
                     : ListView(
                         scrollDirection: Axis.horizontal,
                         children: [
-                          // The sounds', except an element's own, which go with it; none
-                          // shows only the animation.
-                          for (var (i, lane) in lanes.indexed)
-                            if (!ownedKeys.contains(lane.key) &&
-                                show != TimelineShow.animation)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: _channelStrip(theme, lane, i, bands),
-                              ),
-                          // The elements' strips, after the sounds': their
-                          // animation slots on the same cue rows, and each
-                          // one's own sound beside it.
+                          // The elements' strips first, as the timeline has
+                          // their rows: their animation slots on the same cue
+                          // rows, and each one's own sound beside it.
                           for (var e in rows) ...[
                             if (show != TimelineShow.sound)
                               Padding(
@@ -860,6 +879,14 @@ class _CanvasMixerState extends State<CanvasMixer>
                                     child: _channelStrip(theme, lane, i, bands),
                                   ),
                           ],
+                          // Then the sounds that are nobody's, the All
+                          // group's last; none shows only the animation.
+                          if (show != TimelineShow.animation)
+                            for (var (i, lane) in loose)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: _channelStrip(theme, lane, i, bands),
+                              ),
                         ],
                       ),
               ),

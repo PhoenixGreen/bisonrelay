@@ -1317,27 +1317,28 @@ void main() {
       controller.frame = 12;
       await pump(tester, CanvasTimeline(controller: controller));
 
-      // One Action button, which adds a stop; the kind is chosen after,
-      // from "At this frame".
+      // The Marker menu is a panel (Ken, 2026-11-08): five buttons say what
+      // the marker does; the fields for the one chosen are under them.
       await openMarker(tester);
-      var action = find.byKey(const ValueKey("addAction"));
-      await tester.tap(action);
+      expect(find.text("Add a marker at 13"), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey("markerKind-stop")));
       await tester.pumpAndSettle();
       expect(controller.document.actions.single.frame, 12);
       expect(controller.document.actions.single.kind, TimelineActionKind.stop);
+      expect(find.byKey(const ValueKey("actionWaitsFor")), findsOneWidget,
+          reason: "a stop says what it waits for");
 
-      await tester.tap(find.text(TimelineActionKind.stop.label).last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(TimelineActionKind.loop.label).last);
+      await tester.tap(find.byKey(const ValueKey("markerKind-loop")));
       await tester.pumpAndSettle();
       expect(controller.document.actions.single.kind, TimelineActionKind.loop);
-      expect(find.byTooltip("To frame"), findsOneWidget,
-          reason: "its caption is its hover text");
+      expect(find.byKey(const ValueKey("actionTarget")), findsOneWidget);
+      expect(find.byKey(const ValueKey("actionRepeats")), findsOneWidget);
+      expect(find.text(TimelineActionKind.loop.description), findsOneWidget,
+          reason: "a line says what the chosen kind does");
+      expect(find.byKey(const ValueKey("markerRow-12")), findsOneWidget,
+          reason: "listed among the canvas's markers");
 
-      var remove = find.byTooltip("Remove this marker");
-      await tester.ensureVisible(remove);
-      await tester.pumpAndSettle();
-      await tester.tap(remove);
+      await tester.tap(find.byKey(const ValueKey("markerRemove")));
       await tester.pumpAndSettle();
       expect(controller.document.actions, isEmpty);
     });

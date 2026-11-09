@@ -8,6 +8,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/help_note.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart'
+    show MotionEditing;
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/ui/scene_strip.dart';
 import 'package:bruig/plugin_system/canvas/ui/slots_window.dart';
@@ -130,6 +133,19 @@ PathElement? _pathDriving(CanvasController controller) {
   if (element == null || element is PathElement) return null;
   return controller.pathDriving(element.id);
 }
+
+/// timelineHelp is the timeline's "?".
+const timelineHelp = [
+  "One row for each element: its motion over its sound. The channel height "
+      "(S, M or L) says how much each row shows; at L each motion layer has "
+      "its own band.",
+  "Framing: the whole canvas, the loop, or the clip picked. Zoom with "
+      "Command and the scroll wheel, or a pinch.",
+  "Drag a clip to move it. Click a row's header to pick it for the Chain; "
+      "its buttons switch its motion and its sound off, and solo it.",
+  "Keyframes are made in the Chain's editors. The keyframe row, for what "
+      "still has one, is in the play bar's settings.",
+];
 
 class CanvasTimeline extends StatefulWidget {
   final CanvasController controller;
@@ -963,33 +979,149 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     );
   }
 
-  /// _stripHeader is the column beside the keyframe strip, the width of the
-  /// channels' strips under it: the zoom, and what each row of marks is.
-  Widget _stripHeader(ThemeNotifier theme, String? target) {
-    var colors = theme.colors;
-    var muted = TextStyle(fontSize: 10, color: colors.onSurfaceVariant);
+  /// _pickedRange is the picked clip's stretch of the timeline, in the
+  /// view's frames: a motion clip placed, or a sound picked on its lane.
+  (double, double)? _pickedRange() {
+    var rate = math.max(1, controller.document.frameRate);
+    if (controller.pickedPlacement case var id?) {
+      if (controller.spanOf(id) case var span?) {
+        return (_origin + span.start * rate, math.max(1.0, span.length * rate));
+      }
+    }
+    var picked = controller.selected;
+    if (picked is AudioElement && picked.clip.timed) {
+      return (
+        (_origin + picked.clip.at).toDouble(),
+        math.max(1.0, picked.clip.runLength * rate)
+      );
+    }
+    return null;
+  }
+
+  /// _corner is the top of the header column: the framing -- the whole
+  /// canvas, the loop, the clip picked -- and the channel height. Narrowed,
+  /// it keeps the framing chosen and the height, then the height alone.
+  /// (Each step is where what it shows fits at any text size.)
+  Widget _corner(double width, ColorScheme colors) {
     var frames = _total;
-    var whole = _viewNow.isWhole(frames);
-    // Big enough to hit. The show-and-hide pair are a little narrower than
-    // the zoom buttons, so all six fit the column as it starts.
-    Widget zoom(String key, IconData icon, VoidCallback? onTap,
-            {bool active = false, double width = 24}) =>
-        InkResponse(
+    var view = _viewNow;
+    bool same(double first, double span) =>
+        (view.first - first).abs() < 0.5 && (view.span - span).abs() < 0.5;
+    var (loopFrom, loopLength) = controller.loopRange;
+    var loop = ((_origin + loopFrom).toDouble(), loopLength.toDouble());
+    var picked = _pickedRange();
+    var framings = [
+      (
+        "timelineFrameAll",
+        Icons.fit_screen_outlined,
+        view.isWhole(frames),
+        () => _setView(TimelineView.whole(frames))
+      ),
+      (
+        "timelineFrameLoop",
+        Icons.repeat,
+        same(loop.$1, loop.$2),
+        () {
+          if (!controller.looping) controller.looping = true;
+          _setView(TimelineView(loop.$1, loop.$2));
+        }
+      ),
+      (
+        "timelineFramePicked",
+        Icons.center_focus_strong_outlined,
+        picked != null && same(picked.$1, picked.$2),
+        picked == null
+            ? null
+            : () => _setView(TimelineView(picked.$1, picked.$2))
+      ),
+    ];
+    Widget button(String key, IconData icon, bool on, VoidCallback? onTap) =>
+        InkWell(
           key: ValueKey(key),
-          radius: 14,
+          borderRadius: BorderRadius.circular(4),
           onTap: onTap,
-          child: SizedBox(
-            width: width,
-            height: 24,
+          child: Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: on ? colors.primary : null,
+              borderRadius: BorderRadius.circular(4),
+            ),
             child: Icon(icon,
-                size: 19,
-                color: onTap == null
-                    ? colors.onSurfaceVariant.withValues(alpha: 0.35)
-                    : active
-                        ? colors.primary
+                size: 13,
+                color: on
+                    ? colors.onPrimary
+                    : onTap == null
+                        ? colors.onSurfaceVariant.withValues(alpha: 0.35)
                         : colors.onSurfaceVariant),
           ),
         );
+    var size = controller.laneSize;
+    return Row(children: [
+      if (width >= 96)
+        Container(
+          padding: const EdgeInsets.all(1),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: colors.outlineVariant),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            // Narrowed, the framing chosen -- or, with none, the whole.
+            for (var (i, (key, icon, on, onTap)) in framings.indexed)
+              if (width >= 140 || on || (i == 0 && !framings.any((f) => f.$3)))
+                button(key, icon, on, onTap),
+          ]),
+        ),
+      if (width >= 96) const SizedBox(width: 4),
+      // Every channel a size taller, round to the least again: its bars and
+      // its letter say which. At the column's very least, nothing.
+      if (width >= 30)
+        InkWell(
+          key: const ValueKey("timelineLaneHeight"),
+          borderRadius: BorderRadius.circular(5),
+          onTap: controller.nextLaneSize,
+          child: Container(
+            height: 22,
+            padding: const EdgeInsets.symmetric(horizontal: 5),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(color: colors.outlineVariant),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              for (var k = 0; k < 3; k++) ...[
+                if (k > 0) const SizedBox(width: 2),
+                Container(
+                  width: 3,
+                  height: const [4.0, 7.0, 10.0][k],
+                  color: colors.onSurfaceVariant
+                      .withValues(alpha: k <= size ? 1 : 0.3),
+                ),
+              ],
+              if (width >= 96) ...[
+                const SizedBox(width: 4),
+                Text(const ["S", "M", "L"][size],
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: colors.onSurfaceVariant)),
+              ],
+            ]),
+          ),
+        ),
+      const Spacer(),
+      if (width >= 140)
+        const HelpNote(
+            id: "timeline", title: "The timeline", paragraphs: timelineHelp),
+      const SizedBox(width: 2),
+    ]);
+  }
+
+  /// _stripHeader is the column beside the keyframe strip, the width of the
+  /// channels' strips under it: the framing and the channel height, and what
+  /// each row of marks is.
+  Widget _stripHeader(ThemeNotifier theme, String? target) {
+    var colors = theme.colors;
+    var muted = TextStyle(fontSize: 10, color: colors.onSurfaceVariant);
     // Narrowed, the labels go and the icons stay.
     var named = controller.headerWidth >= 64;
     return Container(
@@ -1003,56 +1135,15 @@ class CanvasTimelineState extends State<CanvasTimeline> {
           right: 0,
           top: 0,
           height: _rulerHeight,
-          // Narrowed, it keeps what it has room for: zoom out and in first,
-          // then the one button.
-          child: Row(children: [
-            if (controller.headerWidth >= 60)
-              zoom("timelineZoomOut", Icons.zoom_out,
-                  whole ? null : () => _zoomBy(0.5)),
-            if (controller.headerWidth >= 100 ||
-                (controller.headerWidth < 60 && controller.headerWidth >= 34))
-              zoom("timelineZoomFit", Icons.fit_screen_outlined,
-                  whole ? null : () => _setView(TimelineView.whole(frames))),
-            // Every channel a size taller, round to the least again.
-            if (controller.headerWidth >= 124)
-              Tooltip(
-                message: "Channel height: "
-                    "${const ["small", "medium", "large"][controller.laneSize]}"
-                    " -- click for the next",
-                child: zoom(
-                    "timelineLaneHeight",
-                    const [
-                      Icons.density_small,
-                      Icons.density_medium,
-                      Icons.density_large
-                    ][controller.laneSize],
-                    controller.nextLaneSize),
-              ),
-            // The keyframe row, shown or hidden for room.
-            if (controller.headerWidth >= 130)
-              Tooltip(
-                message:
-                    _keysShown ? "Hide the keyframes" : "Show the keyframes",
-                child: zoom(
-                    "keyframesShown",
-                    _keysShown ? Icons.diamond : Icons.diamond_outlined,
-                    () => controller.keyframesShown = !_keysShown,
-                    active: _keysShown,
-                    width: 20),
-              ),
-            if (controller.headerWidth >= 60)
-              zoom(
-                  "timelineZoomIn",
-                  Icons.zoom_in,
-                  _viewNow.span <= math.min(timelineMinSpan, frames) + 0.01
-                      ? null
-                      : () => _zoomBy(2)),
-            const Spacer(),
-            if (!whole && controller.headerWidth >= 186)
-              Text(
-                  "${(frames / _viewNow.span).toStringAsFixed(frames / _viewNow.span < 10 ? 1 : 0)}×",
-                  style: muted),
-          ]),
+          // Ken, 2026-11-08: no zoom buttons -- zoom with Command and the
+          // wheel, or a pinch -- and no keyframe button (its row is in the
+          // play bar's settings). The framing as three small icons and the
+          // channel height as one button stepping S, M, L; inside the
+          // header's width, whatever it is, never over the ruler.
+          child: ClipRect(
+            child: LayoutBuilder(
+                builder: (context, box) => _corner(box.maxWidth, colors)),
+          ),
         ),
         if (_showScenes)
           Positioned(

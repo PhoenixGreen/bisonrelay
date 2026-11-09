@@ -265,6 +265,17 @@ class _Panel extends StatelessWidget {
                     on: controller.barBelow,
                     onChanged: (_) => onBarBelow(),
                   ),
+                  // The keyframe row: what still has keyframes on the
+                  // timeline -- a background, a stage, scenery, a team's
+                  // players, a path's points -- now the timeline's corner has
+                  // no button for it (Ken, 2026-11-08).
+                  _Switch(
+                    key: const ValueKey("keyframesShownItem"),
+                    icon: Icons.diamond_outlined,
+                    label: "The keyframe row",
+                    on: controller.keyframesShown,
+                    onChanged: (v) => controller.keyframesShown = v,
+                  ),
                   caption("Show"),
                   Wrap(spacing: 5, children: [
                     for (var kind in TimelineShow.values)
@@ -279,35 +290,7 @@ class _Panel extends StatelessWidget {
                         onSelected: (_) => controller.timelineShow = kind,
                       ),
                   ]),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Text("Zoom", style: muted),
-                    const SizedBox(width: 6),
-                    IconButton(
-                      key: const ValueKey("zoomOutItem"),
-                      tooltip: "Zoom out",
-                      iconSize: 18,
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => controller.askTimelineZoom(0.5),
-                      icon: const Icon(Icons.zoom_out),
-                    ),
-                    IconButton(
-                      key: const ValueKey("zoomFitItem"),
-                      tooltip: "Fit the scene",
-                      iconSize: 18,
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => controller.askTimelineZoom(0),
-                      icon: const Icon(Icons.fit_screen_outlined),
-                    ),
-                    IconButton(
-                      key: const ValueKey("zoomInItem"),
-                      tooltip: "Zoom in",
-                      iconSize: 18,
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => controller.askTimelineZoom(2),
-                      icon: const Icon(Icons.zoom_in),
-                    ),
-                  ]),
+                  const SizedBox(height: 4),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton.icon(

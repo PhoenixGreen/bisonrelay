@@ -15,7 +15,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
     show sectionColors;
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart'
-    show MotionLanes, motionRowsOf;
+    show MotionLanes;
+import 'package:bruig/plugin_system/canvas/ui/canvas_rows.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart'
     show soundOwnerOf;
 import 'package:bruig/plugin_system/canvas/model/session.dart'
@@ -605,25 +606,28 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       listenable: controller,
       builder: (context, _) {
         var show = controller.timelineShow;
+        // The rows every panel shows (see canvas_rows.dart): each element
+        // with its own sound, then the sounds that are nobody's. Without the
+        // elements' rows, every channel is listed on its own.
+        var rows = canvasRowsOf(controller);
         var grouped = widget.motionRows
-            ? motionRowsOf(controller)
+            ? [
+                for (var r in rows)
+                  if (r.element case var e?) e
+              ]
             : const <CanvasElement>[];
-        var owned = <String, List<TimelineChannel>>{};
-        for (var c in controller.timelineChannels) {
-          if (soundOwnerOf(controller.document, c.key) case var o?
-              when grouped.any((e) => e.id == o.id)) {
-            (owned[o.id] ??= []).add(c);
-          }
-        }
-        var ownedKeys = {
-          for (var l in owned.values)
-            for (var c in l) c.key
+        var owned = <String, List<TimelineChannel>>{
+          if (widget.motionRows)
+            for (var r in rows)
+              if (r.element case var e?) e.id: r.channels,
         };
         // The others: the ones whose strips move among themselves.
-        var channels = _withMoving([
-          for (var c in controller.timelineChannels)
-            if (!ownedKeys.contains(c.key)) c
-        ]);
+        var channels = _withMoving(widget.motionRows
+            ? [
+                for (var r in rows)
+                  if (r.element == null) ...r.channels
+              ]
+            : controller.timelineChannels);
         var width = controller.headerWidth;
         return Stack(key: _stack, children: [
           ListView(

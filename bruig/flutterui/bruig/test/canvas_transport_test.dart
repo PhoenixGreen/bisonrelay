@@ -326,10 +326,13 @@ void main() {
       await closeTiming(tester);
       // Stepping by the grid: the bar control was removed for the clips system.
 
+      // The Marker menu is a panel (Ken, 2026-11-08): what a marker does as
+      // five buttons; a locator added from it is named as addLocator names it.
       await openMarker(tester);
-      await tester.tap(find.byKey(const ValueKey("addLocator")));
+      await tester.tap(find.byKey(const ValueKey("markerKind-locator")));
       await tester.pumpAndSettle();
       expect(c.document.actions.single.kind, TimelineActionKind.locator);
+      expect(c.document.actions.single.label, "Locator 1");
       expect(tester.takeException(), isNull);
     });
 
@@ -357,8 +360,15 @@ void main() {
       await closeTiming(tester);
 
       await openMarker(tester);
-      expect(find.byKey(const ValueKey("addAction")), findsOneWidget);
-      expect(find.byKey(const ValueKey("addLocator")), findsNothing);
+      expect(find.byKey(const ValueKey("markerPanel")), findsOneWidget);
+      for (var kind in ["locator", "stop", "pause", "loop", "jump"]) {
+        expect(find.byKey(ValueKey("markerKind-$kind")), findsOneWidget,
+            reason: kind);
+      }
+      await tester.tap(find.byKey(const ValueKey("markerKind-stop")));
+      await tester.pumpAndSettle();
+      expect(c.document.actions.single.kind, TimelineActionKind.stop);
+      expect(c.document.actions.single.frame, 287);
       expect(tester.takeException(), isNull);
     });
 

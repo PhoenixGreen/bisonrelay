@@ -274,9 +274,13 @@ void main() {
       return c;
     }
 
+    // The panels have the half of the bar the middle leaves them (Ken,
+    // 2026-11-08: play and the timer in the middle).
     for (var (width, scale, named) in [
-      (1300.0, 1.2, true),
-      (2000.0, 1.5, true),
+      (1700.0, 1.0, true),
+      (2000.0, 1.2, true),
+      (2600.0, 1.5, true),
+      (1100.0, 1.2, false),
       (560.0, 1.0, false),
     ]) {
       testWidgets(

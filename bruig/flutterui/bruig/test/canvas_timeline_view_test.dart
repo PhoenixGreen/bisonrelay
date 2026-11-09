@@ -143,6 +143,63 @@ void main() {
       return c.frame;
     }
 
+    // Ken, 2026-11-08: the corner minimal -- the framing and the channel
+    // height, and a "?"; no zoom buttons and no keyframe button.
+    testWidgets("the corner: framing, the channel height and a ?",
+        (tester) async {
+      var c = await show(tester, elements: [channel("a", "Music")]);
+      c.headerWidth = 200;
+      await tester.pump();
+      // The frame at the strip's right end, pressed below the loop's brace.
+      Future<int> frameAtEnd(WidgetTester tester, CanvasController c) async {
+        var strip = tester.getRect(find.byKey(const ValueKey("keyframeStrip")));
+        await tester.tapAt(Offset(strip.right - 2, strip.bottom - 4));
+        await tester.pump();
+        return c.frame;
+      }
+
+      for (var gone in [
+        "timelineZoomIn",
+        "timelineZoomOut",
+        "timelineZoomFit",
+        "keyframesShown"
+      ]) {
+        expect(find.byKey(ValueKey(gone)), findsNothing, reason: gone);
+      }
+      // Loop: the loop framed, and on.
+      c.setLoop(40, 20);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("timelineFrameLoop")));
+      await tester.pump();
+      expect(c.looping, isTrue);
+      expect(await frameAtEnd(tester, c), inInclusiveRange(56, 60));
+      // Picked: the sound picked, four seconds at ten frames a second.
+      c.selectOnly("a");
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("timelineFramePicked")));
+      await tester.pump();
+      expect(await frameAtEnd(tester, c), inInclusiveRange(36, 40));
+      // All: the whole canvas again.
+      await tester.tap(find.byKey(const ValueKey("timelineFrameAll")));
+      await tester.pump();
+      expect(await frameAtEnd(tester, c), 99);
+      // The height steps S, M, L and round again, its letter saying which.
+      var size = c.laneSize;
+      for (var i = 0; i < 3; i++) {
+        await tester.tap(find.byKey(const ValueKey("timelineLaneHeight")));
+        await tester.pump();
+      }
+      expect(c.laneSize, size);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("timelineLaneHeight")),
+              matching: find.text(const ["S", "M", "L"][size])),
+          findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey("help-timeline")));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("helpText-timeline")), findsOneWidget);
+    });
+
     testWidgets("the effects and the mixer are opened from the header",
         (tester) async {
       var c = await show(tester,
@@ -219,24 +276,15 @@ void main() {
       expect(cuesDrawn(), isEmpty);
     });
 
-    testWidgets("the keyframe row is hidden, left of zoom in, for room",
+    testWidgets("the keyframe row is hidden from the play bar's settings",
         (tester) async {
       var c = await show(tester, elements: [channel("a", "Music")]);
-      var button = find.byKey(const ValueKey("keyframesShown"));
-      expect(
-          tester.getCenter(button).dx,
-          lessThan(tester
-              .getCenter(find.byKey(const ValueKey("timelineZoomIn")))
-              .dx));
-      expect(
-          tester.getCenter(button).dx,
-          greaterThan(tester
-              .getCenter(find.byKey(const ValueKey("timelineLaneHeight")))
-              .dx));
+      // Not in the timeline's corner now (Ken, 2026-11-08).
+      expect(find.byKey(const ValueKey("keyframesShown")), findsNothing);
       var strip =
           tester.getSize(find.byKey(const ValueKey("keyframeStrip"))).height;
       var lane = tester.getRect(find.byKey(const ValueKey("lane-a"))).top;
-      await tester.tap(button);
+      await tapTimelineItem(tester, "keyframesShownItem");
       await tester.pump();
       expect(c.keyframesShown, isFalse);
       expect(tester.getSize(find.byKey(const ValueKey("keyframeStrip"))).height,
@@ -244,7 +292,7 @@ void main() {
       expect(tester.getRect(find.byKey(const ValueKey("lane-a"))).top,
           lessThan(lane - 20),
           reason: "the channels have the room");
-      await tester.tap(button);
+      await tapTimelineItem(tester, "keyframesShownItem");
       await tester.pump();
       expect(tester.getSize(find.byKey(const ValueKey("keyframeStrip"))).height,
           strip);
@@ -294,11 +342,11 @@ void main() {
       double height(String key) =>
           tester.getSize(find.byKey(ValueKey("lane-$key"))).height;
       var button = find.byKey(const ValueKey("timelineLaneHeight"));
-      // Left of zoom in, among the zoom buttons.
+      // In the corner, after the framing.
       expect(
           tester.getCenter(button).dx,
-          lessThan(tester
-              .getCenter(find.byKey(const ValueKey("timelineZoomIn")))
+          greaterThan(tester
+              .getCenter(find.byKey(const ValueKey("timelineFrameAll")))
               .dx));
       expect(height("a"), laneSizeHeights[0]);
       c.setLaneHeight("b", 90);
@@ -391,12 +439,12 @@ void main() {
       expect(await frameAtEnd(tester, c), 99);
 
       c.frame = 0;
-      await tester.tap(find.byKey(const ValueKey("timelineZoomIn")));
+      c.askTimelineZoom(2);
       await tester.pump();
       var end = await frameAtEnd(tester, c);
       expect(end, inInclusiveRange(45, 55), reason: "half the frames");
 
-      await tester.tap(find.byKey(const ValueKey("timelineZoomFit")));
+      await tester.tap(find.byKey(const ValueKey("timelineFrameAll")));
       await tester.pump();
       expect(await frameAtEnd(tester, c), 99);
     });
@@ -418,7 +466,7 @@ void main() {
       var c = await show(tester);
       await tapTimelineItem(tester, "trackpadScrolls-item");
       c.frame = 0;
-      await tester.tap(find.byKey(const ValueKey("timelineZoomIn")));
+      c.askTimelineZoom(2);
       await tester.pump();
       var end = await frameAtEnd(tester, c);
 

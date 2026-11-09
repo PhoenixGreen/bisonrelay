@@ -156,6 +156,9 @@ class MotionPlayer implements LiveMotion {
 
   bool isOff(String element) => _of.containsKey(element);
 
+  /// offElements are the elements off their timelines for their slots.
+  Iterable<String> get offElements => _of.keys;
+
   /// playing is whether anything is playing or waiting to: the clock has
   /// to keep going, and the canvas be painted.
   bool get playing => _of.values.any((p) => p.layers

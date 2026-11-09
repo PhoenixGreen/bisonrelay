@@ -4,6 +4,18 @@ part of '../canvas_controller.dart';
 // Part of CanvasController: the state is the class's, in
 // canvas_controller.dart; these are its methods.
 
+/// OffTimelineItem is one thing Back to the timeline lists: a row playing
+/// from its slots ([held] 0), or a channel with [held] settings held by hand
+/// off their automation lanes. [key] is the element's id or the channel's.
+class OffTimelineItem {
+  final String key;
+  final String name;
+  final int held;
+  const OffTimelineItem(this.key, this.name, {this.held = 0});
+
+  bool get isHeld => held > 0;
+}
+
 extension CanvasSession on CanvasController {
   /// liveMotion is what the renderer draws the elements off their
   /// timelines from: null with every one on it.
@@ -225,6 +237,75 @@ extension CanvasSession on CanvasController {
       if (_clipChannels[key]?.now != null) stopChannelClips(key);
     }
     _offTimeline.clear();
+    _syncTimeline();
+    notifyListeners();
+  }
+
+  /// offTimelineItems is what Back to the timeline lists (Ken, 2026-11-08):
+  /// each row playing from its slots -- an element and its own sound one
+  /// item, as they are one row -- then each channel with settings held by
+  /// hand off their lanes.
+  List<OffTimelineItem> get offTimelineItems {
+    var doc = _document;
+    String nameOf(String key) {
+      if (doc.elementById(key) case var e?)
+        return e.name.isEmpty ? key : e.name;
+      return timelineChannels.where((c) => c.key == key).firstOrNull?.name ??
+          key;
+    }
+
+    // The channels playing from their slots: those that left the timeline,
+    // or -- only the slots playing -- every one with a clip on.
+    var channels = {
+      ..._offTimeline,
+      if (_sessionOnly)
+        for (var e in _clipChannels.entries)
+          if (e.value.now != null || e.value.next != null) e.key,
+    };
+    var elements = {...motionPlayer.offElements};
+    for (var key in channels) {
+      if (key.startsWith("snd-") && doc.elementById(key.substring(4)) != null) {
+        elements.add(key.substring(4));
+      }
+    }
+    return [
+      for (var id in elements) OffTimelineItem(id, nameOf(id)),
+      for (var key in channels)
+        if (!(key.startsWith("snd-") && elements.contains(key.substring(4))))
+          OffTimelineItem(key, nameOf(key)),
+      for (var e in _overridden.entries)
+        if (e.value.isNotEmpty)
+          OffTimelineItem(e.key, nameOf(e.key), held: e.value.length),
+    ];
+  }
+
+  /// backToTimelineFor sends [item] alone back to the timeline: a row's
+  /// clips stopped and its timeline heard again, or a channel's settings
+  /// handed back to their lanes.
+  void backToTimelineFor(OffTimelineItem item) {
+    if (item.isHeld) {
+      if (_overridden.remove(item.key) != null) {
+        _applyMix();
+        notifyListeners();
+      }
+      return;
+    }
+    motionPlayer.leave(item.key);
+    _triggeredOff.remove(item.key);
+    for (var key in {item.key, "snd-${item.key}"}) {
+      var playing = _clipChannels[key];
+      var off = _offTimeline.remove(key);
+      if ((off || _sessionOnly) &&
+          (playing?.now != null || playing?.next != null)) {
+        stopChannelClips(key, now: true);
+      }
+    }
+    // Only the slots playing, and none left: the slots stop, as Back to the
+    // timeline does.
+    if (_sessionOnly && offTimelineItems.every((i) => i.isHeld)) {
+      pause();
+      return;
+    }
     _syncTimeline();
     notifyListeners();
   }

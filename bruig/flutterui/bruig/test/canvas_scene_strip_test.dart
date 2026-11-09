@@ -126,10 +126,10 @@ void main() {
   });
 
   testWidgets("zooming zooms the scenes with the ruler", (tester) async {
-    await show(tester);
+    var c = await show(tester);
     await playAll(tester);
     var wide = rectOf(tester, "sceneBox1").width + 8;
-    await tester.tap(find.byKey(const ValueKey("timelineZoomIn")));
+    c.askTimelineZoom(2);
     await tester.pumpAndSettle();
     expect(rectOf(tester, "sceneBox1").width + 8, closeTo(wide * 2, 1),
         reason: "twice the pixels per frame for the box as for the ruler");
@@ -600,9 +600,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey("timelineAllChannels")), findsNothing,
           reason: "Play all scenes is the switch");
-      expect(tester.getSize(find.byKey(const ValueKey("timelineZoomIn"))).width,
-          greaterThanOrEqualTo(24),
-          reason: "the zoom buttons are big enough to hit");
+      expect(
+          tester.getSize(find.byKey(const ValueKey("timelineFrameAll"))).width,
+          greaterThanOrEqualTo(20),
+          reason: "the framing buttons are big enough to hit");
 
       await tapPlayAll(tester);
       Finder strip(String id) => find.byKey(ValueKey(

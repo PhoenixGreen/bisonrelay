@@ -144,7 +144,9 @@ void main() {
     var music = tester.getRect(find.byKey(const ValueKey("strip-m")));
     expect(own.left, greaterThan(strip.left));
     expect(own.left - strip.right, lessThan(12), reason: "next to it");
-    expect(music.right, lessThan(strip.left), reason: "the others first");
+    expect(music.left, greaterThan(own.right),
+        reason: "the sounds that are nobody's after the elements', as on the "
+            "timeline (see canvas_rows.dart)");
     expect(find.byKey(const ValueKey("elementSoundOut-a")), findsOneWidget);
   });
 

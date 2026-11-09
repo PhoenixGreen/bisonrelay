@@ -7,7 +7,8 @@ import 'package:bruig/plugin_system/canvas/model/transport.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/dock_switcher.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/help_note.dart';
+import 'package:bruig/plugin_system/canvas/ui/marker_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/play_bar_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/transport_controls.dart';
 import 'package:bruig/storage_manager.dart';
@@ -15,10 +16,13 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// play_bar.dart is the play bar along the panels under the canvas: the
-// transport, where the playhead is and what it is counted in, the marker
-// under it, what is lit, the switcher that opens the panels (see
-// dock_switcher.dart) and the rest behind its ⋯ menu. On its own, over the
+// play_bar.dart is the play bar along the panels under the canvas (Ken,
+// 2026-11-08, "play and timer sections in the middle of the bar"): the
+// switcher that opens the panels on the left (see dock_switcher.dart); in the
+// middle the transport, where the playhead is and what it is counted in, and
+// the Marker menu (marker_panel.dart); on the right Back to the timeline
+// when something has left it, what is lit, a "?" and the settings. No hover
+// tips: the "?" explains. On its own, over the
 // panels or under them (see CanvasController.barBelow), so it stays where it
 // is whichever panels are open; the timeline draws one of its own only when
 // it is used without the page (see CanvasTimeline.showBar).
@@ -81,9 +85,9 @@ class CanvasPlayBar extends StatefulWidget {
 }
 
 class _CanvasPlayBarState extends State<CanvasPlayBar> {
-  /// _leftKey and _rightKey are the bar's two ends, measured after each
-  /// layout to know whether the panels' buttons fit with their names.
-  final GlobalKey _leftKey = GlobalKey(), _rightKey = GlobalKey();
+  /// _leftKey is the switcher and _centreKey the middle, measured after
+  /// each layout to know whether the panels' buttons fit with their names.
+  final GlobalKey _leftKey = GlobalKey(), _centreKey = GlobalKey();
 
   /// _wideNeeds is how wide the bar must be for the buttons' names, as last
   /// measured with them; null until measured. _wideFor is what it was
@@ -92,23 +96,29 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
   double? _wideNeeds;
   String _wideFor = "";
 
+  /// _centreWide is the middle's width, measured with the names too.
+  double? _centreWide;
+
   /// _compact is whether the panels' buttons are their icons alone.
   bool _compact = false;
 
-  /// _measure, after a layout, decides whether the names fit: the ends'
-  /// own widths beside each other within [room], the right one within the
-  /// part of it it may take.
+  /// _measure, after a layout, decides whether the names fit: the
+  /// switcher, as wide as it is with them, within the half of [room] the
+  /// middle leaves it.
   void _measure(double room) {
     if (!mounted) return;
     var left = _leftKey.currentContext?.findRenderObject();
-    var right = _rightKey.currentContext?.findRenderObject();
-    if (left is! RenderBox || right is! RenderBox) return;
-    if (!left.hasSize || !right.hasSize) return;
+    var centre = _centreKey.currentContext?.findRenderObject();
+    if (left is! RenderBox || centre is! RenderBox) return;
+    if (!left.hasSize || !centre.hasSize) return;
+    // Both measured as they are with their names: compact makes the middle
+    // narrower too, and deciding on that would undo itself the next frame.
     if (!_compact) {
-      _wideNeeds = math.max(
-          left.size.width + right.size.width + 16, right.size.width / 0.6);
+      _wideNeeds = left.size.width;
+      _centreWide = centre.size.width;
     }
-    var compact = _wideNeeds != null && room < _wideNeeds!;
+    var side = (room - (_centreWide ?? centre.size.width) - 24) / 2;
+    var compact = _wideNeeds != null && side < _wideNeeds!;
     if (compact != _compact) setState(() => _compact = compact);
   }
 
@@ -319,110 +329,6 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
     }
 
     var timelinePlays = controller.playing && !controller.sessionOnly;
-    Widget markers() {
-      // One button for an action here, a stop until "At this frame" says
-      // otherwise. A piece of sound adds a locator.
-      if (actionHere == null) {
-        return sound
-            ? TransportButton(
-                key: const ValueKey("addLocator"),
-                width: null,
-                tooltip: "Add a locator here: a named place to jump to",
-                onPressed: controller.addLocator,
-                child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.flag_outlined),
-                  SizedBox(width: 4),
-                  Text("Locator",
-                      style: TextStyle(fontWeight: FontWeight.w500)),
-                ]),
-              )
-            : CanvasIconButton(
-                key: const ValueKey("addAction"),
-                icon: Icons.flag_outlined,
-                tooltip: "Add Timeline Action",
-                onPressed: () => _addAction(TimelineActionKind.stop),
-              );
-      }
-      return Row(mainAxisSize: MainAxisSize.min, children: [
-        CanvasDropdown<TimelineActionKind>(
-          label: "At this frame",
-          value: actionHere.kind,
-          width: 116,
-          options: [for (var k in TimelineActionKind.values) (k, k.label)],
-          onChanged: (v) => _replaceAction(actionHere.copyWith(kind: v)),
-        ),
-        // A word or two beside the flag, and whether it shows.
-        CanvasTextField(
-          key: const ValueKey("actionLabel"),
-          label: "Label",
-          value: actionHere.label,
-          width: 110,
-          grow: false,
-          onChanged: (v) {
-            controller.beginInteraction();
-            var document = controller.document;
-            controller.apply(
-                document.copyWith(actions: [
-                  for (var a in document.actions)
-                    a.frame == actionHere.frame ? a.copyWith(label: v) : a,
-                ]),
-                transient: true);
-          },
-          onCommit: controller.endInteraction,
-        ),
-        if (actionHere.kind != TimelineActionKind.locator)
-          CanvasToggle(
-            key: const ValueKey("actionShowLabel"),
-            label: "Show label",
-            value: actionHere.showLabel,
-            onChanged: (v) => _replaceAction(actionHere.copyWith(showLabel: v)),
-          ),
-        // A stop that waits for one of the game's actions as well as Play
-        // ("press A to start").
-        if (actionHere.kind == TimelineActionKind.stop)
-          CanvasDropdown<String>(
-            key: const ValueKey("actionWaitsFor"),
-            label: "Goes on when",
-            value: document.controlsNow.any((a) => a.id == actionHere.waitsFor)
-                ? actionHere.waitsFor
-                : "",
-            width: 150,
-            options: [
-              ("", "Played again"),
-              for (var a in document.controlsNow)
-                (a.id, "${a.name} is pressed"),
-            ],
-            onChanged: (v) => _replaceAction(actionHere.copyWith(waitsFor: v)),
-          ),
-        if (actionHere.kind == TimelineActionKind.loop ||
-            actionHere.kind == TimelineActionKind.jump)
-          CanvasNumberField(
-            label: "To frame",
-            value: actionHere.target.toDouble(),
-            min: 0,
-            max: (document.frames - 1).toDouble(),
-            width: 56,
-            onChanged: (v) =>
-                _replaceAction(actionHere.copyWith(target: v.round())),
-          ),
-        if (actionHere.kind == TimelineActionKind.loop)
-          CanvasNumberField(
-            label: "Times (0 = ∞)",
-            value: actionHere.repeats.toDouble(),
-            min: 0,
-            max: 999,
-            width: 56,
-            onChanged: (v) =>
-                _replaceAction(actionHere.copyWith(repeats: v.round())),
-          ),
-        CanvasIconButton(
-          icon: Icons.close,
-          tooltip: "Remove this marker",
-          onPressed: () => _removeAction(actionHere.frame),
-        ),
-      ]);
-    }
-
     // The bar holds what is pressed while working: the transport, where the
     // playhead is, and the panels' switcher. The timing is behind the
     // readout and the rest behind the settings button; an option turned on
@@ -561,20 +467,37 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
         ),
       ]),
     );
-    // A marker under the playhead, and what it does, or one to add.
+    // The marker under the playhead, named, or Markers: its panel lists
+    // every marker and adds one (see marker_panel.dart).
     var marker = MenuAnchor(
+      alignmentOffset: const Offset(0, 6),
       menuChildren: [
-        Padding(padding: const EdgeInsets.all(10), child: markers()),
+        Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            child: MarkerPanel(controller: controller)),
       ],
       builder: (context, menu, _) => TransportButton(
         key: const ValueKey("markerMenu"),
         width: null,
-        icon: actionHere == null ? Icons.outlined_flag : Icons.flag,
-        tooltip: actionHere == null
-            ? "A marker here"
-            : "The marker here: ${actionHere.label.isEmpty ? actionHere.kind.label : actionHere.label}",
-        on: actionHere != null,
+        tooltip: "",
+        on: actionHere != null || menu.isOpen,
         onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(actionHere == null ? Icons.outlined_flag : Icons.flag,
+              size: 16,
+              color: actionHere == null ? null : markerColour(actionHere.kind)),
+          if (!_compact) ...[
+            const SizedBox(width: 5),
+            Text(
+                actionHere == null
+                    ? "Markers"
+                    : actionHere.label.isEmpty
+                        ? actionHere.kind.label
+                        : actionHere.label,
+                style: const TextStyle(fontWeight: FontWeight.w500)),
+          ],
+          const Icon(Icons.expand_more, size: 15),
+        ]),
       ),
     );
     // What is turned on in the ⋯ menu, lit on the bar.
@@ -665,121 +588,336 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
           (key: key, icon: icon, label: label, on: on, toggle: toggle),
       ],
       onBarBelow: () => _setBarBelow(!controller.barBelow),
-      onAddMarker: () => sound
-          ? controller.addLocator()
-          : _addAction(TimelineActionKind.locator),
+      onAddMarker: () => addMarker(controller, TimelineActionKind.locator),
       onCustomiseSidebars: widget.onCustomiseSidebars,
     );
 
-    return CanvasControlScope(
-      maxWidth: 400,
-      hoverCaptions: true,
-      child: LayoutBuilder(builder: (context, box) {
-        // Short of room, the panels' buttons are their icons alone, and
-        // past that the right-hand end scrolls too, rather than running off
-        // the bar.
-        var scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
-        // Measured rather than guessed: with their names while they fit
-        // beside the transport. A new text size, or other buttons, are
-        // measured again with their names.
-        var dock = controller.dock;
-        var measuredFor = "$scale|${dock.switcher}|${dock.showLayouts}|"
-            "${dock.arrangements.length}|${dock.places}";
-        if (measuredFor != _wideFor) {
-          _wideFor = measuredFor;
-          _wideNeeds = null;
-          _compact = false;
-        }
-        var compact = _compact;
-        var room = box.maxWidth;
-        WidgetsBinding.instance.addPostFrameCallback((_) => _measure(room));
-        var switcher =
-            widget.switcher ?? DockSwitcherBar(controller: controller);
-        if (switcher is DockSwitcherBar && switcher.compact != compact) {
-          switcher = switcher.copyWith(compact: compact);
-        }
-        return Row(children: [
-          // Scrolls sideways rather than overflowing on a narrow window.
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child:
-                  Row(key: _leftKey, mainAxisSize: MainAxisSize.min, children: [
-                transportMin(),
-                readout,
-                marker,
-                if (back)
-                  TransportGroup(children: [
-                    TransportButton(
-                      key: const ValueKey("backToTimeline"),
-                      width: null,
-                      icon: Icons.keyboard_return,
-                      tooltip: "Something left the timeline for its slots, or "
-                          "a setting is held by hand: press to follow the "
-                          "timeline again",
-                      on: true,
-                      lit: const Color(0xFFF2A33D),
-                      onPressed: () {
-                        if (controller.offTimeline) controller.backToTimeline();
-                        if (controller.anyOverridden) {
-                          controller.backToArrangement();
-                        }
-                      },
-                      child: const Text("Back to timeline",
-                          style: TextStyle(fontWeight: FontWeight.w500)),
-                    ),
-                  ]),
+    return TooltipVisibility(
+      visible: false,
+      child: CanvasControlScope(
+        maxWidth: 400,
+        hoverCaptions: true,
+        child: LayoutBuilder(builder: (context, box) {
+          var scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
+          // Measured rather than guessed: with their names while they fit
+          // beside the middle. A new text size, or other buttons, are
+          // measured again with their names.
+          var dock = controller.dock;
+          var measuredFor = "$scale|${dock.switcher}|${dock.showLayouts}|"
+              "${dock.arrangements.length}|${dock.places}";
+          if (measuredFor != _wideFor) {
+            _wideFor = measuredFor;
+            _wideNeeds = null;
+            _centreWide = null;
+            _compact = false;
+          }
+          var compact = _compact;
+          var room = box.maxWidth;
+          WidgetsBinding.instance.addPostFrameCallback((_) => _measure(room));
+          var switcher =
+              widget.switcher ?? DockSwitcherBar(controller: controller);
+          if (switcher is DockSwitcherBar && switcher.compact != compact) {
+            switcher = switcher.copyWith(compact: compact);
+          }
+          return Row(children: [
+            // The panels, on the left; scrolled rather than overflowing.
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: KeyedSubtree(key: _leftKey, child: switcher),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // In the middle: the transport, where the playhead is, and the
+            // markers -- always in the same place, whatever is either side.
+            Row(key: _centreKey, mainAxisSize: MainAxisSize.min, children: [
+              transportMin(),
+              readout,
+              if (!compact) _tempo(theme, document),
+              const SizedBox(width: 4),
+              marker,
+            ]),
+            const SizedBox(width: 12),
+            // On the right: Back to the timeline beside the middle, when
+            // something has left it; then what is lit, the "?" and the
+            // settings at the end.
+            Expanded(
+              child: Row(children: [
+                // Back to the timeline has all the room the rest leaves, so
+                // it keeps its words; it gives way to them only short of it.
+                Expanded(
+                  child: back
+                      ? Align(
+                          alignment: Alignment.centerLeft,
+                          child: _BackToTimeline(controller: controller))
+                      : const SizedBox.shrink(),
+                ),
+                Flexible(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    reverse: true,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      lit,
+                      const SizedBox(width: 6),
+                      HelpNote(
+                        id: "playBar",
+                        title: "The play bar",
+                        paragraphs: playBarHelp,
+                      ),
+                      const SizedBox(width: 4),
+                      more,
+                    ]),
+                  ),
+                ),
               ]),
             ),
-          ),
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: box.maxWidth * 0.6),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              reverse: true,
-              child: Row(
-                  key: _rightKey,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    lit,
-                    const SizedBox(width: 4),
-                    switcher,
-                    more,
-                  ]),
-            ),
-          ),
-        ]);
-      }),
+          ]);
+        }),
+      ),
     );
   }
 
-  void _addAction(TimelineActionKind kind) {
-    var document = controller.document;
-    var actions = [
-      ...document.actions.where((a) => a.frame != controller.frame),
-      TimelineAction(
-        id: motionId("m"),
-        frame: controller.frame,
-        kind: kind,
-        // A loop with nothing to loop back to is useless, so it defaults to
-        // the start.
-        target: 0,
+  /// _tempo is what the playhead is counted in, small beside where it is:
+  /// the tempo and metre of a piece of sound, a scene's frames a second.
+  Widget _tempo(ThemeNotifier theme, CanvasDocument document) {
+    var colors = theme.colors;
+    // One line, so it fits the bar at any text size.
+    var (first, second) = document.kind.isAudio
+        ? (
+            _trim(document.audio.tempo.toStringAsFixed(2)),
+            document.audio.signature
+          )
+        : ("${document.frameRate}", "fps");
+    return Padding(
+      key: const ValueKey("playBarTempo"),
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Text.rich(
+          TextSpan(children: [
+            TextSpan(text: first, style: TextStyle(color: colors.onSurface)),
+            TextSpan(text: " $second"),
+          ]),
+          maxLines: 1,
+          style: TextStyle(
+              fontFeatures: const [FontFeature.tabularFigures()],
+              fontSize: 11,
+              color: colors.onSurfaceVariant)),
+    );
+  }
+
+  static String _trim(String n) =>
+      n.contains(".") ? n.replaceFirst(RegExp(r"\.?0+$"), "") : n;
+}
+
+/// playBarHelp is the play bar's "?".
+const playBarHelp = [
+  "The panels are on the left: press one to open or close it. Its small "
+      "picture shows where it opens; drag it onto the map that appears to "
+      "move it, or right-click it.",
+  "Play, stop, record and loop are in the middle, with where the playhead "
+      "is. Press the position to type where to go; the arrow beside it opens "
+      "the length, the frame rate, the tempo and the loop.",
+  "The flag is the Marker menu: the marker under the playhead, every marker "
+      "in the canvas, and a way to add one.",
+  "Back to the timeline appears only when something has left the timeline. "
+      "The gear holds the panels' places and layouts and the timeline's "
+      "settings.",
+];
+
+/// _BackToTimeline is Back to the timeline (Ken, 2026-11-08: "what does it
+/// do and is it needed? if it is needed it needs a redesign"): shown only
+/// while something has left the timeline, amber, with how many; pressed,
+/// everything goes back. Its arrow lists them -- the rows playing from their
+/// slots, and the channels with settings held by hand off their lanes -- each
+/// to send back alone. It is Ableton's Back to Arrangement.
+class _BackToTimeline extends StatelessWidget {
+  final CanvasController controller;
+  const _BackToTimeline({required this.controller});
+
+  static const _ink = Color(0xFFF6C46A);
+  static const _edge = Color(0xFF7A5A1E);
+  static const _fill = Color(0xFF3A2A10);
+
+  void _all() {
+    if (controller.offTimeline) controller.backToTimeline();
+    if (controller.anyOverridden) controller.backToArrangement();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var items = controller.offTimelineItems;
+    return Container(
+      height: 28,
+      decoration: BoxDecoration(
+        color: _fill,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: _edge),
       ),
-    ];
-    controller.apply(document.copyWith(actions: actions));
+      clipBehavior: Clip.antiAlias,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Flexible(
+          child: InkWell(
+            key: const ValueKey("backToTimeline"),
+            onTap: _all,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 9),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.keyboard_return, size: 15, color: _ink),
+                const SizedBox(width: 6),
+                const Flexible(
+                  child: Text("Back to timeline",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: _ink)),
+                ),
+                if (items.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    key: const ValueKey("backToTimelineCount"),
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    decoration: BoxDecoration(
+                        color: const Color(0xFFF2A33D),
+                        borderRadius: BorderRadius.circular(8)),
+                    child: Text("${items.length}",
+                        style: const TextStyle(
+                            fontFeatures: [FontFeature.tabularFigures()],
+                            fontSize: 10.5,
+                            color: Color(0xFF2A1A04))),
+                  ),
+                ],
+              ]),
+            ),
+          ),
+        ),
+        Container(width: 1, color: _edge),
+        MenuAnchor(
+          alignmentOffset: const Offset(0, 6),
+          menuChildren: [_OffList(controller: controller, onAll: _all)],
+          builder: (context, menu, _) => InkWell(
+            key: const ValueKey("backToTimelineList"),
+            onTap: () => menu.isOpen ? menu.close() : menu.open(),
+            child: const SizedBox(
+                width: 24,
+                height: 28,
+                child: Icon(Icons.expand_more, size: 15, color: _ink)),
+          ),
+        ),
+      ]),
+    );
   }
+}
 
-  void _removeAction(int frame) {
-    var document = controller.document;
-    controller.apply(document.copyWith(
-        actions: document.actions.where((a) => a.frame != frame).toList()));
-  }
+/// _OffList is what is off the timeline, in its two groups, each to send
+/// back alone; and all of it at once.
+class _OffList extends StatelessWidget {
+  final CanvasController controller;
+  final VoidCallback onAll;
+  const _OffList({required this.controller, required this.onAll});
 
-  void _replaceAction(TimelineAction action) {
-    var document = controller.document;
-    controller.apply(document.copyWith(actions: [
-      ...document.actions.where((a) => a.frame != action.frame),
-      action,
-    ]));
-  }
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) {
+          var colors = ThemeNotifier.of(context).colors;
+          var items = controller.offTimelineItems;
+          Widget heading(String text) => Padding(
+                padding: const EdgeInsets.fromLTRB(2, 8, 2, 4),
+                child: Text(text.toUpperCase(),
+                    style: TextStyle(
+                        fontSize: 10,
+                        letterSpacing: 0.8,
+                        fontWeight: FontWeight.w600,
+                        color: colors.onSurfaceVariant)),
+              );
+          Widget row(OffTimelineItem item) => Container(
+                key: ValueKey(
+                    "offTimeline-${item.isHeld ? "held" : "slots"}-${item.key}"),
+                height: 30,
+                margin: const EdgeInsets.only(bottom: 3),
+                padding: const EdgeInsets.only(left: 8),
+                decoration: BoxDecoration(
+                    color: colors.surfaceContainerLowest,
+                    borderRadius: BorderRadius.circular(6)),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(item.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: colors.onSurface)),
+                  ),
+                  if (item.isHeld)
+                    Text("${item.held} setting${item.held == 1 ? "" : "s"}",
+                        style: TextStyle(
+                            fontSize: 11, color: colors.onSurfaceVariant)),
+                  IconButton(
+                    key: ValueKey("backToTimeline-${item.key}"),
+                    iconSize: 15,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => controller.backToTimelineFor(item),
+                    icon: const Icon(Icons.keyboard_return),
+                  ),
+                ]),
+              );
+          var slots = [
+            for (var i in items)
+              if (!i.isHeld) i
+          ];
+          var held = [
+            for (var i in items)
+              if (i.isHeld) i
+          ];
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+            child: SizedBox(
+              width: 300,
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(children: [
+                      Expanded(child: heading("Off the timeline")),
+                      const HelpNote(
+                        id: "backToTimeline",
+                        title: "Back to the timeline",
+                        size: 16,
+                        paragraphs: [
+                          "A row playing from its slots stops its timeline "
+                              "clips; a setting moved by hand while its lane "
+                              "plays stops following the lane. Both stay that "
+                              "way until they are sent back.",
+                          "Back to the timeline sends everything back. Send "
+                              "one back here, or with the return arrow on its "
+                              "row.",
+                        ],
+                      ),
+                    ]),
+                    if (slots.isNotEmpty) ...[
+                      heading("Playing from slots"),
+                      for (var i in slots) row(i),
+                    ],
+                    if (held.isNotEmpty) ...[
+                      heading("Held by hand"),
+                      for (var i in held) row(i),
+                    ],
+                    const SizedBox(height: 6),
+                    FilledButton.tonalIcon(
+                      key: const ValueKey("backToTimelineAll"),
+                      onPressed: onAll,
+                      icon: const Icon(Icons.keyboard_return, size: 15),
+                      label: const Text("All back to the timeline",
+                          style: TextStyle(fontSize: 12)),
+                    ),
+                  ]),
+            ),
+          );
+        },
+      );
 }

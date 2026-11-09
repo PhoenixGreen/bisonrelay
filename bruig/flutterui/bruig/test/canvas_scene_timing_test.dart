@@ -147,8 +147,10 @@ void main() {
         (tester) async {
       var c = await show(tester);
       // Zoomed in on the start of the run, then taken to the last scene.
+      // No zoom buttons now (Ken, 2026-11-08): zoomed as Command and the
+      // wheel, or a pinch, ask.
       for (var i = 0; i < 6; i++) {
-        await tester.tap(find.byKey(const ValueKey("timelineZoomIn")));
+        c.askTimelineZoom(2);
         await tester.pump();
       }
       await tester.pumpAndSettle();
