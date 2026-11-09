@@ -91,44 +91,19 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
             ),
             devices: () => _ElementSoundBand(
                 controller: controller, element: e, theme: theme),
-            mixer: () => Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var layer = 0; layer < motionLayers; layer++) ...[
-                  if (layer > 0) const SizedBox(width: 4),
-                  Expanded(
-                    child: _LayerFader(
-                      key: ValueKey("layerFader-${e.id}-$layer"),
-                      label: "L${layer + 1}",
-                      short: narrow,
-                      value: e.base.motion.layerWeight(layer),
-                      theme: theme,
-                      onChanged: (v) {
-                        controller.beginInteraction();
-                        controller.weighLayer(e.id, layer, v, transient: true);
-                      },
-                      onCommit: controller.endInteraction,
-                    ),
-                  ),
-                ],
-              ],
+            mixer: () => Align(
+              alignment: Alignment.topCenter,
+              child: _MotionHalf(
+                  controller: controller,
+                  element: e,
+                  narrow: narrow,
+                  theme: theme),
             ),
-            miniMixer: () => Row(children: [
-              for (var layer = 0; layer < motionLayers; layer++) ...[
-                if (layer > 0) const SizedBox(width: 3),
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(2),
-                    child: LinearProgressIndicator(
-                      value: e.base.motion.layerWeight(layer),
-                      minHeight: 6,
-                      color: theme.studio.on,
-                      backgroundColor: theme.studio.inset,
-                    ),
-                  ),
-                ),
-              ],
-            ]),
+            miniMixer: () => _MotionLine(
+                controller: controller,
+                element: e,
+                narrow: narrow,
+                theme: theme),
           )));
 }
 
@@ -229,91 +204,6 @@ class _ElementSoundBand extends StatelessWidget {
       ]);
     });
   }
-}
-
-/// _LayerFader is how much a layer counts, nought to all of it: dragged up
-/// and down; double-clicked, all of it again.
-class _LayerFader extends StatelessWidget {
-  final String label;
-
-  /// short is its name alone under it, in a narrow strip: no room for how
-  /// much the layer counts as well.
-  final bool short;
-  final double value;
-  final MixerLook theme;
-  final ValueChanged<double> onChanged;
-  final VoidCallback onCommit;
-
-  const _LayerFader({
-    required this.label,
-    required this.value,
-    required this.theme,
-    required this.onChanged,
-    required this.onCommit,
-    this.short = false,
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    var studio = theme.studio;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Expanded(
-        child: LayoutBuilder(builder: (context, box) {
-          void at(double y) =>
-              onChanged((1 - y / math.max(1, box.maxHeight)).clamp(0.0, 1.0));
-          return GestureDetector(
-            supportedDevices: dragPointers,
-            behavior: HitTestBehavior.opaque,
-            onVerticalDragStart: (d) => at(d.localPosition.dy),
-            onVerticalDragUpdate: (d) => at(d.localPosition.dy),
-            onVerticalDragEnd: (_) => onCommit(),
-            onTapUp: (d) {
-              at(d.localPosition.dy);
-              onCommit();
-            },
-            onDoubleTap: () {
-              onChanged(1);
-              onCommit();
-            },
-            child: CustomPaint(
-              painter: _LayerFaderPainter(value, studio),
-            ),
-          );
-        }),
-      ),
-      const SizedBox(height: 3),
-      Text(short ? label : "$label ${(value * 100).round()}",
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.clip,
-          style: TextStyle(fontSize: 9, color: studio.muted)),
-    ]);
-  }
-}
-
-class _LayerFaderPainter extends CustomPainter {
-  final double value;
-  final StudioColors studio;
-  _LayerFaderPainter(this.value, this.studio);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    var track =
-        RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(3));
-    canvas.drawRRect(track, Paint()..color = studio.inset);
-    var top = size.height * (1 - value);
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(Rect.fromLTRB(0, top, size.width, size.height),
-            const Radius.circular(3)),
-        Paint()..color = studio.on.withValues(alpha: 0.75));
-    canvas.drawRect(
-        Rect.fromLTWH(0, top - 1, size.width, 2), Paint()..color = studio.text);
-  }
-
-  @override
-  bool shouldRepaint(_LayerFaderPainter old) =>
-      old.value != value || old.studio != studio;
 }
 
 /// _MotionSlot is one of an element's slots: a clip, coloured by what it is
@@ -590,6 +480,442 @@ class _MotionSlotState extends State<_MotionSlot> with _OnSessionPulse {
               child: MouseRegion(cursor: SystemMouseCursors.click, child: body),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// motionHalfHeight is the motion half's on every strip, wide or narrow, so
+/// the sound halves under them start on one line (the approved design).
+const motionHalfHeight = 78.0;
+
+/// layerName is what [l] of [m] is called on its chip: the clip on it, the
+/// first placed there or else the first made for it, or L1, L2 ...
+String layerName(ElementMotion m, int l) {
+  for (var p in m.placed) {
+    if (p.layer == l) {
+      if (m.clip(p.clip) case var c? when c.name.isNotEmpty) return c.name;
+    }
+  }
+  for (var c in m.clips) {
+    if (c.layer == l && c.name.isNotEmpty) return c.name;
+  }
+  return "L${l + 1}";
+}
+
+/// _MotionHalf is an element strip's motion: MOTION and how much of it is
+/// seen; a bar for how much of each layer plays, striped when pinned; the
+/// layer cross-fader, blending the free layers (Shift snaps to one); and a
+/// chip for each layer, pressed to pin it -- in place of three sliders
+/// (Ken, 2026-11-08: "the cross-fader with pins is enough").
+class _MotionHalf extends StatelessWidget {
+  final CanvasController controller;
+  final CanvasElement element;
+  final bool narrow;
+  final MixerLook theme;
+  const _MotionHalf(
+      {required this.controller,
+      required this.element,
+      required this.narrow,
+      required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    var id = element.id;
+    var m = element.base.motion;
+    var used = m.layersInUse;
+    var studio = theme.studio;
+    var label = TextStyle(
+        fontSize: 9,
+        letterSpacing: narrow ? 0 : 0.6,
+        fontWeight: FontWeight.w600,
+        color: studio.muted);
+    return SizedBox(
+      key: ValueKey("motionHalf-$id"),
+      height: motionHalfHeight,
+      child: Opacity(
+        opacity: m.off ? 0.4 : 1,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 3, 4, 3),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            SizedBox(
+              height: 14,
+              child: Row(children: [
+                // The label gives way first: the amount is the number.
+                Flexible(
+                  child: Text(narrow ? "MOT" : "MOTION",
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.clip,
+                      style: label),
+                ),
+                if (!narrow) ...[
+                  const SizedBox(width: 3),
+                  const HelpNote(
+                    id: "crossFader",
+                    size: 12,
+                    title: "Layer cross-fader",
+                    paragraphs: [
+                      "Slide it to blend from one layer to the next. "
+                          "Half way between two layers plays half of each. "
+                          "Hold Shift to land on a layer.",
+                      "Press a layer's name to pin it: a pinned layer "
+                          "always plays in full, and the fader blends the "
+                          "others.",
+                      "The bars show how much of each layer plays. The "
+                          "number is how much of the motion is seen: drag "
+                          "it up or down.",
+                    ],
+                  ),
+                ],
+                const SizedBox(width: 2),
+                // Smaller rather than cut, on a narrow strip at a large
+                // text size.
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: _MotionAmount(
+                          controller: controller,
+                          element: element,
+                          theme: theme),
+                    ),
+                  ),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 3),
+            if (used.isEmpty)
+              Expanded(
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                      color: studio.inset,
+                      borderRadius: BorderRadius.circular(4)),
+                  child: Text("No clips yet",
+                      maxLines: 1,
+                      style: TextStyle(fontSize: 9.5, color: studio.muted)),
+                ),
+              )
+            else ...[
+              SizedBox(
+                height: 16,
+                child: Row(children: [
+                  for (var (i, l) in used.indexed) ...[
+                    if (i > 0) const SizedBox(width: 3),
+                    Expanded(
+                      child: _WeightBar(
+                          key: ValueKey("layerBar-$id-$l"),
+                          weight: m.layerWeight(l),
+                          pinned: m.isPinned(l),
+                          theme: theme),
+                    ),
+                  ],
+                ]),
+              ),
+              const SizedBox(height: 4),
+              _CrossFader(
+                  key: ValueKey("crossFader-$id"),
+                  controller: controller,
+                  element: element,
+                  height: 14,
+                  theme: theme),
+              const SizedBox(height: 4),
+              SizedBox(
+                height: 16,
+                child: Row(children: [
+                  for (var (i, l) in used.indexed) ...[
+                    if (i > 0) const SizedBox(width: 3),
+                    Expanded(
+                      child: _LayerChip(
+                        key: ValueKey("layerPin-$id-$l"),
+                        name: narrow
+                            ? layerName(m, l).characters.take(2).toString()
+                            : layerName(m, l),
+                        pinned: m.isPinned(l),
+                        theme: theme,
+                        onTap: () => controller.pinLayer(id, l, !m.isPinned(l)),
+                      ),
+                    ),
+                  ],
+                ]),
+              ),
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// _MotionLine is the motion half on a minimised mixer: the motion switch,
+/// a thin cross-fader and how much is seen, on one line.
+class _MotionLine extends StatelessWidget {
+  final CanvasController controller;
+  final CanvasElement element;
+  final bool narrow;
+  final MixerLook theme;
+  const _MotionLine(
+      {required this.controller,
+      required this.element,
+      required this.narrow,
+      required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    var m = element.base.motion;
+    var studio = theme.studio;
+    return SizedBox(
+      key: ValueKey("motionLine-${element.id}"),
+      height: 16,
+      child: Row(children: [
+        InkWell(
+          key: ValueKey("motionSwitch-${element.id}"),
+          onTap: () => controller.switchMotion(element.id, m.off),
+          child: SizedBox(
+            width: 16,
+            child: Icon(Icons.diamond,
+                size: 10, color: m.off ? studio.muted : motionColour),
+          ),
+        ),
+        const SizedBox(width: 2),
+        Expanded(
+          child: _CrossFader(
+              key: ValueKey("crossFaderLine-${element.id}"),
+              controller: controller,
+              element: element,
+              height: 8,
+              theme: theme),
+        ),
+        if (!narrow) ...[
+          const SizedBox(width: 4),
+          _MotionAmount(controller: controller, element: element, theme: theme),
+        ],
+      ]),
+    );
+  }
+}
+
+/// _MotionAmount is how much of the element's motion is seen, as a
+/// percentage dragged up or down; double-clicked, all of it.
+class _MotionAmount extends StatelessWidget {
+  final CanvasController controller;
+  final CanvasElement element;
+  final MixerLook theme;
+  const _MotionAmount(
+      {required this.controller, required this.element, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    var amount = element.base.motion.amount;
+    return GestureDetector(
+      key: ValueKey("motionAmount-${element.id}"),
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragStart: (_) => controller.beginInteraction(),
+      onVerticalDragUpdate: (d) => controller.setMotionAmount(
+          element.id, controller.motionOf(element.id).amount - d.delta.dy / 150,
+          transient: true),
+      onVerticalDragEnd: (_) => controller.endInteraction(),
+      onDoubleTap: () => controller.setMotionAmount(element.id, 1),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeUpDown,
+        child: Text("${(amount * 100).round()}%",
+            maxLines: 1,
+            style: TextStyle(
+                fontSize: 9.5,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                color: theme.studio.text)),
+      ),
+    );
+  }
+}
+
+/// _CrossFader is the layer cross-fader's track: a tick for each free layer
+/// and the thumb where it stands. Pressed or dragged, it moves there; Shift
+/// snaps it to a layer. With fewer than two free layers there is nothing to
+/// blend, and it is dimmed.
+class _CrossFader extends StatelessWidget {
+  final CanvasController controller;
+  final CanvasElement element;
+  final double height;
+  final MixerLook theme;
+  const _CrossFader(
+      {super.key,
+      required this.controller,
+      required this.element,
+      required this.height,
+      required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    var m = element.base.motion;
+    var free = m.freeLayers.length;
+    var track = CustomPaint(
+      size: Size.fromHeight(height),
+      painter: _CrossFaderPainter(
+          fade: m.fade, ticks: free, live: free > 1, theme: theme),
+    );
+    if (free < 2) return Opacity(opacity: 0.35, child: track);
+    double at(double x, double width) {
+      var f = ((x - 6) / math.max(1, width - 12)).clamp(0.0, 1.0);
+      if (HardwareKeyboard.instance.isShiftPressed) {
+        f = (f * (free - 1)).roundToDouble() / (free - 1);
+      }
+      return f;
+    }
+
+    return LayoutBuilder(
+      builder: (context, box) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (d) {
+          controller.beginInteraction();
+          controller.fadeLayers(
+              element.id, at(d.localPosition.dx, box.maxWidth),
+              transient: true);
+        },
+        onHorizontalDragUpdate: (d) => controller.fadeLayers(
+            element.id, at(d.localPosition.dx, box.maxWidth),
+            transient: true),
+        onHorizontalDragEnd: (_) => controller.endInteraction(),
+        onTapUp: (d) => controller.fadeLayers(
+            element.id, at(d.localPosition.dx, box.maxWidth)),
+        child: MouseRegion(cursor: SystemMouseCursors.click, child: track),
+      ),
+    );
+  }
+}
+
+class _CrossFaderPainter extends CustomPainter {
+  final double fade;
+  final int ticks;
+  final bool live;
+  final MixerLook theme;
+  _CrossFaderPainter(
+      {required this.fade,
+      required this.ticks,
+      required this.live,
+      required this.theme});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var studio = theme.studio;
+    var mid = size.height / 2;
+    var groove = RRect.fromRectAndRadius(
+        Rect.fromLTRB(0, mid - 2, size.width, mid + 2),
+        const Radius.circular(2));
+    canvas.drawRRect(groove, Paint()..color = studio.inset);
+    var span = size.width - 12;
+    if (ticks > 1) {
+      var tick = Paint()
+        ..color = studio.muted
+        ..strokeWidth = 1;
+      for (var k = 0; k < ticks; k++) {
+        var x = 6 + span * k / (ticks - 1);
+        canvas.drawLine(Offset(x, mid - size.height * 0.35),
+            Offset(x, mid + size.height * 0.35), tick);
+      }
+    }
+    if (!live) return;
+    var x = 6 + span * fade;
+    var thumb = RRect.fromRectAndRadius(
+        Rect.fromCenter(
+            center: Offset(x, mid), width: 8, height: size.height - 2),
+        const Radius.circular(2));
+    canvas.drawRRect(thumb, Paint()..color = motionColour);
+  }
+
+  @override
+  bool shouldRepaint(_CrossFaderPainter old) =>
+      old.fade != fade || old.ticks != ticks || old.live != live;
+}
+
+/// _WeightBar is how much of one layer plays, filling from the bottom;
+/// striped when the layer is pinned.
+class _WeightBar extends StatelessWidget {
+  final double weight;
+  final bool pinned;
+  final MixerLook theme;
+  const _WeightBar(
+      {super.key,
+      required this.weight,
+      required this.pinned,
+      required this.theme});
+
+  @override
+  Widget build(BuildContext context) => SizedBox.expand(
+      child: CustomPaint(
+          painter: _WeightBarPainter(weight, pinned, theme.studio.inset)));
+}
+
+class _WeightBarPainter extends CustomPainter {
+  final double weight;
+  final bool pinned;
+  final Color well;
+  _WeightBarPainter(this.weight, this.pinned, this.well);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var r = const Radius.circular(2);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(Offset.zero & size, r), Paint()..color = well);
+    var h = size.height * weight.clamp(0.0, 1.0);
+    if (h <= 0) return;
+    var fill = Rect.fromLTRB(0, size.height - h, size.width, size.height);
+    canvas.save();
+    canvas.clipRRect(RRect.fromRectAndRadius(fill, r));
+    canvas.drawRect(fill, Paint()..color = motionColour);
+    if (pinned) {
+      var stripe = Paint()
+        ..color = const Color(0xFF2D8A6D)
+        ..strokeWidth = 3;
+      for (var x = -size.height; x < size.width; x += 6) {
+        canvas.drawLine(
+            Offset(x, size.height), Offset(x + size.height, 0), stripe);
+      }
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_WeightBarPainter old) =>
+      old.weight != weight || old.pinned != pinned || old.well != well;
+}
+
+/// _LayerChip is a layer's name under the cross-fader: pressed, it pins
+/// the layer, or unpins it.
+class _LayerChip extends StatelessWidget {
+  final String name;
+  final bool pinned;
+  final MixerLook theme;
+  final VoidCallback onTap;
+  const _LayerChip(
+      {super.key,
+      required this.name,
+      required this.pinned,
+      required this.theme,
+      required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    var studio = theme.studio;
+    return Material(
+      color: pinned ? motionColour.withValues(alpha: 0.22) : studio.inset,
+      shape: RoundedRectangleBorder(
+          side: BorderSide(color: pinned ? motionColour : studio.edge),
+          borderRadius: BorderRadius.circular(4)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(4),
+        child: Center(
+          child: Text(name,
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              softWrap: false,
+              style: TextStyle(
+                  fontSize: 9, color: pinned ? studio.text : studio.muted)),
         ),
       ),
     );

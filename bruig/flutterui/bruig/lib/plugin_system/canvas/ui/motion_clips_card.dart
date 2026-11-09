@@ -174,8 +174,8 @@ class MotionClipsCard extends StatelessWidget {
                 DeviceKnob(
                   key: const ValueKey("motionClipsWeight"),
                   label: "Weight",
-                  text: "${(m.weight(c.layer) * 100).round()}%",
-                  value: m.weight(c.layer),
+                  text: "${(m.layerWeight(c.layer) * 100).round()}%",
+                  value: m.layerWeight(c.layer),
                   initial: 1,
                   min: 0,
                   max: 1,

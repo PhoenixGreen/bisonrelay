@@ -174,18 +174,47 @@ void main() {
     expect(c.animationOpen, isFalse, reason: "a double-click on it opens it");
   });
 
-  testWidgets("a layer's fader sets how much it counts", (tester) async {
+  // The approved design (Ken, 2026-11-08): one cross-fader over the
+  // layers, with pins, in place of three sliders.
+  testWidgets("the cross-fader blends the layers; a chip pins one",
+      (tester) async {
     var c = await pumpBoth(tester);
-    var fader = find.byKey(const ValueKey("layerFader-a-1"));
-    var box = tester.getRect(fader);
-    await tester.tapAt(Offset(box.center.dx, box.top + box.height * 0.2));
-    // Past the wait for a second click: a double-click is all of it.
-    await tester.pump(const Duration(milliseconds: 400));
+    var m = c.motionOf("a");
+    c.setMotion(
+        "a",
+        m.copyWith(clips: [
+          ...m.clips,
+          across("bob", 10).copyWith(layer: 1),
+          across("pop", 10).copyWith(layer: 2),
+        ]));
     await frames(tester);
-    expect(c.motionOf("a").weight(1), lessThan(0.9));
-    expect(c.motionOf("a").weight(1), greaterThan(0.5));
+    expect(find.byKey(const ValueKey("layerBar-a-2")), findsOneWidget);
+    expect(find.byKey(const ValueKey("layerFader-a-1")), findsNothing,
+        reason: "no sliders any more");
+
+    var fader = tester.getRect(find.byKey(const ValueKey("crossFader-a")));
+    await tester.tapAt(Offset(fader.right - 2, fader.center.dy));
+    await frames(tester);
+    m = c.motionOf("a");
+    expect(m.fade, closeTo(1, 0.05));
+    expect([m.weight(0), m.weight(1)], [0, 0]);
+    expect(m.weight(2), closeTo(1, 0.05));
+
+    await tester.tap(find.byKey(const ValueKey("layerPin-a-0")));
+    await frames(tester);
+    m = c.motionOf("a");
+    expect(m.isPinned(0), isTrue);
+    expect(m.weight(0), 1, reason: "a pinned layer plays in full");
+    expect(m.weight(2), closeTo(1, 0.05));
+
+    // How much of it is seen: dragged down, less.
+    await tester.drag(
+        find.byKey(const ValueKey("motionAmount-a")), const Offset(0, 75));
+    await frames(tester);
+    expect(c.motionOf("a").amount, inInclusiveRange(0.4, 0.75),
+        reason: "less, by the drag past the touch slop");
     c.undo();
-    expect(c.motionOf("a").weight(1), 1);
+    expect(c.motionOf("a").amount, 1, reason: "a drag is one undo");
   });
 
   testWidgets("a slot dragged onto the element's row is placed there",
@@ -392,13 +421,14 @@ void main() {
     var c = await pumpBoth(tester);
     var strip = find.byKey(const ValueKey("motionStrip-a"));
     var wide = tester.getSize(strip).width;
-    expect(find.text("L1 100"), findsOneWidget);
+    expect(find.descendant(of: strip, matching: find.text("MOTION")),
+        findsOneWidget);
     await tester.tap(find.byKey(const ValueKey("narrow-motion:a")));
     await frames(tester);
     expect(tester.getSize(strip).width, lessThan(wide));
     expect(
-        find.descendant(of: strip, matching: find.text("L1")), findsOneWidget,
-        reason: "its faders by layer");
+        find.descendant(of: strip, matching: find.text("MOT")), findsOneWidget,
+        reason: "its motion half, shortened");
     expect(c.narrowStrips, contains("motion:a"));
     expect(tester.takeException(), isNull);
   });

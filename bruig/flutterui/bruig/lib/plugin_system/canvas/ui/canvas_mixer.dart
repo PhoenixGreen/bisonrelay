@@ -4,6 +4,9 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart'
     show transitionSoundPrefix;
 
+import 'package:bruig/plugin_system/canvas/ui/row_header.dart'
+    show motionColour;
+import 'package:bruig/plugin_system/canvas/ui/help_note.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
@@ -12,7 +15,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show CanvasElement, newElementId;
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
-    show MotionClip, MotionKind, motionLayers;
+    show ElementMotion, MotionClip, MotionKind;
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
     show MotionPreset, presetsFor;
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
