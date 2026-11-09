@@ -351,87 +351,66 @@ class _MotionSlotState extends State<_MotionSlot> with _OnSessionPulse {
     var state = c.motionSlotState(widget.element, widget.row);
     Widget body;
     if (clip == null) {
-      body = Container(
-        decoration: BoxDecoration(
-          color: studio.inset,
-          borderRadius: BorderRadius.circular(3),
-          border: Border.all(color: studio.edge),
-        ),
-        child: Center(
-          child: Container(
-            width: 6,
-            height: 6,
-            decoration:
-                BoxDecoration(border: Border.all(color: studio.edge, width: 1)),
-          ),
-        ),
-      );
+      // Empty: the well (slot_face.dart).
+      body = const SlotFace(side: SlotSide.motion);
     } else {
       var col = motionKindColours[clip.kind]!;
       var lit = state == MotionSlotState.playing ||
           state == MotionSlotState.stopping ||
           (state == MotionSlotState.queued && _blinkOn);
-      var ink = lit ? const Color(0xFF0E0F12) : studio.text;
       var name = Text(clip.name.isEmpty ? "Clip" : clip.name,
-          maxLines: 1,
-          softWrap: false,
-          overflow: TextOverflow.fade,
-          style:
-              TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: ink));
-      body = Container(
-        decoration: BoxDecoration(
-          color: lit ? col : col.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(3),
+          maxLines: 1, softWrap: false, overflow: TextOverflow.fade);
+      var secs = clip.length;
+      body = SlotFace(
+        side: SlotSide.motion,
+        colour: col,
+        playing: lit,
+        seed: clip.id,
+        meta:
+            "${secs == secs.roundToDouble() ? secs.round() : secs.toStringAsFixed(1)} s"
+            "${clip.loop ? " · loops" : ""}",
+        go: Listener(
+          key: ValueKey("motionLaunch-${widget.element}-${widget.row}"),
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (e) {
+            if (_menuClick(e)) return;
+            c.pressMotionSlot(widget.element, widget.row);
+          },
+          onPointerUp: (_) => c.releaseMotionClip(widget.element, clip.id),
+          child: SizedBox.expand(
+            child: Icon(Icons.play_arrow,
+                size: 11, color: lit ? slotPlayingInk : slotInk),
+          ),
         ),
-        padding: const EdgeInsets.only(right: 4),
-        child: Row(children: [
-          Listener(
-            key: ValueKey("motionLaunch-${widget.element}-${widget.row}"),
-            behavior: HitTestBehavior.opaque,
-            onPointerDown: (e) {
-              if (_menuClick(e)) return;
-              c.pressMotionSlot(widget.element, widget.row);
-            },
-            onPointerUp: (_) => c.releaseMotionClip(widget.element, clip.id),
+        label: Draggable<Object>(
+          key: ValueKey("motionDrag-${widget.element}-${widget.row}"),
+          data: MotionSlotDrag(widget.element, widget.row, clip.id),
+          dragAnchorStrategy: pointerDragAnchorStrategy,
+          feedback: Material(
+            color: col,
+            borderRadius: BorderRadius.circular(3),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(3, 0, 2, 0),
-              child: Icon(Icons.play_arrow, size: 12, color: ink),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              child: Text(clip.name.isEmpty ? "Clip" : clip.name,
+                  style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0E0F12))),
             ),
           ),
-          Expanded(
-            child: Draggable<Object>(
-              key: ValueKey("motionDrag-${widget.element}-${widget.row}"),
-              data: MotionSlotDrag(widget.element, widget.row, clip.id),
-              dragAnchorStrategy: pointerDragAnchorStrategy,
-              feedback: Material(
-                color: col,
-                borderRadius: BorderRadius.circular(3),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  child: Text(clip.name.isEmpty ? "Clip" : clip.name,
-                      style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF0E0F12))),
-                ),
-              ),
-              childWhenDragging: Opacity(opacity: 0.4, child: name),
-              child: SlotKeys(
-                focus: _keys,
-                onDelete: () => c.clearMotionSlot(widget.element, widget.row),
-                child: GestureDetector(
-                  key: ValueKey("motionName-${widget.element}-${widget.row}"),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _pick(clip),
-                  onDoubleTap: () => _open(clip),
-                  child: Align(alignment: Alignment.centerLeft, child: name),
-                ),
-              ),
+          childWhenDragging: Opacity(opacity: 0.4, child: name),
+          child: SlotKeys(
+            focus: _keys,
+            onDelete: () => c.clearMotionSlot(widget.element, widget.row),
+            child: GestureDetector(
+              key: ValueKey("motionName-${widget.element}-${widget.row}"),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _pick(clip),
+              onDoubleTap: () => _open(clip),
+              child: Align(alignment: Alignment.centerLeft, child: name),
             ),
           ),
-          if (clip.isSound) Icon(Icons.music_note, size: 10, color: ink),
-        ]),
+        ),
       );
     }
     var picked = clip != null && c.pickedMotion == clip.id;

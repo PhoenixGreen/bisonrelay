@@ -655,21 +655,25 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
                           child: _BackToTimeline(controller: controller))
                       : const SizedBox.shrink(),
                 ),
+                // Against the panel's right edge (Ken), whatever is beside.
                 Flexible(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    reverse: true,
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      lit,
-                      const SizedBox(width: 6),
-                      HelpNote(
-                        id: "playBar",
-                        title: "The play bar",
-                        paragraphs: playBarHelp,
-                      ),
-                      const SizedBox(width: 4),
-                      more,
-                    ]),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      reverse: true,
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        lit,
+                        const SizedBox(width: 6),
+                        HelpNote(
+                          id: "playBar",
+                          title: "The play bar",
+                          paragraphs: playBarHelp,
+                        ),
+                        const SizedBox(width: 4),
+                        more,
+                      ]),
+                    ),
                   ),
                 ),
               ]),

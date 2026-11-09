@@ -18,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart'
     show MotionLanes;
 import 'package:bruig/plugin_system/canvas/ui/canvas_rows.dart';
 import 'package:bruig/plugin_system/canvas/ui/row_header.dart';
+import 'package:bruig/plugin_system/canvas/ui/slot_face.dart';
 import 'package:bruig/plugin_system/canvas/ui/scene_strip.dart'
     show sceneBoxHeight, sceneStripHeight, sceneStripLead;
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart'
@@ -2379,67 +2380,76 @@ class SessionRowSlots extends StatelessWidget {
     var lit = state == ClipState.playing ||
         state == ClipState.stopping ||
         state == ClipState.queued;
-    var ink = lit ? const Color(0xFF0E0F12) : colors.onSurface;
     var launch = Listener(
       key: ValueKey("rowClipLaunch-$channel-$row"),
       behavior: HitTestBehavior.opaque,
       onPointerDown: (_) => c.pressClip(channel, row),
       onPointerUp: (_) => c.releaseClip(channel, row),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: Icon(clip == null ? Icons.stop : Icons.play_arrow,
-            size: 11, color: clip == null ? colors.onSurfaceVariant : ink),
-      ),
+      child: clip == null
+          ? Icon(Icons.stop, size: 9, color: colors.onSurfaceVariant)
+          : SizedBox.expand(
+              child: Icon(Icons.play_arrow,
+                  size: 10, color: lit ? slotPlayingInk : slotInk)),
     );
     var picked = c.selectedSlot == (channel, row);
-    var cell = Container(
-      key: ValueKey("rowClip-$channel-$row"),
-      decoration: BoxDecoration(
-        color: clip == null
-            ? colors.surfaceContainerHigh
-            : Color(sectionColors[clip.color % sectionColors.length])
-                .withValues(alpha: lit ? 1 : 0.45),
-        borderRadius: BorderRadius.circular(3),
-        border: Border.all(
-            color: picked && clip != null
-                ? colors.onSurface
-                : colors.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      padding: const EdgeInsets.only(left: 1, right: 3),
-      child: Row(children: [
-        launch,
-        Expanded(
-          child: clip == null
-              // Double-clicked: a clip made in it (Ken).
-              ? GestureDetector(
-                  key: ValueKey("rowClipNew-$channel-$row"),
-                  behavior: HitTestBehavior.opaque,
-                  onDoubleTap: () => c.makeSessionClip(channel, row),
-                )
-              : SlotFocus(
-                  key: ValueKey("rowClipKeys-$channel-$row"),
-                  onDelete: () {
-                    c.beginInteraction();
-                    c.setSessionClip(channel, row, null);
-                    c.endInteraction();
-                  },
-                  builder: (focus) => GestureDetector(
-                    key: ValueKey("rowClipName-$channel-$row"),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      c.selectSlot(channel, row);
-                      focus.requestFocus();
-                    },
-                    onDoubleTap: () => c.openClipEditor(channel, row),
-                    child: Text(clip.name.isEmpty ? "Clip" : clip.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 10, color: ink)),
-                  ),
-                ),
+    // One design everywhere (slot_face.dart): round-cornered, its wave or
+    // its notes.
+    Widget cell;
+    if (clip == null) {
+      cell = Stack(key: ValueKey("rowClip-$channel-$row"), children: [
+        Positioned.fill(child: SlotFace(side: SlotSide.sound, empty: launch)),
+        // Double-clicked: a clip made in it (Ken).
+        Positioned(
+          left: 20,
+          top: 0,
+          right: 0,
+          bottom: 0,
+          child: GestureDetector(
+            key: ValueKey("rowClipNew-$channel-$row"),
+            behavior: HitTestBehavior.opaque,
+            onDoubleTap: () => c.makeSessionClip(channel, row),
+          ),
         ),
-      ]),
-    );
+      ]);
+    } else {
+      cell = DecoratedBox(
+        key: ValueKey("rowClip-$channel-$row"),
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(4),
+            border: picked ? Border.all(color: colors.onSurface) : null),
+        child: SlotFace(
+          side: SlotSide.sound,
+          colour: Color(sectionColors[clip.color % sectionColors.length]),
+          playing: lit,
+          seed: clip.id,
+          midi: clip.midi,
+          go: launch,
+          label: SlotFocus(
+            key: ValueKey("rowClipKeys-$channel-$row"),
+            onDelete: () {
+              c.beginInteraction();
+              c.setSessionClip(channel, row, null);
+              c.endInteraction();
+            },
+            builder: (focus) => GestureDetector(
+              key: ValueKey("rowClipName-$channel-$row"),
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                c.selectSlot(channel, row);
+                focus.requestFocus();
+              },
+              onDoubleTap: () => c.openClipEditor(channel, row),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(clip.name.isEmpty ? "Clip" : clip.name,
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     if (clip == null) return cell;
     return Draggable<Object>(
       data: SessionSlotDrag(channel, row, clip),

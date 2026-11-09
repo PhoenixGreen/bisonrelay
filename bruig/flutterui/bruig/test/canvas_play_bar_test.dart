@@ -76,6 +76,26 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // Ken, 2026-11-09: the settings and the buttons by them were not on the
+  // panel's far right.
+  testWidgets("the settings sit at the panel's right edge", (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    for (var width in [1200.0, 2400.0]) {
+      await pumpBar(tester, c, width: width);
+      var settings =
+          tester.getRect(find.byKey(const ValueKey("playBarSettings")));
+      expect(width - settings.right, lessThan(24),
+          reason: "against the right edge at $width");
+    }
+    // With Back to the timeline showing too.
+    holdByHand(c, "m");
+    await tester.pump();
+    var settings =
+        tester.getRect(find.byKey(const ValueKey("playBarSettings")));
+    expect(1200 - settings.right, lessThan(24));
+  });
+
   testWidgets("no hover tips; the ? opens its note and closes it again",
       (tester) async {
     var c = make();

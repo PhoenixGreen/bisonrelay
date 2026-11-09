@@ -19,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/ui/slots_window.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_columns.dart';
 import 'package:bruig/plugin_system/canvas/ui/row_header.dart';
+import 'package:bruig/plugin_system/canvas/ui/slot_face.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -606,7 +607,7 @@ class _RowSlots extends StatelessWidget {
       var lit = state == MotionSlotState.playing ||
           state == MotionSlotState.stopping ||
           state == MotionSlotState.queued;
-      var ink = lit ? const Color(0xFF0E0F12) : colors.onSurface;
+      // The launch: pressed, it plays (an empty one stops the row's).
       var launch = Listener(
         key: ValueKey("rowSlot-${element.id}-$i"),
         behavior: HitTestBehavior.opaque,
@@ -614,77 +615,85 @@ class _RowSlots extends StatelessWidget {
         onPointerUp: (_) {
           if (clip != null) c.releaseMotionClip(element.id, clip.id);
         },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Icon(clip == null ? Icons.stop : Icons.play_arrow,
-              size: 11, color: clip == null ? colors.onSurfaceVariant : ink),
-        ),
+        child: clip == null
+            ? Icon(Icons.stop, size: 9, color: colors.onSurfaceVariant)
+            : SizedBox.expand(
+                child: Icon(Icons.play_arrow,
+                    size: 10, color: lit ? slotPlayingInk : slotInk)),
       );
-      var box = Container(
-        decoration: BoxDecoration(
-          color: clip == null
-              ? colors.surfaceContainerHigh
-              : motionKindColours[clip.kind]!.withValues(alpha: lit ? 1 : 0.45),
-          borderRadius: BorderRadius.circular(3),
-          border: Border.all(
-              color: c.pickedMotion != null && c.pickedMotion == clip?.id
-                  ? colors.onSurface
-                  : colors.outlineVariant.withValues(alpha: 0.6)),
-        ),
-        child: Row(children: [
-          launch,
-          // Empty: pressed, a new clip in it, opened -- as the mixer's
-          // slots do.
-          if (clip == null)
-            Expanded(
-              child: GestureDetector(
-                key: ValueKey("rowSlotNew-${element.id}-$i"),
-                behavior: HitTestBehavior.opaque,
-                // Double-clicked: a new clip in it, picked (Ken).
-                onDoubleTap: () {
-                  var id = c.newClip(element.id,
-                      kind: element is CameraElement
-                          ? MotionKind.camera
-                          : MotionKind.action,
-                      slot: i);
-                  c.pickMotion(element.id, id);
-                },
-              ),
+      // One design everywhere (slot_face.dart): cut-cornered, teal-edged.
+      Widget box;
+      if (clip == null) {
+        box = Stack(children: [
+          Positioned.fill(
+              child: SlotFace(side: SlotSide.motion, empty: launch)),
+          // Empty: double-clicked, a new clip in it, opened -- as the
+          // mixer's slots do.
+          Positioned(
+            left: 20,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            child: GestureDetector(
+              key: ValueKey("rowSlotNew-${element.id}-$i"),
+              behavior: HitTestBehavior.opaque,
+              // Double-clicked: a new clip in it, picked (Ken).
+              onDoubleTap: () {
+                var id = c.newClip(element.id,
+                    kind: element is CameraElement
+                        ? MotionKind.camera
+                        : MotionKind.action,
+                    slot: i);
+                c.pickMotion(element.id, id);
+              },
             ),
-          if (clip != null)
-            Expanded(
-              // Clicked, it has the keyboard: Delete or Backspace empties
-              // the slot, not the canvas's selection (Ken: it took the
-              // element, and its channel with it).
-              child: SlotFocus(
-                key: ValueKey("rowSlotKeys-${element.id}-$i"),
-                onDelete: () {
-                  c.beginInteraction();
-                  c.clearMotionSlot(element.id, i);
-                  c.endInteraction();
+          ),
+        ]);
+      } else {
+        var picked = c.pickedMotion != null && c.pickedMotion == clip.id;
+        box = DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+              border: picked ? Border.all(color: colors.onSurface) : null),
+          child: SlotFace(
+            side: SlotSide.motion,
+            colour: motionKindColours[clip.kind]!,
+            playing: lit,
+            seed: clip.id,
+            go: launch,
+            // Clicked, it has the keyboard: Delete or Backspace empties the
+            // slot, not the canvas's selection (Ken: it took the element,
+            // and its channel with it).
+            label: SlotFocus(
+              key: ValueKey("rowSlotKeys-${element.id}-$i"),
+              onDelete: () {
+                c.beginInteraction();
+                c.clearMotionSlot(element.id, i);
+                c.endInteraction();
+              },
+              builder: (focus) => GestureDetector(
+                key: ValueKey("rowSlotName-${element.id}-$i"),
+                behavior: HitTestBehavior.opaque,
+                // A click picks it; a double-click opens it in the Chain.
+                onTap: () {
+                  c.pickMotion(element.id, clip.id);
+                  if (c.effectsOpen) c.animationOpen = true;
+                  focus.requestFocus();
                 },
-                builder: (focus) => GestureDetector(
-                  key: ValueKey("rowSlotName-${element.id}-$i"),
-                  behavior: HitTestBehavior.opaque,
-                  // A click picks it; a double-click opens it in the Chain.
-                  onTap: () {
-                    c.pickMotion(element.id, clip.id);
-                    if (c.effectsOpen) c.animationOpen = true;
-                    focus.requestFocus();
-                  },
-                  onDoubleTap: () {
-                    c.pickMotion(element.id, clip.id);
-                    c.animationOpen = true;
-                  },
+                onDoubleTap: () {
+                  c.pickMotion(element.id, clip.id);
+                  c.animationOpen = true;
+                },
+                child: Align(
+                  alignment: Alignment.centerLeft,
                   child: Text(clip.name.isEmpty ? "Clip" : clip.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 10, height: 1.1, color: ink)),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
               ),
             ),
-        ]),
-      );
+          ),
+        );
+      }
       if (clip == null) return box;
       return Draggable<Object>(
         data: MotionSlotDrag(element.id, i, clip.id),

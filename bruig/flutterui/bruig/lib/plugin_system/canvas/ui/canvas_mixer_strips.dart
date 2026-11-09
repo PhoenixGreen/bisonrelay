@@ -2540,23 +2540,13 @@ class _ClipSlotState extends State<_ClipSlot> with _OnSessionPulse {
     if (clip == null) {
       var recording = state == ClipState.recording ||
           (state == ClipState.recordQueued && _blinkOn);
-      body = Container(
-        decoration: BoxDecoration(
-          color: studio.inset,
-          borderRadius: BorderRadius.circular(3),
-          border: Border.all(color: studio.edge),
-        ),
-        child: Center(
-          child: armed || recording
-              ? Icon(Icons.fiber_manual_record,
-                  size: 9, color: recording ? studio.arm : studio.muted)
-              : Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                      border: Border.all(color: studio.edge, width: 1)),
-                ),
-        ),
+      // Empty: the well (slot_face.dart), armed to record where it is.
+      body = SlotFace(
+        side: SlotSide.sound,
+        empty: armed || recording
+            ? Icon(Icons.fiber_manual_record,
+                size: 9, color: recording ? studio.arm : studio.muted)
+            : null,
       );
     } else {
       var col = Color(sectionColors[clip.color % sectionColors.length]);
@@ -2564,75 +2554,58 @@ class _ClipSlotState extends State<_ClipSlot> with _OnSessionPulse {
           state == ClipState.stopping ||
           (state == ClipState.queued && _blinkOn);
       var progress = c.clipProgress(widget.channel);
-      body = Container(
-        decoration: BoxDecoration(
-          color: lit ? col : col.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(3),
+      var bars = clip.bars;
+      body = SlotFace(
+        side: SlotSide.sound,
+        colour: col,
+        playing: lit,
+        seed: clip.id,
+        midi: clip.midi,
+        meta:
+            "${bars == bars.roundToDouble() ? bars.round() : bars.toStringAsFixed(1)} "
+            "bar${bars == 1 ? "" : "s"}${clip.loop ? " · loops" : ""}",
+        progress: state == ClipState.queued ? null : progress,
+        // Its launch button, as Ableton's: pressed, it plays (held, for a
+        // gated clip). The rest of the slot is for picking it, opening it
+        // and dragging it to another slot.
+        go: Listener(
+          key: ValueKey("clipLaunch-${widget.channel}-${widget.row}"),
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (e) {
+            if (_menuClick(e) || _renaming) return;
+            c.pressClip(widget.channel, widget.row);
+          },
+          onPointerUp: (_) => c.releaseClip(widget.channel, widget.row),
+          child: SizedBox.expand(
+            child: Icon(Icons.play_arrow,
+                size: 11, color: lit ? slotPlayingInk : slotInk),
+          ),
         ),
-        padding: const EdgeInsets.only(right: 4),
-        child: Row(children: [
-          // Its launch button, as Ableton's: pressed, it plays (held, for a gated
-          // clip). The rest of the slot is for picking it, opening it and dragging
-          // it to another slot.
-          Listener(
-            key: ValueKey("clipLaunch-${widget.channel}-${widget.row}"),
-            behavior: HitTestBehavior.opaque,
-            onPointerDown: (e) {
-              if (_menuClick(e) || _renaming) return;
-              c.pressClip(widget.channel, widget.row);
-            },
-            onPointerUp: (_) => c.releaseClip(widget.channel, widget.row),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(3, 0, 2, 0),
-              child: Icon(Icons.play_arrow,
-                  size: 12, color: lit ? const Color(0xFF0E0F12) : studio.text),
-            ),
-          ),
-          Expanded(
-            child: _renaming
-                // Return or a click away keeps the name; Escape leaves it
-                // as it was.
-                ? CallbackShortcuts(
-                    bindings: {
-                      const SingleActivator(LogicalKeyboardKey.escape): () =>
-                          setState(() => _renaming = false),
-                    },
-                    child: TextField(
-                      key: const ValueKey("clipNameField"),
-                      controller: _name,
-                      focusNode: _focus,
-                      style: const TextStyle(fontSize: 10),
-                      decoration: const InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.zero,
-                          border: InputBorder.none),
-                      onSubmitted: (_) => _renamed(clip),
-                      onTapOutside: (_) => _renamed(clip),
-                    ),
-                  )
-                : _named(
-                    clip,
-                    Text(clip.name.isEmpty ? "Clip" : clip.name,
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.fade,
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color:
-                                lit ? const Color(0xFF0E0F12) : studio.text))),
-          ),
-          if (progress != null && state != ClipState.queued)
-            SizedBox.square(
-              dimension: 9,
-              child: CircularProgressIndicator(
-                value: progress,
-                strokeWidth: 2,
-                color: const Color(0xFF0E0F12),
-                backgroundColor: const Color(0x330E0F12),
-              ),
-            ),
-        ]),
+        label: _renaming
+            // Return or a click away keeps the name; Escape leaves it as it
+            // was.
+            ? CallbackShortcuts(
+                bindings: {
+                  const SingleActivator(LogicalKeyboardKey.escape): () =>
+                      setState(() => _renaming = false),
+                },
+                child: TextField(
+                  key: const ValueKey("clipNameField"),
+                  controller: _name,
+                  focusNode: _focus,
+                  style: const TextStyle(fontSize: 10, color: slotInk),
+                  decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      border: InputBorder.none),
+                  onSubmitted: (_) => _renamed(clip),
+                  onTapOutside: (_) => _renamed(clip),
+                ),
+              )
+            : _named(
+                clip,
+                Text(clip.name.isEmpty ? "Clip" : clip.name,
+                    maxLines: 1, softWrap: false, overflow: TextOverflow.fade)),
       );
     }
     // A sound dragged from the assets (or, on a MIDI channel, a MIDI file) is
@@ -2869,6 +2842,16 @@ class _SceneSlot extends StatefulWidget {
   State<_SceneSlot> createState() => _SceneSlotState();
 }
 
+/// _cueGo is a cue's launch: a small square, green while its row plays.
+Widget _cueGo(bool lit, StudioColors studio) => Container(
+      width: 16,
+      height: 16,
+      decoration: BoxDecoration(
+          color: lit ? const Color(0xFF2E7D4F) : const Color(0xFF2A2640),
+          borderRadius: BorderRadius.circular(4)),
+      child: Icon(Icons.play_arrow, size: 10, color: studio.text),
+    );
+
 class _SceneSlotState extends State<_SceneSlot> {
   /// _menuAt is where a right-click went down: see _ClipSlotState._menuAt.
   Offset? _menuAt;
@@ -2943,22 +2926,21 @@ class _SceneSlotState extends State<_SceneSlot> {
             }
           },
           onPointerCancel: (_) => _menuAt = null,
+          // As the prototype's: a cell with a small square launch, green
+          // while its row plays, and the cue's name.
           child: Container(
             decoration: BoxDecoration(
-              color: lit ? studio.on : studio.raised,
+              color: const Color(0xFF1D1A30),
               borderRadius: BorderRadius.circular(3),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 6),
             child: LayoutBuilder(
-                builder: (context, box) => box.maxWidth < 34 && !_renaming
-                    // Narrowed: the arrow alone.
-                    ? Center(
-                        child: Icon(Icons.play_arrow,
-                            size: 12, color: lit ? studio.onOn : studio.text))
+                builder: (context, box) => box.maxWidth < 30 && !_renaming
+                    // Narrowed: the launch alone.
+                    ? Center(child: _cueGo(lit, studio))
                     : Row(children: [
-                        Icon(Icons.play_arrow,
-                            size: 12, color: lit ? studio.onOn : studio.text),
-                        const SizedBox(width: 2),
+                        _cueGo(lit, studio),
+                        const SizedBox(width: 5),
                         Expanded(
                           child: _renaming
                               ? TextField(
@@ -2980,7 +2962,7 @@ class _SceneSlotState extends State<_SceneSlot> {
                                   style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w600,
-                                      color: lit ? studio.onOn : studio.text)),
+                                      color: studio.text)),
                         ),
                       ])),
           ),

@@ -43,6 +43,7 @@ import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart'
 import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
     show automationColour;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/slot_face.dart';
 import 'package:bruig/plugin_system/canvas/ui/slots_window.dart' show SlotKeys;
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart' show StudioDrop;
