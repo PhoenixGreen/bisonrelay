@@ -1535,6 +1535,84 @@ class _MasterStrip extends StatelessWidget {
   }
 }
 
+/// _CueColumn is the cue launchers in a column of their own, on the
+/// mixer's left (Ken, 2026-11-08), level with the strips' slots: a launch
+/// for each cue row, and Stop all under them. Dragged by its right edge,
+/// 40 to 240 wide; narrowed, each keeps its arrow.
+class _CueColumn extends StatelessWidget {
+  final CanvasController controller;
+  final MixerLook theme;
+  final _Bands bands;
+  final Widget slots;
+  final double width;
+  const _CueColumn(
+      {required this.controller,
+      required this.theme,
+      required this.bands,
+      required this.slots,
+      required this.width});
+
+  @override
+  Widget build(BuildContext context) {
+    var colors = theme.colors;
+    return SizedBox(
+      key: const ValueKey("cueColumn"),
+      width: width,
+      child: Stack(children: [
+        Positioned.fill(
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: colors.surfaceContainer,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: colors.outlineVariant),
+            ),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (!bands.bare)
+                    SizedBox(
+                      height: _headH,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text("Cues",
+                            maxLines: 1,
+                            overflow: TextOverflow.clip,
+                            softWrap: false,
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: colors.onSurface)),
+                      ),
+                    ),
+                  if (bands.clips case var h?) ...[
+                    const SizedBox(height: _bandGap),
+                    SizedBox(height: h, child: slots),
+                  ],
+                ]),
+          ),
+        ),
+        // Its right edge, dragged to widen or narrow it.
+        Positioned(
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 6,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.resizeColumn,
+            child: GestureDetector(
+              key: const ValueKey("cueColumnGrip"),
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragUpdate: (d) =>
+                  controller.cueColumnWidth += d.delta.dx,
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
 /// _RailBand is one of the rail's bands: Motion slots (the slot rows'
 /// motion parts) or one of the mixer's sections.
 class _RailBand {
@@ -2495,48 +2573,57 @@ class _SceneBand extends StatelessWidget {
           theme: theme),
       motion: motion,
       whole: true,
-      Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(
-          child: Tooltip(
-            message: "Stop every channel's clips, on the next bar",
-            child: Material(
-              color: studio.inset,
-              borderRadius: BorderRadius.circular(3),
-              child: InkWell(
-                key: const ValueKey("clipStopAll"),
+      // Narrowed, Stop all alone, an arrow's width: a cue is added from a
+      // cue's menu ("Add a cue below").
+      LayoutBuilder(builder: (context, box) {
+        var narrow = box.maxWidth < 50;
+        return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(
+            child: Tooltip(
+              message: "Stop every channel's clips, on the next bar",
+              child: Material(
+                color: studio.inset,
                 borderRadius: BorderRadius.circular(3),
-                onTap: controller.stopAllClips,
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.stop, size: 11, color: studio.text),
-                      Text(" Stop all",
-                          style: TextStyle(fontSize: 9, color: studio.text)),
-                    ]),
+                child: InkWell(
+                  key: const ValueKey("clipStopAll"),
+                  borderRadius: BorderRadius.circular(3),
+                  onTap: controller.stopAllClips,
+                  child: Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.stop, size: 11, color: studio.text),
+                        if (!narrow)
+                          Text(" Stop all",
+                              style:
+                                  TextStyle(fontSize: 9, color: studio.text)),
+                      ]),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 3),
-        Tooltip(
-          message: "Add a cue: a row of clips to launch together",
-          child: Material(
-            color: studio.inset,
-            borderRadius: BorderRadius.circular(3),
-            child: InkWell(
-              key: const ValueKey("addClipScene"),
-              borderRadius: BorderRadius.circular(3),
-              onTap: controller.addClipScene,
-              child: SizedBox(
-                  width: 20,
-                  child: Icon(Icons.add, size: 12, color: studio.text)),
+          if (!narrow) ...[
+            const SizedBox(width: 3),
+            Tooltip(
+              message: "Add a cue: a row of clips to launch together",
+              child: Material(
+                color: studio.inset,
+                borderRadius: BorderRadius.circular(3),
+                child: InkWell(
+                  key: const ValueKey("addClipScene"),
+                  borderRadius: BorderRadius.circular(3),
+                  onTap: controller.addClipScene,
+                  child: SizedBox(
+                      width: 20,
+                      child: Icon(Icons.add, size: 12, color: studio.text)),
+                ),
+              ),
             ),
-          ),
-        ),
-      ]),
+          ],
+        ]);
+      }),
     );
   }
 }
@@ -2637,34 +2724,40 @@ class _SceneSlotState extends State<_SceneSlot> {
               borderRadius: BorderRadius.circular(3),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(children: [
-              Icon(Icons.play_arrow,
-                  size: 12, color: lit ? studio.onOn : studio.text),
-              const SizedBox(width: 2),
-              Expanded(
-                child: _renaming
-                    ? TextField(
-                        key: const ValueKey("sceneNameField"),
-                        controller: _name,
-                        focusNode: _focus,
-                        style: const TextStyle(fontSize: 10),
-                        decoration: const InputDecoration(
-                            isDense: true,
-                            contentPadding: EdgeInsets.zero,
-                            border: InputBorder.none),
-                        onSubmitted: (_) => _renamed(),
-                        onTapOutside: (_) => _renamed(),
-                      )
-                    : Text(name,
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.fade,
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: lit ? studio.onOn : studio.text)),
-              ),
-            ]),
+            child: LayoutBuilder(
+                builder: (context, box) => box.maxWidth < 34 && !_renaming
+                    // Narrowed: the arrow alone.
+                    ? Center(
+                        child: Icon(Icons.play_arrow,
+                            size: 12, color: lit ? studio.onOn : studio.text))
+                    : Row(children: [
+                        Icon(Icons.play_arrow,
+                            size: 12, color: lit ? studio.onOn : studio.text),
+                        const SizedBox(width: 2),
+                        Expanded(
+                          child: _renaming
+                              ? TextField(
+                                  key: const ValueKey("sceneNameField"),
+                                  controller: _name,
+                                  focusNode: _focus,
+                                  style: const TextStyle(fontSize: 10),
+                                  decoration: const InputDecoration(
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      border: InputBorder.none),
+                                  onSubmitted: (_) => _renamed(),
+                                  onTapOutside: (_) => _renamed(),
+                                )
+                              : Text(name,
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.fade,
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: lit ? studio.onOn : studio.text)),
+                        ),
+                      ])),
           ),
         ),
       ),

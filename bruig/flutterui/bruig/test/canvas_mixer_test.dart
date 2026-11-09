@@ -1856,13 +1856,15 @@ void main() {
       await tester.pump();
       expect(at(ret), was);
       // Put away: the channels have their room.
-      var channels = tester.getRect(find.byType(ListView).first).width;
+      // The channels' row of strips, the one ListView that runs across.
+      var row = find.byWidgetPredicate(
+          (w) => w is ListView && w.scrollDirection == Axis.horizontal);
+      var channels = tester.getRect(row.first).width;
       await tester.tap(find.byKey(const ValueKey("showReturns")));
       await tester.pump();
       expect(c.returnsShown, isFalse);
       expect(find.byKey(ValueKey(ret)), findsNothing);
-      expect(tester.getRect(find.byType(ListView).first).width,
-          greaterThan(channels));
+      expect(tester.getRect(row.first).width, greaterThan(channels));
       expect(find.byKey(ValueKey("send-${c.document.returns.first.id}")),
           findsWidgets,
           reason: "the channels still send to them");
@@ -1931,6 +1933,54 @@ void main() {
       expect(inStrip("sendsBand"), findsOneWidget, reason: "grown back");
       expect(inStrip("balance"), findsOneWidget);
       expect(find.byKey(const ValueKey("railAuto-mixer")), findsNothing);
+      await done(tester, c);
+    });
+
+    // Ken, 2026-11-08: the cue launchers in a column on the left, not in
+    // the master strip; widened by its edge; narrowed, the arrows alone.
+    testWidgets("the cues are a column on the left, dragged wider or narrower",
+        (tester) async {
+      var c = make();
+      await show(tester, c, height: 560.0);
+      var column = find.byKey(const ValueKey("cueColumn"));
+      expect(column, findsOneWidget);
+      expect(
+          find.descendant(
+              of: column, matching: find.byKey(const ValueKey("scene-0"))),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("strip-master")),
+              matching: find.byKey(const ValueKey("scene-0"))),
+          findsNothing,
+          reason: "not in the master strip");
+      expect(
+          tester.getRect(column).right,
+          lessThanOrEqualTo(
+              tester.getRect(find.byKey(const ValueKey("strip-v"))).left));
+      // Level with the strips' slot rows: a cue the whole row, ending with
+      // its sound part.
+      expect(
+          tester.getRect(find.byKey(const ValueKey("scene-0"))).bottom,
+          closeTo(tester.getRect(find.byKey(const ValueKey("clip-v-0"))).bottom,
+              1));
+
+      var wide = tester.getRect(column).width;
+      await tester.drag(
+          find.byKey(const ValueKey("cueColumnGrip")), const Offset(60, 0));
+      await tester.pump();
+      expect(tester.getRect(column).width, greaterThan(wide));
+      await tester.drag(
+          find.byKey(const ValueKey("cueColumnGrip")), const Offset(-400, 0));
+      await tester.pump();
+      expect(c.cueColumnWidth, CanvasController.cueColumnLeast);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("scene-0")),
+              matching: find.byType(Text)),
+          findsNothing,
+          reason: "narrowed, the arrow alone");
+      expect(tester.takeException(), isNull);
       await done(tester, c);
     });
 

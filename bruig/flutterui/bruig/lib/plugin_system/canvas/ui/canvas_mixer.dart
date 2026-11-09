@@ -899,7 +899,8 @@ class _CanvasMixerState extends State<CanvasMixer>
             ? null
             : _BandRail(
                 theme: theme,
-                folded: controller.mixerRailFolded,
+                // Folded in a narrow room, for a channel's room.
+                folded: controller.mixerRailFolded || box.maxWidth < 320,
                 onFold: () => controller.mixerRailFolded =
                     !controller.mixerRailFolded,
                 bands: [
@@ -1104,11 +1105,15 @@ class _CanvasMixerState extends State<CanvasMixer>
                           onOpenDevice: (id) =>
                               controller.openEffects(_master, device: id),
                           onRemoveDevice: (id) => _removeDevice(_master, id),
-                          scenes: () => _SceneBand(
-                              controller: controller,
-                              theme: theme,
-                              motion: bands.motionClip,
-                              scroll: _clipScrolls.of(_master)),
+                          // The cues are a column of their own, on the
+                          // left (Ken, 2026-11-08): see _CueColumn.
+                          scenes: () => widget.embedded || widget.effects
+                              ? _SceneBand(
+                                  controller: controller,
+                                  theme: theme,
+                                  motion: bands.motionClip,
+                                  scroll: _clipScrolls.of(_master))
+                              : const SizedBox(),
                           selected: controller.selectedChannel == _master,
                           onSelect: () => controller.pickStrip(_master),
                         ),
@@ -1120,6 +1125,23 @@ class _CanvasMixerState extends State<CanvasMixer>
         return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           rail,
           const SizedBox(width: 6),
+          if (bands.clips != null) ...[
+            _CueColumn(
+              controller: controller,
+              theme: theme,
+              bands: bands,
+              // At its least in a narrow room: the arrows alone.
+              width: box.maxWidth < 480
+                  ? CanvasController.cueColumnLeast
+                  : controller.cueColumnWidth,
+              slots: _SceneBand(
+                  controller: controller,
+                  theme: theme,
+                  motion: bands.motionClip,
+                  scroll: _clipScrolls.of(_master)),
+            ),
+            const SizedBox(width: 8),
+          ],
           Expanded(child: desk),
         ]);
       }),

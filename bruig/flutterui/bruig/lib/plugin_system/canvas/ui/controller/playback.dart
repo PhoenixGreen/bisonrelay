@@ -391,6 +391,18 @@ extension CanvasPlayback on CanvasController {
     notifyListeners();
   }
 
+  /// cueColumnWidth is the mixer's cue column, on the left: 40 to 240,
+  /// dragged by its edge (Ken: the cue launchers in a column on the left).
+  double get cueColumnWidth => _cueColumnWidth;
+  set cueColumnWidth(double width) {
+    var w = width
+        .clamp(CanvasController.cueColumnLeast, CanvasController.cueColumnMost)
+        .toDouble();
+    if (w == _cueColumnWidth) return;
+    _cueColumnWidth = w;
+    notifyListeners();
+  }
+
   /// mixerRailFolded is the mixer's rail folded to a thin strip, for the
   /// strips' room.
   bool get mixerRailFolded => _mixerRailFolded;

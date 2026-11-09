@@ -3717,6 +3717,12 @@ class CanvasController extends ChangeNotifier {
 
   BandState _motionSlots = BandState.shown;
   bool _mixerRailFolded = false;
+  double _cueColumnWidth = 96;
+
+  /// cueColumnLeast and cueColumnMost are how narrow and wide the mixer's
+  /// cue column goes.
+  static const double cueColumnLeast = 40;
+  static const double cueColumnMost = 240;
 
   /// allFolded is whether the All group -- the master canvas's rows, there
   /// in every scene -- is folded away under its heading, on the timeline as
