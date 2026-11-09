@@ -282,6 +282,11 @@ void main() {
   testWidgets("the channel-height button sizes every element's rows too",
       (tester) async {
     var c = await pumpBoth(tester);
+    // From S: the timeline opens at M now (Ken, 2026-11-08).
+    while (c.laneSize != 0) {
+      c.nextLaneSize();
+    }
+    await frames(tester);
     double row() =>
         tester.getSize(find.byKey(const ValueKey("motionRow-a"))).height;
     Future<void> next() async {

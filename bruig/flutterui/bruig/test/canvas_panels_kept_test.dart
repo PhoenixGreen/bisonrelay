@@ -48,7 +48,7 @@ void main() {
           (true, true, true));
       expect(back.effectsOpen, isTrue);
       expect(back.foldedDevices, {"comp"});
-      expect(back.laneSize, 1);
+      expect(back.laneSize, 2, reason: "stepped once from M, the default");
       expect(back.headerWidth, 210);
       expect(back.panelState, kept);
     });

@@ -416,6 +416,10 @@ void main() {
           ]),
           audioEngine: FakeEngine({"t": 10}));
       addTearDown(c.dispose);
+      // A strip 150 wide (the points below are measured beside it), its lane
+      // tall enough for the A on its second line (see row_header.dart).
+      c.headerWidth = 150;
+      c.setLaneHeight("a", 60);
       tester.view.physicalSize = const Size(1000, 500);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);

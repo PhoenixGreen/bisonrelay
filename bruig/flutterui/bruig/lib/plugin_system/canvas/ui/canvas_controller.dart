@@ -3707,9 +3707,11 @@ class CanvasController extends ChangeNotifier {
   /// The reader's, for this session, and the same on every strip.
   final Set<String> foldedDevices = {};
 
-  int _laneSize = 0;
+  // M, as the approved design opens (Ken, 2026-11-08): S is the overview,
+  // an element's motion alone.
+  int _laneSize = 1;
 
-  double _headerWidth = 150;
+  double _headerWidth = 240;
 
   /// _waveforms is each stored sound's shape, read once and kept -- see
   /// waveformOf.

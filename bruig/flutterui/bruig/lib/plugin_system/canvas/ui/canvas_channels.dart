@@ -17,6 +17,7 @@ import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart'
     show MotionLanes;
 import 'package:bruig/plugin_system/canvas/ui/canvas_rows.dart';
+import 'package:bruig/plugin_system/canvas/ui/row_header.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart'
     show soundOwnerOf;
 import 'package:bruig/plugin_system/canvas/model/session.dart'
@@ -639,7 +640,10 @@ class _CanvasChannelsState extends State<CanvasChannels> {
               for (var e in grouped) ...[
                 if (show != TimelineShow.sound)
                   MotionLanes(controller: controller, view: _view, only: e.id),
-                if (show != TimelineShow.animation)
+                // At the channel height S, an element's row is its motion
+                // alone (Ken, 2026-11-08); its sound from M up.
+                if (show != TimelineShow.animation &&
+                    (controller.laneSize > 0 || show == TimelineShow.sound))
                   for (var channel in owned[e.id] ?? const <TimelineChannel>[])
                     ..._channelRows(channel, width, theme, channels,
                         movable: false, owned: true),
@@ -687,6 +691,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                 : null,
             header: _ChannelHeader(
               key: ValueKey("channelStrip-${channel.key}"),
+              controller: controller,
+              owned: owned && controller.timelineShow != TimelineShow.sound,
               channel: channel,
               mix: controller.mixNow(channel),
               automation: controller.automationShown.contains(channel.key),
@@ -1739,7 +1745,16 @@ class _ChannelHeader extends StatelessWidget {
   final bool automation;
   final VoidCallback onAutomation;
 
+  /// controller reads its level, for the meter beside its lane.
+  final CanvasController? controller;
+
+  /// owned is an element's own sound, under the element's header as the
+  /// same row: only its band's label and meter, the name being above.
+  final bool owned;
+
   const _ChannelHeader({
+    this.controller,
+    this.owned = false,
     required this.mix,
     required this.automation,
     required this.onAutomation,
@@ -1763,20 +1778,62 @@ class _ChannelHeader extends StatelessWidget {
     super.key,
   });
 
+  /// kind is what the channel is, said small under its name.
+  String get kind {
+    if (channel.video) return "Video";
+    if (channel.interactive) return "Played when pressed";
+    var e = channel.first.element;
+    if (e is AudioElement && e.instrument != null) return "MIDI instrument";
+    return "Audio";
+  }
+
+  /// _menu is the strip's right-click menu: what a short row has no room
+  /// for -- the lock and the automation's lanes.
+  Future<void> _menu(BuildContext context, Offset at) async {
+    var choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(at.dx, at.dy, at.dx, at.dy),
+      items: [
+        PopupMenuItem(
+            key: const ValueKey("channelMenuLock"),
+            value: "lock",
+            height: 32,
+            child: Text(channel.locked ? "Unlock its clips" : "Lock its clips",
+                style: const TextStyle(fontSize: 12.5))),
+        if (channel.editable)
+          PopupMenuItem(
+              key: const ValueKey("channelMenuAutomation"),
+              value: "automation",
+              height: 32,
+              child: Text(
+                  automation ? "Hide its automation" : "Show its automation",
+                  style: const TextStyle(fontSize: 12.5))),
+      ],
+    );
+    if (choice == "lock") onLock();
+    if (choice == "automation") onAutomation();
+  }
+
   @override
   Widget build(BuildContext context) {
     var colors = theme.colors;
-    var tall = height >= _tall && width >= 110;
     var locked = channel.locked;
 
-    Widget code = Text(label,
-        key: const ValueKey("channelCode"),
-        maxLines: 1,
-        style: TextStyle(
-            fontSize: 12.5,
-            height: 1.1,
-            fontWeight: FontWeight.w700,
-            color: colors.onSurface));
+    // Which canvas its clips are on -- M the master, S1 the first scene.
+    Widget code = Container(
+      key: const ValueKey("channelCode"),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+          color: colors.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(6)),
+      child: Text(label,
+          maxLines: 1,
+          style: TextStyle(
+              fontSize: 9,
+              height: 1.4,
+              fontWeight: FontWeight.w600,
+              color: colors.onSurfaceVariant)),
+    );
 
     // The channel's level, as a number: clicked, it takes a typed one --
     // the same level as its fader in the mixer.
@@ -1796,113 +1853,52 @@ class _ChannelHeader extends StatelessWidget {
       ),
     );
 
-    // What there is room for, the reading going first and then the buttons.
-    var buttons = [
-      if (width >= 128)
-        _StripButton(
-          key: const ValueKey("channelLock"),
-          icon: locked ? Icons.lock : Icons.lock_open,
-          on: locked,
-          onColor: colors.onSurface,
-          theme: theme,
-          onTap: onLock,
-        ),
-      if (width >= 104)
-        _StripButton(
-          key: const ValueKey("channelSolo"),
-          text: "S",
-          on: soloed,
-          onColor: const Color(0xFFB28A1F),
-          theme: theme,
-          onTap: onSolo,
-        ),
-      // Its automation's lanes, opened under it.
-      if (width >= 92 && channel.editable)
-        _StripButton(
-          key: const ValueKey("channelAutomation"),
-          text: "A",
-          on: automation,
-          onColor: automationColour,
-          theme: theme,
-          onTap: onAutomation,
-        ),
-      if (width >= 80)
-        _StripButton(
-          key: const ValueKey("channelMute"),
-          text: "M",
-          on: mix.mute,
-          onColor: const Color(0xFFB23B3B),
-          theme: theme,
-          onTap: () => onMix(mix.copyWith(mute: !mix.mute)),
-        ),
-    ];
-    var gap = const SizedBox(width: 4);
-
-    Widget body;
-    if (tall) {
-      body = Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              height: 16,
-              child: Row(children: [
-                code,
-                const SizedBox(width: 8),
-                Expanded(
-                    child: ChannelNameEditor(
-                        name: channel.name, theme: theme, onRename: onRename)),
-                if (width >= 150) reading,
-              ]),
-            ),
-            const SizedBox(height: 6),
-            SizedBox(
-              height: 18,
-              child: Row(children: [
-                for (var b in buttons) ...[b, gap],
-              ]),
-            ),
-          ]);
-    } else {
-      body = Row(children: [
-        // Shrunk to fit where the strip is narrower than the code: at its
-        // narrowest the column leaves sixteen pixels, and "A1" is eighteen.
-        Flexible(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: code,
-          ),
-        ),
-        if (buttons.isNotEmpty || width >= 150) const Spacer(),
-        for (var b in buttons) ...[b, gap],
-        if (width >= 150) reading,
-      ]);
-    }
-
     var strip = GestureDetector(
       supportedDevices: timelinePointers,
       behavior: HitTestBehavior.opaque,
       onTap: onSelect,
-      child: Container(
-        decoration: BoxDecoration(
-          color: selected ? colors.surfaceContainerHighest : null,
-          border: Border(
-              right: BorderSide(color: colors.outlineVariant),
-              // The line under each channel, drawn strongly: the channels are
-              // rows, and they read as rows only with a line between them.
-              bottom: BorderSide(color: colors.outline.withValues(alpha: 0.7))),
-        ),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // Green for sound, yellow for a video's.
-          Container(width: 4, color: channelColour(channel.video)),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(width < 44 ? 3 : 6, 2, 4, 2),
-              child: ClipRect(child: body),
+      onSecondaryTapUp: (d) => _menu(context, d.globalPosition),
+      child: RowHeader(
+        colour: channelColour(channel.video),
+        width: width,
+        height: height,
+        selected: selected,
+        name: ChannelNameEditor(
+            name: channel.name, theme: theme, onRename: onRename),
+        kind: kind,
+        badges: [code],
+        // A tall row's own: its automation's lanes, the lock, the level.
+        tools: [
+          if (channel.editable)
+            _StripButton(
+              key: const ValueKey("channelAutomation"),
+              text: "A",
+              on: automation,
+              onColor: automationColour,
+              theme: theme,
+              onTap: onAutomation,
             ),
+          _StripButton(
+            key: const ValueKey("channelLock"),
+            icon: locked ? Icons.lock : Icons.lock_open,
+            on: locked,
+            onColor: colors.onSurface,
+            theme: theme,
+            onTap: onLock,
           ),
-        ]),
+          // The level typed, as the mixer's fader: on the widest strip.
+          if (width >= 230) reading,
+        ],
+        sound: RowToggle(const ValueKey("channelMute"),
+            on: !mix.mute, onTap: () => onMix(mix.copyWith(mute: !mix.mute))),
+        solo:
+            RowToggle(const ValueKey("channelSolo"), on: soloed, onTap: onSolo),
+        bands: [
+          RowBand(0, height, channel.video ? "Video" : "Sound", soundColour)
+        ],
+        meter: channel.key,
+        controller: controller,
+        continued: owned,
       ),
     );
 

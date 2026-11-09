@@ -339,6 +339,11 @@ void main() {
         (tester) async {
       var c = await show(tester,
           elements: [channel("a", "Music"), channel("b", "Voice")]);
+      // From S: the timeline opens at M now (Ken, 2026-11-08).
+      while (c.laneSize != 0) {
+        c.nextLaneSize();
+      }
+      await tester.pump();
       double height(String key) =>
           tester.getSize(find.byKey(ValueKey("lane-$key"))).height;
       var button = find.byKey(const ValueKey("timelineLaneHeight"));
@@ -385,26 +390,27 @@ void main() {
     // on), its name when there is
     // room for a second line (double-clicked to rename it), its level, and
     // lock, solo and mute.
+    // One header for every row (Ken, 2026-11-08; see row_header.dart): the
+    // name, with the sound (mute) and solo buttons on its line; under it, on
+    // a tall row, its code, what it is, and its automation and lock; the
+    // lock and the automation by a right-click on a short one.
     testWidgets(
-        "each channel's strip: its code, its name, and lock, solo "
-        "and mute", (tester) async {
+        "each channel's strip: its name and code, mute and solo, its lock",
+        (tester) async {
       var c = await show(tester, elements: [channel("a", "Music")]);
+      // From S: the timeline opens at M now (Ken, 2026-11-08).
+      while (c.laneSize != 0) {
+        c.nextLaneSize();
+      }
+      await tester.pump();
       var strip = find.byKey(const ValueKey("channelStrip-a"));
       Finder inStrip(String key) =>
           find.descendant(of: strip, matching: find.byKey(ValueKey(key)));
+      expect(find.descendant(of: strip, matching: find.text("Music")), findsOne,
+          reason: "the name, short as the row is");
       expect(find.descendant(of: strip, matching: find.text("S1")), findsOne);
-      expect(inStrip("channelName"), findsNothing,
-          reason: "the name only once the lane is tall enough");
-      // Its level as a number, which takes a typed one.
-      await tester.tap(inStrip("channelLevel"));
-      await tester.pump();
-      await tester.pump();
-      await tester.enterText(find.byKey(const ValueKey("dbEntry")), "-6");
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pump();
-      expect((c.document.elements.single as AudioElement).clip.mix.gainDb, -6);
-      expect(find.byKey(const ValueKey("channelGain")), findsNothing,
-          reason: "no slider on the strip");
+      expect(find.descendant(of: strip, matching: find.text("Sound")), findsOne,
+          reason: "its band named, level with it");
 
       await tester.tap(inStrip("channelMute"));
       await tester.pump();
@@ -413,14 +419,37 @@ void main() {
       await tester.tap(inStrip("channelSolo"));
       await tester.pump();
       expect(c.solo, {"a"});
-      await tester.tap(inStrip("channelLock"));
-      await tester.pump();
+
+      // Short, the lock is in its right-click menu.
+      expect(inStrip("channelLock"), findsNothing);
+      await tester.tap(strip, buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("channelMenuLock")));
+      await tester.pumpAndSettle();
       expect(c.document.elements.single.locked, isTrue);
 
+      // Tall, on its second line: what it is, the automation and the lock.
       c.setLaneHeight("a", 60);
       await tester.pump();
       expect(
-          find.descendant(of: strip, matching: find.text("Music")), findsOne);
+          find.descendant(of: strip, matching: find.text("Audio")), findsOne);
+      expect(inStrip("channelAutomation"), findsOne);
+      await tester.tap(inStrip("channelLock"));
+      await tester.pump();
+      expect(c.document.elements.single.locked, isFalse);
+
+      // Its level typed, on the widest strip.
+      c.headerWidth = 240;
+      await tester.pump();
+      await tester.tap(inStrip("channelLevel"));
+      await tester.pump();
+      await tester.pump();
+      await tester.enterText(find.byKey(const ValueKey("dbEntry")), "-6");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect((c.document.elements.single as AudioElement).clip.mix.gainDb, -6);
+
+      // Renamed by a double-click on its name.
       await tester.tap(inStrip("channelName"));
       await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(inStrip("channelName"));
@@ -1126,27 +1155,28 @@ void main() {
           .descendant(of: strip, matching: find.byKey(ValueKey(key)))
           .evaluate()
           .isNotEmpty;
+      bool shows(String text) => find
+          .descendant(of: strip, matching: find.text(text))
+          .evaluate()
+          .isNotEmpty;
+      // Wide: everything, its band named.
+      c.headerWidth = 240;
+      await tester.pump();
       expect([has("channelLock"), has("channelSolo"), has("channelMute")],
           [true, true, true]);
-      c.headerWidth = 120;
+      expect(shows("Sound"), isTrue);
+      // Narrower: the bands' labels go first.
+      c.headerWidth = 170;
       await tester.pump();
-      expect([
-        has("channelLock"),
-        has("channelSolo"),
-        has("channelMute")
-      ], [
-        false,
-        true,
-        true
-      ], reason: "the lock goes first");
-      c.headerWidth = 90;
+      expect(shows("Sound"), isFalse);
+      expect([has("channelLock"), has("channelSolo"), has("channelMute")],
+          [true, true, true]);
+      // Narrower still: the name alone.
+      c.headerWidth = 110;
       await tester.pump();
-      expect([has("channelSolo"), has("channelMute")], [false, true]);
-      c.headerWidth = 40;
-      await tester.pump();
-      expect(has("channelMute"), isFalse);
-      expect(find.descendant(of: strip, matching: find.text("S1")), findsOne,
-          reason: "and it is its code");
+      expect([has("channelLock"), has("channelSolo"), has("channelMute")],
+          [false, false, false]);
+      expect(has("channelName"), isTrue);
     });
   });
 

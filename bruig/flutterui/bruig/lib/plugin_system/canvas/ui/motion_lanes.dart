@@ -18,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/slots_window.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_columns.dart';
+import 'package:bruig/plugin_system/canvas/ui/row_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -350,57 +351,10 @@ class _MotionLanesState extends State<MotionLanes> {
               SizedBox(
                 key: ValueKey("motionRow-${e.id}"),
                 height: _rowHeight(e),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: controller.selection.contains(e.id)
-                        ? colors.secondaryContainer.withValues(alpha: 0.35)
-                        : null,
-                    border: Border(
-                        left: BorderSide(color: colors.primary, width: 3),
-                        bottom: BorderSide(
-                            color:
-                                colors.outlineVariant.withValues(alpha: 0.5))),
-                  ),
-                  child: Row(children: [
-                    InkWell(
-                      key: ValueKey("motionFold-${e.id}"),
-                      onTap: () => setState(() => _flipped.contains(e.id)
-                          ? _flipped.remove(e.id)
-                          : _flipped.add(e.id)),
-                      child: SizedBox(
-                        width: 18,
-                        height: _lane,
-                        child: Icon(
-                            _isFolded(e)
-                                ? Icons.chevron_right
-                                : Icons.expand_more,
-                            size: 14,
-                            color: colors.onSurfaceVariant),
-                      ),
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => controller.selectOnly(e.id),
-                        child: Text(e.name.isEmpty ? e.id : e.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: label),
-                      ),
-                    ),
-                    if (!_isFolded(e) && controller.headerWidth > 90)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: Column(children: [
-                          for (var l in motionLanesOf(e))
-                            SizedBox(
-                                height: _lane,
-                                child: Center(
-                                    child: Text(
-                                        l == soundLayer ? "♪" : "L${l + 1}",
-                                        style: small))),
-                        ]),
-                      ),
-                  ]),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => controller.selectOnly(e.id),
+                  child: _header(e, colors, label),
                 ),
               ),
           ]),
@@ -454,6 +408,86 @@ class _MotionLanesState extends State<MotionLanes> {
             }),
           ),
       ]),
+    );
+  }
+
+  /// _header is [e]'s row header (see row_header.dart): its name, what it
+  /// is, and the motion, sound and solo buttons -- the sound and the solo
+  /// its own sound's, whose rows follow as the same row (see canvas_rows.dart)
+  /// from the channel height M up; each motion layer's label level with its
+  /// lane, a bar of how much of it plays.
+  Widget _header(CanvasElement e, ColorScheme colors, TextStyle label) {
+    var own = controller.soundChannelOf(e.id);
+    var heard = own != null &&
+        controller.laneSize > 0 &&
+        controller.timelineShow != TimelineShow.animation;
+    var m = e.base.motion;
+    var layers = {
+      for (var p in m.placed)
+        if (p.layer < motionLayers) p.layer
+    }.length;
+    var copies = m.instances?.count ?? 1;
+    void mute(TimelineChannel own) {
+      var now = controller.mixNow(own);
+      controller.beginInteraction();
+      controller.changeChannelMix(own, now, now.copyWith(mute: !now.mute),
+          transient: true);
+      controller.endInteraction();
+    }
+
+    return RowHeader(
+      colour: colors.primary,
+      width: controller.headerWidth,
+      height: _rowHeight(e),
+      selected: controller.selection.contains(e.id),
+      joinsBelow: heard,
+      fold: InkWell(
+        key: ValueKey("motionFold-${e.id}"),
+        onTap: () => setState(() => _flipped.contains(e.id)
+            ? _flipped.remove(e.id)
+            : _flipped.add(e.id)),
+        child: SizedBox(
+          width: 18,
+          height: 20,
+          child: Icon(_isFolded(e) ? Icons.chevron_right : Icons.expand_more,
+              size: 14, color: colors.onSurfaceVariant),
+        ),
+      ),
+      name: Text(e.name.isEmpty ? e.id : e.name,
+          maxLines: 1, overflow: TextOverflow.ellipsis, style: label),
+      kind: [
+        layers == 0 ? "Motion" : "$layers layer${layers == 1 ? "" : "s"}",
+        if (own != null) "sound",
+      ].join(" · "),
+      badges: [
+        if (copies > 1)
+          Container(
+            key: ValueKey("rowCopies-${e.id}"),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+                color: colors.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(6)),
+            child: Text("×$copies",
+                style: const TextStyle(
+                    fontSize: 9, height: 1.4, color: Color(0xFFE2B04A))),
+          ),
+      ],
+      // Its motion: shown as on; switching a row's motion off is to come.
+      motion: RowToggle(ValueKey("rowMotion-${e.id}"), on: true),
+      sound: own == null
+          ? null
+          : RowToggle(ValueKey("rowMute-${e.id}"),
+              on: !controller.mixNow(own).mute, onTap: () => mute(own)),
+      solo: own == null
+          ? null
+          : RowToggle(ValueKey("rowSolo-${e.id}"),
+              on: controller.solo.contains(own.key),
+              onTap: () => controller.toggleSolo(own.key)),
+      bands: [
+        for (var (i, l) in motionLanesOf(e, folded: _isFolded(e)).indexed)
+          RowBand(2 + i * _lane, _lane, "L${l + 1}", motionColour,
+              weight: m.weight(l)),
+      ],
     );
   }
 

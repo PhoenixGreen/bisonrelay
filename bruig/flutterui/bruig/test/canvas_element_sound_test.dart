@@ -135,6 +135,40 @@ void main() {
     expect(music.top, greaterThanOrEqualTo(own.bottom - 1));
   });
 
+  // Ken, 2026-11-08: one row for an element, its motion and its sound --
+  // one header, whose sound and solo buttons are its own sound's; at the
+  // channel height S, the motion alone.
+  testWidgets("on the timeline one header for an element and its sound",
+      (tester) async {
+    var c = await pumpBoth(tester);
+    var own = elementSoundKey("a");
+    expect(c.laneSize, 1, reason: "the timeline opens at M");
+    expect(find.byKey(ValueKey("channelStrip-$own")), findsOneWidget);
+    expect(
+        find.descendant(
+            of: find.byKey(ValueKey("channelStrip-$own")),
+            matching: find.byKey(const ValueKey("channelMute"))),
+        findsNothing,
+        reason: "its buttons are on the element's header, above");
+
+    await tester.tap(find.byKey(const ValueKey("rowMute-a")));
+    await tester.pump();
+    expect(c.soundChannelOf("a")!.mix.mute, isTrue);
+    await tester.tap(find.byKey(const ValueKey("rowSolo-a")));
+    await tester.pump();
+    expect(c.solo, {own});
+
+    // S: the element's motion alone.
+    while (c.laneSize != 0) {
+      c.nextLaneSize();
+    }
+    await tester.pump();
+    expect(find.byKey(const ValueKey("motionRow-a")), findsOneWidget);
+    expect(find.byKey(ValueKey("channelStrip-$own")), findsNothing);
+    expect(find.byKey(const ValueKey("channelStrip-m")), findsOneWidget,
+        reason: "a sound that is nobody's is still shown");
+  });
+
   testWidgets("in the mixer its sound's strip is beside its own",
       (tester) async {
     await pumpBoth(tester);
