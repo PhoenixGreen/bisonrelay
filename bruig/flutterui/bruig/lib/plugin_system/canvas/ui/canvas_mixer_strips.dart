@@ -1637,6 +1637,58 @@ class _SceneMotion extends StatelessWidget {
   }
 }
 
+/// _AllFold is the tab before the All group's strips -- the master canvas's,
+/// there in every scene -- that folds them away, and back: "All scenes" on
+/// its side, how many there are, and the arrow. Shares its fold with the
+/// timeline's heading (CanvasController.allFolded).
+class _AllFold extends StatelessWidget {
+  final CanvasController controller;
+  final MixerLook theme;
+  final int count;
+  const _AllFold(
+      {required this.controller, required this.theme, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    var studio = theme.studio;
+    var folded = controller.allFolded;
+    return Material(
+      color: theme.colors.surfaceContainer,
+      borderRadius: BorderRadius.circular(6),
+      child: InkWell(
+        key: const ValueKey("mixerAllFold"),
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => controller.allFolded = !folded,
+        child: SizedBox(
+          width: 22,
+          child: Column(children: [
+            const SizedBox(height: 6),
+            Icon(folded ? Icons.chevron_right : Icons.chevron_left,
+                size: 14, color: studio.muted),
+            const SizedBox(height: 4),
+            Text("$count",
+                style: TextStyle(fontSize: 9.5, color: studio.muted)),
+            const SizedBox(height: 6),
+            Expanded(
+              child: RotatedBox(
+                quarterTurns: 1,
+                child: Text("All scenes",
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                    softWrap: false,
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: studio.text)),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 /// _CueColumn is the cue launchers in a column of their own, on the
 /// mixer's left (Ken, 2026-11-08), level with the strips' slots: a launch
 /// for each cue row, and Stop all under them. Dragged by its right edge,

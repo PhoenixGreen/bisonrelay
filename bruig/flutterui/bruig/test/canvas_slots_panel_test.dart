@@ -164,4 +164,31 @@ void main() {
       }
     });
   }
+
+  test("how the mixer and the slots were left is kept, and read back", () {
+    var c = CanvasController(CanvasDocument(frames: 10),
+        audioEngine: FakeEngine(const {}));
+    addTearDown(c.dispose);
+    c.motionSlots = BandState.minimised;
+    c.cueColumnWidth = 150;
+    c.slotsCueWidth = 60;
+    c.slotsPanelSize = 3;
+    c.slotsPanelNarrow = true;
+    c.mixerRailFolded = true;
+    var look = c.mixerLook;
+    var d = CanvasController(CanvasDocument(frames: 10),
+        audioEngine: FakeEngine(const {}));
+    addTearDown(d.dispose);
+    d.restoreMixerLook(look);
+    expect(d.motionSlots, BandState.minimised);
+    expect(d.cueColumnWidth, 150);
+    expect(d.slotsCueWidth, 60);
+    expect(d.slotsPanelSize, 3);
+    expect(d.slotsPanelNarrow, isTrue);
+    expect(d.mixerRailFolded, isTrue);
+    d.restoreMixerLook("cue=9999;what=1;motion=sideways");
+    expect(d.cueColumnWidth, CanvasController.cueColumnMost,
+        reason: "held to its most; the rest passed by");
+    expect(d.motionSlots, BandState.minimised);
+  });
 }

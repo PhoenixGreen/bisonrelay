@@ -838,6 +838,12 @@ class _CanvasMixerState extends State<CanvasMixer>
                     (i, lanes[i])
           ];
     var show = controller.timelineShow;
+    // The All group's: on the master canvas, there in every scene.
+    var everyScene = {
+      for (var r in canvasRows)
+        if (r.group == RowGroup.all)
+          for (var ch in r.channels) ch.key
+    };
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
       child: LayoutBuilder(builder: (context, box) {
@@ -1001,14 +1007,41 @@ class _CanvasMixerState extends State<CanvasMixer>
                                 child: _elementStrip(controller, theme, e,
                                     bands, _clipScrolls.of("motion:${e.id}")),
                               ),
-                          // Then the sounds that are nobody's, the All
-                          // group's last; none shows only the animation.
-                          if (show != TimelineShow.animation)
+                          // Then the sounds that are nobody's; none shows
+                          // only the animation.
+                          if (show != TimelineShow.animation) ...[
                             for (var (i, lane) in loose)
+                              if (!everyScene.contains(lane.key))
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: _channelStrip(theme, lane, i, bands),
+                                ),
+                            // The All group's last, behind a tab that folds
+                            // them away, as on the timeline (Ken, 2026-11-08).
+                            if (loose.any((l) => everyScene.contains(l.$2.key)))
+                              ...[
                               Padding(
                                 padding: const EdgeInsets.only(right: 8),
-                                child: _channelStrip(theme, lane, i, bands),
+                                child: _AllFold(
+                                  controller: controller,
+                                  theme: theme,
+                                  count: loose
+                                      .where((l) =>
+                                          everyScene.contains(l.$2.key))
+                                      .length,
+                                ),
                               ),
+                              if (!controller.allFolded)
+                                for (var (i, lane) in loose)
+                                  if (everyScene.contains(lane.key))
+                                    Padding(
+                                      padding:
+                                          const EdgeInsets.only(right: 8),
+                                      child: _channelStrip(
+                                          theme, lane, i, bands),
+                                    ),
+                            ],
+                          ],
                         ],
                       ),
               ),

@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_rows.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
@@ -153,5 +154,70 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("allGroupFold")));
     await tester.pumpAndSettle();
     expect(find.text("All"), findsNWidgets(2));
+  });
+
+  // Ken, 2026-11-08: the All group folds away in the mixer too, with the
+  // timeline's heading.
+  testWidgets("in the mixer, the All group folds away behind its tab",
+      (tester) async {
+    var c = CanvasController(
+        CanvasDocument(
+          frames: 240,
+          scenes: [
+            CanvasScene(id: "one", elements: [sound("bed", "Bed")]),
+            const CanvasScene(id: "two"),
+          ],
+          master: CanvasScene(id: "m", elements: [
+            sound("music", "Music"),
+            sound("rain", "Rain"),
+          ]),
+          masterOn: true,
+        ),
+        audioEngine: FakeEngine({}));
+    addTearDown(c.dispose);
+    tester.view.physicalSize = const Size(1800, 700);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomCenter,
+            child: CanvasMixer(
+                controller: c, height: 520, onResize: (_) {}, onClose: () {}),
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+    String keyOf(String name) =>
+        c.timelineChannels.firstWhere((ch) => ch.name == name).key;
+    var fold = find.byKey(const ValueKey("mixerAllFold"));
+    expect(fold, findsOneWidget);
+    expect(find.descendant(of: fold, matching: find.text("2")), findsOneWidget);
+    var music = find.byKey(ValueKey("strip-${keyOf("Music")}"));
+    expect(music, findsOneWidget);
+    expect(tester.getRect(fold).right,
+        lessThanOrEqualTo(tester.getRect(music).left),
+        reason: "the tab before the group");
+    expect(tester.getRect(find.byKey(ValueKey("strip-${keyOf("Bed")}"))).right,
+        lessThanOrEqualTo(tester.getRect(fold).left),
+        reason: "the scene's own first");
+
+    await tester.tap(fold);
+    await tester.pump();
+    expect(c.allFolded, isTrue, reason: "the timeline's fold too");
+    expect(music, findsNothing);
+    expect(find.byKey(ValueKey("strip-${keyOf("Bed")}")), findsOneWidget);
+    await tester.tap(fold);
+    await tester.pump();
+    expect(music, findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 500));
   });
 }

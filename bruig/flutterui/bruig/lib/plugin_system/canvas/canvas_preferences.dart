@@ -39,6 +39,7 @@ class CanvasPreferences extends ChangeNotifier {
   static const _studioOverridesKey = "canvasStudioColours";
   static const _menuHiddenKey = "canvasMenuHidden";
   static const _mixerBandsKey = "canvasMixerBands";
+  static const _mixerLookKey = "canvasMixerLook";
   static const _returnsShownKey = "canvasReturnsShown";
   static const _mixerHeightKey = "canvasMixerHeight";
   static const _effectsHeightKey = "canvasEffectsHeight";
@@ -177,6 +178,16 @@ class CanvasPreferences extends ChangeNotifier {
     if (_mixerBands.join(",") == value.join(",")) return;
     _mixerBands = value;
     StorageManager.saveString(_mixerBandsKey, value.join(","));
+  }
+
+  /// mixerLook is the rest of how the mixer and the Slots panel were left:
+  /// see CanvasController.mixerLook. Empty for as they start.
+  String get mixerLook => _mixerLook;
+  String _mixerLook = "";
+  set mixerLook(String value) {
+    if (_mixerLook == value) return;
+    _mixerLook = value;
+    StorageManager.saveString(_mixerLookKey, value);
   }
 
   bool get returnsShown => _returnsShown;
@@ -387,6 +398,7 @@ class CanvasPreferences extends ChangeNotifier {
         double.tryParse(await StorageManager.readString(_timelineHeightKey)) ??
             0;
     _menuHidden = await StorageManager.readBool(_menuHiddenKey);
+    _mixerLook = await StorageManager.readString(_mixerLookKey);
     var bands = await StorageManager.readString(_mixerBandsKey);
     _mixerBands = bands.isEmpty ? const [] : bands.split(",");
     _returnsShown =

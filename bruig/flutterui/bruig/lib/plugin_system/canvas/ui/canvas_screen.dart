@@ -236,6 +236,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // And the mixer's bands (C, D, M) and its returns (R): set up once.
     prefs.mixerBands = _controller.mixerBandNames;
     prefs.returnsShown = _controller.returnsShown;
+    prefs.mixerLook = _controller.mixerLook;
   }
 
   @override
@@ -285,6 +286,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // The mixer as it was left: its bands, its returns, its height and the
     // effects panel's.
     _controller.restoreMixer(prefs.mixerBands, prefs.returnsShown);
+    _controller.restoreMixerLook(prefs.mixerLook);
     // Where the panels open, as left, before which are open.
     _controller.restoreDock(prefs.dock);
     // On the first visit of the session only: after it, the controller

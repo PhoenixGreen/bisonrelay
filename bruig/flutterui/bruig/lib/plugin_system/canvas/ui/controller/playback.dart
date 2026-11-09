@@ -357,6 +357,55 @@ extension CanvasPlayback on CanvasController {
     _returnsShown = returns;
   }
 
+  /// mixerLook is how the mixer and the Slots panel were left beyond their
+  /// bands, for keeping: the motion slots, the cue columns' widths, the
+  /// slots' size and narrowness, and the rail folded -- "name=value" pairs.
+  String get mixerLook => [
+        "motion=${_motionSlots.name}",
+        "cue=${_cueColumnWidth.round()}",
+        "slotsCue=${_slotsCueWidth.round()}",
+        "size=$_slotsPanelSize",
+        "narrow=${_slotsPanelNarrow ? 1 : 0}",
+        "rail=${_mixerRailFolded ? 1 : 0}",
+      ].join(";");
+
+  /// restoreMixerLook puts [look] (see mixerLook) back, without notifying,
+  /// as restoreMixer does; a pair it does not know is passed by.
+  void restoreMixerLook(String look) {
+    for (var pair in look.split(";")) {
+      var i = pair.indexOf("=");
+      if (i < 0) continue;
+      var name = pair.substring(0, i), value = pair.substring(i + 1);
+      double? number() => double.tryParse(value);
+      switch (name) {
+        case "motion":
+          _motionSlots =
+              BandState.values.where((b) => b.name == value).firstOrNull ??
+                  _motionSlots;
+        case "cue":
+          if (number() case var n?) {
+            _cueColumnWidth = n
+                .clamp(CanvasController.cueColumnLeast,
+                    CanvasController.cueColumnMost)
+                .toDouble();
+          }
+        case "slotsCue":
+          if (number() case var n?) {
+            _slotsCueWidth = n
+                .clamp(CanvasController.cueColumnLeast,
+                    CanvasController.cueColumnMost)
+                .toDouble();
+          }
+        case "size":
+          if (int.tryParse(value) case var n?) _slotsPanelSize = n.clamp(0, 3);
+        case "narrow":
+          _slotsPanelNarrow = value == "1";
+        case "rail":
+          _mixerRailFolded = value == "1";
+      }
+    }
+  }
+
   /// mixerBandNames are the bands' states by name, in order, for keeping.
   List<String> get mixerBandNames =>
       [for (var s in MixerSection.values) _bandStates[s]!.name];
