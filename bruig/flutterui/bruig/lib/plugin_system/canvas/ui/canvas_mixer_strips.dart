@@ -1254,7 +1254,15 @@ class _SceneStrip extends StatelessWidget {
   final VoidCallback? onNarrow;
   final VoidCallback onSelect;
 
+  /// joins are its slots: a transition each, one per join between scenes,
+  /// outside the cue rows (decision 2 of the approved design); motion its
+  /// motion half, the scenes' camera.
+  final Widget Function()? joins;
+  final Widget Function()? motion;
+
   const _SceneStrip({
+    this.joins,
+    this.motion,
     required this.name,
     required this.mix,
     required this.chain,
@@ -1279,6 +1287,7 @@ class _SceneStrip extends StatelessWidget {
     const what = "This scene";
     var body = _StripFrame(
       noMotion: "",
+      motion: motion,
       narrow: narrow,
       onNarrow: onNarrow,
       narrowKey: const ValueKey("narrow-scene"),
@@ -1305,7 +1314,7 @@ class _SceneStrip extends StatelessWidget {
         ),
       ]),
       // Its clips are its channels': it plays what is in the scene.
-      clips: () => const SizedBox(),
+      clips: joins ?? () => const SizedBox(),
       devices: () => _band(_slots([
         ..._chainSlots(theme,
             chain: chain,
@@ -1531,6 +1540,99 @@ class _MasterStrip extends StatelessWidget {
               style: TextStyle(fontSize: 11, color: colors.onSurface)),
         ),
       ),
+    );
+  }
+}
+
+/// _JoinSlot is one join between scenes on the Scenes strip, as a slot: the
+/// scene it leaves and the one it arrives at, a dot where its transition
+/// has a sound; pressed, the join plays -- a little of the one, the
+/// transition, a little of the other (previewTransitionAfter). Not a cue's:
+/// a cue launch passes it by.
+class _JoinSlot extends StatelessWidget {
+  final CanvasController controller;
+  final int join;
+  final MixerLook theme;
+  const _JoinSlot(
+      {super.key,
+      required this.controller,
+      required this.join,
+      required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    var studio = theme.studio;
+    var doc = controller.document;
+    var scenes = doc.allScenes;
+    var from = scenes[join].name, to = scenes[join + 1].name;
+    var sound = doc.transitionAfter(join).sound.isNotEmpty;
+    return Material(
+      color: sceneColour.withValues(alpha: 0.22),
+      borderRadius: BorderRadius.circular(3),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(3),
+        onTap: () => controller.previewTransitionAfter(join),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(children: [
+            Expanded(
+              child: Text("$from → $to",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 9.5, color: studio.text)),
+            ),
+            if (sound)
+              Container(
+                  width: 5,
+                  height: 5,
+                  decoration: const BoxDecoration(
+                      color: soundColour, shape: BoxShape.circle)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// _SceneMotion is the Scenes strip's motion half: the camera, each scene's
+/// own.
+class _SceneMotion extends StatelessWidget {
+  final MixerLook theme;
+  final bool narrow;
+  const _SceneMotion({required this.theme, required this.narrow});
+
+  @override
+  Widget build(BuildContext context) {
+    var studio = theme.studio;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 3, 4, 3),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        SizedBox(
+          height: 14,
+          child: Text(narrow ? "CAM" : "CAMERA",
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              softWrap: false,
+              style: TextStyle(
+                  fontSize: 9,
+                  letterSpacing: narrow ? 0 : 0.6,
+                  fontWeight: FontWeight.w600,
+                  color: studio.muted)),
+        ),
+        const SizedBox(height: 3),
+        Expanded(
+          child: Container(
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+                color: studio.inset, borderRadius: BorderRadius.circular(4)),
+            child: Text(narrow ? "Own" : "Each scene's own",
+                maxLines: 1,
+                overflow: TextOverflow.clip,
+                softWrap: false,
+                style: TextStyle(fontSize: 9.5, color: studio.muted)),
+          ),
+        ),
+      ]),
     );
   }
 }

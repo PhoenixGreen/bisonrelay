@@ -5,7 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart'
     show transitionSoundPrefix;
 
 import 'package:bruig/plugin_system/canvas/ui/row_header.dart'
-    show motionColour;
+    show motionColour, sceneColour, soundColour;
 import 'package:bruig/plugin_system/canvas/ui/help_note.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
@@ -15,7 +15,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show CanvasElement, newElementId;
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
-    show ElementMotion, MotionClip, MotionKind;
+    show ElementMotion, MotionClip, MotionKind, crossFade;
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
     show MotionPreset, presetsFor;
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
@@ -827,7 +827,10 @@ class _CanvasMixerState extends State<CanvasMixer>
           ]
         : [
             for (var r in canvasRows)
-              if (r.element == null)
+              // The transitions' sounds are the Scenes strip's, which
+              // carries a slot for each join (decision 2), not a strip of
+              // their own.
+              if (r.element == null && !(r.transitions && _sceneShown))
                 for (var c in r.channels)
                   if (lanes.indexWhere((l) => l.key == c.key) case var i
                       when i >= 0)
@@ -1057,6 +1060,25 @@ class _CanvasMixerState extends State<CanvasMixer>
                           const SizedBox(width: 8),
                           _SceneStrip(
                             key: const ValueKey("strip-scene"),
+                            // A slot for each join between scenes, outside
+                            // the cue rows; its motion, the camera.
+                            joins: controller.document.allScenes.length < 2
+                                ? null
+                                : () => _clipColumn(
+                                    _clipScrolls.of("scene"),
+                                    controller.document.allScenes.length - 1,
+                                    (i) => _JoinSlot(
+                                        key: ValueKey("join-$i"),
+                                        controller: controller,
+                                        join: i,
+                                        theme: theme),
+                                    const SizedBox(),
+                                    motion: bands.motionClip,
+                                    whole: true),
+                            motion: () => _SceneMotion(
+                                theme: theme,
+                                narrow: controller.narrowStrips
+                                    .contains(sceneBusKey)),
                             name: controller.document.scene.saysAt(
                                 controller.document.at,
                                 controller.document.kind),

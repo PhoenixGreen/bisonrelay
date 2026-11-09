@@ -470,6 +470,27 @@ void main() {
       });
     }
 
+    // Decision 2 of the approved design: the transitions are the Scenes
+    // strip's slots, one per join, outside the cue rows.
+    testWidgets("the Scenes strip has a slot for each join, which plays it",
+        (tester) async {
+      var c = await pump(tester);
+      var strip = find.byKey(const ValueKey("strip-scene"));
+      expect(
+          find.descendant(
+              of: strip, matching: find.byKey(const ValueKey("join-0"))),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey("join-1")), findsNothing,
+          reason: "two scenes, one join");
+      expect(c.previewAt, isNull);
+      await tester.tap(find.byKey(const ValueKey("join-0")));
+      await tester.pump();
+      expect(c.previewAt, isNotNull, reason: "the join plays");
+      c.stopPreview();
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets("a single canvas with no master has no scene strip",
         (tester) async {
       var c = CanvasController(

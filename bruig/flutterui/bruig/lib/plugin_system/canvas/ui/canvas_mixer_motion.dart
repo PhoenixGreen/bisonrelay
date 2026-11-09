@@ -758,7 +758,13 @@ class _CrossFader extends StatelessWidget {
     var track = CustomPaint(
       size: Size.fromHeight(height),
       painter: _CrossFaderPainter(
-          fade: m.fade, ticks: free, live: free > 1, theme: theme),
+          fade: m.fade,
+          ticks: free,
+          live: free > 1,
+          // Hollow until the fader sets the layers' weights: a new element
+          // plays every layer in full, which is no place on the fader.
+          set: listEquals(m.weights, crossFade(m.layersInUse, m.pins, m.fade)),
+          theme: theme),
     );
     if (free < 2) return Opacity(opacity: 0.35, child: track);
     double at(double x, double width) {
@@ -794,11 +800,13 @@ class _CrossFaderPainter extends CustomPainter {
   final double fade;
   final int ticks;
   final bool live;
+  final bool set;
   final MixerLook theme;
   _CrossFaderPainter(
       {required this.fade,
       required this.ticks,
       required this.live,
+      required this.set,
       required this.theme});
 
   @override
@@ -826,12 +834,22 @@ class _CrossFaderPainter extends CustomPainter {
         Rect.fromCenter(
             center: Offset(x, mid), width: 8, height: size.height - 2),
         const Radius.circular(2));
-    canvas.drawRRect(thumb, Paint()..color = motionColour);
+    canvas.drawRRect(
+        thumb,
+        set
+            ? (Paint()..color = motionColour)
+            : (Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.2
+              ..color = motionColour));
   }
 
   @override
   bool shouldRepaint(_CrossFaderPainter old) =>
-      old.fade != fade || old.ticks != ticks || old.live != live;
+      old.fade != fade ||
+      old.ticks != ticks ||
+      old.live != live ||
+      old.set != set;
 }
 
 /// _WeightBar is how much of one layer plays, filling from the bottom;
