@@ -1704,14 +1704,9 @@ class _JoinSlotState extends State<_JoinSlot> with _OnSessionPulse {
             child: Icon(Icons.play_arrow,
                 size: 11, color: lit ? slotPlayingInk : slotInk)),
       ),
-      // Picked on the press, as the strip is (see pickJoin).
-      label: Listener(
+      // Picked by the card's own press, below.
+      label: KeyedSubtree(
         key: ValueKey("joinOpen-$join"),
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: (e) {
-          if (e.buttons == kSecondaryMouseButton) return;
-          c.pickJoin(join);
-        },
         child: Align(
           alignment: Alignment.centerLeft,
           child: ChannelNameEditor(
@@ -1745,16 +1740,28 @@ class _JoinSlotState extends State<_JoinSlot> with _OnSessionPulse {
       ],
       child: GestureDetector(
         onSecondaryTapUp: (d) => _menu.open(position: d.localPosition),
-        child: DecoratedBox(
-          key: ValueKey("joinSlot-$join"),
-          position: DecorationPosition.foreground,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(3),
-            border: c.pickedScene == join
-                ? Border.all(color: widget.theme.studio.text, width: 1)
-                : null,
+        // Picked on the press, anywhere on the card, as the strip is (see
+        // pickJoin). Only its name and its launch strip did (Ken, 2026-11-10:
+        // the Woods and Citadel transitions took two clicks): a press
+        // anywhere else on the card went by to the strip, which picked the
+        // join after the scene shown -- Sunken Ruins, from the Woods.
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (e) {
+            if (e.buttons == kSecondaryMouseButton) return;
+            c.pickJoin(join);
+          },
+          child: DecoratedBox(
+            key: ValueKey("joinSlot-$join"),
+            position: DecorationPosition.foreground,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(3),
+              border: c.pickedScene == join
+                  ? Border.all(color: widget.theme.studio.text, width: 1)
+                  : null,
+            ),
+            child: face,
           ),
-          child: face,
         ),
       ),
     );

@@ -398,6 +398,19 @@ void main() {
       await tester.pump();
       await click("joinOpen-0");
       expect(c.pickedScene, 0, reason: "not the scene shown's");
+      // Anywhere on the card, not only its name or its launch strip: below
+      // the name, a press went by to the strip, which picked the join after
+      // the scene shown (Ken, 2026-11-10: the Woods and Citadel transitions
+      // took two clicks -- Sunken Ruins, from the Woods, was picked).
+      for (var join in [1, 0]) {
+        var card = tester.getRect(find.byKey(ValueKey("joinSlot-$join")));
+        var g = await tester.startGesture(
+            Offset(card.center.dx, card.top + card.height * 0.85));
+        await tester.pump();
+        await g.up();
+        await tester.pump();
+        expect(c.pickedScene, join, reason: "pressed below join $join's name");
+      }
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 1));

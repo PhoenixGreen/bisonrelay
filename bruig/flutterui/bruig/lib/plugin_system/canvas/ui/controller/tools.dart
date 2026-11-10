@@ -1872,6 +1872,9 @@ extension CanvasTools on CanvasController {
   /// slot's own pick came after -- or, the slot built again under the
   /// pointer, not at all).
   void pickJoin(int join) {
+    // Picked already in this same press: by its launch strip, then the card
+    // the strip is on.
+    if (_joinPress && _joinPicked && _pickedScene == join) return;
     _joinPress = true;
     scheduleMicrotask(() => _joinPress = false);
     if (_selection.isNotEmpty) clearSelection();
