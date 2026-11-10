@@ -361,24 +361,26 @@ void main() {
               timed: true, volume: 1, playlist: [MediaSource(assetId: song)]));
       // Each cue's voice once it has started: on a loaded machine that can
       // take more than a turn or two, and engine.last is then the one before.
-      Future<FakeVoice> started(int before) async {
-        for (var i = 0; i < 200 && engine.voices.length <= before; i++) {
+      Future<FakeVoice> started(FakeEngine on, int before) async {
+        for (var i = 0; i < 200 && on.voices.length <= before; i++) {
           await Future<void>.delayed(Duration.zero);
         }
-        return engine.last;
+        return on.voices[before];
       }
 
       var before = engine.voices.length;
       runtime.cue(e, const ClipMoment(0, 2.5, 1), playing: true);
-      var voice = await started(before);
+      var voice = await started(engine, before);
       expect(voice.fades.first.$1, closeTo(1, 1e-9), reason: "up to its level");
       expect(voice.fades.first.$2, declickSeconds);
 
-      var fresh = AudioRuntime(engine: engine, locate: (id) async => id);
+      // On a sound card of its own: the first runtime, still going, starts
+      // voices of its own on a loaded machine, and was taken for this one.
+      var alone = FakeEngine(engine.lengths);
+      var fresh = AudioRuntime(engine: alone, locate: (id) async => id);
       addTearDown(fresh.dispose);
-      before = engine.voices.length;
       fresh.cue(e, const ClipMoment(0, 0, 1), playing: true);
-      expect((await started(before)).fades, isEmpty,
+      expect((await started(alone, 0)).fades, isEmpty,
           reason: "from the top, no ramp");
     });
 
