@@ -2578,7 +2578,21 @@ class _ClipSlotState extends State<_ClipSlot> with _OnSessionPulse {
   List<Widget> _clipMenu(SessionClip clip) {
     var studio = widget.theme.studio;
     Widget check(bool on) => Icon(on ? Icons.check : null, size: 14);
+    // An element's own sound with a motion in the same row: linked, the
+    // two launch together (Ken, 2026-11-10).
+    var owner = soundOwnerOf(c.document, widget.channel);
+    var link = owner != null && owner.base.motion.slot(widget.row) != null
+        ? MenuItemButton(
+            key: const ValueKey("clipSlotLink"),
+            onPressed: () => c.linkMotionSlot(
+                owner.id, widget.row, !owner.base.motion.isLinked(widget.row)),
+            child: Text(owner.base.motion.isLinked(widget.row)
+                ? "Unlink from its motion"
+                : "Link with its motion"),
+          )
+        : null;
     return [
+      if (link != null) link,
       if (clip.midi)
         MenuItemButton(
           key: const ValueKey("clipEditNotes"),

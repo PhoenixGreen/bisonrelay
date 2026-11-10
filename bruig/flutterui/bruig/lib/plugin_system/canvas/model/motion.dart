@@ -743,6 +743,11 @@ class ElementMotion {
   /// each played in full, the fader blending the others (Ken, 2026-11-08).
   final int pins;
 
+  /// links are the slot rows whose motion launches with the element's own
+  /// sound in the same row, either pressed (Ken, 2026-11-10; the approved
+  /// design's linked slots), in order.
+  final List<int> links;
+
   /// fade is where the cross-fader stands, 0 to 1, along the layers in use
   /// that are not pinned.
   final double fade;
@@ -786,6 +791,7 @@ class ElementMotion {
     this.placed = const [],
     this.weights = const [1, 1, 1],
     this.pins = 0,
+    this.links = const [],
     this.fade = 0,
     this.amount = 1,
     this.off = false,
@@ -907,6 +913,7 @@ class ElementMotion {
     List<ClipPlacement>? placed,
     List<double>? weights,
     int? pins,
+    List<int>? links,
     double? fade,
     double? amount,
     bool? off,
@@ -923,6 +930,7 @@ class ElementMotion {
         placed: placed ?? this.placed,
         weights: weights ?? this.weights,
         pins: pins ?? this.pins,
+        links: links ?? this.links,
         fade: fade ?? this.fade,
         amount: amount ?? this.amount,
         off: off ?? this.off,
@@ -983,16 +991,34 @@ class ElementMotion {
     return copyWith(slots: next);
   }
 
-  /// withCueAt is this with an empty slot inserted at cue row [at].
-  ElementMotion withCueAt(int at) =>
-      slots.length <= at ? this : copyWith(slots: [...slots]..insert(at, ""));
+  /// isLinked is whether slot row [row]'s motion launches with its sound.
+  bool isLinked(int row) => links.contains(row);
+
+  /// linkedAs is this with slot row [row] linked to its sound, or not.
+  ElementMotion linkedAs(int row, bool linked) {
+    if (isLinked(row) == linked) return this;
+    var next = {...links};
+    linked ? next.add(row) : next.remove(row);
+    return copyWith(links: next.toList()..sort());
+  }
+
+  /// withCueAt is this with an empty slot inserted at cue row [at]: the
+  /// links at and past it go down a row with their slots.
+  ElementMotion withCueAt(int at) => slots.length <= at
+      ? this
+      : copyWith(
+          slots: [...slots]..insert(at, ""),
+          links: [for (var r in links) r >= at ? r + 1 : r]);
 
   /// withoutCue is this with cue row [row] removed. Its clip goes too unless
   /// it is in another slot or on the timeline.
   ElementMotion withoutCue(int row) {
     if (slots.length <= row) return this;
     var gone = slots[row];
-    var next = copyWith(slots: [...slots]..removeAt(row));
+    var next = copyWith(slots: [...slots]..removeAt(row), links: [
+      for (var r in links)
+        if (r != row) r > row ? r - 1 : r
+    ]);
     if (gone.isEmpty ||
         next.slots.contains(gone) ||
         placed.any((p) => p.clip == gone)) {
@@ -1018,6 +1044,7 @@ class ElementMotion {
         if (placed.isNotEmpty) "placed": [for (var p in placed) p.toJson()],
         if (weights.any((w) => w != 1)) "weights": weights,
         if (pins != 0) "pins": pins,
+        if (links.isNotEmpty) "links": links,
         if (fade != 0) "fade": fade,
         if (amount != 1) "amount": amount,
         if (off) "off": true,
@@ -1060,6 +1087,13 @@ class ElementMotion {
       pins: json["pins"] is int
           ? (json["pins"] as int) & ((1 << motionLayers) - 1)
           : 0,
+      links: json["links"] is List
+          ? ({
+              for (var r in json["links"] as List)
+                if (r is int && r >= 0) r
+            }.toList()
+            ..sort())
+          : const [],
       fade: jsonDouble(json["fade"], 0).clamp(0.0, 1.0),
       amount: jsonDouble(json["amount"], 1).clamp(0.0, 1.0),
       off: json["off"] == true,

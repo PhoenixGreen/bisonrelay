@@ -73,12 +73,18 @@ extension CanvasSession on CanvasController {
   /// as it says -- on the next bar, or what it waits for -- or, empty, the
   /// element's clips stopped.
   void pressMotionSlot(String element, int slot) {
-    var clip = _document.elementById(element)?.base.motion.slot(slot);
+    var motion = _document.elementById(element)?.base.motion;
+    var clip = motion?.slot(slot);
     if (clip == null) {
       stopMotion(element);
       return;
     }
     pressMotionClip(element, clip.id);
+    // Linked: its own sound in the same row with it (Ken, 2026-11-10).
+    var own = elementSoundKey(element);
+    if (motion!.isLinked(slot) && session.at(own, slot) != null) {
+      launchClip(own, slot);
+    }
   }
 
   /// pressMotionClip is [clip] of [element] launched, as its slot would.
@@ -438,6 +444,13 @@ extension CanvasSession on CanvasController {
     }
     var level = CanvasController.launchLevel(clip, velocity);
     launchClip(channel, row, level: level);
+    // An element's own sound, linked: its motion in the same row with it.
+    if (soundOwnerOf(_document, channel) case var owner?
+        when owner.base.motion.isLinked(row)) {
+      if (owner.base.motion.slot(row) case var motion?) {
+        pressMotionClip(owner.id, motion.id);
+      }
+    }
     // Repeat: again on every launch step while it is held -- see
     // _sessionStep.
     if (clip.launch == LaunchMode.repeat) {

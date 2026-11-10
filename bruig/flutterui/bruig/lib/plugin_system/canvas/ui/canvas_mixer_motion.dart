@@ -351,6 +351,17 @@ class _MotionSlotState extends State<_MotionSlot> with _OnSessionPulse {
           onPressed: () => c.clearMotionSlot(widget.element, widget.row),
           child: const Text("Take it out of the slot"),
         ),
+        // With a sound of its own: linked, the two launch together (Ken,
+        // 2026-11-10).
+        if (c.soundChannelOf(widget.element) != null)
+          MenuItemButton(
+            key: const ValueKey("motionSlotLink"),
+            onPressed: () => c.linkMotionSlot(widget.element, widget.row,
+                !c.motionOf(widget.element).isLinked(widget.row)),
+            child: Text(c.motionOf(widget.element).isLinked(widget.row)
+                ? "Unlink from its sound"
+                : "Link with its sound"),
+          ),
       ];
 
   @override
@@ -423,6 +434,21 @@ class _MotionSlotState extends State<_MotionSlot> with _OnSessionPulse {
           ),
         ),
       );
+    }
+    // Linked to its sound: a short mark down to it (the approved design).
+    if (clip != null && m.isLinked(widget.row)) {
+      body = Stack(clipBehavior: Clip.none, children: [
+        Positioned.fill(child: body),
+        Positioned(
+          key: ValueKey("motionLink-${widget.element}-${widget.row}"),
+          left: 0,
+          right: 0,
+          bottom: -4,
+          height: 5,
+          child:
+              Center(child: Container(width: 2, height: 5, color: studio.on)),
+        ),
+      ]);
     }
     var picked = clip != null && c.pickedMotion == clip.id;
     return DragTarget<Object>(

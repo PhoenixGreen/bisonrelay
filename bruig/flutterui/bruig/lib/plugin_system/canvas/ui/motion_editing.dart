@@ -492,6 +492,15 @@ extension MotionEditing on CanvasController {
     return true;
   }
 
+  /// linkMotionSlot links slot row [row] of [element]'s motion to its own
+  /// sound in the same row, or unlinks it: linked, pressing either launches
+  /// both (Ken, 2026-11-10).
+  void linkMotionSlot(String element, int row, bool linked) {
+    var m = motionOf(element);
+    if (m.isLinked(row) == linked) return;
+    setMotion(element, m.linkedAs(row, linked));
+  }
+
   /// clearMotionSlot empties slot [slot] of [element]: the clip stays,
   /// where it is on the timeline, unless it is nowhere else -- then it goes.
   void clearMotionSlot(String element, int slot) {

@@ -26,6 +26,8 @@ import 'package:bruig/plugin_system/canvas/media/mix/decode.dart'
     show ffmpegDecode, readWholeAway;
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart'
     show StripProcessor, mixRate;
+import 'package:bruig/plugin_system/canvas/ui/element_sound.dart'
+    show elementSoundKey, soundOwnerOf;
 import 'package:bruig/plugin_system/canvas/ui/row_header.dart'
     show givenRowColour;
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';

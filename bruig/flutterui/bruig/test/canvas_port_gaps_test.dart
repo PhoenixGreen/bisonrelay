@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
@@ -435,6 +436,67 @@ void main() {
       await tester.tap(find.byKey(const ValueKey("rowColour-5")));
       await tester.pumpAndSettle();
       expect(c.rowColour("m"), rowPalette[5]);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group("linked slots", () {
+    test("kept with the motion, and moved with their rows", () {
+      var m = const ElementMotion().linkedAs(2, true).linkedAs(0, true);
+      expect(m.links, [0, 2]);
+      expect(ElementMotion.fromJson(m.toJson()).links, [0, 2]);
+      var slotted = m.copyWith(slots: ["a", "b", "c"]);
+      expect(slotted.withCueAt(1).links, [0, 3], reason: "past it, down one");
+      expect(slotted.withoutCue(0).links, [1], reason: "its own goes");
+      expect(m.linkedAs(2, false).links, [0]);
+    });
+
+    CanvasController linked() {
+      var c = CanvasController(
+          CanvasDocument(frames: 240, elements: [
+            const ShapeElement(ElementBase(id: "a", name: "Coin")),
+          ]),
+          audioEngine: FakeEngine({}));
+      c.ensureElementSound("a");
+      c.newClip("a", kind: MotionKind.action, slot: 0);
+      c.setSessionClip(elementSoundKey("a"), 0, const SessionClip(id: "chime"));
+      return c;
+    }
+
+    test("pressed, either side launches the other", () {
+      var c = linked();
+      addTearDown(c.dispose);
+      var own = elementSoundKey("a");
+      c.pressMotionSlot("a", 0);
+      expect(c.clipState(own, 0), ClipState.stopped,
+          reason: "not linked: the motion alone");
+      c.stopAllClips();
+      c.linkMotionSlot("a", 0, true);
+      expect(c.motionOf("a").isLinked(0), isTrue);
+      c.pressMotionSlot("a", 0);
+      expect(c.clipState(own, 0), isNot(ClipState.stopped),
+          reason: "its sound with it");
+      c.stopAllClips();
+      c.pause();
+    });
+
+    testWidgets("linked from a slot's menu, and drawn so", (tester) async {
+      var c = linked();
+      addTearDown(c.dispose);
+      tester.view.physicalSize = const Size(1600, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(host(CanvasMixer(
+          controller: c, height: 720, onResize: (_) {}, onClose: () {})));
+      await tester.pump();
+      expect(find.byKey(const ValueKey("motionLink-a-0")), findsNothing);
+      await tester.tap(find.byKey(const ValueKey("motionName-a-0")),
+          buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("motionSlotLink")));
+      await tester.pumpAndSettle();
+      expect(c.motionOf("a").isLinked(0), isTrue);
+      expect(find.byKey(const ValueKey("motionLink-a-0")), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });
