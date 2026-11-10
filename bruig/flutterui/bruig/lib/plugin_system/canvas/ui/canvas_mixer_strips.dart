@@ -1841,18 +1841,23 @@ class _CueColumn extends StatelessWidget {
   final Widget slots;
   final double width;
 
+  /// master is whether these are the master's cues, beside its channels,
+  /// on a scene with cues of its own (Ken, 2026-11-10: per-canvas cues).
+  final bool master;
+
   const _CueColumn(
       {required this.controller,
       required this.theme,
       required this.bands,
       required this.slots,
-      required this.width});
+      required this.width,
+      this.master = false});
 
   @override
   Widget build(BuildContext context) {
     var colors = theme.colors;
     return SizedBox(
-      key: const ValueKey("cueColumn"),
+      key: ValueKey(master ? "masterCueColumn" : "cueColumn"),
       width: width,
       child: Stack(children: [
         Positioned.fill(
@@ -1871,7 +1876,7 @@ class _CueColumn extends StatelessWidget {
                       height: _headH,
                       child: Row(children: [
                         Expanded(
-                          child: Text("Cues",
+                          child: Text(master ? "Master cues" : "Cues",
                               maxLines: 1,
                               overflow: TextOverflow.clip,
                               softWrap: false,
@@ -1880,7 +1885,8 @@ class _CueColumn extends StatelessWidget {
                                   fontWeight: FontWeight.w600,
                                   color: colors.onSurface)),
                         ),
-                        if (width >= 72)
+                        // One "?" for the cues: the scene's column's.
+                        if (width >= 72 && !master)
                           const HelpNote(
                               id: "cues",
                               size: 16,
@@ -2991,11 +2997,15 @@ class _SceneBand extends StatelessWidget {
   /// motion is the rows' motion part: a cue's launch is the whole row.
   final double motion;
 
+  /// master is whether these are the master's cues: see _CueColumn.
+  final bool master;
+
   const _SceneBand({
     required this.controller,
     required this.theme,
     required this.scroll,
     this.motion = 0,
+    this.master = false,
   });
 
   @override
@@ -3005,9 +3015,10 @@ class _SceneBand extends StatelessWidget {
       scroll,
       controller.slotsShown,
       (row) => _SceneSlot(
-          key: ValueKey("scene-$row"),
+          key: ValueKey(master ? "masterCue-$row" : "scene-$row"),
           controller: controller,
           row: row,
+          master: master,
           theme: theme),
       motion: motion,
       whole: true,
@@ -3023,7 +3034,7 @@ class _SceneBand extends StatelessWidget {
                 color: studio.inset,
                 borderRadius: BorderRadius.circular(3),
                 child: InkWell(
-                  key: const ValueKey("clipStopAll"),
+                  key: ValueKey(master ? "masterStopAll" : "clipStopAll"),
                   borderRadius: BorderRadius.circular(3),
                   onTap: controller.stopAllClips,
                   child: Center(
@@ -3050,9 +3061,9 @@ class _SceneBand extends StatelessWidget {
                 color: studio.inset,
                 borderRadius: BorderRadius.circular(3),
                 child: InkWell(
-                  key: const ValueKey("addClipScene"),
+                  key: ValueKey(master ? "addMasterCue" : "addClipScene"),
                   borderRadius: BorderRadius.circular(3),
-                  onTap: controller.addClipScene,
+                  onTap: () => controller.addClipScene(master: master),
                   child: SizedBox(
                       width: 20,
                       child: Icon(Icons.add, size: 12, color: studio.text)),
@@ -3072,10 +3083,14 @@ class _SceneSlot extends StatefulWidget {
   final CanvasController controller;
   final int row;
   final MixerLook theme;
+
+  /// master is whether it is one of the master's cues: see _CueColumn.
+  final bool master;
   const _SceneSlot(
       {required this.controller,
       required this.row,
       required this.theme,
+      this.master = false,
       super.key});
 
   @override
@@ -3113,21 +3128,23 @@ class _SceneSlotState extends State<_SceneSlot> {
   void _renamed() {
     if (!_renaming) return;
     setState(() => _renaming = false);
-    c.renameClipScene(widget.row, _name.text);
+    c.renameClipScene(widget.row, _name.text, master: widget.master);
   }
 
   @override
   Widget build(BuildContext context) {
     var studio = widget.theme.studio;
-    var lit = c.sceneLaunched == widget.row;
-    var name = c.session.sceneName(widget.row);
+    var master = widget.master;
+    var lit = c.cueLaunched(master: master) == widget.row;
+    var name = c.cueName(widget.row, master: master);
     return MenuAnchor(
       controller: _menu,
       menuChildren: [
         MenuItemButton(
           key: const ValueKey("sceneRename"),
           onPressed: () {
-            _name.text = c.session.scenes[widget.row];
+            var names = c.cueNames(master: master);
+            _name.text = widget.row < names.length ? names[widget.row] : "";
             setState(() => _renaming = true);
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) _focus.requestFocus();
@@ -3137,13 +3154,14 @@ class _SceneSlotState extends State<_SceneSlot> {
         ),
         MenuItemButton(
           key: const ValueKey("sceneInsert"),
-          onPressed: () => c.addClipScene(after: widget.row),
+          onPressed: () => c.addClipScene(after: widget.row, master: master),
           child: const Text("Add a cue below"),
         ),
         MenuItemButton(
           key: const ValueKey("sceneDelete"),
-          onPressed:
-              c.session.rows > 1 ? () => c.removeClipScene(widget.row) : null,
+          onPressed: c.cueNames(master: master).length > 1
+              ? () => c.removeClipScene(widget.row, master: master)
+              : null,
           child: const Text("Delete, with its clips"),
         ),
       ],
@@ -3157,7 +3175,7 @@ class _SceneSlotState extends State<_SceneSlot> {
               _menuAt = e.localPosition;
               return;
             }
-            if (!_renaming) c.launchScene(widget.row);
+            if (!_renaming) c.launchCue(widget.row, master: master);
           },
           onPointerUp: (e) {
             if (_menuAt case var at?) {

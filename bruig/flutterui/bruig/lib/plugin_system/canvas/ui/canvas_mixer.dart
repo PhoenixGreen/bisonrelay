@@ -1044,6 +1044,27 @@ class _CanvasMixerState extends State<CanvasMixer>
                                       .length,
                                 ),
                               ),
+                              // The master's cues before its channels, on a
+                              // scene with cues of its own (Ken, 2026-11-10).
+                              if (!controller.allFolded &&
+                                  controller.cuesApart &&
+                                  bands.clips != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: _CueColumn(
+                                    controller: controller,
+                                    theme: theme,
+                                    bands: bands,
+                                    master: true,
+                                    width: controller.cueColumnWidth,
+                                    slots: _SceneBand(
+                                        controller: controller,
+                                        theme: theme,
+                                        master: true,
+                                        motion: bands.motionClip,
+                                        scroll: _clipScrolls.of("masterCues")),
+                                  ),
+                                ),
                               if (!controller.allFolded)
                                 for (var (i, lane) in loose)
                                   if (everyScene.contains(lane.key))

@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
@@ -37,26 +38,27 @@ AudioElement sound(String id, String name) =>
         controls: const []);
 
 Future<CanvasController> pump(WidgetTester tester,
-    {double width = 1400, double height = 420}) async {
+    {double width = 1400, double height = 420, CanvasDocument? doc}) async {
   var c = CanvasController(
-      CanvasDocument(frameRate: 24, scenes: [
-        CanvasScene(id: "s0", name: "Meadow", frames: 100, elements: [
-          ShapeElement(ElementBase(
-              id: "coin",
-              name: "Coin",
-              width: 20,
-              height: 20,
-              motion: ElementMotion(
-                  clips: [clip("Spin", 0), clip("Bob", 1)],
-                  slots: const ["Spin", "Bob"]))),
-          sound("m", "Music"),
-        ]),
-        const CanvasScene(id: "s1", name: "Chase", frames: 80),
-        const CanvasScene(id: "s2", name: "Home", frames: 60),
-      ]),
+      doc ??
+          CanvasDocument(frameRate: 24, scenes: [
+            CanvasScene(id: "s0", name: "Meadow", frames: 100, elements: [
+              ShapeElement(ElementBase(
+                  id: "coin",
+                  name: "Coin",
+                  width: 20,
+                  height: 20,
+                  motion: ElementMotion(
+                      clips: [clip("Spin", 0), clip("Bob", 1)],
+                      slots: const ["Spin", "Bob"]))),
+              sound("m", "Music"),
+            ]),
+            const CanvasScene(id: "s1", name: "Chase", frames: 80),
+            const CanvasScene(id: "s2", name: "Home", frames: 60),
+          ]),
       audioEngine: FakeEngine(const {"x": 4}));
   addTearDown(c.dispose);
-  c.ensureElementSound("coin");
+  if (doc == null) c.ensureElementSound("coin");
   tester.view.physicalSize = Size(width, height + 100);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -228,5 +230,72 @@ void main() {
     expect(d.cueColumnWidth, CanvasController.cueColumnMost,
         reason: "held to its most; the rest passed by");
     expect(d.motionSlots, BandState.minimised);
+  });
+
+  // Ken, 2026-11-10: per-canvas cues. On a scene of a game whose master has
+  // the music, the scene's cues on the left are its own, and the master's
+  // stand before the master's channels, launching them.
+  testWidgets("on a scene, the master's cues before the master's channels",
+      (tester) async {
+    var c = await pump(tester,
+        doc: CanvasDocument(
+            frameRate: 24,
+            game: true,
+            masterOn: true,
+            master: CanvasScene(id: "master", elements: [
+              sound("music", "Music"),
+            ]),
+            scenes: [
+              CanvasScene(id: "s0", name: "Woods", frames: 100, elements: [
+                ShapeElement(ElementBase(
+                    id: "coin",
+                    name: "Coin",
+                    width: 20,
+                    height: 20,
+                    motion: ElementMotion(
+                        clips: [clip("Spin", 0)], slots: const ["Spin"]))),
+              ]),
+              const CanvasScene(id: "s1", name: "Ruins", frames: 80),
+            ]).copyWith(
+            session: const SessionGrid(scenes: ["Title", "Woods"]).put(
+                "music",
+                0,
+                const SessionClip(
+                    id: "m0",
+                    sound: MediaSource(assetId: "x", length: 4),
+                    bars: 2))));
+    expect(tester.takeException(), isNull);
+    expect(c.cuesApart, isTrue);
+    Rect at(String key) => tester.getRect(find.byKey(ValueKey(key)));
+    var mine = at("slotsCues");
+    var coin = at("slotsColumn-coin");
+    var masters = at("slotsMasterCues");
+    var music = at("slotsColumn-music");
+    expect(mine.right, lessThanOrEqualTo(coin.left));
+    expect(coin.right, lessThanOrEqualTo(masters.left),
+        reason: "the scene's own first");
+    expect(masters.right, lessThanOrEqualTo(music.left),
+        reason: "the master's cues just before its channels");
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey("slotsCues")),
+            matching: find.text("Title")),
+        findsNothing,
+        reason: "the scene's cues are its own, numbered");
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey("slotsMasterCues")),
+            matching: find.text("Title")),
+        findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("masterCue-0")));
+    await tester.pump();
+    expect(c.clipState("music", 0), isIn([ClipState.queued, ClipState.playing]),
+        reason: "the master's cue plays the master's music");
+    expect(c.motionPlayer.isPlaying("coin"), isFalse,
+        reason: "not the scene's elements");
+    c.stopChannelClips("music", now: true);
+    c.pause();
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
   });
 }

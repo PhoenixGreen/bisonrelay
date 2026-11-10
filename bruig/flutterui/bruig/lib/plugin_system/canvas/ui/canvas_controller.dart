@@ -157,7 +157,7 @@ import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart'
 import 'package:bruig/plugin_system/canvas/model/instances.dart'
     show CopyValue, ElementInstance, InstanceSet, deviceOwnKey;
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
-    show ClipTriggerKind, MotionKind;
+    show ClipTriggerKind, ElementMotion, MotionKind;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show
         LiveMotion,
@@ -3187,6 +3187,10 @@ class CanvasController extends ChangeNotifier {
   final Map<String, _Repeat> _repeats = {};
 
   int? _sceneLaunched;
+
+  /// _cueLaunchedMaster is whether the cue last launched was the master's,
+  /// on a scene with cues of its own (see CanvasSession.cuesApart).
+  bool _cueLaunchedMaster = false;
 
   final math.Random _followDice = math.Random();
 

@@ -208,6 +208,16 @@ void main() {
     expect(tester.getRect(find.byKey(ValueKey("strip-${keyOf("Bed")}"))).right,
         lessThanOrEqualTo(tester.getRect(fold).left),
         reason: "the scene's own first");
+    // Ken, 2026-11-10: per-canvas cues -- the master's cues before its
+    // channels, its own on the left.
+    var masterCues = find.byKey(const ValueKey("masterCueColumn"));
+    expect(masterCues, findsOneWidget);
+    expect(tester.getRect(fold).right,
+        lessThanOrEqualTo(tester.getRect(masterCues).left));
+    expect(tester.getRect(masterCues).right,
+        lessThanOrEqualTo(tester.getRect(music).left));
+    expect(find.byKey(const ValueKey("cueColumn")), findsOneWidget,
+        reason: "the scene's own cues, on the left");
 
     await tester.tap(fold);
     await tester.pump();

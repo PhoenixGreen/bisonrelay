@@ -547,9 +547,75 @@ extension CanvasSession on CanvasController {
 
   /// launchScene plays row [row] across every channel, all from the same
   /// moment: a channel with nothing in the row stops.
-  void launchScene(int row) {
+  // Per-canvas cues (Ken, 2026-11-10): where a game's master has channels
+  // or elements with slots of their own, its cues -- the document's,
+  // SessionGrid.scenes -- are theirs, and each scene's (CanvasScene.cues)
+  // its own channels' and elements': launched, renamed, added and taken
+  // away apart. One grid of rows under them all. Where the master has none,
+  // the canvas shown has the document's cues, as it always had.
+
+  /// cuesApart is whether the canvas shown has cues of its own, apart from
+  /// the master's: a scene, with a master that has slots in use.
+  bool get cuesApart => !_document.editingMaster && _masterSlotted;
+
+  /// _masterSlotted is whether the master is on and has channels, or
+  /// elements with slots: what its cues launch.
+  bool get _masterSlotted {
+    var m = _document.master;
+    if (!_document.masterOn || m == null) return false;
+    return m.elements.any((e) =>
+        e is AudioElement || e.base.motion.slots.any((s) => s.isNotEmpty));
+  }
+
+  /// cueNames are the cues of the canvas shown -- or, [master], of the
+  /// master -- a name a row ("" for one named by its number).
+  List<String> cueNames({bool master = false}) {
+    var rows = session.rows;
+    if (master || !cuesApart) return session.scenes;
+    var own = _document.scene.cues ?? const <String>[];
+    return [for (var i = 0; i < rows; i++) i < own.length ? own[i] : ""];
+  }
+
+  /// cueName is cue [row]'s name, or its number.
+  String cueName(int row, {bool master = false}) {
+    var names = cueNames(master: master);
+    return row < names.length && names[row].isNotEmpty
+        ? names[row]
+        : "${row + 1}";
+  }
+
+  /// _cueChannels are the channels a cue of the canvas shown, or [master]'s,
+  /// launches: all of them, where the canvas has no cues apart.
+  Iterable<TimelineChannel> _cueChannels(bool master) {
+    if (!cuesApart && !master) return timelineChannels;
+    var mine = _masterChannelKeys;
+    return timelineChannels.where((c) => mine.contains(c.key) == master);
+  }
+
+  /// _masterChannelKeys are the master's channels, by key.
+  Set<String> get _masterChannelKeys => {
+        for (var e in _document.master?.elements ?? const <CanvasElement>[])
+          if (e is AudioElement) CanvasController._channelOf(e),
+      };
+
+  /// _cueElements are the elements a cue launches the slots of: the canvas
+  /// shown's -- with the master's drawn over it, where it has no cues
+  /// apart -- or, [master], the master's.
+  List<CanvasElement> _cueElements(bool master) {
+    if (master && cuesApart) return _masterHeard;
+    if (cuesApart) return _document.elements;
+    return _withMaster;
+  }
+
+  /// launchScene launches cue [row] of the canvas shown.
+  void launchScene(int row) => launchCue(row);
+
+  /// launchCue launches cue [row] -- of the canvas shown, or [master]'s --
+  /// every one of its channels' and elements' clips in that row from the
+  /// next bar.
+  void launchCue(int row, {bool master = false}) {
     var at = _launchTime();
-    for (var c in timelineChannels) {
+    for (var c in _cueChannels(master)) {
       var clip = session.at(c.key, row);
       if (clip != null) {
         unawaited(_startClip(c.key, row, clip, at));
@@ -557,21 +623,28 @@ extension CanvasSession on CanvasController {
         _stopChannelAt(c.key, at);
       }
     }
-    // The cue's row of every element's slots, too -- the master's with the
-    // scene's. An element with nothing in it goes on as it is: a picture
-    // has no reason to stop moving because a cue has nothing new for it.
-    for (var e in _withMaster) {
+    // The cue's row of every element's slots, too. An element with nothing
+    // in it goes on as it is: a picture has no reason to stop moving
+    // because a cue has nothing new for it.
+    for (var e in _cueElements(master)) {
       if (e.base.motion.slot(row) case var clip?) {
         motionPlayer.launch(_document, _frame, e.id, clip.id, at);
       }
     }
     _motionStep();
     _sceneLaunched = row;
+    _cueLaunchedMaster = master && cuesApart;
     notifyListeners();
   }
 
-  /// sceneLaunched is the scene last launched, for the master to light.
-  int? get sceneLaunched => anyClipPlaying ? _sceneLaunched : null;
+  /// sceneLaunched is the cue of the canvas shown last launched, to light.
+  int? get sceneLaunched => cueLaunched();
+
+  /// cueLaunched is the cue last launched of the canvas shown, or [master]'s.
+  int? cueLaunched({bool master = false}) {
+    if (!anyClipPlaying && !motionPlayer.playing) return null;
+    return _cueLaunchedMaster == (master && cuesApart) ? _sceneLaunched : null;
+  }
 
   /// stopChannelClips stops what [channel] plays from its slots, at the
   /// next launch time.
@@ -1156,34 +1229,109 @@ extension CanvasSession on CanvasController {
   /// grid's rows -- not the canvas's own scenes. Added at the end, a cue
   /// goes after the slots shown, named by its number so it is one of them
   /// (see slotsShown, which leaves out empty cues past the last used).
-  void addClipScene({int? after}) {
+  void addClipScene({int? after, bool master = false}) {
+    if (!cuesApart) {
+      var at = after == null ? slotsShown : after + 1;
+      var grid = session.withScene(after: at - 1);
+      if (after == null) grid = grid.renameScene(at, "${at + 1}");
+      // The elements' slots move down with the cues under it.
+      apply(everyMotion(
+          _document.copyWith(session: grid), (m) => m.withCueAt(at)));
+      return;
+    }
     var at = after == null ? slotsShown : after + 1;
-    var grid = session.withScene(after: at - 1);
-    if (after == null) grid = grid.renameScene(at, "${at + 1}");
-    // The elements' slots move down with the cues under it.
-    apply(
-        everyMotion(_document.copyWith(session: grid), (m) => m.withCueAt(at)));
+    var keys = {for (var c in _cueChannels(master)) c.key};
+    var names = [...cueNames(master: master)]
+      ..insert(at.clamp(0, cueNames(master: master).length), "");
+    if (after == null) names[at] = "${at + 1}";
+    apply(_cuesMoved(names, master, keys,
+        (list) => list.length <= at ? list : ([...list]..insert(at, null)),
+        (m) => m.withCueAt(at)));
   }
 
-  void removeClipScene(int row) {
+  void removeClipScene(int row, {bool master = false}) {
+    var keys = {for (var c in _cueChannels(master)) c.key};
     for (var key in [..._clipChannels.keys]) {
+      if (cuesApart && !keys.contains(key)) continue;
       var ch = _clipChannels[key]!;
       if (ch.now?.row == row || ch.next?.row == row) {
         _stopChannelAt(key, _sessionNow);
       }
     }
-    if (session.rows <= 1) return;
-    for (var e in _document.elements) {
+    if (cueNames(master: master).length <= 1) return;
+    for (var e in _cueElements(master)) {
       if (e.base.motion.slot(row) case var clip?) {
         motionPlayer.stop(e.id, layer: clip.layer, at: _sessionNow);
       }
     }
-    apply(everyMotion(_document.copyWith(session: session.withoutScene(row)),
+    if (!cuesApart) {
+      apply(everyMotion(_document.copyWith(session: session.withoutScene(row)),
+          (m) => m.withoutCue(row)));
+      return;
+    }
+    var names = [...cueNames(master: master)]..removeAt(row);
+    apply(_cuesMoved(names, master, keys,
+        (list) => list.length <= row ? list : ([...list]..removeAt(row)),
         (m) => m.withoutCue(row)));
   }
 
-  void renameClipScene(int row, String name) =>
+  void renameClipScene(int row, String name, {bool master = false}) {
+    if (!cuesApart || master) {
       apply(_document.copyWith(session: session.renameScene(row, name)));
+      return;
+    }
+    var names = [...cueNames()];
+    if (row < 0 || row >= names.length) return;
+    names[row] = name.trim();
+    apply(_document.withScene(
+        _document.at, _document.scene.copyWith(cues: names)));
+  }
+
+  /// _cuesMoved is the document with the cues of the canvas shown -- or,
+  /// [master], the master's -- now [names]: the slots of channels [keys]
+  /// moved by [slots], and of its elements by [motion]; the other canvas's
+  /// left where they are, and as many rows as anything has.
+  CanvasDocument _cuesMoved(
+      List<String> names,
+      bool master,
+      Set<String> keys,
+      List<SessionClip?> Function(List<SessionClip?> list) slots,
+      ElementMotion Function(ElementMotion m) motion) {
+    var moved = {
+      for (var e in session.slots.entries)
+        e.key: keys.contains(e.key) ? slots(e.value) : e.value,
+    }..removeWhere((_, l) => l.every((c) => c == null));
+    var doc = _document;
+    var rows = names.length;
+    for (var l in moved.values) {
+      rows = math.max(rows, l.length);
+    }
+    List<String> padded(List<String> l, int n) =>
+        [for (var i = 0; i < n; i++) i < l.length ? l[i] : ""];
+    List<CanvasElement> stepped(List<CanvasElement> list) => [
+          for (var e in list)
+            if (e.base.motion.isEmpty)
+              e
+            else
+              e.withBase(motion: motion(e.base.motion)),
+        ];
+    if (master) {
+      rows = math.max(rows, cueNames().length);
+      doc = doc.copyWith(
+          session: SessionGrid(scenes: padded(names, rows), slots: moved));
+      if (doc.master case var m?) {
+        doc = doc.copyWith(master: m.copyWith(elements: stepped(m.elements)));
+      }
+    } else {
+      rows = math.max(rows, session.scenes.length);
+      doc = doc.copyWith(
+          session:
+              SessionGrid(scenes: padded(session.scenes, rows), slots: moved),
+          elements: stepped(doc.elements));
+      doc = doc.withScene(doc.at, doc.scene.copyWith(cues: names));
+    }
+    return doc;
+  }
 
   /// instrumentOf is [channel]'s instrument, for a MIDI channel, or null.
   AudioElement? instrumentOf(String channel) => _instrumentOf(channel);

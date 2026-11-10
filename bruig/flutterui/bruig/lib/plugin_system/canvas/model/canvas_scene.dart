@@ -730,6 +730,13 @@ class CanvasScene {
   /// for its start (Ken: the meadow's music stopped as it ends).
   final Map<String, String> gameSoundsAtEnd;
 
+  /// cues are this scene's own cues, by name, a row each -- its own
+  /// channels' and elements' rows of slots, launched together -- or null,
+  /// none named yet. A game's master has the cues of the channels every
+  /// scene shares (the document's, SessionGrid.scenes); a scene's are its
+  /// own (Ken, 2026-11-10: per-canvas cues). See CanvasCues.
+  final List<String>? cues;
+
   /// cover marks this canvas as the outside of a document rather than one of
   /// its leaves; see PageCover. Kept on the scene, not as a position on the
   /// document, so it survives reordering. Read only when the document is
@@ -766,6 +773,7 @@ class CanvasScene {
     this.masterOff = false,
     this.gameSounds = const {},
     this.gameSoundsAtEnd = const {},
+    this.cues,
     this.transition,
     this.cover = PageCover.none,
     this.camera,
@@ -800,6 +808,7 @@ class CanvasScene {
     bool? masterOff,
     Map<String, String>? gameSounds,
     Map<String, String>? gameSoundsAtEnd,
+    List<String>? cues,
     SceneTransition? transition,
     bool clearTransition = false,
     PageCover? cover,
@@ -819,6 +828,7 @@ class CanvasScene {
         masterOff: masterOff ?? this.masterOff,
         gameSounds: gameSounds ?? this.gameSounds,
         gameSoundsAtEnd: gameSoundsAtEnd ?? this.gameSoundsAtEnd,
+        cues: cues ?? this.cues,
         transition: clearTransition ? null : (transition ?? this.transition),
         cover: cover ?? this.cover,
         camera: clearCamera ? null : (camera ?? this.camera),
@@ -837,6 +847,7 @@ class CanvasScene {
         if (masterOff) "masterOff": true,
         if (gameSounds.isNotEmpty) "gameSounds": gameSounds,
         if (gameSoundsAtEnd.isNotEmpty) "gameSoundsEnd": gameSoundsAtEnd,
+        if (cues case var c?) "cues": c,
         if (transition != null) "transition": transition!.toJson(),
         if (cover.isCover) "cover": cover.name,
         if (camera != null) "camera": camera!.toJson(),
@@ -880,6 +891,9 @@ class CanvasScene {
           for (var MapEntry(:key, :value) in raw.entries)
             if (key is String && value is String) key: value,
       },
+      cues: json["cues"] is List
+          ? [for (var c in json["cues"] as List) c is String ? c : ""]
+          : null,
       transition: json["transition"] is Map<String, dynamic>
           ? SceneTransition.fromJson(json["transition"] as Map<String, dynamic>)
           : null,

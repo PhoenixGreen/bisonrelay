@@ -30,6 +30,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart' show DbReading;
 import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/slots_window.dart';
+import 'package:bruig/plugin_system/canvas/ui/cue_launches.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_columns.dart';
 import 'package:flutter/gestures.dart';
@@ -745,7 +746,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                 // The All group, last, under a heading that folds it away
                 // (Ken, 2026-11-08).
                 if (inAll.isNotEmpty) ...[
-                  _allHeading(theme, inAll.length),
+                  _allHeading(theme, inAll.length, width),
                   if (!controller.allFolded)
                     for (var channel in inAll)
                       ..._channelRows(channel, width, theme, channels,
@@ -782,9 +783,41 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   /// not an element's own sound, which stays under the element.
   /// _allHeading is the All group's heading: "All scenes", how many rows
   /// are in it, and an arrow folding them away.
-  Widget _allHeading(ThemeNotifier theme, int count) {
+  /// On a scene with cues of its own, the master's cues are over the slots
+  /// beside it, over the master's channels (Ken, 2026-11-10: per-canvas
+  /// cues); [width] is the strips'.
+  Widget _allHeading(ThemeNotifier theme, int count, double width) {
     var colors = theme.colors;
     var folded = controller.allFolded;
+    var slots = slotsWidthIn(context, controller);
+    var cues = controller.cuesApart && slots > 0;
+    var fold = InkWell(
+      key: const ValueKey("allGroupFold"),
+      onTap: () => controller.allFolded = !folded,
+      child: Row(children: [
+        const SizedBox(width: 6),
+        Icon(folded ? Icons.chevron_right : Icons.expand_more,
+            size: 14, color: colors.onSurfaceVariant),
+        const SizedBox(width: 4),
+        Text("All scenes",
+            maxLines: 1,
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: colors.onSurface)),
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5),
+          decoration: BoxDecoration(
+              color: colors.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(6)),
+          child: Text("$count",
+              key: const ValueKey("allGroupCount"),
+              style: TextStyle(
+                  fontSize: 9.5, height: 1.4, color: colors.onSurfaceVariant)),
+        ),
+      ]),
+    );
     return Container(
       key: const ValueKey("allGroupHeading"),
       height: 24,
@@ -793,35 +826,18 @@ class _CanvasChannelsState extends State<CanvasChannels> {
         border: Border(
             bottom: BorderSide(color: colors.outline.withValues(alpha: 0.5))),
       ),
-      child: InkWell(
-        key: const ValueKey("allGroupFold"),
-        onTap: () => controller.allFolded = !folded,
-        child: Row(children: [
-          const SizedBox(width: 6),
-          Icon(folded ? Icons.chevron_right : Icons.expand_more,
-              size: 14, color: colors.onSurfaceVariant),
-          const SizedBox(width: 4),
-          Text("All scenes",
-              maxLines: 1,
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: colors.onSurface)),
-          const SizedBox(width: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5),
-            decoration: BoxDecoration(
-                color: colors.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(6)),
-            child: Text("$count",
-                key: const ValueKey("allGroupCount"),
-                style: TextStyle(
-                    fontSize: 9.5,
-                    height: 1.4,
-                    color: colors.onSurfaceVariant)),
-          ),
-        ]),
-      ),
+      child: !cues
+          ? fold
+          : LayoutBuilder(
+              builder: (context, box) => Row(children: [
+                    SizedBox(width: math.min(width, box.maxWidth), child: fold),
+                    SizedBox(
+                      key: const ValueKey("masterCueLaunches"),
+                      width:
+                          math.min(slots, math.max(0.0, box.maxWidth - width)),
+                      child: cueLaunchRow(controller, colors, master: true),
+                    ),
+                  ])),
     );
   }
 

@@ -273,8 +273,15 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
             BandState.hidden => 0.0,
           };
     var columns = <Widget Function(double width)>[];
+    var masterCues = false;
     for (var r in rowsOf) {
       if (r.transitions) continue;
+      // The master's cues before its channels, on a scene with cues of its
+      // own (Ken, 2026-11-10: per-canvas cues).
+      if (r.group == RowGroup.all && controller.cuesApart && !masterCues) {
+        masterCues = true;
+        columns.add((w) => _cues(theme, w, part, motionPart, master: true));
+      }
       columns.add((w) => _column(theme, r, w, part, motionPart));
     }
     var scenes = controller.document.allScenes.length;
@@ -558,24 +565,28 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
 
   /// _cues is the cue column: a launch for each cue row, Stop all under,
   /// its right edge dragged wider or narrower.
-  Widget _cues(MixerLook theme, double width, double sound, double motion) {
+  Widget _cues(MixerLook theme, double width, double sound, double motion,
+      {bool master = false}) {
     var studio = theme.studio;
     return Stack(children: [
       _frame(
         theme,
-        key: const ValueKey("slotsCues"),
+        key: ValueKey(master ? "slotsMasterCues" : "slotsCues"),
         width: width,
         head: _head(theme,
-            name: "Cues",
+            name: master ? "Master cues" : "Cues",
             colour: studio.muted,
-            under: const [("launch a row", null)]),
+            under: [
+              (master ? "launch every scene's row" : "launch a row", null)
+            ]),
         slots: _clipColumn(
-          _scrolls.of(_master),
+          _scrolls.of(master ? "masterCues" : _master),
           controller.slotsShown,
           (row) => _SceneSlot(
-              key: ValueKey("scene-$row"),
+              key: ValueKey(master ? "masterCue-$row" : "scene-$row"),
               controller: controller,
               row: row,
+              master: master,
               theme: theme),
           const SizedBox(),
           clip: sound,
@@ -584,7 +595,7 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
           stop: false,
         ),
         foot: InkWell(
-          key: const ValueKey("clipStopAll"),
+          key: ValueKey(master ? "slotsMasterStopAll" : "clipStopAll"),
           onTap: controller.stopAllClips,
           child: Center(
             child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -596,22 +607,24 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
           ),
         ),
       ),
-      // Its right edge, dragged to widen or narrow it.
-      Positioned(
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: 6,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.resizeColumn,
-          child: GestureDetector(
-            key: const ValueKey("slotsCueGrip"),
-            behavior: HitTestBehavior.opaque,
-            onHorizontalDragUpdate: (d) =>
-                controller.slotsCueWidth += d.delta.dx,
+      // Its right edge, dragged to widen or narrow it -- the scene's cues;
+      // the master's are as wide as a channel.
+      if (!master)
+        Positioned(
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 6,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.resizeColumn,
+            child: GestureDetector(
+              key: const ValueKey("slotsCueGrip"),
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragUpdate: (d) =>
+                  controller.slotsCueWidth += d.delta.dx,
+            ),
           ),
         ),
-      ),
     ]);
   }
 }

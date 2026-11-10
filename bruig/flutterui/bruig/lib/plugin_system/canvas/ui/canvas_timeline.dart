@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart'
     show MotionEditing;
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/ui/scene_strip.dart';
-import 'package:bruig/plugin_system/canvas/ui/slots_window.dart';
+import 'package:bruig/plugin_system/canvas/ui/cue_launches.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/play_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_columns.dart';
@@ -600,49 +600,12 @@ class CanvasTimelineState extends State<CanvasTimeline> {
       // Along with the slots under it: see slots_window.dart. At its end,
       // Stop all (Ken), where it stays as the cues scroll.
       child: Row(children: [
+        // The canvas shown's cues: on a scene with cues of its own, its own
+        // (the master's are over its channels, in the All scenes heading).
         Expanded(
-          child: slotsScroller(
-            controller,
-            Padding(
-                padding: const EdgeInsets.fromLTRB(3, 4, 2, 4),
-                child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (var i = 0; i < controller.slotsShown; i++) ...[
-                        if (i > 0) const SizedBox(width: 3),
-                        SizedBox(
-                          width: CanvasController.slotCellWidth,
-                          height: 20,
-                          child: Material(
-                            color: controller.sceneLaunched == i
-                                ? colors.primaryContainer
-                                : colors.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(3),
-                            child: InkWell(
-                              key: ValueKey("cueLaunch-$i"),
-                              borderRadius: BorderRadius.circular(3),
-                              onTap: () => controller.launchScene(i),
-                              child: Row(children: [
-                                Icon(Icons.play_arrow,
-                                    size: 12, color: colors.onSurface),
-                                Expanded(
-                                  child: Text(
-                                      controller.session.scenes[i].isEmpty
-                                          ? "${i + 1}"
-                                          : controller.session.scenes[i],
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                          fontSize: 10.5,
-                                          color: colors.onSurface)),
-                                ),
-                              ]),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ])),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: cueLaunchRow(controller, colors),
           ),
         ),
         Padding(
