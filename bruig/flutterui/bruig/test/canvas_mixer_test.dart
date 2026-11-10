@@ -359,19 +359,27 @@ void main() {
       var e = AudioElement(const ElementBase(id: "t", visible: false),
           clip: const MediaClip(
               timed: true, volume: 1, playlist: [MediaSource(assetId: song)]));
+      // Each cue's voice once it has started: on a loaded machine that can
+      // take more than a turn or two, and engine.last is then the one before.
+      Future<FakeVoice> started(int before) async {
+        for (var i = 0; i < 200 && engine.voices.length <= before; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+        return engine.last;
+      }
+
+      var before = engine.voices.length;
       runtime.cue(e, const ClipMoment(0, 2.5, 1), playing: true);
-      await Future<void>.delayed(Duration.zero);
-      await Future<void>.delayed(Duration.zero);
-      var voice = engine.last;
+      var voice = await started(before);
       expect(voice.fades.first.$1, closeTo(1, 1e-9), reason: "up to its level");
       expect(voice.fades.first.$2, declickSeconds);
 
       var fresh = AudioRuntime(engine: engine, locate: (id) async => id);
       addTearDown(fresh.dispose);
+      before = engine.voices.length;
       fresh.cue(e, const ClipMoment(0, 0, 1), playing: true);
-      await Future<void>.delayed(Duration.zero);
-      await Future<void>.delayed(Duration.zero);
-      expect(engine.last.fades, isEmpty, reason: "from the top, no ramp");
+      expect((await started(before)).fades, isEmpty,
+          reason: "from the top, no ramp");
     });
 
     // Every frame the playhead moves the sound is cued again. Its volume is
