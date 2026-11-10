@@ -882,6 +882,14 @@ class CanvasController extends ChangeNotifier {
 
   int? _pickedScene;
 
+  /// _joinPicked is whether the scene picked was picked by its transition's
+  /// slot: that join's own transition, even on the master (see pickJoin).
+  bool _joinPicked = false;
+
+  /// _joinPress is a transition's slot pressed, for the press it is in:
+  /// the Scenes strip's own pick passes it by (see pickJoin).
+  bool _joinPress = false;
+
   /// _previewJoin is the join whose transition is being previewed (see
   /// previewTransitionAfter), or null.
   int? _previewJoin;
@@ -897,8 +905,17 @@ class CanvasController extends ChangeNotifier {
     return setEquals(_selection, _pickedSceneWith) ? i : null;
   }
 
+  /// transitionsAsDefault is whether the Chain's transition is the default
+  /// -- every scene's that has none of its own -- rather than one join's:
+  /// on the master, but for a join picked by its own slot (Ken, 2026-11-10:
+  /// each transition clicked on the master's Scenes strip showed the same,
+  /// the default).
+  bool get transitionsAsDefault =>
+      _document.editingMaster && !(_joinPicked && pickedScene != null);
+
   /// pickScene opens [index] in the Animation panel.
   void pickScene(int index) {
+    _joinPicked = false;
     _pickedScene = index;
     _pickedSceneWith = {..._selection};
     _pickedMotion = _pickedPlacement = null;

@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/ui/slot_face.dart';
+import 'package:bruig/plugin_system/canvas/ui/scene_transition_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
@@ -335,6 +336,107 @@ void main() {
     c.stopPreview();
     await tester.pump();
     expect(lit(), isFalse);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  // Ken: "Selecting a transition on the scene channel is a little flaky on
+  // both the mixer and slots panels. Sometimes it doesn't select it first
+  // time and sometimes it selects a different transition ... when you are
+  // on another channel and then you select a transition, it doesn't select
+  // the transition on the first click."
+  for (var mixer in [false, true]) {
+    testWidgets(
+        "${mixer ? "the mixer" : "the Slots panel"}: one click picks the "
+        "transition clicked", (tester) async {
+      var c = await pump(tester);
+      if (mixer) {
+        await tester.pumpWidget(MultiProvider(
+          providers: [
+            ChangeNotifierProvider<ThemeNotifier>(
+                create: (c) => ThemeNotifier(doLoad: false)),
+            ChangeNotifierProvider<SnackBarModel>(
+                create: (c) => SnackBarModel()),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.bottomCenter,
+                child: CanvasMixer(
+                    controller: c,
+                    height: 420,
+                    onResize: (_) {},
+                    onClose: () {}),
+              ),
+            ),
+          ),
+        ));
+        await tester.pump();
+      }
+      // As a hand clicks: pressed, the panel built again under it, then let
+      // go -- the strip's pick on the press rebuilt the slot, and the slot's
+      // own pick (on the release) was lost or came second.
+      Future<void> click(String key) async {
+        var g = await tester
+            .startGesture(tester.getCenter(find.byKey(ValueKey(key))));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 80));
+        await g.up();
+        await tester.pump();
+      }
+
+      // On another channel first.
+      c.selectOnly("coin");
+      await tester.pump();
+      await click("joinOpen-1");
+      expect(c.pickedScene, 1, reason: "the one clicked, the first time");
+      expect(c.animationOpen, isTrue);
+      // With the Chain open on it: another, at once -- not the scene shown.
+      await click("joinOpen-0");
+      expect(c.pickedScene, 0);
+      c.goToScene(1);
+      await tester.pump();
+      await click("joinOpen-0");
+      expect(c.pickedScene, 0, reason: "not the scene shown's");
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 1));
+    });
+  }
+
+  // On the master, a transition clicked on the Scenes strip is that join's:
+  // every one showed the default (every scene's), as if another were picked.
+  testWidgets("on the master, a join's slot opens that join's transition",
+      (tester) async {
+    var c = await pump(tester,
+        doc: CanvasDocument(
+          frameRate: 24,
+          masterOn: true,
+          master: CanvasScene(id: "m", elements: [sound("music", "Music")]),
+          scenes: const [
+            CanvasScene(id: "a", name: "Title", frames: 48),
+            CanvasScene(
+                id: "b",
+                name: "Woods",
+                frames: 48,
+                transition: SceneTransition(
+                    kind: SceneTransitionKind.shapeWipe, frames: 12)),
+            CanvasScene(id: "c", name: "Ruins", frames: 48),
+          ],
+        ));
+    c.showMaster();
+    await tester.pump();
+    expect(c.document.editingMaster, isTrue);
+    await tester.tap(find.byKey(const ValueKey("joinOpen-1")));
+    await tester.pump();
+    expect(c.pickedScene, 1);
+    expect(c.transitionsAsDefault, isFalse);
+    var target = SceneTransitionTarget(c, 1);
+    expect(target.value.kind, SceneTransitionKind.shapeWipe,
+        reason: "Woods's own, not the default");
+    // Picked from a scene on the timeline, on the master: the default.
+    c.pickScene(1);
+    expect(c.transitionsAsDefault, isTrue);
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
   });

@@ -1697,16 +1697,21 @@ class _JoinSlotState extends State<_JoinSlot> with _OnSessionPulse {
         behavior: HitTestBehavior.opaque,
         onPointerDown: (e) {
           if (e.buttons == kSecondaryMouseButton) return;
-          c.previewTransitionAfter(join);
+          c.pickJoin(join);
+          c.previewTransitionAfter(join, exact: true);
         },
         child: SizedBox.expand(
             child: Icon(Icons.play_arrow,
                 size: 11, color: lit ? slotPlayingInk : slotInk)),
       ),
-      label: GestureDetector(
+      // Picked on the press, as the strip is (see pickJoin).
+      label: Listener(
         key: ValueKey("joinOpen-$join"),
         behavior: HitTestBehavior.opaque,
-        onTap: () => c.pickScene(join),
+        onPointerDown: (e) {
+          if (e.buttons == kSecondaryMouseButton) return;
+          c.pickJoin(join);
+        },
         child: Align(
           alignment: Alignment.centerLeft,
           child: ChannelNameEditor(

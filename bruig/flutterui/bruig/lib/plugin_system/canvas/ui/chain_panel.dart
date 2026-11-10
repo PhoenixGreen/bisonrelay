@@ -675,7 +675,7 @@ String? chainNote(CanvasController c) {
   if (!c.chainShowsMotion) return null;
   var doc = c.document;
   if (c.pickedScene case var i?) {
-    if (doc.editingMaster) return "unless one says otherwise";
+    if (c.transitionsAsDefault) return "unless one says otherwise";
     return i + 1 < doc.allScenes.length
         ? "gives way to ${doc.nameOf(i + 1)}"
         : "the last: gives way to nothing";
@@ -756,7 +756,7 @@ class _ChainWho extends StatelessWidget {
     if (c.chainShowsMotion) {
       if (c.pickedScene case var i?) {
         return (
-          c.document.editingMaster
+          c.transitionsAsDefault
               ? "Every ${c.document.kind.one}"
               : c.document.nameOf(i),
           "Scene"

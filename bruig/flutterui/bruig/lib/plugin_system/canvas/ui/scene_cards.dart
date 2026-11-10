@@ -388,7 +388,8 @@ class _SceneTransitionCardState extends State<SceneTransitionCard>
               label: "Preview",
               onTap: target.last
                   ? null
-                  : () => c.previewTransitionAfter(widget.scene),
+                  : () => c.previewTransitionAfter(widget.scene,
+                      exact: !c.transitionsAsDefault),
             ),
           ),
           Positioned(

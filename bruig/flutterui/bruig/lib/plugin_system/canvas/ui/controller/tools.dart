@@ -1825,6 +1825,10 @@ extension CanvasTools on CanvasController {
   /// being one thing. With the Chain out, its chain comes up: the master's,
   /// a scene's bus, a return's, a channel's.
   void pickStrip(String key) {
+    // A transition's slot was pressed, in this same press: it has picked
+    // itself (pickJoin), and the strip's pick -- the scene shown -- would
+    // take its place.
+    if (_joinPress && key == sceneBusKey) return;
     var owner = key.startsWith("snd-") ? key.substring(4) : null;
     var element = owner != null && _document.elementById(owner) != null;
     var picked = element
@@ -1858,6 +1862,23 @@ extension CanvasTools on CanvasController {
     } else {
       notifyListeners();
     }
+  }
+
+  /// pickJoin picks the transition after scene [join] from its slot on the
+  /// Scenes strip: the strip, and the Chain on that transition -- on the
+  /// press itself, the strip's own pick in the same press passed by (Ken,
+  /// 2026-11-10: picking a transition took two clicks, or picked another:
+  /// the strip, picked as it was pressed, opened the scene shown, and the
+  /// slot's own pick came after -- or, the slot built again under the
+  /// pointer, not at all).
+  void pickJoin(int join) {
+    _joinPress = true;
+    scheduleMicrotask(() => _joinPress = false);
+    if (_selection.isNotEmpty) clearSelection();
+    _effectsOf = sceneBusKey;
+    selectedChannel = sceneBusKey;
+    pickScene(join);
+    _joinPicked = true;
   }
 
   /// effectsOf is the strip whose chain of effects the effects panel shows,

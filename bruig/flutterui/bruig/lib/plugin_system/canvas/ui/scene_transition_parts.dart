@@ -22,7 +22,7 @@ class SceneTransitionTarget {
   final int scene;
   const SceneTransitionTarget(this.controller, this.scene);
 
-  bool get master => controller.document.editingMaster;
+  bool get master => controller.transitionsAsDefault;
 
   SceneTransition get value => master
       ? controller.document.defaultTransition

@@ -29,7 +29,7 @@ extension CanvasScenes on CanvasController {
   /// previewTransitionAfter plays the join between a scene and the next one:
   /// a little of the scene before it, the transition, and a little of the
   /// scene after.
-  void previewTransitionAfter(int index) {
+  void previewTransitionAfter(int index, {bool exact = false}) {
     var document = _document;
     var scenes = document.allScenes;
     if (scenes.length < 2) return;
@@ -37,7 +37,8 @@ extension CanvasScenes on CanvasController {
     // On the shared canvas the bar edits the default every scene starts from,
     // and there is no "this scene" to be after, so the first join stands for
     // all of them.
-    if (document.editingMaster) index = 0;
+    // From a join's own slot, that join.
+    if (document.editingMaster && !exact) index = 0;
     if (index < 0 || index >= scenes.length - 1) return;
 
     var over = document.transitionAfter(index);
