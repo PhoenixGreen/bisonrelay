@@ -261,11 +261,16 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
       },
       child: Container(
         clipBehavior: Clip.antiAlias,
+        // In its own colour (the approved design), a little more of it
+        // where the playhead is.
         decoration: BoxDecoration(
-          color: colors.surfaceContainerHighest,
+          color: Color.lerp(colors.surfaceContainerHighest, sceneTint(index),
+              current ? 0.45 : 0.3),
           borderRadius: BorderRadius.circular(4),
           border: Border.all(
-              color: current ? colors.primary : colors.outlineVariant,
+              color: current
+                  ? colors.primary
+                  : sceneTint(index).withValues(alpha: 0.7),
               width: current ? 1.5 : 1),
         ),
         child: Stack(children: [
@@ -300,7 +305,7 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
                         ),
                         const SizedBox(width: 4),
                         Flexible(
-                          child: Text("$frames",
+                          child: Text(_lengthOf(frames),
                               key: ValueKey("sceneFrames$index"),
                               maxLines: 1,
                               overflow: TextOverflow.clip,
@@ -318,6 +323,20 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
     );
   }
 
+  /// _lengthOf is a scene's length as the ruler counts: bars, for a piece
+  /// of sound counted in them (as the prototype's scenes say "N bars");
+  /// otherwise frames.
+  String _lengthOf(int frames) {
+    var document = controller.document;
+    var perBar = document.audio.secondsPerBar * document.frameRate;
+    if (!document.kind.isAudio || perBar <= 0) return "$frames";
+    var bars = frames / perBar;
+    var said = bars == bars.roundToDouble()
+        ? "${bars.round()}"
+        : bars.toStringAsFixed(1);
+    return "$said bar${said == "1" ? "" : "s"}";
+  }
+
   /// _transition is the bar of the transition after scene [index]: its name
   /// where there is room, and at its right end a grip that sizes it.
   Widget _transition(
@@ -329,8 +348,17 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
       Positioned.fill(
         child: IgnorePointer(
           child: Container(
+            // From the scene before's colour to the next's, its edge dashed
+            // (the approved design).
+            foregroundDecoration:
+                _DashedEdge(held ? colors.primary : const Color(0x55FFFFFF)),
             decoration: BoxDecoration(
-              color: colors.secondary.withValues(alpha: held ? 0.55 : 0.35),
+              gradient: LinearGradient(colors: [
+                Color.lerp(
+                    colors.surfaceContainerHighest, sceneTint(index), 0.55)!,
+                Color.lerp(colors.surfaceContainerHighest, sceneTint(index + 1),
+                    0.55)!,
+              ]),
               borderRadius: BorderRadius.circular(3),
             ),
             alignment: Alignment.centerLeft,
@@ -342,9 +370,7 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
                       maxLines: 1,
                       overflow: TextOverflow.clip,
                       style: TextStyle(
-                          fontSize: 9,
-                          height: 1.1,
-                          color: colors.onSecondaryContainer)),
+                          fontSize: 9, height: 1.1, color: colors.onSurface)),
             ),
           ),
         ),
@@ -408,5 +434,57 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
         ),
       ),
     );
+  }
+}
+
+/// sceneTint is scene [index]'s colour, by its place in the run (the approved
+/// design tints each scene): the same scene the same colour everywhere.
+Color sceneTint(int index) => _sceneTints[index % _sceneTints.length];
+
+const _sceneTints = [
+  Color(0xFF5A9FA8),
+  Color(0xFF8E6BD1),
+  Color(0xFF3FB08D),
+  Color(0xFFD9A15A),
+  Color(0xFFD77AA3),
+  Color(0xFF6FA3E0),
+];
+
+/// _DashedEdge is a dashed outline round a box, as a transition's join has.
+class _DashedEdge extends Decoration {
+  final Color colour;
+  const _DashedEdge(this.colour);
+
+  @override
+  BoxPainter createBoxPainter([VoidCallback? onChanged]) =>
+      _DashedEdgePainter(colour);
+}
+
+class _DashedEdgePainter extends BoxPainter {
+  final Color colour;
+  _DashedEdgePainter(this.colour);
+
+  @override
+  void paint(Canvas canvas, Offset offset, ImageConfiguration configuration) {
+    var size = configuration.size;
+    if (size == null) return;
+    var r = (offset & size).deflate(0.5);
+    var ink = Paint()
+      ..color = colour
+      ..strokeWidth = 1;
+    void dashes(Offset a, Offset b) {
+      var length = (b - a).distance;
+      if (length <= 0) return;
+      var step = (b - a) / length;
+      for (var t = 0.0; t < length; t += 6) {
+        var end = math.min(length, t + 3);
+        canvas.drawLine(a + step * t, a + step * end, ink);
+      }
+    }
+
+    dashes(r.topLeft, r.topRight);
+    dashes(r.topRight, r.bottomRight);
+    dashes(r.bottomRight, r.bottomLeft);
+    dashes(r.bottomLeft, r.topLeft);
   }
 }
