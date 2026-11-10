@@ -1210,7 +1210,6 @@ class _CanvasMixerState extends State<CanvasMixer>
           const SizedBox(width: 6),
           if (bands.clips != null) ...[
             _CueColumn(
-              scroll: _clipScrolls.of(_master),
               controller: controller,
               theme: theme,
               bands: bands,

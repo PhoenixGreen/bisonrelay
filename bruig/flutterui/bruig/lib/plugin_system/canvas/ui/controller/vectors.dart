@@ -933,29 +933,51 @@ extension CanvasVectors on CanvasController {
     studio3dOpen.value = false;
     if (kept == null && performance == null) return;
     var before = _document;
-    var doc = before;
-    for (var e in [
-      ...doc.elements,
-      ...?doc.master?.elements,
-      for (var sc in doc.allScenes) ...sc.elements,
-    ]) {
-      if (e is! Character3dElement) continue;
-      var mine = e.id == opened;
-      if (!mine &&
-          (kept == null || e.design.id.isEmpty || e.design.id != kept.id)) {
-        continue;
+    // Each copy of the character made as it now is where it is: in its own
+    // scene, or on the master. An element's id is its scene's own -- Ember
+    // Vale has a "vivi" in every scene -- so a copy is never written back by
+    // id alone (it took the open scene's place, and the Dawn's Vivi, dancing
+    // and no longer a player, became the woods'). The one the Studio was
+    // opened for is on the canvas being edited, and only it takes [performance].
+    var changed = false;
+    List<CanvasElement> remade(List<CanvasElement> list, {required bool here}) {
+      var out = <CanvasElement>[];
+      for (var e in list) {
+        if (e is! Character3dElement) {
+          out.add(e);
+          continue;
+        }
+        var mine = here && e.id == opened;
+        if (!mine &&
+            (kept == null || e.design.id.isEmpty || e.design.id != kept.id)) {
+          out.add(e);
+          continue;
+        }
+        var made = kept == null ? e : e.copyWith(design: kept);
+        if (mine && performance != null) made = made.performing(performance);
+        // Named for the character, unless it was named for itself.
+        CanvasElement next = made;
+        if (kept != null &&
+            (e.base.name.isEmpty || e.base.name == e.design.name)) {
+          next = made.rebase(made.base.copyWith(name: kept.name));
+        }
+        changed = true;
+        out.add(next);
       }
-      var made = kept == null ? e : e.copyWith(design: kept);
-      if (mine && performance != null) made = made.performing(performance);
-      // Named for the character, unless it was named for itself.
-      CanvasElement next = made;
-      if (kept != null &&
-          (e.base.name.isEmpty || e.base.name == e.design.name)) {
-        next = made.rebase(made.base.copyWith(name: kept.name));
-      }
-      doc = _replacedAnywhere(doc, next) ?? doc;
+      return out;
     }
-    if (identical(doc, before)) return;
+
+    var doc = before.copyWith(elements: remade(before.elements, here: true));
+    for (var (i, scene) in before.allScenes.indexed) {
+      if (!before.editingMaster && i == before.at) continue;
+      doc = doc.withScene(
+          i, scene.copyWith(elements: remade(scene.elements, here: false)));
+    }
+    if (before.master case var m? when !before.editingMaster) {
+      doc = doc.copyWith(
+          master: m.copyWith(elements: remade(m.elements, here: false)));
+    }
+    if (!changed) return;
     _undo.add(before);
     if (_undo.length > _maxUndo) _undo.removeAt(0);
     _redo.clear();

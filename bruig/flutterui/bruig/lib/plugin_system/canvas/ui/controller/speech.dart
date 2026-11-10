@@ -1093,7 +1093,7 @@ extension CanvasSpeech on CanvasController {
     for (var e in _document.elements) {
       if (e is AudioElement && e.id == id) return e;
     }
-    for (var e in _document.masterScene?.elements ?? const <CanvasElement>[]) {
+    for (var e in _masterHeard) {
       if (e is AudioElement && e.id == id) return e;
     }
     return null;
@@ -1105,12 +1105,29 @@ extension CanvasSpeech on CanvasController {
     for (var e in _document.elements) {
       if (e is AudioElement) yield e;
     }
-    if (!_document.editingMaster) {
-      for (var e
-          in _document.masterScene?.elements ?? const <CanvasElement>[]) {
-        if (e is AudioElement) yield e;
-      }
+    for (var e in _masterHeard) {
+      if (e is AudioElement) yield e;
     }
+  }
+
+  /// _masterHeard is the master as it is heard from the scene showing: all
+  /// of it where the scene draws it, and otherwise -- a scene that leaves it
+  /// off (CanvasScene.masterOff), a game's title with no HUD -- its sounds
+  /// still: its channels are every scene's, a game's music, its effects,
+  /// its narrator. Unheard there, the title's music played through no strip
+  /// at all, and jumped in level when the master was opened (Ken,
+  /// 2026-11-10), and its channels could not be got at from the title.
+  /// None while the master itself is being edited.
+  List<CanvasElement> get _masterHeard {
+    var doc = _document;
+    if (doc.editingMaster) return const [];
+    if (doc.masterScene case var m?) return m.elements;
+    var master = doc.master;
+    if (!doc.masterOn || master == null) return const [];
+    return [
+      for (var e in master.elements)
+        if (e is AudioElement) e,
+    ];
   }
 
   /// _audioFollowsPage stops whatever does not belong on the canvas now
@@ -1136,7 +1153,7 @@ extension CanvasSpeech on CanvasController {
     var keep = <String>{
       for (var e in _document.elements)
         if (media(e)) e.id,
-      for (var e in _document.masterScene?.elements ?? const <CanvasElement>[])
+      for (var e in _masterHeard)
         if (media(e) && (!turned || carries(e))) e.id,
       for (var e in _document.drawnBackground.media)
         if (!turned || !fromMaster || carries(e)) e.id,
@@ -1169,11 +1186,8 @@ extension CanvasSpeech on CanvasController {
     for (var e in _document.elements) {
       if (timed(e)) yield (e, onMaster ? run : _frame);
     }
-    if (!onMaster) {
-      for (var e
-          in _document.masterScene?.elements ?? const <CanvasElement>[]) {
-        if (timed(e)) yield (e, run);
-      }
+    for (var e in _masterHeard) {
+      if (timed(e)) yield (e, run);
     }
     var fromMaster = onMaster || _document.sharedBackdrop;
     for (var e in _document.drawnBackground.media) {

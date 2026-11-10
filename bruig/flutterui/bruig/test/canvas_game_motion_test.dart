@@ -2,7 +2,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart'
-    show Keyframe;
+    show Keyframe, TimelineAction, TimelineActionKind;
+import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
@@ -345,6 +346,37 @@ void main() {
       step(1.5);
       var left = c.gameView!.elementById("coin")!.base.motion.instances!;
       expect([for (var i in left.items) i.id], ["c1", "c2"]);
+    });
+
+    // Ken, playing Ember Vale 2: "the Sunken Ruins level doesn't play".
+    // The title's stop held the timeline, and going on to another scene in
+    // a game never played it again: every level stood at its first frame.
+    test("a scene gone on to in a game plays its timeline", () {
+      game(CanvasDocument(game: true, scenes: [
+        CanvasScene(id: "one", frames: 60, actions: const [
+          TimelineAction(frame: 10, kind: TimelineActionKind.stop),
+        ], elements: [
+          box("hero", 100, 600, 40, 80, play: hero),
+        ]),
+        CanvasScene(id: "two", frames: 60, elements: [
+          box("hero", 100, 600, 40, 80, play: hero),
+        ]),
+      ]));
+      c.gaming = true;
+      for (var i = 0; i < 20; i++) {
+        step(1 / 24);
+        if (c.playing) c.tickForTest();
+      }
+      expect((c.frame, c.playing), (10, false), reason: "held at the stop");
+      c.runButtonAction(const ButtonAction(
+          kind: ButtonActionKind.goToScene, elementId: "two"));
+      expect(c.document.scene.id, "two");
+      expect(c.playing, isTrue, reason: "the next scene plays");
+      for (var i = 0; i < 5; i++) {
+        step(1 / 24);
+        if (c.playing) c.tickForTest();
+      }
+      expect(c.frame, greaterThan(0), reason: "from its start, on");
     });
 
     // A wind platform on an Oscillate: in a game it goes by the game's

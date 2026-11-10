@@ -8,6 +8,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.da
 import 'package:bruig/plugin_system/canvas/model/elements/character_cast3d.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_decal.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
+import 'package:bruig/plugin_system/canvas/model/play.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_shape.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -111,6 +113,41 @@ void main() {
     expect(c.selection, {placed.id});
     c.undo();
     expect(c.document.elements, isEmpty);
+  });
+
+  // Ken, testing Ember Vale 2: "the game is currently not playable". Its
+  // Vivi is "vivi" in every scene; Done in the Studio wrote each scene's
+  // copy back by id -- into the open scene -- and gave every one the
+  // performance of the one opened, so the woods' Vivi, overwritten by the
+  // Dawn's, danced and was no longer a player.
+  test("Done in the Studio keeps each scene's copy in its own scene", () {
+    Character3dElement vivi(PlaySpec play, CharacterPerformance p) =>
+        Character3dElement(
+            ElementBase(
+                id: "vivi", name: "Vivi", width: 90, height: 200, play: play),
+            design: _design("d1", "Vivi"),
+            performance: p);
+    const hero = PlaySpec(as: PlayAs.platformer);
+    const dance = CharacterPerformance(
+        clips: [MotionClip3d(kind: "Dance", start: 1, length: 6)]);
+    var doc =
+        CanvasDocument().addElement(vivi(hero, const CharacterPerformance()));
+    doc = doc.addScene().goToScene(1).addElement(vivi(const PlaySpec(), dance));
+    final c = CanvasController(doc.goToScene(1));
+    c.openStudio3d(element: "vivi");
+    c.closeStudio3d(
+        _design("d1", "Vivi", eyes: 0.8), dance.copyWith(shadow: "None"));
+    Character3dElement inScene(int i) =>
+        c.document.allScenes[i].elements.single as Character3dElement;
+    expect(inScene(0).design.shape.get("eyes.size"), 0.8,
+        reason: "the other scene's copy made as the character now is");
+    expect(inScene(0).base.play.as, PlayAs.platformer,
+        reason: "still the woods' player");
+    expect(inScene(0).performance.clips, isEmpty,
+        reason: "its own performance, not the one opened's");
+    expect(inScene(1).performance.shadow, "None",
+        reason: "the one opened does what the Studio left it doing");
+    expect(inScene(1).base.play.as, PlayAs.none);
   });
 
   test(

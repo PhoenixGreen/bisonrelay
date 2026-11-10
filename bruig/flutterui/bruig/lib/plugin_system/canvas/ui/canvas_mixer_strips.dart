@@ -1841,12 +1841,8 @@ class _CueColumn extends StatelessWidget {
   final Widget slots;
   final double width;
 
-  /// scroll is its slots', for the thin bar beside them (the approved
-  /// design): the one column that shows how far down the cues go.
-  final ScrollController? scroll;
   const _CueColumn(
-      {this.scroll,
-      required this.controller,
+      {required this.controller,
       required this.theme,
       required this.bands,
       required this.slots,
@@ -1894,21 +1890,9 @@ class _CueColumn extends StatelessWidget {
                     ),
                   if (bands.clips case var h?) ...[
                     const SizedBox(height: _bandGap),
-                    SizedBox(
-                        height: h,
-                        child: scroll == null
-                            ? slots
-                            : RawScrollbar(
-                                key: const ValueKey("cueScrollbar"),
-                                controller: scroll,
-                                thumbVisibility: true,
-                                thickness: 3,
-                                radius: const Radius.circular(2),
-                                thumbColor: theme.studio.edge,
-                                padding: EdgeInsets.zero,
-                                child: Padding(
-                                    padding: const EdgeInsets.only(right: 5),
-                                    child: slots))),
+                    // Scrolled with the slots beside it, and no bar of its
+                    // own (Ken, 2026-11-10: "remove the scroll bar").
+                    SizedBox(height: h, child: slots),
                   ],
                 ]),
           ),

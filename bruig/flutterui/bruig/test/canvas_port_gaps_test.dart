@@ -172,10 +172,12 @@ void main() {
 
   testWidgets(
       "the Scenes strip's slots are not in cues; the cue column has a ? "
-      "and a scroll bar", (tester) async {
+      "and no scroll bar", (tester) async {
     await mixer(tester);
     expect(find.byKey(const ValueKey("sceneNotInCues")), findsOneWidget);
-    expect(find.byKey(const ValueKey("cueScrollbar")), findsOneWidget);
+    // Ken, 2026-11-10: "For the mixer > cues section, I'd like to remove
+    // the scroll bar".
+    expect(find.byKey(const ValueKey("cueScrollbar")), findsNothing);
     expect(find.byKey(const ValueKey("help-cues")), findsOneWidget);
   });
 

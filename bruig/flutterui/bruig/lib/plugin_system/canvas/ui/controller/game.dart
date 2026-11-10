@@ -228,12 +228,7 @@ extension CanvasGame on CanvasController {
           gaming = false;
           return;
         }
-        _gameLeaving();
-        goToScene(next);
-        frame = 0;
-        run.newScene();
-        _gameSceneSounds();
-        _gameMotionStart();
+        _gameEnter(run, next);
       }
       if (event.restart) _gameRestart(run);
       if (event.press case var id?) {
@@ -320,11 +315,23 @@ extension CanvasGame on CanvasController {
   void _gameScene(GameRun run, String id) {
     var to = _document.sceneIndexNamed(id);
     if (to < 0) return;
+    _gameEnter(run, to);
+  }
+
+  /// _gameEnter is the game gone on to scene [to]: the one left giving way,
+  /// and this one from its beginning -- not the frame it was left on while
+  /// it was made -- its timeline playing, its sounds and clips started. A
+  /// stop the scene left had held (a title's "Press Space") held the
+  /// timeline for the rest of the game: every level stood at its first
+  /// frame (Ken: "the Sunken Ruins level doesn't play").
+  void _gameEnter(GameRun run, int to) {
     _gameLeaving();
     goToScene(to);
-    // From its beginning, not the frame it was left on while it was made.
     frame = 0;
     run.newScene();
+    // Played, as the game's start plays it -- before its sounds, since Play
+    // stops slots playing on their own.
+    if (!playing) play();
     _gameSceneSounds();
     _gameMotionStart();
   }
@@ -340,11 +347,7 @@ extension CanvasGame on CanvasController {
       _gameScene(run, _document.gameStart);
       return;
     }
-    _gameLeaving();
-    frame = 0;
-    run.newScene();
-    _gameSceneSounds();
-    _gameMotionStart();
+    _gameEnter(run, _document.at);
   }
 
   /// _touchClipPlaying is whether [id] is playing a clip a touch or a hit

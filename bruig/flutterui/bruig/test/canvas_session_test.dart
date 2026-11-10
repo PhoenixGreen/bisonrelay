@@ -913,6 +913,24 @@ void main() {
         expect(engine.launches, hasLength(1));
       });
 
+      // Ken: "The master music jumps in volume when you switch between the
+      // master scene and scene 1 whilst playing ... you can hear something
+      // is playing from the master scene but getting to those channels
+      // isn't possible." On a scene that leaves the master off, its
+      // channels were not the mixer's: unseen, and played through no strip.
+      test("the master's channels are a scene's that does not draw it",
+          () async {
+        var c = masterGame();
+        addTearDown(c.dispose);
+        expect(c.document.scene.masterOff, isTrue);
+        expect(c.timelineChannels.map((ch) => ch.key), contains("keys"));
+        c.gaming = true;
+        addTearDown(() => c.gaming = false);
+        await settle();
+        expect(engine.channels.keys, contains("keys"),
+            reason: "heard through its own strip");
+      });
+
       // Ken: "Pressing the Begin the adventure button doesn't launch the
       // game properly e.g. the narrative doesn't play." Clicked, it went to
       // the woods as the editor does, starting none of their sounds.
