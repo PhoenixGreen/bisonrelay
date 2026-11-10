@@ -170,6 +170,41 @@ void main() {
     expect(find.byKey(const ValueKey("help-cues")), findsOneWidget);
   });
 
+  testWidgets(
+      "a rail band's picker: a picture of each choice, a note, a ✕; amber "
+      "when stepped down for room", (tester) async {
+    var c = await mixer(tester);
+    await tester.tap(find.byKey(const ValueKey("section-devices")));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("railPicker-devices")), findsOneWidget);
+    expect(find.textContaining("how many devices"), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("section-devices-minimised")));
+    await tester.pumpAndSettle();
+    expect(c.mixerBandNames[MixerSection.devices.index], "minimised");
+    expect(find.byKey(const ValueKey("railPicker-devices")), findsNothing,
+        reason: "a choice closes it");
+    await tester.tap(find.byKey(const ValueKey("section-devices")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("railPickerClose-devices")));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("railPicker-devices")), findsNothing);
+    // Short of height: a band stepped down, its picker saying so.
+    await tester.pumpWidget(host(CanvasMixer(
+        controller: c, height: 300, onResize: (_) {}, onClose: () {})));
+    await tester.pump();
+    var stepped = find.byWidgetPredicate((w) =>
+        w.key is ValueKey<String> &&
+        (w.key as ValueKey<String>).value.startsWith("railAuto-"));
+    expect(stepped, findsWidgets);
+    var band = (tester.widget(stepped.first).key as ValueKey<String>)
+        .value
+        .substring("railAuto-".length);
+    await tester.tap(find.byKey(ValueKey("section-$band")));
+    await tester.pumpAndSettle();
+    expect(find.byKey(ValueKey("railPickerAuto-$band")), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets("a help note closes from its ✕", (tester) async {
     await mixer(tester);
     await tester.tap(find.byKey(const ValueKey("help-cues")));
