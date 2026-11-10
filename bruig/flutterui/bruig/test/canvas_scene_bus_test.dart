@@ -493,6 +493,21 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
+    // Ken, 2026-11-10: clicking or double-clicking it did not bring up the
+    // transition's chain.
+    testWidgets("a join's slot clicked opens its transition in the Chain",
+        (tester) async {
+      var c = await pump(tester);
+      expect(c.animationOpen, isFalse);
+      await tester.tap(find.byKey(const ValueKey("joinOpen-0")));
+      await tester.pump();
+      expect(c.pickedScene, 0);
+      expect(c.animationOpen, isTrue, reason: "the Chain, on its motion");
+      expect(c.previewAt, isNull, reason: "the name opens; the triangle plays");
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     // Ken, 2026-11-10: the transition's slot had no label, nor a way to
     // give it one.
     testWidgets("a join's slot is named for what it does, and can be named",

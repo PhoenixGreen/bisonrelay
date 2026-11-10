@@ -1656,7 +1656,8 @@ class _JoinSlot extends StatefulWidget {
 /// _JoinSlotState is a transition's slot on the Scenes strip, as every other
 /// slot is (Ken, 2026-11-10): the scene's colour, the same launch strip --
 /// pressed, the transition plays -- and a label, its own or what it does,
-/// named by a double-click or from its right-click menu.
+/// named from its right-click menu. Clicked, or double-clicked, its
+/// transition opens in the Chain (Ken, 2026-11-10).
 class _JoinSlotState extends State<_JoinSlot> {
   final GlobalKey<ChannelNameEditorState> _name = GlobalKey();
   final MenuController _menu = MenuController();
@@ -1691,18 +1692,24 @@ class _JoinSlotState extends State<_JoinSlot> {
         child: const SizedBox.expand(
             child: Icon(Icons.play_arrow, size: 11, color: slotInk)),
       ),
-      label: Align(
-        alignment: Alignment.centerLeft,
-        child: ChannelNameEditor(
-            key: _name,
-            name: said,
-            theme: ThemeNotifier.of(context),
-            onRename: name,
-            fontSize: 10,
-            weight: FontWeight.w600,
-            color: slotInk,
-            textKey: ValueKey("joinName-$join"),
-            fieldKey: ValueKey("joinNameField-$join")),
+      label: GestureDetector(
+        key: ValueKey("joinOpen-$join"),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => c.pickScene(join),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: ChannelNameEditor(
+              key: _name,
+              byDoubleClick: false,
+              name: said,
+              theme: ThemeNotifier.of(context),
+              onRename: name,
+              fontSize: 10,
+              weight: FontWeight.w600,
+              color: slotInk,
+              textKey: ValueKey("joinName-$join"),
+              fieldKey: ValueKey("joinNameField-$join")),
+        ),
       ),
     );
     return MenuAnchor(

@@ -2253,8 +2253,14 @@ class ChannelNameEditor extends StatefulWidget {
   /// color is the name's, where it is drawn on something other than the
   /// app's own surface -- the mixer's studio strip.
   final Color? color;
+
+  /// byDoubleClick is whether a double-click starts it being typed: not
+  /// where a double-click opens something (a transition's slot), and the
+  /// name is typed from a menu instead -- see ChannelNameEditorState.edit.
+  final bool byDoubleClick;
   const ChannelNameEditor(
-      {required this.name,
+      {this.byDoubleClick = true,
+      required this.name,
       required this.theme,
       required this.onRename,
       this.fontSize = 11,
@@ -2315,13 +2321,14 @@ class ChannelNameEditorState extends State<ChannelNameEditor> {
         onTapOutside: (_) => _commit(),
       );
     }
+    var text = Text(widget.name,
+        key: widget.textKey,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: style);
+    if (!widget.byDoubleClick) return text;
     return GestureDetector(
-      onDoubleTap: () => setState(() {
-        _typing = true;
-        _text.text = widget.name;
-        _text.selection =
-            TextSelection(baseOffset: 0, extentOffset: _text.text.length);
-      }),
+      onDoubleTap: edit,
       child: Text(widget.name,
           key: widget.textKey,
           maxLines: 1,
