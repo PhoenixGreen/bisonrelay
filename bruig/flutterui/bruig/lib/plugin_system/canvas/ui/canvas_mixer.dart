@@ -531,7 +531,11 @@ class _CanvasMixerState extends State<CanvasMixer>
     // Clips waiting for a bar blink, and playing ones go round: the slots
     // listen for it, not the desk.
     // And once more as the session stops: its last slots shown stopped.
-    var session = controller.sessionActive;
+    // While the canvas plays too: a clip placed on the timeline lights its
+    // slot as it plays (see motionSlotState), with no sound slot going.
+    var session = controller.sessionActive ||
+        controller.playing ||
+        controller.motionPlayer.playing;
     if (session || _sessionWas) _sessionPulse.moved();
     _sessionWas = session;
     if (moved && mounted) _board.moved();

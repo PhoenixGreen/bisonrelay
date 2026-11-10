@@ -934,9 +934,11 @@ class CharacterScene extends ChangeNotifier {
     final want = Map<String, double>.of(mix.w);
     final line = _mouthNow();
     if (line != null) {
-      // The line's shapes over the mouth's, the rest of it eased off.
+      // The line's shapes over the mouth's, the rest of it eased well off:
+      // halved, a face made open-mouthed (Kai's Joy) never shut between
+      // words or after the line.
       for (final k in want.keys.toList()) {
-        if (k.startsWith('MTH_')) want[k] = want[k]! * 0.5;
+        if (k.startsWith('MTH_')) want[k] = want[k]! * 0.15;
       }
       for (final e in line.entries) {
         want[e.key] = math.max(want[e.key] ?? 0, e.value);

@@ -147,7 +147,19 @@ class _Stance {
 }
 
 final Map<String, _Stance> _stances = {
-  "Relaxed": const _Stance(),
+  // Arms hanging by the sides, the hands loose, palms to the thighs, the
+  // knees soft (Ken, 2026-11-10: "vivi's standing pose could also be
+  // improved"): before, the arms hung out from the body as it was made,
+  // the hands flat and turned out.
+  "Relaxed": _Stance(
+      hand: (l, s) => l.hip[s]! + l.v(s * 0.1, -0.22, 0.02),
+      pole: (s) => [s * 1.0, 0, -0.3],
+      handShape: const {"L": "loose", "R": "loose"},
+      palms: const {
+        "L": [1, 0, 0],
+        "R": [-1, 0, 0]
+      },
+      knees: 0.03),
   "Confident":
       const _Stance(spine: [-0.06, 0, 0], head: [-0.06, 0, 0], feet: 0.06),
   "Hands on hips": _Stance(
@@ -299,6 +311,12 @@ _Motion _motionAt(String name, double t, Map<String, double> walk, double u) {
       final run = name == "Run";
       final cad = (run ? 1.4 : 0.85) * (0.7 + 0.6 * w("pace")),
           sf = run ? 0.38 : 0.6;
+      // From the feet together -- the left halfway through its stance, the
+      // right halfway through its swing -- rather than mid-stride: set off
+      // from standing, the first steps slid into the stride (Ken,
+      // 2026-11-10: "the first part of the walk cycle looks like she's
+      // sliding").
+      t += sf * 0.5 / cad;
       final stride = (run ? 0.42 : 0.26) * u * (0.5 + w("stride")),
           lift = (run ? 0.18 : 0.07) * u * (0.6 + 0.8 * w("stride"));
       final legZ = <String, double>{};
@@ -1084,7 +1102,12 @@ class VrmPoser {
     // slowly, a punch's arm (straight out for a tenth of a second) never
     // got there.
     final quick = quickMotions.contains(m.motion);
-    final a = dt <= 0 ? 1.0 : 1 - math.exp(-dt / (quick ? 0.03 : 0.16));
+    // A walk or a run a little quicker than the rest: eased as slowly, its
+    // feet lagged the body setting off.
+    final stepping = m.motion == "Walk" || m.motion == "Run";
+    final a = dt <= 0
+        ? 1.0
+        : 1 - math.exp(-dt / (quick ? 0.03 : (stepping ? 0.07 : 0.16)));
     final st0 = _stances[m.stance] ?? _stances["Relaxed"]!;
     final mo = _scaled(_motionAt(m.motion, t, m.walk, u),
         strength * weight.clamp(0.0, 1.0), mirror);

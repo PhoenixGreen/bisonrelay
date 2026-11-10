@@ -415,4 +415,40 @@ void main() {
       c.gaming = true; // for tearDown
     });
   });
+
+  // Ken: "on the title scene The Title dropped in and the title sub faded up
+  // but whilst this was happening the channels for these elements didn't
+  // show as playing". A clip placed on the timeline lights its slot while
+  // the playhead is in it, as a launched one does.
+  test("a clip placed on the timeline shows playing in its slot", () {
+    var drop = presetNamed("Drop in")!.clip("drop");
+    var m = ElementMotion.none
+        .withClip(drop)
+        .inSlot(0, "drop")
+        .withPlacement(const ClipPlacement(id: "p", clip: "drop", start: 0.5));
+    var c = CanvasController(
+        const CanvasDocument(frameRate: 24, frames: 96).copyWith(elements: [
+          ShapeElement(ElementBase(
+              id: "title", x: 0, y: 0, width: 100, height: 40, motion: m)),
+        ]),
+        audioEngine: FakeEngine({}));
+    addTearDown(c.dispose);
+    expect(c.motionSlotState("title", 0), MotionSlotState.stopped);
+    c.play();
+    for (var i = 0; i < 6; i++) {
+      c.tickForTest();
+    }
+    expect(c.motionSlotState("title", 0), MotionSlotState.stopped,
+        reason: "not yet: placed at half a second");
+    for (var i = 0; i < 12; i++) {
+      c.tickForTest();
+    }
+    expect(c.motionSlotState("title", 0), MotionSlotState.playing,
+        reason: "the playhead in it");
+    for (var i = 0; i < 60; i++) {
+      c.tickForTest();
+    }
+    expect(c.motionSlotState("title", 0), MotionSlotState.stopped,
+        reason: "played out");
+  });
 }

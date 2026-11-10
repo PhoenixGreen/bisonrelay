@@ -118,10 +118,30 @@ extension CanvasSession on CanvasController {
     notifyListeners();
   }
 
-  /// motionSlotState is how slot [slot] of [element] is doing.
-  MotionSlotState motionSlotState(String element, int slot) =>
-      motionPlayer.slotState(
-          element, _document.elementById(element)?.base.motion.slot(slot));
+  /// motionSlotState is how slot [slot] of [element] is doing: launched,
+  /// or -- on its timeline, the playhead going through a placement of its
+  /// clip -- playing from there.
+  MotionSlotState motionSlotState(String element, int slot) {
+    var e = _document.elementById(element) ??
+        _masterHeardElement(element);
+    var clip = e?.base.motion.slot(slot);
+    var live = motionPlayer.slotState(element, clip);
+    if (live != MotionSlotState.stopped ||
+        e == null ||
+        clip == null ||
+        !playing ||
+        motionPlayer.isOff(element)) {
+      return live;
+    }
+    return placedPlaying(_document, e, clip.id, _frame)
+        ? MotionSlotState.playing
+        : live;
+  }
+
+  /// _masterHeardElement is element [id] on the master drawn over the scene.
+  CanvasElement? _masterHeardElement(String id) => _document.editingMaster
+      ? null
+      : _document.masterScene?.elements.where((e) => e.id == id).firstOrNull;
 
   /// fireMotionTrigger starts the clips that start on [kind] of [target]:
   /// a click, a key, the scene starting.

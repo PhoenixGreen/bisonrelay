@@ -3103,27 +3103,25 @@ void _paintBackgroundElement(
   if (e.cornerRadius > 0) canvas.restore();
 }
 
-/// withoutGuides is [doc] with its guide paths left out -- and the
-/// master's -- for the stage while the canvas plays or a game runs: they are
+/// withoutGuides is [doc] with its guide paths -- and the master's -- not
+/// drawn, for the stage while the canvas plays or a game runs: they are
 /// scaffolding, and a bat's flight drawn across a game is not part of it.
-/// [doc] itself where it has none.
+/// Hidden rather than taken out: what follows one (a Follow path, words on
+/// a curve) still finds it by its id -- taken out, Ember Vale's bat stood
+/// still. [doc] itself where it has none.
 CanvasDocument withoutGuides(CanvasDocument doc) {
-  bool guide(CanvasElement e) => e is PathElement && e.guide;
+  bool guide(CanvasElement e) => e is PathElement && e.guide && e.visible;
+  List<CanvasElement> hidden(List<CanvasElement> list) => [
+        for (var e in list)
+          if (guide(e)) e.withBase(visible: false) else e,
+      ];
   var here = doc.elements.any(guide);
   var master = doc.master;
   var there = master != null && master.elements.any(guide);
   if (!here && !there) return doc;
-  var out = here
-      ? doc.copyWith(elements: [
-          for (var e in doc.elements)
-            if (!guide(e)) e
-        ])
-      : doc;
+  var out = here ? doc.copyWith(elements: hidden(doc.elements)) : doc;
   if (there && !doc.editingMaster) {
-    out = out.withMaster(master.copyWith(elements: [
-      for (var e in master.elements)
-        if (!guide(e)) e
-    ]));
+    out = out.withMaster(master.copyWith(elements: hidden(master.elements)));
   }
   return out;
 }

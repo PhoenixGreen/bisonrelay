@@ -90,7 +90,13 @@ class MotionClip3d {
   /// slowly, a punch (0.45 s) never got to three quarters of itself.
   double weightAt(double t) {
     if (t < start || t > end) return 0;
-    var fade = quickMotions.contains(kind) ? 0.06 : 0.3;
+    // A walk or a run fades in quickly too: over 0.3 s, a game's player
+    // went across the ground at full pace, its feet barely stepping.
+    var fade = quickMotions.contains(kind)
+        ? 0.06
+        : kind == "Walk" || kind == "Run"
+            ? 0.1
+            : 0.3;
     return [1.0, (t - start) / fade, (end - t) / fade]
         .reduce((a, b) => a < b ? a : b)
         .clamp(0.0, 1.0);

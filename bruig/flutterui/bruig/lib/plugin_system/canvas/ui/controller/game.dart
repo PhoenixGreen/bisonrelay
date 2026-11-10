@@ -443,7 +443,15 @@ extension CanvasGame on CanvasController {
   /// now, and shown while it does -- or null where nothing is heard on it.
   Character3dElement? _speaking3dAs(Character3dElement e) {
     var mouth = _heardMouth(e.performance.speaksFor);
-    if (mouth == null) return null;
+    // Nothing heard on its channel: its mouth shut, rather than the face's
+    // own -- a narrator's face made smiling open-mouthed (Kai's) was left
+    // open after every line (Ken, 2026-11-10).
+    if (mouth == null) {
+      return _clipChannels.containsKey(e.performance.speaksFor)
+          ? e.performing(e.performance
+              .copyWith(mouths: [(t: -1e6, shape: MouthShape.rest)]))
+          : null;
+    }
     // Held from long before whatever frame of its scene is drawn: it is
     // the mouth now, wherever its scene has got to.
     var spoke =
@@ -496,8 +504,9 @@ extension CanvasGame on CanvasController {
         if (t.assetId == sound.assetId && t.words.isNotEmpty) take = t;
       }
     }
+    List<SpokenWord>? words;
     if (take != null) {
-      var words = [
+      words = [
         for (var w in take.words)
           SpokenWord(
               text: w.text,
@@ -505,9 +514,12 @@ extension CanvasGame on CanvasController {
               end: (w.end * rate).round(),
               from: "slot:$clipId"),
       ];
-      return _mouthsOfSlots[key] = mouthsFromWords(words, frameRate: rate);
     }
-    _mouthsOfSlots[key] = null;
+    // From its words at once, where it has them -- and, once its sound has
+    // been read, kept to the voice as it is heard (mouthsFromWordsHeard):
+    // words timed by length alone drift from it.
+    _mouthsOfSlots[key] =
+        words == null ? null : mouthsFromWords(words, frameRate: rate);
     unawaited(() async {
       var length = sound.length;
       if (length <= 0) return;
@@ -516,11 +528,13 @@ extension CanvasGame on CanvasController {
       var count = math.max(1, (length * 100).ceil());
       var peaks = await audio.engine.peaks(file, count);
       if (peaks == null || _disposed) return;
-      _mouthsOfSlots[key] = mouthsFromLoudness(peaks, length,
-          startFrame: 0, frameRate: rate, feel: const LipSyncFeel());
+      _mouthsOfSlots[key] = words == null
+          ? mouthsFromLoudness(peaks, length,
+              startFrame: 0, frameRate: rate, feel: const LipSyncFeel())
+          : mouthsFromWordsHeard(words, peaks, length, frameRate: rate);
       notifyListeners();
     }());
-    return null;
+    return _mouthsOfSlots[key];
   }
 
   /// _gameSceneSounds is what each channel does as a game comes to the

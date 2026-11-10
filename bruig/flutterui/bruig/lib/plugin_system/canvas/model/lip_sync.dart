@@ -280,13 +280,59 @@ List<MouthKey> mouthsFromLoudness(Float32List peaks, double seconds,
   return tidyMouths(out, feel);
 }
 
+/// mouthsFromWordsHeard is [words]' mouths kept to the voice that says them,
+/// whose [peaks] (nought to one, evenly across [seconds]) start at frame 0:
+/// the words choose each shape, the sound when the mouth moves -- shut
+/// wherever it is quiet, and where it sounds but the words have the mouth
+/// at rest, opened as loud as it is. Words timed by their length alone
+/// drift from what is heard (Ken, 2026-11-10: "the lip sync ... looks very
+/// off compared to the words they are saying"); the sound does not.
+List<MouthKey> mouthsFromWordsHeard(
+    List<SpokenWord> words, Float32List peaks, double seconds,
+    {required int frameRate, LipSyncFeel feel = const LipSyncFeel()}) {
+  // Each unled, so the two agree frame for frame; led once, at the end.
+  var raw = LipSyncFeel(shortest: feel.shortest, lead: 0, pause: feel.pause);
+  var spoken = mouthsFromWords(words, frameRate: frameRate, feel: raw);
+  var heard = mouthsFromLoudness(peaks, seconds,
+      startFrame: 0, frameRate: frameRate, feel: raw);
+  if (heard.isEmpty) return spoken;
+  var frames = (seconds * frameRate).ceil();
+  MouthShape at(List<MouthKey> keys, int f) {
+    var shape = MouthShape.rest;
+    for (var k in keys) {
+      if (k.frame > f) break;
+      shape = k.shape;
+    }
+    return shape;
+  }
+
+  bool shut(MouthShape s) => s == MouthShape.rest || s == MouthShape.closed;
+  var out = <MouthKey>[];
+  MouthShape? last;
+  for (var f = 0; f <= frames; f++) {
+    var word = at(spoken, f), sound = at(heard, f);
+    var shape = shut(sound)
+        ? sound
+        : shut(word)
+            ? sound
+            : word;
+    if (shape != last) out.add((frame: f, shape: shape));
+    last = shape;
+  }
+  if (last != MouthShape.rest) {
+    out.add((frame: frames + 1, shape: MouthShape.rest));
+  }
+  return tidyMouths(out, feel);
+}
+
 /// tidyMouths is [keys] sorted, led by `feel.lead` frames, each held at
 /// least `feel.shortest` frames: a mouth too short is dropped, unless it
 /// closes the lips (the one before gives way) or is the rest (it waits its
 /// turn). Repeats are merged.
 List<MouthKey> tidyMouths(List<MouthKey> keys, LipSyncFeel feel) {
   var sorted = [
-    for (var k in keys) (frame: math.max(0, k.frame - feel.lead), shape: k.shape),
+    for (var k in keys)
+      (frame: math.max(0, k.frame - feel.lead), shape: k.shape),
   ]..sort((a, b) => a.frame.compareTo(b.frame));
   var out = <MouthKey>[];
   for (var k in sorted) {

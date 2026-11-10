@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart';
 import 'package:bruig/plugin_system/canvas/model/lip_sync.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart' show SpokenWord;
 import 'package:bruig/plugin_system/canvas/model/elements/character_design.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -1244,7 +1245,40 @@ void main() {
       c.stopChannelClips("a", now: true);
       at(c, 1.9);
       expect(said().visible, isFalse, reason: "hidden again once it stops");
+      // Ken: "it finishes with the mouth open" -- a face made open-mouthed
+      // was its own again after the line. Nothing heard, the mouth is shut.
+      expect(mouth(), MouthShape.rest, reason: "shut once nothing is heard");
       c.pause();
+    });
+
+    // Ken: "the lip sync ... looks very off compared to the words". Words
+    // timed by length drift; the voice's own loudness says when the mouth
+    // moves.
+    test("a take's mouths are kept to the voice heard", () {
+      // Heard from 0.1 s to 0.5 s; the words, timed by length, a little
+      // late, from 0.3 s to 0.8 s.
+      var peaks = Float32List(100);
+      for (var i = 10; i < 50; i++) {
+        peaks[i] = 0.8;
+      }
+      const words = [
+        SpokenWord(text: "hello", frame: 9, end: 24, from: "t"),
+      ];
+      var mouths = mouthsFromWordsHeard(words, peaks, 1.0, frameRate: 30);
+      MouthShape at(double t) {
+        var shape = MouthShape.rest;
+        for (var k in mouths) {
+          if (k.frame > (t * 30).round()) break;
+          shape = k.shape;
+        }
+        return shape;
+      }
+
+      expect(at(0.2), isNot(MouthShape.rest),
+          reason: "open as the voice is heard, before the words' estimate");
+      expect(at(0.7), MouthShape.rest,
+          reason: "shut once the voice stops, though the estimate runs on");
+      expect(mouths.last.shape, MouthShape.rest, reason: "ending shut");
     });
   });
 

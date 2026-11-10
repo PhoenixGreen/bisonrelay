@@ -167,6 +167,7 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
         facesPointer,
         isStageScene,
         motionSoundPeaks,
+        placedPlaying,
         poseWithMotion,
         sceneFraming,
         settledFrameOf;

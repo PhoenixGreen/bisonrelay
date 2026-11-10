@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
@@ -140,6 +141,28 @@ void main() {
     expect(x(120), greaterThan(x(144)), reason: "coming back");
     expect(pose(d, 144).rotate.abs(), closeTo(180, 1),
         reason: "facing back the way it comes");
+  });
+
+  // Ken, playing Ember Vale 3: "The bat still doesn't follow its motion
+  // path." Played, its guide path was taken out of the canvas drawn, and
+  // the bat's Follow path found no path to follow.
+  test("a guide path played is hidden, and still followed", () {
+    var flight = PathElement(
+        const ElementBase(id: "line", x: 20, y: 100, width: 200, height: 1),
+        nodes: const [PathNode(x: 0, y: 0), PathNode(x: 1, y: 1)],
+        guide: true);
+    var d = doc(const [
+      MotionDevice(MotionDeviceKind.followPath,
+          target: "line", values: {"lap": 4})
+    ], more: [
+      flight
+    ]);
+    var played = withoutGuides(d);
+    expect(played.elementById("line")!.visible, isFalse,
+        reason: "not drawn while played");
+    var e = played.elementById("a")!;
+    expect(e.boundsWith(pose(played, 48)).center.dx, closeTo(120, 1),
+        reason: "halfway along it at two seconds, as before");
   });
 
   test("look at turns to face what it looks at", () {

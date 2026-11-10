@@ -105,6 +105,27 @@ MotionTimes _timesFor(CanvasDocument doc, CanvasElement e) {
   return motionTimesOf(doc);
 }
 
+/// placedPlaying is whether a placement of clip [clipId] on [e]'s timeline
+/// is playing on [frame] -- the playhead inside its span, its pins followed
+/// -- for its slot to light as a launched one does (Ken, 2026-11-10: the
+/// title dropping in, its slot never showed it playing).
+bool placedPlaying(
+    CanvasDocument doc, CanvasElement e, String clipId, int frame) {
+  var placed = [
+    for (var p in e.base.motion.placed)
+      if (p.clip == clipId) p,
+  ];
+  if (placed.isEmpty) return false;
+  var times = _timesFor(doc, e);
+  var t = frame / math.max(1, doc.frameRate);
+  for (var p in placed) {
+    if (times.span(p.id) case var s? when t >= s.start && t < s.end) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// settledFrameOf is the frame [doc] opens on: everything arrived, by the
 /// clips that play its arrivals.
 int settledFrameOf(CanvasDocument doc) {
