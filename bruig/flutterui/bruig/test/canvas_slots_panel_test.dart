@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/session.dart';
+import 'package:bruig/plugin_system/canvas/ui/slot_face.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
@@ -293,8 +294,47 @@ void main() {
         reason: "the master's cue plays the master's music");
     expect(c.motionPlayer.isPlaying("coin"), isFalse,
         reason: "not the scene's elements");
+    // Each cue column its own width (Ken, 2026-11-10).
+    var ownWidth = c.slotsCueWidth, masterWidth = c.slotsMasterCueWidth;
+    await tester.drag(
+        find.byKey(const ValueKey("slotsMasterCueGrip")), const Offset(30, 0));
+    await tester.pump();
+    expect(c.slotsMasterCueWidth, closeTo(masterWidth + 30, 1));
+    expect(c.slotsCueWidth, ownWidth);
     c.stopChannelClips("music", now: true);
     c.pause();
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  // Ken: "The transition clips on the mixer and slots don't highlight when
+  // they are selected and the play button doesn't show when they are
+  // playing."
+  testWidgets("a transition's slot is outlined picked, and lit playing",
+      (tester) async {
+    var c = await pump(tester);
+    BoxBorder? border() => (tester
+            .widget<DecoratedBox>(find.byKey(const ValueKey("joinSlot-0")))
+            .decoration as BoxDecoration)
+        .border;
+    bool lit() => tester
+        .widget<SlotFace>(find.descendant(
+            of: find.byKey(const ValueKey("joinSlot-0")),
+            matching: find.byType(SlotFace)))
+        .playing;
+    expect(border(), isNull);
+    expect(lit(), isFalse);
+    c.pickScene(0);
+    await tester.pump();
+    expect(border(), isNotNull, reason: "picked: open in the Chain");
+    c.previewTransitionAfter(0);
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(c.joinPlaying(0), isTrue);
+    expect(lit(), isTrue, reason: "playing");
+    expect(c.joinPlaying(1), isFalse);
+    c.stopPreview();
+    await tester.pump();
+    expect(lit(), isFalse);
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
   });

@@ -218,6 +218,14 @@ void main() {
         lessThanOrEqualTo(tester.getRect(music).left));
     expect(find.byKey(const ValueKey("cueColumn")), findsOneWidget,
         reason: "the scene's own cues, on the left");
+    // Ken: "When resizing either the master cues or the canvas/scene cues
+    // they both resize, both should be independent."
+    var mine = c.cueColumnWidth, theirs = c.masterCueColumnWidth;
+    await tester.drag(
+        find.byKey(const ValueKey("masterCueColumnGrip")), const Offset(30, 0));
+    await tester.pump();
+    expect(c.masterCueColumnWidth, closeTo(theirs + 30, 1));
+    expect(c.cueColumnWidth, mine, reason: "the scene's left as it was");
 
     await tester.tap(fold);
     await tester.pump();

@@ -1056,7 +1056,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                                     theme: theme,
                                     bands: bands,
                                     master: true,
-                                    width: controller.cueColumnWidth,
+                                    width: controller.masterCueColumnWidth,
                                     slots: _SceneBand(
                                         controller: controller,
                                         theme: theme,

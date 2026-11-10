@@ -362,6 +362,8 @@ extension CanvasPlayback on CanvasController {
         "motion=${_motionSlots.name}",
         "cue=${_cueColumnWidth.round()}",
         "slotsCue=${_slotsCueWidth.round()}",
+        "masterCue=${_masterCueColumnWidth.round()}",
+        "slotsMasterCue=${_slotsMasterCueWidth.round()}",
         "size=$_slotsPanelSize",
         "narrow=${_slotsPanelNarrow ? 1 : 0}",
         "rail=${_mixerRailFolded ? 1 : 0}",
@@ -390,6 +392,20 @@ extension CanvasPlayback on CanvasController {
         case "slotsCue":
           if (number() case var n?) {
             _slotsCueWidth = n
+                .clamp(CanvasController.cueColumnLeast,
+                    CanvasController.cueColumnMost)
+                .toDouble();
+          }
+        case "masterCue":
+          if (number() case var n?) {
+            _masterCueColumnWidth = n
+                .clamp(CanvasController.cueColumnLeast,
+                    CanvasController.cueColumnMost)
+                .toDouble();
+          }
+        case "slotsMasterCue":
+          if (number() case var n?) {
+            _slotsMasterCueWidth = n
                 .clamp(CanvasController.cueColumnLeast,
                     CanvasController.cueColumnMost)
                 .toDouble();
@@ -459,6 +475,29 @@ extension CanvasPlayback on CanvasController {
         .toDouble();
     if (w == _slotsCueWidth) return;
     _slotsCueWidth = w;
+    notifyListeners();
+  }
+
+  /// masterCueColumnWidth and slotsMasterCueWidth are the master's cue
+  /// columns -- the mixer's and the Slots panel's -- on a scene with cues of
+  /// its own: dragged by their own edges, apart from the scene's.
+  double get masterCueColumnWidth => _masterCueColumnWidth;
+  set masterCueColumnWidth(double width) {
+    var w = width
+        .clamp(CanvasController.cueColumnLeast, CanvasController.cueColumnMost)
+        .toDouble();
+    if (w == _masterCueColumnWidth) return;
+    _masterCueColumnWidth = w;
+    notifyListeners();
+  }
+
+  double get slotsMasterCueWidth => _slotsMasterCueWidth;
+  set slotsMasterCueWidth(double width) {
+    var w = width
+        .clamp(CanvasController.cueColumnLeast, CanvasController.cueColumnMost)
+        .toDouble();
+    if (w == _slotsMasterCueWidth) return;
+    _slotsMasterCueWidth = w;
     notifyListeners();
   }
 

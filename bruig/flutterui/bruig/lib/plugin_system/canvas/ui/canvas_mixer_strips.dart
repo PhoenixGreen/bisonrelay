@@ -1658,12 +1658,20 @@ class _JoinSlot extends StatefulWidget {
 /// pressed, the transition plays -- and a label, its own or what it does,
 /// named from its right-click menu. Clicked, or double-clicked, its
 /// transition opens in the Chain (Ken, 2026-11-10).
-class _JoinSlotState extends State<_JoinSlot> {
+class _JoinSlotState extends State<_JoinSlot> with _OnSessionPulse {
   final GlobalKey<ChannelNameEditorState> _name = GlobalKey();
   final MenuController _menu = MenuController();
 
   CanvasController get c => widget.controller;
   int get join => widget.join;
+
+  // Lit while its transition plays, and picked while the Chain shows it, as
+  // every other slot is (Ken, 2026-11-10: they did neither).
+  @override
+  Object? get _slotNow => (c.joinPlaying(join), c.pickedScene == join);
+
+  @override
+  bool get _pulses => c.joinPlaying(join);
 
   @override
   Widget build(BuildContext context) {
@@ -1675,9 +1683,11 @@ class _JoinSlotState extends State<_JoinSlot> {
         : "→ ${scenes[join + 1].name} · ${t.kind.label}";
     void name(String label) =>
         c.setSceneTransition(join, t.copyWith(label: label));
+    var lit = c.joinPlaying(join);
     var face = SlotFace(
       side: SlotSide.motion,
       colour: sceneTint(join),
+      playing: lit,
       seed: "join$join",
       meta: t.sound.isEmpty
           ? null
@@ -1689,8 +1699,9 @@ class _JoinSlotState extends State<_JoinSlot> {
           if (e.buttons == kSecondaryMouseButton) return;
           c.previewTransitionAfter(join);
         },
-        child: const SizedBox.expand(
-            child: Icon(Icons.play_arrow, size: 11, color: slotInk)),
+        child: SizedBox.expand(
+            child: Icon(Icons.play_arrow,
+                size: 11, color: lit ? slotPlayingInk : slotInk)),
       ),
       label: GestureDetector(
         key: ValueKey("joinOpen-$join"),
@@ -1729,7 +1740,17 @@ class _JoinSlotState extends State<_JoinSlot> {
       ],
       child: GestureDetector(
         onSecondaryTapUp: (d) => _menu.open(position: d.localPosition),
-        child: face,
+        child: DecoratedBox(
+          key: ValueKey("joinSlot-$join"),
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(3),
+            border: c.pickedScene == join
+                ? Border.all(color: widget.theme.studio.text, width: 1)
+                : null,
+          ),
+          child: face,
+        ),
       ),
     );
   }
@@ -1912,10 +1933,12 @@ class _CueColumn extends StatelessWidget {
           child: MouseRegion(
             cursor: SystemMouseCursors.resizeColumn,
             child: GestureDetector(
-              key: const ValueKey("cueColumnGrip"),
+              key: ValueKey(master ? "masterCueColumnGrip" : "cueColumnGrip"),
               behavior: HitTestBehavior.opaque,
-              onHorizontalDragUpdate: (d) =>
-                  controller.cueColumnWidth += d.delta.dx,
+              // Each its own width.
+              onHorizontalDragUpdate: (d) => master
+                  ? controller.masterCueColumnWidth += d.delta.dx
+                  : controller.cueColumnWidth += d.delta.dx,
             ),
           ),
         ),

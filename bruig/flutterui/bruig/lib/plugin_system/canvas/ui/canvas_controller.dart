@@ -881,6 +881,10 @@ class CanvasController extends ChangeNotifier {
   }
 
   int? _pickedScene;
+
+  /// _previewJoin is the join whose transition is being previewed (see
+  /// previewTransitionAfter), or null.
+  int? _previewJoin;
   Set<String> _pickedSceneWith = const {};
 
   /// pickedScene is the scene the Animation panel shows, by index -- the
@@ -3750,6 +3754,11 @@ class CanvasController extends ChangeNotifier {
   bool _mixerRailFolded = false;
   double _cueColumnWidth = 96;
   double _slotsCueWidth = 120;
+
+  /// The master's cue columns, on a scene with cues of its own: each its
+  /// own width (Ken, 2026-11-10: resized, both cue columns went together).
+  double _masterCueColumnWidth = 96;
+  double _slotsMasterCueWidth = 120;
   int _slotsPanelSize = 1;
   bool _slotsPanelNarrow = false;
 

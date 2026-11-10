@@ -280,7 +280,9 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
       // own (Ken, 2026-11-10: per-canvas cues).
       if (r.group == RowGroup.all && controller.cuesApart && !masterCues) {
         masterCues = true;
-        columns.add((w) => _cues(theme, w, part, motionPart, master: true));
+        columns.add((w) => _cues(
+            theme, controller.slotsMasterCueWidth, part, motionPart,
+            master: true));
       }
       columns.add((w) => _column(theme, r, w, part, motionPart));
     }
@@ -607,24 +609,24 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
           ),
         ),
       ),
-      // Its right edge, dragged to widen or narrow it -- the scene's cues;
-      // the master's are as wide as a channel.
-      if (!master)
-        Positioned(
-          right: 0,
-          top: 0,
-          bottom: 0,
-          width: 6,
-          child: MouseRegion(
-            cursor: SystemMouseCursors.resizeColumn,
-            child: GestureDetector(
-              key: const ValueKey("slotsCueGrip"),
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragUpdate: (d) =>
-                  controller.slotsCueWidth += d.delta.dx,
-            ),
+      // Its right edge, dragged to widen or narrow it: each cue column its
+      // own width (Ken, 2026-11-10).
+      Positioned(
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: 6,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.resizeColumn,
+          child: GestureDetector(
+            key: ValueKey(master ? "slotsMasterCueGrip" : "slotsCueGrip"),
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragUpdate: (d) => master
+                ? controller.slotsMasterCueWidth += d.delta.dx
+                : controller.slotsCueWidth += d.delta.dx,
           ),
         ),
+      ),
     ]);
   }
 }

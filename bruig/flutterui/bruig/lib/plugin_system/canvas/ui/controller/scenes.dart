@@ -42,6 +42,7 @@ extension CanvasScenes on CanvasController {
 
     var over = document.transitionAfter(index);
     var start = document.startOfScene(index + 1);
+    _previewJoin = index;
     // A little of the scene being left, then the join, then a little of the
     // one arriving, so the eye has something to compare the transition with.
     var lead = math.max(6, (document.frameRate * 0.4).round());
@@ -54,10 +55,30 @@ extension CanvasScenes on CanvasController {
     notifyListeners();
   }
 
+  /// joinPlaying is whether the transition after scene [join] is playing:
+  /// previewed from its slot, passed through as every scene plays, or gone
+  /// through in a game -- for its slot to light as a launched one does (Ken,
+  /// 2026-11-10: "the play button doesn't show when they are playing").
+  bool joinPlaying(int join) {
+    var doc = _document;
+    if (join < 0 || join >= doc.allScenes.length - 1) return false;
+    if (_previewAt case var at?) {
+      if (_previewJoin == join) return true;
+      var start = doc.startOfScene(join + 1);
+      var over = doc.transitionAfter(join);
+      return at >= start - over.overlap && at < start + over.frames;
+    }
+    if (gameChange case (var left, _, _, _, _)?) {
+      return left.at == join && doc.at == join + 1;
+    }
+    return false;
+  }
+
   /// stopPreview puts the canvas back on the scene being edited.
   void stopPreview() {
     if (_previewAt == null) return;
     _previewAt = null;
+    _previewJoin = null;
     pause();
     // Back to the canvas it was started from: playing the document walks the
     // editor through the scenes (see _tick).
