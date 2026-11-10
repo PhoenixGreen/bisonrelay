@@ -306,8 +306,10 @@ extension CanvasPlayback on CanvasController {
     this.frame = frame;
   }
 
-  /// metronome is whether a click sounds on every beat while a piece of
-  /// sound plays. The editor's, not the document's: it is never exported.
+  /// metronome is whether a click sounds on every beat while the canvas
+  /// plays -- any canvas: every one has a tempo, on the play bar (Ken,
+  /// 2026-11-10: switched on from the timing menu, it did not play on an
+  /// animation). The editor's, not the document's: it is never exported.
   bool get metronome => _metronome;
 
   set metronome(bool on) {
@@ -318,11 +320,7 @@ extension CanvasPlayback on CanvasController {
   }
 
   void _syncMetronome() {
-    var on = playing &&
-        _metronome &&
-        _document.kind.isAudio &&
-        _previewing == null &&
-        _previewAt == null;
+    var on = playing && _metronome && _previewing == null && _previewAt == null;
     if (!on && _audio == null) return;
     var a = _document.audio;
     audio.metronome(

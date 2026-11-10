@@ -326,7 +326,12 @@ class SceneTransition {
   final double soundVolume;
   final int soundLead;
 
+  /// label is what its slot is called (Ken, 2026-11-10), or "" for what it
+  /// does: "→ the next scene · its kind".
+  final String label;
+
   const SceneTransition({
+    this.label = "",
     this.kind = SceneTransitionKind.cut,
     this.frames = 12,
     this.overlap = 12,
@@ -443,8 +448,10 @@ class SceneTransition {
     double? soundLength,
     double? soundVolume,
     int? soundLead,
+    String? label,
   }) =>
       SceneTransition(
+        label: label ?? this.label,
         kind: kind ?? this.kind,
         frames: frames ?? this.frames,
         overlap: overlap ?? this.overlap,
@@ -481,6 +488,7 @@ class SceneTransition {
         if (softness != 0) "softness": softness,
         if (centreX != 0.5) "centreX": centreX,
         if (centreY != 0.5) "centreY": centreY,
+        if (label.isNotEmpty) "label": label,
         if (sound.isNotEmpty) ...{
           "sound": sound,
           if (soundName.isNotEmpty) "soundName": soundName,
@@ -515,6 +523,7 @@ class SceneTransition {
         soundLength: jsonDouble(json["soundLength"], 0).clamp(0.0, 3600.0),
         soundVolume: jsonDouble(json["soundVolume"], 0.5).clamp(0.0, 2.0),
         soundLead: jsonInt(json["soundLead"], 6).clamp(-240, 240),
+        label: jsonString(json["label"], ""),
       );
 }
 

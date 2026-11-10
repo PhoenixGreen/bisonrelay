@@ -202,8 +202,9 @@ class RowHeader extends StatelessWidget {
   });
 
   /// oneLine is whether the row is all one line: short, under two lines'
-  /// height.
-  bool get oneLine => height < 46;
+  /// height -- the lines (20 + 2 + 18), their padding (3 + 3) and the
+  /// border under them (1). Any less, and a row 46.1 tall overflowed.
+  bool get oneLine => height < 47;
 
   @override
   Widget build(BuildContext context) {

@@ -2278,6 +2278,15 @@ class ChannelNameEditorState extends State<ChannelNameEditor> {
     super.dispose();
   }
 
+  /// edit starts the name being typed, as a double-click does: from a menu's
+  /// "Name it".
+  void edit() => setState(() {
+        _typing = true;
+        _text.text = widget.name;
+        _text.selection =
+            TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+      });
+
   void _commit() {
     if (!_typing) return;
     setState(() => _typing = false);

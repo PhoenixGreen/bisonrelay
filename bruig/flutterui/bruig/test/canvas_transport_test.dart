@@ -235,15 +235,19 @@ void main() {
       expect(voice.alive, isFalse, reason: "stopped with the playhead");
     });
 
-    test("no metronome in a document of scenes", () async {
+    // Ken, 2026-11-10: switched on from the timing menu, it did not play
+    // on an animation. Every canvas has a tempo now (the play bar's).
+    test("the metronome clicks on an animation too", () async {
       var engine = FakeEngine({});
       var c = CanvasController(const CanvasDocument(frames: 100),
           audioEngine: engine);
       addTearDown(c.dispose);
       c.metronome = true;
       c.play();
-      await Future<void>.delayed(Duration.zero);
-      expect(engine.clicks, isEmpty);
+      for (var i = 0; i < 50 && engine.voices.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 2));
+      }
+      expect(engine.clicks, isNotEmpty);
       c.pause();
     });
   });

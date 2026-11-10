@@ -65,9 +65,14 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
   @override
   Widget build(BuildContext context) => TooltipVisibility(
         visible: false,
-        child: ListenableBuilder(
-          listenable: controller,
-          builder: (context, _) => _panel(context),
+        // No scroll bars anywhere on it (Ken, 2026-11-10): the columns and
+        // the cues scroll together by the wheel, as the mixer's slots do.
+        child: ScrollConfiguration(
+          behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+          child: ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) => _panel(context),
+          ),
         ),
       );
 

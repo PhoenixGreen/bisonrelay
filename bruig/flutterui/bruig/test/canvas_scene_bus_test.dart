@@ -20,6 +20,7 @@ import 'package:bruig/plugin_system/canvas/ui/chain_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
     show DeviceKnob;
+import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -483,10 +484,44 @@ void main() {
       expect(find.byKey(const ValueKey("join-1")), findsNothing,
           reason: "two scenes, one join");
       expect(c.previewAt, isNull);
-      await tester.tap(find.byKey(const ValueKey("join-0")));
+      // Its triangle, as every slot's (Ken, 2026-11-10).
+      await tester.tap(find.byKey(const ValueKey("joinLaunch-0")));
       await tester.pump();
       expect(c.previewAt, isNotNull, reason: "the join plays");
       c.stopPreview();
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    // Ken, 2026-11-10: the transition's slot had no label, nor a way to
+    // give it one.
+    testWidgets("a join's slot is named for what it does, and can be named",
+        (tester) async {
+      var c = await pump(tester);
+      var name = find.byKey(const ValueKey("joinName-0"));
+      expect(tester.widget<Text>(name).data, startsWith("→ "));
+      await tester.tap(find.byKey(const ValueKey("join-0")),
+          buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("joinRename")));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(const ValueKey("joinNameField-0")), "Into the woods");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(c.document.transitionAfter(0).label, "Into the woods");
+      expect(tester.widget<Text>(name).data, "Into the woods");
+      // Kept with the canvas.
+      expect(
+          SceneTransition.fromJson(c.document.transitionAfter(0).toJson())
+              .label,
+          "Into the woods");
+      await tester.tap(find.byKey(const ValueKey("join-0")),
+          buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("joinUnname")));
+      await tester.pumpAndSettle();
+      expect(c.document.transitionAfter(0).label, "");
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     });

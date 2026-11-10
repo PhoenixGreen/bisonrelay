@@ -35,7 +35,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart'
-    show ChannelNameEditor;
+    show ChannelNameEditor, ChannelNameEditorState;
+import 'package:bruig/plugin_system/canvas/ui/scene_strip.dart'
+    show sceneTint;
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart'
     show AssetKind, LibraryAsset;
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart'

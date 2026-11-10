@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/transport_controls.dart';
@@ -78,6 +80,16 @@ class _DockPanelButtonState extends State<DockPanelButton> {
   CanvasController get controller => widget.controller;
   DockPanel get panel => widget.panel;
 
+  /// _buttonRect is where this button is in [overlayContext]'s overlay.
+  Rect _buttonRect(BuildContext overlayContext) {
+    var box = context.findRenderObject();
+    var overlay = Overlay.maybeOf(overlayContext)?.context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return Rect.zero;
+    var at = box.localToGlobal(Offset.zero,
+        ancestor: overlay is RenderBox ? overlay : null);
+    return at & box.size;
+  }
+
   @override
   Widget build(BuildContext context) {
     var dock = controller.dock;
@@ -113,15 +125,12 @@ class _DockPanelButtonState extends State<DockPanelButton> {
       link: _link,
       child: OverlayPortal(
         controller: _map,
-        overlayChildBuilder: (context) => CompositedTransformFollower(
-          link: _link,
-          targetAnchor: Alignment.topRight,
-          followerAnchor: Alignment.bottomRight,
-          offset: const Offset(0, -8),
-          child: Align(
-            alignment: Alignment.bottomRight,
-            child: DockDropMap(controller: controller, panel: panel),
-          ),
+        // Where it fits on screen, near the button (Ken, 2026-11-10: it ran
+        // off the window's left and top): over the button where there is
+        // room, else under it, slid sideways to stay in the window.
+        overlayChildBuilder: (overlayContext) => CustomSingleChildLayout(
+          delegate: _NearButton(_buttonRect(overlayContext)),
+          child: DockDropMap(controller: controller, panel: panel),
         ),
         child: Draggable<DockPanel>(
           data: panel,
@@ -487,4 +496,32 @@ class DockPlaceTabs extends StatelessWidget {
       ),
     );
   }
+}
+
+/// _NearButton lays the drop map out by the button at [button]: over it
+/// where there is room, else under it, and never past the window's edges.
+class _NearButton extends SingleChildLayoutDelegate {
+  final Rect button;
+  const _NearButton(this.button);
+
+  static const _gap = 8.0;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      constraints.loosen().deflate(const EdgeInsets.all(_gap));
+
+  @override
+  Offset getPositionForChild(Size size, Size child) {
+    var above = button.top - _gap - child.height;
+    var y = above >= _gap
+        ? above
+        : math.min(button.bottom + _gap, size.height - child.height - _gap);
+    var x = (button.right - child.width)
+        .clamp(_gap, math.max(_gap, size.width - child.width - _gap))
+        .toDouble();
+    return Offset(x, math.max(_gap, y));
+  }
+
+  @override
+  bool shouldRelayout(_NearButton old) => old.button != button;
 }

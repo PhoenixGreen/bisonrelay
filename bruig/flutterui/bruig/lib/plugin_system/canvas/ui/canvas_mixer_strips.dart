@@ -1639,7 +1639,7 @@ class _MasterStrip extends StatelessWidget {
 /// has a sound; pressed, the join plays -- a little of the one, the
 /// transition, a little of the other (previewTransitionAfter). Not a cue's:
 /// a cue launch passes it by.
-class _JoinSlot extends StatelessWidget {
+class _JoinSlot extends StatefulWidget {
   final CanvasController controller;
   final int join;
   final MixerLook theme;
@@ -1650,35 +1650,79 @@ class _JoinSlot extends StatelessWidget {
       required this.theme});
 
   @override
+  State<_JoinSlot> createState() => _JoinSlotState();
+}
+
+/// _JoinSlotState is a transition's slot on the Scenes strip, as every other
+/// slot is (Ken, 2026-11-10): the scene's colour, the same launch strip --
+/// pressed, the transition plays -- and a label, its own or what it does,
+/// named by a double-click or from its right-click menu.
+class _JoinSlotState extends State<_JoinSlot> {
+  final GlobalKey<ChannelNameEditorState> _name = GlobalKey();
+  final MenuController _menu = MenuController();
+
+  CanvasController get c => widget.controller;
+  int get join => widget.join;
+
+  @override
   Widget build(BuildContext context) {
-    var studio = theme.studio;
-    var doc = controller.document;
+    var doc = c.document;
     var scenes = doc.allScenes;
-    var from = scenes[join].name, to = scenes[join + 1].name;
-    var sound = doc.transitionAfter(join).sound.isNotEmpty;
-    return Material(
-      color: sceneColour.withValues(alpha: 0.22),
-      borderRadius: BorderRadius.circular(3),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(3),
-        onTap: () => controller.previewTransitionAfter(join),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Row(children: [
-            Expanded(
-              child: Text("$from → $to",
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 9.5, color: studio.text)),
-            ),
-            if (sound)
-              Container(
-                  width: 5,
-                  height: 5,
-                  decoration: const BoxDecoration(
-                      color: soundColour, shape: BoxShape.circle)),
-          ]),
+    var t = doc.transitionAfter(join);
+    var said = t.label.isNotEmpty
+        ? t.label
+        : "→ ${scenes[join + 1].name} · ${t.kind.label}";
+    void name(String label) =>
+        c.setSceneTransition(join, t.copyWith(label: label));
+    var face = SlotFace(
+      side: SlotSide.motion,
+      colour: sceneTint(join),
+      seed: "join$join",
+      meta: t.sound.isEmpty
+          ? null
+          : "with ${t.soundName.isEmpty ? "its sound" : t.soundName}",
+      go: Listener(
+        key: ValueKey("joinLaunch-$join"),
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (e) {
+          if (e.buttons == kSecondaryMouseButton) return;
+          c.previewTransitionAfter(join);
+        },
+        child: const SizedBox.expand(
+            child: Icon(Icons.play_arrow, size: 11, color: slotInk)),
+      ),
+      label: Align(
+        alignment: Alignment.centerLeft,
+        child: ChannelNameEditor(
+            key: _name,
+            name: said,
+            theme: ThemeNotifier.of(context),
+            onRename: name,
+            fontSize: 10,
+            weight: FontWeight.w600,
+            color: slotInk,
+            textKey: ValueKey("joinName-$join"),
+            fieldKey: ValueKey("joinNameField-$join")),
+      ),
+    );
+    return MenuAnchor(
+      controller: _menu,
+      menuChildren: [
+        MenuItemButton(
+          key: const ValueKey("joinRename"),
+          onPressed: () => _name.currentState?.edit(),
+          child: const Text("Name it"),
         ),
+        if (t.label.isNotEmpty)
+          MenuItemButton(
+            key: const ValueKey("joinUnname"),
+            onPressed: () => name(""),
+            child: const Text("Its own name again"),
+          ),
+      ],
+      child: GestureDetector(
+        onSecondaryTapUp: (d) => _menu.open(position: d.localPosition),
+        child: face,
       ),
     );
   }

@@ -14,6 +14,8 @@ import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
+import 'package:bruig/plugin_system/canvas/model/dock_layout.dart';
+import 'package:bruig/plugin_system/canvas/ui/dock_switcher.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
@@ -598,6 +600,67 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+
+  // Ken, 2026-11-10: a panel's button dragged, the places to drop it on
+  // ran off the window's left and top.
+  for (var (where, align) in [
+    ("top left", Alignment.topLeft),
+    ("bottom left", Alignment.bottomLeft),
+    ("top right", Alignment.topRight),
+  ]) {
+    testWidgets("a panel's drop map stays in the window: button at $where",
+        (tester) async {
+      var c = make();
+      addTearDown(c.dispose);
+      c.dock = c.dock.copyWith(places: DockPlaces.three);
+      tester.view.physicalSize = const Size(900, 600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: Align(
+                    alignment: align,
+                    child: DockPanelButton(
+                        controller: c, panel: DockPanel.slots)))),
+      ));
+      var button = find.byKey(ValueKey(DockPanel.slots.key));
+      var g = await tester.startGesture(tester.getCenter(button));
+      await tester.pump();
+      await g.moveBy(const Offset(20, 0));
+      await tester.pump();
+      await g.moveBy(const Offset(20, 0));
+      await tester.pump();
+      var map = tester.getRect(find.byType(DockDropMap));
+      expect(map.left, greaterThanOrEqualTo(0), reason: "$map");
+      expect(map.top, greaterThanOrEqualTo(0), reason: "$map");
+      expect(map.right, lessThanOrEqualTo(900), reason: "$map");
+      expect(map.bottom, lessThanOrEqualTo(600), reason: "$map");
+      await g.up();
+      await tester.pumpAndSettle();
+    });
+  }
+
+  testWidgets("no scroll bars on the Slots panel", (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    tester.view.physicalSize = const Size(1400, 500);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(host(SizedBox(
+        height: 320,
+        child:
+            CanvasSlotsPanel(controller: c, height: 320, onResize: (_) {}))));
+    await tester.pump();
+    expect(find.byType(Scrollbar), findsNothing);
+    expect(find.byType(RawScrollbar), findsNothing);
+    expect(tester.takeException(), isNull);
+    // On a desktop, where Flutter adds them by itself.
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 
   group("a fold arrow on every row", () {
     test("folded as the channel height says, unless turned the other way", () {
