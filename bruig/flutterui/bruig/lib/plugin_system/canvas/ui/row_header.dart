@@ -220,20 +220,29 @@ class RowHeader extends StatelessWidget {
         const SizedBox(width: 2),
         // The name has the room the buttons leave, before any gap.
         Expanded(
-          child: Row(children: [
-            Flexible(child: name),
-            // Beside the name on a short row, giving way as the name does.
-            if (oneLine && buttons && badges.isNotEmpty)
-              Flexible(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  physics: const NeverScrollableScrollPhysics(),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    for (var b in badges) ...[const SizedBox(width: 4), b],
-                  ]),
+          child: LayoutBuilder(builder: (context, box) {
+            var chips = Row(mainAxisSize: MainAxisSize.min, children: [
+              for (var b in badges) ...[const SizedBox(width: 4), b],
+            ]);
+            var withChips = oneLine && buttons && badges.isNotEmpty;
+            return Row(children: [
+              Flexible(child: name),
+              // Beside the name on a short row: as wide as they are, the
+              // name having the rest -- split half and half, "Strings" was
+              // "Stri..." with room to spare (Ken, 2026-11-10). Where the
+              // row is too narrow for both, they give way as the name does.
+              if (withChips && box.maxWidth >= 96)
+                chips
+              else if (withChips)
+                Flexible(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const NeverScrollableScrollPhysics(),
+                    child: chips,
+                  ),
                 ),
-              ),
-          ]),
+            ]);
+          }),
         ),
         // On a short row, the way back is its arrow alone.
         if (oneLine && buttons && back != null) ...[

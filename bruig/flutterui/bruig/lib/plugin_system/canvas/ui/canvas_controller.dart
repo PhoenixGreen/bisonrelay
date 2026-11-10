@@ -4214,7 +4214,7 @@ enum TimelineTool { select, knife }
 /// timelineHeaderMin and timelineHeaderMax bound the channel strips' column:
 /// from the icon alone to everything on it.
 const double timelineHeaderMin = 28;
-const double timelineHeaderMax = 240;
+const double timelineHeaderMax = 360;
 
 /// waveformPoints is how finely a sound's shape is read: enough for a lane
 /// several screens wide, few enough to draw every frame.
