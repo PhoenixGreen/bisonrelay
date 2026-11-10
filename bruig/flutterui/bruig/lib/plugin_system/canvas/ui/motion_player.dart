@@ -286,19 +286,18 @@ class MotionPlayer implements LiveMotion {
       {double? value}) {
     bool counted(ClipTrigger t) =>
         kind != ClipTriggerKind.count || t.amount == 0 || t.amount == value;
+    // A touch or a hit is of one element -- or one copy of one: its own.
+    var own = kind == ClipTriggerKind.touched || kind == ClipTriggerKind.hit;
     for (var e in _elementsOf(doc)) {
       for (var c in e.base.motion.clips) {
         if (c.triggers.any((t) =>
             t.kind == kind &&
             counted(t) &&
             (t.target.isEmpty
-                ? kind != ClipTriggerKind.touched ||
-                    e.id == target ||
-                    target.startsWith("${e.id}#")
+                ? !own || e.id == target || target.startsWith("${e.id}#")
                 : t.target == target))) {
-          // One copy touched plays it alone, by its own key.
-          var copy =
-              kind == ClipTriggerKind.touched && target.startsWith("${e.id}#");
+          // One copy touched or hit plays it alone, by its own key.
+          var copy = own && target.startsWith("${e.id}#");
           launch(doc, frame, copy ? target : e.id, c.id, at);
         }
       }

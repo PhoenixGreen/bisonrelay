@@ -880,6 +880,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
       ClipTriggerKind.clipEnds => "When ${name(t.target)} ends",
       ClipTriggerKind.marker => "Reaching a marker",
       ClipTriggerKind.touched => "A player touches it",
+      ClipTriggerKind.hit => "A punch or a kick hits it",
       ClipTriggerKind.count => switch (controller.document.counts
             .where((n) => n.id == t.target)
             .firstOrNull) {

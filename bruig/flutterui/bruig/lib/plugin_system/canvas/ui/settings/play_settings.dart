@@ -206,6 +206,21 @@ List<Widget> gameElementSettings(CanvasController controller, CanvasElement e,
                 spec: spec,
                 onChanged: (next) => set(next)),
           ]),
+    // Punched or kicked (Ken, 2026-11-10): anything but a player -- a foe,
+    // a crate, a wall to break.
+    if (!spec.as.moves && spec.as != PlayAs.camera)
+      GameSection(
+          key: const ValueKey("gameSection-hit"),
+          title: "Punched or kicked",
+          summary: !spec.hittable
+              ? "Not hit"
+              : "Beaten by ${spec.hits} hit${spec.hits == 1 ? "" : "s"}",
+          children: [
+            HitSentence(
+                controller: controller,
+                spec: spec,
+                onChanged: (next) => set(next)),
+          ]),
     if (e is SpriteElement && spec.as != PlayAs.none)
       GameSection(
           key: const ValueKey("gameSection-touchArea"),
@@ -327,6 +342,8 @@ String gameControlsLine(List<ControlAction> actions) {
         "${keyLabel(a.keys.first)} ${switch (a.id) {
           "jump" => "jumps",
           "act" => "acts",
+          "punch" => "punches",
+          "kick" => "kicks",
           _ => a.name.toLowerCase(),
         }}",
   ].join(" · ");
@@ -734,7 +751,6 @@ class TouchSentence extends StatelessWidget {
     var doc = controller.document;
     var effect = spec.touched;
     void setEffect(GameEffect next) => onChanged(spec.copyWith(touched: next));
-    var scenes = doc.allScenes;
     var sounds = gameSoundOptions(controller);
     return SizedBox(
       width: double.infinity,
@@ -743,61 +759,7 @@ class TouchSentence extends StatelessWidget {
           runSpacing: 6,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            WordChoice<GameDoes>(
-              key: const ValueKey("playTouched-does"),
-              value: effect.does,
-              options: [
-                for (var d in GameDoes.values) (d, _verbs[d]!),
-              ],
-              onChanged: (d) => setEffect(effect.copyWith(
-                  does: d,
-                  count:
-                      d.counts && effect.count.isEmpty && doc.counts.isNotEmpty
-                          ? doc.counts.first.id
-                          : null)),
-            ),
-            if (effect.does.counts) ...[
-              NumberWord(
-                  key: const ValueKey("playTouched-amount"),
-                  value: effect.amount,
-                  onChanged: (n) => setEffect(effect.copyWith(amount: n))),
-              _Plain(effect.does == GameDoes.add ? "to" : "from"),
-              WordChoice<String>(
-                key: const ValueKey("playTouched-count"),
-                value: doc.counts.any((c) => c.id == effect.count)
-                    ? effect.count
-                    : "",
-                options: [
-                  if (!doc.counts.any((c) => c.id == effect.count))
-                    ("", "a count"),
-                  for (var c in doc.counts) (c.id, c.name),
-                ],
-                onChanged: (id) => setEffect(effect.copyWith(count: id)),
-              ),
-            ],
-            if (effect.does.shows)
-              WordChoice<String>(
-                key: const ValueKey("playTouched-element"),
-                value: gameShowables(doc).any((e) => e.$1 == effect.element)
-                    ? effect.element
-                    : "",
-                options: [
-                  ("", "what?"),
-                  ...gameShowables(doc),
-                ],
-                onChanged: (id) => setEffect(effect.copyWith(element: id)),
-              ),
-            if (effect.does == GameDoes.scene)
-              WordChoice<String>(
-                key: const ValueKey("playTouched-scene"),
-                value:
-                    scenes.any((s) => s.id == effect.scene) ? effect.scene : "",
-                options: [
-                  ("", "which scene?"),
-                  for (var (i, s) in scenes.indexed) (s.id, doc.nameOf(i)),
-                ],
-                onChanged: (id) => setEffect(effect.copyWith(scene: id)),
-              ),
+            ...effectWords(doc, effect, setEffect, "playTouched"),
             const _Plain(", play"),
             WordChoice<String>(
               key: const ValueKey("playSound"),
@@ -1156,4 +1118,122 @@ List<Widget> _pressControls(
             key: "playPress"),
     ],
   ];
+}
+
+/// effectWords are what a game does, as words to choose in a sentence --
+/// "Add 1 to Coins", "Show the gate", "Go to Caves" -- keyed by [prefix]:
+/// a touch's, a defeat's.
+List<Widget> effectWords(CanvasDocument doc, GameEffect effect,
+    ValueChanged<GameEffect> setEffect, String prefix) {
+  var scenes = doc.allScenes;
+  return [
+    WordChoice<GameDoes>(
+      key: ValueKey("$prefix-does"),
+      value: effect.does,
+      options: [
+        for (var d in GameDoes.values) (d, _verbs[d]!),
+      ],
+      onChanged: (d) => setEffect(effect.copyWith(
+          does: d,
+          count: d.counts && effect.count.isEmpty && doc.counts.isNotEmpty
+              ? doc.counts.first.id
+              : null)),
+    ),
+    if (effect.does.counts) ...[
+      NumberWord(
+          key: ValueKey("$prefix-amount"),
+          value: effect.amount,
+          onChanged: (n) => setEffect(effect.copyWith(amount: n))),
+      _Plain(effect.does == GameDoes.add ? "to" : "from"),
+      WordChoice<String>(
+        key: ValueKey("$prefix-count"),
+        value: doc.counts.any((c) => c.id == effect.count) ? effect.count : "",
+        options: [
+          if (!doc.counts.any((c) => c.id == effect.count)) ("", "a count"),
+          for (var c in doc.counts) (c.id, c.name),
+        ],
+        onChanged: (id) => setEffect(effect.copyWith(count: id)),
+      ),
+    ],
+    if (effect.does.shows)
+      WordChoice<String>(
+        key: ValueKey("$prefix-element"),
+        value: gameShowables(doc).any((e) => e.$1 == effect.element)
+            ? effect.element
+            : "",
+        options: [
+          ("", "what?"),
+          ...gameShowables(doc),
+        ],
+        onChanged: (id) => setEffect(effect.copyWith(element: id)),
+      ),
+    if (effect.does == GameDoes.scene)
+      WordChoice<String>(
+        key: ValueKey("$prefix-scene"),
+        value: scenes.any((s) => s.id == effect.scene) ? effect.scene : "",
+        options: [
+          ("", "which scene?"),
+          for (var (i, s) in scenes.indexed) (s.id, doc.nameOf(i)),
+        ],
+        onChanged: (id) => setEffect(effect.copyWith(scene: id)),
+      ),
+  ];
+}
+
+/// HitSentence is what punching or kicking it does (Ken, 2026-11-10), as a
+/// sentence: "Beaten by two hits: Add 1 to Foes, each hit plays Thud."
+class HitSentence extends StatelessWidget {
+  final CanvasController controller;
+  final PlaySpec spec;
+  final ValueChanged<PlaySpec> onChanged;
+  const HitSentence(
+      {required this.controller,
+      required this.spec,
+      required this.onChanged,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var doc = controller.document;
+    var sounds = gameSoundOptions(controller);
+    const counts = [1, 2, 3, 5, 10];
+    return SizedBox(
+      width: double.infinity,
+      child: Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            WordChoice<int>(
+              key: const ValueKey("playHits"),
+              value: spec.hits,
+              options: [
+                (0, "It cannot be hit"),
+                if (spec.hits > 0 && !counts.contains(spec.hits))
+                  (spec.hits, "Beaten by ${spec.hits} hits"),
+                for (var n in counts)
+                  (n, n == 1 ? "Beaten by one hit" : "Beaten by $n hits"),
+              ],
+              onChanged: (n) => onChanged(spec.copyWith(hits: n)),
+            ),
+            if (spec.hittable) ...[
+              const _Plain(": then"),
+              ...effectWords(
+                  doc,
+                  spec.defeated,
+                  (next) => onChanged(spec.copyWith(defeated: next)),
+                  "playDefeated"),
+              const _Plain(", and each hit plays"),
+              WordChoice<String>(
+                key: const ValueKey("playHitSound"),
+                value: sounds.any((o) => o.$1 == spec.hitSound)
+                    ? spec.hitSound
+                    : "",
+                options: sounds,
+                onChanged: (id) => onChanged(spec.copyWith(hitSound: id)),
+              ),
+            ],
+          ]),
+    );
+  }
 }

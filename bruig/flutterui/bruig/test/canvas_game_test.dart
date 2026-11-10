@@ -79,7 +79,7 @@ void main() {
           reason: "made a game, it stays one");
       expect(CanvasDocument.fromJson(page.toJson()).game, isFalse);
       expect(page.controlsNow.map((a) => a.id),
-          ["left", "right", "up", "down", "jump", "act"]);
+          ["left", "right", "up", "down", "jump", "act", "punch", "kick"]);
       expect(CanvasDocument.fromJson(page.toJson()).controls, isNull,
           reason: "the usual controls are not written down");
     });
@@ -1183,7 +1183,9 @@ void main() {
     // Nothing picked: the game's own settings.
     expect(find.text("A game · 1 scene · 1 player"), findsOneWidget);
     // The controls said in a line, and changed with Change.
-    expect(find.text("Arrows or WASD move · Space jumps · E acts"),
+    expect(
+        find.text(
+            "Arrows or WASD move · Space jumps · E acts · J punches · K kicks"),
         findsOneWidget);
     expect(find.byKey(const ValueKey("control-1-jump")), findsNothing);
     await tester.ensureVisible(find.byKey(const ValueKey("controlsChange")));
@@ -1240,6 +1242,50 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("playGame")));
     await tester.pump(const Duration(milliseconds: 50));
     expect(c.gaming, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  // Ken, 2026-11-10: "a character can punch and kick" -- a foe set up in
+  // the Game panel to be beaten.
+  testWidgets("set to be punched or kicked in the Game panel", (tester) async {
+    var c = CanvasController(page.copyWith(game: true, elements: [
+      box("slime", 100, 100, 20, 20),
+    ]));
+    addTearDown(c.dispose);
+    tester.view.physicalSize = const Size(400, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>(
+            create: (c) => CanvasPreferences()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: SizedBox(
+                  width: 300,
+                  height: 2000,
+                  child: CanvasGamePanel(controller: c)))),
+    ));
+    c.selectOnly("slime");
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("playAs-hazard")));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("gameSection-hit")), findsOneWidget);
+    expect(find.byKey(const ValueKey("playDefeated-does")), findsNothing,
+        reason: "not to be hit yet");
+    await tester.ensureVisible(find.byKey(const ValueKey("playHits")));
+    await tester.tap(find.byKey(const ValueKey("playHits")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Beaten by 2 hits").last);
+    await tester.pumpAndSettle();
+    expect(c.document.elementById("slime")!.base.play.hits, 2);
+    expect(find.byKey(const ValueKey("playDefeated-does")), findsOneWidget);
+    expect(find.byKey(const ValueKey("playHitSound")), findsOneWidget);
+    expect(find.text("Beaten by 2 hits"), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
@@ -1688,7 +1734,9 @@ void main() {
       expect(find.text("Custom"), findsNothing);
       await tester.tap(find.text("Floaty").last);
       await tester.pumpAndSettle();
-      expect(find.text("Player 1 · Arrows or WASD move · Space jumps · E acts"),
+      expect(
+          find.text("Player 1 · Arrows or WASD move · Space jumps · E acts"
+              " · J punches · K kicks"),
           findsOneWidget);
       expect(tester.takeException(), isNull);
     });

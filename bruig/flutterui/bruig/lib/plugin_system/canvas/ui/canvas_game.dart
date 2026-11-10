@@ -14,6 +14,8 @@ import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
+import 'package:bruig/plugin_system/canvas/render/vrm/vrm_pose.dart'
+    show kickSeconds, punchSeconds;
 import 'package:flutter/foundation.dart';
 import 'package:gamepads/gamepads.dart';
 
@@ -156,7 +158,24 @@ class GameBody {
   /// unbroken.
   String? move3d;
   double since = 0;
+
+  /// strike is the punch or kick it is throwing ("Punch", "Kick"), and
+  /// [struckAt] the game's clock when it was thrown; null between them.
+  String? strike;
+  double struckAt = 0;
+
+  /// striking is whether a strike is still being thrown at [clock].
+  bool striking(double clock) =>
+      strike != null && clock - struckAt < strikeSeconds(strike!);
 }
+
+/// strikeSeconds is how long a strike takes, once through.
+double strikeSeconds(String strike) =>
+    strike == "Kick" ? kickSeconds : punchSeconds;
+
+/// strikeReach is how far beyond a player's front a strike reaches, in
+/// points: a kick further than a punch.
+double strikeReach(String strike) => strike == "Kick" ? 56 : 36;
 
 /// GameRun is a game going.
 class GameRun extends ChangeNotifier {
@@ -279,7 +298,7 @@ class GameRun extends ChangeNotifier {
 
     var solids = [
       for (var e in doc.elements)
-        if (e.base.play.as == PlayAs.solid && shown(e))
+        if (e.base.play.as == PlayAs.solid && shown(e) && !gone.contains(e.id))
           ..._boxesOf(doc, e, frame).values,
       // A tile map's solid layers: the tiles are the ground.
       for (var e in doc.elements)
@@ -297,6 +316,7 @@ class GameRun extends ChangeNotifier {
       for (var e in doc.elements)
         if (e.base.play.as == PlayAs.solid &&
             shown(e) &&
+            !gone.contains(e.id) &&
             (e.track != null || movesAtAll(e)) &&
             (onward || _movesLive(e)))
           ..._boxesOf(doc, e, frame),
@@ -335,6 +355,20 @@ class GameRun extends ChangeNotifier {
           break;
       }
       if (dx != 0) body.facing = dx.sign;
+      // A punch or a kick, one at a time (Ken, 2026-11-10).
+      if (spec.as == PlayAs.platformer || spec.as == PlayAs.topDown) {
+        for (var (action, kind) in const [
+          ("punch", "Punch"),
+          ("kick", "Kick")
+        ]) {
+          if (!pressedBy(p, action) || body.striking(clock)) continue;
+          body
+            ..strike = kind
+            ..struckAt = clock;
+          _strike(doc, frame, e, body, kind);
+        }
+        if (body.strike != null && !body.striking(clock)) body.strike = null;
+      }
       if (spec.as != PlayAs.camera && (dx != 0 || dy != 0)) {
         body.heading = Offset(
             dx.toDouble(), spec.as == PlayAs.topDown ? dy.toDouble() : 0);
@@ -463,11 +497,68 @@ class GameRun extends ChangeNotifier {
     _frameWas = null;
     bodies.clear();
     camera = Offset.zero;
+    hitsTaken.clear();
+  }
+
+  /// hitsTaken is how many hits each element (or copy) has taken, by name:
+  /// at its [PlaySpec.hits], it is defeated.
+  final Map<String, int> hitsTaken = {};
+
+  /// strikeArea is where [kind] thrown by a player at [box] reaches: in
+  /// front of it the way it faces (seen from above, the way it goes), a
+  /// punch at its chest, a kick lower and further.
+  static Rect strikeArea(Rect box, String kind, GameBody body,
+      {bool topDown = false}) {
+    var reach = strikeReach(kind);
+    var h = body.heading;
+    if (topDown && h != Offset.zero && h.dx == 0) {
+      // Up or down the page.
+      return h.dy < 0
+          ? Rect.fromLTRB(box.left, box.top - reach, box.right, box.center.dy)
+          : Rect.fromLTRB(
+              box.left, box.center.dy, box.right, box.bottom + reach);
+    }
+    var top = box.top + box.height * (kind == "Kick" ? 0.35 : 0.12);
+    var bottom = box.bottom - box.height * (kind == "Kick" ? 0.05 : 0.4);
+    return body.facing < 0
+        ? Rect.fromLTRB(box.left - reach, top, box.center.dx, bottom)
+        : Rect.fromLTRB(box.center.dx, top, box.right + reach, bottom);
+  }
+
+  /// _strike is [player] throwing [kind]: everything that can be hit in
+  /// its reach is -- each copy of one reused its own -- and what has taken
+  /// all the hits it takes is defeated.
+  void _strike(CanvasDocument doc, int frame, CanvasElement player,
+      GameBody body, String kind) {
+    var area = strikeArea(player.boundsAt(frame).shift(body.at), kind, body,
+        topDown: player.base.play.as == PlayAs.topDown);
+    for (var t in doc.elements) {
+      var spec = t.base.play;
+      if (!spec.hittable || t.id == player.id) continue;
+      if (!shown(t) || gone.contains(t.id)) continue;
+      for (var MapEntry(key: name, value: box)
+          in _boxesOf(doc, t, frame).entries) {
+        if (gone.contains(name) || !area.overlaps(_touchOf(t, box))) continue;
+        var taken = (hitsTaken[name] ?? 0) + 1;
+        hitsTaken[name] = taken;
+        events.add(GameEvent(hit: name));
+        if (spec.hitSound.isNotEmpty) {
+          events.add(GameEvent(
+              sound: spec.hitSound,
+              soundFrom: name == t.id ? null : box.center.dx));
+        }
+        if (taken >= spec.hits) {
+          gone.add(name);
+          _do(doc, spec.defeated);
+        }
+      }
+    }
   }
 
   /// newScene is the game gone on to another scene: its players where they
   /// were put, its pickups all there, the counts carried on.
   void newScene() {
+    hitsTaken.clear();
     gone.clear();
     toggled.clear();
     _touching.clear();
@@ -710,11 +801,17 @@ class GameRun extends ChangeNotifier {
     }
 
     var moving = body.velocity.dx.abs() > 1 || body.velocity.dy.abs() > 1;
-    var action = !body.onGround && body.velocity.dy.abs() > 1
-        ? named(["jump", "fall"])
-        : moving
-            ? named(["walk", "run", "move"])
-            : named(["idle", "stand"]);
+    // A punch or a kick: its own action, or an attack.
+    var strike = body.striking(clock)
+        ? named([body.strike!.toLowerCase(), "attack", "hit"])
+        : null;
+    var action = strike != null
+        ? strike
+        : !body.onGround && body.velocity.dy.abs() > 1
+            ? named(["jump", "fall"])
+            : moving
+                ? named(["walk", "run", "move"])
+                : named(["idle", "stand"]);
     // Turned the way it goes whether or not it was drawn with a way to face:
     // a pack's figure, its frames all walking right, faces left by being
     // mirrored.
@@ -732,6 +829,13 @@ class GameRun extends ChangeNotifier {
     var topDown = c.base.play.as == PlayAs.topDown;
     var pace = topDown ? body.velocity.distance : body.velocity.dx.abs();
     var airborne = !topDown && !body.onGround && body.velocity.dy.abs() > 1;
+    // A punch or a kick thrown, before anything else, from when it was.
+    if (body.striking(clock)) {
+      body
+        ..move3d = body.strike
+        ..since = body.struckAt;
+      return;
+    }
     var kind = airborne
         ? "Jump"
         : pace > 1
@@ -771,13 +875,15 @@ class GameRun extends ChangeNotifier {
     var height = math.max(1.0, c.height);
     // A walk carries a body about 0.8 of its height a second, a run 1.9.
     var stride = kind == "Run" ? 1.9 : 0.8;
+    var strike = kind == "Punch" || kind == "Kick";
     var p = c.performance.copyWith(clips: [
       if (kind != null)
         MotionClip3d(
             kind: kind,
             start: start,
-            length: 3600,
-            speed: kind == "Jump"
+            // A strike once through, as quick as it is.
+            length: strike ? strikeSeconds(kind) : 3600,
+            speed: kind == "Jump" || strike
                 ? 1
                 : (pace / (stride * height)).clamp(0.5, 2.5).toDouble()),
     ]);
@@ -795,6 +901,7 @@ class GameRun extends ChangeNotifier {
     toggled.clear();
     _touching.clear();
     events.clear();
+    hitsTaken.clear();
   }
 }
 
@@ -815,6 +922,10 @@ class GameEvent {
   /// start on a touch.
   final String? touched;
 
+  /// hit is an element (or one copy of one reused, by its key) a player
+  /// has punched or kicked, whose clips start on a hit.
+  final String? hit;
+
   /// counted is a count changed, by id, and where it has got to.
   final (String, int)? counted;
   final bool stop;
@@ -830,6 +941,7 @@ class GameEvent {
       this.restart = false,
       this.press,
       this.touched,
+      this.hit,
       this.counted,
       this.stop = false});
 }

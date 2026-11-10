@@ -77,6 +77,18 @@ class PlaySpec {
   final double reach;
   final ButtonAction press;
 
+  /// hits is how many punches or kicks defeat it (Ken, 2026-11-10: "a
+  /// character can punch and kick"): nought for none -- it cannot be hit.
+  /// Defeated, it is gone, as a pickup taken is (a crate broken, a foe
+  /// beaten), and does [defeated]; each hit plays [hitSound] and starts its
+  /// clips that start on a hit.
+  final int hits;
+  final GameEffect defeated;
+  final String hitSound;
+
+  /// hittable is whether a punch or a kick does anything to it.
+  bool get hittable => hits > 0;
+
   const PlaySpec({
     this.as = PlayAs.none,
     this.speed = 320,
@@ -93,11 +105,14 @@ class PlaySpec {
     this.pressedBy = "",
     this.reach = 0,
     this.press = const ButtonAction(kind: ButtonActionKind.toggleElement),
+    this.hits = 0,
+    this.defeated = const GameEffect(),
+    this.hitSound = "",
   });
 
-  /// isNone is whether it does nothing in a game: not played, and pressed
-  /// by nothing.
-  bool get isNone => as == PlayAs.none && pressedBy.isEmpty;
+  /// isNone is whether it does nothing in a game: not played, pressed by
+  /// nothing, and not to be hit.
+  bool get isNone => as == PlayAs.none && pressedBy.isEmpty && hits == 0;
 
   PlaySpec copyWith(
           {PlayAs? as,
@@ -114,7 +129,10 @@ class PlaySpec {
           String? pressSound,
           String? pressedBy,
           double? reach,
-          ButtonAction? press}) =>
+          ButtonAction? press,
+          int? hits,
+          GameEffect? defeated,
+          String? hitSound}) =>
       PlaySpec(
         as: as ?? this.as,
         speed: (speed ?? this.speed).clamp(10.0, 5000.0),
@@ -131,6 +149,9 @@ class PlaySpec {
         pressedBy: pressedBy ?? this.pressedBy,
         reach: (reach ?? this.reach).clamp(0.0, 100000.0),
         press: press ?? this.press,
+        hits: (hits ?? this.hits).clamp(0, 99),
+        defeated: defeated ?? this.defeated,
+        hitSound: hitSound ?? this.hitSound,
       );
 
   Map<String, dynamic> toJson() => {
@@ -150,6 +171,11 @@ class PlaySpec {
           if (reach != 0) "reach": reach,
           "press": press.toJson(),
           if (pressSound.isNotEmpty) "pressSound": pressSound,
+        },
+        if (hits > 0) ...{
+          "hits": hits,
+          "defeated": defeated.toJson(),
+          if (hitSound.isNotEmpty) "hitSound": hitSound,
         },
       };
 
@@ -174,6 +200,9 @@ class PlaySpec {
       press: json["press"] is Map<String, dynamic>
           ? ButtonAction.fromJson(json["press"] as Map<String, dynamic>)
           : null,
+      hits: json["hits"] is num ? (json["hits"] as num).toInt() : 0,
+      defeated: GameEffect.fromJson(json["defeated"]),
+      hitSound: json["hitSound"] is String ? json["hitSound"] as String : "",
     );
   }
 
@@ -197,7 +226,10 @@ class PlaySpec {
       other.press.kind == press.kind &&
       other.press.frame == press.frame &&
       other.press.elementId == press.elementId &&
-      other.press.url == press.url;
+      other.press.url == press.url &&
+      other.hits == hits &&
+      other.defeated == defeated &&
+      other.hitSound == hitSound;
 
   @override
   int get hashCode => Object.hash(
@@ -216,7 +248,10 @@ class PlaySpec {
       pressedBy,
       reach,
       press.kind,
-      press.elementId);
+      press.elementId,
+      hits,
+      defeated,
+      hitSound);
 }
 
 /// GameSound is what a game's sound choice is: a sound on the canvas, by
@@ -529,6 +564,10 @@ final List<ControlAction> defaultControls = [
       pad: const [PadInput.leftStickDown, PadInput.dpadDown]),
   const ControlAction("jump", "Jump", keys: [_space], pad: [PadInput.a]),
   ControlAction("act", "Action", keys: [_letter("e")], pad: const [PadInput.x]),
+  // Ken, 2026-11-10: "a character can punch and kick" -- see PlaySpec.hits.
+  ControlAction("punch", "Punch",
+      keys: [_letter("j")], pad: const [PadInput.b]),
+  ControlAction("kick", "Kick", keys: [_letter("k")], pad: const [PadInput.y]),
 ];
 
 /// sharedDefaultControls are the first player's usual controls when a

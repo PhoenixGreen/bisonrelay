@@ -268,7 +268,9 @@ enum ClipTriggerKind {
   clipEnds("Another clip ends"),
   marker("The playhead reaches a marker"),
   touched("A player touches it"),
-  count("A count reaches");
+  count("A count reaches"),
+  // Ken, 2026-11-10: punched or kicked in a game (see PlaySpec.hits).
+  hit("It is hit");
 
   final String label;
   const ClipTriggerKind(this.label);

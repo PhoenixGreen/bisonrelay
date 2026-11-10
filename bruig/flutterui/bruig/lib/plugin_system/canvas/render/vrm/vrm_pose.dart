@@ -406,6 +406,91 @@ _Motion _motionAt(String name, double t, Map<String, double> walk, double u) {
       o.head[1] = 0.6 * math.sin(t * 0.7);
       o.head[0] = 0.1 * math.sin(t * 0.45);
       o.spine[1] = 0.15 * math.sin(t * 0.7);
+    case "Punch":
+      // A cross from a guard, in 0.45 s: a little drawn back, thrown out
+      // straight with the body turning behind it, held a moment, brought
+      // back to the chin. The left hand keeps its guard.
+      final c = (t / punchSeconds) % 1;
+      final back = c < 0.1
+          ? _smooth(c / 0.1)
+          : c < 0.28
+              ? 1 - _smooth((c - 0.1) / 0.18)
+              : 0.0;
+      final out = c < 0.12
+          ? 0.0
+          : c < 0.3
+              ? _smooth((c - 0.12) / 0.18)
+              : c < 0.45
+                  ? 1.0
+                  : c < 0.85
+                      ? 1 - _smooth((c - 0.45) / 0.4)
+                      : 0.0;
+      o.handAt = {
+        "L": (l, s) => l.chin + l.v(s * 0.09, -0.05, 0.2),
+        "R": (l, s) =>
+            l.chin +
+            l.v(s * (0.09 - 0.08 * out), -0.05 + 0.04 * out,
+                0.17 - 0.04 * back + 0.4 * out),
+      };
+      o.handShape = {"L": "fist", "R": "fist"};
+      o.pole = {
+        "L": (s) => [s * 1.0, -1, -0.2],
+        "R": (s) => [s * 1.0, -1, -0.2 - 0.5 * out],
+      };
+      o.palm = {
+        "L": [-1, 0, -0.4],
+        "R": [-1, 0, -0.4 + 0.4 * out],
+      };
+      o.yaw = 0.22 * out - 0.08 * back;
+      o.spine = [0.08 + 0.05 * out, 0.3 * out - 0.1 * back, 0];
+      o.head = [0.04, -0.25 * out, 0];
+      o.foot["L"] = [0.1 * u, 0, 0, 0, 1];
+      o.foot["R"] = [-0.06 * u, 0, 0.25 * out, -0.2 * out, 1];
+      o.dy = -0.03 * u;
+    case "Kick":
+      // A front kick with the right leg, in 0.6 s: the knee drawn up, the
+      // foot snapped out, held, drawn back and set down; leaning back
+      // against it, the hands up in a guard.
+      final c = (t / kickSeconds) % 1;
+      final lift = c < 0.1
+          ? 0.0
+          : c < 0.3
+              ? _smooth((c - 0.1) / 0.2)
+              : c < 0.68
+                  ? 1.0
+                  : c < 0.92
+                      ? 1 - _smooth((c - 0.68) / 0.24)
+                      : 0.0;
+      final out = c < 0.3
+          ? 0.0
+          : c < 0.42
+              ? _smooth((c - 0.3) / 0.12)
+              : c < 0.55
+                  ? 1.0
+                  : c < 0.7
+                      ? 1 - _smooth((c - 0.55) / 0.15)
+                      : 0.0;
+      o.foot["L"] = [0.02 * u, 0, 0, 0, 1];
+      o.foot["R"] = [
+        (0.12 * lift + 0.36 * out) * u,
+        (0.3 * lift + 0.1 * out) * u,
+        -0.5 * out,
+        0.2 * out,
+        0,
+      ];
+      o.spine = [-0.06 * lift - 0.12 * out, 0, 0];
+      o.head = [0.06 * lift + 0.1 * out, 0, 0];
+      o.dy = -0.03 * u * lift;
+      o.roll = 0.04 * lift;
+      o.handAt = {
+        "L": (l, s) => l.chin + l.v(s * 0.1, -0.08, 0.16),
+        "R": (l, s) => l.chin + l.v(s * 0.12, -0.12, 0.08),
+      };
+      o.handShape = {"L": "fist", "R": "fist"};
+      o.pole = {
+        "L": (s) => [s * 1.0, -1, -0.2],
+        "R": (s) => [s * 1.0, -1, -0.2],
+      };
   }
   return o;
 }
@@ -423,7 +508,14 @@ const Map<String, Set<String>> _motionParts = {
   "Nod": {"head"},
   "Shake head": {"head"},
   "Look around": {"head", "spine"},
+  "Punch": {"legs", "spine", "head", "arms"},
+  "Kick": {"legs", "spine", "head", "arms"},
 };
+
+/// punchSeconds and kickSeconds are how long a punch and a kick take, once
+/// through: a game plays each for as long (see canvas_game.dart).
+const double punchSeconds = 0.45;
+const double kickSeconds = 0.6;
 
 /// _scaled is [o] at [w] of its strength, mirrored left for right with
 /// [mirror].
@@ -918,7 +1010,11 @@ class VrmPoser {
       _rest = _measure();
     }
     final r = _rest!, u = r.u;
-    final a = dt <= 0 ? 1.0 : 1 - math.exp(-dt / 0.16);
+    // A body eases toward its pose over about 0.16 s -- a strike over 0.03:
+    // it is quick, and eased as slowly, a punch's arm (straight out for a
+    // tenth of a second) never got there.
+    final strike = m.motion == "Punch" || m.motion == "Kick";
+    final a = dt <= 0 ? 1.0 : 1 - math.exp(-dt / (strike ? 0.03 : 0.16));
     final st0 = _stances[m.stance] ?? _stances["Relaxed"]!;
     final mo = _scaled(_motionAt(m.motion, t, m.walk, u),
         strength * weight.clamp(0.0, 1.0), mirror);

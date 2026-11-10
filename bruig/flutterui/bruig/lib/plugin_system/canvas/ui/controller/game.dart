@@ -212,6 +212,9 @@ extension CanvasGame on CanvasController {
       if (event.touched case var id?) {
         fireMotionTrigger(ClipTriggerKind.touched, id);
       }
+      if (event.hit case var id?) {
+        fireMotionTrigger(ClipTriggerKind.hit, id);
+      }
       if (event.counted case (var id, var value)) {
         fireMotionTrigger(ClipTriggerKind.count, id, value.toDouble());
       }
@@ -294,8 +297,9 @@ extension CanvasGame on CanvasController {
     _gameMotionStart();
   }
 
-  /// _touchClipPlaying is whether [id] is playing a clip a touch started --
-  /// a coin's pop -- for which a pickup taken stays in view.
+  /// _touchClipPlaying is whether [id] is playing a clip a touch or a hit
+  /// started -- a coin's pop, a foe's fall -- for which a pickup taken, or
+  /// a foe beaten, stays in view.
   bool _touchClipPlaying(String id) {
     // One copy of an element reused, by its key: its element's clips.
     var at = id.indexOf("#");
@@ -303,7 +307,9 @@ extension CanvasGame on CanvasController {
     if (e == null) return false;
     var onTouch = {
       for (var c in e.base.motion.clips)
-        if (c.triggers.any((t) => t.kind == ClipTriggerKind.touched)) c.id,
+        if (c.triggers.any((t) =>
+            t.kind == ClipTriggerKind.touched || t.kind == ClipTriggerKind.hit))
+          c.id,
     };
     return onTouch.isNotEmpty && motionPlayer.isPlaying(id, only: onTouch);
   }

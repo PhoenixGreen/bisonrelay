@@ -19,6 +19,10 @@ const List<String> performanceMotions = [
   "Look around",
   "Walk",
   "Run",
+  // Ken, 2026-11-10: "a character can punch and kick" -- and in a game,
+  // the punch and kick actions play them (see canvas_game.dart).
+  "Punch",
+  "Kick",
 ];
 
 /// performanceWearing are the outfits a scene can put it in, by name.
@@ -75,10 +79,13 @@ class MotionClip3d {
   double get end => start + length;
 
   /// weightAt is how much of it plays at [t]: nothing outside it, faded in
-  /// and out over its first and last 0.3 s.
+  /// and out over its first and last 0.3 s -- a strike over 0.06 s: it
+  /// winds up and comes back by itself, and faded as slowly, a punch
+  /// (0.45 s) never got to three quarters of itself.
   double weightAt(double t) {
     if (t < start || t > end) return 0;
-    return [1.0, (t - start) / 0.3, (end - t) / 0.3]
+    var fade = kind == "Punch" || kind == "Kick" ? 0.06 : 0.3;
+    return [1.0, (t - start) / fade, (end - t) / fade]
         .reduce((a, b) => a < b ? a : b)
         .clamp(0.0, 1.0);
   }
