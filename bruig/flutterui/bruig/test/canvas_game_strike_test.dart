@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
@@ -185,11 +186,36 @@ void main() {
     expect(live.isPlaying("other"), isFalse);
   });
 
+  test("each hit does its own: a boss's health taken a hit at a time", () {
+    var doc = const CanvasDocument(size: CanvasSize(width: 1920))
+        .copyWith(game: true, counts: const [
+      foes,
+      GameCount("hp", "Warden", start: 3),
+    ], elements: [
+      box("hero", 100, 1000, 40, 80,
+          play: const PlaySpec(as: PlayAs.platformer)),
+      box("warden", 150, 1000, 60, 80,
+          play: const PlaySpec(
+              as: PlayAs.hazard,
+              hits: 3,
+              struck: GameEffect(does: GameDoes.take, count: "hp"),
+              defeated: GameEffect(does: GameDoes.add, count: "foes"))),
+    ]);
+    var run = settled(doc);
+    strike(run, doc, LogicalKeyboardKey.keyK);
+    expect(run.countOf(doc, "hp"), 2);
+    strike(run, doc, LogicalKeyboardKey.keyJ);
+    strike(run, doc, LogicalKeyboardKey.keyK);
+    expect(run.countOf(doc, "hp"), 0);
+    expect(run.countOf(doc, "foes"), 1);
+  });
+
   test("what it takes to beat it is kept with it", () {
     const spec = PlaySpec(
         as: PlayAs.hazard,
         hits: 3,
         hitSound: "thud",
+        struck: GameEffect(does: GameDoes.take, count: "hp"),
         defeated: GameEffect(does: GameDoes.add, count: "foes"));
     var back = PlaySpec.fromJson(spec.toJson());
     expect(back, spec);
@@ -229,5 +255,49 @@ void main() {
       run.step(doc, 0, 1 / 60);
     }
     expect(seen().performance.clips, isEmpty, reason: "thrown, it stands");
+  });
+
+  test("what its motion has faded out is not there: a laser off doesn't hurt",
+      () {
+    const hearts = GameCount("hearts", "Hearts", start: 3);
+    // Faded to [to] on the timeline by a clip held all along.
+    ElementMotion fadedTo(double to) => ElementMotion(clips: [
+          MotionClip.ofKind("off", MotionKind.loop, length: 4, keys: {
+            MotionProp.opacity: [
+              MotionKey(0, MotionNumber(to), ease: KeyframeEasing.hold),
+              MotionKey(4, MotionNumber(to)),
+            ],
+          }),
+        ], placed: const [
+          ClipPlacement(id: "p", clip: "off")
+        ]);
+    const hurts = PlaySpec(
+        as: PlayAs.hazard,
+        sendsBack: false,
+        hits: 1,
+        touched: GameEffect(does: GameDoes.take, count: "hearts"));
+    int heartsLeft(ElementMotion? motion, {double opacity = 1}) {
+      var laser = box("laser", 100, 1000, 40, 80, play: hurts, motion: motion)
+          .withBase(opacity: opacity);
+      var doc = field([laser]).copyWith(counts: const [foes, hearts]);
+      var run = settled(doc);
+      return run.countOf(doc, "hearts");
+    }
+
+    expect(heartsLeft(null), 2, reason: "a laser on hurts");
+    expect(heartsLeft(fadedTo(0.15)), 3, reason: "one blinked off doesn't");
+    expect(heartsLeft(fadedTo(0.6)), 2, reason: "half faded is still there");
+    expect(heartsLeft(null, opacity: 0), 2,
+        reason: "an unseen trap, left at 0 on purpose, still hurts");
+
+    // Nor can it be hit.
+    var ghost = slime("ghost", 150);
+    var doc = field([
+      box("ghost", 150, 1050, 30, 30,
+          play: ghost.base.play, motion: fadedTo(0)),
+    ]);
+    var run = settled(doc);
+    strike(run, doc, LogicalKeyboardKey.keyK);
+    expect(run.hitsTaken, isEmpty);
   });
 }

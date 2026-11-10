@@ -86,6 +86,10 @@ class PlaySpec {
   final GameEffect defeated;
   final String hitSound;
 
+  /// struck is what each hit does, before any defeat: a boss's health
+  /// taken down a hit at a time.
+  final GameEffect struck;
+
   /// hittable is whether a punch or a kick does anything to it.
   bool get hittable => hits > 0;
 
@@ -108,6 +112,7 @@ class PlaySpec {
     this.hits = 0,
     this.defeated = const GameEffect(),
     this.hitSound = "",
+    this.struck = const GameEffect(),
   });
 
   /// isNone is whether it does nothing in a game: not played, pressed by
@@ -132,7 +137,8 @@ class PlaySpec {
           ButtonAction? press,
           int? hits,
           GameEffect? defeated,
-          String? hitSound}) =>
+          String? hitSound,
+          GameEffect? struck}) =>
       PlaySpec(
         as: as ?? this.as,
         speed: (speed ?? this.speed).clamp(10.0, 5000.0),
@@ -152,6 +158,7 @@ class PlaySpec {
         hits: (hits ?? this.hits).clamp(0, 99),
         defeated: defeated ?? this.defeated,
         hitSound: hitSound ?? this.hitSound,
+        struck: struck ?? this.struck,
       );
 
   Map<String, dynamic> toJson() => {
@@ -176,6 +183,7 @@ class PlaySpec {
           "hits": hits,
           "defeated": defeated.toJson(),
           if (hitSound.isNotEmpty) "hitSound": hitSound,
+          if (struck.does != GameDoes.nothing) "struck": struck.toJson(),
         },
       };
 
@@ -203,6 +211,7 @@ class PlaySpec {
       hits: json["hits"] is num ? (json["hits"] as num).toInt() : 0,
       defeated: GameEffect.fromJson(json["defeated"]),
       hitSound: json["hitSound"] is String ? json["hitSound"] as String : "",
+      struck: GameEffect.fromJson(json["struck"]),
     );
   }
 
@@ -229,7 +238,8 @@ class PlaySpec {
       other.press.url == press.url &&
       other.hits == hits &&
       other.defeated == defeated &&
-      other.hitSound == hitSound;
+      other.hitSound == hitSound &&
+      other.struck == struck;
 
   @override
   int get hashCode => Object.hash(
@@ -251,7 +261,8 @@ class PlaySpec {
       press.elementId,
       hits,
       defeated,
-      hitSound);
+      hitSound,
+      struck);
 }
 
 /// GameSound is what a game's sound choice is: a sound on the canvas, by

@@ -259,6 +259,34 @@ class GameRun extends ChangeNotifier {
     };
   }
 
+  /// fadedOut is how faint a thing's motion leaves it before it is as good
+  /// as not there: a blinking laser at its dim, a coin not yet faded up.
+  static const fadedOut = 0.2;
+
+  /// _presentOf is _boxesOf less each that its motion -- clips, keyframes, a
+  /// loop -- has faded below [fadedOut]: what can be touched or hit. Only a
+  /// fade the element moves by counts: one left at opacity 0 on purpose (an
+  /// unseen trap) is there still.
+  Map<String, Rect> _presentOf(CanvasDocument doc, CanvasElement e, int frame) {
+    if (!movesAtAll(e)) {
+      return (e.track?.at(frame).opacity ?? 1) < fadedOut
+          ? const {}
+          : _boxesOf(doc, e, frame);
+    }
+    var set = e.base.motion.instances;
+    if (set == null) {
+      var pose = poseWithMotion(e, frame, doc, live: _live);
+      return pose.opacity < fadedOut ? const {} : {e.id: e.boundsWith(pose)};
+    }
+    return {
+      for (var (i, item) in set.items.indexed)
+        if (!gone.contains(instanceKey(e.id, item.id)))
+          if (poseWithMotion(e, frame, doc, live: _live, instance: i)
+              case var pose when pose.opacity >= fadedOut)
+            instanceKey(e.id, item.id): e.boundsWith(pose),
+    };
+  }
+
   /// _movesLive is whether [e] is moved by clips launched from its slots,
   /// on their own clock rather than the timeline's.
   bool _movesLive(CanvasElement e) => _live?.of(e.id) != null;
@@ -537,7 +565,7 @@ class GameRun extends ChangeNotifier {
       if (!spec.hittable || t.id == player.id) continue;
       if (!shown(t) || gone.contains(t.id)) continue;
       for (var MapEntry(key: name, value: box)
-          in _boxesOf(doc, t, frame).entries) {
+          in _presentOf(doc, t, frame).entries) {
         if (gone.contains(name) || !area.overlaps(_touchOf(t, box))) continue;
         var taken = (hitsTaken[name] ?? 0) + 1;
         hitsTaken[name] = taken;
@@ -547,6 +575,7 @@ class GameRun extends ChangeNotifier {
               sound: spec.hitSound,
               soundFrom: name == t.id ? null : box.center.dx));
         }
+        _do(doc, spec.struck);
         if (taken >= spec.hits) {
           gone.add(name);
           _do(doc, spec.defeated);
@@ -582,7 +611,7 @@ class GameRun extends ChangeNotifier {
     var boxes = [
       for (var t in things)
         for (var MapEntry(key: name, value: box)
-            in _boxesOf(doc, t, frame).entries)
+            in _presentOf(doc, t, frame).entries)
           (t, name, _touchOf(t, box)),
     ];
     var now = <(String, String)>{};
@@ -805,13 +834,12 @@ class GameRun extends ChangeNotifier {
     var strike = body.striking(clock)
         ? named([body.strike!.toLowerCase(), "attack", "hit"])
         : null;
-    var action = strike != null
-        ? strike
-        : !body.onGround && body.velocity.dy.abs() > 1
+    var action = strike ??
+        (!body.onGround && body.velocity.dy.abs() > 1
             ? named(["jump", "fall"])
             : moving
                 ? named(["walk", "run", "move"])
-                : named(["idle", "stand"]);
+                : named(["idle", "stand"]));
     // Turned the way it goes whether or not it was drawn with a way to face:
     // a pack's figure, its frames all walking right, faces left by being
     // mirrored.

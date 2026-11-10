@@ -1217,7 +1217,13 @@ class HitSentence extends StatelessWidget {
               onChanged: (n) => onChanged(spec.copyWith(hits: n)),
             ),
             if (spec.hittable) ...[
-              const _Plain(": then"),
+              const _Plain(". Each hit:"),
+              ...effectWords(
+                  doc,
+                  spec.struck,
+                  (next) => onChanged(spec.copyWith(struck: next)),
+                  "playStruck"),
+              const _Plain(". Beaten:"),
               ...effectWords(
                   doc,
                   spec.defeated,
