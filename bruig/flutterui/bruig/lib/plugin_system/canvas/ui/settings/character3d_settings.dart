@@ -55,6 +55,7 @@ List<Widget> character3dSettings(
       (e.turn != 0 ? 1 : 0) +
       (e.tilt != 0 ? 1 : 0) +
       (e.zoom != 1 ? 1 : 0) +
+      (e.round ? 1 : 0) +
       (p.shadow != "Soft" ? 1 : 0);
   final poseChanges = (p.stance != null ? 1 : 0) +
       (p.lean != 0 ? 1 : 0) +
@@ -573,6 +574,23 @@ List<Widget> character3dSettings(
                       write(e.copyWith(zoom: v));
                     },
                     onCommit: commit,
+                  ),
+                ]),
+            CanvasControlGroup(
+                label: "Shape",
+                help: "Seen through its whole box, or through a circle -- "
+                    "a portrait in a ring.",
+                children: [
+                  CanvasSegmented<bool>(
+                    key: const ValueKey("character3dRound"),
+                    options: const [(false, "Box"), (true, "Circle")],
+                    value: e.round,
+                    keyOf: (r) => "character3dRound-$r",
+                    onChanged: (r) {
+                      begin();
+                      write(e.copyWith(round: r));
+                      commit();
+                    },
                   ),
                 ]),
             CanvasControlGroup(

@@ -679,8 +679,18 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
       if (points == null || points.length < 2) return p;
       var t = _seconds(frame, doc, live);
       var u = d.value("start") + t / d.value("lap");
-      u = d.value("loop").round() == 1 ? u.clamp(0.0, 1.0) : u % 1;
+      // Round again from the start, stopped at the end, or there and back:
+      // a bat over a chasm patrols it rather than leaping back to its start
+      // -- facing back the way it comes, where it turns with the path.
+      var loop = d.value("loop").round();
+      var back = loop == 2 && u % 2 > 1;
+      u = switch (loop) {
+        1 => u.clamp(0.0, 1.0),
+        2 => 1 - ((u % 2) - 1).abs(),
+        _ => u % 1,
+      };
       var (point, angle) = _alongPath(points, u);
+      if (back) angle += math.pi;
       var turned = d.value("turns").round() == 1;
       return p.copyWith(
           dx: point.dx - (e.x + e.width / 2),

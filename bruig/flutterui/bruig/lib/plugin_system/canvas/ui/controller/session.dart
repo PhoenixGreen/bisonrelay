@@ -537,10 +537,10 @@ extension CanvasSession on CanvasController {
         _stopChannelAt(c.key, at);
       }
     }
-    // The cue's row of every element's slots, too. An element with nothing
-    // in it goes on as it is: a picture has no reason to stop moving
-    // because a cue has nothing new for it.
-    for (var e in _document.elements) {
+    // The cue's row of every element's slots, too -- the master's with the
+    // scene's. An element with nothing in it goes on as it is: a picture
+    // has no reason to stop moving because a cue has nothing new for it.
+    for (var e in _withMaster) {
       if (e.base.motion.slot(row) case var clip?) {
         motionPlayer.launch(_document, _frame, e.id, clip.id, at);
       }
@@ -1180,9 +1180,24 @@ extension CanvasSession on CanvasController {
     setInstrument(e, change(e.instrument!), transient: transient);
   }
 
-  /// _instrumentOf is [channel]'s instrument, for a MIDI channel.
+  /// _withMaster are the scene's elements and the master's drawn over them.
+  List<CanvasElement> get _withMaster => [
+        ..._document.elements,
+        if (!_document.editingMaster) ...?_document.masterScene?.elements,
+      ];
+
+  /// _instrumentOf is [channel]'s instrument, for a MIDI channel: in the
+  /// scene, or on the master -- where a game keeps the channels every scene
+  /// shares, its music and its effects. The master's even on a scene that
+  /// does not draw it (CanvasScene.masterOff, a title with no HUD): a
+  /// slot's channel is the document's. Ember Vale's music, all of it on
+  /// the master, was never heard: its MIDI slots found nothing to play them.
   AudioElement? _instrumentOf(String channel) {
-    for (var e in _document.elements) {
+    for (var e in [
+      ..._document.elements,
+      if (!_document.editingMaster && _document.masterOn)
+        ...?_document.master?.elements,
+    ]) {
       if (e is AudioElement &&
           e.instrument != null &&
           CanvasController._channelOf(e) == channel) {

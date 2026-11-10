@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_move.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_performance.dart'
+    show quickMotions;
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_scene.dart';
 import 'package:flutter_vrm/flutter_vrm.dart';
 import 'package:vector_math/vector_math.dart' as vm;
@@ -370,6 +372,64 @@ _Motion _motionAt(String name, double t, Map<String, double> walk, double u) {
         ];
         o.foot[k] = [0, 0, 0.4 * air];
       }
+    // A game's jump, in three parts as the body goes (Ken, 2026-11-10: "jump
+    // should start by crouching down and then launching up with arms in air
+    // then fall down by her side on landing"). Nothing is lifted here: the
+    // game carries the body up and down. Leap is from the press: a crouch
+    // on the ground for leapWindup, then up, legs straightening, the arms
+    // swung overhead, the knees drawn up a little in the air. Fall is from
+    // the top of it: the arms brought down to the sides and the legs let
+    // down for the ground. Land is from touching down: the knees taking it.
+    case "Leap":
+      final crouch = t < leapWindup
+          ? _smooth(t / leapWindup)
+          : 1 - _smooth((t - leapWindup) / 0.1);
+      final up = _smooth((t - leapWindup * 0.5) / 0.18);
+      final tuck = _smooth((t - leapWindup - 0.08) / 0.2);
+      o.dy = -0.2 * u * crouch;
+      o.spine[0] = 0.42 * crouch - 0.06 * up;
+      o.head[0] = -0.2 * crouch;
+      for (final k in const ["L", "R"]) {
+        o.hand[k] = [
+          0,
+          (0.72 * up - 0.06 * crouch) * u,
+          (0.06 * up - 0.12 * crouch) * u
+        ];
+        o.foot[k] = t < leapWindup
+            ? [0, 0, 0, 0, 1]
+            : [
+                0.02 * u * tuck,
+                0.07 * u * tuck,
+                0.35 * tuck + 0.3 * (1 - tuck),
+                0,
+                0
+              ];
+      }
+      o.handShape = {"L": "open", "R": "open"};
+    case "Fall":
+      final down = 1 - _smooth(t / 0.32);
+      final reach = 1 - _smooth(t / 0.22);
+      o.spine[0] = 0.04 + 0.04 * (1 - down);
+      for (final k in const ["L", "R"]) {
+        o.hand[k] = [0, 0.72 * u * down, 0.06 * u * down];
+        o.foot[k] = [
+          0.02 * u * reach,
+          0.07 * u * reach,
+          0.35 * reach + 0.1 * (1 - reach),
+          0,
+          0
+        ];
+      }
+    case "Land":
+      final c = (t / landSeconds).clamp(0.0, 1.0);
+      final give = c < 0.3 ? _smooth(c / 0.3) : 1 - _smooth((c - 0.3) / 0.7);
+      o.dy = -0.19 * u * give;
+      o.spine[0] = 0.36 * give;
+      o.head[0] = -0.16 * give;
+      for (final k in const ["L", "R"]) {
+        o.hand[k] = [0, -0.02 * u * give, 0.07 * u * give];
+        o.foot[k] = [0, 0, 0, 0, 1];
+      }
     case "Wave":
       o.handAt = {"R": (l, s) => l.shoulder[s]! + l.v(s * 0.17, 0.3, 0.06)};
       o.handShape = {"R": "open"};
@@ -501,6 +561,9 @@ const Map<String, Set<String>> _motionParts = {
   "Walk": {"legs", "spine", "head", "arms"},
   "Run": {"legs", "spine", "head", "arms"},
   "Jump": {"legs", "spine", "head", "arms"},
+  "Leap": {"legs", "spine", "head", "arms"},
+  "Fall": {"legs", "spine", "head", "arms"},
+  "Land": {"legs", "spine", "head", "arms"},
   "Dance": {"legs", "spine", "head", "arms"},
   "Bow": {"legs", "spine", "head", "arms"},
   "Clap": {"arms"},
@@ -516,6 +579,12 @@ const Map<String, Set<String>> _motionParts = {
 /// through: a game plays each for as long (see canvas_game.dart).
 const double punchSeconds = 0.45;
 const double kickSeconds = 0.6;
+
+/// leapWindup is how long a game's 3D player crouches before it leaves the
+/// ground, and landSeconds how long its knees take a landing (see Leap and
+/// Land in _motionAt, and canvas_game.dart).
+const double leapWindup = 0.12;
+const double landSeconds = 0.24;
 
 /// _scaled is [o] at [w] of its strength, mirrored left for right with
 /// [mirror].
@@ -1010,11 +1079,12 @@ class VrmPoser {
       _rest = _measure();
     }
     final r = _rest!, u = r.u;
-    // A body eases toward its pose over about 0.16 s -- a strike over 0.03:
-    // it is quick, and eased as slowly, a punch's arm (straight out for a
-    // tenth of a second) never got there.
-    final strike = m.motion == "Punch" || m.motion == "Kick";
-    final a = dt <= 0 ? 1.0 : 1 - math.exp(-dt / (strike ? 0.03 : 0.16));
+    // A body eases toward its pose over about 0.16 s -- a strike or a
+    // game's jump (quickMotions) over 0.03: they are quick, and eased as
+    // slowly, a punch's arm (straight out for a tenth of a second) never
+    // got there.
+    final quick = quickMotions.contains(m.motion);
+    final a = dt <= 0 ? 1.0 : 1 - math.exp(-dt / (quick ? 0.03 : 0.16));
     final st0 = _stances[m.stance] ?? _stances["Relaxed"]!;
     final mo = _scaled(_motionAt(m.motion, t, m.walk, u),
         strength * weight.clamp(0.0, 1.0), mirror);

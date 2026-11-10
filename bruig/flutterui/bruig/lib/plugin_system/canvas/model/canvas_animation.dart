@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show Offset;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // canvas_animation.dart is keyframe tracks and the timeline's markers.
@@ -406,6 +407,15 @@ class TimelineAction {
   /// more. See CanvasDocument.controlsNow.
   final String waitsFor;
 
+  /// noteAt is where its label sits on the canvas while playback holds at
+  /// it -- its centre, as shares of the canvas's width and height -- and
+  /// noteSize how big, one the standard (see ui/marker_note.dart).
+  final Offset noteAt;
+  final double noteSize;
+
+  /// defaultNoteAt is the foot of the canvas, in the middle.
+  static const Offset defaultNoteAt = Offset(0.5, 0.92);
+
   const TimelineAction({
     this.id = "",
     required this.frame,
@@ -416,6 +426,8 @@ class TimelineAction {
     this.label = "",
     this.showLabel = true,
     this.waitsFor = "",
+    this.noteAt = defaultNoteAt,
+    this.noteSize = 1,
   });
 
   TimelineAction copyWith({
@@ -428,6 +440,8 @@ class TimelineAction {
     String? label,
     bool? showLabel,
     String? waitsFor,
+    Offset? noteAt,
+    double? noteSize,
   }) =>
       TimelineAction(
         id: id ?? this.id,
@@ -439,6 +453,8 @@ class TimelineAction {
         label: label ?? this.label,
         showLabel: showLabel ?? this.showLabel,
         waitsFor: waitsFor ?? this.waitsFor,
+        noteAt: noteAt ?? this.noteAt,
+        noteSize: noteSize ?? this.noteSize,
       );
 
   Map<String, dynamic> toJson() => {
@@ -451,6 +467,8 @@ class TimelineAction {
         if (label.isNotEmpty) "label": label,
         if (!showLabel) "hideLabel": true,
         if (waitsFor.isNotEmpty) "waitsFor": waitsFor,
+        if (noteAt != defaultNoteAt) "noteAt": [noteAt.dx, noteAt.dy],
+        if (noteSize != 1) "noteSize": noteSize,
       };
 
   factory TimelineAction.fromJson(Map<String, dynamic> json) => TimelineAction(
@@ -463,6 +481,12 @@ class TimelineAction {
         label: json["label"] is String ? json["label"] as String : "",
         showLabel: json["hideLabel"] != true,
         waitsFor: json["waitsFor"] is String ? json["waitsFor"] as String : "",
+        noteAt: switch (json["noteAt"]) {
+          [num x, num y] =>
+            Offset(x.toDouble().clamp(0.0, 1.0), y.toDouble().clamp(0.0, 1.0)),
+          _ => defaultNoteAt,
+        },
+        noteSize: (jsonNum(json["noteSize"])?.toDouble() ?? 1).clamp(0.3, 6.0),
       );
 }
 

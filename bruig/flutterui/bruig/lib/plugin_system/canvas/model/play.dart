@@ -47,6 +47,14 @@ class PlaySpec {
   /// follow is whether the view follows it.
   final bool follow;
 
+  /// zoom is how close the view follows it, one (the page as it is) to
+  /// three; zoomOut how far it draws back while it moves -- running, in the
+  /// air -- nought (not at all) to one (back to the whole page). Eased, so
+  /// the view breathes with it (Ken, 2026-11-10: "the camera could be
+  /// zoomed in or out by the character movement").
+  final double zoom;
+  final double zoomOut;
+
   /// player is which player drives it, one to four: each has controls of
   /// its own. See CanvasDocument.controlsFor.
   final int player;
@@ -99,6 +107,8 @@ class PlaySpec {
     this.jump = 180,
     this.gravity = 2200,
     this.follow = true,
+    this.zoom = 1,
+    this.zoomOut = 0,
     this.player = 1,
     this.touched = const GameEffect(),
     this.sound = "",
@@ -125,6 +135,8 @@ class PlaySpec {
           double? jump,
           double? gravity,
           bool? follow,
+          double? zoom,
+          double? zoomOut,
           int? player,
           GameEffect? touched,
           String? sound,
@@ -145,6 +157,8 @@ class PlaySpec {
         jump: (jump ?? this.jump).clamp(0.0, 5000.0),
         gravity: (gravity ?? this.gravity).clamp(0.0, 20000.0),
         follow: follow ?? this.follow,
+        zoom: (zoom ?? this.zoom).clamp(1.0, 3.0),
+        zoomOut: (zoomOut ?? this.zoomOut).clamp(0.0, 1.0),
         player: (player ?? this.player).clamp(1, 4),
         touched: touched ?? this.touched,
         sound: sound ?? this.sound,
@@ -167,6 +181,8 @@ class PlaySpec {
         if (jump != 180) "jump": jump,
         if (gravity != 2200) "gravity": gravity,
         if (!follow) "follow": false,
+        if (zoom != 1) "zoom": zoom,
+        if (zoomOut != 0) "zoomOut": zoomOut,
         if (player != 1) "player": player,
         if (as.touched) "touched": touched.toJson(),
         if (sound.isNotEmpty) "sound": sound,
@@ -195,6 +211,8 @@ class PlaySpec {
       jump: jsonDouble(json["jump"], 180),
       gravity: jsonDouble(json["gravity"], 2200),
       follow: json["follow"] != false,
+      zoom: jsonDouble(json["zoom"], 1),
+      zoomOut: jsonDouble(json["zoomOut"], 0),
       player: json["player"] is num ? (json["player"] as num).toInt() : 1,
       touched: GameEffect.fromJson(json["touched"]),
       sound: json["sound"] is String ? json["sound"] as String : "",
@@ -223,6 +241,8 @@ class PlaySpec {
       other.jump == jump &&
       other.gravity == gravity &&
       other.follow == follow &&
+      other.zoom == zoom &&
+      other.zoomOut == zoomOut &&
       other.player == player &&
       other.touched == touched &&
       other.sound == sound &&
@@ -247,7 +267,7 @@ class PlaySpec {
       speed,
       jump,
       gravity,
-      follow,
+      Object.hash(follow, zoom, zoomOut),
       player,
       touched,
       sound,

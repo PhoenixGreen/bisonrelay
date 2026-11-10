@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/ui/image_tool_hint.dart';
-import 'package:bruig/plugin_system/canvas/ui/marker_note.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
@@ -864,17 +863,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
                   ),
                 ),
                 if (!_shown) Positioned.fill(child: _canvasAway(theme)),
-                // A marker's label, while playback holds at it and it is to
-                // be seen on the canvas: see marker_note.dart.
-                if (_shown)
-                  Positioned(
-                    bottom: 24,
-                    left: 16,
-                    right: 16,
-                    child: IgnorePointer(
-                        child:
-                            Center(child: MarkerNote(controller: _controller))),
-                  ),
                 // The tool in hand on a picture, and what to do with it, over the top
                 // of the canvas where the eye is: see image_tool_hint.dart.
                 if (_shown)

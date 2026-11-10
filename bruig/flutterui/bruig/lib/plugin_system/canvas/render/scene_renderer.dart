@@ -3103,6 +3103,31 @@ void _paintBackgroundElement(
   if (e.cornerRadius > 0) canvas.restore();
 }
 
+/// withoutGuides is [doc] with its guide paths left out -- and the
+/// master's -- for the stage while the canvas plays or a game runs: they are
+/// scaffolding, and a bat's flight drawn across a game is not part of it.
+/// [doc] itself where it has none.
+CanvasDocument withoutGuides(CanvasDocument doc) {
+  bool guide(CanvasElement e) => e is PathElement && e.guide;
+  var here = doc.elements.any(guide);
+  var master = doc.master;
+  var there = master != null && master.elements.any(guide);
+  if (!here && !there) return doc;
+  var out = here
+      ? doc.copyWith(elements: [
+          for (var e in doc.elements)
+            if (!guide(e)) e
+        ])
+      : doc;
+  if (there && !doc.editingMaster) {
+    out = out.withMaster(master.copyWith(elements: [
+      for (var e in master.elements)
+        if (!guide(e)) e
+    ]));
+  }
+  return out;
+}
+
 /// _paintPath draws a bezier curve.
 ///
 /// A guide path (PathElement.guide) is scaffolding: drawn only while

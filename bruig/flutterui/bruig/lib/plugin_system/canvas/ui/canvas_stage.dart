@@ -16,6 +16,9 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_gizmo.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_nav_controls.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/ui/marker_note.dart';
+import 'package:bruig/plugin_system/canvas/ui/marker_panel.dart'
+    show replaceMarker;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
@@ -294,6 +297,13 @@ class CanvasStageState extends State<CanvasStage>
   /// released. It runs its action on release, and only if the pointer has not
   /// travelled far enough to have been a drag. See _onPointerDown.
   ButtonElement? _pendingButton;
+
+  /// _noteWas is the marker whose label on the canvas is being dragged, as
+  /// it was when the press began -- moved, or by its grip [_noteSizing]
+  /// sized -- and _noteFrom where the press began, on the page.
+  TimelineAction? _noteWas;
+  bool _noteSizing = false;
+  Offset _noteFrom = Offset.zero;
 
   /// _pendingCounter is a live counter's own button that has been pressed and
   /// not yet released, and _pendingCounterAt which of them it is: as with a
@@ -1801,6 +1811,10 @@ class CanvasStageState extends State<CanvasStage>
       _mode = _DragMode.none;
       return;
     }
+
+    // A held marker's label on the canvas: dragged to move it, or by its
+    // grip to size it. Not in a game, where the page is the player's.
+    if (_pressMarkerNote(doc)) return;
 
     // The eyedropper: the colour under the press, and nothing else.
     if (controller.sampling) {
@@ -5129,8 +5143,50 @@ class CanvasStageState extends State<CanvasStage>
   /// the column to its left.
   int? _columnGrab;
 
+  /// _pressMarkerNote takes a press at [doc] on the label of the marker
+  /// playback holds at, where it is on the canvas: false where it is not.
+  bool _pressMarkerNote(Offset doc) {
+    var note = controller.holdingMarker;
+    if (note == null || controller.gaming) return false;
+    var laid = markerNoteLayout(controller.document.size.size, note);
+    var sizing = laid.corner.contains(doc);
+    if (!sizing && !laid.box.contains(doc)) return false;
+    controller.beginInteraction();
+    _noteWas = note;
+    _noteSizing = sizing;
+    _noteFrom = doc;
+    _mode = _DragMode.none;
+    return true;
+  }
+
+  /// _dragMarkerNote moves the held marker's label to follow the pointer at
+  /// [doc], or sizes it as far from its middle as the pointer has gone.
+  void _dragMarkerNote(Offset doc) {
+    var was = _noteWas!;
+    var page = controller.document.size.size;
+    TimelineAction next;
+    if (_noteSizing) {
+      var centre =
+          Offset(was.noteAt.dx * page.width, was.noteAt.dy * page.height);
+      var from = (_noteFrom - centre).distance;
+      var ratio = from < 1 ? 1.0 : (doc - centre).distance / from;
+      next = was.copyWith(
+          noteSize: (was.noteSize * ratio).clamp(0.3, 6.0).toDouble());
+    } else {
+      var by = doc - _noteFrom;
+      next = was.copyWith(
+          noteAt: Offset((was.noteAt.dx + by.dx / page.width).clamp(0.0, 1.0),
+              (was.noteAt.dy + by.dy / page.height).clamp(0.0, 1.0)));
+    }
+    replaceMarker(controller, next, transient: true);
+  }
+
   void _onPointerMove(PointerMoveEvent event) {
     _pointer = event;
+    if (_noteWas != null) {
+      _dragMarkerNote(_toDocument(event.localPosition));
+      return;
+    }
     // Held down as well as hovering: a brush's ring is drawn where the
     // pointer last was, and must follow it through a stroke.
     _hoverAt = event.localPosition;
@@ -5699,6 +5755,11 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   void _onPointerUp(PointerEvent event) {
+    if (_noteWas != null) {
+      _noteWas = null;
+      controller.endInteraction();
+      return;
+    }
     // Let go before it was held long enough, so it was a press after all.
     _legendHold?.cancel();
     _legendHold = null;
@@ -6572,10 +6633,17 @@ class CanvasStageState extends State<CanvasStage>
                         facingOnLeft: _facingOnLeft,
                         facingShown: _spreadShown,
                         // Played as a game: the canvas as the game has it.
-                        document: controller.gameView ?? controller.spoken(document),
+                        // Played as a game: the canvas as the game has it.
+                        // Playing either way, its guide paths left out.
+                        document: controller.gaming || controller.playing
+                            ? withoutGuides(controller.gameView ??
+                                controller.spoken(document))
+                            : controller.spoken(document),
                         frame: controller.frame,
                         previewAt: controller.previewAt,
                         previewing: controller.previewing,
+                        markerNote: controller.holdingMarker,
+                        markerNoteGrip: !controller.gaming,
                         anchors: _anchorsShown(),
                         scale: _scale,
                         origin: _origin,
@@ -6607,7 +6675,11 @@ class CanvasStageState extends State<CanvasStage>
                         showHelpers: controller.showHelpers,
                         // The scene's slow move, while it plays (see SceneCamera). Still while
                         // editing, so a press lands where the page looks to be.
-                        camera: (controller.playing || controller.cameraView) &&
+                        // A game frames the page its own way: its view
+                        // following the player, close as it asks.
+                        camera: controller.gaming
+                            ? controller.gameFraming
+                            : (controller.playing || controller.cameraView) &&
                                 !document.editingMaster
                             // Its Camera, which takes over, or its slow
                             // move: see sceneFraming.

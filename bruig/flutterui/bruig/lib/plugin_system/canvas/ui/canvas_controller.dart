@@ -162,8 +162,12 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
         LiveMotion,
         MotionPreview,
         PointerLive,
+        cameraOf,
         facesPointer,
+        isStageScene,
         motionSoundPeaks,
+        poseWithMotion,
+        sceneFraming,
         settledFrameOf;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart'

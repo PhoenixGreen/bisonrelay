@@ -15,7 +15,7 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/vrm/vrm_pose.dart'
-    show kickSeconds, punchSeconds;
+    show kickSeconds, landSeconds, leapWindup, punchSeconds;
 import 'package:flutter/foundation.dart';
 import 'package:gamepads/gamepads.dart';
 
@@ -164,6 +164,13 @@ class GameBody {
   String? strike;
   double struckAt = 0;
 
+  /// leapAt is the game's clock when a 3D player was told to jump, while it
+  /// crouches before it leaves the ground (see leapWindup); null otherwise.
+  /// fellAt is when it began coming down, and landedAt when it touched
+  /// down: for its Fall and Land.
+  double? leapAt;
+  double fellAt = 0, landedAt = -1e9;
+
   /// striking is whether a strike is still being thrown at [clock].
   bool striking(double clock) =>
       strike != null && clock - struckAt < strikeSeconds(strike!);
@@ -182,6 +189,21 @@ class GameRun extends ChangeNotifier {
   final GameInput input = GameInput();
   final Map<String, GameBody> bodies = {};
   Offset camera = Offset.zero;
+
+  /// viewZoom is how close the view is, and viewFocus the point on the page
+  /// it is centred on: following the player as close as its PlaySpec.zoom
+  /// says, drawn back as it moves (PlaySpec.zoomOut), each eased. Null
+  /// before anything is followed.
+  double viewZoom = 1;
+  Offset? viewFocus;
+
+  /// framing is how the view frames the page, as the stage frames by a
+  /// scene's camera (see sceneFraming): a zoom and the point it centres on,
+  /// or null for the page as it is.
+  (double, Offset)? get framing => switch (viewFocus) {
+        var f? when viewZoom > 1.001 => (viewZoom, f),
+        _ => null,
+      };
 
   /// clock is how long the game has run, in seconds.
   double clock = 0;
@@ -354,6 +376,8 @@ class GameRun extends ChangeNotifier {
     var floor = Rect.fromLTRB(-1e6, page.bottom, 1e6, page.bottom + 1e5);
 
     var followed = <Offset>[];
+    PlaySpec? lead;
+    GameBody? leadBody;
     for (var e in doc.elements) {
       var spec = e.base.play;
       if (!spec.as.moves) continue;
@@ -367,9 +391,20 @@ class GameRun extends ChangeNotifier {
           if (body.onGround) _ride(body, box, moving);
           body.velocity =
               Offset(dx * spec.speed, body.velocity.dy + spec.gravity * dt);
-          if (pressedBy(p, "jump") && body.onGround) {
-            body.velocity = Offset(
-                body.velocity.dx, -math.sqrt(2 * spec.gravity * spec.jump));
+          // A 3D player crouches first, for a moment, and goes up from it
+          // (see Leap in vrm_pose.dart); anything else leaves at once.
+          var windup = e is Character3dElement ? leapWindup : 0.0;
+          if (pressedBy(p, "jump") && body.onGround && body.leapAt == null) {
+            body.leapAt = clock;
+          }
+          if (body.leapAt case var at?) {
+            // Up after its crouch -- or at once, run off the edge as it
+            // crouched: a jump pressed at a ledge's end is still a jump.
+            if (!body.onGround || clock - at >= windup - 1e-9) {
+              body.velocity = Offset(
+                  body.velocity.dx, -math.sqrt(2 * spec.gravity * spec.jump));
+              body.leapAt = null;
+            }
           }
           _move(body, box, dt, [...solids, floor], gravity: true);
         case PlayAs.topDown:
@@ -404,6 +439,10 @@ class GameRun extends ChangeNotifier {
       if (e is Character3dElement) _move3dOf(e, body);
       if (spec.follow && spec.as != PlayAs.camera) {
         followed.add(box.center + body.at);
+        if (lead == null) {
+          lead = spec;
+          leadBody = body;
+        }
       }
     }
     // The view follows the player (between the players, where there are
@@ -415,6 +454,7 @@ class GameRun extends ChangeNotifier {
           .any((e) => e.base.play.as == PlayAs.topDown && e.base.play.follow);
       camera = Offset(math.max(0, f.dx - page.width / 2),
           topDown ? math.max(0, f.dy - page.height / 2) : 0);
+      _frame(lead!, leadBody!, f - camera, dt);
     }
     _platformsWere
       ..clear()
@@ -513,6 +553,29 @@ class GameRun extends ChangeNotifier {
 
   /// _begin starts the game from the beginning: every count at its start,
   /// every pickup back, every player where it was put.
+  /// _frame eases the view toward the zoom [lead] asks for -- less as it
+  /// moves, across or in the air -- centred on [at], where it is on the
+  /// page: at once, the first time.
+  void _frame(PlaySpec lead, GameBody body, Offset at, double dt) {
+    var moving = math.max(
+        (body.velocity.dx.abs() / math.max(1.0, lead.speed)).clamp(0.0, 1.0),
+        body.onGround ? 0.0 : 0.6);
+    var want = math.max(
+        1.0, lead.zoom - (lead.zoom - 1) * lead.zoomOut * moving.toDouble());
+    var was = viewFocus;
+    if (was == null || dt <= 0) {
+      viewZoom = want;
+      viewFocus = at;
+      return;
+    }
+    viewZoom += (want - viewZoom) * (1 - math.exp(-dt / 0.6));
+    viewFocus = was + (at - was) * (1 - math.exp(-dt / 0.18));
+  }
+
+  /// startOver is the game begun again, as a restart effect begins it: its
+  /// counts at their starts, and everything taken, opened and hit put back.
+  void startOver(CanvasDocument doc) => _begin(doc);
+
   void _begin(CanvasDocument doc) {
     _started = true;
     counts
@@ -525,6 +588,8 @@ class GameRun extends ChangeNotifier {
     _frameWas = null;
     bodies.clear();
     camera = Offset.zero;
+    viewFocus = null;
+    viewZoom = 1;
     hitsTaken.clear();
   }
 
@@ -595,6 +660,8 @@ class GameRun extends ChangeNotifier {
     _frameWas = null;
     bodies.clear();
     camera = Offset.zero;
+    viewFocus = null;
+    viewZoom = 1;
   }
 
   /// _touches does what each pickup or hazard a player starts to touch does,
@@ -864,14 +931,28 @@ class GameRun extends ChangeNotifier {
         ..since = body.struckAt;
       return;
     }
-    var kind = airborne
-        ? "Jump"
-        : pace > 1
-            ? (pace > math.max(1.0, c.height) ? "Run" : "Walk")
-            : null;
-    if (kind != body.move3d) {
+    // A jump as it goes: the crouch and the rise (Leap, from the press),
+    // the way down (Fall, from the top), and the knees taking the landing
+    // (Land) -- where it lands standing; landing running, it runs on.
+    var was = body.move3d;
+    var rising = airborne && body.velocity.dy < 0;
+    if (!airborne && (was == "Leap" || was == "Fall")) body.landedAt = clock;
+    String? kind;
+    var since = clock;
+    if (body.leapAt != null || (rising && was == "Leap")) {
+      kind = "Leap";
+      since = body.leapAt ?? body.since;
+    } else if (airborne) {
+      kind = "Fall";
+    } else if (clock - body.landedAt < landSeconds && pace <= 1) {
+      kind = "Land";
+      since = body.landedAt;
+    } else if (pace > 1) {
+      kind = pace > math.max(1.0, c.height) ? "Run" : "Walk";
+    }
+    if (kind != was) {
       body.move3d = kind;
-      body.since = clock;
+      body.since = kind == "Leap" || kind == "Land" ? since : clock;
     }
   }
 
@@ -904,14 +985,20 @@ class GameRun extends ChangeNotifier {
     // A walk carries a body about 0.8 of its height a second, a run 1.9.
     var stride = kind == "Run" ? 1.9 : 0.8;
     var strike = kind == "Punch" || kind == "Kick";
+    var jumping = kind == "Leap" || kind == "Fall" || kind == "Land";
     var p = c.performance.copyWith(clips: [
       if (kind != null)
         MotionClip3d(
             kind: kind,
             start: start,
-            // A strike once through, as quick as it is.
-            length: strike ? strikeSeconds(kind) : 3600,
-            speed: kind == "Jump" || strike
+            // A strike once through, as quick as it is; a landing as long
+            // as the knees take it.
+            length: strike
+                ? strikeSeconds(kind)
+                : kind == "Land"
+                    ? landSeconds
+                    : 3600,
+            speed: jumping || strike
                 ? 1
                 : (pace / (stride * height)).clamp(0.5, 2.5).toDouble()),
     ]);
@@ -922,6 +1009,8 @@ class GameRun extends ChangeNotifier {
     bodies.clear();
     clock = 0;
     camera = Offset.zero;
+    viewFocus = null;
+    viewZoom = 1;
     input.clear();
     _started = false;
     counts.clear();

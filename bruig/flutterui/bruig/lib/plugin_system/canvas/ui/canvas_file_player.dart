@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:bruig/plugin_system/canvas/ui/marker_note.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
@@ -287,7 +288,11 @@ class _PlayedPainter extends CustomPainter {
             images: c.images,
             counterValue: c.counterValue,
             liveMotion: c.liveMotion,
-            camera: sceneFraming(doc, c.frame, live: c.liveMotion)));
+            camera: c.gaming
+                ? c.gameFraming
+                : sceneFraming(doc, c.frame, live: c.liveMotion)));
+    // A marker's label while playback holds at it, as the editor shows it.
+    if (c.holdingMarker case var note?) paintMarkerNote(canvas, page, note);
     canvas.restore();
   }
 

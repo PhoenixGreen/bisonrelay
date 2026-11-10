@@ -984,8 +984,29 @@ void main() {
           closeTo(10 / doc.frameRate - 0.5, 0.05));
       run(g, doc, 0.5, keys: {key(LogicalKeyboardKey.arrowLeft)});
       expect(seen(g, doc, 10).turn, 0.5);
-      run(g, doc, 0.1, keys: {key(LogicalKeyboardKey.space)});
-      expect(seen(g, doc, 10).performance.clips.single.kind, "Jump");
+      // Ken: "jump should start by crouching down and then launching up
+      // with arms in air then fall down by her side on landing". A crouch
+      // on the ground first, then up; down from the top; the knees taking
+      // the landing.
+      var ground = g.bodies["hero"]!.at.dy;
+      run(g, doc, 0.05, keys: {key(LogicalKeyboardKey.space)});
+      expect(seen(g, doc, 10).performance.clips.single.kind, "Leap");
+      expect(g.bodies["hero"]!.at.dy, ground, reason: "crouched, not yet up");
+      run(g, doc, 0.1);
+      expect(g.bodies["hero"]!.at.dy, lessThan(ground), reason: "up from it");
+      expect(seen(g, doc, 10).performance.clips.single.kind, "Leap");
+      var fell = false, landing = false;
+      for (var i = 0; i < 120; i++) {
+        run(g, doc, 1 / 60);
+        var kind = seen(g, doc, 10).performance.clips.firstOrNull?.kind;
+        if (kind == "Fall") fell = true;
+        if (kind == "Land") {
+          landing = true;
+          expect(fell, isTrue, reason: "down before it lands");
+          break;
+        }
+      }
+      expect(landing, isTrue);
       run(g, doc, 2);
       var landed = seen(g, doc, 10);
       expect(landed.performance.clips, isEmpty);
@@ -1008,6 +1029,39 @@ void main() {
       run(g, doc, 0.3, keys: {key(LogicalKeyboardKey.arrowDown)});
       expect(seen(g, doc, 10).turn, 0);
     });
+  });
+
+  // Ken: "it would be nice if the camera could be zoomed in or out by the
+  // character movement. Currently the character is always very small."
+  test("the view follows close, and draws back as the player moves", () {
+    const spec =
+        PlaySpec(as: PlayAs.platformer, speed: 300, zoom: 2, zoomOut: 0.5);
+    var doc =
+        page.copyWith(elements: [box("hero", 600, 300, 40, 80, play: spec)]);
+    var g = GameRun();
+    for (var i = 0; i < 360; i++) {
+      g.step(doc, 0, 1 / 60);
+    }
+    var (zoom, at) = g.framing!;
+    expect(zoom, closeTo(2, 0.01), reason: "standing: as close as it asks");
+    expect(at.dx, closeTo(620, 1), reason: "centred on it");
+    g.input.keys.add(key(LogicalKeyboardKey.arrowRight));
+    for (var i = 0; i < 240; i++) {
+      g.step(doc, 0, 1 / 60);
+    }
+    expect(g.framing!.$1, closeTo(1.5, 0.02),
+        reason: "running flat out: half way back, as zoomOut says");
+    var back = PlaySpec.fromJson(spec.toJson());
+    expect((back.zoom, back.zoomOut), (2.0, 0.5));
+    expect(const PlaySpec(as: PlayAs.platformer).toJson().containsKey("zoom"),
+        isFalse);
+    var plain = GameRun();
+    plain.step(
+        page.copyWith(
+            elements: [box("hero", 600, 300, 40, 80, as: PlayAs.platformer)]),
+        0,
+        1 / 60);
+    expect(plain.framing, isNull, reason: "the page as it is, unasked");
   });
 
   test("top-down walks every way, as fast diagonally", () {

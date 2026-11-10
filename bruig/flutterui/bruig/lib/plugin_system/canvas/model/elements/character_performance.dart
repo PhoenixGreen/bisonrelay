@@ -25,6 +25,12 @@ const List<String> performanceMotions = [
   "Kick",
 ];
 
+/// quickMotions are the motions that fade in and out at once and are
+/// followed closely: a punch and a kick, and a game's jump as it goes --
+/// Leap, Fall, Land (see canvas_game.dart). Faded in as slowly as the
+/// others, the leap's crouch, a tenth of a second long, was never seen.
+const Set<String> quickMotions = {"Punch", "Kick", "Leap", "Fall", "Land"};
+
 /// performanceWearing are the outfits a scene can put it in, by name.
 const List<String> performanceWearing = [
   "As designed",
@@ -79,12 +85,12 @@ class MotionClip3d {
   double get end => start + length;
 
   /// weightAt is how much of it plays at [t]: nothing outside it, faded in
-  /// and out over its first and last 0.3 s -- a strike over 0.06 s: it
-  /// winds up and comes back by itself, and faded as slowly, a punch
-  /// (0.45 s) never got to three quarters of itself.
+  /// and out over its first and last 0.3 s -- one of the quickMotions over
+  /// 0.06 s: a strike winds up and comes back by itself, and faded as
+  /// slowly, a punch (0.45 s) never got to three quarters of itself.
   double weightAt(double t) {
     if (t < start || t > end) return 0;
-    var fade = kind == "Punch" || kind == "Kick" ? 0.06 : 0.3;
+    var fade = quickMotions.contains(kind) ? 0.06 : 0.3;
     return [1.0, (t - start) / fade, (end - t) / fade]
         .reduce((a, b) => a < b ? a : b)
         .clamp(0.0, 1.0);

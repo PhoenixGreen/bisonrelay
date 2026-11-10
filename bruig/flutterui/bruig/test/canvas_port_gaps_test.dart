@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -360,17 +362,27 @@ void main() {
       expect(c.holdingMarker, isNull);
     });
 
-    testWidgets("the note shows it, over the canvas", (tester) async {
-      var c = held();
-      addTearDown(c.dispose);
-      await tester.pumpWidget(host(MarkerNote(controller: c)));
-      expect(find.byKey(const ValueKey("markerNote")), findsNothing);
-      c.play();
-      for (var i = 0; i < 3; i++) {
-        c.tickForTest();
-      }
-      await tester.pump();
-      expect(find.text("Press to jump"), findsOneWidget);
+    // Ken: the note "can't be moved or scaled on the canvas ... when the
+    // screen is small it covers the whole screen rather than keeps its
+    // proportions like the other elements do". It is on the canvas, in its
+    // units, where its marker puts it, as big as it says.
+    test("the note is on the canvas, where and as big as its marker says", () {
+      const a = TimelineAction(
+          frame: 3, kind: TimelineActionKind.stop, label: "Press to jump");
+      var big = markerNoteLayout(const Size(1920, 1080), a);
+      var small = markerNoteLayout(const Size(960, 540), a);
+      expect(small.box.height, closeTo(big.box.height / 2, 1),
+          reason: "half the canvas, half the note");
+      expect(big.box.center, const Offset(960, 1080 * 0.92),
+          reason: "the foot of the canvas, in the middle, at first");
+      var moved = a.copyWith(noteAt: const Offset(0.25, 0.1), noteSize: 2);
+      var there = markerNoteLayout(const Size(1920, 1080), moved);
+      expect(there.box.center, const Offset(480, 108));
+      expect(there.box.height, closeTo(big.box.height * 2, 2));
+      var back = TimelineAction.fromJson(
+          jsonDecode(jsonEncode(moved.toJson())) as Map<String, dynamic>);
+      expect((back.noteAt, back.noteSize), (const Offset(0.25, 0.1), 2.0));
+      expect(a.toJson().containsKey("noteAt"), isFalse, reason: "as it was");
     });
   });
 

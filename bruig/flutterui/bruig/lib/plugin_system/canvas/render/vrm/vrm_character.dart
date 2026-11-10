@@ -50,6 +50,12 @@ Map<String, double> visemesOf(MouthShape m) => switch (m) {
 typedef DecalLoader = Future<(Uint8List, int, int)?> Function(String source);
 
 /// CharacterScene is one character, drawn in its own scene.
+
+/// bodyOverdrawTop and bodyOverdrawSide are how far past its box a
+/// character framed whole is drawn, above and to each side, as shares of
+/// the box's height: room for a hand raised, a leap, a kick.
+const double bodyOverdrawTop = 0.35, bodyOverdrawSide = 0.42;
+
 class CharacterScene extends ChangeNotifier {
   final Scene scene = Scene();
 
@@ -428,9 +434,12 @@ class CharacterScene extends ChangeNotifier {
     final top = math.max(reach,
         head.y + (head.y - (at(VrmHumanBone.neck)?.y ?? head.y * 0.94)) * 3);
     final (vm.Vector3 focus, double high, double wide) = switch (framing) {
+      // Its feet on the frame's bottom -- a character on the canvas stands
+      // on its box's bottom edge, where a game puts the ground -- with a
+      // little room over its hair.
       Character3dFraming.body => (
-          vm.Vector3(head.x, top / 2, head.z),
-          top * 1.1,
+          vm.Vector3(head.x, top * 1.06 / 2, head.z),
+          top * 1.06,
           top * 0.42
         ),
       Character3dFraming.waist => () {
@@ -441,11 +450,17 @@ class CharacterScene extends ChangeNotifier {
             top * 0.42
           );
         }(),
+      // By the head where it is: a design posed with its hips moved aside or
+      // its head turned (Kai, his hips 16 cm over) is framed by its face,
+      // not by where its head would be standing straight.
       Character3dFraming.head => () {
-          final neck = at(VrmHumanBone.neck)?.y ?? head.y - 0.08;
-          final span = (top - neck) * 1.75;
+          final posed = h?.worldPosition(VrmHumanBone.head) ?? head;
+          final lift = posed.y - head.y;
+          final neck = (at(VrmHumanBone.neck)?.y ?? head.y - 0.08) + lift;
+          final crown = top + lift;
+          final span = (crown - neck) * 1.75;
           return (
-            vm.Vector3(head.x, (neck + top) / 2, head.z),
+            vm.Vector3(posed.x, (neck + crown) / 2, posed.z),
             span,
             span * 0.9
           );
@@ -487,7 +502,7 @@ class CharacterScene extends ChangeNotifier {
         tilt: tilt,
         zoom: zoom,
         aspect: box.width / box.height,
-        reach: _reach());
+        reach: framing == Character3dFraming.body ? 0 : _reach());
     final dt = _advance(frame, frameRate);
     final t = _sceneTime!;
     // Carried across the picture by its walks, turned the way it goes: the
@@ -501,7 +516,7 @@ class CharacterScene extends ChangeNotifier {
           tilt: tilt,
           zoom: zoom,
           aspect: box.width / box.height,
-          reach: _reach());
+          reach: framing == Character3dFraming.body ? 0 : _reach());
       final f = camera.target - camera.position;
       // As far as the box's edge and no further: a character is drawn
       // only in its own box, so that is as far across as it can go.
@@ -518,10 +533,42 @@ class CharacterScene extends ChangeNotifier {
         ..position = camera.position - right
         ..target = camera.target - right;
     }
+    // Seen whole, past its box's top and sides: an arm raised, a kick, a
+    // leap -- not cut off at the box, nor the body shrunk to leave room for
+    // them (Ken, 2026-11-10: "the character is always very small"). The box
+    // is the body, standing on its bottom edge.
+    var view = box;
+    if (framing == Character3dFraming.body) {
+      view = ui.Rect.fromLTRB(
+          box.left - box.height * bodyOverdrawSide,
+          box.top - box.height * bodyOverdrawTop,
+          box.right + box.height * bodyOverdrawSide,
+          box.bottom);
+      _widen(camera, box, view);
+    }
     tick(dt, camera, lookAt: camera.position, pixelRatio: pixelRatio);
     scene.update(dt);
-    _shadow(canvas, box, camera, p?.shadow ?? "Soft");
-    scene.render(camera, canvas, viewport: box, pixelRatio: pixelRatio);
+    _shadow(canvas, view, camera, p?.shadow ?? "Soft");
+    scene.render(camera, canvas, viewport: view, pixelRatio: pixelRatio);
+  }
+
+  /// _widen moves [camera], aimed at [box], back and over so that it sees
+  /// [view] -- larger, around the box -- with the box where it was, at the
+  /// same size.
+  void _widen(PerspectiveCamera camera, ui.Rect box, ui.Rect view) {
+    final f = camera.target - camera.position;
+    final d = f.length;
+    f.normalize();
+    final left = f.cross(vm.Vector3(0, 1, 0)).normalized();
+    final up = left.cross(f).normalized();
+    final perPoint = 2 * d * math.tan(camera.fovRadiansY / 2) / box.height;
+    final shift = view.center - box.center;
+    final target = camera.target -
+        left * (shift.dx * perPoint) -
+        up * (shift.dy * perPoint);
+    camera
+      ..target = target
+      ..position = target - f * (d * view.height / box.height);
   }
 
   /// _reach is how high its hands go in what it does (cheering, jumping,

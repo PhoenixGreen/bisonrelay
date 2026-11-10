@@ -76,6 +76,12 @@ void paintCharacter3d(
         pixelRatio: (scale * screen).clamp(0.25, math.max(0.25, most)));
     return;
   }
+  // Seen through a circle, where it is asked to be: a portrait in a ring.
+  if (e.round) {
+    canvas
+      ..save()
+      ..clipPath(Path()..addOval(box));
+  }
   scene.paint(canvas, box,
       frame: frame,
       frameRate: frameRate,
@@ -84,6 +90,7 @@ void paintCharacter3d(
       tilt: e.tilt,
       zoom: e.zoom,
       pixelRatio: (scale * screen).clamp(0.25, math.max(0.25, most)));
+  if (e.round) canvas.restore();
 }
 
 /// _standIn is a figure where the character will be, so it can be found and

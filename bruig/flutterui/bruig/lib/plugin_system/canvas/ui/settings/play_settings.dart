@@ -180,6 +180,33 @@ List<Widget> gameElementSettings(CanvasController controller, CanvasElement e,
                       value: spec.follow,
                       onChanged: (v) => set(spec.copyWith(follow: v)),
                     ),
+                  // How close the view follows, and how far it draws back
+                  // as it moves.
+                  if (spec.as != PlayAs.camera && spec.follow) ...[
+                    CanvasNumberField(
+                      key: const ValueKey("playZoom"),
+                      label: "Zoom",
+                      value: spec.zoom,
+                      min: 1,
+                      max: 3,
+                      decimals: 2,
+                      width: 56,
+                      onChanged: (v) => set(spec.copyWith(zoom: v), live: true),
+                      onCommit: commit,
+                    ),
+                    CanvasNumberField(
+                      key: const ValueKey("playZoomOut"),
+                      label: "Moving, zooms out",
+                      value: spec.zoomOut,
+                      min: 0,
+                      max: 1,
+                      decimals: 2,
+                      width: 56,
+                      onChanged: (v) =>
+                          set(spec.copyWith(zoomOut: v), live: true),
+                      onCommit: commit,
+                    ),
+                  ],
                 ]),
           ]),
     if (spec.as.moves)

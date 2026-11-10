@@ -61,7 +61,8 @@ enum MotionDeviceKind {
   followPath("Follow path", MotionDeviceSide.pose, [
     DeviceParam("start", "Start along", 0, 1, 0),
     DeviceParam("lap", "Once round", 0.5, 60, 6, "s"),
-    DeviceParam("loop", "At the end", 0, 1, 0, "", ["Round again", "Stops"]),
+    DeviceParam("loop", "At the end", 0, 2, 0, "",
+        ["Round again", "Stops", "Back and forth"]),
     DeviceParam("turns", "Turns with it", 0, 1, 1, "", ["No", "Yes"]),
   ]),
   lookAt("Look at", MotionDeviceSide.pose, [

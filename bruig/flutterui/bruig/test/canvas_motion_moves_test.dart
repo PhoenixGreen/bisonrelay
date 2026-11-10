@@ -121,6 +121,27 @@ void main() {
     expect(pose(none, 48).dx, 0, reason: "no path, nowhere to go");
   });
 
+  // Ember Vale's bat: over a chasm and back, not snapped to its start.
+  test("follow path there and back, facing the way it goes", () {
+    var line = LineElement(
+        const ElementBase(id: "line", x: 20, y: 100, width: 200, height: 1));
+    var d = doc(const [
+      MotionDevice(MotionDeviceKind.followPath,
+          target: "line", values: {"lap": 4, "loop": 2, "turns": 1})
+    ], more: [
+      line
+    ]);
+    var e = d.elementById("a")!;
+    double x(int f) => e.boundsWith(pose(d, f)).center.dx;
+    // 24 frames a second: the end at 4 s, back halfway at 6, home at 8.
+    expect(x(96), closeTo(220, 1), reason: "at the far end");
+    expect(x(144), closeTo(120, 1), reason: "halfway back");
+    expect(x(192), closeTo(20, 1), reason: "home again, not past it");
+    expect(x(120), greaterThan(x(144)), reason: "coming back");
+    expect(pose(d, 144).rotate.abs(), closeTo(180, 1),
+        reason: "facing back the way it comes");
+  });
+
   test("look at turns to face what it looks at", () {
     ShapeElement at(double x, double y) => ShapeElement(
         ElementBase(id: "hero", x: x, y: y, width: 20, height: 20));

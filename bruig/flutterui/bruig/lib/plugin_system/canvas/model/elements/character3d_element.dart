@@ -38,6 +38,11 @@ class Character3dElement extends CanvasElement {
   /// zoom is how much closer than the framing, 0.5 to 3.
   final double zoom;
 
+  /// round is whether it is seen through a circle -- the round of its box --
+  /// rather than the whole box: a portrait in a ring, as a game's narrator
+  /// on its HUD, its shoulders not ending in a straight edge.
+  final bool round;
+
   /// performance is what it does in this scene: how it stands, the
   /// motions it plays, its feeling, the line it says (character_
   /// performance.dart).
@@ -69,6 +74,7 @@ class Character3dElement extends CanvasElement {
     this.turn = 0,
     this.tilt = 0,
     this.zoom = 1,
+    this.round = false,
     this.performance = const CharacterPerformance(),
     this.animation = const ElementAnimation(),
   });
@@ -91,6 +97,7 @@ class Character3dElement extends CanvasElement {
       turn: turn,
       tilt: tilt,
       zoom: zoom,
+      round: round,
       performance: performance,
       animation: animation);
 
@@ -102,6 +109,7 @@ class Character3dElement extends CanvasElement {
       turn: turn,
       tilt: tilt,
       zoom: zoom,
+      round: round,
       performance: CharacterPerformance.fromJson(
           performance.toJson()..remove("feeling"),
           feeling: name),
@@ -115,6 +123,7 @@ class Character3dElement extends CanvasElement {
           turn: turn,
           tilt: tilt,
           zoom: zoom,
+          round: round,
           performance: p,
           animation: animation);
 
@@ -124,6 +133,7 @@ class Character3dElement extends CanvasElement {
     double? turn,
     double? tilt,
     double? zoom,
+    bool? round,
     ElementAnimation? animation,
   }) =>
       Character3dElement(base,
@@ -132,6 +142,7 @@ class Character3dElement extends CanvasElement {
           turn: turn ?? this.turn,
           tilt: tilt ?? this.tilt,
           zoom: zoom ?? this.zoom,
+          round: round ?? this.round,
           performance: performance,
           animation: animation ?? this.animation);
 
@@ -142,6 +153,7 @@ class Character3dElement extends CanvasElement {
         if (turn != 0) "turn": turn,
         if (tilt != 0) "tilt": tilt,
         if (zoom != 1) "zoom": zoom,
+        if (round) "round": true,
         if (!performance.isEmpty) "performance": performance.toJson(),
         "animation": animation.toJson(),
       };
@@ -158,6 +170,7 @@ class Character3dElement extends CanvasElement {
           turn: jsonDouble(json["turn"], 0).clamp(-1.0, 1.0),
           tilt: jsonDouble(json["tilt"], 0).clamp(-0.5, 1.0),
           zoom: jsonDouble(json["zoom"], 1).clamp(0.5, 3.0),
+          round: json["round"] == true,
           performance: CharacterPerformance.fromJson(json["performance"]),
           animation: jsonSpec(json["animation"], ElementAnimation.fromJson,
               const ElementAnimation()));

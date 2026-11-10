@@ -8,7 +8,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart'
-    show Keyframe;
+    show Keyframe, TimelineAction;
+import 'package:bruig/plugin_system/canvas/ui/marker_note.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
@@ -104,6 +105,12 @@ class StagePainter extends CustomPainter {
   /// previewing is the one element being previewed, at its own frame. See
   /// CanvasController.previewing.
   final ({String id, int frame})? previewing;
+
+  /// markerNote is the marker playback holds at, whose label is drawn on
+  /// the canvas (see marker_note.dart), and markerNoteGrip whether its grip
+  /// shows, for dragging; null while none holds.
+  final TimelineAction? markerNote;
+  final bool markerNoteGrip;
 
   /// anchors are the anchor points shown, where they are on the page, and
   /// whether each is locked. See ElementBase.anchorX.
@@ -370,6 +377,8 @@ class StagePainter extends CustomPainter {
     required this.frame,
     this.previewAt,
     this.previewing,
+    this.markerNote,
+    this.markerNoteGrip = false,
     this.anchors = const [],
     this.knife = const [],
     this.caret,
@@ -559,6 +568,12 @@ class StagePainter extends CustomPainter {
     } else {
       _paintContents(canvas, document, frame,
           part: CanvasPaintPart.all, camera: camera);
+    }
+
+    // A marker's label while playback holds at it: on the canvas, in its
+    // units, over what is on it.
+    if (markerNote case var note?) {
+      paintMarkerNote(canvas, docSize, note, selected: markerNoteGrip);
     }
 
     // The leaf being edited gets a line round it rather than dimming the
@@ -1905,6 +1920,8 @@ class StagePainter extends CustomPainter {
       old.directed != directed ||
       old.previewAt != previewAt ||
       old.previewing != previewing ||
+      old.markerNote != markerNote ||
+      old.markerNoteGrip != markerNoteGrip ||
       !listEquals(old.anchors, anchors) ||
       !identical(old.knife, knife) ||
       old.caret != caret ||

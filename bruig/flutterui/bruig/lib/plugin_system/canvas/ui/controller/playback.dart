@@ -973,6 +973,25 @@ extension CanvasPlayback on CanvasController {
   /// a link button asked to open, if any, so opening it (leaving the app)
   /// stays the caller's decision.
   String? runButtonAction(ButtonAction action) {
+    // Clicked while a game plays: what the game does with it, as a press
+    // by a key does (see _gamePress) -- a scene gone to starts its sounds
+    // and its clips, a restart begins the game again, and shown or hidden
+    // is the game's. Ember Vale's Begin, clicked, went on to the woods
+    // with the title's music still playing and Kai silent.
+    if (_game case var run? when gaming) {
+      switch (action.kind) {
+        case ButtonActionKind.goToScene:
+          _gameScene(run, action.elementId);
+          return null;
+        case ButtonActionKind.restart:
+          _gameRestart(run);
+          return null;
+        case ButtonActionKind.toggleElement:
+          if (action.elementId.isNotEmpty) run.toggle(action.elementId);
+          return null;
+        default:
+      }
+    }
     switch (action.kind) {
       case ButtonActionKind.goToFrame:
         pause();

@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
@@ -821,6 +822,124 @@ void main() {
         expect(engine.launches.single.$3, (0.0, 4.0));
         expect(c.session.at("keys", 0)!.sound?.assetId, id);
         c.pause();
+      });
+
+      // Ember Vale: its music and effects on the master, as a game keeps
+      // the channels every scene shares. None was heard -- a MIDI slot
+      // looked for its instrument in the scene alone -- and a title with
+      // no HUD (master off) has none to show, but its channels still play.
+      CanvasController masterGame() {
+        var hero = ShapeElement(const ElementBase(
+            id: "hero",
+            x: 100,
+            y: 600,
+            width: 40,
+            height: 60,
+            play: PlaySpec(as: PlayAs.platformer)));
+        var c = CanvasController(
+            CanvasDocument(
+                    frameRate: 30,
+                    audio: const AudioSettings(tempo: 120),
+                    game: true,
+                    masterOn: true,
+                    master: CanvasScene(id: "master", elements: [keys()]),
+                    counts: const [GameCount("coins", "Coins")],
+                    scenes: [
+                      CanvasScene(
+                          id: "title",
+                          frames: 60,
+                          masterOff: true,
+                          gameSounds: {
+                            "keys": gameSoundSlot("k0")
+                          },
+                          elements: [
+                            hero,
+                            const ButtonElement(
+                                ElementBase(
+                                    id: "begin", width: 200, height: 80),
+                                label: "Begin",
+                                action: ButtonAction(
+                                    kind: ButtonActionKind.goToScene,
+                                    elementId: "woods")),
+                          ]),
+                      CanvasScene(id: "woods", frames: 60, gameSounds: {
+                        "keys": gameSoundSlot("k1")
+                      }, elements: [
+                        hero,
+                        const ButtonElement(
+                            ElementBase(id: "again", width: 200, height: 80),
+                            label: "Again",
+                            action:
+                                ButtonAction(kind: ButtonActionKind.restart)),
+                      ]),
+                    ],
+                    gameStart: "title")
+                .copyWith(
+                    session: SessionGrid(scenes: const ["Title", "Woods"])
+                        .put(
+                            "keys",
+                            0,
+                            const SessionClip(
+                                id: "k0",
+                                midi: true,
+                                notes: [MidiNote(60, 0, 1)],
+                                bars: 1))
+                        .put(
+                            "keys",
+                            1,
+                            const SessionClip(
+                                id: "k1",
+                                midi: true,
+                                notes: [MidiNote(67, 0, 1)],
+                                bars: 1))),
+            audioEngine: engine);
+        c.clockForTest = () => micros;
+        c.gameClockForTest = () => micros;
+        return c;
+      }
+
+      ButtonAction actionOf(CanvasController c, String id) =>
+          (c.document.elementById(id) as ButtonElement).action;
+
+      test("a MIDI channel on the master plays on every scene", () async {
+        var c = masterGame();
+        addTearDown(c.dispose);
+        c.gaming = true;
+        addTearDown(() => c.gaming = false);
+        await settle();
+        expect(c.document.scene.id, "title");
+        expect(rendered.map((p) => p.notes.single.key), [60],
+            reason: "the title's slot, played by the master's instrument");
+        expect(engine.launches, hasLength(1));
+      });
+
+      // Ken: "Pressing the Begin the adventure button doesn't launch the
+      // game properly e.g. the narrative doesn't play." Clicked, it went to
+      // the woods as the editor does, starting none of their sounds.
+      test("clicked in a game, a button goes on as the game does", () async {
+        var c = masterGame();
+        addTearDown(c.dispose);
+        c.gaming = true;
+        addTearDown(() => c.gaming = false);
+        await settle();
+        c.runButtonAction(actionOf(c, "begin"));
+        await settle();
+        expect(c.document.scene.id, "woods");
+        expect(c.gaming, isTrue);
+        expect(
+            c.clipState("keys", 1), isIn([ClipState.queued, ClipState.playing]),
+            reason: "the woods' music started, on the next bar");
+        expect(rendered.map((p) => p.notes.single.key), [60, 67]);
+
+        // And Again begins the game again: on its first scene, counts and
+        // all at their starts.
+        c.game!.counts["coins"] = 7;
+        c.runButtonAction(actionOf(c, "again"));
+        await settle();
+        expect(c.document.scene.id, "title");
+        expect(c.game!.countOf(c.document, "coins"), 0);
+        expect(c.clipState("keys", 0),
+            isIn([ClipState.queued, ClipState.playing]));
       });
 
       test("the channel's part copied into a slot, in beats", () {

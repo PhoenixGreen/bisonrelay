@@ -27,6 +27,34 @@ extension CanvasGame on CanvasController {
   /// -- or null, not playing.
   CanvasDocument? get gameView => _gameView;
 
+  /// gameFraming is how a game frames the page: the view following its
+  /// player as close as it asks (GameRun.framing), with the scene's Camera
+  /// on it -- its push in, its shake, moving round the player -- or the
+  /// scene's framing alone where the game asks for none. Null for the page
+  /// as it is.
+  (double, Offset)? get gameFraming {
+    var run = _game;
+    var scene = sceneFraming(_document, _frame, live: liveMotion);
+    var own = run?.framing;
+    if (own == null) return scene;
+    var page = _document.size.rect;
+    var (zoom, at) = own;
+    // The Camera's own move, before it is held in to the page: at the
+    // page's size its shake would be clamped away.
+    if (cameraOf(_document) case var cam? when !isStageScene(_document)) {
+      var pose = poseWithMotion(cam, _frame, _document, live: liveMotion);
+      zoom *= math.max(1.0,
+          page.width / math.max(1.0, cam.width) * math.max(0.01, pose.scale));
+      at += cam.bounds.center + Offset(pose.dx, pose.dy) - page.center;
+    }
+    var hx = page.width / 2 / zoom, hy = page.height / 2 / zoom;
+    return (
+      zoom,
+      Offset(at.dx.clamp(page.left + hx, page.right - hx),
+          at.dy.clamp(page.top + hy, page.bottom - hy)),
+    );
+  }
+
   /// gameChange is the scene a game is leaving, while its transition plays:
   /// as it was last seen and on which frame, the transition, and how far
   /// through it is (0 to 1, eased) -- or null, none playing. A game's next
@@ -207,9 +235,7 @@ extension CanvasGame on CanvasController {
         _gameSceneSounds();
         _gameMotionStart();
       }
-      if (event.restart && _document.gameStart.isNotEmpty) {
-        _gameScene(run, _document.gameStart);
-      }
+      if (event.restart) _gameRestart(run);
       if (event.press case var id?) {
         _gamePress(run, id);
         // Pressed in a game is clicked: its clips that start on that.
@@ -297,6 +323,24 @@ extension CanvasGame on CanvasController {
     _gameLeaving();
     goToScene(to);
     // From its beginning, not the frame it was left on while it was made.
+    frame = 0;
+    run.newScene();
+    _gameSceneSounds();
+    _gameMotionStart();
+  }
+
+  /// _gameRestart is the game begun again: its counts at their starts,
+  /// and on the scene it begins on (CanvasDocument.gameStart) -- or, with
+  /// none chosen, this one from its beginning -- its sounds and clips
+  /// started as they were.
+  void _gameRestart(GameRun run) {
+    run.startOver(_document);
+    if (_document.gameStart.isNotEmpty &&
+        _document.sceneIndexNamed(_document.gameStart) >= 0) {
+      _gameScene(run, _document.gameStart);
+      return;
+    }
+    _gameLeaving();
     frame = 0;
     run.newScene();
     _gameSceneSounds();
