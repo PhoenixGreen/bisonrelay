@@ -316,12 +316,17 @@ class _StripFrame extends StatelessWidget {
   /// and All for one on the master canvas. See stripBadges.
   final List<Widget> badges;
 
+  /// rowColour is its row's colour, as a bar along the top of its head
+  /// (the approved design); none on the buses and the master.
+  final Color? rowColour;
+
   /// deviceCount is how many devices it has, motion and sound: the devices
   /// band minimised says so, rather than showing the first of them. Null
   /// where it has nothing to count (the band shows itself).
   final int? deviceCount;
 
   const _StripFrame({
+    this.rowColour,
     this.badges = const [],
     this.deviceCount,
     this.width = _wideW,
@@ -370,22 +375,37 @@ class _StripFrame extends StatelessWidget {
         if (!bands.bare)
           SizedBox(
             height: _headH,
-            child: Row(children: [
-              Expanded(child: ClipRect(child: head)),
-              if (!narrow)
-                for (var b in badges) ...[const SizedBox(width: 3), b],
-              if (onNarrow case var toggle?)
-                Tooltip(
-                  message: narrow ? "Make it wide" : "Make it narrow",
-                  child: InkWell(
-                    key: narrowKey,
-                    onTap: toggle,
-                    child: Icon(
-                        narrow ? Icons.chevron_right : Icons.chevron_left,
-                        size: 12,
-                        color: studio.muted),
-                  ),
+            child: Stack(clipBehavior: Clip.none, children: [
+              // Its row's colour along the top, in the frame's own padding,
+              // so nothing under it moves.
+              if (rowColour case var colour?)
+                Positioned(
+                  key: const ValueKey("stripColour"),
+                  left: -5,
+                  right: -5,
+                  top: -5,
+                  height: 2,
+                  child: ColoredBox(color: colour),
                 ),
+              Positioned.fill(
+                child: Row(children: [
+                  Expanded(child: ClipRect(child: head)),
+                  if (!narrow)
+                    for (var b in badges) ...[const SizedBox(width: 3), b],
+                  if (onNarrow case var toggle?)
+                    Tooltip(
+                      message: narrow ? "Make it wide" : "Make it narrow",
+                      child: InkWell(
+                        key: narrowKey,
+                        onTap: toggle,
+                        child: Icon(
+                            narrow ? Icons.chevron_right : Icons.chevron_left,
+                            size: 12,
+                            color: studio.muted),
+                      ),
+                    ),
+                ]),
+              ),
             ]),
           ),
         if (bands.clips case var h?) ...[
@@ -824,11 +844,15 @@ class _ChannelStrip extends StatelessWidget {
   /// badges go after its name: see _StripFrame.badges.
   final List<Widget> badges;
 
+  /// rowColour is its row's: see _StripFrame.rowColour.
+  final Color? rowColour;
+
   /// motionDevices are its element's motion devices, as slots: first in its
   /// devices band, before the sound's.
   final List<Widget> motionDevices;
 
   const _ChannelStrip({
+    this.rowColour,
     this.badges = const [],
     this.motionDevices = const [],
     this.motion,
@@ -882,6 +906,7 @@ class _ChannelStrip extends StatelessWidget {
       onNarrow: onNarrow,
       narrowKey: ValueKey("narrow-$channelKey"),
       badges: badges,
+      rowColour: rowColour,
       deviceCount: motionDevices.length +
           (part?.effects.length ?? 0) +
           (mix.speech != null ? 1 : 0) +

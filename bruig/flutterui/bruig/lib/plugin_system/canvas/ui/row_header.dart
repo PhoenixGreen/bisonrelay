@@ -547,3 +547,80 @@ class RowFold extends StatelessWidget {
         ),
       );
 }
+
+/// rowPalette is the colours a row can be given or picked: the approved
+/// design's.
+const rowPalette = [
+  Color(0xFFE2B04A),
+  Color(0xFF5A9FA8),
+  Color(0xFF8E6BD1),
+  Color(0xFF3FB08D),
+  Color(0xFFD77AA3),
+  Color(0xFF6FA3E0),
+  Color(0xFFD9A15A),
+  Color(0xFF9A92EA),
+  Color(0xFFE0564F),
+  Color(0xFF7FC8F8),
+];
+
+/// givenRowColour is the colour row [key] is given until one is picked: by
+/// its key, so the same row is the same colour every time, wherever it is
+/// in the list.
+Color givenRowColour(String key) {
+  // FNV-1a: the same for the same key in every run (String.hashCode is not
+  // promised to be).
+  var h = 0x811C9DC5;
+  for (var u in key.codeUnits) {
+    h ^= u;
+    h = (h * 0x01000193) & 0xFFFFFFFF;
+  }
+  return rowPalette[h % rowPalette.length];
+}
+
+/// rowColourMenu is a row's colours, for its header's right-click menu: a
+/// swatch for each of rowPalette, and Automatic. What was picked comes back
+/// from the menu as "colour:<i>" or "colour:auto": see rowColourPicked.
+List<PopupMenuEntry<String>> rowColourMenu(Color now) => [
+      PopupMenuItem<String>(
+        enabled: false,
+        height: 34,
+        child: Builder(
+          builder: (context) => Wrap(spacing: 4, runSpacing: 4, children: [
+            for (var (i, c) in rowPalette.indexed)
+              InkWell(
+                key: ValueKey("rowColour-$i"),
+                borderRadius: BorderRadius.circular(4),
+                onTap: () => Navigator.of(context).pop("colour:$i"),
+                child: Container(
+                  width: 18,
+                  height: 18,
+                  decoration: BoxDecoration(
+                    color: c,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                        color: c == now
+                            ? const Color(0xFFFFFFFF)
+                            : const Color(0x00000000),
+                        width: 2),
+                  ),
+                ),
+              ),
+          ]),
+        ),
+      ),
+      const PopupMenuItem<String>(
+        key: ValueKey("rowColourAuto"),
+        value: "colour:auto",
+        height: 30,
+        child: Text("Its own colour again", style: TextStyle(fontSize: 12.5)),
+      ),
+    ];
+
+/// rowColourPicked is what [choice], from rowColourMenu, picked: (true, a
+/// colour) or (true, null) for its given one; (false, null) where it was
+/// not a colour.
+(bool, Color?) rowColourPicked(String? choice) {
+  if (choice == null || !choice.startsWith("colour:")) return (false, null);
+  var i = int.tryParse(choice.substring(7));
+  return (true, i == null ? null : rowPalette[i]);
+}

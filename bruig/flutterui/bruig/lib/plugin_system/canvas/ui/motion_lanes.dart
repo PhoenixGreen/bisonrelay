@@ -407,6 +407,9 @@ class _MotionLanesState extends State<MotionLanes> {
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => controller.selectOnly(e.id),
+                  // Right-clicked: its row's colour (Ken, 2026-11-10).
+                  onSecondaryTapUp: (d) =>
+                      _colourMenu(context, e.id, d.globalPosition),
                   child: _header(e, colors, label),
                 ),
               ),
@@ -509,7 +512,7 @@ class _MotionLanesState extends State<MotionLanes> {
     }
 
     return RowHeader(
-      colour: colors.primary,
+      colour: controller.rowColour(e.id),
       width: controller.headerWidth,
       height: _rowHeight(e),
       selected: controller.selection.contains(e.id),
@@ -571,6 +574,17 @@ class _MotionLanesState extends State<MotionLanes> {
     );
   }
 
+  /// _colourMenu is a row's right-click menu: its colours.
+  Future<void> _colourMenu(BuildContext context, String id, Offset at) async {
+    var choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(at.dx, at.dy, at.dx, at.dy),
+      items: rowColourMenu(controller.rowColour(id)),
+    );
+    var (picked, colour) = rowColourPicked(choice);
+    if (picked) controller.setRowColour(id, colour);
+  }
+
   void _dropped(MotionSlotDrag drag, Offset local, double width) {
     var hit = _hit(local, width);
     if (hit == null) return;
@@ -621,6 +635,7 @@ class _MotionLanesState extends State<MotionLanes> {
                   : "motionLanesPaint-${widget.only}"),
               size: Size(width, height),
               painter: _LanesPainter(
+                colourOf: (e) => controller.rowColour(e.id),
                 alt: widget.alt,
                 rows: rows,
                 folded: {
@@ -715,7 +730,7 @@ class _RowSlots extends StatelessWidget {
               border: picked ? Border.all(color: colors.onSurface) : null),
           child: SlotFace(
             side: SlotSide.motion,
-            colour: motionKindColours[clip.kind]!,
+            colour: c.rowColour(element.id),
             playing: lit,
             seed: clip.id,
             go: launch,
@@ -780,6 +795,9 @@ class _LanesPainter extends CustomPainter {
   final List<CanvasElement> rows;
   final Set<String> folded;
 
+  /// colourOf is each row's colour: its clips are drawn in it.
+  final Color Function(CanvasElement) colourOf;
+
   /// shared are the rows whose layers share one band: see sharedClipRect.
   final Set<String> shared;
   final double lane;
@@ -794,6 +812,7 @@ class _LanesPainter extends CustomPainter {
   _LanesPainter({
     this.alt = false,
     this.shared = const {},
+    required this.colourOf,
     required this.rows,
     required this.folded,
     required this.lane,
@@ -859,7 +878,7 @@ class _LanesPainter extends CustomPainter {
         if (isShared) {
           var rect = sharedClipRect(lanes, p.layer, y, h, x(s.start), x(s.end));
           if (rect.right < 0 || rect.left > size.width) continue;
-          _clip(canvas, rect, c, p, s);
+          _clip(canvas, rect, c, p, s, colourOf(e));
           continue;
         }
         var row = isFolded ? 0 : lanes.indexOf(p.layer);
@@ -871,7 +890,7 @@ class _LanesPainter extends CustomPainter {
             math.max(x(s.end), x(s.start) + 6),
             top + (isFolded ? lane : lane - 2));
         if (rect.right < 0 || rect.left > size.width) continue;
-        _clip(canvas, rect, c, p, s);
+        _clip(canvas, rect, c, p, s, colourOf(e));
       }
       // An element reused: where each copy's clips start, as short amber
       // ticks along the top of its row (the approved design), from its first
@@ -898,12 +917,11 @@ class _LanesPainter extends CustomPainter {
     }
   }
 
-  void _clip(
-      Canvas canvas, Rect rect, MotionClip c, ClipPlacement p, ClipSpan s) {
+  void _clip(Canvas canvas, Rect rect, MotionClip c, ClipPlacement p,
+      ClipSpan s, Color row) {
     // As its slot is (the approved design): its corners cut, a teal edge,
     // its curve drawn faint in it.
-    var colour =
-        Color.lerp(motionKindColours[c.kind]!, const Color(0xFF0E2A24), 0.22)!;
+    var colour = Color.lerp(row, const Color(0xFF0E2A24), 0.22)!;
     var shape = cutCornersPath(rect, 4);
     canvas.drawPath(shape, Paint()..color = colour);
     canvas.save();

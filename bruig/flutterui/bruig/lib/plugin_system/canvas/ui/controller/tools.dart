@@ -349,6 +349,48 @@ extension CanvasTools on CanvasController {
   }
 
   /// renameChannel names [channel], on every sound it holds.
+  /// rowColour is row [key]'s colour -- an element's row by its id, a
+  /// sound's by its channel's key -- on the timeline, the mixer and the
+  /// slots (Ken, 2026-11-10: each row its own, given, and changeable from
+  /// its header): the one picked, kept on its element or its sounds, or else
+  /// the one it is given, the same for it every time (rowPalette).
+  Color rowColour(String key) {
+    var channel = timelineChannels.where((c) => c.key == key).firstOrNull;
+    int? picked;
+    if (channel != null) {
+      picked = channel.lanes
+          .map((l) => l.element.base.rowColour)
+          .whereType<int>()
+          .firstOrNull;
+    } else {
+      picked = _document.elementById(key)?.base.rowColour;
+    }
+    return picked != null ? Color(picked) : givenRowColour(key);
+  }
+
+  /// setRowColour picks row [key]'s colour, or with null gives it back the
+  /// one it is given: on its element, or on every sound in its channel.
+  void setRowColour(String key, Color? colour) {
+    var argb = colour?.toARGB32();
+    CanvasElement coloured(CanvasElement e) => e.rebase(e.base
+        .copyWith(rowColour: argb, clearRowColour: argb == null));
+    var channel = timelineChannels.where((c) => c.key == key).firstOrNull;
+    var targets = channel != null
+        ? [
+            for (var l in channel.lanes)
+              if (l.editable) l.element
+          ]
+        : [
+            if (_document.elementById(key) case var e?) e,
+          ];
+    if (targets.isEmpty) return;
+    var next = _document;
+    for (var e in targets) {
+      next = _replacedAnywhere(next, coloured(e)) ?? next;
+    }
+    apply(next);
+  }
+
   void renameChannel(TimelineChannel channel, String name) {
     var named = name.trim();
     if (named.isEmpty) return;

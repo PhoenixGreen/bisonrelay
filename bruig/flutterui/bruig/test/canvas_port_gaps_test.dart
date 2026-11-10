@@ -19,7 +19,9 @@ import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/marker_note.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
 import 'package:bruig/plugin_system/canvas/ui/play_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/row_header.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -366,6 +368,74 @@ void main() {
       }
       await tester.pump();
       expect(find.text("Press to jump"), findsOneWidget);
+    });
+  });
+
+  group("each row its colour", () {
+    test("given, the same for a row every time; picked, kept with it", () {
+      var c = make();
+      addTearDown(c.dispose);
+      expect(c.rowColour("a"), givenRowColour("a"));
+      expect(givenRowColour("a"), givenRowColour("a"));
+      expect(rowPalette, contains(c.rowColour("b")));
+      c.setRowColour("a", rowPalette[2]);
+      expect(c.rowColour("a"), rowPalette[2]);
+      var json = c.document.elementById("a")!.toJson();
+      expect(elementFromJson(json).base.rowColour, rowPalette[2].toARGB32(),
+          reason: "saved with the canvas");
+      expect(c.canUndo, isTrue);
+      c.setRowColour("a", null);
+      expect(c.rowColour("a"), givenRowColour("a"), reason: "its own again");
+    });
+
+    test("a sound's, on every sound in its channel", () {
+      var c = CanvasController(
+          CanvasDocument(frames: 240, elements: [
+            for (var id in ["m1", "m2"])
+              AudioElement(ElementBase(id: id, name: id, visible: false),
+                  clip: const MediaClip(
+                      timed: true, channel: "mus", channelName: "Music"),
+                  controls: const []),
+          ]),
+          audioEngine: FakeEngine({}));
+      addTearDown(c.dispose);
+      var key = c.timelineChannels.single.key;
+      c.setRowColour(key, rowPalette[4]);
+      expect(c.rowColour(key), rowPalette[4]);
+      for (var id in ["m1", "m2"]) {
+        expect(c.document.elementById(id)!.base.rowColour,
+            rowPalette[4].toARGB32());
+      }
+    });
+
+    testWidgets("picked from its header's right-click menu", (tester) async {
+      var c = CanvasController(
+          CanvasDocument(frames: 240, elements: [
+            sound("m", "Music"),
+            const ShapeElement(ElementBase(id: "a", name: "Coin")),
+          ]),
+          audioEngine: FakeEngine({}));
+      addTearDown(c.dispose);
+      c.ensureElementSound("a");
+      tester.view.physicalSize = const Size(1400, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(host(CanvasTimeline(controller: c, height: 500)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("motionRow-a")),
+          buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("rowColour-3")));
+      await tester.pumpAndSettle();
+      expect(c.rowColour("a"), rowPalette[3]);
+      // A sound's, from its menu.
+      await tester.tap(find.byKey(const ValueKey("channelStrip-m")),
+          buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("rowColour-5")));
+      await tester.pumpAndSettle();
+      expect(c.rowColour("m"), rowPalette[5]);
+      expect(tester.takeException(), isNull);
     });
   });
 

@@ -23,7 +23,7 @@ import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart'
-    show MotionSlotDrag, motionKindColours, motionLayerName;
+    show MotionSlotDrag, motionLayerName;
 import 'package:bruig/plugin_system/canvas/ui/canvas_rows.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_player.dart'
     show MotionSlotState;
@@ -1286,6 +1286,7 @@ class _CanvasMixerState extends State<CanvasMixer>
           ? const []
           : _motionDeviceSlots(controller, theme, element),
       badges: stripBadges(theme, lane.key, element: element, all: all),
+      rowColour: controller.rowColour(element?.id ?? lane.key),
       name: lane.name,
       number: index + 1,
       channelKey: lane.key,

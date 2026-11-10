@@ -887,6 +887,9 @@ class _CanvasChannelsState extends State<CanvasChannels> {
             header: _ChannelHeader(
               key: ValueKey("channelStrip-${channel.key}"),
               controller: controller,
+              rowColour: controller.rowColour(_foldKeyOf(channel.key)),
+              onColour: (colour) =>
+                  controller.setRowColour(_foldKeyOf(channel.key), colour),
               fold: RowFold(
                   key: ValueKey("rowFold-${channel.key}"),
                   folded: controller.rowFolded(channel.key),
@@ -1310,6 +1313,9 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                       view: _view)
                   : null,
               painter: _LanePainter(
+                own: soundOwnerOf(controller.document, channel.key) == null
+                    ? null
+                    : controller.rowColour(_foldKeyOf(channel.key)),
                 onMaster: controller.document.editingMaster,
                 channel: channel,
                 spans: [for (var lane in channel.lanes) _span(lane)],
@@ -1526,6 +1532,9 @@ void paintOutsideScene(Canvas canvas, Size size, TimelineView view, int? from,
 }
 
 class _LanePainter extends CustomPainter {
+  /// own is the colour of the element whose own sound this is: its clips
+  /// are drawn toward it (the approved design); null for any other.
+  final Color? own;
   final TimelineChannel channel;
   final List<({double from, double to, List<double> cuts})> spans;
   final TimelineView view;
@@ -1550,6 +1559,7 @@ class _LanePainter extends CustomPainter {
   final bool onMaster;
 
   _LanePainter({
+    this.own,
     required this.onMaster,
     required this.sceneFrom,
     required this.sceneTo,
@@ -1625,7 +1635,9 @@ class _LanePainter extends CustomPainter {
             : asClip != null && asClip.color != timelineClipColour
                 ? Color(sectionColors[asClip.color % sectionColors.length])
                 : soundSlotColour(
-                    midi: instrument, speech: channel.mix.speech != null))
+                    midi: instrument,
+                    speech: channel.mix.speech != null,
+                    own: own))
         .withValues(alpha: lane.editable && !locked ? 1 : 0.5);
     // Writing on it: dark on a light clip, white on a video's.
     var ink = video ? const Color(0xFFFFFFFF) : slotInk;
@@ -1976,8 +1988,16 @@ class _ChannelHeader extends StatelessWidget {
   /// element's folds.
   final Widget? fold;
 
+  /// rowColour is its row's colour (an element's own sound, its element's),
+  /// and onColour picks another from its right-click menu, null for its own
+  /// again.
+  final Color? rowColour;
+  final ValueChanged<Color?>? onColour;
+
   const _ChannelHeader({
     this.fold,
+    this.rowColour,
+    this.onColour,
     this.controller,
     this.owned = false,
     this.onBack,
@@ -2034,10 +2054,17 @@ class _ChannelHeader extends StatelessWidget {
               child: Text(
                   automation ? "Hide its automation" : "Show its automation",
                   style: const TextStyle(fontSize: 12.5))),
+        // Its row's colour (Ken, 2026-11-10).
+        if (onColour != null && rowColour != null) ...[
+          const PopupMenuDivider(),
+          ...rowColourMenu(rowColour!),
+        ],
       ],
     );
     if (choice == "lock") onLock();
     if (choice == "automation") onAutomation();
+    var (picked, colour) = rowColourPicked(choice);
+    if (picked) onColour?.call(colour);
   }
 
   @override
@@ -2085,7 +2112,7 @@ class _ChannelHeader extends StatelessWidget {
       onTap: onSelect,
       onSecondaryTapUp: (d) => _menu(context, d.globalPosition),
       child: RowHeader(
-        colour: channelColour(channel.video),
+        colour: rowColour ?? channelColour(channel.video),
         width: width,
         height: height,
         selected: selected,

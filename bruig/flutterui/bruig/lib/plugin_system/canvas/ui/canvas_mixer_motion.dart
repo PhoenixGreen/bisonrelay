@@ -37,6 +37,7 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
           onPointerDown: (_) => pick(),
           child: _StripFrame(
             badges: stripBadges(theme, key, element: e),
+            rowColour: controller.rowColour(e.id),
             narrow: narrow,
             onNarrow: () => controller.toggleNarrow(key),
             narrowKey: ValueKey("narrow-$key"),
@@ -363,7 +364,8 @@ class _MotionSlotState extends State<_MotionSlot> with _OnSessionPulse {
       // Empty: the well (slot_face.dart).
       body = const SlotFace(side: SlotSide.motion);
     } else {
-      var col = motionKindColours[clip.kind]!;
+      // In its row's colour (Ken, 2026-11-10).
+      var col = c.rowColour(widget.element);
       var lit = state == MotionSlotState.playing ||
           state == MotionSlotState.stopping ||
           (state == MotionSlotState.queued && _blinkOn);

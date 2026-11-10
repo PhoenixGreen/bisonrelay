@@ -454,7 +454,8 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
       width: width,
       head: _head(theme,
           name: name,
-          colour: e != null ? motionColour : soundColour,
+          // Its row's colour (Ken, 2026-11-10).
+          colour: controller.rowColour(key),
           picked: e != null
               ? controller.selection.contains(e.id)
               : controller.selectedChannel == channel?.key,

@@ -155,6 +155,11 @@ class ElementBase {
   /// background is not selected by a click near what stands on it.
   final bool locked;
 
+  /// rowColour is its row's colour on the timeline, the mixer and the slots
+  /// (ARGB), as picked from its header; null for the one its row is given
+  /// (see CanvasController.rowColour). A sound channel's is on its sounds.
+  final int? rowColour;
+
   /// lockAspect holds an element's proportions while it is resized: the
   /// width and the height move together.
   final bool lockAspect;
@@ -236,6 +241,7 @@ class ElementBase {
     this.blend = LayerBlend.normal,
     this.visible = true,
     this.locked = false,
+    this.rowColour,
     this.lockAspect = false,
     this.anchorX = 0.5,
     this.anchorY = 0.5,
@@ -266,6 +272,8 @@ class ElementBase {
     LayerBlend? blend,
     bool? visible,
     bool? locked,
+    int? rowColour,
+    bool clearRowColour = false,
     bool? lockAspect,
     double? anchorX,
     double? anchorY,
@@ -301,6 +309,7 @@ class ElementBase {
         blend: blend ?? this.blend,
         visible: visible ?? this.visible,
         locked: locked ?? this.locked,
+        rowColour: clearRowColour ? null : rowColour ?? this.rowColour,
         lockAspect: lockAspect ?? this.lockAspect,
         anchorX: anchorX ?? this.anchorX,
         anchorY: anchorY ?? this.anchorY,
@@ -331,6 +340,7 @@ class ElementBase {
           json["blend"] is String ? json["blend"] as String : null),
       visible: _b(json["visible"], true),
       locked: _b(json["locked"], false),
+      rowColour: json["rowColour"] is int ? json["rowColour"] as int : null,
       lockAspect: _b(json["aspect"], false),
       anchorX: _d(json["ax"], 0.5),
       anchorY: _d(json["ay"], 0.5),
@@ -372,6 +382,7 @@ class ElementBase {
         if (blend != LayerBlend.normal) "blend": blend.name,
         if (!visible) "visible": false,
         if (locked) "locked": true,
+        if (rowColour != null) "rowColour": rowColour,
         "aspect": lockAspect,
         if (anchorX != 0.5) "ax": anchorX,
         if (anchorY != 0.5) "ay": anchorY,
