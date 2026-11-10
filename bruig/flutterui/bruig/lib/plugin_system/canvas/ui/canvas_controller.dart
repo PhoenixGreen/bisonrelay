@@ -1472,6 +1472,9 @@ class CanvasController extends ChangeNotifier {
   /// with a repeat limit stops rather than running forever.
   final Map<int, int> _loopCounts = {};
 
+  /// _stoppedAt is the frame a stop marker last stopped playback on.
+  int? _stoppedAt;
+
   bool _opened = false;
 
   /// opened is whether this session has ever been shown. The session

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/transport.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -198,12 +199,19 @@ class MarkerPanel extends StatelessWidget {
         },
         onCommit: controller.endInteraction,
       ),
+      // Whether its label is seen on the canvas while playback holds at it
+      // (Ken, 2026-11-10); on the ruler, it always is.
       if (here.kind != TimelineActionKind.locator)
-        CanvasToggle(
-          key: const ValueKey("actionShowLabel"),
-          label: "Show on the canvas",
-          value: here.showLabel,
-          onChanged: (v) => write(here.copyWith(showLabel: v)),
+        SizedBox(
+          width: 170,
+          child: CanvasSegmented<bool>(
+            key: const ValueKey("actionShowLabel"),
+            label: "On the canvas",
+            options: const [(true, "Shown"), (false, "Hidden")],
+            value: here.showLabel,
+            keyOf: (v) => v ? "actionShown" : "actionHidden",
+            onChanged: (v) => write(here.copyWith(showLabel: v)),
+          ),
         ),
       // A stop that waits for one of the game's actions as well as Play
       // ("press A to start").
@@ -223,15 +231,32 @@ class MarkerPanel extends StatelessWidget {
         ),
       if (here.kind == TimelineActionKind.loop ||
           here.kind == TimelineActionKind.jump)
-        CanvasNumberField(
-          key: const ValueKey("actionTarget"),
-          label: "To frame",
-          value: here.target.toDouble() + 1,
-          min: 1,
-          max: document.frames.toDouble(),
-          width: 80,
-          onChanged: (v) => write(here.copyWith(target: v.round() - 1)),
-        ),
+        // Where it goes, in the ruler's terms (the approved design): a bar
+        // for a piece of sound counted in them, else a frame.
+        if (_framesPerBar(document) case var perBar? when perBar > 0)
+          CanvasNumberField(
+            key: const ValueKey("actionTarget"),
+            label: "To bar",
+            value: (here.target / perBar).floorToDouble() + 1,
+            min: 1,
+            max: (document.frames / perBar).ceilToDouble(),
+            width: 80,
+            onChanged: (v) => write(here.copyWith(
+                target: ((v.round() - 1) * perBar)
+                    .round()
+                    .clamp(0, document.frames - 1)
+                    .toInt())),
+          )
+        else
+          CanvasNumberField(
+            key: const ValueKey("actionTarget"),
+            label: "To frame",
+            value: here.target.toDouble() + 1,
+            min: 1,
+            max: document.frames.toDouble(),
+            width: 80,
+            onChanged: (v) => write(here.copyWith(target: v.round() - 1)),
+          ),
       if (here.kind == TimelineActionKind.loop)
         CanvasNumberField(
           key: const ValueKey("actionRepeats"),
@@ -364,3 +389,9 @@ class _Flag extends CustomPainter {
   @override
   bool shouldRepaint(_Flag old) => old.colour != colour;
 }
+
+/// _framesPerBar is a bar's frames, where the canvas is a piece of sound
+/// counted in bars; null otherwise.
+double? _framesPerBar(CanvasDocument document) => document.kind.isAudio
+    ? document.audio.secondsPerBar * document.frameRate
+    : null;

@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/automation.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
@@ -15,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/marker_note.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
 import 'package:bruig/plugin_system/canvas/ui/play_bar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -298,6 +300,73 @@ void main() {
             matching: find.text("4/4 · 30 fps")),
         findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  group("a marker's label on the canvas", () {
+    CanvasController held({bool shown = true}) => CanvasController(
+        CanvasDocument(frames: 40, actions: [
+          TimelineAction(
+              frame: 3,
+              kind: TimelineActionKind.stop,
+              label: "Press to jump",
+              showLabel: shown),
+          const TimelineAction(
+              frame: 10,
+              kind: TimelineActionKind.pause,
+              label: "Get ready",
+              holdFrames: 4),
+        ]),
+        audioEngine: FakeEngine({}));
+
+    test("while a stop holds playback, or a pause, where it is shown", () {
+      var c = held();
+      addTearDown(c.dispose);
+      expect(c.holdingMarker, isNull);
+      c.play();
+      for (var i = 0; i < 3; i++) {
+        c.tickForTest();
+      }
+      expect(c.frame, 3);
+      expect(c.playing, isFalse, reason: "the stop stopped it");
+      expect(c.holdingMarker?.label, "Press to jump");
+      c.frame = 5;
+      expect(c.holdingMarker, isNull, reason: "moved off it");
+      c.play();
+      for (var i = 0; i < 5; i++) {
+        c.tickForTest();
+      }
+      expect(c.frame, 10);
+      expect(c.holdingMarker?.label, "Get ready", reason: "the pause holds");
+      for (var i = 0; i < 5; i++) {
+        c.tickForTest();
+      }
+      expect(c.holdingMarker, isNull, reason: "and goes on");
+      c.pause();
+    });
+
+    test("hidden on the canvas: none", () {
+      var c = held(shown: false);
+      addTearDown(c.dispose);
+      c.play();
+      for (var i = 0; i < 3; i++) {
+        c.tickForTest();
+      }
+      expect(c.frame, 3);
+      expect(c.holdingMarker, isNull);
+    });
+
+    testWidgets("the note shows it, over the canvas", (tester) async {
+      var c = held();
+      addTearDown(c.dispose);
+      await tester.pumpWidget(host(MarkerNote(controller: c)));
+      expect(find.byKey(const ValueKey("markerNote")), findsNothing);
+      c.play();
+      for (var i = 0; i < 3; i++) {
+        c.tickForTest();
+      }
+      await tester.pump();
+      expect(find.text("Press to jump"), findsOneWidget);
+    });
   });
 
   group("a fold arrow on every row", () {

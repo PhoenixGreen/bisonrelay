@@ -750,6 +750,7 @@ extension CanvasPlayback on CanvasController {
       switch (action.kind) {
         case TimelineActionKind.stop:
           pause();
+          _stoppedAt = next;
           if (action.waitsFor.isNotEmpty) _waitForAction(action.waitsFor);
         case TimelineActionKind.pause:
           // The hold steps the playhead back to where it is for as many ticks
@@ -773,6 +774,27 @@ extension CanvasPlayback on CanvasController {
     }
     _syncTimeline();
     _notifyPlayhead(false);
+  }
+
+  /// holdingMarker is the marker playback is held at, where its label is to
+  /// be seen on the canvas (Ken, 2026-11-10: "On the canvas: Shown"): a stop
+  /// it stopped on, until it plays again or the playhead moves; a pause, as
+  /// long as it holds. Null otherwise.
+  TimelineAction? get holdingMarker {
+    for (var a in _document.actions) {
+      if (a.frame != _frame || a.label.isEmpty || !a.showLabel) continue;
+      if (a.kind == TimelineActionKind.stop &&
+          !playing &&
+          _stoppedAt == a.frame) {
+        return a;
+      }
+      if (a.kind == TimelineActionKind.pause &&
+          playing &&
+          _loopCounts.containsKey(a.frame)) {
+        return a;
+      }
+    }
+    return null;
   }
 
   /// _notifyPlayhead tells the playhead has moved on: what draws it is

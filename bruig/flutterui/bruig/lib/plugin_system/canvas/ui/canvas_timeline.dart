@@ -1498,8 +1498,9 @@ class _TimelinePainter extends CustomPainter {
           ..close(),
         ink,
       );
-      // Its label beside it, where it has one and it is to be shown.
-      if (a.label.isNotEmpty && a.showLabel) {
+      // Its label beside it, always, where it has one (the approved design:
+      // "On the canvas" is whether the canvas shows it -- see MarkerNote).
+      if (a.label.isNotEmpty) {
         var text = TextPainter(
           text: TextSpan(
               text: a.label,
