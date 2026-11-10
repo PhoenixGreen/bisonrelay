@@ -1,4 +1,5 @@
 import 'package:bruig/components/panel_stack.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/cast_panel.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
@@ -131,6 +132,14 @@ StackPanel? canvasSidebarPanel(
             "place a copy in the middle of the canvas: change it in the "
             "Studio and every copy follows.",
         startsOpen: false),
+    "cast" => panel("Cast", Icons.groups_outlined,
+        trailing: document.cast.isEmpty ? null : "${document.cast.length}",
+        hint: "Elements kept once for the whole document, a game's hero "
+            "above all, with a linked copy in each scene. Each copy has its "
+            "own place, size, facing and what it does there, and whether it "
+            "is the player there; the rest (its look, its game settings, "
+            "its motions) is every copy's. Click one to place a copy.",
+        startsOpen: false),
     "stock" => panel("Stock", Icons.travel_explore,
         hint: "Search Pixabay, the Noun Project, Freesound and Jamendo with "
             "keys of your own. A result is only a preview until it is used: "
@@ -213,6 +222,8 @@ class SidebarPanelBodies {
       "settings" => SettingsPanelBody(controller: controller),
       "characters" => CharacterAssetSection(
           key: const ValueKey("assets-characters"), controller: controller),
+      "cast" =>
+        CastPanel(key: const ValueKey("panel-cast"), controller: controller),
       "stock" =>
         StockPanel(key: const ValueKey("assets-stock"), controller: controller),
       "game" => CanvasGamePanel(controller: controller),

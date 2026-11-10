@@ -978,6 +978,9 @@ extension CanvasVectors on CanvasController {
           master: m.copyWith(elements: remade(m.elements, here: false)));
     }
     if (!changed) return;
+    // The Cast's members with them: a copy made as the character now is
+    // takes its member along, and the member every other copy.
+    doc = castSynced(before, doc);
     _undo.add(before);
     if (_undo.length > _maxUndo) _undo.removeAt(0);
     _redo.clear();

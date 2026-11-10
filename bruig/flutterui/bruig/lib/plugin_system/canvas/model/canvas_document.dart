@@ -364,6 +364,11 @@ class CanvasDocument {
   /// game's HUD -- its score, its lives -- over every level.
   final bool masterOver;
 
+  /// cast are the document's Cast: elements kept once for every scene -- a
+  /// game's hero above all -- of which the scenes hold linked copies (see
+  /// ElementBase.cast and cast.dart). Not drawn themselves.
+  final List<CanvasElement> cast;
+
   /// targets are the shapes this document is being designed for, by ratio
   /// key (see shapeKey, which allows a custom shape), in the reader's order.
   /// Empty for one shape. Adding one gives every element a layout for it,
@@ -435,6 +440,7 @@ class CanvasDocument {
     this.master,
     this.masterOn = false,
     this.masterOver = false,
+    this.cast = const [],
     this.onMaster = false,
     this.targets = const [],
     this.cues = const [],
@@ -935,6 +941,7 @@ class CanvasDocument {
     bool clearMaster = false,
     bool? masterOn,
     bool? masterOver,
+    List<CanvasElement>? cast,
     bool? onMaster,
     List<String>? targets,
     List<TimelineCue>? cues,
@@ -1007,6 +1014,7 @@ class CanvasDocument {
       master: shared,
       masterOn: masterOn ?? this.masterOn,
       masterOver: masterOver ?? this.masterOver,
+      cast: cast ?? this.cast,
       onMaster: onIt,
       targets: targets ?? this.targets,
       cues: cues ?? this.cues,
@@ -1044,6 +1052,7 @@ class CanvasDocument {
       master: master,
       masterOn: masterOn,
       masterOver: masterOver,
+      cast: cast,
       onMaster: onMaster,
       targets: targets,
       cues: cues,
@@ -1244,6 +1253,7 @@ class CanvasDocument {
       if (game) "game": true,
       if (gameStart.isNotEmpty) "gameStart": gameStart,
       if (masterOver) "masterOver": true,
+      if (cast.isNotEmpty) "cast": [for (var e in cast) e.toJson()],
       if (playerControls.isNotEmpty)
         "playerControls": {
           for (var MapEntry(key: p, value: list) in playerControls.entries)
@@ -1399,6 +1409,11 @@ class CanvasDocument {
           ? CanvasScene.fromJson(json["master"] as Map<String, dynamic>)
           : null,
       masterOn: jsonBool(json["masterOn"], false),
+      cast: [
+        if (json["cast"] is List)
+          for (var e in json["cast"] as List)
+            if (e is Map<String, dynamic>) elementFromJson(e),
+      ],
       // Only where there is a master, switched on, to be on.
       onMaster: jsonBool(json["onMaster"], false) &&
           jsonBool(json["masterOn"], false) &&

@@ -53,6 +53,7 @@ import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/cast.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -189,6 +190,7 @@ part 'controller/mixer.dart';
 part 'controller/keyframes.dart';
 part 'controller/timeline_clips.dart';
 part 'controller/copies.dart';
+part 'controller/cast.dart';
 
 // canvas_controller.dart holds everything about the canvas being edited that
 // is not the document itself: the selection, the playhead, the zoom, the undo
@@ -1534,6 +1536,9 @@ class CanvasController extends ChangeNotifier {
   void apply(CanvasDocument next, {bool transient = false}) {
     _endPreview();
     if (identical(next, _document)) return;
+    // A linked copy changed in what it shares changes its Cast member, and
+    // every other copy with it (see cast.dart).
+    next = castSynced(_document, next);
 
     // A picture's frame takes in what was put past it once a change is made,
     // not at every step of a drag, whose sums start from where things were

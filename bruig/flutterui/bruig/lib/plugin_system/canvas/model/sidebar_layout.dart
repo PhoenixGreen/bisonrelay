@@ -28,8 +28,8 @@ enum SidebarMode {
 const sidebarPanelIds = [
   "files", "presets", //
   "add", "scenes", "vocalCues", "layers", "colour", "settings", //
-  "picture", "video", "audio", "vector", "model", "characters", "stock", //
-  "game",
+  "picture", "video", "audio", "vector", "model", "characters", "cast", //
+  "stock", "game",
 ];
 
 /// requiredPanels can move but not be hidden.
@@ -97,8 +97,16 @@ const defaultSidebars = [
   SidebarSet("files", "Files", "folder", ["files", "presets"], fixed: true),
   SidebarSet("design", "Design", "design",
       ["add", "scenes", "vocalCues", "layers", "colour", "settings"]),
-  SidebarSet("assets", "Assets", "media",
-      ["picture", "video", "audio", "vector", "model", "characters", "stock"]),
+  SidebarSet("assets", "Assets", "media", [
+    "picture",
+    "video",
+    "audio",
+    "vector",
+    "model",
+    "characters",
+    "cast",
+    "stock"
+  ]),
   SidebarSet("game", "Game", "game", ["game"], fixed: true, gameOnly: true),
 ];
 

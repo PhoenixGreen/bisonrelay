@@ -216,6 +216,13 @@ class ElementBase {
   /// keyframes with it -- see CanvasController.moveCue.
   final String cue;
 
+  /// cast is the Cast member this element is a linked copy of, by id
+  /// (CanvasDocument.cast), or empty for none: what it shares with every
+  /// copy -- its design, its game settings, its motions -- is the member's,
+  /// and only its place, size and what it does in its scene are its own.
+  /// See cast.dart.
+  final String cast;
+
   /// play is what it does when the canvas is played as a game. See play.dart.
   final PlaySpec play;
 
@@ -253,6 +260,7 @@ class ElementBase {
     this.ownDesign = false,
     this.shared,
     this.cue = "",
+    this.cast = "",
     this.play = const PlaySpec(),
     this.spot,
     this.motion = ElementMotion.none,
@@ -287,6 +295,7 @@ class ElementBase {
     Map<String, dynamic>? shared,
     bool clearShared = false,
     String? cue,
+    String? cast,
     PlaySpec? play,
     StageSpot? spot,
     bool clearSpot = false,
@@ -321,6 +330,7 @@ class ElementBase {
         ownDesign: ownDesign ?? this.ownDesign,
         shared: clearShared ? null : (shared ?? this.shared),
         cue: cue ?? this.cue,
+        cast: cast ?? this.cast,
       );
 
   factory ElementBase.fromJson(Map<String, dynamic> json, String defaultName) {
@@ -355,6 +365,7 @@ class ElementBase {
           ? json["shared"] as Map<String, dynamic>
           : null,
       cue: _s(json["cue"], ""),
+      cast: _s(json["cast"], ""),
       play: PlaySpec.fromJson(json["play"]),
       spot: StageSpot.fromJson(json["spot"]),
       motion: ElementMotion.fromJson(json["motion"]),
@@ -393,6 +404,7 @@ class ElementBase {
         if (ownDesign) "ownDesign": true,
         if (shared != null) "shared": shared,
         if (cue.isNotEmpty) "cue": cue,
+        if (cast.isNotEmpty) "cast": cast,
         if (!play.isNone) "play": play.toJson(),
         if (spot != null) "spot": spot!.toJson(),
         if (!motion.isBlank) "motion": motion.toJson(),
