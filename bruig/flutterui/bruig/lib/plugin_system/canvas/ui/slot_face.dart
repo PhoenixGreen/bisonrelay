@@ -321,3 +321,21 @@ void paintSlotArt(Canvas canvas, Rect rect, SlotSide side, String seed,
   }
   canvas.restore();
 }
+
+/// paintLinkMark draws the link mark on a clip linked to another, at [at]
+/// (its top-left), in [colour]: the link icon, as a glyph -- not the ⛓
+/// emoji, which costs the renderer seconds a frame (see bisonrelay_no_emoji).
+void paintLinkMark(Canvas canvas, Offset at, Color colour) {
+  var tp = TextPainter(
+      text: TextSpan(
+          text: String.fromCharCode(Icons.link.codePoint),
+          style: TextStyle(
+              fontFamily: Icons.link.fontFamily,
+              package: Icons.link.fontPackage,
+              fontSize: 11,
+              height: 1,
+              color: colour)),
+      textDirection: TextDirection.ltr)
+    ..layout();
+  tp.paint(canvas, at);
+}

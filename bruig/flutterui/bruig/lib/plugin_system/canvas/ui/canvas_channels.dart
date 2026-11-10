@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
@@ -450,6 +451,14 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                   ),
             }
           : const {};
+      // The motion clips linked to it, and where each starts: moved with it.
+      _links = _grip == _Grip.move
+          ? [
+              for (var (el, id)
+                  in controller.placementsLinkedTo(lane.element.id))
+                if (controller.spanOf(id) case var s?) (el, id, s.start),
+            ]
+          : const [];
       if (_group.isEmpty) {
         _pick(lane);
         controller.selectedChannel = lane.channelKey;
@@ -474,6 +483,12 @@ class _CanvasChannelsState extends State<CanvasChannels> {
           frames = byEnd;
         }
         next = was.copyWith(at: math.max(0, was.at + frames.round()));
+        // Linked: its motion by as much (Ken, 2026-11-10).
+        for (var (el, id, start) in _links) {
+          controller.movePlacement(
+              el, id, math.max(0.0, start + frames.round() / rate),
+              transient: true);
+        }
         // Measured on the run's clock, so a clip goes on into the next scene
         // rather than stopping at the end of its own -- see placeTimedClip.
         for (var (e, clip, run) in _group.values) {
@@ -555,6 +570,10 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   /// on the run's clock, while one of them is dragged along -- see _drag.
   Map<String, (CanvasElement, MediaClip, int?)> _group = const {};
 
+  /// _links are the motion clips linked to the sound being moved, and where
+  /// each started: by its element's id, its own, and its start in seconds.
+  List<(String, String, double)> _links = const [];
+
   /// _trackOver notes the lane [lane]'s clip would be let go onto, for a
   /// move onto another channel -- one clip, not several. A video's
   /// soundtrack goes with it, so a channel can hold sounds and videos one
@@ -578,6 +597,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       return;
     }
     _group = const {};
+    _links = const [];
     var held = _held;
     var over = _over;
     _held = null;
@@ -1313,6 +1333,11 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                       view: _view)
                   : null,
               painter: _LanePainter(
+                linked: {
+                  for (var l in channel.lanes)
+                    if (controller.placementsLinkedTo(l.element.id).isNotEmpty)
+                      l.element.id,
+                },
                 own: soundOwnerOf(controller.document, channel.key) == null
                     ? null
                     : controller.rowColour(_foldKeyOf(channel.key)),
@@ -1532,6 +1557,9 @@ void paintOutsideScene(Canvas canvas, Size size, TimelineView view, int? from,
 }
 
 class _LanePainter extends CustomPainter {
+  /// linked are the sounds a motion clip moves with: each marked so.
+  final Set<String> linked;
+
   /// own is the colour of the element whose own sound this is: its clips
   /// are drawn toward it (the approved design); null for any other.
   final Color? own;
@@ -1559,6 +1587,7 @@ class _LanePainter extends CustomPainter {
   final bool onMaster;
 
   _LanePainter({
+    this.linked = const {},
     this.own,
     required this.onMaster,
     required this.sceneFrom,
@@ -1805,6 +1834,10 @@ class _LanePainter extends CustomPainter {
           ? bottom - text.height - 2
           : (size.height - text.height) / 2;
       text.paint(canvas, Offset(math.max(from, 0) + 6, y));
+    }
+    // Linked to a motion clip: its mark, top right.
+    if (linked.contains(lane.element.id) && to - from >= 30) {
+      paintLinkMark(canvas, Offset(to - 14, top + 2), ink);
     }
     canvas.restore();
 

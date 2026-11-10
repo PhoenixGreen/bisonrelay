@@ -501,6 +501,104 @@ void main() {
     });
   });
 
+  group("linked clips on the timeline", () {
+    // Coin's motion clip at 1 s; a chime of its own at 2 s (frame 48).
+    Future<(CanvasController, String)> timeline(WidgetTester tester) async {
+      var c = CanvasController(
+          CanvasDocument(frames: 240, frameRate: 24, elements: [
+            const ShapeElement(ElementBase(id: "a", name: "Coin")),
+            AudioElement(const ElementBase(id: "chime", name: "Chime"),
+                clip: const MediaClip(
+                    timed: true,
+                    at: 48,
+                    channel: "snd-a",
+                    channelName: "Coin",
+                    playlist: [MediaSource(assetId: "x", length: 2)]),
+                controls: const []),
+          ]),
+          audioEngine: FakeEngine({"x": 2}));
+      addTearDown(c.dispose);
+      var clip = c.newClip("a", kind: MotionKind.action);
+      var placed = c.placeClip("a", clip, seconds: 1);
+      tester.view.physicalSize = const Size(1400, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(host(CanvasTimeline(controller: c, height: 500)));
+      await tester.pumpAndSettle();
+      return (c, placed);
+    }
+
+    int chimeAt(CanvasController c) =>
+        (c.document.elementById("chime") as AudioElement).clip.at;
+
+    test("a placement's link is kept with it", () {
+      const p = ClipPlacement(id: "p", clip: "c", link: "chime");
+      expect(ClipPlacement.fromJson(p.toJson())!.link, "chime");
+      expect(ClipPlacement.fromJson(p.copyWith(link: "").toJson())!.link, "");
+    });
+
+    testWidgets(
+        "linked from the clip's menu with the sound picked; dragged, either "
+        "moves the other", (tester) async {
+      var (c, placed) = await timeline(tester);
+      expect(c.timedLanes.any((l) => l.channelKey == "snd-a"), isTrue);
+      // The chime picked, then the motion clip right-clicked.
+      c.selectOnly("chime");
+      await tester.pump();
+      var paint =
+          tester.getRect(find.byKey(const ValueKey("motionLanesPaint-a")));
+      double xOf(double seconds) =>
+          paint.left + seconds * 24 / c.timelineReach * paint.width;
+      var on = Offset(xOf(c.spanOf(placed)!.start + 0.2), paint.center.dy);
+      await tester.tapAt(on, buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("placementLink")));
+      await tester.pumpAndSettle();
+      expect(c.motionOf("a").placed.single.link, "chime");
+      expect(c.linkedSound("a", placed)?.element.id, "chime");
+      expect(c.placementsLinkedTo("chime"), [("a", placed)]);
+      // The motion clip dragged a second later: the chime with it.
+      var start = c.spanOf(placed)!.start;
+      var g = await tester.startGesture(on);
+      await tester.pump();
+      await g.moveTo(on + Offset((xOf(1) - xOf(0)) / 2, 0));
+      await tester.pump();
+      await g.moveTo(on + Offset(xOf(1) - xOf(0), 0));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      var moved = c.spanOf(placed)!.start - start;
+      expect(moved, greaterThan(0.5));
+      expect(chimeAt(c), closeTo(48 + moved * 24, 1.5));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the sound dragged, its linked motion clip with it",
+        (tester) async {
+      var (c, placed) = await timeline(tester);
+      c.linkPlacement("a", placed, "chime");
+      await tester.pump();
+      var lane = tester.getRect(find.byKey(const ValueKey("lane-snd-a")));
+      double xOf(double frame) =>
+          lane.left + frame / c.timelineReach * lane.width;
+      var start = c.spanOf(placed)!.start;
+      // Low on the clip: its middle is the volume line, a grip of its own.
+      var from = Offset(xOf(72), lane.top + lane.height * 0.85);
+      var g = await tester.startGesture(from);
+      await tester.pump();
+      await g.moveTo(from + Offset((xOf(24) - xOf(0)) / 2, 0));
+      await tester.pump();
+      await g.moveTo(from + Offset(xOf(24) - xOf(0), 0));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      var moved = chimeAt(c) - 48;
+      expect(moved, greaterThan(12));
+      expect(c.spanOf(placed)!.start, closeTo(start + moved / 24, 0.1));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group("a fold arrow on every row", () {
     test("folded as the channel height says, unless turned the other way", () {
       var c = make();

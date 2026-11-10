@@ -492,6 +492,31 @@ extension MotionEditing on CanvasController {
     return true;
   }
 
+  /// linkPlacement links placement [id] of [element] to the sound [sound]
+  /// on the timeline (an element's id), or with "" unlinks it: linked, a
+  /// drag of either moves both (Ken, 2026-11-10).
+  void linkPlacement(String element, String id, String sound) {
+    var p = _placement(element, id);
+    if (p == null || p.link == sound) return;
+    _put(element, p.copyWith(link: sound), transient: false);
+  }
+
+  /// linkedSound is the sound placement [id] of [element] moves with, where
+  /// it is still on the timeline.
+  TimedLane? linkedSound(String element, String id) {
+    var link = _placement(element, id)?.link ?? "";
+    if (link.isEmpty) return null;
+    return timedLanes.where((l) => l.element.id == link).firstOrNull;
+  }
+
+  /// placementsLinkedTo are the placements that move with sound [sound]: by
+  /// their element's id and their own.
+  List<(String, String)> placementsLinkedTo(String sound) => [
+        for (var e in document.elements)
+          for (var p in e.base.motion.placed)
+            if (p.link == sound) (e.id, p.id),
+      ];
+
   /// linkMotionSlot links slot row [row] of [element]'s motion to its own
   /// sound in the same row, or unlinks it: linked, pressing either launches
   /// both (Ken, 2026-11-10).

@@ -608,7 +608,12 @@ class ClipPlacement {
   final ClipPin? startPin;
   final ClipPin? endPin;
 
+  /// link is the sound on the timeline it moves with, by its element's id
+  /// (Ken, 2026-11-10: linked clips), or "" for none.
+  final String link;
+
   const ClipPlacement({
+    this.link = "",
     required this.id,
     required this.clip,
     this.layer = 0,
@@ -629,8 +634,10 @@ class ClipPlacement {
     double? Function()? to,
     ClipPin? Function()? startPin,
     ClipPin? Function()? endPin,
+    String? link,
   }) =>
       ClipPlacement(
+        link: link ?? this.link,
         id: id ?? this.id,
         clip: clip,
         layer: layer ?? this.layer,
@@ -652,6 +659,7 @@ class ClipPlacement {
         if (to != null) "to": to,
         if (startPin != null) "startPin": startPin!.toJson(),
         if (endPin != null) "endPin": endPin!.toJson(),
+        if (link.isNotEmpty) "link": link,
       };
 
   static ClipPlacement? fromJson(Object? json) {
@@ -670,6 +678,7 @@ class ClipPlacement {
       to: json["to"] is num ? (json["to"] as num).toDouble() : null,
       startPin: ClipPin.fromJson(json["startPin"]),
       endPin: ClipPin.fromJson(json["endPin"]),
+      link: json["link"] is String ? json["link"] as String : "",
     );
   }
 }

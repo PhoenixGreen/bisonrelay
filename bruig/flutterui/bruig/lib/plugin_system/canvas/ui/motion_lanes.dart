@@ -156,6 +156,10 @@ class _MotionLanesState extends State<MotionLanes> {
   bool _isFolded(CanvasElement e) => controller.rowFolded(e.id);
 
   _Hit? _press;
+
+  /// _linkFrom is the sound the pressed clip is linked to, and where it was
+  /// then: dragged, it moves with the clip.
+  (TimedLane, int)? _linkFrom;
   double _pressSeconds = 0;
   ClipSpan? _pressSpan;
   bool _dragged = false;
@@ -287,6 +291,12 @@ class _MotionLanesState extends State<MotionLanes> {
   void _down(Offset local, double width) {
     var hit = _hit(local, width);
     _press = hit;
+    _linkFrom = null;
+    if (hit?.placement case var p?) {
+      if (controller.linkedSound(hit!.element.id, p.id) case var l?) {
+        _linkFrom = (l, l.clip.at);
+      }
+    }
     _dragged = false;
     _unpinned = false;
     _pressSeconds = _seconds(local.dx, width);
@@ -336,10 +346,18 @@ class _MotionLanesState extends State<MotionLanes> {
                 (over.layer == soundLayer) == (p.layer == soundLayer)
             ? over.layer
             : null;
-        if (controller.movePlacement(
-            hit.element.id, p.id, _snap(span.start + by),
+        var to = _snap(span.start + by);
+        if (controller.movePlacement(hit.element.id, p.id, to,
             layer: layer, transient: true)) {
           _unpinned = true;
+        }
+        // Linked: its sound by as much (Ken, 2026-11-10).
+        if (_linkFrom case (var l, var at)) {
+          var fps = controller.document.frameRate;
+          var moved = (math.max(0.0, to) - span.start) * fps;
+          controller.setTimedClip(
+              l.element, l.clip.copyWith(at: math.max(0, at + moved.round())),
+              transient: true);
         }
     }
   }
@@ -574,6 +592,56 @@ class _MotionLanesState extends State<MotionLanes> {
     );
   }
 
+  /// _linkMenu is a clip's right-click menu: linked with a sound of its
+  /// element's own that is picked, the two move together (Ken, 2026-11-10);
+  /// or unlinked.
+  Future<void> _linkMenu(
+      BuildContext context, Offset local, Offset at, double width) async {
+    var hit = _hit(local, width);
+    var p = hit?.placement;
+    if (hit == null || p == null) return;
+    var e = hit.element;
+    var own = elementSoundKey(e.id);
+    var picked = controller.timedLanes
+        .where((l) =>
+            l.channelKey == own &&
+            controller.clipSelection.contains(l.element.id))
+        .firstOrNull;
+    var items = <PopupMenuEntry<String>>[
+      if (picked != null && picked.element.id != p.link)
+        const PopupMenuItem(
+            key: ValueKey("placementLink"),
+            value: "link",
+            height: 32,
+            child: Text("Link with the picked sound",
+                style: TextStyle(fontSize: 12.5))),
+      if (p.link.isNotEmpty)
+        const PopupMenuItem(
+            key: ValueKey("placementUnlink"),
+            value: "unlink",
+            height: 32,
+            child: Text("Unlink from its sound",
+                style: TextStyle(fontSize: 12.5))),
+    ];
+    if (items.isEmpty) {
+      items.add(const PopupMenuItem(
+          enabled: false,
+          height: 32,
+          child: Text("Pick one of its sounds too, to link the two",
+              style: TextStyle(fontSize: 12.5))));
+    }
+    var choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(at.dx, at.dy, at.dx, at.dy),
+      items: items,
+    );
+    if (choice == "link") {
+      controller.linkPlacement(e.id, p.id, picked!.element.id);
+    } else if (choice == "unlink") {
+      controller.linkPlacement(e.id, p.id, "");
+    }
+  }
+
   /// _colourMenu is a row's right-click menu: its colours.
   Future<void> _colourMenu(BuildContext context, String id, Offset at) async {
     var choice = await showMenu<String>(
@@ -622,6 +690,8 @@ class _MotionLanesState extends State<MotionLanes> {
           onDoubleTapDown: (d) => _make(d.localPosition, width),
           onDoubleTap: () {},
           onHorizontalDragDown: (d) => _down(d.localPosition, width),
+          onSecondaryTapUp: (d) =>
+              _linkMenu(context, d.localPosition, d.globalPosition, width),
           onHorizontalDragUpdate: (d) => _drag(d.localPosition, width),
           onHorizontalDragEnd: (_) => _up(),
           onHorizontalDragCancel: _up,
@@ -953,6 +1023,10 @@ class _LanesPainter extends CustomPainter {
     var left = rect.left + (p.startPin != null ? 12 : 6);
     tp.paint(canvas, Offset(left, rect.center.dy - tp.height / 2));
     canvas.restore();
+    // Linked to a sound: its mark, top right.
+    if (p.link.isNotEmpty && rect.width >= 30) {
+      paintLinkMark(canvas, Offset(rect.right - 14, rect.top + 2), slotInk);
+    }
     // Picked: outlined, over its shape.
     if (p.id == picked) {
       canvas.drawPath(
