@@ -24,10 +24,14 @@ extension CanvasSession on CanvasController {
     if (_motionPreview case (var e, var upto)) {
       return MotionPreview(playing, e, upto, pointerAt: _stagePointer);
     }
-    // Nothing off its timeline, but something facing the pointer: the
-    // pointer alone, so the rest plays from the timeline as it would.
-    if (playing == null && _stagePointer != null && _facesPointer) {
-      return PointerLive(_stagePointer);
+    // Nothing off its timeline, but something facing the pointer -- or a
+    // game going, whose time what moves for ever goes by: the pointer and
+    // the game's time alone, so the rest plays from the timeline as it
+    // would.
+    var running = motionPlayer.running;
+    var pointing = _stagePointer != null && _facesPointer;
+    if (playing == null && (pointing || running != null)) {
+      return PointerLive(pointing ? _stagePointer : null, running: running);
     }
     return playing;
   }
@@ -1032,11 +1036,11 @@ extension CanvasSession on CanvasController {
     return out;
   }
 
-  /// clipFromSound fills slot [row] of [channel] with [sound], as long in
-  /// whole bars as it nearly is.
+  /// clipFromSound fills slot [row] of [channel] with [sound]: as long in
+  /// whole bars as it nearly is, a loop made to the tempo -- and otherwise
+  /// as long as it is (see barsFor), so a line spoken or a sound effect,
+  /// played once, is not cut short.
   void clipFromSound(String channel, int row, MediaSource sound) {
-    var bar = math.max(0.05, _barSeconds);
-    var span = sound.span;
     var index = timelineChannels.indexWhere((c) => c.key == channel);
     setSessionClip(
         channel,
@@ -1046,7 +1050,7 @@ extension CanvasSession on CanvasController {
           name: sound.name,
           color: math.max(0, index) % sectionColors.length,
           sound: sound,
-          bars: span <= 0 ? 4 : math.max(1, (span / bar).round()).toDouble(),
+          bars: barsFor(sound.span, math.max(0.05, _barSeconds)),
         ));
   }
 

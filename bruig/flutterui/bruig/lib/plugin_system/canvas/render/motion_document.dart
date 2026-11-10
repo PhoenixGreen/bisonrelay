@@ -177,6 +177,13 @@ MotionPose motionPoseIn(CanvasDocument doc, CanvasElement e, int frame,
 abstract class LiveMotion {
   double get clock;
 
+  /// running is how long the game has been going, in seconds -- or null,
+  /// not in a game. What moves for ever (a Wiggle, an Oscillate, a Follow
+  /// path's laps, an LFO) goes by it in a game, rather than by the
+  /// timeline's frame: a level plays on through a stop on its timeline and
+  /// past its end, and its wind platforms with it (see _seconds).
+  double? get running;
+
   /// pointer is where the pointer is over the page, in its coordinates, for
   /// a Look at that faces it -- or null, off the page, or in an export.
   Offset? get pointer;
@@ -199,6 +206,9 @@ class MotionPreview implements LiveMotion {
 
   @override
   double get clock => playing?.clock ?? 0;
+
+  @override
+  double? get running => playing?.running;
 
   @override
   Offset? get pointer => playing?.pointer ?? pointerAt;
@@ -232,6 +242,14 @@ class _CopyLive implements LiveMotion {
 
   @override
   double get clock => live.clock;
+
+  /// A copy's own time, later by its start and at its speed, as the
+  /// Instances device times it on the timeline.
+  @override
+  double? get running => switch (live.running) {
+        var r? => math.max(0.0, r - start) * speed,
+        null => null,
+      };
 
   @override
   Offset? get pointer => live.pointer;
@@ -271,6 +289,9 @@ class _CopyPlays implements LiveMotion {
   double get clock => live.clock;
 
   @override
+  double? get running => live.running;
+
+  @override
   Offset? get pointer => live.pointer;
 
   @override
@@ -297,6 +318,12 @@ class _ShiftedLive implements LiveMotion {
 
   @override
   double get clock => live.clock + by;
+
+  @override
+  double? get running => switch (live.running) {
+        var r? => r + by,
+        null => null,
+      };
 
   @override
   Offset? get pointer => live.pointer;
@@ -379,6 +406,12 @@ bool stampsCopies(CanvasElement e, LiveMotion? live) {
   }
   return true;
 }
+
+/// _seconds is the time on [frame] for what moves for ever: in a game, how
+/// long the game has been going (see LiveMotion.running); otherwise the
+/// timeline's own.
+double _seconds(int frame, CanvasDocument doc, LiveMotion? live) =>
+    live?.running ?? frame / math.max(1, doc.frameRate);
 
 /// movesAtAll is whether anything moves [e] beyond its keyframes: its
 /// motion (see ElementMotion.moves), or a loop that moves it.
@@ -479,7 +512,7 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
   // of an element reused, where that copy has its own (see instances.dart).
   var d = withOwnValues(
       motionModulated(
-          devices[i], e.base.motion.devices, frame / math.max(1, doc.frameRate),
+          devices[i], e.base.motion.devices, _seconds(frame, doc, live),
           doc: doc),
       e.base.motion.instances,
       instance);
@@ -563,7 +596,7 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
           e, (tt * rate).round(), doc, shifted, devices, i - 1, instance);
     case MotionDeviceKind.wiggle:
       var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
-      var t = frame / math.max(1, doc.frameRate);
+      var t = _seconds(frame, doc, live);
       var f = d.value("speed"), a = d.value("amount");
       // Each instance its own wiggle, when asked: rule 3.
       var seed = d.value("seed").round() == 1 && (instance ?? -1) >= 0
@@ -580,7 +613,7 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
           rotate: p.rotate + nz(at + 80) * d.value("turn"));
     case MotionDeviceKind.oscillate:
       var p = _pulled(e, frame, doc, live, devices, i - 1, instance);
-      var t = frame / math.max(1, doc.frameRate);
+      var t = _seconds(frame, doc, live);
       var s = math.sin(2 * math.pi * (d.value("rate") * t + d.value("phase")));
       var a = d.value("amount");
       return switch (d.value("moves").round()) {
@@ -644,7 +677,7 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
       var host = doc.elementById(d.target);
       var points = host == null ? null : pathPointsOf(host, frame);
       if (points == null || points.length < 2) return p;
-      var t = frame / math.max(1, doc.frameRate);
+      var t = _seconds(frame, doc, live);
       var u = d.value("start") + t / d.value("lap");
       u = d.value("loop").round() == 1 ? u.clamp(0.0, 1.0) : u % 1;
       var (point, angle) = _alongPath(points, u);
@@ -752,11 +785,14 @@ const lookAtCamera = "@camera";
 const lookAtPointer = "@pointer";
 
 /// PointerLive is nothing playing from its slots, with the pointer over
-/// the page: what the stage hands the renderer for a Look at the pointer.
+/// the page: what the stage hands the renderer for a Look at the pointer --
+/// or, [running], a game going with nothing played from the slots.
 class PointerLive implements LiveMotion {
   @override
   final Offset? pointer;
-  const PointerLive(this.pointer);
+  @override
+  final double? running;
+  const PointerLive(this.pointer, {this.running});
 
   @override
   double get clock => 0;

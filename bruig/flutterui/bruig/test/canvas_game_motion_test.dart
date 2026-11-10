@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
@@ -344,6 +345,42 @@ void main() {
       step(1.5);
       var left = c.gameView!.elementById("coin")!.base.motion.instances!;
       expect([for (var i in left.items) i.id], ["c1", "c2"]);
+    });
+
+    // A wind platform on an Oscillate: in a game it goes by the game's
+    // time, not the timeline's frame -- held at a stop, or past its end,
+    // the level plays on, and the platform with it (Ember Vale's froze).
+    test("what moves for ever goes on while the timeline holds", () {
+      var wind =
+          box("wind", 400, 700, 128, 32, play: const PlaySpec(as: PlayAs.solid))
+              .withBase(
+                  motion: ElementMotion.none.copyWith(devices: const [
+        MotionDevice(MotionDeviceKind.oscillate,
+            values: {"amount": 100, "rate": 0.5, "moves": 1}),
+      ]));
+      game(const CanvasDocument().copyWith(game: true, elements: [
+        box("hero", 100, 600, 40, 80, play: hero),
+        wind,
+      ]));
+      c.gaming = true;
+      double at() => c.document
+          .elementById("wind")!
+          .movedBoundsAt(c.frame, c.document, live: c.liveMotion)
+          .left;
+      // The timeline does not move here (nothing ticks it): held.
+      step(0.5);
+      var a = at();
+      step(0.5);
+      var b = at();
+      expect(c.frame, 0, reason: "the timeline held");
+      expect(c.liveMotion?.running, closeTo(1, 0.05));
+      expect((a - b).abs(), greaterThan(20), reason: "the platform moved on");
+      expect(a, closeTo(400 + 100, 1), reason: "a quarter of its swing");
+      expect(b, closeTo(400, 1), reason: "back through the middle");
+      c.gaming = false;
+      expect(c.liveMotion?.running, isNull);
+      expect(at(), closeTo(400, 1e-6), reason: "off the game: frame 0's");
+      c.gaming = true; // for tearDown
     });
   });
 }

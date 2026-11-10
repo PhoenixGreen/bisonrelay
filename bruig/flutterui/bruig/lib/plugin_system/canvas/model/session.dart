@@ -136,6 +136,19 @@ enum ClipEnvelope {
   const ClipEnvelope(this.label, this.rest);
 }
 
+/// barsFor is how many bars a slot's clip of a sound [span] seconds long
+/// is, at [bar] seconds a bar: whole bars where it is within a few percent
+/// of them -- a loop made to the tempo -- and otherwise its own length, part
+/// bar and all, so that what plays once (a line spoken, a sound effect)
+/// plays to its end rather than being cut at the bar before. Four where its
+/// length is not known.
+double barsFor(double span, double bar) {
+  if (span <= 0) return 4;
+  var bars = span / bar;
+  var whole = math.max(1, bars.round());
+  return (bars - whole).abs() <= whole * 0.03 ? whole.toDouble() : bars;
+}
+
 /// curveAt is [points]' value at [beat]: straight between points, held past
 /// either end, or [rest] with none.
 double curveAt(List<ControlPoint> points, double beat, double rest) {

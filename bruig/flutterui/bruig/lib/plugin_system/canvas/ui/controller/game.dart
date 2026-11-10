@@ -111,8 +111,10 @@ extension CanvasGame on CanvasController {
       // The game's slots stop with it, at once rather than on the next bar,
       // while it is still a game on its own clock.
       _haltClips();
-      // Its elements' slots too: back on their timelines.
+      // Its elements' slots too: back on their timelines, and what moves
+      // for ever on the timeline's time again.
       motionPlayer.clear();
+      motionPlayer.running = null;
       for (var id in _gameSounded) {
         audio.stop(id);
       }
@@ -177,6 +179,10 @@ extension CanvasGame on CanvasController {
     // The elements' slots on the game's clock, before the bodies move
     // against where they have got to.
     if (motionPlayer.offTimeline) _motionStep();
+    // The game's own time, for what moves for ever: on through a stop on
+    // the timeline and past its end (see LiveMotion.running). As far on as
+    // this step goes, so what is drawn is where the bodies met it.
+    motionPlayer.running = run.clock + dt;
     run.step(_document, _frame, dt, live: liveMotion);
     // What the game asked for: a sound, another scene, the end.
     var asked = [...run.events];

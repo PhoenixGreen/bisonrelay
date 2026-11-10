@@ -270,6 +270,17 @@ void main() {
       expect(c.session.at("a", 0), isNull, reason: "one undoable change");
     });
 
+    // A sound not made to the tempo -- a line spoken, an effect -- is as
+    // long as it is: rounded to whole bars, its end was cut (Ember Vale:
+    // Kai's 5.46 s line, two bars of 2.4 s, lost its last 0.66 s).
+    test("a clip of a sound not in whole bars is its own length", () {
+      expect(barsFor(8, 2), 4, reason: "a loop: whole bars");
+      expect(barsFor(8.1, 2), 4, reason: "near enough whole bars");
+      expect(barsFor(5.46, 2.4), closeTo(2.275, 1e-9), reason: "all of it");
+      expect(barsFor(0.3, 2.4), closeTo(0.125, 1e-9), reason: "a short one");
+      expect(barsFor(0, 2), 4, reason: "unknown");
+    });
+
     // Ken: a slot dragged onto the timeline is placed there.
     test("a slot put on its lane plays there once through, its length", () {
       var c = make([sound("a")]);

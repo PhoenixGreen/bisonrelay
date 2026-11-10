@@ -119,8 +119,10 @@ class _FrozenLive implements LiveMotion {
   final double clock;
   @override
   final Offset? pointer;
+  @override
+  final double? running;
   final Map<String, MotionLive> _of;
-  _FrozenLive(this.clock, this.pointer, this._of);
+  _FrozenLive(this.clock, this.pointer, this._of, this.running);
 
   @override
   MotionLive? of(String element) => _of[element];
@@ -142,13 +144,21 @@ class MotionPlayer implements LiveMotion {
   @override
   Offset? pointer;
 
+  /// running is the game's time, set by the game as it steps: see
+  /// LiveMotion.running. Null off a game.
+  @override
+  double? running;
+
   @override
   MotionLive? of(String element) => _of[element]?.live;
 
   /// frozen is what is playing now, held as it is: for a scene being left,
   /// drawn as it was while the next one's clips start (see gameChange).
-  LiveMotion frozen() => _FrozenLive(_clock, pointer,
-      {for (var MapEntry(:key, :value) in _of.entries) key: value.live});
+  LiveMotion frozen() => _FrozenLive(
+      _clock,
+      pointer,
+      {for (var MapEntry(:key, :value) in _of.entries) key: value.live},
+      running);
 
   /// offTimeline is whether any element has left its timeline for its
   /// slots: what Back to the timeline lights for.
