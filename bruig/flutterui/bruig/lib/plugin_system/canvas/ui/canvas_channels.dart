@@ -160,8 +160,22 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   /// adding up the drag's steps: the first few pixels never arrive as one.
   double _gripFrom = 0, _gripHeight = channelsLaneHeight;
 
-  double _heightOf(String channel) =>
-      controller.laneHeights[channel] ?? laneSizeHeights[controller.laneSize];
+  /// _heightOf is channel [channel]'s row: as tall as it was dragged, or as
+  /// the channel height says -- folded by its arrow, or its element's, as
+  /// at S; opened by it at S, as at M.
+  double _heightOf(String channel) {
+    var folded = controller.rowFolded(_foldKeyOf(channel));
+    var small = controller.laneSize == 0;
+    if (folded && !small) return laneSizeHeights[0];
+    if (!folded && small) return laneSizeHeights[1];
+    return controller.laneHeights[channel] ??
+        laneSizeHeights[controller.laneSize];
+  }
+
+  /// _foldKeyOf is whose fold arrow folds channel [channel]: its element's,
+  /// for the element's own sound (the same row), else its own.
+  String _foldKeyOf(String channel) =>
+      soundOwnerOf(controller.document, channel)?.id ?? channel;
 
   /// _span is where [lane]'s clip is on the scene's frames: from, to, and the
   /// frame each file begins on.
@@ -674,7 +688,10 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                           alignment: Alignment.topLeft,
                           child: SizedBox(height: sceneBoxHeight, child: lane)),
                     )),
-                if (show != TimelineShow.animation && controller.laneSize > 0)
+                // Folded (at S, unless its arrow opened it), the strip
+                // alone.
+                if (show != TimelineShow.animation &&
+                    !controller.rowFolded("scenes"))
                   for (var channel in transitions)
                     ..._channelRows(channel, width, theme, channels,
                         movable: false, owned: true, accent: sceneColour),
@@ -690,9 +707,12 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                       only: e.id,
                       alt: k.isOdd),
                 // At the channel height S, an element's row is its motion
-                // alone (Ken, 2026-11-08); its sound from M up.
+                // alone (Ken, 2026-11-08); its sound from M up, or opened
+                // by its arrow.
                 if (show != TimelineShow.animation &&
-                    (controller.laneSize > 0 || show == TimelineShow.sound))
+                    (controller.laneSize > 0 ||
+                        !controller.rowFolded(e.id) ||
+                        show == TimelineShow.sound))
                   for (var channel in owned[e.id] ?? const <TimelineChannel>[])
                     ..._channelRows(channel, width, theme, channels,
                         movable: false, owned: true, alt: k.isOdd),
@@ -805,6 +825,10 @@ class _CanvasChannelsState extends State<CanvasChannels> {
 
     return RowHeader(
       key: const ValueKey("scenesHeader"),
+      fold: RowFold(
+          key: const ValueKey("rowFold-scenes"),
+          folded: controller.rowFolded("scenes"),
+          onTap: () => controller.toggleRowFold("scenes")),
       colour: sceneColour,
       width: width,
       height: sceneStripHeight,
@@ -863,6 +887,10 @@ class _CanvasChannelsState extends State<CanvasChannels> {
             header: _ChannelHeader(
               key: ValueKey("channelStrip-${channel.key}"),
               controller: controller,
+              fold: RowFold(
+                  key: ValueKey("rowFold-${channel.key}"),
+                  folded: controller.rowFolded(channel.key),
+                  onTap: () => controller.toggleRowFold(channel.key)),
               owned: owned && controller.timelineShow != TimelineShow.sound,
               onBack: switch (controller.fromSlotsOf(channel.key)) {
                 var item?
@@ -1943,7 +1971,12 @@ class _ChannelHeader extends StatelessWidget {
   /// onBack sends it back to the timeline, while it plays from its slots.
   final VoidCallback? onBack;
 
+  /// fold is its fold arrow: none on an element's own sound, which its
+  /// element's folds.
+  final Widget? fold;
+
   const _ChannelHeader({
+    this.fold,
     this.controller,
     this.owned = false,
     this.onBack,
@@ -2055,6 +2088,7 @@ class _ChannelHeader extends StatelessWidget {
         width: width,
         height: height,
         selected: selected,
+        fold: owned ? null : fold,
         name: ChannelNameEditor(
             name: channel.name, theme: theme, onRename: onRename),
         kind: kind,

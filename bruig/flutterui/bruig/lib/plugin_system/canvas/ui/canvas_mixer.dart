@@ -16,6 +16,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
     show ElementMotion, MotionClip, MotionKind, crossFade;
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart'
+    show MotionDeviceKind;
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
     show MotionPreset, presetsFor;
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
@@ -1043,7 +1045,8 @@ class _CanvasMixerState extends State<CanvasMixer>
                                       padding:
                                           const EdgeInsets.only(right: 8),
                                       child: _channelStrip(
-                                          theme, lane, i, bands),
+                                          theme, lane, i, bands,
+                                          all: true),
                                     ),
                             ],
                           ],
@@ -1112,9 +1115,25 @@ class _CanvasMixerState extends State<CanvasMixer>
                                         controller: controller,
                                         join: i,
                                         theme: theme),
-                                    const SizedBox(),
+                                    // A cue launches every column's row
+                                    // but this one's.
+                                    controller.narrowStrips
+                                            .contains(sceneBusKey)
+                                        ? const SizedBox()
+                                        : _MiniNote("not in cues", theme,
+                                            key: const ValueKey(
+                                                "sceneNotInCues")),
                                     motion: bands.motionClip,
                                     whole: true),
+                            motionLine: () => _MiniNote(
+                                controller.narrowStrips.contains(sceneBusKey)
+                                    ? ""
+                                    : _transitionsSaid(
+                                        controller.document.allScenes.length -
+                                            1),
+                                theme,
+                                diamond: true,
+                                key: const ValueKey("sceneMotionLine")),
                             motion: () => _SceneMotion(
                                 theme: theme,
                                 narrow: controller.narrowStrips
@@ -1189,6 +1208,7 @@ class _CanvasMixerState extends State<CanvasMixer>
           const SizedBox(width: 6),
           if (bands.clips != null) ...[
             _CueColumn(
+              scroll: _clipScrolls.of(_master),
               controller: controller,
               theme: theme,
               bands: bands,
@@ -1254,7 +1274,7 @@ class _CanvasMixerState extends State<CanvasMixer>
 
   Widget _channelStrip(
       MixerLook theme, TimelineChannel lane, int index, _Bands bands,
-      {CanvasElement? element}) {
+      {CanvasElement? element, bool all = false}) {
     var e = lane.first.element;
     var narrowNow = controller.narrowStrips.contains(lane.key);
     // As it plays now: a setting a lane moves, where the lane has it, and a
@@ -1262,6 +1282,10 @@ class _CanvasMixerState extends State<CanvasMixer>
     var shown = controller.mixNow(lane);
     return _ChannelStrip(
       key: ValueKey("strip-${lane.key}"),
+      motionDevices: element == null
+          ? const []
+          : _motionDeviceSlots(controller, theme, element),
+      badges: stripBadges(theme, lane.key, element: element, all: all),
       name: lane.name,
       number: index + 1,
       channelKey: lane.key,
@@ -2793,7 +2817,7 @@ class _MiniCurve extends CustomPainter {
 
 Widget _slot(MixerLook theme, String label, bool on, Widget trailing,
         VoidCallback onTap,
-        {Key? key, VoidCallback? onRemove}) =>
+        {Key? key, VoidCallback? onRemove, Color? mark}) =>
     Material(
       color: theme.colors.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(4),
@@ -2807,6 +2831,15 @@ Widget _slot(MixerLook theme, String label, bool on, Widget trailing,
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           child: LayoutBuilder(
             builder: (context, box) => Row(children: [
+              // Which side the device works on: teal for the motion's.
+              if (mark != null) ...[
+                Container(
+                    width: 4,
+                    height: 9,
+                    decoration: BoxDecoration(
+                        color: mark, borderRadius: BorderRadius.circular(1))),
+                const SizedBox(width: 4),
+              ],
               // A long label ("Add a device", a device's own name) fades at the
               // slot's edge rather than running out of it.
               ConstrainedBox(
@@ -4363,3 +4396,35 @@ class _AddReturn extends StatelessWidget {
         ),
       );
 }
+
+/// _motionDeviceSlots are [e]'s motion devices as slots in its strip's
+/// devices band, before its sound's (the approved design): its Instances
+/// first, where it is reused, then its chain in order, each marked teal.
+/// Clicked, the Chain opens on its motion.
+List<Widget> _motionDeviceSlots(
+    CanvasController controller, MixerLook theme, CanvasElement e) {
+  var m = e.base.motion;
+  void open() {
+    controller.selectOnly(e.id);
+    controller.showChain(motion: true);
+  }
+
+  var colors = theme.colors;
+  Widget dot(bool on) => Icon(Icons.circle,
+      size: 7, color: on ? theme.studio.on : colors.outline);
+  return [
+    if (m.instances != null)
+      _slot(theme, MotionDeviceKind.instances.label, true,
+          Text("×${m.instances!.count}",
+              style: TextStyle(fontSize: 10, color: theme.studio.muted)),
+          open,
+          mark: motionColour, key: ValueKey("motionDeviceSlot-${e.id}-instances")),
+    for (var (i, d) in m.devices.indexed)
+      _slot(theme, d.kind.label, d.on && !m.off, dot(d.on && !m.off), open,
+          mark: motionColour, key: ValueKey("motionDeviceSlot-${e.id}-$i")),
+  ];
+}
+
+/// _transitionsSaid is how many joins the scenes have, said.
+String _transitionsSaid(int n) =>
+    n <= 0 ? "no transitions" : "$n transition${n == 1 ? "" : "s"}";

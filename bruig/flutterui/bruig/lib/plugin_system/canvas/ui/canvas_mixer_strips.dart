@@ -92,8 +92,13 @@ class _Bands {
   /// one column of slots, per element; the sound halves on one line).
   final double motion;
   final double motionClip;
+
+  /// devicesMini is whether the devices band is minimised: a line saying
+  /// how many there are (the approved design).
+  final bool devicesMini;
   const _Bands(this.clips, this.devices, this.mixer,
       {this.miniMixer = false,
+      this.devicesMini = false,
       this.sends,
       this.bare = false,
       this.motion = 0,
@@ -217,6 +222,7 @@ class _Bands {
       }
       return _Bands(c, d, false,
           miniMixer: mini(MixerSection.mixer),
+          devicesMini: mini(MixerSection.devices),
           sends: sends,
           bare: bare,
           motion: mh,
@@ -249,7 +255,11 @@ class _Bands {
       c = rest;
     }
     return _Bands(c, d, true,
-        sends: sends, bare: bare, motion: mh, motionClip: mc);
+        sends: sends,
+        bare: bare,
+        motion: mh,
+        motionClip: mc,
+        devicesMini: mini(MixerSection.devices));
   }
 }
 
@@ -302,7 +312,18 @@ class _StripFrame extends StatelessWidget {
   final VoidCallback? onNarrow;
   final Key? narrowKey;
 
+  /// badges go after its name, where it is wide: an element's copies (×N)
+  /// and All for one on the master canvas. See stripBadges.
+  final List<Widget> badges;
+
+  /// deviceCount is how many devices it has, motion and sound: the devices
+  /// band minimised says so, rather than showing the first of them. Null
+  /// where it has nothing to count (the band shows itself).
+  final int? deviceCount;
+
   const _StripFrame({
+    this.badges = const [],
+    this.deviceCount,
     this.width = _wideW,
     this.master = false,
     this.narrow = false,
@@ -351,6 +372,8 @@ class _StripFrame extends StatelessWidget {
             height: _headH,
             child: Row(children: [
               Expanded(child: ClipRect(child: head)),
+              if (!narrow)
+                for (var b in badges) ...[const SizedBox(width: 3), b],
               if (onNarrow case var toggle?)
                 Tooltip(
                   message: narrow ? "Make it wide" : "Make it narrow",
@@ -371,7 +394,12 @@ class _StripFrame extends StatelessWidget {
         ],
         if (bands.devices case var h?) ...[
           const SizedBox(height: _bandGap),
-          SizedBox(height: h, child: ClipRect(child: devices())),
+          SizedBox(
+              height: h,
+              child: ClipRect(
+                  child: bands.devicesMini && deviceCount != null
+                      ? _DevicesCount(deviceCount!, theme)
+                      : devices())),
         ],
         if (bands.sends case var h?) ...[
           const SizedBox(height: _bandGap),
@@ -791,7 +819,16 @@ class _ChannelStrip extends StatelessWidget {
   /// goes, the master or a return it shares.
   final Widget? leadSlot;
 
+  /// badges go after its name: see _StripFrame.badges.
+  final List<Widget> badges;
+
+  /// motionDevices are its element's motion devices, as slots: first in its
+  /// devices band, before the sound's.
+  final List<Widget> motionDevices;
+
   const _ChannelStrip({
+    this.badges = const [],
+    this.motionDevices = const [],
     this.motion,
     this.motionLine,
     this.leadSlot,
@@ -842,6 +879,13 @@ class _ChannelStrip extends StatelessWidget {
       narrow: narrow,
       onNarrow: onNarrow,
       narrowKey: ValueKey("narrow-$channelKey"),
+      badges: badges,
+      deviceCount: motionDevices.length +
+          (part?.effects.length ?? 0) +
+          (mix.speech != null ? 1 : 0) +
+          (mix.vocaliser != null ? 1 : 0) +
+          _chainCount(mix.chain, mix.devices) +
+          (mix.duck.on ? 1 : 0),
       selected: selected,
       theme: theme,
       bands: bands,
@@ -860,6 +904,7 @@ class _ChannelStrip extends StatelessWidget {
       clips: clips,
       devices: () => _band([
         ..._slots([
+          ...motionDevices,
           if (leadSlot case var lead?) lead,
           // A MIDI channel's In and its MIDI effects, first: what is done
           // to its notes before they are played.
@@ -1128,6 +1173,7 @@ class _ReturnStrip extends StatelessWidget {
       narrow: narrow,
       onNarrow: onNarrow,
       narrowKey: ValueKey("narrow-${ret.id}"),
+      deviceCount: _chainCount(ret.chainMix.chain, ret.devices),
       selected: selected,
       theme: theme,
       bands: bands,
@@ -1260,7 +1306,11 @@ class _SceneStrip extends StatelessWidget {
   final Widget Function()? joins;
   final Widget Function()? motion;
 
+  /// motionLine is its motion over a minimised mixer: how many transitions.
+  final Widget Function()? motionLine;
+
   const _SceneStrip({
+    this.motionLine,
     this.joins,
     this.motion,
     required this.name,
@@ -1288,9 +1338,11 @@ class _SceneStrip extends StatelessWidget {
     var body = _StripFrame(
       noMotion: "",
       motion: motion,
+      motionLine: motionLine,
       narrow: narrow,
       onNarrow: onNarrow,
       narrowKey: const ValueKey("narrow-scene"),
+      deviceCount: _chainCount(chain, devices),
       selected: selected,
       theme: theme,
       bands: bands,
@@ -1450,6 +1502,9 @@ class _MasterStrip extends StatelessWidget {
         narrow: narrow,
         onNarrow: onNarrow,
         narrowKey: const ValueKey("narrow-master"),
+        // Its chain, the limiter where it is on, and the loudness.
+        deviceCount:
+            _chainCount(mix.chain, mix.devices) + (mix.limiter ? 1 : 0) + 1,
         width: 120,
         master: true,
         selected: selected,
@@ -1699,8 +1754,13 @@ class _CueColumn extends StatelessWidget {
   final _Bands bands;
   final Widget slots;
   final double width;
+
+  /// scroll is its slots', for the thin bar beside them (the approved
+  /// design): the one column that shows how far down the cues go.
+  final ScrollController? scroll;
   const _CueColumn(
-      {required this.controller,
+      {this.scroll,
+      required this.controller,
       required this.theme,
       required this.bands,
       required this.slots,
@@ -1727,21 +1787,42 @@ class _CueColumn extends StatelessWidget {
                   if (!bands.bare)
                     SizedBox(
                       height: _headH,
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text("Cues",
-                            maxLines: 1,
-                            overflow: TextOverflow.clip,
-                            softWrap: false,
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: colors.onSurface)),
-                      ),
+                      child: Row(children: [
+                        Expanded(
+                          child: Text("Cues",
+                              maxLines: 1,
+                              overflow: TextOverflow.clip,
+                              softWrap: false,
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: colors.onSurface)),
+                        ),
+                        if (width >= 72)
+                          const HelpNote(
+                              id: "cues",
+                              size: 16,
+                              title: "Slots",
+                              paragraphs: slotsHelp),
+                      ]),
                     ),
                   if (bands.clips case var h?) ...[
                     const SizedBox(height: _bandGap),
-                    SizedBox(height: h, child: slots),
+                    SizedBox(
+                        height: h,
+                        child: scroll == null
+                            ? slots
+                            : RawScrollbar(
+                                key: const ValueKey("cueScrollbar"),
+                                controller: scroll,
+                                thumbVisibility: true,
+                                thickness: 3,
+                                radius: const Radius.circular(2),
+                                thumbColor: theme.studio.edge,
+                                padding: EdgeInsets.zero,
+                                child: Padding(
+                                    padding: const EdgeInsets.only(right: 5),
+                                    child: slots))),
                   ],
                 ]),
           ),
@@ -3138,3 +3219,98 @@ class _PanTrackPainter extends CustomPainter {
   bool shouldRepaint(_PanTrackPainter old) =>
       old.balance != balance || old.studio != studio;
 }
+
+/// stripBadges are a strip's badges, as the timeline's row has them (the
+/// approved design): ×N where [element] is reused N times, in amber, and All
+/// for a sound on the master canvas, there in every scene.
+List<Widget> stripBadges(MixerLook theme, String key,
+    {CanvasElement? element, bool all = false}) {
+  var studio = theme.studio;
+  var copies = element?.base.motion.instances?.count ?? 1;
+  Widget chip(Key k, String text, Color ink,
+          {bool mono = false, bool raised = false}) =>
+      Container(
+        key: k,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+            color: raised ? studio.raised : studio.inset,
+            border: Border.all(color: studio.edge),
+            borderRadius: BorderRadius.circular(7)),
+        child: Text(text,
+            maxLines: 1,
+            style: TextStyle(
+                fontSize: mono ? 9.5 : 8.5,
+                height: 1.35,
+                letterSpacing: mono ? 0 : 0.5,
+                fontFeatures:
+                    mono ? const [FontFeature.tabularFigures()] : null,
+                color: ink)),
+      );
+  return [
+    if (copies > 1)
+      chip(ValueKey("stripCopies-$key"), "×$copies", studio.on, mono: true),
+    if (all) chip(ValueKey("stripAll-$key"), "All", studio.text, raised: true),
+  ];
+}
+
+/// _DevicesCount is a minimised devices band: how many devices there are.
+class _DevicesCount extends StatelessWidget {
+  final int count;
+  final MixerLook theme;
+  const _DevicesCount(this.count, this.theme);
+
+  @override
+  Widget build(BuildContext context) => Container(
+        key: const ValueKey("devicesCount"),
+        height: _slotH,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+            color: theme.studio.raised, borderRadius: BorderRadius.circular(4)),
+        child: Text("$count device${count == 1 ? "" : "s"}",
+            maxLines: 1,
+            overflow: TextOverflow.fade,
+            softWrap: false,
+            style: TextStyle(fontSize: 10, color: theme.studio.muted)),
+      );
+}
+
+/// _MiniNote is a line said small in a strip's minimised band: the Scenes
+/// strip's "◆ N transitions" over its mixer, "no sound" where an element has
+/// none, "not in cues" under the Scenes strip's slots.
+class _MiniNote extends StatelessWidget {
+  final String text;
+  final MixerLook theme;
+  final bool diamond;
+  final bool faint;
+  const _MiniNote(this.text, this.theme,
+      {this.diamond = false, this.faint = false, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var studio = theme.studio;
+    return Row(
+        mainAxisAlignment:
+            diamond ? MainAxisAlignment.start : MainAxisAlignment.center,
+        children: [
+          if (diamond) ...[
+            Icon(Icons.diamond, size: 9, color: motionColour),
+            const SizedBox(width: 4),
+          ],
+          Flexible(
+            child: Text(text,
+                maxLines: 1,
+                overflow: TextOverflow.fade,
+                softWrap: false,
+                style: TextStyle(
+                    fontSize: 9.5, color: faint ? studio.edge : studio.muted)),
+          ),
+        ]);
+  }
+}
+
+/// _chainCount is how many devices a chain has: its EQ, its compressor and
+/// each of its devices, as _chainSlots shows them.
+int _chainCount(List<String> chain, List<MixDevice> devices) => chain
+    .where(
+        (s) => s == chainEq || s == chainComp || deviceIndexOf(devices, s) >= 0)
+    .length;

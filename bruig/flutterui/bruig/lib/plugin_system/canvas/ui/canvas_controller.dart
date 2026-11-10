@@ -3021,6 +3021,9 @@ class CanvasController extends ChangeNotifier {
 
   final Set<String> _narrowStrips = {};
 
+  final Set<String> _flippedRows = {};
+  Object? _flippedRowsAt;
+
   bool _returnsShown = true;
 
   bool _followPlayhead = true;

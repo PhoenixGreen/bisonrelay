@@ -1625,7 +1625,9 @@ void main() {
     testWidgets("every column's fader starts on one line and is as tall",
         (tester) async {
       var c = make();
-      await show(tester, c);
+      // Tall enough for the devices to show whole: minimised, they are a
+      // count (the approved design).
+      await show(tester, c, height: 600.0);
       var strips = [
         "strip-v",
         "strip-keys",
@@ -1762,7 +1764,9 @@ void main() {
     testWidgets("a MIDI channel is armed from its strip, and plays the keys",
         (tester) async {
       var c = make();
-      await show(tester, c);
+      // Tall enough for the devices to show whole: minimised, they are a
+      // count (the approved design).
+      await show(tester, c, height: 600.0);
       expect(
           find.descendant(
               of: find.byKey(const ValueKey("strip-v")),

@@ -518,6 +518,31 @@ extension CanvasPlayback on CanvasController {
   /// made narrow or wide by itself, or all together -- see setAllNarrow.
   Set<String> get narrowStrips => Set.unmodifiable(_narrowStrips);
 
+  /// rowFolded is whether the timeline's row [key] -- an element's id, a
+  /// channel's key, "scenes" -- is folded to one line: as the channel height
+  /// says (S, every row folded), unless its own arrow turned it the other
+  /// way. Pressed again, the height button puts them all back; so does
+  /// another canvas, whose rows may have the same keys.
+  bool rowFolded(String key) {
+    _foldsNow();
+    return (laneSize == 0) != _flippedRows.contains(key);
+  }
+
+  /// toggleRowFold is row [key]'s fold arrow (the approved design: one on
+  /// every row).
+  void toggleRowFold(String key) {
+    _foldsNow();
+    if (!_flippedRows.remove(key)) _flippedRows.add(key);
+    notifyListeners();
+  }
+
+  void _foldsNow() {
+    var at = (folder, name, laneSize);
+    if (_flippedRowsAt == at) return;
+    _flippedRowsAt = at;
+    _flippedRows.clear();
+  }
+
   void toggleNarrow(String key) {
     if (!_narrowStrips.remove(key)) _narrowStrips.add(key);
     notifyListeners();

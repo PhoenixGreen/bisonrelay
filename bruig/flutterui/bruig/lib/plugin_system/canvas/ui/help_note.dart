@@ -7,9 +7,11 @@ import 'package:flutter/material.dart';
 // open and close"). One press opens the note, the next closes it; so does a
 // press anywhere else.
 
-/// HelpNote is a small round "?" opening a note: [title] and [paragraphs].
-/// Its keys are `help-[id]` for the button and `helpText-[id]` for the note.
-class HelpNote extends StatelessWidget {
+/// HelpNote is a small round "?" opening a note: [title] and [paragraphs],
+/// with a ✕ that closes it (the approved design). Its keys are `help-[id]`
+/// for the button, `helpText-[id]` for the note and `helpClose-[id]` for
+/// the ✕.
+class HelpNote extends StatefulWidget {
   final String id;
   final String title;
   final List<String> paragraphs;
@@ -25,9 +27,22 @@ class HelpNote extends StatelessWidget {
       super.key});
 
   @override
+  State<HelpNote> createState() => _HelpNoteState();
+}
+
+class _HelpNoteState extends State<HelpNote> {
+  final MenuController _menu = MenuController();
+
+  String get id => widget.id;
+  String get title => widget.title;
+  List<String> get paragraphs => widget.paragraphs;
+  double get size => widget.size;
+
+  @override
   Widget build(BuildContext context) {
     var colors = ThemeNotifier.of(context).colors;
     return MenuAnchor(
+      controller: _menu,
       alignmentOffset: const Offset(0, 6),
       menuChildren: [
         Padding(
@@ -39,12 +54,23 @@ class HelpNote extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(title.toUpperCase(),
-                      style: TextStyle(
-                          fontSize: 10,
-                          letterSpacing: 0.9,
-                          fontWeight: FontWeight.w600,
-                          color: colors.onSurfaceVariant)),
+                  Row(children: [
+                    Expanded(
+                      child: Text(title.toUpperCase(),
+                          style: TextStyle(
+                              fontSize: 10,
+                              letterSpacing: 0.9,
+                              fontWeight: FontWeight.w600,
+                              color: colors.onSurfaceVariant)),
+                    ),
+                    InkResponse(
+                      key: ValueKey("helpClose-$id"),
+                      radius: 12,
+                      onTap: _menu.close,
+                      child: Icon(Icons.close,
+                          size: 14, color: colors.onSurfaceVariant),
+                    ),
+                  ]),
                   for (var p in paragraphs)
                     Padding(
                       padding: const EdgeInsets.only(top: 6),

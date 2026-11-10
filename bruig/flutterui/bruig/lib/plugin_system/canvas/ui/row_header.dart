@@ -214,7 +214,8 @@ class RowHeader extends StatelessWidget {
     var line1 = SizedBox(
       height: 20,
       child: Row(children: [
-        if (fold != null) fold!,
+        // Narrowed to its least, the arrow goes before the name does.
+        if (fold != null && width >= 60) fold!,
         const SizedBox(width: 2),
         // The name has the room the buttons leave, before any gap.
         Expanded(
@@ -526,4 +527,23 @@ class _MeterPainter extends CustomPainter {
   @override
   bool shouldRepaint(_MeterPainter old) =>
       old.channel != channel || old.well != well;
+}
+
+/// RowFold is a row's fold arrow: › folded to one line, ⌄ open.
+class RowFold extends StatelessWidget {
+  final bool folded;
+  final VoidCallback onTap;
+  const RowFold({required this.folded, required this.onTap, super.key});
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          width: 18,
+          height: 20,
+          child: Icon(folded ? Icons.chevron_right : Icons.expand_more,
+              size: 14,
+              color: ThemeNotifier.of(context).colors.onSurfaceVariant),
+        ),
+      );
 }

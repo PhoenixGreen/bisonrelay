@@ -228,22 +228,10 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
                     ]),
                 const SizedBox(width: 8),
                 const HelpNote(
-                  id: "slots",
-                  size: 16,
-                  title: "Slots",
-                  paragraphs: [
-                    "A column for each element and sound, as the timeline "
-                        "has them. Each slot is the element's motion over its "
-                        "sound: press one to launch it on the next bar.",
-                    "The cues on the left launch a whole row together. The "
-                        "Scenes column holds the transitions, one per join; a "
-                        "cue passes it by.",
-                    "The first button makes every column narrow. The second "
-                        "steps the slots small, medium, large, or to fill the "
-                        "panel. The third shows the motion parts, thins them "
-                        "to a line, or hides them.",
-                  ],
-                ),
+                    id: "slots",
+                    size: 16,
+                    title: "Slots",
+                    paragraphs: slotsHelp),
               ]),
             ),
           ),
@@ -621,3 +609,18 @@ class _CanvasSlotsPanelState extends State<CanvasSlotsPanel> {
     ]);
   }
 }
+
+/// slotsHelp is the slots' "?": the Slots panel's, and the mixer's cue
+/// column's.
+const slotsHelp = [
+  "A column for each element and sound, as the timeline "
+      "has them. Each slot is the element's motion over its "
+      "sound: press one to launch it on the next bar.",
+  "The cues on the left launch a whole row together. The "
+      "Scenes column holds the transitions, one per join; a "
+      "cue passes it by.",
+  "The first button makes every column narrow. The second "
+      "steps the slots small, medium, large, or to fill the "
+      "panel. The third shows the motion parts, thins them "
+      "to a line, or hides them.",
+];

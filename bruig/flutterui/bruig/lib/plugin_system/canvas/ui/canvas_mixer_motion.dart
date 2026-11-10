@@ -36,6 +36,7 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
       child: Listener(
           onPointerDown: (_) => pick(),
           child: _StripFrame(
+            badges: stripBadges(theme, key, element: e),
             narrow: narrow,
             onNarrow: () => controller.toggleNarrow(key),
             narrowKey: ValueKey("narrow-$key"),
@@ -92,8 +93,15 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
                 ),
               ),
             ),
-            devices: () => _ElementSoundBand(
-                controller: controller, element: e, theme: theme),
+            deviceCount: _motionDeviceSlots(controller, theme, e).length,
+            devices: () => _band([
+              ..._slots(_motionDeviceSlots(controller, theme, e)),
+              if (e.base.motion.devices.isNotEmpty ||
+                  e.base.motion.instances != null)
+                const SizedBox(height: _slotGap),
+              _ElementSoundBand(
+                  controller: controller, element: e, theme: theme),
+            ]),
             motion: () => _MotionHalf(
                 controller: controller,
                 element: e,
@@ -105,7 +113,8 @@ Widget _elementStrip(CanvasController controller, MixerLook theme,
                 element: e,
                 narrow: narrow,
                 theme: theme),
-            miniMixer: () => const SizedBox(),
+            miniMixer: () => _MiniNote("no sound", theme,
+                faint: true, key: ValueKey("noSound-${e.id}")),
           )));
 }
 

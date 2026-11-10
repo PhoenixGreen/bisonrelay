@@ -136,15 +136,9 @@ class _MotionLanesState extends State<MotionLanes> {
           if (widget.only == null || e.id == widget.only) e
       ];
 
-  /// _flipped are the elements whose rows were folded or opened by hand,
-  /// against what the channel-height button says (small: every row folded
-  /// to one); pressed again, the button puts them all back. By id, for the
-  /// session.
-  static final Set<String> _flipped = {};
-  static Object? _flippedAt;
-
-  bool _isFolded(CanvasElement e) =>
-      (controller.laneSize == 0) != _flipped.contains(e.id);
+  /// _isFolded is whether [e]'s row is folded to one: see
+  /// CanvasController.rowFolded.
+  bool _isFolded(CanvasElement e) => controller.rowFolded(e.id);
 
   _Hit? _press;
   double _pressSeconds = 0;
@@ -333,14 +327,6 @@ class _MotionLanesState extends State<MotionLanes> {
 
   @override
   Widget build(BuildContext context) {
-    // The button's size, on this canvas: another canvas -- whose elements
-    // may have the same ids -- starts as its button says.
-    var at =
-        (controller, controller.folder, controller.name, controller.laneSize);
-    if (_flippedAt != at) {
-      _flippedAt = at;
-      _flipped.clear();
-    }
     var rows = _rows;
     if (rows.isEmpty) return const SizedBox.shrink();
     var theme = ThemeNotifier.of(context);
@@ -475,18 +461,10 @@ class _MotionLanesState extends State<MotionLanes> {
             onTap: () => controller.backToTimelineFor(item)),
         _ => null,
       },
-      fold: InkWell(
-        key: ValueKey("motionFold-${e.id}"),
-        onTap: () => setState(() => _flipped.contains(e.id)
-            ? _flipped.remove(e.id)
-            : _flipped.add(e.id)),
-        child: SizedBox(
-          width: 18,
-          height: 20,
-          child: Icon(_isFolded(e) ? Icons.chevron_right : Icons.expand_more,
-              size: 14, color: colors.onSurfaceVariant),
-        ),
-      ),
+      fold: RowFold(
+          key: ValueKey("motionFold-${e.id}"),
+          folded: _isFolded(e),
+          onTap: () => controller.toggleRowFold(e.id)),
       name: Text(e.name.isEmpty ? e.id : e.name,
           maxLines: 1, overflow: TextOverflow.ellipsis, style: label),
       kind: [
@@ -809,10 +787,10 @@ class _LanesPainter extends CustomPainter {
         if (rect.right < 0 || rect.left > size.width) continue;
         _clip(canvas, rect, c, p, s);
       }
-      // An element reused: where each copy's clips start, as numbered
-      // ticks along the foot of its row, from its first clip -- only with a
-      // clip on the timeline for them to start (Ken: without one, three
-      // blue lines that meant nothing).
+      // An element reused: where each copy's clips start, as short amber
+      // ticks along the top of its row (the approved design), from its first
+      // clip -- only with a clip on the timeline for them to start (Ken:
+      // without one, three blue lines that meant nothing).
       if (m.instances case var set? when set.count > 1) {
         var from = [
           for (var p in m.placed)
@@ -821,24 +799,12 @@ class _LanesPainter extends CustomPainter {
         var starts = [for (var i = 0; i < set.count; i++) set.startOf(i)];
         if (from != null && starts.any((t) => t > 0)) {
           var tick = Paint()
-            ..color = colors.primary
-            ..strokeWidth = 1.5;
-          for (var (i, t) in starts.indexed) {
+            ..color = colors.primary.withValues(alpha: 0.8)
+            ..strokeWidth = 1;
+          for (var t in starts) {
             var tx = x(from + t);
             if (tx < 0 || tx > size.width) continue;
-            canvas.drawLine(
-                Offset(tx, y + h - 7), Offset(tx, y + h - 1.5), tick);
-            var tp = TextPainter(
-                text: TextSpan(
-                    text: "${i + 1}",
-                    style: TextStyle(
-                        fontSize: 8,
-                        color: colors.primary,
-                        fontWeight: FontWeight.w700)),
-                textDirection: TextDirection.ltr,
-                textScaler: TextScaler.noScaling)
-              ..layout();
-            tp.paint(canvas, Offset(tx + 2, y + h - 2 - tp.height));
+            canvas.drawLine(Offset(tx, y), Offset(tx, y + 5), tick);
           }
         }
       }
