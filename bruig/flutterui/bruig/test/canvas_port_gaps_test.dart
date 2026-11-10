@@ -5,7 +5,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
+import 'package:bruig/plugin_system/canvas/model/automation.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -14,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
+import 'package:bruig/plugin_system/canvas/ui/play_bar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -208,6 +211,57 @@ void main() {
     expect(find.text(motionLayerName(m, 1)), findsWidgets);
     expect(tester.getSize(paint).height, greaterThan(shared),
         reason: "a band for each layer");
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      "a level held by hand: an amber ◉; muted, M lit; the tempo, metre and "
+      "frame rate on the bar", (tester) async {
+    var c = CanvasController(
+        CanvasDocument(frames: 300, frameRate: 30, elements: [
+          AudioElement(const ElementBase(id: "v", name: "Vocals"),
+              clip: const MediaClip(
+                  playlist: [MediaSource(assetId: "t", length: 10)],
+                  timed: true,
+                  mix: ChannelMix(gainDb: -3, automation: [
+                    AutomationLane("volume", [(0, -30), (2, 0)]),
+                  ]))),
+        ]),
+        audioEngine: FakeEngine({"t": 10}));
+    addTearDown(c.dispose);
+    // Wide enough for the bar to show its tempo.
+    tester.view.physicalSize = const Size(2200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester
+        .pumpWidget(host(Column(mainAxisSize: MainAxisSize.min, children: [
+      CanvasPlayBar(controller: c),
+      CanvasMixer(controller: c, height: 600, onResize: (_) {}, onClose: () {}),
+    ])));
+    await tester.pump();
+    expect(find.byKey(const ValueKey("faderAutomated")), findsOneWidget);
+    expect(find.byKey(const ValueKey("faderHeld")), findsNothing);
+    c.frame = 30;
+    var shown = c.mixNow(c.timelineChannels.single);
+    c.changeChannelMix(
+        c.timelineChannels.single, shown, shown.copyWith(gainDb: -8));
+    await tester.pump();
+    expect(find.byKey(const ValueKey("faderHeld")), findsOneWidget);
+    expect(find.byKey(const ValueKey("faderAutomated")), findsNothing);
+    // M: not lit, then lit once muted.
+    var mute = inStrip("strip-v", find.byKey(const ValueKey("mute")));
+    expect(find.descendant(of: mute, matching: find.text("M")), findsOneWidget);
+    await tester.tap(mute);
+    await tester.pump();
+    expect(c.timelineChannels.single.mix.mute, isTrue);
+    // The tempo, its metre and the frame rate, on any canvas.
+    // The bar measures itself before it shows what fits.
+    await tester.pump();
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey("playBarTempo")),
+            matching: find.text("4/4 · 30 fps")),
+        findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

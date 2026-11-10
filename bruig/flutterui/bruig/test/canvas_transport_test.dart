@@ -418,8 +418,12 @@ void main() {
       var c = CanvasController(sound);
       addTearDown(c.dispose);
       await show(tester, c);
-      expect(find.byKey(const ValueKey("lit-follow")), findsOneWidget,
-          reason: "on to begin with, and lit on the bar");
+      expect(c.followPlayhead, isTrue, reason: "on to begin with");
+      // On to begin with, so not lit on the bar (the approved design):
+      // Follow, Snap and Scrub are switched in the bar's settings.
+      for (var quiet in ["follow", "snap", "trackpadScrolls"]) {
+        expect(find.byKey(ValueKey("lit-$quiet")), findsNothing, reason: quiet);
+      }
       await tapTimelineItem(tester, "follow-item");
       expect(c.followPlayhead, isFalse);
       expect(find.byKey(const ValueKey("lit-follow")), findsNothing);

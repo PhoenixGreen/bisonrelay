@@ -1480,11 +1480,14 @@ class _TimelinePainter extends CustomPainter {
   /// through the ticks, and a pennant at the top. Not in tertiary, which is a
   /// panel background.
   void _paintMarkers(Canvas canvas) {
-    var ink = Paint()..color = colors.secondary;
-    var staff = Paint()
-      ..color = colors.secondary
-      ..strokeWidth = 2;
     for (var a in actions) {
+      // In its kind's colour (the approved design): what it does, at a
+      // glance.
+      var colour = markerKindColours[a.kind]!;
+      var ink = Paint()..color = colour;
+      var staff = Paint()
+        ..color = colour
+        ..strokeWidth = 2;
       var x = xFor(a.frame);
       canvas.drawLine(Offset(x, 1), Offset(x, _rulerHeight - 1), staff);
       canvas.drawPath(
@@ -1501,9 +1504,7 @@ class _TimelinePainter extends CustomPainter {
           text: TextSpan(
               text: a.label,
               style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: colors.secondary)),
+                  fontSize: 10, fontWeight: FontWeight.w600, color: colour)),
           textDirection: TextDirection.ltr,
           maxLines: 1,
           ellipsis: "…",
@@ -1630,3 +1631,14 @@ class _ScrollbarPainter extends CustomPainter {
   bool shouldRepaint(_ScrollbarPainter old) =>
       old.view != view || old.total != total || old.colors != colors;
 }
+
+/// markerKindColours are the markers' colours by what they do, as the
+/// prototype has them: a stop red, a pause amber, a loop back green, a jump
+/// blue, a locator violet.
+const Map<TimelineActionKind, Color> markerKindColours = {
+  TimelineActionKind.stop: Color(0xFFE0564F),
+  TimelineActionKind.pause: Color(0xFFE2B04A),
+  TimelineActionKind.loop: Color(0xFF5BC46B),
+  TimelineActionKind.jump: Color(0xFF7FC8F8),
+  TimelineActionKind.locator: Color(0xFF9A92EA),
+};

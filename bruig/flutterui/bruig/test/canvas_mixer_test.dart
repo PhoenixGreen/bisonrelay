@@ -1782,11 +1782,11 @@ void main() {
       await tester.tap(arm);
       await tester.pump();
       expect(c.armed, isEmpty);
-      // Its switch is its number, and switches it off.
+      // Its mute is M (the approved design), and mutes it.
       var on = find.descendant(
           of: find.byKey(const ValueKey("strip-keys")),
           matching: find.byKey(const ValueKey("mute")));
-      expect(find.descendant(of: on, matching: find.text("2")), findsOneWidget);
+      expect(find.descendant(of: on, matching: find.text("M")), findsOneWidget);
       await tester.tap(on);
       await tester.pump();
       expect(c.timelineChannels.firstWhere((l) => l.key == "keys").mix.mute,

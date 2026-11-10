@@ -724,9 +724,11 @@ Widget _onToggle(MixerLook theme, String label, bool muted, VoidCallback onTap,
         {required Key key, required String what, IconData? icon}) =>
     _Toggle(
         key: key,
-        label: label,
+        // M, lit amber while muted (the approved design); a switch with an
+        // icon (the scene's power) lit while on.
+        label: icon == null ? "M" : label,
         icon: icon,
-        on: !muted,
+        on: icon == null ? muted : !muted,
         onColor: theme.studio.on,
         onInk: theme.studio.onOn,
         height: _buttonH,
@@ -1047,17 +1049,23 @@ class _ChannelStrip extends StatelessWidget {
             onCommit,
             narrow: narrow),
         reading: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (automated.contains("volume"))
+          // Held by hand, off its automation: an amber ◉, the reading
+          // amber (the approved design); following it, a red dot.
+          if (held.contains("volume"))
+            Padding(
+              key: const ValueKey("faderHeld"),
+              padding: const EdgeInsets.only(right: 3),
+              child: Text("◉",
+                  style: TextStyle(fontSize: 10, color: theme.studio.on)),
+            )
+          else if (automated.contains("volume"))
             Container(
               key: const ValueKey("faderAutomated"),
               width: 6,
               height: 6,
               margin: const EdgeInsets.only(right: 3),
-              decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: held.contains("volume")
-                      ? const Color(0xFF7D838D)
-                      : automationColour),
+              decoration: const BoxDecoration(
+                  shape: BoxShape.circle, color: automationColour),
             ),
           Flexible(
             child: DbReading(
@@ -1067,7 +1075,9 @@ class _ChannelStrip extends StatelessWidget {
                 style: TextStyle(
                     fontSize: 11,
                     fontFeatures: const [FontFeature.tabularFigures()],
-                    color: colors.onSurface)),
+                    color: held.contains("volume")
+                        ? theme.studio.on
+                        : colors.onSurface)),
           ),
         ]),
       ),

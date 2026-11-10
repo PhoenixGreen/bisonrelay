@@ -622,8 +622,10 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
           lit: const Color(0xFF3A2F12),
           onPressed: () => controller.timelineShow = TimelineShow.everything,
         ),
+      // Follow, Snap and Scrub are on to begin with: the bar lights what
+      // has been turned on, not those (the approved design).
       for (var (key, icon, tip, on, press) in options)
-        if (on)
+        if (on && !_quietWhenOn.contains(key))
           TransportButton(
             key: ValueKey("lit-$key"),
             icon: icon,
@@ -759,28 +761,32 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
   /// the tempo and metre of a piece of sound, a scene's frames a second.
   Widget _tempo(ThemeNotifier theme, CanvasDocument document) {
     var colors = theme.colors;
-    // One line, so it fits the bar at any text size.
-    var (first, second) = document.kind.isAudio
-        ? (
-            _trim(document.audio.tempo.toStringAsFixed(2)),
-            document.audio.signature
-          )
-        : ("${document.frameRate}", "fps");
+    // Always the tempo, over the metre and the frame rate (the approved
+    // design): "120" over "4/4 · 24 fps", as the position over its time.
+    var style = TextStyle(
+        fontFeatures: const [FontFeature.tabularFigures()],
+        fontSize: 10.5,
+        height: 1.15,
+        color: colors.onSurfaceVariant);
     return Padding(
       key: const ValueKey("playBarTempo"),
       padding: const EdgeInsets.symmetric(horizontal: 6),
-      child: Text.rich(
-          TextSpan(children: [
-            TextSpan(text: first, style: TextStyle(color: colors.onSurface)),
-            TextSpan(text: " $second"),
+      child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_trim(document.audio.tempo.toStringAsFixed(2)),
+                maxLines: 1,
+                style: style.copyWith(
+                    color: colors.onSurface, fontWeight: FontWeight.w500)),
+            Text("${document.audio.signature} · ${document.frameRate} fps",
+                maxLines: 1, style: style),
           ]),
-          maxLines: 1,
-          style: TextStyle(
-              fontFeatures: const [FontFeature.tabularFigures()],
-              fontSize: 11,
-              color: colors.onSurfaceVariant)),
     );
   }
+
+  /// _quietWhenOn are the settings on to begin with, not lit on the bar.
+  static const _quietWhenOn = {"follow", "snap", "trackpadScrolls"};
 
   static String _trim(String n) =>
       n.contains(".") ? n.replaceFirst(RegExp(r"\.?0+$"), "") : n;
