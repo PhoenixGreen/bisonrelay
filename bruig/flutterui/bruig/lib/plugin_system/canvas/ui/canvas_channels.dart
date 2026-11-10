@@ -1618,14 +1618,17 @@ class _LanePainter extends CustomPainter {
     var asClip = lane.element is AudioElement && clip.playlist.isNotEmpty
         ? clip.playlist.first.clip
         : null;
+    // As its slot is (the approved design): an instrument's notes amber,
+    // speech pink, any other sound blue; a video violet.
     var fill = (video
             ? const Color(0xFF7B5CC4)
-            : instrument
-                ? const Color(0xFF3D6FD9)
-                : asClip != null && asClip.color != timelineClipColour
-                    ? Color(sectionColors[asClip.color % sectionColors.length])
-                    : const Color(0xFF2A9D8F))
+            : asClip != null && asClip.color != timelineClipColour
+                ? Color(sectionColors[asClip.color % sectionColors.length])
+                : soundSlotColour(
+                    midi: instrument, speech: channel.mix.speech != null))
         .withValues(alpha: lane.editable && !locked ? 1 : 0.5);
+    // Writing on it: dark on a light clip, white on a video's.
+    var ink = video ? const Color(0xFFFFFFFF) : slotInk;
 
     var from = _x(span.from, w), to = _x(span.to, w);
 
@@ -1659,7 +1662,7 @@ class _LanePainter extends CustomPainter {
       var lo = part.notes.map((n) => n.key).reduce(math.min) - 1;
       var hi = part.notes.map((n) => n.key).reduce(math.max) + 1;
       var row = (bottom - top - 4) / math.max(1, hi - lo + 1);
-      var ink = Paint()..color = const Color(0xDDFFFFFF);
+      var notes = Paint()..color = ink.withValues(alpha: 0.75);
       for (var n in part.notes) {
         var a = _x(span.from + n.start * rate, w);
         var b = _x(span.from + n.end * rate, w);
@@ -1668,15 +1671,15 @@ class _LanePainter extends CustomPainter {
         canvas.drawRRect(
             RRect.fromLTRBR(a, y, math.max(a + 1.5, b),
                 y + math.max(1.5, row - 0.5), const Radius.circular(1)),
-            ink);
+            notes);
       }
     } else if (size.height >= _waveformFrom) {
       // The shape of the sound as it will come out -- its peaks times its own
       // volume -- where the lane is tall enough to read one. Turned up, it
       // grows; where a peak would go past full it stops at the edge, in red,
       // which is where it would clip.
-      var ink = Paint()
-        ..color = const Color(0x99FFFFFF)
+      var wave = Paint()
+        ..color = ink.withValues(alpha: 0.5)
         ..strokeWidth = 1;
       var over = Paint()
         ..color = const Color(0xFFE05050)
@@ -1697,7 +1700,7 @@ class _LanePainter extends CustomPainter {
           var level = peaks[at] * gain;
           var h = math.min(1.0, level) * reach;
           canvas.drawLine(
-              Offset(x, mid - h), Offset(x, mid + h), level >= 1 ? over : ink);
+              Offset(x, mid - h), Offset(x, mid + h), level >= 1 ? over : wave);
         }
       }
     }
@@ -1778,10 +1781,8 @@ class _LanePainter extends CustomPainter {
       var text = TextPainter(
         text: TextSpan(
             text: name,
-            style: const TextStyle(
-                fontSize: 10.5,
-                color: Color(0xFFFFFFFF),
-                fontWeight: FontWeight.w500)),
+            style: TextStyle(
+                fontSize: 10.5, color: ink, fontWeight: FontWeight.w500)),
         textDirection: TextDirection.ltr,
         maxLines: 1,
         ellipsis: "…",

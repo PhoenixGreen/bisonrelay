@@ -480,20 +480,6 @@ class _MotionSlotState extends State<_MotionSlot> with _OnSessionPulse {
 /// the sound halves under them start on one line (the approved design).
 const motionHalfHeight = 78.0;
 
-/// layerName is what [l] of [m] is called on its chip: the clip on it, the
-/// first placed there or else the first made for it, or L1, L2 ...
-String layerName(ElementMotion m, int l) {
-  for (var p in m.placed) {
-    if (p.layer == l) {
-      if (m.clip(p.clip) case var c? when c.name.isNotEmpty) return c.name;
-    }
-  }
-  for (var c in m.clips) {
-    if (c.layer == l && c.name.isNotEmpty) return c.name;
-  }
-  return "L${l + 1}";
-}
-
 /// _MotionHalf is an element strip's motion: MOTION and how much of it is
 /// seen; a bar for how much of each layer plays, striped when pinned; the
 /// layer cross-fader, blending the free layers (Shift snaps to one); and a
@@ -623,8 +609,11 @@ class _MotionHalf extends StatelessWidget {
                       child: _LayerChip(
                         key: ValueKey("layerPin-$id-$l"),
                         name: narrow
-                            ? layerName(m, l).characters.take(2).toString()
-                            : layerName(m, l),
+                            ? motionLayerName(m, l)
+                                .characters
+                                .take(2)
+                                .toString()
+                            : motionLayerName(m, l),
                         pinned: m.isPinned(l),
                         theme: theme,
                         onTap: () => controller.pinLayer(id, l, !m.isPinned(l)),

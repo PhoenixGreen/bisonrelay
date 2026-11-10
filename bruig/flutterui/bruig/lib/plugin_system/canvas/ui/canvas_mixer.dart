@@ -15,7 +15,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show CanvasElement, newElementId;
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
-    show ElementMotion, MotionClip, MotionKind, crossFade;
+    show MotionClip, MotionKind, crossFade;
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart'
     show MotionDeviceKind;
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
@@ -23,7 +23,7 @@ import 'package:bruig/plugin_system/canvas/model/motion_presets.dart'
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart'
-    show MotionSlotDrag, motionKindColours;
+    show MotionSlotDrag, motionKindColours, motionLayerName;
 import 'package:bruig/plugin_system/canvas/ui/canvas_rows.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_player.dart'
     show MotionSlotState;

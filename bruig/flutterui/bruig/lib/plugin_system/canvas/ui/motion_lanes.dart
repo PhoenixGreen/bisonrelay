@@ -81,6 +81,21 @@ List<CanvasElement> motionRowsOf(CanvasController c) {
 /// motionLanesOf are [e]'s lanes, top to bottom: its motion layers in use
 /// and one more. Folded, none. Its sound is a channel of its own, under
 /// them: see element_sound.dart.
+/// motionLayerName is what layer [l] of [m] is called -- on the mixer's
+/// chip, beside its band on the timeline: the clip on it, the first placed
+/// there or else the first made for it, or L1, L2 ...
+String motionLayerName(ElementMotion m, int l) {
+  for (var p in m.placed) {
+    if (p.layer == l) {
+      if (m.clip(p.clip) case var c? when c.name.isNotEmpty) return c.name;
+    }
+  }
+  for (var c in m.clips) {
+    if (c.layer == l && c.name.isNotEmpty) return c.name;
+  }
+  return "L${l + 1}";
+}
+
 List<int> motionLanesOf(CanvasElement e, {bool folded = false}) {
   if (folded) return const [];
   var m = e.base.motion;
@@ -153,7 +168,25 @@ class _MotionLanesState extends State<MotionLanes> {
       motionLaneHeight * _scale * (controller.laneSize == 2 ? 1.6 : 1);
   double _rowHeight(CanvasElement e) => _isFolded(e)
       ? _lane + 4
-      : math.max(_lane * 1.6, motionLanesOf(e).length * _lane) + 4;
+      : _shared(e)
+          ? _lane * 1.6 + 4
+          : math.max(_lane * 1.6, motionLanesOf(e).length * _lane) + 4;
+
+  /// _shared is whether [e]'s layers share one band, each a step lower than
+  /// the one before (the approved design, at S and M); at L each layer has
+  /// a band of its own.
+  bool _shared(CanvasElement e) =>
+      !_isFolded(e) && controller.laneSize < 2 && motionLanesOf(e).length > 1;
+
+  /// _sharedRect is where placement [p] is drawn on [e]'s shared band, its
+  /// row starting [y] down: a step lower for each layer before its.
+  Rect? _sharedRect(CanvasElement e, ClipPlacement p, double y,
+      MotionTimes times, double width) {
+    var s = times.span(p.id);
+    if (s == null) return null;
+    return sharedClipRect(motionLanesOf(e), p.layer, y, _rowHeight(e),
+        _x(s.start, width), _x(s.end, width));
+  }
 
   int get _fps => math.max(1, controller.document.frameRate);
   double _x(double seconds, double width) =>
@@ -175,6 +208,32 @@ class _MotionLanesState extends State<MotionLanes> {
     for (var e in _rows) {
       var h = _rowHeight(e);
       if (local.dy >= y && local.dy < y + h) {
+        if (_shared(e)) {
+          var times = motionTimesOf(controller.document);
+          // The topmost drawn first: the latest layer, then down.
+          var placed = [...e.base.motion.placed]
+            ..sort((a, b) => b.layer - a.layer);
+          for (var p in placed) {
+            var r = _sharedRect(e, p, y, times, width);
+            if (r == null) continue;
+            const reach = 6.0;
+            if (local.dy < r.top || local.dy > r.bottom) continue;
+            if (local.dx < r.left - reach || local.dx > r.right + reach) {
+              continue;
+            }
+            var grip = (local.dx - r.right).abs() <= reach
+                ? _Grip.end
+                : (local.dx - r.left).abs() <= reach
+                    ? _Grip.start
+                    : _Grip.bar;
+            return (element: e, layer: p.layer, placement: p, grip: grip);
+          }
+          var lanes = motionLanesOf(e);
+          var step = sharedStep(lanes.length, h);
+          var i =
+              ((local.dy - y - 3) / step).floor().clamp(0, lanes.length - 1);
+          return (element: e, layer: lanes[i], placement: null, grip: null);
+        }
         var folded = _isFolded(e);
         var lanes = motionLanesOf(e, folded: folded);
         var row = folded ? -1 : ((local.dy - y - 2) / _lane).floor();
@@ -496,11 +555,19 @@ class _MotionLanesState extends State<MotionLanes> {
           : RowToggle(ValueKey("rowSolo-${e.id}"),
               on: controller.solo.contains(own.key),
               onTap: () => controller.toggleSolo(own.key)),
-      bands: [
-        for (var (i, l) in motionLanesOf(e, folded: _isFolded(e)).indexed)
-          RowBand(2 + i * _lane, _lane, "L${l + 1}", motionColour,
-              weight: m.weight(l)),
-      ],
+      // At L a band for each layer, by its name, its bar striped where it
+      // is pinned; at S and M one band, "Motion" or how many layers.
+      bands: _isFolded(e) || _shared(e)
+          ? [
+              RowBand(2, _rowHeight(e) - 4,
+                  layers > 1 ? "$layers layers" : "Motion", motionColour),
+            ]
+          : [
+              for (var (i, l) in motionLanesOf(e).indexed)
+                RowBand(
+                    2 + i * _lane, _lane, motionLayerName(m, l), motionColour,
+                    weight: m.weight(l), pinned: m.isPinned(l)),
+            ],
     );
   }
 
@@ -559,6 +626,10 @@ class _MotionLanesState extends State<MotionLanes> {
                 folded: {
                   for (var e in rows)
                     if (_isFolded(e)) e.id
+                },
+                shared: {
+                  for (var e in rows)
+                    if (_shared(e)) e.id
                 },
                 lane: _lane,
                 rowHeight: _rowHeight,
@@ -708,6 +779,9 @@ class _RowSlots extends StatelessWidget {
 class _LanesPainter extends CustomPainter {
   final List<CanvasElement> rows;
   final Set<String> folded;
+
+  /// shared are the rows whose layers share one band: see sharedClipRect.
+  final Set<String> shared;
   final double lane;
   final double Function(CanvasElement) rowHeight;
   final MotionTimes times;
@@ -719,6 +793,7 @@ class _LanesPainter extends CustomPainter {
 
   _LanesPainter({
     this.alt = false,
+    this.shared = const {},
     required this.rows,
     required this.folded,
     required this.lane,
@@ -757,11 +832,12 @@ class _LanesPainter extends CustomPainter {
     for (var e in rows) {
       var h = rowHeight(e);
       var isFolded = folded.contains(e.id);
+      var isShared = shared.contains(e.id);
       var lanes = motionLanesOf(e, folded: isFolded);
       canvas.drawLine(
           Offset(0, y + h - 0.5), Offset(size.width, y + h - 0.5), line);
       // The lanes' own lines, faint; the sound's lane tinted.
-      for (var (i, l) in lanes.indexed) {
+      for (var (i, l) in isShared ? const <(int, int)>[] : lanes.indexed) {
         var top = y + 2 + i * lane;
         if (l == soundLayer) {
           canvas.drawRect(Rect.fromLTWH(0, top, size.width, lane),
@@ -772,10 +848,20 @@ class _LanesPainter extends CustomPainter {
         }
       }
       var m = e.base.motion;
-      for (var p in m.placed) {
+      // Shared, a layer under the next: drawn from the first layer up.
+      var order = isShared
+          ? ([...m.placed]..sort((a, b) => a.layer - b.layer))
+          : m.placed;
+      for (var p in order) {
         var c = m.clip(p.clip);
         var s = times.span(p.id);
         if (c == null || s == null) continue;
+        if (isShared) {
+          var rect = sharedClipRect(lanes, p.layer, y, h, x(s.start), x(s.end));
+          if (rect.right < 0 || rect.left > size.width) continue;
+          _clip(canvas, rect, c, p, s);
+          continue;
+        }
         var row = isFolded ? 0 : lanes.indexOf(p.layer);
         if (row < 0) continue;
         var top = y + 2 + row * lane + 1;
@@ -814,19 +900,17 @@ class _LanesPainter extends CustomPainter {
 
   void _clip(
       Canvas canvas, Rect rect, MotionClip c, ClipPlacement p, ClipSpan s) {
-    var colour = motionKindColours[c.kind]!;
-    var r = RRect.fromRectAndRadius(rect, const Radius.circular(4));
-    canvas.drawRRect(r, Paint()..color = colour);
-    if (p.id == picked) {
-      canvas.drawRRect(
-          r.inflate(1.5),
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2
-            ..color = colors.onSurface);
-    }
+    // As its slot is (the approved design): its corners cut, a teal edge,
+    // its curve drawn faint in it.
+    var colour =
+        Color.lerp(motionKindColours[c.kind]!, const Color(0xFF0E2A24), 0.22)!;
+    var shape = cutCornersPath(rect, 4);
+    canvas.drawPath(shape, Paint()..color = colour);
     canvas.save();
-    canvas.clipRRect(r);
+    canvas.clipPath(shape);
+    paintSlotArt(canvas, rect, SlotSide.motion, p.id, opacity: 0.5);
+    canvas.drawRect(Rect.fromLTWH(rect.left, rect.top, 3, rect.height),
+        Paint()..color = motionColour);
     // A loop's repeats, where they are far enough apart to see.
     if (c.loop && c.span > 0 && x(s.start + c.span) - x(s.start) >= 3) {
       var tick = Paint()..color = const Color(0x73FFFFFF);
@@ -843,9 +927,7 @@ class _LanesPainter extends CustomPainter {
       text: TextSpan(
           text: "$name$pace",
           style: const TextStyle(
-              fontSize: 10.5,
-              color: Colors.white,
-              fontWeight: FontWeight.w600)),
+              fontSize: 10.5, color: slotInk, fontWeight: FontWeight.w600)),
       textDirection: TextDirection.ltr,
       textScaler: textScaler,
       maxLines: 1,
@@ -853,8 +935,17 @@ class _LanesPainter extends CustomPainter {
     var left = rect.left + (p.startPin != null ? 12 : 6);
     tp.paint(canvas, Offset(left, rect.center.dy - tp.height / 2));
     canvas.restore();
+    // Picked: outlined, over its shape.
+    if (p.id == picked) {
+      canvas.drawPath(
+          cutCornersPath(rect.inflate(1.5), 5),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..color = colors.onSurface);
+    }
     // A dot at each pinned end.
-    var dot = Paint()..color = Colors.white;
+    var dot = Paint()..color = slotInk;
     if (p.startPin != null) {
       canvas.drawCircle(Offset(rect.left + 5, rect.top + 5), 3, dot);
     }
@@ -865,4 +956,20 @@ class _LanesPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_LanesPainter old) => true;
+}
+
+/// sharedStep is how much lower each layer's clips are drawn than the one
+/// before's, on a shared band of [lanes] layers in a row [rowHeight] tall.
+double sharedStep(int lanes, double rowHeight) =>
+    math.max(2.0, (rowHeight - 4 - 10) / math.max(1, lanes));
+
+/// sharedClipRect is where a clip on [layer] is drawn on a shared band (the
+/// approved design: at S and M every layer shares one band, a later layer a
+/// little lower), from [left] to [right], in a row from [y], [rowHeight]
+/// tall.
+Rect sharedClipRect(List<int> lanes, int layer, double y, double rowHeight,
+    double left, double right) {
+  var i = math.max(0, lanes.indexOf(layer));
+  var top = y + 3 + i * sharedStep(lanes.length, rowHeight);
+  return Rect.fromLTRB(left, top, math.max(right, left + 6), y + rowHeight - 3);
 }

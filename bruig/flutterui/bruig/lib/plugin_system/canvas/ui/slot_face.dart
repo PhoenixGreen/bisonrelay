@@ -216,17 +216,7 @@ class _CutCorners extends OutlinedBorder {
   final double cut;
   const _CutCorners(this.cut);
 
-  Path _path(Rect r) {
-    var c = math.min(cut, math.min(r.width, r.height) / 2);
-    return Path()
-      ..moveTo(r.left + c, r.top)
-      ..lineTo(r.right, r.top)
-      ..lineTo(r.right, r.bottom - c)
-      ..lineTo(r.right - c, r.bottom)
-      ..lineTo(r.left, r.bottom)
-      ..lineTo(r.left, r.top + c)
-      ..close();
-  }
+  Path _path(Rect r) => cutCornersPath(r, cut);
 
   @override
   EdgeInsetsGeometry get dimensions => EdgeInsets.zero;
@@ -257,40 +247,69 @@ class _SlotArt extends CustomPainter {
   _SlotArt(this.side, this.seed, {this.midi = false});
 
   @override
-  void paint(Canvas canvas, Size size) {
-    var w = size.width, h = size.height;
-    if (w <= 2 || h <= 2) return;
-    var r = math.Random(seed.hashCode);
-    if (side == SlotSide.motion) {
-      var path = Path()..moveTo(0, h * 0.6);
-      var step = math.max(14.0, w / 10);
-      for (var x = step; x <= w + step; x += step) {
-        path.quadraticBezierTo(x - step / 2, h * (0.15 + r.nextDouble() * 0.7),
-            x, h * (0.25 + r.nextDouble() * 0.5));
-      }
-      canvas.drawPath(
-          path,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.6
-            ..color = const Color(0xFF08201A));
-      return;
+  void paint(Canvas canvas, Size size) =>
+      paintSlotArt(canvas, Offset.zero & size, side, seed, midi: midi);
+
+  @override
+  bool shouldRepaint(_SlotArt old) =>
+      old.side != side || old.seed != seed || old.midi != midi;
+}
+
+/// cutCornersPath is a motion slot's or clip's shape in [r]: its top-left
+/// and bottom-right corners cut by [cut].
+Path cutCornersPath(Rect r, double cut) {
+  var c = math.min(cut, math.min(r.width, r.height) / 2);
+  return Path()
+    ..moveTo(r.left + c, r.top)
+    ..lineTo(r.right, r.top)
+    ..lineTo(r.right, r.bottom - c)
+    ..lineTo(r.right - c, r.bottom)
+    ..lineTo(r.left, r.bottom)
+    ..lineTo(r.left, r.top + c)
+    ..close();
+}
+
+/// paintSlotArt draws a slot's faint picture into [rect], the same for the
+/// same [seed] every time: a motion's curve, a sound's wave, an
+/// instrument's notes. [opacity] fades it, as the timeline's clips have it.
+void paintSlotArt(Canvas canvas, Rect rect, SlotSide side, String seed,
+    {bool midi = false, double opacity = 1}) {
+  var w = rect.width, h = rect.height;
+  if (w <= 2 || h <= 2) return;
+  Color ink(int argb) {
+    var c = Color(argb);
+    return c.withValues(alpha: c.a * opacity);
+  }
+
+  canvas.save();
+  canvas.translate(rect.left, rect.top);
+  var r = math.Random(seed.hashCode);
+  if (side == SlotSide.motion) {
+    var path = Path()..moveTo(0, h * 0.6);
+    var step = math.max(14.0, w / 10);
+    for (var x = step; x <= w + step; x += step) {
+      path.quadraticBezierTo(x - step / 2, h * (0.15 + r.nextDouble() * 0.7), x,
+          h * (0.25 + r.nextDouble() * 0.5));
     }
-    if (midi) {
-      var note = Paint()..color = const Color(0xFF2A1604);
-      for (var x = 4.0; x < w; x += 9 + r.nextDouble() * 6) {
-        var y = 2 + (r.nextInt(5) * 0.18 * h);
-        canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromLTWH(
-                    x, math.min(y, h - 3), 5 + r.nextDouble() * 6, 2.6),
-                const Radius.circular(1)),
-            note);
-      }
-      return;
+    canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6
+          ..color = ink(0xFF08201A));
+  } else if (midi) {
+    var note = Paint()..color = ink(0xFF2A1604);
+    for (var x = 4.0; x < w; x += 9 + r.nextDouble() * 6) {
+      var y = 2 + (r.nextInt(5) * 0.18 * h);
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              Rect.fromLTWH(x, math.min(y, h - 3), 5 + r.nextDouble() * 6, 2.6),
+              const Radius.circular(1)),
+          note);
     }
+  } else {
     var line = Paint()
-      ..color = const Color(0xFF0A1A30)
+      ..color = ink(0xFF0A1A30)
       ..strokeWidth = 1;
     var mid = h / 2;
     for (var x = 1.0; x < w; x += 2) {
@@ -300,8 +319,5 @@ class _SlotArt extends CustomPainter {
       canvas.drawLine(Offset(x, mid - a), Offset(x, mid + a), line);
     }
   }
-
-  @override
-  bool shouldRepaint(_SlotArt old) =>
-      old.side != side || old.seed != seed || old.midi != midi;
+  canvas.restore();
 }

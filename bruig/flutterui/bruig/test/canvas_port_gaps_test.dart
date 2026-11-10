@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -173,6 +175,40 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("helpClose-cues")));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("helpText-cues")), findsNothing);
+  });
+
+  testWidgets(
+      "at M the layers share one band, \"2 layers\"; at L a band each, by "
+      "name, a pinned one's bar striped", (tester) async {
+    var c = CanvasController(
+        CanvasDocument(frames: 240, elements: [
+          const ShapeElement(ElementBase(id: "a", name: "Coin")),
+        ]),
+        audioEngine: FakeEngine({}));
+    addTearDown(c.dispose);
+    var spin = c.newClip("a", kind: MotionKind.loop, layer: 0);
+    var bob = c.newClip("a", kind: MotionKind.action, layer: 1);
+    c.placeClip("a", spin, seconds: 0);
+    c.placeClip("a", bob, seconds: 1);
+    c.pinLayer("a", 1, true);
+    tester.view.physicalSize = const Size(1400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(host(CanvasTimeline(controller: c, height: 500)));
+    await tester.pumpAndSettle();
+    expect(c.laneSize, 1);
+    expect(find.text("2 layers"), findsWidgets);
+    var m = c.motionOf("a");
+    var paint = find.byKey(const ValueKey("motionLanesPaint-a"));
+    var shared = tester.getSize(paint).height;
+    c.nextLaneSize();
+    await tester.pumpAndSettle();
+    expect(c.laneSize, 2);
+    expect(find.text(motionLayerName(m, 0)), findsWidgets);
+    expect(find.text(motionLayerName(m, 1)), findsWidgets);
+    expect(tester.getSize(paint).height, greaterThan(shared),
+        reason: "a band for each layer");
+    expect(tester.takeException(), isNull);
   });
 
   group("a fold arrow on every row", () {
