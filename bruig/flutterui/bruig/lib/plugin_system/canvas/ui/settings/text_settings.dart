@@ -168,6 +168,7 @@ List<Widget> _bodySections(
   var words = e.displayText.replaceAll("\n", " ");
   return [
     section(e, "content",
+        glyph: SectionGlyph.content,
         icon: Icons.notes,
         title: "Content",
         summary: [
@@ -260,6 +261,7 @@ List<Widget> _bodySections(
               ]),
         ]),
     section(e, "look",
+        glyph: SectionGlyph.look,
         icon: Icons.palette_outlined,
         title: "Look",
         summary: [
@@ -347,6 +349,7 @@ List<Widget> _bodySections(
               title: "Looks on the words"),
         ]),
     section(e, "layout",
+        glyph: SectionGlyph.layout,
         icon: Icons.open_with,
         title: "Layout",
         summary: [
@@ -471,13 +474,6 @@ List<Widget> _bodySections(
                   },
                   onCommit: commit,
                 ),
-                valueDot(
-                    controller,
-                    e,
-                    KeyframeChannel.slide,
-                    "the slide along the "
-                    "line",
-                    e.curve!.offset),
                 CanvasNumberField(
                   label: "Spacing",
                   value: e.curve!.spacing,
@@ -528,6 +524,7 @@ List<Widget> _bodySections(
         ]),
     ...stageSpotSettings(context, controller, e, write, begin, commit),
     section(e, "motion",
+        glyph: SectionGlyph.motion,
         icon: Icons.animation,
         title: "Motion",
         summary: _motionSaid(e),
@@ -567,6 +564,7 @@ List<Widget> _bodySections(
           if (controller.cues.isNotEmpty) elementCueCard(controller, e),
         ]),
     section(e, "more",
+        glyph: SectionGlyph.more,
         icon: Icons.more_horiz,
         title: "More",
         summary: [
@@ -686,6 +684,7 @@ List<Widget> _pieceSections(
 
   return [
     section(e, "content",
+        glyph: SectionGlyph.content,
         icon: item.isIcon ? Icons.image_outlined : Icons.notes,
         title: "Content",
         summary: item.isIcon
@@ -738,6 +737,7 @@ List<Widget> _pieceSections(
             _pictureRow(context, e, at, item, write, begin, commit),
         ]),
     section(e, "look",
+        glyph: SectionGlyph.look,
         icon: Icons.palette_outlined,
         title: "Look",
         summary: [
@@ -772,6 +772,7 @@ List<Widget> _pieceSections(
                 onAction: () => controller.pickTextLayer(e.id, null)),
         ]),
     section(e, "layout",
+        glyph: SectionGlyph.layout,
         icon: Icons.open_with,
         title: "Layout",
         summary: "${item.slot.label} · gap ${item.gap.round()}",
@@ -827,6 +828,7 @@ List<Widget> _pieceSections(
               ]),
         ]),
     section(e, "motion",
+        glyph: SectionGlyph.motion,
         icon: Icons.animation,
         title: "Motion",
         summary: "With the whole text",
@@ -839,6 +841,7 @@ List<Widget> _pieceSections(
                   "element of its own."),
         ]),
     section(e, "more",
+        glyph: SectionGlyph.more,
         icon: Icons.more_horiz,
         title: "More",
         summary: "Remove",

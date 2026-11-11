@@ -98,6 +98,20 @@ const double cardCaptioned = cardLabelHeight + cardLabelGap + cardControlHeight;
 /// two lines.
 const double cardGap = 12;
 
+/// CanvasNoHover is a part of the window with no hover text: the element
+/// settings panel, where a tooltip shown as it scrolled was left lying over
+/// other sections (Ken, 2026-11-11). What a control is for is said behind a
+/// "?" there instead. Tooltips with timings of their own ask this.
+class CanvasNoHover extends InheritedWidget {
+  const CanvasNoHover({required super.child, super.key});
+
+  static bool on(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<CanvasNoHover>() != null;
+
+  @override
+  bool updateShouldNotify(CanvasNoHover old) => false;
+}
+
 /// CanvasDense is the measure of the settings panel as it was rebuilt round
 /// tasks (Ken, 2026-11-11: "the settings are a lot bigger than the
 /// prototype"): the prototype's sizes -- lower controls, closer together --
@@ -1733,23 +1747,59 @@ class _CanvasTextFieldState extends State<CanvasTextField> {
         canvasSized(
           context,
           min: CanvasControlScope.widthFor(context, widget.width),
-          height:
-              widget.maxLines > 1 ? heightIn(context) * 2 : heightIn(context),
+          height: widget.maxLines > 1
+              ? heightIn(context) * (CanvasDense.on(context) ? 2.2 : 2)
+              : heightIn(context),
           grow: widget.grow,
-          child: _bottomInCard(
-            context,
-            TextField(
-              controller: _text,
-              focusNode: _focus,
-              maxLines: widget.maxLines,
-              style: const TextStyle(fontSize: 12),
-              decoration: canvasFieldDecoration(ThemeNotifier.of(context),
-                  hint: widget.hint),
-              onChanged: widget.onChanged,
-            ),
-          ),
+          child: CanvasDense.on(context)
+              // Boxed in a dense panel, as the prototype's words are: a
+              // field to type into, not a line to type on.
+              ? TextField(
+                  controller: _text,
+                  focusNode: _focus,
+                  maxLines: widget.maxLines,
+                  minLines: widget.maxLines,
+                  expands: false,
+                  style: const TextStyle(fontSize: 13, height: 1.35),
+                  decoration: _boxed(ThemeNotifier.of(context), widget.hint),
+                  onChanged: widget.onChanged,
+                )
+              : _bottomInCard(
+                  context,
+                  TextField(
+                    controller: _text,
+                    focusNode: _focus,
+                    maxLines: widget.maxLines,
+                    style: const TextStyle(fontSize: 12),
+                    decoration: canvasFieldDecoration(
+                        ThemeNotifier.of(context),
+                        hint: widget.hint),
+                    onChanged: widget.onChanged,
+                  ),
+                ),
         ),
       );
+
+  /// _boxed is a dense panel's field: a box with rounded corners, filled a
+  /// shade off the panel, its edge lit while it is being typed in.
+  InputDecoration _boxed(ThemeNotifier theme, String hint) {
+    OutlineInputBorder edge(Color c) => OutlineInputBorder(
+        borderRadius: BorderRadius.circular(9),
+        borderSide: BorderSide(color: c));
+    return InputDecoration(
+      isDense: true,
+      hintText: hint.isEmpty ? null : hint,
+      hintStyle: TextStyle(
+          fontSize: 13,
+          color: theme.colors.onSurfaceVariant.withValues(alpha: 0.6)),
+      filled: true,
+      fillColor: theme.colors.surfaceContainerHighest.withValues(alpha: 0.35),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      enabledBorder: edge(theme.colors.outlineVariant),
+      focusedBorder: edge(theme.colors.primary),
+      border: edge(theme.colors.outlineVariant),
+    );
+  }
 
   /// _bottomInCard sits a field's underline on the foot of its box in a card,
   /// where a button's or a stepper's box ends, so a button beside it does not
@@ -1942,7 +1992,9 @@ class _RenamableCaptionState extends State<_RenamableCaption> {
           onDoubleTap: _start,
           child: Tooltip(
             message: "Double-click to rename",
-            waitDuration: const Duration(milliseconds: 700),
+            waitDuration: CanvasNoHover.on(context)
+                ? const Duration(days: 1)
+                : const Duration(milliseconds: 700),
             child: Text(widget.label.toUpperCase(), style: widget.style),
           ),
         ),

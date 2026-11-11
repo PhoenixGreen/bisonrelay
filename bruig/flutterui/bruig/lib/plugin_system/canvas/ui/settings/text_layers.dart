@@ -200,14 +200,26 @@ class _TextLayersListState extends State<TextLayersList> {
                       ),
                       // The picked piece taken out, from the strip as well
                       // as the list: a tablet has no Delete key.
-                      CanvasIconButton(
-                        key: const ValueKey("textLayersDelete"),
-                        tight: true,
-                        icon: Icons.delete_outline,
-                        tooltip: "Delete the picked layer",
-                        onPressed: picked == null || picked.locked
-                            ? null
-                            : () => _remove(picked),
+                      // A plain bin, as the prototype's.
+                      Material(
+                        type: MaterialType.transparency,
+                        child: InkWell(
+                          key: const ValueKey("textLayersDelete"),
+                          borderRadius: BorderRadius.circular(6),
+                          onTap: picked == null || picked.locked
+                              ? null
+                              : () => _remove(picked),
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: Icon(Icons.delete_outline,
+                                size: 16,
+                                color: muted.withValues(
+                                    alpha: picked == null || picked.locked
+                                        ? 0.4
+                                        : 1)),
+                          ),
+                        ),
                       ),
                       Padding(
                         padding: const EdgeInsets.only(right: 6),

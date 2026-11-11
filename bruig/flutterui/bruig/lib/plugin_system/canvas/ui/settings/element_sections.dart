@@ -121,11 +121,13 @@ Widget section(CanvasElement e, String name,
         bool initiallyOpen = false,
         bool forceOpen = false,
         Widget? action,
+        SectionGlyph? glyph,
         required List<Widget> children}) =>
     CanvasSection(
       key: ValueKey("elementSection-$name"),
       action: action,
       icon: icon,
+      glyph: glyph,
       title: title,
       summary: summary,
       changes: changes,

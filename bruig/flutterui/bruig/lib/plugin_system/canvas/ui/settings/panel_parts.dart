@@ -461,73 +461,82 @@ class _LooksGroupState extends State<LooksGroup> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
-            child: Row(children: [
-              Expanded(
-                child: InkWell(
-                  key: ValueKey("lookOpen-${d.id}"),
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: () =>
-                      setState(() => open ? _open.remove(key) : _open.add(key)),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Row(children: [
-                      AnimatedRotation(
-                        turns: open ? 0.25 : 0,
-                        duration: const Duration(milliseconds: 120),
-                        child: Icon(Icons.chevron_right,
-                            size: 18, color: theme.colors.onSurfaceVariant),
+            // Its name, its main setting and its switch on one line; in a
+            // narrow sidebar the setting goes under the name.
+            child: LayoutBuilder(builder: (context, room) {
+              var name = InkWell(
+                key: ValueKey("lookOpen-${d.id}"),
+                borderRadius: BorderRadius.circular(8),
+                onTap: () =>
+                    setState(() => open ? _open.remove(key) : _open.add(key)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(children: [
+                    AnimatedRotation(
+                      turns: open ? 0.25 : 0,
+                      duration: const Duration(milliseconds: 120),
+                      child: Icon(Icons.chevron_right,
+                          size: 18, color: theme.colors.onSurfaceVariant),
+                    ),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(d.kind.label,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: d.on
+                                  ? theme.colors.onSurface
+                                  : theme.colors.onSurfaceVariant)),
+                    ),
+                    // Animated in the Chain: said, not keyed, here -- the
+                    // keys are the Chain's (Ken, 2026-11-11).
+                    if (d.animated) ...[
+                      const SizedBox(width: 6),
+                      IconTheme(
+                        data: const IconThemeData(color: Color(0xFFF2C14E)),
+                        child: KeyDiamond(
+                            key: ValueKey("lookAnimated-${d.id}"),
+                            filled: true,
+                            size: 10),
                       ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(d.kind.label,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: d.on
-                                    ? theme.colors.onSurface
-                                    : theme.colors.onSurfaceVariant)),
-                      ),
-                    ]),
-                  ),
+                    ],
+                  ]),
                 ),
-              ),
-              SizedBox(
-                width: 116,
-                child: CanvasStepper(
-                  key: ValueKey("lookMain-${d.id}"),
-                  label: "",
-                  name: "lookMain-${d.id}",
-                  fill: true,
-                  value: view.shown(_now(d, main)),
-                  min: view.shown(main.min),
-                  max: view.shown(main.max),
-                  decimals: view.decimals,
-                  suffix: view.suffix,
-                  onChanged: (v) => _set(d, main, view.stored(v)),
-                  onCommit: c.endInteraction,
-                ),
-              ),
-              // Keyed here, or not: as the Chain's knob is, by the same key.
-              IconButton(
-                key: ValueKey("lookKey-${d.id}"),
-                visualDensity: VisualDensity.compact,
-                iconSize: 16,
-                tooltip: d.keyAt(main.id, c.playheadSeconds)
-                    ? "Take the key here away"
-                    : "Key ${view.label.toLowerCase()} here, to animate it",
-                color: d.keyed(main.id)
-                    ? const Color(0xFFF2C14E)
-                    : theme.colors.onSurfaceVariant,
-                icon: KeyDiamond(filled: d.keyAt(main.id, c.playheadSeconds)),
-                onPressed: () => c.toggleDeviceKey(id, d.id, main.id),
-              ),
-              CanvasSwitch(
+              );
+              var stepper = CanvasStepper(
+                key: ValueKey("lookMain-${d.id}"),
+                label: "",
+                name: "lookMain-${d.id}",
+                fill: true,
+                value: view.shown(_now(d, main)),
+                min: view.shown(main.min),
+                max: view.shown(main.max),
+                decimals: view.decimals,
+                suffix: view.suffix,
+                onChanged: (v) => _set(d, main, view.stored(v)),
+                onCommit: c.endInteraction,
+              );
+              var power = CanvasSwitch(
                 key: ValueKey("lookOn-${d.id}"),
                 value: d.on,
                 onChanged: (v) => _put(d.switched(v)),
-              ),
-            ]),
+              );
+              if (room.maxWidth < 240) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(children: [Expanded(child: name), power]),
+                    stepper,
+                  ],
+                );
+              }
+              return Row(children: [
+                Expanded(child: name),
+                SizedBox(width: 116, child: stepper),
+                power,
+              ]);
+            }),
           ),
           if (open)
             Padding(

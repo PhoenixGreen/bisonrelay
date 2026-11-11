@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/ui/controls.dart' show CanvasNoHover;
 import 'package:bruig/plugin_system/canvas/ui/settings/parallax_settings.dart';
 import 'package:bruig/plugin_system/canvas/presets/parallax_looks.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
@@ -25,7 +26,20 @@ import 'package:flutter/material.dart';
 /// element, several, or none. With none it shows the canvas's background, so
 /// the panel is never empty in the state a canvas starts in and returns to on
 /// every click on the page.
-Widget elementSettingsBody(BuildContext context, CanvasController controller) {
+/// elementSettingsBody is [_elementSettingsBody] with no hover text: a
+/// tooltip shown while the settings scroll was left lying over other
+/// sections, and what a control is for is said behind its "?" (Ken,
+/// 2026-11-11).
+Widget elementSettingsBody(BuildContext context, CanvasController controller) =>
+    // The tooltips are kept -- they name the buttons for a screen reader --
+    // but never shown: not on a hover, nor a long press.
+    TooltipTheme(
+        data: TooltipTheme.of(context).copyWith(
+            waitDuration: const Duration(days: 1),
+            triggerMode: TooltipTriggerMode.manual),
+        child: CanvasNoHover(child: _elementSettingsBody(context, controller)));
+
+Widget _elementSettingsBody(BuildContext context, CanvasController controller) {
   var selected = controller.selected;
 
   if (controller.selection.length > 1) {

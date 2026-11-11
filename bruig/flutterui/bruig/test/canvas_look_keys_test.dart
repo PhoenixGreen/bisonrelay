@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show motionModulated;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -179,5 +180,64 @@ void main() {
     expect(find.textContaining("2 keys"), findsOneWidget);
     await tester.tap(line);
     expect(c.chainFocus, "m0");
+  });
+
+  testWidgets("a diamond on the Chain's knob keys it there", (tester) async {
+    // Keyframing is the Chain's (Ken, 2026-11-11): a diamond on each knob,
+    // not only its menu.
+    var c = controllerWith(glow);
+    addTearDown(c.dispose);
+    c.frame = 24;
+    tester.view.physicalSize = const Size(2400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: AnimationPanel(controller: c, height: 360)))),
+    ));
+    await tester.pumpAndSettle();
+    var diamond = find.byKey(const ValueKey("mdevKey-m0-strength"));
+    expect(diamond, findsOneWidget);
+    await tester.tap(diamond);
+    await tester.pumpAndSettle();
+    expect(deviceOf(c).keyAt("strength", 1), isTrue);
+  });
+
+  testWidgets("the panel says a look is animated, and keys nothing itself",
+      (tester) async {
+    var c = controllerWith(rising());
+    addTearDown(c.dispose);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          // Narrow: its setting goes under its name rather than squeezing it.
+          body: SizedBox(
+            width: 220,
+            child: SingleChildScrollView(
+              child: LooksGroup(
+                  controller: c,
+                  element: c.document.elementById("s")!,
+                  title: "Looks"),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: "nothing overflows");
+    expect(find.byKey(const ValueKey("lookAnimated-m0")), findsOneWidget);
+    expect(find.byKey(const ValueKey("lookKey-m0")), findsNothing);
   });
 }

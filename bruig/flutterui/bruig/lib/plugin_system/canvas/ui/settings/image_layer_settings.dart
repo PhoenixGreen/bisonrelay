@@ -753,6 +753,24 @@ class LayersAddButton extends StatelessWidget {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var accent = theme.colors.primary;
+    // In a rebuilt panel, a plain "+" as its prototype's: the word is the
+    // button's to say only where there is no "?" to ask.
+    if (CanvasDense.on(context)) {
+      return Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          key: ValueKey(tapKey),
+          borderRadius: BorderRadius.circular(6),
+          onTap: onPressed,
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: Icon(open ? Icons.close : Icons.add,
+                size: 18, color: open ? accent : theme.colors.onSurfaceVariant),
+          ),
+        ),
+      );
+    }
     return Material(
       type: MaterialType.transparency,
       child: InkWell(

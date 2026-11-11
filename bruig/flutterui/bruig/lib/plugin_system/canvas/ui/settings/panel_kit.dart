@@ -1281,8 +1281,13 @@ class CanvasSection extends StatefulWidget {
   final bool forceOpen;
   final List<Widget> children;
 
+  /// glyph is drawn instead of [icon]: a rebuilt panel's sections are drawn
+  /// with its prototype's own (see SectionGlyph).
+  final SectionGlyph? glyph;
+
   const CanvasSection({
     required this.icon,
+    this.glyph,
     required this.title,
     required this.remember,
     required this.children,
@@ -1357,6 +1362,7 @@ class _CanvasSectionState extends State<CanvasSection> {
   /// _heading is the section's heading line: its icon, its name and what is
   /// set in it, and -- open, with something changed -- its reset.
   Widget _heading(ThemeNotifier theme, bool open, bool changed) {
+    var dense = CanvasDense.on(context);
     var accent = theme.colors.primary;
     var muted = theme.colors.onSurfaceVariant;
     return Row(children: [
@@ -1374,13 +1380,16 @@ class _CanvasSectionState extends State<CanvasSection> {
                   width: 28,
                   height: 28,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(9),
-                    color: open
+                    borderRadius: BorderRadius.circular(dense ? 8 : 9),
+                    color: open && !dense
                         ? accent.withValues(alpha: 0.16)
                         : theme.colors.surfaceContainerHighest,
                   ),
-                  child:
-                      Icon(widget.icon, size: 16, color: open ? accent : muted),
+                  child: widget.glyph != null
+                      ? CustomPaint(
+                          painter: _GlyphPainter(widget.glyph!, muted))
+                      : Icon(widget.icon,
+                          size: 16, color: open && !dense ? accent : muted),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1394,7 +1403,7 @@ class _CanvasSectionState extends State<CanvasSection> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                  fontSize: 12.5,
+                                  fontSize: dense ? 14 : 12.5,
                                   fontWeight: FontWeight.w600,
                                   color: theme.colors.onSurface)),
                         ),
@@ -1419,7 +1428,8 @@ class _CanvasSectionState extends State<CanvasSection> {
                           child: Text(widget.summary,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 10.5, color: muted)),
+                              style: TextStyle(
+                                  fontSize: dense ? 12 : 10.5, color: muted)),
                         ),
                     ],
                   ),
@@ -2196,4 +2206,74 @@ class _CanvasSidesFieldState extends State<CanvasSidesField> {
       child: body,
     );
   }
+}
+
+/// SectionGlyph is one of a rebuilt panel's section icons, as its prototype
+/// draws them: what it says, how it looks, where it is, how it moves, and
+/// the rest.
+enum SectionGlyph { content, look, layout, motion, more }
+
+/// _GlyphPainter draws [glyph] from the prototype's own lines (its 24-unit
+/// SVG paths, stroked 1.8 wide with round ends) in a 16-pixel square at the
+/// middle of the box.
+class _GlyphPainter extends CustomPainter {
+  final SectionGlyph glyph;
+  final Color colour;
+  const _GlyphPainter(this.glyph, this.colour);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.translate((size.width - 16) / 2, (size.height - 16) / 2);
+    canvas.scale(16 / 24);
+    var line = Paint()
+      ..color = colour
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    void seg(double x1, double y1, double x2, double y2) =>
+        canvas.drawLine(Offset(x1, y1), Offset(x2, y2), line);
+    switch (glyph) {
+      case SectionGlyph.content:
+        seg(5, 6, 19, 6);
+        seg(5, 11, 19, 11);
+        seg(5, 16, 14, 16);
+      case SectionGlyph.look:
+        canvas.drawPath(
+            Path()
+              ..moveTo(12, 3)
+              ..lineTo(14.5, 8.5)
+              ..lineTo(20, 9)
+              ..lineTo(16, 13)
+              ..lineTo(17, 19)
+              ..lineTo(12, 16)
+              ..lineTo(7, 19)
+              ..lineTo(8, 13)
+              ..lineTo(4, 9)
+              ..lineTo(9.5, 8.5)
+              ..close(),
+            line);
+      case SectionGlyph.layout:
+        canvas.drawRRect(
+            RRect.fromLTRBR(4, 4, 20, 20, const Radius.circular(2)), line);
+        seg(4, 10, 20, 10);
+        seg(10, 10, 10, 20);
+      case SectionGlyph.motion:
+        seg(3, 12, 7, 12);
+        seg(3, 7, 10, 7);
+        seg(3, 17, 10, 17);
+        canvas.drawCircle(const Offset(16, 12), 4, line);
+      case SectionGlyph.more:
+        var dot = Paint()..color = colour;
+        for (var x in [6.0, 12.0, 18.0]) {
+          canvas.drawCircle(Offset(x, 12), 1.6, dot);
+        }
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_GlyphPainter old) =>
+      old.glyph != glyph || old.colour != colour;
 }

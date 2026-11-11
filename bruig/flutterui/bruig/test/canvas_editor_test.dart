@@ -3486,8 +3486,10 @@ void main() {
         controller.setKeyframe(element.id, const Keyframe(frame: 0, dx: 4));
         await pump(tester, CanvasDesignPanel(controller: controller));
 
-        expect(
-            find.byKey(const ValueKey("elementKeyframeEasing")), findsOneWidget,
+        // A rebuilt panel (a text's) leaves its keyframes to the Chain's
+        // Keyframes card (Ken, 2026-11-11); the rest still ease them here.
+        expect(find.byKey(const ValueKey("elementKeyframeEasing")),
+            kind == ElementKind.text ? findsNothing : findsOneWidget,
             reason: kind.name);
       }
     });

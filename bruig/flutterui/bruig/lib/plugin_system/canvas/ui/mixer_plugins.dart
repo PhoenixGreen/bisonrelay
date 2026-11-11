@@ -33,6 +33,8 @@ import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
+    show KeyDiamond;
 import 'package:bruig/plugin_system/canvas/model/text_looks.dart' show textLayerChoices;
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
@@ -7836,6 +7838,10 @@ class MotionDeviceCard extends StatelessWidget {
     List<Widget> knobs(DeviceTier tier) => [
           for (var p in d.kind.params)
             if (!p.isChoice && motionParamShown(d, p, reused: reused))
+              // A diamond on its corner keys it at the playhead, or takes
+              // the key there away, as the prototype's (Ken, 2026-11-11):
+              // keyframing is done here, in the Chain.
+              Stack(clipBehavior: Clip.none, children: [
               _Knob(
                 key: ValueKey("mdev-${d.id}-${p.id}"),
                 modulated: moved.contains(p.id),
@@ -7861,6 +7867,28 @@ class MotionDeviceCard extends StatelessWidget {
                     set(p, v, transient: transient),
                 onCommit: controller.endInteraction,
               ),
+              Positioned(
+                top: -2,
+                right: -2,
+                child: GestureDetector(
+                  key: ValueKey("mdevKey-${d.id}-${p.id}"),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => controller.toggleDeviceKey(element, d.id, p.id),
+                  child: Padding(
+                    padding: const EdgeInsets.all(3),
+                    child: IconTheme(
+                      data: IconThemeData(
+                          color: d.keyed(p.id)
+                              ? const Color(0xFFF2C14E)
+                              : skin.ink.withValues(alpha: 0.45)),
+                      child: KeyDiamond(
+                          filled: d.keyAt(p.id, controller.playheadSeconds),
+                          size: 10),
+                    ),
+                  ),
+                ),
+              ),
+              ]),
           // What an LFO moves: any knob of the element's other devices.
           if (d.modulates)
             ModTargets(
