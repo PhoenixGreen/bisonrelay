@@ -290,6 +290,40 @@ void main() {
     });
   });
 
+  // Ken's privacy video, 2026-11-11: four headline slabs, each to arrive on
+  // its own word, stood empty on screen from the start of the scene -- the
+  // words waited for their arrival, the box did not.
+  test("a box waits for its words: nothing of it before the arrival", () async {
+    const red = Color(0xFFFF0000);
+    var e = TextElement(
+        const ElementBase(id: "slab", x: 0, y: 0, width: 200, height: 80),
+        text: "WHO",
+        textSpec: const TextSpec(fontSize: 20, color: Color(0xFFFFFFFF)),
+        box: const BoxSpec(fill: red, padding: 20));
+    var c = CanvasController(CanvasDocument(frames: 60, elements: [e]));
+    addTearDown(c.dispose);
+    c.frame = 20;
+    c.applyTextAnimation(
+        c.document.elementById("slab") as TextElement, TextAnimationPreset.wipe,
+        length: 10);
+    Future<int> corner(int frame) async {
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.drawRect(const Rect.fromLTWH(0, 0, 200, 80),
+          Paint()..color = const Color(0xFF000000));
+      paintElement(canvas, c.document.elementById("slab")!, frame,
+          document: c.document);
+      var image = await recorder.endRecording().toImage(200, 80);
+      var bytes = (await image.toByteData())!;
+      image.dispose();
+      // In the padding, clear of the letters.
+      return bytes.getUint32((4 * 200 + 4) * 4);
+    }
+
+    expect(await corner(5), 0x000000FF, reason: "not yet arrived: no box");
+    expect(await corner(45), 0xFF0000FF, reason: "arrived: its box");
+  });
+
   group("what a piece drags with it", () {
     /// column is what is drawn down one vertical strip of the picture, which
     /// is how "did this letter bring its neighbours with it" is asked.

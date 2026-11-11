@@ -1212,14 +1212,23 @@ void _paintTextBody(
     return;
   }
 
-  paintBox(canvas, bounds, e.box, images);
   var inner = e.box.inner(bounds);
-  if (inner.width <= 0 || inner.height <= 0) return;
+  if (inner.width <= 0 || inner.height <= 0) {
+    if (!_waitingToArrive(e, pose, e.drawnParts)) {
+      paintBox(canvas, bounds, e.box, images);
+    }
+    return;
+  }
 
   // Given a slot, the element's own words are a block in the box like any
   // piece, so they stack with the pieces. See TextElement.slot.
   inner = textBodyRect(e, bounds) ?? inner;
-  if (inner.width <= 0 || inner.height <= 0) return;
+  if (inner.width <= 0 || inner.height <= 0) {
+    if (!_waitingToArrive(e, pose, e.drawnParts)) {
+      paintBox(canvas, bounds, e.box, images);
+    }
+    return;
+  }
 
   var spec = drawnTextSpec(e, bounds);
 
@@ -1239,16 +1248,11 @@ void _paintTextBody(
   // On the way out the paragraph goes as one: a part has a moment of its own
   // arriving, and there is no second leaving animation for it to have.
   var leaving = (pose.values[KeyframeChannel.close] ?? 0) > 0;
-  // Nothing yet -- unless the animation is a mark drawn on words that are
-  // already there, such as an underline under a finished sentence.
-  if (animation.on &&
-      reveal <= 0 &&
-      !(animation.keeps && animation.draw.start == TextDrawStart.showText) &&
-      // And unless one of the parts is arriving on its own account, in which
-      // case it has a moment of its own and this frame may be it.
-      !partsAnimate(drawn)) {
-    return;
-  }
+  // Nothing yet, its box included: a slab or a bubble stood empty, waiting
+  // for its words, from the start of the scene (found building Ken's
+  // privacy video, 2026-11-11). See _waitingToArrive.
+  if (_waitingToArrive(e, pose, drawn)) return;
+  paintBox(canvas, bounds, e.box, images);
 
   // Set line by line round whatever is in the way, where asked for. See
   // text_wrap.dart.
@@ -1332,6 +1336,19 @@ void _paintTextBody(
       timings: timings,
       asOne: leaving,
       images: images);
+}
+
+/// _waitingToArrive is whether [e] has an arrival still to come on this
+/// frame, and so shows nothing yet -- unless the animation is a mark drawn
+/// on words that are already there, such as an underline under a finished
+/// sentence, or one of its [parts] arrives on its own account, in which
+/// case it has a moment of its own and this frame may be it.
+bool _waitingToArrive(TextElement e, Keyframe pose, List<TextPart> parts) {
+  var (animation, reveal) = _arrival(e, pose);
+  return animation.on &&
+      reveal <= 0 &&
+      !(animation.keeps && animation.draw.start == TextDrawStart.showText) &&
+      !partsAnimate(parts);
 }
 
 /// _arrival is the animation a text element is playing on this frame, and how
