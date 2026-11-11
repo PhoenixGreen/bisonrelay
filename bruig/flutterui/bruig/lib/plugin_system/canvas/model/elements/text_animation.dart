@@ -721,6 +721,15 @@ class TextAnimation {
   /// of arriving: see ElementLoop.
   final ElementLoop loop;
 
+  /// piecesInTurn brings the pieces in the box (see TextItem) in one after
+  /// another -- the words first, then each piece in the order of its layers
+  /// -- rather than all at once; each starts [piecesGap] of the way through
+  /// the one before. A kicker or a badge arriving just after its headline
+  /// (Ken, 2026-11-11: no arrivals of their own, which would crowd the
+  /// timeline; this, on the text's own).
+  final bool piecesInTurn;
+  final double piecesGap;
+
   const TextAnimation({
     this.preset = TextAnimationPreset.none,
     this.exit = TextAnimationPreset.none,
@@ -738,9 +747,22 @@ class TextAnimation {
     this.exitDirection,
     this.exitStrength = 1,
     this.loop = const ElementLoop(),
+    this.piecesInTurn = false,
+    this.piecesGap = 0.5,
   });
 
   bool get on => preset != TextAnimationPreset.none;
+
+  /// pieceReveal is how far layer [index] of [count] -- the words 0, then
+  /// each piece -- has got when the whole arrival is [reveal] through: all
+  /// at once, or in turn (see [piecesInTurn]), the last finishing as the
+  /// arrival does.
+  double pieceReveal(double reveal, int index, int count) {
+    if (!piecesInTurn || count <= 1) return reveal;
+    var g = piecesGap.clamp(0.0, 1.0).toDouble();
+    var share = 1 / (1 + (count - 1) * g);
+    return (reveal / share - index * g).clamp(0.0, 1.0).toDouble();
+  }
 
   /// scaleFor is where [preset] actually starts from: whatever has been set,
   /// or the preset's own number when nothing has.
@@ -858,6 +880,8 @@ class TextAnimation {
     AnimationDirection? exitDirection,
     double? exitStrength,
     ElementLoop? loop,
+    bool? piecesInTurn,
+    double? piecesGap,
   }) =>
       TextAnimation(
         preset: preset ?? this.preset,
@@ -876,6 +900,8 @@ class TextAnimation {
         exitDirection: exitDirection ?? this.exitDirection,
         exitStrength: exitStrength ?? this.exitStrength,
         loop: loop ?? this.loop,
+        piecesInTurn: piecesInTurn ?? this.piecesInTurn,
+        piecesGap: piecesGap ?? this.piecesGap,
       );
 
   /// progressAt is how far piece [index] of [count] has got when the whole
@@ -909,6 +935,8 @@ class TextAnimation {
         if (exitDirection != null) "exitDirection": exitDirection!.name,
         if (exitStrength != 1) "exitStrength": exitStrength,
         if (loop.on) "loop": loop.toJson(),
+        if (piecesInTurn) "piecesInTurn": true,
+        if (piecesInTurn) "piecesGap": piecesGap,
       };
 
   factory TextAnimation.fromJson(Map<String, dynamic> json) => TextAnimation(
@@ -936,5 +964,7 @@ class TextAnimation {
         loop: json["loop"] is Map<String, dynamic>
             ? ElementLoop.fromJson(json["loop"] as Map<String, dynamic>)
             : const ElementLoop(),
+        piecesInTurn: jsonBool(json["piecesInTurn"], false),
+        piecesGap: jsonDouble(json["piecesGap"], 0.5).clamp(0.0, 1.0),
       );
 }

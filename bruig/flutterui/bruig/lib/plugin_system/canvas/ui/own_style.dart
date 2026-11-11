@@ -140,6 +140,21 @@ class OwnStyle {
         OwnStyleKind.chart => element,
       };
 
+  /// piecesInTurn is whether a text's pieces (see TextItem) come in one
+  /// after another rather than together; null where it has none.
+  bool? get piecesInTurn =>
+      kind == OwnStyleKind.text && (element as TextElement).items.isNotEmpty
+          ? _text.piecesInTurn
+          : null;
+  CanvasElement withPiecesInTurn(bool v) =>
+      _withText(_text.copyWith(piecesInTurn: v));
+
+  /// piecesGap is how far through one layer the next starts, where they
+  /// come in turn.
+  double? get piecesGap => piecesInTurn == true ? _text.piecesGap : null;
+  CanvasElement withPiecesGap(double v) =>
+      _withText(_text.copyWith(piecesGap: v));
+
   /// gap is how long after one piece -- a word, a bar -- the next starts,
   /// as a share of one's own movement; null for a box.
   double? get gap => switch (kind) {
@@ -348,6 +363,18 @@ class OwnStyleCard extends StatelessWidget {
         if (style.gap case var gap?)
           knob("ownGap", "Gap", "${(gap * 100).round()}%", gap, 0, 2, 0.5,
               (v) => style.withGap((v * 100).roundToDouble() / 100)),
+        // A text's pieces: with the words, or each after the one before.
+        if (style.piecesInTurn case var inTurn?)
+          StudioDrop<bool>(
+            key: const ValueKey("ownPiecesOrder"),
+            label: "Its pieces",
+            value: inTurn,
+            options: const [(false, "Together"), (true, "One after another")],
+            onChanged: (v) => write(style.withPiecesInTurn(v)),
+          ),
+        if (style.piecesGap case var g?)
+          knob("ownPiecesGap", "Next starts", pct(g), g, 0, 1, 0.5,
+              (v) => style.withPiecesGap((v * 100).roundToDouble() / 100)),
         if (style.flipped case var flipped?)
           StudioDrop<bool>(
             key: const ValueKey("ownOrder"),

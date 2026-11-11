@@ -165,6 +165,18 @@ void paintTextItems(
     var rect = rects[i];
     if (rect.isEmpty || item.id == skip || item.hidden) continue;
 
+    // Its own share of the arrival, where the pieces come in turn: none of
+    // it, box and all, before its turn.
+    var mine = animation == null
+        ? reveal
+        : animation.pieceReveal(reveal, i + 1, e.items.length + 1);
+    if (animation != null &&
+        animation.on &&
+        animation.piecesInTurn &&
+        mine <= 0) {
+      continue;
+    }
+
     // What is behind it, if anything, and then the piece inside that.
     paintBox(canvas, rect, item.box, images);
     var inner = item.box.inner(rect);
@@ -191,7 +203,7 @@ void paintTextItems(
         ),
         inner,
         animation: animation,
-        reveal: reveal,
+        reveal: mine,
         images: images,
       );
     }

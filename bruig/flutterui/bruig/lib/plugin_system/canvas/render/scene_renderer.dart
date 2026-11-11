@@ -1311,8 +1311,10 @@ void _paintTextBody(
   var drawn = e.drawnPartsWith(flow.parts);
 
   // How much has arrived and how much has left: the same two channels a
-  // chart uses. See TextAnimation.
-  var (animation, reveal) = _arrival(e, pose);
+  // chart uses. See TextAnimation. The words come first of the layers when
+  // its pieces come in turn (TextAnimation.pieceReveal).
+  var (animation, whole) = _arrival(e, pose);
+  var reveal = animation.pieceReveal(whole, 0, e.items.length + 1);
   var timings = _partTimings(e, frame, pose);
 
   // On the way out the paragraph goes as one: a part has a moment of its own
