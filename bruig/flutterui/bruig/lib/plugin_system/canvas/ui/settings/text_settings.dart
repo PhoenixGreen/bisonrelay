@@ -47,7 +47,9 @@ Widget textPanel(
 
   var layer = controller.textLayer(e);
   var at = layer == null ? -1 : e.items.indexOf(layer);
-  return CanvasSections(
+  // At the prototype's measure: see CanvasDense.
+  return CanvasDense(
+      child: CanvasSections(
     key: const ValueKey("elementSections"),
     parts: TextLayersList(
         key: const ValueKey("textLayersList"),
@@ -56,12 +58,12 @@ Widget textPanel(
         onChanged: now),
     quick: layer == null
         ? _bodyQuick(controller, e, write, begin, commit)
-        : _pieceQuick(context, e, at, layer, write, begin, commit),
+        : _pieceQuick(context, controller, e, at, layer, write, begin, commit),
     children: layer == null
         ? _bodySections(context, controller, e, write, begin, commit)
         : _pieceSections(
             context, controller, e, at, layer, write, begin, commit),
-  );
+  ));
 }
 
 /// _bodyEdit is how the element's own words' type is changed: a size typed
@@ -83,32 +85,30 @@ Widget _bodyQuick(CanvasController controller, TextElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var t = _bodyEdit(e, write, begin, commit);
   var styles = controller.textStyles;
+  // Laid out as the prototype's: the face and its size, then its colour
+  // and how it lines up, then its style.
   return CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
-    CanvasControlGroup(
-        label: "Type",
-        hideCaption: true,
-        rule: false,
-        children: [
-          typeFont(t),
-          typeSize(t, fitted: e.autoSize),
-          const CanvasLineBreak(),
-          typeColour(t),
-          typeAlign(t),
-          if (styles.isNotEmpty) ...[
-            const CanvasLineBreak(),
-            CanvasDropdown<String>(
-              key: const ValueKey("quickStyle"),
-              label: "Style",
-              value: styles.any((s) => s.name == e.style) ? e.style : "",
-              width: 120,
-              options: [
-                ("", "Its own"),
-                for (var s in styles) (s.name, s.name),
-              ],
-              onChanged: (v) => controller.useTextStyle(e.id, v),
-            ),
-          ],
-        ]),
+    panelRow([
+      cell(typeFont(t), flex: 3, min: 120),
+      cell(typeSize(t, fitted: e.autoSize), width: 132),
+    ]),
+    const SizedBox(height: 8),
+    panelRow([
+      cell(typeColour(t), width: 104),
+      cell(typeAlign(t), width: 116),
+      cell(CanvasDropdown<String>(
+        key: const ValueKey("quickStyle"),
+        label: "Style",
+        value: styles.any((s) => s.name == e.style) ? e.style : "",
+        width: 80,
+        options: [
+          ("", "Its own"),
+          for (var s in styles) (s.name, s.name),
+        ],
+        onChanged: (v) => controller.useTextStyle(e.id, v),
+      )),
+    ]),
+    const SizedBox(height: 8),
     if (e.autoSize)
       CanvasStateNote(
           "Its size follows the box. Set a size and the fitting "
@@ -175,6 +175,41 @@ List<Widget> _bodySections(
           if (e.autoSize) "fitted to the box",
         ].join(" · "),
         children: [
+          CanvasControlGroup(
+              key: const ValueKey("textWordsTyped"),
+              label: "Words",
+              hideCaption: true,
+              rule: false,
+              children: [
+                // Typed here as well as on the canvas, where the words are
+                // the element's own; a document's are read, not typed.
+                if (!e.document.on)
+                  CanvasTextField(
+                    key: const ValueKey("textWordsField"),
+                    label: "Words",
+                    value: e.text,
+                    maxLines: 3,
+                    width: 200,
+                    onChanged: (v) {
+                      begin();
+                      write(e.copyWith(text: v));
+                    },
+                    onCommit: commit,
+                  ),
+                CanvasSegmented<TextCase>(
+                  key: const ValueKey("textCase"),
+                  label: "Case",
+                  value: spec.textCase,
+                  options: const [
+                    (TextCase.none, "As typed"),
+                    (TextCase.upper, "UPPER"),
+                    (TextCase.lower, "lower"),
+                    (TextCase.title, "Title"),
+                  ],
+                  keyOf: (c) => "textCase-${c.name}",
+                  onChanged: (v) => t.now(spec.copyWith(textCase: v)),
+                ),
+              ]),
           textWordsCard(context, controller, e, write, begin, commit),
           CanvasControlGroup(
               key: const ValueKey("textWhere"),
@@ -201,6 +236,27 @@ List<Widget> _bodySections(
                       "box, so the words fill it while either is on and the slot "
                       "waits."),
                 if (e.slot?.down == VerticalAlignSpec.middle) _middleSlotHint,
+                // How the lines sit in the box: up and down, and justified
+                // across it (Align, in the strip above, is the rest).
+                panelRow([
+                  cell(CanvasDropdown<VerticalAlignSpec>(
+                    key: const ValueKey("typeVertical"),
+                    label: "Up and down",
+                    value: spec.verticalAlign,
+                    width: 80,
+                    options: [
+                      for (var a in VerticalAlignSpec.values) (a, a.label)
+                    ],
+                    onChanged: (v) => t.now(spec.copyWith(verticalAlign: v)),
+                  )),
+                ]),
+                CanvasToggle(
+                  key: const ValueKey("typeJustify"),
+                  label: "Justified",
+                  value: spec.align == TextAlignSpec.justify,
+                  onChanged: (v) => t.now(spec.copyWith(
+                      align: v ? TextAlignSpec.justify : TextAlignSpec.left)),
+                ),
               ]),
         ]),
     section(e, "look",
@@ -219,7 +275,11 @@ List<Widget> _bodySections(
               label: "Letters",
               rule: false,
               children: [
-                ...typeLetters(t, underline: false),
+                ...typeLetters(t,
+                    underline: false,
+                    vertical: false,
+                    justify: false,
+                    textCase: false),
                 const CanvasLineBreak(),
                 // What the letters are painted with: their colour (in the
                 // strip above), a picture or a pattern.
@@ -268,7 +328,12 @@ List<Widget> _bodySections(
                 ),
               ]),
           boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-              remember: "text", rule: false, fill: true, context: context),
+              label: "Box behind the words",
+              remember: "text",
+              rule: false,
+              fill: true,
+              context: context,
+              compact: true),
           LooksGroup(
               key: const ValueKey("textLooksAll"),
               controller: controller,
@@ -290,7 +355,7 @@ List<Widget> _bodySections(
           if (e.curve != null) "on a line",
         ].join(" · "),
         children: [
-          positionGroup(controller, e, write, begin, commit),
+          positionGroup(controller, e, write, begin, commit, compact: true),
           CanvasControlGroup(label: "Columns", rule: false, children: [
             CanvasNumberField(
               key: const ValueKey("textColumns"),
@@ -468,6 +533,37 @@ List<Widget> _bodySections(
         summary: _motionSaid(e),
         children: [
           MotionSummary(controller: controller, element: e),
+          // How it comes in and goes, chosen here as in its Chain: its own
+          // arrival and way out (see OwnStyle).
+          CanvasControlGroup(
+              key: const ValueKey("textMotionPick"),
+              label: "Arrival and leaving",
+              hideCaption: true,
+              rule: false,
+              children: [
+                panelRow([
+                  cell(CanvasDropdown<TextAnimationPreset>(
+                    key: const ValueKey("textArrival"),
+                    label: "Arrival",
+                    value: e.animation.preset,
+                    width: 80,
+                    options: [
+                      for (var p in TextAnimationPreset.values) (p, p.label)
+                    ],
+                    onChanged: (v) => controller.applyTextAnimation(e, v),
+                  )),
+                  cell(CanvasDropdown<TextAnimationPreset>(
+                    key: const ValueKey("textLeaving"),
+                    label: "Leaving",
+                    value: e.animation.exit,
+                    width: 80,
+                    options: [
+                      for (var p in TextAnimationPreset.values) (p, p.label)
+                    ],
+                    onChanged: (v) => controller.applyTextExit(e, v),
+                  )),
+                ]),
+              ]),
           if (controller.cues.isNotEmpty) elementCueCard(controller, e),
         ]),
     section(e, "more",
@@ -509,8 +605,15 @@ TypeEdit _pieceEdit(TextElement e, int at, TextItem item, SettingsWrite write,
 
 /// _pieceQuick is a piece's face, size and colour, and where it sits in
 /// the box -- which decides how it lines up, so there is no Align.
-Widget _pieceQuick(BuildContext context, TextElement e, int at, TextItem item,
-    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+Widget _pieceQuick(
+    BuildContext context,
+    CanvasController controller,
+    TextElement e,
+    int at,
+    TextItem item,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
   void put(TextItem next) {
     begin();
     write(e.copyWith(items: [
@@ -520,23 +623,45 @@ Widget _pieceQuick(BuildContext context, TextElement e, int at, TextItem item,
   }
 
   var t = _pieceEdit(e, at, item, write, begin, commit);
+  var slot = CanvasSlotPicker(
+      key: const ValueKey("quickSlot"),
+      value: item.slot,
+      onChanged: (s) => put(item.copyWith(slot: s)));
   return CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
-    CanvasControlGroup(
-        label: item.says,
-        hideCaption: true,
-        rule: false,
-        children: [
-          if (!item.isIcon) ...[
-            typeFont(t),
-            typeSize(t),
-            const CanvasLineBreak(),
-            typeColour(t),
+    if (!item.isIcon) ...[
+      panelRow([
+        cell(typeFont(t), flex: 3, min: 120),
+        cell(typeSize(t), width: 132),
+      ]),
+      const SizedBox(height: 8),
+    ],
+    panelRow([
+      if (!item.isIcon) cell(typeColour(t), width: 104),
+      cell(slot, width: 86),
+      // A named style's type laid on the piece: the piece keeps it as its
+      // own, not linked (a piece has no style of its own to follow).
+      if (!item.isIcon)
+        cell(CanvasDropdown<String>(
+          key: const ValueKey("quickPieceStyle"),
+          label: "Style",
+          value: "",
+          width: 80,
+          options: [
+            ("", "Its own"),
+            for (var s in controller.textStyles) (s.name, s.name),
           ],
-          CanvasSlotPicker(
-              key: const ValueKey("quickSlot"),
-              value: item.slot,
-              onChanged: (s) => put(item.copyWith(slot: s))),
-        ]),
+          onChanged: (v) {
+            var style =
+                controller.textStyles.where((s) => s.name == v).firstOrNull;
+            if (style == null) return;
+            put(item.copyWith(spec: style.spec));
+          },
+        ))
+      else
+        cell(const SizedBox.shrink()),
+    ]),
+    const SizedBox(height: 8),
+    CanvasStateNote("Its place in the box decides how it lines up."),
   ]);
 }
 
@@ -551,6 +676,14 @@ List<Widget> _pieceSections(
     VoidCallback commit) {
   var t = _pieceEdit(e, at, item, write, begin, commit);
   var whole = _looksSaid(e, {""});
+  void put(TextItem next, {bool live = false}) {
+    begin();
+    write(e.copyWith(items: [
+      for (var (i, it) in e.items.indexed) i == at ? next : it,
+    ]));
+    if (!live) commit();
+  }
+
   return [
     section(e, "content",
         icon: item.isIcon ? Icons.image_outlined : Icons.notes,
@@ -560,11 +693,49 @@ List<Widget> _pieceSections(
             : "\u201c${item.text}\u201d",
         initiallyOpen: item.isIcon,
         children: [
+          CanvasControlGroup(
+              key: const ValueKey("pieceWords"),
+              label: "Words",
+              hideCaption: true,
+              rule: false,
+              children: [
+                // What to call it in the layers; otherwise what it says,
+                // which names every picture "Picture".
+                CanvasTextField(
+                  key: ValueKey("textItemName$at"),
+                  label: "Called",
+                  value: item.name,
+                  hint: item.isIcon ? "Picture" : "the words",
+                  width: 200,
+                  onChanged: (v) => put(item.copyWith(name: v), live: true),
+                  onCommit: commit,
+                ),
+                if (!item.isIcon) ...[
+                  CanvasTextField(
+                    key: ValueKey("textItemWords$at"),
+                    label: "Words",
+                    value: item.text,
+                    maxLines: 3,
+                    width: 200,
+                    onChanged: (v) => put(item.copyWith(text: v), live: true),
+                    onCommit: commit,
+                  ),
+                  CanvasSegmented<TextCase>(
+                    key: const ValueKey("pieceCase"),
+                    label: "Case",
+                    value: item.spec.textCase,
+                    options: const [
+                      (TextCase.none, "As typed"),
+                      (TextCase.upper, "UPPER"),
+                      (TextCase.lower, "lower"),
+                      (TextCase.title, "Title"),
+                    ],
+                    onChanged: (v) => t.now(item.spec.copyWith(textCase: v)),
+                  ),
+                ],
+              ]),
           if (item.isIcon)
-            _pictureRow(context, e, at, item, write, begin, commit)
-          else
-            const CanvasHint("Its words are typed on the canvas: double-click "
-                "them there."),
+            _pictureRow(context, e, at, item, write, begin, commit),
         ]),
     section(e, "look",
         icon: Icons.palette_outlined,
@@ -580,7 +751,8 @@ List<Widget> _pieceSections(
                 key: const ValueKey("pieceLetters"),
                 label: "Letters",
                 rule: false,
-                children: typeLetters(t, vertical: false, justify: false)),
+                children: typeLetters(t,
+                    vertical: false, justify: false, textCase: false)),
           CanvasControlGroup(
               key: const ValueKey("pieceBox"),
               label: "Box behind it",
@@ -593,8 +765,11 @@ List<Widget> _pieceSections(
               layer: item.id,
               title: "Looks on this piece"),
           if (whole.isNotEmpty)
-            CanvasHint("The whole text also has $whole, over this piece "
-                "too: pick the words in the layers to change them."),
+            CanvasStateNote(
+                "The whole text also has $whole, over this piece "
+                "too.",
+                action: "On its words",
+                onAction: () => controller.pickTextLayer(e.id, null)),
         ]),
     section(e, "layout",
         icon: Icons.open_with,
@@ -604,8 +779,52 @@ List<Widget> _pieceSections(
           CanvasControlGroup(
               key: const ValueKey("piecePlace"),
               label: "Where",
+              hideCaption: true,
               rule: false,
-              children: _pieceBits(e, at, item, write, begin, commit)),
+              children: [
+                panelRow([
+                  cell(
+                      CanvasSlotPicker(
+                          key: ValueKey("textItemSlot$at"),
+                          value: item.slot,
+                          onChanged: (s) => put(item.copyWith(slot: s))),
+                      width: 86),
+                  cell(Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Text(item.slot.label,
+                        style: const TextStyle(fontSize: 12)),
+                  )),
+                ]),
+                panelRow([
+                  cell(CanvasNumberField(
+                    key: ValueKey("textItemGap$at"),
+                    label: "Gap",
+                    value: item.gap,
+                    min: -400,
+                    max: 400,
+                    width: 56,
+                    onChanged: (v) => put(item.copyWith(gap: v), live: true),
+                    onCommit: commit,
+                  )),
+                  cell(CanvasNumberField(
+                    key: ValueKey("textItemSide$at"),
+                    // Both ways round from one number: away from the edge
+                    // its place holds it to, or back past it.
+                    label: "Left/right",
+                    value: item.side,
+                    min: -2000,
+                    max: 2000,
+                    width: 56,
+                    onChanged: (v) => put(item.copyWith(side: v), live: true),
+                    onCommit: commit,
+                  )),
+                ]),
+                const CanvasHint("Gap is the room from the box edge its place "
+                    "holds it to, or from the piece before it there. Below "
+                    "nought it sits outside the box."),
+                if (!item.isIcon && item.slot.down == VerticalAlignSpec.middle)
+                  _middleSlotHint,
+              ]),
         ]),
     section(e, "motion",
         icon: Icons.animation,
@@ -618,6 +837,35 @@ List<Widget> _pieceSections(
               note: "A piece comes and goes with the whole text. To move it "
                   "on its own, animate its looks in the Chain, or make it an "
                   "element of its own."),
+        ]),
+    section(e, "more",
+        icon: Icons.more_horiz,
+        title: "More",
+        summary: "Remove",
+        children: [
+          CanvasControlGroup(
+              key: const ValueKey("pieceMore"),
+              label: "More",
+              hideCaption: true,
+              rule: false,
+              children: [
+                CanvasTextButton(
+                  key: const ValueKey("pieceRemove"),
+                  label: "Remove this piece",
+                  grow: false,
+                  onPressed: item.locked
+                      ? null
+                      : () {
+                          begin();
+                          write(e.copyWith(items: [
+                            for (var (i, it) in e.items.indexed)
+                              if (i != at) it,
+                          ]));
+                          commit();
+                          controller.pickTextLayer(e.id, null);
+                        },
+                ),
+              ]),
         ]),
   ];
 }
@@ -1812,11 +2060,6 @@ List<Widget> _placeBits(TextElement e, int at, TextItem item,
     ],
   ];
 }
-
-/// _pieceBits is where piece [at] sits: its name, its place, its room.
-List<Widget> _pieceBits(TextElement e, int at, TextItem item,
-        SettingsWrite write, VoidCallback begin, VoidCallback commit) =>
-    _placeBits(e, at, item, write, begin, commit, box: false);
 
 /// _pieceBoxBits is what is behind piece [at].
 List<Widget> _pieceBoxBits(TextElement e, int at, TextItem item,

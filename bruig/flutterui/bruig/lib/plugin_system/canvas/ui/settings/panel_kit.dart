@@ -405,21 +405,21 @@ class _CanvasStepperState extends State<CanvasStepper> {
     );
     if (card) {
       return Padding(
-        padding: const EdgeInsets.only(right: cardGap),
+        padding: EdgeInsets.only(right: cardGapIn(context)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(height: cardLabelHeight, child: caption),
-            const SizedBox(height: cardLabelGap),
+            SizedBox(height: cardLabelHeightIn(context), child: caption),
+            SizedBox(height: cardLabelGapIn(context)),
             widget.fill
                 ? SizedBox(
                     width: double.infinity,
-                    height: cardControlHeight,
+                    height: cardHeightIn(context),
                     child: box)
                 : canvasSized(context,
                     min: CanvasControlScope.widthFor(context, widget.width),
-                    height: cardControlHeight,
+                    height: cardHeightIn(context),
                     grow: widget.grow,
                     child: box),
           ],
@@ -1797,7 +1797,8 @@ class CanvasToolTiles<T> extends StatelessWidget {
           ),
           if (controls.isNotEmpty)
             CanvasWrap(
-                runSpacing: card ? cardGap : canvasRowGap, children: controls),
+                runSpacing: card ? cardGapIn(context) : canvasRowGap,
+                children: controls),
         ],
       ],
     );

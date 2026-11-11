@@ -155,12 +155,11 @@ void main() {
   });
 
   group("the text element's type card", () {
-    testWidgets("gives the face a line to itself rather than cut its name",
+    testWidgets("has the face and its size on one line, neither cut",
         (tester) async {
-      // In a card the controls are a size up, and the face's longest name
-      // between two arrows is wider than half a narrow sidebar: beside the
-      // size it was cut to "Times N…". It takes the line instead, and the
-      // size under it has a line too.
+      // As the prototype's quick strip: the face and its size side by side,
+      // each filling its share; too narrow for both, one under the other
+      // rather than a name cut short (see panelRow).
       var document = const CanvasDocument();
       var element = newElement(ElementKind.text, document);
       var controller = CanvasController(document.addElement(element));
@@ -168,15 +167,14 @@ void main() {
       controller.selectOnly(element.id);
       await pump(tester, CanvasDesignPanel(controller: controller), width: 360);
 
-      Finder box(Finder of, Type type) =>
-          find.ancestor(of: of, matching: find.byType(type)).first;
-      var font = tester.getRect(box(find.text("Font"), CanvasDropdown<String>));
+      var font = tester.getRect(find.byKey(const ValueKey("typeFont")));
       // A new text is fitted to its box, and its Size says so.
-      var size = tester.getRect(box(find.text("Size (fitted)"), CanvasStepper));
-      expect(size.top, greaterThan(font.bottom), reason: "Size under Font");
-      expect(size.width, closeTo(font.width, 0.5),
-          reason: "each fills its line");
-      expect(font.right, lessThanOrEqualTo(360 + 0.5));
+      expect(find.text("Size (fitted)"), findsOneWidget);
+      var size = tester.getRect(find.byKey(const ValueKey("typeSize")));
+      expect(size.top, closeTo(font.top, 0.5), reason: "one line");
+      expect(font.right, lessThanOrEqualTo(size.left + 0.5));
+      expect(font.width, greaterThanOrEqualTo(110), reason: "room for a name");
+      expect(size.right, lessThanOrEqualTo(360 + 0.5));
       expect(tester.takeException(), isNull);
     });
   });

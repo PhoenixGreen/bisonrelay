@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:flutter/material.dart';
 
 // type_parts.dart is how words are set, a control at a time, for the
@@ -70,73 +71,72 @@ Widget typeAlign(TypeEdit t) => CanvasSegmented<TextAlignSpec>(
         (TextAlignSpec.right, "Right"),
       ],
       keyOf: (a) => "typeAlign-${a.name}",
+      iconOf: (a) => switch (a) {
+        TextAlignSpec.left => Icons.format_align_left,
+        TextAlignSpec.center => Icons.format_align_center,
+        TextAlignSpec.right => Icons.format_align_right,
+        TextAlignSpec.justify => Icons.format_align_justify,
+      },
       onChanged: (v) => t.now(t.spec.copyWith(align: v)),
     );
 
-/// typeLetters is the rest of how the letters are set: their weight and
-/// slant, their spacing, how they sit up and down the box, their case.
+/// typeLetters is the rest of how the letters are set, in rows as the
+/// prototype has them: weight, letter and line spacing side by side, the
+/// switches each a line, and how they sit up and down beside their case.
 List<Widget> typeLetters(TypeEdit t,
         {bool underline = true,
         bool vertical = true,
         bool justify = true,
         bool textCase = true}) =>
     [
-      CanvasDropdown<int>(
-        key: const ValueKey("typeWeight"),
-        label: "Weight",
-        value: t.spec.weight,
-        width: 104,
-        options: const [
-          (100, "Thin"),
-          (300, "Light"),
-          (400, "Regular"),
-          (500, "Medium"),
-          (600, "Semibold"),
-          (700, "Bold"),
-          (800, "Extrabold"),
-          (900, "Black"),
-        ],
-        onChanged: (v) => t.now(t.spec.copyWith(weight: v)),
-      ),
-      CanvasIconButton(
+      panelRow([
+        cell(CanvasNumberField(
+          key: const ValueKey("typeWeight"),
+          label: "Weight",
+          value: t.spec.weight.toDouble(),
+          min: 100,
+          max: 900,
+          step: 100,
+          width: 60,
+          onChanged: (v) => t.onChanged(t.spec.copyWith(weight: v.round())),
+          onCommit: t.commit,
+        )),
+        cell(CanvasNumberField(
+          key: const ValueKey("typeLetter"),
+          label: "Letter",
+          value: t.spec.letterSpacing,
+          min: -50,
+          max: 200,
+          decimals: 1,
+          width: 60,
+          onChanged: (v) => t.onChanged(t.spec.copyWith(letterSpacing: v)),
+          onCommit: t.commit,
+        )),
+        cell(CanvasNumberField(
+          key: const ValueKey("typeLine"),
+          label: "Line",
+          value: t.spec.lineHeight,
+          min: 0.5,
+          max: 5,
+          decimals: 2,
+          width: 60,
+          onChanged: (v) => t.onChanged(t.spec.copyWith(lineHeight: v)),
+          onCommit: t.commit,
+        )),
+      ]),
+      CanvasToggle(
         key: const ValueKey("typeItalic"),
-        icon: Icons.format_italic,
-        tooltip: "Italic",
-        active: t.spec.italic,
-        onPressed: () => t.now(t.spec.copyWith(italic: !t.spec.italic)),
+        label: "Italic",
+        value: t.spec.italic,
+        onChanged: (v) => t.now(t.spec.copyWith(italic: v)),
       ),
       if (underline)
-        CanvasIconButton(
+        CanvasToggle(
           key: const ValueKey("typeUnderline"),
-          icon: Icons.format_underlined,
-          tooltip: "Underline",
-          active: t.spec.underline,
-          onPressed: () => t.now(t.spec.copyWith(underline: !t.spec.underline)),
+          label: "Underline",
+          value: t.spec.underline,
+          onChanged: (v) => t.now(t.spec.copyWith(underline: v)),
         ),
-      const CanvasLineBreak(),
-      CanvasNumberField(
-        key: const ValueKey("typeLetter"),
-        label: "Letter",
-        value: t.spec.letterSpacing,
-        min: -50,
-        max: 200,
-        decimals: 1,
-        width: 64,
-        onChanged: (v) => t.onChanged(t.spec.copyWith(letterSpacing: v)),
-        onCommit: t.commit,
-      ),
-      CanvasNumberField(
-        key: const ValueKey("typeLine"),
-        label: "Line",
-        value: t.spec.lineHeight,
-        min: 0.5,
-        max: 5,
-        decimals: 2,
-        width: 64,
-        onChanged: (v) => t.onChanged(t.spec.copyWith(lineHeight: v)),
-        onCommit: t.commit,
-      ),
-      if (vertical || textCase) const CanvasLineBreak(),
       if (justify)
         CanvasToggle(
           key: const ValueKey("typeJustify"),
@@ -145,22 +145,25 @@ List<Widget> typeLetters(TypeEdit t,
           onChanged: (v) => t.now(t.spec
               .copyWith(align: v ? TextAlignSpec.justify : TextAlignSpec.left)),
         ),
-      if (vertical)
-        CanvasDropdown<VerticalAlignSpec>(
-          key: const ValueKey("typeVertical"),
-          label: "Up and down",
-          value: t.spec.verticalAlign,
-          width: 96,
-          options: [for (var a in VerticalAlignSpec.values) (a, a.label)],
-          onChanged: (v) => t.now(t.spec.copyWith(verticalAlign: v)),
-        ),
-      if (textCase)
-        CanvasDropdown<TextCase>(
-          key: const ValueKey("typeCase"),
-          label: "Case",
-          value: t.spec.textCase,
-          width: 104,
-          options: [for (var c in TextCase.values) (c, c.label)],
-          onChanged: (v) => t.now(t.spec.copyWith(textCase: v)),
-        ),
+      if (vertical || textCase)
+        panelRow([
+          if (vertical)
+            cell(CanvasDropdown<VerticalAlignSpec>(
+              key: const ValueKey("typeVertical"),
+              label: "Up and down",
+              value: t.spec.verticalAlign,
+              width: 80,
+              options: [for (var a in VerticalAlignSpec.values) (a, a.label)],
+              onChanged: (v) => t.now(t.spec.copyWith(verticalAlign: v)),
+            )),
+          if (textCase)
+            cell(CanvasDropdown<TextCase>(
+              key: const ValueKey("typeCase"),
+              label: "Case",
+              value: t.spec.textCase,
+              width: 80,
+              options: [for (var c in TextCase.values) (c, c.label)],
+              onChanged: (v) => t.now(t.spec.copyWith(textCase: v)),
+            )),
+        ]),
     ];

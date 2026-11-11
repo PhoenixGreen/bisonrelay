@@ -98,16 +98,42 @@ const double cardCaptioned = cardLabelHeight + cardLabelGap + cardControlHeight;
 /// two lines.
 const double cardGap = 12;
 
+/// CanvasDense is the measure of the settings panel as it was rebuilt round
+/// tasks (Ken, 2026-11-11: "the settings are a lot bigger than the
+/// prototype"): the prototype's sizes -- lower controls, closer together --
+/// and a group a name in small capitals over its controls rather than a card
+/// on the section's card.
+class CanvasDense extends InheritedWidget {
+  const CanvasDense({required super.child, super.key});
+
+  static bool on(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<CanvasDense>() != null;
+
+  @override
+  bool updateShouldNotify(CanvasDense old) => false;
+}
+
+/// cardHeightIn, cardGapIn, cardLabelGapIn and cardLabelHeightIn are the
+/// card measures where [context] is: smaller in a dense panel.
+double cardHeightIn(BuildContext context) =>
+    CanvasDense.on(context) ? 32 : cardControlHeight;
+double cardGapIn(BuildContext context) =>
+    CanvasDense.on(context) ? 8 : cardGap;
+double cardLabelGapIn(BuildContext context) =>
+    CanvasDense.on(context) ? 4 : cardLabelGap;
+double cardLabelHeightIn(BuildContext context) =>
+    CanvasDense.on(context) ? 14 : cardLabelHeight;
+
 /// heightIn is how tall a control stands where [context] is.
 double heightIn(BuildContext context) =>
-    CanvasCards.on(context) ? cardControlHeight : controlHeight;
+    CanvasCards.on(context) ? cardHeightIn(context) : controlHeight;
 
 /// nudgeIn is how far down a control with no caption sits, to line up with
 /// the captioned ones beside it.
 double nudgeIn(BuildContext context) => CanvasControlScope.isInline(context)
     ? 0
     : CanvasCards.on(context)
-        ? cardCaptioned - cardControlHeight
+        ? cardLabelHeightIn(context) + cardLabelGapIn(context)
         : controlWithLabelHeight - controlHeight;
 
 /// controlWithLabelHeight is what a captioned control stands at, all in.
@@ -509,9 +535,23 @@ Widget canvasSized(
   required bool grow,
   required Widget child,
 }) =>
-    grow && _CanvasWrapScope.of(context)
-        ? _Stretch(min: min, height: height, child: child)
-        : SizedBox(width: min, height: height, child: child);
+    CanvasCellFill.on(context)
+        ? SizedBox(width: double.infinity, height: height, child: child)
+        : grow && _CanvasWrapScope.of(context)
+            ? _Stretch(min: min, height: height, child: child)
+            : SizedBox(width: min, height: height, child: child);
+
+/// CanvasCellFill makes a control as wide as the room it is given: one cell
+/// of a row laid out by hand (see panelRow), as the prototype's are.
+class CanvasCellFill extends InheritedWidget {
+  const CanvasCellFill({required super.child, super.key});
+
+  static bool on(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<CanvasCellFill>() != null;
+
+  @override
+  bool updateShouldNotify(CanvasCellFill old) => false;
+}
 
 /// CanvasWrap is a Wrap whose marked children share out the room left over,
 /// so a row of boxes grows into a sidebar of whatever width instead of
@@ -886,13 +926,20 @@ class CanvasControlGroup extends StatelessWidget {
     var about =
         [if (help != null && help!.isNotEmpty) help!, ...hints].join("\n\n");
     var shut = folded == true;
-    var title = TextStyle(
-        fontSize: 12.5,
-        fontWeight: FontWeight.w600,
-        color: theme.colors.onSurface);
+    var dense = CanvasDense.on(context);
+    var title = dense
+        ? TextStyle(
+            fontSize: 10.5,
+            letterSpacing: 0.8,
+            fontWeight: FontWeight.w600,
+            color: theme.colors.onSurfaceVariant)
+        : TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: theme.colors.onSurface);
     Widget name = onRename != null
         ? _RenamableCaption(label: label, style: title, onRename: onRename!)
-        : Text(label, style: title);
+        : Text(dense ? label.toUpperCase() : label, style: title);
     if (folded != null) {
       name = InkWell(
         onTap: onFold,
@@ -917,7 +964,8 @@ class CanvasControlGroup extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (!shut) CanvasWrap(runSpacing: cardGap, children: rest),
+            if (!shut)
+              CanvasWrap(runSpacing: cardGapIn(context), children: rest),
             if (below != null && !shut) below!,
           ],
         ));
@@ -1101,7 +1149,8 @@ class CanvasTextButton extends StatelessWidget implements CanvasGrowable {
     Widget button(Widget child) =>
         tooltip.isEmpty ? child : Tooltip(message: tooltip, child: child);
     return Padding(
-      padding: EdgeInsets.only(right: card ? cardGap : canvasControlGap),
+      padding: EdgeInsets.only(
+          right: card ? cardGapIn(context) : canvasControlGap),
       child: canvasSized(
         context,
         min: least,
@@ -1161,12 +1210,17 @@ class CanvasSegmented<T> extends StatelessWidget {
   /// keyOf names each option, for the tests.
   final String Function(T)? keyOf;
 
+  /// iconOf draws an option as an icon, its words its tooltip: alignment's
+  /// three, as the prototype has them.
+  final IconData Function(T)? iconOf;
+
   const CanvasSegmented(
       {required this.options,
       required this.value,
       required this.onChanged,
       this.label = "",
       this.keyOf,
+      this.iconOf,
       super.key});
 
   @override
@@ -1175,7 +1229,7 @@ class CanvasSegmented<T> extends StatelessWidget {
     var card = CanvasCards.on(context);
     var accent = theme.colors.primary;
     var bar = Container(
-      height: card ? cardControlHeight + 4 : controlHeight + 2,
+      height: card ? cardHeightIn(context) + 4 : controlHeight + 2,
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(card ? 10 : 5),
@@ -1199,15 +1253,20 @@ class CanvasSegmented<T> extends StatelessWidget {
                         option == value ? accent.withValues(alpha: 0.16) : null,
                     border: option == value ? Border.all(color: accent) : null,
                   ),
-                  child: Text(words,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: card ? 12 : 11,
-                          fontWeight: option == value
-                              ? FontWeight.w600
-                              : FontWeight.normal,
-                          color: theme.colors.onSurface)),
+                  child: iconOf != null
+                      ? Tooltip(
+                          message: words,
+                          child: Icon(iconOf!(option),
+                              size: 16, color: theme.colors.onSurface))
+                      : Text(words,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: card ? 12 : 11,
+                              fontWeight: option == value
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                              color: theme.colors.onSurface)),
                 ),
               ),
             ),
@@ -1225,7 +1284,7 @@ class CanvasSegmented<T> extends StatelessWidget {
             if (label.isNotEmpty)
               Padding(
                 padding: EdgeInsets.only(
-                    bottom: card ? cardLabelGap : controlLabelGap),
+                    bottom: card ? cardLabelGapIn(context) : controlLabelGap),
                 child: Text(label,
                     style: TextStyle(
                         fontSize: card ? 11.5 : 9,
@@ -1247,6 +1306,28 @@ Widget canvasCard(BuildContext context,
     {Widget? title, String help = "", required Widget body}) {
   var theme = ThemeNotifier.of(context);
   var heading = title != null || help.isNotEmpty;
+  // In a dense panel, a group is its name in small capitals over its
+  // controls: no ground of its own on the section's (the prototype).
+  if (CanvasDense.on(context)) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (heading)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(children: [
+                Expanded(child: title ?? const SizedBox.shrink()),
+                if (help.isNotEmpty) CanvasHint(help),
+              ]),
+            ),
+          body,
+        ],
+      ),
+    );
+  }
   // A card inside a card -- a group in a folding part of a section -- is
   // a block with its name over it, not a ground on a ground.
   if (context.dependOnInheritedWidgetOfExactType<_InCard>() != null) {
@@ -2421,24 +2502,56 @@ class _CanvasColorButtonState extends State<CanvasColorButton> {
           child: InkWell(
             borderRadius: BorderRadius.circular(4),
             onTap: _pick,
-            child: Container(
-              width: 30,
-              height: heightIn(context),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: theme.colors.outlineVariant),
-                // The checker tells a transparent colour from black on a dark
-                // background.
-                color: theme.colors.surface,
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: CustomPaint(
-                  painter: _SwatchPainter(color, gradient),
-                  size: Size(30, heightIn(context)),
-                ),
-              ),
-            ),
+            child: CanvasCellFill.on(context)
+                // Filling a cell of a row, as the prototype's: a swatch and
+                // the colour's code beside it.
+                ? Container(
+                    height: heightIn(context),
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: theme.colors.outlineVariant),
+                    ),
+                    child: Row(children: [
+                      AspectRatio(
+                        aspectRatio: 1,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(5),
+                          child: CustomPaint(
+                              painter: _SwatchPainter(color, gradient)),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                            "#${(color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, "0").toUpperCase()}",
+                            maxLines: 1,
+                            overflow: TextOverflow.clip,
+                            style: TextStyle(
+                                fontSize: 11.5,
+                                fontFamily: "monospace",
+                                color: theme.colors.onSurfaceVariant)),
+                      ),
+                    ]),
+                  )
+                : Container(
+                    width: 30,
+                    height: heightIn(context),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: theme.colors.outlineVariant),
+                      // The checker tells a transparent colour from black on a
+                      // dark background.
+                      color: theme.colors.surface,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: CustomPaint(
+                        painter: _SwatchPainter(color, gradient),
+                        size: Size(30, heightIn(context)),
+                      ),
+                    ),
+                  ),
           ),
         ),
       ),
@@ -2604,7 +2717,7 @@ class CanvasToggle extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               onTap: () => onChanged(!value),
               child: SizedBox(
-                height: 36,
+                height: CanvasDense.on(context) ? 30 : 36,
                 child: Row(children: [
                   Expanded(
                     child: Text(label,
@@ -2677,23 +2790,48 @@ class _Switch extends StatelessWidget {
   const _Switch({required this.on, required this.theme});
 
   @override
-  Widget build(BuildContext context) => AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        width: 40,
-        height: 24,
-        padding: const EdgeInsets.all(3),
-        alignment: on ? Alignment.centerRight : Alignment.centerLeft,
-        decoration: BoxDecoration(
+  Widget build(BuildContext context) {
+    // Smaller in a dense panel, as the prototype's.
+    var dense = CanvasDense.on(context);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      width: dense ? 34 : 40,
+      height: dense ? 20 : 24,
+      padding: const EdgeInsets.all(3),
+      alignment: on ? Alignment.centerRight : Alignment.centerLeft,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: on
+            ? theme.colors.primary
+            : theme.colors.outlineVariant.withValues(alpha: 0.9),
+      ),
+      child: Container(
+        width: dense ? 14 : 18,
+        height: dense ? 14 : 18,
+        decoration:
+            const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+      ),
+    );
+  }
+}
+
+/// CanvasSwitch is the switch a toggle row ends in, alone: for a row laid
+/// out by hand (a look's, see LooksGroup).
+class CanvasSwitch extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  const CanvasSwitch({required this.value, required this.onChanged, super.key});
+
+  @override
+  Widget build(BuildContext context) => Material(
+        type: MaterialType.transparency,
+        child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          color: on
-              ? theme.colors.primary
-              : theme.colors.outlineVariant.withValues(alpha: 0.9),
-        ),
-        child: Container(
-          width: 18,
-          height: 18,
-          decoration:
-              const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+          onTap: () => onChanged(!value),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: _Switch(on: value, theme: ThemeNotifier.of(context)),
+          ),
         ),
       );
 }
@@ -2914,7 +3052,7 @@ Widget canvasLabelled(BuildContext context, String label, Widget child) =>
 /// canvasControlHeight is how tall a control is where [context] is: taller
 /// in a section's card.
 double canvasControlHeight(BuildContext context) =>
-    CanvasCards.on(context) ? cardControlHeight : controlHeight;
+    CanvasCards.on(context) ? cardHeightIn(context) : controlHeight;
 
 /// _labelled puts a caption above a control. [scrub] makes that caption a
 /// handle: dragging it sideways runs the number up and down. See
@@ -2966,22 +3104,24 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
     // room before the next.
     if (CanvasCards.on(context)) {
       return Padding(
-        padding: const EdgeInsets.only(right: cardGap),
+        padding: EdgeInsets.only(right: cardGapIn(context)),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CanvasCellFill.on(context)
+              ? CrossAxisAlignment.stretch
+              : CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
             // As wide as its words, not held to its control's: in a card there is
             // the room.
             SizedBox(
-                height: cardLabelHeight,
+                height: cardLabelHeightIn(context),
                 child: Text(label,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         fontSize: 11.5,
                         height: 1.2,
                         color: theme.colors.onSurfaceVariant))),
-            const SizedBox(height: cardLabelGap),
+            SizedBox(height: cardLabelGapIn(context)),
             child,
           ],
         ),

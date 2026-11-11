@@ -42,11 +42,120 @@ class CanvasQuickStrip extends StatelessWidget {
       child: CanvasCards(
         title: "",
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: children,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// panelRow is controls side by side across the whole line, as the
+/// prototype lays them: each [flex] a share of what is left, or [width]
+/// fixed where given. Too narrow for them all at their least -- a narrow
+/// sidebar, a large text size -- they go one under another instead.
+Widget panelRow(List<(Widget, {int flex, double? width, double min})> cells) =>
+    LayoutBuilder(builder: (context, room) {
+      var least = 0.0;
+      for (var c in cells) {
+        least += c.width ?? c.min;
+      }
+      if (room.maxWidth.isFinite && room.maxWidth < least) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var (i, c) in cells.indexed) ...[
+              if (i > 0) const SizedBox(height: 8),
+              CanvasCellFill(child: c.$1),
+            ],
+          ],
+        );
+      }
+      return SizedBox(
+        width: double.infinity,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            for (var (w, flex: f, width: fixed, min: _) in cells)
+              if (fixed != null)
+                SizedBox(width: fixed, child: CanvasCellFill(child: w))
+              else
+                Expanded(flex: f, child: CanvasCellFill(child: w)),
+          ],
+        ),
+      );
+    });
+
+/// cell is one control of a panelRow: [min] is the least it can be drawn
+/// at, beside the others.
+(Widget, {int flex, double? width, double min}) cell(Widget w,
+        {int flex = 1, double? width, double min = 84}) =>
+    (w, flex: flex, width: width, min: min);
+
+/// CanvasChip is a small rounded button, for adding one of several things --
+/// a look -- without a row of full-size buttons.
+class CanvasChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+  const CanvasChip(this.label, {required this.onPressed, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(right: 6, bottom: 6),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onPressed,
+          child: Container(
+            height: 28,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                  color: theme.colors.outline.withValues(alpha: 0.7)),
+            ),
+            // As wide as its words, not the line.
+            child: Center(
+              widthFactor: 1,
+              child: Text(label,
+                  style: TextStyle(
+                      fontSize: 12, color: theme.colors.onSurfaceVariant)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// KeyDiamond is a key's mark, as the Chain's Keyframes card draws it: a
+/// square on its point, filled where there is a key.
+class KeyDiamond extends StatelessWidget {
+  final bool filled;
+  final double size;
+  const KeyDiamond({this.filled = false, this.size = 12, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var colour = IconTheme.of(context).color ?? Colors.white;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Transform.rotate(
+        angle: math.pi / 4,
+        child: Container(
+          margin: EdgeInsets.all(size * 0.15),
+          decoration: BoxDecoration(
+            color: filled ? colour : null,
+            border: Border.all(color: colour, width: 1.4),
           ),
         ),
       ),
@@ -360,7 +469,7 @@ class _LooksGroupState extends State<LooksGroup> {
                   onTap: () =>
                       setState(() => open ? _open.remove(key) : _open.add(key)),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Row(children: [
                       AnimatedRotation(
                         turns: open ? 0.25 : 0,
@@ -410,12 +519,10 @@ class _LooksGroupState extends State<LooksGroup> {
                 color: d.keyed(main.id)
                     ? const Color(0xFFF2C14E)
                     : theme.colors.onSurfaceVariant,
-                icon: Icon(d.keyAt(main.id, c.playheadSeconds)
-                    ? Icons.diamond
-                    : Icons.diamond_outlined),
+                icon: KeyDiamond(filled: d.keyAt(main.id, c.playheadSeconds)),
                 onPressed: () => c.toggleDeviceKey(id, d.id, main.id),
               ),
-              Switch(
+              CanvasSwitch(
                 key: ValueKey("lookOn-${d.id}"),
                 value: d.on,
                 onChanged: (v) => _put(d.switched(v)),
@@ -501,13 +608,18 @@ class _LooksGroupState extends State<LooksGroup> {
               children: [for (var d in mine) _row(context, d)],
             ),
           ),
-          for (var k in addable)
-            CanvasTextButton(
-              key: ValueKey(
-                  "lookAdd-${widget.layer.isEmpty ? "all" : widget.layer}-${k.name}"),
-              label: "+ ${k.label}",
-              grow: false,
-              onPressed: () => _add(k),
+          if (addable.isNotEmpty)
+            SizedBox(
+              width: double.infinity,
+              child: Wrap(children: [
+                for (var k in addable)
+                  CanvasChip(
+                    "+ ${k.label}",
+                    key: ValueKey(
+                        "lookAdd-${widget.layer.isEmpty ? "all" : widget.layer}-${k.name}"),
+                    onPressed: () => _add(k),
+                  ),
+              ]),
             ),
         ]);
   }

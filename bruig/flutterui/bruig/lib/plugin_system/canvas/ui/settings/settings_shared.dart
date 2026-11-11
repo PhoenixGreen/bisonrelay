@@ -22,6 +22,7 @@ import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:flutter/material.dart';
 
 /// freshOf is [e] as the document has it now, or null where it has gone:
@@ -41,7 +42,8 @@ typedef SettingsWrite = void Function(CanvasElement);
 /// positionGroup is what every element has: where it is, how big, how turned,
 /// and whether it can be touched.
 Widget positionGroup(CanvasController controller, CanvasElement e,
-    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+    SettingsWrite write, VoidCallback begin, VoidCallback commit,
+    {bool compact = false}) {
   // No lock, hide or bring-to-front here: they belong to the layer, and the
   // layers list shows them on the element's row, usable without selecting it.
 
@@ -178,126 +180,138 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
     ]);
   }
 
+  var xField = CanvasStepper(
+    key: const ValueKey("elementX"),
+    label: "X",
+    // Two to a line -- across beside down, wide beside high -- held so
+    // by the breaks, not by the width, which only has to leave the
+    // arrows room.
+    width: 104,
+    value: box.left,
+    onChanged: (v) => moveTo(x: v),
+    onCommit: commit,
+  );
+  var yField = CanvasStepper(
+    key: const ValueKey("elementY"),
+    label: "Y",
+    width: 104,
+    value: box.top,
+    onChanged: (v) => moveTo(y: v),
+    onCommit: commit,
+  );
+  var wField = CanvasStepper(
+    key: const ValueKey("elementW"),
+    label: "W",
+    width: 104,
+    value: box.width,
+    min: 1,
+    onChanged: (v) => resize(width: v),
+    onCommit: commit,
+  );
+  var hField = CanvasStepper(
+    key: const ValueKey("elementH"),
+    label: "H",
+    width: 104,
+    value: box.height,
+    min: 1,
+    onChanged: (v) => resize(height: v),
+    onCommit: commit,
+  );
+  var turnField = CanvasStepper(
+    key: const ValueKey("elementAngle"),
+    label: "Angle",
+    value: e.rotationAt(frame),
+    min: -3600,
+    max: 3600,
+    // The same least width as X above it, so Angle and Opacity fall in
+    // X's and Y's columns.
+    width: 104,
+    step: 15,
+    dragStep: 1,
+    defaultValue: 0,
+    suffix: "°",
+    onChanged: (v) {
+      begin();
+      if (!posing) {
+        // About its anchor, which stays where it is.
+        write(e.turnedTo(v));
+        return;
+      }
+      var track = (e.track ?? ElementTrack.empty).seededFor(frame);
+      write(e.withBase(
+          track: track.withKey(
+              track.at(frame).copyWith(frame: frame, rotate: v - e.rotation))));
+    },
+    onCommit: commit,
+  );
+  var opacityField = CanvasStepper(
+    key: const ValueKey("elementOpacity"),
+    label: "Opacity",
+    min: 0,
+    max: 100,
+    step: 5,
+    dragStep: 1,
+    suffix: "%",
+    defaultValue: 100,
+    width: 104,
+    value: e.opacityAt(frame) * 100,
+    onChanged: (percent) {
+      var v = percent / 100;
+      begin();
+      if (!posing) {
+        write(e.withBase(opacity: v));
+        return;
+      }
+      var track = (e.track ?? ElementTrack.empty).seededFor(frame);
+      write(e.withBase(
+          track: track.withKey(track.at(frame).copyWith(
+              frame: frame,
+              opacity: e.opacity == 0 ? v : (v / e.opacity).clamp(0.0, 1.0)))));
+    },
+    onCommit: commit,
+  );
+  var lockButton = CanvasIconButton(
+    icon: e.base.lockAspect ? Icons.link : Icons.link_off,
+    tooltip: e.base.lockAspect
+        ? "Proportions are held — the width and the height move together"
+        : "Width and height are free of each other",
+    active: e.base.lockAspect,
+    onPressed: () {
+      begin();
+      // A picture let go of squashes rather than trims -- see
+      // ImageElement.withProportionsKept.
+      write(e is ImageElement
+          ? e.withProportionsKept(!e.base.lockAspect)
+          : e.withBase(lockAspect: !e.base.lockAspect));
+      commit();
+    },
+  );
+
   return CanvasControlGroup(
       label: e.kind.label,
       // The settings are already headed with the element's own name.
       hideCaption: true,
       children: [
-        CanvasStepper(
-          key: const ValueKey("elementX"),
-          label: "X",
-          // Two to a line -- across beside down, wide beside high -- held so
-          // by the breaks, not by the width, which only has to leave the
-          // arrows room.
-          width: 104,
-          value: box.left,
-          onChanged: (v) => moveTo(x: v),
-          onCommit: commit,
-        ),
-        CanvasStepper(
-          key: const ValueKey("elementY"),
-          label: "Y",
-          width: 104,
-          value: box.top,
-          onChanged: (v) => moveTo(y: v),
-          onCommit: commit,
-        ),
-        const CanvasLineBreak(),
-        // What is on screen, editing the resting size: see resize.
-        CanvasStepper(
-          key: const ValueKey("elementW"),
-          label: "W",
-          width: 104,
-          value: box.width,
-          min: 1,
-          onChanged: (v) => resize(width: v),
-          onCommit: commit,
-        ),
-        CanvasStepper(
-          key: const ValueKey("elementH"),
-          label: "H",
-          width: 104,
-          value: box.height,
-          min: 1,
-          onChanged: (v) => resize(height: v),
-          onCommit: commit,
-        ),
-        // The lock beside the two numbers it holds together.
-        CanvasIconButton(
-          icon: e.base.lockAspect ? Icons.link : Icons.link_off,
-          tooltip: e.base.lockAspect
-              ? "Proportions are held — the width and the height move together"
-              : "Width and height are free of each other",
-          active: e.base.lockAspect,
-          onPressed: () {
-            begin();
-            // A picture let go of squashes rather than trims -- see
-            // ImageElement.withProportionsKept.
-            write(e is ImageElement
-                ? e.withProportionsKept(!e.base.lockAspect)
-                : e.withBase(lockAspect: !e.base.lockAspect));
-            commit();
-          },
-        ),
-        // Where it is and how big, then how it is turned and how solid: two
-        // questions, broken here rather than wherever the Wrap falls.
-        const CanvasLineBreak(),
-        CanvasStepper(
-          key: const ValueKey("elementAngle"),
-          label: "Angle",
-          value: e.rotationAt(frame),
-          min: -3600,
-          max: 3600,
-          // The same least width as X above it, so Angle and Opacity fall in
-          // X's and Y's columns.
-          width: 104,
-          step: 15,
-          dragStep: 1,
-          defaultValue: 0,
-          suffix: "°",
-          onChanged: (v) {
-            begin();
-            if (!posing) {
-              // About its anchor, which stays where it is.
-              write(e.turnedTo(v));
-              return;
-            }
-            var track = (e.track ?? ElementTrack.empty).seededFor(frame);
-            write(e.withBase(
-                track: track.withKey(track
-                    .at(frame)
-                    .copyWith(frame: frame, rotate: v - e.rotation))));
-          },
-          onCommit: commit,
-        ),
-        CanvasStepper(
-          key: const ValueKey("elementOpacity"),
-          label: "Opacity",
-          min: 0,
-          max: 100,
-          step: 5,
-          dragStep: 1,
-          suffix: "%",
-          defaultValue: 100,
-          width: 104,
-          value: e.opacityAt(frame) * 100,
-          onChanged: (percent) {
-            var v = percent / 100;
-            begin();
-            if (!posing) {
-              write(e.withBase(opacity: v));
-              return;
-            }
-            var track = (e.track ?? ElementTrack.empty).seededFor(frame);
-            write(e.withBase(
-                track: track.withKey(track.at(frame).copyWith(
-                    frame: frame,
-                    opacity: e.opacity == 0
-                        ? v
-                        : (v / e.opacity).clamp(0.0, 1.0)))));
-          },
-          onCommit: commit,
-        ),
+        // In a rebuilt panel, as its prototype: where it is and how it is
+        // turned on one line, how big and how solid on the next.
+        if (compact) ...[
+          panelRow([cell(xField), cell(yField), cell(turnField)]),
+          panelRow([cell(wField), cell(hField), cell(opacityField)]),
+          lockButton,
+        ] else ...[
+          xField,
+          yField,
+          const CanvasLineBreak(),
+          // What is on screen, editing the resting size: see resize.
+          wField,
+          hField,
+          lockButton,
+          // Where it is and how big, then how it is turned and how solid: two
+          // questions, broken here rather than wherever the Wrap falls.
+          const CanvasLineBreak(),
+          turnField,
+          opacityField,
+        ],
         anchorButtons(controller, e, write, begin, commit),
         poseDot,
         // How it leaves the keyframe it is on, beside the dot that makes it
@@ -866,7 +880,12 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
         /// colour, the same three answers the letters have. [context] is what
         /// a picture is chosen with, so it is required wherever this is on.
         bool fill = false,
-        BuildContext? context}) =>
+        BuildContext? context,
+
+        /// compact lays it out as a rebuilt panel's (the prototype's): the
+        /// fill and the border's colour side by side, each with its code,
+        /// and the corners called Corners.
+        bool compact = false}) =>
     // The colours and one number each for the border, the corners and the
     // room inside, each splitting into its four by its link: see
     // CanvasSidesField.
@@ -878,41 +897,81 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
         row: [
           // Only where the box is painted with a colour: a picture or a pattern
           // covers it.
-          if (box.painted.kind == TextFillKind.color)
+          if (compact)
+            panelRow([
+              if (box.painted.kind == TextFillKind.color)
+                cell(CanvasColorButton(
+                  label: fillLabel,
+                  color: box.fill,
+                  gradient: box.fillFade,
+                  onChanged: (c) {
+                    begin();
+                    onChanged(box.copyWith(fill: c));
+                    commit();
+                  },
+                  onGradientChanged: (g) {
+                    begin();
+                    onChanged(g == null
+                        ? box.copyWith(flatFill: true)
+                        : box.copyWith(fillFade: g));
+                    commit();
+                  },
+                )),
+              cell(CanvasColorButton(
+                label: "Border colour",
+                color: box.borderColor,
+                gradient: box.borderFade,
+                onChanged: (c) {
+                  begin();
+                  onChanged(box.copyWith(borderColor: c));
+                  commit();
+                },
+                onGradientChanged: (g) {
+                  begin();
+                  onChanged(g == null
+                      ? box.copyWith(flatBorder: true)
+                      : box.copyWith(borderFade: g));
+                  commit();
+                },
+              )),
+            ])
+          else ...[
+            if (box.painted.kind == TextFillKind.color)
+              CanvasColorButton(
+                label: fillLabel,
+                color: box.fill,
+                gradient: box.fillFade,
+                onChanged: (c) {
+                  begin();
+                  onChanged(box.copyWith(fill: c));
+                  commit();
+                },
+                onGradientChanged: (g) {
+                  begin();
+                  onChanged(g == null
+                      ? box.copyWith(flatFill: true)
+                      : box.copyWith(fillFade: g));
+                  commit();
+                },
+              ),
             CanvasColorButton(
-              label: fillLabel,
-              color: box.fill,
-              gradient: box.fillFade,
+              label: "Colour",
+              color: box.borderColor,
+              gradient: box.borderFade,
               onChanged: (c) {
                 begin();
-                onChanged(box.copyWith(fill: c));
+                onChanged(box.copyWith(borderColor: c));
                 commit();
               },
               onGradientChanged: (g) {
                 begin();
                 onChanged(g == null
-                    ? box.copyWith(flatFill: true)
-                    : box.copyWith(fillFade: g));
+                    ? box.copyWith(flatBorder: true)
+                    : box.copyWith(borderFade: g));
                 commit();
               },
             ),
-          CanvasColorButton(
-            label: "Colour",
-            color: box.borderColor,
-            gradient: box.borderFade,
-            onChanged: (c) {
-              begin();
-              onChanged(box.copyWith(borderColor: c));
-              commit();
-            },
-            onGradientChanged: (g) {
-              begin();
-              onChanged(g == null
-                  ? box.copyWith(flatBorder: true)
-                  : box.copyWith(borderFade: g));
-              commit();
-            },
-          ),
+          ],
           ...roomFields(
               box.borders, (r) => onChanged(box.withBorders(r)), commit,
               label: "Border",
@@ -921,7 +980,7 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
               part: SidePart.all),
           ...cornerFields(
               box.corners, (c) => onChanged(box.withCorners(c)), commit,
-              part: SidePart.all),
+              label: compact ? "Corners" : "Radius", part: SidePart.all),
           ...roomFields(
               box.pad, (r) => (onPadding ?? onChanged)(box.withRoom(r)), commit,
               part: SidePart.all),
@@ -938,7 +997,8 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
           if (fill && context != null) ...[
             CanvasDropdown<TextFillKind>(
               key: ValueKey("${remember}BoxFillKind"),
-              label: "Painted with",
+              // Beside the letters' own in a rebuilt panel: said which.
+              label: compact ? "Box painted with" : "Painted with",
               value: box.painted.kind,
               width: 118,
               options: [for (var k in TextFillKind.values) (k, k.label)],

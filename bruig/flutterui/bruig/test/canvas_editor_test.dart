@@ -6494,12 +6494,13 @@ void main() {
       expect(controller.textLayer(textIn(controller))?.id, first.id,
           reason: "the piece added is picked");
 
-      var slot = find.byKey(const ValueKey("textItemSlot0"));
+      // Its place, as a picture of the box: the middle of its right side.
+      var slot = find.descendant(
+          of: find.byKey(const ValueKey("textItemSlot0")),
+          matching: find.byKey(const ValueKey("slot-middleRight")));
       await tester.ensureVisible(slot);
       await tester.pumpAndSettle();
       await tester.tap(slot);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("Middle right").last);
       await tester.pumpAndSettle();
       expect(textIn(controller).items.first.slot, TextSlot.middleRight);
 
@@ -6751,7 +6752,7 @@ void main() {
       expect(
           find.descendant(
               of: find.byKey(const ValueKey("elementSection-look")),
-              matching: find.byIcon(Icons.format_italic)),
+              matching: find.byKey(const ValueKey("typeItalic"))),
           findsOneWidget);
     });
 
@@ -7256,11 +7257,11 @@ void main() {
       var controller = await panel(tester);
       expect(controller.document.elements.length, 1);
 
-      // One line, not a section that has to be opened, and not captioned:
-      // what was behind the expander was one button and a list of at most a
-      // few names, which is less than the heading it was hidden under.
-      expect(find.text("PRESETS"), findsNothing);
-      var list = find.byKey(const ValueKey("elementPresets"));
+      // In More, under a name in small capitals as the prototype's groups
+      // are: the list and its save.
+      var list = find.descendant(
+          of: find.byKey(const ValueKey("elementSection-more")),
+          matching: find.byKey(const ValueKey("elementPresets")));
       expect(list, findsOneWidget);
       await tester.ensureVisible(list);
       await tester.pumpAndSettle();
