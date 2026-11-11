@@ -43,6 +43,27 @@ extension CanvasPlayback on CanvasController {
     goToRunFrame(document.startOfScene(document.at) + _frame + by);
   }
 
+  /// toStart is the transport's first button: the playhead to the start of
+  /// the scene -- or, already there while Play runs every scene, to the
+  /// start of the scene before, so pressed again and again it walks back to
+  /// the start of the run (Ken, 2026-11-11: at a scene joined to the last by
+  /// a cut it stuck, stepping nought frames from its first).
+  void toStart() {
+    if (!_runsScenes) {
+      stepFrame(-_frame);
+      return;
+    }
+    pause();
+    var document = _document;
+    var start = document.startOfScene(document.at);
+    var here = start + _frame;
+    goToRunFrame(here > start
+        ? start
+        : document.at > 0
+            ? document.startOfScene(document.at - 1)
+            : 0);
+  }
+
   /// goToRunFrame puts the playhead on frame [run] of the whole run, on
   /// whichever scene that is; inside a transition the canvas shows the
   /// transition, as playing does. Counted in the run's own frames because

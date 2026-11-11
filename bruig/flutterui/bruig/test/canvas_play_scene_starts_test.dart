@@ -42,6 +42,38 @@ void main() {
   CanvasDocument one(List<ShapeElement> elements) =>
       const CanvasDocument(frames: 48).copyWith(elements: elements);
 
+  // Ken, 2026-11-11: with Play all scenes on, To the start stuck at the
+  // start of every scene joined to the one before by a cut.
+  test("To the start walks back a scene at a time, cut or transition", () {
+    var c = editor(CanvasDocument(scenes: const [
+      CanvasScene(id: "a", frames: 48),
+      CanvasScene(id: "b", frames: 48),
+      CanvasScene(
+          id: "c",
+          frames: 48,
+          transition: SceneTransition(
+              kind: SceneTransitionKind.fade, frames: 12, overlap: 12)),
+      CanvasScene(id: "d", frames: 48),
+    ]));
+    c.playAll = true;
+    c.goToScene(3);
+    c.frame = 20;
+    var visited = <int>[];
+    for (var i = 0; i < 6; i++) {
+      c.toStart();
+      visited.add(c.document.startOfScene(c.document.at) + c.frame);
+    }
+    var d = c.document;
+    expect(visited, [
+      d.startOfScene(3), // its own start, in the transition into it
+      d.startOfScene(2),
+      d.startOfScene(1), // across the cut
+      d.startOfScene(0),
+      0,
+      0,
+    ]);
+  });
+
   test("Play from the top starts the clips that start with the scene", () {
     var c = editor(one([box("a", spin())]));
     expect(c.motionPlayer.isOff("a"), isFalse);

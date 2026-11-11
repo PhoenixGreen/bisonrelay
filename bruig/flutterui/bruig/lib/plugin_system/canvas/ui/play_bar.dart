@@ -349,7 +349,7 @@ class _CanvasPlayBarState extends State<CanvasPlayBar> {
             key: const ValueKey("toStart"),
             icon: Icons.skip_previous,
             tooltip: "To the start",
-            onPressed: () => controller.stepFrame(-controller.frame),
+            onPressed: controller.toStart,
           ),
           TransportButton(
             key: const ValueKey("play"),
