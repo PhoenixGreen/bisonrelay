@@ -1122,6 +1122,19 @@ class CanvasStageState extends State<CanvasStage>
     return null;
   }
 
+  /// _selectedAt is the topmost of the selected elements under [point], or
+  /// null: see the press, where it comes before anything drawn over it.
+  CanvasElement? _selectedAt(Offset point) {
+    var picked = controller.selection;
+    if (picked.isEmpty) return null;
+    for (var i = document.elements.length - 1; i >= 0; i--) {
+      var e = document.elements[i];
+      if (!picked.contains(e.id) || e.locked) continue;
+      if (_containsPoint(e, point)) return e;
+    }
+    return null;
+  }
+
   /// _strokeReach is how far from a line the pointer may be and still be on
   /// it, in document units: half the stroke plus a few pixels of slack.
   double _strokeReach(double strokeWidth) =>
@@ -2111,24 +2124,34 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
+    // What is selected comes first: pressed anywhere on it, it is what is
+    // moved, whatever is drawn over it -- Ken, 2026-11-11, picked six
+    // elements in Layers and his first drag on the canvas picked the one
+    // lying over them instead. With nothing selected under the pointer the
+    // topmost thing wins, as ever.
+    var held = _selectedAt(doc);
+
     // A speaker on the master, pressed from a page. It cannot be selected
     // there (the master is edited on its own), so a press means pressing
     // it: background music with a mute switch sits on the master.
-    if (_masterAudioAt(doc) case (var sound, var part)?) {
-      _pressAudio(sound, part, doc);
-      _mode = _DragMode.none;
-      return;
-    }
-    if (_masterVideoAt(doc) case (var film, var part)?) {
-      _pressVideo(film, part, doc);
-      _mode = _DragMode.none;
-      return;
+    if (held == null) {
+      if (_masterAudioAt(doc) case (var sound, var part)?) {
+        _pressAudio(sound, part, doc);
+        _mode = _DragMode.none;
+        return;
+      }
+      if (_masterVideoAt(doc) case (var film, var part)?) {
+        _pressVideo(film, part, doc);
+        _mode = _DragMode.none;
+        return;
+      }
     }
 
     // A piece of a text element counts as that element, wherever it is
     // drawn (a gap or a side can put it outside its box), and wins against
     // anything drawn under its element.
-    var element = _topmostOf(_hitElement(doc), _textPieceOwner(doc));
+    var element =
+        held ?? _topmostOf(_hitElement(doc), _textPieceOwner(doc));
     if (element == null) {
       if (!_shiftHeld) controller.clearSelection();
       _mode = _DragMode.marquee;
