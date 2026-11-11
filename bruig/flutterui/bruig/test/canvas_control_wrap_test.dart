@@ -171,7 +171,8 @@ void main() {
       Finder box(Finder of, Type type) =>
           find.ancestor(of: of, matching: find.byType(type)).first;
       var font = tester.getRect(box(find.text("Font"), CanvasDropdown<String>));
-      var size = tester.getRect(box(find.text("Size"), CanvasStepper));
+      // A new text is fitted to its box, and its Size says so.
+      var size = tester.getRect(box(find.text("Size (fitted)"), CanvasStepper));
       expect(size.top, greaterThan(font.bottom), reason: "Size under Font");
       expect(size.width, closeTo(font.width, 0.5),
           reason: "each fills its line");

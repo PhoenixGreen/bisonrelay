@@ -338,3 +338,72 @@ List<MotionPreset> presetsFor(MotionKind kind) => [
 /// presetNamed is the ready-made motion called [name], or null.
 MotionPreset? presetNamed(String name) =>
     motionPresets.where((p) => p.name == name).firstOrNull;
+
+/// cameraZoomOf is how close a camera clip gets -- the furthest its scale
+/// keys go from 1 -- or null for a clip that does not zoom (a shake). What
+/// the clip card's Zoom knob shows (Ken's privacy video, 2026-11-11: "Push
+/// in on…" went to 1.7 and could not be told otherwise).
+double? cameraZoomOf(MotionClip c) {
+  if (c.kind != MotionKind.camera) return null;
+  double? most;
+  for (var k in c.keys[MotionProp.scale] ?? const <MotionKey>[]) {
+    if (k.value case MotionNumber(:var value)) {
+      if (most == null || (value - 1).abs() > (most - 1).abs()) most = value;
+    }
+  }
+  return most == null || (most - 1).abs() < 1e-6 ? null : most;
+}
+
+/// withCameraZoom is [c] going to [zoom] instead: every scale key that was
+/// not 1 set to it, so a push in, a follow and a pull back keep their shape.
+MotionClip withCameraZoom(MotionClip c, double zoom) => c.copyWith(keys: {
+      for (var MapEntry(key: prop, value: keys) in c.keys.entries)
+        prop: prop != MotionProp.scale
+            ? keys
+            : [
+                for (var k in keys)
+                  if (k.value case MotionNumber(:var value)
+                      when (value - 1).abs() > 1e-6)
+                    k.copyWith(value: MotionNumber(zoom))
+                  else
+                    k
+              ],
+    });
+
+/// cameraShakeOf is how hard a camera clip that shakes does -- its largest
+/// sideways or up-and-down move, in pixels -- or null for one that zooms
+/// or does not move by numbers.
+double? cameraShakeOf(MotionClip c) {
+  if (c.kind != MotionKind.camera || cameraZoomOf(c) != null) return null;
+  var most = 0.0;
+  for (var prop in [MotionProp.x, MotionProp.y]) {
+    for (var k in c.keys[prop] ?? const <MotionKey>[]) {
+      if (k.value case MotionNumber(:var value)) {
+        if (value.abs() > most) most = value.abs();
+      } else {
+        return null;
+      }
+    }
+  }
+  return most > 0 ? most : null;
+}
+
+/// withCameraShake is [c] shaking [strength] pixels at most: every move
+/// scaled by as much.
+MotionClip withCameraShake(MotionClip c, double strength) {
+  var was = cameraShakeOf(c);
+  if (was == null) return c;
+  var k = strength / was;
+  return c.copyWith(keys: {
+    for (var MapEntry(key: prop, value: keys) in c.keys.entries)
+      prop: prop != MotionProp.x && prop != MotionProp.y
+          ? keys
+          : [
+              for (var key in keys)
+                if (key.value case MotionNumber(:var value))
+                  key.copyWith(value: MotionNumber(value * k))
+                else
+                  key
+            ],
+  });
+}

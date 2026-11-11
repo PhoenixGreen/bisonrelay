@@ -415,7 +415,7 @@ extension CanvasKeyframes on CanvasController {
   }
 
   /// applyElementExit is the way out for a shape or a picture, on its own
-  /// pair of keyframes at the end of the timeline. See applyTextExit.
+  /// pair of keyframes -- see newExitSpan. See applyTextExit.
   void applyElementExit(CanvasElement element, ElementAnimationPreset preset) {
     if (!CanvasController.animates(element)) return;
     beginInteraction();
@@ -443,12 +443,10 @@ extension CanvasKeyframes on CanvasController {
     };
 
     var span = was.length > 0 ? was.length : defaultAnimationFrames;
-    var to = wasTo ?? document.frames - 1;
     var entranceEnds = ownEnd(element, document.frameRate) ?? 0;
-    var from = wasFrom != null && wasTo != null && wasTo > wasFrom
-        ? wasFrom
-        : math.max(entranceEnds + 1, to - span);
-    if (from >= to) from = math.max(0, to - 1);
+    var (from, to) = wasFrom != null && wasTo != null && wasTo > wasFrom
+        ? (wasFrom, wasTo)
+        : newExitSpan(entranceEnds, span, document);
 
     apply(document.withElement(withOwnSpan(
         CanvasController._withElementAnimation(
@@ -460,8 +458,8 @@ extension CanvasKeyframes on CanvasController {
     endInteraction();
   }
 
-  /// applyTextExit is the way out, on its own pair of keyframes at the end of
-  /// the timeline. See applyChartExit.
+  /// applyTextExit is the way out, on its own pair of keyframes -- see
+  /// newExitSpan. See applyChartExit.
   void applyTextExit(TextElement element, TextAnimationPreset preset) {
     beginInteraction();
 
@@ -490,12 +488,10 @@ extension CanvasKeyframes on CanvasController {
     var span = element.animation.length > 0
         ? element.animation.length
         : defaultAnimationFrames;
-    var to = wasTo ?? document.frames - 1;
     var entranceEnds = ownEnd(element, document.frameRate) ?? 0;
-    var from = wasFrom != null && wasTo != null && wasTo > wasFrom
-        ? wasFrom
-        : math.max(entranceEnds + 1, to - span);
-    if (from >= to) from = math.max(0, to - 1);
+    var (from, to) = wasFrom != null && wasTo != null && wasTo > wasFrom
+        ? (wasFrom, wasTo)
+        : newExitSpan(entranceEnds, span, document);
 
     apply(document.withElement(withOwnSpan(
         element.copyWith(animation: element.animation.copyWith(exit: preset)),
@@ -507,9 +503,8 @@ extension CanvasKeyframes on CanvasController {
   }
 
   /// applyChartExit puts a closing preset on a chart and lays the pair of
-  /// keyframes that runs it, at the end of the timeline rather than the
-  /// playhead: a closing animation is the thing that happens last. It never
-  /// starts before the entrance has finished (see _afterEntrance).
+  /// keyframes that runs it -- see newExitSpan. It never starts before the
+  /// entrance has finished (see _afterEntrance).
   void applyChartExit(ChartElement element, ChartAnimationPreset preset) {
     beginInteraction();
 
@@ -532,12 +527,10 @@ extension CanvasKeyframes on CanvasController {
     var span = element.animation.length > 0
         ? element.animation.length
         : defaultAnimationFrames;
-    var to = document.frames - 1;
     // Clear of the entrance, which is whatever the reveal channel already
     // reaches.
     var entranceEnds = ownEnd(element, document.frameRate) ?? 0;
-    var from = math.max(entranceEnds + 1, to - span);
-    if (from >= to) from = math.max(0, to - 1);
+    var (from, to) = newExitSpan(entranceEnds, span, document);
 
     apply(document.withElement(withOwnSpan(
         element.copyWith(animation: element.animation.copyWith(exit: preset)),
@@ -865,4 +858,23 @@ extension CanvasKeyframes on CanvasController {
     }
     writeTargetTrack(next);
   }
+}
+
+/// exitHoldSeconds is how long something is up between its arrival and a
+/// new exit laid for it.
+const double exitHoldSeconds = 2;
+
+/// newExitSpan is where a new exit [span] frames long goes, after an arrival
+/// ending at [entranceEnds]: a hold of exitHoldSeconds after it, so what
+/// arrives is up long enough to read. Where the scene is too short for that,
+/// at its end, as before. Exits were laid at the end of the scene, and most
+/// had to be dragged back (Ken's privacy video, 2026-11-11).
+(int, int) newExitSpan(int entranceEnds, int span, CanvasDocument document) {
+  var last = math.max(1, document.frames - 1);
+  var from = entranceEnds + 1 + (exitHoldSeconds * document.frameRate).round();
+  if (from + span <= last) return (from, from + span);
+  var to = last;
+  from = math.max(entranceEnds + 1, to - span);
+  if (from >= to) from = math.max(0, to - 1);
+  return (from, to);
 }

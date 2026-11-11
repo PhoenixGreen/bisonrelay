@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/edge_mask.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -11,8 +10,6 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
-import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
-import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 
 // element_sections.dart is the sections every element's panel has: where it
 // is, how it arrives, and the designs saved of its kind, said the same way in
@@ -64,112 +61,6 @@ Widget presetsPanelSection(
     children: [presetsSection(context, controller, e), ...extra],
   );
 }
-
-/// animationSummary is how [a] arrives and leaves, in a line.
-String animationSummary(ElementAnimation a) => !a.any
-    ? "Arrives with the scene"
-    : [
-        if (a.on) "In: ${presetName(a.preset)}",
-        if (a.closes) "Out: ${presetName(a.exit)}",
-        if (a.loop.on) "Loops",
-      ].join(" · ");
-
-/// animationPanelSection is how [e] arrives and leaves -- the same cards in
-/// every panel, from elementAnimationSection -- with the cue it waits for,
-/// and [extra] for an element with timing of its own.
-Widget animationPanelSection(
-  CanvasController controller,
-  CanvasElement e,
-  ElementAnimation animation,
-  void Function(ElementAnimation) write,
-  VoidCallback begin,
-  VoidCallback commit, {
-  void Function(ElementAnimationPreset)? arrive,
-  void Function(ElementAnimationPreset)? leave,
-  List<Widget> heading = const [],
-  List<Widget> extra = const [],
-  bool timing = true,
-  String? summary,
-}) =>
-    CanvasSection(
-      key: const ValueKey("elementSection-animation"),
-      icon: Icons.play_circle_outline,
-      title: "Animation",
-      summary: summary ?? animationSummary(animation),
-      remember: "${elementKindKey(e)}.animation",
-      // How it comes in, loops and goes is the Motion chain's now (Ken,
-      // 2026-11-08): its clips' ready-made motions, and the same cards.
-      children: [
-        motionChainPointer(controller, e),
-        // Keyframes it still has of its own (older canvases): how each is
-        // left, while the playhead is on one.
-        if (timing && (e.track?.keys.isNotEmpty ?? false))
-          CanvasControlGroup(
-              key: const ValueKey("elementKeyframes"),
-              label: "Keyframes",
-              rule: false,
-              children: keyframeEasingControls(controller, e, begin, commit,
-                  label: "Keyframe")),
-        ...elementTimingCards(controller, e),
-        ...extra,
-      ],
-    );
-
-/// motionChainPointer says where [e]'s animation is set -- the Chain's
-/// Motion view -- and opens it there.
-Widget motionChainPointer(CanvasController controller, CanvasElement e) =>
-    Builder(
-      builder: (context) => CanvasControlGroup(
-        key: const ValueKey("elementAnimationInChain"),
-        label: "In the Chain",
-        help: "How it comes in, loops and goes is set in the Chain's Motion "
-            "view: pick a ready-made motion on its clip, then shape it in "
-            "Curves.",
-        rule: false,
-        children: [
-          CanvasTextButton(
-            key: const ValueKey("elementAnimationOpenChain"),
-            label: "Open its motion",
-            icon: Icons.call_split,
-            grow: false,
-            onPressed: () {
-              controller.selectOnly(e.id);
-              controller.showChain(motion: true);
-            },
-          ),
-        ],
-      ),
-    );
-
-/// elementTimingCards are what [e]'s arrival is timed against and does to
-/// the rest: the cue it waits for, where there are cues or words to wait
-/// on, and dimming what is already there, where it has an arrival.
-List<Widget> elementTimingCards(CanvasController controller, CanvasElement e) =>
-    [
-      if (controller.cues.isNotEmpty || controller.words.isNotEmpty)
-        elementCueCard(controller, e),
-      if (ownSpan(e, MotionKind.arrive, controller.document.frameRate) != null)
-        elementDimCard(controller, e),
-    ];
-
-/// elementDimCard fades everything already on the canvas as [e] arrives.
-Widget elementDimCard(CanvasController controller, CanvasElement e) =>
-    CanvasControlGroup(
-        key: const ValueKey("elementDim"),
-        label: "The rest",
-        help: "Fades everything already on the canvas to 30% as this "
-            "arrives, and keeps it there -- the next point of an argument "
-            "taking the light while the last stays readable.",
-        rule: false,
-        children: [
-          CanvasTextButton(
-            key: const ValueKey("elementDimOthers"),
-            label: "Dim the others",
-            icon: Icons.brightness_medium_outlined,
-            grow: false,
-            onPressed: () => controller.dimOthers(e.id),
-          ),
-        ]);
 
 /// elementCueCard is which cue [e] arrives on.
 Widget elementCueCard(CanvasController controller, CanvasElement e) =>

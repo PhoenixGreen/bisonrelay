@@ -135,7 +135,8 @@ Do not re-implement any of this per element:
 - **Presets** — `presetsSection` is one uncaptioned row: the list, a save
   button, and rename and remove for a design of the reader's own.
 - **Type and box** — `typeGroups` and `boxGroup` wherever words are drawn.
-- **Animation** — `elementAnimationSection`, boxed, last.
+- **Animation** — none here: how an element arrives, loops and leaves is the
+  Chain's Motion view (Ken, 2026-11-08); its timing is the Chain's Timing card.
 - **Keyframe easing** — `keyframeEasingGroup`.
 
 ## Testing a layout
@@ -154,8 +155,8 @@ several elements picked, a dialog -- is drawn as.
 
 Every panel has the same frame, from `element_sections.dart`:
 **Position** first (`positionSection`), the element's own sections, then
-**Animation** (`animationPanelSection`, with the cue card) and **Presets**
-(`presetsPanelSection`) last. Each section is remembered per kind of element
+**Presets** (`presetsPanelSection`) last. Its motion is set in the Chain, not
+here. Each section is remembered per kind of element
 -- `shape.fill`, not `fill` -- through `section(e, name, ...)`. An expander
 that was a subject of its own becomes a section with `expanderSection`; one
 left inside a section draws itself as a card that folds, and `boxed` adds no

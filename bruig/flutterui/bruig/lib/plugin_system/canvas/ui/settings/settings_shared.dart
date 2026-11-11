@@ -487,6 +487,12 @@ List<Widget> typeGroups(
   /// text element's marks.
   List<Widget> extraMore = const [],
 
+  /// fitted is whether the size is worked out from the box (a text's Fit to
+  /// box), so the Size field says so: a typed size there did nothing that
+  /// could be seen (Ken's privacy video, 2026-11-11). The caller turns the
+  /// fitting off when a size is typed.
+  bool fitted = false,
+
   /// colourInMore puts the colour settings behind the type button instead of
   /// on a row of their own, so one piece of writing is one line and one button:
   /// for a text element's several pieces. Elsewhere the swatch keeps its row.
@@ -714,7 +720,8 @@ List<Widget> typeGroups(
             },
           ),
           CanvasNumberField(
-            label: cap("Size"),
+            key: const ValueKey("typeSize"),
+            label: cap(fitted ? "Size (fitted)" : "Size"),
             value: spec.fontSize,
             min: 1,
             max: 800,
@@ -1312,58 +1319,6 @@ List<Widget> fillBits(
   ];
 }
 
-/// elementAnimationSection is how a shape or a picture arrives and leaves:
-/// the text element's animation section for the kinds without words, shared
-/// so a preset is never missing from one. [write] is only for the settings
-/// that are not the preset: choosing a preset goes through the controller,
-/// which lays keyframes too (see CanvasController.applyElementAnimation).
-Widget elementAnimationSection(
-  CanvasController controller,
-  CanvasElement element,
-  ElementAnimation animation,
-  void Function(ElementAnimation) write,
-  VoidCallback begin,
-  VoidCallback commit, {
-  void Function(ElementAnimationPreset)? arrive,
-  void Function(ElementAnimationPreset)? leave,
-  List<Widget> heading = const [],
-  bool timing = true,
-}) {
-  void now(ElementAnimation next) {
-    begin();
-    write(next);
-    commit();
-  }
-
-  var keyed = timing
-      ? keyframeEasingControls(controller, element, begin, commit,
-          label: "Keyframe")
-      : const <Widget>[];
-
-  // Choosing an arrival or an exit lays its keyframes as well as naming it
-  // -- unless whoever is showing this says otherwise: a drawing's shape
-  // takes its own, on the drawing's keyframes.
-  var arriveWith =
-      arrive ?? (p) => controller.applyElementAnimation(element, p);
-  var leaveWith = leave ?? (p) => controller.applyElementExit(element, p);
-
-  // Which way it comes in, and how far -- and, apart from that, which way
-  // it goes out, and how far.
-  void live(ElementAnimation next) {
-    begin();
-    write(next);
-  }
-
-  // Always in a section now, as cards -- see _animationCards. Outside a
-  // sectioned panel there is nothing to show it in.
-  return Builder(
-      builder: (context) => CanvasCards.on(context)
-          ? _animationCards(controller, element, animation, write, begin,
-              commit, now, live, arriveWith, leaveWith, keyed, heading,
-              timing: timing)
-          : const SizedBox.shrink());
-}
-
 /// anchorButtons are an element's anchor point: shown on the stage, where
 /// it can be dragged, or hidden and so left where it is; and, while it is
 /// shown, locked there, or put back in the middle. See ElementBase.anchorX.
@@ -1409,266 +1364,6 @@ Widget anchorButtons(CanvasController controller, CanvasElement e,
           ),
         ],
       ]);
-}
-
-/// _familyIcon is what each kind of arrival is drawn as on its tile.
-IconData _familyIcon(ElementAnimationFamily? f) => switch (f) {
-      null => Icons.block,
-      ElementAnimationFamily.fade => Icons.opacity,
-      ElementAnimationFamily.slide => Icons.east,
-      ElementAnimationFamily.scale => Icons.zoom_out_map,
-      ElementAnimationFamily.reveal => Icons.vertical_split_outlined,
-      ElementAnimationFamily.transform => Icons.rotate_90_degrees_ccw,
-      ElementAnimationFamily.effect => Icons.auto_awesome_outlined,
-    };
-
-/// _animationCards is an element's animation as a sectioned panel shows it:
-/// how it comes in and goes out, each a line of tiles to pick the kind from,
-/// with that kind's settings (which way, how far, when, how long) in a card
-/// under it; then its loop, its cut and the easing of the keyframe it stands
-/// on.
-Widget _animationCards(
-    CanvasController controller,
-    CanvasElement element,
-    ElementAnimation animation,
-    void Function(ElementAnimation) write,
-    VoidCallback begin,
-    VoidCallback commit,
-    void Function(ElementAnimation) now,
-    void Function(ElementAnimation) live,
-    void Function(ElementAnimationPreset) arriveWith,
-    void Function(ElementAnimationPreset) leaveWith,
-    List<Widget> keyed,
-    List<Widget> heading,
-    {required bool timing}) {
-  List<CanvasTile<ElementAnimationFamily?>> tiles() => [
-        for (var f in <ElementAnimationFamily?>[
-          null,
-          ...ElementAnimationFamily.values
-        ])
-          CanvasTile(f, f?.label ?? "None", icon: _familyIcon(f)),
-      ];
-  var span = controller.elementAnimationSpan(element);
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      ...heading,
-      CanvasTiles<ElementAnimationFamily?>(
-        key: const ValueKey("elementArriveKinds"),
-        label: "Comes in",
-        help: "How it arrives. Pick a kind; which way, how far, when and how "
-            "long are in the card under it. Press the kind chosen again to "
-            "shut that card or open it.",
-        scrolls: true,
-        tileWidth: 72,
-        previewHeight: 30,
-        tiles: tiles(),
-        selected: (f) =>
-            animation.on ? animation.preset.family == f : f == null,
-        keyOf: (f) => "elementArrive-${f?.name ?? "none"}",
-        onPick: (f) {
-          // The kind chosen, pressed again: its card shut or opened, the
-          // arrival left as it is.
-          if (f != null && animation.on && animation.preset.family == f) {
-            controller.toggleCard("arrive");
-            return;
-          }
-          controller.openCard("arrive");
-          arriveWith(f == null
-              ? ElementAnimationPreset.none
-              : ElementAnimationPreset.inFamily(f).first);
-        },
-      ),
-      if (animation.on && !controller.cardShut("arrive"))
-        CanvasControlGroup(
-          key: const ValueKey("elementArriveHow"),
-          // Under "Comes in", its name says the rest: "Fade in", not
-          // "Fade in in".
-          label: presetName(animation.preset),
-          help: "The arrival's own settings: which of its kind, which way it "
-              "comes and how far, and when it starts, how long it takes and "
-              "how it eases.",
-          rule: false,
-          children: [
-            if (!oneOfAKind(animation.preset))
-              CanvasDropdown<ElementAnimationPreset>(
-                key: const ValueKey("elementAnimationPreset"),
-                label: "Which",
-                value: animation.preset,
-                width: 240,
-                options: [
-                  for (var preset in ElementAnimationPreset.inFamily(
-                      animation.preset.family))
-                    (preset, preset.label),
-                ],
-                onChanged: arriveWith,
-              ),
-            if (animation.arrivalDirected || animation.arrivalStrengthens) ...[
-              const CanvasLineBreak(),
-              ...motionControls(animation, now, live, commit),
-            ],
-            const CanvasLineBreak(),
-            if (span case (var at?, var length?) when timing) ...[
-              CanvasNumberField(
-                key: const ValueKey("elementAnimationDelay"),
-                label: "Delay",
-                min: 0,
-                max: 100000,
-                suffix: " fr",
-                value: at.toDouble(),
-                onChanged: (v) {
-                  begin();
-                  controller.setElementArrivalTiming(
-                      controller.document.elementById(element.id) ?? element,
-                      delay: v.round());
-                },
-                onCommit: commit,
-              ),
-              CanvasNumberField(
-                key: const ValueKey("elementAnimationLength"),
-                label: "Length",
-                min: 1,
-                max: 100000,
-                suffix: " fr",
-                value: length.toDouble(),
-                onChanged: (v) {
-                  begin();
-                  controller.setElementArrivalTiming(
-                      controller.document.elementById(element.id) ?? element,
-                      length: v.round());
-                },
-                onCommit: commit,
-              ),
-            ] else
-              CanvasNumberField(
-                key: const ValueKey("elementAnimationLength"),
-                label: "Length",
-                min: 1,
-                max: 3600,
-                suffix: " fr",
-                value: (animation.length > 0
-                        ? animation.length
-                        : controller.defaultAnimationFrames)
-                    .toDouble(),
-                onChanged: (v) {
-                  begin();
-                  write(animation.copyWith(length: v.round()));
-                },
-                onCommit: commit,
-              ),
-            easeDropdown<ChartEase>(
-              key: const ValueKey("elementAnimationEase"),
-              value: animation.ease,
-              values: ChartEase.values,
-              name: (c) => c.label,
-              curve: (c) => c.apply,
-              width: 240,
-              onChanged: (v) => now(animation.copyWith(ease: v)),
-            ),
-            if (animation.scales)
-              CanvasNumberField(
-                key: const ValueKey("elementAnimationScale"),
-                label: "From",
-                min: 0,
-                max: 8,
-                decimals: 2,
-                value: animation.scale > 0
-                    ? animation.scale
-                    : animation.preset.from,
-                onChanged: (v) {
-                  begin();
-                  write(animation.copyWith(scale: v));
-                },
-                onCommit: commit,
-              ),
-          ],
-        ),
-      CanvasTiles<ElementAnimationFamily?>(
-        key: const ValueKey("elementLeaveKinds"),
-        label: "Goes out",
-        help: "How it leaves, at the end of its time on the canvas: an "
-            "arrival played backwards. Press the kind chosen again to shut "
-            "its card or open it.",
-        scrolls: true,
-        tileWidth: 72,
-        previewHeight: 30,
-        tiles: tiles(),
-        selected: (f) =>
-            animation.closes ? animation.exit.family == f : f == null,
-        keyOf: (f) => "elementLeave-${f?.name ?? "none"}",
-        onPick: (f) {
-          if (f != null && animation.closes && animation.exit.family == f) {
-            controller.toggleCard("leave");
-            return;
-          }
-          controller.openCard("leave");
-          leaveWith(f == null
-              ? ElementAnimationPreset.none
-              : ElementAnimationPreset.inFamily(f).first);
-        },
-      ),
-      if (animation.closes &&
-          !controller.cardShut("leave") &&
-          (!oneOfAKind(animation.exit) ||
-              animation.exitDirected ||
-              animation.exitStrengthens))
-        CanvasControlGroup(
-          key: const ValueKey("elementLeaveHow"),
-          label: leavingName(animation.exit),
-          help: "Which of its kind, and which way it goes and how far.",
-          rule: false,
-          children: [
-            if (!oneOfAKind(animation.exit))
-              CanvasDropdown<ElementAnimationPreset>(
-                key: const ValueKey("elementAnimationExit"),
-                label: "Which",
-                value: animation.exit,
-                width: 240,
-                options: [
-                  for (var preset
-                      in ElementAnimationPreset.inFamily(animation.exit.family))
-                    (preset, "${preset.label}, reversed"),
-                ],
-                onChanged: leaveWith,
-              ),
-            if (animation.exitDirected || animation.exitStrengthens) ...[
-              const CanvasLineBreak(),
-              ...motionControls(animation, now, live, commit, leaving: true),
-            ],
-          ],
-        ),
-      loopGroup(controller, animation.loop,
-          (loop) => now(animation.copyWith(loop: loop)), (loop) {
-        begin();
-        write(animation.copyWith(loop: loop));
-      }, commit,
-          drifts: element is ImageElement,
-          // A picture's own loop moves every layer in it as one; each layer
-          // can loop on its own as well -- see the picture's Animation.
-          label: element is ImageElement && element.layered
-              ? "Whole picture loops"
-              : "Looping"),
-      if (animation.cuts)
-        ...effectBits(
-            animation.effect,
-            animation.scatters,
-            (next) => now(animation.copyWith(effect: next)),
-            begin,
-            commit, live: (next) {
-          begin();
-          write(animation.copyWith(effect: next));
-        }),
-      if (keyed.isNotEmpty)
-        CanvasControlGroup(
-          key: const ValueKey("elementKeyframeCard"),
-          label: "This keyframe",
-          help: "How the keyframe under the playhead eases into the next.",
-          rule: false,
-          children: keyed,
-        ),
-    ],
-  );
 }
 
 /// presetName is what an arrival is called where it is summed up: a slide

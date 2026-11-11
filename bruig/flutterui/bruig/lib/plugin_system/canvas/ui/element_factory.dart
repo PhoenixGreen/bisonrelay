@@ -173,10 +173,16 @@ CanvasElement newElement(
       return LineElement(base, strokeWidth: unit * 0.18);
 
     case ElementKind.chart:
+      // Its title and axis titles there to fill in, but hidden until they
+      // are: a new chart said "Chart title", "Value" and "Category" until
+      // each was turned off (Ken's privacy video, 2026-11-11).
       return ChartElement(base,
           title: "Chart title",
+          titleBox: const ChartLabel(show: false),
           xAxisLabel: "Category",
           yAxisLabel: "Value",
+          showXTitle: false,
+          showYTitle: false,
           titleSpec: TextSpec(fontSize: unit * 0.9, weight: 700),
           labelSpec: TextSpec(fontSize: unit * 0.52),
           valueSpec: TextSpec(fontSize: unit * 0.45, weight: 600),

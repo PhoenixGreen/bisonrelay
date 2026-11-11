@@ -66,8 +66,17 @@ List<Widget> textSettings(
             // behind the button, with the element's own marks (a band behind all
             // the words, a line under them), so a whole headline is highlighted
             // without first making a part that covers it.
-            ...typeGroups(e.textSpec,
-                (spec) => write(e.copyWith(textSpec: spec)), begin, commit,
+            ...typeGroups(
+                e.textSpec,
+                // A size typed while it is fitted to its box is a size
+                // wanted: the fitting goes, or the size would do nothing.
+                (spec) => write(e.copyWith(
+                    textSpec: spec,
+                    autoSize:
+                        e.autoSize && spec.fontSize == e.textSpec.fontSize)),
+                begin,
+                commit,
+                fitted: e.autoSize,
                 // No caption: the Layers over the sections say which piece of
                 // writing these settings are for.
                 label: e.name,

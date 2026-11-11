@@ -171,6 +171,40 @@ class MotionClipsCard extends StatelessWidget {
                       live: transient),
                   onCommit: controller.endInteraction,
                 ),
+                // A camera move's own amount: how close it gets, or how
+                // hard it shakes.
+                if (cameraZoomOf(c) case var zoom?)
+                  DeviceKnob(
+                    key: const ValueKey("motionClipsZoom"),
+                    label: "Zoom",
+                    text: "${zoom.toStringAsFixed(2)}×",
+                    value: zoom,
+                    initial: 1.7,
+                    min: 1.05,
+                    max: 4,
+                    accent: accent,
+                    ink: skin.ink,
+                    onChanged: (v, {transient = false}) => edit(
+                        (x) => withCameraZoom(x, (v * 20).roundToDouble() / 20),
+                        live: transient),
+                    onCommit: controller.endInteraction,
+                  ),
+                if (cameraShakeOf(c) case var shake?)
+                  DeviceKnob(
+                    key: const ValueKey("motionClipsShake"),
+                    label: "Strength",
+                    text: "${shake.round()} px",
+                    value: shake,
+                    initial: 9,
+                    min: 1,
+                    max: 60,
+                    accent: accent,
+                    ink: skin.ink,
+                    onChanged: (v, {transient = false}) => edit(
+                        (x) => withCameraShake(x, v.roundToDouble()),
+                        live: transient),
+                    onCommit: controller.endInteraction,
+                  ),
                 DeviceKnob(
                   key: const ValueKey("motionClipsWeight"),
                   label: "Weight",

@@ -8,14 +8,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart'
-    show VectorCue;
 import 'package:bruig/plugin_system/canvas/render/image_look.dart';
 import 'package:bruig/plugin_system/canvas/render/layer_effects.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/element_settings.dart'
-    show elementCueGroup;
 import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/stage_spot_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/adjustment_settings.dart';
@@ -26,8 +22,6 @@ import 'package:bruig/plugin_system/canvas/ui/settings/paint_brushes.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_saved.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart'
-    show motionChainPointer;
 import 'package:flutter/material.dart';
 
 // image_sections.dart is a picture's panel: its layers, then the picked
@@ -817,106 +811,6 @@ class _Sections {
           layerStrengthGroup(e, picked, write, begin, commit),
         ],
       );
-
-  // ---- Animation --------------------------------------------------------
-
-  Widget animation() {
-    var a = e.animation;
-    var stack = e.stack;
-    var index = stack.indexWhere((l) => l.id == picked.id);
-    var sequenced = layersSequenced(stack);
-    var summary = !a.on
-        ? "Arrives with the scene"
-        : [
-            presetName(a.preset),
-            if (sequenced) "layers one after another",
-          ].join(" · ");
-    void change(ImageElement next) => controller.changeImage(next);
-    return CanvasSection(
-      key: const ValueKey("imageSection-animation"),
-      icon: Icons.play_circle_outline,
-      title: "Animation",
-      summary: summary,
-      remember: _remember("animation"),
-      children: [
-        // The picture's own animation is the Motion chain's (Ken).
-        motionChainPointer(controller, e),
-        // The picked layer's own loop, beside the picture's: the picture's
-        // moves every layer as one, a layer's moves it alone.
-        if (controller.imageEditing == e.id)
-          loopGroup(controller, picked.loop, (l) {
-            begin();
-            write(e.withLayer(picked.id, (x) => x.copyWith(loop: l)));
-            commit();
-          }, (l) {
-            begin();
-            write(e.withLayer(picked.id, (x) => x.copyWith(loop: l)));
-          }, commit,
-              keys: "imageLayer", label: "This layer loops", drifts: true),
-        if (controller.cues.isNotEmpty) elementCueGroup(controller, e),
-        if (index > 0 && a.on)
-          CanvasControlGroup(
-            key: const ValueKey("imageLayerTiming"),
-            label: "This layer",
-            help: "When this layer comes in against the one under it. Its "
-                "lane on the timeline can be dragged as well.",
-            rule: false,
-            children: [
-              CanvasDropdown<VectorCue>(
-                key: ValueKey("imageLayerCue-${picked.id}"),
-                label: "Comes in",
-                value: picked.cue,
-                width: 130,
-                options: [for (var c in VectorCue.values) (c, c.label)],
-                onChanged: (v) =>
-                    change(e.withLayer(picked.id, (l) => l.copyWith(cue: v))),
-              ),
-              if (picked.cue == VectorCue.gap)
-                CanvasStepper(
-                  key: ValueKey("imageLayerGap-${picked.id}"),
-                  label: "Gap",
-                  value: picked.cueGap.toDouble(),
-                  min: -240,
-                  max: 240,
-                  suffix: " fr",
-                  defaultValue: 0,
-                  onChanged: (v) {
-                    begin();
-                    controller.changeImage(
-                        e.withLayer(
-                            picked.id, (l) => l.copyWith(cueGap: v.round())),
-                        transient: true);
-                  },
-                  onCommit: commit,
-                ),
-            ],
-          ),
-        if (stack.length > 1)
-          CanvasControlGroup(
-            label: "Every layer",
-            help: "The timing of all the layers at once: one after another, "
-                "or all together.",
-            rule: false,
-            children: [
-              CanvasIconButton(
-                key: const ValueKey("imageLayersStagger"),
-                icon: Icons.stacked_line_chart,
-                tooltip: "Bring the layers in one after another",
-                onPressed: () => staggerLayers(controller, e),
-              ),
-              if (sequenced)
-                CanvasIconButton(
-                  key: const ValueKey("imageLayersTogether"),
-                  icon: Icons.restore,
-                  tooltip: "Bring every layer in at once again",
-                  onPressed: () => change(withLayersTogether(e)),
-                ),
-              if (a.any) previewButton(controller, e),
-            ],
-          ),
-      ],
-    );
-  }
 
   // ---- Frame: the whole image -------------------------------------------
 
