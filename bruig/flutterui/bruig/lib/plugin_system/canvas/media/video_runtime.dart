@@ -359,11 +359,15 @@ class VideoRuntime extends ChangeNotifier {
   }
 
   double _time(_Showing p) {
-    if (p.playing) {
+    var clip = p.element.clip;
+    // At a speed of its own its sound is left out, and the watch keeps
+    // time, at that speed.
+    if (p.playing && !clip.silentAtSpeed) {
       var heard = audio.positionOf(p.soundId);
       if (heard != null) return heard;
     }
-    return p.base + p.watch.elapsedMicroseconds / 1e6;
+    var speed = clip.silentAtSpeed ? clip.speed : 1.0;
+    return p.base + p.watch.elapsedMicroseconds / 1e6 * speed;
   }
 
   double _fade(_Showing p, double at) {
@@ -382,7 +386,9 @@ class VideoRuntime extends ChangeNotifier {
     return AudioElement(ElementBase(id: p.soundId),
         clip: MediaClip(
           playlist: [
-            if (source != null && source.soundId.isNotEmpty)
+            if (source != null &&
+                source.soundId.isNotEmpty &&
+                !clip.silentAtSpeed)
               MediaSource(assetId: source.soundId, start: p.base, end: p.end),
           ],
           volume: p.volume,

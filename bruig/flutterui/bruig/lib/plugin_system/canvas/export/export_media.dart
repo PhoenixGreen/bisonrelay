@@ -317,6 +317,8 @@ class ExportMedia {
     for (var p in _placed) {
       var clip = p.clip;
       if (clip.muted || clip.volume <= 0) continue;
+      // A video at a speed of its own plays without its sound.
+      if (p.element is VideoElement && clip.silentAtSpeed) continue;
       if (clip.mix.mute && !carriers.contains(_channelOf(p.element, clip))) {
         continue;
       }

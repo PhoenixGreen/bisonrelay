@@ -237,6 +237,19 @@ List<Widget> videoSettings(
         onChanged: (v) => write(e.copyWith(clip: clip.copyWith(volume: v))),
         onCommit: commit,
       ),
+      CanvasNumberField(
+        key: const ValueKey("videoSpeed"),
+        label: "Speed",
+        value: clip.speed,
+        min: 0.1,
+        max: 4,
+        decimals: 2,
+        width: 58,
+        onChanged: (v) => write(e.copyWith(clip: clip.copyWith(speed: v))),
+        onCommit: commit,
+      ),
+      if (clip.silentAtSpeed)
+        const CanvasHint("At any speed but 1 it plays without its sound."),
       CanvasDropdown<MediaLoop>(
         key: const ValueKey("videoLoop"),
         label: "Repeat",

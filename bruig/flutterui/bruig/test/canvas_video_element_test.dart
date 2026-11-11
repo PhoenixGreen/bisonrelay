@@ -204,6 +204,26 @@ void main() {
           reason: "a link's files are not the canvas's to keep");
     });
 
+    // Ken, 2026-11-11: the rain in his privacy video slowed by half.
+    test("a speed of its own: longer on the timeline, slower through the file",
+        () {
+      const clip = MediaClip(
+          speed: 0.5,
+          fadeIn: 1,
+          playlist: [MediaSource(assetId: "f.mp4", start: 2, length: 10)]);
+      expect(clip.runLength, 16, reason: "8 s of file at half speed");
+      var m = clip.momentAt(4)!;
+      expect(m.time, 4, reason: "4 s in is 2 s of file, from its start at 2");
+      expect(clip.momentAt(0.5)!.gain, closeTo(0.5, 1e-9),
+          reason: "a fade is the timeline's seconds");
+      expect(clip.momentAt(16), isNull);
+      expect(clip.silentAtSpeed, isTrue);
+      expect(const MediaClip().silentAtSpeed, isFalse);
+      var back = MediaClip.fromJson(clip.toJson());
+      expect(back.speed, 0.5);
+      expect(const MediaClip().toJson().containsKey("speed"), isFalse);
+    });
+
     test("a link opens where it was told to", () {
       expect(VideoHost.of("https://youtu.be/abc"), VideoHost.youtube);
       expect(VideoHost.of("https://vimeo.com/123"), VideoHost.vimeo);
@@ -250,6 +270,15 @@ void main() {
 
     // Two clocks drift. The picture is whichever frame is due at the point
     // the sound has reached.
+    test("at a speed of its own it plays without its sound", () async {
+      var e = video("v");
+      e = e.copyWith(clip: e.clip.copyWith(speed: 0.5));
+      await runtime.play(e);
+      await settle();
+      expect(runtime.view(e).frame, isNotNull, reason: "the picture shows");
+      expect(audio.isPlaying("video:v"), isFalse, reason: "no sound");
+    });
+
     test("the picture follows the sound's clock", () async {
       var e = video("v");
       await runtime.play(e);
@@ -666,6 +695,20 @@ void main() {
       await mouse.moveTo(at(const Offset(600, 400)));
       await tester.pump();
       expect(cursor(), isNot(SystemMouseCursors.click));
+    });
+
+    testWidgets("Speed sets how fast it plays", (tester) async {
+      var c = CanvasController(CanvasDocument(elements: [video("v")]),
+          audioEngine: engine, frameSource: frames);
+      addTearDown(c.dispose);
+      c.selectOnly("v");
+      await show(tester, settingsOf(c));
+      var field = find.byKey(const ValueKey("videoSpeed"));
+      await tester.ensureVisible(field);
+      tester.widget<CanvasNumberField>(field).onChanged(0.5);
+      tester.widget<CanvasNumberField>(field).onCommit?.call();
+      await tester.pump();
+      expect((c.document.elementById("v") as VideoElement).clip.speed, 0.5);
     });
 
     testWidgets("a link hides what only a file can do", (tester) async {

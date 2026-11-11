@@ -214,7 +214,14 @@ class MediaClip {
   /// off, the channel's own pan applies.
   final SoundPlacement place;
 
+  /// speed is how fast its media plays: 0.5 at half speed, and so twice as
+  /// long on the timeline. A video's (Ken, 2026-11-11: rain slowed by half);
+  /// its sound is left out at any speed but 1, a sound slowed being a
+  /// different sound.
+  final double speed;
+
   const MediaClip({
+    this.speed = 1,
     this.place = const SoundPlacement(),
     this.playlist = const [],
     this.volume = 0.8,
@@ -260,7 +267,13 @@ class MediaClip {
 
   /// runLength is the playlist's play-through time in seconds. A file of
   /// unknown length counts as nothing.
-  double get runLength => playlist.fold(0.0, (sum, s) => sum + s.span);
+  double get runLength => playlist.fold(0.0, (sum, s) => sum + s.span) / _speed;
+
+  double get _speed => speed > 0.01 ? speed : 1;
+
+  /// silentAtSpeed is whether its sound is left out: played at any speed
+  /// but its own.
+  bool get silentAtSpeed => (_speed - 1).abs() > 1e-6;
 
   /// momentAt is what is playing [seconds] after the clip starts on the
   /// timeline (file, time in it, gain), or null when nothing is.
@@ -275,6 +288,8 @@ class MediaClip {
       if (loop == MediaLoop.none) return null;
       seconds %= total;
     }
+    // Into the media, at its speed: the spans are the files' own seconds.
+    seconds *= _speed;
     var from = 0.0;
     for (var (i, source) in playlist.indexed) {
       var span = source.span;
@@ -282,8 +297,11 @@ class MediaClip {
       if (seconds < from + span) {
         var into = seconds - from;
         var gain = 1.0;
-        if (fadeIn > 0) gain = math.min(gain, into / fadeIn);
-        if (fadeOut > 0) gain = math.min(gain, (span - into) / fadeOut);
+        // Fades are the timeline's seconds.
+        if (fadeIn > 0) gain = math.min(gain, into / _speed / fadeIn);
+        if (fadeOut > 0) {
+          gain = math.min(gain, (span - into) / _speed / fadeOut);
+        }
         return ClipMoment(i, source.start + into, gain.clamp(0.0, 1.0));
       }
       from += span;
@@ -306,8 +324,10 @@ class MediaClip {
     String? channel,
     String? channelName,
     SoundPlacement? place,
+    double? speed,
   }) =>
       MediaClip(
+        speed: speed ?? this.speed,
         place: place ?? this.place,
         playlist: playlist ?? this.playlist,
         volume: volume ?? this.volume,
@@ -331,6 +351,7 @@ class MediaClip {
         if (muted) "muted": true,
         if (fadeIn > 0) "fadeIn": fadeIn,
         if (fadeOut > 0) "fadeOut": fadeOut,
+        if (speed != 1) "speed": speed,
         if (loop != MediaLoop.none) "loop": loop.name,
         if (autoplay) "autoplay": true,
         if (!acrossPages) "stopsAtJoin": true,
@@ -356,6 +377,7 @@ class MediaClip {
       muted: jsonBool(json["muted"], false),
       fadeIn: math.max(0.0, jsonDouble(json["fadeIn"], 0)),
       fadeOut: math.max(0.0, jsonDouble(json["fadeOut"], 0)),
+      speed: jsonDouble(json["speed"], 1).clamp(0.1, 4.0).toDouble(),
       loop: MediaLoop.fromName(jsonStr(json["loop"])),
       autoplay: jsonBool(json["autoplay"], false),
       acrossPages: !jsonBool(json["stopsAtJoin"], false),

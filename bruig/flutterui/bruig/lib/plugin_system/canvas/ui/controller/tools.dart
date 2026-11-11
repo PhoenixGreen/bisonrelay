@@ -247,11 +247,14 @@ extension CanvasTools on CanvasController {
     var rate = math.max(1, _document.frameRate);
     var into = (frame - (clip.at - lane.offset)) / rate;
     if (into <= 0.05 || into >= clip.runLength - 0.05) return false;
+    // The files are cut in their own seconds: at a speed of its own, a
+    // second of the timeline is more or less of the file.
+    var inFile = into * (clip.speed > 0.01 ? clip.speed : 1);
     var from = 0.0;
     for (var (i, source) in clip.playlist.indexed) {
       var span = source.span;
-      if (into < from + span) {
-        var cut = source.start + (into - from);
+      if (inFile < from + span) {
+        var cut = source.start + (inFile - from);
         var before = [
           ...clip.playlist.take(i),
           source.copyWith(end: cut),
