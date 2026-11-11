@@ -37,8 +37,10 @@ class TextureShader {
   }
 }
 
-/// paintTexture draws [spec] across [frame].
-void paintTexture(ui.Canvas canvas, Rect frame, TextureSpec spec) {
+/// paintTexture draws [spec] across [frame], laid on by [blendMode] --
+/// dstOut, for one taking its marks out of what is under it (Wear).
+void paintTexture(ui.Canvas canvas, Rect frame, TextureSpec spec,
+    {BlendMode blendMode = BlendMode.srcOver}) {
   var program = TextureShader._program;
   if (program == null || frame.isEmpty) return;
   var unit = math.min(frame.width, frame.height) / 1000;
@@ -61,7 +63,11 @@ void paintTexture(ui.Canvas canvas, Rect frame, TextureSpec spec) {
   for (var (i, v) in floats.indexed) {
     shader.setFloat(i, v);
   }
-  canvas.drawRect(frame, Paint()..shader = shader);
+  canvas.drawRect(
+      frame,
+      Paint()
+        ..shader = shader
+        ..blendMode = blendMode);
   shader.dispose();
 }
 

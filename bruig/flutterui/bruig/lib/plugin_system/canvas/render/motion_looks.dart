@@ -1,7 +1,11 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/elements/edge_mask.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/render/edge_mask_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/layer_effects.dart';
 import 'package:flutter/painting.dart';
 import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
@@ -46,7 +50,8 @@ void paintWithLooks(ui.Canvas canvas, Rect bounds, List<MotionDevice> looks,
       paint(on);
       return;
     }
-    _look(on, room, looks[i], (c) => drawn(c, i - 1), turn, k, velocity);
+    _look(
+        on, room, bounds, looks[i], (c) => drawn(c, i - 1), turn, k, velocity);
   }
 
   drawn(canvas, looks.length - 1);
@@ -54,7 +59,7 @@ void paintWithLooks(ui.Canvas canvas, Rect bounds, List<MotionDevice> looks,
 
 /// _look draws [under] -- everything to its left -- with look [d] on it.
 /// [k] turns the page's pixels into the canvas's, as it is sized.
-void _look(ui.Canvas canvas, Rect room, MotionDevice d,
+void _look(ui.Canvas canvas, Rect room, Rect bounds, MotionDevice d,
     void Function(ui.Canvas on) draw, double turn, double k, Offset velocity) {
   void under() => draw(canvas);
   // What is under it, recorded once for a look that lays it twice -- a
@@ -177,10 +182,51 @@ void _look(ui.Canvas canvas, Rect room, MotionDevice d,
       canvas.restore();
       lay(picture);
       picture.dispose();
+    case MotionDeviceKind.wear:
+      if (d.value("amount") <= 0) return under();
+      canvas.saveLayer(room, Paint());
+      under();
+      paintTexture(canvas, room, wearTexture(d), blendMode: BlendMode.dstOut);
+      canvas.restore();
+    case MotionDeviceKind.edges:
+      paintEdgeMasked(
+          canvas,
+          bounds,
+          EdgeMask(
+              feather: d.value("feather"),
+              fade: EdgeFade.values[
+                  d.value("fade").round().clamp(0, EdgeFade.values.length - 1)],
+              reach: d.value("reach")),
+          under);
     default:
       // A pose device: nothing to how it looks.
       under();
   }
+}
+
+/// wearTexture is what a Wear device takes out of its element: one of the
+/// pictures' textures, drawn as marks on nothing (see texture.frag), and
+/// as heavy and as coarse as its Amount and Size.
+TextureSpec wearTexture(MotionDevice d) {
+  var amount = d.value("amount"), size = d.value("size");
+  var seed = d.value("seed").round();
+  return switch (d.value("texture").round()) {
+    1 => TextureSpec(kind: TextureKind.dust, seed: seed, values: {
+        "specks": amount,
+        "scratches": amount * 0.7,
+        "size": 2 * size,
+      }),
+    2 => TextureSpec(kind: TextureKind.halftone, seed: seed, values: {
+        "cell": 8 * size,
+        "angle": 45,
+        "dot": amount,
+      }),
+    _ => TextureSpec(kind: TextureKind.grunge, seed: seed, values: {
+        "scale": 120 * size,
+        "cover": amount,
+        "roughness": 0.65,
+      }),
+  };
 }
 
 /// colourMatrix is a colour matrix turning hue by [hue] degrees, scaling

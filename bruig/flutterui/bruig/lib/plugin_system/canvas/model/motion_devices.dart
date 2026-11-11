@@ -118,6 +118,30 @@ enum MotionDeviceKind {
   outline("Outline", MotionDeviceSide.look, [
     DeviceParam("width", "Width", 0, 30, 3, "px"),
     DeviceParam("softness", "Softness", 0, 1, 0),
+  ]),
+
+  /// wear eats it away as worn ink is: grunge, dust or halftone dots taken
+  /// out of it -- an icon or a slab printed rather than drawn (Ken's privacy
+  /// video, 2026-11-11: "too clean for this style").
+  wear("Wear", MotionDeviceSide.look, [
+    DeviceParam(
+        "texture", "Texture", 0, 2, 0, "", ["Grunge", "Dust", "Halftone"]),
+    DeviceParam("amount", "Amount", 0, 1, 0.45),
+    DeviceParam("size", "Size", 0.2, 5, 1, "×"),
+    DeviceParam("seed", "Seed", 1, 99, 1, "#"),
+  ]),
+
+  /// edges fades it out towards the edges of its box, so it lies in what is
+  /// under it rather than on it: feathered all round, and faded from a side
+  /// or round the middle as asked (see EdgeMask; Ken's privacy video: a
+  /// picture "part of the same background").
+  edges("Edges", MotionDeviceSide.look, [
+    DeviceParam("feather", "Feather", 0, 0.5, 0.12),
+    DeviceParam("fade", "Fade", 0, 7, 7, "", [
+      "None", "From the left", "From the right", "From the top", //
+      "From the bottom", "Both sides", "Top and bottom", "Round the middle",
+    ]),
+    DeviceParam("reach", "Reach", 0, 1, 0.6),
   ]);
 
   final String label;
@@ -328,9 +352,13 @@ String motionFamily(MotionDeviceKind kind) => switch (kind) {
         "Modulators",
       MotionDeviceKind.glow ||
       MotionDeviceKind.shadow ||
-      MotionDeviceKind.outline =>
+      MotionDeviceKind.outline ||
+      MotionDeviceKind.edges =>
         "Light and edge",
-      MotionDeviceKind.blur || MotionDeviceKind.colour => "Picture",
+      MotionDeviceKind.blur ||
+      MotionDeviceKind.colour ||
+      MotionDeviceKind.wear =>
+        "Picture",
       MotionDeviceKind.instances => "Instances",
     };
 
@@ -377,6 +405,12 @@ String motionAbout(MotionDeviceKind kind) => switch (kind) {
       MotionDeviceKind.blur => "Blurs it as a whole.",
       MotionDeviceKind.colour => "Shifts its hue, saturation and brightness.",
       MotionDeviceKind.outline => "A line round its edge.",
+      MotionDeviceKind.wear =>
+        "Wears it away like old ink: grunge, dust or halftone dots taken "
+            "out of it, as much as Amount, as coarse as Size.",
+      MotionDeviceKind.edges =>
+        "Fades it into what is under it: its edges feathered, and faded "
+            "from a side or round the middle, as far in as Reach.",
     };
 
 /// motionParamShown is whether [p] of [d] does anything as it is set, so
