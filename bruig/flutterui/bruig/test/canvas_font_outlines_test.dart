@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/font_files.dart';
 import 'package:bruig/plugin_system/canvas/model/font_outlines.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +22,8 @@ final faces = <(String, String, int)>[
   ("Inter Bold (CFF)", "assets/fonts/Inter-Bold.otf", 0),
   ("RobotoMono (TrueType)", "assets/fonts/RobotoMono-VariableFont_wght.ttf", 0),
   ("PT Serif (TrueType)", "assets/fonts/PTSerif-Regular.ttf", 0),
+  ("Bebas Neue (TrueType)", "assets/fonts/BebasNeue-Regular.ttf", 0),
+  ("Oswald Bold (TrueType)", "assets/fonts/Oswald-Bold.ttf", 0),
   ("Arial", "/System/Library/Fonts/Supplemental/Arial.ttf", 0),
   ("Georgia", "/System/Library/Fonts/Supplemental/Georgia.ttf", 0),
   ("Helvetica (collection)", "/System/Library/Fonts/Helvetica.ttc", 0),
@@ -58,6 +62,30 @@ Future<Uint8List> pixels(void Function(Canvas) paint) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  // The condensed faces bundled for headlines (Ken, 2026-11-11): offered,
+  // and a drawing's text set from the weight asked for.
+  test("Bebas Neue and Oswald are offered, and found at their weights",
+      () async {
+    expect(canvasFonts, containsAll(["Bebas Neue", "Oswald"]));
+    double widthOfA(FontFace f) => f.advance(f.glyphFor(0x41)) / f.unitsPerEm;
+    FontFace file(String name) =>
+        FontFace.parse(File("assets/fonts/$name").readAsBytesSync())!;
+    for (var (weight, name) in [
+      (400, "Oswald-Regular.ttf"),
+      (500, "Oswald-Medium.ttf"),
+      (600, "Oswald-SemiBold.ttf"),
+      (700, "Oswald-Bold.ttf"),
+      (900, "Oswald-Bold.ttf"),
+    ]) {
+      var pick = await FontFiles.instance.load("Oswald", weight, false);
+      expect(widthOfA(pick!.face), widthOfA(file(name)), reason: "$weight");
+      expect(pick.lean, isFalse);
+    }
+    var bebas = await FontFiles.instance.load("Bebas Neue", 700, true);
+    expect(widthOfA(bebas!.face), widthOfA(file("BebasNeue-Regular.ttf")));
+    expect(bebas.lean, isTrue, reason: "no italic: leant over");
+  });
 
   for (var (name, path, index) in faces) {
     test("$name: every letter is the shape the font draws", () async {

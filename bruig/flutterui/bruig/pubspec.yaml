@@ -310,6 +310,23 @@ flutter:
         - asset: "assets/fonts/RobotoMono-VariableFont_wght.ttf"
         - asset: "assets/fonts/RobotoMono-Italic-VariableFont_wght.ttf"
           style: italic
+    # Bebas Neue and Oswald, SIL Open Font License 1.1 -- see
+    # assets/fonts/BebasNeue-OFL.txt and Oswald-OFL.txt. Canvas's condensed
+    # display faces, for headlines on slabs: bundled for the same reason as
+    # PT Serif. Oswald as separate weights rather than its variable file,
+    # which a drawing's text (font_files.dart) would read at one weight only.
+    - family: Bebas Neue
+      fonts:
+        - asset: assets/fonts/BebasNeue-Regular.ttf
+    - family: Oswald
+      fonts:
+        - asset: assets/fonts/Oswald-Regular.ttf
+        - asset: assets/fonts/Oswald-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Oswald-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Oswald-Bold.ttf
+          weight: 700
 
   #     fonts:
   #       - asset: fonts/Schyler-Regular.ttf

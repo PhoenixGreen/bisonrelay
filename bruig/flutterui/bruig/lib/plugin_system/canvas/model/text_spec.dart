@@ -87,6 +87,9 @@ const List<String> canvasFonts = [
   "Inter",
   "Roboto",
   "RobotoMono",
+  // Condensed, for headlines on slabs (Ken, 2026-11-11): bundled.
+  "Bebas Neue",
+  "Oswald",
   "Arial",
   "Helvetica",
   "Georgia",

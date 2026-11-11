@@ -133,6 +133,18 @@ class FontFiles {
             ),
           (("assets/fonts/RobotoMono-VariableFont_wght.ttf", null), italic),
         ];
+      // One weight, and no italic: leant over where one is asked for.
+      case "Bebas Neue":
+        return [(("assets/fonts/BebasNeue-Regular.ttf", null), italic)];
+      // Four weights, the nearest taken; no italic.
+      case "Oswald":
+        var name = switch (weight) {
+          < 450 => "Regular",
+          < 550 => "Medium",
+          < 650 => "SemiBold",
+          _ => "Bold",
+        };
+        return [(("assets/fonts/Oswald-$name.ttf", null), italic)];
     }
 
     if (Platform.isMacOS) {
