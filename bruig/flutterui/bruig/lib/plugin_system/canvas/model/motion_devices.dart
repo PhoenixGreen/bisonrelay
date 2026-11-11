@@ -210,6 +210,12 @@ class MotionDevice {
   /// bodyLayer is [layer] for a text's own words.
   static const bodyLayer = "body";
 
+  /// keys are its settings' keys, by setting: where one has any, it is
+  /// that value at that moment, and in a straight line between (Ken,
+  /// 2026-11-11: the settings panel sets how it rests, the Chain animates
+  /// the same settings). Times are seconds into the scene.
+  final Map<String, List<DeviceKey>> keys;
+
   const MotionDevice(this.kind,
       {this.on = true,
       this.values = const {},
@@ -217,6 +223,7 @@ class MotionDevice {
       this.colour,
       this.target = "",
       this.layer = "",
+      this.keys = const {},
       this.mods = const []});
 
   /// takesTarget is whether it works with another element.
@@ -251,6 +258,7 @@ class MotionDevice {
         colour: colour,
         target: target,
         layer: layer,
+        keys: keys,
         mods: mods);
   }
 
@@ -261,6 +269,7 @@ class MotionDevice {
       colour: colour,
       target: target,
       layer: layer,
+      keys: keys,
       mods: mods);
 
   MotionDevice withId(String id) => MotionDevice(kind,
@@ -270,6 +279,7 @@ class MotionDevice {
       colour: colour,
       target: target,
       layer: layer,
+      keys: keys,
       mods: mods);
 
   MotionDevice withColour(int? colour) => MotionDevice(kind,
@@ -279,6 +289,7 @@ class MotionDevice {
       colour: colour,
       target: target,
       layer: layer,
+      keys: keys,
       mods: mods);
 
   MotionDevice withTarget(String target) => MotionDevice(kind,
@@ -288,6 +299,101 @@ class MotionDevice {
       colour: colour,
       target: target,
       layer: layer,
+      keys: keys,
+      mods: mods);
+
+  /// keyed is whether setting [id] is animated by keys.
+  bool keyed(String id) => keys[id]?.isNotEmpty ?? false;
+
+  /// animated is whether any of its settings is.
+  bool get animated => keys.values.any((k) => k.isNotEmpty);
+
+  /// valueAt is setting [id] at [t] seconds: by its keys where it has any,
+  /// level before the first and after the last.
+  double valueAt(String id, double t) {
+    var ks = keys[id];
+    if (ks == null || ks.isEmpty) return value(id);
+    var p = kind.param(id);
+    double held(double v) => v.clamp(p.min, p.max).toDouble();
+    if (t <= ks.first.t) return held(ks.first.v);
+    if (t >= ks.last.t) return held(ks.last.v);
+    for (var i = 1; i < ks.length; i++) {
+      var a = ks[i - 1], b = ks[i];
+      if (t <= b.t) {
+        var f = b.t == a.t ? 1.0 : (t - a.t) / (b.t - a.t);
+        return held(a.v + (b.v - a.v) * f);
+      }
+    }
+    return held(ks.last.v);
+  }
+
+  /// at is this device as it is [t] seconds into the scene: its keyed
+  /// settings' values then. Itself where nothing is keyed.
+  MotionDevice at(double t) {
+    if (!animated) return this;
+    var next = this;
+    for (var id in keys.keys) {
+      if (keyed(id)) next = next._withPlainValue(id, valueAt(id, t));
+    }
+    return next;
+  }
+
+  /// keyAt is whether setting [id] has a key at [t], within [near] seconds.
+  bool keyAt(String id, double t, {double near = 0.02}) =>
+      keys[id]?.any((k) => (k.t - t).abs() <= near) ?? false;
+
+  /// withKey is this with setting [id] keyed to [v] at [t]: a key already
+  /// there moved to it.
+  MotionDevice withKey(String id, double t, double v, {double near = 0.02}) {
+    var p = kind.param(id);
+    var list = [
+      for (var k in keys[id] ?? const <DeviceKey>[])
+        if ((k.t - t).abs() > near) k,
+      DeviceKey(t, v.clamp(p.min, p.max).toDouble()),
+    ]..sort((a, b) => a.t.compareTo(b.t));
+    return _withKeys({...keys, id: list});
+  }
+
+  /// withoutKeyAt is this without setting [id]'s key at [t]. Its last key
+  /// taken away, the setting keeps the value it had there.
+  MotionDevice withoutKeyAt(String id, double t, {double near = 0.02}) {
+    var list = [
+      for (var k in keys[id] ?? const <DeviceKey>[])
+        if ((k.t - t).abs() > near) k,
+    ];
+    if (list.isEmpty) return withoutKeys(id, at: t);
+    return _withKeys({...keys, id: list});
+  }
+
+  /// withoutKeys is this with setting [id] no longer animated: it keeps the
+  /// value it has at [at].
+  MotionDevice withoutKeys(String id, {double at = 0}) {
+    var v = valueAt(id, at);
+    return _withKeys({
+      for (var MapEntry(:key, :value) in keys.entries)
+        if (key != id) key: value
+    })._withPlainValue(id, v);
+  }
+
+  MotionDevice _withKeys(Map<String, List<DeviceKey>> keys) =>
+      MotionDevice(kind,
+          on: on,
+          values: values,
+          id: id,
+          colour: colour,
+          target: target,
+          layer: layer,
+          keys: keys,
+          mods: mods);
+
+  MotionDevice _withPlainValue(String id, double v) => MotionDevice(kind,
+      on: on,
+      values: {...values, id: v},
+      id: this.id,
+      colour: colour,
+      target: target,
+      layer: layer,
+      keys: keys,
       mods: mods);
 
   MotionDevice withLayer(String layer) => MotionDevice(kind,
@@ -297,6 +403,7 @@ class MotionDevice {
       colour: colour,
       target: target,
       layer: layer,
+      keys: keys,
       mods: mods);
 
   MotionDevice withMods(List<ModTarget> mods) => MotionDevice(kind,
@@ -306,6 +413,7 @@ class MotionDevice {
       colour: colour,
       target: target,
       layer: layer,
+      keys: keys,
       mods: mods);
 
   Map<String, dynamic> toJson() => {
@@ -316,6 +424,13 @@ class MotionDevice {
         if (colour != null) "colour": colour,
         if (target.isNotEmpty) "target": target,
         if (layer.isNotEmpty) "layer": layer,
+        if (keys.isNotEmpty)
+          "keys": {
+            for (var MapEntry(:key, :value) in keys.entries)
+              key: [
+                for (var k in value) [k.t, k.v]
+              ],
+          },
         if (mods.isNotEmpty) "mods": [for (var m in mods) m.toJson()],
       };
 
@@ -336,6 +451,16 @@ class MotionDevice {
         colour: json["colour"] is int ? json["colour"] as int : null,
         target: jsonStr(json["target"]) ?? "",
         layer: jsonStr(json["layer"]) ?? "",
+        keys: {
+          if (json["keys"] case Map raw)
+            for (var MapEntry(:key, :value) in raw.entries)
+              if (key is String && ids.contains(key) && value is List)
+                key: [
+                  for (var k in value)
+                    if (k is List && k.length == 2)
+                      DeviceKey(jsonDouble(k[0], 0), jsonDouble(k[1], 0)),
+                ]..sort((a, b) => a.t.compareTo(b.t)),
+        },
         mods: readModTargets(json["mods"]));
   }
 
@@ -348,6 +473,7 @@ class MotionDevice {
       other.colour == colour &&
       other.target == target &&
       other.layer == layer &&
+      _sameKeys(other.keys, keys) &&
       other.mods.length == mods.length &&
       [for (var i = 0; i < mods.length; i++) other.mods[i] == mods[i]]
           .every((x) => x) &&
@@ -356,6 +482,33 @@ class MotionDevice {
 
   @override
   int get hashCode => Object.hash(kind, on, id, colour, values.length);
+}
+
+/// DeviceKey is one key of a device's setting: value [v] at [t] seconds
+/// into the scene.
+class DeviceKey {
+  final double t;
+  final double v;
+  const DeviceKey(this.t, this.v);
+
+  @override
+  bool operator ==(Object other) =>
+      other is DeviceKey && other.t == t && other.v == v;
+
+  @override
+  int get hashCode => Object.hash(t, v);
+}
+
+bool _sameKeys(Map<String, List<DeviceKey>> a, Map<String, List<DeviceKey>> b) {
+  if (a.length != b.length) return false;
+  for (var MapEntry(:key, :value) in a.entries) {
+    var other = b[key];
+    if (other == null || other.length != value.length) return false;
+    for (var i = 0; i < value.length; i++) {
+      if (other[i] != value[i]) return false;
+    }
+  }
+  return true;
 }
 
 /// withMotionDeviceIds is [chain] with an id on every device: those it has

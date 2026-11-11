@@ -892,6 +892,8 @@ Offset? _centreOf(CanvasDocument doc, String id, int frame,
 /// of [doc]'s channels; as it is where none moves it.
 MotionDevice motionModulated(MotionDevice d, List<MotionDevice> chain, double t,
     {CanvasDocument? doc}) {
+  // Its keyed settings as they are now, then moved by its modulators.
+  d = d.at(t);
   if (d.kind.params.isEmpty || d.id.isEmpty) return d;
   Map<String, double>? add;
   for (var l in chain) {

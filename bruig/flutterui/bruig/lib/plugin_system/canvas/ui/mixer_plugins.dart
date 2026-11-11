@@ -7790,11 +7790,36 @@ class MotionDeviceCard extends StatelessWidget {
     (double, bool) knobAt(DeviceParam p) =>
         controller.deviceKnob(element, d.id, p.id, d.value(p.id));
     void set(DeviceParam p, double v, {bool transient = false}) {
+      // Animated, a turn is a key at the playhead (MotionDevice.keys).
+      if (!copies && d.keyed(p.id)) {
+        return write(d.withKey(p.id, controller.playheadSeconds, v),
+            transient: transient);
+      }
       if (!copies) return write(d.withValue(p.id, v), transient: transient);
       controller.beginInteraction();
       controller.setCopyOwn(element, deviceOwnKey(d.id, p.id), v,
           transient: true);
       if (!transient) controller.endInteraction();
+    }
+
+    // A keyed setting is shown as it is at the playhead.
+    double shownAt(DeviceParam p) => d.keyed(p.id)
+        ? d.valueAt(p.id, controller.playheadSeconds)
+        : knobAt(p).$1;
+
+    List<(String, VoidCallback)> keyMenu(DeviceParam p) {
+      var t = controller.playheadSeconds;
+      return [
+        (
+          d.keyAt(p.id, t) ? "Take the key here away" : "Key it here",
+          () => controller.toggleDeviceKey(element, d.id, p.id)
+        ),
+        if (d.keyed(p.id))
+          (
+            "Stop animating it",
+            () => controller.stopAnimatingDevice(element, d.id, p.id)
+          ),
+      ];
     }
 
     List<(String, VoidCallback)> ownMenu(DeviceParam p) => [
@@ -7815,10 +7840,12 @@ class MotionDeviceCard extends StatelessWidget {
                 key: ValueKey("mdev-${d.id}-${p.id}"),
                 modulated: moved.contains(p.id),
                 own: knobAt(p).$2,
-                menu: [...ownMenu(p), ...modMenu(p)],
+                // Keyed, it shows the dot a lane's setting does.
+                automated: d.keyed(p.id),
+                menu: [...keyMenu(p), ...ownMenu(p), ...modMenu(p)],
                 label: p.label,
-                text: p.reading(knobAt(p).$1),
-                value: knobAt(p).$1,
+                text: p.reading(shownAt(p)),
+                value: shownAt(p),
                 initial: p.initial,
                 range: _Range(p.min, p.max),
                 size: switch (tier) {

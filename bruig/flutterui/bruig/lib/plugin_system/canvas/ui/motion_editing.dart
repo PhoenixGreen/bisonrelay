@@ -45,6 +45,57 @@ extension MotionEditing on CanvasController {
   List<MotionDevice> motionDevicesOf(String element) =>
       motionDevicesInOrder(withMotionDeviceIds(motionOf(element).devices));
 
+  /// playheadSeconds is where the playhead is, in seconds into the scene:
+  /// where a device's keys are set (see MotionDevice.keys).
+  double get playheadSeconds => frame / math.max(1, document.frameRate);
+
+  MotionDevice? _deviceOf(String element, String device) =>
+      motionDevicesOf(element).where((d) => d.id == device).firstOrNull;
+
+  void _putDevice(String element, MotionDevice next, {bool transient = false}) {
+    beginInteraction();
+    setMotionDevices(element,
+        [for (var d in motionDevicesOf(element)) d.id == next.id ? next : d],
+        transient: true);
+    if (!transient) endInteraction();
+  }
+
+  /// setDeviceSetting makes setting [param] of [element]'s device [device]
+  /// [v]: a key at the playhead where it is animated, how it rests where it
+  /// is not -- the same from the Chain and from the settings panel.
+  void setDeviceSetting(String element, String device, String param, double v,
+      {bool transient = false}) {
+    var d = _deviceOf(element, device);
+    if (d == null) return;
+    _putDevice(
+        element,
+        d.keyed(param)
+            ? d.withKey(param, playheadSeconds, v)
+            : d.withValue(param, v),
+        transient: transient);
+  }
+
+  /// toggleDeviceKey keys setting [param] at the playhead, as it is there,
+  /// or takes the key there away.
+  void toggleDeviceKey(String element, String device, String param) {
+    var d = _deviceOf(element, device);
+    if (d == null) return;
+    var t = playheadSeconds;
+    _putDevice(
+        element,
+        d.keyAt(param, t)
+            ? d.withoutKeyAt(param, t)
+            : d.withKey(param, t, d.valueAt(param, t)));
+  }
+
+  /// stopAnimatingDevice takes every key of setting [param] away; it keeps
+  /// the value it has at the playhead.
+  void stopAnimatingDevice(String element, String device, String param) {
+    var d = _deviceOf(element, device);
+    if (d == null) return;
+    _putDevice(element, d.withoutKeys(param, at: playheadSeconds));
+  }
+
   /// setMotionDevices writes [element]'s motion devices.
   void setMotionDevices(String element, List<MotionDevice> devices,
           {bool transient = false}) =>

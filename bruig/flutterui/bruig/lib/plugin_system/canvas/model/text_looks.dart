@@ -87,6 +87,7 @@ TextElement textLooksLifted(TextElement e) {
           id: was.id,
           colour: look.colour,
           layer: look.layer,
+          keys: was.keys,
           mods: was.mods);
     }
   }

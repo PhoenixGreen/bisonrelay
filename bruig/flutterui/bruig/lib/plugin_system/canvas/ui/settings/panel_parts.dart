@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart' show DeviceParam;
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
@@ -289,22 +290,44 @@ class _LooksGroupState extends State<LooksGroup> {
     c.endInteraction();
   }
 
+  /// _now is setting [p] of [d] as it is at the playhead: by its keys,
+  /// where it is animated.
+  double _now(MotionDevice d, DeviceParam p) =>
+      d.keyed(p.id) ? d.valueAt(p.id, c.playheadSeconds) : d.value(p.id);
+
+  /// _set changes setting [p] of [d]: a key at the playhead where it is
+  /// animated, how it rests where not, as the Chain's knob does.
+  void _set(MotionDevice d, DeviceParam p, double stored) =>
+      c.setDeviceSetting(id, d.id, p.id, stored, transient: true);
+
   Widget _number(MotionDevice d, DeviceParam p, {bool fill = false}) {
     var view = lookParamView(d.kind, p);
     return CanvasNumberField(
       key: ValueKey("look-${d.id}-${p.id}"),
-      label: view.label,
-      value: view.shown(d.value(p.id)),
+      label: d.keyed(p.id) ? "${view.label} (keyed)" : view.label,
+      value: view.shown(_now(d, p)),
       min: view.shown(p.min),
       max: view.shown(p.max),
       decimals: view.decimals,
       suffix: view.suffix,
       width: 64,
-      onChanged: (v) =>
-          _put(d.withValue(p.id, view.stored(v)), transient: true),
+      onChanged: (v) => _set(d, p, view.stored(v)),
       onCommit: c.endInteraction,
     );
   }
+
+  /// _keyed says which of [d]'s settings are animated, and when.
+  List<Widget> _keyed(MotionDevice d) => [
+        for (var p in d.kind.params)
+          if (d.keyed(p.id))
+            CanvasReadout(
+              key: ValueKey("lookKeys-${d.id}-${p.id}"),
+              label: "${lookParamView(d.kind, p).label} animated",
+              value: "${d.keys[p.id]!.length} keys, "
+                  "${d.keys[p.id]!.first.t.toStringAsFixed(1)}"
+                  "–${d.keys[p.id]!.last.t.toStringAsFixed(1)} s",
+            ),
+      ];
 
   Widget _row(BuildContext context, MotionDevice d) {
     var theme = ThemeNotifier.of(context);
@@ -367,15 +390,30 @@ class _LooksGroupState extends State<LooksGroup> {
                   label: "",
                   name: "lookMain-${d.id}",
                   fill: true,
-                  value: view.shown(d.value(main.id)),
+                  value: view.shown(_now(d, main)),
                   min: view.shown(main.min),
                   max: view.shown(main.max),
                   decimals: view.decimals,
                   suffix: view.suffix,
-                  onChanged: (v) => _put(d.withValue(main.id, view.stored(v)),
-                      transient: true),
+                  onChanged: (v) => _set(d, main, view.stored(v)),
                   onCommit: c.endInteraction,
                 ),
+              ),
+              // Keyed here, or not: as the Chain's knob is, by the same key.
+              IconButton(
+                key: ValueKey("lookKey-${d.id}"),
+                visualDensity: VisualDensity.compact,
+                iconSize: 16,
+                tooltip: d.keyAt(main.id, c.playheadSeconds)
+                    ? "Take the key here away"
+                    : "Key ${view.label.toLowerCase()} here, to animate it",
+                color: d.keyed(main.id)
+                    ? const Color(0xFFF2C14E)
+                    : theme.colors.onSurfaceVariant,
+                icon: Icon(d.keyAt(main.id, c.playheadSeconds)
+                    ? Icons.diamond
+                    : Icons.diamond_outlined),
+                onPressed: () => c.toggleDeviceKey(id, d.id, main.id),
               ),
               Switch(
                 key: ValueKey("lookOn-${d.id}"),
@@ -407,6 +445,7 @@ class _LooksGroupState extends State<LooksGroup> {
                         )
                       else
                         _number(d, p),
+                    ..._keyed(d),
                     if (lookTakesColour(d.kind))
                       CanvasColorButton(
                         key: ValueKey("lookColour-${d.id}"),
@@ -540,6 +579,26 @@ class MotionSummary extends StatelessWidget {
         onTap: () => controller.showInChain(e.id, m.poseDevices.first.id),
       ));
     }
+    // Its settings animated by keys: a look rising as it arrives, a move
+    // easing off.
+    for (var d in m.devices) {
+      for (var p in d.kind.params) {
+        if (!d.keyed(p.id)) continue;
+        var ks = d.keys[p.id]!;
+        var label = d.side == MotionDeviceSide.look
+            ? lookParamView(d.kind, p).label
+            : p.label;
+        var on = d.layer.isEmpty ? "" : " on ${_layerSaid(e, d.layer)}";
+        lines.add(_MotionLine(
+          key: ValueKey("motionLine-keys-${d.id}-${p.id}"),
+          colour: const Color(0xFFF2C14E),
+          title: "${d.kind.label} ${label.toLowerCase()}$on, animated",
+          detail:
+              "${ks.length} keys, ${secs(ks.first.t)} to ${secs(ks.last.t)}",
+          onTap: () => controller.showInChain(e.id, d.id),
+        ));
+      }
+    }
     if (lines.isEmpty) {
       lines.add(_MotionLine(
         key: const ValueKey("motionLine-none"),
@@ -583,6 +642,17 @@ class MotionSummary extends StatelessWidget {
           ),
         ]);
   }
+}
+
+/// _layerSaid is what of [e] layer [layer] is, in a word or two.
+String _layerSaid(CanvasElement e, String layer) {
+  if (layer == MotionDevice.bodyLayer) return "its words";
+  if (e is TextElement) {
+    for (var item in e.items) {
+      if (item.id == layer) return item.says;
+    }
+  }
+  return layer;
 }
 
 class _MotionLine extends StatelessWidget {
