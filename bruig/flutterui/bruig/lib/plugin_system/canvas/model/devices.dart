@@ -19,7 +19,8 @@ class DeviceParam {
   final double max;
   final double initial;
 
-  /// unit is how the knob reads: "ms", "Hz", "dB", "x", "bits", "#" (a
+  /// unit is how the knob reads: "ms", "Hz", "dB", "x", "bits", "/s" (so
+  /// many a second), "#" (a
   /// count), "st" (semitones), "note" (a MIDI note, by name), or "" for a
   /// share, shown as a percentage.
   final String unit;
@@ -54,6 +55,7 @@ class DeviceParam {
       "px" => "${v.toStringAsFixed(v < 10 ? 1 : 0)} px",
       "°" => "${v.round()}°",
       "×" => "×${v.toStringAsFixed(2)}",
+      "/s" => "${v.toStringAsFixed(2)}/s",
       "LUFS" => "${v >= 0 ? "" : "−"}${v.abs().round()} LUFS",
       _ => "${(v * 100).round()}%",
     };

@@ -184,20 +184,15 @@ class LookParamView {
   double stored(double shown) => shown / times;
 }
 
-/// lookParamView is how [p], a setting of look [kind], reads.
+/// lookParamView is how [p], a setting of look [kind], reads: as its knob
+/// in the Chain reads it (DeviceParam.reading) -- a share as a percentage.
 LookParamView lookParamView(MotionDeviceKind kind, DeviceParam p) {
-  if (kind == MotionDeviceKind.shadow && p.id == "angle") {
-    return const LookParamView("Falls", 1, "°", 0);
-  }
-  var share = (p.unit == "" || p.unit == "×") &&
-      p.min >= -1 &&
-      p.max <= 2 &&
-      p.id != "laps";
-  if (share) return LookParamView(p.label, 100, "%", 0);
+  if (p.unit == "") return LookParamView(p.label, 100, "%", 0);
   return switch (p.unit) {
     "px" => LookParamView(p.label, 1, " px", p.max <= 40 ? 1 : 0),
     "°" => LookParamView(p.label, 1, "°", 0),
     "×" => LookParamView(p.label, 1, "×", 2),
+    "/s" => LookParamView(p.label, 1, "/s", 2),
     _ => LookParamView(p.label, 1, "", p.max - p.min <= 4 ? 2 : 0),
   };
 }

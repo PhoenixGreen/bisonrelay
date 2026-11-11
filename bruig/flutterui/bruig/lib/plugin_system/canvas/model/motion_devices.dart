@@ -100,7 +100,9 @@ enum MotionDeviceKind {
   shadow("Shadow", MotionDeviceSide.look, [
     DeviceParam("distance", "Distance", 0, 80, 8, "px"),
     DeviceParam("blur", "Blur", 0, 60, 10, "px"),
-    DeviceParam("angle", "Angle", 0, 360, 135, "°"),
+    // The way it falls, as a compass reads (0 up, 90 right): one name and
+    // one meaning in the Chain and the settings panel (Ken, 2026-11-11).
+    DeviceParam("angle", "Falls", 0, 360, 135, "°"),
     DeviceParam("strength", "Strength", 0, 1, 0.5),
     DeviceParam("turns", "Turns with it", 0, 1, 0, "",
         ["No: the light stays put", "Yes"]),
@@ -112,7 +114,8 @@ enum MotionDeviceKind {
   ]),
   colour("Colour", MotionDeviceSide.look, [
     DeviceParam("hue", "Hue", -180, 180, 0, "°"),
-    DeviceParam("saturation", "Saturation", 0, 2, 1, "×"),
+    // A share, as Strength is: 100% as it was, 0% grey.
+    DeviceParam("saturation", "Saturation", 0, 2, 1),
     DeviceParam("brightness", "Brightness", -1, 1, 0),
   ]),
   outline("Outline", MotionDeviceSide.look, [
@@ -154,7 +157,7 @@ enum MotionDeviceKind {
     DeviceParam("size", "Size", 0.05, 1, 0.35),
     DeviceParam("zoom", "Zoom", 1, 4, 2, "×"),
     DeviceParam("orbit", "Goes round", 0, 1, 0.4),
-    DeviceParam("laps", "Laps a second", 0, 2, 0.15),
+    DeviceParam("laps", "Laps a second", 0, 2, 0.15, "/s"),
   ]);
 
   final String label;

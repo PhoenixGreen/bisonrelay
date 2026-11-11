@@ -90,7 +90,20 @@ void main() {
     test("sizes stay sizes, and a rate is not a share", () {
       expect(view(MotionDeviceKind.blur, "amount").suffix, " px");
       expect(view(MotionDeviceKind.lens, "zoom").suffix, "×");
-      expect(view(MotionDeviceKind.lens, "laps").suffix, isNot("%"));
+      expect(view(MotionDeviceKind.lens, "laps").suffix, "/s");
+    });
+
+    test("read as the Chain's knob reads it", () {
+      for (var kind in MotionDeviceKind.on(MotionDeviceSide.look)) {
+        for (var p in kind.params) {
+          if (p.isChoice) continue;
+          var v = lookParamView(kind, p);
+          var knob = p.reading(p.initial).replaceAll("×", "").trim();
+          var panel = v.shown(p.initial).toStringAsFixed(v.decimals);
+          expect(knob, contains(panel.replaceAll(RegExp(r"\.0+$"), "")),
+              reason: "${kind.name}.${p.id}: Chain $knob, panel $panel");
+        }
+      }
     });
   });
 
