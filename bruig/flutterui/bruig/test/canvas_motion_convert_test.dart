@@ -124,22 +124,17 @@ void main() {
     same(before.goToScene(1), c.document.goToScene(1), "b");
   });
 
-  test("opened, an old canvas is converted, once, and Undo puts it back", () {
-    var old = doc([
+  // The Keyframes card keys an element's own track; opening a canvas leaves
+  // them there, so the card still has them (Ken, 2026-11-11).
+  test("opened, a canvas keeps its keyframes where the card keyed them", () {
+    var saved = doc([
       shape("a", const [Keyframe(frame: 0), Keyframe(frame: 24, dx: 10)]),
     ]);
     var c = CanvasController(const CanvasDocument());
     addTearDown(c.dispose);
-    c.load(old);
-    expect(c.document.elementById("a")!.track, isNull);
-    expect(c.document.elementById("a")!.base.motion.placed, hasLength(1));
-    var said = c.takeConversion();
-    expect(said?.converted, 1);
-    expect(c.takeConversion(), isNull, reason: "said once");
-    c.undo();
-    expect(c.document.elementById("a")!.track?.keys, hasLength(2),
-        reason: "its keyframes back, as it was saved");
-    c.load(doc(const []));
-    expect(c.takeConversion(), isNull, reason: "nothing to convert");
+    c.load(saved);
+    var a = c.document.elementById("a")!;
+    expect(a.track?.keys, hasLength(2), reason: "its keyframes, as saved");
+    expect(a.base.motion.placed, isEmpty, reason: "not made into a clip");
   });
 }
