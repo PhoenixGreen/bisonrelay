@@ -168,6 +168,8 @@ void main() {
 
     controller.setShape(const CanvasSize(ratio: CanvasRatio.wide, width: 1000));
     await show();
+    // Where it is and how big, in its Layout.
+    await openSection(tester, "text.layout");
 
     var type = find.byKey(const ValueKey("elementTypeScale"));
     expect(type, findsOneWidget);
@@ -196,6 +198,8 @@ void main() {
     expect(betweenRows, greaterThanOrEqualTo(8),
         reason: "it is a different question, not a longer answer");
 
+    // Its words, in its Content.
+    await openSection(tester, "text.content");
     var own = find.byKey(const ValueKey("textOwnWordsHere"));
     await tester.ensureVisible(own);
     await tester.pumpAndSettle();

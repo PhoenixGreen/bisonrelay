@@ -120,8 +120,8 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("t");
       await _panel(tester, c);
-      // Under the presets, which start shut.
-      await openSection(tester, "text.presets");
+      // Under More, with the presets, which starts shut.
+      await openSection(tester, "text.more");
       await tester.ensureVisible(find.byKey(const ValueKey("textStyleSave")));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("textStyleSave")));

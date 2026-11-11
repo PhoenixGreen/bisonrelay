@@ -14,12 +14,25 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/stage_spot_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/text_layers.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/type_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // text_settings.dart is a text element's settings.
 
-List<Widget> textSettings(
+/// textPanel is a text element's settings, as every element's are since
+/// the panel was rebuilt round tasks (Ken, 2026-11-11): its layers, the few
+/// settings it is changed by most, then what it says, how it looks, where it
+/// is, how it moves, and the rest. Picked in the layers, a piece of writing
+/// or a picture has the same five, its own.
+Widget textPanel(
     BuildContext context,
     CanvasController controller,
     TextElement e,
@@ -32,131 +45,252 @@ List<Widget> textSettings(
     commit();
   }
 
-  // The layer picked in the Layers over the sections (the element's own
-  // words, a piece of writing, or a picture): the panel is that layer's.
   var layer = controller.textLayer(e);
+  var at = layer == null ? -1 : e.items.indexOf(layer);
+  return CanvasSections(
+    key: const ValueKey("elementSections"),
+    parts: TextLayersList(
+        key: const ValueKey("textLayersList"),
+        controller: controller,
+        element: e,
+        onChanged: now),
+    quick: layer == null
+        ? _bodyQuick(controller, e, write, begin, commit)
+        : _pieceQuick(context, e, at, layer, write, begin, commit),
+    children: layer == null
+        ? _bodySections(context, controller, e, write, begin, commit)
+        : _pieceSections(
+            context, controller, e, at, layer, write, begin, commit),
+  );
+}
+
+/// _bodyEdit is how the element's own words' type is changed: a size typed
+/// while it is fitted to its box is a size wanted, so the fitting goes, or
+/// the size would do nothing.
+TypeEdit _bodyEdit(TextElement e, SettingsWrite write, VoidCallback begin,
+        VoidCallback commit) =>
+    TypeEdit(
+        e.textSpec,
+        (spec) => write(e.copyWith(
+            textSpec: spec,
+            autoSize: e.autoSize && spec.fontSize == e.textSpec.fontSize)),
+        begin,
+        commit);
+
+/// _bodyQuick is the element's own words' face, size, colour, alignment
+/// and style: what a text is changed by most.
+Widget _bodyQuick(CanvasController controller, TextElement e,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  var t = _bodyEdit(e, write, begin, commit);
+  var styles = controller.textStyles;
+  return CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+    CanvasControlGroup(
+        label: "Type",
+        hideCaption: true,
+        rule: false,
+        children: [
+          typeFont(t),
+          typeSize(t, fitted: e.autoSize),
+          const CanvasLineBreak(),
+          typeColour(t),
+          typeAlign(t),
+          if (styles.isNotEmpty) ...[
+            const CanvasLineBreak(),
+            CanvasDropdown<String>(
+              key: const ValueKey("quickStyle"),
+              label: "Style",
+              value: styles.any((s) => s.name == e.style) ? e.style : "",
+              width: 120,
+              options: [
+                ("", "Its own"),
+                for (var s in styles) (s.name, s.name),
+              ],
+              onChanged: (v) => controller.useTextStyle(e.id, v),
+            ),
+          ],
+        ]),
+    if (e.autoSize)
+      CanvasStateNote(
+          "Its size follows the box. Set a size and the fitting "
+          "turns off.",
+          action: "Stop fitting", onAction: () {
+        begin();
+        write(e.copyWith(autoSize: false));
+        commit();
+      }),
+  ]);
+}
+
+/// _looksSaid is the looks on [layers] of [e] switched on, by name.
+String _looksSaid(TextElement e, Set<String> layers) {
+  var names = [
+    for (var d in e.base.motion.devices)
+      if (d.on && d.side == MotionDeviceSide.look && layers.contains(d.layer))
+        d.kind.label
+  ];
+  return names.isEmpty ? "" : names.join(", ");
+}
+
+/// _motionSaid is how [e] moves, in a few words, for the Motion heading.
+String _motionSaid(TextElement e) {
+  var kinds = {
+    for (var p in e.base.motion.placed)
+      if (e.base.motion.clip(p.clip) case var c?) c.kind
+  };
+  if (kinds.isEmpty) return "Still";
   return [
-    if (layer != null && layer.isIcon)
-      section(e, "picture",
-          icon: Icons.image_outlined,
-          title: "Picture",
-          summary: layer.icon!.on ? layer.says : "No picture chosen",
-          initiallyOpen: true,
-          children: [
-            _pictureRow(context, e, e.items.indexOf(layer), layer, write, begin,
-                commit),
-          ])
-    else if (layer != null)
-      section(e, "type",
-          icon: Icons.text_fields,
-          title: "Type",
-          summary: typeSummary(layer.spec),
-          initiallyOpen: true,
-          children: [
-            _itemType(e, e.items.indexOf(layer), layer, write, begin, commit),
-          ])
-    else
-      section(e, "type",
-          icon: Icons.text_fields,
-          title: "Type",
-          summary: typeSummary(e.textSpec),
-          initiallyOpen: true,
-          children: [
-            // The face, the size and the weight on one line; spacing and placing
-            // behind the button, with the element's own marks (a band behind all
-            // the words, a line under them), so a whole headline is highlighted
-            // without first making a part that covers it.
-            ...typeGroups(
-                e.textSpec,
-                // A size typed while it is fitted to its box is a size
-                // wanted: the fitting goes, or the size would do nothing.
-                (spec) => write(e.copyWith(
-                    textSpec: spec,
-                    autoSize:
-                        e.autoSize && spec.fontSize == e.textSpec.fontSize)),
-                begin,
-                commit,
-                fitted: e.autoSize,
-                // Its outline, shadow and glow are looks: see text_looks.dart.
-                looks: false,
-                // No caption: the Layers over the sections say which piece of
-                // writing these settings are for.
-                label: e.name,
-                hideCaption: true,
-                fill: true,
-                context: context,
-                remember: "text",
-                // Everything about one piece of writing on one line and behind one
-                // button: this element has several pieces of writing (see its Layers).
-                colourInMore: true,
-                // The words carry a drawn underline of their own (see the marks
-                // behind this button), so the face's own switch would be a second
-                // one called Underline.
-                includeUnderline: false,
-                // No lines through this run: the face, the colour, the box, the
-                // columns and the line it rides all answer how these words look.
-                rule: false,
-                extraMore: [
-                  const CanvasLineBreak(),
-                  // Where the element's own words go. "Fills the box" is what a text
-                  // element has always been; a slot makes them a block like a piece, so
-                  // a title and the paragraph under it stack instead of overlapping.
-                  CanvasDropdown<String>(
-                    key: const ValueKey("textBodySlot"),
-                    label: "Where",
-                    value: e.slot?.name ?? "",
-                    width: 116,
-                    options: [
-                      ("", "Fills the box"),
-                      for (var s in TextSlot.values) (s.name, s.label),
-                    ],
-                    onChanged: (v) => now(v.isEmpty
-                        ? e.copyWith(clearSlot: true)
-                        : e.copyWith(slot: TextSlot.fromName(v))),
-                  ),
-                  if (e.slot != null &&
-                      (!e.columns.isSingle || e.flowTo.isNotEmpty))
-                    const CanvasHint(
-                        "Columns and a chain of boxes are arrangements of the whole "
-                        "box, so the words fill it while either is on and the slot "
-                        "waits."),
-                  if (e.slot?.down == VerticalAlignSpec.middle) _middleSlotHint,
-                  const CanvasLineBreak(),
-                  ..._markBits(
-                    highlight: e.highlight,
-                    underline: e.underline,
-                    textColor: e.textSpec.color,
-                    keyPrefix: "text",
-                    setHighlight: (h) => now(h == null
-                        ? e.copyWith(clearHighlight: true)
-                        : e.copyWith(highlight: h)),
-                    setUnderline: (u) => now(u == null
-                        ? e.copyWith(clearUnderline: true)
-                        : e.copyWith(underline: u)),
-                    liveHighlight: (h) {
-                      begin();
-                      write(e.copyWith(highlight: h));
-                    },
-                    liveUnderline: (u) {
-                      begin();
-                      write(e.copyWith(underline: u));
-                    },
-                    done: commit,
-                  ),
-                ]),
-          ]),
-    section(e, "box",
-        icon: Icons.crop_square,
-        title: "Box and columns",
+    if (kinds.contains(MotionKind.arrive)) "arrives",
+    if (kinds.contains(MotionKind.loop)) "loops",
+    if (kinds.contains(MotionKind.leave)) "leaves",
+    if (kinds.any((k) =>
+        k != MotionKind.arrive &&
+        k != MotionKind.loop &&
+        k != MotionKind.leave))
+      "moves",
+  ].join(", ").replaceFirstMapped(RegExp(r"^."), (m) => m[0]!.toUpperCase());
+}
+
+List<Widget> _bodySections(
+    BuildContext context,
+    CanvasController controller,
+    TextElement e,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
+  void now(TextElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  var t = _bodyEdit(e, write, begin, commit);
+  var spec = e.textSpec;
+  var words = e.displayText.replaceAll("\n", " ");
+  return [
+    section(e, "content",
+        icon: Icons.notes,
+        title: "Content",
         summary: [
-          boxSummary(e.box),
-          if (e.columns.count > 1) "${e.columns.count} columns"
+          "\u201c${words.length > 28 ? "${words.substring(0, 28)}…" : words}\u201d",
+          if (e.autoSize) "fitted to the box",
         ].join(" · "),
         children: [
+          textWordsCard(context, controller, e, write, begin, commit),
+          CanvasControlGroup(
+              key: const ValueKey("textWhere"),
+              label: "In the box",
+              rule: false,
+              children: [
+                CanvasDropdown<String>(
+                  key: const ValueKey("textBodySlot"),
+                  label: "Where",
+                  value: e.slot?.name ?? "",
+                  width: 116,
+                  options: [
+                    ("", "Fills the box"),
+                    for (var s in TextSlot.values) (s.name, s.label),
+                  ],
+                  onChanged: (v) => now(v.isEmpty
+                      ? e.copyWith(clearSlot: true)
+                      : e.copyWith(slot: TextSlot.fromName(v))),
+                ),
+                if (e.slot != null &&
+                    (!e.columns.isSingle || e.flowTo.isNotEmpty))
+                  const CanvasHint(
+                      "Columns and a chain of boxes are arrangements of the whole "
+                      "box, so the words fill it while either is on and the slot "
+                      "waits."),
+                if (e.slot?.down == VerticalAlignSpec.middle) _middleSlotHint,
+              ]),
+        ]),
+    section(e, "look",
+        icon: Icons.palette_outlined,
+        title: "Look",
+        summary: [
+          typeSummary(spec),
+          if (_looksSaid(e, {"", MotionDevice.bodyLayer}) case var l
+              when l.isNotEmpty)
+            l,
+        ].join(" · "),
+        initiallyOpen: true,
+        children: [
+          CanvasControlGroup(
+              key: const ValueKey("textLetters"),
+              label: "Letters",
+              rule: false,
+              children: [
+                ...typeLetters(t, underline: false),
+                const CanvasLineBreak(),
+                // What the letters are painted with: their colour (in the
+                // strip above), a picture or a pattern.
+                CanvasDropdown<TextFillKind>(
+                  key: const ValueKey("textFillKind"),
+                  label: "Painted with",
+                  value: spec.fill.kind,
+                  width: 118,
+                  options: [for (var k in TextFillKind.values) (k, k.label)],
+                  onChanged: (v) =>
+                      t.now(spec.copyWith(fill: spec.fill.copyWith(kind: v))),
+                ),
+                if (spec.fill.kind != TextFillKind.color)
+                  ...fillBits(
+                      context,
+                      spec.fill,
+                      (f) => t.onChanged(spec.copyWith(fill: f)),
+                      begin,
+                      commit),
+              ]),
+          CanvasControlGroup(
+              key: const ValueKey("textMarks"),
+              label: "Marks",
+              rule: false,
+              children: [
+                ..._markBits(
+                  highlight: e.highlight,
+                  underline: e.underline,
+                  textColor: e.textSpec.color,
+                  keyPrefix: "text",
+                  setHighlight: (h) => now(h == null
+                      ? e.copyWith(clearHighlight: true)
+                      : e.copyWith(highlight: h)),
+                  setUnderline: (u) => now(u == null
+                      ? e.copyWith(clearUnderline: true)
+                      : e.copyWith(underline: u)),
+                  liveHighlight: (h) {
+                    begin();
+                    write(e.copyWith(highlight: h));
+                  },
+                  liveUnderline: (u) {
+                    begin();
+                    write(e.copyWith(underline: u));
+                  },
+                  done: commit,
+                ),
+              ]),
           boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
               remember: "text", rule: false, fill: true, context: context),
-          // One line, so no section round it: a chevron for a number and a
-          // switch is more furniture than setting.
+          LooksGroup(
+              key: const ValueKey("textLooksAll"),
+              controller: controller,
+              element: e,
+              title: "Looks on the whole text"),
+          LooksGroup(
+              key: const ValueKey("textLooksWords"),
+              controller: controller,
+              element: e,
+              layer: MotionDevice.bodyLayer,
+              title: "Looks on the words"),
+        ]),
+    section(e, "layout",
+        icon: Icons.open_with,
+        title: "Layout",
+        summary: [
+          positionSummary(e),
+          if (e.columns.count > 1) "${e.columns.count} columns",
+          if (e.curve != null) "on a line",
+        ].join(" · "),
+        children: [
+          positionGroup(controller, e, write, begin, commit),
           CanvasControlGroup(label: "Columns", rule: false, children: [
             CanvasNumberField(
               key: const ValueKey("textColumns"),
@@ -232,16 +366,6 @@ List<Widget> textSettings(
               ],
             ],
           ]),
-        ]),
-    section(e, "line",
-        icon: Icons.gesture,
-        title: "On a line",
-        summary: e.curve == null ? "Not on a line" : "Follows a line",
-        children: [
-          // Under the columns, its own group: riding a line has nothing to say to
-          // columns. Which line, how far along it and the letters' spacing are
-          // what is usually set; which side the words fall on and whether it is a
-          // window are behind the button, once a line is chosen.
           CanvasMoreGroup(
             label: "On a line",
             rule: false,
@@ -337,19 +461,164 @@ List<Widget> textSettings(
             ],
           ),
         ]),
-    // The markdown and the parts are about the element's own words: a piece
-    // picked in the Layers has none of either.
-    if (layer == null && e.document.on && e.document.markdown)
-      expanderSection(
-          e, Icons.code, _markdownSection(controller, e, write, begin, commit)),
-    if (layer == null)
-      expanderSection(e, Icons.format_paint_outlined,
+    ...stageSpotSettings(context, controller, e, write, begin, commit),
+    section(e, "motion",
+        icon: Icons.animation,
+        title: "Motion",
+        summary: _motionSaid(e),
+        children: [
+          MotionSummary(controller: controller, element: e),
+          if (controller.cues.isNotEmpty) elementCueCard(controller, e),
+        ]),
+    section(e, "more",
+        icon: Icons.more_horiz,
+        title: "More",
+        summary: [
+          if (e.document.on && e.document.markdown) "Markdown",
+          e.parts.isEmpty
+              ? "Parts of the text"
+              : "${e.parts.length} part${e.parts.length == 1 ? "" : "s"}",
+          "presets",
+          "styles",
+        ].join(", "),
+        children: [
+          if (e.document.on && e.document.markdown)
+            _markdownSection(controller, e, write, begin, commit),
           _partsSection(e, write, begin, commit),
-          summary: e.parts.isEmpty
-              ? "Every word alike"
-              : "${e.parts.length} part${e.parts.length == 1 ? "" : "s"}"),
-    // How its words come in, loop and go: the Chain's Motion view (Ken,
-    // 2026-11-08).
+          CanvasControlGroup(
+              key: const ValueKey("textPresets"),
+              label: "Presets",
+              rule: false,
+              children: [presetsSection(context, controller, e)]),
+          textStyleCard(controller, e),
+        ]),
+  ];
+}
+
+/// _pieceEdit is how piece [at]'s type is changed.
+TypeEdit _pieceEdit(TextElement e, int at, TextItem item, SettingsWrite write,
+        VoidCallback begin, VoidCallback commit) =>
+    TypeEdit(
+        item.spec,
+        (spec) => write(e.copyWith(items: [
+              for (var (i, it) in e.items.indexed)
+                i == at ? item.copyWith(spec: spec) : it,
+            ])),
+        begin,
+        commit);
+
+/// _pieceQuick is a piece's face, size and colour, and where it sits in
+/// the box -- which decides how it lines up, so there is no Align.
+Widget _pieceQuick(BuildContext context, TextElement e, int at, TextItem item,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  void put(TextItem next) {
+    begin();
+    write(e.copyWith(items: [
+      for (var (i, it) in e.items.indexed) i == at ? next : it,
+    ]));
+    commit();
+  }
+
+  var t = _pieceEdit(e, at, item, write, begin, commit);
+  return CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+    CanvasControlGroup(
+        label: item.says,
+        hideCaption: true,
+        rule: false,
+        children: [
+          if (!item.isIcon) ...[
+            typeFont(t),
+            typeSize(t),
+            const CanvasLineBreak(),
+            typeColour(t),
+          ],
+          CanvasSlotPicker(
+              key: const ValueKey("quickSlot"),
+              value: item.slot,
+              onChanged: (s) => put(item.copyWith(slot: s))),
+        ]),
+  ]);
+}
+
+List<Widget> _pieceSections(
+    BuildContext context,
+    CanvasController controller,
+    TextElement e,
+    int at,
+    TextItem item,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
+  var t = _pieceEdit(e, at, item, write, begin, commit);
+  var whole = _looksSaid(e, {""});
+  return [
+    section(e, "content",
+        icon: item.isIcon ? Icons.image_outlined : Icons.notes,
+        title: "Content",
+        summary: item.isIcon
+            ? (item.icon!.on ? item.says : "No picture chosen")
+            : "\u201c${item.text}\u201d",
+        initiallyOpen: item.isIcon,
+        children: [
+          if (item.isIcon)
+            _pictureRow(context, e, at, item, write, begin, commit)
+          else
+            const CanvasHint("Its words are typed on the canvas: double-click "
+                "them there."),
+        ]),
+    section(e, "look",
+        icon: Icons.palette_outlined,
+        title: "Look",
+        summary: [
+          if (!item.isIcon) typeSummary(item.spec),
+          if (_looksSaid(e, {item.id}) case var l when l.isNotEmpty) l,
+        ].join(" · "),
+        initiallyOpen: true,
+        children: [
+          if (!item.isIcon)
+            CanvasControlGroup(
+                key: const ValueKey("pieceLetters"),
+                label: "Letters",
+                rule: false,
+                children: typeLetters(t, vertical: false, justify: false)),
+          CanvasControlGroup(
+              key: const ValueKey("pieceBox"),
+              label: "Box behind it",
+              rule: false,
+              children: _pieceBoxBits(e, at, item, write, begin, commit)),
+          LooksGroup(
+              key: const ValueKey("textLooksPiece"),
+              controller: controller,
+              element: e,
+              layer: item.id,
+              title: "Looks on this piece"),
+          if (whole.isNotEmpty)
+            CanvasHint("The whole text also has $whole, over this piece "
+                "too: pick the words in the layers to change them."),
+        ]),
+    section(e, "layout",
+        icon: Icons.open_with,
+        title: "Layout",
+        summary: "${item.slot.label} · gap ${item.gap.round()}",
+        children: [
+          CanvasControlGroup(
+              key: const ValueKey("piecePlace"),
+              label: "Where",
+              rule: false,
+              children: _pieceBits(e, at, item, write, begin, commit)),
+        ]),
+    section(e, "motion",
+        icon: Icons.animation,
+        title: "Motion",
+        summary: "With the whole text",
+        children: [
+          MotionSummary(
+              controller: controller,
+              element: e,
+              note: "A piece comes and goes with the whole text. To move it "
+                  "on its own, animate its looks in the Chain, or make it an "
+                  "element of its own."),
+        ]),
   ];
 }
 
@@ -1422,39 +1691,6 @@ List<Widget> _markBits({
   ];
 }
 
-/// _itemType is the type of the piece of writing at [at], picked in the
-/// Layers: the same control the element's own words have, with where it
-/// sits in the box behind its button.
-Widget _itemType(TextElement e, int at, TextItem item, SettingsWrite write,
-    VoidCallback begin, VoidCallback commit) {
-  List<TextItem> withItem(TextItem next) => [
-        for (var (i, it) in e.items.indexed) i == at ? next : it,
-      ];
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    mainAxisSize: MainAxisSize.min,
-    children: typeGroups(
-      item.spec,
-      (spec) => write(e.copyWith(items: withItem(item.copyWith(spec: spec)))),
-      begin,
-      commit,
-      label: item.says,
-      hideCaption: true,
-      remember: "textItem${item.id}",
-      colourInMore: true,
-      looks: false,
-      rule: false,
-      // Its place is its slot's to decide, so the alignment dropdowns
-      // would do nothing.
-      includeAlign: false,
-      extraMore: [
-        const CanvasLineBreak(),
-        ..._placeBits(e, at, item, write, begin, commit),
-      ],
-    ),
-  );
-}
-
 /// _middleSlotHint is why a block in a middle slot seems to move as its
 /// words change: a middle slot centres the stack, so half of what the
 /// words lose is given back at the top. A slot shared with the words above
@@ -1469,7 +1705,8 @@ const _middleSlotHint = CanvasHint(
 /// _placeBits are the controls every piece has behind its button, words or
 /// a picture: where it sits, and how much room it keeps.
 List<Widget> _placeBits(TextElement e, int at, TextItem item,
-    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+    SettingsWrite write, VoidCallback begin, VoidCallback commit,
+    {bool place = true, bool box = true}) {
   void put(TextItem next, {bool live = false}) {
     begin();
     write(e.copyWith(items: [
@@ -1479,98 +1716,112 @@ List<Widget> _placeBits(TextElement e, int at, TextItem item,
   }
 
   return [
-    // What to call this row; otherwise the caption is what the piece says,
-    // which names every picture "Picture".
-    CanvasTextField(
-      key: ValueKey("textItemName$at"),
-      label: "Called",
-      value: item.name,
-      hint: item.isIcon ? "Picture" : "the words",
-      width: 96,
-      onChanged: (v) => put(item.copyWith(name: v), live: true),
-      onCommit: commit,
-    ),
-    CanvasDropdown<TextSlot>(
-      key: ValueKey("textItemSlot$at"),
-      label: "Where",
-      value: item.slot,
-      width: 104,
-      options: [for (var s in TextSlot.values) (s, s.label)],
-      onChanged: (v) => put(item.copyWith(slot: v)),
-    ),
-    CanvasNumberField(
-      key: ValueKey("textItemGap$at"),
-      label: "Gap",
-      value: item.gap,
-      min: -400,
-      max: 400,
-      width: 56,
-      onChanged: (v) => put(item.copyWith(gap: v), live: true),
-      onCommit: commit,
-    ),
-    CanvasNumberField(
-      key: ValueKey("textItemSide$at"),
-      // Both ways round from one number: away from the edge the slot holds
-      // it to, or back past it. See TextItem.side.
-      label: "Left/right",
-      value: item.side,
-      min: -2000,
-      max: 2000,
-      width: 66,
-      onChanged: (v) => put(item.copyWith(side: v), live: true),
-      onCommit: commit,
-    ),
-    if (!item.isIcon && item.slot.down == VerticalAlignSpec.middle)
-      _middleSlotHint,
-    const CanvasLineBreak(),
-    // What is behind the piece. The colour is the switch: with nothing
-    // painted there is no shape to round and no room to keep inside it.
-    CanvasColorButton(
-      key: ValueKey("textItemFill$at"),
-      label: "Background",
-      color: item.box.fill,
-      gradient: item.box.fillFade,
-      onChanged: (c) => put(item.copyWith(box: item.box.copyWith(fill: c))),
-      onGradientChanged: (g) => put(item.copyWith(
-          box: g == null
-              ? item.box.copyWith(flatFill: true)
-              : item.box.copyWith(fillFade: g))),
-    ),
-    if (item.box.fill.a > 0) ...[
-      // The same corner and room fields every other box gets (see
-      // cornerFields): the two even numbers beside the colour, the four
-      // corners and four sides on lines of their own under it.
-      ...cornerFields(
-          item.box.corners,
-          (c) => put(item.copyWith(box: item.box.withCorners(c)), live: true),
-          commit,
-          label: "Round",
-          prefix: "textItem$at",
-          part: SidePart.all),
-      ...roomFields(
-          item.box.pad,
-          (r) => put(item.copyWith(box: item.box.withRoom(r)), live: true),
-          commit,
-          label: "Inside",
-          prefix: "textItem$at",
-          part: SidePart.all),
-      const CanvasLineBreak(),
-      ...cornerFields(
-          item.box.corners,
-          (c) => put(item.copyWith(box: item.box.withCorners(c)), live: true),
-          commit,
-          prefix: "textItem$at",
-          part: SidePart.sides),
-      const CanvasLineBreak(),
-      ...roomFields(
-          item.box.pad,
-          (r) => put(item.copyWith(box: item.box.withRoom(r)), live: true),
-          commit,
-          prefix: "textItem$at",
-          part: SidePart.sides),
+    if (place) ...[
+      // What to call this row; otherwise the caption is what the piece says,
+      // which names every picture "Picture".
+      CanvasTextField(
+        key: ValueKey("textItemName$at"),
+        label: "Called",
+        value: item.name,
+        hint: item.isIcon ? "Picture" : "the words",
+        width: 96,
+        onChanged: (v) => put(item.copyWith(name: v), live: true),
+        onCommit: commit,
+      ),
+      CanvasDropdown<TextSlot>(
+        key: ValueKey("textItemSlot$at"),
+        label: "Where",
+        value: item.slot,
+        width: 104,
+        options: [for (var s in TextSlot.values) (s, s.label)],
+        onChanged: (v) => put(item.copyWith(slot: v)),
+      ),
+      CanvasNumberField(
+        key: ValueKey("textItemGap$at"),
+        label: "Gap",
+        value: item.gap,
+        min: -400,
+        max: 400,
+        width: 56,
+        onChanged: (v) => put(item.copyWith(gap: v), live: true),
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        key: ValueKey("textItemSide$at"),
+        // Both ways round from one number: away from the edge the slot holds
+        // it to, or back past it. See TextItem.side.
+        label: "Left/right",
+        value: item.side,
+        min: -2000,
+        max: 2000,
+        width: 66,
+        onChanged: (v) => put(item.copyWith(side: v), live: true),
+        onCommit: commit,
+      ),
+      if (!item.isIcon && item.slot.down == VerticalAlignSpec.middle)
+        _middleSlotHint,
+    ],
+    if (place && box) const CanvasLineBreak(),
+    if (box) ...[
+      // What is behind the piece. The colour is the switch: with nothing
+      // painted there is no shape to round and no room to keep inside it.
+      CanvasColorButton(
+        key: ValueKey("textItemFill$at"),
+        label: "Background",
+        color: item.box.fill,
+        gradient: item.box.fillFade,
+        onChanged: (c) => put(item.copyWith(box: item.box.copyWith(fill: c))),
+        onGradientChanged: (g) => put(item.copyWith(
+            box: g == null
+                ? item.box.copyWith(flatFill: true)
+                : item.box.copyWith(fillFade: g))),
+      ),
+      if (item.box.fill.a > 0) ...[
+        // The same corner and room fields every other box gets (see
+        // cornerFields): the two even numbers beside the colour, the four
+        // corners and four sides on lines of their own under it.
+        ...cornerFields(
+            item.box.corners,
+            (c) => put(item.copyWith(box: item.box.withCorners(c)), live: true),
+            commit,
+            label: "Round",
+            prefix: "textItem$at",
+            part: SidePart.all),
+        ...roomFields(
+            item.box.pad,
+            (r) => put(item.copyWith(box: item.box.withRoom(r)), live: true),
+            commit,
+            label: "Inside",
+            prefix: "textItem$at",
+            part: SidePart.all),
+        const CanvasLineBreak(),
+        ...cornerFields(
+            item.box.corners,
+            (c) => put(item.copyWith(box: item.box.withCorners(c)), live: true),
+            commit,
+            prefix: "textItem$at",
+            part: SidePart.sides),
+        const CanvasLineBreak(),
+        ...roomFields(
+            item.box.pad,
+            (r) => put(item.copyWith(box: item.box.withRoom(r)), live: true),
+            commit,
+            prefix: "textItem$at",
+            part: SidePart.sides),
+      ],
     ],
   ];
 }
+
+/// _pieceBits is where piece [at] sits: its name, its place, its room.
+List<Widget> _pieceBits(TextElement e, int at, TextItem item,
+        SettingsWrite write, VoidCallback begin, VoidCallback commit) =>
+    _placeBits(e, at, item, write, begin, commit, box: false);
+
+/// _pieceBoxBits is what is behind piece [at].
+List<Widget> _pieceBoxBits(TextElement e, int at, TextItem item,
+        SettingsWrite write, VoidCallback begin, VoidCallback commit) =>
+    _placeBits(e, at, item, write, begin, commit, place: false);
 
 /// _pictureRow is a picture piece's row, shaped as a words piece's is:
 /// what it is on the line, everything else behind the button.
@@ -1645,9 +1896,9 @@ Widget _pictureRow(BuildContext context, TextElement e, int at, TextItem item,
           onPressed: () => now(icon.copyWith(clearColor: true)),
         ),
     ],
+    // Where it sits and what is behind it are in Layout and Look, as a
+    // piece of writing's are.
     more: [
-      ..._placeBits(e, at, item, write, begin, commit),
-      const CanvasLineBreak(),
       CanvasNumberField(
         label: "Outline",
         value: icon.outlineWidth,

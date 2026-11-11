@@ -56,6 +56,7 @@ import 'package:provider/provider.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_data.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'canvas_panel_helpers.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'canvas_timeline_menus.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
@@ -6398,8 +6399,10 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    /// inType is [f] among the type settings: the quick strip's face, size
+    /// and colour, and the rest in the Look.
     Finder inType(Finder f) => find.descendant(
-        of: find.byKey(const ValueKey("elementSection-type")), matching: f);
+        of: find.byKey(const ValueKey("elementSections")), matching: f);
 
     testWidgets("are sections, in the order the work happens", (tester) async {
       // Where it is, how it is set, its box, the line it follows, which
@@ -6418,16 +6421,15 @@ void main() {
       expect([
         for (var (_, title) in found) title
       ], [
-        "Position",
-        "Type",
-        "Box and columns",
-        "On a line",
-        "Parts of the text",
-        "Presets",
+        "Content",
+        "Look",
+        "Layout",
+        "Motion",
+        "More",
       ]);
       expect(
           find.descendant(
-              of: find.byKey(const ValueKey("elementSection-position")),
+              of: find.byKey(const ValueKey("elementSection-content")),
               matching: find.byKey(const ValueKey("textWords"))),
           findsOneWidget);
       for (var key in ["textFromDocument", "textWrap"]) {
@@ -6440,7 +6442,7 @@ void main() {
       }
       expect(
           find.descendant(
-              of: find.byKey(const ValueKey("elementSection-presets")),
+              of: find.byKey(const ValueKey("elementSection-more")),
               matching: find.byKey(const ValueKey("textStyleSave"))),
           findsOneWidget);
       expect(find.byKey(const ValueKey("elementSection-words")), findsNothing);
@@ -6563,24 +6565,17 @@ void main() {
       );
       var controller = await panel(tester, element: element);
       expect(find.byKey(const ValueKey("textBodySlot")), findsOneWidget);
-      expect(
-          find.byWidgetPredicate(
-              (w) => w is CanvasSection && w.title == "Parts of the text"),
-          findsOneWidget);
+      expect(find.byKey(const ValueKey("expander-textParts")), findsOneWidget);
 
       await pickLayer(tester, "n");
       expect(find.byKey(const ValueKey("textBodySlot")), findsNothing);
       expect(find.byKey(const ValueKey("textItemSlot0")), findsOneWidget);
-      expect(
-          find.byWidgetPredicate(
-              (w) => w is CanvasSection && w.title == "Parts of the text"),
-          findsNothing,
+      expect(find.byKey(const ValueKey("expander-textParts")), findsNothing,
           reason: "a piece has no parts of its own");
 
       await pickLayer(tester, "p");
-      expect(find.byKey(const ValueKey("elementSection-type")), findsNothing);
-      expect(
-          find.byKey(const ValueKey("elementSection-picture")), findsOneWidget);
+      expect(find.byKey(const ValueKey("typeFont")), findsNothing,
+          reason: "a picture has no type");
       expect(find.byKey(const ValueKey("textItemPicture1")), findsOneWidget);
 
       await pickLayer(tester, "body");
@@ -6633,9 +6628,12 @@ void main() {
       await panel(tester, element: element);
       await pickLayer(tester, "n");
 
-      expect(inType(find.text("Where")), findsOneWidget);
-      expect(inType(find.text("Align")), findsNothing);
-      expect(inType(find.text("Vertical")), findsNothing);
+      var quick = find.byKey(const ValueKey("quickStrip"));
+      expect(
+          find.descendant(of: quick, matching: find.byType(CanvasSlotPicker)),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey("typeAlign")), findsNothing);
+      expect(find.byKey(const ValueKey("typeVertical")), findsNothing);
     });
 
     testWidgets("the element's own words can be given a slot too",
@@ -6734,40 +6732,27 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("the colour is on the row and the switches are behind it",
+    testWidgets("the colour is in the quick strip and the switches in Look",
         (tester) async {
       // What colour the words are is the first thing anybody changes about
-      // them and the last thing that should be behind a button. Italic and
-      // the face's own underline are set once, so they have swapped places
-      // with it.
+      // them and the last thing that should be behind a button: it is in the
+      // quick strip over the sections, with the face and the size. Italic is
+      // set once, with the rest of the letters, in Look.
       await panel(tester);
-      var own = find.ancestor(
-          of: find.byWidgetPredicate(
-              (w) => w is CanvasDropdown<String> && w.label == "Font"),
-          matching: find.byType(CanvasMoreGroup));
-
-      var face = tester.getRect(find.byWidgetPredicate(
-          (w) => w is CanvasDropdown<String> && w.label == "Font"));
-      // The first of them: with the button open there are more swatches
-      // behind it -- the outline's, the shadow's, the glow's -- and the one
-      // on the row is the one in front.
-      var swatch = tester.getRect(find
-          .descendant(of: own, matching: find.byType(CanvasColorButton))
-          .first);
-      expect(swatch.top, closeTo(face.top, 0.5),
-          reason: "the swatch is on the row with the face");
-
-      var button = find.descendant(of: own, matching: find.byIcon(Icons.tune));
-      if (button.evaluate().isNotEmpty) {
-        await tester.ensureVisible(button);
-        await tester.pumpAndSettle();
-        await tester.tap(button);
-        await tester.pumpAndSettle();
-      }
+      var quick = find.byKey(const ValueKey("quickStrip"));
       expect(
-          find.descendant(of: own, matching: find.byIcon(Icons.format_italic)),
-          findsOneWidget,
-          reason: "italic is behind the button now");
+          find.descendant(
+              of: quick, matching: find.byKey(const ValueKey("typeColour"))),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: quick, matching: find.byKey(const ValueKey("typeFont"))),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("elementSection-look")),
+              matching: find.byIcon(Icons.format_italic)),
+          findsOneWidget);
     });
 
     testWidgets("and there is one underline, not two", (tester) async {
@@ -6775,19 +6760,7 @@ void main() {
       // switches called Underline on one panel. The one that can do more --
       // a colour, a width, a distance under the letters -- is the one kept.
       await panel(tester);
-      var own = find.ancestor(
-          of: find.byWidgetPredicate(
-              (w) => w is CanvasDropdown<String> && w.label == "Font"),
-          matching: find.byType(CanvasMoreGroup));
-      var button = find.descendant(of: own, matching: find.byIcon(Icons.tune));
-      if (button.evaluate().isNotEmpty) {
-        await tester.ensureVisible(button);
-        await tester.pumpAndSettle();
-        await tester.tap(button);
-        await tester.pumpAndSettle();
-      }
-
-      var type = find.byKey(const ValueKey("elementSection-type"));
+      var type = find.byKey(const ValueKey("elementSection-look"));
       expect(
           find.descendant(
               of: type, matching: find.byIcon(Icons.format_underlined)),
@@ -6805,9 +6778,9 @@ void main() {
       var controller = await panel(tester);
       expect(textIn(controller).parts, isEmpty);
 
-      var heading = find.byKey(const ValueKey("elementSection-textParts"));
-      await tester.ensureVisible(heading);
-      await tester.pumpAndSettle();
+      // Under More, in a fold of its own.
+      await openFold(tester, "textParts",
+          shows: find.byKey(const ValueKey("partBold0")));
 
       var bold = find.byKey(const ValueKey("partBold0"));
       expect(bold, findsOneWidget, reason: "a row, before the plus was used");
@@ -6837,9 +6810,9 @@ void main() {
       );
       await panel(tester, element: element);
 
-      var heading = find.byKey(const ValueKey("elementSection-textParts"));
-      await tester.ensureVisible(heading);
-      await tester.pumpAndSettle();
+      // Under More, in a fold of its own.
+      await openFold(tester, "textParts",
+          shows: find.byKey(const ValueKey("partBold0")));
 
       var tops = <double>[];
       for (var key in [
@@ -7219,7 +7192,7 @@ void main() {
       var controller = await panel(tester);
       expect(find.text("Fit to box"), findsOneWidget);
       expect(find.text("Font"), findsOneWidget);
-      expect(find.byKey(const ValueKey("elementSection-box")), findsOneWidget);
+      expect(find.byKey(const ValueKey("elementSection-look")), findsOneWidget);
 
       // Scrolled to first: with four panels in the column the settings can
       // start below the fold, and a tap outside the viewport hits nothing.

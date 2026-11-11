@@ -385,6 +385,8 @@ void main() {
         items: const [TextItem(id: "n", text: "01", slot: TextSlot.topLeft)])));
     addTearDown(controller.dispose);
     controller.pickTextLayer("c", "n");
+    CanvasSection.openAll = true;
+    addTearDown(() => CanvasSection.openAll = false);
 
     await tester.pumpWidget(MaterialApp(
       home: ChangeNotifierProvider(
@@ -398,13 +400,15 @@ void main() {
                 child: Builder(
                   builder: (context) => Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: textSettings(
-                        context,
-                        controller,
-                        controller.document.elementById("c") as TextElement,
-                        (next) => controller.replaceElement(next),
-                        () {},
-                        () {}),
+                    children: [
+                      textPanel(
+                          context,
+                          controller,
+                          controller.document.elementById("c") as TextElement,
+                          (next) => controller.replaceElement(next),
+                          () {},
+                          () {}),
+                    ],
                   ),
                 ),
               ),
@@ -415,19 +419,12 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    var group = find.byKey(const ValueKey("elementSection-type"));
-    var face = tester.getRect(find
-        .descendant(of: group, matching: find.byType(CanvasDropdown<String>))
-        .first);
-    var size = tester.getRect(find
-        .descendant(of: group, matching: find.byType(CanvasNumberField))
-        .first);
-    var weight = tester.getRect(find
-        .descendant(of: group, matching: find.byType(CanvasDropdown<int>))
-        .first);
+    // Its face and size in the quick strip, its weight in its Look.
+    var face = tester.getRect(find.byKey(const ValueKey("typeFont")));
+    var size = tester.getRect(find.byKey(const ValueKey("typeSize")));
+    var weight = tester.getRect(find.byKey(const ValueKey("typeWeight")));
 
-    // A size up in a card, so at this width the three take a line each --
-    // and none of them runs off the side.
+    // None of them runs off the side.
     expect(size.top, greaterThanOrEqualTo(face.top));
     expect(weight.top, greaterThan(face.bottom));
     expect(face.right, lessThanOrEqualTo(300));

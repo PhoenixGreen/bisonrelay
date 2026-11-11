@@ -100,18 +100,26 @@ List<Widget> elementSettings(
     return imageSettings(context, controller, element, write, begin, commit);
   }
 
+  // A text, rebuilt round tasks: its layers, a quick strip, then Content,
+  // Look, Layout, Motion and More -- see textPanel.
+  if (element is TextElement) {
+    return [textPanel(context, controller, element, write, begin, commit)];
+  }
+
   // Every other element in sections, as a picture is: where it is, its
   // own subjects, how it arrives, and the designs saved of its kind -- see
   // element_sections.dart.
   return [
     CanvasSections(
       key: const ValueKey("elementSections"),
-      // Layers over the sections, as a picture's are: a text's own words and the
-      // pieces added to its box, or a drawing's shapes once it has been taken
-      // apart into them.
-      parts: element is TextElement
-          ? TextLayersList(
-              key: const ValueKey("textLayersList"),
+      // Layers over the sections, as a picture's are: a drawing's shapes,
+      // once it has been taken apart into them. (A text's are its own: see
+      // textPanel.)
+      parts: element is VectorElement &&
+              element.edited &&
+              (element.shapes?.isNotEmpty ?? false)
+          ? VectorLayersList(
+              key: const ValueKey("vectorLayersList"),
               controller: controller,
               element: element,
               onChanged: (next) {
@@ -119,19 +127,7 @@ List<Widget> elementSettings(
                 write(next);
                 commit();
               })
-          : element is VectorElement &&
-                  element.edited &&
-                  (element.shapes?.isNotEmpty ?? false)
-              ? VectorLayersList(
-                  key: const ValueKey("vectorLayersList"),
-                  controller: controller,
-                  element: element,
-                  onChanged: (next) {
-                    begin();
-                    write(next);
-                    commit();
-                  })
-              : null,
+          : null,
       children: [
         positionSection(controller, element, write, begin, commit,
             // An element with no arrival of its own still waits on a cue.
@@ -146,14 +142,8 @@ List<Widget> elementSettings(
                     context, controller, element, write, begin, commit),
               if (element is VectorElement && element.hasDrawing)
                 vectorCropControls(controller, element, write, begin, commit),
-              // Where a text's words come from and how they sit in its box.
-              if (element is TextElement)
-                textWordsCard(
-                    context, controller, element, write, begin, commit),
             ]),
         ...switch (element) {
-          TextElement e =>
-            textSettings(context, controller, e, write, begin, commit),
           ShapeElement e =>
             shapeSettings(context, controller, e, write, begin, commit),
           LineElement e =>
@@ -384,11 +374,7 @@ List<Widget> elementSettings(
         // Where it stands on a 3D stage, for anything that can.
         ...stageSpotSettings(
             context, controller, element, write, begin, commit),
-        presetsPanelSection(context, controller, element, extra: [
-          // A text's named styles, under the designs kept of its kind: the
-          // other way its look is kept to use again.
-          if (element is TextElement) textStyleCard(controller, element),
-        ]),
+        presetsPanelSection(context, controller, element),
       ],
     ),
   ];

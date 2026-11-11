@@ -69,8 +69,14 @@ void main() {
       await pump(tester, c);
 
       var all = titles(tester);
-      expect(all.first, "Position", reason: "$all");
-      expect(all.last, "Presets", reason: "$all");
+      // Rebuilt round tasks (Ken, 2026-11-11): the rest follow, a batch at a
+      // time.
+      if (kind == ElementKind.text) {
+        expect(all, ["Content", "Look", "Layout", "Motion", "More"]);
+      } else {
+        expect(all.first, "Position", reason: "$all");
+        expect(all.last, "Presets", reason: "$all");
+      }
       expect(all.length, greaterThanOrEqualTo(3),
           reason: "its own sections: $all");
       // No rule inside a section: a card is its own edge.
