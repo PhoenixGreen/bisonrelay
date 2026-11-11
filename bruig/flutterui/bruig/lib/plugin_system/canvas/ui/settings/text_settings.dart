@@ -77,6 +77,8 @@ List<Widget> textSettings(
                 begin,
                 commit,
                 fitted: e.autoSize,
+                // Its outline, shadow and glow are looks: see text_looks.dart.
+                looks: false,
                 // No caption: the Layers over the sections say which piece of
                 // writing these settings are for.
                 label: e.name,
@@ -1440,6 +1442,7 @@ Widget _itemType(TextElement e, int at, TextItem item, SettingsWrite write,
       hideCaption: true,
       remember: "textItem${item.id}",
       colourInMore: true,
+      looks: false,
       rule: false,
       // Its place is its slot's to decide, so the alignment dropdowns
       // would do nothing.

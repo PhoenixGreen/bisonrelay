@@ -136,6 +136,14 @@ Size _sizeOf(TextItem item, double maxWidth) {
 /// paintTextItems draws them, after the element's own paragraph and inside
 /// the same box. They arrive with the element rather than each on its own,
 /// since a card is one thing arriving.
+/// LayerPainter draws one layer of a text -- [draw], its letters or its
+/// picture, in [box] -- with the looks laid on that layer alone (see
+/// MotionDevice.layer): [layer] is MotionDevice.bodyLayer for the text's own
+/// words, or a piece's id. The box behind them is not the layer's: a look on
+/// all of the text covers that.
+typedef LayerPainter = void Function(
+    ui.Canvas canvas, Rect box, String layer, void Function(ui.Canvas on) draw);
+
 void paintTextItems(
   ui.Canvas canvas,
   Rect bounds,
@@ -143,6 +151,9 @@ void paintTextItems(
   TextAnimation? animation,
   double reveal = 1,
   CanvasImageSource? images,
+
+  /// onLayer draws each piece with its own looks; none, without.
+  LayerPainter? onLayer,
 
   /// skip is the piece with an editor open over it, whose words are being
   /// drawn by a real text field instead. See CanvasTextEditor.
@@ -160,27 +171,35 @@ void paintTextItems(
     if (inner.width <= 0 || inner.height <= 0) continue;
 
     var icon = item.icon;
-    if (icon != null) {
-      // Drawn by the same function the element's own icon is drawn by, so a
-      // picture in a box looks the same however it got there.
-      paintTextIcon(canvas, inner, icon, images, item.spec);
-      continue;
+    if (icon == null && item.text.isEmpty) continue;
+    void drawn(ui.Canvas canvas) {
+      if (icon != null) {
+        // Drawn by the same function the element's own icon is drawn by, so
+        // a picture in a box looks the same however it got there.
+        paintTextIcon(canvas, inner, icon, images, item.spec);
+        return;
+      }
+      // The slot decides how the words sit, so the item's own alignment is
+      // not asked: a piece held to the right-hand edge is set ragged-left
+      // inside a rectangle only as wide as it is.
+      paintTextInBox(
+        canvas,
+        item.text,
+        item.spec.copyWith(
+          align: item.slot.across,
+          verticalAlign: VerticalAlignSpec.top,
+        ),
+        inner,
+        animation: animation,
+        reveal: reveal,
+        images: images,
+      );
     }
-    if (item.text.isEmpty) continue;
-    // The slot decides how the words sit, so the item's own alignment is not
-    // asked: a piece held to the right-hand edge is set ragged-left inside a
-    // rectangle only as wide as it is.
-    paintTextInBox(
-      canvas,
-      item.text,
-      item.spec.copyWith(
-        align: item.slot.across,
-        verticalAlign: VerticalAlignSpec.top,
-      ),
-      inner,
-      animation: animation,
-      reveal: reveal,
-      images: images,
-    );
+
+    if (onLayer == null) {
+      drawn(canvas);
+    } else {
+      onLayer(canvas, inner, item.id, drawn);
+    }
   }
 }

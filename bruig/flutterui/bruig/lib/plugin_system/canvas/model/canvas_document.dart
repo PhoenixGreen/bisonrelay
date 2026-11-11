@@ -37,6 +37,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/model/text_looks.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
@@ -1494,7 +1495,9 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
   var base = ElementBase.fromJson(json, kind.label);
   switch (kind) {
     case ElementKind.text:
-      return TextElement.fromJson(json, base);
+      // Its type's own shadow, glow and outline read as looks on its
+      // layers: see text_looks.dart.
+      return textLooksLifted(TextElement.fromJson(json, base));
     case ElementKind.image:
       return ImageElement.fromJson(json, base);
     case ElementKind.shape:

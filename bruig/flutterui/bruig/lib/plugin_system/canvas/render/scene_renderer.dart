@@ -23,7 +23,7 @@ import 'package:bruig/plugin_system/canvas/render/parallax_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_looks.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart'
-    show MotionDeviceKind;
+    show MotionDevice, MotionDeviceKind;
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -819,8 +819,17 @@ void paintElement(
         Paint()
           ..color =
               const Color(0xFF000000).withValues(alpha: alpha.toDouble()));
+    // Its words' own looks still on them; a look on all of it has no box
+    // to be laid on.
     _paintText(canvas, bounds, element, document,
-        pose: pose, frame: frame, skipItem: skipTextItem);
+        pose: pose,
+        frame: frame,
+        skipItem: skipTextItem,
+        onLayer: _layerPainter(
+            _looksNow(element, frame, frameRate, document, instance),
+            turn: element.rotation + pose.rotate,
+            scale: pose.scale,
+            time: frame / (frameRate <= 0 ? 1 : frameRate)));
     canvas.restore();
     return;
   }
@@ -897,14 +906,21 @@ void paintElement(
   // Its looks -- the devices right of its drawing in its Chain -- as its
   // LFOs have them now: see motion_looks.dart.
   // A copy of an element reused with its own values of them.
-  var looks = [
-    for (var l in element.base.motion.looks)
-      withOwnValues(
-          motionModulated(l, element.base.motion.devices,
-              frame / (frameRate <= 0 ? 1 : frameRate),
-              doc: document),
-          element.base.motion.instances,
-          instance),
+  var looks = _looksNow(element, frame, frameRate, document, instance);
+  // Those on one layer of a text are laid on it as it is drawn, and the
+  // rest on all of it, here. See MotionDevice.layer.
+  var presence = ((pose.values[KeyframeChannel.reveal] ?? 1) *
+          (1 - (pose.values[KeyframeChannel.close] ?? 0)))
+      .clamp(0.0, 1.0)
+      .toDouble();
+  var onLayer = _layerPainter(looks,
+      turn: element.rotation + pose.rotate,
+      scale: pose.scale,
+      time: frame / (frameRate <= 0 ? 1 : frameRate),
+      presence: presence);
+  var whole = [
+    for (var l in looks)
+      if (l.layer.isEmpty) l
   ];
   if (layered) {
     // Grown, because a shadow, an outline or a glow reaches outside the
@@ -928,7 +944,11 @@ void paintElement(
     switch (element) {
       case TextElement e:
         _paintText(canvas, bounds, e, document,
-            pose: pose, frame: frame, images: images, skipItem: skipTextItem);
+            pose: pose,
+            frame: frame,
+            images: images,
+            skipItem: skipTextItem,
+            onLayer: onLayer);
       case ShapeElement e:
         arriving(canvas, bounds, e.animation, pose,
             () => _paintShape(canvas, bounds, e, images));
@@ -1134,13 +1154,13 @@ void paintElement(
     }
   }
 
-  if (looks.isEmpty) {
+  if (whole.isEmpty) {
     drawn();
   } else {
     // How fast it moves, for a Blur's Motion blur: only asked for one.
     var velocity = Offset.zero;
     if (document != null &&
-        looks.any(
+        whole.any(
             (d) => d.kind == MotionDeviceKind.blur && d.value("motion") > 0)) {
       var before = poseWithMotion(element, frame - 1, document,
           live: liveMotion, instance: instance);
@@ -1159,16 +1179,13 @@ void paintElement(
       }
     }
 
-    paintWithLooks(canvas, bounds, looks, drawnOn,
+    paintWithLooks(canvas, bounds, whole, drawnOn,
         turn: element.rotation + pose.rotate,
         scale: pose.scale,
         velocity: velocity,
         time: time,
         // How much of it is there: arrived, and not yet gone.
-        presence: ((pose.values[KeyframeChannel.reveal] ?? 1) *
-                (1 - (pose.values[KeyframeChannel.close] ?? 0)))
-            .clamp(0.0, 1.0)
-            .toDouble());
+        presence: presence);
   }
 
   if (layered) canvas.restore();
@@ -1177,26 +1194,70 @@ void paintElement(
 
 // --------------------------------------------------------------------------
 
+/// _looksNow are [element]'s looks as they are on [frame]: as its LFOs move
+/// them, and as copy [instance] has its own values of them.
+List<MotionDevice> _looksNow(CanvasElement element, int frame, num frameRate,
+        CanvasDocument? document, int? instance) =>
+    [
+      for (var l in element.base.motion.looks)
+        withOwnValues(
+            motionModulated(l, element.base.motion.devices,
+                frame / (frameRate <= 0 ? 1 : frameRate),
+                doc: document),
+            element.base.motion.instances,
+            instance),
+    ];
+
+/// _layerPainter lays each look on one layer of a text (MotionDevice.layer)
+/// on that layer as it is drawn; null where there are none.
+LayerPainter? _layerPainter(List<MotionDevice> looks,
+    {double turn = 0, double scale = 1, double time = 0, double presence = 1}) {
+  if (!looks.any((l) => l.layer.isNotEmpty)) return null;
+  return (canvas, box, layer, draw) {
+    var mine = [
+      for (var l in looks)
+        if (l.layer == layer) l
+    ];
+    if (mine.isEmpty) return draw(canvas);
+    paintWithLooks(canvas, box, mine, draw,
+        turn: turn, scale: scale, time: time, presence: presence);
+  };
+}
+
 void _paintText(
     ui.Canvas canvas, Rect bounds, TextElement e, CanvasDocument? doc,
     {Keyframe pose = Keyframe.rest,
     int frame = 0,
     CanvasImageSource? images,
-    String? skipItem}) {
+    String? skipItem,
+    LayerPainter? onLayer}) {
   _paintTextBody(canvas, bounds, e, doc,
-      pose: pose, frame: frame, images: images);
+      pose: pose, frame: frame, images: images, onLayer: onLayer);
   // The extra pieces of writing, over the paragraph in the same box. Out here
   // because the body returns from half a dozen places. Not on a line, which
   // gives them no box.
   if (e.items.isEmpty || _curveFor(e, doc, frame) != null) return;
   var (animation, reveal) = _arrival(e, pose);
   paintTextItems(canvas, bounds, e,
-      animation: animation, reveal: reveal, images: images, skip: skipItem);
+      animation: animation,
+      reveal: reveal,
+      images: images,
+      skip: skipItem,
+      onLayer: onLayer);
 }
 
 void _paintTextBody(
     ui.Canvas canvas, Rect bounds, TextElement e, CanvasDocument? doc,
-    {Keyframe pose = Keyframe.rest, int frame = 0, CanvasImageSource? images}) {
+    {Keyframe pose = Keyframe.rest,
+    int frame = 0,
+    CanvasImageSource? images,
+    LayerPainter? onLayer}) {
+  // The words with the looks laid on them alone, where there are any.
+  void letters(ui.Canvas canvas, Rect box, void Function(ui.Canvas) draw) {
+    if (onLayer == null) return draw(canvas);
+    onLayer(canvas, box, MotionDevice.bodyLayer, draw);
+  }
+
   // Text on a curve has no box of its own to fill or frame.
   var curve = _curveFor(e, doc, frame);
   if (curve != null) {
@@ -1207,14 +1268,17 @@ void _paintTextBody(
     // The words still arrive, a letter at a time in each letter's own turned
     // frame. See paintTextOnPath.
     var (curveAnimation, curveReveal) = _arrival(e, pose);
-    paintTextOnPath(canvas, e.displayText, e.textSpec, curve,
-        slide == null ? on : on.copyWith(offset: slide),
-        animation: curveAnimation,
-        reveal: curveReveal,
-        parts: e.drawnParts,
-        timings: _partTimings(e, frame, pose),
-        asOne: (pose.values[KeyframeChannel.close] ?? 0) > 0,
-        images: images);
+    letters(
+        canvas,
+        bounds,
+        (canvas) => paintTextOnPath(canvas, e.displayText, e.textSpec, curve,
+            slide == null ? on : on.copyWith(offset: slide),
+            animation: curveAnimation,
+            reveal: curveReveal,
+            parts: e.drawnParts,
+            timings: _partTimings(e, frame, pose),
+            asOne: (pose.values[KeyframeChannel.close] ?? 0) > 0,
+            images: images));
     return;
   }
 
@@ -1260,88 +1324,94 @@ void _paintTextBody(
   if (_waitingToArrive(e, pose, drawn)) return;
   paintBox(canvas, bounds, e.box, images);
 
-  // Set line by line round whatever is in the way, where asked for. See
-  // text_wrap.dart.
-  var blocked = wrapObstacles(e, doc, frame, inner, images: images);
-  if (e.wrap.on &&
-      blocked.isNotEmpty &&
-      wrapFits(words, spec, inner, blocked, e.wrap)) {
-    // The marks and the arrival apply as a block: set a line at a time,
-    // there are no pieces for a per-letter motion to move. The outline and
-    // the fill apply as everywhere else (outlineSpecFor, paintThroughText).
-    var wrapped = layoutWrapped(words, spec, inner, blocked, e.wrap,
-        parts: drawn,
-        outlineSpec: outlineSpecFor(spec,
-            parts: drawn, animation: animation, reveal: reveal));
-    var frameOf = animation.on && (reveal < 1 || animation.keeps)
-        ? applyMotionSpec(
-            canvas, inner, animation.spec, animation.progressAt(reveal, 0, 1),
-            from: animation.spec.from)
-        : const MotionFrame(1, 0, false);
-    if (frameOf.alpha > 0) {
-      if (frameOf.alpha < 1) {
-        canvas.saveLayer(inner.inflate(inner.height),
-            Paint()..color = Color.fromRGBO(0, 0, 0, frameOf.alpha));
+  // The words, and what is drawn with them -- after the box, which is not
+  // theirs: see MotionDevice.layer.
+  void drawWords(ui.Canvas canvas) {
+    // Set line by line round whatever is in the way, where asked for. See
+    // text_wrap.dart.
+    var blocked = wrapObstacles(e, doc, frame, inner, images: images);
+    if (e.wrap.on &&
+        blocked.isNotEmpty &&
+        wrapFits(words, spec, inner, blocked, e.wrap)) {
+      // The marks and the arrival apply as a block: set a line at a time,
+      // there are no pieces for a per-letter motion to move. The outline and
+      // the fill apply as everywhere else (outlineSpecFor, paintThroughText).
+      var wrapped = layoutWrapped(words, spec, inner, blocked, e.wrap,
+          parts: drawn,
+          outlineSpec: outlineSpecFor(spec,
+              parts: drawn, animation: animation, reveal: reveal));
+      var frameOf = animation.on && (reveal < 1 || animation.keeps)
+          ? applyMotionSpec(
+              canvas, inner, animation.spec, animation.progressAt(reveal, 0, 1),
+              from: animation.spec.from)
+          : const MotionFrame(1, 0, false);
+      if (frameOf.alpha > 0) {
+        if (frameOf.alpha < 1) {
+          canvas.saveLayer(inner.inflate(inner.height),
+              Paint()..color = Color.fromRGBO(0, 0, 0, frameOf.alpha));
+        }
+        // The stroke drawn onto the words, where that is the preset: the
+        // motion leaves the opacity alone (applyMotion), so it is done here.
+        var p = animation.progressAt(reveal, 0, 1);
+        var stroke = animation.on &&
+            animation.preset.motion == TextMotion.strokeOn &&
+            reveal < 1;
+        var written = stroke ? p : null;
+        var fillAlpha =
+            stroke && animation.draw.start == TextDrawStart.fadeText ? p : null;
+        if (!spec.fill.on) {
+          paintWrapped(canvas, wrapped, spec,
+              written: written, fillAlpha: fillAlpha);
+        } else {
+          paintWrapped(canvas, wrapped, spec,
+              phase: TextDrawPhase.behind, written: written);
+          paintThroughText(
+              canvas,
+              inner,
+              spec.fill,
+              images,
+              () => paintWrapped(canvas, wrapped, spec,
+                  phase: TextDrawPhase.letters,
+                  written: written,
+                  fillAlpha: fillAlpha));
+        }
+        if (frameOf.alpha < 1) canvas.restore();
       }
-      // The stroke drawn onto the words, where that is the preset: the
-      // motion leaves the opacity alone (applyMotion), so it is done here.
-      var p = animation.progressAt(reveal, 0, 1);
-      var stroke = animation.on &&
-          animation.preset.motion == TextMotion.strokeOn &&
-          reveal < 1;
-      var written = stroke ? p : null;
-      var fillAlpha =
-          stroke && animation.draw.start == TextDrawStart.fadeText ? p : null;
-      if (!spec.fill.on) {
-        paintWrapped(canvas, wrapped, spec,
-            written: written, fillAlpha: fillAlpha);
-      } else {
-        paintWrapped(canvas, wrapped, spec,
-            phase: TextDrawPhase.behind, written: written);
-        paintThroughText(
-            canvas,
-            inner,
-            spec.fill,
-            images,
-            () => paintWrapped(canvas, wrapped, spec,
-                phase: TextDrawPhase.letters,
-                written: written,
-                fillAlpha: fillAlpha));
+      for (var r = 0; r < frameOf.depth; r++) {
+        canvas.restore();
       }
-      if (frameOf.alpha < 1) canvas.restore();
+      return;
     }
-    for (var r = 0; r < frameOf.depth; r++) {
-      canvas.restore();
-    }
-    return;
-  }
 
-  if (e.columns.isSingle) {
-    // Clipped to its box at rest, so words that do not fit are hidden (and
-    // can run on into another box, see flowFor) -- but not while arriving,
-    // since many presets bring the words in from outside the box.
-    var arriving = animation.on && (reveal < 1 || animation.keeps);
-    paintTextInBox(canvas, words, spec, inner,
-        clip: !arriving && !partsAnimate(drawn),
+    if (e.columns.isSingle) {
+      // Clipped to its box at rest, so words that do not fit are hidden (and
+      // can run on into another box, see flowFor) -- but not while arriving,
+      // since many presets bring the words in from outside the box.
+      var arriving = animation.on && (reveal < 1 || animation.keeps);
+      paintTextInBox(canvas, words, spec, inner,
+          clip: !arriving && !partsAnimate(drawn),
+          animation: animation,
+          reveal: reveal,
+          parts: drawn,
+          timings: timings,
+          asOne: leaving,
+          images: images);
+      return;
+    }
+    // The pieces are worked out once for the whole paragraph and drawn column
+    // by column, so a stagger runs on from one column into the next. Whether
+    // column tops are tidied is the chain's choice: see TextFlow.tidyStart.
+    paintTextInColumns(canvas, words, spec, inner,
+        e.columns.copyWith(noBlankStart: flow.tidyStart),
         animation: animation,
         reveal: reveal,
         parts: drawn,
         timings: timings,
         asOne: leaving,
         images: images);
-    return;
   }
-  // The pieces are worked out once for the whole paragraph and drawn column
-  // by column, so a stagger runs on from one column into the next. Whether
-  // column tops are tidied is the chain's choice: see TextFlow.tidyStart.
-  paintTextInColumns(canvas, words, spec, inner,
-      e.columns.copyWith(noBlankStart: flow.tidyStart),
-      animation: animation,
-      reveal: reveal,
-      parts: drawn,
-      timings: timings,
-      asOne: leaving,
-      images: images);
+
+  letters(canvas, inner, drawWords);
 }
 
 /// _waitingToArrive is whether [e] has an arrival still to come on this

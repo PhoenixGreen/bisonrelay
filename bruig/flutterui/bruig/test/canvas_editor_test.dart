@@ -6451,7 +6451,9 @@ void main() {
       // In a card, everything at once: the Type section already folds, and
       // a button inside it was a setting found twice over.
       await panel(tester);
-      expect(find.text("Outline"), findsWidgets);
+      // The words' outline, shadow and glow are looks in the Chain now, kept
+      // in one place (text_looks.dart): not in the type card as well.
+      expect(find.text("Outline"), findsNothing);
       expect(find.byTooltip("Spacing, alignment and case"), findsNothing);
       expect(find.byType(CanvasColorButton), findsWidgets);
     });
@@ -6534,7 +6536,7 @@ void main() {
       );
       var controller = await panel(tester, element: element);
       await pickLayer(tester, "n");
-      expect(inType(find.text("Outline")), findsWidgets,
+      expect(inType(find.byType(CanvasColorButton)), findsWidgets,
           reason: "the piece has its own colour");
 
       // And changing it writes to the piece, not to the element.
@@ -6766,8 +6768,6 @@ void main() {
           find.descendant(of: own, matching: find.byIcon(Icons.format_italic)),
           findsOneWidget,
           reason: "italic is behind the button now");
-      expect(find.text("Outline"), findsWidgets,
-          reason: "and the rest of the colour settings are first back here");
     });
 
     testWidgets("and there is one underline, not two", (tester) async {
@@ -6893,12 +6893,6 @@ void main() {
       expect(choose, findsOneWidget);
       expect(tester.getRect(choose).top, closeTo(tester.getRect(kind).top, 0.5),
           reason: "on the line with the choice that asked for it");
-
-      var outline = find.ancestor(
-          of: find.text("Outline"), matching: find.byType(CanvasNumberField));
-      expect(tester.getRect(outline).top,
-          greaterThan(tester.getRect(kind).bottom - 0.5),
-          reason: "and the outline starts a line of its own");
     });
 
     testWidgets("a picture showing through gets a picture element's Look",

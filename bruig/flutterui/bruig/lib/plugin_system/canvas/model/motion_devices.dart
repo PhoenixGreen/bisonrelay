@@ -195,12 +195,25 @@ class MotionDevice {
   /// outline's -- as ARGB; null for the kind's own.
   final int? colour;
 
+  /// layer is what of its element a look is laid on: "" for all of it -- a
+  /// text's box and every piece in it as well as its words -- or one layer
+  /// of it alone: [bodyLayer] for a text's own words, or a piece's id (see
+  /// TextItem), its letters or its picture without the box behind them. A
+  /// text's letters had a shadow, a glow and an outline of their own apart
+  /// from the Chain's; they are looks on that layer now, so each is kept
+  /// once (Ken, 2026-11-11). Only a look's is read.
+  final String layer;
+
+  /// bodyLayer is [layer] for a text's own words.
+  static const bodyLayer = "body";
+
   const MotionDevice(this.kind,
       {this.on = true,
       this.values = const {},
       this.id = "",
       this.colour,
       this.target = "",
+      this.layer = "",
       this.mods = const []});
 
   /// takesTarget is whether it works with another element.
@@ -234,6 +247,7 @@ class MotionDevice {
         id: this.id,
         colour: colour,
         target: target,
+        layer: layer,
         mods: mods);
   }
 
@@ -243,6 +257,7 @@ class MotionDevice {
       id: id,
       colour: colour,
       target: target,
+      layer: layer,
       mods: mods);
 
   MotionDevice withId(String id) => MotionDevice(kind,
@@ -251,6 +266,7 @@ class MotionDevice {
       id: id,
       colour: colour,
       target: target,
+      layer: layer,
       mods: mods);
 
   MotionDevice withColour(int? colour) => MotionDevice(kind,
@@ -259,6 +275,7 @@ class MotionDevice {
       id: id,
       colour: colour,
       target: target,
+      layer: layer,
       mods: mods);
 
   MotionDevice withTarget(String target) => MotionDevice(kind,
@@ -267,6 +284,16 @@ class MotionDevice {
       id: id,
       colour: colour,
       target: target,
+      layer: layer,
+      mods: mods);
+
+  MotionDevice withLayer(String layer) => MotionDevice(kind,
+      on: on,
+      values: values,
+      id: id,
+      colour: colour,
+      target: target,
+      layer: layer,
       mods: mods);
 
   MotionDevice withMods(List<ModTarget> mods) => MotionDevice(kind,
@@ -275,6 +302,7 @@ class MotionDevice {
       id: id,
       colour: colour,
       target: target,
+      layer: layer,
       mods: mods);
 
   Map<String, dynamic> toJson() => {
@@ -284,6 +312,7 @@ class MotionDevice {
         if (id.isNotEmpty) "id": id,
         if (colour != null) "colour": colour,
         if (target.isNotEmpty) "target": target,
+        if (layer.isNotEmpty) "layer": layer,
         if (mods.isNotEmpty) "mods": [for (var m in mods) m.toJson()],
       };
 
@@ -303,6 +332,7 @@ class MotionDevice {
         id: jsonStr(json["id"]) ?? "",
         colour: json["colour"] is int ? json["colour"] as int : null,
         target: jsonStr(json["target"]) ?? "",
+        layer: jsonStr(json["layer"]) ?? "",
         mods: readModTargets(json["mods"]));
   }
 
@@ -314,6 +344,7 @@ class MotionDevice {
       other.id == id &&
       other.colour == colour &&
       other.target == target &&
+      other.layer == layer &&
       other.mods.length == mods.length &&
       [for (var i = 0; i < mods.length; i++) other.mods[i] == mods[i]]
           .every((x) => x) &&

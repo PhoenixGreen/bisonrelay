@@ -520,6 +520,11 @@ List<Widget> typeGroups(
   /// the callers whose caption is a name rather than a heading: a text
   /// element's pieces, and the element itself.
   ValueChanged<String>? onRename,
+
+  /// looks offers the type's own outline, shadow and glow: off for a text
+  /// element, whose words and pieces have them as looks in the Chain, kept
+  /// in one place (see text_looks.dart).
+  bool looks = true,
 }) {
   String cap(String name) => captions ? name : "";
   // The colour settings, built once for a row of their own or behind the
@@ -598,101 +603,105 @@ List<Widget> typeGroups(
     // box, except where outlined or filled with a picture or a pattern. See
     // TextSpec.fade.
     if (!colourInMore) swatch,
-    CanvasNumberField(
-      label: "Outline",
-      value: spec.outlineWidth,
-      min: 0,
-      max: 60,
-      decimals: 1,
-      width: 54,
-      onChanged: (v) => onChanged(spec.copyWith(outlineWidth: v)),
-      onCommit: commit,
-    ),
-    // No caption of its own: it is the outline's colour, beside its thickness.
-    CanvasColorButton(
-      color: spec.outlineColor,
-      onChanged: (c) {
-        begin();
-        onChanged(spec.copyWith(outlineColor: c));
-        commit();
-      },
-    ),
-    // The shadow's amount and colour with them: four controls, two of each,
-    // and the same shape twice reads as one line rather than as four things.
-    CanvasNumberField(
-      label: "Shadow",
-      value: spec.shadowBlur,
-      min: 0,
-      max: 120,
-      width: 54,
-      onChanged: (v) => onChanged(spec.copyWith(shadowBlur: v)),
-      onCommit: commit,
-    ),
-    CanvasColorButton(
-      color: spec.shadowColor,
-      onChanged: (c) {
-        begin();
-        onChanged(spec.copyWith(shadowColor: c));
-        commit();
-      },
-    ),
+    if (looks) ...[
+      CanvasNumberField(
+        label: "Outline",
+        value: spec.outlineWidth,
+        min: 0,
+        max: 60,
+        decimals: 1,
+        width: 54,
+        onChanged: (v) => onChanged(spec.copyWith(outlineWidth: v)),
+        onCommit: commit,
+      ),
+      // No caption of its own: it is the outline's colour, beside its thickness.
+      CanvasColorButton(
+        color: spec.outlineColor,
+        onChanged: (c) {
+          begin();
+          onChanged(spec.copyWith(outlineColor: c));
+          commit();
+        },
+      ),
+      // The shadow's amount and colour with them: four controls, two of each,
+      // and the same shape twice reads as one line rather than as four things.
+      CanvasNumberField(
+        label: "Shadow",
+        value: spec.shadowBlur,
+        min: 0,
+        max: 120,
+        width: 54,
+        onChanged: (v) => onChanged(spec.copyWith(shadowBlur: v)),
+        onCommit: commit,
+      ),
+      CanvasColorButton(
+        color: spec.shadowColor,
+        onChanged: (c) {
+          begin();
+          onChanged(spec.copyWith(shadowColor: c));
+          commit();
+        },
+      ),
+    ],
   ];
   var colourMore = <Widget>[
-    // Where the light is, not where the shadow goes: one light for a
-    // scene, and the same two numbers on every element in it.
-    CanvasNumberField(
-      key: const ValueKey("textShadowAngle"),
-      label: "Direction",
-      value: spec.shadowAngle,
-      min: 0,
-      max: 360,
-      width: 60,
-      onChanged: (v) => onChanged(spec.copyWith(shadowAngle: v)),
-      onCommit: commit,
-    ),
-    CanvasNumberField(
-      key: const ValueKey("textShadowDistance"),
-      label: "Distance",
-      value: spec.shadowDistance,
-      min: 0,
-      max: 400,
-      decimals: 1,
-      width: 60,
-      onChanged: (v) => onChanged(spec.copyWith(shadowDistance: v)),
-      onCommit: commit,
-    ),
-    CanvasNumberField(
-      key: const ValueKey("textGlow"),
-      label: "Glow",
-      value: spec.glowBlur,
-      min: 0,
-      max: 200,
-      width: 54,
-      onChanged: (v) => onChanged(spec.copyWith(glowBlur: v)),
-      onCommit: commit,
-    ),
-    CanvasColorButton(
-      label: "Light",
-      color: spec.glowColor,
-      onChanged: (c) {
-        begin();
-        onChanged(spec.copyWith(glowColor: c));
-        commit();
-      },
-    ),
-    if (spec.shadowDistance > 0 || spec.shadowBlur > 0)
-      const CanvasHint(
-          "Direction is where the light is, read like a compass: 0 is "
-          "straight up, 90 to the right. The shadow falls the other way, "
-          "Distance away from the words. At a distance of 0 it sits "
-          "directly underneath them, which is a shadow that reads as a "
-          "glow in its own colour."),
-    if (spec.glowBlur > 0)
-      const CanvasHint(
-          "Glow is light all round the letters, in its own colour, and it "
-          "is drawn behind them — so a picture or a pattern showing "
-          "through the words cannot cut it up, and an outline sits over "
-          "it rather than under it."),
+    if (looks) ...[
+      // Where the light is, not where the shadow goes: one light for a
+      // scene, and the same two numbers on every element in it.
+      CanvasNumberField(
+        key: const ValueKey("textShadowAngle"),
+        label: "Direction",
+        value: spec.shadowAngle,
+        min: 0,
+        max: 360,
+        width: 60,
+        onChanged: (v) => onChanged(spec.copyWith(shadowAngle: v)),
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        key: const ValueKey("textShadowDistance"),
+        label: "Distance",
+        value: spec.shadowDistance,
+        min: 0,
+        max: 400,
+        decimals: 1,
+        width: 60,
+        onChanged: (v) => onChanged(spec.copyWith(shadowDistance: v)),
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        key: const ValueKey("textGlow"),
+        label: "Glow",
+        value: spec.glowBlur,
+        min: 0,
+        max: 200,
+        width: 54,
+        onChanged: (v) => onChanged(spec.copyWith(glowBlur: v)),
+        onCommit: commit,
+      ),
+      CanvasColorButton(
+        label: "Light",
+        color: spec.glowColor,
+        onChanged: (c) {
+          begin();
+          onChanged(spec.copyWith(glowColor: c));
+          commit();
+        },
+      ),
+      if (spec.shadowDistance > 0 || spec.shadowBlur > 0)
+        const CanvasHint(
+            "Direction is where the light is, read like a compass: 0 is "
+            "straight up, 90 to the right. The shadow falls the other way, "
+            "Distance away from the words. At a distance of 0 it sits "
+            "directly underneath them, which is a shadow that reads as a "
+            "glow in its own colour."),
+      if (spec.glowBlur > 0)
+        const CanvasHint(
+            "Glow is light all round the letters, in its own colour, and it "
+            "is drawn behind them — so a picture or a pattern showing "
+            "through the words cannot cut it up, and an outline sits over "
+            "it rather than under it."),
+    ],
   ];
 
   return [
@@ -761,8 +770,10 @@ List<Widget> typeGroups(
             ...colourRow,
             // The shadow and the glow on a line of their own, under the colour
             // and the outline.
-            const CanvasLineBreak(),
-            ...colourMore,
+            if (colourMore.isNotEmpty) ...[
+              const CanvasLineBreak(),
+              ...colourMore,
+            ],
             const CanvasLineBreak(),
           ],
           CanvasNumberField(

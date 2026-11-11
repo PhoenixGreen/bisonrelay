@@ -42,9 +42,11 @@ extension CanvasTools on CanvasController {
     var style = textStyles.where((t) => t.name == name).firstOrNull;
     apply(_everyElement(_document, (e, _) {
       if (e.id != id || e is! TextElement) return e;
+      // A style's shadow, glow and outline are looks on the words, as the
+      // text's own are: see text_looks.dart.
       return style == null
           ? e.copyWith(style: "")
-          : e.copyWith(style: name, textSpec: style.spec);
+          : textLooksLifted(e.copyWith(style: name, textSpec: style.spec));
     }));
   }
 
@@ -61,7 +63,7 @@ extension CanvasTools on CanvasController {
             affixSpec: e.wordStyle == name ? spec : null);
       }
       if (e is! TextElement || e.style != name) return e;
-      return e.copyWith(textSpec: spec);
+      return textLooksLifted(e.copyWith(textSpec: spec));
     }));
   }
 

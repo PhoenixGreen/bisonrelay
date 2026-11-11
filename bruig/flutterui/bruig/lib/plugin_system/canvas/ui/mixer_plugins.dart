@@ -32,6 +32,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/text_looks.dart' show textLayerChoices;
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show lookAtCamera, lookAtPointer, motionSpeedAt, retimed;
@@ -7777,6 +7779,11 @@ class MotionDeviceCard extends StatelessWidget {
     }
 
     var reused = controller.motionOf(element).instances != null;
+    // A look on a text can be on one layer of it: see MotionDevice.layer.
+    var text = controller.document.elementById(element);
+    var layers = d.side == MotionDeviceSide.look && text is TextElement
+        ? textLayerChoices(text)
+        : null;
     // With copies picked, a knob is theirs: their own value, or the shared
     // one, and turned it becomes their own (Ken, 2026-11-08).
     var copies = controller.copiesPicked(element);
@@ -7850,9 +7857,20 @@ class MotionDeviceCard extends StatelessWidget {
           // Its choices, and what it follows or looks at: dropdowns side by
           // side under its knobs, as the prototype's Seed and Follows.
           if (d.takesTarget ||
+              layers != null ||
               d.kind.params.any(
                   (p) => p.isChoice && motionParamShown(d, p, reused: reused)))
             DevicePack(key: ValueKey("mdevPack-${d.id}"), children: [
+              // What of a text it is laid on: all of it, its words, or one
+              // piece (MotionDevice.layer).
+              if (layers != null)
+                StudioDrop<String>(
+                  key: ValueKey("mdevLayer-${d.id}"),
+                  label: "On",
+                  value: layers.any((l) => l.$1 == d.layer) ? d.layer : "",
+                  options: layers,
+                  onChanged: (v) => write(d.withLayer(v)),
+                ),
               for (var p in d.kind.params)
                 if (p.isChoice && motionParamShown(d, p, reused: reused))
                   StudioDrop<int>(
@@ -7937,6 +7955,7 @@ class MotionDeviceCard extends StatelessWidget {
             write(MotionDevice(d.kind, on: d.on)
                 .withId(d.id)
                 .withTarget(d.target)
+                .withLayer(d.layer)
                 .withMods(d.mods));
             controller.setPresetName(element, "mdev:${d.id}", null);
           },
@@ -7959,7 +7978,9 @@ class MotionDeviceCard extends StatelessWidget {
         controller.beginInteraction();
         controller.setMotionDevices(element, [
           for (var x in controller.motionDevicesOf(element))
-            x.id == d.id ? fresh.withTarget(d.target).withMods(d.mods) : x
+            x.id == d.id
+                ? fresh.withTarget(d.target).withLayer(d.layer).withMods(d.mods)
+                : x
         ]);
         controller.endInteraction();
       },

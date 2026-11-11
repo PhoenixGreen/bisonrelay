@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -106,7 +107,14 @@ void main() {
     expect(text.textSpec.letterSpacing, 2.5);
     expect(text.textSpec.lineHeight, 1.45);
     expect(text.textSpec.textCase, TextCase.upper);
-    expect(text.textSpec.outlineWidth, 3);
+    // Its outline comes back as a look on its words (text_looks.dart),
+    // kept there alone.
+    expect(text.textSpec.outlineWidth, 0);
+    var outline = text.base.motion.devices.single;
+    expect(outline.kind, MotionDeviceKind.outline);
+    expect(outline.layer, MotionDevice.bodyLayer);
+    expect(outline.value("width"), 3);
+    expect(Color(outline.colour!), const Color(0xFFAABBCC));
     expect(text.box.borderRadius, 12);
     expect(text.name, "Headline");
   });
