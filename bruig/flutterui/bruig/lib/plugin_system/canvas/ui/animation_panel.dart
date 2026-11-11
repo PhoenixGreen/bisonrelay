@@ -62,6 +62,30 @@ class _AnimationPanelState extends State<AnimationPanel> {
   /// _folded are the devices folded to their titles, by id. For the session.
   static final Set<String> _folded = {};
 
+  /// _focusKeys find a card the settings panel asks to be shown: see
+  /// CanvasController.showInChain.
+  final Map<String, GlobalKey> _focusKeys = {};
+  GlobalKey _focusKey(String id) => _focusKeys.putIfAbsent(id, GlobalKey.new);
+
+  /// _showFocus opens the card the settings panel asked for, and brings it
+  /// into view once it is drawn.
+  void _showFocus() {
+    var focus = controller.chainFocus;
+    if (focus == null) return;
+    _folded.removeWhere((k) =>
+        (k.startsWith("mdev:") && k.endsWith(":$focus")) ||
+        (focus == "clips" && k.startsWith("motionClips:")));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      var at = _focusKeys[focus]?.currentContext;
+      if (at != null) {
+        Scrollable.ensureVisible(at,
+            alignment: 0.5, duration: const Duration(milliseconds: 250));
+      }
+      controller.chainFocused();
+    });
+  }
+
   String? _was;
 
   @override
@@ -149,6 +173,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
 
   @override
   Widget build(BuildContext context) {
+    _showFocus();
     var resize = widget.onResize;
     return Stack(children: [
       _body(context),
@@ -202,6 +227,9 @@ class _AnimationPanelState extends State<AnimationPanel> {
       color: studio.panel,
       child: ListView(
         scrollDirection: Axis.horizontal,
+        // Every card built, not only those in view: one asked for by the
+        // settings panel is scrolled to (see _showFocus).
+        cacheExtent: 100000,
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
         children: [
           // Source: its own clips, as an element's (the master's are its
@@ -327,6 +355,9 @@ class _AnimationPanelState extends State<AnimationPanel> {
       color: studio.panel,
       child: ListView(
         scrollDirection: Axis.horizontal,
+        // Every card built, not only those in view: one asked for by the
+        // settings panel is scrolled to (see _showFocus).
+        cacheExtent: 100000,
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
         children: [
           // Its keyframes first (Ken, 2026-11-09: keyframing in the Chain).
@@ -450,16 +481,18 @@ class _AnimationPanelState extends State<AnimationPanel> {
 
   /// _clipsCard is the Source's first card: [e]'s clips, [c] the one
   /// picked (see MotionClipsCard).
-  Widget _clipsCard(CanvasElement e, MotionClip? c) => MotionClipsCard(
-      key: const ValueKey("motionClipsCard"),
-      controller: controller,
-      element: e,
-      clip: c,
-      height: widget.height - 40,
-      folded: _folded.contains("motionClips:${e.id}"),
-      onFold: () => setState(() => _folded.contains("motionClips:${e.id}")
-          ? _folded.remove("motionClips:${e.id}")
-          : _folded.add("motionClips:${e.id}")));
+  Widget _clipsCard(CanvasElement e, MotionClip? c) => KeyedSubtree(
+      key: _focusKey("clips"),
+      child: MotionClipsCard(
+          key: const ValueKey("motionClipsCard"),
+          controller: controller,
+          element: e,
+          clip: c,
+          height: widget.height - 40,
+          folded: _folded.contains("motionClips:${e.id}"),
+          onFold: () => setState(() => _folded.contains("motionClips:${e.id}")
+              ? _folded.remove("motionClips:${e.id}")
+              : _folded.add("motionClips:${e.id}"))));
 
   /// _chain is [e]'s motion chain after its clips (the Source): its moves,
   /// a way to add one, its drawing, its looks and a way to add one -- the
@@ -467,17 +500,20 @@ class _AnimationPanelState extends State<AnimationPanel> {
   List<Widget> _chain(CanvasElement e) {
     var h = widget.height - 40;
     var devices = controller.motionDevicesOf(e.id);
-    Widget card(MotionDevice d) => MotionDeviceCard(
-        key: ValueKey("mdevCard-${d.id}"),
-        controller: controller,
-        element: e.id,
-        device: d.id,
-        // By element and device: ids start again at m0 on each element.
-        folded: _folded.contains("mdev:${e.id}:${d.id}"),
-        onFold: () => setState(() => _folded.contains("mdev:${e.id}:${d.id}")
-            ? _folded.remove("mdev:${e.id}:${d.id}")
-            : _folded.add("mdev:${e.id}:${d.id}")),
-        height: h);
+    Widget card(MotionDevice d) => KeyedSubtree(
+        key: _focusKey(d.id),
+        child: MotionDeviceCard(
+            key: ValueKey("mdevCard-${d.id}"),
+            controller: controller,
+            element: e.id,
+            device: d.id,
+            // By element and device: ids start again at m0 on each element.
+            folded: _folded.contains("mdev:${e.id}:${d.id}"),
+            onFold: () => setState(() =>
+                _folded.contains("mdev:${e.id}:${d.id}")
+                    ? _folded.remove("mdev:${e.id}:${d.id}")
+                    : _folded.add("mdev:${e.id}:${d.id}")),
+            height: h));
     // How fast it goes after its clips, and after each move: and, clicked,
     // the stage showing it as it is there.
     Widget join(int upto) => MotionJoin(
@@ -604,6 +640,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
         Expanded(
           child: ListView(
             scrollDirection: Axis.horizontal,
+            // As the chain with a clip picked: every card built.
+            cacheExtent: 100000,
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
             children: [
               if (controller.keyframeTarget != null) ...[

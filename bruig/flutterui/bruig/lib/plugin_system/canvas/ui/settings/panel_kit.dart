@@ -875,9 +875,15 @@ class CanvasSections extends StatefulWidget {
   /// of its names.
   final Widget? parts;
 
+  /// quick is the few settings the element is changed by most, under its
+  /// parts and over its sections (see CanvasQuickStrip): never a section
+  /// away, in either layout.
+  final Widget? quick;
+
   const CanvasSections({
     required this.children,
     this.parts,
+    this.quick,
     super.key,
   });
 
@@ -1088,6 +1094,7 @@ class _CanvasSectionsState extends State<CanvasSections> {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (widget.parts != null) widget.parts!,
+              if (widget.quick != null) widget.quick!,
               ...widget.children,
             ],
           );
@@ -1106,6 +1113,7 @@ class _CanvasSectionsState extends State<CanvasSections> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (widget.parts != null) widget.parts!,
+            if (widget.quick != null) widget.quick!,
             Stack(key: _under, children: [
               Padding(
                 padding: const EdgeInsets.only(top: _barRoom),

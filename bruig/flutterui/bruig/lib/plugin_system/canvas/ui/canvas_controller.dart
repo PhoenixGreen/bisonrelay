@@ -985,6 +985,31 @@ class CanvasController extends ChangeNotifier {
     _notifyView();
   }
 
+  String? _chainFocus;
+
+  /// chainFocus is the card the settings panel last asked the Chain to show
+  /// -- a look's or a move's device id, or "clips" for the clip picked --
+  /// until the Chain has brought it into view (see chainFocused).
+  String? get chainFocus => _chainFocus;
+
+  /// chainFocused is the Chain saying it has shown [chainFocus].
+  void chainFocused() => _chainFocus = null;
+
+  /// showInChain opens [element]'s Chain on its motion at device [device]
+  /// -- or at [clip], placed as [placement], picked -- for a line of the
+  /// settings panel that says what its Chain does (see panel_parts.dart).
+  void showInChain(String element, String? device,
+      {String? clip, String? placement}) {
+    if (clip != null) {
+      pickMotion(element, clip, placement: placement);
+    } else if (!(_selection.length == 1 && _selection.first == element)) {
+      selectOnly(element);
+    }
+    _chainFocus = device ?? (clip != null ? "clips" : null);
+    animationOpen = true;
+    _notifyView();
+  }
+
   /// chainShowsMotion is whether the Chain panel shows its motion rather
   /// than its sound.
   bool get chainShowsMotion => _animationOpen;

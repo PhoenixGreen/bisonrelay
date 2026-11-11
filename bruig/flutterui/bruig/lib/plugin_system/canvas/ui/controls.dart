@@ -2906,6 +2906,16 @@ class _ScrubLabelState extends State<_ScrubLabel> {
   }
 }
 
+/// canvasLabelled is [child] under [label], as every control's caption is:
+/// for a control drawn by hand.
+Widget canvasLabelled(BuildContext context, String label, Widget child) =>
+    _labelled(ThemeNotifier.of(context), label, child);
+
+/// canvasControlHeight is how tall a control is where [context] is: taller
+/// in a section's card.
+double canvasControlHeight(BuildContext context) =>
+    CanvasCards.on(context) ? cardControlHeight : controlHeight;
+
 /// _labelled puts a caption above a control. [scrub] makes that caption a
 /// handle: dragging it sideways runs the number up and down. See
 /// _ScrubLabel.
