@@ -981,9 +981,13 @@ extension CanvasScenes on CanvasController {
   }
 
   void clearSelection() {
-    if (_selection.isEmpty && !_backgroundSelected && _offCanvas.isEmpty) {
+    if (_selection.isEmpty &&
+        !_backgroundSelected &&
+        _offCanvas.isEmpty &&
+        _motionPicks.isEmpty) {
       return;
     }
+    _motionPicks = const {};
     _backgroundSelected = false;
     _focusedPlayer = null;
     _offCanvas = const {};

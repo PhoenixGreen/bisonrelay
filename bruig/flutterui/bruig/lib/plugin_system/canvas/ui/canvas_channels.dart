@@ -16,7 +16,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
     show sectionColors;
 import 'package:bruig/plugin_system/canvas/ui/motion_lanes.dart'
-    show MotionLanes;
+    show MotionLanes, motionPlacementsIn;
 import 'package:bruig/plugin_system/canvas/ui/canvas_rows.dart';
 import 'package:bruig/plugin_system/canvas/ui/row_header.dart';
 import 'package:bruig/plugin_system/canvas/ui/slot_face.dart';
@@ -250,13 +250,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     _held = hit?.$1;
     if (hit == null) {
       // Empty lane: a box, dragged, picks what it touches.
-      if (controller.timelineTool == TimelineTool.select) {
-        _boxFrom = global;
-        _boxTo = null;
-        var adding = HardwareKeyboard.instance.isShiftPressed;
-        _boxBase = adding ? {...controller.clipSelection} : {};
-        _boxChannels = adding ? {...controller.selectedChannels} : {};
-      }
+      if (controller.timelineTool == TimelineTool.select) _boxStart(global);
       return;
     }
     var (lane, grip) = hit;
@@ -304,7 +298,29 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   Set<String> _boxChannels = {};
   final GlobalKey _stack = GlobalKey();
 
-  /// _box picks every sound the box touches, and the channels they are on.
+  /// _boxStart begins the box at [global] -- pressed on an empty sound lane,
+  /// or an empty motion lane (see MotionLanes.onBoxStart).
+  void _boxStart(Offset global) {
+    _boxFrom = global;
+    _boxTo = null;
+    var adding = HardwareKeyboard.instance.isShiftPressed;
+    _boxBase = adding ? {...controller.clipSelection} : {};
+    _boxChannels = adding ? {...controller.selectedChannels} : {};
+    _boxMotion = adding ? {...controller.motionPicks} : {};
+  }
+
+  /// _boxMotion are the motion clips picked before the box, Shift held.
+  Set<(String, String)> _boxMotion = {};
+
+  /// _boxEnd lets the box go.
+  void _boxEnd() {
+    _boxFrom = null;
+    _boxTo = null;
+    setState(() {});
+  }
+
+  /// _box picks every sound the box touches, and the channels they are on
+  /// -- and every motion clip, on the elements' rows (Ken, 2026-11-11).
   void _box(Offset global) {
     var from = _boxFrom;
     if (from == null) return;
@@ -333,6 +349,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     }
     controller.pickClips(ids);
     controller.selectChannels(keys);
+    controller.pickMotions({..._boxMotion, ...motionPlacementsIn(box)});
     setState(() {});
   }
 
@@ -452,11 +469,14 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                   ),
             }
           : const {};
-      // The motion clips linked to it, and where each starts: moved with it.
+      // The motion clips linked to it, and where each starts: moved with it
+      // -- and, picked with it, the motion clips picked.
       _links = _grip == _Grip.move
           ? [
-              for (var (el, id)
-                  in controller.placementsLinkedTo(lane.element.id))
+              for (var (el, id) in {
+                ...controller.placementsLinkedTo(lane.element.id),
+                if (picked.contains(lane.element.id)) ...controller.motionPicks,
+              })
                 if (controller.spanOf(id) case var s?) (el, id, s.start),
             ]
           : const [];
@@ -726,7 +746,10 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                       controller: controller,
                       view: _view,
                       only: e.id,
-                      alt: k.isOdd),
+                      alt: k.isOdd,
+                      onBoxStart: _boxStart,
+                      onBox: _box,
+                      onBoxEnd: _boxEnd),
                 // At the channel height S, an element's row is its motion
                 // alone (Ken, 2026-11-08); its sound from M up, or opened
                 // by its arrow.

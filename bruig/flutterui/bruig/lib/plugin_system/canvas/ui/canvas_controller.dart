@@ -865,9 +865,48 @@ class CanvasController extends ChangeNotifier {
   String? get pickedMotion => _pickedMotion;
   String? get pickedPlacement => _pickedPlacement;
 
+  Set<(String, String)> _motionPicks = const {};
+
+  /// motionPicks are the clips picked together on the timeline, as
+  /// (element, placement): by the box dragged across the lanes, or with
+  /// Shift (Ken, 2026-11-11: "select multiple audio/motion clips and then
+  /// ... move them"). Moved together, and taken out together by Delete.
+  Set<(String, String)> get motionPicks => _motionPicks;
+
+  /// pickMotions makes [picks] the clips picked together; one alone is
+  /// picked as [pickMotion] picks it, for the Chain to show.
+  void pickMotions(Set<(String, String)> picks) {
+    _motionPicks = picks;
+    if (picks.length == 1) {
+      var (element, placement) = picks.single;
+      var clip = _document.elementById(element)?.base.motion
+          .placement(placement)
+          ?.clip;
+      _pickedMotion = clip;
+      _pickedPlacement = clip == null ? null : placement;
+    } else {
+      _pickedMotion = _pickedPlacement = null;
+    }
+    _notifyView();
+  }
+
+  /// toggleMotionPick adds clip [placement] of [element] to those picked, or
+  /// takes it out: Shift and a click.
+  void toggleMotionPick(String element, String placement) {
+    var next = {..._motionPicks};
+    if (_pickedPlacement case var p? when next.isEmpty) {
+      if (_selection.length == 1) next.add((_selection.first, p));
+    }
+    if (!next.remove((element, placement))) next.add((element, placement));
+    pickMotions(next);
+  }
+
   /// pickMotion picks [clip] of [element], and where it was placed if picked
   /// from the timeline. Null clears it.
   void pickMotion(String? element, String? clip, {String? placement}) {
+    _motionPicks = element != null && clip != null && placement != null
+        ? {(element, placement)}
+        : const {};
     if (element != null && !(_selection.length == 1 &&
         _selection.first == element)) {
       _selection
@@ -1746,6 +1785,32 @@ class CanvasController extends ChangeNotifier {
     // or the shape picked -- and with neither, nothing: never the drawing.
     if (editingVector != null) {
       deleteVectorPoint();
+      return;
+    }
+    // Clips picked together on the timeline: those placings, not their
+    // elements -- and then the sounds picked with them, which are elements.
+    if (_motionPicks.length > 1) {
+      beginInteraction();
+      for (var (element, placement) in _motionPicks) {
+        removePlacement(element, placement);
+      }
+      _motionPicks = const {};
+      _pickedMotion = _pickedPlacement = null;
+      var sounds = {..._selection, ..._offCanvas}
+          .where((id) => _document.elementById(id) is AudioElement ||
+              _offCanvas.contains(id))
+          .toSet();
+      _selection = {
+        for (var id in _selection)
+          if (sounds.contains(id)) id
+      };
+      if (_selection.isEmpty && _offCanvas.isEmpty) {
+        endInteraction();
+        notifyListeners();
+        return;
+      }
+      deleteSelected();
+      endInteraction();
       return;
     }
     // A clip picked on the timeline: that placing of it, not the element.

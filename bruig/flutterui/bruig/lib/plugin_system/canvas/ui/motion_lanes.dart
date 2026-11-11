@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart'
@@ -109,6 +110,97 @@ List<int> motionLanesOf(CanvasElement e, {bool folded = false}) {
   ];
 }
 
+/// clipStacks is which stack each of [placed] is in, counted within its
+/// layer -- or across every layer, [together], for a folded row. A clip that
+/// starts before another in its stack has ended goes into the next stack
+/// down, so clips that overlap are drawn one under another and none hides
+/// another (Ken, 2026-11-11: an arrival, an exit and a loop drawn over each
+/// other, "very hard to see").
+Map<String, int> clipStacks(List<ClipPlacement> placed, MotionTimes times,
+    {bool together = false}) {
+  var groups = <int, List<(ClipPlacement, ClipSpan)>>{};
+  for (var p in placed) {
+    var s = times.span(p.id);
+    if (s == null) continue;
+    groups.putIfAbsent(together ? 0 : p.layer, () => []).add((p, s));
+  }
+  var out = <String, int>{};
+  for (var group in groups.values) {
+    group.sort((a, b) => a.$2.start.compareTo(b.$2.start));
+    var ends = <double>[];
+    for (var (p, s) in group) {
+      var k = ends.indexWhere((end) => end <= s.start + 1e-6);
+      if (k < 0) {
+        ends.add(s.end);
+        k = ends.length - 1;
+      } else {
+        ends[k] = s.end;
+      }
+      out[p.id] = k;
+    }
+  }
+  return out;
+}
+
+/// MotionTrack is one lane of an unfolded row: a layer, and which of its
+/// stacks (see clipStacks).
+typedef MotionTrack = ({int layer, int stack});
+
+/// motionTracksOf are [e]'s lanes unfolded, top to bottom: for each of its
+/// layers (motionLanesOf) a lane for every stack its clips need -- what the
+/// row's arrow opens (Ken: "shouldn't this ... show the different layers?").
+List<MotionTrack> motionTracksOf(CanvasElement e, MotionTimes times) {
+  var placed = e.base.motion.placed;
+  var stacks = clipStacks(placed, times);
+  return [
+    for (var l in motionLanesOf(e))
+      for (var k = 0;
+          k <=
+              [
+                for (var p in placed)
+                  if (p.layer == l) stacks[p.id] ?? 0
+              ].fold(0, math.max);
+          k++)
+        (layer: l, stack: k),
+  ];
+}
+
+/// motionClipRect is where placement [p] of a row is drawn, [left] to
+/// [right], the row starting [y] down and [rowHeight] tall: on its track's
+/// lane ([lane] tall) unfolded; a step lower for each track before its on
+/// a [shared] band; and folded, in its share of the one band, a stack to a
+/// share. The painter and the press both ask here, so a clip is pressed
+/// where it is drawn.
+Rect? motionClipRect(
+  ClipPlacement p, {
+  required bool folded,
+  required bool shared,
+  required List<MotionTrack> tracks,
+  required Map<String, int> stacks,
+  required double lane,
+  required double y,
+  required double rowHeight,
+  required double left,
+  required double right,
+}) {
+  var stack = stacks[p.id] ?? 0;
+  right = math.max(right, left + 6);
+  if (folded) {
+    var count = stacks.values.fold(0, math.max) + 1;
+    var share = lane / count;
+    var top = y + 3 + stack * share;
+    return Rect.fromLTRB(left, top, right, top + share - (count > 1 ? 1.5 : 0));
+  }
+  var row = tracks.indexOf((layer: p.layer, stack: stack));
+  if (row < 0) return null;
+  if (shared) {
+    var step = sharedStep(tracks.length, rowHeight);
+    return Rect.fromLTRB(left, y + 3 + row * step, right, y + rowHeight - 3);
+  }
+  var top = y + 2 + row * lane + 1;
+  return Rect.fromLTRB(left, top, right, top + lane - 2);
+}
+
 class MotionLanes extends StatefulWidget {
   final CanvasController controller;
   final TimelineView view;
@@ -121,11 +213,21 @@ class MotionLanes extends StatefulWidget {
   /// design's alternate rows).
   final bool alt;
 
+  /// onBoxStart, onBox and onBoxEnd are a press on an empty lane dragged:
+  /// the box the timeline picks clips with, sounds and motion alike, given
+  /// the pointer on screen (see CanvasChannels).
+  final void Function(Offset global)? onBoxStart;
+  final void Function(Offset global)? onBox;
+  final VoidCallback? onBoxEnd;
+
   const MotionLanes(
       {required this.controller,
       required this.view,
       this.only,
       this.alt = false,
+      this.onBoxStart,
+      this.onBox,
+      this.onBoxEnd,
       super.key});
 
   @override
@@ -133,6 +235,16 @@ class MotionLanes extends StatefulWidget {
 }
 
 enum _Grip { start, end, bar }
+
+/// _live are the motion lanes on screen, for the box: see
+/// motionPlacementsIn.
+final Set<_MotionLanesState> _live = {};
+
+/// motionPlacementsIn are the clips the box [global] (on screen) touches on
+/// every motion lane showing, as (element, placement).
+Set<(String, String)> motionPlacementsIn(Rect global) => {
+      for (var lanes in _live) ...lanes._placementsIn(global),
+    };
 
 /// _Hit is what a press landed on: an element's lane, and the placed clip
 /// there and which part of it, if any.
@@ -145,6 +257,47 @@ typedef _Hit = ({
 
 class _MotionLanesState extends State<MotionLanes> {
   CanvasController get controller => widget.controller;
+
+  /// _paint is the lanes' drawing, for where they are on screen.
+  final GlobalKey _paint = GlobalKey();
+
+  /// _boxing is whether the press under way is the box (begun on an empty
+  /// lane).
+  bool _boxing = false;
+
+  /// _others are the other clips picked with the one dragged, and where
+  /// each started: motion placements by their seconds, sounds as the
+  /// channels move them (see CanvasChannels._group).
+  List<(String, String, double)> _others = const [];
+  List<(CanvasElement, MediaClip, int?)> _sounds = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _live.add(this);
+  }
+
+  @override
+  void dispose() {
+    _live.remove(this);
+    super.dispose();
+  }
+
+  /// _placementsIn are this lane's clips the box [global] touches.
+  Iterable<(String, String)> _placementsIn(Rect global) sync* {
+    var box = _paint.currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.attached) return;
+    var origin = box.localToGlobal(Offset.zero);
+    var width = box.size.width;
+    var y = 0.0;
+    for (var e in _rows) {
+      for (var p in e.base.motion.placed) {
+        var r = _clipRect(e, p, y, width);
+        if (r != null && r.shift(origin).overlaps(global)) yield (e.id, p.id);
+      }
+      y += _rowHeight(e);
+    }
+  }
 
   List<CanvasElement> get _rows => [
         for (var e in motionRowsOf(controller))
@@ -174,22 +327,35 @@ class _MotionLanesState extends State<MotionLanes> {
       ? _lane + 4
       : _shared(e)
           ? _lane * 1.6 + 4
-          : math.max(_lane * 1.6, motionLanesOf(e).length * _lane) + 4;
+          : math.max(_lane * 1.6, _tracks(e).length * _lane) + 4;
+
+  MotionTimes get _times => motionTimesOf(controller.document);
+
+  /// _tracks are [e]'s lanes unfolded: see motionTracksOf.
+  List<MotionTrack> _tracks(CanvasElement e) => motionTracksOf(e, _times);
 
   /// _shared is whether [e]'s layers share one band, each a step lower than
   /// the one before (the approved design, at S and M); at L each layer has
   /// a band of its own.
   bool _shared(CanvasElement e) =>
-      !_isFolded(e) && controller.laneSize < 2 && motionLanesOf(e).length > 1;
+      !_isFolded(e) && controller.laneSize < 2 && _tracks(e).length > 1;
 
-  /// _sharedRect is where placement [p] is drawn on [e]'s shared band, its
-  /// row starting [y] down: a step lower for each layer before its.
-  Rect? _sharedRect(CanvasElement e, ClipPlacement p, double y,
-      MotionTimes times, double width) {
-    var s = times.span(p.id);
+  /// _clipRect is where placement [p] of [e] is drawn, its row starting [y]
+  /// down: see motionClipRect.
+  Rect? _clipRect(CanvasElement e, ClipPlacement p, double y, double width) {
+    var s = _times.span(p.id);
     if (s == null) return null;
-    return sharedClipRect(motionLanesOf(e), p.layer, y, _rowHeight(e),
-        _x(s.start, width), _x(s.end, width));
+    var folded = _isFolded(e);
+    return motionClipRect(p,
+        folded: folded,
+        shared: _shared(e),
+        tracks: folded ? const [] : _tracks(e),
+        stacks: clipStacks(e.base.motion.placed, _times, together: folded),
+        lane: _lane,
+        y: y,
+        rowHeight: _rowHeight(e),
+        left: _x(s.start, width),
+        right: _x(s.end, width));
   }
 
   int get _fps => math.max(1, controller.document.frameRate);
@@ -212,61 +378,32 @@ class _MotionLanesState extends State<MotionLanes> {
     for (var e in _rows) {
       var h = _rowHeight(e);
       if (local.dy >= y && local.dy < y + h) {
-        if (_shared(e)) {
-          var times = motionTimesOf(controller.document);
-          // The topmost drawn first: the latest layer, then down.
-          var placed = [...e.base.motion.placed]
-            ..sort((a, b) => b.layer - a.layer);
-          for (var p in placed) {
-            var r = _sharedRect(e, p, y, times, width);
-            if (r == null) continue;
-            const reach = 6.0;
-            if (local.dy < r.top || local.dy > r.bottom) continue;
-            if (local.dx < r.left - reach || local.dx > r.right + reach) {
-              continue;
-            }
-            var grip = (local.dx - r.right).abs() <= reach
-                ? _Grip.end
-                : (local.dx - r.left).abs() <= reach
-                    ? _Grip.start
-                    : _Grip.bar;
-            return (element: e, layer: p.layer, placement: p, grip: grip);
-          }
-          var lanes = motionLanesOf(e);
-          var step = sharedStep(lanes.length, h);
-          var i =
-              ((local.dy - y - 3) / step).floor().clamp(0, lanes.length - 1);
-          return (element: e, layer: lanes[i], placement: null, grip: null);
-        }
-        var folded = _isFolded(e);
-        var lanes = motionLanesOf(e, folded: folded);
-        var row = folded ? -1 : ((local.dy - y - 2) / _lane).floor();
-        var layer = folded
-            ? -1
-            : row >= 0 && row < lanes.length
-                ? lanes[row]
-                : (lanes.isEmpty ? 0 : lanes.last);
-        var times = motionTimesOf(controller.document);
+        // The topmost drawn first: the last drawn, back to the first.
+        const reach = 6.0;
         for (var p in e.base.motion.placed.reversed) {
-          if (!folded && p.layer != layer) continue;
-          var s = times.span(p.id);
-          if (s == null) continue;
-          var from = _x(s.start, width), to = _x(s.end, width);
-          const reach = 6.0;
-          if (local.dx < from - reach || local.dx > to + reach) continue;
-          var grip = (local.dx - to).abs() <= reach
+          var r = _clipRect(e, p, y, width);
+          if (r == null) continue;
+          if (local.dy < r.top || local.dy > r.bottom) continue;
+          if (local.dx < r.left - reach || local.dx > r.right + reach) {
+            continue;
+          }
+          var grip = (local.dx - r.right).abs() <= reach
               ? _Grip.end
-              : (local.dx - from).abs() <= reach
+              : (local.dx - r.left).abs() <= reach
                   ? _Grip.start
                   : _Grip.bar;
           return (element: e, layer: p.layer, placement: p, grip: grip);
         }
-        return (
-          element: e,
-          layer: layer < 0 ? 0 : layer,
-          placement: null,
-          grip: null
-        );
+        // Nothing there: the lane under the press, to drop onto.
+        if (_isFolded(e)) {
+          return (element: e, layer: 0, placement: null, grip: null);
+        }
+        var tracks = _tracks(e);
+        var row = _shared(e)
+            ? ((local.dy - y - 3) / sharedStep(tracks.length, h)).floor()
+            : ((local.dy - y - 2) / _lane).floor();
+        var track = tracks[row.clamp(0, tracks.length - 1)];
+        return (element: e, layer: track.layer, placement: null, grip: null);
       }
       y += h;
     }
@@ -288,8 +425,18 @@ class _MotionLanesState extends State<MotionLanes> {
     }
   }
 
-  void _down(Offset local, double width) {
+  void _down(Offset local, Offset global, double width) {
     var hit = _hit(local, width);
+    // An empty spot, dragged: the box, as on the sound lanes.
+    _boxing = hit != null &&
+        hit.placement == null &&
+        controller.timelineTool == TimelineTool.select &&
+        widget.onBoxStart != null;
+    if (_boxing) {
+      widget.onBoxStart!(global);
+      _press = null;
+      return;
+    }
     _press = hit;
     _linkFrom = null;
     if (hit?.placement case var p?) {
@@ -313,13 +460,22 @@ class _MotionLanesState extends State<MotionLanes> {
             hit.element.id, p.id, _snap(_seconds(local.dx, width)));
         return;
       }
+      // Shift adds it to what is picked, or takes it out.
+      if (HardwareKeyboard.instance.isShiftPressed) {
+        controller.toggleMotionPick(hit.element.id, p.id);
+        return;
+      }
       _open(hit.element, p);
     } else {
       controller.pickMotion(hit.element.id, null);
     }
   }
 
-  void _drag(Offset local, double width) {
+  void _drag(Offset local, Offset global, double width) {
+    if (_boxing) {
+      widget.onBox?.call(global);
+      return;
+    }
     var hit = _press, span = _pressSpan;
     if (hit == null || span == null || hit.placement == null) return;
     if (controller.timelineTool == TimelineTool.knife) return;
@@ -328,6 +484,27 @@ class _MotionLanesState extends State<MotionLanes> {
       _dragged = true;
       controller.pause();
       controller.beginInteraction();
+      // One of several picked, moved by its bar: all of them go, together
+      // -- the other clips by as many seconds, the sounds by as many
+      // frames.
+      var mine = (hit.element.id, p.id);
+      var picks = controller.motionPicks;
+      var together = hit.grip == _Grip.bar &&
+          picks.contains(mine) &&
+          (picks.length > 1 || controller.clipSelection.isNotEmpty);
+      _others = !together
+          ? const []
+          : [
+              for (var (el, id) in picks)
+                if ((el, id) != mine)
+                  if (controller.spanOf(id) case var s?) (el, id, s.start),
+            ];
+      var sounds = together ? controller.clipSelection : const <String>{};
+      _sounds = [
+        for (var l in controller.timedLanes)
+          if (sounds.contains(l.element.id))
+            (l.element, l.clip, controller.clipRunStart(l.element.id)),
+      ];
     }
     var now = _seconds(local.dx, width);
     var by = now - _pressSeconds;
@@ -348,8 +525,24 @@ class _MotionLanesState extends State<MotionLanes> {
             : null;
         var to = _snap(span.start + by);
         if (controller.movePlacement(hit.element.id, p.id, to,
-            layer: layer, transient: true)) {
+            layer: _others.isEmpty && _sounds.isEmpty ? layer : null,
+            transient: true)) {
           _unpinned = true;
+        }
+        var moved = math.max(0.0, to) - span.start;
+        for (var (el, id, start) in _others) {
+          controller.movePlacement(el, id, math.max(0.0, start + moved),
+              transient: true);
+        }
+        var frames = (moved * controller.document.frameRate).round();
+        for (var (e, clip, run) in _sounds) {
+          if (run == null) {
+            controller.setTimedClip(
+                e, clip.copyWith(at: math.max(0, clip.at + frames)),
+                transient: true);
+          } else {
+            controller.placeTimedClip(e, clip, run + frames, transient: true);
+          }
         }
         // Linked: its sound by as much (Ken, 2026-11-10).
         if (_linkFrom case (var l, var at)) {
@@ -363,6 +556,13 @@ class _MotionLanesState extends State<MotionLanes> {
   }
 
   void _up() {
+    if (_boxing) {
+      _boxing = false;
+      widget.onBoxEnd?.call();
+      return;
+    }
+    _others = const [];
+    _sounds = const [];
     if (_dragged) {
       controller.endInteraction();
       if (_unpinned && mounted) {
@@ -584,10 +784,16 @@ class _MotionLanesState extends State<MotionLanes> {
                   layers > 1 ? "$layers layers" : "Motion", motionColour),
             ]
           : [
-              for (var (i, l) in motionLanesOf(e).indexed)
+              // A band for each lane: a layer's name on its first, its
+              // further stacks unnamed under it.
+              for (var (i, t) in _tracks(e).indexed)
                 RowBand(
-                    2 + i * _lane, _lane, motionLayerName(m, l), motionColour,
-                    weight: m.weight(l), pinned: m.isPinned(l)),
+                    2 + i * _lane,
+                    _lane,
+                    t.stack == 0 ? motionLayerName(m, t.layer) : "",
+                    motionColour,
+                    weight: m.weight(t.layer),
+                    pinned: m.isPinned(t.layer)),
             ],
     );
   }
@@ -689,40 +895,48 @@ class _MotionLanesState extends State<MotionLanes> {
           onTapUp: (d) => _tap(d.localPosition, width),
           onDoubleTapDown: (d) => _make(d.localPosition, width),
           onDoubleTap: () {},
-          onHorizontalDragDown: (d) => _down(d.localPosition, width),
+          // Pan, not just across: the box is dragged up and down too.
+          onPanDown: (d) => _down(d.localPosition, d.globalPosition, width),
           onSecondaryTapUp: (d) =>
               _linkMenu(context, d.localPosition, d.globalPosition, width),
-          onHorizontalDragUpdate: (d) => _drag(d.localPosition, width),
-          onHorizontalDragEnd: (_) => _up(),
-          onHorizontalDragCancel: _up,
+          onPanUpdate: (d) => _drag(d.localPosition, d.globalPosition, width),
+          onPanEnd: (_) => _up(),
+          onPanCancel: _up,
           child: MouseRegion(
             cursor: controller.timelineTool == TimelineTool.knife
                 ? SystemMouseCursors.precise
                 : SystemMouseCursors.basic,
-            child: CustomPaint(
-              key: ValueKey(widget.only == null
-                  ? "motionLanesPaint"
-                  : "motionLanesPaint-${widget.only}"),
-              size: Size(width, height),
-              painter: _LanesPainter(
-                colourOf: (e) => controller.rowColour(e.id),
-                alt: widget.alt,
-                rows: rows,
-                folded: {
-                  for (var e in rows)
-                    if (_isFolded(e)) e.id
-                },
-                shared: {
-                  for (var e in rows)
-                    if (_shared(e)) e.id
-                },
-                lane: _lane,
-                rowHeight: _rowHeight,
-                times: motionTimesOf(controller.document),
-                x: (s) => _x(s, width),
-                picked: controller.pickedPlacement,
-                colors: colors,
-                textScaler: MediaQuery.textScalerOf(context),
+            child: KeyedSubtree(
+              key: _paint,
+              child: CustomPaint(
+                key: ValueKey(widget.only == null
+                    ? "motionLanesPaint"
+                    : "motionLanesPaint-${widget.only}"),
+                size: Size(width, height),
+                painter: _LanesPainter(
+                  colourOf: (e) => controller.rowColour(e.id),
+                  alt: widget.alt,
+                  rows: rows,
+                  folded: {
+                    for (var e in rows)
+                      if (_isFolded(e)) e.id
+                  },
+                  shared: {
+                    for (var e in rows)
+                      if (_shared(e)) e.id
+                  },
+                  tracksOf: _tracks,
+                  lane: _lane,
+                  rowHeight: _rowHeight,
+                  times: motionTimesOf(controller.document),
+                  x: (s) => _x(s, width),
+                  picked: {
+                    if (controller.pickedPlacement case var p?) p,
+                    for (var (_, p) in controller.motionPicks) p,
+                  },
+                  colors: colors,
+                  textScaler: MediaQuery.textScalerOf(context),
+                ),
               ),
             ),
           ),
@@ -868,13 +1082,18 @@ class _LanesPainter extends CustomPainter {
   /// colourOf is each row's colour: its clips are drawn in it.
   final Color Function(CanvasElement) colourOf;
 
-  /// shared are the rows whose layers share one band: see sharedClipRect.
+  /// shared are the rows whose lanes share one band: see motionClipRect.
   final Set<String> shared;
   final double lane;
+
+  /// tracksOf are a row's lanes unfolded: see motionTracksOf.
+  final List<MotionTrack> Function(CanvasElement) tracksOf;
   final double Function(CanvasElement) rowHeight;
   final MotionTimes times;
   final double Function(double seconds) x;
-  final String? picked;
+
+  /// picked are the placements picked, outlined.
+  final Set<String> picked;
   final ColorScheme colors;
   final TextScaler textScaler;
   final bool alt;
@@ -886,6 +1105,7 @@ class _LanesPainter extends CustomPainter {
     required this.rows,
     required this.folded,
     required this.lane,
+    required this.tracksOf,
     required this.rowHeight,
     required this.times,
     required this.x,
@@ -922,13 +1142,14 @@ class _LanesPainter extends CustomPainter {
       var h = rowHeight(e);
       var isFolded = folded.contains(e.id);
       var isShared = shared.contains(e.id);
-      var lanes = motionLanesOf(e, folded: isFolded);
+      var tracks = isFolded ? const <MotionTrack>[] : tracksOf(e);
       canvas.drawLine(
           Offset(0, y + h - 0.5), Offset(size.width, y + h - 0.5), line);
       // The lanes' own lines, faint; the sound's lane tinted.
-      for (var (i, l) in isShared ? const <(int, int)>[] : lanes.indexed) {
+      for (var (i, t)
+          in isShared ? const <(int, MotionTrack)>[] : tracks.indexed) {
         var top = y + 2 + i * lane;
-        if (l == soundLayer) {
+        if (t.layer == soundLayer) {
           canvas.drawRect(Rect.fromLTWH(0, top, size.width, lane),
               Paint()..color = const Color(0x143F9F6B));
         } else if (i > 0) {
@@ -937,29 +1158,31 @@ class _LanesPainter extends CustomPainter {
         }
       }
       var m = e.base.motion;
-      // Shared, a layer under the next: drawn from the first layer up.
+      var stacks = clipStacks(m.placed, times, together: isFolded);
+      // Shared, a lane under the next: drawn from the first lane up.
       var order = isShared
-          ? ([...m.placed]..sort((a, b) => a.layer - b.layer))
+          ? ([...m.placed]..sort((a, b) {
+              var byLayer = a.layer - b.layer;
+              return byLayer != 0
+                  ? byLayer
+                  : (stacks[a.id] ?? 0) - (stacks[b.id] ?? 0);
+            }))
           : m.placed;
       for (var p in order) {
         var c = m.clip(p.clip);
         var s = times.span(p.id);
         if (c == null || s == null) continue;
-        if (isShared) {
-          var rect = sharedClipRect(lanes, p.layer, y, h, x(s.start), x(s.end));
-          if (rect.right < 0 || rect.left > size.width) continue;
-          _clip(canvas, rect, c, p, s, colourOf(e));
-          continue;
-        }
-        var row = isFolded ? 0 : lanes.indexOf(p.layer);
-        if (row < 0) continue;
-        var top = y + 2 + row * lane + 1;
-        var rect = Rect.fromLTRB(
-            x(s.start),
-            top,
-            math.max(x(s.end), x(s.start) + 6),
-            top + (isFolded ? lane : lane - 2));
-        if (rect.right < 0 || rect.left > size.width) continue;
+        var rect = motionClipRect(p,
+            folded: isFolded,
+            shared: isShared,
+            tracks: tracks,
+            stacks: stacks,
+            lane: lane,
+            y: y,
+            rowHeight: h,
+            left: x(s.start),
+            right: x(s.end));
+        if (rect == null || rect.right < 0 || rect.left > size.width) continue;
         _clip(canvas, rect, c, p, s, colourOf(e));
       }
       // An element reused: where each copy's clips start, as short amber
@@ -1028,7 +1251,7 @@ class _LanesPainter extends CustomPainter {
       paintLinkMark(canvas, Offset(rect.right - 14, rect.top + 2), slotInk);
     }
     // Picked: outlined, over its shape.
-    if (p.id == picked) {
+    if (picked.contains(p.id)) {
       canvas.drawPath(
           cutCornersPath(rect.inflate(1.5), 5),
           Paint()
@@ -1054,14 +1277,3 @@ class _LanesPainter extends CustomPainter {
 /// before's, on a shared band of [lanes] layers in a row [rowHeight] tall.
 double sharedStep(int lanes, double rowHeight) =>
     math.max(2.0, (rowHeight - 4 - 10) / math.max(1, lanes));
-
-/// sharedClipRect is where a clip on [layer] is drawn on a shared band (the
-/// approved design: at S and M every layer shares one band, a later layer a
-/// little lower), from [left] to [right], in a row from [y], [rowHeight]
-/// tall.
-Rect sharedClipRect(List<int> lanes, int layer, double y, double rowHeight,
-    double left, double right) {
-  var i = math.max(0, lanes.indexOf(layer));
-  var top = y + 3 + i * sharedStep(lanes.length, rowHeight);
-  return Rect.fromLTRB(left, top, math.max(right, left + 6), y + rowHeight - 3);
-}
