@@ -1,8 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 
 // stock_sources.dart is the stock libraries the Assets sidebar searches
-// (Pixabay's pictures and videos, the Noun Project, Freesound, Jamendo and
-// Poly Haven): what each is called, what it has, what can be asked of it,
+// (Pixabay's pictures and videos, the Noun Project, Freesound, Jamendo,
+// Poly Haven and Iconify): what each is called, what it has, what can be asked of it,
 // and how its answer is read.
 //
 // Nothing here touches the network: requests are built and answers read
@@ -59,6 +61,17 @@ enum StockSource {
     keyHost: "",
     keyPage: "https://polyhaven.com/models",
     from: "Poly Haven",
+  ),
+
+  /// iconify is Iconify's icons: some two hundred thousand, from open-source
+  /// sets, and no key -- each icon under its own set's licence. Added when
+  /// the Noun Project's free allowance ran out (Ken, 2026-11-11).
+  iconify(
+    label: "Iconify icons",
+    kind: AssetKind.picture,
+    keyHost: "",
+    keyPage: "https://iconify.design/",
+    from: "Iconify",
   );
 
   final String label;
@@ -90,11 +103,11 @@ enum StockSource {
 
   /// needsKey is whether a search needs a key of its own: Poly Haven's is
   /// open to all.
-  bool get needsKey => this != polyHaven;
+  bool get needsKey => this != polyHaven && this != iconify;
 
   /// needsText is whether a search must say what it is looking for. The
   /// others show what is popular when asked for nothing in particular.
-  bool get needsText => this == nounProject;
+  bool get needsText => this == nounProject || this == iconify;
 
   /// terms is the line shown under the results: where they come from, which
   /// Pixabay asks to be shown wherever its results are, and what using one
@@ -112,6 +125,8 @@ enum StockSource {
         // Poly Haven asks for this credit wherever its live API is used.
         polyHaven => "Powered by Poly Haven. Its models are CC0: free for "
             "any use, no credit needed -- though it is appreciated.",
+        iconify => "From Iconify's open-source icon sets. Each icon keeps "
+            "its set's licence; CC BY asks for a credit.",
       };
 
   static StockSource fromName(String? name) =>
@@ -255,7 +270,46 @@ List<StockFilter> filtersFor(StockSource source) => switch (source) {
           ]),
         ],
       StockSource.polyHaven => const [],
+      StockSource.iconify => const [
+          // One colour first: those take a fill, as the canvas's own
+          // shapes do; the rest keep their set's colours.
+          StockFilter("palette", "Colour", [
+            ("false", "One colour"),
+            ("", "Any"),
+          ]),
+          StockFilter("licence", "Licence", [
+            ("free", "No credit needed"),
+            ("", "Any open licence"),
+          ]),
+        ],
     };
+
+/// iconifyPageSize is how many icons a page of Iconify's shows. Its search
+/// has no offset: page n asks for n pages' worth and shows the last.
+const int iconifyPageSize = 48;
+
+/// iconifyMost is the most icons one Iconify search answers with.
+const int iconifyMost = 999;
+
+/// _creditFree are the licences an Iconify set may be under for its icons to
+/// be used with no credit shown: the permissive software licences and the
+/// public-domain ones. CC BY, CC BY-SA and GPL sets ask for more.
+const _creditFree = {
+  "MIT", "Apache-2.0", "ISC", "0BSD", "BSD-2-Clause", "BSD-3-Clause", //
+  "CC0-1.0", "Unlicense", "OFL-1.1", "MPL-2.0",
+};
+
+/// iconifySvg is the address of Iconify's [icon] ("set:name") as a drawing:
+/// black, where the set drew in the current colour, and sized in pixels
+/// rather than ems, which a drawing read on its own has nothing to measure
+/// against.
+String iconifySvg(String icon, {String colour = "#000000", int height = 256}) {
+  var at = icon.indexOf(":");
+  var set = at < 0 ? icon : icon.substring(0, at);
+  var name = at < 0 ? icon : icon.substring(at + 1);
+  return Uri.https("api.iconify.design", "/$set/$name.svg",
+      {"color": colour, "height": "$height"}).toString();
+}
 
 /// stockPageSize is how many results a search asks for at a time.
 const int stockPageSize = 30;
@@ -398,6 +452,12 @@ StockRequest requestFor(StockQuery q, {required String key}) {
       return StockRequest(Uri.https("api.polyhaven.com", "/search", {
         "q": text,
         "t": "models",
+      }));
+    case StockSource.iconify:
+      return StockRequest(Uri.https("api.iconify.design", "/search", {
+        "query": text,
+        "limit": "${math.min(q.page * iconifyPageSize, iconifyMost)}",
+        if (q.value("palette").isNotEmpty) "palette": q.value("palette"),
       }));
   }
 }
@@ -701,6 +761,43 @@ StockPage parseStock(StockQuery q, Object? json) {
       return StockPage(items, more: results.length >= stockPageSize);
     case StockSource.polyHaven:
       throw StateError("Poly Haven pages are made by polyHavenPage");
+    case StockSource.iconify:
+      var icons = _at<List>(json, ["icons"]) ?? const [];
+      var sets = _at<Map>(json, ["collections"]) ?? const {};
+      var free = q.value("licence") == "free";
+      var items = <StockItem>[];
+      // Page n is everything after the pages before it.
+      for (var icon in icons.skip((q.page - 1) * iconifyPageSize)) {
+        var id = "$icon";
+        var at = id.indexOf(":");
+        if (at <= 0) continue;
+        var set = sets[id.substring(0, at)];
+        var spdx = _s(set, ["license", "spdx"]);
+        if (free && !_creditFree.contains(spdx)) continue;
+        var name = id.substring(at + 1);
+        items.add(StockItem(
+          source: source,
+          id: id,
+          title: _capital(name.replaceAll("-", " ")),
+          author: [
+            _s(set, ["name"]),
+            _s(set, ["author", "name"])
+          ].where((x) => x.isNotEmpty).join(", "),
+          license: _s(set, ["license", "title"]),
+          licenseUrl: _s(set, ["license", "url"]),
+          page: "https://icon-sets.iconify.design/${id.substring(0, at)}/"
+              "?icon-filter=$name",
+          thumb: iconifySvg(id, height: 96),
+          media: iconifySvg(id),
+          width: 1,
+          height: 1,
+        ));
+      }
+      var asked = _i(json, ["limit"]);
+      return StockPage(items,
+          more: asked < iconifyMost &&
+              _i(json, ["total"]) >= asked &&
+              asked >= q.page * iconifyPageSize);
   }
 }
 

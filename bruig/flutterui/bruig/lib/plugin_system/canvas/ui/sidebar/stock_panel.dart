@@ -808,9 +808,17 @@ class _Thumb extends StatelessWidget {
         color: theme.colors.surfaceContainerHighest,
         child: url.isEmpty
             ? blank()
-            : url.toLowerCase().endsWith(".svg")
+            // A drawing by its path: Iconify's addresses go on past it.
+            : (Uri.tryParse(url)?.path ?? url).toLowerCase().endsWith(".svg")
                 ? SvgPicture.network(url,
-                    fit: BoxFit.contain, placeholderBuilder: (_) => blank())
+                    fit: BoxFit.contain,
+                    // Iconify's are drawn in black, to take a fill once
+                    // used; here, in the panel's own ink, to be seen.
+                    colorFilter: item.source == StockSource.iconify
+                        ? ColorFilter.mode(
+                            theme.colors.onSurface, BlendMode.srcIn)
+                        : null,
+                    placeholderBuilder: (_) => blank())
                 : Image(
                     image: StockClient.instance.thumbnail(url),
                     // Icons are drawings on nothing, and would be cropped.

@@ -91,6 +91,34 @@ void main() {
       expect(any.uri.queryParameters.containsKey("limit_to_public_domain"),
           isFalse);
     });
+
+    // Iconify, added when the Noun Project's allowance ran out (Ken,
+    // 2026-11-11): no key, and no offset -- page n asks for n pages.
+    test("Iconify: no key, one colour by default, paged by asking for more",
+        () {
+      expect(StockSource.iconify.needsKey, isFalse);
+      expect(StockSource.iconify.needsText, isTrue);
+      var first = requestFor(
+          const StockQuery(StockSource.iconify, text: "vault"),
+          key: "");
+      expect(first.uri.host, "api.iconify.design");
+      expect(first.uri.path, "/search");
+      var q = first.uri.queryParameters;
+      expect(q["query"], "vault");
+      expect(q["palette"], "false", reason: "one colour: takes a fill");
+      expect(q["limit"], "$iconifyPageSize");
+      expect(q.containsKey("start"), isFalse, reason: "Iconify refuses it");
+      var third = requestFor(
+          const StockQuery(StockSource.iconify,
+              text: "vault", page: 3, filters: {"palette": ""}),
+          key: "");
+      expect(third.uri.queryParameters["limit"], "${3 * iconifyPageSize}");
+      expect(third.uri.queryParameters.containsKey("palette"), isFalse);
+      var far = requestFor(
+          const StockQuery(StockSource.iconify, text: "x", page: 40),
+          key: "");
+      expect(far.uri.queryParameters["limit"], "$iconifyMost");
+    });
   });
 
   // Worked out independently, with Python's hmac and urllib, over the same
@@ -250,6 +278,74 @@ void main() {
         "headers": {"status": "failed", "error_message": "bad client id"},
       });
       expect(refused.problem, "Jamendo: bad client id");
+    });
+  });
+
+  group("Iconify answers", () {
+    // As api.iconify.design answered on 2026-11-11, cut down.
+    Map<String, Object> answer(List<String> icons, {int limit = 48}) => {
+          "icons": icons,
+          "total": icons.length,
+          "limit": limit,
+          "start": 0,
+          "collections": {
+            "tabler": {
+              "name": "Tabler Icons",
+              "author": {"name": "Paweł Kuna"},
+              "license": {
+                "title": "MIT",
+                "spdx": "MIT",
+                "url":
+                    "https://github.com/tabler/tabler-icons/blob/master/LICENSE"
+              },
+            },
+            "game-icons": {
+              "name": "Game Icons",
+              "author": {"name": "GameIcons"},
+              "license": {
+                "title": "CC BY 3.0",
+                "spdx": "CC-BY-3.0",
+                "url": "https://creativecommons.org/licenses/by/3.0/"
+              },
+            },
+          },
+        };
+
+    test("a drawing in black, sized in pixels, credited to its set", () {
+      var page = parseStock(
+          const StockQuery(StockSource.iconify,
+              text: "vault", filters: {"licence": ""}),
+          answer(["tabler:vault", "game-icons:locked-chest"]));
+      expect(page.items.map((i) => i.id),
+          ["tabler:vault", "game-icons:locked-chest"]);
+      var vault = page.items.first;
+      expect(vault.title, "Vault");
+      expect(vault.license, "MIT");
+      expect(vault.author, "Tabler Icons, Paweł Kuna");
+      var media = Uri.parse(vault.media);
+      expect(media.path, "/tabler/vault.svg");
+      expect(media.queryParameters, {"color": "#000000", "height": "256"});
+      expect(Uri.parse(vault.thumb).path, endsWith(".svg"));
+      expect(
+          vault.credit, "Vault by Tabler Icons, Paweł Kuna from Iconify (MIT)");
+      expect(page.items.last.title, "Locked chest");
+      expect(page.more, isFalse, reason: "fewer than were asked for");
+    });
+
+    test("no credit needed, by default: CC BY sets are left out", () {
+      var page = parseStock(const StockQuery(StockSource.iconify, text: "x"),
+          answer(["tabler:vault", "game-icons:locked-chest"]));
+      expect(page.items.map((i) => i.id), ["tabler:vault"]);
+    });
+
+    test("page two is what came after page one", () {
+      var icons = [for (var i = 0; i < 2 * iconifyPageSize; i++) "tabler:i$i"];
+      var two = parseStock(
+          const StockQuery(StockSource.iconify, text: "x", page: 2),
+          answer(icons, limit: 2 * iconifyPageSize));
+      expect(two.items.first.id, "tabler:i$iconifyPageSize");
+      expect(two.items, hasLength(iconifyPageSize));
+      expect(two.more, isTrue, reason: "as many as were asked for");
     });
   });
 
