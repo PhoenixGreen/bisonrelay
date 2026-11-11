@@ -142,6 +142,19 @@ enum MotionDeviceKind {
       "From the bottom", "Both sides", "Top and bottom", "Round the middle",
     ]),
     DeviceParam("reach", "Reach", 0, 1, 0.6),
+  ]),
+
+  /// lens is a magnifying glass over it, going round: what is under the
+  /// glass drawn bigger, inside a rim with a handle -- a ledger read for
+  /// what it gives away (Ken's privacy video, 2026-11-11: "it should be
+  /// circular magnifying the data").
+  lens("Lens", MotionDeviceSide.look, [
+    DeviceParam("x", "Across", 0, 1, 0.5),
+    DeviceParam("y", "Down", 0, 1, 0.5),
+    DeviceParam("size", "Size", 0.05, 1, 0.35),
+    DeviceParam("zoom", "Zoom", 1, 4, 2, "×"),
+    DeviceParam("orbit", "Goes round", 0, 1, 0.4),
+    DeviceParam("laps", "Laps a second", 0, 2, 0.15),
   ]);
 
   final String label;
@@ -357,7 +370,8 @@ String motionFamily(MotionDeviceKind kind) => switch (kind) {
         "Light and edge",
       MotionDeviceKind.blur ||
       MotionDeviceKind.colour ||
-      MotionDeviceKind.wear =>
+      MotionDeviceKind.wear ||
+      MotionDeviceKind.lens =>
         "Picture",
       MotionDeviceKind.instances => "Instances",
     };
@@ -411,6 +425,9 @@ String motionAbout(MotionDeviceKind kind) => switch (kind) {
       MotionDeviceKind.edges =>
         "Fades it into what is under it: its edges feathered, and faded "
             "from a side or round the middle, as far in as Reach.",
+      MotionDeviceKind.lens =>
+        "A magnifying glass over it: what is under the glass Zoom times "
+            "bigger, going round its middle so many Laps a second.",
     };
 
 /// motionParamShown is whether [p] of [d] does anything as it is set, so

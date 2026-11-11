@@ -96,8 +96,96 @@ void main() {
         reason: "fading outwards");
   });
 
-  test("both are looks, offered with the others", () {
-    expect(MotionDeviceKind.on(MotionDeviceSide.look),
-        containsAll([MotionDeviceKind.wear, MotionDeviceKind.edges]));
+  test("all three are looks, offered with the others", () {
+    expect(
+        MotionDeviceKind.on(MotionDeviceSide.look),
+        containsAll([
+          MotionDeviceKind.wear,
+          MotionDeviceKind.edges,
+          MotionDeviceKind.lens
+        ]));
+  });
+
+  // A ledger read through a magnifying glass that goes round over it (Ken's
+  // privacy video, 2026-11-11).
+  group("Lens", () {
+    /// stripes is the box striped in 4 px bars of red and nothing, a
+    /// period of 8, under a Lens at [time].
+    Future<ByteData> stripes(MotionDevice lens, {double time = 0}) async {
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      var box = const Rect.fromLTWH(0, 0, 200, 200);
+      paintWithLooks(canvas, box, [lens], (on) {
+        for (var x = 0.0; x < 200; x += 8) {
+          on.drawRect(Rect.fromLTWH(x, 0, 4, 200),
+              Paint()..color = const Color(0xFFFF0000));
+        }
+      }, time: time);
+      var image = await recorder.endRecording().toImage(size, size);
+      var bytes = (await image.toByteData())!;
+      image.dispose();
+      return bytes;
+    }
+
+    /// period is how far apart the red bars are along row [y], from [x0]
+    /// to [x1].
+    double period(ByteData b, int y, int x0, int x1) {
+      var starts = <int>[];
+      var was = false;
+      for (var x = x0; x < x1; x++) {
+        var red = b.getUint8((y * size + x) * 4) > 128 &&
+            b.getUint8((y * size + x) * 4 + 3) > 128;
+        if (red && !was) starts.add(x);
+        was = red;
+      }
+      if (starts.length < 2) return 0;
+      return (starts.last - starts.first) / (starts.length - 1);
+    }
+
+    test("what is under the glass is drawn bigger; the rest as it is",
+        () async {
+      var b = await stripes(const MotionDevice(MotionDeviceKind.lens,
+          id: "l",
+          values: {"size": 0.6, "zoom": 2, "orbit": 0, "x": 0.5, "y": 0.5}));
+      expect(period(b, 100, 70, 130), closeTo(16, 1),
+          reason: "inside, twice as far apart");
+      expect(period(b, 5, 0, 60), closeTo(8, 0.5), reason: "outside, as drawn");
+    });
+
+    test("no glass where the element is not there", () async {
+      Future<int> rim(double presence) async {
+        var recorder = ui.PictureRecorder();
+        var canvas = ui.Canvas(recorder);
+        var box = const Rect.fromLTWH(0, 0, 200, 200);
+        paintWithLooks(
+            canvas,
+            box,
+            const [
+              MotionDevice(MotionDeviceKind.lens,
+                  id: "l", values: {"size": 0.6, "orbit": 0}),
+            ],
+            (on) {},
+            presence: presence);
+        var image = await recorder.endRecording().toImage(size, size);
+        var bytes = (await image.toByteData())!;
+        image.dispose();
+        // On the rim, straight up from the middle: 60 px out.
+        return alphaAt(bytes, 100, 40);
+      }
+
+      expect(await rim(1), greaterThan(100), reason: "there: its rim");
+      expect(await rim(0), 0, reason: "gone, or not yet come: nothing");
+    });
+
+    test("the glass goes round its middle, so many laps a second", () {
+      const d = MotionDevice(MotionDeviceKind.lens,
+          id: "l", values: {"orbit": 0.5, "laps": 0.25, "x": 0.5, "y": 0.5});
+      const box = Rect.fromLTWH(0, 0, 200, 100);
+      expect(lensAt(d, box, 0), const Offset(150, 50),
+          reason: "from the right");
+      var quarter = lensAt(d, box, 1);
+      expect(quarter.dx, closeTo(100, 1e-6));
+      expect(quarter.dy, closeTo(75, 1e-6), reason: "a quarter round, below");
+    });
   });
 }

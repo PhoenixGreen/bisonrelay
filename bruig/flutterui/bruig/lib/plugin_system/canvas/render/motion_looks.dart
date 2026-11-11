@@ -26,6 +26,8 @@ double looksReach(List<MotionDevice> looks) {
       MotionDeviceKind.shadow => d.value("distance") + d.value("blur") * 2,
       MotionDeviceKind.blur => d.value("amount") * 2 + d.value("motion") * 40,
       MotionDeviceKind.outline => d.value("width") * (1 + d.value("softness")),
+      // Its rim and handle, where the glass goes near the edge.
+      MotionDeviceKind.lens => 160.0,
       _ => 0.0,
     };
   }
@@ -41,7 +43,11 @@ double looksReach(List<MotionDevice> looks) {
 /// Blur's Motion blur smears it along.
 void paintWithLooks(ui.Canvas canvas, Rect bounds, List<MotionDevice> looks,
     void Function(ui.Canvas on) paint,
-    {double turn = 0, double scale = 1, Offset velocity = Offset.zero}) {
+    {double turn = 0,
+    double scale = 1,
+    Offset velocity = Offset.zero,
+    double time = 0,
+    double presence = 1}) {
   var reach = looksReach(looks);
   var room = bounds.inflate(reach / math.max(0.05, scale) + 2);
   var k = 1 / math.max(0.05, scale);
@@ -50,8 +56,8 @@ void paintWithLooks(ui.Canvas canvas, Rect bounds, List<MotionDevice> looks,
       paint(on);
       return;
     }
-    _look(
-        on, room, bounds, looks[i], (c) => drawn(c, i - 1), turn, k, velocity);
+    _look(on, room, bounds, looks[i], (c) => drawn(c, i - 1), turn, k, velocity,
+        time, presence);
   }
 
   drawn(canvas, looks.length - 1);
@@ -59,8 +65,17 @@ void paintWithLooks(ui.Canvas canvas, Rect bounds, List<MotionDevice> looks,
 
 /// _look draws [under] -- everything to its left -- with look [d] on it.
 /// [k] turns the page's pixels into the canvas's, as it is sized.
-void _look(ui.Canvas canvas, Rect room, Rect bounds, MotionDevice d,
-    void Function(ui.Canvas on) draw, double turn, double k, Offset velocity) {
+void _look(
+    ui.Canvas canvas,
+    Rect room,
+    Rect bounds,
+    MotionDevice d,
+    void Function(ui.Canvas on) draw,
+    double turn,
+    double k,
+    Offset velocity,
+    double time,
+    double presence) {
   void under() => draw(canvas);
   // What is under it, recorded once for a look that lays it twice -- a
   // shadow, a glow, an outline, then the element over it -- so three of
@@ -198,10 +213,106 @@ void _look(ui.Canvas canvas, Rect room, Rect bounds, MotionDevice d,
                   d.value("fade").round().clamp(0, EdgeFade.values.length - 1)],
               reach: d.value("reach")),
           under);
+    case MotionDeviceKind.lens:
+      // A glass is something of its own, drawn whatever is under it: only
+      // as much of it as the element is there -- not before it arrives,
+      // nor after it has gone (a table leaves by itself, hiding its cells
+      // and leaving its glass behind).
+      if (presence <= 0.002) return under();
+      var picture = recorded();
+      lay(picture);
+      var at = lensAt(d, bounds, time);
+      var r = lensRadius(d, bounds);
+      var glass = Rect.fromCircle(center: at, radius: r);
+      // What is under the glass, bigger about the glass's middle.
+      canvas.save();
+      canvas.clipPath(Path()..addOval(glass));
+      canvas.translate(at.dx, at.dy);
+      canvas.scale(math.max(1.0, d.value("zoom")));
+      canvas.translate(-at.dx, -at.dy);
+      canvas.saveLayer(room,
+          Paint()..color = Color.fromRGBO(255, 255, 255, presence.clamp(0, 1)));
+      lay(picture);
+      canvas.restore();
+      canvas.restore();
+      picture.dispose();
+      canvas.saveLayer(room.inflate(r * 2),
+          Paint()..color = Color.fromRGBO(255, 255, 255, presence.clamp(0, 1)));
+      _paintGlass(canvas, at, r);
+      canvas.restore();
     default:
       // A pose device: nothing to how it looks.
       under();
   }
+}
+
+/// lensRadius is a Lens's glass's radius, in its element's box [bounds].
+double lensRadius(MotionDevice d, Rect bounds) =>
+    math.max(4.0, d.value("size") * bounds.shortestSide / 2);
+
+/// lensAt is where a Lens's glass is centred at [time] seconds: round its
+/// middle (Across, Down), Goes round of the way to the box's edge, so many
+/// Laps a second -- clockwise, from the right.
+Offset lensAt(MotionDevice d, Rect bounds, double time) {
+  var middle = Offset(bounds.left + bounds.width * d.value("x"),
+      bounds.top + bounds.height * d.value("y"));
+  var a = 2 * math.pi * d.value("laps") * time;
+  var orbit = d.value("orbit");
+  return middle +
+      Offset(math.cos(a) * orbit * bounds.width / 2,
+          math.sin(a) * orbit * bounds.height / 2);
+}
+
+/// _paintGlass draws a magnifying glass's rim, sheen and handle round the
+/// glass at [at], [r] across.
+void _paintGlass(ui.Canvas canvas, Offset at, double r) {
+  var rim = r * 0.11;
+  // The handle first, under the rim: out to the lower right.
+  var way = Offset(math.cos(math.pi / 4), math.sin(math.pi / 4));
+  var from = at + way * (r + rim * 0.4);
+  var to = at + way * (r * 2.0);
+  canvas.drawLine(
+      from,
+      to,
+      Paint()
+        ..strokeWidth = rim * 2.4
+        ..strokeCap = StrokeCap.round
+        ..color = const Color(0xFF1B1E23));
+  canvas.drawLine(
+      from - Offset(rim * 0.4, rim * 0.4),
+      to - Offset(rim * 0.4, rim * 0.4),
+      Paint()
+        ..strokeWidth = rim * 0.5
+        ..strokeCap = StrokeCap.round
+        ..color = const Color(0x33FFFFFF));
+  // A shadow round the glass, as it stands off the page.
+  canvas.drawCircle(
+      at + Offset(rim, rim),
+      r + rim,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = rim * 1.5
+        ..color = const Color(0x66000000)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, rim));
+  // The rim: dark metal, lit along its top.
+  canvas.drawCircle(
+      at,
+      r,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = rim
+        ..shader = ui.Gradient.linear(
+            at - Offset(0, r),
+            at + Offset(0, r),
+            const [Color(0xFFD4D8DE), Color(0xFF6B717A), Color(0xFF2A2E34)],
+            const [0, 0.45, 1]));
+  // The sheen on the glass, upper left.
+  canvas.drawCircle(
+      at,
+      r - rim / 2,
+      Paint()
+        ..shader = ui.Gradient.radial(at + Offset(-r * 0.35, -r * 0.4), r * 0.9,
+            const [Color(0x33FFFFFF), Color(0x00FFFFFF)], const [0, 1]));
 }
 
 /// wearTexture is what a Wear device takes out of its element: one of the

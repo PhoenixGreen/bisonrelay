@@ -1162,7 +1162,13 @@ void paintElement(
     paintWithLooks(canvas, bounds, looks, drawnOn,
         turn: element.rotation + pose.rotate,
         scale: pose.scale,
-        velocity: velocity);
+        velocity: velocity,
+        time: time,
+        // How much of it is there: arrived, and not yet gone.
+        presence: ((pose.values[KeyframeChannel.reveal] ?? 1) *
+                (1 - (pose.values[KeyframeChannel.close] ?? 0)))
+            .clamp(0.0, 1.0)
+            .toDouble());
   }
 
   if (layered) canvas.restore();
