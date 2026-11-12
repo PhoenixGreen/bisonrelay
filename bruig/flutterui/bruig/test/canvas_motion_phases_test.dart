@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
@@ -245,8 +247,31 @@ void main() {
       const CounterElement(base),
       ChartElement(base),
       const TableElement(base),
+      // Every other kind, as it is first added -- all but the camera, whose
+      // view is read where the stage is filmed.
+      for (var kind in ElementKind.values)
+        if (!const {
+          ElementKind.text,
+          ElementKind.shape,
+          ElementKind.line,
+          ElementKind.path,
+          ElementKind.button,
+          ElementKind.counter,
+          ElementKind.chart,
+          ElementKind.table,
+          ElementKind.camera,
+          ElementKind.stage,
+          ElementKind.parallax,
+        }.contains(kind))
+          newElement(kind, const CanvasDocument()),
+      // A stage and scenery are added as a background carrying them.
+      newElement(ElementKind.stage, const CanvasDocument()),
+      newElement(ElementKind.parallax, const CanvasDocument()),
     ]) {
-      test("${e.kind.label}: offered, read and written", () {
+      test(
+          "${e.kind.label}"
+          "${e is BackgroundElement ? " (${e.backdrop.name})" : ""}: "
+          "offered, read and written", () {
         var table = designTable(e);
         expect(table, isNotEmpty);
         var offered = [for (var (_, ids) in designChoices(e)) ...ids];

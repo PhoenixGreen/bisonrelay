@@ -2,6 +2,20 @@ import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart' show DeviceParam;
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
@@ -67,6 +81,53 @@ const designParams = [
   DeviceParam("pointColour", "Point colour", 0, 4294967295, 4294967295, "argb"),
   DeviceParam("headerFill", "Header fill", 0, 4294967295, 0, "argb"),
   DeviceParam("cellFill", "Cell fill", 0, 4294967295, 0, "argb"),
+  // Pictures, video and drawings.
+  DeviceParam("tint", "Tint", 0, 4294967295, 0, "argb"),
+  DeviceParam("saturation", "Saturation", 0, 3, 1, "×"),
+  DeviceParam("brightness", "Brightness", 0, 3, 1, "×"),
+  DeviceParam("overlay", "Overlay", 0, 4294967295, 0, "argb"),
+  DeviceParam("outline", "Outline", 0, 100, 0, "px"),
+  DeviceParam(
+      "outlineColour", "Outline colour", 0, 4294967295, 4294967295, "argb"),
+  // Sound and music.
+  DeviceParam("iconColour", "Icon colour", 0, 4294967295, 4294967295, "argb"),
+  DeviceParam("accent", "Accent", 0, 4294967295, 4294967295, "argb"),
+  DeviceParam("paper", "Paper", 0, 4294967295, 4294967295, "argb"),
+  DeviceParam("ink", "Ink", 0, 4294967295, 4278190080, "argb"),
+  // A team.
+  DeviceParam("playerColour", "Players", 0, 4294967295, 4294967295, "argb"),
+  DeviceParam("keeperColour", "Keeper", 0, 4294967295, 4294967295, "argb"),
+  DeviceParam(
+      "secondColour", "Second colour", 0, 4294967295, 4294967295, "argb"),
+  DeviceParam("dotWidth", "Token width", 2, 400, 40, "px"),
+  DeviceParam("dotHeight", "Token height", 2, 400, 40, "px"),
+  DeviceParam("ring", "Ring", 0, 60, 2, "px"),
+  DeviceParam("nameGap", "Name gap", -100, 200, 4, "px"),
+  DeviceParam("labelTurn", "Label turn", -180, 180, 0, "°"),
+  // 3D.
+  DeviceParam("zoom", "Zoom", 0.1, 10, 1, "×"),
+  DeviceParam("spin", "Spin", -1440, 1440, 0, "°"),
+  DeviceParam("tilt", "Tilt", -89, 89, 0, "°"),
+  // A background: its pattern, and the stage or scenery it carries.
+  DeviceParam("backColour", "Background", 0, 4294967295, 4278190080, "argb"),
+  DeviceParam("foreColour", "Foreground", 0, 4294967295, 4294967295, "argb"),
+  DeviceParam("density", "Density", 0, 1, 0.5),
+  DeviceParam("patternScale", "Scale", 0.001, 1, 0.05),
+  DeviceParam("intensity", "Intensity", 0, 2, 0.8),
+  DeviceParam("variation", "Variation", 0, 1, 0.5),
+  DeviceParam("rotation", "Rotation", -360, 360, 0, "°"),
+  DeviceParam("speed", "Speed", 0, 10, 1, "×"),
+  DeviceParam("floor", "Floor", 0, 4294967295, 4294967295, "argb"),
+  DeviceParam("wallColour", "Wall", 0, 4294967295, 4294967295, "argb"),
+  DeviceParam("sky", "Sky", 0, 4294967295, 4294967295, "argb"),
+  DeviceParam("stageSize", "Floor size", 1, 50, 10, "m"),
+  DeviceParam("viewX", "View across", -10000, 10000, 0, "px"),
+  DeviceParam("viewY", "View down", -10000, 10000, 0, "px"),
+  DeviceParam("viewZoom", "View zoom", 0.1, 10, 1, "×"),
+  // Sprites and tile maps.
+  DeviceParam("cell", "Tile size", 2, 512, 32, "px"),
+  DeviceParam("light", "Light", 0, 4294967295, 0, "argb"),
+  DeviceParam("lightTo", "Light to", 0, 4294967295, 0, "argb"),
 ];
 
 /// designPlace are Design's settings kept on the device: moves from where
@@ -134,8 +195,47 @@ List<DesignSetting> _box(
           (e, v) => put(e, of(e).copyWith(padding: v))),
     ];
 
+/// _orNone is a colour that may be left off -- a drawing's tint, a tile
+/// map's light -- as Design reads it: clear where there is none, so keying
+/// it starts from nothing.
+double _orNone(Color? c) => c == null ? 0 : _argb(c);
+
+/// _picture is a picture's own look Design animates, read from and written
+/// to the ImageElement [of] gives and [put] lays back: a photograph's, or
+/// the one a video is drawn with.
+List<DesignSetting> _picture(
+  ImageElement Function(CanvasElement e) of,
+  CanvasElement Function(CanvasElement e, ImageElement i) put,
+) =>
+    [
+      DesignSetting("tint", "Colour", (e) => _argb(of(e).tint),
+          (e, v) => put(e, of(e).copyWith(tint: _colour(v)))),
+      DesignSetting("saturation", "Colour", (e) => of(e).saturation,
+          (e, v) => put(e, of(e).copyWith(saturation: v))),
+      DesignSetting("brightness", "Colour", (e) => of(e).brightness,
+          (e, v) => put(e, of(e).copyWith(brightness: v))),
+      DesignSetting("overlay", "Colour", (e) => _argb(of(e).overlay),
+          (e, v) => put(e, of(e).copyWith(overlay: _colour(v)))),
+      DesignSetting(
+          "outline",
+          "Outline",
+          (e) => of(e).outline.width,
+          (e, v) => put(
+              e, of(e).copyWith(outline: of(e).outline.copyWith(width: v)))),
+      DesignSetting(
+          "outlineColour",
+          "Outline",
+          (e) => _argb(of(e).outline.color),
+          (e, v) => put(
+              e,
+              of(e).copyWith(
+                  outline: of(e).outline.copyWith(color: _colour(v))))),
+      ..._box((e) => of(e).box, (e, b) => put(e, of(e).copyWith(box: b))),
+    ];
+
 /// designTable is [e]'s own settings Design animates, grouped as its
-/// settings panel groups them: none for a kind not yet given its list.
+/// settings panel groups them. A camera has its place only: its view is
+/// read where the stage is filmed, not where elements are drawn.
 List<DesignSetting> designTable(CanvasElement e) => switch (e) {
       TextElement _ => [
           ..._type("Letters", (e) => (e as TextElement).textSpec,
@@ -296,8 +396,212 @@ List<DesignSetting> designTable(CanvasElement e) => switch (e) {
               (e, t) => (e as TableElement).copyWith(cellSpec: t),
               size: "wordsSize", colour: "wordsColour", letters: false),
         ],
+      ImageElement _ => _picture((e) => e as ImageElement, (e, i) => i),
+      VideoElement _ => _picture((e) => (e as VideoElement).picture,
+          (e, i) => (e as VideoElement).copyWith(look: i)),
+      VectorElement _ => [
+          DesignSetting(
+              "tint",
+              "Colour",
+              (e) => _orNone((e as VectorElement).tint),
+              (e, v) => v == 0
+                  ? (e as VectorElement).copyWith(clearTint: true)
+                  : (e as VectorElement).copyWith(tint: _colour(v))),
+        ],
+      AudioElement _ => [
+          DesignSetting(
+              "iconColour",
+              "Icon",
+              (e) => _argb((e as AudioElement).iconColor),
+              (e, v) => (e as AudioElement).copyWith(iconColor: _colour(v))),
+          DesignSetting(
+              "accent",
+              "Icon",
+              (e) => _argb((e as AudioElement).accent),
+              (e, v) => (e as AudioElement).copyWith(accent: _colour(v))),
+          ..._box((e) => (e as AudioElement).box,
+              (e, b) => (e as AudioElement).copyWith(box: b)),
+        ],
+      SheetElement _ => [
+          DesignSetting(
+              "paper",
+              "Sheet",
+              (e) => _argb((e as SheetElement).paper),
+              (e, v) => (e as SheetElement).copyWith(paper: _colour(v))),
+          DesignSetting("ink", "Sheet", (e) => _argb((e as SheetElement).ink),
+              (e, v) => (e as SheetElement).copyWith(ink: _colour(v))),
+        ],
+      TeamElement _ => [
+          for (var (id, read, write) in <(
+            String,
+            Color Function(TeamElement),
+            TeamElement Function(TeamElement, Color)
+          )>[
+            (
+              "playerColour",
+              (t) => t.playerColor,
+              (t, c) => t.copyWith(playerColor: c)
+            ),
+            (
+              "secondColour",
+              (t) => t.secondaryColor,
+              (t, c) => t.copyWith(secondaryColor: c)
+            ),
+            (
+              "keeperColour",
+              (t) => t.keeperColor,
+              (t, c) => t.copyWith(keeperColor: c)
+            ),
+            (
+              "outlineColour",
+              (t) => t.outlineColor,
+              (t, c) => t.copyWith(outlineColor: c)
+            ),
+          ])
+            DesignSetting(id, "Kit", (e) => _argb(read(e as TeamElement)),
+                (e, v) => write(e as TeamElement, _colour(v))),
+          for (var (id, read, write) in <(
+            String,
+            double Function(TeamElement),
+            TeamElement Function(TeamElement, double)
+          )>[
+            ("dotWidth", (t) => t.dotWidth, (t, v) => t.copyWith(dotWidth: v)),
+            (
+              "dotHeight",
+              (t) => t.dotHeight,
+              (t, v) => t.copyWith(dotHeight: v)
+            ),
+            ("ring", (t) => t.ringWidth, (t, v) => t.copyWith(ringWidth: v)),
+          ])
+            DesignSetting(id, "Tokens", (e) => read(e as TeamElement),
+                (e, v) => write(e as TeamElement, v)),
+          DesignSetting("nameGap", "Names", (e) => (e as TeamElement).nameGap,
+              (e, v) => (e as TeamElement).copyWith(nameGap: v)),
+          DesignSetting(
+              "labelTurn",
+              "Names",
+              (e) => (e as TeamElement).labelRotation,
+              (e, v) => (e as TeamElement).copyWith(labelRotation: v)),
+          ..._type("Names", (e) => (e as TeamElement).labelSpec,
+              (e, t) => (e as TeamElement).copyWith(labelSpec: t),
+              size: "wordsSize", colour: "wordsColour", letters: false),
+        ],
+      Character3dElement _ => [
+          DesignSetting("zoom", "View", (e) => (e as Character3dElement).zoom,
+              (e, v) => (e as Character3dElement).copyWith(zoom: v)),
+        ],
+      Object3dElement _ => [
+          DesignSetting("spin", "Seen", (e) => (e as Object3dElement).turn,
+              (e, v) => (e as Object3dElement).copyWith(turn: v)),
+          DesignSetting("tilt", "Seen", (e) => (e as Object3dElement).tilt,
+              (e, v) => (e as Object3dElement).copyWith(tilt: v)),
+          DesignSetting("zoom", "Seen", (e) => (e as Object3dElement).zoom,
+              (e, v) => (e as Object3dElement).copyWith(zoom: v)),
+        ],
+      SpriteElement _ => [
+          DesignSetting(
+              "tint",
+              "Colour",
+              (e) => _orNone((e as SpriteElement).tint),
+              (e, v) => v == 0
+                  ? (e as SpriteElement).copyWith(noTint: true)
+                  : (e as SpriteElement).copyWith(tint: _colour(v))),
+        ],
+      TileMapElement _ => [
+          DesignSetting("cell", "Tiles", (e) => (e as TileMapElement).cell,
+              (e, v) => (e as TileMapElement).copyWith(cell: v)),
+          DesignSetting(
+              "light",
+              "Light",
+              (e) => _orNone((e as TileMapElement).light),
+              (e, v) => v == 0
+                  ? (e as TileMapElement).copyWith(noLight: true)
+                  : (e as TileMapElement).copyWith(light: _colour(v))),
+          DesignSetting(
+              "lightTo",
+              "Light",
+              (e) => _orNone((e as TileMapElement).lightTo),
+              (e, v) => v == 0
+                  ? (e as TileMapElement).copyWith(noLightTo: true)
+                  : (e as TileMapElement).copyWith(lightTo: _colour(v))),
+        ],
+      BackgroundElement b => [
+          DesignSetting(
+              "corners",
+              "Panel",
+              (e) => (e as BackgroundElement).cornerRadius,
+              (e, v) => (e as BackgroundElement).copyWith(cornerRadius: v)),
+          ..._pattern(),
+          if (b.stage != null) ..._stage(),
+          if (b.parallax != null) ..._scenery(),
+        ],
       _ => const [],
     };
+
+/// _pattern is a background's pattern Design animates: its colours and its
+/// numbers, as the Pattern section has them.
+List<DesignSetting> _pattern() {
+  ProceduralSpec of(CanvasElement e) => (e as BackgroundElement).spec;
+  CanvasElement put(CanvasElement e, ProceduralSpec s) =>
+      (e as BackgroundElement).copyWith(spec: s);
+  return [
+    DesignSetting("backColour", "Pattern", (e) => _argb(of(e).background),
+        (e, v) => put(e, of(e).copyWith(background: _colour(v)))),
+    DesignSetting("foreColour", "Pattern", (e) => _argb(of(e).foreground),
+        (e, v) => put(e, of(e).copyWith(foreground: _colour(v)))),
+    DesignSetting("accent", "Pattern", (e) => _argb(of(e).accent),
+        (e, v) => put(e, of(e).copyWith(accent: _colour(v)))),
+    DesignSetting("density", "Pattern", (e) => of(e).density,
+        (e, v) => put(e, of(e).copyWith(density: v))),
+    DesignSetting("patternScale", "Pattern", (e) => of(e).scale,
+        (e, v) => put(e, of(e).copyWith(scale: v))),
+    DesignSetting("intensity", "Pattern", (e) => of(e).intensity,
+        (e, v) => put(e, of(e).copyWith(intensity: v))),
+    DesignSetting("variation", "Pattern", (e) => of(e).variation,
+        (e, v) => put(e, of(e).copyWith(variation: v))),
+    DesignSetting("rotation", "Pattern", (e) => of(e).rotation,
+        (e, v) => put(e, of(e).copyWith(rotation: v))),
+    DesignSetting("speed", "Pattern", (e) => of(e).speed,
+        (e, v) => put(e, of(e).copyWith(speed: v))),
+  ];
+}
+
+/// _stage is the 3D stage a background carries, as Design animates it.
+List<DesignSetting> _stage() {
+  StageElement of(CanvasElement e) => (e as BackgroundElement).stage!;
+  CanvasElement put(CanvasElement e, StageElement s) =>
+      (e as BackgroundElement).copyWith(stage: s);
+  return [
+    DesignSetting("floor", "Stage", (e) => _argb(of(e).floor),
+        (e, v) => put(e, of(e).copyWith(floor: _colour(v)))),
+    DesignSetting("wallColour", "Stage", (e) => _argb(of(e).wallColor),
+        (e, v) => put(e, of(e).copyWith(wallColor: _colour(v)))),
+    DesignSetting("sky", "Stage", (e) => _argb(of(e).sky),
+        (e, v) => put(e, of(e).copyWith(sky: _colour(v)))),
+    DesignSetting("stageSize", "Stage", (e) => of(e).size,
+        (e, v) => put(e, of(e).copyWith(size: v))),
+  ];
+}
+
+/// _scenery is the parallax scenery a background carries: where its view
+/// looks, as Design animates it.
+List<DesignSetting> _scenery() {
+  ParallaxElement of(CanvasElement e) => (e as BackgroundElement).parallax!;
+  CanvasElement put(CanvasElement e, ParallaxElement p) =>
+      (e as BackgroundElement).copyWith(parallax: p);
+  return [
+    DesignSetting("viewX", "Scenery", (e) => of(e).camera.x,
+        (e, v) => put(e, of(e).copyWith(camera: of(e).camera.copyWith(x: v)))),
+    DesignSetting("viewY", "Scenery", (e) => of(e).camera.y,
+        (e, v) => put(e, of(e).copyWith(camera: of(e).camera.copyWith(y: v)))),
+    DesignSetting(
+        "viewZoom",
+        "Scenery",
+        (e) => of(e).camera.zoom,
+        (e, v) =>
+            put(e, of(e).copyWith(camera: of(e).camera.copyWith(zoom: v)))),
+  ];
+}
 
 DesignSetting? _settingOf(CanvasElement e, String id) =>
     designTable(e).where((s) => s.id == id).firstOrNull;
