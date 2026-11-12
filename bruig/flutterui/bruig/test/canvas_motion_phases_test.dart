@@ -5,6 +5,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/design_device.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
@@ -223,6 +228,48 @@ void main() {
     test("a colour's key reads as its hex", () {
       expect(
           design.kind.param("fill").reading(0xFF00FF00.toDouble()), "#00FF00");
+    });
+  });
+
+  // Ken, 2026-11-12: "+ Setting" offers each element's whole list.
+  group("every element's own settings", () {
+    const base = ElementBase(id: "e", width: 200, height: 100);
+    for (var e in <CanvasElement>[
+      const TextElement(base),
+      ShapeElement(base),
+      const LineElement(base),
+      const PathElement(base),
+      const ButtonElement(base),
+      const CounterElement(base),
+    ]) {
+      test("${e.kind.label}: offered, read and written", () {
+        var table = designTable(e);
+        expect(table, isNotEmpty);
+        var offered = [for (var (_, ids) in designChoices(e)) ...ids];
+        for (var s in table) {
+          expect(offered, contains(s.id));
+          var p = MotionDeviceKind.design.param(s.id);
+          // A value of its range other than where it rests.
+          var v = p.unit == "argb"
+              ? 0xFF336699.toDouble()
+              : (p.min + (p.max - p.min) * 0.37).roundToDouble();
+          var next = designWritten(e, s.id, v);
+          expect(
+              s.read(next),
+              closeTo(p.unit == "#" ? v.roundToDouble() : v,
+                  p.id == "weight" ? 50 : 1e-6),
+              reason: "${s.id} written and read back");
+        }
+      });
+    }
+
+    test("keyed, a shape's fill is drawn as its keys have it", () {
+      var red = 0xFFFF0000.toDouble(), blue = 0xFF0000FF.toDouble();
+      var d = const MotionDevice(MotionDeviceKind.design, id: "d0")
+          .withKey("fill", 0, red)
+          .withKey("fill", 2, blue);
+      var now = designed(ShapeElement(base), d, 1) as ShapeElement;
+      expect((now.fill.r * 255).round(), closeTo(128, 1));
     });
   });
 }
