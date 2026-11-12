@@ -53,7 +53,7 @@ import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey;
+import 'package:flutter/services.dart' show HardwareKeyboard, KeyDownEvent, LogicalKeyboardKey;
 
 part 'mixer_sound_devices.dart';
 part 'mixer_midi_devices.dart';

@@ -118,6 +118,131 @@ void main() {
     });
   });
 
+  // Ken, 2026-11-12, the Chain's motion side: "How far" typed 100% came
+  // back 300%; its arrows and scrub jumped too far to fine-tune; the box
+  // dragged up and down under an up-and-down cursor, arrows and all.
+  group("a boxed value, as the motion side has them", () {
+    test("a percent typed into a share over 200% is a percent", () {
+      expect(typedValue("100", "150%", 0.25, 3, value: 1.5), 1.0);
+      expect(typedValue("100%", "150%", 0.25, 3, value: 1.5), 1.0);
+      expect(typedValue("40", "50%", 0, 100, value: 50), 40,
+          reason: "a knob in percent units already");
+      expect(typedValue("40", "50%", 0, 1), closeTo(0.4, 1e-9),
+          reason: "no value given: as before");
+    });
+
+    test("its least step is what its reading shows", () {
+      expect(shownStep("106%", 1.06), closeTo(0.01, 1e-12));
+      expect(shownStep("1.25×", 1.25), closeTo(0.01, 1e-12));
+      expect(shownStep("12 px", 12), closeTo(1, 1e-12));
+      expect(shownStep("1.20 kHz", 1200), closeTo(10, 1e-9));
+      expect(shownStep("−6.0 dB", 0.5), isNull, reason: "not a power of ten");
+    });
+
+    Future<double Function()> howFar(WidgetTester tester) async {
+      var value = 1.0;
+      tester.view.physicalSize = const Size(400, 200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: ChainPanelStyle(
+            child: Center(
+              child: SizedBox(
+                width: 140,
+                child: StatefulBuilder(
+                  builder: (context, set) => DeviceKnob(
+                    label: "How far",
+                    text: "${(value * 100).round()}%",
+                    value: value,
+                    initial: 1,
+                    min: 0.25,
+                    max: 3,
+                    accent: Colors.teal,
+                    ink: Colors.white,
+                    onChanged: (v, {transient = false}) => set(() => value = v),
+                    onCommit: () {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ));
+      return () => value;
+    }
+
+    MouseCursor cursorOf(WidgetTester tester, String key) => tester
+        .widget<MouseRegion>(find
+            .ancestor(
+                of: find.byKey(ValueKey(key)),
+                matching: find.byType(MouseRegion))
+            .first)
+        .cursor;
+
+    testWidgets("typed 100 and Enter: 100%", (tester) async {
+      var now = await howFar(tester);
+      var v = find.byKey(const ValueKey("knobValue-How far"));
+      await tester.tap(v);
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.tap(v);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.enterText(
+          find.byKey(const ValueKey("knobTyped-How far")), "250");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect(now(), 2.5);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(v);
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.tap(v);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.enterText(
+          find.byKey(const ValueKey("knobTyped-How far")), "100");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect(now(), 1.0);
+      expect(find.text("100%"), findsOneWidget);
+    });
+
+    testWidgets("its arrows click a percent at a time, under a hand",
+        (tester) async {
+      var now = await howFar(tester);
+      expect(cursorOf(tester, "knobMore-How far"), SystemMouseCursors.click);
+      expect(cursorOf(tester, "knobLess-How far"), SystemMouseCursors.click);
+      await tester.tap(find.byKey(const ValueKey("knobMore-How far")));
+      await tester.pump();
+      expect(now(), closeTo(1.01, 1e-9));
+      await tester.tap(find.byKey(const ValueKey("knobLess-How far")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("knobLess-How far")));
+      await tester.pump();
+      expect(now(), closeTo(0.99, 1e-9));
+    });
+
+    testWidgets("its value scrubs left and right, finely; not up and down",
+        (tester) async {
+      var now = await howFar(tester);
+      var v = find.byKey(const ValueKey("knobValue-How far"));
+      expect(cursorOf(tester, "knobValue-How far"),
+          SystemMouseCursors.resizeLeftRight);
+      await tester.drag(v, const Offset(0, -60), kind: PointerDeviceKind.mouse);
+      await tester.pump();
+      expect(now(), 1.0, reason: "up and down does nothing now");
+      await tester.drag(v, const Offset(40, 0), kind: PointerDeviceKind.mouse);
+      await tester.pump();
+      // Its whole travel, 275 points, across 400 px: 40 px is about 27.
+      expect(now(), inInclusiveRange(1.2, 1.3));
+      expect((now() * 100 - (now() * 100).round()).abs(), lessThan(1e-6),
+          reason: "on a whole percent");
+      await tester.drag(v, const Offset(-4, 0), kind: PointerDeviceKind.mouse);
+      await tester.pump();
+      expect(now(), inInclusiveRange(1.17, 1.3),
+          reason: "a few pixels, a few percent");
+      await tester.pump(const Duration(milliseconds: 500));
+    });
+  });
+
   // Ken: scrolling through the chain with two fingers changed settings.
   testWidgets("a trackpad's scroll over a knob scrolls; a drag turns it",
       (tester) async {

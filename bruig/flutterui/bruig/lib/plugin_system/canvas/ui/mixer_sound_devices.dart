@@ -1242,7 +1242,7 @@ class _KnobState extends State<_Knob> {
   }
 
   void _commit() {
-    var v = typedValue(_typed.text, text, range.min, range.max);
+    var v = typedValue(_typed.text, text, range.min, range.max, value: value);
     setState(() => _typing = false);
     if (v != null) onChanged(v);
   }
@@ -1262,21 +1262,31 @@ class _KnobState extends State<_Knob> {
   /// knob is, double-clicked to type.
   Widget _panelKnob(MixerLook look) {
     var s = look.studio;
+    // Ken, 2026-11-12: its arrows and its scrub "jump too far ... hard for
+    // fine tuning". An arrow moves it by the least its reading shows -- 1%
+    // of a share in percent -- or a hundredth of its travel; shift, a tenth
+    // of that.
+    var fine = _fineStep;
     void step(int dir) {
-      var by = widget.step;
-      var next = by != null
-          ? (value + dir * by).clamp(range.min, range.max).toDouble()
-          : range.fromUnit(range.toUnit(value) + dir * 0.02);
-      onChanged(next, transient: true);
+      var by = (HardwareKeyboard.instance.isShiftPressed ? 0.1 : 1.0) *
+          (widget.step ?? fine ?? 0);
+      var next = widget.step != null || fine != null
+          ? _snapped(value + dir * by, by)
+          : range.fromUnit(range.toUnit(value) +
+              dir * (HardwareKeyboard.instance.isShiftPressed ? 0.001 : 0.01));
+      onChanged(next.clamp(range.min, range.max).toDouble(), transient: true);
       onCommit();
     }
 
-    Widget arrow(IconData icon, int dir, String name) => GestureDetector(
-          key: ValueKey("knob$name-$label"),
-          behavior: HitTestBehavior.opaque,
-          onTap: () => step(dir),
-          child: SizedBox(
-              width: 24, child: Icon(icon, size: 15, color: s.muted)),
+    Widget arrow(IconData icon, int dir, String name) => MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            key: ValueKey("knob$name-$label"),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => step(dir),
+            child: SizedBox(
+                width: 24, child: Icon(icon, size: 15, color: s.muted)),
+          ),
         );
     Widget dot(String key, Color colour) => Padding(
           padding: const EdgeInsets.only(left: 4),
@@ -1302,19 +1312,31 @@ class _KnobState extends State<_Knob> {
                 isDense: true, border: InputBorder.none),
             onSubmitted: (_) => _commit(),
           )
-        : GestureDetector(
-            key: ValueKey("knobValue-$label"),
-            behavior: HitTestBehavior.opaque,
-            onDoubleTap: _type,
-            child: Center(
-              child: Text(text,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                      color: s.text)),
+        // Its value: scrubbed left and right (Ken, 2026-11-12: the box
+        // reads across, so it drags across), double-clicked to type.
+        : MouseRegion(
+            cursor: SystemMouseCursors.resizeLeftRight,
+            child: GestureDetector(
+              key: ValueKey("knobValue-$label"),
+              behavior: HitTestBehavior.opaque,
+              supportedDevices: dragPointers,
+              // From where it was pressed: none of the scrub lost to the
+              // few pixels it takes to tell a drag.
+              dragStartBehavior: DragStartBehavior.down,
+              onDoubleTap: _type,
+              onHorizontalDragStart: (_) => _scrubAt = range.toUnit(value),
+              onHorizontalDragUpdate: (d) => _scrub(d.delta.dx),
+              onHorizontalDragEnd: (_) => onCommit(),
+              child: Center(
+                child: Text(text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                        color: s.text)),
+              ),
             ),
           );
     var edge = modulated
@@ -1326,7 +1348,12 @@ class _KnobState extends State<_Knob> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(
+          // Its name, double-clicked: back to where it starts.
+          GestureDetector(
+            key: ValueKey("knobName-$label"),
+            behavior: HitTestBehavior.opaque,
+            onDoubleTap: () => onChanged(initial),
+            child: SizedBox(
             height: 18,
             child: Row(children: [
               Flexible(
@@ -1341,6 +1368,7 @@ class _KnobState extends State<_Knob> {
                 dot("knobAutomated",
                     held ? const Color(0xFF7D838D) : automationColour),
             ]),
+          ),
           ),
           const SizedBox(height: 4),
           Container(
@@ -1359,20 +1387,42 @@ class _KnobState extends State<_Knob> {
             ]),
           ),
         ]);
+    // Not dragged up and down as a whole, as the round knob is: its parts
+    // say what they do -- the arrows click, the value scrubs across.
     return LayoutBuilder(
       builder: (context, box) => SizedBox(
         width: box.maxWidth.isFinite ? null : 104,
-        child: _Dragged(
-          value: value,
-          initial: initial,
-          range: range,
-          onChanged: onChanged,
-          onCommit: onCommit,
-          menu: menu,
-          child: body,
-        ),
+        child: menu.isEmpty ? body : _KnobMenu(menu: menu, child: body),
       ),
     );
+  }
+
+  /// _fineStep is the least change the reading shows, where that is a fair
+  /// step: not finer than a thousandth of its travel. Null for a log knob
+  /// (hertz, seconds), which steps by its travel instead.
+  double? get _fineStep {
+    if (range.log) return null;
+    var by = shownStep(text, value);
+    var travel = (range.max - range.min).abs();
+    if (by == null || by < travel / 1000) return travel / 100;
+    return by;
+  }
+
+  double _snapped(double v, double by) =>
+      by <= 0 ? v : (v / by).roundToDouble() * by;
+
+  /// _scrubAt is where a scrub has the knob, in its travel, unsnapped.
+  double _scrubAt = 0;
+
+  /// _scrub moves it [dx] px: its whole travel across 400 px, shift four
+  /// times finer, snapped to the least its reading shows.
+  void _scrub(double dx) {
+    var shift = HardwareKeyboard.instance.isShiftPressed;
+    _scrubAt = (_scrubAt + dx / (shift ? 1600 : 400)).clamp(0.0, 1.0);
+    var v = range.fromUnit(_scrubAt);
+    var by = widget.step ?? _fineStep;
+    if (by != null) v = _snapped(v, shift ? by / 10 : by);
+    onChanged(v.clamp(range.min, range.max).toDouble(), transient: true);
   }
 
   @override
@@ -1589,7 +1639,8 @@ class DeviceKnob extends StatelessWidget {
 /// typedValue is what was [typed] for a knob that reads [shown], in its own
 /// terms -- "50" a half where it reads in percent, "1.2k" or "1200" hertz
 /// -- held to [min] and [max]; null where nothing like a number was typed.
-double? typedValue(String typed, String shown, double min, double max) {
+double? typedValue(String typed, String shown, double min, double max,
+    {double? value}) {
   var t = typed.trim().replaceAll("\u2212", "-").replaceAll(",", ".");
   var m = RegExp(r"-?\d*\.?\d+").firstMatch(t);
   if (m == null) return null;
@@ -1598,12 +1649,49 @@ double? typedValue(String typed, String shown, double min, double max) {
   var rest = t.substring(m.end).trim().toLowerCase();
   // In thousands: "k", or kilohertz.
   if (rest.startsWith("k")) v *= 1000;
-  // A share the knob shows in percent: as a percent unless typed as one.
-  var percent = shown.trim().endsWith("%");
-  if (percent && max <= 2.0001) v /= 100;
+  // A share the knob shows in percent -- 1 shown as "100%" -- takes a
+  // number typed as a percent. Told by what it shows against its value,
+  // where it can be: "How far" goes to 300%, past the old test of a most of
+  // 2, so 100 typed was read as 100 times and held to 300% (Ken,
+  // 2026-11-12). A knob already in percent units ("50%" for 50) is not.
+  if (shown.trim().endsWith("%")) {
+    var n = _shownNumber(shown);
+    var ratio = value != null && n != null && n != 0 && value.abs() > 1e-9
+        ? n / value
+        : null;
+    var share = ratio != null ? ratio > 50 && ratio < 200 : max <= 2.0001;
+    if (share) v /= 100;
+  }
   // Shown in kilohertz, a small number typed is in kilohertz too.
   if (!rest.startsWith("k") && shown.contains("kHz") && v < min) v *= 1000;
   return v.clamp(math.min(min, max), math.max(min, max)).toDouble();
+}
+
+/// _shownNumber is the number a knob's reading shows, or null.
+double? _shownNumber(String shown) {
+  var m = RegExp(r"-?\d*\.?\d+")
+      .firstMatch(shown.replaceAll("\u2212", "-").replaceAll(",", "."));
+  return m == null ? null : double.tryParse(m.group(0)!);
+}
+
+/// shownStep is the least change a knob's reading [shown] can show, in
+/// the value's own terms -- 1% of a share shown in percent is 0.01, "1.25×"
+/// a hundredth -- where the reading is the value times a power of ten;
+/// null where it is not (decibels from a gain, say) or cannot be told.
+double? shownStep(String shown, double value) {
+  var m = RegExp(r"-?\d*\.?\d+")
+      .firstMatch(shown.replaceAll("\u2212", "-").replaceAll(",", "."));
+  if (m == null) return null;
+  var digits = m.group(0)!;
+  var n = double.tryParse(digits);
+  if (n == null || n == 0 || value.abs() < 1e-9) return null;
+  var scale = (n / value).abs();
+  var tens = math.log(scale) / math.ln10;
+  // Rounded readings stray from the exact power: within a tenth of one.
+  if ((tens - tens.round()).abs() > 0.05) return null;
+  var dot = digits.indexOf(".");
+  var decimals = dot < 0 ? 0 : digits.length - dot - 1;
+  return math.pow(10, -decimals) / math.pow(10, tens.round());
 }
 
 /// _sweep is a knob's travel, from seven o'clock round to five.
