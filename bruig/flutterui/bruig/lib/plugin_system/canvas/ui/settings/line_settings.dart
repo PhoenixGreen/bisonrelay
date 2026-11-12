@@ -5,12 +5,98 @@ import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
-// line_settings.dart is a line's settings.
+// line_settings.dart is a line's settings: the Text panel's shape (see
+// element_panel.dart) -- a quick strip of its colour, width, end and dash;
+// Look (its stroke, its ends and dashes, its looks) and Layout (its length
+// and angle, beside where it is).
 
-List<Widget> lineSettings(
+/// linePanel is [e]'s panel.
+Widget linePanel(
+    BuildContext context,
+    CanvasController controller,
+    LineElement e,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
+  void now(LineElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  return elementPanel(context, controller, e, write, begin, commit,
+      quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+        panelRow([
+          cell(
+              CanvasColorButton(
+                key: const ValueKey("quickLineColour"),
+                label: "Colour",
+                color: e.color,
+                gradient: e.fade,
+                onChanged: (c) => now(e.copyWith(color: c)),
+                onGradientChanged: (g) => now(
+                    g == null ? e.copyWith(flat: true) : e.copyWith(fade: g)),
+              ),
+              width: 104),
+          cell(
+              CanvasStepper(
+                key: const ValueKey("quickLineWidth"),
+                label: "Width",
+                value: e.strokeWidth,
+                min: 0.2,
+                max: 200,
+                decimals: 1,
+                step: 1,
+                suffix: " px",
+                fill: true,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(strokeWidth: v));
+                },
+                onCommit: commit,
+              ),
+              width: 132),
+        ]),
+        const SizedBox(height: 8),
+        panelRow([
+          cell(
+              CanvasDropdown<LineEnd>(
+                key: const ValueKey("quickLineEnd"),
+                label: "End",
+                value: e.endEnd,
+                options: [for (var c in LineEnd.values) (c, c.label)],
+                onChanged: (v) => now(e.copyWith(endEnd: v)),
+              ),
+              flex: 3,
+              min: 110),
+          cell(
+              CanvasStepper(
+                key: const ValueKey("quickLineDash"),
+                label: "Dash",
+                value: e.dash,
+                min: 0,
+                max: 400,
+                step: 1,
+                fill: true,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(dash: v));
+                },
+                onCommit: commit,
+              ),
+              width: 132),
+        ]),
+      ]),
+      bits: lineBits(context, controller, e, write, begin, commit));
+}
+
+/// lineBits are what of [e] goes in which of its panel's sections.
+List<PanelBit> lineBits(
     BuildContext context,
     CanvasController controller,
     LineElement e,
@@ -28,12 +114,8 @@ List<Widget> lineSettings(
     if (e.endEnd != LineEnd.none) e.endEnd.label,
   ];
   return [
-    section(e, "line",
-        icon: Icons.timeline,
-        title: "Line",
-        summary: "${shortNumber(e.strokeWidth)} wide · ${e.length.round()} long"
-            "${e.angle.round() != 0 ? " · ${e.angle.round()}°" : ""}",
-        initiallyOpen: true,
+    PanelBit(PanelSection.look,
+        summary: "${shortNumber(e.strokeWidth)} wide",
         children: [
           CanvasControlGroup(
             label: "Stroke",
@@ -90,6 +172,11 @@ List<Widget> lineSettings(
                   e.curvature),
             ],
           ),
+        ]),
+    PanelBit(PanelSection.layout,
+        summary: "${e.length.round()} long"
+            "${e.angle.round() != 0 ? " · ${e.angle.round()}°" : ""}",
+        children: [
           // A line is its two ends, so it is sized and turned by its length
           // and angle rather than by a box -- see LineElement.withEnds.
           CanvasControlGroup(
@@ -147,9 +234,7 @@ List<Widget> lineSettings(
             ],
           ),
         ]),
-    section(e, "ends",
-        icon: Icons.arrow_right_alt,
-        title: "Ends and dashes",
+    PanelBit(PanelSection.look,
         summary: [
           ...ends,
           if (e.dash > 0) "dashed" else "solid",

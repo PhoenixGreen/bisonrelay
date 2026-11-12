@@ -2,7 +2,12 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart'
+    show boxSummary;
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/type_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
@@ -12,7 +17,85 @@ import 'package:flutter/material.dart';
 // the key buttons: they pin this element's own number, which the timeline
 // knows nothing of.
 
-List<Widget> counterSettings(
+/// counterPanel is [e]'s panel: the Text panel's shape (see
+/// element_panel.dart) -- a quick strip of what it counts from and to, how
+/// it is written and its colour; Content (the number, the words either side
+/// and where its count comes from), Look (its type and box, its looks) and
+/// More (its buttons).
+Widget counterPanel(
+  BuildContext context,
+  CanvasController controller,
+  CounterElement e,
+  SettingsWrite write,
+  VoidCallback begin,
+  VoidCallback commit,
+) {
+  void now(CounterElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  CanvasStepper number(String key, String label, double value,
+          CounterElement Function(double v) set) =>
+      CanvasStepper(
+        key: ValueKey(key),
+        label: label,
+        value: value,
+        min: -1000000000,
+        max: 1000000000,
+        decimals: e.decimals,
+        step: 1,
+        fill: true,
+        onChanged: (v) {
+          begin();
+          write(set(v));
+        },
+        onCommit: commit,
+      );
+
+  return elementPanel(context, controller, e, write, begin, commit,
+      quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+        panelRow([
+          cell(
+              number("quickCounterFrom", "From", e.from,
+                  (v) => e.copyWith(from: v)),
+              flex: 1,
+              min: 110),
+          cell(number("quickCounterTo", "To", e.to, (v) => e.copyWith(to: v)),
+              flex: 1, min: 110),
+        ]),
+        const SizedBox(height: 8),
+        panelRow([
+          cell(
+              CanvasColorButton(
+                key: const ValueKey("quickCounterColour"),
+                label: "Colour",
+                color: e.numberSpec.color,
+                onChanged: (c) => now(
+                    e.copyWith(numberSpec: e.numberSpec.copyWith(color: c))),
+              ),
+              width: 104),
+          cell(
+              CanvasDropdown<CounterSeparator>(
+                key: const ValueKey("quickCounterWritten"),
+                label: "Written",
+                value: e.separator,
+                options: [
+                  for (var s in CounterSeparator.values)
+                    (s, s == CounterSeparator.none ? "Plain" : s.label)
+                ],
+                onChanged: (v) => now(e.copyWith(separator: v)),
+              ),
+              flex: 2,
+              min: 110),
+        ]),
+      ]),
+      bits: counterBits(context, controller, e, write, begin, commit));
+}
+
+/// counterBits are what of [e] goes in which of its panel's sections.
+List<PanelBit> counterBits(
   BuildContext context,
   CanvasController controller,
   CounterElement e,
@@ -33,12 +116,9 @@ List<Widget> counterSettings(
       : controller.counterValue(e);
 
   return [
-    section(e, "number",
-        icon: Icons.pin_outlined,
-        title: "Number",
+    PanelBit(PanelSection.content,
         summary: "${e.format(e.from)} to ${e.format(e.to)}"
             "${e.before.isNotEmpty || e.after.isNotEmpty ? " · ${e.textFor(here)}" : ""}",
-        initiallyOpen: true,
         children: [
           CanvasControlGroup(
               label: "Counts",
@@ -116,16 +196,12 @@ List<Widget> counterSettings(
             CanvasHint("Now: ${e.textFor(here)}"),
           ]),
         ]),
-    section(e, "count",
-        icon: Icons.timer_outlined,
-        title: "Count",
+    PanelBit(PanelSection.content,
         summary: e.keyed ? "Keyframes on the timeline" : "Live",
         children: [
           _countSection(context, controller, e, write, begin, commit),
         ]),
-    section(e, "type",
-        icon: Icons.text_fields,
-        title: "Type",
+    PanelBit(PanelSection.look,
         summary: "Number ${e.numberSpec.fontSize.round()} · "
             "words ${e.affixSpec.fontSize.round()}",
         children: [
@@ -137,13 +213,13 @@ List<Widget> counterSettings(
               trailing: "${e.numberSpec.fontSize.round()}",
               children: [
                 _styleRow(controller, e, words: false),
-                ...typeGroups(
-                    e.numberSpec,
-                    (spec) => write(e.copyWith(numberSpec: spec)),
-                    begin,
-                    commit,
+                labelType(
+                    TypeEdit(
+                        e.numberSpec,
+                        (spec) => write(e.copyWith(numberSpec: spec)),
+                        begin,
+                        commit),
                     label: "Number type",
-                    hideCaption: true,
                     remember: "counterNumber"),
                 CanvasControlGroup(label: "Spacing", children: [
                   CanvasNumberField(
@@ -177,10 +253,13 @@ List<Widget> counterSettings(
               trailing: "${e.affixSpec.fontSize.round()}",
               children: [
                 _styleRow(controller, e, words: true),
-                ...typeGroups(e.affixSpec,
-                    (spec) => write(e.copyWith(affixSpec: spec)), begin, commit,
+                labelType(
+                    TypeEdit(
+                        e.affixSpec,
+                        (spec) => write(e.copyWith(affixSpec: spec)),
+                        begin,
+                        commit),
                     label: "Words type",
-                    hideCaption: true,
                     remember: "counterWords"),
                 CanvasControlGroup(label: "Placing", children: [
                   CanvasToggle(
@@ -218,13 +297,15 @@ List<Widget> counterSettings(
             ),
           ),
         ]),
-    section(e, "box",
-        icon: Icons.crop_square,
-        title: "Box",
+    PanelBit(PanelSection.look,
         summary: [boxSummary(e.box), if (e.fit) "shrinks to fit"].join(" · "),
         children: [
           boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-              remember: "counter", rule: false),
+              remember: "counter",
+              rule: false,
+              fill: true,
+              context: context,
+              compact: true),
           CanvasControlGroup(label: "Size", rule: false, children: [
             CanvasToggle(
               key: const ValueKey("counterFit"),
@@ -239,9 +320,7 @@ List<Widget> counterSettings(
                 "then stays there. Turn it off to keep the type exactly as set."),
           ]),
         ]),
-    section(e, "buttons",
-        icon: Icons.smart_button_outlined,
-        title: "Buttons",
+    PanelBit(PanelSection.more,
         summary: e.buttons.isEmpty
             ? "None"
             : e.buttons.map((b) => b.label).join(" · "),

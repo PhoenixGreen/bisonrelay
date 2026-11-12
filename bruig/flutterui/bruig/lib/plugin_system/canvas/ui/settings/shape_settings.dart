@@ -8,12 +8,94 @@ import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/type_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
-// shape_settings.dart is a shape's settings.
+// shape_settings.dart is a shape's settings: the Text panel's shape (see
+// element_panel.dart) -- a quick strip of its shape, fill and outline, then
+// Content (which shape, its points and corners, its label, a bubble's tail)
+// and Look (what it is painted with, its outline, its looks).
 
-List<Widget> shapeSettings(
+/// shapePanel is [e]'s panel.
+Widget shapePanel(
+    BuildContext context,
+    CanvasController controller,
+    ShapeElement e,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
+  void now(ShapeElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  return elementPanel(context, controller, e, write, begin, commit,
+      quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+        panelRow([
+          cell(
+              CanvasDropdown<ShapeKind>(
+                key: const ValueKey("quickShape"),
+                label: "Shape",
+                value: e.shape,
+                options: [for (var k in ShapeKind.values) (k, k.label)],
+                onChanged: (v) => now(e.copyWith(shape: v)),
+              ),
+              flex: 3,
+              min: 110),
+          if (e.painted.kind == TextFillKind.color)
+            cell(
+                CanvasColorButton(
+                  key: const ValueKey("quickFill"),
+                  label: "Fill",
+                  color: e.fill,
+                  gradient: e.fillFade,
+                  onChanged: (c) => now(e.copyWith(fill: c)),
+                  onGradientChanged: (g) => now(g == null
+                      ? e.copyWith(flatFill: true)
+                      : e.copyWith(fillFade: g)),
+                ),
+                width: 104),
+        ]),
+        const SizedBox(height: 8),
+        panelRow([
+          cell(
+              CanvasStepper(
+                key: const ValueKey("quickStroke"),
+                label: "Outline",
+                value: e.strokeWidth,
+                min: 0,
+                max: 200,
+                decimals: 1,
+                step: 1,
+                suffix: " px",
+                fill: true,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(strokeWidth: v));
+                },
+                onCommit: commit,
+              ),
+              width: 132),
+          cell(
+              CanvasColorButton(
+                key: const ValueKey("quickStrokeColour"),
+                label: "Outline colour",
+                color: e.strokeColor,
+                onChanged: (c) => now(e.copyWith(
+                    strokeColor: c,
+                    strokeWidth: e.strokeWidth > 0 ? null : strokeToSee(e))),
+              ),
+              width: 104),
+        ]),
+      ]),
+      bits: shapeBits(context, controller, e, write, begin, commit));
+}
+
+/// shapeBits are what of [e] goes in which of its panel's sections.
+List<PanelBit> shapeBits(
     BuildContext context,
     CanvasController controller,
     ShapeElement e,
@@ -28,15 +110,12 @@ List<Widget> shapeSettings(
     var k => k.label.toLowerCase(),
   };
   return [
-    section(e, "shape",
-        icon: Icons.category_outlined,
-        title: "Shape",
+    PanelBit(PanelSection.content,
         summary: [
           e.shape.label,
           if (e.shape.hasPoints) "${e.points} points",
           if (e.shape.hasCorners && e.corners.all > 0) "rounded",
         ].join(" · "),
-        initiallyOpen: true,
         children: [
           // Shown rather than named: each shape is a tile drawn as itself.
           CanvasTiles<ShapeKind>(
@@ -113,9 +192,7 @@ List<Widget> shapeSettings(
               ],
             ),
         ]),
-    section(e, "fill",
-        icon: Icons.format_color_fill,
-        title: "Fill and outline",
+    PanelBit(PanelSection.look,
         summary: "Filled with $painted · "
             "${e.strokeWidth > 0 ? "outline ${shortNumber(e.strokeWidth)}" : "no outline"}",
         children: [
@@ -202,9 +279,7 @@ List<Widget> shapeSettings(
             ],
           ),
         ]),
-    section(e, "label",
-        icon: Icons.title,
-        title: "Label",
+    PanelBit(PanelSection.content,
         summary: e.text.isEmpty ? "No words on it" : "\"${e.text}\"",
         children: [
           CanvasControlGroup(
@@ -237,14 +312,13 @@ List<Widget> shapeSettings(
             ],
           ),
           if (e.text.isNotEmpty)
-            ...typeGroups(e.textSpec,
-                (spec) => write(e.copyWith(textSpec: spec)), begin, commit,
-                label: "Label type", remember: "shapeLabel", rule: false),
+            labelType(
+                TypeEdit(e.textSpec,
+                    (spec) => write(e.copyWith(textSpec: spec)), begin, commit),
+                remember: "shapeLabel"),
         ]),
     if (e.shape == ShapeKind.speechBubble)
-      section(e, "bubble",
-          icon: Icons.chat_bubble_outline,
-          title: "Bubble",
+      PanelBit(PanelSection.content,
           summary: "${e.bubble.body.label} · ${e.bubble.tail.label} tail",
           children: [
             CanvasControlGroup(

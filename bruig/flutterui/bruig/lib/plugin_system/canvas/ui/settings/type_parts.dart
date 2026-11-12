@@ -167,3 +167,26 @@ List<Widget> typeLetters(TypeEdit t,
             )),
         ]),
     ];
+
+/// labelType is the words on an element that is not a text -- a shape's
+/// label, a button's, a counter's -- set as a text's are: the face and its
+/// size, its colour and how it lines up, then its letters (Ken, 2026-11-12:
+/// one control for each, the same on every element). Their shadow, glow
+/// and outline are the element's looks, not the label's own.
+Widget labelType(TypeEdit t,
+        {String label = "Label type", String remember = "label"}) =>
+    CanvasControlGroup(
+        key: ValueKey("${remember}Type"),
+        label: label,
+        rule: false,
+        children: [
+          panelRow([
+            cell(typeFont(t), flex: 3, min: 120),
+            cell(typeSize(t), width: 132),
+          ]),
+          panelRow([
+            cell(typeColour(t), width: 104),
+            cell(typeAlign(t), flex: 2, min: 120),
+          ]),
+          ...typeLetters(t, vertical: false, justify: false),
+        ]);

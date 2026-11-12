@@ -5,12 +5,20 @@ import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart'
+    show typeSummary;
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/type_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
-// button_settings.dart is a button's settings.
+// button_settings.dart is a button's settings: the Text panel's shape (see
+// element_panel.dart) -- a quick strip of what it says and does, and its
+// fill; Content (its words and what pressing it does) and Look (its label's
+// type, its box, its colours under the pointer, its looks).
 
-List<Widget> buttonSettings(
+/// buttonPanel is [e]'s panel.
+Widget buttonPanel(
     BuildContext context,
     CanvasController controller,
     ButtonElement e,
@@ -18,80 +26,123 @@ List<Widget> buttonSettings(
     VoidCallback begin,
     VoidCallback commit) {
   var action = e.action;
-  return [
-    section(e, "button",
-        icon: Icons.smart_button_outlined,
-        title: "Button",
-        summary: "\"${e.label}\" · ${action.kind.label}",
-        initiallyOpen: true,
-        children: [
-          CanvasControlGroup(
-            label: "What it says and does",
-            help: "The words on the button, and what pressing it does -- "
-                "jump to a frame or a scene, play or stop a sound, show or "
-                "hide an element, open a link.",
-            rule: false,
-            children: [
+  void now(ButtonElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  return elementPanel(context, controller, e, write, begin, commit,
+      quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+        panelRow([
+          cell(
               CanvasTextField(
+                key: const ValueKey("quickButtonLabel"),
                 label: "Label",
                 value: e.label,
                 width: 150,
                 onChanged: (v) => write(e.copyWith(label: v)),
                 onCommit: commit,
               ),
-              ...buttonActionControls(controller, action, e.id, (next,
-                  {live = false}) {
-                begin();
-                write(e.copyWith(action: next));
-                if (!live) commit();
-              }, commit),
-            ],
-          ),
-          CanvasControlGroup(
-            label: "Under the pointer",
-            help: "The colours it turns while the pointer is over it, so a "
-                "reader can tell it can be pressed.",
-            rule: false,
+              flex: 3,
+              min: 110),
+          cell(
+              CanvasColorButton(
+                key: const ValueKey("quickButtonFill"),
+                label: "Fill",
+                color: e.box.fill,
+                onChanged: (c) => now(e.copyWith(box: e.box.copyWith(fill: c))),
+              ),
+              width: 104),
+        ]),
+        const SizedBox(height: 8),
+        panelRow([
+          cell(
+              CanvasDropdown<ButtonActionKind>(
+                key: const ValueKey("quickButtonDoes"),
+                label: "Does",
+                value: action.kind,
+                options: [for (var k in ButtonActionKind.values) (k, k.label)],
+                onChanged: (k) =>
+                    now(e.copyWith(action: action.copyWith(kind: k))),
+              ),
+              flex: 3,
+              min: 120),
+          cell(
+              CanvasColorButton(
+                key: const ValueKey("quickButtonText"),
+                label: "Text",
+                color: e.textSpec.color,
+                onChanged: (c) =>
+                    now(e.copyWith(textSpec: e.textSpec.copyWith(color: c))),
+              ),
+              width: 104),
+        ]),
+      ]),
+      bits: [
+        PanelBit(PanelSection.content,
+            summary: "\"${e.label}\" · ${action.kind.label}",
             children: [
-              CanvasColorButton(
-                label: "Hover fill",
-                color: e.hoverFill,
-                onChanged: (c) {
-                  begin();
-                  write(e.copyWith(hoverFill: c));
-                  commit();
-                },
+              CanvasControlGroup(
+                label: "What it says and does",
+                help: "The words on the button, and what pressing it does -- "
+                    "jump to a frame or a scene, play or stop a sound, show or "
+                    "hide an element, open a link.",
+                rule: false,
+                children: [
+                  CanvasTextField(
+                    label: "Label",
+                    value: e.label,
+                    width: 150,
+                    onChanged: (v) => write(e.copyWith(label: v)),
+                    onCommit: commit,
+                  ),
+                  ...buttonActionControls(controller, action, e.id, (next,
+                      {live = false}) {
+                    begin();
+                    write(e.copyWith(action: next));
+                    if (!live) commit();
+                  }, commit),
+                ],
               ),
-              CanvasColorButton(
-                label: "Hover text",
-                color: e.hoverTextColor,
-                onChanged: (c) {
-                  begin();
-                  write(e.copyWith(hoverTextColor: c));
-                  commit();
-                },
+            ]),
+        PanelBit(PanelSection.look,
+            summary: typeSummary(e.textSpec),
+            children: [
+              labelType(
+                  TypeEdit(
+                      e.textSpec,
+                      (spec) => write(e.copyWith(textSpec: spec)),
+                      begin,
+                      commit),
+                  remember: "buttonLabel"),
+              boxGroup(
+                  e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+                  remember: "button",
+                  rule: false,
+                  fill: true,
+                  context: context,
+                  compact: true),
+              CanvasControlGroup(
+                label: "Under the pointer",
+                help: "The colours it turns while the pointer is over it, so a "
+                    "reader can tell it can be pressed.",
+                rule: false,
+                children: [
+                  CanvasColorButton(
+                    label: "Hover fill",
+                    color: e.hoverFill,
+                    onChanged: (c) => now(e.copyWith(hoverFill: c)),
+                  ),
+                  CanvasColorButton(
+                    label: "Hover text",
+                    color: e.hoverTextColor,
+                    onChanged: (c) => now(e.copyWith(hoverTextColor: c)),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ]),
-    section(e, "type",
-        icon: Icons.text_fields,
-        title: "Label type",
-        summary: typeSummary(e.textSpec),
-        children: typeGroups(e.textSpec,
-            (spec) => write(e.copyWith(textSpec: spec)), begin, commit,
-            label: "Label type", remember: "buttonLabel", rule: false)),
-    section(e, "box",
-        icon: Icons.crop_square,
-        title: "Box",
-        summary: boxSummary(e.box),
-        children: [
-          boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-              remember: "button", rule: false),
-        ]),
-    // How it comes in, loops and goes: the Chain's Motion view (Ken,
-    // 2026-11-08), not a section here.
-  ];
+            ]),
+      ]);
 }
 
 /// _playable is whether a button's media actions can be aimed at [e]: a

@@ -105,6 +105,23 @@ List<Widget> elementSettings(
     return [textPanel(context, controller, element, write, begin, commit)];
   }
 
+  // Batch 2 of the rebuild (Ken, 2026-11-11): the Text panel's shape.
+  if (element is ShapeElement) {
+    return [shapePanel(context, controller, element, write, begin, commit)];
+  }
+  if (element is LineElement) {
+    return [linePanel(context, controller, element, write, begin, commit)];
+  }
+  if (element is PathElement) {
+    return [pathPanel(context, controller, element, write, begin, commit)];
+  }
+  if (element is ButtonElement) {
+    return [buttonPanel(context, controller, element, write, begin, commit)];
+  }
+  if (element is CounterElement) {
+    return [counterPanel(context, controller, element, write, begin, commit)];
+  }
+
   // Every other element in sections, as a picture is: where it is, its
   // own subjects, how it arrives, and the designs saved of its kind -- see
   // element_sections.dart.
@@ -143,20 +160,12 @@ List<Widget> elementSettings(
                 vectorCropControls(controller, element, write, begin, commit),
             ]),
         ...switch (element) {
-          ShapeElement e =>
-            shapeSettings(context, controller, e, write, begin, commit),
-          LineElement e =>
-            lineSettings(context, controller, e, write, begin, commit),
           VectorElement e =>
             vectorSettings(context, controller, e, write, begin, commit),
           ChartElement e =>
             chartSettings(context, controller, e, write, begin, commit),
           TableElement e =>
             tableSettings(context, controller, e, write, begin, commit),
-          ButtonElement e =>
-            buttonSettings(context, controller, e, write, begin, commit),
-          CounterElement e =>
-            counterSettings(context, controller, e, write, begin, commit),
           AudioElement e =>
             audioSettings(context, controller, e, write, begin, commit),
           SheetElement e =>
@@ -193,8 +202,6 @@ List<Widget> elementSettings(
             ],
           TeamElement e =>
             teamSettings(context, controller, e, write, begin, commit),
-          PathElement e =>
-            pathSettings(context, controller, e, write, begin, commit),
           Character3dElement e =>
             character3dSettings(context, controller, e, write, begin, commit),
           StageElement e =>

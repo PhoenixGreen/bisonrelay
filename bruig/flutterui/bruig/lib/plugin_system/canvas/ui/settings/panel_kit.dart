@@ -1087,6 +1087,12 @@ class _CanvasSectionsState extends State<CanvasSections> {
       for (var i in _items) {
         if (i.title == title) return i.remember;
       }
+      // Position is a rebuilt panel's Layout (Ken, 2026-11-11), and the
+      // other way: the same section, carried between the two.
+      var same = const {"Position": "Layout", "Layout": "Position"}[title];
+      for (var i in _items) {
+        if (i.title == same) return i.remember;
+      }
     }
     return _items.first.remember;
   }

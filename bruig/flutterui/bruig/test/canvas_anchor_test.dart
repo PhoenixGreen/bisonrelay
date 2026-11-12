@@ -14,6 +14,8 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'canvas_panel_helpers.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -152,6 +154,8 @@ void main() {
       addTearDown(tester.view.reset);
       await tester.pumpWidget(host(c));
       await tester.pumpAndSettle();
+      // In its Layout (a shape's panel rebuilt: batch 2).
+      await openSection(tester, "shape.layout");
       CanvasElement now() => c.document.elementById("s")!;
       var show = find.byKey(const ValueKey("elementAnchorShow"));
       var lock = find.byKey(const ValueKey("elementAnchorLock"));

@@ -57,6 +57,15 @@ void main() {
     return [for (var (_, title) in found) title];
   }
 
+  // Rebuilt to the Text panel's shape: batch 1 the text, batch 2 these.
+  const rebuilt = {
+    ElementKind.text,
+    ElementKind.shape,
+    ElementKind.line,
+    ElementKind.path,
+    ElementKind.button,
+    ElementKind.counter,
+  };
   for (var kind in ElementKind.values) {
     if (kind == ElementKind.image) continue; // see canvas_panel_kit_test
     testWidgets("${kind.label} is sections of cards, open in a sidebar",
@@ -71,8 +80,11 @@ void main() {
       var all = titles(tester);
       // Rebuilt round tasks (Ken, 2026-11-11): the rest follow, a batch at a
       // time.
-      if (kind == ElementKind.text) {
-        expect(all, ["Content", "Look", "Layout", "Motion", "More"]);
+      if (rebuilt.contains(kind)) {
+        // Content left out where an element has none of its own.
+        expect(all.where((t) => t != "Content"),
+            ["Look", "Layout", "Motion", "More"],
+            reason: "$all");
       } else {
         expect(all.first, "Position", reason: "$all");
         expect(all.last, "Presets", reason: "$all");

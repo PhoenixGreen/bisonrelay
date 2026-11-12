@@ -688,17 +688,22 @@ void main() {
           audioEngine: engine);
       addTearDown(c.dispose);
       c.selectOnly("b");
+      // Its Content open: what pressing it does.
+      CanvasSection.openAll = true;
+      addTearDown(() => CanvasSection.openAll = false);
       await show(
           tester,
           ListenableBuilder(
               listenable: c,
               builder: (context, _) => CanvasControlScope(
                     maxWidth: 400,
-                    child: Wrap(
-                        children: buttonSettings(
-                            context, c, c.selected as ButtonElement, (e) {
-                      c.replaceElement(e);
-                    }, () {}, () {})),
+                    child: SingleChildScrollView(
+                        child: SizedBox(
+                            width: 400,
+                            child: buttonPanel(
+                                context, c, c.selected as ButtonElement, (e) {
+                              c.replaceElement(e);
+                            }, () {}, () {}))),
                   )));
       await tester.tap(find.byKey(const ValueKey("buttonSound")));
       await tester.pumpAndSettle();

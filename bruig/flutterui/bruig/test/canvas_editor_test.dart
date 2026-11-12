@@ -1730,8 +1730,11 @@ void main() {
   group("animated settings", () {
     (CanvasController, CanvasElement) moving() {
       var document = const CanvasDocument(frames: 30);
-      var element = ShapeElement(
-          const ElementBase(id: "s", x: 100, y: 50, width: 40, height: 40));
+      // A table: its panel still has the pose diamond and easing by
+      // Position, until its batch of the rebuild (the rebuilt panels key
+      // in the Chain).
+      var element = const TableElement(
+          ElementBase(id: "s", x: 100, y: 50, width: 40, height: 40));
       var controller = CanvasController(document.addElement(element));
       controller.selectOnly("s");
       controller.setKeyframe("s", const Keyframe(frame: 0));
@@ -1793,7 +1796,7 @@ void main() {
 
     testWidgets("the diamonds are off on a still canvas", (tester) async {
       var document = const CanvasDocument();
-      var element = newElement(ElementKind.shape, document);
+      var element = newElement(ElementKind.table, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -1865,8 +1868,8 @@ void main() {
       // with nothing written in it offered none of them -- which is exactly
       // the state a bubble is in when it has just been added.
       await panel(tester, shapeOf(ShapeKind.speechBubble));
-      expect(
-          find.byKey(const ValueKey("elementSection-bubble")), findsOneWidget);
+      // In its Content, with what shape it is (batch 2 of the rebuild).
+      expect(find.text("Tail"), findsWidgets);
       expect(find.text("Body"), findsOneWidget);
       expect(find.text("Tail"), findsOneWidget);
       // Where the tail points is a measurement, so it is behind the button
@@ -1877,9 +1880,9 @@ void main() {
 
     testWidgets("and still shows them once it has one", (tester) async {
       await panel(tester, shapeOf(ShapeKind.speechBubble), text: "Hello");
-      expect(
-          find.byKey(const ValueKey("elementSection-bubble")), findsOneWidget);
-      expect(find.text("Label type"), findsWidgets);
+      // In its Content, with what shape it is (batch 2 of the rebuild).
+      expect(find.text("Tail"), findsWidgets);
+      expect(find.byKey(const ValueKey("shapeLabelType")), findsOneWidget);
     });
 
     testWidgets("another shape shows none of them", (tester) async {
@@ -1891,7 +1894,7 @@ void main() {
     testWidgets("the label's type appears only when there is a label",
         (tester) async {
       await panel(tester, shapeOf(ShapeKind.star));
-      expect(find.text("Label type"), findsNothing);
+      expect(find.byKey(const ValueKey("shapeLabelType")), findsNothing);
     });
 
     testWidgets("changing the tail writes it to the element", (tester) async {
@@ -1930,8 +1933,11 @@ void main() {
       // outline, so the swatch changed nothing you could see. The stroke's
       // colour stays either way -- the outline is drawn over the picture.
       var controller = await panel(tester, shapeOf(ShapeKind.star));
-      var fill = find.byWidgetPredicate(
-          (w) => w is CanvasColorButton && w.label == "Fill");
+      // Its Look's: the quick strip has one too, gone the same way.
+      var fill = find.descendant(
+          of: find.byKey(const ValueKey("elementSection-look")),
+          matching: find.byWidgetPredicate(
+              (w) => w is CanvasColorButton && w.label == "Fill"));
       var stroke = find.byWidgetPredicate(
           (w) => w is CanvasColorButton && w.label == "Colour");
       expect(fill, findsOneWidget);
@@ -2004,8 +2010,10 @@ void main() {
       // one frame the second was built on the same stale copy and undid the
       // first. Reported as a gradient point's opacity not sticking.
       var controller = await panel(tester, shapeOf(ShapeKind.star));
-      var fill = find.byWidgetPredicate(
-          (w) => w is CanvasColorButton && w.label == "Fill");
+      // Its Look's, not the quick strip's.
+      var fill = find
+          .byWidgetPredicate((w) => w is CanvasColorButton && w.label == "Fill")
+          .last;
       await tester.ensureVisible(fill);
       await tester.pumpAndSettle();
       await tester.tap(fill);
@@ -3397,7 +3405,7 @@ void main() {
     // whatever easing each of them had.
     testWidgets("is offered while the playhead is on one", (tester) async {
       var document = const CanvasDocument(frames: 40);
-      var element = newElement(ElementKind.shape, document);
+      var element = newElement(ElementKind.table, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -3443,7 +3451,7 @@ void main() {
       // nobody could find: there is no telling a setting that does not exist
       // from one waiting for the playhead to be somewhere else.
       var document = const CanvasDocument(frames: 40);
-      var element = newElement(ElementKind.shape, document);
+      var element = newElement(ElementKind.table, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -3464,7 +3472,7 @@ void main() {
     testWidgets("and an element with no keyframes at all offers none",
         (tester) async {
       var document = const CanvasDocument(frames: 40);
-      var element = newElement(ElementKind.shape, document);
+      var element = newElement(ElementKind.table, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -3498,7 +3506,7 @@ void main() {
       // "Stays the same until the next keyframe", which is what a count in
       // steps and a cut both need.
       var document = const CanvasDocument(frames: 40);
-      var element = newElement(ElementKind.shape, document);
+      var element = newElement(ElementKind.table, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -4354,7 +4362,7 @@ void main() {
       // Left to the Wrap, the line fell between W and H or after Angle
       // depending on how wide the sidebar happened to be.
       var document = const CanvasDocument();
-      var element = newElement(ElementKind.shape, document);
+      var element = newElement(ElementKind.table, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -4392,7 +4400,9 @@ void main() {
       controller.selectOnly(element.id);
       await pump(tester, CanvasDesignPanel(controller: controller));
 
-      expect(find.textContaining("Points ("), findsOneWidget,
+      // Its group's name is in small capitals in the rebuilt panel.
+      expect(find.textContaining(RegExp(r"points \(", caseSensitive: false)),
+          findsOneWidget,
           reason: "a card with its count in the name, not a fold");
       expect(find.byKey(ValueKey("node-frame-0-${element.id}")), findsOneWidget,
           reason: "and the first point's row is already showing");

@@ -151,8 +151,8 @@ void main() {
     expect(shownBodies(tester), ["image.picture.position"]);
     c.selectOnly("s");
     await tester.pumpAndSettle();
-    expect(shownBodies(tester).single, endsWith("position"),
-        reason: "the shape's Position, picked by the same name");
+    expect(shownBodies(tester).single, endsWith("layout"),
+        reason: "the shape's Layout: its rebuilt panel's Position");
     expect(tester.takeException(), isNull);
   });
 
