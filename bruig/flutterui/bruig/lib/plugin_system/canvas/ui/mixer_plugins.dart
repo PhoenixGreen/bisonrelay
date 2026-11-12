@@ -7794,7 +7794,9 @@ class MotionDeviceCard extends StatelessWidget {
     void set(DeviceParam p, double v, {bool transient = false}) {
       // Animated, a turn is a key at the playhead (MotionDevice.keys).
       if (!copies && d.keyed(p.id)) {
-        return write(d.withKey(p.id, controller.playheadSeconds, v),
+        return write(
+            d.withKey(p.id, controller.playheadSeconds, v,
+                spans: controller.phaseSpansFor(element)),
             transient: transient);
       }
       if (!copies) return write(d.withValue(p.id, v), transient: transient);
@@ -7806,14 +7808,16 @@ class MotionDeviceCard extends StatelessWidget {
 
     // A keyed setting is shown as it is at the playhead.
     double shownAt(DeviceParam p) => d.keyed(p.id)
-        ? d.valueAt(p.id, controller.playheadSeconds)
+        ? controller.deviceValueNow(element, d, p.id)
         : knobAt(p).$1;
 
     List<(String, VoidCallback)> keyMenu(DeviceParam p) {
       var t = controller.playheadSeconds;
       return [
         (
-          d.keyAt(p.id, t) ? "Take the key here away" : "Key it here",
+          d.keyAt(p.id, t, spans: controller.phaseSpansFor(element))
+              ? "Take the key here away"
+              : "Key it here",
           () => controller.toggleDeviceKey(element, d.id, p.id)
         ),
         if (d.keyed(p.id))
@@ -7882,7 +7886,8 @@ class MotionDeviceCard extends StatelessWidget {
                               ? const Color(0xFFF2C14E)
                               : skin.ink.withValues(alpha: 0.45)),
                       child: KeyDiamond(
-                          filled: d.keyAt(p.id, controller.playheadSeconds),
+                          filled: d.keyAt(p.id, controller.playheadSeconds,
+                              spans: controller.phaseSpansFor(element)),
                           size: 10),
                     ),
                   ),

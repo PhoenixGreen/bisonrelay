@@ -15,6 +15,9 @@ import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/model/design_device.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart'
+    show ownEnd, ownSpan;
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart'
@@ -383,6 +386,15 @@ Keyframe poseWithMotion(CanvasElement e, int frame, CanvasDocument? doc,
       : _pulled(e, frame, doc, live, devices, devices.length - 1, instance);
   pose = _withLoop(
       e, frame, math.max(1, doc.frameRate), doc.frames - 1, pose, instance);
+  // Its Design's move, turn, size and fade (design_device.dart).
+  if (upto == null || upto >= e.base.motion.poseDevices.length) {
+    for (var d in e.base.motion.designs) {
+      pose = designPose(
+          pose,
+          motionModulated(d, e.base.motion.devices, _seconds(frame, doc, live),
+              doc: doc, spans: phaseSpansOf(e, doc)));
+    }
+  }
   // Drawn at its Drawing's size -- a copy's own, where it has one.
   var m = e.base.motion;
   var size = m.drawSize;
@@ -433,6 +445,65 @@ bool stampsCopies(CanvasElement e, LiveMotion? live) {
 /// timeline's own.
 double _seconds(int frame, CanvasDocument doc, LiveMotion? live) =>
     live?.running ?? frame / math.max(1, doc.frameRate);
+
+/// phaseSpansOf is when [e]'s arrival, leaving and loop play, in seconds:
+/// what its devices' phase keys are timed by (MotionDevice.phaseKeys). The
+/// loop runs from its arrival's end to its leaving's start -- or where its
+/// own loop says -- one go round its own loop's cycle long, or two seconds.
+/// None where none of its devices has phase keys or plays in a clip.
+PhaseSpans phaseSpansOf(CanvasElement e, CanvasDocument? doc) {
+  var m = e.base.motion;
+  if (!m.devices.any((d) =>
+      d.phaseKeys.isNotEmpty || d.plays.any((p) => p != MotionPhase.free))) {
+    return PhaseSpans.none;
+  }
+  var rate = math.max(1, doc?.frameRate ?? defaultFrameRate);
+  var last = doc == null ? null : doc.frames - 1;
+  var key = (rate, last);
+  if (_spansKept[e] case (var k, var spans) when k == key) return spans;
+  (double, double)? secs((int, int)? span) => switch (span) {
+        (var from, var length) => (from / rate, (from + length) / rate),
+        null => null,
+      };
+  var arrive = secs(ownSpan(e, MotionKind.arrive, rate));
+  var leave = secs(ownSpan(e, MotionKind.leave, rate));
+  var end = last == null ? double.infinity : (last + 1) / rate;
+  var loop = wholeLoopOf(e);
+  var cycle = 2.0;
+  (double, double) loopSpan = (arrive?.$2 ?? 0, leave?.$1 ?? end);
+  if (loop != null && loop.on) {
+    cycle = math.max(1, loop.cycle) / rate;
+    if (loop.from != null || loop.to != null) {
+      var (a, b) = loop.span(arrived: ownEnd(e, rate), last: last ?? (1 << 30));
+      loopSpan = (a / rate, (b + 1) / rate);
+    }
+  }
+  var spans = PhaseSpans(
+      arrive: arrive,
+      leave: leave,
+      loop: loopSpan.$2 > loopSpan.$1 ? loopSpan : null,
+      cycle: cycle);
+  _spansKept[e] = (key, spans);
+  return spans;
+}
+
+final Expando<((int, int?), PhaseSpans)> _spansKept = Expando("phaseSpans");
+
+/// designedNow is [e] with its own settings as its Design devices have
+/// them on [frame] (see designed): itself where they change nothing.
+CanvasElement designedNow(CanvasElement e, int frame, CanvasDocument? doc,
+    {LiveMotion? live, int frameRate = defaultFrameRate}) {
+  var designs = e.base.motion.designs;
+  if (designs.isEmpty) return e;
+  var t =
+      doc == null ? frame / math.max(1, frameRate) : _seconds(frame, doc, live);
+  var spans = phaseSpansOf(e, doc);
+  var out = e;
+  for (var d in designs) {
+    out = designed(out, d, t, spans: spans);
+  }
+  return out;
+}
 
 /// movesAtAll is whether anything moves [e] beyond its keyframes: its
 /// motion (see ElementMotion.moves), or a loop that moves it.
@@ -534,7 +605,7 @@ Keyframe _pulledNow(CanvasElement e, int frame, CanvasDocument doc,
   var d = withOwnValues(
       motionModulated(
           devices[i], e.base.motion.devices, _seconds(frame, doc, live),
-          doc: doc),
+          doc: doc, spans: phaseSpansOf(e, doc)),
       e.base.motion.instances,
       instance);
   switch (d.kind) {
@@ -891,9 +962,9 @@ Offset? _centreOf(CanvasDocument doc, String id, int frame,
 /// knobs [t] seconds in (see modulation.dart): its LFOs, and its followers
 /// of [doc]'s channels; as it is where none moves it.
 MotionDevice motionModulated(MotionDevice d, List<MotionDevice> chain, double t,
-    {CanvasDocument? doc}) {
+    {CanvasDocument? doc, PhaseSpans spans = PhaseSpans.none}) {
   // Its keyed settings as they are now, then moved by its modulators.
-  d = d.at(t);
+  d = d.at(t, spans: spans);
   if (d.kind.params.isEmpty || d.id.isEmpty) return d;
   Map<String, double>? add;
   for (var l in chain) {

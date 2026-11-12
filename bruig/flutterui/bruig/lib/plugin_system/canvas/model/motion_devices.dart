@@ -1,5 +1,8 @@
+import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonBool, jsonDouble, jsonStr;
+    show jsonBool, jsonDouble, jsonInt, jsonStr;
+import 'package:bruig/plugin_system/canvas/model/design_device.dart'
+    show designParams;
 import 'package:bruig/plugin_system/canvas/model/devices.dart' show DeviceParam;
 import 'package:bruig/plugin_system/canvas/model/modulation.dart';
 
@@ -22,6 +25,12 @@ enum MotionDeviceSide {
 
   /// look devices change how it looks once drawn: right of it.
   look,
+
+  /// design is the element's own settings, animated: at the drawing itself
+  /// (Ken, 2026-11-12). Its move, turn, size and fade join the pose after
+  /// the pose devices; the rest are the element's own settings, keyed. See
+  /// design_device.dart.
+  design,
 }
 
 /// MotionDeviceKind is a kind of motion device, with its settings.
@@ -158,7 +167,10 @@ enum MotionDeviceKind {
     DeviceParam("zoom", "Zoom", 1, 4, 2, "×"),
     DeviceParam("orbit", "Goes round", 0, 1, 0.4),
     DeviceParam("laps", "Laps a second", 0, 2, 0.15, "/s"),
-  ]);
+  ]),
+
+  /// design animates the element's own settings: see design_device.dart.
+  design("Design", MotionDeviceSide.design, designParams);
 
   final String label;
   final MotionDeviceSide side;
@@ -210,11 +222,25 @@ class MotionDevice {
   /// bodyLayer is [layer] for a text's own words.
   static const bodyLayer = "body";
 
-  /// keys are its settings' keys, by setting: where one has any, it is
-  /// that value at that moment, and in a straight line between (Ken,
-  /// 2026-11-11: the settings panel sets how it rests, the Chain animates
-  /// the same settings). Times are seconds into the scene.
+  /// keys are its settings' Independent keys, by setting: where one has
+  /// any, it is that value at that moment, and in a straight line between
+  /// (Ken, 2026-11-11: the settings panel sets how it rests, the Chain
+  /// animates the same settings). Times are seconds into the scene.
   final Map<String, List<DeviceKey>> keys;
+
+  /// phaseKeys are its settings' keys in its element's arrival, leaving and
+  /// loop (Ken, 2026-11-12: "A, L, Loop, I"): times are shares of that
+  /// clip -- 0 its start, 1 its end; of one cycle for the loop -- so they
+  /// move and stretch with it. See PhaseSpans.
+  final Map<MotionPhase, Map<String, List<DeviceKey>>> phaseKeys;
+
+  /// plays are the phases its keys play in: its card's A, L, Loop and I.
+  /// A phase switched off keeps its keys, unplayed.
+  final Set<MotionPhase> plays;
+
+  /// shown are the settings on its card, where a kind offers more than it
+  /// shows at once: Design's, added from the element's settings panel.
+  final List<String> shown;
 
   const MotionDevice(this.kind,
       {this.on = true,
@@ -224,7 +250,36 @@ class MotionDevice {
       this.target = "",
       this.layer = "",
       this.keys = const {},
+      this.phaseKeys = const {},
+      this.plays = const {MotionPhase.free},
+      this.shown = const [],
       this.mods = const []});
+
+  MotionDevice _copy({
+    bool? on,
+    Map<String, double>? values,
+    String? id,
+    int? Function()? colour,
+    String? target,
+    String? layer,
+    Map<String, List<DeviceKey>>? keys,
+    Map<MotionPhase, Map<String, List<DeviceKey>>>? phaseKeys,
+    Set<MotionPhase>? plays,
+    List<String>? shown,
+    List<ModTarget>? mods,
+  }) =>
+      MotionDevice(kind,
+          on: on ?? this.on,
+          values: values ?? this.values,
+          id: id ?? this.id,
+          colour: colour == null ? this.colour : colour(),
+          target: target ?? this.target,
+          layer: layer ?? this.layer,
+          keys: keys ?? this.keys,
+          phaseKeys: phaseKeys ?? this.phaseKeys,
+          plays: plays ?? this.plays,
+          shown: shown ?? this.shown,
+          mods: mods ?? this.mods);
 
   /// takesTarget is whether it works with another element.
   bool get takesTarget =>
@@ -251,170 +306,192 @@ class MotionDevice {
   MotionDevice withValue(String id, double v) {
     var p = kind.param(id);
     var whole = p.isChoice || p.unit == "#";
-    return MotionDevice(kind,
-        on: on,
-        values: {...values, id: whole ? v.roundToDouble() : v},
-        id: this.id,
-        colour: colour,
-        target: target,
-        layer: layer,
-        keys: keys,
-        mods: mods);
+    return _copy(values: {...values, id: whole ? v.roundToDouble() : v});
   }
 
-  MotionDevice switched(bool on) => MotionDevice(kind,
-      on: on,
-      values: values,
-      id: id,
-      colour: colour,
-      target: target,
-      layer: layer,
-      keys: keys,
-      mods: mods);
+  MotionDevice switched(bool on) => _copy(on: on);
+  MotionDevice withId(String id) => _copy(id: id);
+  MotionDevice withColour(int? colour) => _copy(colour: () => colour);
+  MotionDevice withTarget(String target) => _copy(target: target);
+  MotionDevice withLayer(String layer) => _copy(layer: layer);
+  MotionDevice withMods(List<ModTarget> mods) => _copy(mods: mods);
+  MotionDevice withShown(List<String> shown) => _copy(shown: shown);
 
-  MotionDevice withId(String id) => MotionDevice(kind,
-      on: on,
-      values: values,
-      id: id,
-      colour: colour,
-      target: target,
-      layer: layer,
-      keys: keys,
-      mods: mods);
+  /// keysIn are its settings' keys in phase [ph].
+  Map<String, List<DeviceKey>> keysIn(MotionPhase ph) =>
+      ph == MotionPhase.free ? keys : phaseKeys[ph] ?? const {};
 
-  MotionDevice withColour(int? colour) => MotionDevice(kind,
-      on: on,
-      values: values,
-      id: id,
-      colour: colour,
-      target: target,
-      layer: layer,
-      keys: keys,
-      mods: mods);
+  MotionDevice _withKeysIn(MotionPhase ph, Map<String, List<DeviceKey>> next) {
+    var tidy = {
+      for (var MapEntry(:key, :value) in next.entries)
+        if (value.isNotEmpty) key: value
+    };
+    if (ph == MotionPhase.free) return _copy(keys: tidy);
+    var all = {...phaseKeys};
+    if (tidy.isEmpty) {
+      all.remove(ph);
+    } else {
+      all[ph] = tidy;
+    }
+    return _copy(phaseKeys: all);
+  }
 
-  MotionDevice withTarget(String target) => MotionDevice(kind,
-      on: on,
-      values: values,
-      id: id,
-      colour: colour,
-      target: target,
-      layer: layer,
-      keys: keys,
-      mods: mods);
+  /// playing is whether its keys in [ph] play: see [plays].
+  bool playing(MotionPhase ph) => plays.contains(ph);
 
-  /// keyed is whether setting [id] is animated by keys.
-  bool keyed(String id) => keys[id]?.isNotEmpty ?? false;
+  /// withPlaying is this with its keys in [ph] played, or not.
+  MotionDevice withPlaying(MotionPhase ph, bool play) =>
+      _copy(plays: play ? {...plays, ph} : ({...plays}..remove(ph)));
+
+  /// keyed is whether setting [id] is animated by keys, in any phase.
+  bool keyed(String id) => MotionPhase.values.any((ph) => keyedIn(id, ph));
+
+  /// keyedIn is whether setting [id] has keys in phase [ph].
+  bool keyedIn(String id, MotionPhase ph) =>
+      keysIn(ph)[id]?.isNotEmpty ?? false;
 
   /// animated is whether any of its settings is.
-  bool get animated => keys.values.any((k) => k.isNotEmpty);
+  bool get animated => MotionPhase.values
+      .any((ph) => keysIn(ph).values.any((k) => k.isNotEmpty));
 
-  /// valueAt is setting [id] at [t] seconds: by its keys where it has any,
-  /// level before the first and after the last.
-  double valueAt(String id, double t) {
-    var ks = keys[id];
-    if (ks == null || ks.isEmpty) return value(id);
-    var p = kind.param(id);
-    double held(double v) => v.clamp(p.min, p.max).toDouble();
-    if (t <= ks.first.t) return held(ks.first.v);
-    if (t >= ks.last.t) return held(ks.last.v);
-    for (var i = 1; i < ks.length; i++) {
-      var a = ks[i - 1], b = ks[i];
-      if (t <= b.t) {
-        var f = b.t == a.t ? 1.0 : (t - a.t) / (b.t - a.t);
-        return held(a.v + (b.v - a.v) * f);
-      }
+  /// liveIn is the phase whose keys of setting [id] play at [t] -- the clip
+  /// playing then, where its keys play in it and it has some; otherwise
+  /// Independent -- or null where none do.
+  MotionPhase? liveIn(String id, double t, PhaseSpans spans) {
+    for (var ph in spans.phasesAt(t)) {
+      if (playing(ph) && keyedIn(id, ph)) return ph;
     }
-    return held(ks.last.v);
+    if (playing(MotionPhase.free) && keyedIn(id, MotionPhase.free)) {
+      return MotionPhase.free;
+    }
+    return null;
+  }
+
+  /// valueAt is setting [id] at [t] seconds: by the keys playing then (see
+  /// [liveIn]), level before the first and after the last; how it rests
+  /// where none play.
+  double valueAt(String id, double t, {PhaseSpans spans = PhaseSpans.none}) {
+    var ph = liveIn(id, t, spans);
+    if (ph == null) return value(id);
+    var ks = keysIn(ph)[id]!;
+    var p = kind.param(id);
+    var at = ph == MotionPhase.free ? t : spans.shareIn(ph, t);
+    return p.unit == "argb"
+        ? _alongColour(ks, at)
+        : _along(ks, at).clamp(p.min, p.max).toDouble();
   }
 
   /// at is this device as it is [t] seconds into the scene: its keyed
   /// settings' values then. Itself where nothing is keyed.
-  MotionDevice at(double t) {
+  MotionDevice at(double t, {PhaseSpans spans = PhaseSpans.none}) {
     if (!animated) return this;
     var next = this;
-    for (var id in keys.keys) {
-      if (keyed(id)) next = next._withPlainValue(id, valueAt(id, t));
+    var ids = {for (var ph in MotionPhase.values) ...keysIn(ph).keys};
+    for (var id in ids) {
+      if (liveIn(id, t, spans) != null) {
+        next = next._withPlainValue(id, valueAt(id, t, spans: spans));
+      }
     }
     return next;
   }
 
-  /// keyAt is whether setting [id] has a key at [t], within [near] seconds.
-  bool keyAt(String id, double t, {double near = 0.02}) =>
-      keys[id]?.any((k) => (k.t - t).abs() <= near) ?? false;
+  /// keyPhase is the phase a key made at [t] goes in: the clip playing then
+  /// where its keys play in it; otherwise Independent.
+  MotionPhase keyPhase(double t, PhaseSpans spans) =>
+      spans.phasesAt(t).firstWhere(playing, orElse: () => MotionPhase.free);
 
-  /// withKey is this with setting [id] keyed to [v] at [t]: a key already
-  /// there moved to it.
-  MotionDevice withKey(String id, double t, double v, {double near = 0.02}) {
+  double _when(MotionPhase ph, double t, PhaseSpans spans) =>
+      ph == MotionPhase.free ? t : spans.shareIn(ph, t);
+
+  /// keyAt is whether setting [id] has a key at [t], in the phase a key
+  /// made there would go in: within a frame or so.
+  bool keyAt(String id, double t,
+      {double near = 0.02, PhaseSpans spans = PhaseSpans.none}) {
+    var ph = keyPhase(t, spans);
+    var at = _when(ph, t, spans);
+    var within = ph == MotionPhase.free ? near : 0.01;
+    return keysIn(ph)[id]?.any((k) => (k.t - at).abs() <= within) ?? false;
+  }
+
+  /// withKey is this with setting [id] keyed to [v] at [t], in the phase a
+  /// key made there goes in (see [keyPhase]): a key already there moved to
+  /// it.
+  MotionDevice withKey(String id, double t, double v,
+      {double near = 0.02, PhaseSpans spans = PhaseSpans.none}) {
     var p = kind.param(id);
+    var ph = keyPhase(t, spans);
+    var at = _when(ph, t, spans);
+    var within = ph == MotionPhase.free ? near : 0.01;
+    var was = keysIn(ph)[id] ?? const <DeviceKey>[];
+    var kept = was.where((k) => (k.t - at).abs() <= within).firstOrNull;
     var list = [
-      for (var k in keys[id] ?? const <DeviceKey>[])
-        if ((k.t - t).abs() > near) k,
-      DeviceKey(t, v.clamp(p.min, p.max).toDouble()),
+      for (var k in was)
+        if ((k.t - at).abs() > within) k,
+      DeviceKey(at, p.unit == "argb" ? v : v.clamp(p.min, p.max).toDouble(),
+          ease: kept?.ease ?? KeyEase.straight),
     ]..sort((a, b) => a.t.compareTo(b.t));
-    return _withKeys({...keys, id: list});
+    return _withKeysIn(ph, {...keysIn(ph), id: list}).withPlaying(ph, true);
   }
 
-  /// withoutKeyAt is this without setting [id]'s key at [t]. Its last key
-  /// taken away, the setting keeps the value it had there.
-  MotionDevice withoutKeyAt(String id, double t, {double near = 0.02}) {
+  /// withoutKeyAt is this without setting [id]'s key at [t], in the phase
+  /// a key there is in. Its last key taken away, the setting keeps the
+  /// value it had there, where it was keyed independently.
+  MotionDevice withoutKeyAt(String id, double t,
+      {double near = 0.02, PhaseSpans spans = PhaseSpans.none}) {
+    var ph = keyPhase(t, spans);
+    var at = _when(ph, t, spans);
+    var within = ph == MotionPhase.free ? near : 0.01;
     var list = [
-      for (var k in keys[id] ?? const <DeviceKey>[])
-        if ((k.t - t).abs() > near) k,
+      for (var k in keysIn(ph)[id] ?? const <DeviceKey>[])
+        if ((k.t - at).abs() > within) k,
     ];
-    if (list.isEmpty) return withoutKeys(id, at: t);
-    return _withKeys({...keys, id: list});
+    if (list.isEmpty && ph == MotionPhase.free) {
+      var v = valueAt(id, t, spans: spans);
+      return _withKeysIn(ph, {...keysIn(ph)}..remove(id))
+          ._withPlainValue(id, v);
+    }
+    return _withKeysIn(ph, {...keysIn(ph), id: list});
   }
 
-  /// withoutKeys is this with setting [id] no longer animated: it keeps the
-  /// value it has at [at].
-  MotionDevice withoutKeys(String id, {double at = 0}) {
-    var v = valueAt(id, at);
-    return _withKeys({
-      for (var MapEntry(:key, :value) in keys.entries)
-        if (key != id) key: value
-    })._withPlainValue(id, v);
+  /// withKeysOf is this with setting [id]'s keys in [ph] made [list].
+  MotionDevice withKeysOf(String id, MotionPhase ph, List<DeviceKey> list) =>
+      _withKeysIn(ph, {...keysIn(ph), id: list});
+
+  /// withoutKeys is this with setting [id] no longer animated, in any
+  /// phase: it keeps the value it has at [at].
+  MotionDevice withoutKeys(String id,
+      {double at = 0, PhaseSpans spans = PhaseSpans.none}) {
+    var v = valueAt(id, at, spans: spans);
+    var next = this;
+    for (var ph in MotionPhase.values) {
+      next = next._withKeysIn(ph, {...next.keysIn(ph)}..remove(id));
+    }
+    return next._withPlainValue(id, v);
   }
 
-  MotionDevice _withKeys(Map<String, List<DeviceKey>> keys) =>
-      MotionDevice(kind,
-          on: on,
-          values: values,
-          id: id,
-          colour: colour,
-          target: target,
-          layer: layer,
-          keys: keys,
-          mods: mods);
+  MotionDevice _withPlainValue(String id, double v) =>
+      _copy(values: {...values, id: v});
 
-  MotionDevice _withPlainValue(String id, double v) => MotionDevice(kind,
-      on: on,
-      values: {...values, id: v},
-      id: this.id,
-      colour: colour,
-      target: target,
-      layer: layer,
-      keys: keys,
-      mods: mods);
+  static List<List<num>> _keysJson(List<DeviceKey> ks) => [
+        for (var k in ks)
+          [k.t, k.v, if (k.ease != KeyEase.straight) k.ease.index]
+      ];
 
-  MotionDevice withLayer(String layer) => MotionDevice(kind,
-      on: on,
-      values: values,
-      id: id,
-      colour: colour,
-      target: target,
-      layer: layer,
-      keys: keys,
-      mods: mods);
-
-  MotionDevice withMods(List<ModTarget> mods) => MotionDevice(kind,
-      on: on,
-      values: values,
-      id: id,
-      colour: colour,
-      target: target,
-      layer: layer,
-      keys: keys,
-      mods: mods);
+  static Map<String, List<DeviceKey>> _keysRead(Object? raw, Set<String> ids) =>
+      {
+        if (raw case Map m)
+          for (var MapEntry(:key, :value) in m.entries)
+            if (key is String && ids.contains(key) && value is List)
+              key: [
+                for (var k in value)
+                  if (k is List && k.length >= 2)
+                    DeviceKey(jsonDouble(k[0], 0), jsonDouble(k[1], 0),
+                        ease: k.length > 2
+                            ? KeyEase.values[jsonInt(k[2], 0)
+                                .clamp(0, KeyEase.values.length - 1)]
+                            : KeyEase.straight),
+              ]..sort((a, b) => a.t.compareTo(b.t)),
+      };
 
   Map<String, dynamic> toJson() => {
         "kind": kind.name,
@@ -427,10 +504,18 @@ class MotionDevice {
         if (keys.isNotEmpty)
           "keys": {
             for (var MapEntry(:key, :value) in keys.entries)
-              key: [
-                for (var k in value) [k.t, k.v]
-              ],
+              key: _keysJson(value),
           },
+        if (phaseKeys.isNotEmpty)
+          "phaseKeys": {
+            for (var MapEntry(:key, :value) in phaseKeys.entries)
+              key.name: {
+                for (var e in value.entries) e.key: _keysJson(e.value),
+              },
+          },
+        if (!(plays.length == 1 && plays.contains(MotionPhase.free)))
+          "plays": [for (var ph in plays) ph.name],
+        if (shown.isNotEmpty) "shown": shown,
         if (mods.isNotEmpty) "mods": [for (var m in mods) m.toJson()],
       };
 
@@ -451,16 +536,27 @@ class MotionDevice {
         colour: json["colour"] is int ? json["colour"] as int : null,
         target: jsonStr(json["target"]) ?? "",
         layer: jsonStr(json["layer"]) ?? "",
-        keys: {
-          if (json["keys"] case Map raw)
+        keys: _keysRead(json["keys"], ids),
+        phaseKeys: {
+          if (json["phaseKeys"] case Map raw)
             for (var MapEntry(:key, :value) in raw.entries)
-              if (key is String && ids.contains(key) && value is List)
-                key: [
-                  for (var k in value)
-                    if (k is List && k.length == 2)
-                      DeviceKey(jsonDouble(k[0], 0), jsonDouble(k[1], 0)),
-                ]..sort((a, b) => a.t.compareTo(b.t)),
+              if (MotionPhase.values.where((p) => p.name == key).firstOrNull
+                  case var ph? when ph != MotionPhase.free)
+                ph: _keysRead(value, ids),
         },
+        plays: json["plays"] is List
+            ? {
+                for (var n in json["plays"] as List)
+                  if (MotionPhase.values.where((p) => p.name == n).firstOrNull
+                      case var ph?)
+                    ph
+              }
+            : const {MotionPhase.free},
+        shown: [
+          if (json["shown"] case List raw)
+            for (var s in raw)
+              if (s is String && ids.contains(s)) s
+        ],
         mods: readModTargets(json["mods"]));
   }
 
@@ -474,6 +570,12 @@ class MotionDevice {
       other.target == target &&
       other.layer == layer &&
       _sameKeys(other.keys, keys) &&
+      other.phaseKeys.length == phaseKeys.length &&
+      phaseKeys.entries.every(
+          (e) => _sameKeys(other.phaseKeys[e.key] ?? const {}, e.value)) &&
+      other.plays.length == plays.length &&
+      other.plays.containsAll(plays) &&
+      other.shown.join(",") == shown.join(",") &&
       other.mods.length == mods.length &&
       [for (var i = 0; i < mods.length; i++) other.mods[i] == mods[i]]
           .every((x) => x) &&
@@ -484,19 +586,160 @@ class MotionDevice {
   int get hashCode => Object.hash(kind, on, id, colour, values.length);
 }
 
-/// DeviceKey is one key of a device's setting: value [v] at [t] seconds
-/// into the scene.
-class DeviceKey {
-  final double t;
-  final double v;
-  const DeviceKey(this.t, this.v);
+/// MotionPhase is where a device's keys play (Ken, 2026-11-12): in its
+/// element's arrival, its leaving, its loop -- or independently, in the
+/// scene's own time. Its card's A, L, Loop and I.
+enum MotionPhase {
+  arrive("Arrive", "A"),
+  leave("Leave", "L"),
+  loop("Loop", "Loop"),
+  free("Independent", "I");
+
+  final String label;
+  final String short;
+  const MotionPhase(this.label, this.short);
+}
+
+/// PhaseSpans are when an element's arrival, leaving and loop play, in
+/// seconds: what phase keys are timed by. See phaseSpansOf.
+class PhaseSpans {
+  final (double, double)? arrive;
+  final (double, double)? leave;
+  final (double, double)? loop;
+
+  /// cycle is how long one go round the loop takes.
+  final double cycle;
+
+  const PhaseSpans({this.arrive, this.leave, this.loop, this.cycle = 2});
+
+  /// none has no clips: every key plays independently.
+  static const none = PhaseSpans();
+
+  (double, double)? spanOf(MotionPhase ph) => switch (ph) {
+        MotionPhase.arrive => arrive,
+        MotionPhase.leave => leave,
+        MotionPhase.loop => loop,
+        MotionPhase.free => null,
+      };
+
+  /// phasesAt are the clips playing at [t]: an arrival's or leaving's
+  /// last moment is in it, so its end can be keyed, though the loop starts
+  /// there too.
+  List<MotionPhase> phasesAt(double t) => [
+        for (var ph in const [MotionPhase.arrive, MotionPhase.leave])
+          if (spanOf(ph) case (var a, var b) when t >= a && t <= b) ph,
+        if (loop case (var a, var b) when t >= a && t < b) MotionPhase.loop,
+      ];
+
+  /// phaseAt is the clip playing at [t], or free outside them all.
+  MotionPhase phaseAt(double t) => phasesAt(t).firstOrNull ?? MotionPhase.free;
+
+  /// shareIn is [t] as a share of phase [ph]: of its clip, or of one go
+  /// round the loop.
+  double shareIn(MotionPhase ph, double t) {
+    var span = spanOf(ph);
+    if (span == null) return t;
+    var (a, b) = span;
+    if (ph == MotionPhase.loop) {
+      var c = cycle <= 0 ? 1.0 : cycle;
+      return (((t - a) % c) + c) % c / c;
+    }
+    return ((t - a) / math.max(0.0001, b - a)).clamp(0.0, 1.0).toDouble();
+  }
+
+  /// timeOf is a key at share [share] of phase [ph] in seconds: the loop's
+  /// first go round.
+  double timeOf(MotionPhase ph, double share) {
+    var span = spanOf(ph);
+    if (span == null) return share;
+    var (a, b) = span;
+    return ph == MotionPhase.loop ? a + share * cycle : a + share * (b - a);
+  }
 
   @override
   bool operator ==(Object other) =>
-      other is DeviceKey && other.t == t && other.v == v;
+      other is PhaseSpans &&
+      other.arrive == arrive &&
+      other.leave == leave &&
+      other.loop == loop &&
+      other.cycle == cycle;
 
   @override
-  int get hashCode => Object.hash(t, v);
+  int get hashCode => Object.hash(arrive, leave, loop, cycle);
+}
+
+/// KeyEase is how a key's value goes into the next key's.
+enum KeyEase {
+  straight("Straight"),
+  easeInOut("Ease in and out"),
+  easeOut("Ease out"),
+  hold("Hold");
+
+  final String label;
+  const KeyEase(this.label);
+
+  double apply(double f) => switch (this) {
+        KeyEase.straight => f,
+        KeyEase.easeInOut =>
+          f < 0.5 ? 2 * f * f : 1 - math.pow(-2 * f + 2, 2) / 2,
+        KeyEase.easeOut => 1 - (1 - f) * (1 - f),
+        KeyEase.hold => f >= 1 ? 1 : 0,
+      };
+}
+
+/// DeviceKey is one key of a device's setting: value [v] at [t] -- seconds
+/// into the scene, or a share of a clip (see MotionDevice.phaseKeys) --
+/// and how it goes into the next.
+class DeviceKey {
+  final double t;
+  final double v;
+  final KeyEase ease;
+  const DeviceKey(this.t, this.v, {this.ease = KeyEase.straight});
+
+  DeviceKey copyWith({double? t, double? v, KeyEase? ease}) =>
+      DeviceKey(t ?? this.t, v ?? this.v, ease: ease ?? this.ease);
+
+  @override
+  bool operator ==(Object other) =>
+      other is DeviceKey && other.t == t && other.v == v && other.ease == ease;
+
+  @override
+  int get hashCode => Object.hash(t, v, ease);
+}
+
+/// _along is the value [ks] come to at [t]: level before the first and
+/// after the last, eased between as each key says.
+double _along(List<DeviceKey> ks, double t) {
+  if (t <= ks.first.t) return ks.first.v;
+  if (t >= ks.last.t) return ks.last.v;
+  for (var i = 1; i < ks.length; i++) {
+    var a = ks[i - 1], b = ks[i];
+    if (t <= b.t) {
+      var f = b.t == a.t ? 1.0 : (t - a.t) / (b.t - a.t);
+      return a.v + (b.v - a.v) * a.ease.apply(f);
+    }
+  }
+  return ks.last.v;
+}
+
+/// _alongColour is [_along] for colours kept as ARGB: each channel blended.
+double _alongColour(List<DeviceKey> ks, double t) {
+  int ch(double v, int shift) => (v.toInt() >> shift) & 0xFF;
+  if (t <= ks.first.t) return ks.first.v;
+  if (t >= ks.last.t) return ks.last.v;
+  for (var i = 1; i < ks.length; i++) {
+    var a = ks[i - 1], b = ks[i];
+    if (t <= b.t) {
+      var f = a.ease.apply(b.t == a.t ? 1.0 : (t - a.t) / (b.t - a.t));
+      var out = 0;
+      for (var shift in const [24, 16, 8, 0]) {
+        var x = ch(a.v, shift), y = ch(b.v, shift);
+        out |= ((x + (y - x) * f).round().clamp(0, 255)) << shift;
+      }
+      return out.toDouble();
+    }
+  }
+  return ks.last.v;
 }
 
 bool _sameKeys(Map<String, List<DeviceKey>> a, Map<String, List<DeviceKey>> b) {
@@ -530,6 +773,8 @@ List<MotionDevice> motionDevicesInOrder(List<MotionDevice> chain) => [
       for (var d in chain)
         if (d.side == MotionDeviceSide.pose) d,
       for (var d in chain)
+        if (d.side == MotionDeviceSide.design) d,
+      for (var d in chain)
         if (d.side == MotionDeviceSide.look) d,
     ];
 
@@ -561,6 +806,7 @@ String motionFamily(MotionDeviceKind kind) => switch (kind) {
       MotionDeviceKind.lens =>
         "Picture",
       MotionDeviceKind.instances => "Instances",
+      MotionDeviceKind.design => "Design",
     };
 
 /// motionAbout is what [kind] does, in a few words: what its "?" and its
@@ -615,6 +861,10 @@ String motionAbout(MotionDeviceKind kind) => switch (kind) {
       MotionDeviceKind.lens =>
         "A magnifying glass over it: what is under the glass Zoom times "
             "bigger, going round its middle so many Laps a second.",
+      MotionDeviceKind.design =>
+        "The element's own settings, animated: where it is, its turn, "
+            "size and fade, and the settings of its panel you add -- in "
+            "its arrival, leaving and loop, or on their own.",
     };
 
 /// motionParamShown is whether [p] of [d] does anything as it is set, so

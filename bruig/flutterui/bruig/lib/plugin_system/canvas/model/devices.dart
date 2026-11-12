@@ -57,6 +57,9 @@ class DeviceParam {
       "×" => "×${v.toStringAsFixed(2)}",
       "/s" => "${v.toStringAsFixed(2)}/s",
       "LUFS" => "${v >= 0 ? "" : "−"}${v.abs().round()} LUFS",
+      // A colour kept as ARGB (Design's): its hex.
+      "argb" =>
+        "#${(v.toInt() & 0xFFFFFF).toRadixString(16).padLeft(6, "0").toUpperCase()}",
       _ => "${(v * 100).round()}%",
     };
   }

@@ -431,7 +431,7 @@ class _LooksGroupState extends State<LooksGroup> {
   /// _now is setting [p] of [d] as it is at the playhead: by its keys,
   /// where it is animated.
   double _now(MotionDevice d, DeviceParam p) =>
-      d.keyed(p.id) ? d.valueAt(p.id, c.playheadSeconds) : d.value(p.id);
+      d.keyed(p.id) ? c.deviceValueNow(id, d, p.id) : d.value(p.id);
 
   /// _set changes setting [p] of [d]: a key at the playhead where it is
   /// animated, how it rests where not, as the Chain's knob does.

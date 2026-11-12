@@ -4,60 +4,60 @@ import 'package:flutter_test/flutter_test.dart';
 import 'reset.dart';
 import '../test/canvas_audio_element_test.dart' as t0;
 import '../test/canvas_background_light_test.dart' as t1;
-import '../test/canvas_cast_test.dart' as t2;
-import '../test/canvas_character_move_test.dart' as t3;
-import '../test/canvas_chart_band_test.dart' as t4;
-import '../test/canvas_chart_draw_on_test.dart' as t5;
-import '../test/canvas_chart_label_gap_backdrop_test.dart' as t6;
-import '../test/canvas_chart_legend_toggle_test.dart' as t7;
-import '../test/canvas_chart_line_style_test.dart' as t8;
-import '../test/canvas_counter_test.dart' as t9;
-import '../test/canvas_device_scope_test.dart' as t10;
-import '../test/canvas_dock_test.dart' as t11;
-import '../test/canvas_edge_cleaning_test.dart' as t12;
-import '../test/canvas_football_form_test.dart' as t13;
-import '../test/canvas_game_test.dart' as t14;
+import '../test/canvas_bundle_test.dart' as t2;
+import '../test/canvas_chart_band_test.dart' as t3;
+import '../test/canvas_chart_grid_test.dart' as t4;
+import '../test/canvas_chart_label_gap_backdrop_test.dart' as t5;
+import '../test/canvas_chart_legend_press_test.dart' as t6;
+import '../test/canvas_data_editor_height_test.dart' as t7;
+import '../test/canvas_device_scope_test.dart' as t8;
+import '../test/canvas_dim_others_test.dart' as t9;
+import '../test/canvas_dock_test.dart' as t10;
+import '../test/canvas_dropdown_menu_test.dart' as t11;
+import '../test/canvas_football_form_test.dart' as t12;
+import '../test/canvas_game_test.dart' as t13;
+import '../test/canvas_gradient_paint_test.dart' as t14;
 import '../test/canvas_image_cues_test.dart' as t15;
 import '../test/canvas_image_layers_test.dart' as t16;
-import '../test/canvas_line_ends_test.dart' as t17;
-import '../test/canvas_look_keys_test.dart' as t18;
-import '../test/canvas_motion_convert_test.dart' as t19;
+import '../test/canvas_library_test.dart' as t17;
+import '../test/canvas_motion_options_test.dart' as t18;
+import '../test/canvas_motion_place_test.dart' as t19;
 import '../test/canvas_motion_test.dart' as t20;
-import '../test/canvas_object3d_test.dart' as t21;
+import '../test/canvas_own_motion_test.dart' as t21;
 import '../test/canvas_piano_roll_test.dart' as t22;
 import '../test/canvas_publish_test.dart' as t23;
 import '../test/canvas_responsive_bar_test.dart' as t24;
-import '../test/canvas_reuse_test.dart' as t25;
-import '../test/canvas_scene_chain_test.dart' as t26;
-import '../test/canvas_scene_strip_test.dart' as t27;
-import '../test/canvas_second_line_test.dart' as t28;
-import '../test/canvas_segmentation_test.dart' as t29;
-import '../test/canvas_settled_frame_test.dart' as t30;
-import '../test/canvas_storyboard_test.dart' as t31;
-import '../test/canvas_strip_switch_test.dart' as t32;
-import '../test/canvas_text_chart_animation_test.dart' as t33;
-import '../test/canvas_text_columns_test.dart' as t34;
-import '../test/canvas_text_parts_test.dart' as t35;
-import '../test/canvas_text_test.dart' as t36;
-import '../test/canvas_text_wrap_test.dart' as t37;
-import '../test/canvas_timeline_any_scene_test.dart' as t38;
-import '../test/canvas_vector_text_test.dart' as t39;
-import '../test/feed_render_scope_test.dart' as t40;
-import '../test/image_header_test.dart' as t41;
-import '../test/link_card_domains_test.dart' as t42;
-import '../test/markdown_columns_test.dart' as t43;
-import '../test/markdown_panel_test.dart' as t44;
-import '../test/page_open_in_writing_test.dart' as t45;
-import '../test/plugin_widgets_test.dart' as t46;
-import '../test/post_library_test.dart' as t47;
-import '../test/post_storage_test.dart' as t48;
-import '../test/product_picture_test.dart' as t49;
-import '../test/reading_lookup_test.dart' as t50;
-import '../test/resizable_sidebar_test.dart' as t51;
-import '../test/rtc_create_test.dart' as t52;
-import '../test/spellcheck_capability_test.dart' as t53;
-import '../test/spellcheck_suggestions_test.dart' as t54;
-import '../test/thesaurus_test.dart' as t55;
+import '../test/canvas_returns_test.dart' as t25;
+import '../test/canvas_scene_strip_test.dart' as t26;
+import '../test/canvas_sidebar_layout_test.dart' as t27;
+import '../test/canvas_studio_colors_test.dart' as t28;
+import '../test/canvas_table_padding_test.dart' as t29;
+import '../test/canvas_table_sort_test.dart' as t30;
+import '../test/canvas_text_columns_test.dart' as t31;
+import '../test/canvas_text_flow_test.dart' as t32;
+import '../test/canvas_text_parts_test.dart' as t33;
+import '../test/canvas_text_test.dart' as t34;
+import '../test/canvas_text_wrap_test.dart' as t35;
+import '../test/canvas_vector_text_test.dart' as t36;
+import '../test/canvas_video_ffmpeg_test.dart' as t37;
+import '../test/feed_render_scope_test.dart' as t38;
+import '../test/file_preview_markdown_test.dart' as t39;
+import '../test/form_help_test.dart' as t40;
+import '../test/header_label_test.dart' as t41;
+import '../test/markdown_columns_test.dart' as t42;
+import '../test/markdown_list_marker_test.dart' as t43;
+import '../test/notes_storage_test.dart' as t44;
+import '../test/page_partials_test.dart' as t45;
+import '../test/page_setup_test.dart' as t46;
+import '../test/page_size_test.dart' as t47;
+import '../test/pages_row_ink_test.dart' as t48;
+import '../test/plugin_settings_test.dart' as t49;
+import '../test/plugin_widgets_test.dart' as t50;
+import '../test/post_entry_menu_test.dart' as t51;
+import '../test/post_library_test.dart' as t52;
+import '../test/reading_lookup_test.dart' as t53;
+import '../test/resizable_sidebar_test.dart' as t54;
+import '../test/spellcheck_suggestions_test.dart' as t55;
 import '../test/writing_sidebar_test.dart' as t56;
 
 void main() {
@@ -69,55 +69,55 @@ void main() {
     setUpAll(betweenFiles);
     t1.main();
   });
-  group('canvas_cast_test.dart', () {
+  group('canvas_bundle_test.dart', () {
     setUpAll(betweenFiles);
     t2.main();
   });
-  group('canvas_character_move_test.dart', () {
+  group('canvas_chart_band_test.dart', () {
     setUpAll(betweenFiles);
     t3.main();
   });
-  group('canvas_chart_band_test.dart', () {
+  group('canvas_chart_grid_test.dart', () {
     setUpAll(betweenFiles);
     t4.main();
   });
-  group('canvas_chart_draw_on_test.dart', () {
+  group('canvas_chart_label_gap_backdrop_test.dart', () {
     setUpAll(betweenFiles);
     t5.main();
   });
-  group('canvas_chart_label_gap_backdrop_test.dart', () {
+  group('canvas_chart_legend_press_test.dart', () {
     setUpAll(betweenFiles);
     t6.main();
   });
-  group('canvas_chart_legend_toggle_test.dart', () {
+  group('canvas_data_editor_height_test.dart', () {
     setUpAll(betweenFiles);
     t7.main();
   });
-  group('canvas_chart_line_style_test.dart', () {
+  group('canvas_device_scope_test.dart', () {
     setUpAll(betweenFiles);
     t8.main();
   });
-  group('canvas_counter_test.dart', () {
+  group('canvas_dim_others_test.dart', () {
     setUpAll(betweenFiles);
     t9.main();
   });
-  group('canvas_device_scope_test.dart', () {
+  group('canvas_dock_test.dart', () {
     setUpAll(betweenFiles);
     t10.main();
   });
-  group('canvas_dock_test.dart', () {
+  group('canvas_dropdown_menu_test.dart', () {
     setUpAll(betweenFiles);
     t11.main();
   });
-  group('canvas_edge_cleaning_test.dart', () {
+  group('canvas_football_form_test.dart', () {
     setUpAll(betweenFiles);
     t12.main();
   });
-  group('canvas_football_form_test.dart', () {
+  group('canvas_game_test.dart', () {
     setUpAll(betweenFiles);
     t13.main();
   });
-  group('canvas_game_test.dart', () {
+  group('canvas_gradient_paint_test.dart', () {
     setUpAll(betweenFiles);
     t14.main();
   });
@@ -129,15 +129,15 @@ void main() {
     setUpAll(betweenFiles);
     t16.main();
   });
-  group('canvas_line_ends_test.dart', () {
+  group('canvas_library_test.dart', () {
     setUpAll(betweenFiles);
     t17.main();
   });
-  group('canvas_look_keys_test.dart', () {
+  group('canvas_motion_options_test.dart', () {
     setUpAll(betweenFiles);
     t18.main();
   });
-  group('canvas_motion_convert_test.dart', () {
+  group('canvas_motion_place_test.dart', () {
     setUpAll(betweenFiles);
     t19.main();
   });
@@ -145,7 +145,7 @@ void main() {
     setUpAll(betweenFiles);
     t20.main();
   });
-  group('canvas_object3d_test.dart', () {
+  group('canvas_own_motion_test.dart', () {
     setUpAll(betweenFiles);
     t21.main();
   });
@@ -161,127 +161,127 @@ void main() {
     setUpAll(betweenFiles);
     t24.main();
   });
-  group('canvas_reuse_test.dart', () {
+  group('canvas_returns_test.dart', () {
     setUpAll(betweenFiles);
     t25.main();
   });
-  group('canvas_scene_chain_test.dart', () {
+  group('canvas_scene_strip_test.dart', () {
     setUpAll(betweenFiles);
     t26.main();
   });
-  group('canvas_scene_strip_test.dart', () {
+  group('canvas_sidebar_layout_test.dart', () {
     setUpAll(betweenFiles);
     t27.main();
   });
-  group('canvas_second_line_test.dart', () {
+  group('canvas_studio_colors_test.dart', () {
     setUpAll(betweenFiles);
     t28.main();
   });
-  group('canvas_segmentation_test.dart', () {
+  group('canvas_table_padding_test.dart', () {
     setUpAll(betweenFiles);
     t29.main();
   });
-  group('canvas_settled_frame_test.dart', () {
+  group('canvas_table_sort_test.dart', () {
     setUpAll(betweenFiles);
     t30.main();
   });
-  group('canvas_storyboard_test.dart', () {
+  group('canvas_text_columns_test.dart', () {
     setUpAll(betweenFiles);
     t31.main();
   });
-  group('canvas_strip_switch_test.dart', () {
+  group('canvas_text_flow_test.dart', () {
     setUpAll(betweenFiles);
     t32.main();
   });
-  group('canvas_text_chart_animation_test.dart', () {
+  group('canvas_text_parts_test.dart', () {
     setUpAll(betweenFiles);
     t33.main();
   });
-  group('canvas_text_columns_test.dart', () {
+  group('canvas_text_test.dart', () {
     setUpAll(betweenFiles);
     t34.main();
   });
-  group('canvas_text_parts_test.dart', () {
+  group('canvas_text_wrap_test.dart', () {
     setUpAll(betweenFiles);
     t35.main();
   });
-  group('canvas_text_test.dart', () {
+  group('canvas_vector_text_test.dart', () {
     setUpAll(betweenFiles);
     t36.main();
   });
-  group('canvas_text_wrap_test.dart', () {
+  group('canvas_video_ffmpeg_test.dart', () {
     setUpAll(betweenFiles);
     t37.main();
   });
-  group('canvas_timeline_any_scene_test.dart', () {
+  group('feed_render_scope_test.dart', () {
     setUpAll(betweenFiles);
     t38.main();
   });
-  group('canvas_vector_text_test.dart', () {
+  group('file_preview_markdown_test.dart', () {
     setUpAll(betweenFiles);
     t39.main();
   });
-  group('feed_render_scope_test.dart', () {
+  group('form_help_test.dart', () {
     setUpAll(betweenFiles);
     t40.main();
   });
-  group('image_header_test.dart', () {
+  group('header_label_test.dart', () {
     setUpAll(betweenFiles);
     t41.main();
   });
-  group('link_card_domains_test.dart', () {
+  group('markdown_columns_test.dart', () {
     setUpAll(betweenFiles);
     t42.main();
   });
-  group('markdown_columns_test.dart', () {
+  group('markdown_list_marker_test.dart', () {
     setUpAll(betweenFiles);
     t43.main();
   });
-  group('markdown_panel_test.dart', () {
+  group('notes_storage_test.dart', () {
     setUpAll(betweenFiles);
     t44.main();
   });
-  group('page_open_in_writing_test.dart', () {
+  group('page_partials_test.dart', () {
     setUpAll(betweenFiles);
     t45.main();
   });
-  group('plugin_widgets_test.dart', () {
+  group('page_setup_test.dart', () {
     setUpAll(betweenFiles);
     t46.main();
   });
-  group('post_library_test.dart', () {
+  group('page_size_test.dart', () {
     setUpAll(betweenFiles);
     t47.main();
   });
-  group('post_storage_test.dart', () {
+  group('pages_row_ink_test.dart', () {
     setUpAll(betweenFiles);
     t48.main();
   });
-  group('product_picture_test.dart', () {
+  group('plugin_settings_test.dart', () {
     setUpAll(betweenFiles);
     t49.main();
   });
-  group('reading_lookup_test.dart', () {
+  group('plugin_widgets_test.dart', () {
     setUpAll(betweenFiles);
     t50.main();
   });
-  group('resizable_sidebar_test.dart', () {
+  group('post_entry_menu_test.dart', () {
     setUpAll(betweenFiles);
     t51.main();
   });
-  group('rtc_create_test.dart', () {
+  group('post_library_test.dart', () {
     setUpAll(betweenFiles);
     t52.main();
   });
-  group('spellcheck_capability_test.dart', () {
+  group('reading_lookup_test.dart', () {
     setUpAll(betweenFiles);
     t53.main();
   });
-  group('spellcheck_suggestions_test.dart', () {
+  group('resizable_sidebar_test.dart', () {
     setUpAll(betweenFiles);
     t54.main();
   });
-  group('thesaurus_test.dart', () {
+  group('spellcheck_suggestions_test.dart', () {
     setUpAll(betweenFiles);
     t55.main();
   });

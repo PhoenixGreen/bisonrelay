@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/design_device.dart'
+    show designValueAt;
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
@@ -70,9 +72,30 @@ extension MotionEditing on CanvasController {
     _putDevice(
         element,
         d.keyed(param)
-            ? d.withKey(param, playheadSeconds, v)
+            ? d.withKey(param, playheadSeconds, v,
+                spans: phaseSpansFor(element))
             : d.withValue(param, v),
         transient: transient);
+  }
+
+  /// phaseSpansFor is when [element]'s arrival, leaving and loop play: what
+  /// its devices' phase keys are timed by (see phaseSpansOf).
+  PhaseSpans phaseSpansFor(String element) =>
+      switch (document.elementById(element)) {
+        var e? => phaseSpansOf(e, document),
+        null => PhaseSpans.none,
+      };
+
+  /// deviceValueNow is setting [param] of [element]'s device [d] at the
+  /// playhead: by the keys playing then, or where it rests -- for Design,
+  /// the element's own setting (see designRest).
+  double deviceValueNow(String element, MotionDevice d, String param) {
+    var spans = phaseSpansFor(element);
+    var e = document.elementById(element);
+    if (d.kind == MotionDeviceKind.design && e != null) {
+      return designValueAt(e, d, param, playheadSeconds, spans: spans);
+    }
+    return d.valueAt(param, playheadSeconds, spans: spans);
   }
 
   /// toggleDeviceKey keys setting [param] at the playhead, as it is there,
@@ -81,11 +104,13 @@ extension MotionEditing on CanvasController {
     var d = _deviceOf(element, device);
     if (d == null) return;
     var t = playheadSeconds;
+    var spans = phaseSpansFor(element);
     _putDevice(
         element,
-        d.keyAt(param, t)
-            ? d.withoutKeyAt(param, t)
-            : d.withKey(param, t, d.valueAt(param, t)));
+        d.keyAt(param, t, spans: spans)
+            ? d.withoutKeyAt(param, t, spans: spans)
+            : d.withKey(param, t, deviceValueNow(element, d, param),
+                spans: spans));
   }
 
   /// stopAnimatingDevice takes every key of setting [param] away; it keeps
@@ -93,7 +118,10 @@ extension MotionEditing on CanvasController {
   void stopAnimatingDevice(String element, String device, String param) {
     var d = _deviceOf(element, device);
     if (d == null) return;
-    _putDevice(element, d.withoutKeys(param, at: playheadSeconds));
+    _putDevice(
+        element,
+        d.withoutKeys(param,
+            at: playheadSeconds, spans: phaseSpansFor(element)));
   }
 
   /// setMotionDevices writes [element]'s motion devices.

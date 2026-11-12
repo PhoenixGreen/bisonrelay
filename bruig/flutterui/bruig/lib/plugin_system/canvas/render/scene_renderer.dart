@@ -699,6 +699,9 @@ void paintElement(
   // Its clips' moves over any legacy track. See motion_document.dart.
   var pose = poseWithMotion(element, frame, document,
       live: liveMotion, instance: instance, frameRate: frameRate);
+  // Its own settings as its Design has them now: see design_device.dart.
+  element = designedNow(element, frame, document,
+      live: liveMotion, frameRate: frameRate);
   var outer = poseOutside ? Keyframe.rest : pose;
   var alpha = (element.opacity * outer.opacity).clamp(0.0, 1.0);
   // A closing stretch with no exit chosen fades rather than doing nothing:
@@ -1203,7 +1206,7 @@ List<MotionDevice> _looksNow(CanvasElement element, int frame, num frameRate,
         withOwnValues(
             motionModulated(l, element.base.motion.devices,
                 frame / (frameRate <= 0 ? 1 : frameRate),
-                doc: document),
+                doc: document, spans: phaseSpansOf(element, document)),
             element.base.motion.instances,
             instance),
     ];

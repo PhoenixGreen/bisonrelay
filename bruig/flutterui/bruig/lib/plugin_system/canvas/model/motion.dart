@@ -843,6 +843,13 @@ class ElementMotion {
     return [const MotionDevice(MotionDeviceKind.instances), ...poses];
   }
 
+  /// designs are its Design devices switched on: see design_device.dart.
+  List<MotionDevice> get designs => [
+        if (!off)
+          for (var d in devices)
+            if (d.on && d.side == MotionDeviceSide.design) d,
+      ];
+
   /// looks are its look devices switched on, in the order they run.
   List<MotionDevice> get looks => [
         if (!off)
@@ -856,7 +863,7 @@ class ElementMotion {
       !isEmpty ||
       instances != null ||
       drawSize != 1 ||
-      devices.any((d) => d.on && d.side == MotionDeviceSide.pose);
+      devices.any((d) => d.on && d.side != MotionDeviceSide.look);
 
   /// isBlank is whether there is nothing of it to keep.
   bool get isBlank =>
