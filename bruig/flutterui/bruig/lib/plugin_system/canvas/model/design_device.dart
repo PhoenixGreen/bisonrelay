@@ -3,6 +3,8 @@ import 'dart:ui' show Color;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart' show DeviceParam;
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
@@ -59,6 +61,12 @@ const designParams = [
   DeviceParam("endSize", "End size", 0.2, 8, 1, "×"),
   DeviceParam("wordsSize", "Words size", 1, 1000, 24, "px"),
   DeviceParam("wordsColour", "Words colour", 0, 4294967295, 4294967295, "argb"),
+  DeviceParam("gridColour", "Grid colour", 0, 4294967295, 4294967295, "argb"),
+  DeviceParam("barGap", "Bar gap", 0, 0.95, 0.3),
+  DeviceParam("pointSize", "Point size", 0, 60, 4, "px"),
+  DeviceParam("pointColour", "Point colour", 0, 4294967295, 4294967295, "argb"),
+  DeviceParam("headerFill", "Header fill", 0, 4294967295, 0, "argb"),
+  DeviceParam("cellFill", "Cell fill", 0, 4294967295, 0, "argb"),
 ];
 
 /// designPlace are Design's settings kept on the device: moves from where
@@ -227,6 +235,66 @@ List<DesignSetting> designTable(CanvasElement e) => switch (e) {
               size: "wordsSize", colour: "wordsColour", letters: false),
           ..._box((e) => (e as CounterElement).box,
               (e, b) => (e as CounterElement).copyWith(box: b)),
+        ],
+      ChartElement _ => [
+          DesignSetting(
+              "stroke",
+              "Series",
+              (e) => (e as ChartElement).strokeWidth,
+              (e, v) => (e as ChartElement).copyWith(strokeWidth: v)),
+          DesignSetting("barGap", "Series", (e) => (e as ChartElement).barGap,
+              (e, v) => (e as ChartElement).copyWith(barGap: v)),
+          DesignSetting(
+              "corners",
+              "Series",
+              (e) => (e as ChartElement).barRadius,
+              (e, v) => (e as ChartElement).copyWith(barRadius: v)),
+          DesignSetting(
+              "pointSize",
+              "Series",
+              (e) => (e as ChartElement).pointSize,
+              (e, v) => (e as ChartElement).copyWith(pointSize: v)),
+          DesignSetting(
+              "pointColour",
+              "Series",
+              (e) => _argb((e as ChartElement).pointColor),
+              (e, v) => (e as ChartElement).copyWith(pointColor: _colour(v))),
+          DesignSetting(
+              "gridColour",
+              "Grid",
+              (e) => _argb((e as ChartElement).gridColor),
+              (e, v) => (e as ChartElement).copyWith(gridColor: _colour(v))),
+          ..._type("Title", (e) => (e as ChartElement).titleSpec,
+              (e, t) => (e as ChartElement).copyWith(titleSpec: t),
+              letters: false),
+          ..._type("Labels", (e) => (e as ChartElement).labelSpec,
+              (e, t) => (e as ChartElement).copyWith(labelSpec: t),
+              size: "wordsSize", colour: "wordsColour", letters: false),
+        ],
+      TableElement _ => [
+          DesignSetting(
+              "headerFill",
+              "Colours",
+              (e) => _argb((e as TableElement).headerFill),
+              (e, v) => (e as TableElement).copyWith(headerFill: _colour(v))),
+          DesignSetting(
+              "cellFill",
+              "Colours",
+              (e) => _argb((e as TableElement).cellFill),
+              (e, v) => (e as TableElement).copyWith(cellFill: _colour(v))),
+          DesignSetting(
+              "gridColour",
+              "Colours",
+              (e) => _argb((e as TableElement).gridColor),
+              (e, v) => (e as TableElement).copyWith(gridColor: _colour(v))),
+          DesignSetting("pad", "Cells", (e) => (e as TableElement).cellPadding,
+              (e, v) => (e as TableElement).copyWith(cellPadding: v)),
+          ..._type("Header type", (e) => (e as TableElement).headerSpec,
+              (e, t) => (e as TableElement).copyWith(headerSpec: t),
+              letters: false),
+          ..._type("Cell type", (e) => (e as TableElement).cellSpec,
+              (e, t) => (e as TableElement).copyWith(cellSpec: t),
+              size: "wordsSize", colour: "wordsColour", letters: false),
         ],
       _ => const [],
     };

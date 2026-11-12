@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/design_device.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
@@ -241,6 +243,8 @@ void main() {
       const PathElement(base),
       const ButtonElement(base),
       const CounterElement(base),
+      ChartElement(base),
+      const TableElement(base),
     ]) {
       test("${e.kind.label}: offered, read and written", () {
         var table = designTable(e);
