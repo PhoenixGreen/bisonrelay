@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -49,6 +50,48 @@ void main() {
       expect(ChartAnimation.fromJson(a.toJson()).seriesInTurn, isTrue);
       expect(
           const ChartAnimation().toJson().containsKey("seriesInTurn"), isFalse);
+    });
+  });
+
+  group("a radar's own switches", () {
+    test("grid, axes and labels off: only its shapes are drawn", () async {
+      // Radars laid over one another (the privacy video's five) leave the
+      // web and the names to the first; the rest drew them again regardless.
+      Future<ByteData> drawn(ChartElement e) async {
+        var recorder = ui.PictureRecorder();
+        paintChart(Canvas(recorder), const Rect.fromLTWH(0, 0, 200, 200), e);
+        var image = await recorder.endRecording().toImage(200, 200);
+        return (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+      }
+
+      int inked(ByteData b) {
+        var n = 0;
+        for (var i = 3; i < b.lengthInBytes; i += 4) {
+          if (b.getUint8(i) > 0) n++;
+        }
+        return n;
+      }
+
+      // One small shape in the middle: everything far out is the web,
+      // the spokes or the names.
+      var e = ChartElement(
+        const ElementBase(id: "r", width: 200, height: 200),
+        type: ChartType.radar,
+        data: ChartData.parse("Cat\tA\nP\t1\nQ\t1\nR\t1\nS\t1\nT\t5"),
+        title: "",
+      );
+      var all = await drawn(e);
+      var bare = await drawn(
+          e.copyWith(showGrid: false, showAxes: false, showXLabels: false));
+      expect(inked(bare), lessThan(inked(all) * 0.8),
+          reason: "the web, spokes and names left out");
+      // The twelve o'clock spoke's tip, away from the shape: drawn only
+      // with the axes on.
+      var area = e.body.rectIn(const Rect.fromLTWH(0, 0, 200, 200));
+      var top = Offset(area.center.dx, area.top + 4);
+      int at(ByteData b, Offset p) =>
+          b.getUint8((p.dy.round() * 200 + p.dx.round()) * 4 + 3);
+      expect(at(bare, top), 0);
     });
   });
 

@@ -156,7 +156,11 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1
         ..color = e.gridColor;
-      for (var ringIndex = 1; ringIndex <= 4; ringIndex++) {
+      // The rings are its grid, the spokes its axes and their names its
+      // labels, each with the chart's own switch -- so radars laid over one
+      // another can leave all that to the first (the privacy video drew the
+      // web and the names five times over, doubled while one arrived).
+      for (var ringIndex = 1; e.showGrid && ringIndex <= 4; ringIndex++) {
         var path = Path();
         for (var i = 0; i <= axes; i++) {
           var p = spoke(i % axes, ringIndex / 4);
@@ -184,7 +188,8 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       }
 
       for (var i = 0; i < axes; i++) {
-        canvas.drawLine(centre, spoke(i, 1), web);
+        if (e.showAxes) canvas.drawLine(centre, spoke(i, 1), web);
+        if (!e.showXLabels) continue;
         paintTextInBox(
             canvas,
             data.categories[i],
