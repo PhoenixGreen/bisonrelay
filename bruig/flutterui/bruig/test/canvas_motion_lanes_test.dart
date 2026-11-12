@@ -92,7 +92,9 @@ void main() {
           reason: "a lane for each stack, and the next layer's to drop on");
     });
 
-    test("no two drawn over each other, folded or open", () {
+    // Ken, 2026-11-12: folded (small) rows lay their clips over each other,
+    // each a step lower; open rows (medium, large, or opened) a lane each.
+    test("open, no two drawn over each other; folded, each a step lower", () {
       var c = withThree();
       var e = c.document.elementById("s")!;
       var times = motionTimesOf(c.document);
@@ -103,7 +105,6 @@ void main() {
           for (var p in placed)
             motionClipRect(p,
                 folded: folded,
-                shared: false,
                 tracks: folded ? const [] : motionTracksOf(e, times),
                 stacks: stacks,
                 lane: 24,
@@ -112,7 +113,9 @@ void main() {
                 left: times.span(p.id)!.start * 50,
                 right: times.span(p.id)!.end * 50)!
         ];
-        expect(rects[0].overlaps(rects[1]), isFalse, reason: "folded $folded");
+        if (!folded) {
+          expect(rects[0].overlaps(rects[1]), isFalse, reason: "a lane each");
+        }
         expect(rects[1].top, greaterThan(rects[0].top),
             reason: "the later one under the first");
       }
@@ -285,5 +288,35 @@ void main() {
     expect(c.pickedPlacement, made.id, reason: "picked, to be set up");
     expect(c.animationOpen, isFalse,
         reason: "double-clicked again, it opens in the Chain");
+  });
+
+  // Ken, 2026-11-12: small rows overlay their layers; medium, large and a
+  // row opened show a lane each; a row's bottom edge drags it taller.
+  testWidgets("small overlays, medium a lane a layer, and the grip",
+      (tester) async {
+    var c = await pump(tester);
+    var clip = c.newClip("a", preset: presetNamed("Jump"));
+    c.placeClip("a", clip, seconds: 2.2); // overlaps the first
+    await tester.pumpAndSettle();
+    double row() =>
+        tester.getSize(find.byKey(const ValueKey("motionRow-a"))).height;
+    expect(c.laneSize, isNot(0));
+    expect(c.rowFolded("a"), isFalse, reason: "open at medium");
+    var open = row();
+    while (c.laneSize != 0) {
+      c.nextLaneSize();
+    }
+    await tester.pumpAndSettle();
+    expect(c.rowFolded("a"), isTrue, reason: "folded, overlaid, at small");
+    expect(row(), lessThan(open));
+    c.toggleRowFold("a");
+    await tester.pumpAndSettle();
+    expect(row(), open, reason: "opened at small: a lane a layer");
+    var was = row();
+    await tester.drag(
+        find.byKey(const ValueKey("motionGrip-a")), const Offset(0, 40));
+    await tester.pumpAndSettle();
+    expect(row(), closeTo(was + 40, 1));
+    expect(tester.takeException(), isNull);
   });
 }

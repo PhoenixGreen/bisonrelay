@@ -21,6 +21,7 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_columns.dart';
 import 'package:bruig/plugin_system/canvas/ui/row_header.dart';
 import 'package:bruig/plugin_system/canvas/ui/slot_face.dart';
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -167,14 +168,14 @@ List<MotionTrack> motionTracksOf(CanvasElement e, MotionTimes times) {
 
 /// motionClipRect is where placement [p] of a row is drawn, [left] to
 /// [right], the row starting [y] down and [rowHeight] tall: on its track's
-/// lane ([lane] tall) unfolded; a step lower for each track before its on
-/// a [shared] band; and folded, in its share of the one band, a stack to a
-/// share. The painter and the press both ask here, so a clip is pressed
+/// lane ([lane] tall) unfolded, a lane for each track; folded, its stacks
+/// laid over each other in the one band, each a step lower than the one
+/// before (Ken, 2026-11-12: small rows overlay, opened rows show their
+/// layers). The painter and the press both ask here, so a clip is pressed
 /// where it is drawn.
 Rect? motionClipRect(
   ClipPlacement p, {
   required bool folded,
-  required bool shared,
   required List<MotionTrack> tracks,
   required Map<String, int> stacks,
   required double lane,
@@ -187,19 +188,18 @@ Rect? motionClipRect(
   right = math.max(right, left + 6);
   if (folded) {
     var count = stacks.values.fold(0, math.max) + 1;
-    var share = lane / count;
-    var top = y + 3 + stack * share;
-    return Rect.fromLTRB(left, top, right, top + share - (count > 1 ? 1.5 : 0));
+    var step = sharedStep(count, rowHeight);
+    return Rect.fromLTRB(left, y + 3 + stack * step, right, y + rowHeight - 3);
   }
   var row = tracks.indexOf((layer: p.layer, stack: stack));
   if (row < 0) return null;
-  if (shared) {
-    var step = sharedStep(tracks.length, rowHeight);
-    return Rect.fromLTRB(left, y + 3 + row * step, right, y + rowHeight - 3);
-  }
   var top = y + 2 + row * lane + 1;
   return Rect.fromLTRB(left, top, right, top + lane - 2);
 }
+
+/// motionRowKey is element [id]'s row among the lane heights kept by
+/// CanvasController.laneHeights: dragged by its bottom edge.
+String motionRowKey(String id) => "motion:$id";
 
 class MotionLanes extends StatefulWidget {
   final CanvasController controller;
@@ -308,6 +308,10 @@ class _MotionLanesState extends State<MotionLanes> {
   /// CanvasController.rowFolded.
   bool _isFolded(CanvasElement e) => controller.rowFolded(e.id);
 
+  /// _gripFrom and _gripHeight are where a row's bottom edge was pressed,
+  /// and how tall the row was then.
+  double _gripFrom = 0, _gripHeight = 0;
+
   _Hit? _press;
 
   /// _linkFrom is the sound the pressed clip is linked to, and where it was
@@ -323,22 +327,36 @@ class _MotionLanesState extends State<MotionLanes> {
   /// _lane is one layer's lane: taller at the button's largest.
   double get _lane =>
       motionLaneHeight * _scale * (controller.laneSize == 2 ? 1.6 : 1);
-  double _rowHeight(CanvasElement e) => _isFolded(e)
-      ? _lane + 4
-      : _shared(e)
-          ? _lane * 1.6 + 4
-          : math.max(_lane * 1.6, _tracks(e).length * _lane) + 4;
+
+  /// _rowHeight is [e]'s row: as tall as its bottom edge was dragged (Ken,
+  /// 2026-11-12), else a lane folded, and a lane a layer open.
+  double _rowHeight(CanvasElement e) {
+    if (controller.laneHeights[motionRowKey(e.id)] case var h?) {
+      return math.max(h, _least(e));
+    }
+    return _isFolded(e)
+        ? _lane + 4
+        : math.max(_lane * 1.6, _tracks(e).length * _lane) + 4;
+  }
+
+  /// _least is as short as [e]'s row is dragged: a thin lane a layer open.
+  double _least(CanvasElement e) =>
+      _isFolded(e) ? 18 : _tracks(e).length * 14.0 + 4;
+
+  /// _laneOf is one of [e]'s lanes: its share of a row dragged taller or
+  /// shorter.
+  double _laneOf(CanvasElement e) {
+    if (_isFolded(e) ||
+        !controller.laneHeights.containsKey(motionRowKey(e.id))) {
+      return _lane;
+    }
+    return (_rowHeight(e) - 4) / math.max(1, _tracks(e).length);
+  }
 
   MotionTimes get _times => motionTimesOf(controller.document);
 
   /// _tracks are [e]'s lanes unfolded: see motionTracksOf.
   List<MotionTrack> _tracks(CanvasElement e) => motionTracksOf(e, _times);
-
-  /// _shared is whether [e]'s layers share one band, each a step lower than
-  /// the one before (the approved design, at S and M); at L each layer has
-  /// a band of its own.
-  bool _shared(CanvasElement e) =>
-      !_isFolded(e) && controller.laneSize < 2 && _tracks(e).length > 1;
 
   /// _clipRect is where placement [p] of [e] is drawn, its row starting [y]
   /// down: see motionClipRect.
@@ -348,10 +366,9 @@ class _MotionLanesState extends State<MotionLanes> {
     var folded = _isFolded(e);
     return motionClipRect(p,
         folded: folded,
-        shared: _shared(e),
         tracks: folded ? const [] : _tracks(e),
         stacks: clipStacks(e.base.motion.placed, _times, together: folded),
-        lane: _lane,
+        lane: _laneOf(e),
         y: y,
         rowHeight: _rowHeight(e),
         left: _x(s.start, width),
@@ -399,9 +416,7 @@ class _MotionLanesState extends State<MotionLanes> {
           return (element: e, layer: 0, placement: null, grip: null);
         }
         var tracks = _tracks(e);
-        var row = _shared(e)
-            ? ((local.dy - y - 3) / sharedStep(tracks.length, h)).floor()
-            : ((local.dy - y - 2) / _lane).floor();
+        var row = ((local.dy - y - 2) / _laneOf(e)).floor();
         var track = tracks[row.clamp(0, tracks.length - 1)];
         return (element: e, layer: track.layer, placement: null, grip: null);
       }
@@ -622,14 +637,43 @@ class _MotionLanesState extends State<MotionLanes> {
               SizedBox(
                 key: ValueKey("motionRow-${e.id}"),
                 height: _rowHeight(e),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => controller.selectOnly(e.id),
-                  // Right-clicked: its row's colour (Ken, 2026-11-10).
-                  onSecondaryTapUp: (d) =>
-                      _colourMenu(context, e.id, d.globalPosition),
-                  child: _header(e, colors, label),
-                ),
+                child: Stack(children: [
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => controller.selectOnly(e.id),
+                      // Right-clicked: its row's colour (Ken, 2026-11-10).
+                      onSecondaryTapUp: (d) =>
+                          _colourMenu(context, e.id, d.globalPosition),
+                      child: _header(e, colors, label),
+                    ),
+                  ),
+                  // Its bottom edge, dragged: the row taller or shorter, as
+                  // a sound's is (Ken, 2026-11-12).
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 5,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.resizeUpDown,
+                      child: GestureDetector(
+                        key: ValueKey("motionGrip-${e.id}"),
+                        behavior: HitTestBehavior.opaque,
+                        dragStartBehavior: DragStartBehavior.down,
+                        onVerticalDragStart: (d) {
+                          _gripFrom = d.globalPosition.dy;
+                          _gripHeight = _rowHeight(e);
+                        },
+                        onVerticalDragUpdate: (d) => controller.setLaneHeight(
+                            motionRowKey(e.id),
+                            (_gripHeight + d.globalPosition.dy - _gripFrom)
+                                .clamp(_least(e), 400.0)
+                                .toDouble()),
+                      ),
+                    ),
+                  ),
+                ]),
               ),
           ]),
         ),
@@ -778,7 +822,7 @@ class _MotionLanesState extends State<MotionLanes> {
               onTap: () => controller.toggleSolo(own.key)),
       // At L a band for each layer, by its name, its bar striped where it
       // is pinned; at S and M one band, "Motion" or how many layers.
-      bands: _isFolded(e) || _shared(e)
+      bands: _isFolded(e)
           ? [
               RowBand(2, _rowHeight(e) - 4,
                   layers > 1 ? "$layers layers" : "Motion", motionColour),
@@ -788,8 +832,8 @@ class _MotionLanesState extends State<MotionLanes> {
               // further stacks unnamed under it.
               for (var (i, t) in _tracks(e).indexed)
                 RowBand(
-                    2 + i * _lane,
-                    _lane,
+                    2 + i * _laneOf(e),
+                    _laneOf(e),
                     t.stack == 0 ? motionLayerName(m, t.layer) : "",
                     motionColour,
                     weight: m.weight(t.layer),
@@ -921,12 +965,8 @@ class _MotionLanesState extends State<MotionLanes> {
                     for (var e in rows)
                       if (_isFolded(e)) e.id
                   },
-                  shared: {
-                    for (var e in rows)
-                      if (_shared(e)) e.id
-                  },
                   tracksOf: _tracks,
-                  lane: _lane,
+                  laneOf: _laneOf,
                   rowHeight: _rowHeight,
                   times: motionTimesOf(controller.document),
                   x: (s) => _x(s, width),
@@ -1082,9 +1122,8 @@ class _LanesPainter extends CustomPainter {
   /// colourOf is each row's colour: its clips are drawn in it.
   final Color Function(CanvasElement) colourOf;
 
-  /// shared are the rows whose lanes share one band: see motionClipRect.
-  final Set<String> shared;
-  final double lane;
+  /// laneOf is one lane of a row: see _MotionLanesState._laneOf.
+  final double Function(CanvasElement) laneOf;
 
   /// tracksOf are a row's lanes unfolded: see motionTracksOf.
   final List<MotionTrack> Function(CanvasElement) tracksOf;
@@ -1100,11 +1139,10 @@ class _LanesPainter extends CustomPainter {
 
   _LanesPainter({
     this.alt = false,
-    this.shared = const {},
     required this.colourOf,
     required this.rows,
     required this.folded,
-    required this.lane,
+    required this.laneOf,
     required this.tracksOf,
     required this.rowHeight,
     required this.times,
@@ -1141,13 +1179,12 @@ class _LanesPainter extends CustomPainter {
     for (var e in rows) {
       var h = rowHeight(e);
       var isFolded = folded.contains(e.id);
-      var isShared = shared.contains(e.id);
+      var lane = laneOf(e);
       var tracks = isFolded ? const <MotionTrack>[] : tracksOf(e);
       canvas.drawLine(
           Offset(0, y + h - 0.5), Offset(size.width, y + h - 0.5), line);
       // The lanes' own lines, faint; the sound's lane tinted.
-      for (var (i, t)
-          in isShared ? const <(int, MotionTrack)>[] : tracks.indexed) {
+      for (var (i, t) in tracks.indexed) {
         var top = y + 2 + i * lane;
         if (t.layer == soundLayer) {
           canvas.drawRect(Rect.fromLTWH(0, top, size.width, lane),
@@ -1159,13 +1196,12 @@ class _LanesPainter extends CustomPainter {
       }
       var m = e.base.motion;
       var stacks = clipStacks(m.placed, times, together: isFolded);
-      // Shared, a lane under the next: drawn from the first lane up.
-      var order = isShared
+      // Folded, a stack over the next: drawn from the first up.
+      var order = isFolded
           ? ([...m.placed]..sort((a, b) {
-              var byLayer = a.layer - b.layer;
-              return byLayer != 0
-                  ? byLayer
-                  : (stacks[a.id] ?? 0) - (stacks[b.id] ?? 0);
+              // A stack drawn over the one before it.
+              var byStack = (stacks[a.id] ?? 0) - (stacks[b.id] ?? 0);
+              return byStack != 0 ? byStack : a.layer - b.layer;
             }))
           : m.placed;
       for (var p in order) {
@@ -1174,7 +1210,6 @@ class _LanesPainter extends CustomPainter {
         if (c == null || s == null) continue;
         var rect = motionClipRect(p,
             folded: isFolded,
-            shared: isShared,
             tracks: tracks,
             stacks: stacks,
             lane: lane,
@@ -1273,7 +1308,7 @@ class _LanesPainter extends CustomPainter {
   bool shouldRepaint(_LanesPainter old) => true;
 }
 
-/// sharedStep is how much lower each layer's clips are drawn than the one
-/// before's, on a shared band of [lanes] layers in a row [rowHeight] tall.
+/// sharedStep is how much lower each stack's clips are drawn than the one
+/// before's, laid over each other in a folded row [rowHeight] tall.
 double sharedStep(int lanes, double rowHeight) =>
     math.max(2.0, (rowHeight - 4 - 10) / math.max(1, lanes));

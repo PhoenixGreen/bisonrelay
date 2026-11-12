@@ -565,7 +565,8 @@ void main() {
           tester.getRect(find.byKey(const ValueKey("motionLanesPaint-a")));
       double xOf(double seconds) =>
           paint.left + seconds * 24 / c.timelineReach * paint.width;
-      var on = Offset(xOf(c.spanOf(placed)!.start + 0.2), paint.center.dy);
+      // On the clip's own lane, the first: a lane a layer at medium.
+      var on = Offset(xOf(c.spanOf(placed)!.start + 0.2), paint.top + 12);
       await tester.tapAt(on, buttons: kSecondaryButton);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("placementLink")));
