@@ -169,6 +169,23 @@ class ChainPanelStyle extends InheritedWidget {
   bool updateShouldNotify(ChainPanelStyle oldWidget) => false;
 }
 
+/// ChainGroupColour marks the cards under it as one clip's -- its style,
+/// timing, launch, place and what it plays -- by a line of the clip's
+/// colour along their tops (Ken, 2026-11-12: which preset they belong to
+/// was not clear).
+class ChainGroupColour extends InheritedWidget {
+  final Color colour;
+  const ChainGroupColour({required this.colour, required super.child, super.key});
+
+  static Color? of(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<ChainGroupColour>()
+      ?.colour;
+
+  @override
+  bool updateShouldNotify(ChainGroupColour oldWidget) =>
+      oldWidget.colour != colour;
+}
+
 /// midiColour is the colour of what carries notes: a MIDI channel's
 /// effects, its In and its instrument, as the prototype has them.
 const midiColour = Color(0xFFD08F3E);
@@ -1388,6 +1405,10 @@ class DeviceFrame extends StatelessWidget {
   /// and only [summary] when short. [body] is then not used.
   final List<Widget> Function(DeviceTier tier)? controls;
 
+  /// lead is what comes first on the card, over its screen: what the rest
+  /// of it is about (the Motion clips card's own arrival, loop and leaving).
+  final List<Widget> lead;
+
   /// display is what the device is doing, drawn over its knobs: it takes
   /// the height left over.
   final Widget? display;
@@ -1466,6 +1487,7 @@ class DeviceFrame extends StatelessWidget {
     this.powerKey,
     this.actions = const [],
     this.controls,
+    this.lead = const [],
     this.display,
     this.footer = const [],
     this.summary = "",
@@ -1539,6 +1561,7 @@ class DeviceFrame extends StatelessWidget {
     if (ChainPanelStyle.on(context)) {
       // As the settings panel's cards: plain, a line round it, its
       // settings faded while it is switched off.
+      var group = ChainGroupColour.of(context);
       return Container(
         decoration: BoxDecoration(
           color: studio.strip,
@@ -1549,6 +1572,11 @@ class DeviceFrame extends StatelessWidget {
         child: Material(
           type: MaterialType.transparency,
           child: Column(children: [
+            if (group != null)
+              Container(
+                  key: const ValueKey("chainGroupLine"),
+                  height: 3,
+                  color: group),
             header,
             Expanded(
                 child: IgnorePointer(
@@ -2016,6 +2044,7 @@ class DeviceFrame extends StatelessWidget {
     var items = folded
         ? const <Widget>[]
         : controls!(tier == DeviceTier.strip ? DeviceTier.small : tier);
+    var leading = folded ? const <Widget>[] : lead;
     var cells = items.where(_isCell).length;
     var columns = cells > 4 ? 3 : 2;
     var cell = 104.0 * scale;
@@ -2081,6 +2110,7 @@ class DeviceFrame extends StatelessWidget {
           child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                for (var w in leading) ...[w, const SizedBox(height: 8)],
                 if (screen != null) ...[screen, const SizedBox(height: 8)],
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   for (var k in items)
@@ -2153,7 +2183,7 @@ class DeviceFrame extends StatelessWidget {
                 color: studio.muted)),
       );
     } else {
-      var knobs = controls!(tier);
+      var knobs = [...lead, ...controls!(tier)];
       inside = LayoutBuilder(builder: (context, box) {
         // The knobs on an even grid, a column for every 55 pixels of the
         // card (three to seven), each other setting a row of its own; one

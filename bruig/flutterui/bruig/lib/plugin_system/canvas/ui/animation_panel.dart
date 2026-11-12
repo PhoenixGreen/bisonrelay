@@ -398,6 +398,9 @@ class _AnimationPanelState extends State<AnimationPanel> {
       );
     }
     var (e, c) = picked;
+    // Its own arrival, loop or leaving picked with no clip to show: the
+    // chain with its tabs, to set it up (or, the loop, its style).
+    if (controller.ownTabOpen(e)) return _chainOnly(context, e);
     _stripFor(e);
     // Its Curves, across the whole panel (the Chain's Curves tab), as the
     // chain prototype's curve editor.
@@ -449,49 +452,57 @@ class _AnimationPanelState extends State<AnimationPanel> {
               // prototype has it. Its keys are the Curves tab's.
               _zone("Source", "Its clips: what it plays, when and where"),
               _clipsCard(e, c),
-              // The rest of its own style, beside the clip playing it: what the
-              // sidebar's Animation section had (Ken, 2026-11-08).
-              if (OwnStyleCard.shows(e, c))
-                OwnStyleCard(
-                    key: const ValueKey("ownStyleCard"),
-                    controller: controller,
-                    element: e,
-                    clip: c,
-                    folded: shut("ownStyle"),
-                    onFold: fold("ownStyle"),
-                    height: h),
               if (PartsCard.shows(e)) _partsCard(e),
-              if (c.kind == MotionKind.model) _motionDevice(e, c, colors),
-              MotionTimingCard(
-                  key: const ValueKey("motionTimingCard"),
-                  controller: controller,
-                  element: e,
-                  clip: c,
-                  edit: edit,
-                  height: h,
-                  folded: shut("timing"),
-                  onFold: fold("timing")),
-              MotionLaunchCard(
-                  key: const ValueKey("motionLaunchCard"),
-                  controller: controller,
-                  element: e,
-                  clip: c,
-                  edit: edit,
-                  height: h,
-                  folded: shut("launch"),
-                  onFold: fold("launch"),
-                  triggerName: _triggerName),
-              if (!c.isSound)
-                MotionPlaceCard(
-                    key: const ValueKey("motionPlaceCard"),
+              // What follows is the picked clip's -- its style, timing, launch,
+              // place and what it plays -- marked as one group in its colour
+              // (Ken, 2026-11-12: which preset they belong to was not clear).
+              _zone(_groupName(e, c), "This clip's settings",
+                  colour: _groupColour(e)),
+              ...<Widget>[
+                // The rest of its own style, beside the clip playing it: what the
+                // sidebar's Animation section had (Ken, 2026-11-08).
+                if (OwnStyleCard.shows(e, c))
+                  OwnStyleCard(
+                      key: const ValueKey("ownStyleCard"),
+                      controller: controller,
+                      element: e,
+                      clip: c,
+                      folded: shut("ownStyle"),
+                      onFold: fold("ownStyle"),
+                      height: h),
+                if (c.kind == MotionKind.model) _motionDevice(e, c, colors),
+                MotionTimingCard(
+                    key: const ValueKey("motionTimingCard"),
                     controller: controller,
                     element: e,
                     clip: c,
                     edit: edit,
                     height: h,
-                    folded: shut("place"),
-                    onFold: fold("place")),
-              if (!c.isSound && _insideShown(e, c)) _insideDevice(e, c, colors),
+                    folded: shut("timing"),
+                    onFold: fold("timing")),
+                MotionLaunchCard(
+                    key: const ValueKey("motionLaunchCard"),
+                    controller: controller,
+                    element: e,
+                    clip: c,
+                    edit: edit,
+                    height: h,
+                    folded: shut("launch"),
+                    onFold: fold("launch"),
+                    triggerName: _triggerName),
+                if (!c.isSound)
+                  MotionPlaceCard(
+                      key: const ValueKey("motionPlaceCard"),
+                      controller: controller,
+                      element: e,
+                      clip: c,
+                      edit: edit,
+                      height: h,
+                      folded: shut("place"),
+                      onFold: fold("place")),
+                if (!c.isSound && _insideShown(e, c))
+                  _insideDevice(e, c, colors),
+              ].map((w) => ChainGroupColour(colour: _groupColour(e), child: w)),
               ..._chain(e),
               _outputCard(e),
             ].expand((w) => [w, const SizedBox(width: 6)]).toList(),
@@ -694,28 +705,54 @@ class _AnimationPanelState extends State<AnimationPanel> {
 
   /// _zone marks where one part of the chain begins, as the Sound view's
   /// do: its name up the side by a line in the motion colour.
-  Widget _zone(String label, String tip) {
+  Widget _zone(String label, String tip, {Color? colour}) {
     var look = MixerLook.of(context);
     return Tooltip(
       message: tip,
       child: Container(
         key: ValueKey("motionZone-$label"),
-        width: 16,
+        width: colour == null ? 16 : 20,
         margin: const EdgeInsets.only(right: 2),
-        decoration: const BoxDecoration(
-            border:
-                Border(left: BorderSide(color: Color(0xFF3FB08D), width: 2))),
+        decoration: BoxDecoration(
+            color: colour?.withValues(alpha: 0.12),
+            border: Border(
+                left: BorderSide(
+                    color: colour ?? const Color(0xFF3FB08D), width: 2))),
         alignment: Alignment.center,
         child: RotatedBox(
           quarterTurns: 3,
           child: Text(label.toUpperCase(),
               maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                  fontSize: 9, letterSpacing: 1.1, color: look.studio.muted)),
+                  fontSize: colour == null ? 9 : 10,
+                  letterSpacing: 1.1,
+                  fontWeight: colour == null ? null : FontWeight.w600,
+                  color: colour ?? look.studio.muted)),
         ),
       ),
     );
   }
+
+  /// _groupColour is the picked clip's: its own arrival's, loop's or
+  /// leaving's colour, or a plain one for a clip of its own making.
+  Color _groupColour(CanvasElement e) => switch (controller.ownTabOf(e)) {
+        var k? => ownKindColour(k),
+        null => const Color(0xFF9FB3C8),
+      };
+
+  /// _groupName is the picked clip's group's name: "Arrive · Fade in", or
+  /// a clip's own name.
+  String _groupName(CanvasElement e, MotionClip c) =>
+      switch (controller.ownTabOf(e)) {
+        MotionKind.arrive =>
+          "Arrive · ${controller.ownPresetLabel(e, MotionKind.arrive)}",
+        MotionKind.leave =>
+          "Leave · ${controller.ownPresetLabel(e, MotionKind.leave)}",
+        MotionKind.loop =>
+          "Loop · ${controller.ownPresetLabel(e, MotionKind.loop)}",
+        _ => "Clip · ${c.name.isEmpty ? c.kind.label : c.name}",
+      };
 
   /// _chainOnly is an element with no clips: its chain alone.
   Widget _chainOnly(BuildContext context, CanvasElement e) {
@@ -738,6 +775,27 @@ class _AnimationPanelState extends State<AnimationPanel> {
             _instancesCard(e),
             _zone("Source", "Its clips: what it plays, when and where"),
             _clipsCard(e, null),
+            // Its loop picked: the loop's style, in the loop's colour.
+            if (controller.ownTabOf(e) == MotionKind.loop &&
+                OwnStyle(e).loop.on) ...[
+              _zone("Loop · ${controller.ownPresetLabel(e, MotionKind.loop)}",
+                  "Its loop's settings",
+                  colour: ownKindColour(MotionKind.loop)),
+              ChainGroupColour(
+                colour: ownKindColour(MotionKind.loop),
+                child: OwnStyleCard(
+                    key: const ValueKey("ownStyleCard"),
+                    controller: controller,
+                    element: e,
+                    clip: MotionClip.ofKind("ownLoop", MotionKind.loop),
+                    folded: _folded.contains("ownStyle:${e.id}"),
+                    onFold: () => setState(() =>
+                        _folded.contains("ownStyle:${e.id}")
+                            ? _folded.remove("ownStyle:${e.id}")
+                            : _folded.add("ownStyle:${e.id}")),
+                    height: _room - 40),
+              ),
+            ],
             if (PartsCard.shows(e)) _partsCard(e),
             ..._chain(e),
             _outputCard(e),

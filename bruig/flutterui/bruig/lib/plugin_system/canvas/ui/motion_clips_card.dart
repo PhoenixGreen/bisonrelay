@@ -296,6 +296,12 @@ class MotionClipsCard extends StatelessWidget {
       foldedBody: const SizedBox(),
       body: const SizedBox.shrink(),
       controls: controls,
+      // Its own arrival, loop and leaving first, to set up and to switch
+      // between (Ken, 2026-11-12); its other clips under them.
+      lead: [
+        if (OwnStyle.of(e) != null)
+          OwnTabsRow(controller: controller, element: e),
+      ],
       // Its screen: what it does, drawn as the settings have it, and
       // edited there (see motion_clip_display.dart).
       display: MotionClipDisplay(

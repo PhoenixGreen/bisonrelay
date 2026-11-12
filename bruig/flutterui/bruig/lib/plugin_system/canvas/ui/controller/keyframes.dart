@@ -97,6 +97,7 @@ extension CanvasKeyframes on CanvasController {
         document.frameRate);
     apply(document.withElement(next));
     endInteraction();
+    _showOwn(element.id, MotionKind.arrive);
   }
 
   /// applyTextAnimation puts a preset on a text element and lays the two
@@ -166,6 +167,7 @@ extension CanvasKeyframes on CanvasController {
         to,
         document.frameRate)));
     endInteraction();
+    _showOwn(element.id, MotionKind.arrive);
   }
 
   /// textAnimationSpan is where [element]'s arrival sits on the timeline: the
@@ -216,6 +218,17 @@ extension CanvasKeyframes on CanvasController {
             ? loop.copyWith(to: math.max(start, frame - 1), repeats: 0)
             : loop.copyWith(from: math.min(stop, frame)),
         transient: true);
+  }
+
+  /// _showOwn shows [element]'s own [kind], just laid down, in the Chain:
+  /// its clip picked, and the cards after it its (Ken, 2026-11-12: a new
+  /// way out showed the arrival's).
+  void _showOwn(String element, MotionKind kind) {
+    var e = _document.elementById(element);
+    if (e == null) return;
+    if (ownClipOf(e, kind) case (var c, var p)) {
+      pickMotion(element, c.id, placement: p.id);
+    }
   }
 
   /// setElementLoop gives [element] [loop] -- [transient] while a drag on
@@ -300,6 +313,7 @@ extension CanvasKeyframes on CanvasController {
         to,
         document.frameRate)));
     endInteraction();
+    _showOwn(element.id, MotionKind.arrive);
   }
 
   /// elementAnimationSpan is where [element]'s arrival sits on the timeline:
@@ -456,6 +470,7 @@ extension CanvasKeyframes on CanvasController {
         to,
         document.frameRate)));
     endInteraction();
+    _showOwn(element.id, MotionKind.leave);
   }
 
   /// applyTextExit is the way out, on its own pair of keyframes -- see
@@ -500,6 +515,7 @@ extension CanvasKeyframes on CanvasController {
         to,
         document.frameRate)));
     endInteraction();
+    _showOwn(element.id, MotionKind.leave);
   }
 
   /// applyChartExit puts a closing preset on a chart and lays the pair of
@@ -539,6 +555,7 @@ extension CanvasKeyframes on CanvasController {
         to,
         document.frameRate)));
     endInteraction();
+    _showOwn(element.id, MotionKind.leave);
   }
 
   /// shiftKeyframes moves a whole band of keyframes by [delta] frames: the two

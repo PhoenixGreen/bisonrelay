@@ -917,6 +917,21 @@ class CanvasController extends ChangeNotifier {
     _pickedMotion = clip;
     _pickedPlacement = clip == null ? null : placement;
     _pickedScene = null;
+    _ownTab = null;
+    _notifyView();
+  }
+
+  /// _ownTab is the Motion clips card's Arrive, Loop or Leave picked where
+  /// it has no clip to pick -- not set up yet, or the loop, which plays
+  /// without one (Ken, 2026-11-12): its Preset is set up there. A clip
+  /// picked lets it go.
+  MotionKind? _ownTab;
+
+  MotionKind? get ownTab => _ownTab;
+
+  set ownTab(MotionKind? kind) {
+    if (kind == _ownTab) return;
+    _ownTab = kind;
     _notifyView();
   }
 

@@ -8,6 +8,11 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart'
+    show MotionPhase;
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart'
+    show ownClipOf;
+import 'package:bruig/plugin_system/canvas/ui/keys_strip.dart' show phaseColour;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
@@ -248,6 +253,236 @@ class OwnStyle {
         OwnStyleKind.text => _withText(_text.copyWith(loop: v)),
         OwnStyleKind.chart => _withChart(_chart.copyWith(loop: v)),
       };
+}
+
+/// ownKinds are the element's own ways in, round and out, as the Motion
+/// clips card's tabs have them.
+const ownKinds = [MotionKind.arrive, MotionKind.loop, MotionKind.leave];
+
+/// ownColour is what an own arrival, loop or leaving is drawn in: the Keys
+/// strip's, the Chain's group, the tab.
+Color ownKindColour(MotionKind kind) => phaseColour(switch (kind) {
+      MotionKind.arrive => MotionPhase.arrive,
+      MotionKind.leave => MotionPhase.leave,
+      MotionKind.loop => MotionPhase.loop,
+      _ => MotionPhase.free,
+    });
+
+/// OwnTabs is the Motion clips card's choice of the element's own arrival,
+/// loop and leaving (Ken, 2026-11-12: "toggle between the 3 presets"):
+/// each tab says its preset, or None; picked, the Chain shows it.
+extension OwnTabs on CanvasController {
+  /// ownTabOf is the tab the Chain shows for [e]: one picked, the own clip
+  /// picked, or -- nothing yet -- its arrival; null for a clip of its own
+  /// making, or an element with no own animation.
+  MotionKind? ownTabOf(CanvasElement e) {
+    if (OwnStyle.of(e) == null) return null;
+    if (ownTab case var k?) return k;
+    var m = e.base.motion;
+    var id = pickedMotion ??
+        [
+          for (var s in m.slots)
+            if (s.isNotEmpty) s,
+          for (var p in m.placed) p.clip,
+        ].firstOrNull;
+    var c = id == null ? null : m.clip(id);
+    if (c == null) return MotionKind.arrive;
+    if (c.inside["own"] == true &&
+        (c.kind == MotionKind.arrive || c.kind == MotionKind.leave)) {
+      return c.kind;
+    }
+    return null;
+  }
+
+  /// ownTabOpen is whether [e]'s tab has no clip to show: not set up yet,
+  /// or its loop, which plays without one.
+  bool ownTabOpen(CanvasElement e) {
+    var k = ownTabOf(e);
+    return k != null && (k == MotionKind.loop || ownAnyOf(e, k) == null);
+  }
+
+  /// ownAnyOf is [e]'s own [kind] clip: on the timeline, else in a slot.
+  MotionClip? ownAnyOf(CanvasElement e, MotionKind kind) {
+    if (ownClipOf(e, kind) case (var c, _)) return c;
+    return e.base.motion.clips
+        .where((c) => c.kind == kind && c.inside["own"] == true)
+        .firstOrNull;
+  }
+
+  /// ownPresetOf is the name of [e]'s own [kind] -- "" for none.
+  String ownPresetOf(CanvasElement e, MotionKind kind) {
+    var style = OwnStyle.of(e);
+    if (style == null) return "";
+    if (kind == MotionKind.loop) {
+      return style.loop.on ? style.loop.preset.name : "";
+    }
+    if (ownAnyOf(e, kind) == null) return "";
+    var name = style.preset(leaving: kind == MotionKind.leave);
+    return name == "none" ? "" : name;
+  }
+
+  /// ownPresetLabel is it as the tab says it.
+  String ownPresetLabel(CanvasElement e, MotionKind kind) {
+    var name = ownPresetOf(e, kind);
+    if (name.isEmpty) return "None";
+    if (kind == MotionKind.loop) return LoopPreset.values.byName(name).label;
+    return OwnStyle(e).labelOf(name);
+  }
+
+  /// ownPresetChoices are [kind]'s presets for [e], by name.
+  List<(String, String)> ownPresetChoices(CanvasElement e, MotionKind kind) =>
+      kind == MotionKind.loop
+          ? [
+              for (var p in LoopPreset.values)
+                if (p != LoopPreset.none) (p.name, p.label)
+            ]
+          : OwnStyle(e).presets(leaving: kind == MotionKind.leave);
+
+  /// showOwnTab picks [e]'s own [kind] in the Chain: its clip, where it has
+  /// one, else the tab, to set it up.
+  void showOwnTab(String element, MotionKind kind) {
+    var e = document.elementById(element);
+    if (e == null) return;
+    if (kind != MotionKind.loop) {
+      if (ownClipOf(e, kind) case (var c, var p)) {
+        pickMotion(element, c.id, placement: p.id);
+        return;
+      }
+      if (ownAnyOf(e, kind) case var c?) {
+        pickMotion(element, c.id);
+        return;
+      }
+    }
+    ownTab = kind;
+  }
+
+  /// setOwnPreset makes [element]'s own [kind] preset [name], laid down
+  /// as the settings panel lays it, or ("") takes it away; the Chain then
+  /// shows it.
+  void setOwnPreset(String element, MotionKind kind, String name) {
+    var e = document.elementById(element);
+    if (e == null) return;
+    if (kind == MotionKind.loop) {
+      var style = OwnStyle(e);
+      beginInteraction();
+      replaceElement(style.withLoop(style.loop.copyWith(
+          preset: name.isEmpty
+              ? LoopPreset.none
+              : LoopPreset.values.byName(name))));
+      endInteraction();
+      ownTab = MotionKind.loop;
+      return;
+    }
+    var leaving = kind == MotionKind.leave;
+    var n = name.isEmpty ? "none" : name;
+    switch (e) {
+      case TextElement t:
+        var p = TextAnimationPreset.values.byName(n);
+        leaving ? applyTextExit(t, p) : applyTextAnimation(t, p);
+      case ChartElement ch:
+        var p = ChartAnimationPreset.values.byName(n);
+        leaving ? applyChartExit(ch, p) : applyChartAnimation(ch, p);
+      default:
+        var p = ElementAnimationPreset.values.byName(n);
+        leaving ? applyElementExit(e, p) : applyElementAnimation(e, p);
+    }
+    // Taken away: its tab stays, saying None.
+    if (name.isEmpty) ownTab = kind;
+  }
+}
+
+/// OwnTabsRow is the tabs, and -- where the tab picked has nothing yet, or
+/// is the loop -- its Preset to set it up.
+class OwnTabsRow extends StatelessWidget {
+  final CanvasController controller;
+  final CanvasElement element;
+  const OwnTabsRow(
+      {required this.controller, required this.element, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var c = controller;
+    var e = element;
+    var studio = MixerLook.of(context).studio;
+    var on = c.ownTabOf(e);
+    Widget tab(MotionKind kind) {
+      var colour = ownKindColour(kind);
+      var picked = on == kind;
+      var label = c.ownPresetLabel(e, kind);
+      var none = label == "None";
+      return Expanded(
+        child: Semantics(
+          button: true,
+          selected: picked,
+          child: GestureDetector(
+            key: ValueKey("ownTab-${kind.name}"),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => c.showOwnTab(e.id, kind),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                color: picked ? colour.withValues(alpha: 0.16) : studio.inset,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: picked ? colour : studio.edge,
+                    width: picked ? 1.5 : 1),
+              ),
+              child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                        switch (kind) {
+                          MotionKind.arrive => "ARRIVE",
+                          MotionKind.leave => "LEAVE",
+                          _ => "LOOP",
+                        },
+                        style: TextStyle(
+                            fontSize: 10,
+                            letterSpacing: 0.8,
+                            fontWeight: FontWeight.w600,
+                            color: colour)),
+                    Text(label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            color: none ? studio.muted : studio.text)),
+                  ]),
+            ),
+          ),
+        ),
+      );
+    }
+
+    var open = on != null && c.ownTabOpen(e);
+    return Column(
+        key: const ValueKey("ownTabs"),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(children: [
+            for (var (i, k) in ownKinds.indexed) ...[
+              if (i > 0) const SizedBox(width: 6),
+              tab(k),
+            ],
+          ]),
+          if (open) ...[
+            const SizedBox(height: 8),
+            StudioDrop<String>(
+              key: const ValueKey("ownTabPreset"),
+              label: "Preset",
+              value: c.ownPresetOf(e, on),
+              width: double.infinity,
+              options: [
+                ("", "None"),
+                ...c.ownPresetChoices(e, on),
+              ],
+              onChanged: (name) => c.setOwnPreset(e.id, on, name),
+            ),
+          ],
+        ]);
+  }
 }
 
 /// OwnStyleCard is the rest of [clip]'s own style, beside its Motion clips
@@ -556,7 +791,7 @@ class OwnStyleCard extends StatelessWidget {
             "${style.labelOf(style.preset(leaving: leaving))}";
     return DeviceFrame(
       id: "ownStyle",
-      title: "Its own style",
+      title: "Style",
       help: "How its own ${looping ? "loop" : leaving ? "way out" : "arrival"} "
           "plays, beside the clip that plays it: its curve, where a growing "
           "one starts, the gap between its words or bars and their order, how "
