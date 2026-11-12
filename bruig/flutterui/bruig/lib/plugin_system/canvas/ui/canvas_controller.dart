@@ -3704,6 +3704,18 @@ class CanvasController extends ChangeNotifier {
 
   bool get keysShown => _keysShown;
 
+  /// keysHeight is how tall the Keys strip was dragged, or null for as
+  /// tall as it opens: kept for the session.
+  static double? _keysHeight;
+
+  double? get keysHeight => _keysHeight;
+
+  set keysHeight(double? height) {
+    if (height == _keysHeight) return;
+    _keysHeight = height;
+    notifyListeners();
+  }
+
   set keysShown(bool shown) {
     if (shown == _keysShown) return;
     _keysShown = shown;

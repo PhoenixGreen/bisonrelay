@@ -132,7 +132,14 @@ class _ChainPanelState extends State<ChainPanel> {
                               // marks alone (Ken: the header ran over, narrow).
                               child: LayoutBuilder(
                                   builder: (context, box) => Row(children: [
-                                        Flexible(
+                                        // Its name gives way first, to a
+                                        // share of the room (Ken: the
+                                        // filter was hidden with room for
+                                        // it).
+                                        ConstrainedBox(
+                                            constraints: BoxConstraints(
+                                                maxWidth: (box.maxWidth * 0.25)
+                                                    .clamp(80.0, 220.0)),
                                             child: _ChainWho(
                                                 controller: c, look: look)),
                                         const SizedBox(width: 6),
@@ -142,8 +149,13 @@ class _ChainPanelState extends State<ChainPanel> {
                                             compact: box.maxWidth < 440,
                                             onChanged: (m) =>
                                                 c.showChain(motion: m)),
-                                        Flexible(
+                                        // Its views, then a word on what it
+                                        // shows and what it is doing, in one
+                                        // row: all shown where there is
+                                        // room, scrolled where not.
+                                        Expanded(
                                           child: SingleChildScrollView(
+                                            key: const ValueKey("chainTabs"),
                                             scrollDirection: Axis.horizontal,
                                             child: Row(
                                                 mainAxisSize: MainAxisSize.min,
@@ -152,46 +164,33 @@ class _ChainPanelState extends State<ChainPanel> {
                                                     ..._motionTabs(look)
                                                   else
                                                     ..._editorTabs(look),
+                                                  if (chainNote(c)
+                                                      case var note?)
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                              left: 10),
+                                                      child: Text(note,
+                                                          key: const ValueKey(
+                                                              "chainNote"),
+                                                          maxLines: 1,
+                                                          style: TextStyle(
+                                                              fontSize: 11,
+                                                              color: look.studio
+                                                                  .muted)),
+                                                    ),
+                                                  if (_chips(look, motion)
+                                                      case var chips
+                                                      when chips.isNotEmpty)
+                                                    Row(
+                                                        key: const ValueKey(
+                                                            "chainChips"),
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: chips),
                                                 ]),
                                           ),
                                         ),
-                                        // A word on what it shows, where there
-                                        // is one: a scene's
-                                        // next, a clip's place, an element with
-                                        // none.
-                                        if (chainNote(c) case var note?)
-                                          Flexible(
-                                            child: Padding(
-                                              padding: const EdgeInsets.only(
-                                                  left: 10),
-                                              child: Text(note,
-                                                  key: const ValueKey(
-                                                      "chainNote"),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                      fontSize: 11,
-                                                      color:
-                                                          look.studio.muted)),
-                                            ),
-                                          ),
-                                        // Shrinking with the panel, scrolled
-                                        // rather than
-                                        // pushed out of it (Ken: 11 px over,
-                                        // narrow).
-                                        if (_chips(look, motion) case var chips
-                                            when chips.isNotEmpty)
-                                          Flexible(
-                                            child: SingleChildScrollView(
-                                              key: const ValueKey("chainChips"),
-                                              scrollDirection: Axis.horizontal,
-                                              child: Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  children: chips),
-                                            ),
-                                          ),
                                       ])),
                             ),
                             ..._sizeControls(look, narrow: bar.maxWidth < 760),

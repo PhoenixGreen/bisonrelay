@@ -81,7 +81,7 @@ class KeysStrip extends StatefulWidget {
       super.key});
 
   static const labelWidth = 136.0;
-  static const inspectorWidth = 210.0;
+  static const inspectorWidth = 300.0;
   static const rulerHeight = 36.0;
   static const rowHeight = 26.0;
 
@@ -100,8 +100,13 @@ class KeysStrip extends StatefulWidget {
   static double heightFor(int rows, double most) =>
       math.min(most, math.max(leastHeight, rulerHeight + rows * rowHeight + 1));
 
-  /// leastHeight keeps room for the inspector beside a row or two.
-  static const leastHeight = 168.0;
+  /// leastHeight is as short as it goes: the inspector's two lines.
+  static const leastHeight = 100.0;
+
+  /// startHeight is as tall as it opens, until it is dragged (Ken,
+  /// 2026-11-12: "should start minimal and also be able to be resized"):
+  /// the ruler and three rows.
+  static const startHeight = rulerHeight + 3 * rowHeight + 10;
 
   @override
   State<KeysStrip> createState() => _KeysStripState();
@@ -615,19 +620,34 @@ class _KeysStripState extends State<KeysStrip> {
         fontSize: 12.5, fontWeight: FontWeight.w600, color: studio.text);
     var note = TextStyle(fontSize: 11.5, height: 1.35, color: studio.muted);
     var said = _said;
-    Widget nav(
-            {required VoidCallback onDelete, List<Widget> more = const []}) =>
-        Wrap(spacing: 4, runSpacing: 4, children: [
+    // Laid out flat -- a line for what is picked and its buttons, a line
+    // of its settings -- so it fits the strip at its least.
+    Widget head(Widget name, List<Widget> buttons) => SizedBox(
+          height: 28,
+          child: Row(children: [
+            Expanded(child: name),
+            for (var b in buttons) ...[const SizedBox(width: 4), b],
+          ]),
+        );
+    List<Widget> nav(VoidCallback onDelete) => [
           _navButton("keysPrev", Icons.chevron_left, () => _step(-1), studio),
           _navButton("keysNext", Icons.chevron_right, () => _step(1), studio),
-          ...more,
           CanvasTextButton(
               key: const ValueKey("keysDelete"),
               label: "Delete",
               grow: false,
               onPressed: onDelete),
+        ];
+    Widget line(List<(double?, Widget)> cells) =>
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          for (var (i, (w, cell)) in cells.indexed) ...[
+            if (i > 0) const SizedBox(width: 8),
+            w == null
+                ? Expanded(child: CanvasCellFill(child: cell))
+                : SizedBox(width: w, child: CanvasCellFill(child: cell)),
+          ],
         ]);
-    var gap = const SizedBox(height: 8);
+    const gap = SizedBox(height: 8);
     // A setting's key.
     if (_pick case var p?) {
       var d = _deviceOf(p.device);
@@ -638,56 +658,72 @@ class _KeysStripState extends State<KeysStrip> {
         var at = p.ph == MotionPhase.free ? k.t : spans.timeOf(p.ph, k.t);
         return Column(
             key: const ValueKey("keysInspector-key"),
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text("${d.kind.label} · ${param.label}", style: title),
+              head(
+                  Row(children: [
+                    PhaseChip(phase: p.ph, on: true, onTap: null),
+                    const SizedBox(width: 6),
+                    Flexible(
+                        child: Text(
+                            "${d.kind.label} · ${param.label} · "
+                            "${p.ph.label}",
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: title)),
+                  ]),
+                  nav(_delete)),
               gap,
-              PhaseChip(phase: p.ph, on: true, onTap: null),
-              gap,
-              CanvasStepper(
-                  key: const ValueKey("keysAt"),
-                  label: "At",
-                  value: at,
-                  min: 0,
-                  max: _scene,
-                  decimals: 2,
-                  step: 1 / _rate,
-                  suffix: " s",
-                  fill: true,
-                  onChanged: (v) {
-                    var i = c.moveDeviceKey(
-                        e.id, p.device, p.param, p.ph, p.i, v,
-                        transient: true);
-                    setState(() => _pick =
-                        (device: p.device, param: p.param, ph: p.ph, i: i));
-                  },
-                  onCommit: c.endInteraction),
-              if (param.unit != "argb") ...[
-                gap,
-                CanvasStepper(
-                    key: const ValueKey("keysValue"),
-                    label: "Value",
-                    value: k.v,
-                    min: param.min,
-                    max: param.max,
-                    decimals: param.unit == "#" ? 0 : 2,
-                    fill: true,
-                    onChanged: (v) => c.editDeviceKey(
-                        e.id, p.device, p.param, p.ph, p.i,
-                        v: v, transient: true),
-                    onCommit: c.endInteraction),
-              ],
-              gap,
-              CanvasDropdown<KeyEase>(
-                  key: const ValueKey("keysEase"),
-                  label: "Into the next",
-                  value: k.ease,
-                  options: [for (var x in KeyEase.values) (x, x.label)],
-                  onChanged: (x) => c.editDeviceKey(
-                      e.id, p.device, p.param, p.ph, p.i,
-                      ease: x)),
-              gap,
-              nav(onDelete: _delete),
+              line([
+                (
+                  86,
+                  CanvasStepper(
+                      key: const ValueKey("keysAt"),
+                      label: "At",
+                      value: at,
+                      min: 0,
+                      max: _scene,
+                      decimals: 2,
+                      step: 1 / _rate,
+                      suffix: " s",
+                      fill: true,
+                      onChanged: (v) {
+                        var i = c.moveDeviceKey(
+                            e.id, p.device, p.param, p.ph, p.i, v,
+                            transient: true);
+                        setState(() => _pick =
+                            (device: p.device, param: p.param, ph: p.ph, i: i));
+                      },
+                      onCommit: c.endInteraction)
+                ),
+                if (param.unit != "argb")
+                  (
+                    86,
+                    CanvasStepper(
+                        key: const ValueKey("keysValue"),
+                        label: "Value",
+                        value: k.v,
+                        min: param.min,
+                        max: param.max,
+                        decimals: param.unit == "#" ? 0 : 2,
+                        fill: true,
+                        onChanged: (v) => c.editDeviceKey(
+                            e.id, p.device, p.param, p.ph, p.i,
+                            v: v, transient: true),
+                        onCommit: c.endInteraction)
+                  ),
+                (
+                  null,
+                  CanvasDropdown<KeyEase>(
+                      key: const ValueKey("keysEase"),
+                      label: "Into the next",
+                      value: k.ease,
+                      options: [for (var x in KeyEase.values) (x, x.label)],
+                      onChanged: (x) => c.editDeviceKey(
+                          e.id, p.device, p.param, p.ph, p.i,
+                          ease: x))
+                ),
+              ]),
             ]);
       }
     }
@@ -698,42 +734,56 @@ class _KeysStripState extends State<KeysStrip> {
       var key = one ? track.track.keyAt(picked.first) : null;
       return Column(
           key: const ValueKey("keysInspector-track"),
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-                one
-                    ? "${track.points ? "Point" : "Keyframe"} at "
-                        "${(picked.first / _rate).toStringAsFixed(2)} s"
-                    : "${picked.length} ${track.points ? "points" : "keyframes"}",
-                key: const ValueKey("keysPicked"),
-                style: title),
-            if (!track.points) ...[
-              gap,
-              CanvasDropdown<KeyframeEasing>(
-                  key: const ValueKey("keysTrackEase"),
-                  label: "Into the next",
-                  value: key?.easing ?? KeyframeEasing.linear,
-                  options: [for (var x in KeyframeEasing.values) (x, x.label)],
-                  onChanged: (x) {
-                    c.beginInteraction();
-                    c.easeTargetKeyframes(picked, x);
-                    c.endInteraction();
-                  }),
-            ],
+            head(
+                Text(
+                    one
+                        ? "${track.points ? "Point" : "Keyframe"} at "
+                            "${(picked.first / _rate).toStringAsFixed(2)} s"
+                        : "${picked.length} "
+                            "${track.points ? "points" : "keyframes"}",
+                    key: const ValueKey("keysPicked"),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: title),
+                nav(_delete)),
             gap,
-            nav(onDelete: _delete, more: [
+            line([
               if (!track.points)
-                CanvasTextButton(
-                    key: const ValueKey("keysCurves"),
-                    label: "Curves",
-                    grow: false,
-                    onPressed: () => c.showTrackCurves(frame: picked.first)),
+                (
+                  null,
+                  CanvasDropdown<KeyframeEasing>(
+                      key: const ValueKey("keysTrackEase"),
+                      label: "Into the next",
+                      value: key?.easing ?? KeyframeEasing.linear,
+                      options: [
+                        for (var x in KeyframeEasing.values) (x, x.label)
+                      ],
+                      onChanged: (x) {
+                        c.beginInteraction();
+                        c.easeTargetKeyframes(picked, x);
+                        c.endInteraction();
+                      })
+                ),
+              if (!track.points)
+                (
+                  70,
+                  CanvasTextButton(
+                      key: const ValueKey("keysCurves"),
+                      label: "Curves",
+                      grow: false,
+                      onPressed: () => c.showTrackCurves(frame: picked.first))
+                ),
               if (picked.length >= 3)
-                CanvasTextButton(
-                    key: const ValueKey("keysSpread"),
-                    label: "Spread evenly",
-                    grow: false,
-                    onPressed: () => _spread(track)),
+                (
+                  100,
+                  CanvasTextButton(
+                      key: const ValueKey("keysSpread"),
+                      label: "Spread evenly",
+                      grow: false,
+                      onPressed: () => _spread(track))
+                ),
             ]),
             if (said != null) ...[
               gap,
@@ -743,30 +793,24 @@ class _KeysStripState extends State<KeysStrip> {
     }
     return Column(
         key: const ValueKey("keysInspector-none"),
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text("Keys", style: title),
-          if (track != null &&
-              !track.points &&
-              track.track.keys.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            CanvasTextButton(
-                key: const ValueKey("keysCurves"),
-                label: "Curves",
-                grow: false,
-                onPressed: () => c.showTrackCurves(frame: c.frame)),
-          ],
-          const SizedBox(height: 6),
+          head(Text("Keys", style: title), [
+            if (track != null && !track.points && track.track.keys.isNotEmpty)
+              CanvasTextButton(
+                  key: const ValueKey("keysCurves"),
+                  label: "Curves",
+                  grow: false,
+                  onPressed: () => c.showTrackCurves(frame: c.frame)),
+          ]),
+          const SizedBox(height: 4),
           Text(
-              "Each key is coloured by where it plays: in the arrival, the "
-              "loop, the leaving, or independently. Pick one to change it; "
-              "drag to move it; double-click a row to add one.",
-              key: const ValueKey("keysHint"),
+              said ??
+                  "Coloured by where each plays: arrival, loop, leaving or "
+                      "independent. Pick a key to change it, drag to move "
+                      "it, double-click a row to add one.",
+              key: ValueKey(said == null ? "keysHint" : "keysSaid"),
               style: note),
-          if (said != null) ...[
-            gap,
-            Text(said, key: const ValueKey("keysSaid"), style: note),
-          ],
         ]);
   }
 
@@ -810,7 +854,7 @@ class PhaseChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: on ? Colors.transparent : studio.edge),
       ),
-      child: Text(onTap == null ? phase.label : phase.short,
+      child: Text(phase.short,
           textAlign: TextAlign.center,
           style: TextStyle(
               fontSize: 11,

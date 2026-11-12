@@ -307,7 +307,7 @@ void main() {
       var d = c.motionDevicesOf("logo").single;
       expect(d.keys["strength"]!.first.t, closeTo(1, 1e-9));
       expect(find.byKey(const ValueKey("keysInspector-key")), findsOneWidget);
-      expect(find.text("Glow · Strength"), findsOneWidget);
+      expect(find.text("Glow · Strength · Independent"), findsOneWidget);
       await tester.sendKeyEvent(LogicalKeyboardKey.delete);
       await tester.pump();
       d = c.motionDevicesOf("logo").single;
@@ -407,5 +407,47 @@ void main() {
         }
       }
     }
+  });
+
+  testWidgets("it opens small, and its bottom edge drags it taller",
+      (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    c.keysShown = true;
+    addTearDown(() {
+      c.keysShown = false;
+      c.keysHeight = null;
+    });
+    tester.view.physicalSize = const Size(1600, 540);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: Align(
+                  alignment: Alignment.topLeft,
+                  child: AnimationPanel(controller: c, height: 500)))),
+    ));
+    await tester.pump();
+    double strip() =>
+        tester.getSize(find.byKey(const ValueKey("keysStrip"))).height;
+    expect(strip(), lessThanOrEqualTo(KeysStrip.startHeight));
+    var was = strip();
+    await tester.drag(
+        find.byKey(const ValueKey("keysGrip")), const Offset(0, 80));
+    await tester.pump();
+    expect(strip(), greaterThan(was + 40));
+    await tester.drag(
+        find.byKey(const ValueKey("keysGrip")), const Offset(0, 900));
+    await tester.pump();
+    expect(strip(), 500 - AnimationPanel.cardsLeast,
+        reason: "the cards keep their room");
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(tester.takeException(), isNull);
   });
 }

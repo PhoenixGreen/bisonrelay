@@ -55,6 +55,12 @@ class AnimationPanel extends StatefulWidget {
       this.onResize,
       super.key});
 
+  /// cardsLeast is the least room the cards keep under the Keys strip: a
+  /// card's header and a row of its settings. A panel too short for both
+  /// shows the strip alone (Ken, 2026-11-12: a short panel squeezed the
+  /// cards below their headers).
+  static const cardsLeast = 150.0;
+
   @override
   State<AnimationPanel> createState() => _AnimationPanelState();
 }
@@ -108,14 +114,33 @@ class _AnimationPanelState extends State<AnimationPanel> {
         height: _strip);
     // Too short for both: the strip alone, until Keys is shut.
     if (_strip >= widget.height) return strip;
-    return Column(children: [strip, Expanded(child: cards)]);
+    var most = widget.height - AnimationPanel.cardsLeast;
+    return Column(children: [
+      Stack(children: [
+        strip,
+        // Its bottom edge, dragged: taller or shorter, the cards keeping
+        // their room. Double-clicked, back to how it opens.
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 6,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.resizeUpDown,
+            child: GestureDetector(
+              key: const ValueKey("keysGrip"),
+              behavior: HitTestBehavior.opaque,
+              supportedDevices: dragPointers,
+              onVerticalDragUpdate: (d) => controller.keysHeight =
+                  (_strip + d.delta.dy).clamp(KeysStrip.leastHeight, most),
+              onDoubleTap: () => controller.keysHeight = null,
+            ),
+          ),
+        ),
+      ]),
+      Expanded(child: cards),
+    ]);
   }
-
-  /// cardsLeast is the least room the cards keep under the Keys strip: a
-  /// card's header and a row of its settings. A panel too short for both
-  /// shows the strip alone (Ken, 2026-11-12: a short panel squeezed the
-  /// cards below their headers).
-  static const cardsLeast = 150.0;
 
   /// _stripFor sets [_strip] for [e]: as tall as its rows, leaving the
   /// cards room.
@@ -124,14 +149,16 @@ class _AnimationPanelState extends State<AnimationPanel> {
       _strip = 0;
       return;
     }
-    var room = widget.height - cardsLeast;
+    var room = widget.height - AnimationPanel.cardsLeast;
     if (room < KeysStrip.rulerHeight + 2 * KeysStrip.rowHeight) {
       _strip = widget.height;
       return;
     }
-    var most =
-        math.min(room, math.max(KeysStrip.leastHeight, widget.height - 200));
-    _strip = KeysStrip.heightFor(KeysStrip.rowsFor(controller, e), most);
+    // As tall as it was dragged; else as its rows, up to how it opens.
+    var want = controller.keysHeight ??
+        KeysStrip.heightFor(
+            KeysStrip.rowsFor(controller, e), KeysStrip.startHeight);
+    _strip = want.clamp(math.min(KeysStrip.leastHeight, room), room);
   }
 
   @override
