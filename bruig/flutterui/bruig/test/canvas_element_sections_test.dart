@@ -64,21 +64,6 @@ void main() {
     return [for (var (_, title) in found) title];
   }
 
-  // Rebuilt to the Text panel's shape: batch 1 the text, then batches 2-5.
-  const rebuilt = {
-    ElementKind.text,
-    ElementKind.shape,
-    ElementKind.line,
-    ElementKind.path,
-    ElementKind.button,
-    ElementKind.counter,
-    ElementKind.chart,
-    ElementKind.table,
-    ElementKind.vector,
-    ElementKind.video,
-    ElementKind.audio,
-    ElementKind.sheet,
-  };
   for (var kind in ElementKind.values) {
     if (kind == ElementKind.image) continue; // see canvas_panel_kit_test
     testWidgets("${kind.label} is sections of cards, open in a sidebar",
@@ -91,17 +76,11 @@ void main() {
       await pump(tester, c);
 
       var all = titles(tester);
-      // Rebuilt round tasks (Ken, 2026-11-11): the rest follow, a batch at a
-      // time.
-      if (rebuilt.contains(kind)) {
-        // Content left out where an element has none of its own.
-        expect(all.where((t) => t != "Content"),
-            ["Look", "Layout", "Motion", "More"],
-            reason: "$all");
-      } else {
-        expect(all.first, "Position", reason: "$all");
-        expect(all.last, "Presets", reason: "$all");
-      }
+      // Rebuilt round tasks (Ken, 2026-11-11). Content left out where an
+      // element has none of its own.
+      expect(all.where((t) => t != "Content"),
+          ["Look", "Layout", "Motion", "More"],
+          reason: "$all");
       expect(all.length, greaterThanOrEqualTo(3),
           reason: "its own sections: $all");
       // No rule inside a section: a card is its own edge.

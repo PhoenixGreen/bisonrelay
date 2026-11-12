@@ -45,6 +45,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/sprite_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/tile_map_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/button_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/video_settings.dart';
@@ -148,17 +149,7 @@ List<Widget> elementSettings(
   // Every other element in sections, as a picture is: where it is, its
   // own subjects, how it arrives, and the designs saved of its kind -- see
   // element_sections.dart.
-  return [
-    CanvasSections(
-      key: const ValueKey("elementSections"),
-      children: [
-        positionSection(controller, element, write, begin, commit,
-            // An element with no arrival of its own still waits on a cue.
-            extra: [
-              if (controller.cues.isNotEmpty &&
-                  (element is BackgroundElement || element is TeamElement))
-                elementCueCard(controller, element),
-            ]),
+  var own = <Widget>[
         ...switch (element) {
           // An instrument: its keyboard and part.
           AudioElement e =>
@@ -368,6 +359,31 @@ List<Widget> elementSettings(
             ],
           _ => const <Widget>[],
         },
+  ];
+
+  // Batch 6 (Ken, 2026-11-11): the rest in the shared panel, each of their
+  // sections where _placed puts it. An instrument keeps the older panel
+  // (its keyboard and part).
+  if (element is! AudioElement) {
+    var bits = <PanelBit>[];
+    for (var w in own) {
+      var name = w is CanvasSection ? w.remember.split(".").last : "";
+      var (into, straight) = _placed[name] ?? (PanelSection.content, false);
+      bits.add(PanelBit(into,
+          summary: straight && w is CanvasSection ? w.summary : "",
+          children: straight ? sectionContents(w) : [w]));
+    }
+    return [
+      elementPanel(context, controller, element, write, begin, commit,
+          contentOpen: true, bits: bits),
+    ];
+  }
+  return [
+    CanvasSections(
+      key: const ValueKey("elementSections"),
+      children: [
+        positionSection(controller, element, write, begin, commit),
+        ...own,
         // Where it stands on a 3D stage, for anything that can.
         ...stageSpotSettings(
             context, controller, element, write, begin, commit),
@@ -376,6 +392,37 @@ List<Widget> elementSettings(
     ),
   ];
 }
+
+/// _placed is where each of an element's own sections goes in its rebuilt
+/// panel, by the name it is remembered by: which section, and whether its
+/// settings go straight in (the element's main subject, open from the
+/// start) rather than as a fold. One not named is a fold in Content.
+const _placed = <String, (PanelSection, bool)>{
+  // A team.
+  "team": (PanelSection.content, true),
+  "players": (PanelSection.content, false),
+  "look": (PanelSection.look, true),
+  "labels": (PanelSection.look, false),
+  // A 3D character.
+  "character": (PanelSection.content, true),
+  "face": (PanelSection.look, false),
+  "view": (PanelSection.layout, false),
+  // A 3D object.
+  "object3d": (PanelSection.content, true),
+  // A camera, and a stage's camera.
+  "camera": (PanelSection.content, true),
+  "light": (PanelSection.look, false),
+  // A sprite.
+  "spriteSheet": (PanelSection.content, true),
+  "spriteCues": (PanelSection.motion, false),
+  "spriteExport": (PanelSection.more, false),
+  // A tile map.
+  "tileMapScene": (PanelSection.look, false),
+  // A background: its pattern's colour, its corners and its edges.
+  "colour": (PanelSection.look, false),
+  "panel": (PanelSection.look, false),
+  "mask": (PanelSection.look, false),
+};
 
 /// elementCueGroup is which cue [element] arrives on.
 Widget elementCueGroup(CanvasController controller, CanvasElement element) =>

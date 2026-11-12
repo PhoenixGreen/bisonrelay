@@ -527,6 +527,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(get().layers.map((l) => l.name), ["Layer 2", "Ground"]);
       expect(c.tilePaint!.layer, 0, reason: "the moved layer still the one painted");
+      await tester.ensureVisible(find.byKey(const ValueKey("tileLayerShown-1")));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("tileLayerShown-1")));
       await tester.pumpAndSettle();
       expect(get().layers[1].visible, isFalse);

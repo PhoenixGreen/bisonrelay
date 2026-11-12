@@ -2,7 +2,8 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -44,10 +45,11 @@ void main() {
   }
 
   Future<void> panel(WidgetTester tester, {double width = 420}) async {
-    // A sprite: its panel keeps the Position section these measure until
-    // batch 6 of the rebuild (a chart's is the rebuilt Layout).
-    var element = const SpriteElement(
-        ElementBase(id: "c", width: 400, height: 300));
+    // An instrument: the one kind still on the older panel, with the
+    // Position section these measure (the rest have the rebuilt Layout).
+    var element = const AudioElement(
+        ElementBase(id: "c", width: 400, height: 300),
+        instrument: InstrumentPart());
     var controller =
         CanvasController(const CanvasDocument().addElement(element));
     addTearDown(controller.dispose);
