@@ -758,8 +758,12 @@ void main() {
       expect(after.look.filter, ImageFilterPreset.values.last);
       expect(after.id, "v");
       expect(after.bounds, video("v").bounds);
-      expect(find.text("Crop"), findsWidgets);
-      expect(find.text("Outline"), findsWidgets);
+      // Captions in capitals in a rebuilt (dense) panel.
+      for (var group in ["Crop", "Outline"]) {
+        expect(find.textContaining(RegExp(group, caseSensitive: false)),
+            findsWidgets,
+            reason: group);
+      }
     });
 
     testWidgets("on the master it can be told to keep playing", (tester) async {

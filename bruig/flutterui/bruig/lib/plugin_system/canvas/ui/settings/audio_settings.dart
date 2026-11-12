@@ -14,6 +14,10 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/placement_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/instrument_settings.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
+    show panelRow, cell, CanvasQuickStrip;
+import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 
 // audio_settings.dart is an Audio element's settings, in the order one is set
 // up: the sound (first, since an empty Audio element does nothing), how it
@@ -29,6 +33,10 @@ List<Widget> audioSettings(
   /// background is a backdrop's sound, which is never drawn: nothing to
   /// press, no icon, no box.
   bool background = false,
+
+  /// panel lays the sections out as every rebuilt element's are (Ken,
+  /// 2026-11-11: batch 5).
+  bool panel = false,
 }) {
   // An instrument: its own settings, a keyboard and a part.
   if (e.instrument != null && !background) {
@@ -275,7 +283,7 @@ List<Widget> audioSettings(
     ];
   }
   var files = list.length;
-  return [
+  var all = [
     section(e, "sound",
         icon: Icons.library_music_outlined,
         title: "Sound",
@@ -417,6 +425,78 @@ List<Widget> audioSettings(
         ]),
     // How it comes in, loops and goes: the Chain's Motion view (Ken,
     // 2026-11-08), not a section here.
+  ];
+  if (!panel) return all;
+  var [sound, placement, controls, icon, box] = all;
+  // What it plays and how in Content, its placement and the reader's
+  // buttons folds under it; the speaker's icon in Look, its box a fold.
+  return [
+    elementPanel(context, controller, e, write, begin, commit,
+        quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+          panelRow([
+            cell(
+                CanvasDropdown<MediaLoop>(
+                  key: const ValueKey("quickAudioLoop"),
+                  label: "Repeat",
+                  value: clip.loop,
+                  options: [for (var l in MediaLoop.values) (l, l.label)],
+                  onChanged: (v) => clipNow(clip.copyWith(loop: v)),
+                ),
+                flex: 1,
+                min: 104),
+            cell(
+                CanvasDropdown<AudioGlyph>(
+                  key: const ValueKey("quickAudioGlyph"),
+                  label: "Icon",
+                  value: e.glyph,
+                  options: [for (var g in AudioGlyph.values) (g, g.label)],
+                  onChanged: (v) => now(e.copyWith(glyph: v)),
+                ),
+                flex: 1,
+                min: 104),
+          ]),
+          const SizedBox(height: 8),
+          panelRow([
+            cell(
+                CanvasStepper(
+                  key: const ValueKey("quickAudioVolume"),
+                  label: "Volume",
+                  value: clip.volume * 100,
+                  min: 0,
+                  max: 100,
+                  decimals: 0,
+                  step: 5,
+                  suffix: "%",
+                  fill: true,
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(clip: clip.copyWith(volume: v / 100)));
+                  },
+                  onCommit: commit,
+                ),
+                width: 132),
+            // On the timeline, the clip says when it starts.
+            if (!clip.timed)
+              cell(
+                CanvasToggle(
+                  key: const ValueKey("quickAudioAutoplay"),
+                  label: "Starts by itself",
+                  value: clip.autoplay,
+                  onChanged: (v) => clipNow(clip.copyWith(autoplay: v)),
+                ),
+                flex: 1,
+                min: 120),
+          ]),
+        ]),
+        contentOpen: true,
+        bits: [
+          PanelBit(PanelSection.content,
+              summary: (sound as CanvasSection).summary,
+              children: [...sectionContents(sound), placement, controls]),
+          PanelBit(PanelSection.look,
+              summary: e.glyph.label,
+              children: [...sectionContents(icon), box]),
+        ]),
   ];
 }
 

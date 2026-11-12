@@ -14,6 +14,10 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/placement_settings.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
+    show panelRow, cell, CanvasQuickStrip;
+import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 
 // video_settings.dart is a Video element's settings, in the order one is set
 // up: source, playback, the reader's controls, green screen, then the look.
@@ -30,6 +34,10 @@ List<Widget> videoSettings(
   /// background is a backdrop's video: a file, not a link, with nothing on
   /// it to press and no box of its own.
   bool background = false,
+
+  /// panel lays the sections out as every rebuilt element's are: see
+  /// videoPanel.
+  bool panel = false,
 }) {
   var across = controller.document.editingMaster ||
       (background && controller.document.sharedBackdrop);
@@ -444,73 +452,152 @@ List<Widget> videoSettings(
     ];
   }
   var files = list.length;
+  var videoSummary = e.isLink
+      ? "A link"
+      : files == 0
+          ? "No video yet"
+          : "$files file${files == 1 ? "" : "s"} · ${clip.loop.label}";
+  // Where its sound is heard from; a link's is the site's own.
+  Widget placementSection() => section(e, "placement",
+      icon: Icons.surround_sound_outlined,
+      title: "Placement",
+      summary: placementSummary(clip.place),
+      children: [
+        placementGroup(controller, e, clip, clipNow,
+            clipLive: (c) {
+              begin();
+              write(e.copyWith(clip: c));
+            },
+            commit: commit),
+      ]);
+  Widget controlsSection() => section(e, "controls",
+      icon: Icons.tune,
+      title: "Reader's controls",
+      summary: e.controls.isEmpty
+          ? "Nothing to press"
+          : e.controls.map((c) => c.label).join(" · "),
+      children: [readersGroup]);
+  Widget edgesSection() => edgeMaskSection(
+      e, e.edges, (m) => write(e.copyWith(edges: m)), begin, commit);
+  Widget boxSection() => section(e, "box",
+      icon: Icons.crop_square,
+      title: "Background and border",
+      summary: boxSummary(e.look.box),
+      children: [
+        boxGroup(
+            e.look.box,
+            (box) => write(e.copyWith(look: e.look.copyWith(box: box))),
+            begin,
+            commit,
+            remember: "video",
+            label: "Background and Border",
+            fillLabel: "Background",
+            rule: false),
+      ]);
+  var lookSummary = [
+    e.look.fit.label,
+    if (e.blend != LayerBlend.normal) e.blend.label,
+    if (!e.isLink && e.key.on) "green screen out",
+  ].join(" · ");
+
+  // Rebuilt (Ken, 2026-11-11: batch 5): what plays and how in Content, its
+  // sound's placement and the reader's buttons folds under it; the picture's
+  // look in Look, its edges and box folds under that.
+  if (panel) {
+    return [
+      elementPanel(context, controller, e, write, begin, commit,
+          quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+            panelRow([
+              if (!e.isLink)
+                cell(
+                    CanvasDropdown<MediaLoop>(
+                      key: const ValueKey("quickVideoLoop"),
+                      label: "Repeat",
+                      value: clip.loop,
+                      options: [for (var l in MediaLoop.values) (l, l.label)],
+                      onChanged: (v) => clipNow(clip.copyWith(loop: v)),
+                    ),
+                    flex: 1,
+                    min: 104),
+              cell(
+                  CanvasDropdown<ImageFit>(
+                    key: const ValueKey("quickVideoFit"),
+                    label: "Fills its box",
+                    value: e.look.fit,
+                    options: [for (var f in ImageFit.values) (f, f.label)],
+                    onChanged: (v) =>
+                        now(e.copyWith(look: e.look.copyWith(fit: v))),
+                  ),
+                  flex: 1,
+                  min: 104),
+            ]),
+            if (!e.isLink) ...[
+              const SizedBox(height: 8),
+              panelRow([
+                cell(
+                    CanvasStepper(
+                      key: const ValueKey("quickVideoVolume"),
+                      label: "Volume",
+                      value: clip.volume * 100,
+                      min: 0,
+                      max: 100,
+                      decimals: 0,
+                      step: 5,
+                      suffix: "%",
+                      fill: true,
+                      onChanged: (v) {
+                        begin();
+                        write(e.copyWith(clip: clip.copyWith(volume: v / 100)));
+                      },
+                      onCommit: commit,
+                    ),
+                    width: 132),
+              ]),
+            ],
+          ]),
+          contentOpen: true,
+          bits: [
+            PanelBit(PanelSection.content, summary: videoSummary, children: [
+              videoGroup,
+              if (!e.isLink) playbackGroup,
+              if (!e.isLink) placementSection(),
+              if (!e.isLink && !clip.timed) controlsSection(),
+            ]),
+            PanelBit(PanelSection.look, summary: lookSummary, children: [
+              blendGroup,
+              colourGroup,
+              if (!e.isLink) greenGroup,
+              ...lookGroups,
+              edgesSection(),
+              boxSection(),
+            ]),
+          ]),
+    ];
+  }
   return [
     section(e, "video",
         icon: Icons.smart_display_outlined,
         title: "Video",
-        summary: e.isLink
-            ? "A link"
-            : files == 0
-                ? "No video yet"
-                : "$files file${files == 1 ? "" : "s"} · ${clip.loop.label}",
+        summary: videoSummary,
         initiallyOpen: true,
         children: [
           videoGroup,
           if (!e.isLink) playbackGroup,
         ]),
-    // Where its sound is heard from; a link's is the site's own.
-    if (!e.isLink)
-      section(e, "placement",
-          icon: Icons.surround_sound_outlined,
-          title: "Placement",
-          summary: placementSummary(clip.place),
-          children: [
-            placementGroup(controller, e, clip, clipNow,
-                clipLive: (c) {
-                  begin();
-                  write(e.copyWith(clip: c));
-                },
-                commit: commit),
-          ]),
-    if (!e.isLink && !clip.timed)
-      section(e, "controls",
-          icon: Icons.tune,
-          title: "Reader's controls",
-          summary: e.controls.isEmpty
-              ? "Nothing to press"
-              : e.controls.map((c) => c.label).join(" · "),
-          children: [readersGroup]),
+    if (!e.isLink) placementSection(),
+    if (!e.isLink && !clip.timed) controlsSection(),
     section(e, "look",
         icon: Icons.palette_outlined,
         title: "Look",
-        summary: [
-          e.look.fit.label,
-          if (e.blend != LayerBlend.normal) e.blend.label,
-          if (!e.isLink && e.key.on) "green screen out",
-        ].join(" · "),
+        summary: lookSummary,
         children: [
           blendGroup,
           colourGroup,
           if (!e.isLink) greenGroup,
           ...lookGroups,
         ]),
-    edgeMaskSection(
-        e, e.edges, (m) => write(e.copyWith(edges: m)), begin, commit),
-    section(e, "box",
-        icon: Icons.crop_square,
-        title: "Background and border",
-        summary: boxSummary(e.look.box),
-        children: [
-          boxGroup(
-              e.look.box,
-              (box) => write(e.copyWith(look: e.look.copyWith(box: box))),
-              begin,
-              commit,
-              remember: "video",
-              label: "Background and Border",
-              fillLabel: "Background",
-              rule: false),
-        ]),
+    edgesSection(),
+    boxSection(),
     // How it comes in, loops and goes: the Chain's Motion view (Ken,
     // 2026-11-08), not a section here.
   ];

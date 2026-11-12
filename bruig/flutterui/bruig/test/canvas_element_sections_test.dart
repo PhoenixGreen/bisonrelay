@@ -64,7 +64,7 @@ void main() {
     return [for (var (_, title) in found) title];
   }
 
-  // Rebuilt to the Text panel's shape: batch 1 the text, then batches 2-4.
+  // Rebuilt to the Text panel's shape: batch 1 the text, then batches 2-5.
   const rebuilt = {
     ElementKind.text,
     ElementKind.shape,
@@ -75,6 +75,9 @@ void main() {
     ElementKind.chart,
     ElementKind.table,
     ElementKind.vector,
+    ElementKind.video,
+    ElementKind.audio,
+    ElementKind.sheet,
   };
   for (var kind in ElementKind.values) {
     if (kind == ElementKind.image) continue; // see canvas_panel_kit_test

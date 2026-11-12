@@ -152,7 +152,12 @@ void main() {
     var link = find.byKey(const ValueKey("videoLink"));
     var words = at(
         tester, find.descendant(of: link, matching: find.byType(EditableText)));
-    expect(add.bottom - words.bottom, lessThan(8),
-        reason: "button $add, words $words");
+    // In a rebuilt (dense) panel the field is a box with its words inside
+    // it: the button stands level with the box, and the words are in it.
+    var field = at(tester, link);
+    expect(add.bottom, closeTo(field.bottom, 1),
+        reason: "button $add, field $field");
+    expect(words.bottom, lessThanOrEqualTo(field.bottom),
+        reason: "words $words inside $field");
   });
 }

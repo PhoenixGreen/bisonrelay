@@ -131,6 +131,19 @@ List<Widget> elementSettings(
   if (element is VectorElement) {
     return [vectorPanel(context, controller, element, write, begin, commit)];
   }
+  // Batch 5. An instrument keeps its own (its keyboard and part).
+  if (element is VideoElement) {
+    return videoSettings(context, controller, element, write, begin, commit,
+        panel: true);
+  }
+  if (element is AudioElement && element.instrument == null) {
+    return audioSettings(context, controller, element, write, begin, commit,
+        panel: true);
+  }
+  if (element is SheetElement) {
+    return sheetSettings(context, controller, element, write, begin, commit,
+        panel: true);
+  }
 
   // Every other element in sections, as a picture is: where it is, its
   // own subjects, how it arrives, and the designs saved of its kind -- see
@@ -147,12 +160,9 @@ List<Widget> elementSettings(
                 elementCueCard(controller, element),
             ]),
         ...switch (element) {
+          // An instrument: its keyboard and part.
           AudioElement e =>
             audioSettings(context, controller, e, write, begin, commit),
-          SheetElement e =>
-            sheetSettings(context, controller, e, write, begin, commit),
-          VideoElement e =>
-            videoSettings(context, controller, e, write, begin, commit),
           BackgroundElement e => [
               ..._backgroundElementBackdrop(
                   context, controller, e, write, begin, commit),

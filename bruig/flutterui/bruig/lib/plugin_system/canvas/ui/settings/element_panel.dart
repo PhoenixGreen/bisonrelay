@@ -43,6 +43,11 @@ class PanelBit extends StatelessWidget {
       Column(mainAxisSize: MainAxisSize.min, children: children);
 }
 
+/// sectionContents is what an older panel's section [w] holds, to lay its
+/// settings straight into a rebuilt panel's section rather than as a fold
+/// inside it (a sound's file and playback, in its Content).
+List<Widget> sectionContents(Widget w) => w is CanvasSection ? w.children : [w];
+
 /// looksSaid is [e]'s looks on all of it, by name, for a heading.
 String looksSaid(CanvasElement e) => [
       for (var d in e.base.motion.devices)

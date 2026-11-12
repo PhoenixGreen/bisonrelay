@@ -15,6 +15,10 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart'
+    show panelRow, cell, CanvasQuickStrip;
+import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
 
 // sheet_settings.dart is Sheet music's settings: the instrument whose part
 // it engraves, and practising it -- how, which hand, how fast -- with the
@@ -26,8 +30,11 @@ List<Widget> sheetSettings(
   SheetElement e,
   SettingsWrite write,
   VoidCallback begin,
-  VoidCallback commit,
-) {
+  VoidCallback commit, {
+  /// panel lays the sections out as every rebuilt element's are (Ken,
+  /// 2026-11-11: batch 5).
+  bool panel = false,
+}) {
   void now(SheetElement next) {
     begin();
     write(next);
@@ -44,7 +51,7 @@ List<Widget> sheetSettings(
   var (right, wrong) = controller.practiceScore;
   var tried = right + wrong;
 
-  return [
+  var all = [
     section(e, "sheet",
         icon: Icons.queue_music,
         title: "Sheet music",
@@ -239,6 +246,49 @@ List<Widget> sheetSettings(
               }),
             ],
           ),
+        ]),
+  ];
+  if (!panel) return all;
+  var [sheet, practice] = all;
+  // The part it shows in Content, with how it is practised a fold under it
+  // that stays open; the paper and ink are also in the quick strip.
+  return [
+    elementPanel(context, controller, e, write, begin, commit,
+        quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+          panelRow([
+            cell(
+                CanvasDropdown<PracticeMode>(
+                  key: const ValueKey("quickSheetMode"),
+                  label: "Practice",
+                  value: e.mode,
+                  options: [for (var m in PracticeMode.values) (m, m.label)],
+                  onChanged: (m) => now(e.copyWith(mode: m)),
+                ),
+                flex: 1,
+                min: 110),
+            cell(
+                CanvasColorButton(
+                  key: const ValueKey("quickSheetPaper"),
+                  label: "Paper",
+                  color: e.paper,
+                  onChanged: (c) => now(e.copyWith(paper: c)),
+                ),
+                width: 96),
+            cell(
+                CanvasColorButton(
+                  key: const ValueKey("quickSheetInk"),
+                  label: "Ink",
+                  color: e.ink,
+                  onChanged: (c) => now(e.copyWith(ink: c)),
+                ),
+                width: 96),
+          ]),
+        ]),
+        contentOpen: true,
+        bits: [
+          PanelBit(PanelSection.content,
+              summary: (sheet as CanvasSection).summary,
+              children: [...sectionContents(sheet), practice]),
         ]),
   ];
 }
