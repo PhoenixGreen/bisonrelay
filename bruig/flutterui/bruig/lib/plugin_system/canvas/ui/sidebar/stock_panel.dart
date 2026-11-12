@@ -235,7 +235,15 @@ class _StockPanelState extends State<StockPanel> {
       _loading = false;
       _last = page;
       if (page.worked) {
-        _items = [..._items, ...page.items];
+        // A site's pages can overlap -- Pixabay's next page repeated a
+        // picture from the last -- and each tile is keyed by its item, so
+        // one shown twice threw. What is already showing is not added again.
+        var shown = {for (var i in _items) i.key};
+        _items = [
+          ..._items,
+          for (var i in page.items)
+            if (shown.add(i.key)) i,
+        ];
         if (_items.isEmpty) _problem = "Nothing found.";
       } else {
         _problem = page.problem;

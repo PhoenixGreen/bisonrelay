@@ -34,6 +34,9 @@ class FakeStock extends StockClient {
   final List<StockQuery> asked = [];
   int downloads = 0;
 
+  /// pages, when set, are the pictures' pages in turn, each a list of ids.
+  List<List<String>>? pages;
+
   @override
   Future<StockPage> search(StockQuery q,
       {required bool allowFetching, required bool proxied}) async {
@@ -56,6 +59,22 @@ class FakeStock extends StockClient {
           length: 60,
         ),
       ]);
+    }
+    var pages = this.pages;
+    if (pages != null) {
+      var n = asked.where((a) => a.source == q.source).length - 1;
+      return StockPage([
+        for (var id in pages[n])
+          StockItem(
+            source: q.source,
+            id: id,
+            title: "Picture $id",
+            thumb: "https://cdn.pixabay.com/$id.jpg",
+            media: "https://pixabay.com/$id.png",
+            width: 1,
+            height: 1,
+          ),
+      ], more: n + 1 < pages.length);
     }
     return StockPage([
       StockItem(
@@ -207,6 +226,28 @@ void main() {
     var saved = await SharedPreferences.getInstance();
     expect(saved.getString("canvasStock.filters"),
         contains('"limit_to_public_domain":"0"'));
+  });
+
+  testWidgets("a next page repeating a result does not show it twice",
+      (tester) async {
+    // Ken's log: Pixabay's second page repeated a picture from the first,
+    // and two tiles with one key threw.
+    fake.pages = [
+      ["1", "2", "3"],
+      ["3", "4"],
+    ];
+    await show(tester);
+    await tester.enterText(find.byKey(const ValueKey("stockSearch")), "fox");
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await idle(tester);
+    await tester.tap(find.byKey(const ValueKey("stockMore")));
+    await idle(tester);
+
+    expect(tester.takeException(), isNull);
+    for (var id in ["1", "2", "3", "4"]) {
+      expect(find.byKey(ValueKey("stock-pixabayPictures-$id")), findsOneWidget,
+          reason: "picture $id once");
+    }
   });
 
   testWidgets("nothing is asked until a search, and a filter asks again",
