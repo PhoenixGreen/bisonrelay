@@ -2,6 +2,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
@@ -29,6 +30,9 @@ void main() {
     ElementKind.path,
     ElementKind.button,
     ElementKind.counter,
+    // Batch 3.
+    ElementKind.chart,
+    ElementKind.table,
   ]) {
     testWidgets("${kind.label}: a quick strip, its looks, its arrival",
         (tester) async {
@@ -57,12 +61,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey("quickStrip")), findsOneWidget);
       expect(find.byKey(ValueKey("${kind.name}Looks")), findsOneWidget);
-      // Its arrival, its family then which.
-      var family = find.byKey(ValueKey("${kind.name}ArrivalFamily"));
-      expect(family, findsOneWidget);
-      tester
-          .widget<CanvasDropdown<String>>(family)
-          .onChanged(ElementAnimationPreset.fadeIn.family.label);
+      // Its arrival, its family then which -- a chart's, its own few.
+      if (kind == ElementKind.chart) {
+        tester
+            .widget<CanvasDropdown<ChartAnimationPreset>>(
+                find.byKey(const ValueKey("chartArrival")))
+            .onChanged(ChartAnimationPreset.grow);
+      } else {
+        var family = find.byKey(ValueKey("${kind.name}ArrivalFamily"));
+        expect(family, findsOneWidget);
+        tester
+            .widget<CanvasDropdown<String>>(family)
+            .onChanged(ElementAnimationPreset.fadeIn.family.label);
+      }
       await tester.pumpAndSettle();
       var now = c.document.elementById(element.id)!;
       expect(ownClipOf(now, MotionKind.arrive), isNotNull,

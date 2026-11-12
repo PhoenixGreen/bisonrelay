@@ -1,9 +1,12 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/own_style.dart' show OwnStyle;
 import 'package:bruig/plugin_system/canvas/ui/preset_pair.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
@@ -173,6 +176,40 @@ Widget elementPanel(
                             onChanged: (v) =>
                                 controller.applyElementExit(e, v)))
                           cell(w),
+                      ]),
+                    ]),
+              // A chart's are its own few, one list each (see OwnStyle).
+              if (e is ChartElement)
+                CanvasControlGroup(
+                    key: const ValueKey("chartMotionPick"),
+                    label: "Arrival and leaving",
+                    hideCaption: true,
+                    rule: false,
+                    children: [
+                      panelRow([
+                        for (var (leaving, label) in const [
+                          (false, "Arrival"),
+                          (true, "Leaving"),
+                        ])
+                          cell(CanvasDropdown<ChartAnimationPreset>(
+                            key: ValueKey(
+                                leaving ? "chartLeaving" : "chartArrival"),
+                            label: label,
+                            value:
+                                leaving ? e.animation.exit : e.animation.preset,
+                            options: [
+                              (ChartAnimationPreset.none, "None"),
+                              for (var (name, label)
+                                  in OwnStyle(e).presets(leaving: leaving))
+                                (
+                                  ChartAnimationPreset.values.byName(name),
+                                  label
+                                ),
+                            ],
+                            onChanged: (p) => leaving
+                                ? controller.applyChartExit(e, p)
+                                : controller.applyChartAnimation(e, p),
+                          )),
                       ]),
                     ]),
               if (controller.cues.isNotEmpty) elementCueCard(controller, e),

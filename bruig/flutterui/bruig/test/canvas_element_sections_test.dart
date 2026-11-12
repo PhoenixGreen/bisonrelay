@@ -65,6 +65,8 @@ void main() {
     ElementKind.path,
     ElementKind.button,
     ElementKind.counter,
+    ElementKind.chart,
+    ElementKind.table,
   };
   for (var kind in ElementKind.values) {
     if (kind == ElementKind.image) continue; // see canvas_panel_kit_test

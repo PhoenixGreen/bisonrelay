@@ -2,7 +2,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -44,10 +44,10 @@ void main() {
   }
 
   Future<void> panel(WidgetTester tester, {double width = 420}) async {
-    var element = ChartElement(
-      const ElementBase(id: "c", width: 400, height: 300),
-      data: ChartData.parse("Cat\tA\nx\t10\ny\t6"),
-    );
+    // A drawing: its panel keeps the Position section these measure until
+    // its batch of the rebuild (a chart's is the rebuilt Layout).
+    var element = const VectorElement(
+        ElementBase(id: "c", width: 400, height: 300));
     var controller =
         CanvasController(const CanvasDocument().addElement(element));
     addTearDown(controller.dispose);

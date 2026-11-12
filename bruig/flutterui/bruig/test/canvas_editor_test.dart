@@ -30,6 +30,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/table_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
@@ -1730,10 +1731,10 @@ void main() {
   group("animated settings", () {
     (CanvasController, CanvasElement) moving() {
       var document = const CanvasDocument(frames: 30);
-      // A table: its panel still has the pose diamond and easing by
+      // A drawing: its panel still has the pose diamond and easing by
       // Position, until its batch of the rebuild (the rebuilt panels key
       // in the Chain).
-      var element = const TableElement(
+      var element = const VectorElement(
           ElementBase(id: "s", x: 100, y: 50, width: 40, height: 40));
       var controller = CanvasController(document.addElement(element));
       controller.selectOnly("s");
@@ -1796,7 +1797,7 @@ void main() {
 
     testWidgets("the diamonds are off on a still canvas", (tester) async {
       var document = const CanvasDocument();
-      var element = newElement(ElementKind.table, document);
+      var element = newElement(ElementKind.vector, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -2903,6 +2904,8 @@ void main() {
       // Adding and removing in the same place, rather than one here and one
       // at the foot of a section that has to be opened first.
       var controller = await panel(tester);
+      // In the Special cells fold of its Content (batch 3).
+      await openFold(tester, "tableRules", shows: find.byTooltip("Add a rule"));
       expect(find.byTooltip("Add a rule"), findsOneWidget);
 
       await press(tester, find.byTooltip("Add a rule"));
@@ -2936,7 +2939,8 @@ void main() {
       // The longest thing in these settings and the least often changed once
       // it is right, so it was pushing everything else off the bottom.
       await panel(tester);
-      expect(sections(tester), contains("Table"));
+      // A fold of their own, open, at the head of its Content.
+      expect(sections(tester), contains("Content"));
       expect(find.text("2 rows, 2 columns"), findsOneWidget);
       expect(find.byType(TableDataEditor), findsOneWidget);
     });
@@ -2973,17 +2977,15 @@ void main() {
       // the panel rather than a section that has to be opened to find one
       // button.
       expect(find.byKey(const ValueKey("elementPresets")), findsOneWidget);
-      expect(sections(tester), [
-        "Position",
-        "Table",
-        "Data source",
-        "Order",
-        "Special cells",
-        "Style",
-        // The designs saved, as on every element; how it arrives is the
-        // Chain's (Ken, 2026-11-08).
-        "Presets",
-      ]);
+      // Batch 3 of the rebuild: the Text panel's sections, and in its
+      // Content the cells, where they come from, their order and its
+      // special cells, in that order.
+      expect(sections(tester), ["Content", "Look", "Layout", "Motion", "More"]);
+      double top(String fold) =>
+          tester.getTopLeft(find.byKey(ValueKey("expander-$fold"))).dy;
+      expect(top("tableCells"), lessThan(top("tableSource")));
+      expect(top("tableSource"), lessThan(top("tableSort")));
+      expect(top("tableSort"), lessThan(top("tableRules")));
     });
 
     testWidgets("the two sets of type controls fold away inside Style",
@@ -3033,7 +3035,11 @@ void main() {
       // a licence for a new one, which is what the checks below catch.
       tester.takeException();
 
-      expect(find.text("Key"), findsOneWidget,
+      // Where the cells come from, a fold of its Content (batch 3).
+      // Its caption in the rebuilt panel's small capitals.
+      await openFold(tester, "tableSource", shows: find.text("KEY"));
+      tester.takeException();
+      expect(find.text("KEY"), findsOneWidget,
           reason: "the key field only exists once the source is an address, "
               "so without it this test is testing nothing");
       expect(tester.takeException(), isNull);
@@ -3405,7 +3411,7 @@ void main() {
     // whatever easing each of them had.
     testWidgets("is offered while the playhead is on one", (tester) async {
       var document = const CanvasDocument(frames: 40);
-      var element = newElement(ElementKind.table, document);
+      var element = newElement(ElementKind.vector, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -3451,7 +3457,7 @@ void main() {
       // nobody could find: there is no telling a setting that does not exist
       // from one waiting for the playhead to be somewhere else.
       var document = const CanvasDocument(frames: 40);
-      var element = newElement(ElementKind.table, document);
+      var element = newElement(ElementKind.vector, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -3472,7 +3478,7 @@ void main() {
     testWidgets("and an element with no keyframes at all offers none",
         (tester) async {
       var document = const CanvasDocument(frames: 40);
-      var element = newElement(ElementKind.table, document);
+      var element = newElement(ElementKind.vector, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -3494,10 +3500,10 @@ void main() {
         controller.setKeyframe(element.id, const Keyframe(frame: 0, dx: 4));
         await pump(tester, CanvasDesignPanel(controller: controller));
 
-        // A rebuilt panel (a text's) leaves its keyframes to the Chain's
-        // Keyframes card (Ken, 2026-11-11); the rest still ease them here.
-        expect(find.byKey(const ValueKey("elementKeyframeEasing")),
-            kind == ElementKind.text ? findsNothing : findsOneWidget,
+        // A rebuilt panel (a text's, a chart's) leaves its keyframes to the
+        // Chain (Ken, 2026-11-11).
+        expect(
+            find.byKey(const ValueKey("elementKeyframeEasing")), findsNothing,
             reason: kind.name);
       }
     });
@@ -3506,7 +3512,7 @@ void main() {
       // "Stays the same until the next keyframe", which is what a count in
       // steps and a cut both need.
       var document = const CanvasDocument(frames: 40);
-      var element = newElement(ElementKind.table, document);
+      var element = newElement(ElementKind.vector, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -4229,7 +4235,7 @@ void main() {
       await panel(tester);
 
       var panelWidth = tester.getSize(find.byType(CanvasLayersPanel)).width;
-      for (var name in ["source", "chart"]) {
+      for (var name in ["content", "look"]) {
         var section = find.byKey(ValueKey("elementSection-$name"));
         await tester.ensureVisible(section);
         await tester.pumpAndSettle();
@@ -4268,9 +4274,9 @@ void main() {
       expect(find.text("Between"), findsNothing,
           reason: "nothing to separate until the key shows values");
 
-      // Two "Values" on the panel now: the chart's own up on the Grid line,
-      // and the key's in here. The key's is the later of the two.
-      await press(tester, find.text("Values").last);
+      // Two "Values" on the panel now: the chart's own on the Grid line, in
+      // Look, and the key's in here, in Content -- the first of the two.
+      await press(tester, find.text("Values").first);
       expect(chartIn(controller).legend.values, isTrue);
       expect(find.text("Between"), findsOneWidget);
     });
@@ -4306,7 +4312,7 @@ void main() {
       var controller = await panel(tester);
       expect(chartIn(controller).data.series.length, 1);
       expect(
-          tester.getTopLeft(find.text("Series")).dy.compareTo(
+          tester.getTopLeft(find.text("SERIES")).dy.compareTo(
               tester.getTopLeft(find.byType(ChartDataEditor).first).dy),
           1,
           reason: "directly under the numbers it names");
@@ -4362,7 +4368,7 @@ void main() {
       // Left to the Wrap, the line fell between W and H or after Angle
       // depending on how wide the sidebar happened to be.
       var document = const CanvasDocument();
-      var element = newElement(ElementKind.table, document);
+      var element = newElement(ElementKind.vector, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -4660,9 +4666,10 @@ void main() {
       // columns, with what they are drawn as above them and how that drawing
       // looks below.
       await panel(tester);
-      expect(
-          find.byKey(const ValueKey("elementSection-chart")), findsOneWidget);
-      expect(find.textContaining("2 rows, 1 series"), findsOneWidget);
+      // A fold of their own in its Content (batch 3 of the rebuild); the
+      // source's fold, left open by an earlier test, may show them too.
+      expect(find.byType(ChartDataEditor), findsWidgets);
+      expect(find.textContaining("2 rows, 1 series"), findsWidgets);
     });
 
     testWidgets("it switches between pasted text and a table", (tester) async {
@@ -5398,6 +5405,9 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly("c");
       await pump(tester, CanvasDesignPanel(controller: controller));
+      // In its Content, a fold of its own (batch 3 of the rebuild).
+      await openFold(tester, "chartSource",
+          shows: find.byKey(const ValueKey("source-c")));
       return controller;
     }
 
@@ -5428,51 +5438,35 @@ void main() {
       }
     }
 
-    testWidgets("it is a section of its own, beside the numbers",
-        (tester) async {
-      // Not called "Data": the chart already has a section by that name --
-      // the numbers themselves -- and two of them on one panel is a panel
-      // nobody can navigate.
+    // Batch 3 of the rebuild (Ken, 2026-11-12): both in its Content, each
+    // a fold of its own, where its numbers come from over the numbers.
+    testWidgets("it is a fold of its own, over the numbers", (tester) async {
       await panel(tester);
-      expect(
-          find.byKey(const ValueKey("elementSection-source")), findsOneWidget);
-      expect(find.byKey(const ValueKey("elementSection-chart")), findsOneWidget,
-          reason: "the numbers themselves are still a section of their own");
+      var source = find.byKey(const ValueKey("expander-chartSource"));
+      var numbers = find.byType(ChartDataEditor).first;
+      expect(source, findsOneWidget);
+      // The numbers, and the source's own mapping of them in its fold.
+      expect(find.byType(ChartDataEditor), findsWidgets);
+      expect(tester.getTopLeft(source).dy,
+          lessThan(tester.getTopLeft(numbers).dy));
     });
 
     testWidgets("the sections read in the order the work happens",
         (tester) async {
-      // What the chart is, then what it says, then where its numbers come
-      // from and how they are mapped, then how it arrives.
-      //
-      // Custom fields is not among them: a custom field is an ordinary column
-      // with a recipe instead of a field, and a section of its own listed the
-      // same columns a second time.
       var controller = await panel(tester,
           source: dcrdataChart.applyTo(const DataSource(), "coin-supply"));
       expect(controller.document.elements.single, isA<ChartElement>());
-
+      expect(find.byKey(const ValueKey("expander-chartSourceColumns")),
+          findsOneWidget,
+          reason: "the mapping, a card that folds in Data source");
       var headings = [
         for (var it
             in tester.widgetList<CanvasSection>(find.byType(CanvasSection)))
           it.title,
       ];
-      expect(find.byKey(const ValueKey("expander-chartSourceColumns")),
-          findsOneWidget,
-          reason: "the mapping, a card that folds in Data source");
-      // Labels is not among them: it is a run of plain lines now rather than
-      // a section, so it has no expander to be counted here. What is left
-      // reads as the work does -- where the numbers come from, the numbers,
-      // how they are mapped, and last how the chart arrives.
-      var wanted = [
-        "Data source",
-        "Chart",
-      ];
-      expect([for (var w in wanted) headings.contains(w)], everyElement(isTrue),
+      expect(headings.where((h) => h != "Content"),
+          ["Look", "Layout", "Motion", "More"],
           reason: "$headings");
-      var places = [for (var w in wanted) headings.indexOf(w)];
-      var sorted = [...places]..sort();
-      expect(places, sorted, reason: "out of order: $headings");
     });
 
     testWidgets("and the mapping is hidden while the numbers are typed in",

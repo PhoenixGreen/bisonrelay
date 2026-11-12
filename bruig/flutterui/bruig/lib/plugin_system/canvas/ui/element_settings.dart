@@ -121,6 +121,13 @@ List<Widget> elementSettings(
   if (element is CounterElement) {
     return [counterPanel(context, controller, element, write, begin, commit)];
   }
+  // Batch 3.
+  if (element is TableElement) {
+    return [tablePanel(context, controller, element, write, begin, commit)];
+  }
+  if (element is ChartElement) {
+    return [chartPanel(context, controller, element, write, begin, commit)];
+  }
 
   // Every other element in sections, as a picture is: where it is, its
   // own subjects, how it arrives, and the designs saved of its kind -- see
@@ -162,10 +169,6 @@ List<Widget> elementSettings(
         ...switch (element) {
           VectorElement e =>
             vectorSettings(context, controller, e, write, begin, commit),
-          ChartElement e =>
-            chartSettings(context, controller, e, write, begin, commit),
-          TableElement e =>
-            tableSettings(context, controller, e, write, begin, commit),
           AudioElement e =>
             audioSettings(context, controller, e, write, begin, commit),
           SheetElement e =>

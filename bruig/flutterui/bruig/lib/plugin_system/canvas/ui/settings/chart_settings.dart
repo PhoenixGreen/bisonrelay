@@ -8,12 +8,77 @@ import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_row_names.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart';
 import 'package:flutter/material.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // chart_settings.dart is a chart's settings.
 
-List<Widget> chartSettings(
+/// chartPanel is [e]'s panel: the Text panel's shape (see
+/// element_panel.dart) -- a quick strip of what kind of chart it is, its
+/// title and its key; Content (where its numbers come from, the numbers and
+/// series, its words) and Look (its grid and axes, its looks).
+Widget chartPanel(
+    BuildContext context,
+    CanvasController controller,
+    ChartElement e,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
+  void now(ChartElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  return elementPanel(context, controller, e, write, begin, commit,
+      quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+        panelRow([
+          cell(
+              CanvasDropdown<ChartType>(
+                key: const ValueKey("quickChartType"),
+                label: "Chart",
+                value: e.type,
+                options: [for (var t in ChartType.values) (t, t.label)],
+                // As the numbers' "Drawn as" does: the first series follows.
+                onChanged: (type) => now(e.copyWith(
+                  type: type,
+                  data: ChartData(
+                    categories: e.data.categories,
+                    series: [
+                      for (var (i, series) in e.data.series.indexed)
+                        i == 0 ? series.copyWith(followChart: true) : series,
+                    ],
+                  ),
+                )),
+              ),
+              flex: 3,
+              min: 120),
+          cell(
+              CanvasSwitch(
+                key: const ValueKey("quickChartLegend"),
+                value: e.showLegend,
+                onChanged: (v) => now(e.copyWith(showLegend: v)),
+              ),
+              width: 52),
+        ]),
+        const SizedBox(height: 8),
+        CanvasTextField(
+          key: const ValueKey("quickChartTitle"),
+          label: "Title",
+          value: e.title,
+          width: 220,
+          onChanged: (v) => write(e.copyWith(title: v)),
+          onCommit: commit,
+        ),
+      ]),
+      // Its numbers are what its settings are opened for: not shut away.
+      contentOpen: true,
+      bits: chartBits(context, controller, e, write, begin, commit));
+}
+
+/// chartBits are what of [e] goes in which of its panel's sections.
+List<PanelBit> chartBits(
     BuildContext context,
     CanvasController controller,
     ChartElement e,
@@ -121,22 +186,23 @@ List<Widget> chartSettings(
       ];
 
   return [
-    section(e, "source",
-        icon: Icons.cloud_download_outlined,
-        title: "Data source",
-        summary: e.source.kind.label,
+    // Where the numbers come from, a fold with its Refresh on its heading.
+    PanelBit(PanelSection.content, summary: e.source.kind.label, children: [
+      CanvasExpander(
+        label: "Data source",
+        remember: "chartSource",
+        trailing: e.source.kind.label,
         action: sourceRefreshButton(
             context, controller, e, write, begin, commit,
             whenOff: true),
         children: [
           chartSourceSection(context, controller, e, write, begin, commit),
-        ]),
-    section(e, "chart",
-        icon: Icons.bar_chart,
-        title: "Chart",
+        ],
+      ),
+    ]),
+    PanelBit(PanelSection.content,
         summary: "${e.type.label} · ${e.data.categories.length} rows, "
             "${e.data.series.length} series",
-        initiallyOpen: true,
         children: [
           boxed(
             context,
@@ -365,74 +431,68 @@ List<Widget> chartSettings(
           // writes numbers on its slices.
         ]),
     if (!e.type.isCircular)
-      section(e, "grid",
-          icon: Icons.grid_on,
-          title: "Grid",
-          summary: "Lines across the chart",
-          children: [
-            if (!e.type.isCircular)
-              CanvasMoreGroup(
+      PanelBit(PanelSection.look, summary: "Lines across the chart", children: [
+        if (!e.type.isCircular)
+          CanvasMoreGroup(
+            label: "Grid",
+            remember: "chartGridMore",
+            tooltip: "How finely it is ruled, and what colour",
+            row: [
+              CanvasToggle(
                 label: "Grid",
-                remember: "chartGridMore",
-                tooltip: "How finely it is ruled, and what colour",
-                row: [
-                  CanvasToggle(
-                    label: "Grid",
-                    value: e.showGrid,
-                    onChanged: (v) => now(e.copyWith(showGrid: v)),
-                  ),
-                  CanvasToggle(
-                    label: "Axes",
-                    value: e.showAxes,
-                    onChanged: (v) => now(e.copyWith(showAxes: v)),
-                  ),
-                  CanvasToggle(
-                    label: "Log scale",
-                    value: e.logScale,
-                    onChanged: (v) => now(e.copyWith(logScale: v)),
-                  ),
-                  // The numbers written on the bars themselves: they belong to neither
-                  // axis, so they sit with what is drawn on the plot.
-                  CanvasToggle(
-                    label: "Values",
-                    value: e.showValues,
-                    onChanged: (v) => now(e.copyWith(showValues: v)),
-                  ),
-                ],
-                more: [
-                  // How finely the value axis is ruled. Zero is the chart's own
-                  // judgement.
-                  CanvasNumberField(
-                    key: const ValueKey("chartAxisSteps"),
-                    label: "Lines",
-                    value: e.axisSteps.toDouble(),
-                    min: 0,
-                    max: 40,
-                    decimals: 0,
-                    width: 54,
-                    onChanged: (v) {
-                      begin();
-                      write(e.copyWith(axisSteps: v.round()));
-                    },
-                    onCommit: commit,
-                  ),
-                  // The colour the rules are drawn in, behind the switch it belongs to.
-                  CanvasColorButton(
-                    key: const ValueKey("chartGridColour"),
-                    label: "Colour",
-                    labelWidth: 30,
-                    color: e.gridColor,
-                    onChanged: (c) => now(e.copyWith(gridColor: c)),
-                  ),
-                ],
+                value: e.showGrid,
+                onChanged: (v) => now(e.copyWith(showGrid: v)),
               ),
-            // The title and the description, one line each, with the rest of what
-            // each can be on the line below: the title somebody came to type is
-            // not lost among twenty controls of equal weight.
-          ]),
-    section(e, "words",
-        icon: Icons.title,
-        title: "Words on it",
+              CanvasToggle(
+                label: "Axes",
+                value: e.showAxes,
+                onChanged: (v) => now(e.copyWith(showAxes: v)),
+              ),
+              CanvasToggle(
+                label: "Log scale",
+                value: e.logScale,
+                onChanged: (v) => now(e.copyWith(logScale: v)),
+              ),
+              // The numbers written on the bars themselves: they belong to neither
+              // axis, so they sit with what is drawn on the plot.
+              CanvasToggle(
+                label: "Values",
+                value: e.showValues,
+                onChanged: (v) => now(e.copyWith(showValues: v)),
+              ),
+            ],
+            more: [
+              // How finely the value axis is ruled. Zero is the chart's own
+              // judgement.
+              CanvasNumberField(
+                key: const ValueKey("chartAxisSteps"),
+                label: "Lines",
+                value: e.axisSteps.toDouble(),
+                min: 0,
+                max: 40,
+                decimals: 0,
+                width: 54,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(axisSteps: v.round()));
+                },
+                onCommit: commit,
+              ),
+              // The colour the rules are drawn in, behind the switch it belongs to.
+              CanvasColorButton(
+                key: const ValueKey("chartGridColour"),
+                label: "Colour",
+                labelWidth: 30,
+                color: e.gridColor,
+                onChanged: (c) => now(e.copyWith(gridColor: c)),
+              ),
+            ],
+          ),
+        // The title and the description, one line each, with the rest of what
+        // each can be on the line below: the title somebody came to type is
+        // not lost among twenty controls of equal weight.
+      ]),
+    PanelBit(PanelSection.content,
         summary: e.title.isEmpty ? "Title, labels, numbers and key" : e.title,
         children: [
           CanvasControlGroup(

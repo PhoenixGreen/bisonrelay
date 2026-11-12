@@ -10,6 +10,8 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'canvas_panel_helpers.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -57,12 +59,14 @@ void main() {
       // Reported on a table's Order: the refresh sat right of the arrow and
       // lower than it. The arrow is the heading's last thing, whatever
       // buttons a section has, and they stand level with it.
+      // Order is a fold of the table's Content now (batch 3): its button
+      // at the right end of its heading, level with it.
       await panel(tester, ElementKind.table);
-      var fold =
-          at(tester, find.byKey(const ValueKey("sectionFold-table.tableSort")));
+      var heading =
+          at(tester, find.byKey(const ValueKey("expander-tableSort")));
       var refresh = at(tester, find.byKey(const ValueKey("tableSortApply")));
-      expect(refresh.right, lessThanOrEqualTo(fold.left + 0.5));
-      expect(refresh.center.dy, closeTo(fold.center.dy, 1));
+      expect(refresh.left, greaterThanOrEqualTo(heading.right - 0.5));
+      expect(refresh.center.dy, closeTo(heading.center.dy, 1));
       expect(tester.takeException(), isNull);
     });
 
@@ -74,16 +78,17 @@ void main() {
       expect(refresh, findsOneWidget,
           reason: "on the heading even before a source is chosen -- and "
               "only there, not a second inside the section");
-      var fold =
-          at(tester, find.byKey(const ValueKey("sectionFold-table.source")));
-      expect(at(tester, refresh).center.dy, closeTo(fold.center.dy, 1));
-      expect(at(tester, refresh).right, lessThanOrEqualTo(fold.left + 0.5));
+      var heading =
+          at(tester, find.byKey(const ValueKey("expander-tableSource")));
+      expect(at(tester, refresh).center.dy, closeTo(heading.center.dy, 1));
+      expect(
+          at(tester, refresh).left, greaterThanOrEqualTo(heading.right - 0.5));
     });
 
     testWidgets("an Order's help is beside Order by, not on the heading",
         (tester) async {
       await panel(tester, ElementKind.table);
-      var heading = find.byKey(const ValueKey("section-table.tableSort"));
+      var heading = find.byKey(const ValueKey("expander-tableSort"));
       var headingRow =
           find.ancestor(of: heading, matching: find.byType(Row)).first;
       expect(
@@ -92,8 +97,10 @@ void main() {
               matching: find.byWidgetPredicate(
                   (w) => w is CanvasHint && w.message.contains("league"))),
           findsNothing);
+      // Inside the Order fold, its caption in small capitals (batch 3).
+      await openFold(tester, "tableSort", shows: find.text("ORDER BY"));
       var card = find.ancestor(
-          of: find.text("Order by"), matching: find.byType(CanvasControlGroup));
+          of: find.text("ORDER BY"), matching: find.byType(CanvasControlGroup));
       expect(
           find.descendant(
               of: card,
