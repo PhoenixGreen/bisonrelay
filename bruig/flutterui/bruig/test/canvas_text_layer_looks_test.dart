@@ -14,7 +14,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart' show CanvasDropdown;
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -254,7 +254,7 @@ void main() {
     var id = c.document.elementById("t")!.base.motion.devices.single.id;
     var on = find.byKey(ValueKey("mdevLayer-$id"));
     expect(on, findsOneWidget);
-    var drop = tester.widget<StudioDrop<String>>(on);
+    var drop = tester.widget<CanvasDropdown<String>>(on);
     expect(drop.value, "body");
     expect([for (var o in drop.options) o.$1], ["", "body", "kicker"]);
     drop.onChanged("kicker");

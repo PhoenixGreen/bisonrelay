@@ -804,14 +804,14 @@ class PhaseChip extends StatelessWidget {
     var chip = Container(
       height: 22,
       constraints: const BoxConstraints(minWidth: 22),
-      padding: const EdgeInsets.symmetric(horizontal: 6),
-      alignment: Alignment.center,
+      padding: const EdgeInsets.fromLTRB(6, 3, 6, 0),
       decoration: BoxDecoration(
         color: on ? colour : Colors.transparent,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: on ? Colors.transparent : studio.edge),
       ),
       child: Text(onTap == null ? phase.label : phase.short,
+          textAlign: TextAlign.center,
           style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,

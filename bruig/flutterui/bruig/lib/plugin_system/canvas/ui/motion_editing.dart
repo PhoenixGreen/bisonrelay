@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/design_device.dart'
-    show designValueAt;
+    show designPlace, designShownDefault, designValueAt, designWritten;
 import 'package:bruig/plugin_system/canvas/model/instances.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
@@ -117,8 +117,8 @@ extension MotionEditing on CanvasController {
   /// [element]'s device [device] to [seconds] into the scene -- kept as a
   /// share of its clip in a clip's phase -- and is where it went among the
   /// others.
-  int moveDeviceKey(String element, String device, String param,
-      MotionPhase ph, int index, double seconds,
+  int moveDeviceKey(String element, String device, String param, MotionPhase ph,
+      int index, double seconds,
       {bool transient = false}) {
     var d = _deviceOf(element, device);
     var ks = d?.keysIn(ph)[param];
@@ -147,8 +147,8 @@ extension MotionEditing on CanvasController {
 
   /// editDeviceKey changes key [index]'s value or how it goes into the
   /// next.
-  void editDeviceKey(String element, String device, String param,
-      MotionPhase ph, int index,
+  void editDeviceKey(
+      String element, String device, String param, MotionPhase ph, int index,
       {double? v, KeyEase? ease, bool transient = false}) {
     var d = _deviceOf(element, device);
     var ks = d?.keysIn(ph)[param];
@@ -163,8 +163,8 @@ extension MotionEditing on CanvasController {
 
   /// removeDeviceKey takes key [index] away. The last of a setting's
   /// independent keys gone, it keeps the value it had there.
-  void removeDeviceKey(String element, String device, String param,
-      MotionPhase ph, int index) {
+  void removeDeviceKey(
+      String element, String device, String param, MotionPhase ph, int index) {
     var d = _deviceOf(element, device);
     var ks = d?.keysIn(ph)[param];
     if (d == null || ks == null || index < 0 || index >= ks.length) return;
@@ -182,6 +182,79 @@ extension MotionEditing on CanvasController {
     var d = _deviceOf(element, device);
     if (d == null) return;
     _putDevice(element, d.withPlaying(ph, on));
+  }
+
+  /// designOf is [element]'s Design device, or null where it has none.
+  MotionDevice? designOf(String element) => motionDevicesOf(element)
+      .where((d) => d.kind == MotionDeviceKind.design)
+      .firstOrNull;
+
+  /// ensureDesign is the id of [element]'s Design device, made where it
+  /// has none -- as part of the change that wanted it: the interaction is
+  /// left open for that change to close.
+  String ensureDesign(String element) {
+    if (designOf(element) case var d?) return d.id;
+    beginInteraction();
+    var devices = motionDevicesInOrder(withMotionDeviceIds([
+      ...motionDevicesOf(element),
+      const MotionDevice(MotionDeviceKind.design, shown: designShownDefault),
+    ]));
+    setMotionDevices(element, devices, transient: true);
+    return designOf(element)!.id;
+  }
+
+  /// setDesignSetting makes Design setting [param] of [element] [v]: a key
+  /// at the playhead where it is animated; otherwise, for its place, how
+  /// Design rests, and for the element's own settings, the setting itself,
+  /// as its settings panel would change it.
+  void setDesignSetting(String element, String param, double v,
+      {bool transient = false}) {
+    var d = designOf(element);
+    if (d != null && d.keyed(param)) {
+      return setDeviceSetting(element, d.id, param, v, transient: transient);
+    }
+    if (designPlace.contains(param)) {
+      var id = ensureDesign(element);
+      return setDeviceSetting(element, id, param, v, transient: transient);
+    }
+    var e = document.elementById(element);
+    if (e == null) return;
+    beginInteraction();
+    replaceElement(designWritten(e, param, v), transient: true);
+    if (!transient) endInteraction();
+  }
+
+  /// toggleDesignKey keys Design setting [param] of [element] at the
+  /// playhead, as it is there, or takes the key there away.
+  void toggleDesignKey(String element, String param) {
+    var id = ensureDesign(element);
+    toggleDeviceKey(element, id, param);
+  }
+
+  /// showDesignSetting puts setting [param] on [element]'s Design card, or
+  /// takes it off with its keys -- it keeps the value it has at the
+  /// playhead.
+  void showDesignSetting(String element, String param, bool shown) {
+    var id = ensureDesign(element);
+    var d = _deviceOf(element, id)!;
+    var list = d.shown.isEmpty ? designShownDefault : d.shown;
+    var next = shown
+        ? d.withShown([...list.where((x) => x != param), param])
+        : d.withShown([...list.where((x) => x != param)]);
+    if (!shown && d.keyed(param)) {
+      var v = deviceValueNow(element, d, param);
+      next = next.withoutKeys(param, spans: phaseSpansFor(element));
+      if (!designPlace.contains(param)) {
+        _putDevice(element, next, transient: true);
+        var e = document.elementById(element);
+        if (e != null)
+          replaceElement(designWritten(e, param, v), transient: true);
+        endInteraction();
+        return;
+      }
+      next = next.withValue(param, v);
+    }
+    _putDevice(element, next);
   }
 
   /// stopAnimatingDevice takes every key of setting [param] away; it keeps

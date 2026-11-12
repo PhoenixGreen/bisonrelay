@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
 import 'package:bruig/plugin_system/canvas/ui/track_curves.dart';
+import 'package:bruig/plugin_system/canvas/ui/chain_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/keys_strip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -388,70 +389,73 @@ class _AnimationPanelState extends State<AnimationPanel> {
       key: const ValueKey("animationPanel"),
       height: widget.height,
       color: studio.panel,
-      child: _withKeys(e, ListView(
-        scrollDirection: Axis.horizontal,
-        // Every card built, not only those in view: one asked for by the
-        // settings panel is scrolled to (see _showFocus).
-        cacheExtent: 100000,
-        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-        children: [
-          // Its keyframes are the Keys strip's (Ken, 2026-11-12): the
-          // Keyframes card is gone.
-          // The element and its copies first: what the rest edits (Ken,
-          // 2026-11-08).
-          _zone("Copies", "The element and its copies: which the chain edits"),
-          _instancesCard(e),
-          // Source: what it plays, when, and what starts it -- as the chain
-          // prototype has it. Its keys are the Curves tab's.
-          _zone("Source", "Its clips: what it plays, when and where"),
-          _clipsCard(e, c),
-          // The rest of its own style, beside the clip playing it: what the
-          // sidebar's Animation section had (Ken, 2026-11-08).
-          if (OwnStyleCard.shows(e, c))
-            OwnStyleCard(
-                key: const ValueKey("ownStyleCard"),
-                controller: controller,
-                element: e,
-                clip: c,
-                folded: shut("ownStyle"),
-                onFold: fold("ownStyle"),
-                height: h),
-          if (PartsCard.shows(e)) _partsCard(e),
-          if (c.kind == MotionKind.model) _motionDevice(e, c, colors),
-          MotionTimingCard(
-              key: const ValueKey("motionTimingCard"),
-              controller: controller,
-              element: e,
-              clip: c,
-              edit: edit,
-              height: h,
-              folded: shut("timing"),
-              onFold: fold("timing")),
-          MotionLaunchCard(
-              key: const ValueKey("motionLaunchCard"),
-              controller: controller,
-              element: e,
-              clip: c,
-              edit: edit,
-              height: h,
-              folded: shut("launch"),
-              onFold: fold("launch"),
-              triggerName: _triggerName),
-          if (!c.isSound)
-            MotionPlaceCard(
-                key: const ValueKey("motionPlaceCard"),
-                controller: controller,
-                element: e,
-                clip: c,
-                edit: edit,
-                height: h,
-                folded: shut("place"),
-                onFold: fold("place")),
-          if (!c.isSound && _insideShown(e, c)) _insideDevice(e, c, colors),
-          ..._chain(e),
-          _outputCard(e),
-        ].expand((w) => [w, const SizedBox(width: 6)]).toList(),
-      )),
+      child: _withKeys(
+          e,
+          ListView(
+            scrollDirection: Axis.horizontal,
+            // Every card built, not only those in view: one asked for by the
+            // settings panel is scrolled to (see _showFocus).
+            cacheExtent: 100000,
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+            children: [
+              // Its keyframes are the Keys strip's (Ken, 2026-11-12): the
+              // Keyframes card is gone.
+              // The element and its copies first: what the rest edits (Ken,
+              // 2026-11-08).
+              _zone("Copies",
+                  "The element and its copies: which the chain edits"),
+              _instancesCard(e),
+              // Source: what it plays, when, and what starts it -- as the chain
+              // prototype has it. Its keys are the Curves tab's.
+              _zone("Source", "Its clips: what it plays, when and where"),
+              _clipsCard(e, c),
+              // The rest of its own style, beside the clip playing it: what the
+              // sidebar's Animation section had (Ken, 2026-11-08).
+              if (OwnStyleCard.shows(e, c))
+                OwnStyleCard(
+                    key: const ValueKey("ownStyleCard"),
+                    controller: controller,
+                    element: e,
+                    clip: c,
+                    folded: shut("ownStyle"),
+                    onFold: fold("ownStyle"),
+                    height: h),
+              if (PartsCard.shows(e)) _partsCard(e),
+              if (c.kind == MotionKind.model) _motionDevice(e, c, colors),
+              MotionTimingCard(
+                  key: const ValueKey("motionTimingCard"),
+                  controller: controller,
+                  element: e,
+                  clip: c,
+                  edit: edit,
+                  height: h,
+                  folded: shut("timing"),
+                  onFold: fold("timing")),
+              MotionLaunchCard(
+                  key: const ValueKey("motionLaunchCard"),
+                  controller: controller,
+                  element: e,
+                  clip: c,
+                  edit: edit,
+                  height: h,
+                  folded: shut("launch"),
+                  onFold: fold("launch"),
+                  triggerName: _triggerName),
+              if (!c.isSound)
+                MotionPlaceCard(
+                    key: const ValueKey("motionPlaceCard"),
+                    controller: controller,
+                    element: e,
+                    clip: c,
+                    edit: edit,
+                    height: h,
+                    folded: shut("place"),
+                    onFold: fold("place")),
+              if (!c.isSound && _insideShown(e, c)) _insideDevice(e, c, colors),
+              ..._chain(e),
+              _outputCard(e),
+            ].expand((w) => [w, const SizedBox(width: 6)]).toList(),
+          )),
     );
   }
 
@@ -536,6 +540,10 @@ class _AnimationPanelState extends State<AnimationPanel> {
     // Its moves. Its Instances is the chain's first card (see
     // _instancesCard): every copy has all of them, each with its own values.
     var reused = e.base.motion.instances != null;
+    // The Chain's filter: only what plays in one phase (Ken, 2026-11-12).
+    var only = controller.chainPhase;
+    bool shows(MotionDevice? d) =>
+        only == null || (d?.playing(only) ?? only == MotionPhase.free);
     var moves = [
       for (var d in devices)
         if (d.side == MotionDeviceSide.pose) d,
@@ -546,7 +554,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
     var first = upto;
     var row = <Widget>[];
     for (var d in moves) {
-      row.add(card(d));
+      if (shows(d)) row.add(card(d));
       // Switched off, it passes what it is given, and a modulator moves
       // knobs, not the element: the join after either would be the one
       // before it again. A modulator is still counted, as the preview
@@ -571,18 +579,47 @@ class _AnimationPanelState extends State<AnimationPanel> {
       if (e is CameraElement)
         _cameraNote(h)
       else ...[
-        DrawingCard(
-            key: const ValueKey("drawingCard"),
-            controller: controller,
-            element: e,
-            folded: _folded.contains("drawing:${e.id}"),
-            onFold: () => setState(() => _folded.contains("drawing:${e.id}")
-                ? _folded.remove("drawing:${e.id}")
-                : _folded.add("drawing:${e.id}")),
-            height: h),
+        // Its Design: the element itself, where it is drawn (Ken,
+        // 2026-11-12) -- and, reused or drawn at another size, how its
+        // copies are drawn.
+        if (shows(controller.designOf(e.id)))
+          KeyedSubtree(
+            key: _focusKey("design"),
+            child: DesignCard(
+                controller: controller,
+                element: e,
+                folded: _folded.contains("design:${e.id}"),
+                onFold: () => setState(() => _folded.contains("design:${e.id}")
+                    ? _folded.remove("design:${e.id}")
+                    : _folded.add("design:${e.id}")),
+                height: h),
+          ),
+        if (reused || e.base.motion.drawSize != 1)
+          DrawingCard(
+              key: const ValueKey("drawingCard"),
+              controller: controller,
+              element: e,
+              folded: _folded.contains("drawing:${e.id}"),
+              onFold: () => setState(() => _folded.contains("drawing:${e.id}")
+                  ? _folded.remove("drawing:${e.id}")
+                  : _folded.add("drawing:${e.id}")),
+              height: h),
         _zone("After", "Looks: how it looks once drawn"),
         for (var d in devices)
-          if (d.side == MotionDeviceSide.look) card(d),
+          if (d.side == MotionDeviceSide.look && shows(d))
+            KeyedSubtree(
+              key: _focusKey(d.id),
+              child: LookCard(
+                  controller: controller,
+                  element: e,
+                  device: d,
+                  folded: _folded.contains("mdev:${e.id}:${d.id}"),
+                  onFold: () => setState(() =>
+                      _folded.contains("mdev:${e.id}:${d.id}")
+                          ? _folded.remove("mdev:${e.id}:${d.id}")
+                          : _folded.add("mdev:${e.id}:${d.id}")),
+                  height: h),
+            ),
         AddMotionDeviceSlot(
             key: const ValueKey("addMotionLook"),
             controller: controller,

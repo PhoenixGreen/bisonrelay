@@ -157,3 +157,27 @@ CanvasElement designed(CanvasElement e, MotionDevice d, double t,
   }
   return out;
 }
+
+/// designWritten is [e] with its own setting [id] made [v], as its settings
+/// panel would make it: what a Design setting not keyed changes. Itself for
+/// a setting of Design's own (see designPlace) or one it does not have.
+CanvasElement designWritten(CanvasElement e, String id, double v) {
+  if (e is! TextElement) return e;
+  var t = e.textSpec, b = e.box;
+  Color c() => Color(v.toInt());
+  return switch (id) {
+    "fontSize" => e.copyWith(textSpec: t.copyWith(fontSize: v)),
+    "weight" => e.copyWith(
+        textSpec:
+            t.copyWith(weight: ((v / 100).round() * 100).clamp(100, 900))),
+    "letter" => e.copyWith(textSpec: t.copyWith(letterSpacing: v)),
+    "line" => e.copyWith(textSpec: t.copyWith(lineHeight: v)),
+    "colour" => e.copyWith(textSpec: t.copyWith(color: c())),
+    "fill" => e.copyWith(box: b.copyWith(fill: c())),
+    "borderColour" => e.copyWith(box: b.copyWith(borderColor: c())),
+    "border" => e.copyWith(box: b.copyWith(borderWidth: v)),
+    "corners" => e.copyWith(box: b.copyWith(borderRadius: v)),
+    "pad" => e.copyWith(box: b.copyWith(padding: v)),
+    _ => e,
+  };
+}

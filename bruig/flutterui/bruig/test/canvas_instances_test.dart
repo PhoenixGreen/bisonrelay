@@ -425,6 +425,8 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
         expect(c.motionOf("a").instances!.items[2].own, isEmpty);
         // Back to all of them, and then to one.
+        await tester.ensureVisible(find.byKey(const ValueKey("copyRow-all")));
+        await tester.pump();
         await tester.tap(find.byKey(const ValueKey("copyRow-all")));
         await tester.pump(const Duration(milliseconds: 100));
         expect(c.pickedCopiesOf("a"), isEmpty);

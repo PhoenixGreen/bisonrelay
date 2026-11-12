@@ -336,7 +336,7 @@ void main() {
           (tester) async {
         var c = await pump(tester, scale: scale, height: height);
         expect(tester.takeException(), isNull);
-        expect(find.byKey(const ValueKey("drawingCard")), findsOneWidget);
+        expect(find.byKey(const ValueKey("designCard")), findsOneWidget);
         // Only moves are offered before the drawing, only looks after.
         await openAdd(
             tester,
@@ -360,7 +360,7 @@ void main() {
         expect(tester.takeException(), isNull);
         // The time device left of the drawing, the shadow right of it.
         var drawing =
-            tester.getCenter(find.byKey(const ValueKey("drawingCard"))).dx;
+            tester.getCenter(find.byKey(const ValueKey("designCard"))).dx;
         expect(
             tester
                 .getCenter(find.byKey(ValueKey("mdevCard-${devices[0].id}")))
@@ -404,7 +404,7 @@ void main() {
         position.jumpTo(position.maxScrollExtent);
         await tester.pump();
       }
-      expect(find.byKey(const ValueKey("drawingCard")), findsOneWidget);
+      expect(find.byKey(const ValueKey("designCard")), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     });
