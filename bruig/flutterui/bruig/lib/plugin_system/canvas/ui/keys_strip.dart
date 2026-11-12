@@ -7,6 +7,10 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show elementPhaseSpans;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/model/design_device.dart'
+    show designShownDefault;
+import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
+    show chainMenuItem, chainMenuStyle;
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
@@ -92,7 +96,8 @@ class KeysStrip extends StatefulWidget {
     var f = c.chainPhase;
     var track =
         (f == null || f == MotionPhase.free) && c.keyframeTarget != null;
-    return 1 + (track ? 1 : 0) + keysLanesOf(c.motionDevicesOf(e.id), f).length;
+    // And the "+ Row" under them.
+    return 2 + (track ? 1 : 0) + keysLanesOf(c.motionDevicesOf(e.id), f).length;
   }
 
   /// heightFor is the strip's height with [rows] rows under its ruler,
@@ -529,6 +534,7 @@ class _KeysStripState extends State<KeysStrip> {
                 track.points ? "" : "its own"),
           for (var l in lanes)
             labelRow("${l.device.id}-${l.param}", l.label, l.what),
+          _addRow(context, studio),
         ]),
       ),
       Expanded(
@@ -544,7 +550,7 @@ class _KeysStripState extends State<KeysStrip> {
             onPointerCancel: _up,
             child: CustomPaint(
               size: Size(box.maxWidth,
-                  KeysStrip.rulerHeight + rows * KeysStrip.rowHeight),
+                  KeysStrip.rulerHeight + (rows + 1) * KeysStrip.rowHeight),
               painter: _LanesPainter(
                 font: DefaultTextStyle.of(context).style.fontFamily,
                 loopBar: _loopBar,
@@ -591,6 +597,60 @@ class _KeysStripState extends State<KeysStrip> {
             ),
           ),
         ]),
+      ),
+    );
+  }
+
+  /// _addRow is "+ Row": any setting of its chain not keyed yet -- its
+  /// looks', its Design's -- keyed at the playhead, so a row for it (Ken,
+  /// 2026-11-12: animate from the strip, not only from a card).
+  Widget _addRow(BuildContext context, StudioColors studio) {
+    var look = MixerLook.of(context);
+    var design = c.designOf(e.id);
+    var choices = <(String, String, VoidCallback)>[
+      if (design == null)
+        for (var id in designShownDefault)
+          (
+            "design-$id",
+            "Design · ${MotionDeviceKind.design.param(id).label}",
+            () => c.toggleDesignKey(e.id, id)
+          ),
+      for (var d in _devices)
+        if (!d.modulates)
+          for (var p in d.kind == MotionDeviceKind.design
+              ? [
+                  for (var id in d.shown.isEmpty ? designShownDefault : d.shown)
+                    d.kind.param(id)
+                ]
+              : d.kind.params)
+            if (!p.isChoice && !d.keyed(p.id))
+              (
+                "${d.id}-${p.id}",
+                "${d.kind.label} · ${p.label}",
+                () => d.kind == MotionDeviceKind.design
+                    ? c.toggleDesignKey(e.id, p.id)
+                    : c.toggleDeviceKey(e.id, d.id, p.id)
+              ),
+    ];
+    return MenuAnchor(
+      style: chainMenuStyle(look),
+      menuChildren: [
+        for (var (key, label, act) in choices)
+          chainMenuItem(look,
+              key: ValueKey("keysAdd-$key"), text: label, onPressed: act),
+      ],
+      builder: (context, menu, _) => InkWell(
+        key: const ValueKey("keysAddRow"),
+        onTap: choices.isEmpty
+            ? null
+            : () => menu.isOpen ? menu.close() : menu.open(),
+        child: Container(
+          height: KeysStrip.rowHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          alignment: Alignment.centerLeft,
+          child: Text("+ Row",
+              style: TextStyle(fontSize: 11.5, color: studio.muted)),
+        ),
       ),
     );
   }

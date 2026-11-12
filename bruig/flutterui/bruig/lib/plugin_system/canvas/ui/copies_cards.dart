@@ -67,6 +67,45 @@ class InstancesCard extends StatelessWidget {
     var muted = TextStyle(fontSize: 10.5, height: 1.4, color: studio.muted);
     void place() => controller.placingCopies = placing ? null : element;
 
+    // Not reused yet: a slim card, its two ways to start -- the full card
+    // once there are copies (Ken, 2026-11-12: less in the way).
+    if (set == null && ChainPanelStyle.on(context)) {
+      return Container(
+        width: 104 * scale,
+        height: height,
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: studio.edge),
+        ),
+        child: SingleChildScrollView(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+              Text("Copies",
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: studio.text)),
+              const SizedBox(height: 4),
+              Text("Placed once", style: muted),
+              const SizedBox(height: 8),
+              CopyButton(
+                  key: const ValueKey("instancesReuse"),
+                  label: "Reuse…",
+                  main: true,
+                  onTap: () =>
+                      _step(() => controller.reuseElement(element, 5))),
+              const SizedBox(height: 5),
+              CopyButton(
+                  key: const ValueKey("instancesPlace"),
+                  label: placing ? "Placing…" : "+ Place",
+                  on: placing,
+                  onTap: place),
+            ])),
+      );
+    }
+
     List<Widget> once(DeviceTier tier) => [
           PackWide(Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,

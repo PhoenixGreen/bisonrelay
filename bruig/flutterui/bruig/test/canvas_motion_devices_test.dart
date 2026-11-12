@@ -686,6 +686,7 @@ void main() {
               .preset,
           ElementAnimationPreset.wipe);
       c.undo();
+      await tester.pump();
       expect(clip().inside["own"], isNot(true), reason: "one undo, both");
       expect(
           CanvasController.elementAnimationOf(c.document.elementById("a")!)

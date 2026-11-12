@@ -450,4 +450,48 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets("+ Row keys a setting at the playhead: a row for it",
+      (tester) async {
+    var c = make();
+    addTearDown(c.dispose);
+    c.setMotionDevices("logo", const [
+      MotionDevice(MotionDeviceKind.glow, id: "m0"),
+    ]);
+    c.keysShown = true;
+    addTearDown(() => c.keysShown = false);
+    tester.view.physicalSize = const Size(1600, 600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: Align(
+                  alignment: Alignment.topLeft,
+                  child: AnimationPanel(controller: c, height: 560)))),
+    ));
+    await tester.pump();
+    c.frame = 24;
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey("keysAddRow")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("keysAdd-m0-radius")));
+    await tester.pumpAndSettle();
+    var d = c.motionDevicesOf("logo").single;
+    expect(d.keyAt("radius", 1), isTrue);
+    expect(find.byKey(const ValueKey("keysLabel-m0-radius")), findsOneWidget);
+    // Design, made by its first key.
+    await tester.ensureVisible(find.byKey(const ValueKey("keysAddRow")));
+    await tester.tap(find.byKey(const ValueKey("keysAddRow")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("keysAdd-design-x")));
+    await tester.pumpAndSettle();
+    expect(c.designOf("logo")!.keyed("x"), isTrue);
+    expect(tester.takeException(), isNull);
+  });
 }

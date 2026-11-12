@@ -164,4 +164,28 @@ void main() {
     expect(pair.families.length, lessThan(pair.options.length),
         reason: "a shorter list");
   });
+
+  // Ken, 2026-11-12: an own preset in a card or two; the rest behind More.
+  testWidgets(
+      "an own arrival: its launch and place behind More; its clip's "
+      "settings behind Clip settings", (tester) async {
+    var c = make();
+    c.applyTextAnimation(text(c), TextAnimationPreset.fadeIn);
+    await show(tester, c);
+    expect(find.byKey(const ValueKey("motionTimingCard")), findsOneWidget);
+    expect(find.byKey(const ValueKey("motionLaunchCard")), findsNothing);
+    expect(find.byKey(const ValueKey("motionClipsPack")), findsNothing);
+    await tester.tap(find.byKey(const ValueKey("chainGroupMore")));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("motionLaunchCard")), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("motionClipsMore")));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("motionClipsPack")), findsOneWidget);
+    // Shut again for the next.
+    await tester.ensureVisible(find.byKey(const ValueKey("chainGroupMore")));
+    await tester.tap(find.byKey(const ValueKey("chainGroupMore")));
+    c.toggleClipSettings("t");
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 }

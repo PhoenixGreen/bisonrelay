@@ -292,6 +292,9 @@ void main() {
       expect(find.byKey(const ValueKey("motionClipsReset")), findsNothing);
       var a = CanvasController.elementAnimationOf(c.document.elementById("a")!);
       c.setElementAnimation("a", a.copyWith(strength: 2));
+      // Its own now: its clip's settings are behind Clip settings.
+      c.toggleClipSettings("a");
+      addTearDown(() => c.toggleClipSettings("a"));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("motionClipsReset")));
       await tester.pumpAndSettle();
@@ -472,6 +475,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("animInside-own")));
     await tester.pumpAndSettle();
     expect(c.motionOf("a").clip(id)!.inside["own"], isTrue);
+    // Its own now: Inside it is behind More, with Launch and Place.
+    await tester.tap(find.byKey(const ValueKey("chainGroupMore")));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("animInside-own")));
     await tester.pumpAndSettle();
     expect(c.motionOf("a").clip(id)!.inside, isEmpty,

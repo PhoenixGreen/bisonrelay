@@ -929,6 +929,18 @@ class CanvasController extends ChangeNotifier {
 
   MotionKind? get ownTab => _ownTab;
 
+  /// _clipSettings are the elements whose own preset shows its clip's own
+  /// settings -- speed, layer, how it mixes, its name -- on the Motion
+  /// clips card: for the session.
+  final Set<String> _clipSettings = {};
+
+  bool clipSettingsOpen(String element) => _clipSettings.contains(element);
+
+  void toggleClipSettings(String element) {
+    if (!_clipSettings.remove(element)) _clipSettings.add(element);
+    _notifyView();
+  }
+
   set ownTab(MotionKind? kind) {
     if (kind == _ownTab) return;
     _ownTab = kind;

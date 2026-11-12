@@ -8789,6 +8789,10 @@ class _MotionJoinState extends State<MotionJoin>
     _pose = pose;
   }
 
+  /// _hover is whether the pointer is on it: only then is it wide, its
+  /// eye shown -- thin between the cards otherwise (Ken, 2026-11-12).
+  bool _hover = false;
+
   @override
   Widget build(BuildContext context) {
     // Read again on every build too -- a frame scrubbed to, the chain
@@ -8825,26 +8829,32 @@ class _MotionJoinState extends State<MotionJoin>
         ],
         builder: (context, menu, _) => GestureDetector(
           onSecondaryTap: () => menu.isOpen ? menu.close() : menu.open(),
-          child: InkWell(
+          child: MouseRegion(
+            onEnter: (_) => setState(() => _hover = true),
+            onExit: (_) => setState(() => _hover = false),
+            child: InkWell(
             key: ValueKey("motionJoin-${widget.upto}"),
             onTap: () =>
                 c.previewMotionFrom(widget.element, on ? null : widget.upto),
             child: Container(
-              width: 22,
+              width: on || _hover ? 22 : 10,
               height: widget.height,
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+              padding: EdgeInsets.symmetric(
+                  vertical: 8, horizontal: on || _hover ? 6 : 3),
               decoration: BoxDecoration(
                 color: on ? look.colors.primary.withValues(alpha: 0.25) : null,
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Column(children: [
-                Icon(on ? Icons.visibility : Icons.visibility_outlined,
-                    size: 11,
-                    color: on ? look.colors.primary : look.studio.muted),
-                const SizedBox(height: 4),
+                if (on || _hover) ...[
+                  Icon(on ? Icons.visibility : Icons.visibility_outlined,
+                      size: 11,
+                      color: on ? look.colors.primary : look.studio.muted),
+                  const SizedBox(height: 4),
+                ],
                 Expanded(
                   child: Container(
-                    width: 6,
+                    width: on || _hover ? 6 : 4,
                     alignment: Alignment.bottomCenter,
                     decoration: BoxDecoration(
                       color: look.studio.display,
@@ -8864,6 +8874,7 @@ class _MotionJoinState extends State<MotionJoin>
                 ),
               ]),
             ),
+          ),
           ),
         ),
       ),

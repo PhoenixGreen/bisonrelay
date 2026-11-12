@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/motion_clip_display.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/own_style.dart';
 import 'package:bruig/plugin_system/canvas/ui/preset_pair.dart';
+import 'package:bruig/plugin_system/canvas/ui/copies_cards.dart' show CopyButton;
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
     show ImageElement;
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
@@ -136,6 +137,11 @@ class MotionClipsCard extends StatelessWidget {
     ]);
 
     var scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.5);
+    var ownPicked = c != null &&
+        c.inside["own"] == true &&
+        (c.kind == MotionKind.arrive || c.kind == MotionKind.leave) &&
+        OwnStyle.of(e) != null;
+    var open = controller.clipSettingsOpen(e.id);
     var kinds = c != null &&
             (c.kind == MotionKind.camera || e.kind == ElementKind.camera)
         ? const [MotionKind.camera, MotionKind.action]
@@ -156,7 +162,19 @@ class MotionClipsCard extends StatelessWidget {
     // that mixes, and its name.
     List<Widget> controls(DeviceTier tier) => [
           chips,
-          if (c != null)
+          // An own arrival or leaving is set by its tab; its clip's own
+          // settings -- speed, layer, how it mixes, its name -- are behind
+          // this, for those who want them (Ken, 2026-11-12).
+          if (ownPicked)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: CopyButton(
+                  key: const ValueKey("motionClipsMore"),
+                  label: open ? "Clip settings ▴" : "Clip settings ▾",
+                  on: open,
+                  onTap: () => controller.toggleClipSettings(e.id)),
+            ),
+          if (c != null && (!ownPicked || open))
             DevicePack(key: const ValueKey("motionClipsPack"), children: [
               if (!c.isSound) ...[
                 DeviceKnob(
@@ -307,15 +325,17 @@ class MotionClipsCard extends StatelessWidget {
       ],
       // Its screen: what it does, drawn as the settings have it, and
       // edited there (see motion_clip_display.dart).
-      display: MotionClipDisplay(
-        key: ValueKey("motionClipDisplay-${c?.id}"),
-        controller: controller,
-        element: e,
-        clip: c,
-        accent: accent,
-        edit: edit,
-        onReset: c == null ? null : _reset(c, edit, target),
-      ),
+      display: ownPicked && !open
+          ? null
+          : MotionClipDisplay(
+              key: ValueKey("motionClipDisplay-${c?.id}"),
+              controller: controller,
+              element: e,
+              clip: c,
+              accent: accent,
+              edit: edit,
+              onReset: c == null ? null : _reset(c, edit, target),
+            ),
     );
   }
 

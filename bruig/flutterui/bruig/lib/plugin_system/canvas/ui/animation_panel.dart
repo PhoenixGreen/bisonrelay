@@ -445,8 +445,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
               // Keyframes card is gone.
               // The element and its copies first: what the rest edits (Ken,
               // 2026-11-08).
-              _zone("Copies",
-                  "The element and its copies: which the chain edits"),
+
               _instancesCard(e),
               // Source: what it plays, when, and what starts it -- as the chain
               // prototype has it. Its keys are the Curves tab's.
@@ -480,33 +479,80 @@ class _AnimationPanelState extends State<AnimationPanel> {
                     height: h,
                     folded: shut("timing"),
                     onFold: fold("timing")),
-                MotionLaunchCard(
-                    key: const ValueKey("motionLaunchCard"),
-                    controller: controller,
-                    element: e,
-                    clip: c,
-                    edit: edit,
-                    height: h,
-                    folded: shut("launch"),
-                    onFold: fold("launch"),
-                    triggerName: _triggerName),
-                if (!c.isSound)
-                  MotionPlaceCard(
-                      key: const ValueKey("motionPlaceCard"),
+                // An own arrival's or leaving's launch, place and what it
+                // plays are seldom changed: behind More until asked for
+                // (Ken, 2026-11-12). A clip of its own making shows them.
+                if (_ownGroup(e) && !_moreOpen.contains(e.id))
+                  _moreCard(e, h)
+                else ...[
+                  MotionLaunchCard(
+                      key: const ValueKey("motionLaunchCard"),
                       controller: controller,
                       element: e,
                       clip: c,
                       edit: edit,
                       height: h,
-                      folded: shut("place"),
-                      onFold: fold("place")),
-                if (!c.isSound && _insideShown(e, c))
-                  _insideDevice(e, c, colors),
+                      folded: shut("launch"),
+                      onFold: fold("launch"),
+                      triggerName: _triggerName),
+                  if (!c.isSound)
+                    MotionPlaceCard(
+                        key: const ValueKey("motionPlaceCard"),
+                        controller: controller,
+                        element: e,
+                        clip: c,
+                        edit: edit,
+                        height: h,
+                        folded: shut("place"),
+                        onFold: fold("place")),
+                  if (!c.isSound && _insideShown(e, c))
+                    _insideDevice(e, c, colors),
+                  if (_ownGroup(e)) _moreCard(e, h),
+                ],
               ].map((w) => ChainGroupColour(colour: _groupColour(e), child: w)),
               ..._chain(e),
               _outputCard(e),
             ].expand((w) => [w, const SizedBox(width: 6)]).toList(),
           )),
+    );
+  }
+
+  /// _moreOpen are the elements whose own preset shows its Launch, Place
+  /// and Inside it: for the session.
+  static final Set<String> _moreOpen = {};
+
+  /// _ownGroup is whether the picked clip is [e]'s own arrival or leaving.
+  bool _ownGroup(CanvasElement e) {
+    var k = controller.ownTabOf(e);
+    return k == MotionKind.arrive || k == MotionKind.leave;
+  }
+
+  /// _moreCard opens an own preset's Launch, Place and Inside it, or --
+  /// open -- shuts them again: a slim card in its colour.
+  Widget _moreCard(CanvasElement e, double h) {
+    var studio = MixerLook.of(context).studio;
+    var open = _moreOpen.contains(e.id);
+    return InkWell(
+      key: const ValueKey("chainGroupMore"),
+      borderRadius: BorderRadius.circular(12),
+      onTap: () =>
+          setState(() => open ? _moreOpen.remove(e.id) : _moreOpen.add(e.id)),
+      child: Container(
+        width: 34,
+        height: h,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: studio.edge),
+        ),
+        alignment: Alignment.center,
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: Text(open ? "Less" : "More · Launch, Place, Inside it",
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11.5, color: studio.muted)),
+        ),
+      ),
     );
   }
 
@@ -770,8 +816,6 @@ class _AnimationPanelState extends State<AnimationPanel> {
           cacheExtent: 100000,
           padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
           children: [
-            _zone(
-                "Copies", "The element and its copies: which the chain edits"),
             _instancesCard(e),
             _zone("Source", "Its clips: what it plays, when and where"),
             _clipsCard(e, null),
