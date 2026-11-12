@@ -101,15 +101,21 @@ class _AnimationPanelState extends State<AnimationPanel> {
   /// (Ken, 2026-11-12: "opens above" the cards, as Curves opens instead).
   Widget _withKeys(CanvasElement e, Widget cards) {
     if (!controller.keysShown) return cards;
-    return Column(children: [
-      KeysStrip(
-          key: ValueKey("keysStrip-${e.id}"),
-          controller: controller,
-          element: e,
-          height: _strip),
-      Expanded(child: cards),
-    ]);
+    var strip = KeysStrip(
+        key: ValueKey("keysStrip-${e.id}"),
+        controller: controller,
+        element: e,
+        height: _strip);
+    // Too short for both: the strip alone, until Keys is shut.
+    if (_strip >= widget.height) return strip;
+    return Column(children: [strip, Expanded(child: cards)]);
   }
+
+  /// cardsLeast is the least room the cards keep under the Keys strip: a
+  /// card's header and a row of its settings. A panel too short for both
+  /// shows the strip alone (Ken, 2026-11-12: a short panel squeezed the
+  /// cards below their headers).
+  static const cardsLeast = 150.0;
 
   /// _stripFor sets [_strip] for [e]: as tall as its rows, leaving the
   /// cards room.
@@ -118,7 +124,13 @@ class _AnimationPanelState extends State<AnimationPanel> {
       _strip = 0;
       return;
     }
-    var most = math.max(KeysStrip.leastHeight, widget.height - 200);
+    var room = widget.height - cardsLeast;
+    if (room < KeysStrip.rulerHeight + 2 * KeysStrip.rowHeight) {
+      _strip = widget.height;
+      return;
+    }
+    var most =
+        math.min(room, math.max(KeysStrip.leastHeight, widget.height - 200));
     _strip = KeysStrip.heightFor(KeysStrip.rowsFor(controller, e), most);
   }
 
@@ -685,32 +697,25 @@ class _AnimationPanelState extends State<AnimationPanel> {
       key: const ValueKey("animationPanel"),
       height: widget.height,
       color: colors.surfaceContainerLow,
-      child: Column(children: [
-        if (controller.keysShown)
-          KeysStrip(
-              key: ValueKey("keysStrip-${e.id}"),
-              controller: controller,
-              element: e,
-              height: _strip),
-        Expanded(
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            // As the chain with a clip picked: every card built.
-            cacheExtent: 100000,
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            children: [
-              _zone("Copies",
-                  "The element and its copies: which the chain edits"),
-              _instancesCard(e),
-              _zone("Source", "Its clips: what it plays, when and where"),
-              _clipsCard(e, null),
-              if (PartsCard.shows(e)) _partsCard(e),
-              ..._chain(e),
-              _outputCard(e),
-            ].expand((w) => [w, const SizedBox(width: 6)]).toList(),
-          ),
+      child: _withKeys(
+        e,
+        ListView(
+          scrollDirection: Axis.horizontal,
+          // As the chain with a clip picked: every card built.
+          cacheExtent: 100000,
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          children: [
+            _zone(
+                "Copies", "The element and its copies: which the chain edits"),
+            _instancesCard(e),
+            _zone("Source", "Its clips: what it plays, when and where"),
+            _clipsCard(e, null),
+            if (PartsCard.shows(e)) _partsCard(e),
+            ..._chain(e),
+            _outputCard(e),
+          ].expand((w) => [w, const SizedBox(width: 6)]).toList(),
         ),
-      ]),
+      ),
     );
   }
 

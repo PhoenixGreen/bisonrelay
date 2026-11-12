@@ -7,6 +7,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show elementPhaseSpans;
+import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/ui/keys_strip.dart';
@@ -337,5 +339,73 @@ void main() {
       expect(find.byKey(const ValueKey("keysLabel-keyframes")), findsNothing);
       expect(tester.takeException(), isNull);
     });
+  });
+
+  // Ken, 2026-11-12: a short Chain with Keys open squeezed the cards below
+  // their headers -- a red screen. The cards keep their room, or the strip
+  // shows alone.
+  group("Keys open in a short Chain", () {
+    for (var clip in [false, true]) {
+      for (var scale in [1.0, 1.5]) {
+        for (var height in [120.0, 170.0, 240.0, 260.0, 320.0, 480.0]) {
+          testWidgets("clip $clip, text $scale, $height tall", (tester) async {
+            var c = make();
+            addTearDown(c.dispose);
+            c.setMotionDevices("logo", const [
+              MotionDevice(MotionDeviceKind.wiggle, id: "m0"),
+              MotionDevice(MotionDeviceKind.glow, id: "m1"),
+            ]);
+            if (clip) {
+              c.applyElementAnimation(
+                  c.selected!, ElementAnimationPreset.fadeIn);
+            }
+            c.keysShown = true;
+            addTearDown(() => c.keysShown = false);
+            tester.view.physicalSize = Size(1600, height + 40);
+            tester.view.devicePixelRatio = 1.0;
+            addTearDown(tester.view.reset);
+            await tester.pumpWidget(MultiProvider(
+              providers: [
+                ChangeNotifierProvider<ThemeNotifier>(
+                    create: (c) => ThemeNotifier(doLoad: false)),
+                ChangeNotifierProvider<SnackBarModel>(
+                    create: (c) => SnackBarModel()),
+              ],
+              child: MaterialApp(
+                home: MediaQuery(
+                  data: MediaQueryData(
+                      size: Size(1600, height + 40),
+                      textScaler: TextScaler.linear(scale)),
+                  child: Scaffold(
+                      body: Align(
+                          alignment: Alignment.topLeft,
+                          child:
+                              AnimationPanel(controller: c, height: height))),
+                ),
+              ),
+            ));
+            await tester.pump();
+            expect(tester.takeException(), isNull);
+            expect(find.byKey(const ValueKey("keysStrip")), findsOneWidget);
+            if (height >= 240) {
+              // Along the row to its end: every card laid out at this height.
+              var row = find
+                  .byWidgetPredicate((w) =>
+                      w is Scrollable && w.axisDirection == AxisDirection.right)
+                  .first;
+              var position = tester.state<ScrollableState>(row).position;
+              for (var i = 0; i < 4; i++) {
+                position.jumpTo(position.maxScrollExtent);
+                await tester.pump();
+              }
+              expect(tester.takeException(), isNull);
+              expect(find.byKey(const ValueKey("motionOutputCard")),
+                  findsOneWidget,
+                  reason: "room for the cards under the strip");
+            }
+          });
+        }
+      }
+    }
   });
 }
