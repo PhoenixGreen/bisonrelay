@@ -38,15 +38,19 @@ class CanvasQuickStrip extends StatelessWidget {
         color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.4),
         border: Border.all(color: theme.colors.outlineVariant),
       ),
-      // Laid out as a section's controls are: steppers, cards' sizes.
+      // Laid out as a section's controls are -- steppers, cards' sizes --
+      // a size up, as the prototype's quick strip is.
       child: CanvasCards(
         title: "",
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 4, 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: children,
+          child: CanvasDense(
+            height: 36,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: children,
+            ),
           ),
         ),
       ),
@@ -114,26 +118,51 @@ class CanvasChip extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: onPressed,
-          child: Container(
-            height: 28,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                  color: theme.colors.outline.withValues(alpha: 0.7)),
-            ),
-            // As wide as its words, not the line.
-            child: Center(
-              widthFactor: 1,
-              child: Text(label,
-                  style: TextStyle(
-                      fontSize: 12, color: theme.colors.onSurfaceVariant)),
+          // A dashed edge, as the prototype's: something not there yet.
+          child: CustomPaint(
+            painter: _DashedPill(theme.colors.outline.withValues(alpha: 0.7)),
+            child: Container(
+              height: 28,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              // As wide as its words, not the line.
+              child: Center(
+                widthFactor: 1,
+                child: Text(label,
+                    style: TextStyle(
+                        fontSize: 12, color: theme.colors.onSurfaceVariant)),
+              ),
             ),
           ),
         ),
       ),
     );
   }
+}
+
+/// _DashedPill draws a pill's edge in dashes.
+class _DashedPill extends CustomPainter {
+  final Color colour;
+  const _DashedPill(this.colour);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var r = size.height / 2;
+    var path = Path()
+      ..addRRect(RRect.fromRectAndRadius(
+          (Offset.zero & size).deflate(0.5), Radius.circular(r)));
+    var line = Paint()
+      ..color = colour
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    for (var m in path.computeMetrics()) {
+      for (var d = 0.0; d < m.length; d += 6) {
+        canvas.drawPath(m.extractPath(d, math.min(d + 3.5, m.length)), line);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedPill old) => old.colour != colour;
 }
 
 /// KeyDiamond is a key's mark, as the Chain's Keyframes card draws it: a

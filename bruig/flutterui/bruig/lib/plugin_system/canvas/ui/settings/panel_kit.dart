@@ -219,9 +219,17 @@ class _CanvasStepperState extends State<CanvasStepper> {
         child: MouseRegion(
           cursor: can ? SystemMouseCursors.click : SystemMouseCursors.basic,
           child: SizedBox(
-            width: CanvasCards.on(context) ? 32 : 22,
+            width: CanvasDense.on(context)
+                ? 28
+                : CanvasCards.on(context)
+                    ? 32
+                    : 22,
             child: Icon(icon,
-                size: CanvasCards.on(context) ? 18 : 16,
+                size: CanvasDense.on(context)
+                    ? 16
+                    : CanvasCards.on(context)
+                        ? 18
+                        : 16,
                 color: theme.colors.onSurfaceVariant
                     .withValues(alpha: can ? 0.9 : 0.3)),
           ),
@@ -294,7 +302,7 @@ class _CanvasStepperState extends State<CanvasStepper> {
               maxLines: 1,
               overflow: TextOverflow.clip,
               style: TextStyle(
-                  fontSize: 12,
+                  fontSize: CanvasDense.on(context) ? 13 : 12,
                   fontWeight: FontWeight.w600,
                   color: theme.colors.onSurface),
             ),
@@ -386,7 +394,8 @@ class _CanvasStepperState extends State<CanvasStepper> {
     ]);
     var box = Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(card ? 10 : 7),
+        borderRadius: BorderRadius.circular(
+            CanvasDense.on(context) ? 9 : (card ? 10 : 7)),
         color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.5),
         border: Border.all(
             color: changed
@@ -410,8 +419,12 @@ class _CanvasStepperState extends State<CanvasStepper> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(height: cardLabelHeightIn(context), child: caption),
-            SizedBox(height: cardLabelGapIn(context)),
+            // No room kept for a caption it has not got: a look's row
+            // stands its stepper level with its name.
+            if (widget.label.isNotEmpty) ...[
+              SizedBox(height: cardLabelHeightIn(context), child: caption),
+              SizedBox(height: cardLabelGapIn(context)),
+            ],
             widget.fill
                 ? SizedBox(
                     width: double.infinity,

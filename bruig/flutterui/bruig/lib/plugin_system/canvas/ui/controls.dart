@@ -118,25 +118,33 @@ class CanvasNoHover extends InheritedWidget {
 /// and a group a name in small capitals over its controls rather than a card
 /// on the section's card.
 class CanvasDense extends InheritedWidget {
-  const CanvasDense({required super.child, super.key});
+  /// height is how tall its controls are: the prototype's 30 in a section,
+  /// 36 in the quick strip over them.
+  final double height;
+  const CanvasDense({required super.child, this.height = 30, super.key});
 
   static bool on(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<CanvasDense>() != null;
 
+  static CanvasDense? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<CanvasDense>();
+
   @override
-  bool updateShouldNotify(CanvasDense old) => false;
+  bool updateShouldNotify(CanvasDense old) => old.height != height;
 }
 
 /// cardHeightIn, cardGapIn, cardLabelGapIn and cardLabelHeightIn are the
-/// card measures where [context] is: smaller in a dense panel.
+/// card measures where [context] is: the prototype's in a dense panel (its
+/// .stp 30 or 36 tall, .field's label 16 high and 4 above its control,
+/// rows 8 apart).
 double cardHeightIn(BuildContext context) =>
-    CanvasDense.on(context) ? 32 : cardControlHeight;
+    CanvasDense.of(context)?.height ?? cardControlHeight;
 double cardGapIn(BuildContext context) =>
     CanvasDense.on(context) ? 8 : cardGap;
 double cardLabelGapIn(BuildContext context) =>
     CanvasDense.on(context) ? 4 : cardLabelGap;
 double cardLabelHeightIn(BuildContext context) =>
-    CanvasDense.on(context) ? 14 : cardLabelHeight;
+    CanvasDense.on(context) ? 16 : cardLabelHeight;
 
 /// heightIn is how tall a control stands where [context] is.
 double heightIn(BuildContext context) =>
@@ -968,18 +976,26 @@ class CanvasControlGroup extends StatelessWidget {
     }
     // Named in a card where there is a "?" to ask about it, but never with
     // the name of the section it is in.
+    // In a dense panel a hidden name stays hidden, its "?" alone on the
+    // heading (the prototype names no group it does not need to).
     var named = label.isNotEmpty &&
-        (!hideCaption || about.isNotEmpty) &&
+        (!hideCaption || (about.isNotEmpty && !dense)) &&
         label != CanvasCards.titleOf(context);
+    // Unnamed in a dense panel, its "?" goes at the end of its controls
+    // rather than on a heading line of its own.
+    var inline = dense && !named && about.isNotEmpty;
     return canvasCard(context,
         title: named ? name : null,
-        help: about,
+        help: inline ? "" : about,
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
             if (!shut)
-              CanvasWrap(runSpacing: cardGapIn(context), children: rest),
+              CanvasWrap(runSpacing: cardGapIn(context), children: [
+                ...rest,
+                if (inline) CanvasHint(about, round: true),
+              ]),
             if (below != null && !shut) below!,
           ],
         ));
@@ -1242,6 +1258,81 @@ class CanvasSegmented<T> extends StatelessWidget {
     var theme = ThemeNotifier.of(context);
     var card = CanvasCards.on(context);
     var accent = theme.colors.primary;
+    // In a dense panel, the prototype's: one box, its choices side by side
+    // with a line between, the chosen one lit by a plain fill.
+    var dense = card && CanvasDense.on(context);
+    if (dense) {
+      var bar = Container(
+        height: cardHeightIn(context),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(9),
+          color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.5),
+          border: Border.all(color: theme.colors.outlineVariant),
+        ),
+        child: Row(children: [
+          for (var (i, (option, words)) in options.indexed) ...[
+            if (i > 0) Container(width: 1, color: theme.colors.outlineVariant),
+            Expanded(
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  key: keyOf == null ? null : ValueKey(keyOf!(option)),
+                  onTap: () => onChanged(option),
+                  child: Container(
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    // Lighter than the rest, in either theme.
+                    color: option == value
+                        ? theme.colors.onSurface.withValues(alpha: 0.12)
+                        : null,
+                    child: iconOf != null
+                        ? Tooltip(
+                            message: words,
+                            child: Icon(iconOf!(option),
+                                size: 16,
+                                color: option == value
+                                    ? theme.colors.onSurface
+                                    : theme.colors.onSurfaceVariant))
+                        : Text(words,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: option == value
+                                    ? theme.colors.onSurface
+                                    : theme.colors.onSurfaceVariant)),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ]),
+      );
+      return SizedBox(
+        width: double.infinity,
+        child: Padding(
+          padding: EdgeInsets.only(right: cardGapIn(context)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (label.isNotEmpty)
+                SizedBox(
+                  height: cardLabelHeightIn(context),
+                  child: Text(label,
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          height: 1.2,
+                          color: theme.colors.onSurfaceVariant)),
+                ),
+              if (label.isNotEmpty) SizedBox(height: cardLabelGapIn(context)),
+              bar,
+            ],
+          ),
+        ),
+      );
+    }
     var bar = Container(
       height: card ? cardHeightIn(context) + 4 : controlHeight + 2,
       padding: const EdgeInsets.all(2),
@@ -2242,6 +2333,9 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     var theme = ThemeNotifier.of(context);
     var card = stepped ||
         CanvasCards.on(context) && !CanvasControlScope.isInline(context);
+    // In a dense panel a plain select, as the prototype's: its words and
+    // one chevron, not an arrow either side taking their room.
+    var plain = card && !stepped && CanvasDense.on(context);
     // A bare DropdownButton rather than a DropdownButtonFormField, which
     // keeps its own copy of the value: here the value changes from outside
     // (another element selected, an undo) all the time.
@@ -2263,9 +2357,14 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
         // while it is being chosen.
         menuWidth: _menuWidth(context),
         underline: const SizedBox.shrink(),
-        style: TextStyle(fontSize: 12, color: theme.colors.onSurface),
-        iconSize: card ? 0 : 16,
-        icon: card ? const SizedBox.shrink() : null,
+        style: TextStyle(
+            fontSize: plain ? 13 : 12, color: theme.colors.onSurface),
+        iconSize: card && !plain ? 0 : (plain ? 18 : 16),
+        icon: plain
+            ? Icon(Icons.expand_more, color: theme.colors.onSurfaceVariant)
+            : card
+                ? const SizedBox.shrink()
+                : null,
         // The closed button shows the name and nothing else, not a marked
         // option's background and cross. Always its own where options are
         // tried: built from the items, resting the pointer on the closed button
@@ -2324,7 +2423,19 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     );
     // In a card an arrow either side steps through the options and the
     // middle opens the whole list.
-    var box = card
+    var box = plain
+        ? Container(
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.only(left: 10, right: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(9),
+              color:
+                  theme.colors.surfaceContainerHighest.withValues(alpha: 0.5),
+              border: Border.all(color: theme.colors.outlineVariant),
+            ),
+            child: list,
+          )
+        : card
         ? Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
@@ -2364,9 +2475,11 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     // short for it wraps rather than cutting the name. Only in a wrap,
     // which can give it a line of its own; in a fixed row it keeps the
     // width it was given.
-    if (card) {
+    if (card && !plain) {
       least = math.max(
           least, grow && _CanvasWrapScope.of(context) ? _cardWidth() : 120.0);
+    } else if (plain) {
+      least = math.max(least, 88.0);
     }
     return _labelled(
       theme,
@@ -2776,7 +2889,8 @@ class CanvasToggle extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            fontSize: 12, color: theme.colors.onSurface)),
+                            fontSize: CanvasDense.on(context) ? 13 : 12,
+                            color: theme.colors.onSurface)),
                   ),
                   _Switch(on: value, theme: theme),
                 ]),
