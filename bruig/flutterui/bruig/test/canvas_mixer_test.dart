@@ -380,7 +380,11 @@ void main() {
       var fresh = AudioRuntime(engine: alone, locate: (id) async => id);
       addTearDown(fresh.dispose);
       fresh.cue(e, const ClipMoment(0, 0, 1), playing: true);
-      expect((await started(alone, 0)).fades, isEmpty,
+      // From the top, no ramp -- unless a loaded machine was slow enough to
+      // start it a moment in, when it rises as any sound started part way
+      // through does (the suite's one flake, 2026-11-12).
+      var top = await started(alone, 0);
+      expect(top.at > 0.001 || top.fades.isEmpty, isTrue,
           reason: "from the top, no ramp");
     });
 

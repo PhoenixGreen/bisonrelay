@@ -99,7 +99,7 @@ void main() {
     var c = await show(tester, make());
     await tester.tap(find.byKey(const ValueKey("designAdd")));
     await tester.pumpAndSettle();
-    await tester.tap(find.text("Font size").last);
+    await tester.tap(find.text("Letters · Font size").last);
     await tester.pumpAndSettle();
     expect(c.designOf("t")!.shown, contains("fontSize"));
     expect(

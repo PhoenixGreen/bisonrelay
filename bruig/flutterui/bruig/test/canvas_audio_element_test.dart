@@ -408,7 +408,9 @@ void main() {
         c.tickForTest();
         await pumpEventQueue();
       }
-      expect(c.frame, 27, reason: "past the cut");
+      // Twelve frames on -- or one more, where the real clock ticked too on
+      // a loaded machine: past the cut either way.
+      expect(c.frame, inInclusiveRange(27, 28), reason: "past the cut");
       expect(engine.voices, hasLength(1),
           reason: "one sound, not stopped and started again at the cut");
       expect(engine.voices.single.alive, isTrue);

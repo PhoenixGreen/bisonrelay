@@ -31,6 +31,7 @@ import 'package:bruig/plugin_system/canvas/ui/scene_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 
 // animation_panel.dart is the Animation panel: the picked clip, laid out as
 // the effects are, a row of devices side by side, each folding to its
@@ -303,7 +304,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
         scrollDirection: Axis.horizontal,
         // Every card built, not only those in view: one asked for by the
         // settings panel is scrolled to (see _showFocus).
-        cacheExtent: 100000,
+        scrollCacheExtent: const ScrollCacheExtent.pixels(100000),
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
         children: [
           // Source: its own clips, as an element's (the master's are its
@@ -438,7 +439,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
             scrollDirection: Axis.horizontal,
             // Every card built, not only those in view: one asked for by the
             // settings panel is scrolled to (see _showFocus).
-            cacheExtent: 100000,
+            scrollCacheExtent: const ScrollCacheExtent.pixels(100000),
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
             children: [
               // Its keyframes are the Keys strip's (Ken, 2026-11-12): the
@@ -813,7 +814,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
         ListView(
           scrollDirection: Axis.horizontal,
           // As the chain with a clip picked: every card built.
-          cacheExtent: 100000,
+          scrollCacheExtent: const ScrollCacheExtent.pixels(100000),
           padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
           children: [
             _instancesCard(e),

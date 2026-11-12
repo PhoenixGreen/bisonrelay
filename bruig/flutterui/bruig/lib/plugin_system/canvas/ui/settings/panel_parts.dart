@@ -438,7 +438,7 @@ class _LooksGroupState extends State<LooksGroup> {
   void _set(MotionDevice d, DeviceParam p, double stored) =>
       c.setDeviceSetting(id, d.id, p.id, stored, transient: true);
 
-  Widget _number(MotionDevice d, DeviceParam p, {bool fill = false}) {
+  Widget _number(MotionDevice d, DeviceParam p) {
     var view = lookParamView(d.kind, p);
     return CanvasNumberField(
       key: ValueKey("look-${d.id}-${p.id}"),
@@ -683,7 +683,6 @@ class MotionSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var e = element;
-    var rate = math.max(1, controller.document.frameRate);
     var m = e.base.motion;
     String secs(double s) => "${s.toStringAsFixed(1)} s";
     var cue = controller.cues.where((q) => q.id == e.base.cue).firstOrNull;

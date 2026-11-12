@@ -50,55 +50,15 @@ extension CanvasKeyframes on CanvasController {
   /// preset after another leaves the timing alone. See applyTextAnimation,
   /// which follows the same rules.
   void applyChartAnimation(ChartElement element, ChartAnimationPreset preset,
-      {int? length}) {
-    beginInteraction();
-
-    if (preset == ChartAnimationPreset.none) {
-      // The reveal keyframes go with it and nothing else does: a chart moved
-      // or faded by hand keeps that when None is chosen.
-      replaceElement(withoutOwn(
+          {int? length}) =>
+      _layOwn(
+          element,
           element.copyWith(
               animation: element.animation.copyWith(preset: preset)),
-          MotionKind.arrive));
-      endInteraction();
-      return;
-    }
-
-    var document = _document;
-    if (!document.isAnimated) {
-      document = document.copyWith(
-          frames: math.max(2, document.frameRate * chartAnimationSeconds));
-    }
-
-    // Where it already is, if it is anywhere; otherwise from this frame, so
-    // the playhead does not jump.
-    var (was, wasFor) = elementAnimationSpan(element);
-    var from = was ?? _frame.clamp(0, document.frames - 2);
-    var span = wasFor ??
-        length ??
-        (element.animation.length > 0
-            ? element.animation.length
-            : defaultAnimationFrames);
-    span = math.max(1, span);
-    if (document.frames - 1 < from + span) {
-      document = document.copyWith(frames: from + span + 1);
-    }
-    var to = from + span;
-    if (to <= from) {
-      from = 0;
-      to = document.frames - 1;
-    }
-
-    var next = withOwnSpan(
-        element.copyWith(animation: element.animation.copyWith(preset: preset)),
-        MotionKind.arrive,
-        from,
-        to,
-        document.frameRate);
-    apply(document.withElement(next));
-    endInteraction();
-    _showOwn(element.id, MotionKind.arrive);
-  }
+          MotionKind.arrive,
+          none: preset == ChartAnimationPreset.none,
+          length: length,
+          setLength: element.animation.length);
 
   /// applyTextAnimation puts a preset on a text element and lays the two
   /// keyframes that give it a length. The same channels, stagger and
@@ -112,62 +72,23 @@ extension CanvasKeyframes on CanvasController {
   /// are.
   void applyTextAnimation(TextElement element, TextAnimationPreset preset,
       {int? length}) {
-    beginInteraction();
-
-    if (preset == TextAnimationPreset.none) {
-      replaceElement(withoutOwn(
-          element.copyWith(
-              animation: element.animation.copyWith(preset: preset)),
-          MotionKind.arrive));
-      endInteraction();
-      return;
-    }
-
-    var document = _document;
-    if (!document.isAnimated) {
-      document = document.copyWith(
-          frames: math.max(2, document.frameRate * chartAnimationSeconds));
-    }
-
-    // Where it already is, if it is anywhere: choosing a different preset
-    // keeps the length that has been set.
-    var (was, wasFor) = textAnimationSpan(element);
-    var from = was ?? _frame.clamp(0, document.frames - 2);
-    // Whatever is already on the timeline wins: trying the next preset must
-    // not shove laid-down keyframes about. The Length setting is for laying a
-    // new one down (as after the keyframes have been deleted).
-    var span = wasFor ??
-        length ??
-        (element.animation.length > 0
-            ? element.animation.length
-            : defaultAnimationFrames);
-    span = math.max(1, span == 0 ? defaultAnimationFrames : span);
-    if (document.frames - 1 < from + span) {
-      document = document.copyWith(frames: from + span + 1);
-    }
-    var to = from + span;
-    if (to <= from) {
-      from = 0;
-      to = document.frames - 1;
-    }
-
-    apply(document.withElement(withOwnSpan(
+    var a = element.animation;
+    var none = preset == TextAnimationPreset.none;
+    // The curve and cutting the preset was designed around, only where the
+    // preset is actually changing, so re-laying it does not undo numbers
+    // somebody chose. See TextAnimationPreset.wants and its effect.
+    var changing = !none && preset != a.preset;
+    _layOwn(
+        element,
         element.copyWith(
-            animation: element.animation.copyWith(
+            animation: a.copyWith(
                 preset: preset,
-                // The curve and cutting the preset was designed around, only
-                // where the preset is actually changing, so re-laying the
-                // keyframes does not undo numbers somebody chose. See
-                // TextAnimationPreset.wants and its effect.
-                ease: preset == element.animation.preset ? null : preset.wants,
-                effect:
-                    preset == element.animation.preset ? null : preset.effect)),
+                ease: changing ? preset.wants : null,
+                effect: changing ? preset.effect : null)),
         MotionKind.arrive,
-        from,
-        to,
-        document.frameRate)));
-    endInteraction();
-    _showOwn(element.id, MotionKind.arrive);
+        none: none,
+        length: length,
+        setLength: a.length);
   }
 
   /// textAnimationSpan is where [element]'s arrival sits on the timeline: the
@@ -264,44 +185,13 @@ extension CanvasKeyframes on CanvasController {
       CanvasElement element, ElementAnimationPreset preset,
       {int? length}) {
     if (!CanvasController.animates(element)) return;
-    beginInteraction();
     var was = CanvasController.elementAnimationOf(element);
-
-    if (preset == ElementAnimationPreset.none) {
-      replaceElement(withoutOwn(
-          CanvasController._withElementAnimation(
-              element, was.copyWith(preset: preset)),
-          MotionKind.arrive));
-      endInteraction();
-      return;
-    }
-
-    var document = _document;
-    if (!document.isAnimated) {
-      document = document.copyWith(
-          frames: math.max(2, document.frameRate * chartAnimationSeconds));
-    }
-
-    var (wasAt, wasFor) = elementAnimationSpan(element);
-    var from = wasAt ?? _frame.clamp(0, document.frames - 2);
-    var span = wasFor ??
-        length ??
-        (was.length > 0 ? was.length : defaultAnimationFrames);
-    span = math.max(1, span == 0 ? defaultAnimationFrames : span);
-    if (document.frames - 1 < from + span) {
-      document = document.copyWith(frames: from + span + 1);
-    }
-    var to = from + span;
-    if (to <= from) {
-      from = 0;
-      to = document.frames - 1;
-    }
-
-    // The preset's own curve and way of cutting, only where the preset is
-    // actually changing, so re-laying the keyframes does not undo numbers
-    // somebody set. Build up and Break apart differ only in these.
-    var changing = preset != was.preset;
-    apply(document.withElement(withOwnSpan(
+    var none = preset == ElementAnimationPreset.none;
+    // Its own curve and way of cutting, only where the preset is changing:
+    // Build up and Break apart differ only in these.
+    var changing = !none && preset != was.preset;
+    _layOwn(
+        element,
         CanvasController._withElementAnimation(
             element,
             was.copyWith(
@@ -309,11 +199,9 @@ extension CanvasKeyframes on CanvasController {
                 ease: changing ? preset.wants : null,
                 effect: changing ? preset.effect : null)),
         MotionKind.arrive,
-        from,
-        to,
-        document.frameRate)));
-    endInteraction();
-    _showOwn(element.id, MotionKind.arrive);
+        none: none,
+        length: length,
+        setLength: was.length);
   }
 
   /// elementAnimationSpan is where [element]'s arrival sits on the timeline:
@@ -432,130 +320,86 @@ extension CanvasKeyframes on CanvasController {
   /// pair of keyframes -- see newExitSpan. See applyTextExit.
   void applyElementExit(CanvasElement element, ElementAnimationPreset preset) {
     if (!CanvasController.animates(element)) return;
-    beginInteraction();
     var was = CanvasController.elementAnimationOf(element);
-
-    if (preset == ElementAnimationPreset.none) {
-      replaceElement(withoutOwn(
-          CanvasController._withElementAnimation(
-              element, was.copyWith(exit: preset)),
-          MotionKind.leave));
-      endInteraction();
-      return;
-    }
-
-    var document = _document;
-    if (!document.isAnimated) {
-      document = document.copyWith(
-          frames: math.max(2, document.frameRate * chartAnimationSeconds * 2));
-    }
-
-    var (wasFrom, wasTo) =
-        switch (ownSpan(element, MotionKind.leave, document.frameRate)) {
-      (var from, var length) => (from, from + length),
-      null => (null, null),
-    };
-
-    var span = was.length > 0 ? was.length : defaultAnimationFrames;
-    var entranceEnds = ownEnd(element, document.frameRate) ?? 0;
-    var (from, to) = wasFrom != null && wasTo != null && wasTo > wasFrom
-        ? (wasFrom, wasTo)
-        : newExitSpan(entranceEnds, span, document);
-
-    apply(document.withElement(withOwnSpan(
+    _layOwn(
+        element,
         CanvasController._withElementAnimation(
             element, was.copyWith(exit: preset)),
         MotionKind.leave,
-        from,
-        to,
-        document.frameRate)));
-    endInteraction();
-    _showOwn(element.id, MotionKind.leave);
+        none: preset == ElementAnimationPreset.none,
+        setLength: was.length);
   }
 
   /// applyTextExit is the way out, on its own pair of keyframes -- see
   /// newExitSpan. See applyChartExit.
-  void applyTextExit(TextElement element, TextAnimationPreset preset) {
-    beginInteraction();
-
-    if (preset == TextAnimationPreset.none) {
-      replaceElement(withoutOwn(
+  void applyTextExit(TextElement element, TextAnimationPreset preset) =>
+      _layOwn(
+          element,
           element.copyWith(animation: element.animation.copyWith(exit: preset)),
-          MotionKind.leave));
-      endInteraction();
-      return;
-    }
-
-    var document = _document;
-    if (!document.isAnimated) {
-      document = document.copyWith(
-          frames: math.max(2, document.frameRate * chartAnimationSeconds * 2));
-    }
-
-    // Where the exit already is, if it is anywhere, as for the arrival: a
-    // laid-down exit stays where it was put however many presets are tried.
-    var (wasFrom, wasTo) =
-        switch (ownSpan(element, MotionKind.leave, document.frameRate)) {
-      (var from, var length) => (from, from + length),
-      null => (null, null),
-    };
-
-    var span = element.animation.length > 0
-        ? element.animation.length
-        : defaultAnimationFrames;
-    var entranceEnds = ownEnd(element, document.frameRate) ?? 0;
-    var (from, to) = wasFrom != null && wasTo != null && wasTo > wasFrom
-        ? (wasFrom, wasTo)
-        : newExitSpan(entranceEnds, span, document);
-
-    apply(document.withElement(withOwnSpan(
-        element.copyWith(animation: element.animation.copyWith(exit: preset)),
-        MotionKind.leave,
-        from,
-        to,
-        document.frameRate)));
-    endInteraction();
-    _showOwn(element.id, MotionKind.leave);
-  }
+          MotionKind.leave,
+          none: preset == TextAnimationPreset.none,
+          setLength: element.animation.length);
 
   /// applyChartExit puts a closing preset on a chart and lays the pair of
   /// keyframes that runs it -- see newExitSpan. It never starts before the
   /// entrance has finished (see _afterEntrance).
-  void applyChartExit(ChartElement element, ChartAnimationPreset preset) {
-    beginInteraction();
-
-    if (preset == ChartAnimationPreset.none) {
-      // The keys go with it, or the chart would be pinned at "gone" for the
-      // end of the timeline.
-      replaceElement(withoutOwn(
+  void applyChartExit(ChartElement element, ChartAnimationPreset preset) =>
+      _layOwn(
+          element,
           element.copyWith(animation: element.animation.copyWith(exit: preset)),
-          MotionKind.leave));
+          MotionKind.leave,
+          none: preset == ChartAnimationPreset.none,
+          setLength: element.animation.length);
+
+  /// _layOwn is every element's own arrival or leaving ([kind]) chosen, in
+  /// one step (the six apply functions were one copied six times): [next]
+  /// is [element] with it chosen. None takes its clip away, and nothing
+  /// else -- an element moved or faded by hand keeps that. Otherwise its
+  /// clip is laid where it already is, keeping its length, so trying one
+  /// preset after another leaves the timing alone; where there is none, an
+  /// arrival from the playhead, [length] frames long -- or its Length
+  /// setting [setLength], or two seconds -- and a leaving clear of the
+  /// arrival (see newExitSpan). A still document is given frames first.
+  void _layOwn(CanvasElement element, CanvasElement next, MotionKind kind,
+      {required bool none, int? length, int setLength = 0}) {
+    beginInteraction();
+    if (none) {
+      replaceElement(withoutOwn(next, kind));
       endInteraction();
       return;
     }
-
+    var leaving = kind == MotionKind.leave;
     var document = _document;
     if (!document.isAnimated) {
       document = document.copyWith(
-          frames: math.max(2, document.frameRate * chartAnimationSeconds * 2));
+          frames: math.max(2,
+              document.frameRate * chartAnimationSeconds * (leaving ? 2 : 1)));
     }
-
-    var span = element.animation.length > 0
-        ? element.animation.length
-        : defaultAnimationFrames;
-    // Clear of the entrance, which is whatever the reveal channel already
-    // reaches.
-    var entranceEnds = ownEnd(element, document.frameRate) ?? 0;
-    var (from, to) = newExitSpan(entranceEnds, span, document);
-
-    apply(document.withElement(withOwnSpan(
-        element.copyWith(animation: element.animation.copyWith(exit: preset)),
-        MotionKind.leave,
-        from,
-        to,
-        document.frameRate)));
+    var rate = document.frameRate;
+    var had = ownSpan(element, kind, rate);
+    var wanted = setLength > 0 ? setLength : defaultAnimationFrames;
+    int from, to;
+    if (leaving) {
+      (from, to) = switch (had) {
+        (var f, var l) when l > 0 => (f, f + l),
+        _ => newExitSpan(ownEnd(element, rate) ?? 0, wanted, document),
+      };
+    } else {
+      from = had?.$1 ?? _frame.clamp(0, document.frames - 2);
+      var span = had?.$2 ?? length ?? wanted;
+      span = math.max(1, span == 0 ? defaultAnimationFrames : span);
+      if (document.frames - 1 < from + span) {
+        document = document.copyWith(frames: from + span + 1);
+      }
+      to = from + span;
+      if (to <= from) {
+        from = 0;
+        to = document.frames - 1;
+      }
+    }
+    apply(document.withElement(withOwnSpan(next, kind, from, to, rate)));
     endInteraction();
-    _showOwn(element.id, MotionKind.leave);
+    _showOwn(element.id, kind);
   }
 
   /// shiftKeyframes moves a whole band of keyframes by [delta] frames: the two

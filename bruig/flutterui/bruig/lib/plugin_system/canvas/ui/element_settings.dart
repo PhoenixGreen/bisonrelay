@@ -59,7 +59,6 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/shape_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/table_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/team_settings.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/text_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/text_settings.dart';
 
 // element_settings.dart is the controls for whichever element is selected,
