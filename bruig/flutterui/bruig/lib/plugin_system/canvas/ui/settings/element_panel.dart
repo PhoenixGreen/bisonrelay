@@ -1,5 +1,4 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
@@ -25,8 +24,10 @@ import 'package:flutter/material.dart';
 // its looks (Look), how it arrives and leaves (Motion), and its presets
 // (More).
 
-/// PanelSection is one of a rebuilt panel's sections.
-enum PanelSection { content, look, layout, more }
+/// PanelSection is one of a rebuilt panel's sections. Motion's bits go under
+/// its arrival and leaving: what an element adds to how it comes in (a
+/// table's rows in turn).
+enum PanelSection { content, look, layout, motion, more }
 
 /// PanelBit is what an element puts in one of its panel's sections: its
 /// groups, and a word on them for the section's heading.
@@ -141,7 +142,9 @@ Widget elementPanel(
             glyph: SectionGlyph.motion,
             icon: Icons.animation,
             title: "Motion",
-            summary: motionSaid(e),
+            summary: [motionSaid(e), said(PanelSection.motion)]
+                .where((s) => s.isNotEmpty)
+                .join(" · "),
             children: [
               MotionSummary(controller: controller, element: e),
               // How it comes in and goes, chosen here as in its Chain: its
@@ -212,6 +215,7 @@ Widget elementPanel(
                           )),
                       ]),
                     ]),
+              ...into(PanelSection.motion),
               if (controller.cues.isNotEmpty) elementCueCard(controller, e),
             ]),
         section(e, "more",

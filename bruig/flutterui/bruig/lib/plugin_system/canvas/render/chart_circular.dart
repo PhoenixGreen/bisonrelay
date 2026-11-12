@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
@@ -109,6 +110,32 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
               ..color = color);
       }
 
+    case ChartType.waffle:
+      // Ten rows of ten, filled a category at a time from the top left,
+      // each square its category's colour; each square arriving in turn.
+      var values = data.series.first.values;
+      var shares = waffleCells(values);
+      var cell = box.width / 10;
+      var gap = cell * 0.12;
+      var k = 0;
+      for (var (i, n) in shares.indexed) {
+        var colour = sliceColour(e, i);
+        for (var j = 0; j < n && k < 100; j++, k++) {
+          var slice = sliceProgress(e, reveal, k, 100);
+          if (slice.gone) continue;
+          var at =
+              Offset(box.left + (k % 10) * cell, box.top + (k ~/ 10) * cell);
+          var square = Rect.fromLTWH(at.dx, at.dy, cell, cell).deflate(gap / 2);
+          square = Rect.fromCenter(
+              center: square.center,
+              width: square.width * slice.size,
+              height: square.height * slice.size);
+          canvas.drawRRect(
+              RRect.fromRectAndRadius(square, Radius.circular(cell * 0.12)),
+              Paint()..color = slice.tint(colour));
+        }
+      }
+
     case ChartType.radar:
       var axes = data.categories.length;
       if (axes < 3) return;
@@ -171,8 +198,12 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
       }
 
       for (var s = 0; s < data.series.length; s++) {
-        // One shape per series: staggered by series, grown from the centre.
-        var slice = sliceProgress(e, reveal, s, data.series.length);
+        // One shape per series: staggered by series, grown from the centre
+        // -- or, in turn, each in its own share of the arrival.
+        var slice = e.animation.seriesInTurn
+            ? sliceProgress(
+                e, seriesInTurnReveal(reveal, s, data.series.length), 0, 1)
+            : sliceProgress(e, reveal, s, data.series.length);
         if (slice.gone) continue;
 
         var path = Path();

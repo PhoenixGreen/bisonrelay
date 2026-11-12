@@ -181,7 +181,14 @@ class ChartAnimation {
   /// back here. Same as TextAnimation.length.
   final int length;
 
+  /// seriesInTurn brings a chart of several series in one series after
+  /// another, each in its share of the arrival, rather than all of them
+  /// together (Ken's privacy video: five series arrived as one). See
+  /// seriesInTurnReveal.
+  final bool seriesInTurn;
+
   const ChartAnimation({
+    this.seriesInTurn = false,
     this.preset = ChartAnimationPreset.none,
     this.exit = ChartAnimationPreset.none,
     this.exitInOrder = false,
@@ -218,8 +225,10 @@ class ChartAnimation {
     ChartEase? ease,
     int? length,
     ElementLoop? loop,
+    bool? seriesInTurn,
   }) =>
       ChartAnimation(
+        seriesInTurn: seriesInTurn ?? this.seriesInTurn,
         preset: preset ?? this.preset,
         exit: exit ?? this.exit,
         exitInOrder: exitInOrder ?? this.exitInOrder,
@@ -274,6 +283,7 @@ class ChartAnimation {
         "ease": ease.name,
         if (length > 0) "length": length,
         if (loop.on) "loop": loop.toJson(),
+        if (seriesInTurn) "seriesInTurn": true,
       };
 
   factory ChartAnimation.fromJson(Map<String, dynamic> json) => ChartAnimation(
@@ -283,8 +293,17 @@ class ChartAnimation {
         gap: jsonDouble(json["gap"], 0.55).clamp(0.0, 4.0),
         ease: ChartEase.fromName(jsonStr(json["ease"])),
         length: jsonInt(json["length"], 0).clamp(0, 100000),
+        seriesInTurn: jsonBool(json["seriesInTurn"], false),
         loop: json["loop"] is Map<String, dynamic>
             ? ElementLoop.fromJson(json["loop"] as Map<String, dynamic>)
             : const ElementLoop(),
       );
+}
+
+/// seriesInTurnReveal is how far series [index] of [count] has got when a
+/// chart arriving series by series is [reveal] through: each its share of
+/// the arrival, one after another.
+double seriesInTurnReveal(double reveal, int index, int count) {
+  if (count <= 1) return reveal;
+  return ((reveal * count) - index).clamp(0.0, 1.0).toDouble();
 }

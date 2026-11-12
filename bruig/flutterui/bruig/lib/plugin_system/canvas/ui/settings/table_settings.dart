@@ -250,6 +250,32 @@ List<PanelBit> tableBits(
           ],
         )
       ]),
+      // How its arrival brings it in: whole, or a row or a column at a
+      // time (the privacy video's table wanted its rows read in turn).
+      PanelBit(PanelSection.motion,
+          summary: e.turn == TableTurn.together ? "" : e.turn.label,
+          children: [
+            CanvasControlGroup(
+                key: const ValueKey("tableTurnGroup"),
+                label: "Arrives",
+                hideCaption: true,
+                rule: false,
+                children: [
+                  panelRow([
+                    cell(CanvasDropdown<TableTurn>(
+                      key: const ValueKey("tableTurn"),
+                      label: "Arrives",
+                      value: e.turn,
+                      options: [for (var t in TableTurn.values) (t, t.label)],
+                      onChanged: (v) {
+                        begin();
+                        write(e.copyWith(turn: v));
+                        commit();
+                      },
+                    )),
+                  ]),
+                ]),
+          ]),
       // Everything about how the table looks, below what it says: somebody
       // setting a table up goes to the data and the order first.
       PanelBit(PanelSection.look, children: [
@@ -834,6 +860,15 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
           value: !style.hug,
           onChanged: (v) => styled(style.copyWith(hug: !v)),
         ),
+        // Only on a rule about the whole cell: a word rule draws its own
+        // chip, and a bar over one word is a job for its own cell.
+        if (rule.match.isEmpty)
+          CanvasToggle(
+            key: ValueKey("tableRedact$index"),
+            label: "Redact",
+            value: style.redact,
+            onChanged: (v) => styled(style.copyWith(redact: v)),
+          ),
         const CanvasLineBreak(),
         // On the rule rather than only on the table's type: a column of
         // numbers wants to be right-aligned and the column of names beside it

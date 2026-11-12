@@ -84,6 +84,7 @@ ui.Color underShader(ui.Color flat, ui.Shader? shader) =>
 bool colouredByValue(ChartType type) =>
     type == ChartType.pie ||
     type == ChartType.donut ||
+    type == ChartType.waffle ||
     type == ChartType.radialBar;
 
 /// formatTick prints a value in the chart's number style (ChartNumbers).
@@ -101,3 +102,20 @@ String formatSeries(ChartElement e, int s, double v) {
 /// formatAxis prints a value-axis figure, in ChartElement.axisFigures (the
 /// chart's number style unless the axis has its own).
 String formatAxis(ChartElement e, double v) => e.axisFigures.format(v);
+
+/// waffleCells shares a hundred squares out among [values] by how big each
+/// is against their total -- the largest remainders taking what rounding
+/// down leaves -- as how many squares each has, in order.
+List<int> waffleCells(List<double> values, {int cells = 100}) {
+  var total = values.fold<double>(0, (t, v) => t + v.abs());
+  if (total <= 0) return [for (var _ in values) 0];
+  var exact = [for (var v in values) v.abs() / total * cells];
+  var whole = [for (var x in exact) x.floor()];
+  var left = cells - whole.fold<int>(0, (t, n) => t + n);
+  var order = [for (var i = 0; i < values.length; i++) i]
+    ..sort((a, b) => (exact[b] - whole[b]).compareTo(exact[a] - whole[a]));
+  for (var i = 0; i < left && i < order.length; i++) {
+    whole[order[i]]++;
+  }
+  return whole;
+}

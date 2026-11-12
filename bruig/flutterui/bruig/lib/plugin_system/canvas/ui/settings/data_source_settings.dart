@@ -1495,6 +1495,7 @@ String _axisLabel(ChartType type) => switch (type) {
       ChartType.donut ||
       ChartType.radialBar =>
         "One per slice",
+      ChartType.waffle => "One per colour",
       _ => "Along the x axis",
     };
 

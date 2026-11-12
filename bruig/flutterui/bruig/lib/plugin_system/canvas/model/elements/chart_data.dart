@@ -164,6 +164,9 @@ enum ChartType {
   candlestick("Candlesticks", "Open, high, low and close for each period"),
   pie("Pie", "Shares of a whole"),
   donut("Donut", "Shares of a whole, with the middle open"),
+  // A hundred squares shared out by the values: a share read as so many in
+  // a hundred (Ken's privacy video: "no dot or waffle chart").
+  waffle("Waffle", "A hundred squares, shared out by the values"),
   radialBar("Radial bars", "Bars bent around a circle"),
   radar("Radar", "One axis per category, radiating from the centre");
 
@@ -177,7 +180,11 @@ enum ChartType {
   /// isCircular marks the types that have no x and y axis, so the settings
   /// bar can stop offering axis labels for a pie.
   bool get isCircular =>
-      this == pie || this == donut || this == radialBar || this == radar;
+      this == pie ||
+      this == donut ||
+      this == waffle ||
+      this == radialBar ||
+      this == radar;
 
   /// isCandles is the one type that reads four series as a single mark.
   bool get isCandles => this == candlestick;

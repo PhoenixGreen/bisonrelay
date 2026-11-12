@@ -32,6 +32,32 @@ enum TableGrid {
   bool get drawsOuter => this != none;
 }
 
+/// TableTurn is how a table's arrival brings it in: as one, or a row or a
+/// column at a time, each with the arrival's own movement (the privacy
+/// video's table arrived whole where it wanted its rows read in turn).
+enum TableTurn {
+  together("Together"),
+  rows("Row by row"),
+  columns("Column by column");
+
+  final String label;
+  const TableTurn(this.label);
+
+  static TableTurn fromName(String? name) => values
+      .firstWhere((t) => t.name == name, orElse: () => TableTurn.together);
+
+  /// revealOf is how far piece [index] of [count] is in when the whole
+  /// arrival is [through] in: each takes the same stretch, and each starts
+  /// before the one before it has finished (a cascade, not a queue), the
+  /// first at the start and the last finishing at the end.
+  static double revealOf(double through, int index, int count) {
+    if (count <= 1) return through.clamp(0.0, 1.0).toDouble();
+    var length = math.min(1.0, 2 / (count + 1));
+    var start = index * (1 - length) / (count - 1);
+    return ((through - start) / length).clamp(0.0, 1.0).toDouble();
+  }
+}
+
 /// TableCellStyle is a look one rule paints onto the cells it matches. Every
 /// field has a "leave it alone" value, since a rule is an exception rather
 /// than a complete description.
@@ -96,6 +122,13 @@ class TableCellStyle {
   /// the cell.
   final bool hug;
 
+  /// redact draws a solid bar over each line of the words instead of the
+  /// words, in the text's colour: an answer kept back, a name blacked out
+  /// (the privacy video laid shapes over its cells for this). The words stay
+  /// in the cell, so turning it off brings them back. Only a rule about the
+  /// whole cell may set it ([TableElement.lookAt] enforces that).
+  final bool redact;
+
   const TableCellStyle({
     this.background = const Color(0x00000000),
     this.textColor = const Color(0x00000000),
@@ -111,6 +144,7 @@ class TableCellStyle {
     this.radius = 4,
     this.inset = 6,
     this.hug = true,
+    this.redact = false,
     this.textPad = 0,
     this.nudgeX = 0,
     this.nudgeY = 0,
@@ -148,6 +182,7 @@ class TableCellStyle {
     double? radius,
     double? inset,
     bool? hug,
+    bool? redact,
     double? textPad,
     double? minWidth,
     double? minHeight,
@@ -170,6 +205,7 @@ class TableCellStyle {
         radius: radius ?? this.radius,
         inset: inset ?? this.inset,
         hug: hug ?? this.hug,
+        redact: redact ?? this.redact,
         textPad: textPad ?? this.textPad,
         minWidth: minWidth ?? this.minWidth,
         minHeight: minHeight ?? this.minHeight,
@@ -207,6 +243,7 @@ class TableCellStyle {
         if (radius != 4) "r": radius,
         if (inset != 6) "inset": inset,
         if (!hug) "fill": true,
+        if (redact) "redact": true,
         if (textPad != 0) "pad": textPad,
         if (minWidth != 0) "minw": minWidth,
         if (minHeight != 0) "minh": minHeight,
@@ -235,6 +272,7 @@ class TableCellStyle {
         radius: jsonDouble(json["r"], 4),
         inset: jsonDouble(json["inset"], 6),
         hug: !jsonBool(json["fill"], false),
+        redact: jsonBool(json["redact"], false),
         textPad: jsonDouble(json["pad"], 0),
         minWidth: jsonDouble(json["minw"], 0),
         minHeight: jsonDouble(json["minh"], 0),
@@ -555,6 +593,10 @@ class TableElement extends CanvasElement {
   /// animation is how it arrives and leaves. See ElementAnimation.
   final ElementAnimation animation;
 
+  /// turn is whether the arrival brings the table in whole or a row or a
+  /// column at a time. Leaving is always whole. See TableTurn.
+  final TableTurn turn;
+
   /// topPad and the three beside it are what each side actually gets.
   double get topPad => padTop ?? cellPadding;
   double get rightPad => padRight ?? cellPadding;
@@ -606,6 +648,7 @@ class TableElement extends CanvasElement {
     this.source = const DataSource(),
     this.hiddenHeaders = const [],
     this.animation = const ElementAnimation(),
+    this.turn = TableTurn.together,
   });
 
   @override
@@ -677,6 +720,7 @@ class TableElement extends CanvasElement {
                   letterSpacing: 0,
                   fontScale: 1,
                   weight: 0,
+                  redact: false,
                   textColor: const Color(0x00000000)))
           : style.copyWith(
               background: rule.style.background.a > 0
@@ -720,6 +764,7 @@ class TableElement extends CanvasElement {
               letterWidth: rule.match.isEmpty && rule.style.letterWidth != 0
                   ? rule.style.letterWidth
                   : style.letterWidth,
+              redact: (rule.match.isEmpty && rule.style.redact) || style.redact,
             );
     }
 
@@ -815,6 +860,7 @@ class TableElement extends CanvasElement {
     DataSource? source,
     List<int>? hiddenHeaders,
     ElementAnimation? animation,
+    TableTurn? turn,
   }) =>
       _copy(base,
           rows: rows,
@@ -848,7 +894,8 @@ class TableElement extends CanvasElement {
           sort: sort,
           source: source,
           hiddenHeaders: hiddenHeaders,
-          animation: animation);
+          animation: animation,
+          turn: turn);
 
   TableElement _copy(
     ElementBase newBase, {
@@ -884,6 +931,7 @@ class TableElement extends CanvasElement {
     DataSource? source,
     List<int>? hiddenHeaders,
     ElementAnimation? animation,
+    TableTurn? turn,
   }) =>
       TableElement(newBase,
           rows: rows ?? this.rows,
@@ -914,7 +962,8 @@ class TableElement extends CanvasElement {
           sort: sort ?? this.sort,
           source: source ?? this.source,
           hiddenHeaders: hiddenHeaders ?? this.hiddenHeaders,
-          animation: animation ?? this.animation);
+          animation: animation ?? this.animation,
+          turn: turn ?? this.turn);
 
   @override
   Map<String, dynamic> props() => {
@@ -947,6 +996,7 @@ class TableElement extends CanvasElement {
         if (source.on) "source": source.toJson(),
         if (hiddenHeaders.isNotEmpty) "hiddenHeaders": hiddenHeaders,
         if (animation.any) "anim": animation.toJson(),
+        if (turn != TableTurn.together) "turn": turn.name,
       };
 
   factory TableElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -1018,7 +1068,8 @@ class TableElement extends CanvasElement {
               if (c is num) c.toInt(),
         ],
         animation: jsonSpec(
-            json["anim"], ElementAnimation.fromJson, const ElementAnimation()));
+            json["anim"], ElementAnimation.fromJson, const ElementAnimation()),
+        turn: TableTurn.fromName(jsonStr(json["turn"])));
   }
 
   /// sorted is this table with its rows in the order [sort] asks for, or

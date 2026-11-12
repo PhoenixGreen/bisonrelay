@@ -529,15 +529,21 @@ void paintDocumentBackdrop(ui.Canvas canvas, CanvasDocument doc,
 /// legacy track alone.
 List<double>? chartSeriesReveal(ChartElement e, int frame, int frameRate,
     {Keyframe Function(int frame)? poseAt}) {
-  if (!e.data.series.any((s) => s.delay != 0)) return null;
+  var series = e.data.series;
+  var inTurn = e.animation.seriesInTurn && series.length > 1;
+  if (!inTurn && !series.any((s) => s.delay != 0)) return null;
   var track = e.track;
   var rate = frameRate <= 0 ? 1 : frameRate;
   var pose = poseAt ?? (int f) => track?.at(f) ?? Keyframe.rest;
   double at(int f) => pose(f).values[KeyframeChannel.reveal] ?? 1;
   var whole = at(frame);
   return [
-    for (var s in e.data.series)
-      s.delay == 0 ? whole : at((frame - s.delay * rate).round()),
+    for (var (i, s) in series.indexed)
+      // Its own offset, then -- in turn -- its share of the arrival.
+      switch (s.delay == 0 ? whole : at((frame - s.delay * rate).round())) {
+        var r when inTurn => seriesInTurnReveal(r, i, series.length),
+        var r => r,
+      },
   ];
 }
 
@@ -996,8 +1002,12 @@ void paintElement(
                 poseAt: (f) =>
                     poseWithMotion(e, f, document, live: liveMotion)));
       case TableElement e:
-        arriving(canvas, bounds, e.animation, pose,
-            () => paintTable(canvas, bounds, e, images: images));
+        if (_tableInTurn(e, pose)) {
+          paintTableInTurn(canvas, bounds, e, pose, images);
+        } else {
+          arriving(canvas, bounds, e.animation, pose,
+              () => paintTable(canvas, bounds, e, images: images));
+        }
       case ButtonElement e:
         arriving(canvas, bounds, e.animation, pose,
             () => _paintButton(canvas, bounds, e, hovered, images));
@@ -3307,6 +3317,46 @@ ElementLoop? wholeLoopOf(CanvasElement element) {
   if (element is TextElement) return element.animation.loop;
   if (element is ChartElement) return element.animation.loop;
   return _animationOf(element)?.loop;
+}
+
+/// _tableInTurn is whether a table is coming in a row or a column at a
+/// time: its arrival is under way, it is not leaving (that is whole), and it
+/// has been asked to. See TableTurn.
+bool _tableInTurn(TableElement e, Keyframe pose) =>
+    e.turn != TableTurn.together &&
+    e.animation.on &&
+    e.rows.isNotEmpty &&
+    (pose.values[KeyframeChannel.close] ?? 0) <= 0 &&
+    (pose.values[KeyframeChannel.reveal] ?? 1) < 1;
+
+/// paintTableInTurn draws a table a row or a column at a time, each piece
+/// the table's arrival played in its own band, a share of the way behind
+/// the one before (TableTurn.revealOf). Each band is the whole table clipped
+/// to it, so the fills, the rules and the rounded corners are the table's
+/// own, unbroken where two pieces meet.
+void paintTableInTurn(ui.Canvas canvas, Rect bounds, TableElement e,
+    Keyframe pose, CanvasImageSource? images) {
+  var through = pose.values[KeyframeChannel.reveal] ?? 1;
+  var byRow = e.turn == TableTurn.rows;
+  var sizes = byRow ? tableRowHeights(e, bounds) : tableColumnWidths(e, bounds);
+  var at = byRow ? bounds.top : bounds.left;
+  for (var (i, size) in sizes.indexed) {
+    var band = byRow
+        ? Rect.fromLTWH(bounds.left, at, bounds.width, size)
+        : Rect.fromLTWH(at, bounds.top, size, bounds.height);
+    at += size;
+    var reveal = TableTurn.revealOf(through, i, sizes.length);
+    if (reveal <= 0) continue;
+    paintArriving(canvas, band, e.animation,
+        pose.copyWith(values: {...pose.values, KeyframeChannel.reveal: reveal}),
+        () {
+      canvas.save();
+      // Out to the outline's own edge, which is drawn over the table's.
+      canvas.clipRect(band);
+      paintTable(canvas, bounds, e, images: images);
+      canvas.restore();
+    });
+  }
 }
 
 /// _shapeByShape is whether a drawing is drawn a shape at a time rather

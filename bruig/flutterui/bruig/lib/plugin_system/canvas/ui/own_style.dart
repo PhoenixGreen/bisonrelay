@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart'
+    show TableElement, TableTurn;
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
@@ -694,6 +696,32 @@ class OwnStyleCard extends StatelessWidget {
             value: inTurn,
             options: const [(false, "Together"), (true, "One after another")],
             onChanged: (v) => write(style.withPiecesInTurn(v)),
+          ),
+        // A chart's series: together, or each after the one before (Ken's
+        // privacy video: five series arrived as one).
+        if (!leaving &&
+            element is ChartElement &&
+            (element as ChartElement).data.series.length > 1)
+          StudioDrop<bool>(
+            key: const ValueKey("ownSeriesOrder"),
+            label: "Its series",
+            value: (element as ChartElement).animation.seriesInTurn,
+            options: const [(false, "Together"), (true, "One after another")],
+            onChanged: (v) {
+              var chart = element as ChartElement;
+              write(chart.copyWith(
+                  animation: chart.animation.copyWith(seriesInTurn: v)));
+            },
+          ),
+        // A table's rows or columns: together, or a cascade of them.
+        if (!leaving && element is TableElement)
+          StudioDrop<TableTurn>(
+            key: const ValueKey("ownTableTurn"),
+            label: "Arrives",
+            value: (element as TableElement).turn,
+            options: [for (var t in TableTurn.values) (t, t.label)],
+            onChanged: (v) =>
+                write((element as TableElement).copyWith(turn: v)),
           ),
         if (style.piecesGap case var g?)
           knob("ownPiecesGap", "Next starts", pct(g), g, 0, 1, 0.5,

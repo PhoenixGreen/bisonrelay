@@ -164,6 +164,13 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       _paintChips(canvas, look, e.cell(r, c), spec, textBox,
           Rect.fromLTWH(x, y, w, h), slots);
 
+      // Kept back: a bar over each line where the words would be.
+      if (style?.redact ?? false) {
+        paintRedacted(canvas, e.cell(r, c), spec, textBox);
+        x += w;
+        continue;
+      }
+
       // On a fixed pitch, if a rule asked for one: a slot per character, so
       // the boxes round them line up.
       if (slots != null) {
@@ -226,6 +233,30 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
           ..strokeWidth = e.gridWidth
           ..color = e.gridColor);
   }
+}
+
+/// paintRedacted draws [text] laid out in [box] as [spec] would, but as a
+/// solid bar over each line, in the text's colour: the words' own extent,
+/// so a short answer gets a short bar and the alignment still shows.
+void paintRedacted(ui.Canvas canvas, String text, TextSpec spec, Rect box) {
+  if (text.trim().isEmpty || box.width <= 0) return;
+  // Shared with the paragraph cache: not this function's to dispose.
+  var painter = layoutText(text, spec, maxWidth: box.width, fillWidth: true);
+  var offset = textOffsetIn(box, painter, spec);
+  var paint = Paint()..color = spec.color;
+  canvas.save();
+  canvas.clipRect(box);
+  for (var line in painter.computeLineMetrics()) {
+    if (line.width <= 0) continue;
+    var height = line.ascent + line.descent;
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(offset.dx + line.left,
+                offset.dy + line.baseline - line.ascent, line.width, height),
+            Radius.circular(height * 0.12)),
+        paint);
+  }
+  canvas.restore();
 }
 
 /// _paintCellImage draws a picture inside a cell, contained rather than
