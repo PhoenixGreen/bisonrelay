@@ -542,6 +542,7 @@ class _ClipNameState extends State<_ClipName> {
   @override
   Widget build(BuildContext context) {
     var s = MixerLook.of(context).studio;
+    var panel = ChainPanelStyle.on(context);
     // Laid out as a StudioDrop is -- its label over a box 22 high -- to
     // line up with the dropdowns beside it (Ken). One line: Return keeps
     // the name and leaves it, Escape leaves it as it was (Ken: it could not
@@ -551,18 +552,19 @@ class _ClipNameState extends State<_ClipName> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: 3),
+          padding: EdgeInsets.only(bottom: panel ? 4 : 3),
           child: Text("Name",
-              maxLines: 1, style: TextStyle(fontSize: 10, color: s.muted)),
+              maxLines: 1,
+              style: TextStyle(fontSize: panel ? 11.5 : 10, color: s.muted)),
         ),
         Container(
           key: const ValueKey("animClipNameBox"),
-          height: 22,
-          padding: const EdgeInsets.symmetric(horizontal: 7),
+          height: panel ? 30 : 22,
+          padding: EdgeInsets.symmetric(horizontal: panel ? 9 : 7),
           alignment: Alignment.centerLeft,
           decoration: BoxDecoration(
               color: s.inset,
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(panel ? 7 : 4),
               border: Border.all(color: s.edge)),
           child: CallbackShortcuts(
             bindings: {
@@ -576,7 +578,7 @@ class _ClipNameState extends State<_ClipName> {
               controller: _text,
               focusNode: _focus,
               maxLines: 1,
-              style: TextStyle(fontSize: 11, color: s.text),
+              style: TextStyle(fontSize: panel ? 12.5 : 11, color: s.text),
               decoration: const InputDecoration.collapsed(hintText: ""),
               onSubmitted: (v) {
                 widget.onNamed(v);

@@ -405,6 +405,8 @@ void main() {
         expect(
             find.byKey(const ValueKey("vary-starts-amount")), findsOneWidget);
         // A copy picked in the table: its own knobs, its own start.
+        await tester.ensureVisible(find.byKey(const ValueKey("copyRow-i2")));
+        await tester.pump();
         await tester.tap(find.byKey(const ValueKey("copyRow-i2")));
         await tester.pump(const Duration(milliseconds: 100));
         expect(c.pickedCopiesOf("a"), {"i2"});

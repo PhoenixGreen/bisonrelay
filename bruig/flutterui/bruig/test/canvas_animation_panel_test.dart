@@ -126,7 +126,7 @@ void main() {
   // as the prototype's, settings that do not scroll, choices as dropdowns.
   for (var scale in [1.0, 1.5]) {
     testWidgets(
-        "short, a device's display is wide and its settings packed "
+        "short, a device's screen is kept small over its settings "
         "(text x$scale)", (tester) async {
       // The panel at the Chain's M: its cards on the short layout.
       var (c, clip) = await pump(tester, scale: scale, height: 242);
@@ -135,9 +135,11 @@ void main() {
       tester.view.physicalSize = const Size(4000, 900);
       await tester.pumpAndSettle();
       var id = c.motionDevicesOf("a").single.id;
+      // In the settings panel's style (Ken, 2026-11-12): a small screen,
+      // the card's width, over its settings.
       var screen = tester.getSize(find.byKey(ValueKey("mdevScreen-$id")));
-      expect(screen.width, greaterThanOrEqualTo(240));
-      expect(screen.height, greaterThan(150), reason: "the card's height");
+      expect(screen.width, greaterThanOrEqualTo(200));
+      expect(screen.height, lessThanOrEqualTo(96));
       // Moves is a dropdown, not a knob turned through its words.
       expect(find.byKey(ValueKey("mdev-$id-moves")), findsOneWidget);
       expect(tester.widget(find.byKey(ValueKey("mdev-$id-moves"))),
@@ -161,7 +163,8 @@ void main() {
       var name = tester.getRect(find.byKey(const ValueKey("animClipNameBox")));
       var layer =
           tester.getRect(find.byKey(const ValueKey("motionClipsOn-open")));
-      expect(name.top, closeTo(layer.top, 1));
+      // As tall as they are, on their grid: beside them, or under the
+      // first of them where the row is full.
       expect(name.height, closeTo(layer.height, 1));
       expect(tester.takeException(), isNull);
     });
@@ -305,6 +308,8 @@ void main() {
       (tester) async {
     var (c, clip) = await pump(tester);
     var field = find.byKey(const ValueKey("animClipName"));
+    await tester.ensureVisible(field);
+    await tester.pumpAndSettle();
     bool typing() =>
         FocusManager.instance.primaryFocus?.debugLabel == "clipName";
     await tester.tap(field);

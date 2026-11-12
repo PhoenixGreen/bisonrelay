@@ -46,7 +46,7 @@ import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
 import 'package:bruig/plugin_system/canvas/ui/autotune_card.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart'
-    show CanvasDropdown;
+    show CanvasDropdown, CanvasSwitch;
 import 'package:bruig/plugin_system/canvas/ui/device_screens.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
     show StudioDrop;
@@ -151,6 +151,22 @@ enum DeviceTier {
           : height > 120
               ? small
               : strip;
+}
+
+/// ChainPanelStyle draws the cards under it -- the Chain's Motion view --
+/// in the settings panel's style, as the approved chain prototype has them
+/// (Ken, 2026-11-12: "the design differs between panels"): a plain card
+/// with its name in a header, its settings two or three to a row as
+/// steppers and selects, and any screen kept small over them. The Sound
+/// view keeps the studio's knobs.
+class ChainPanelStyle extends InheritedWidget {
+  const ChainPanelStyle({required super.child, super.key});
+
+  static bool on(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ChainPanelStyle>() != null;
+
+  @override
+  bool updateShouldNotify(ChainPanelStyle oldWidget) => false;
 }
 
 /// midiColour is the colour of what carries notes: a MIDI channel's
@@ -1479,8 +1495,11 @@ class DeviceFrame extends StatelessWidget {
     // The bar as every card's, at its own size; only what is under it is
     // drawn at the device's size and scaled to the room.
     var tier = DeviceTier.of(height);
-    var barHeight =
-        tier == DeviceTier.small || tier == DeviceTier.strip ? 24.0 : 28.0;
+    var barHeight = ChainPanelStyle.on(context)
+        ? 40.0
+        : tier == DeviceTier.small || tier == DeviceTier.strip
+            ? 24.0
+            : 28.0;
     var header = _bar(context,
         height: barHeight, short: false, full: true, cardWidth: width);
     if (folded) {
@@ -1517,6 +1536,28 @@ class DeviceFrame extends StatelessWidget {
   Widget _card(BuildContext context, Widget header, Widget inside) {
     var studio = MixerLook.of(context).studio;
     var off = on == false;
+    if (ChainPanelStyle.on(context)) {
+      // As the settings panel's cards: plain, a line round it, its
+      // settings faded while it is switched off.
+      return Container(
+        decoration: BoxDecoration(
+          color: studio.strip,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: studio.edge),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Material(
+          type: MaterialType.transparency,
+          child: Column(children: [
+            header,
+            Expanded(
+                child: IgnorePointer(
+                    ignoring: frozen,
+                    child: Opacity(opacity: off ? 0.5 : 1, child: inside))),
+          ]),
+        ),
+      );
+    }
     // The line round it and the colour along its top are drawn over it, as
     // the prototype's are, taking none of the room its insides had.
     return Container(
@@ -1784,6 +1825,7 @@ class DeviceFrame extends StatelessWidget {
                   iconSize: 14)),
           child: child,
         );
+    var panel = ChainPanelStyle.on(context);
     if (folded) {
       return Container(
         height: height,
@@ -1795,7 +1837,9 @@ class DeviceFrame extends StatelessWidget {
     }
     return Container(
       height: height,
-      padding: const EdgeInsets.fromLTRB(8, 0, 2, 0),
+      padding: panel
+          ? const EdgeInsets.fromLTRB(10, 0, 4, 0)
+          : const EdgeInsets.fromLTRB(8, 0, 2, 0),
       decoration: BoxDecoration(
           border: Border(
               bottom: BorderSide(color: studio.edge.withValues(alpha: 0.7)))),
@@ -1804,7 +1848,7 @@ class DeviceFrame extends StatelessWidget {
           _Power(on: on!, onPower: onPower!, powerKey: powerKey),
           const SizedBox(width: 7),
         ],
-        if (icon != null && full) ...[
+        if (icon != null && full && !panel) ...[
           chainIconOr(icon!, size: 14, color: accent ?? studio.muted),
           const SizedBox(width: 6),
         ],
@@ -1815,12 +1859,12 @@ class DeviceFrame extends StatelessWidget {
               key: ValueKey("deviceFold-$id"),
               behavior: HitTestBehavior.opaque,
               onTap: onFold,
-              child: Text(title.toUpperCase(),
+              child: Text(panel ? _titled(title) : title.toUpperCase(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      fontSize: 10.5,
-                      letterSpacing: 0.6,
+                      fontSize: panel ? 13 : 10.5,
+                      letterSpacing: panel ? 0 : 0.6,
                       fontWeight: FontWeight.w600,
                       color: studio.text)),
             ),
@@ -1945,12 +1989,122 @@ class DeviceFrame extends StatelessWidget {
   /// _isKnob is whether [w] takes a knob's cell on the card's grid.
   static bool _isKnob(Widget w) => w is _Knob || w is DeviceKnob;
 
+  /// _isCell is whether [w] takes a cell of a ChainPanelStyle card: a knob,
+  /// alone or with its key's diamond on its corner.
+  static bool _isCell(Widget w) =>
+      _isKnob(w) ||
+      (w is Stack && w.children.isNotEmpty && _isKnob(w.children.first));
+
   /// _besideDisplay is how wide a short card's display is, beside its
   /// knobs.
   static const double _besideDisplay = 170;
 
+  /// _titled is a card's name as the settings panel writes one: its first
+  /// letter a capital, the rest as given ("MOTION CLIPS" -> "Motion clips").
+  static String _titled(String t) {
+    if (t.isEmpty || t != t.toUpperCase()) return t;
+    var lower = t.toLowerCase();
+    return lower[0].toUpperCase() + lower.substring(1);
+  }
+
+  /// _panelLaid is the device in ChainPanelStyle: its screen, kept small,
+  /// over its settings, two or three to a row -- the knobs as steppers,
+  /// each a cell; anything else a row of its own.
+  Widget _panelLaid(BuildContext context) {
+    var scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.5);
+    var tier = DeviceTier.of(height);
+    var items = folded
+        ? const <Widget>[]
+        : controls!(tier == DeviceTier.strip ? DeviceTier.small : tier);
+    var cells = items.where(_isCell).length;
+    var columns = cells > 4 ? 3 : 2;
+    var cell = 104.0 * scale;
+    // A list (its copies, its parts) keeps a column of its own beside the
+    // settings, its full height: it is used, not looked at.
+    var list = displayBeside && display != null && !folded;
+    var listWidth = list ? (besideDisplay ?? 220.0) : 0.0;
+    var w = folded
+        ? deviceFoldedWidth
+        : math.max(math.max(236.0 * scale, width),
+                22 + columns * cell + (columns - 1) * 8) +
+            (list ? listWidth + 8 : 0);
+    var header = _bar(context, height: 40, short: false, full: true, cardWidth: w);
+    Widget inside;
+    if (folded) {
+      inside = _foldedInside(context);
+    } else {
+      var studio = MixerLook.of(context).studio;
+      var room = w - 22 - (list ? listWidth + 8 : 0);
+      var each = ((room - (columns - 1) * 8) / columns).floorToDouble();
+      inside = LayoutBuilder(builder: (context, box) {
+        var settings = SingleChildScrollView(
+          padding: const EdgeInsets.all(10),
+          child: Wrap(spacing: 8, runSpacing: 8, children: [
+            for (var k in items)
+              SizedBox(width: _isCell(k) ? each : room, child: k),
+          ]),
+        );
+        if (list) {
+          return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 10, 0, 10),
+              child: SizedBox(
+                width: listWidth,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(color: studio.edge),
+                  ),
+                  child: ClipRRect(
+                      borderRadius: BorderRadius.circular(6), child: display),
+                ),
+              ),
+            ),
+            Expanded(child: settings),
+          ]);
+        }
+        var screen = display == null
+            ? null
+            : SizedBox(
+                height: math.min(96.0, box.maxHeight * 0.35),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(color: studio.edge),
+                  ),
+                  child: ClipRRect(
+                      borderRadius: BorderRadius.circular(6), child: display),
+                ),
+              );
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (screen != null) ...[screen, const SizedBox(height: 8)],
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (var k in items)
+                    SizedBox(width: _isCell(k) ? each : room, child: k),
+                ]),
+                if (footer.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(children: footer),
+                ],
+              ]),
+        );
+      });
+    }
+    return SizedBox(
+      key: ValueKey("device-$id"),
+      width: w,
+      height: height,
+      child: _card(context, header, inside),
+    );
+  }
+
   /// _tiered is the device laid out for [height]: see DeviceTier.
   Widget _tiered(BuildContext context) {
+    if (ChainPanelStyle.on(context)) return _panelLaid(context);
     var tier = DeviceTier.of(height);
     var short = tier == DeviceTier.small || tier == DeviceTier.strip;
     var barHeight = short ? 24.0 : 28.0;
@@ -2157,7 +2311,11 @@ class _Power extends StatelessWidget {
   const _Power({required this.on, required this.onPower, this.powerKey});
 
   @override
-  Widget build(BuildContext context) => Tooltip(
+  Widget build(BuildContext context) => ChainPanelStyle.on(context)
+      ? Padding(
+          padding: const EdgeInsets.only(right: 1),
+          child: CanvasSwitch(key: powerKey, value: on, onChanged: onPower))
+      : Tooltip(
         message: on ? "On: click to bypass" : "Bypassed: click to switch on",
         // A lit dot, as the prototype's: green and glowing while on, grey
         // while bypassed.
@@ -3755,9 +3913,125 @@ class _KnobState extends State<_Knob> {
               ? 22
               : size;
 
+  /// _panelKnob is the knob in ChainPanelStyle: its name, then its value
+  /// in a stepper's box -- arrows either side, dragged up and down as the
+  /// knob is, double-clicked to type.
+  Widget _panelKnob(MixerLook look) {
+    var s = look.studio;
+    void step(int dir) {
+      var u = range.toUnit(value) + dir * 0.02;
+      onChanged(range.fromUnit(u), transient: true);
+      onCommit();
+    }
+
+    Widget arrow(IconData icon, int dir, String name) => GestureDetector(
+          key: ValueKey("knob$name-$label"),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => step(dir),
+          child: SizedBox(
+              width: 24, child: Icon(icon, size: 15, color: s.muted)),
+        );
+    Widget dot(String key, Color colour) => Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Container(
+            key: ValueKey(key),
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: colour),
+          ),
+        );
+    var reading = _typing
+        ? TextField(
+            key: ValueKey("knobTyped-$label"),
+            controller: _typed,
+            focusNode: _focus,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                color: s.text),
+            decoration: const InputDecoration(
+                isDense: true, border: InputBorder.none),
+            onSubmitted: (_) => _commit(),
+          )
+        : GestureDetector(
+            key: ValueKey("knobValue-$label"),
+            behavior: HitTestBehavior.opaque,
+            onDoubleTap: _type,
+            child: Center(
+              child: Text(text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                      color: s.text)),
+            ),
+          );
+    var edge = modulated
+        ? modulationColour
+        : widget.own
+            ? ownColour
+            : s.edge;
+    var body = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 18,
+            child: Row(children: [
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11.5, color: s.muted)),
+              ),
+              if (widget.own) dot("knobOwn", ownColour),
+              if (modulated) dot("knobModulated", modulationColour),
+              if (automated)
+                dot("knobAutomated",
+                    held ? const Color(0xFF7D838D) : automationColour),
+            ]),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            height: 30,
+            decoration: BoxDecoration(
+              color: s.inset,
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(color: edge),
+            ),
+            child: Row(children: [
+              arrow(Icons.chevron_left, -1, "Less"),
+              Container(width: 1, color: s.edge.withValues(alpha: 0.6)),
+              Expanded(child: reading),
+              Container(width: 1, color: s.edge.withValues(alpha: 0.6)),
+              arrow(Icons.chevron_right, 1, "More"),
+            ]),
+          ),
+        ]);
+    return LayoutBuilder(
+      builder: (context, box) => SizedBox(
+        width: box.maxWidth.isFinite ? null : 104,
+        child: _Dragged(
+          value: value,
+          initial: initial,
+          range: range,
+          onChanged: onChanged,
+          onCommit: onCommit,
+          menu: menu,
+          child: body,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     var look = MixerLook.of(context);
+    if (ChainPanelStyle.on(context)) return _panelKnob(look);
     var face = _face;
     // The whole of it takes a drag, its name and reading as well as its
     // dial, as the prototype's knobs do.
@@ -7644,12 +7918,14 @@ class DevicePack extends StatelessWidget {
         var room = box.maxWidth.isFinite ? box.maxWidth : 300.0;
         var n = columns(room, scale);
         var cell = ((room - gap * (n - 1)) / n).floorToDouble();
-        return Wrap(spacing: gap, runSpacing: 7, children: [
+        // In ChainPanelStyle a knob is a stepper: a cell as the rest are.
+        var panel = ChainPanelStyle.on(context);
+        return Wrap(spacing: gap, runSpacing: panel ? 8 : 7, children: [
           for (var w in children)
             SizedBox(
                 width: w is PackWide
                     ? room
-                    : DeviceFrame._isKnob(w)
+                    : DeviceFrame._isKnob(w) && !panel
                         ? knobWidth * scale
                         : cell,
                 child: w),

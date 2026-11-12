@@ -49,6 +49,18 @@ class StudioDrop<T> extends StatelessWidget {
     var look = MixerLook.of(context);
     var s = look.studio;
     var name = (key as ValueKey?)?.value ?? label;
+    // In the Motion view, as the settings panel's selects (Ken,
+    // 2026-11-12): see ChainPanelStyle.
+    var panel = ChainPanelStyle.on(context);
+    // Where it is given a row too short for the panel's height -- a
+    // trigger's line -- it keeps the compact one.
+    return LayoutBuilder(
+        builder: (context, box) => _drop(context, look, s, name,
+            panel && box.maxHeight >= (label.isEmpty ? 30 : 52)));
+  }
+
+  Widget _drop(BuildContext context, MixerLook look, StudioColors s,
+      String name, bool panel) {
     var shown =
         options.where((o) => o.$1 == value).firstOrNull?.$2 ?? options.first.$2;
     return SizedBox(
@@ -59,11 +71,12 @@ class StudioDrop<T> extends StatelessWidget {
           children: [
             if (label.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(bottom: 3),
+                padding: EdgeInsets.only(bottom: panel ? 4 : 3),
                 child: Text(label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 10, color: s.muted)),
+                    style:
+                        TextStyle(fontSize: panel ? 11.5 : 10, color: s.muted)),
               ),
             MenuAnchor(
               style: chainMenuStyle(look),
@@ -77,23 +90,25 @@ class StudioDrop<T> extends StatelessWidget {
               ],
               builder: (context, menu, _) => InkWell(
                 key: key == null ? null : ValueKey("$name-open"),
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(panel ? 7 : 4),
                 onTap: () => menu.isOpen ? menu.close() : menu.open(),
                 child: Container(
-                  height: 22,
-                  padding: const EdgeInsets.only(left: 7, right: 2),
+                  height: panel ? 30 : 22,
+                  padding: EdgeInsets.only(left: panel ? 9 : 7, right: 2),
                   decoration: BoxDecoration(
                       color: s.inset,
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(panel ? 7 : 4),
                       border: Border.all(color: s.edge)),
                   child: Row(children: [
                     Expanded(
                       child: Text(shown,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 11, color: s.text)),
+                          style: TextStyle(
+                              fontSize: panel ? 12.5 : 11, color: s.text)),
                     ),
-                    Icon(Icons.arrow_drop_down, size: 15, color: s.muted),
+                    Icon(panel ? Icons.expand_more : Icons.arrow_drop_down,
+                        size: panel ? 17 : 15, color: s.muted),
                   ]),
                 ),
               ),

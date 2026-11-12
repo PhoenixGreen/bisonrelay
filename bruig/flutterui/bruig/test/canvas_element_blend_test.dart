@@ -87,8 +87,11 @@ void main() {
                         AnimationPanel(controller: c, height: 400)))),
       ));
       await tester.pumpAndSettle();
+      // Built along the row, off screen until scrolled to.
+      await tester.ensureVisible(find.byKey(const ValueKey("motionOutputBlend"),
+          skipOffstage: false));
+      await tester.pumpAndSettle();
       var blend = find.byKey(const ValueKey("motionOutputBlend"));
-      await tester.ensureVisible(blend);
       tester.widget<StudioDrop<LayerBlend>>(blend).onChanged(LayerBlend.screen);
       await tester.pumpAndSettle();
       expect(c.document.elementById("r")!.base.blend, LayerBlend.screen);

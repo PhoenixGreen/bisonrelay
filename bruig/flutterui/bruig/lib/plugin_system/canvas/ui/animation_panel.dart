@@ -249,7 +249,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
     _showFocus();
     var resize = widget.onResize;
     return Stack(children: [
-      _body(context),
+      // Every card in the settings panel's style (Ken, 2026-11-12).
+      ChainPanelStyle(child: _body(context)),
       // Its top edge, dragged: taller or shorter, as the effects are.
       if (resize != null)
         Positioned(

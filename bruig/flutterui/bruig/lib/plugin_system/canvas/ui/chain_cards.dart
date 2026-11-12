@@ -54,13 +54,13 @@ class ChainCard extends StatelessWidget {
   Widget build(BuildContext context) {
     var studio = MixerLook.of(context).studio;
     var scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.5);
-    return Align(
-      alignment: Alignment.topCenter,
+    // As tall as the Chain's other cards (see DeviceFrame), its settings
+    // scrolling where they need more.
+    return SizedBox(
+      height: height,
       child: Container(
         key: ValueKey("chainCard-$id"),
         width: folded ? 120 : width * scale,
-        constraints: BoxConstraints(maxHeight: height),
-        margin: const EdgeInsets.only(top: 8),
         decoration: BoxDecoration(
           color: studio.strip,
           borderRadius: BorderRadius.circular(12),
@@ -69,36 +69,34 @@ class ChainCard extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: CanvasDense(
           height: 30,
-          child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
-                  decoration: BoxDecoration(
-                      border: Border(bottom: BorderSide(color: studio.edge))),
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        SizedBox(
-                            height: 28,
-                            child: Row(children: [
-                              ...header,
-                            ])),
-                        if (phases != null && !folded) ...[
-                          const SizedBox(height: 4),
-                          phases!,
-                        ],
-                      ]),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
+              decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: studio.edge))),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                        height: 28,
+                        child: Row(children: [
+                          ...header,
+                        ])),
+                    if (phases != null && !folded) ...[
+                      const SizedBox(height: 4),
+                      phases!,
+                    ],
+                  ]),
+            ),
+            if (!folded)
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(10),
+                  child: Opacity(opacity: off ? 0.5 : 1, child: body),
                 ),
-                if (!folded)
-                  Flexible(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(10),
-                      child: Opacity(opacity: off ? 0.5 : 1, child: body),
-                    ),
-                  ),
-              ]),
+              ),
+          ]),
         ),
       ),
     );
