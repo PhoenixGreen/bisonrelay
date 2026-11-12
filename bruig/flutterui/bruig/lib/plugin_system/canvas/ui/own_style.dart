@@ -16,6 +16,9 @@ import 'package:bruig/plugin_system/canvas/ui/keys_strip.dart' show phaseColour;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
+import 'package:bruig/plugin_system/canvas/ui/preset_pair.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
+    show ImageElement;
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
 
@@ -374,6 +377,14 @@ extension OwnTabs on CanvasController {
       return;
     }
     var leaving = kind == MotionKind.leave;
+    // One there already: its preset changed, where it is (as the Motion clips
+    // card's Preset did); laid down only where there is none.
+    if (name.isNotEmpty && ownAnyOf(e, kind) != null) {
+      beginInteraction();
+      replaceElement(OwnStyle(e).withPreset(name, leaving: leaving));
+      endInteraction();
+      return;
+    }
     var n = name.isEmpty ? "none" : name;
     switch (e) {
       case TextElement t:
@@ -393,6 +404,60 @@ extension OwnTabs on CanvasController {
 
 /// OwnTabsRow is the tabs, and -- where the tab picked has nothing yet, or
 /// is the loop -- its Preset to set it up.
+/// _presetPicks are [e]'s own [kind]'s Preset and Kind (see
+/// preset_pair.dart), setting it as setOwnPreset does.
+List<Widget> _presetPicks(
+    CanvasController c, CanvasElement e, MotionKind kind) {
+  void set(String name) => c.setOwnPreset(e.id, kind, name);
+  var name = c.ownPresetOf(e, kind);
+  if (kind == MotionKind.loop) {
+    return studioPresetPair<LoopPreset>(
+        key: "ownTabPreset",
+        width: double.infinity,
+        pair: PresetPair(
+            loopPresetOptions(drifts: e is ImageElement),
+            name.isEmpty ? LoopPreset.none : LoopPreset.values.byName(name),
+            LoopPreset.none),
+        onChanged: (p) => set(p == LoopPreset.none ? "" : p.name));
+  }
+  switch (OwnStyle(e).kind) {
+    case OwnStyleKind.text:
+      return studioPresetPair<TextAnimationPreset>(
+          key: "ownTabPreset",
+          width: double.infinity,
+          pair: PresetPair(
+              textPresetOptions(),
+              name.isEmpty
+                  ? TextAnimationPreset.none
+                  : TextAnimationPreset.values.byName(name),
+              TextAnimationPreset.none),
+          onChanged: (p) => set(p == TextAnimationPreset.none ? "" : p.name));
+    case OwnStyleKind.element:
+      return studioPresetPair<ElementAnimationPreset>(
+          key: "ownTabPreset",
+          width: double.infinity,
+          pair: PresetPair(
+              elementPresetOptions(),
+              name.isEmpty
+                  ? ElementAnimationPreset.none
+                  : ElementAnimationPreset.values.byName(name),
+              ElementAnimationPreset.none),
+          onChanged: (p) =>
+              set(p == ElementAnimationPreset.none ? "" : p.name));
+    case OwnStyleKind.chart:
+      return [
+        StudioDrop<String>(
+          key: const ValueKey("ownTabPreset"),
+          label: "Preset",
+          value: name,
+          width: double.infinity,
+          options: [("", "None"), ...c.ownPresetChoices(e, kind)],
+          onChanged: set,
+        ),
+      ];
+  }
+}
+
 class OwnTabsRow extends StatelessWidget {
   final CanvasController controller;
   final CanvasElement element;
@@ -455,7 +520,6 @@ class OwnTabsRow extends StatelessWidget {
       );
     }
 
-    var open = on != null && c.ownTabOpen(e);
     return Column(
         key: const ValueKey("ownTabs"),
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -467,19 +531,16 @@ class OwnTabsRow extends StatelessWidget {
               tab(k),
             ],
           ]),
-          if (open) ...[
+          // Its preset in two: its family, then which of them (Ken,
+          // 2026-11-12) -- a chart's, a short list, in one.
+          if (on != null) ...[
             const SizedBox(height: 8),
-            StudioDrop<String>(
-              key: const ValueKey("ownTabPreset"),
-              label: "Preset",
-              value: c.ownPresetOf(e, on),
-              width: double.infinity,
-              options: [
-                ("", "None"),
-                ...c.ownPresetChoices(e, on),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              for (var (i, w) in _presetPicks(c, e, on).indexed) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Expanded(child: w),
               ],
-              onChanged: (name) => c.setOwnPreset(e.id, on, name),
-            ),
+            ]),
           ],
         ]);
   }

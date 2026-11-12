@@ -11,6 +11,9 @@ import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_clip_display.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/own_style.dart';
+import 'package:bruig/plugin_system/canvas/ui/preset_pair.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
+    show ImageElement;
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -375,28 +378,32 @@ class MotionClipsCard extends StatelessWidget {
             : "";
     var directed = arriving ? a.arrivalDirected : a.exitDirected;
     return [
-      StudioDrop<String>(
-        key: const ValueKey("motionClipsPreset"),
-        label: "Preset",
-        value: value,
-        options: [
-          ("", c.edited ? "Its own keys" : "None"),
-          for (var p in presets) ("p:${p.name}", p.name),
-          if (ownKind)
-            for (var (name, label) in styled.presets(leaving: leaving))
-              ("own:$name", "Its own: $label"),
-        ],
-        onChanged: (v) {
-          if (v.startsWith("own:")) {
-            styleTo((s) => s.withPreset(v.substring(4), leaving: leaving));
-          } else if (v.startsWith("p:")) {
-            var p = presetNamed(v.substring(2));
-            if (p == null) return;
-            edit((x) => p.onto(x.copyWith(inside: {...x.inside}..remove("own")),
-                target: p.aims ? target() : ""));
-          }
-        },
-      ),
+      // An own arrival or leaving has its Preset and Kind over the card, by
+      // its tab (OwnTabsRow): not a second, longer list here.
+      if (!(own && styled != null && OwnStyle.of(element) != null))
+        StudioDrop<String>(
+          key: const ValueKey("motionClipsPreset"),
+          label: "Preset",
+          value: value,
+          options: [
+            ("", c.edited ? "Its own keys" : "None"),
+            for (var p in presets) ("p:${p.name}", p.name),
+            if (ownKind)
+              for (var (name, label) in styled.presets(leaving: leaving))
+                ("own:$name", "Its own: $label"),
+          ],
+          onChanged: (v) {
+            if (v.startsWith("own:")) {
+              styleTo((s) => s.withPreset(v.substring(4), leaving: leaving));
+            } else if (v.startsWith("p:")) {
+              var p = presetNamed(v.substring(2));
+              if (p == null) return;
+              edit((x) => p.onto(
+                  x.copyWith(inside: {...x.inside}..remove("own")),
+                  target: p.aims ? target() : ""));
+            }
+          },
+        ),
       // Shown edited too, so the settings -- and the screen over them --
       // keep their places as it is edited; picked, the preset again.
       if (!own && preset != null && preset.ways.isNotEmpty)
@@ -425,14 +432,11 @@ class MotionClipsCard extends StatelessWidget {
               asOwn: false),
         ),
       if (styled != null && c.kind == MotionKind.loop)
-        StudioDrop<LoopPreset>(
-          key: const ValueKey("ownLoop"),
-          label: "Its own loop",
-          value: styled.loop.preset,
-          options: [
-            for (var p in LoopPreset.values)
-              (p, p == LoopPreset.none ? "None" : p.label)
-          ],
+        ...studioPresetPair<LoopPreset>(
+          key: "ownLoop",
+          familyLabel: "Its own loop",
+          pair: PresetPair(loopPresetOptions(drifts: element is ImageElement),
+              styled.loop.preset, LoopPreset.none),
           onChanged: (p) => styleTo(
               (s) => s.withLoop(s.loop.copyWith(preset: p)),
               asOwn: false),

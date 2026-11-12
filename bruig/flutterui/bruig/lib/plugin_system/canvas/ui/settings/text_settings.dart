@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/preset_pair.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/stage_spot_settings.dart';
@@ -538,27 +539,25 @@ List<Widget> _bodySections(
               hideCaption: true,
               rule: false,
               children: [
+                // Each in two, as in the Chain: its family, then which
+                // (Ken, 2026-11-12).
                 panelRow([
-                  cell(CanvasDropdown<TextAnimationPreset>(
-                    key: const ValueKey("textArrival"),
-                    label: "Arrival",
-                    value: e.animation.preset,
-                    width: 80,
-                    options: [
-                      for (var p in TextAnimationPreset.values) (p, p.label)
-                    ],
-                    onChanged: (v) => controller.applyTextAnimation(e, v),
-                  )),
-                  cell(CanvasDropdown<TextAnimationPreset>(
-                    key: const ValueKey("textLeaving"),
-                    label: "Leaving",
-                    value: e.animation.exit,
-                    width: 80,
-                    options: [
-                      for (var p in TextAnimationPreset.values) (p, p.label)
-                    ],
-                    onChanged: (v) => controller.applyTextExit(e, v),
-                  )),
+                  for (var w in canvasPresetPair<TextAnimationPreset>(
+                      key: "textArrival",
+                      familyLabel: "Arrival",
+                      pair: PresetPair(textPresetOptions(), e.animation.preset,
+                          TextAnimationPreset.none),
+                      onChanged: (v) => controller.applyTextAnimation(e, v)))
+                    cell(w),
+                ]),
+                panelRow([
+                  for (var w in canvasPresetPair<TextAnimationPreset>(
+                      key: "textLeaving",
+                      familyLabel: "Leaving",
+                      pair: PresetPair(textPresetOptions(), e.animation.exit,
+                          TextAnimationPreset.none),
+                      onChanged: (v) => controller.applyTextExit(e, v)))
+                    cell(w),
                 ]),
               ]),
           if (controller.cues.isNotEmpty) elementCueCard(controller, e),

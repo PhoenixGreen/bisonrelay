@@ -69,6 +69,18 @@ Future<CanvasController> pump(WidgetTester tester, CanvasElement e,
   return c;
 }
 
+/// choose picks [value] in the two-step select [key]: its family, then it
+/// (see preset_pair.dart).
+Future<void> choose<T>(
+    WidgetTester tester, String key, String family, T value) async {
+  tester
+      .widget<StudioDrop<String>>(find.byKey(ValueKey("${key}Family")))
+      .onChanged(family);
+  await tester.pumpAndSettle();
+  tester.widget<StudioDrop<T>>(find.byKey(ValueKey(key))).onChanged(value);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   for (var scale in [1.0, 1.5]) {
     testWidgets("a text's own arrival, picked and set in the chain, at $scale",
@@ -79,13 +91,14 @@ void main() {
               text: "The security budget"),
           scale: scale);
       TextElement text() => c.document.elementById("t") as TextElement;
-      var preset = tester.widget<StudioDrop<String>>(
-          find.byKey(const ValueKey("motionClipsPreset")));
-      expect(preset.options.map((o) => o.$1),
-          contains("own:${TextAnimationPreset.pop.name}"),
-          reason: "the words' own presets, offered");
-      preset.onChanged("own:${TextAnimationPreset.pop.name}");
-      await tester.pumpAndSettle();
+      // Its family, then which of them (Ken, 2026-11-12), by its tab.
+      var family = tester.widget<StudioDrop<String>>(
+          find.byKey(const ValueKey("ownTabPresetFamily")));
+      expect(family.options.map((o) => o.$1),
+          contains(TextAnimationPreset.pop.family.label),
+          reason: "the words' own presets' families, offered");
+      await choose(tester, "ownTabPreset", TextAnimationPreset.pop.family.label,
+          TextAnimationPreset.pop);
       expect(text().animation.preset, TextAnimationPreset.pop);
       // The rest beside it: the gap between the words, their order.
       expect(find.byKey(const ValueKey("ownStyleCard")), findsOneWidget);
@@ -110,12 +123,13 @@ void main() {
         ChartElement(const ElementBase(id: "c", width: 300, height: 200),
             data: ChartData.parse("Cat\tA\nx\t10\ny\t6")));
     var style = OwnStyle(c.document.elementById("c")!);
-    var preset = tester.widget<StudioDrop<String>>(
-        find.byKey(const ValueKey("motionClipsPreset")));
+    // A chart's few presets in one list.
+    var preset = tester
+        .widget<StudioDrop<String>>(find.byKey(const ValueKey("ownTabPreset")));
     for (var (name, _) in style.presets()) {
-      expect(preset.options.map((o) => o.$1), contains("own:$name"));
+      expect(preset.options.map((o) => o.$1), contains(name));
     }
-    preset.onChanged("own:grow");
+    preset.onChanged("grow");
     await tester.pumpAndSettle();
     expect((c.document.elementById("c") as ChartElement).animation.preset.name,
         "grow");
@@ -126,11 +140,11 @@ void main() {
       (tester) async {
     var c = await pump(tester,
         ShapeElement(const ElementBase(id: "s", width: 80, height: 80)));
-    tester
-        .widget<StudioDrop<String>>(
-            find.byKey(const ValueKey("motionClipsPreset")))
-        .onChanged("own:shatter");
-    await tester.pumpAndSettle();
+    await choose(
+        tester,
+        "ownTabPreset",
+        ElementAnimationPreset.shatter.family.label,
+        ElementAnimationPreset.shatter);
     ElementAnimation a() =>
         CanvasController.elementAnimationOf(c.document.elementById("s")!);
     expect(a().preset, ElementAnimationPreset.shatter);
@@ -154,10 +168,8 @@ void main() {
         TextElement(const ElementBase(id: "t", width: 300, height: 60),
             text: "Loops"),
         kind: MotionKind.loop);
-    tester
-        .widget<StudioDrop<LoopPreset>>(find.byKey(const ValueKey("ownLoop")))
-        .onChanged(LoopPreset.float);
-    await tester.pumpAndSettle();
+    await choose(
+        tester, "ownLoop", LoopPreset.float.family.label, LoopPreset.float);
     ElementLoop loop() =>
         CanvasController.elementLoopOf(c.document.elementById("t")!);
     expect(loop().preset, LoopPreset.float);
@@ -198,11 +210,11 @@ void main() {
     await tester.pump();
     var third = v().shapes![groupStarts(v())[2]];
     expect(third.cue, VectorCue.gap);
-    tester
-        .widget<StudioDrop<ElementAnimationPreset?>>(
-            find.byKey(const ValueKey("partArrival")))
-        .onChanged(ElementAnimationPreset.shatter);
-    await tester.pump();
+    await choose<ElementAnimationPreset?>(
+        tester,
+        "partArrival",
+        ElementAnimationPreset.shatter.family.label,
+        ElementAnimationPreset.shatter);
     third = v().shapes![groupStarts(v())[2]];
     expect(third.animation?.preset, ElementAnimationPreset.shatter);
     expect(find.byKey(const ValueKey("partOwn-2")), findsOneWidget);
@@ -214,9 +226,9 @@ void main() {
     await tester.pump();
     // Let go: the drawing's own arrival again.
     tester
-        .widget<StudioDrop<ElementAnimationPreset?>>(
-            find.byKey(const ValueKey("partArrival")))
-        .onChanged(null);
+        .widget<StudioDrop<String>>(
+            find.byKey(const ValueKey("partArrivalFamily")))
+        .onChanged("");
     await tester.pump();
     expect(v().shapes![groupStarts(v())[2]].animation, isNull);
     expect(find.byKey(const ValueKey("partOwn-2")), findsNothing);
@@ -265,10 +277,8 @@ void main() {
     await tester.pump();
     expect(i().stack.last.cue, top.cue.next);
 
-    tester
-        .widget<StudioDrop<LoopPreset>>(find.byKey(const ValueKey("partLoop")))
-        .onChanged(LoopPreset.values.firstWhere((p) => p != LoopPreset.none));
-    await tester.pump();
+    var first = LoopPreset.values.firstWhere((p) => p != LoopPreset.none);
+    await choose(tester, "partLoop", first.family.label, first);
     expect(i().stack.last.loop.on, isTrue);
     expect(find.byKey(const ValueKey("partOwn-1")), findsOneWidget);
     tester

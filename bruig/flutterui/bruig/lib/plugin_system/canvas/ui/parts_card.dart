@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/preset_pair.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart'
@@ -200,7 +201,7 @@ class _PartsCardState extends State<PartsCard> {
                   ),
               ],
               // A shape's own arrival; a layer's own loop.
-              if (e is VectorElement) _shapeArrival(e, at),
+              if (e is VectorElement) ..._shapeArrival(e, at),
               if (e is ImageElement) ..._layerLoop(e, at, accent, skin.ink),
             ]),
           PackWide(Wrap(spacing: 5, runSpacing: 5, children: [
@@ -296,20 +297,20 @@ class _PartsCardState extends State<PartsCard> {
 
   /// _shapeArrival is shape group [at]'s own arrival: the drawing's, or one
   /// of its own.
-  Widget _shapeArrival(VectorElement e, int at) {
+  List<Widget> _shapeArrival(VectorElement e, int at) {
     var starts = groupStarts(e);
     var base = at < starts.length ? starts[at] : 0;
     var shape = e.shapes![base];
     var own = shape.animation;
-    return StudioDrop<ElementAnimationPreset?>(
-      key: const ValueKey("partArrival"),
-      label: "Arrives",
-      value: own?.preset,
-      options: [
-        (null, "As the drawing"),
-        for (var p in ElementAnimationPreset.values)
-          if (p != ElementAnimationPreset.none) (p, p.label),
-      ],
+    // Its family, then which of them (Ken, 2026-11-12).
+    return studioPresetPair<ElementAnimationPreset?>(
+      key: "partArrival",
+      familyLabel: "Arrives",
+      noneLabel: "As the drawing",
+      pair: PresetPair([
+        for (var o in elementPresetOptions())
+          PresetOption<ElementAnimationPreset?>(o.value, o.label, o.family),
+      ], own?.preset, null),
       onChanged: (p) => _write(e.withShape(
           base,
           p == null
@@ -329,14 +330,11 @@ class _PartsCardState extends State<PartsCard> {
     CanvasElement withLoop(ElementLoop l) =>
         e.withLayer(layer.id, (x) => x.copyWith(loop: l));
     return [
-      StudioDrop<LoopPreset>(
-        key: const ValueKey("partLoop"),
-        label: "Loops",
-        value: loop.preset,
-        options: [
-          for (var p in LoopPreset.values)
-            (p, p == LoopPreset.none ? "No" : p.label)
-        ],
+      ...studioPresetPair<LoopPreset>(
+        key: "partLoop",
+        familyLabel: "Loops",
+        noneLabel: "No",
+        pair: PresetPair(loopPresetOptions(), loop.preset, LoopPreset.none),
         onChanged: (p) => _write(withLoop(loop.copyWith(preset: p))),
       ),
       if (loop.on) ...[

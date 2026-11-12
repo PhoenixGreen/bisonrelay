@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
 import 'package:bruig/plugin_system/canvas/ui/motion_cards.dart'
     show StudioDrop;
 import 'package:bruig/plugin_system/canvas/ui/own_style.dart';
+import 'package:bruig/plugin_system/canvas/ui/preset_pair.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -75,10 +76,17 @@ void main() {
     expect(find.byKey(const ValueKey("ownTabs")), findsOneWidget);
     expect(c.ownTabOf(text(c)), MotionKind.arrive,
         reason: "nothing yet: its arrival, to set up");
-    expect(find.byKey(const ValueKey("ownTabPreset")), findsOneWidget);
+    expect(find.byKey(const ValueKey("ownTabPresetFamily")), findsOneWidget);
     tester
-        .widget<StudioDrop<String>>(find.byKey(const ValueKey("ownTabPreset")))
-        .onChanged("slideUp");
+        .widget<StudioDrop<String>>(
+            find.byKey(const ValueKey("ownTabPresetFamily")))
+        .onChanged("Slide");
+    await tester.pumpAndSettle();
+    expect(text(c).animation.preset.family, TextAnimationFamily.slide);
+    tester
+        .widget<StudioDrop<TextAnimationPreset>>(
+            find.byKey(const ValueKey("ownTabPreset")))
+        .onChanged(TextAnimationPreset.slideUp);
     await tester.pumpAndSettle();
     expect(ownClipOf(text(c), MotionKind.arrive), isNotNull);
     expect(find.byKey(const ValueKey("motionZone-Arrive · Slide up")),
@@ -90,12 +98,15 @@ void main() {
     expect(find.byKey(const ValueKey("motionTimingCard")), findsNothing,
         reason: "no clip yet: not the arrival's cards");
     tester
-        .widget<StudioDrop<String>>(find.byKey(const ValueKey("ownTabPreset")))
-        .onChanged("fadeIn");
+        .widget<StudioDrop<String>>(
+            find.byKey(const ValueKey("ownTabPresetFamily")))
+        .onChanged("Fade");
     await tester.pumpAndSettle();
     var (leave, _) = ownClipOf(text(c), MotionKind.leave)!;
     expect(c.pickedMotion, leave.id);
-    expect(find.byKey(const ValueKey("motionZone-Leave · Fade in")),
+    expect(
+        find.byKey(ValueKey("motionZone-Leave · "
+            "${c.ownPresetLabel(text(c), MotionKind.leave)}")),
         findsOneWidget);
     // Back to the arrival: its cards again.
     await tester.tap(find.byKey(const ValueKey("ownTab-arrive")));
@@ -118,8 +129,14 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("ownTab-loop")));
     await tester.pumpAndSettle();
     tester
-        .widget<StudioDrop<String>>(find.byKey(const ValueKey("ownTabPreset")))
-        .onChanged("float");
+        .widget<StudioDrop<String>>(
+            find.byKey(const ValueKey("ownTabPresetFamily")))
+        .onChanged("Motion");
+    await tester.pumpAndSettle();
+    tester
+        .widget<StudioDrop<LoopPreset>>(
+            find.byKey(const ValueKey("ownTabPreset")))
+        .onChanged(LoopPreset.float);
     await tester.pumpAndSettle();
     expect(text(c).animation.loop.preset, LoopPreset.float);
     expect(
@@ -127,11 +144,24 @@ void main() {
     expect(find.byKey(const ValueKey("ownStyleCard")), findsOneWidget);
     // Taken away: its tab says None.
     tester
-        .widget<StudioDrop<String>>(find.byKey(const ValueKey("ownTabPreset")))
+        .widget<StudioDrop<String>>(
+            find.byKey(const ValueKey("ownTabPresetFamily")))
         .onChanged("");
     await tester.pumpAndSettle();
     expect(c.ownPresetLabel(text(c), MotionKind.loop), "None");
     expect(find.byKey(const ValueKey("ownStyleCard")), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  test("a family picked: the first of it, or as it is where it is one", () {
+    var pair = PresetPair(textPresetOptions(), TextAnimationPreset.slideUp,
+        TextAnimationPreset.none);
+    expect(pair.family, "Slide");
+    expect(pair.kinds.every((o) => o.family == "Slide"), isTrue);
+    expect(pair.inFamily("Slide"), TextAnimationPreset.slideUp);
+    expect(pair.inFamily("Fade").family, TextAnimationFamily.fade);
+    expect(pair.inFamily(""), TextAnimationPreset.none);
+    expect(pair.families.length, lessThan(pair.options.length),
+        reason: "a shorter list");
   });
 }
