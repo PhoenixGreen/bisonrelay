@@ -113,6 +113,77 @@ extension MotionEditing on CanvasController {
                 spans: spans));
   }
 
+  /// moveDeviceKey retimes key [index] of setting [param] in phase [ph] of
+  /// [element]'s device [device] to [seconds] into the scene -- kept as a
+  /// share of its clip in a clip's phase -- and is where it went among the
+  /// others.
+  int moveDeviceKey(String element, String device, String param,
+      MotionPhase ph, int index, double seconds,
+      {bool transient = false}) {
+    var d = _deviceOf(element, device);
+    var ks = d?.keysIn(ph)[param];
+    if (d == null || ks == null || index < 0 || index >= ks.length) {
+      return index;
+    }
+    var spans = phaseSpansFor(element);
+    double at;
+    if (ph == MotionPhase.free) {
+      at = math.max(0.0, seconds);
+    } else if (spans.spanOf(ph) case (var a, var b)) {
+      var length = ph == MotionPhase.loop ? spans.cycle : b - a;
+      at = ((seconds - a) / math.max(0.0001, length)).clamp(0.0, 1.0);
+    } else {
+      return index;
+    }
+    var moved = ks[index].copyWith(t: at);
+    var list = [
+      for (var (i, k) in ks.indexed)
+        if (i != index) k,
+      moved,
+    ]..sort((a, b) => a.t.compareTo(b.t));
+    _putDevice(element, d.withKeysOf(param, ph, list), transient: transient);
+    return list.indexOf(moved);
+  }
+
+  /// editDeviceKey changes key [index]'s value or how it goes into the
+  /// next.
+  void editDeviceKey(String element, String device, String param,
+      MotionPhase ph, int index,
+      {double? v, KeyEase? ease, bool transient = false}) {
+    var d = _deviceOf(element, device);
+    var ks = d?.keysIn(ph)[param];
+    if (d == null || ks == null || index < 0 || index >= ks.length) return;
+    var p = d.kind.param(param);
+    var list = [...ks];
+    list[index] = list[index].copyWith(
+        v: v == null || p.unit == "argb" ? v : v.clamp(p.min, p.max).toDouble(),
+        ease: ease);
+    _putDevice(element, d.withKeysOf(param, ph, list), transient: transient);
+  }
+
+  /// removeDeviceKey takes key [index] away. The last of a setting's
+  /// independent keys gone, it keeps the value it had there.
+  void removeDeviceKey(String element, String device, String param,
+      MotionPhase ph, int index) {
+    var d = _deviceOf(element, device);
+    var ks = d?.keysIn(ph)[param];
+    if (d == null || ks == null || index < 0 || index >= ks.length) return;
+    var list = [...ks]..removeAt(index);
+    var next = d.withKeysOf(param, ph, list);
+    if (list.isEmpty && ph == MotionPhase.free) {
+      next = next.withValue(param, ks[index].v);
+    }
+    _putDevice(element, next);
+  }
+
+  /// setDevicePlays switches whether [element]'s device [device]'s keys in
+  /// [ph] play: its card's A, L, Loop and I.
+  void setDevicePlays(String element, String device, MotionPhase ph, bool on) {
+    var d = _deviceOf(element, device);
+    if (d == null) return;
+    _putDevice(element, d.withPlaying(ph, on));
+  }
+
   /// stopAnimatingDevice takes every key of setting [param] away; it keeps
   /// the value it has at the playhead.
   void stopAnimatingDevice(String element, String device, String param) {

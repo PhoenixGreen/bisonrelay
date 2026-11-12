@@ -155,6 +155,8 @@ import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart'
     show MotionEditing, motionId, everyMotion;
 import 'package:bruig/plugin_system/canvas/model/instances.dart'
     show CopyValue, ElementInstance, InstanceSet, deviceOwnKey;
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart'
+    show MotionPhase;
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
     show ClipTriggerKind, ElementMotion, MotionKind;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
@@ -3693,6 +3695,30 @@ class CanvasController extends ChangeNotifier {
   set chainFull(bool full) {
     if (full == _chainFull) return;
     _chainFull = full;
+    notifyListeners();
+  }
+
+  /// _keysShown is whether the Chain's Keys strip is open over its cards
+  /// (Ken, 2026-11-12): kept for the session, as a card's fold is.
+  static bool _keysShown = false;
+
+  bool get keysShown => _keysShown;
+
+  set keysShown(bool shown) {
+    if (shown == _keysShown) return;
+    _keysShown = shown;
+    notifyListeners();
+  }
+
+  /// _chainPhase is the Chain's filter: only what plays in one phase -- its
+  /// cards and its keys -- or null for all of it.
+  MotionPhase? _chainPhase;
+
+  MotionPhase? get chainPhase => _chainPhase;
+
+  set chainPhase(MotionPhase? phase) {
+    if (phase == _chainPhase) return;
+    _chainPhase = phase;
     notifyListeners();
   }
 

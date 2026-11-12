@@ -2,8 +2,6 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/keyframes_card.dart'
-    show keyframeLanesOf;
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -584,4 +582,40 @@ class _CurvesPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_CurvesPainter old) => true;
+}
+
+/// keyframeLanesOf are the things [track]'s keyframes change, each with a
+/// name, a reading of a keyframe, and whether it is at rest there: across,
+/// down, size, angle, opacity, then any channels some keyframes pin.
+List<(String, String, double? Function(Keyframe))> keyframeLanesOf(
+    ElementTrack track) {
+  var lanes = <(String, String, double? Function(Keyframe))>[
+    ("dx", "Across", (k) => k.dx),
+    ("dy", "Down", (k) => k.dy),
+    ("scale", "Size", (k) => k.scale),
+    ("rotate", "Angle", (k) => k.rotate),
+    ("opacity", "Opacity", (k) => k.opacity),
+  ];
+  var channels = <String>{
+    for (var k in track.keys) ...k.values.keys,
+  };
+  for (var c in channels) {
+    lanes.add((c, _channelName(c), (k) => k.values[c]));
+  }
+  return [
+    for (var l in lanes)
+      if (_changes(track, l.$3)) l
+  ];
+}
+
+String _channelName(String c) =>
+    c.isEmpty ? c : c[0].toUpperCase() + c.substring(1);
+
+/// _changes is whether [read] differs between any two keyframes in a row.
+bool _changes(ElementTrack track, double? Function(Keyframe) read) {
+  var k = track.keys;
+  for (var i = 1; i < k.length; i++) {
+    if (read(k[i]) != read(k[i - 1])) return true;
+  }
+  return false;
 }

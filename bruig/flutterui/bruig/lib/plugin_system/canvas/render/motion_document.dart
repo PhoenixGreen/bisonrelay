@@ -457,6 +457,12 @@ PhaseSpans phaseSpansOf(CanvasElement e, CanvasDocument? doc) {
       d.phaseKeys.isNotEmpty || d.plays.any((p) => p != MotionPhase.free))) {
     return PhaseSpans.none;
   }
+  return elementPhaseSpans(e, doc);
+}
+
+/// elementPhaseSpans is when [e]'s arrival, leaving and loop play, whether
+/// or not anything is keyed in them: what the Chain's Keys strip shows.
+PhaseSpans elementPhaseSpans(CanvasElement e, CanvasDocument? doc) {
   var rate = math.max(1, doc?.frameRate ?? defaultFrameRate);
   var last = doc == null ? null : doc.frames - 1;
   var key = (rate, last);

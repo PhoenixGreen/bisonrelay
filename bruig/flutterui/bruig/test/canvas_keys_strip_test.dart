@@ -1,23 +1,28 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show elementPhaseSpans;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/keyframes_card.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/ui/keys_strip.dart';
+import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-// canvas_keyframes_card_test.dart is the Chain's Keyframes card (Ken,
-// 2026-11-09: keyframing in the Chain; the approved keyframes prototype):
-// what the timeline's keyframe row did -- the marks of what is picked,
-// picked, moved keeping their spacing, refused where they would land on
-// another, deleted, copied and pasted at the playhead, the diamond at the
-// playhead -- and the controller's calls it makes.
+// canvas_keys_strip_test.dart is the Chain's Keys strip (Ken, 2026-11-12,
+// the approved chain prototype), which took the Keyframes card's place: the
+// element's own keyframes -- picked, moved keeping their spacing, refused
+// where they would land on another, deleted, copied and pasted at the
+// playhead -- and a row for each keyed setting of its chain, its keys
+// coloured by where they play; and the controller's calls it makes.
 
 ShapeElement logo() => ShapeElement(ElementBase(
     id: "logo",
@@ -128,7 +133,7 @@ void main() {
     });
   });
 
-  group("the card", () {
+  group("the strip", () {
     Future<CanvasController> show(WidgetTester tester,
         {CanvasController Function()? making}) async {
       var c = (making ?? make)();
@@ -145,10 +150,16 @@ void main() {
           home: Scaffold(
             body: Align(
               alignment: Alignment.topLeft,
-              child: ListenableBuilder(
-                listenable: c,
-                builder: (context, _) => KeyframesCard(
-                    controller: c, height: 300, folded: false, onFold: () {}),
+              child: SizedBox(
+                width: 1000,
+                child: ListenableBuilder(
+                  listenable: c,
+                  builder: (context, _) => KeysStrip(
+                      controller: c,
+                      element: c.selected!,
+                      height: KeysStrip.heightFor(
+                          KeysStrip.rowsFor(c, c.selected!), 300)),
+                ),
               ),
             ),
           ),
@@ -158,29 +169,14 @@ void main() {
       return c;
     }
 
-    /// markAt is where frame [f]'s mark is drawn.
-    Offset markAt(WidgetTester tester, int f) {
-      var r =
-          tester.getRect(find.byKey(const ValueKey("keyframesLanes-paint")));
-      return Offset(r.left + 70 + f / 99 * (r.width - 76), r.top + 16 + 14);
+    /// at is where frame [f] is drawn on row [row] (0 the keyframes).
+    Offset at(WidgetTester tester, int f, {int row = 0}) {
+      var r = tester.getRect(find.byKey(const ValueKey("keysLanes")));
+      return Offset(r.left + 8 + f / 100 * (r.width - 16),
+          r.top + KeysStrip.rulerHeight + (row + 1.5) * KeysStrip.rowHeight);
     }
 
-    testWidgets("a mark clicked: picked, and the playhead goes to it",
-        (tester) async {
-      var c = await show(tester);
-      expect(find.byKey(const ValueKey("keyframesHint")), findsOneWidget);
-      await tester.tapAt(markAt(tester, 24));
-      await tester.pump();
-      expect(c.frame, 24);
-      expect(find.byKey(const ValueKey("keyframesFrame")), findsOneWidget);
-      expect(find.text("Across"), findsWidgets, reason: "what it holds");
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets("dragged, a mark retimes its keyframe", (tester) async {
-      var c = await show(tester);
-      var from = markAt(tester, 24);
-      var to = markAt(tester, 36);
+    Future<void> drag(WidgetTester tester, Offset from, Offset to) async {
       var g = await tester.startGesture(from);
       await tester.pump();
       await g.moveTo(Offset.lerp(from, to, 0.5)!);
@@ -189,42 +185,47 @@ void main() {
       await tester.pump();
       await g.up();
       await tester.pump();
-      expect(framesOf(c), [0, 36, 48]);
-      expect(c.canUndo, isTrue, reason: "one step to undo");
-    });
+    }
 
-    testWidgets("Delete takes the picked keyframes; the diamond adds one",
+    testWidgets("a keyframe clicked: picked, and the playhead goes to it",
         (tester) async {
       var c = await show(tester);
-      await tester.tapAt(markAt(tester, 48));
+      expect(find.byKey(const ValueKey("keysHint")), findsOneWidget);
+      expect(find.byKey(const ValueKey("keysLabel-keyframes")), findsOneWidget);
+      await tester.tapAt(at(tester, 24));
+      await tester.pump();
+      expect(c.frame, 24);
+      expect(find.byKey(const ValueKey("keysPicked")), findsOneWidget);
+      expect(find.byKey(const ValueKey("keysCurves")), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("dragged, a keyframe is retimed, as one change",
+        (tester) async {
+      var c = await show(tester);
+      await drag(tester, at(tester, 24), at(tester, 36));
+      expect(framesOf(c), [0, 36, 48]);
+      expect(c.canUndo, isTrue);
+      c.undo();
+      expect(framesOf(c), [0, 24, 48], reason: "one undo puts it back");
+    });
+
+    testWidgets("Delete takes the picked keyframe; double-click adds one",
+        (tester) async {
+      var c = await show(tester);
+      await tester.tapAt(at(tester, 48));
       await tester.pump();
       await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
       await tester.pump();
       expect(framesOf(c), [0, 24]);
       expect(c.document.elementById("logo"), isNotNull,
           reason: "the keyframe, not the element");
-      expect(find.byKey(const ValueKey("keyframesSaid")), findsOneWidget);
-      c.frame = 60;
+      expect(find.byKey(const ValueKey("keysSaid")), findsOneWidget);
+      await tester.tapAt(at(tester, 70));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(at(tester, 70));
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey("keyframesHere")));
-      await tester.pump();
-      expect(framesOf(c), [0, 24, 60]);
-    });
-
-    testWidgets("the band between a pair moves both, keeping its length",
-        (tester) async {
-      var c = await show(tester);
-      var from = markAt(tester, 36);
-      var to = markAt(tester, 46);
-      var g = await tester.startGesture(from);
-      await tester.pump();
-      await g.moveTo(Offset.lerp(from, to, 0.5)!);
-      await tester.pump();
-      await g.moveTo(to);
-      await tester.pump();
-      await g.up();
-      await tester.pump();
-      expect(framesOf(c), [0, 34, 58]);
+      expect(framesOf(c), [0, 24, 70]);
     });
 
     testWidgets("a path's points: dragged, a point is retimed", (tester) async {
@@ -241,23 +242,16 @@ void main() {
         return c;
       });
       expect(c.keyframeTarget!.points, isTrue);
-      expect(find.byKey(const ValueKey("keyframesCurves")), findsNothing,
-          reason: "a path's points have times only");
-      var from = markAt(tester, 30);
-      var to = markAt(tester, 40);
-      var g = await tester.startGesture(from);
-      await tester.pump();
-      await g.moveTo(Offset.lerp(from, to, 0.5)!);
-      await tester.pump();
-      await g.moveTo(to);
-      await tester.pump();
-      await g.up();
-      await tester.pump();
+      expect(find.byKey(const ValueKey("keysLabel-keyframes")), findsOneWidget);
+      await drag(tester, at(tester, 30), at(tester, 40));
       var path = c.document.elementById("p") as PathElement;
       expect([for (var n in path.nodes) n.frame], [0, 40, 60]);
+      expect(find.byKey(const ValueKey("keysCurves")), findsNothing,
+          reason: "a path's points have times only");
     });
 
-    testWidgets("the loop's row: its stop dragged later, as one change",
+    testWidgets(
+        "the loop's stop dragged later, on the clips row, as one change",
         (tester) async {
       var c = await show(tester);
       c.setElementLoop(
@@ -265,46 +259,83 @@ void main() {
           const ElementLoop(
               preset: LoopPreset.float, cycle: 10, from: 10, to: 59));
       await tester.pump();
-      // The loop's row is under the keyframes' lane, its stop's handle at
-      // the frame after the last it plays.
-      Offset loopAt(int f) => markAt(tester, f) + const Offset(0, 14 + 7);
       var undoBefore = c.canUndo;
-      var g = await tester.startGesture(loopAt(60));
-      await tester.pump();
-      await g.moveTo(loopAt(70));
-      await tester.pump();
-      await g.moveTo(loopAt(80));
-      await tester.pump();
-      await g.up();
-      await tester.pump();
+      await drag(tester, at(tester, 60, row: -1), at(tester, 80, row: -1));
       expect(c.keyframeLoop!.$2, 79);
-      expect(c.canUndo, isTrue);
       c.undo();
       expect(c.keyframeLoop!.$2, 59, reason: "one undo puts it back");
       expect(undoBefore, isTrue);
     });
 
-    testWidgets("a box picks several; Spread evenly evens them out",
+    testWidgets("shift picks several; Spread evenly evens them out",
         (tester) async {
       var c = await show(tester);
       c.frame = 30;
       c.toggleTargetKeyframe(); // 0, 24, 30, 48
       await tester.pump();
-      // From past the last keyframe, back: where no band is.
-      var a = markAt(tester, 70);
-      var b = markAt(tester, 10);
-      var g = await tester.startGesture(a);
+      await tester.tapAt(at(tester, 24));
       await tester.pump();
-      await g.moveTo(Offset.lerp(a, b, 0.5)!);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shift);
+      await tester.tapAt(at(tester, 30));
       await tester.pump();
-      await g.moveTo(b);
+      await tester.tapAt(at(tester, 48));
       await tester.pump();
-      await g.up();
-      await tester.pump();
-      expect(find.byKey(const ValueKey("keyframesPicked")), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey("keyframesSpread")));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shift);
+      expect(find.text("3 keyframes"), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey("keysSpread")));
       await tester.pump();
       expect(framesOf(c), [0, 24, 36, 48]);
+    });
+
+    testWidgets("a keyed setting has a row; its key dragged, picked, deleted",
+        (tester) async {
+      var c = await show(tester, making: () {
+        var c = make();
+        c.setMotionDevices("logo", [
+          const MotionDevice(MotionDeviceKind.glow, id: "m0")
+              .withKey("strength", 0.5, 0.2)
+              .withKey("strength", 1.5, 0.8),
+        ]);
+        return c;
+      });
+      expect(
+          find.byKey(const ValueKey("keysLabel-m0-strength")), findsOneWidget);
+      // 0.5 s is frame 12 of 100 at 24 a second.
+      await drag(tester, at(tester, 12, row: 1), at(tester, 24, row: 1));
+      var d = c.motionDevicesOf("logo").single;
+      expect(d.keys["strength"]!.first.t, closeTo(1, 1e-9));
+      expect(find.byKey(const ValueKey("keysInspector-key")), findsOneWidget);
+      expect(find.text("Glow · Strength"), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+      await tester.pump();
+      d = c.motionDevicesOf("logo").single;
+      expect(d.keys["strength"], hasLength(1));
+    });
+
+    testWidgets("a key in the arrival is drawn in it, and filtered",
+        (tester) async {
+      var c = await show(tester, making: () {
+        var c = make();
+        c.applyElementAnimation(c.selected!, ElementAnimationPreset.fadeIn);
+        var spans = elementPhaseSpans(c.selected!, c.document);
+        c.setMotionDevices("logo", [
+          const MotionDevice(MotionDeviceKind.glow, id: "m0")
+              .withPlaying(MotionPhase.arrive, true)
+              .withKey("radius", 0, 4, spans: spans),
+        ]);
+        return c;
+      });
+      var d = c.motionDevicesOf("logo").single;
+      expect(d.keyedIn("radius", MotionPhase.arrive), isTrue,
+          reason: "keyed in the clip playing there");
+      expect(find.byKey(const ValueKey("keysLabel-m0-radius")), findsOneWidget);
+      c.chainPhase = MotionPhase.leave;
+      addTearDown(() => c.chainPhase = null);
+      await tester.pump();
+      expect(find.byKey(const ValueKey("keysLabel-m0-radius")), findsNothing,
+          reason: "only what plays in the leaving");
+      expect(find.byKey(const ValueKey("keysLabel-keyframes")), findsNothing);
+      expect(tester.takeException(), isNull);
     });
   });
 }

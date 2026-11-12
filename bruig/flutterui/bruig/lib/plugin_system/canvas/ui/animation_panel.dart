@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/glb_info.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/object3d_element.dart';
@@ -13,7 +15,7 @@ import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart';
 import 'package:bruig/plugin_system/canvas/ui/track_curves.dart';
-import 'package:bruig/plugin_system/canvas/ui/keyframes_card.dart';
+import 'package:bruig/plugin_system/canvas/ui/keys_strip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/copies_cards.dart';
@@ -88,6 +90,37 @@ class _AnimationPanelState extends State<AnimationPanel> {
 
   String? _was;
 
+  /// _strip is how tall the Keys strip over the cards is, while it is open;
+  /// the cards have the rest (see _room).
+  double _strip = 0;
+
+  double get _room => widget.height - _strip;
+
+  /// _withKeys is [cards] under the Keys strip of [e], where it is open
+  /// (Ken, 2026-11-12: "opens above" the cards, as Curves opens instead).
+  Widget _withKeys(CanvasElement e, Widget cards) {
+    if (!controller.keysShown) return cards;
+    return Column(children: [
+      KeysStrip(
+          key: ValueKey("keysStrip-${e.id}"),
+          controller: controller,
+          element: e,
+          height: _strip),
+      Expanded(child: cards),
+    ]);
+  }
+
+  /// _stripFor sets [_strip] for [e]: as tall as its rows, leaving the
+  /// cards room.
+  void _stripFor(CanvasElement? e) {
+    if (e == null || !controller.keysShown) {
+      _strip = 0;
+      return;
+    }
+    var most = math.max(KeysStrip.leastHeight, widget.height - 200);
+    _strip = KeysStrip.heightFor(KeysStrip.rowsFor(controller, e), most);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -158,8 +191,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
       onFold: () => setState(
           () => _folded.contains(id) ? _folded.remove(id) : _folded.add(id)),
       width: width,
-      height: widget.height - 40,
-      drawnHeight: widget.height - 40,
+      height: _room - 40,
+      drawnHeight: _room - 40,
       actions: actions,
       // Behind its "?", read when clicked: the Chain shows no tips on hover.
       help: help ?? "",
@@ -290,6 +323,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
   }
 
   Widget _body(BuildContext context) {
+    _strip = 0;
     if (controller.pickedScene case var scene?) {
       return _sceneBody(context, scene);
     }
@@ -323,6 +357,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
       );
     }
     var (e, c) = picked;
+    _stripFor(e);
     // Its Curves, across the whole panel (the Chain's Curves tab), as the
     // chain prototype's curve editor.
     if (controller.motionCurvesShown && !c.isSound) {
@@ -340,7 +375,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
         ),
       );
     }
-    var h = widget.height - 40;
+    var h = _room - 40;
     var studio = MixerLook.of(context).studio;
     void edit(MotionClip Function(MotionClip) change, {bool live = false}) =>
         _edit(e, change, live: live);
@@ -353,18 +388,15 @@ class _AnimationPanelState extends State<AnimationPanel> {
       key: const ValueKey("animationPanel"),
       height: widget.height,
       color: studio.panel,
-      child: ListView(
+      child: _withKeys(e, ListView(
         scrollDirection: Axis.horizontal,
         // Every card built, not only those in view: one asked for by the
         // settings panel is scrolled to (see _showFocus).
         cacheExtent: 100000,
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
         children: [
-          // Its keyframes first (Ken, 2026-11-09: keyframing in the Chain).
-          if (controller.keyframeTarget != null) ...[
-            _zone("Keyframes", "When its keyframes are: picked, moved, copied"),
-            _keyframesCard(),
-          ],
+          // Its keyframes are the Keys strip's (Ken, 2026-11-12): the
+          // Keyframes card is gone.
           // The element and its copies first: what the rest edits (Ken,
           // 2026-11-08).
           _zone("Copies", "The element and its copies: which the chain edits"),
@@ -419,29 +451,8 @@ class _AnimationPanelState extends State<AnimationPanel> {
           ..._chain(e),
           _outputCard(e),
         ].expand((w) => [w, const SizedBox(width: 6)]).toList(),
-      ),
+      )),
     );
-  }
-
-  /// _keyframesCard is the Keyframes card: the picked element's own
-  /// keyframes, a team player's, or a path's points (see KeyframesCard).
-  ///
-  /// Folded at first where there are no keyframes yet, there being nothing
-  /// to see; opened at first where there are.
-  Widget _keyframesCard() {
-    // Folded at first with nothing on it: no keyframes, and no loop.
-    var empty = (controller.keyframeTarget?.track.isEmpty ?? true) &&
-        controller.keyframeLoop == null;
-    var mark = empty ? "keyframes:open" : "keyframes:shut";
-    var folded = empty ? !_folded.contains(mark) : _folded.contains(mark);
-    return KeyframesCard(
-        key: const ValueKey("keyframesCard"),
-        controller: controller,
-        height: widget.height - 40,
-        onCurves: (frame) => controller.showTrackCurves(frame: frame),
-        folded: folded,
-        onFold: () => setState(() =>
-            _folded.contains(mark) ? _folded.remove(mark) : _folded.add(mark)));
   }
 
   /// _outputCard is where [e]'s chain ends (see MotionOutputCard).
@@ -449,7 +460,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
       key: const ValueKey("motionOutputCard"),
       controller: controller,
       element: e,
-      height: widget.height - 40,
+      height: _room - 40,
       folded: _folded.contains("output:${e.id}"),
       onFold: () => setState(() => _folded.contains("output:${e.id}")
           ? _folded.remove("output:${e.id}")
@@ -465,7 +476,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
       onFold: () => setState(() => _folded.contains("parts:${e.id}")
           ? _folded.remove("parts:${e.id}")
           : _folded.add("parts:${e.id}")),
-      height: widget.height - 40);
+      height: _room - 40);
 
   /// _instancesCard is [e]'s copies, the chain's first card: see
   /// InstancesCard.
@@ -477,7 +488,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
       onFold: () => setState(() => _folded.contains("instances:${e.id}")
           ? _folded.remove("instances:${e.id}")
           : _folded.add("instances:${e.id}")),
-      height: widget.height - 40);
+      height: _room - 40);
 
   /// _clipsCard is the Source's first card: [e]'s clips, [c] the one
   /// picked (see MotionClipsCard).
@@ -488,7 +499,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
           controller: controller,
           element: e,
           clip: c,
-          height: widget.height - 40,
+          height: _room - 40,
           folded: _folded.contains("motionClips:${e.id}"),
           onFold: () => setState(() => _folded.contains("motionClips:${e.id}")
               ? _folded.remove("motionClips:${e.id}")
@@ -498,7 +509,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
   /// a way to add one, its drawing, its looks and a way to add one -- the
   /// drawing between the two sides, as rule 1 has it.
   List<Widget> _chain(CanvasElement e) {
-    var h = widget.height - 40;
+    var h = _room - 40;
     var devices = controller.motionDevicesOf(e.id);
     Widget card(MotionDevice d) => KeyedSubtree(
         key: _focusKey(d.id),
@@ -632,11 +643,18 @@ class _AnimationPanelState extends State<AnimationPanel> {
   /// _chainOnly is an element with no clips: its chain alone.
   Widget _chainOnly(BuildContext context, CanvasElement e) {
     var colors = ThemeNotifier.of(context).colors;
+    _stripFor(e);
     return Container(
       key: const ValueKey("animationPanel"),
       height: widget.height,
       color: colors.surfaceContainerLow,
       child: Column(children: [
+        if (controller.keysShown)
+          KeysStrip(
+              key: ValueKey("keysStrip-${e.id}"),
+              controller: controller,
+              element: e,
+              height: _strip),
         Expanded(
           child: ListView(
             scrollDirection: Axis.horizontal,
@@ -644,11 +662,6 @@ class _AnimationPanelState extends State<AnimationPanel> {
             cacheExtent: 100000,
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
             children: [
-              if (controller.keyframeTarget != null) ...[
-                _zone("Keyframes",
-                    "When its keyframes are: picked, moved, copied"),
-                _keyframesCard(),
-              ],
               _zone("Copies",
                   "The element and its copies: which the chain edits"),
               _instancesCard(e),

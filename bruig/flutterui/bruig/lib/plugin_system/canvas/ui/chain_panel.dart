@@ -334,6 +334,22 @@ extension on _ChainPanelState {
             on: c.motionCurvesShown,
             look: look,
             onTap: () => c.showMotionCurves(e.id, clip)),
+      // The Keys strip, opened over the cards and shut again (Ken,
+      // 2026-11-12), and what of the chain is shown: all of it, or what
+      // plays in one phase.
+      if (e != null && !c.motionCurvesShown) ...[
+        const SizedBox(width: 6),
+        _KeysToggle(look: look, on: c.keysShown,
+            onTap: () => c.keysShown = !c.keysShown),
+        const SizedBox(width: 8),
+        _Segments(look: look, items: [
+          ("chainPhase-all", "All", c.chainPhase == null,
+              () => c.chainPhase = null),
+          for (var ph in MotionPhase.values)
+            ("chainPhase-${ph.name}", ph.label, c.chainPhase == ph,
+                () => c.chainPhase = ph),
+        ]),
+      ],
       // Copies picked: what the chain edits is theirs alone (Ken,
       // 2026-11-08), with a way back to all of them.
       if (e != null && c.copiesPicked(e.id)) ...[
@@ -934,6 +950,46 @@ class _ChainTab extends StatelessWidget {
                   size: 14, color: on ? look.studio.text : look.studio.muted),
               const SizedBox(width: 5),
               Text(label,
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      color: on ? look.studio.text : look.studio.muted)),
+            ]),
+          ),
+        ),
+      );
+}
+
+/// _KeysToggle opens and shuts the Keys strip over the Chain's cards.
+class _KeysToggle extends StatelessWidget {
+  final MixerLook look;
+  final bool on;
+  final VoidCallback onTap;
+  const _KeysToggle({required this.look, required this.on, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        button: true,
+        toggled: on,
+        child: InkWell(
+          key: const ValueKey("chainKeys"),
+          borderRadius: BorderRadius.circular(6),
+          onTap: onTap,
+          child: Container(
+            height: 24,
+            padding: const EdgeInsets.symmetric(horizontal: 9),
+            decoration: BoxDecoration(
+              color: on ? look.colors.primary.withValues(alpha: 0.14) : null,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                  color: on
+                      ? look.colors.primary.withValues(alpha: 0.6)
+                      : look.studio.edge),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              ChainIcon("diamond",
+                  size: 14, color: on ? look.studio.text : look.studio.muted),
+              const SizedBox(width: 5),
+              Text("Keys",
                   style: TextStyle(
                       fontSize: 11.5,
                       color: on ? look.studio.text : look.studio.muted)),

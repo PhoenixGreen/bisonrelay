@@ -78,7 +78,7 @@ const double _stripGap = 8;
 
 /// _stripHeight is the strip: the ruler, with its markers and cues. The
 /// keyframes are the Chain's (Ken, 2026-11-09: "I'd like keyframing done in
-/// the chain"): see keyframes_card.dart.
+/// the chain"): see keys_strip.dart.
 const double _stripHeight = _rulerHeight + 2;
 
 /// _notesGutter is the empty band kept along the bottom of the strip, clear

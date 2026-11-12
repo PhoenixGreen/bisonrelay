@@ -196,27 +196,27 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets("from the Keyframes card, in the Motion view, and closed back",
+  testWidgets("from the Keys strip, in the Motion view, and closed back",
       (tester) async {
     var c = make();
     addTearDown(c.dispose);
+    c.keysShown = true;
+    addTearDown(() => c.keysShown = false);
     tester.view.physicalSize = const Size(1600, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(host(AnimationPanel(controller: c, height: 360)));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey("keyframesCard")), findsOneWidget);
-    var curves = find.byKey(const ValueKey("keyframesCurves"));
-    await tester.ensureVisible(curves);
-    await tester.tap(curves);
+    expect(find.byKey(const ValueKey("keysStrip")), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey("keysCurves")));
     await tester.pumpAndSettle();
     expect(c.trackCurvesShown, isTrue);
     expect(find.byKey(const ValueKey("trackCurvesPanel")), findsOneWidget);
-    expect(find.byKey(const ValueKey("keyframesCard")), findsNothing);
+    expect(find.byKey(const ValueKey("keysStrip")), findsNothing);
     await tester.tap(find.byKey(const ValueKey("trackCurvesClose")));
     await tester.pumpAndSettle();
     expect(c.trackCurvesShown, isFalse);
-    expect(find.byKey(const ValueKey("keyframesCard")), findsOneWidget);
+    expect(find.byKey(const ValueKey("keysStrip")), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
