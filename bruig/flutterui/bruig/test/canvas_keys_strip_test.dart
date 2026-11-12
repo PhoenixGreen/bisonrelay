@@ -10,10 +10,13 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart' show MotionKind;
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/keys_strip.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -140,6 +143,7 @@ void main() {
         {CanvasController Function()? making}) async {
       var c = (making ?? make)();
       addTearDown(c.dispose);
+      addTearDown(() => KeysStrip.clipsHeight = KeysStrip.clipsStart);
       tester.view.physicalSize = const Size(1000, 500);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -174,8 +178,38 @@ void main() {
     /// at is where frame [f] is drawn on row [row] (0 the keyframes).
     Offset at(WidgetTester tester, int f, {int row = 0}) {
       var r = tester.getRect(find.byKey(const ValueKey("keysLanes")));
-      return Offset(r.left + 8 + f / 100 * (r.width - 16),
-          r.top + KeysStrip.rulerHeight + (row + 1.5) * KeysStrip.rowHeight);
+      return Offset(
+          r.left + 8 + f / 100 * (r.width - 16),
+          r.top +
+              KeysStrip.rulerHeight +
+              KeysStrip.clipsHeight +
+              (row + 0.5) * KeysStrip.rowHeight);
+    }
+
+    /// onClips is where second [t] is drawn on the clips row, the whole
+    /// scene showing (100 frames at 24 a second).
+    Offset onClips(WidgetTester tester, double t) {
+      var r = tester.getRect(find.byKey(const ValueKey("keysLanes")));
+      return Offset(r.left + 8 + t * 24 / 100 * (r.width - 16),
+          r.top + KeysStrip.rulerHeight + KeysStrip.clipsHeight / 2);
+    }
+
+    /// arriving is the logo's arrival: an arrival, half a second, from 1 s.
+    CanvasController arriving() {
+      var c = make();
+      c.applyElementAnimation(c.selected!, ElementAnimationPreset.fadeIn);
+      var id = ownClipOf(c.selected!, MotionKind.arrive)!.$2.id;
+      c.movePlacement("logo", id, 1.0);
+      c.stretchPlacement("logo", id, end: 1.5);
+      return c;
+    }
+
+    (double, double) arrival(CanvasController c) {
+      var id =
+          ownClipOf(c.document.elementById("logo")!, MotionKind.arrive)!.$2.id;
+      var s = c.spanOf(id)!;
+      double r(double t) => (t * 24).round() / 24;
+      return (r(s.start), r(s.end));
     }
 
     Future<void> drag(WidgetTester tester, Offset from, Offset to) async {
@@ -188,6 +222,110 @@ void main() {
       await g.up();
       await tester.pump();
     }
+
+    // Ken, 2026-11-12: editing an arrival's start and end in the strip,
+    // its clips could not be moved or stretched, nor the strip zoomed, nor
+    // the clips row made taller.
+    testWidgets("an arrival dragged by its body moves, as one change",
+        (tester) async {
+      var c = await show(tester, making: arriving);
+      expect(arrival(c), (1.0, 1.5));
+      await drag(tester, onClips(tester, 1.25), onClips(tester, 2.25));
+      expect(arrival(c), (2.0, 2.5), reason: "moved a second, length kept");
+      c.undo();
+      expect(arrival(c), (1.0, 1.5), reason: "one undo puts it back");
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("its end dragged lengthens it; its start, the other way",
+        (tester) async {
+      var c = await show(tester, making: arriving);
+      await drag(tester, onClips(tester, 1.5), onClips(tester, 2.5));
+      expect(arrival(c), (1.0, 2.5), reason: "the end out, the start kept");
+      await drag(tester, onClips(tester, 1.0), onClips(tester, 0.5));
+      expect(arrival(c), (0.5, 2.5), reason: "the start in, the end kept");
+      await drag(tester, onClips(tester, 0.5), onClips(tester, 4));
+      expect(arrival(c).$1, lessThan(arrival(c).$2),
+          reason: "never past its own end");
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("pinched, it zooms about the fingers; double-click fits",
+        (tester) async {
+      var c = await show(tester);
+      var lanes = tester.getRect(find.byKey(const ValueKey("keysLanes")));
+      var left = Offset(lanes.left + 8, lanes.top + 10);
+      var pinch = await tester.createGesture(kind: PointerDeviceKind.trackpad);
+      await pinch.panZoomStart(left);
+      await pinch.panZoomUpdate(left, scale: 2);
+      await pinch.panZoomEnd();
+      await tester.pump();
+      // Half the scene shows: the ruler where frame 50 was is now frame 25.
+      await tester.tapAt(Offset(at(tester, 50).dx, lanes.top + 10));
+      await tester.pump();
+      expect(c.frame, closeTo(25, 1));
+      // And dragging a key the same way moves it half as far.
+      await tester.pump(const Duration(milliseconds: 400));
+      await drag(tester, Offset(at(tester, 48).dx, at(tester, 24).dy),
+          Offset(at(tester, 72).dx, at(tester, 24).dy));
+      expect(framesOf(c), [0, 36, 48]);
+
+      var ruler = Offset(lanes.left + 300, lanes.top + 10);
+      await tester.tapAt(ruler);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(ruler);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tapAt(Offset(at(tester, 50).dx, lanes.top + 10));
+      await tester.pump();
+      expect(c.frame, closeTo(50, 1), reason: "the whole scene again");
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("⌘-scroll zooms; a sideways scroll pans", (tester) async {
+      var c = await show(tester);
+      var lanes = tester.getRect(find.byKey(const ValueKey("keysLanes")));
+      var left = Offset(lanes.left + 8, lanes.top + 10);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      // exp(166.4 / 240) is 2.
+      tester.binding.handlePointerEvent(PointerScrollEvent(
+          position: left, scrollDelta: const Offset(0, -166.4)));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pump();
+      await tester.tapAt(Offset(at(tester, 50).dx, lanes.top + 10));
+      await tester.pump();
+      expect(c.frame, closeTo(25, 1));
+      // Panned right by a quarter of the lanes: an eighth of the scene on.
+      // (Tapped elsewhere: the same spot again at once is a double-click,
+      // which fits the scene.)
+      tester.binding.handlePointerEvent(PointerScrollEvent(
+          position: left, scrollDelta: Offset((lanes.width - 16) / 4, 0)));
+      await tester.pump();
+      await tester.tapAt(Offset(at(tester, 60).dx, lanes.top + 10));
+      await tester.pump();
+      expect(c.frame, closeTo(42.5, 1));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the clips row's edge drags it taller, from either side",
+        (tester) async {
+      await show(tester, making: arriving);
+      var label = find.byKey(const ValueKey("keysLabel-clips"));
+      var was = tester.getSize(label).height;
+      expect(was, KeysStrip.clipsStart);
+      await tester.drag(
+          find.byKey(const ValueKey("keysClipsGrip")), const Offset(0, 30));
+      await tester.pump();
+      expect(tester.getSize(label).height, was + 30);
+      // And from the lanes' side, its line dragged back.
+      var lanes = tester.getRect(find.byKey(const ValueKey("keysLanes")));
+      var line = lanes.top + KeysStrip.rulerHeight + KeysStrip.clipsHeight;
+      await drag(tester, Offset(lanes.left + 300, line),
+          Offset(lanes.left + 300, line - 40));
+      expect(tester.getSize(label).height, was - 10);
+      expect(KeysStrip.clipsHeight, was - 10);
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets("a keyframe clicked: picked, and the playhead goes to it",
         (tester) async {
@@ -344,6 +482,69 @@ void main() {
   // Ken, 2026-11-12: a short Chain with Keys open squeezed the cards below
   // their headers -- a red screen. The cards keep their room, or the strip
   // shows alone.
+  // Ken, 2026-11-12: "when I click a different element the clips shown are
+  // still the previous" -- a clip picked kept the Chain on its element
+  // after another was selected.
+  group("another element selected", () {
+    CanvasController two() {
+      var c = CanvasController(
+          CanvasDocument(frames: 100, frameRate: 24, elements: [
+        logo(),
+        ShapeElement(const ElementBase(
+            id: "badge", name: "Badge", width: 20, height: 20)),
+      ]));
+      for (var id in ["logo", "badge"]) {
+        c.selectOnly(id);
+        c.applyElementAnimation(c.selected!, ElementAnimationPreset.fadeIn);
+      }
+      c.selectOnly("logo");
+      var p = ownClipOf(c.selected!, MotionKind.arrive)!.$2;
+      c.pickMotion("logo", p.clip, placement: p.id);
+      return c;
+    }
+
+    test("lets go of the clip picked on the one before", () {
+      var c = two();
+      addTearDown(c.dispose);
+      expect(c.pickedMotion, isNotNull);
+      c.selectOnly("badge");
+      expect(c.pickedMotion, isNull, reason: "the badge's own shows");
+      expect(c.pickedPlacement, isNull);
+      c.selectOnly("logo");
+      expect(c.pickedMotion, isNotNull,
+          reason: "back on the logo, its pick is still its");
+    });
+
+    testWidgets("the Chain and its Keys follow it", (tester) async {
+      var c = two();
+      addTearDown(c.dispose);
+      c.keysShown = true;
+      addTearDown(() => c.keysShown = false);
+      tester.view.physicalSize = const Size(1600, 520);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: Align(
+                    alignment: Alignment.topLeft,
+                    child: AnimationPanel(controller: c, height: 480)))),
+      ));
+      await tester.pump();
+      expect(find.byKey(const ValueKey("keysStrip-logo")), findsOneWidget);
+      c.selectOnly("badge");
+      await tester.pump();
+      expect(find.byKey(const ValueKey("keysStrip-badge")), findsOneWidget);
+      expect(find.byKey(const ValueKey("keysStrip-logo")), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group("Keys open in a short Chain", () {
     for (var clip in [false, true]) {
       for (var scale in [1.0, 1.5]) {

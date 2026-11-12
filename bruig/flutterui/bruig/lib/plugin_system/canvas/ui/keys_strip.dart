@@ -2,7 +2,11 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart'
+    show MotionKind, ClipSpan;
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart';
+import 'package:bruig/plugin_system/canvas/model/own_motion.dart'
+    show ownClipOf;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show elementPhaseSpans;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -14,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart'
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -25,6 +30,14 @@ import 'package:flutter/services.dart';
 // Pick a key to change it in the inspector on the right; drag it to retime
 // it; double-click a row to add one; Delete takes it away. Click or drag the
 // ruler to move the playhead. It took the Keyframes card's place.
+//
+// Ken, 2026-11-12, editing an arrival's start and end: it could not be
+// zoomed, nor its clips moved or stretched, nor its clips row made taller.
+// Pinch (or ⌘-scroll) zooms about the pointer, a sideways swipe (or
+// shift-scroll) pans, double-clicking the ruler fits the scene again. An
+// arrival or a leaving is dragged by its body to move it and by an end to
+// lengthen or shorten it, as on the timeline; the clips row's bottom edge
+// drags it taller.
 
 /// phaseColour is what a key, a clip or a card's button is drawn in for
 /// where it plays.
@@ -89,6 +102,14 @@ class KeysStrip extends StatefulWidget {
   static const rulerHeight = 36.0;
   static const rowHeight = 26.0;
 
+  /// clipsHeight is the clips row's: taller than a keys row, to take hold
+  /// of a clip and its ends, and dragged taller or shorter by its bottom
+  /// edge -- kept as last left, for every element.
+  static double clipsHeight = clipsStart;
+  static const clipsStart = 44.0;
+  static const clipsLeast = 26.0;
+  static const clipsMost = 140.0;
+
   /// rowsFor are how many rows [e]'s strip has under its ruler: its
   /// clips, its own keyframes where it has a track to show, and a row a
   /// keyed setting.
@@ -102,8 +123,10 @@ class KeysStrip extends StatefulWidget {
 
   /// heightFor is the strip's height with [rows] rows under its ruler,
   /// within [most].
-  static double heightFor(int rows, double most) =>
-      math.min(most, math.max(leastHeight, rulerHeight + rows * rowHeight + 1));
+  static double heightFor(int rows, double most) => math.min(
+      most,
+      math.max(
+          leastHeight, rulerHeight + clipsHeight + (rows - 1) * rowHeight + 1));
 
   /// leastHeight is as short as it goes: the inspector's two lines.
   static const leastHeight = 100.0;
@@ -111,7 +134,8 @@ class KeysStrip extends StatefulWidget {
   /// startHeight is as tall as it opens, until it is dragged (Ken,
   /// 2026-11-12: "should start minimal and also be able to be resized"):
   /// the ruler and three rows.
-  static const startHeight = rulerHeight + 3 * rowHeight + 10;
+  static double get startHeight =>
+      rulerHeight + clipsHeight + 2 * rowHeight + 10;
 
   @override
   State<KeysStrip> createState() => _KeysStripState();
@@ -129,6 +153,20 @@ class _KeysStripState extends State<KeysStrip> {
   final Set<int> _frames = {};
 
   String? _said;
+
+  /// _zoom is how much of the scene shows: 1 the whole of it, 4 a quarter;
+  /// _from is the second at the lanes' left edge.
+  double _zoom = 1;
+  double _from = 0;
+
+  /// _scale is a pinch's last scale, to zoom by how much it changed.
+  double _scale = 1;
+
+  MouseCursor _cursor = MouseCursor.defer;
+
+  /// _g is the lanes' geometry as last laid out, for the pointer's signals
+  /// and hovering.
+  _Geometry? _g;
 
   @override
   void dispose() {
@@ -170,8 +208,128 @@ class _KeysStripState extends State<KeysStrip> {
   /// 0 the keyframes where shown, then the lanes; null below them all.
   int? _rowAt(double y) {
     if (y < KeysStrip.rulerHeight) return -2;
-    var r = ((y - KeysStrip.rulerHeight) / KeysStrip.rowHeight).floor();
-    return r - 1;
+    var below = y - KeysStrip.rulerHeight - KeysStrip.clipsHeight;
+    if (below < 0) return -1;
+    return (below / KeysStrip.rowHeight).floor();
+  }
+
+  // ---- zooming and panning ----
+
+  /// _mostZoom is as close as it goes: a frame 30 px wide.
+  double _mostZoom(_Geometry g) => math.max(
+      1, _scene * 30 * _rate / math.max(1, g.width - 2 * _Geometry.pad));
+
+  /// _zoomAbout zooms by [factor], keeping the moment under [x] where it is.
+  void _zoomAbout(double factor, double x) {
+    var g = _g;
+    if (g == null || !factor.isFinite || factor <= 0) return;
+    var at = g.from + (x - _Geometry.pad) / g.perSecond;
+    var zoom = (_zoom * factor).clamp(1.0, _mostZoom(g));
+    var shown = _scene / zoom;
+    var per = math.max(1, g.width - 2 * _Geometry.pad) / shown;
+    setState(() {
+      _zoom = zoom;
+      _from = (at - (x - _Geometry.pad) / per).clamp(0.0, _scene - shown);
+    });
+  }
+
+  /// _panBy moves the view [dx] px, as a swipe drags it.
+  void _panBy(double dx) {
+    var g = _g;
+    if (g == null || _zoom <= 1) return;
+    setState(() =>
+        _from = (_from - dx / g.perSecond).clamp(0.0, _scene - _scene / _zoom));
+  }
+
+  void _fit() => setState(() {
+        _zoom = 1;
+        _from = 0;
+      });
+
+  void _signal(PointerSignalEvent ev) {
+    if (ev is PointerScaleEvent) {
+      GestureBinding.instance.pointerSignalResolver
+          .register(ev, (_) => _zoomAbout(ev.scale, ev.localPosition.dx));
+      return;
+    }
+    if (ev is! PointerScrollEvent) return;
+    var keys = HardwareKeyboard.instance;
+    var d = ev.scrollDelta;
+    if (keys.isMetaPressed || keys.isControlPressed) {
+      GestureBinding.instance.pointerSignalResolver.register(
+          ev,
+          (_) => _zoomAbout(
+              math.exp(-(d.dy == 0 ? d.dx : d.dy) / 240), ev.localPosition.dx));
+    } else if (keys.isShiftPressed || d.dx.abs() > d.dy.abs()) {
+      // Sideways: the view, not the rows -- the rows keep the up and down.
+      GestureBinding.instance.pointerSignalResolver
+          .register(ev, (_) => _panBy(-(d.dx != 0 ? d.dx : d.dy)));
+    }
+  }
+
+  void _pinchStart(PointerPanZoomStartEvent ev) => _scale = 1;
+
+  void _pinch(PointerPanZoomUpdateEvent ev) {
+    if (ev.scale != _scale) {
+      _zoomAbout(ev.scale / _scale, ev.localPosition.dx);
+      _scale = ev.scale;
+    }
+    // A two-finger swipe across pans; up and down is the rows' scrolling.
+    if (ev.panDelta.dx.abs() > ev.panDelta.dy.abs()) _panBy(ev.panDelta.dx);
+  }
+
+  // ---- the clips row ----
+
+  /// _clipsLine is where the clips row's bottom edge is, its grip.
+  double get _clipsLine => KeysStrip.rulerHeight + KeysStrip.clipsHeight;
+
+  /// _clipAt is the arrival or leaving under [x] on the clips row, and
+  /// which of it: an end within reach, or its body.
+  (String, _Grip, ClipSpan)? _clipAt(double x, _Geometry g) {
+    var f = c.chainPhase;
+    (String, _Grip, ClipSpan, double)? best;
+    for (var (kind, ph) in const [
+      (MotionKind.arrive, MotionPhase.arrive),
+      (MotionKind.leave, MotionPhase.leave),
+    ]) {
+      if (f != null && f != ph) continue;
+      var own = ownClipOf(e, kind);
+      if (own == null) continue;
+      var span = c.spanOf(own.$2.id);
+      if (span == null) continue;
+      var a = g.xOf(span.start), b = math.max(a + 4, g.xOf(span.end));
+      // The ends first, reached a little outside the clip too; on a clip
+      // too short for both, the nearer.
+      for (var (grip, at) in [(_Grip.start, a), (_Grip.end, b)]) {
+        var dx = (x - at).abs();
+        if (dx <= 6 && (best == null || dx < best.$4)) {
+          best = (own.$2.id, grip, span, dx);
+        }
+      }
+      if (best == null && x > a && x < b) {
+        best = (own.$2.id, _Grip.body, span, 1e9);
+      }
+    }
+    return best == null ? null : (best.$1, best.$2, best.$3);
+  }
+
+  void _hover(PointerHoverEvent ev) {
+    var g = _g;
+    if (g == null) return;
+    var y = ev.localPosition.dy;
+    MouseCursor want = MouseCursor.defer;
+    if ((y - _clipsLine).abs() <= 4) {
+      want = SystemMouseCursors.resizeRow;
+    } else if (_rowAt(y) == -1) {
+      switch (_clipAt(ev.localPosition.dx, g)?.$2) {
+        case _Grip.start || _Grip.end:
+          want = SystemMouseCursors.resizeColumn;
+        case _Grip.body:
+          want = SystemMouseCursors.grab;
+        case null:
+      }
+    }
+    if (want != _cursor) setState(() => _cursor = want);
   }
 
   void _down(PointerDownEvent ev, _Geometry g) {
@@ -186,6 +344,17 @@ class _KeysStripState extends State<KeysStrip> {
     _lastDown = (now, row ?? -3, x);
     var shift = HardwareKeyboard.instance.isShiftPressed;
     var hasTrack = _track != null;
+    // The clips row's bottom edge: dragged, its height.
+    if ((y - _clipsLine).abs() <= 4) {
+      // On the screen, not in the rows: they may scroll under a touch.
+      _drag = _Drag.rows(ev.position.dy, KeysStrip.clipsHeight);
+      return;
+    }
+    // The ruler double-clicked: the whole scene again.
+    if (row == -2 && twice && _zoom > 1) {
+      _fit();
+      return;
+    }
     // The loop's ends, on the clips row: dragged, where it starts and stops.
     if (row == -1) {
       if (_loopBar case (var a, var b)) {
@@ -194,6 +363,14 @@ class _KeysStripState extends State<KeysStrip> {
           _drag = _Drag.loop(stop < start);
           return;
         }
+      }
+      // The arrival and the leaving: moved by the body, stretched by an end.
+      if (_clipAt(x, g) case (var id, var grip, var span)) {
+        _drag = _Drag.clip(x, id, grip, span);
+        if (grip == _Grip.body) {
+          setState(() => _cursor = SystemMouseCursors.grabbing);
+        }
+        return;
       }
     }
     var lanes = _lanes;
@@ -278,6 +455,41 @@ class _KeysStripState extends State<KeysStrip> {
       c.frame = g.frameAt(x, c.document.frames);
       return;
     }
+    if (d.rowsFrom case var from?) {
+      var h = (from + ev.position.dy - d.x)
+          .clamp(KeysStrip.clipsLeast, KeysStrip.clipsMost);
+      setState(() => KeysStrip.clipsHeight = h);
+      return;
+    }
+    if (d.clip case var id?) {
+      if (!d.moved && (x - d.x).abs() < 3) return;
+      if (!d.moved) {
+        c.pause();
+        c.beginInteraction();
+      }
+      d.moved = true;
+      // A frame at a time, as the keys move.
+      double snap(double t) => (t * _rate).round() / _rate;
+      var span = d.span!;
+      var by = (x - d.x) / g.perSecond;
+      switch (d.grip!) {
+        case _Grip.body:
+          var to = snap(math.max(0, span.start + by));
+          if (c.movePlacement(e.id, id, to, transient: true)) d.unpinned = true;
+          c.frame = (to * _rate).round().clamp(0, c.document.frames - 1);
+        case _Grip.start:
+          var to = snap(math.min(span.start + by, span.end - 1 / _rate));
+          c.stretchPlacement(e.id, id, start: math.max(0, to), transient: true);
+          c.frame =
+              (math.max(0, to) * _rate).round().clamp(0, c.document.frames - 1);
+        case _Grip.end:
+          var to = snap(math.max(span.start + 1 / _rate, span.end + by));
+          c.stretchPlacement(e.id, id, end: to, transient: true);
+          // The frame it has arrived (or gone) by.
+          c.frame = (to * _rate).round().clamp(1, c.document.frames) - 1;
+      }
+      return;
+    }
     if (d.loopEnd case var end?) {
       if (!d.moved) c.beginInteraction();
       d.moved = true;
@@ -316,7 +528,19 @@ class _KeysStripState extends State<KeysStrip> {
   void _up(PointerEvent ev) {
     var d = _drag;
     _drag = null;
+    if (_cursor == SystemMouseCursors.grabbing) {
+      setState(() => _cursor = SystemMouseCursors.grab);
+    }
     if (d != null && d.moved) c.endInteraction();
+    if (d == null) return;
+    // A clip clicked, not dragged: the playhead there, as a click anywhere.
+    if (d.clip != null && !d.moved) {
+      if (_g case var g?) c.frame = g.frameAt(d.x, c.document.frames);
+    }
+    if (d.unpinned) {
+      _say("Moved by hand, it let go of what it was pinned to -- a word of "
+          "the voice, or another clip: it stays where it was put.");
+    }
   }
 
   /// _loopBar is where the element's own loop plays, in seconds, where its
@@ -528,7 +752,7 @@ class _KeysStripState extends State<KeysStrip> {
                 style: TextStyle(
                     fontSize: 10.5, letterSpacing: 0.84, color: studio.muted)),
           ),
-          labelRow("clips", "Clips", ""),
+          _clipsLabel(studio, bold),
           if (track != null)
             labelRow("keyframes", track.points ? "Points" : "Keyframes",
                 track.points ? "" : "its own"),
@@ -539,38 +763,57 @@ class _KeysStripState extends State<KeysStrip> {
       ),
       Expanded(
         child: LayoutBuilder(builder: (context, box) {
-          var g = _Geometry(box.maxWidth, _scene);
+          var shown = _scene / _zoom;
+          _from = _from.clamp(0.0, math.max(0.0, _scene - shown));
+          var g = _Geometry(box.maxWidth, _scene, from: _from, shown: shown);
+          _g = g;
           var spans = elementPhaseSpans(e, c.document);
-          return Listener(
-            key: const ValueKey("keysLanes"),
-            behavior: HitTestBehavior.opaque,
-            onPointerDown: (ev) => _down(ev, g),
-            onPointerMove: (ev) => _move(ev, g),
-            onPointerUp: _up,
-            onPointerCancel: _up,
-            child: CustomPaint(
-              size: Size(box.maxWidth,
-                  KeysStrip.rulerHeight + (rows + 1) * KeysStrip.rowHeight),
-              painter: _LanesPainter(
-                font: DefaultTextStyle.of(context).style.fontFamily,
-                loopBar: _loopBar,
-                frameRate: _rate,
-                geometry: g,
-                studio: studio,
-                spans: spans,
-                filter: c.chainPhase,
-                playhead: c.frame / _rate,
-                words: _words(),
-                clipNames: _clipNames(),
-                track: track,
-                trackPicked: {..._frames},
-                lanes: [
-                  for (var l in lanes) (l, _marksOf(l, spans)),
-                ],
-                pick: _pick,
-              ),
-            ),
-          );
+          return MouseRegion(
+              cursor: _cursor,
+              onHover: _hover,
+              onExit: (_) {
+                if (_cursor != MouseCursor.defer) {
+                  setState(() => _cursor = MouseCursor.defer);
+                }
+              },
+              child: Listener(
+                key: const ValueKey("keysLanes"),
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (ev) => _down(ev, g),
+                onPointerMove: (ev) => _move(ev, g),
+                onPointerUp: _up,
+                onPointerCancel: _up,
+                onPointerSignal: _signal,
+                onPointerPanZoomStart: _pinchStart,
+                onPointerPanZoomUpdate: _pinch,
+                child: CustomPaint(
+                  size: Size(
+                      box.maxWidth,
+                      KeysStrip.rulerHeight +
+                          KeysStrip.clipsHeight +
+                          rows * KeysStrip.rowHeight),
+                  painter: _LanesPainter(
+                    clipsHeight: KeysStrip.clipsHeight,
+                    zoomed: _zoom > 1,
+                    font: DefaultTextStyle.of(context).style.fontFamily,
+                    loopBar: _loopBar,
+                    frameRate: _rate,
+                    geometry: g,
+                    studio: studio,
+                    spans: spans,
+                    filter: c.chainPhase,
+                    playhead: c.frame / _rate,
+                    words: _words(),
+                    clipNames: _clipNames(),
+                    track: track,
+                    trackPicked: {..._frames},
+                    lanes: [
+                      for (var l in lanes) (l, _marksOf(l, spans)),
+                    ],
+                    pick: _pick,
+                  ),
+                ),
+              ));
         }),
       ),
     ]);
@@ -600,6 +843,40 @@ class _KeysStripState extends State<KeysStrip> {
       ),
     );
   }
+
+  /// _clipsLabel is the clips row's name, its bottom edge a grip that
+  /// drags the row taller or shorter.
+  Widget _clipsLabel(StudioColors studio, TextStyle bold) => SizedBox(
+        key: const ValueKey("keysLabel-clips"),
+        height: KeysStrip.clipsHeight,
+        child: Stack(children: [
+          Positioned.fill(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              alignment: Alignment.centerLeft,
+              decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: studio.edge))),
+              child: Text("Clips", style: bold),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 7,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.resizeRow,
+              child: GestureDetector(
+                key: const ValueKey("keysClipsGrip"),
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragUpdate: (d) => setState(() =>
+                    KeysStrip.clipsHeight = (KeysStrip.clipsHeight + d.delta.dy)
+                        .clamp(KeysStrip.clipsLeast, KeysStrip.clipsMost)),
+              ),
+            ),
+          ),
+        ]),
+      );
 
   /// _addRow is "+ Row": any setting of its chain not keyed yet -- its
   /// looks', its Design's -- keyed at the playhead, so a row for it (Ken,
@@ -940,10 +1217,23 @@ class _Mark {
   const _Mark(this.ph, this.i, this.t, this.key);
 }
 
+/// _Grip is which of a clip is taken hold of.
+enum _Grip { start, body, end }
+
 class _Drag {
   final double x;
   final double from;
   final bool scrub;
+
+  /// clip is the arrival or leaving dragged, by [grip], as it was: [span].
+  String? clip;
+  _Grip? grip;
+  ClipSpan? span;
+  bool unpinned = false;
+
+  /// rowsFrom is the clips row's height as its edge was taken, [x] then
+  /// the pointer's height on the screen.
+  double? rowsFrom;
 
   /// loopEnd is which end of the loop is dragged: its stop (true) or start.
   bool? loopEnd;
@@ -963,6 +1253,12 @@ class _Drag {
         from = 0,
         scrub = false,
         loopEnd = end;
+  _Drag.clip(this.x, String this.clip, _Grip this.grip, ClipSpan this.span)
+      : from = 0,
+        scrub = false;
+  _Drag.rows(this.x, double this.rowsFrom)
+      : from = 0,
+        scrub = false;
 }
 
 /// _Geometry is where a moment is drawn across the lanes.
@@ -970,11 +1266,17 @@ class _Geometry {
   static const pad = 8.0;
   final double width;
   final double scene;
-  const _Geometry(this.width, this.scene);
 
-  double get perSecond => math.max(1, width - 2 * pad) / scene;
-  double xOf(double t) => pad + t * perSecond;
-  double timeAt(double x) => ((x - pad) / perSecond).clamp(0.0, scene);
+  /// from is the second at the left edge, and shown how many seconds show:
+  /// all of the scene, or zoomed into some of it.
+  final double from;
+  final double shown;
+  const _Geometry(this.width, this.scene, {this.from = 0, double? shown})
+      : shown = shown ?? scene;
+
+  double get perSecond => math.max(1, width - 2 * pad) / shown;
+  double xOf(double t) => pad + (t - from) * perSecond;
+  double timeAt(double x) => (from + (x - pad) / perSecond).clamp(0.0, scene);
   int frameAt(double x, int frames) =>
       (timeAt(x) / scene * frames).round().clamp(0, math.max(0, frames - 1));
 }
@@ -1002,7 +1304,14 @@ class _LanesPainter extends CustomPainter {
   /// font is the app's, for the ruler and the clips' names.
   final String? font;
 
+  /// clipsHeight is the clips row's height; zoomed, whether only some of
+  /// the scene shows.
+  final double clipsHeight;
+  final bool zoomed;
+
   _LanesPainter({
+    required this.clipsHeight,
+    required this.zoomed,
     required this.font,
     required this.loopBar,
     required this.frameRate,
@@ -1078,16 +1387,42 @@ class _LanesPainter extends CustomPainter {
     // The ruler: a tick a second (fewer on a long scene) and the words.
     canvas.drawRect(
         Rect.fromLTWH(0, 0, size.width, _ruler), Paint()..color = studio.inset);
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    // Zoomed in far enough, a tick a frame between the seconds' marks.
+    var frameEvery = g.perSecond / frameRate;
+    if (frameEvery >= 8) {
+      var tick = Paint()..color = studio.edge.withValues(alpha: 0.35);
+      var first = (g.from * frameRate).floor();
+      var last = ((g.from + g.shown) * frameRate).ceil();
+      for (var f = first; f <= last; f++) {
+        var x = g.xOf(f / frameRate);
+        canvas.drawLine(Offset(x, _ruler - 5), Offset(x, _ruler), tick);
+      }
+    }
     var every = g.perSecond >= 40
         ? 1
         : g.perSecond >= 12
             ? 5
             : 10;
     var line = Paint()..color = studio.edge.withValues(alpha: 0.5);
-    for (var s = 0; s <= g.scene; s += every) {
+    var firstSecond = (g.from / every).floor() * every;
+    for (var s = firstSecond;
+        s <= g.from + g.shown && s <= g.scene;
+        s += every) {
       var x = g.xOf(s.toDouble());
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), line);
       _text(canvas, "${s}s", Offset(x + 3, 2), mono);
+    }
+    // Zoomed, where the view is in the scene: a bar along the ruler's top.
+    if (zoomed) {
+      var w = size.width - 2 * _Geometry.pad;
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(
+              Rect.fromLTWH(_Geometry.pad + g.from / g.scene * w, 0,
+                  math.max(6, g.shown / g.scene * w), 3),
+              const Radius.circular(1.5)),
+          Paint()..color = studio.text.withValues(alpha: 0.45));
     }
     var said = TextStyle(
         fontSize: 10,
@@ -1106,7 +1441,8 @@ class _LanesPainter extends CustomPainter {
       lastEnd = x + tp.width / 2;
     }
     var rowsDivider = Paint()..color = studio.edge.withValues(alpha: 0.35);
-    double rowTop(int r) => _ruler + r * _row;
+    double rowTop(int r) =>
+        r == 0 ? _ruler : _ruler + clipsHeight + (r - 1) * _row;
     void divider(int r) => canvas.drawLine(Offset(0, rowTop(r + 1) - 0.5),
         Offset(size.width, rowTop(r + 1) - 0.5), rowsDivider);
     // The clips: its arrival, loop and leaving.
@@ -1121,8 +1457,8 @@ class _LanesPainter extends CustomPainter {
           : spans.spanOf(ph);
       if (span case (var a, var b)) {
         var to = b.isFinite ? b : g.scene;
-        var r = Rect.fromLTRB(g.xOf(a), rowTop(0) + 4,
-            math.max(g.xOf(a) + 4, g.xOf(to)), rowTop(0) + 22);
+        var r = Rect.fromLTRB(g.xOf(a), rowTop(0) + 5,
+            math.max(g.xOf(a) + 4, g.xOf(to)), rowTop(0) + clipsHeight - 5);
         // A loop with no loop of its own -- only keys to play in it -- dim.
         var faint = ph == MotionPhase.loop && loopBar == null;
         canvas.drawRRect(
@@ -1134,20 +1470,24 @@ class _LanesPainter extends CustomPainter {
         _text(
             canvas,
             clipNames[ph] ?? ph.label,
-            Offset(r.left + 6, r.top + 2),
+            Offset(r.left + 8, r.center.dy - 7.5),
             TextStyle(
                 fontSize: 11,
                 fontFamily: font,
                 fontWeight: FontWeight.w600,
                 color: const Color(0xFF0B0E12)));
         canvas.restore();
-        if (ph == MotionPhase.loop && loopBar != null) {
-          var handle = Paint()..color = const Color(0xFF0B0E12);
-          for (var x in [r.left + 2, r.right - 2]) {
+        // Its ends, where they can be dragged: the loop's where it has its
+        // own, the arrival's and the leaving's always.
+        if (ph != MotionPhase.loop || loopBar != null) {
+          var handle = Paint()
+            ..color = const Color(0xFF0B0E12).withValues(alpha: 0.7);
+          var tall = math.min(20.0, r.height - 8);
+          for (var x in [r.left + 3, r.right - 3]) {
             canvas.drawRRect(
                 RRect.fromRectAndRadius(
                     Rect.fromCenter(
-                        center: Offset(x, r.center.dy), width: 3, height: 10),
+                        center: Offset(x, r.center.dy), width: 3, height: tall),
                     const Radius.circular(1.5)),
                 handle);
           }
@@ -1223,6 +1563,7 @@ class _LanesPainter extends CustomPainter {
     var x = g.xOf(playhead.clamp(0, g.scene).toDouble());
     canvas.drawRect(
         Rect.fromLTWH(x - 1, 0, 2, size.height), Paint()..color = studio.text);
+    canvas.restore();
   }
 
   double _rateOf(KeyframeTarget t) => frameRate;

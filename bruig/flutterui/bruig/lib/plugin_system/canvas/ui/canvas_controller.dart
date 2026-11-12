@@ -861,10 +861,24 @@ class CanvasController extends ChangeNotifier {
   String? _pickedMotion;
   String? _pickedPlacement;
 
+  /// _pickedOf is the element the picked clip is on.
+  String? _pickedOf;
+
+  /// _pickLeft is whether the selection has moved on from the picked
+  /// clip's element: another element clicked. Its clip is no longer what
+  /// the Chain shows (Ken, 2026-11-12: "when I click a different element
+  /// the clips shown are still the previous" -- and Delete took nothing,
+  /// aimed at that clip on the element now picked). The selection changes
+  /// in many places; the pick is let go here, as it is read.
+  bool get _pickLeft =>
+      _pickedOf != null &&
+      _selection.isNotEmpty &&
+      !_selection.contains(_pickedOf);
+
   /// pickedMotion is the clip the Animation panel shows, by id: picked from
   /// a slot, or from the timeline -- then [pickedPlacement] is the place.
-  String? get pickedMotion => _pickedMotion;
-  String? get pickedPlacement => _pickedPlacement;
+  String? get pickedMotion => _pickLeft ? null : _pickedMotion;
+  String? get pickedPlacement => _pickLeft ? null : _pickedPlacement;
 
   Set<(String, String)> _motionPicks = const {};
 
@@ -885,6 +899,7 @@ class CanvasController extends ChangeNotifier {
           ?.clip;
       _pickedMotion = clip;
       _pickedPlacement = clip == null ? null : placement;
+      _pickedOf = clip == null ? null : element;
     } else {
       _pickedMotion = _pickedPlacement = null;
     }
@@ -895,7 +910,7 @@ class CanvasController extends ChangeNotifier {
   /// takes it out: Shift and a click.
   void toggleMotionPick(String element, String placement) {
     var next = {..._motionPicks};
-    if (_pickedPlacement case var p? when next.isEmpty) {
+    if (pickedPlacement case var p? when next.isEmpty) {
       if (_selection.length == 1) next.add((_selection.first, p));
     }
     if (!next.remove((element, placement))) next.add((element, placement));
@@ -916,6 +931,13 @@ class CanvasController extends ChangeNotifier {
     }
     _pickedMotion = clip;
     _pickedPlacement = clip == null ? null : placement;
+    _pickedOf = clip == null
+        ? null
+        : element ??
+            _document.elements
+                .where((e) => e.base.motion.clip(clip) != null)
+                .firstOrNull
+                ?.id;
     _pickedScene = null;
     _ownTab = null;
     _notifyView();
@@ -1867,7 +1889,7 @@ class CanvasController extends ChangeNotifier {
       return;
     }
     // A clip picked on the timeline: that placing of it, not the element.
-    if ((_pickedPlacement, _selection.length) case (var p?, 1)) {
+    if ((pickedPlacement, _selection.length) case (var p?, 1)) {
       var element = _selection.first;
       _pickedMotion = null;
       _pickedPlacement = null;
