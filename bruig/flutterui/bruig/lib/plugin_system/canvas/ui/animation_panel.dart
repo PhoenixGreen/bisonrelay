@@ -456,67 +456,76 @@ class _AnimationPanelState extends State<AnimationPanel> {
               // What follows is the picked clip's -- its style, timing, launch,
               // place and what it plays -- marked as one group in its colour
               // (Ken, 2026-11-12: which preset they belong to was not clear).
-              _zone(_groupName(e, c), "This clip's settings",
-                  colour: _groupColour(e)),
-              ...<Widget>[
-                // The rest of its own style, beside the clip playing it: what the
-                // sidebar's Animation section had (Ken, 2026-11-08).
-                if (OwnStyleCard.shows(e, c))
-                  OwnStyleCard(
-                      key: const ValueKey("ownStyleCard"),
-                      controller: controller,
-                      element: e,
-                      clip: c,
-                      folded: shut("ownStyle"),
-                      onFold: fold("ownStyle"),
-                      height: h),
-                if (c.kind == MotionKind.model) _motionDevice(e, c, colors),
-                MotionTimingCard(
-                    key: const ValueKey("motionTimingCard"),
-                    controller: controller,
-                    element: e,
-                    clip: c,
-                    edit: edit,
-                    height: h,
-                    folded: shut("timing"),
-                    onFold: fold("timing")),
-                // An own arrival's or leaving's launch, place and what it
-                // plays are seldom changed: behind More until asked for
-                // (Ken, 2026-11-12). A clip of its own making shows them.
-                if (_ownGroup(e) && !_moreOpen.contains(e.id))
-                  _moreCard(e, h)
-                else ...[
-                  MotionLaunchCard(
-                      key: const ValueKey("motionLaunchCard"),
+              // Independent picked: what plays on its own, not the preset's.
+              if (!_groupHidden(e))
+                _zone(_groupName(e, c), "This clip's settings",
+                    colour: _groupColour(e)),
+              if (!_groupHidden(e))
+                ...<Widget>[
+                  // The rest of its own style, beside the clip playing it: what the
+                  // sidebar's Animation section had (Ken, 2026-11-08).
+                  if (OwnStyleCard.shows(e, c))
+                    OwnStyleCard(
+                        key: const ValueKey("ownStyleCard"),
+                        controller: controller,
+                        element: e,
+                        clip: c,
+                        folded: shut("ownStyle"),
+                        onFold: fold("ownStyle"),
+                        height: h),
+                  if (c.kind == MotionKind.model) _motionDevice(e, c, colors),
+                  MotionTimingCard(
+                      key: const ValueKey("motionTimingCard"),
                       controller: controller,
                       element: e,
                       clip: c,
                       edit: edit,
                       height: h,
-                      folded: shut("launch"),
-                      onFold: fold("launch"),
-                      triggerName: _triggerName),
-                  if (!c.isSound)
-                    MotionPlaceCard(
-                        key: const ValueKey("motionPlaceCard"),
+                      folded: shut("timing"),
+                      onFold: fold("timing")),
+                  // An own arrival's or leaving's launch, place and what it
+                  // plays are seldom changed: behind More until asked for
+                  // (Ken, 2026-11-12). A clip of its own making shows them.
+                  if (_ownGroup(e) && !_moreOpen.contains(e.id))
+                    _moreCard(e, h)
+                  else ...[
+                    MotionLaunchCard(
+                        key: const ValueKey("motionLaunchCard"),
                         controller: controller,
                         element: e,
                         clip: c,
                         edit: edit,
                         height: h,
-                        folded: shut("place"),
-                        onFold: fold("place")),
-                  if (!c.isSound && _insideShown(e, c))
-                    _insideDevice(e, c, colors),
-                  if (_ownGroup(e)) _moreCard(e, h),
-                ],
-              ].map((w) => ChainGroupColour(colour: _groupColour(e), child: w)),
+                        folded: shut("launch"),
+                        onFold: fold("launch"),
+                        triggerName: _triggerName),
+                    if (!c.isSound)
+                      MotionPlaceCard(
+                          key: const ValueKey("motionPlaceCard"),
+                          controller: controller,
+                          element: e,
+                          clip: c,
+                          edit: edit,
+                          height: h,
+                          folded: shut("place"),
+                          onFold: fold("place")),
+                    if (!c.isSound && _insideShown(e, c))
+                      _insideDevice(e, c, colors),
+                    if (_ownGroup(e)) _moreCard(e, h),
+                  ],
+                ].map(
+                    (w) => ChainGroupColour(colour: _groupColour(e), child: w)),
               ..._chain(e),
               _outputCard(e),
             ].expand((w) => [w, const SizedBox(width: 6)]).toList(),
           )),
     );
   }
+
+  /// _groupHidden is whether the filter hides the picked clip's cards: an
+  /// own arrival's or leaving's, with Independent picked.
+  bool _groupHidden(CanvasElement e) =>
+      controller.chainPhase == MotionPhase.free && _ownGroup(e);
 
   /// _moreOpen are the elements whose own preset shows its Launch, Place
   /// and Inside it: for the session.
@@ -822,7 +831,9 @@ class _AnimationPanelState extends State<AnimationPanel> {
             _clipsCard(e, null),
             // Its loop picked: the loop's style, in the loop's colour.
             if (controller.ownTabOf(e) == MotionKind.loop &&
-                OwnStyle(e).loop.on) ...[
+                OwnStyle(e).loop.on &&
+                (controller.chainPhase ?? MotionPhase.loop) ==
+                    MotionPhase.loop) ...[
               _zone("Loop · ${controller.ownPresetLabel(e, MotionKind.loop)}",
                   "Its loop's settings",
                   colour: ownKindColour(MotionKind.loop)),

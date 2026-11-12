@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/ui/chain_icons.dart';
 import 'package:bruig/plugin_system/canvas/ui/device_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/ui/own_style.dart' show OwnTabs;
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart'
     show MixDevice, withDeviceIds;
@@ -338,15 +339,25 @@ extension on _ChainPanelState {
       // plays in one phase.
       if (e != null && !c.motionCurvesShown) ...[
         const SizedBox(width: 6),
-        _KeysToggle(look: look, on: c.keysShown,
+        _KeysToggle(
+            look: look,
+            on: c.keysShown,
             onTap: () => c.keysShown = !c.keysShown),
         const SizedBox(width: 8),
         _Segments(look: look, items: [
-          ("chainPhase-all", "All", c.chainPhase == null,
-              () => c.chainPhase = null),
+          (
+            "chainPhase-all",
+            "All",
+            c.chainPhase == null,
+            () => c.showPhase(e.id, null)
+          ),
           for (var ph in MotionPhase.values)
-            ("chainPhase-${ph.name}", ph.label, c.chainPhase == ph,
-                () => c.chainPhase = ph),
+            (
+              "chainPhase-${ph.name}",
+              ph.label,
+              c.chainPhase == ph,
+              () => c.showPhase(e.id, ph)
+            ),
         ]),
       ],
       // Copies picked: what the chain edits is theirs alone (Ken,
@@ -963,7 +974,8 @@ class _KeysToggle extends StatelessWidget {
   final MixerLook look;
   final bool on;
   final VoidCallback onTap;
-  const _KeysToggle({required this.look, required this.on, required this.onTap});
+  const _KeysToggle(
+      {required this.look, required this.on, required this.onTap});
 
   @override
   Widget build(BuildContext context) => Semantics(

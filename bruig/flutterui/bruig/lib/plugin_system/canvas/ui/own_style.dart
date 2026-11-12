@@ -341,6 +341,23 @@ extension OwnTabs on CanvasController {
             ]
           : OwnStyle(e).presets(leaving: kind == MotionKind.leave);
 
+  /// showPhase is the Chain's filter set to [ph] -- null for all of it --
+  /// across the whole Chain (Ken, 2026-11-12): an arrival, loop or leaving
+  /// also turns the Motion clips card to its tab, and its cards with it.
+  void showPhase(String? element, MotionPhase? ph) {
+    var e = element == null ? null : document.elementById(element);
+    if (e != null && OwnStyle.of(e) != null) {
+      var kind = switch (ph) {
+        MotionPhase.arrive => MotionKind.arrive,
+        MotionPhase.leave => MotionKind.leave,
+        MotionPhase.loop => MotionKind.loop,
+        _ => null,
+      };
+      if (kind != null) showOwnTab(e.id, kind);
+    }
+    chainPhase = ph;
+  }
+
   /// showOwnTab picks [e]'s own [kind] in the Chain: its clip, where it has
   /// one, else the tab, to set it up.
   void showOwnTab(String element, MotionKind kind) {
@@ -482,7 +499,17 @@ class OwnTabsRow extends StatelessWidget {
           child: GestureDetector(
             key: ValueKey("ownTab-${kind.name}"),
             behavior: HitTestBehavior.opaque,
-            onTap: () => c.showOwnTab(e.id, kind),
+            onTap: () {
+              c.showOwnTab(e.id, kind);
+              // A filter on follows the tab: the whole Chain shows one.
+              if (c.chainPhase != null) {
+                c.chainPhase = switch (kind) {
+                  MotionKind.arrive => MotionPhase.arrive,
+                  MotionKind.leave => MotionPhase.leave,
+                  _ => MotionPhase.loop,
+                };
+              }
+            },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
               decoration: BoxDecoration(

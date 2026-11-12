@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_devices.dart'
+    show MotionPhase;
 import 'package:bruig/plugin_system/canvas/model/own_motion.dart';
 import 'package:bruig/plugin_system/canvas/ui/animation_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -186,6 +188,35 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("chainGroupMore")));
     c.toggleClipSettings("t");
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  // Ken, 2026-11-12: the filter works across the whole Chain.
+  testWidgets("the filter turns the tabs, and a tab the filter",
+      (tester) async {
+    var c = make();
+    c.applyTextAnimation(text(c), TextAnimationPreset.fadeIn);
+    c.applyTextExit(text(c), TextAnimationPreset.fadeIn);
+    addTearDown(() => c.chainPhase = null);
+    await show(tester, c);
+    c.showPhase("t", MotionPhase.arrive);
+    await tester.pumpAndSettle();
+    expect(c.ownTabOf(text(c)), MotionKind.arrive);
+    expect(find.byKey(const ValueKey("motionTimingCard")), findsOneWidget);
+    c.showPhase("t", MotionPhase.leave);
+    await tester.pumpAndSettle();
+    expect(c.ownTabOf(text(c)), MotionKind.leave);
+    // A tab picked with a filter on: the filter follows.
+    await tester.tap(find.byKey(const ValueKey("ownTab-arrive")));
+    await tester.pumpAndSettle();
+    expect(c.chainPhase, MotionPhase.arrive);
+    // Independent: not the preset's cards.
+    c.showPhase("t", MotionPhase.free);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("motionTimingCard")), findsNothing);
+    c.showPhase("t", null);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("motionTimingCard")), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
