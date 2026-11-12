@@ -2020,7 +2020,14 @@ class _FoldingTilesState<T> extends State<_FoldingTiles<T>> {
                 size: 18, color: theme.colors.onSurfaceVariant),
           ),
           const SizedBox(width: 4),
-          canvasCardTitle(context, t.label ?? ""),
+          // Its own share of a narrow row too, cut short rather than run
+          // off it (Ken's log: 12 px over at 103 wide, with larger text).
+          Flexible(
+            child: DefaultTextStyle.merge(
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                child: canvasCardTitle(context, t.label ?? "")),
+          ),
           const SizedBox(width: 8),
           Flexible(
             child: Text(chosen.map((c) => c.label).join(" · "),
