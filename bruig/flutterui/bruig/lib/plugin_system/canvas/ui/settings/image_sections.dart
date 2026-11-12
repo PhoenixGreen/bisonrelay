@@ -13,9 +13,10 @@ import 'package:bruig/plugin_system/canvas/render/layer_effects.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/stage_spot_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/adjustment_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/effects_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_layer_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/paint_brushes.dart';
@@ -31,7 +32,12 @@ import 'package:flutter/material.dart';
 // section shut says in a line how it is set, so the panel reads as a summary
 // before anything is opened. See panel_kit.dart for the parts.
 
-/// imagePanel is the settings of the picture [e].
+/// imagePanel is the settings of the picture [e], laid out as every rebuilt
+/// element's are (Ken, 2026-11-11: batch 4): its layers over a quick strip,
+/// then Content, Look, Layout, Motion and More. The picked layer's own
+/// sections -- the tools inside them unchanged -- go into those: the mask
+/// in Content; retouching, colour and effects (or a layer's blend) in Look;
+/// position and the whole picture's frame in Layout.
 List<Widget> imagePanel(
     BuildContext context,
     CanvasController controller,
@@ -46,37 +52,40 @@ List<Widget> imagePanel(
   var picked = editing ? controller.pickedLayer ?? base : base;
   var s = _Sections(context, controller, e, picked, write, begin, commit);
   var together = editing && controller.alignableLayers.length >= 2;
-  var sections = switch (picked.kind) {
-    LayerKind.base || LayerKind.picture => [
-        s.position(),
-        // Where the picture stands on a 3D stage -- the whole picture's,
-        // not a layer's.
-        if (picked.isBase)
-          ...stageSpotSettings(context, controller, e, write, begin, commit),
-        s.mask(),
-        s.retouch(),
-        s.colour(),
-        s.effects(),
-        s.frame(),
-      ],
-    _ => [
-        s.own(),
-        s.blend(),
-        s.mask(),
-        if (picked.kind != LayerKind.adjustment) s.effects(),
-        s.frame(),
-      ],
-  };
+  var picture =
+      picked.kind == LayerKind.base || picked.kind == LayerKind.picture;
   return [
-    CanvasSections(
-      key: const ValueKey("imageSections"),
-      // The layers, over the sections -- and over the menu's bar.
-      parts: ImageLayersList(
-          key: const ValueKey("imageLayers"),
-          controller: controller,
-          element: e),
-      children: [if (together) s.arrange(), ...sections],
-    ),
+    elementPanel(context, controller, e, write, begin, commit,
+        // The layers, over everything -- and over the menu's bar.
+        parts: ImageLayersList(
+            key: const ValueKey("imageLayers"),
+            controller: controller,
+            element: e),
+        quick: picture ? s.quick() : null,
+        position: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (together) s.arrange(),
+            if (picture) s.position(),
+          ],
+        ),
+        contentOpen: true,
+        bits: [
+          PanelBit(PanelSection.content, children: [
+            if (!picture) s.own(),
+            s.mask(),
+          ]),
+          PanelBit(PanelSection.look, children: [
+            if (picture) ...[
+              s.retouch(),
+              s.colour(),
+            ] else
+              s.blend(),
+            if (picked.kind != LayerKind.adjustment) s.effects(),
+          ]),
+          PanelBit(PanelSection.layout, children: [s.frame()]),
+        ]),
   ];
 }
 
@@ -129,6 +138,76 @@ class _Sections {
     begin();
     write(next);
     commit();
+  }
+
+  // ---- Quick strip ------------------------------------------------------
+
+  /// quick is the picked picture's settings changed most: how it fills its
+  /// box, its filter, and its saturation and brightness.
+  Widget quick() {
+    var look = _look;
+    void now(ImageElement next) {
+      begin();
+      _writeLook(next);
+      commit();
+    }
+
+    Widget stepper(String key, String label, double value,
+            ImageElement Function(double) set) =>
+        CanvasStepper(
+          key: ValueKey(key),
+          label: label,
+          value: value * 100,
+          min: 0,
+          max: 300,
+          decimals: 0,
+          step: 5,
+          suffix: "%",
+          fill: true,
+          onChanged: (v) {
+            begin();
+            _writeLook(set(v / 100));
+          },
+          onCommit: commit,
+        );
+
+    return CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+      panelRow([
+        cell(
+            CanvasDropdown<ImageFit>(
+              key: const ValueKey("quickImageFit"),
+              label: "Fills its box",
+              value: look.fit,
+              options: [for (var f in ImageFit.values) (f, f.label)],
+              onChanged: (v) => now(look.copyWith(fit: v)),
+            ),
+            flex: 1,
+            min: 104),
+        cell(
+            CanvasDropdown<ImageFilterPreset>(
+              key: const ValueKey("quickImageFilter"),
+              label: "Filter",
+              value: look.filter,
+              options: [for (var f in ImageFilterPreset.values) (f, f.label)],
+              onChanged: (v) => now(look.copyWith(filter: v)),
+            ),
+            flex: 1,
+            min: 104),
+      ]),
+      const SizedBox(height: 8),
+      panelRow([
+        cell(
+            stepper("quickImageSaturation", "Saturation", look.saturation,
+                (v) => look.copyWith(saturation: v)),
+            flex: 1,
+            min: 110),
+        cell(
+            stepper("quickImageBrightness", "Brightness", look.brightness,
+                (v) => look.copyWith(brightness: v)),
+            flex: 1,
+            min: 110),
+      ]),
+    ]);
   }
 
   // ---- Arrange: several picture layers picked ----------------------------
@@ -248,7 +327,9 @@ class _Sections {
     var settings = switch (open) {
       PositionTool.place => [
           framed
-              ? positionGroup(controller, e, write, begin, commit)
+              // Compact, as every rebuilt panel's: keyframes are the Chain's.
+              ? positionGroup(controller, e, write, begin, commit,
+                  compact: true)
               : layerPositionGroup(controller, e, picked, write, begin, commit),
         ],
       PositionTool.flip =>

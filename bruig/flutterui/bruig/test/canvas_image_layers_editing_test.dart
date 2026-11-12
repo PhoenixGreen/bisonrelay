@@ -283,6 +283,8 @@ void main() {
     testWidgets("a picture layer's place is in its Position", (tester) async {
       var c = await pumpPanel(tester);
       await tapKey(tester, "imageLayer-${_layer.id}");
+      // In Layout, since batch 4 of the rebuild.
+      await openSection(tester, "image.picture.position");
       expect(find.byKey(const ValueKey("elementX")), findsNothing);
       var x =
           tester.widget<CanvasStepper>(find.byKey(const ValueKey("layerX")));

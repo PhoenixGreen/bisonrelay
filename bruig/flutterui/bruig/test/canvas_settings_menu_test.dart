@@ -15,6 +15,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'canvas_panel_helpers.dart';
+
 // The settings as a menu: the settings panel's icon swaps the sections down
 // the panel for a bar of their names, one shown at a time, with the
 // picture's layers a switch of their own at the start of the bar.
@@ -64,29 +66,28 @@ void main() {
 
   Finder body(String remember) => find.byKey(ValueKey("sectionBody-$remember"));
 
-  /// shownBodies is the remember names of the section bodies on screen.
+  /// shownBodies is the remember names of the section bodies on screen --
+  /// the menu's, not the folds inside them (a picture's Mask in its
+  /// Content, since batch 4 of the rebuild).
   List<String> shownBodies(WidgetTester tester) => [
         for (var w in tester.widgetList(find.byWidgetPredicate((w) =>
             w.key is ValueKey<String> &&
             (w.key as ValueKey<String>).value.startsWith("sectionBody-"))))
           (w.key as ValueKey<String>).value.substring("sectionBody-".length)
-      ];
+      ].where((r) => !r.startsWith("image.picture.")).toList();
 
   testWidgets("the settings icon swaps sections for a menu, and back",
       (tester) async {
     await pumpPanel(tester);
     expect(find.byKey(const ValueKey("settingsMenu")), findsNothing);
-    expect(find.byKey(const ValueKey("section-image.picture.mask")),
-        findsOneWidget,
+    expect(find.byKey(const ValueKey("section-image.content")), findsOneWidget,
         reason: "sections down the panel to begin with");
     await tapKey(tester, "panelIcon:settings");
     expect(settingsAsMenu.value, isTrue);
     expect(find.byKey(const ValueKey("settingsMenu")), findsOneWidget);
-    expect(
-        find.byKey(const ValueKey("section-image.picture.mask")), findsNothing,
-        reason: "no fold headings in the menu");
-    expect(find.byKey(const ValueKey("menuTab-image.picture.mask")),
-        findsOneWidget);
+    expect(find.byKey(const ValueKey("section-image.content")), findsNothing,
+        reason: "no section headings in the menu");
+    expect(find.byKey(const ValueKey("menuTab-image.content")), findsOneWidget);
     await tapKey(tester, "panelIcon:settings");
     expect(settingsAsMenu.value, isFalse);
     expect(find.byKey(const ValueKey("settingsMenu")), findsNothing);
@@ -98,11 +99,13 @@ void main() {
     settingsAsMenu.value = true;
     await pumpPanel(tester);
     expect(shownBodies(tester), hasLength(1));
-    await tapKey(tester, "menuTab-image.picture.mask");
-    expect(shownBodies(tester), ["image.picture.mask"]);
+    await tapKey(tester, "menuTab-image.content");
+    expect(shownBodies(tester), ["image.content"]);
+    // Its Mask a fold inside it.
+    await openSection(tester, "image.picture.mask");
     expect(find.byKey(const ValueKey("imageTool-crop")), findsOneWidget);
-    await tapKey(tester, "menuTab-image.frame");
-    expect(shownBodies(tester), ["image.frame"]);
+    await tapKey(tester, "menuTab-image.layout");
+    expect(shownBodies(tester), ["image.layout"]);
     expect(body("image.picture.mask"), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -119,7 +122,7 @@ void main() {
             matching: find.textContaining("Layers")),
         findsNothing);
     // Whichever section is picked.
-    await tapKey(tester, "menuTab-image.picture.mask");
+    await tapKey(tester, "menuTab-image.content");
     expect(find.byKey(const ValueKey("imageLayers")), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -127,12 +130,12 @@ void main() {
   testWidgets("the first setting sits close under the bar", (tester) async {
     settingsAsMenu.value = true;
     await pumpPanel(tester);
-    await tapKey(tester, "menuTab-image.picture.mask");
+    await tapKey(tester, "menuTab-image.content");
     var bar = tester.getRect(find.descendant(
         of: find.byKey(const ValueKey("settingsMenu")),
         matching: find.byType(SingleChildScrollView)));
     var first = tester.getRect(find
-        .descendant(of: body("image.picture.mask"), matching: find.byType(Text))
+        .descendant(of: body("image.content"), matching: find.byType(Text))
         .first);
     expect(first.top - bar.bottom, lessThan(30),
         reason: "no heading between the bar and the section");
@@ -147,8 +150,8 @@ void main() {
     var c = await pumpPanel(tester);
     // Position, which both have (Animation, once the example, is the
     // Chain's now: Ken, 2026-11-08).
-    await tapKey(tester, "menuTab-image.picture.position");
-    expect(shownBodies(tester), ["image.picture.position"]);
+    await tapKey(tester, "menuTab-image.layout");
+    expect(shownBodies(tester), ["image.layout"]);
     c.selectOnly("s");
     await tester.pumpAndSettle();
     expect(shownBodies(tester).single, endsWith("layout"),
@@ -173,7 +176,7 @@ void main() {
       (tester) async {
     settingsAsMenu.value = true;
     await pumpPanel(tester, height: 1100);
-    await tapKey(tester, "menuTab-image.picture.colour");
+    await tapKey(tester, "menuTab-image.look");
     var menu = find.byKey(const ValueKey("settingsMenu"));
     var panel = find
         .ancestor(of: menu, matching: find.byType(SingleChildScrollView))
@@ -190,16 +193,16 @@ void main() {
     expect(tester.getRect(menu).top, closeTo(view.top, 1),
         reason: "held at the top of the settings");
     // Still a menu up there: a tab pressed there works -- its line
-    // scrolled back to the start, where Mask is.
+    // scrolled back to the start, where Content is.
     tester
         .widget<SingleChildScrollView>(find.descendant(
             of: menu, matching: find.byType(SingleChildScrollView)))
         .controller!
         .jumpTo(0);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey("menuTab-image.picture.mask")));
+    await tester.tap(find.byKey(const ValueKey("menuTab-image.content")));
     await tester.pumpAndSettle();
-    expect(shownBodies(tester), ["image.picture.mask"]);
+    expect(shownBodies(tester), ["image.content"]);
     expect(tester.takeException(), isNull);
   });
 }

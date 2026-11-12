@@ -45,19 +45,26 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// titles is the sections' titles, down the panel.
+  /// titles is the sections' titles, down the panel -- the panel's own,
+  /// not the folds inside them (a drawing's Drawing, in its Content).
   List<String> titles(WidgetTester tester) {
     var found = [
       for (var element in find.byType(CanvasSection).evaluate())
-        (
-          tester.getTopLeft(find.byWidget(element.widget)).dy,
-          (element.widget as CanvasSection).title,
-        ),
+        if (find
+            .ancestor(
+                of: find.byWidget(element.widget),
+                matching: find.byType(CanvasSection))
+            .evaluate()
+            .isEmpty)
+          (
+            tester.getTopLeft(find.byWidget(element.widget)).dy,
+            (element.widget as CanvasSection).title,
+          ),
     ]..sort((a, b) => a.$1.compareTo(b.$1));
     return [for (var (_, title) in found) title];
   }
 
-  // Rebuilt to the Text panel's shape: batch 1 the text, batch 2 these.
+  // Rebuilt to the Text panel's shape: batch 1 the text, then batches 2-4.
   const rebuilt = {
     ElementKind.text,
     ElementKind.shape,
@@ -67,6 +74,7 @@ void main() {
     ElementKind.counter,
     ElementKind.chart,
     ElementKind.table,
+    ElementKind.vector,
   };
   for (var kind in ElementKind.values) {
     if (kind == ElementKind.image) continue; // see canvas_panel_kit_test

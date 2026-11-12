@@ -241,6 +241,8 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
+    // In its Layout's Position, since batch 4 of the rebuild.
+    await openSection(tester, "image.picture.position");
 
     expect(find.byKey(const ValueKey("elementTypeScale")), findsNothing,
         reason: "scaledBy changes nothing on a picture");

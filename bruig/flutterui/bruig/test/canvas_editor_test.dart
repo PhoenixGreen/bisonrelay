@@ -30,7 +30,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/table_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
@@ -1731,10 +1731,10 @@ void main() {
   group("animated settings", () {
     (CanvasController, CanvasElement) moving() {
       var document = const CanvasDocument(frames: 30);
-      // A drawing: its panel still has the pose diamond and easing by
-      // Position, until its batch of the rebuild (the rebuilt panels key
-      // in the Chain).
-      var element = const VectorElement(
+      // A sprite: its panel still has the pose diamond and easing by
+      // Position, until batch 6 of the rebuild (the rebuilt panels key in
+      // the Chain).
+      var element = const SpriteElement(
           ElementBase(id: "s", x: 100, y: 50, width: 40, height: 40));
       var controller = CanvasController(document.addElement(element));
       controller.selectOnly("s");
@@ -1797,7 +1797,7 @@ void main() {
 
     testWidgets("the diamonds are off on a still canvas", (tester) async {
       var document = const CanvasDocument();
-      var element = newElement(ElementKind.vector, document);
+      var element = newElement(ElementKind.sprite, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -3411,7 +3411,7 @@ void main() {
     // whatever easing each of them had.
     testWidgets("is offered while the playhead is on one", (tester) async {
       var document = const CanvasDocument(frames: 40);
-      var element = newElement(ElementKind.vector, document);
+      var element = newElement(ElementKind.sprite, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -3457,7 +3457,7 @@ void main() {
       // nobody could find: there is no telling a setting that does not exist
       // from one waiting for the playhead to be somewhere else.
       var document = const CanvasDocument(frames: 40);
-      var element = newElement(ElementKind.vector, document);
+      var element = newElement(ElementKind.sprite, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -3478,7 +3478,7 @@ void main() {
     testWidgets("and an element with no keyframes at all offers none",
         (tester) async {
       var document = const CanvasDocument(frames: 40);
-      var element = newElement(ElementKind.vector, document);
+      var element = newElement(ElementKind.sprite, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -3512,7 +3512,7 @@ void main() {
       // "Stays the same until the next keyframe", which is what a count in
       // steps and a cut both need.
       var document = const CanvasDocument(frames: 40);
-      var element = newElement(ElementKind.vector, document);
+      var element = newElement(ElementKind.sprite, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
@@ -4368,7 +4368,7 @@ void main() {
       // Left to the Wrap, the line fell between W and H or after Angle
       // depending on how wide the sidebar happened to be.
       var document = const CanvasDocument();
-      var element = newElement(ElementKind.vector, document);
+      var element = newElement(ElementKind.sprite, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);

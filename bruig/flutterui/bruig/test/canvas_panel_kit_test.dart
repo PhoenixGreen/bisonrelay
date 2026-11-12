@@ -252,15 +252,22 @@ void main() {
     testWidgets("a picture has its six, each saying how it is set",
         (tester) async {
       await pumpPanel(tester);
-      for (var s in [
-        "position",
-        "mask",
-        "retouch",
-        "colour",
-        "effects",
-        "frame",
+      // In the shared sections (batch 4 of the rebuild): the mask in
+      // Content, the picture's colour in Look, its place in Layout.
+      for (var (s, inside) in const [
+        ("mask", "content"),
+        ("retouch", "look"),
+        ("colour", "look"),
+        ("effects", "look"),
+        ("position", "layout"),
+        ("frame", "layout"),
       ]) {
-        expect(find.byKey(ValueKey("imageSection-$s")), findsOneWidget,
+        await openSection(tester, "image.$inside");
+        expect(
+            find.descendant(
+                of: find.byKey(ValueKey("sectionBody-image.$inside")),
+                matching: find.byKey(ValueKey("imageSection-$s"))),
+            findsOneWidget,
             reason: s);
       }
       expect(find.byKey(const ValueKey("imageSection-animation")), findsNothing,
@@ -279,6 +286,7 @@ void main() {
               ElementBase(id: "i", width: 200, height: 200),
               assetId: "abcdefghij123456"));
       ImageElement now() => c.document.elementById("i")! as ImageElement;
+      await openSection(tester, "image.picture.position");
       await tapKey(tester, "positionTool-flip");
       await tapKey(tester, "imageLayerFlipX");
       expect(now().stack.single.flipX, isTrue);
@@ -299,6 +307,7 @@ void main() {
         "with layers over it, the base picture flips from the Flip tool",
         (tester) async {
       var c = await pumpPanel(tester);
+      await openSection(tester, "image.picture.position");
       await tapKey(tester, "positionTool-flip");
       await tapKey(tester, "imageLayerFlipX");
       var e = c.document.elementById("i")! as ImageElement;
@@ -324,7 +333,13 @@ void main() {
       expect(find.text("Cut to"), findsNWidgets(2),
           reason: "and in the Shape tool: the same setting");
       await tapKey(tester, "positionTool-fit");
-      expect(find.text("Fills its box"), findsOneWidget);
+      // In Position's Fit tool (the quick strip has one too).
+      expect(
+          find.descendant(
+              of: find
+                  .byKey(const ValueKey("sectionBody-image.picture.position")),
+              matching: find.text("Fills its box")),
+          findsOneWidget);
       expect(find.text("Wrap frame to content"), findsNothing,
           reason: "a picture with no layers is its frame");
       expect(c.document.elementById("i"), isA<ImageElement>());
@@ -381,8 +396,11 @@ void main() {
         (tester) async {
       await pumpPanel(tester);
       await openSection(tester, "image.frame");
-      expect(find.byKey(const ValueKey("imageSaved")), findsNothing);
-      expect(find.byKey(const ValueKey("elementPresets")), findsNothing);
+      Finder inFrame(String key) => find.descendant(
+          of: find.byKey(const ValueKey("sectionBody-image.frame")),
+          matching: find.byKey(ValueKey(key)));
+      expect(inFrame("imageSaved"), findsNothing);
+      expect(inFrame("elementPresets"), findsNothing);
       await openSection(tester, "image.picture.colour");
       expect(find.byKey(const ValueKey("imageSaved")), findsOneWidget);
       expect(find.byKey(const ValueKey("imageLookSave")), findsOneWidget);
@@ -617,22 +635,29 @@ void main() {
     });
 
     testWidgets("a dropdown's arrows step through its options", (tester) async {
-      var c = await pumpPanel(tester);
+      // Outside a dense panel: a rebuilt panel's dropdowns are plain
+      // selects (Ken's round 3 notes), with no arrows.
+      var fitNow = ImageFit.values.first;
+      await tester.pumpWidget(_host(StatefulBuilder(
+          builder: (context, setState) => CanvasCards(
+                child: CanvasDropdown<ImageFit>(
+                  label: "Fills its box",
+                  value: fitNow,
+                  width: 140,
+                  options: [for (var f in ImageFit.values) (f, f.label)],
+                  onChanged: (v) => setState(() => fitNow = v),
+                ),
+              ))));
       await tester.pumpAndSettle();
-      await openSection(tester, "image.picture.position");
-      await tapKey(tester, "positionTool-fit");
-      ImageElement now() => c.document.elementById("i")! as ImageElement;
-      var fit = find.ancestor(
-          of: find.text("Fills its box"),
-          matching: find.byType(CanvasDropdown<ImageFit>));
-      var before = now().fit;
+      var fit = find.byType(CanvasDropdown<ImageFit>);
+      var before = fitNow;
       var more = find.descendant(
           of: fit,
           matching: find.byWidgetPredicate((w) =>
               w is Semantics && w.properties.label == "Next Fills its box"));
       await tester.tap(more);
       await tester.pumpAndSettle();
-      expect(now().fit, ImageFit.values[ImageFit.values.indexOf(before) + 1]);
+      expect(fitNow, ImageFit.values[ImageFit.values.indexOf(before) + 1]);
       var less = find.descendant(
           of: fit,
           matching: find.byWidgetPredicate((w) =>
@@ -640,7 +665,7 @@ void main() {
               w.properties.label == "Previous Fills its box"));
       await tester.tap(less);
       await tester.pumpAndSettle();
-      expect(now().fit, before);
+      expect(fitNow, before);
     });
 
     testWidgets("a \"?\" opens on a click, never on a hover", (tester) async {
@@ -685,6 +710,20 @@ void main() {
       // And pressing the tool in hand puts it down.
       await tapKey(tester, "imageTool-heal");
       expect(c.imageTool, ImageTool.move);
+    });
+
+    testWidgets("a tool opens its fold, and the section it is in, shut or not",
+        (tester) async {
+      var c = await pumpPanel(tester);
+      // Retouch is a fold in Look since batch 4: Look shut, Retouch shut.
+      if (open("image.look")) await tapKey(tester, "section-image.look");
+      expect(open("image.look"), isFalse);
+      c.editImage("i");
+      c.imageTool = ImageTool.heal;
+      await tester.pumpAndSettle();
+      expect(open("image.look"), isTrue);
+      expect(open("image.picture.retouch"), isTrue);
+      expect(find.byKey(const ValueKey("paintSize")), findsOneWidget);
     });
 
     testWidgets("picking a tool opens the picture's layers", (tester) async {

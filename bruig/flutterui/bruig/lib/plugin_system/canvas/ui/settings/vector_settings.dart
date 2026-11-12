@@ -25,6 +25,9 @@ import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_parts.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/vector_layers.dart';
 
 // vector_settings.dart is a drawing's settings: which drawing, how it sits in
 // its box, editing it point by point -- and while it is being edited, how
@@ -84,6 +87,72 @@ Future<double?> _drawingAspect(String id) async {
   var box = parts?.viewBox;
   if (box == null || box.width <= 0 || box.height <= 0) return null;
   return box.width / box.height;
+}
+
+/// vectorPanel is [e]'s panel, laid out as every rebuilt element's is (Ken,
+/// 2026-11-11: batch 4, "similar tools" to a picture): its shapes over a
+/// quick strip, then Content -- the drawing, and its Drawing tools as a fold
+/// that a tool in hand opens -- Look, Layout (with the crop), Motion and More.
+Widget vectorPanel(
+    BuildContext context,
+    CanvasController controller,
+    VectorElement e,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
+  void now(VectorElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  return elementPanel(context, controller, e, write, begin, commit,
+      // Its shapes, once it has been taken apart into them.
+      parts: e.edited && (e.shapes?.isNotEmpty ?? false)
+          ? VectorLayersList(
+              key: const ValueKey("vectorLayersList"),
+              controller: controller,
+              element: e,
+              onChanged: now)
+          : null,
+      quick: CanvasQuickStrip(key: const ValueKey("quickStrip"), children: [
+        panelRow([
+          cell(
+              CanvasDropdown<VectorFit>(
+                key: const ValueKey("quickVectorFit"),
+                label: "Fits its box",
+                value: e.fit,
+                options: [for (var f in VectorFit.values) (f, f.label)],
+                onChanged: (v) => now(e.copyWith(fit: v)),
+              ),
+              flex: 1,
+              min: 110),
+          // Its one colour, while it is still its file's drawing.
+          if (!e.edited)
+            cell(
+                CanvasColorButton(
+                  key: const ValueKey("quickVectorTint"),
+                  label: "Tint",
+                  color: e.tint ?? const Color(0x00000000),
+                  onChanged: (c) => now(e.copyWith(tint: c)),
+                ),
+                width: 104),
+        ]),
+      ]),
+      contentOpen: true,
+      bits: [
+        PanelBit(PanelSection.content,
+            summary: e.hasDrawing ? "A drawing" : "No drawing yet",
+            children: [
+              vectorDrawingControls(
+                  context, controller, e, write, begin, commit),
+              ...vectorSettings(context, controller, e, write, begin, commit),
+            ]),
+        if (e.hasDrawing)
+          PanelBit(PanelSection.layout, children: [
+            vectorCropControls(controller, e, write, begin, commit),
+          ]),
+      ]);
 }
 
 List<Widget> vectorSettings(

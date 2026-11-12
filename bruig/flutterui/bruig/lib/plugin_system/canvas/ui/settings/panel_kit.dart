@@ -1325,6 +1325,17 @@ class CanvasSection extends StatefulWidget {
   @visibleForTesting
   static bool openAll = false;
 
+  /// forced is [forceOpen], or a section inside this one forced open: a
+  /// tool taken up in a picture's Retouch opens its Look too, and in the
+  /// menu picks Look's tab.
+  bool get forced => forceOpen || children.any(_forces);
+
+  static bool _forces(Widget w) => switch (w) {
+        CanvasSection s => s.forced,
+        Column c => c.children.any(_forces),
+        _ => false,
+      };
+
   @override
   State<CanvasSection> createState() => _CanvasSectionState();
 }
@@ -1336,7 +1347,7 @@ class _CanvasSectionState extends State<CanvasSection> {
   @override
   void initState() {
     super.initState();
-    if (widget.forceOpen) {
+    if (widget.forced) {
       _open = true;
     } else if (!CanvasSection.openAll &&
         rememberedSection(widget.remember) == null) {
@@ -1349,12 +1360,13 @@ class _CanvasSectionState extends State<CanvasSection> {
   @override
   void didUpdateWidget(CanvasSection old) {
     super.didUpdateWidget(old);
-    if (widget.forceOpen && !old.forceOpen && !_open) {
+    var forced = widget.forced && !old.forced;
+    if (forced && !_open) {
       _open = true;
       keepSection(widget.remember, true);
     }
     // In the menu, a tool taken up shows its section, as it opens it here.
-    if (widget.forceOpen && !old.forceOpen) {
+    if (forced) {
       var owner = _MenuScope.of(context)?.owner;
       if (owner != null) {
         var item = _MenuItem(
@@ -1536,6 +1548,114 @@ class _CanvasSectionState extends State<CanvasSection> {
         ),
       );
 
+  /// _nested is the section inside another one's cards: a fold among that
+  /// section's cards, drawn as CanvasExpander's are, keeping what a section
+  /// has -- its summary, its changed dot and reset, its "?" and action, and
+  /// a tool opening it. A picture's Retouch, Colour and Effects inside its
+  /// Look (Ken, 2026-11-11: the shared section names, the tools inside kept).
+  Widget _nested(ThemeNotifier theme) {
+    var muted = theme.colors.onSurfaceVariant;
+    var open = _open;
+    var changed = widget.changes > 0;
+    return canvasCard(context,
+        title: Row(children: [
+          Expanded(
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                key: ValueKey("section-${widget.remember}"),
+                borderRadius: BorderRadius.circular(6),
+                onTap: _toggle,
+                child: Row(children: [
+                  AnimatedRotation(
+                    key: ValueKey("sectionFold-${widget.remember}"),
+                    turns: open ? 0.25 : 0,
+                    duration: const Duration(milliseconds: 120),
+                    child: Icon(Icons.chevron_right, size: 18, color: muted),
+                  ),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: DefaultTextStyle.merge(
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        child: canvasCardTitle(context, widget.title)),
+                  ),
+                  if (widget.scope != null) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(color: theme.colors.outlineVariant),
+                      ),
+                      child: Text(widget.scope!,
+                          maxLines: 1,
+                          style: TextStyle(fontSize: 10, color: muted)),
+                    ),
+                  ],
+                  if (widget.summary.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(widget.summary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 10.5, color: muted)),
+                    ),
+                  ],
+                  if (changed)
+                    Container(
+                      key: ValueKey("sectionChanged-${widget.remember}"),
+                      width: 7,
+                      height: 7,
+                      margin: const EdgeInsets.only(left: 6),
+                      decoration: BoxDecoration(
+                          color: theme.colors.primary, shape: BoxShape.circle),
+                    ),
+                ]),
+              ),
+            ),
+          ),
+          if (_help.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: CanvasHint(_help, round: true),
+            ),
+          if (widget.action != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: widget.action!,
+            ),
+          if (open && changed && widget.onReset != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: CanvasIconButton(
+                key: ValueKey("sectionReset-${widget.remember}"),
+                tight: true,
+                icon: Icons.restart_alt,
+                tooltip: "Reset ${widget.title}",
+                onPressed: () => widget.onReset?.call(),
+              ),
+            ),
+        ]),
+        body: !open
+            ? const SizedBox.shrink()
+            // Its own name for the cards inside, so a card named as the
+            // fold is still not named twice.
+            : CanvasCards(
+                title: widget.title,
+                child: Column(
+                  key: ValueKey("sectionBody-${widget.remember}"),
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var c in widget.children)
+                      if (c is! CanvasHint) c
+                  ],
+                ),
+              ));
+  }
+
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
@@ -1546,6 +1666,8 @@ class _CanvasSectionState extends State<CanvasSection> {
       if (menu!.active != widget.remember) return const SizedBox.shrink();
       return _menuBody();
     }
+    // Inside another section: a fold among its cards.
+    if (CanvasCards.on(context)) return _nested(theme);
     var open = _open;
     var changed = widget.changes > 0;
     // Painted on its own: one section changed is that section painted

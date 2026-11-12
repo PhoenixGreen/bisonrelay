@@ -30,7 +30,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/vector_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/vector_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
@@ -128,6 +127,10 @@ List<Widget> elementSettings(
   if (element is ChartElement) {
     return [chartPanel(context, controller, element, write, begin, commit)];
   }
+  // Batch 4.
+  if (element is VectorElement) {
+    return [vectorPanel(context, controller, element, write, begin, commit)];
+  }
 
   // Every other element in sections, as a picture is: where it is, its
   // own subjects, how it arrives, and the designs saved of its kind -- see
@@ -135,22 +138,6 @@ List<Widget> elementSettings(
   return [
     CanvasSections(
       key: const ValueKey("elementSections"),
-      // Layers over the sections, as a picture's are: a drawing's shapes,
-      // once it has been taken apart into them. (A text's are its own: see
-      // textPanel.)
-      parts: element is VectorElement &&
-              element.edited &&
-              (element.shapes?.isNotEmpty ?? false)
-          ? VectorLayersList(
-              key: const ValueKey("vectorLayersList"),
-              controller: controller,
-              element: element,
-              onChanged: (next) {
-                begin();
-                write(next);
-                commit();
-              })
-          : null,
       children: [
         positionSection(controller, element, write, begin, commit,
             // An element with no arrival of its own still waits on a cue.
@@ -158,17 +145,8 @@ List<Widget> elementSettings(
               if (controller.cues.isNotEmpty &&
                   (element is BackgroundElement || element is TeamElement))
                 elementCueCard(controller, element),
-              // A drawing's file and how it sits in its box, at the foot
-              // of where the box is.
-              if (element is VectorElement)
-                vectorDrawingControls(
-                    context, controller, element, write, begin, commit),
-              if (element is VectorElement && element.hasDrawing)
-                vectorCropControls(controller, element, write, begin, commit),
             ]),
         ...switch (element) {
-          VectorElement e =>
-            vectorSettings(context, controller, e, write, begin, commit),
           AudioElement e =>
             audioSettings(context, controller, e, write, begin, commit),
           SheetElement e =>

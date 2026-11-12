@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 
 // canvas_panel_helpers.dart opens the parts of a sectioned settings panel a
 // test needs -- each only if it is shut, since a section opened in one test
@@ -12,6 +13,29 @@ Future<void> openSection(WidgetTester tester, String remember) async {
     return;
   }
   var head = find.byKey(ValueKey("section-$remember"));
+  // Inside a rebuilt panel's section that is shut (a picture's Mask in its
+  // Content): open those until it shows.
+  if (head.evaluate().isEmpty) {
+    for (var top in find.byType(CanvasSection).evaluate().toList()) {
+      var w = top.widget as CanvasSection;
+      if (find
+          .byKey(ValueKey("sectionBody-${w.remember}"))
+          .evaluate()
+          .isNotEmpty) {
+        continue;
+      }
+      var shut = find.byKey(ValueKey("section-${w.remember}"));
+      if (shut.evaluate().isEmpty) continue;
+      await tester.ensureVisible(shut);
+      await tester.tap(shut);
+      await tester.pumpAndSettle();
+      if (head.evaluate().isNotEmpty) break;
+    }
+    // Open already, once what it is in is.
+    if (find.byKey(ValueKey("sectionBody-$remember")).evaluate().isNotEmpty) {
+      return;
+    }
+  }
   await tester.ensureVisible(head);
   await tester.tap(head);
   await tester.pumpAndSettle();

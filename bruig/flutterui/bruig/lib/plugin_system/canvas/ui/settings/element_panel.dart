@@ -72,7 +72,9 @@ String motionSaid(CanvasElement e) {
 /// elementPanel is [e]'s settings as the Text panel's are laid out: [quick]
 /// over its sections, each section the [bits] put into it with what every
 /// element has besides. [contentOpen] starts Content open: an element's
-/// Content that is why its settings are opened (a path's points).
+/// Content that is why its settings are opened (a path's points). [parts]
+/// goes over everything (a picture's layers); [position], where given,
+/// is Layout's own place in the plain position group's (a picture's tools).
 Widget elementPanel(
   BuildContext context,
   CanvasController controller,
@@ -83,6 +85,8 @@ Widget elementPanel(
   Widget? quick,
   List<PanelBit> bits = const [],
   bool contentOpen = false,
+  Widget? parts,
+  Widget? position,
 }) {
   List<Widget> into(PanelSection s) => [
         for (var b in bits)
@@ -100,6 +104,7 @@ Widget elementPanel(
     child: CanvasSections(
       key: const ValueKey("elementSections"),
       quick: quick,
+      parts: parts,
       children: [
         if (content.isNotEmpty)
           section(e, "content",
@@ -134,7 +139,9 @@ Widget elementPanel(
                 .where((s) => s.isNotEmpty)
                 .join(" · "),
             children: [
-              positionGroup(controller, e, write, begin, commit, compact: true),
+              position ??
+                  positionGroup(controller, e, write, begin, commit,
+                      compact: true),
               ...into(PanelSection.layout),
             ]),
         ...stageSpotSettings(context, controller, e, write, begin, commit),

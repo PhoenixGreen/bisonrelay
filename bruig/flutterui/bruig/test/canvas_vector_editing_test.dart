@@ -484,7 +484,7 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets("the layers: Add in full, Whole drawing, and Solo",
+    testWidgets("the layers: Add, Whole drawing, and Solo",
         (tester) async {
       var c = await show(
           tester,
@@ -498,12 +498,9 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      // "Add" whole, and its kinds as tiles.
-      var add = find.descendant(
-          of: find.byKey(const ValueKey("vectorLayersAdd")),
-          matching: find.text("Add"));
-      expect(add, findsOneWidget);
-      expect(tester.getSize(add).width, greaterThan(15));
+      // Add, a plain "+" in a rebuilt (dense) panel's layers header (Ken's
+      // round 2 notes), and its kinds as tiles.
+      expect(find.byKey(const ValueKey("vectorLayersAdd")), findsOneWidget);
       await tapKey("vectorLayersAdd");
       expect(find.byKey(const ValueKey("vectorAddTiles")), findsOneWidget);
       await tapKey("vectorLayersAdd-pen");
@@ -580,9 +577,11 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("colours sit in Drawing; the drawing's file in Position",
+    testWidgets("colours sit in Drawing; the drawing's file in Content",
         (tester) async {
       await show(tester, drawing(square));
+      // Content, with Drawing a fold inside it, since batch 4 of the
+      // rebuild.
       expect(
           find.descendant(
               of: find.byKey(const ValueKey("elementSection-drawing")),
@@ -591,7 +590,7 @@ void main() {
       expect(find.byKey(const ValueKey("elementSection-shape")), findsNothing);
       expect(
           find.descendant(
-              of: find.byKey(const ValueKey("elementSection-position")),
+              of: find.byKey(const ValueKey("elementSection-content")),
               matching: find.byKey(const ValueKey("vectorDrawingControls"))),
           findsOneWidget);
       expect(
