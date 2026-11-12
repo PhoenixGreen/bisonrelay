@@ -19,7 +19,6 @@ import 'package:bruig/plugin_system/canvas/ui/settings/backdrop_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character3d_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character3d_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/stage_settings.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/stage_spot_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
@@ -361,35 +360,19 @@ List<Widget> elementSettings(
         },
   ];
 
-  // Batch 6 (Ken, 2026-11-11): the rest in the shared panel, each of their
-  // sections where _placed puts it. An instrument keeps the older panel
-  // (its keyboard and part).
-  if (element is! AudioElement) {
-    var bits = <PanelBit>[];
-    for (var w in own) {
-      var name = w is CanvasSection ? w.remember.split(".").last : "";
-      var (into, straight) = _placed[name] ?? (PanelSection.content, false);
-      bits.add(PanelBit(into,
-          summary: straight && w is CanvasSection ? w.summary : "",
-          children: straight ? sectionContents(w) : [w]));
-    }
-    return [
-      elementPanel(context, controller, element, write, begin, commit,
-          contentOpen: true, bits: bits),
-    ];
+  // Batch 6 (Ken, 2026-11-11): the rest in the shared panel -- every
+  // element's is now -- each of their sections where _placed puts it.
+  var bits = <PanelBit>[];
+  for (var w in own) {
+    var name = w is CanvasSection ? w.remember.split(".").last : "";
+    var (into, straight) = _placed[name] ?? (PanelSection.content, false);
+    bits.add(PanelBit(into,
+        summary: straight && w is CanvasSection ? w.summary : "",
+        children: straight ? sectionContents(w) : [w]));
   }
   return [
-    CanvasSections(
-      key: const ValueKey("elementSections"),
-      children: [
-        positionSection(controller, element, write, begin, commit),
-        ...own,
-        // Where it stands on a 3D stage, for anything that can.
-        ...stageSpotSettings(
-            context, controller, element, write, begin, commit),
-        presetsPanelSection(context, controller, element),
-      ],
-    ),
+    elementPanel(context, controller, element, write, begin, commit,
+        contentOpen: true, bits: bits),
   ];
 }
 
@@ -398,6 +381,8 @@ List<Widget> elementSettings(
 /// settings go straight in (the element's main subject, open from the
 /// start) rather than as a fold. One not named is a fold in Content.
 const _placed = <String, (PanelSection, bool)>{
+  // An instrument: its keyboard and part.
+  "instrument": (PanelSection.content, true),
   // A team.
   "team": (PanelSection.content, true),
   "players": (PanelSection.content, false),

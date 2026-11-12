@@ -3,11 +3,9 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/edge_mask.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
-import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
@@ -23,44 +21,6 @@ String elementKindKey(CanvasElement e) => e.kind.name;
 String positionSummary(CanvasElement e) => "${e.x.round()}, ${e.y.round()} · "
     "${e.width.round()} × ${e.height.round()}"
     "${e.base.rotation != 0 ? " · ${e.base.rotation.round()}°" : ""}";
-
-/// positionSection is where [e] is: its place, its size, its turn and how
-/// solid it is -- and [extra], for an element with more to say about its
-/// place.
-Widget positionSection(CanvasController controller, CanvasElement e,
-        SettingsWrite write, VoidCallback begin, VoidCallback commit,
-        {List<Widget> extra = const [], String? summary}) =>
-    CanvasSection(
-      key: const ValueKey("elementSection-position"),
-      icon: Icons.open_with,
-      title: "Position",
-      summary: summary ?? positionSummary(e),
-      remember: "${elementKindKey(e)}.position",
-      initiallyOpen: true,
-      children: [
-        positionGroup(controller, e, write, begin, commit),
-        ...extra,
-      ],
-    );
-
-/// presetsPanelSection is the designs saved of [e]'s kind, to start from or
-/// to keep this one as.
-Widget presetsPanelSection(
-    BuildContext context, CanvasController controller, CanvasElement e,
-    {List<Widget> extra = const []}) {
-  var store = ElementPresetStore.instance;
-  var n = store.forKind(e.kind).length;
-  return CanvasSection(
-    key: const ValueKey("elementSection-presets"),
-    icon: Icons.bookmarks_outlined,
-    title: "Presets",
-    summary: n == 0
-        ? "Keep this design to use again"
-        : "$n design${n == 1 ? "" : "s"} to start from",
-    remember: "${elementKindKey(e)}.presets",
-    children: [presetsSection(context, controller, e), ...extra],
-  );
-}
 
 /// elementCueCard is which cue [e] arrives on.
 Widget elementCueCard(CanvasController controller, CanvasElement e) =>

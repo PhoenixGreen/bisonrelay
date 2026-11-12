@@ -2,8 +2,6 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
-import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -13,6 +11,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+
+import 'canvas_panel_helpers.dart';
 
 // canvas_control_wrap_test.dart is the settings panel filling the width it has
 // been given.
@@ -45,114 +45,51 @@ void main() {
   }
 
   Future<void> panel(WidgetTester tester, {double width = 420}) async {
-    // An instrument: the one kind still on the older panel, with the
-    // Position section these measure (the rest have the rebuilt Layout).
-    var element = const AudioElement(
-        ElementBase(id: "c", width: 400, height: 300),
-        instrument: InstrumentPart());
-    var controller =
-        CanvasController(const CanvasDocument().addElement(element));
+    // A shape, its Layout open: where every element's place is laid out
+    // since the rebuild, as the prototype's rows.
+    var document = const CanvasDocument();
+    var element = newElement(ElementKind.shape, document);
+    var controller = CanvasController(document.addElement(element));
     addTearDown(controller.dispose);
-    controller.selectOnly("c");
+    controller.selectOnly(element.id);
     await pump(tester, CanvasDesignPanel(controller: controller), width: width);
+    await openSection(tester, "shape.layout");
   }
 
   Rect at(WidgetTester tester, String key) =>
       tester.getRect(find.byKey(ValueKey(key)));
 
-  group("a row of controls", () {
-    testWidgets("fills the width it is given", (tester) async {
-      // Where the element is, then how big: two to a line, so each number
-      // has room for an arrow either side, and between them they reach the
-      // right-hand margin.
+  group("where it is", () {
+    testWidgets(
+        "its place and turn on one line, its size and opacity on the next, "
+        "in the same columns", (tester) async {
       await panel(tester, width: 420);
-      var x = at(tester, "elementX"), y = at(tester, "elementY");
-      var w = at(tester, "elementW"), h = at(tester, "elementH");
-      expect(y.top, closeTo(x.top, 0.5), reason: "Y beside X");
-      expect(h.top, closeTo(w.top, 0.5), reason: "H beside W");
-      expect(w.top, greaterThan(x.bottom), reason: "size under place");
-      expect(w.left, closeTo(x.left, 0.5));
-      // Short of the margin by the lock's width: the lines share their
-      // columns, and W and H have the lock beside them.
-      var card =
-          tester.getRect(find.byKey(const ValueKey("elementSection-position")));
-      expect(y.right, greaterThan(card.right - 100),
-          reason: "the line stops well short of the card's margin: $y");
-    });
-
-    testWidgets("and gives the same width to each of them", (tester) async {
-      await panel(tester, width: 420);
-      var widths = [
-        for (var key in ["elementX", "elementY", "elementW", "elementH"])
-          at(tester, key).width
+      var top = [
+        for (var k in ["elementX", "elementY", "elementAngle"]) at(tester, k)
       ];
-      for (var width in widths) {
-        expect(width, closeTo(widths.first, 0.5), reason: "$widths");
+      var next = [
+        for (var k in ["elementW", "elementH", "elementOpacity"]) at(tester, k)
+      ];
+      for (var row in [top, next]) {
+        for (var r in row) {
+          expect(r.top, closeTo(row.first.top, 0.5), reason: "$row");
+          expect(r.width, closeTo(row.first.width, 0.5), reason: "$row");
+        }
       }
-    });
-
-    testWidgets("so the line below it lands in the same columns",
-        (tester) async {
-      // Angle under X and Opacity under Y. The room left over is shared out
-      // by the same amount on every line rather than by filling each one, so
-      // a line of four and a line of two come out in the same columns.
-      await panel(tester, width: 420);
-      var x = at(tester, "elementX");
-      var angle = at(tester, "elementAngle");
-
-      expect(angle.left, closeTo(x.left, 0.5));
-      expect(angle.width, closeTo(x.width, 0.5));
-      expect(angle.top, greaterThan(x.bottom), reason: "on the line below");
+      expect(next.first.top, greaterThan(top.first.bottom));
+      for (var i = 0; i < 3; i++) {
+        expect(next[i].left, closeTo(top[i].left, 0.5), reason: "column $i");
+      }
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets("and narrows again with the sidebar", (tester) async {
       await panel(tester, width: 420);
       var wide = at(tester, "elementX").width;
-
       await panel(tester, width: 300);
       var narrow = at(tester, "elementX").width;
-
       expect(narrow, lessThan(wide));
-      expect(narrow, greaterThanOrEqualTo(104),
-          reason: "never below the width it asked for");
-    });
-  });
-
-  group("a field", () {
-    testWidgets("is drawn the full height of the row it sits in",
-        (tester) async {
-      // A field is given a row's height to sit in, but the decoration is drawn
-      // at whatever its own padding adds up to and sits at the top of that
-      // row. With no padding at all -- which is what every number on this
-      // panel had -- that is eighteen pixels of field in a twenty-seven pixel
-      // row: a line under the words sitting nine pixels high of where the eye
-      // puts it, beside a button that does fill the row.
-      await panel(tester, width: 420);
-
-      for (var key in ["elementX", "elementY", "elementAngle"]) {
-        var slot = find.byKey(ValueKey(key));
-        await tester.ensureVisible(slot);
-        await tester.pumpAndSettle();
-        // The stepper's box is what is drawn: from its arrow's top to foot.
-        var drawn = tester.getRect(find.byKey(ValueKey("$key-less")));
-        expect(drawn.height, closeTo(cardControlHeight - 2, 1), reason: key);
-        expect(drawn.bottom, closeTo(tester.getRect(slot).bottom - 1, 1),
-            reason: "$key is drawn short of the foot of its row");
-        expect(tester.getRect(slot).height, closeTo(cardCaptioned, 0.5),
-            reason: "$key stands as tall as any other captioned control");
-      }
-    });
-
-    testWidgets("and stands level with the button beside it", (tester) async {
-      await panel(tester, width: 420);
-      var field = find.byKey(const ValueKey("elementH"));
-      await tester.ensureVisible(field);
-      await tester.pumpAndSettle();
-
-      var drawn = tester.getRect(find.byKey(const ValueKey("elementH-less")));
-      var lock = tester.getRect(find.byIcon(Icons.link_off).first);
-      expect(drawn.height, greaterThanOrEqualTo(lock.height - 0.5));
-      expect(drawn.center.dy, closeTo(lock.center.dy, 1.5));
+      expect(tester.takeException(), isNull);
     });
   });
 

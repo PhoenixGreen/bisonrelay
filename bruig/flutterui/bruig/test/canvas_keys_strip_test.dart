@@ -451,6 +451,49 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets("in a short Chain, its grip still drags (Ken's log)",
+      (tester) async {
+    // Tall enough for the strip and the cards, too short for the strip's
+    // least height besides: the grip clamped from 100 to less, and threw.
+    var height = AnimationPanel.cardsLeast +
+        KeysStrip.rulerHeight +
+        2 * KeysStrip.rowHeight +
+        2;
+    expect(height, lessThan(AnimationPanel.cardsLeast + KeysStrip.leastHeight),
+        reason: "the height the clamp crossed at");
+    var c = make();
+    addTearDown(c.dispose);
+    c.keysShown = true;
+    addTearDown(() {
+      c.keysShown = false;
+      c.keysHeight = null;
+    });
+    tester.view.physicalSize = const Size(1600, 540);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: Align(
+                  alignment: Alignment.topLeft,
+                  child: AnimationPanel(controller: c, height: height)))),
+    ));
+    await tester.pump();
+    for (var by in [20.0, -20.0, 200.0]) {
+      await tester.drag(find.byKey(const ValueKey("keysGrip")), Offset(0, by));
+      await tester.pump();
+      expect(tester.takeException(), isNull, reason: "dragged $by");
+    }
+    expect(c.keysHeight, lessThanOrEqualTo(height - AnimationPanel.cardsLeast),
+        reason: "the cards keep their room");
+    await tester.pump(const Duration(milliseconds: 400));
+  });
+
   testWidgets("+ Row keys a setting at the playhead: a row for it",
       (tester) async {
     var c = make();

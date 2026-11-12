@@ -351,8 +351,10 @@ class _MidiKeyboardState extends State<_MidiKeyboard> {
     if (_midi.unavailable) return const SizedBox.shrink();
     var devices = _midi.devices;
     var chosen = _midi.device?.id ?? "";
+    // The list gives way, not the button, where the line is short.
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      CanvasDropdown<String>(
+      Flexible(
+          child: CanvasDropdown<String>(
         key: const ValueKey("midiKeyboard"),
         label: "MIDI keyboard",
         value: chosen,
@@ -365,7 +367,7 @@ class _MidiKeyboardState extends State<_MidiKeyboard> {
         ],
         onChanged: (id) =>
             unawaited(_midi.use(devices.where((d) => d.id == id).firstOrNull)),
-      ),
+      )),
       CanvasIconButton(
         key: const ValueKey("midiRefresh"),
         icon: Icons.refresh,

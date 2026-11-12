@@ -40,55 +40,21 @@ T? freshOf<T extends CanvasElement>(CanvasController controller, T e) {
 typedef SettingsWrite = void Function(CanvasElement);
 
 /// positionGroup is what every element has: where it is, how big, how turned,
-/// and whether it can be touched.
+/// and whether it can be touched -- laid out as the rebuilt panels' prototype
+/// has it. Its keyframes are the Chain's to make and ease (Ken, 2026-11-11).
 Widget positionGroup(CanvasController controller, CanvasElement e,
-    SettingsWrite write, VoidCallback begin, VoidCallback commit,
-    {bool compact = false}) {
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   // No lock, hide or bring-to-front here: they belong to the layer, and the
   // layers list shows them on the element's row, usable without selecting it.
 
   var frame = controller.frame;
   var pose = e.poseAt(frame);
   var box = e.boundsAt(frame);
-  var animated = controller.document.isAnimated;
 
   /// posing is whether these fields are editing a keyframe rather than the
   /// element's resting position. The same question the stage asks of a drag,
   /// so a number typed here and a pixel dragged there mean the same thing.
   var posing = controller.posesRatherThanMoves(e);
-
-  /// onKey is what the pose diamond does: add the pose at this frame, or take
-  /// it away. Lit only by a keyframe that poses the element, not by any on this
-  /// frame (a counter's count or a chart's arrival says nothing about where it
-  /// is): the rule ElementTrack.posesAnything uses, asked of one keyframe.
-  var here = e.track?.keyAt(frame);
-  var hasKey = here != null && (here.posesElement || here.values.isEmpty);
-  void toggleKey() {
-    begin();
-    if (hasKey) {
-      // The pose only: whatever else that frame pinned -- a counter's number,
-      // a chart's arrival -- is not this diamond's to take away.
-      controller.clearPose(e.id, frame);
-    } else {
-      controller.setKeyframe(e.id, pose.copyWith(frame: frame));
-    }
-    commit();
-  }
-
-  // One diamond for the group, not one per field: a keyframe here is a
-  // whole pose, position, size, angle and fade together.
-  var poseDot = CanvasKeyframeDot(
-    on: hasKey,
-    enabled: animated,
-    tooltip: !animated
-        ? "Give the canvas more than one frame to animate this element"
-        : hasKey
-            ? "Remove this element's keyframe here — one keyframe holds its "
-                "position, size, angle and fade together"
-            : "Add a keyframe here for this element's position, size, angle "
-                "and fade",
-    onPressed: toggleKey,
-  );
 
   /// moveTo writes a position, as a pose while animating and as the resting
   /// position otherwise; the fields show the posed value, where the element is
@@ -174,9 +140,6 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
         },
         onCommit: commit,
       ),
-      poseDot,
-      ...keyframeEasingControls(controller, e, begin, commit,
-          label: "Keyframe"),
     ]);
   }
 
@@ -292,37 +255,12 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
       // The settings are already headed with the element's own name.
       hideCaption: true,
       children: [
-        // In a rebuilt panel, as its prototype: where it is and how it is
-        // turned on one line, how big and how solid on the next.
-        if (compact) ...[
-          panelRow([cell(xField), cell(yField), cell(turnField)]),
-          panelRow([cell(wField), cell(hField), cell(opacityField)]),
-          lockButton,
-        ] else ...[
-          xField,
-          yField,
-          const CanvasLineBreak(),
-          // What is on screen, editing the resting size: see resize.
-          wField,
-          hField,
-          lockButton,
-          // Where it is and how big, then how it is turned and how solid: two
-          // questions, broken here rather than wherever the Wrap falls.
-          const CanvasLineBreak(),
-          turnField,
-          opacityField,
-        ],
+        // Where it is and how it is turned on one line, how big and how
+        // solid on the next.
+        panelRow([cell(xField), cell(yField), cell(turnField)]),
+        panelRow([cell(wField), cell(hField), cell(opacityField)]),
+        lockButton,
         anchorButtons(controller, e, write, begin, commit),
-        // Its keyframes are the Chain's to make and ease, in a rebuilt panel
-        // (Ken, 2026-11-11): here, only on the older ones.
-        if (!compact) ...[
-          poseDot,
-          // How it leaves the keyframe it is on, beside the dot that makes it
-          // (Ken, 2026-11-08: the Animation section is gone; its motion is the
-          // Chain's, and the keyframes it still has are eased here).
-          ...keyframeEasingControls(controller, e, begin, commit,
-              label: "Keyframe"),
-        ],
         // How it is slanted, after how it is turned -- and the switch that
         // makes the side handles slant it, for a screen with no keys to hold.
         const CanvasLineBreak(),
@@ -1796,51 +1734,6 @@ IconData _loopIcon(LoopFamily? f) => switch (f) {
       LoopFamily.effect => Icons.auto_awesome_outlined,
       LoopFamily.drift => Icons.panorama_outlined,
     };
-
-/// keyframeEasingControls are the keyframe's easing and the button that
-/// gives every keyframe the same: nothing, for an element with no keyframes.
-List<Widget> keyframeEasingControls(CanvasController controller,
-    CanvasElement element, VoidCallback begin, VoidCallback commit,
-    {String label = "Easing"}) {
-  var keys = element.track?.keys ?? const <Keyframe>[];
-  if (keys.isEmpty) return const [];
-  var here = element.track?.keyAt(controller.frame);
-
-  return [
-    easeDropdown<KeyframeEasing>(
-      key: const ValueKey("elementKeyframeEasing"),
-      label: label,
-      value: here?.easing ?? KeyframeEasing.linear,
-      width: 160,
-      enabled: here != null,
-      values: KeyframeEasing.values,
-      name: (easing) => easing == KeyframeEasing.hold
-          ? "Hold (stays the same)"
-          : easing.label,
-      // A hold stays where it was until the next keyframe, then jumps.
-      curve: (easing) => easing == KeyframeEasing.hold
-          ? (t) => t >= 1 ? 1.0 : 0.0
-          : easing.apply,
-      onChanged: (v) {
-        begin();
-        controller.setKeyframeEasing(element, v);
-        commit();
-      },
-    ),
-    CanvasIconButton(
-      key: const ValueKey("elementKeyframeEasingAll"),
-      icon: Icons.restart_alt,
-      tooltip: "Apply to all",
-      onPressed: here == null
-          ? null
-          : () {
-              begin();
-              controller.setKeyframeEasing(element, here.easing, all: true);
-              commit();
-            },
-    ),
-  ];
-}
 
 /// effectBits are the settings a cutting preset has: how many pieces, how far
 /// they are thrown, how much they turn. Shared by the element's and the text

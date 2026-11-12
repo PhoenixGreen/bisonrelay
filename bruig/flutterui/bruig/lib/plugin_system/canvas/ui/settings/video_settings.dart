@@ -239,10 +239,18 @@ List<Widget> videoSettings(
     rule: false,
     tooltip: "Fades, and where it starts",
     row: [
-      CanvasSlider(
+      // In percent, as every volume is.
+      CanvasNumberField(
+        key: const ValueKey("videoVolume"),
         label: "Volume",
-        value: clip.volume,
-        onChanged: (v) => write(e.copyWith(clip: clip.copyWith(volume: v))),
+        value: clip.volume.clamp(0.0, 1.0) * 100,
+        min: 0,
+        max: 100,
+        decimals: 0,
+        suffix: "%",
+        width: 72,
+        onChanged: (v) =>
+            write(e.copyWith(clip: clip.copyWith(volume: v / 100))),
         onCommit: commit,
       ),
       CanvasNumberField(

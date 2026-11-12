@@ -969,6 +969,8 @@ class _MotionLanesState extends State<MotionLanes> {
                   laneOf: _laneOf,
                   rowHeight: _rowHeight,
                   times: motionTimesOf(controller.document),
+                  sceneEnd: controller.document.frames /
+                      math.max(1, controller.document.frameRate),
                   x: (s) => _x(s, width),
                   picked: {
                     if (controller.pickedPlacement case var p?) p,
@@ -1131,6 +1133,10 @@ class _LanesPainter extends CustomPainter {
   final MotionTimes times;
   final double Function(double seconds) x;
 
+  /// sceneEnd is where the scene stops, in seconds: an arrival still going
+  /// then never settles, and the part past it is shaded (see _unsettled).
+  final double sceneEnd;
+
   /// picked are the placements picked, outlined.
   final Set<String> picked;
   final ColorScheme colors;
@@ -1146,6 +1152,7 @@ class _LanesPainter extends CustomPainter {
     required this.tracksOf,
     required this.rowHeight,
     required this.times,
+    required this.sceneEnd,
     required this.x,
     required this.picked,
     required this.colors,
@@ -1204,6 +1211,12 @@ class _LanesPainter extends CustomPainter {
               return byStack != 0 ? byStack : a.layer - b.layer;
             }))
           : m.placed;
+      // Where it starts to leave, which an arrival should have settled by.
+      var leaves = [
+        for (var p in m.placed)
+          if (m.clip(p.clip)?.kind == MotionKind.leave)
+            if (times.span(p.id) case var s?) s.start
+      ].fold<double?>(null, (a, b) => a == null ? b : math.min(a, b));
       for (var p in order) {
         var c = m.clip(p.clip);
         var s = times.span(p.id);
@@ -1219,6 +1232,10 @@ class _LanesPainter extends CustomPainter {
             right: x(s.end));
         if (rect == null || rect.right < 0 || rect.left > size.width) continue;
         _clip(canvas, rect, c, p, s, colourOf(e));
+        if (c.kind == MotionKind.arrive) {
+          _unsettled(canvas, rect, s, math.min(sceneEnd, leaves ?? sceneEnd),
+              size.width);
+        }
       }
       // An element reused: where each copy's clips start, as short amber
       // ticks along the top of its row (the approved design), from its first
@@ -1243,6 +1260,38 @@ class _LanesPainter extends CustomPainter {
       }
       y += h;
     }
+  }
+
+  /// _unsettled shades the part of an arrival still going at [by] -- the
+  /// scene's end, or its leave starting -- the arrival never settling: its
+  /// bar the length it really is, with what is never seen finished marked
+  /// as such, a red edge where it is cut off (Ken: the arrive bar ran
+  /// the full length of a short scene).
+  void _unsettled(
+      Canvas canvas, Rect rect, ClipSpan s, double by, double width) {
+    if (s.end <= by + 1e-6) return;
+    var cut = x(by).clamp(rect.left, rect.right).toDouble();
+    if (rect.right - cut < 1) return;
+    // From a little before the cut, so the mark shows where the timeline
+    // stops at the scene's end and what runs past it is off the edge.
+    var from = math.max(rect.left, math.min(cut, width) - 10);
+    var past = Rect.fromLTRB(from, rect.top, rect.right, rect.bottom);
+    canvas.save();
+    canvas.clipPath(cutCornersPath(rect, 4));
+    canvas.drawRect(Rect.fromLTRB(cut, rect.top, rect.right, rect.bottom),
+        Paint()..color = const Color(0x8C000000));
+    // Hatched, so it reads as cut off rather than a darker clip.
+    var hatch = Paint()
+      ..color = const Color(0x73000000)
+      ..strokeWidth = 1.5;
+    for (var hx = past.left - past.height; hx < past.right; hx += 5) {
+      canvas.drawLine(
+          Offset(hx, past.bottom), Offset(hx + past.height, past.top), hatch);
+    }
+    var edge = math.min(cut, width) - 1;
+    canvas.drawRect(Rect.fromLTWH(edge - 1, rect.top, 2, rect.height),
+        Paint()..color = const Color(0xFFFF5F52));
+    canvas.restore();
   }
 
   void _clip(Canvas canvas, Rect rect, MotionClip c, ClipPlacement p,

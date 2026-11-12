@@ -144,9 +144,7 @@ Widget elementPanel(
                 .where((s) => s.isNotEmpty)
                 .join(" · "),
             children: [
-              position ??
-                  positionGroup(controller, e, write, begin, commit,
-                      compact: true),
+              position ?? positionGroup(controller, e, write, begin, commit),
               ...into(PanelSection.layout),
             ]),
         ...stageSpotSettings(context, controller, e, write, begin, commit),

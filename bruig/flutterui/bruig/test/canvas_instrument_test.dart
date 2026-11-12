@@ -444,7 +444,11 @@ void main() {
             ),
           ),
           settle: false);
-      expect(find.byKey(const ValueKey("elementSection-instrument")),
+      // Its keyboard and part, straight into its Content (the rebuilt panel).
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("elementSection-content")),
+              matching: find.byKey(const ValueKey("instrumentKeys"))),
           findsOneWidget);
       expect(find.byKey(const ValueKey("audioAdd")), findsNothing,
           reason: "an instrument's sound is its part, not a file");

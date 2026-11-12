@@ -359,7 +359,7 @@ List<Widget> _bodySections(
           if (e.curve != null) "on a line",
         ].join(" · "),
         children: [
-          positionGroup(controller, e, write, begin, commit, compact: true),
+          positionGroup(controller, e, write, begin, commit),
           CanvasControlGroup(label: "Columns", rule: false, children: [
             CanvasNumberField(
               key: const ValueKey("textColumns"),

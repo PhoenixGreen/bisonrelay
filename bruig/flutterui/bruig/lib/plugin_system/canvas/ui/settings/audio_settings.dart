@@ -176,13 +176,20 @@ List<Widget> audioSettings(
     rule: false,
     tooltip: "Fades, and where it starts",
     row: [
-      CanvasSlider(
+      // In percent, as every volume is (the quick strip's, a transition
+      // sound's). A sound on the timeline goes to twice -- six decibels up;
+      // a speaker's is where its own control starts, which tops out at one.
+      CanvasNumberField(
+        key: const ValueKey("audioVolume"),
         label: "Volume",
-        // A sound on the timeline goes to twice -- six decibels up; a
-        // speaker's is where its own control starts, which tops out at one.
-        value: clip.volume.clamp(0.0, clip.timed ? 2.0 : 1.0).toDouble(),
-        max: clip.timed ? 2 : 1,
-        onChanged: (v) => write(e.copyWith(clip: clip.copyWith(volume: v))),
+        value: clip.volume.clamp(0.0, clip.timed ? 2.0 : 1.0) * 100,
+        min: 0,
+        max: clip.timed ? 200 : 100,
+        decimals: 0,
+        suffix: "%",
+        width: 72,
+        onChanged: (v) =>
+            write(e.copyWith(clip: clip.copyWith(volume: v / 100))),
         onCommit: commit,
       ),
       CanvasDropdown<MediaLoop>(
@@ -461,9 +468,9 @@ List<Widget> audioSettings(
                 CanvasStepper(
                   key: const ValueKey("quickAudioVolume"),
                   label: "Volume",
-                  value: clip.volume * 100,
+                  value: clip.volume.clamp(0.0, clip.timed ? 2.0 : 1.0) * 100,
                   min: 0,
-                  max: 100,
+                  max: clip.timed ? 200 : 100,
                   decimals: 0,
                   step: 5,
                   suffix: "%",

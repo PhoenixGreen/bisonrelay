@@ -96,13 +96,19 @@ class _AddChip extends StatelessWidget {
     var theme = ThemeNotifier.of(context);
     var body = Container(
       width: 76,
-      height: 62,
+      // At least this tall, and taller with the app's text larger: a name
+      // over two lines ran out of a fixed 62.
+      constraints: const BoxConstraints(minHeight: 62),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: theme.colors.outlineVariant),
         color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.5),
       ),
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
         Icon(iconForKind(kind), size: 20, color: theme.colors.onSurfaceVariant),
         const SizedBox(height: 4),
         Text(
@@ -156,13 +162,17 @@ class _AddInstrument extends StatelessWidget {
             controller.addElement(newInstrument(controller.document)),
         child: Container(
           width: 76,
-          height: 62,
+          constraints: const BoxConstraints(minHeight: 62),
+          padding: const EdgeInsets.symmetric(vertical: 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: theme.colors.outlineVariant),
             color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.5),
           ),
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
             Icon(Icons.piano, size: 20, color: theme.colors.onSurfaceVariant),
             const SizedBox(height: 4),
             Text("Instrument",

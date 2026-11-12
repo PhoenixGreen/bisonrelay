@@ -132,8 +132,11 @@ class _AnimationPanelState extends State<AnimationPanel> {
               key: const ValueKey("keysGrip"),
               behavior: HitTestBehavior.opaque,
               supportedDevices: dragPointers,
+              // Its least height, unless the Chain is too short for it to
+              // leave the cards theirs (Ken's log: a clamp from 100 to less).
               onVerticalDragUpdate: (d) => controller.keysHeight =
-                  (_strip + d.delta.dy).clamp(KeysStrip.leastHeight, most),
+                  (_strip + d.delta.dy)
+                      .clamp(math.min(KeysStrip.leastHeight, most), most),
               onDoubleTap: () => controller.keysHeight = null,
             ),
           ),

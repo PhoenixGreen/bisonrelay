@@ -328,8 +328,7 @@ class _Sections {
       PositionTool.place => [
           framed
               // Compact, as every rebuilt panel's: keyframes are the Chain's.
-              ? positionGroup(controller, e, write, begin, commit,
-                  compact: true)
+              ? positionGroup(controller, e, write, begin, commit)
               : layerPositionGroup(controller, e, picked, write, begin, commit),
         ],
       PositionTool.flip =>
