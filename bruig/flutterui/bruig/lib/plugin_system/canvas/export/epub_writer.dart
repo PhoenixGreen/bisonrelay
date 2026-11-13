@@ -495,6 +495,8 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
       .layer .hit { pointer-events: auto; }
       .rx { position: absolute; left: 0; top: 0; width: 0;
         height: 0; overflow: visible; pointer-events: none; }
+      .lens { position: absolute; left: 0; top: 0; width: 0; height: 0;
+        overflow: visible; pointer-events: none; }
       /* The start: the page as it ends up, a Play and how much has loaded. */
       .intro { position: absolute; left: 0; top: 0; width: 100%;
         height: 100%; z-index: 5; }
@@ -613,6 +615,13 @@ String _stageTag(
       case EpubSlab slab:
         out.add(_spriteTag(slab.sprite, "slab", true, box));
       case EpubLayer layer:
+        // The Camera's lens on it, by its depth: blurred and moved on a
+        // wrapper round it (see lensKeys).
+        var lensed = stage.lens[layer.id];
+        if (lensed != null) {
+          out.add(
+              '<div class="lens" ${animated(lensed, "transform-origin:0 0")}>');
+        }
         // A video laid on as light or shade: blended as its layer, with the
         // page under it -- inside the layer it would blend with nothing.
         var blend = page.media
@@ -709,6 +718,7 @@ String _stageTag(
         }
         if (reacts) out.add('  </div>');
         out.add('</div>');
+        if (lensed != null) out.add('</div>');
     }
   }
   // Where a click starts a reaction: over everything, so whatever is drawn
@@ -725,6 +735,16 @@ String _stageTag(
     // The presses outside the layers, framed with the rest.
     if (inside.isNotEmpty) out.add(inside);
     out.add('</div>');
+  }
+  // The lens's darkened corners, over what it shows (see vignetteKeys): a
+  // gradient as the canvas draws it, its strength the overlay's opacity.
+  if (stage.vignette.isNotEmpty) {
+    var w = page.width.toDouble(), h = page.height.toDouble();
+    var r = math.max(w, h) * 0.75;
+    var inner =
+        ((1 - stage.vignetteSoft.clamp(0.0, 1.0)) * 70).toStringAsFixed(1);
+    out.add(
+        '<div class="vignette" ${animated(stage.vignette, "position:absolute;left:0;top:0;width:${_px(w)};height:${_px(h)};pointer-events:none;background:radial-gradient(circle ${_px(r)} at 50% 50%, rgba(0,0,0,0) 0%, rgba(0,0,0,0) $inner%, rgba(0,0,0,1) 100%)")}></div>');
   }
   // The start (Ken, 2026-11-13: the book opened blank, its Play not yet
   // arrived, and slowly): the page as it ends up -- all a reader that runs

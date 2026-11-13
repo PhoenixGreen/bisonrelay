@@ -239,6 +239,16 @@ class EpubStage {
   /// cameraKeys.
   final List<EpubKey> camera;
 
+  /// lens is what the Camera's lens does to each layer by its element's
+  /// depth -- blurs it away from the focus, moves it by parallax -- as
+  /// keys on a wrapper round the layer, by the layer's id. See lensKeys.
+  final Map<String, List<EpubKey>> lens;
+
+  /// vignette is the Camera's darkened corners, as keys of the overlay's
+  /// opacity, with how far in it reaches; empty for none.
+  final List<EpubKey> vignette;
+  final double vignetteSoft;
+
   const EpubStage({
     required this.items,
     required this.frames,
@@ -250,6 +260,9 @@ class EpubStage {
     this.clickable = const [],
     this.sounds = const [],
     this.camera = const [],
+    this.lens = const {},
+    this.vignette = const [],
+    this.vignetteSoft = 0.5,
   });
 
   Iterable<EpubLayer> get layers => items.whereType<EpubLayer>();
@@ -257,7 +270,11 @@ class EpubStage {
   /// animates is whether anything on it changes with the playhead, rather
   /// than being laid out only to be shown, hidden and pointed at.
   bool get animates =>
-      timeline || camera.length > 1 || layers.any((l) => l.moves);
+      timeline ||
+      camera.length > 1 ||
+      vignette.length > 1 ||
+      lens.values.any((k) => k.length > 1) ||
+      layers.any((l) => l.moves);
 }
 
 /// StageResult is a page laid out, and the files it needs.
@@ -405,6 +422,9 @@ Future<StageResult?> buildEpubStage(
   // background element holds still in a book.
   bool keyedVideo(CanvasElement e) =>
       e is VideoElement && media != null && isTimedMedia(e) && !plainVideo(e);
+  // What the Camera's lens does to each element by its depth: those it
+  // blurs or moves are layers of their own, to be done to alone.
+  var lens = lensKeys(page, drawn, frames, pixels);
   var moving = <String>{};
   var changing = <String>{};
   for (var e in drawn) {
@@ -416,12 +436,14 @@ Future<StageResult?> buildEpubStage(
         hovering.contains(e.id) ||
         _switchable(e).isNotEmpty ||
         layered.contains(e.id) ||
+        lens.containsKey(e.id) ||
         reacting.contains(e.id)) {
       moving.add(e.id);
     }
   }
   if (!(timeline && frames > 1) &&
       backdropVideo == null &&
+      lens.isEmpty &&
       changing.isEmpty &&
       toggled.isEmpty &&
       hovering.isEmpty &&
@@ -585,6 +607,12 @@ Future<StageResult?> buildEpubStage(
     ],
     sounds: [for (var f in sounds.values) f.href],
     camera: cameraKeys(page, frames, pixels, width, height),
+    lens: lens,
+    vignette: vignetteKeys(page, frames),
+    vignetteSoft: switch (cameraOf(page)) {
+      CameraElement c when !isStageScene(page) => c.vignetteSoft,
+      _ => 0.5,
+    },
   );
   return StageResult(stage, [...sheets.files, ...clips, ...sounds.values]);
 }
@@ -601,10 +629,20 @@ List<EpubKey> cameraKeys(
   if (cam == null || isStageScene(page)) return const [];
   String at(int f) {
     var (zoom, c) = cameraFraming(cam, f, page);
-    var tx = width / 2 - c.dx * pixels * zoom;
-    var ty = height / 2 - c.dy * pixels * zoom;
-    return "translate(${tx.toStringAsFixed(2)}px,${ty.toStringAsFixed(2)}px) "
-        "scale(${zoom.toStringAsFixed(5)})";
+    var roll = cameraLookAt(cam, f, page).roll;
+    if (roll == 0) {
+      var tx = width / 2 - c.dx * pixels * zoom;
+      var ty = height / 2 - c.dy * pixels * zoom;
+      return "translate(${tx.toStringAsFixed(2)}px,${ty.toStringAsFixed(2)}px) "
+          "scale(${zoom.toStringAsFixed(5)})";
+    }
+    // Rolled: about the middle of the page, the picture turned back.
+    return "translate(${(width / 2).toStringAsFixed(2)}px,"
+        "${(height / 2).toStringAsFixed(2)}px) "
+        "rotate(${(-roll).toStringAsFixed(3)}deg) "
+        "scale(${zoom.toStringAsFixed(5)}) "
+        "translate(${(-c.dx * pixels).toStringAsFixed(2)}px,"
+        "${(-c.dy * pixels).toStringAsFixed(2)}px)";
   }
 
   var all = [for (var f = 0; f < frames; f++) at(f)];
@@ -619,6 +657,86 @@ List<EpubKey> cameraKeys(
   // Never moving: a still framing is one key.
   if (all.toSet().length == 1) return [keys.first];
   return keys;
+}
+
+/// lensKeys are what [page]'s Camera's lens does to each of [elements] by
+/// its depth, on each of [frames] where that changes: its parallax as a
+/// transform from the camera's framing to its own (see parallaxed), its
+/// depth of field as a blur. Only those it does anything to.
+Map<String, List<EpubKey>> lensKeys(CanvasDocument page,
+    List<CanvasElement> elements, int frames, double pixels) {
+  var cam = cameraOf(page);
+  if (cam == null || isStageScene(page) || !cam.hasLens) return const {};
+  var rect = page.size.rect;
+  var looks = [for (var f = 0; f < frames; f++) cameraLookAt(cam, f, page)];
+  var framings = [for (var f = 0; f < frames; f++) cameraFraming(cam, f, page)];
+  var out = <String, List<EpubKey>>{};
+  for (var e in elements) {
+    if (e is CameraElement) continue;
+    var depth = e.base.depth;
+    if (depth == 0 && looks.every((l) => l.blurAt(0) <= 0.25)) continue;
+    var sways = looks.any((l) => l.sways(depth));
+    var blurs = looks.any((l) => l.blurAt(depth) > 0.25);
+    if (!sways && !blurs) continue;
+    Map<String, String> at(int f) {
+      var look = looks[f];
+      var (zoom, focus) = framings[f];
+      var css = <String, String>{};
+      if (sways) {
+        var (z, c) = parallaxed(zoom, focus, rect, depth, look.parallax);
+        var k = z / zoom;
+        var tx = (focus.dx - k * c.dx) * pixels;
+        var ty = (focus.dy - k * c.dy) * pixels;
+        css["transform"] =
+            "translate(${tx.toStringAsFixed(2)}px,${ty.toStringAsFixed(2)}px) "
+            "scale(${k.toStringAsFixed(5)})";
+      }
+      if (blurs) {
+        var sigma = look.blurAt(depth) * pixels;
+        css["filter"] = "blur(${sigma.toStringAsFixed(2)}px)";
+      }
+      return css;
+    }
+
+    var all = [for (var f = 0; f < frames; f++) at(f)];
+    bool same(int a, int b) =>
+        all[a].length == all[b].length &&
+        all[a].entries.every((x) => all[b][x.key] == x.value);
+    var keys = <EpubKey>[
+      for (var f = 0; f < frames; f++)
+        if (f == 0 || f == frames - 1 || !same(f, f - 1) || !same(f, f + 1))
+          EpubKey(f, all[f]),
+    ];
+    out[e.id] = keys.length > 1 && keys.every((k) => same(k.frame, 0))
+        ? [keys.first]
+        : keys;
+  }
+  return out;
+}
+
+/// vignetteKeys is [page]'s Camera's vignette, as the overlay's opacity on
+/// each frame it changes; empty for none.
+List<EpubKey> vignetteKeys(CanvasDocument page, int frames) {
+  var cam = cameraOf(page);
+  if (cam == null || isStageScene(page)) return const [];
+  var all = [
+    for (var f = 0; f < frames; f++)
+      cameraLookAt(cam, f, page).vignette.toStringAsFixed(3)
+  ];
+  if (all.every((v) => double.parse(v) <= 0)) return const [];
+  if (all.toSet().length == 1) {
+    return [
+      EpubKey(0, {"opacity": all.first})
+    ];
+  }
+  return [
+    for (var f = 0; f < frames; f++)
+      if (f == 0 ||
+          f == frames - 1 ||
+          all[f] != all[f - 1] ||
+          all[f] != all[f + 1])
+        EpubKey(f, {"opacity": all[f]}),
+  ];
 }
 
 /// _BackdropVideo marks where the background video goes in the stack.

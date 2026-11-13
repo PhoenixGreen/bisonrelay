@@ -1204,6 +1204,50 @@ void main() {
         isFalse);
   });
 
+  // Ken, 2026-11-14: the camera's lens in the book as in the video --
+  // roll, depth of field, parallax and a vignette (motion blur is the
+  // video's alone).
+  testWidgets("the camera's lens: roll, depth of field, parallax, vignette",
+      (tester) async {
+    var doc = book([
+      ShapeElement(
+          const ElementBase(id: "near", x: 20, y: 40, width: 60, height: 60),
+          fill: const Color(0xFF00FF00)),
+      ShapeElement(
+          const ElementBase(
+              id: "far", x: 200, y: 40, width: 60, height: 60, depth: 1),
+          fill: const Color(0xFF0000FF)),
+      const CameraElement(
+          ElementBase(
+              id: "cam", x: 80, y: 45, width: 160, height: 90, rotation: 10),
+          blur: 4,
+          parallax: 0.5,
+          vignette: 0.6),
+    ]);
+    var bytes = await publish(tester, doc);
+    var page = pageOf(bytes, 0);
+    var pixels = imageWidth(files(bytes)["OEBPS/page0.png"]!) / 320;
+    var cam = page
+        .findAllElements("div")
+        .firstWhere((d) => d.getAttribute("class") == "cam");
+    expect(cam.getAttribute("style"), contains("rotate(-10.000deg)"),
+        reason: "rolled, the picture turned back");
+    // The far square: blurred and moved on a wrapper round its layer.
+    var lens = byId(page, "l-far")!.parentElement!;
+    expect(lens.getAttribute("class"), "lens");
+    var style = lens.getAttribute("style")!;
+    expect(style, contains("blur(${(4 * pixels).toStringAsFixed(2)}px)"));
+    expect(style, contains("scale("));
+    // The near one, on the focus and the page: as it was.
+    expect(byId(page, "l-near"), isNull,
+        reason: "nothing done to it, so still flattened");
+    var vignette = page
+        .findAllElements("div")
+        .firstWhere((d) => d.getAttribute("class") == "vignette");
+    expect(vignette.getAttribute("style"), contains("opacity:0.600"));
+    expect(vignette.getAttribute("style"), contains("radial-gradient"));
+  });
+
   // Ken, 2026-11-13: the Rain, screened at a tenth on the canvas, played
   // full and black over the book's page.
   test("a video's opacity and blend go with it into the book", () {
