@@ -752,10 +752,13 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                       onBoxEnd: _boxEnd),
                 // At the channel height S, an element's row is its motion
                 // alone (Ken, 2026-11-08); its sound from M up, or opened
-                // by its arrow.
+                // by its arrow. Not a video's: its channel is the video
+                // itself, its clip on the timeline -- gone at S, the Rain
+                // had no clip to see (Ken, 2026-11-13).
                 if (show != TimelineShow.animation &&
                     (controller.laneSize > 0 ||
                         !controller.rowFolded(e.id) ||
+                        e is VideoElement ||
                         show == TimelineShow.sound))
                   for (var channel in owned[e.id] ?? const <TimelineChannel>[])
                     ..._channelRows(channel, width, theme, channels,

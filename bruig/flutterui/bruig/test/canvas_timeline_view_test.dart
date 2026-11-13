@@ -260,6 +260,25 @@ void main() {
       expect(c.effectsOf, "b");
     });
 
+    // Ken, 2026-11-13: at the smallest channel height the Rain showed no
+    // clip -- a row is its motion alone at S, and a video's channel is the
+    // video itself.
+    testWidgets("a video's clip shows at every channel height", (tester) async {
+      var c = await show(tester, elements: [
+        VideoElement(const ElementBase(id: "rain", name: "Rain"),
+            clip: const MediaClip(
+                timed: true,
+                playlist: [MediaSource(assetId: song, length: 4)])),
+      ]);
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+        expect(find.byKey(const ValueKey("lane-rain")), findsOneWidget,
+            reason: "at size ${c.laneSize}");
+        c.nextLaneSize();
+      }
+      expect(tester.takeException(), isNull);
+    });
+
     // Ken, 2026-11-13: clicking a header updated neither the settings, the
     // mixer nor the Chain -- the channel was picked, not its sound.
     testWidgets("a channel's header clicked picks its sound too",
