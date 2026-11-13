@@ -33,6 +33,8 @@ import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/model/motion.dart';
+import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'canvas_arrival_fixture.dart';
@@ -775,6 +777,69 @@ void main() {
         opf,
         contains(
             '<itemref idref="page0" properties="rendition:page-spread-center"/>'));
+  });
+
+  // Ken, 2026-11-13: a clip started by a click, or by another clip ending,
+  // was left out of the book -- "is there a way to fix this export
+  // limitation that also complies with the epub3 format?" EPUB 3 lets a page
+  // run script when the package says so; the clips go in as keyframes.
+  testWidgets("a clip started by a click, and one after it, are in the book",
+      (tester) async {
+    var jump = presetNamed("Jump")!.clip("jump").copyWith(
+        triggers: const [ClipTrigger(ClipTriggerKind.clicked, target: "dot")]);
+    var shake = presetNamed("Shake")!.clip("shake").copyWith(triggers: const [
+      ClipTrigger(ClipTriggerKind.clipEnds, target: "jump")
+    ]);
+    var dot = ShapeElement(
+        ElementBase(
+            id: "dot",
+            x: 10,
+            y: 10,
+            width: 40,
+            height: 40,
+            motion: ElementMotion(clips: [jump]).inSlot(0, "jump")),
+        fill: const Color(0xFFFF0000));
+    var box = ShapeElement(
+        ElementBase(
+            id: "box",
+            x: 120,
+            y: 60,
+            width: 40,
+            height: 40,
+            motion: ElementMotion(clips: [shake]).inSlot(0, "shake")),
+        fill: const Color(0xFF0000FF));
+    var bytes = await publish(tester, book([dot, box]));
+    var page = pageOf(bytes, 0);
+    List<Map<String, dynamic>> reactionsOf(String id) {
+      var rx = byId(page, "l-$id")!
+          .childElements
+          .firstWhere((e) => e.getAttribute("class") == "rx");
+      return (jsonDecode(rx.getAttribute("data-rx")!) as List)
+          .cast<Map<String, dynamic>>();
+    }
+
+    // Each a layer, still on the timeline, with its reaction on it.
+    var r = reactionsOf("dot").single;
+    expect(r["on"], "click:dot");
+    expect(r["c"], "jump");
+    expect(r["ms"], greaterThan(0));
+    var moved = (r["kf"] as List).any((k) =>
+        (k["transform"] as String).contains("translate(") &&
+        !(k["transform"] as String).startsWith("translate(0px,0px)"));
+    expect(moved, isTrue, reason: "a jump moves it");
+    expect(reactionsOf("box").single["on"], "end:jump",
+        reason: "the shake waits on the jump");
+    // Where a click lands: over the dot, in the page's pixels.
+    var hits = [
+      for (var b in page.findAllElements("button"))
+        if (b.getAttribute("data-act") == "react") b,
+    ];
+    expect(hits.single.getAttribute("data-target"), "dot");
+    // And the package says the page runs its script, as EPUB 3 asks.
+    var opf = utf8.decode(files(bytes)["OEBPS/content.opf"]!);
+    expect(opf, contains('properties="scripted"'));
+    expect(
+        utf8.decode(files(bytes)["OEBPS/media.js"]!), contains("media.react"));
   });
 
   group("the script", () {

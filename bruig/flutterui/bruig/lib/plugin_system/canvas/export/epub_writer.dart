@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -421,6 +422,8 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
         height: 100%; pointer-events: none; }
       .layer.moves, .layer.moves .pt { will-change: transform, opacity; }
       .layer .hit { pointer-events: auto; }
+      .rx { position: absolute; left: 0; top: 0; width: 100%;
+        height: 100%; pointer-events: none; }
       .hit.idle { cursor: default; }
       .layer.hovers:hover > .cw, .layer.hovering > .cw,
       .layer.hovers:hover > .clip, .layer.hovering > .clip,
@@ -507,6 +510,38 @@ String _stageTag(
             '${layer.hover == null ? "" : " hovers"}" '
             'id="l-${_attr(layer.id)}" '
             '${animated(layer.pose, "transform-origin:${_px(layer.originX)} ${_px(layer.originY)}${layer.visible ? "" : ";display:none"}")}>');
+        // Its reactions -- clips it plays on a click or after another clip
+        // -- on a wrapper round it, so they go over its place on the
+        // timeline rather than instead of it. Not on a layer that changes
+        // under the pointer or by its key, whose rules name its pictures
+        // as its own children.
+        var reacts = layer.reactions.isNotEmpty &&
+            layer.hover == null &&
+            layer.switched.isEmpty;
+        if (reacts) {
+          var list = [
+            for (var r in layer.reactions)
+              {
+                "c": r.clip,
+                "on": r.on,
+                "ms": (r.frames / math.max(1, stage.rate) * 1000).round(),
+                "kf": [
+                  for (var k in r.keys)
+                    {
+                      "offset": double.parse(
+                          (k.frame / math.max(1, r.frames)).toStringAsFixed(6)),
+                      for (var MapEntry(:key, :value) in k.css.entries)
+                        _camel(key): value,
+                    },
+                ],
+                if (r.sound != null) "s": r.sound,
+                if (r.sound != null)
+                  "v": double.parse(r.volume.toStringAsFixed(3)),
+              },
+          ];
+          out.add('  <div class="rx" data-rx="${_attr(jsonEncode(list))}" '
+              'style="transform-origin:${_px(layer.originX)} ${_px(layer.originY)}">');
+        }
         for (var part in layer.parts) {
           var s = part.sprite;
           out.add('  <div class="cw" '
@@ -559,8 +594,19 @@ String _stageTag(
           out.add('  <span class="hit idle" '
               'style="${box(b.left, b.top, b.width, b.height)}"></span>');
         }
+        if (reacts) out.add('  </div>');
         out.add('</div>');
     }
+  }
+  // Where a click starts a reaction: over everything, so whatever is drawn
+  // above the element it lands on, it lands.
+  for (var (id, r) in stage.clickable) {
+    out.add('<button type="button" class="hit react" data-act="react" '
+        'data-target="${_attr(id)}" aria-label="${_attr(id)}" '
+        'style="${box(r.left, r.top, r.width, r.height)}"></button>');
+  }
+  for (var sound in stage.sounds) {
+    out.add('<audio class="rxs" src="${_attr(sound)}" preload="auto"></audio>');
   }
   out.add('</div>');
   return out.join("\n    ");
@@ -742,6 +788,39 @@ const String _mediaScript = r"""(function () {
         anims.push(a);
       } catch (e) {}
     });
+
+    // The reactions: clips an element plays on a click on the page, or when
+    // another clip ends -- each over its own length, with its sound, then
+    // let go, and what follows it started. See EpubReaction.
+    var reactions = [];
+    all(".rx[data-rx]").forEach(function (el) {
+      var list;
+      try { list = JSON.parse(el.getAttribute("data-rx")); } catch (e) { return; }
+      list.forEach(function (r) { r.el = el; reactions.push(r); });
+    });
+    var reactionSounds = {};
+    all("audio.rxs").forEach(function (a) { reactionSounds[a.getAttribute("src")] = a; });
+    var react = function (on, depth) {
+      if (depth > 16) return;
+      reactions.forEach(function (r) {
+        if (r.on !== on) return;
+        if (r.el.animate) {
+          try {
+            if (r.a) r.a.cancel();
+            r.a = r.el.animate(r.kf, { duration: Math.max(1, r.ms), fill: "none", easing: "linear" });
+          } catch (e) {}
+        }
+        var s = r.s && reactionSounds[r.s];
+        if (s) {
+          try {
+            s.pause(); s.currentTime = 0; s.volume = Math.max(0, Math.min(1, r.v || 1));
+            var p = s.play(); if (p && p.catch) p.catch(function () {});
+          } catch (e) {}
+        }
+        setTimeout(function () { react("end:" + r.c, depth + 1); }, Math.max(1, r.ms));
+      });
+    };
+    media.react = function (on) { react(on, 0); };
 
     // What the pointer is over, for a reader that does not pass :hover up
     // to the layer: the press says so itself.
@@ -945,6 +1024,11 @@ const String _mediaScript = r"""(function () {
   all("[data-act]").forEach(function (b) {
     var touched = 0;
     function run() {
+      // A click that starts reactions: see media.react.
+      if (b.getAttribute("data-act") === "react") {
+        if (media.react) media.react("click:" + b.getAttribute("data-target"));
+        return;
+      }
       var t = media[b.getAttribute("data-target")];
       if (!t) return;
       var frame = parseInt(b.getAttribute("data-frame") || "0", 10);

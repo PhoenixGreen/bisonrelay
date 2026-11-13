@@ -40,7 +40,10 @@ import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
-    show ElementMotion;
+    show ClipPlacement, ClipTriggerKind, ElementMotion, MotionClip;
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
+import 'package:bruig/plugin_system/canvas/export/video_export.dart'
+    show ffmpegPath;
 
 // epub_layers.dart is a page of an interactive EPUB as the things on it, each
 // animated by the reader the way it is animated on the canvas.
@@ -108,6 +111,29 @@ class EpubClip {
       {this.before, this.after});
 }
 
+/// EpubReaction is a clip an element plays when something happens on the
+/// page -- [on] is "click:<element>" for a click on that element, or
+/// "end:<clip>" for another clip ending -- as keyframes over its own
+/// [frames], and the sound linked with it in its row. The page's script plays
+/// it over the element's place on the timeline and lets it go at its end:
+/// the canvas's clips started by a click or by another clip, kept in a book
+/// (Ken, 2026-11-13: "is there a way to fix this export limitation that
+/// also complies with the epub3 format?").
+class EpubReaction {
+  /// clip is its id, which a reaction that follows it names in [on].
+  final String clip;
+  final String on;
+  final int frames;
+  final List<EpubKey> keys;
+
+  /// sound is its linked sound's file in the book, and volume how loud.
+  final String? sound;
+  final double volume;
+
+  const EpubReaction(this.clip, this.on, this.frames, this.keys,
+      {this.sound, this.volume = 1});
+}
+
 /// EpubLayer is one element that moves, can be shown and hidden, or changes
 /// under the pointer.
 class EpubLayer {
@@ -144,6 +170,9 @@ class EpubLayer {
   final List<(int, Rect)> legend;
   final Map<int, EpubSprite> switched;
 
+  /// reactions are the clips it plays on a click or after another clip.
+  final List<EpubReaction> reactions;
+
   const EpubLayer({
     required this.id,
     this.visible = true,
@@ -156,6 +185,7 @@ class EpubLayer {
     this.hoverBox,
     this.legend = const [],
     this.switched = const {},
+    this.reactions = const [],
   });
 
   /// moves is whether anything on it changes with the playhead.
@@ -196,6 +226,13 @@ class EpubStage {
   /// none, or none a reader can show.
   final String? backdropVideo;
 
+  /// clickable are the elements a click on starts a reaction, and where
+  /// each is on the page, in its pixels.
+  final List<(String, Rect)> clickable;
+
+  /// sounds are the reactions' sound files, each once.
+  final List<String> sounds;
+
   const EpubStage({
     required this.items,
     required this.frames,
@@ -204,6 +241,8 @@ class EpubStage {
     this.autoplay = true,
     this.timeline = false,
     this.backdropVideo,
+    this.clickable = const [],
+    this.sounds = const [],
   });
 
   Iterable<EpubLayer> get layers => items.whereType<EpubLayer>();
@@ -337,6 +376,19 @@ Future<StageResult?> buildEpubStage(
       if ((e.visible || toggled.contains(e.id)) && !hidden.contains(e.id)) e,
   ];
 
+  // What plays a clip on a click, or after another clip: a layer each, and
+  // where those clicks land.
+  var reacting = {
+    for (var e in drawn)
+      if (_reactionClips(e).isNotEmpty) e.id,
+  };
+  var clicked = {
+    for (var e in drawn)
+      for (var c in _reactionClips(e))
+        for (var t in c.triggers)
+          if (t.kind == ClipTriggerKind.clicked) t.target,
+  };
+
   // Which elements move: their pose changes, or their look does. A
   // background element holds still in a book.
   bool keyedVideo(CanvasElement e) =>
@@ -351,7 +403,8 @@ Future<StageResult?> buildEpubStage(
         toggled.contains(e.id) ||
         hovering.contains(e.id) ||
         _switchable(e).isNotEmpty ||
-        layered.contains(e.id)) {
+        layered.contains(e.id) ||
+        reacting.contains(e.id)) {
       moving.add(e.id);
     }
   }
@@ -360,9 +413,13 @@ Future<StageResult?> buildEpubStage(
       changing.isEmpty &&
       toggled.isEmpty &&
       hovering.isEmpty &&
+      reacting.isEmpty &&
       !drawn.any((e) => _switchable(e).isNotEmpty)) {
     return null;
   }
+
+  // The reactions' sounds, each a file in the book once.
+  var sounds = await _reactionSounds(page, drawn);
 
   var sheets = _Sheets("layers/p$index");
   var clips = <EpubFile>[];
@@ -437,7 +494,10 @@ Future<StageResult?> buildEpubStage(
         films: changing.contains(e.id) ? films : null,
         media: keyedVideo(e) ? media : null,
         below: [...below],
-        index: index);
+        index: index,
+        sounds: {
+          for (var MapEntry(:key, :value) in sounds.entries) key: value.href
+        });
     items.add(await maker.make(hovers: hovering.contains(e.id)));
     clips.addAll(maker.clips);
     below.add(e);
@@ -477,6 +537,7 @@ Future<StageResult?> buildEpubStage(
               for (var MapEntry(:key, :value) in l.switched.entries)
                 key: sheets.placed(value),
             },
+            reactions: l.reactions,
           ),
         _ => item,
       },
@@ -490,8 +551,18 @@ Future<StageResult?> buildEpubStage(
     autoplay: autoplay,
     timeline: timeline && frames > 1,
     backdropVideo: backdropVideo,
+    clickable: [
+      for (var e in drawn)
+        if (clicked.contains(e.id))
+          (
+            e.id,
+            Rect.fromLTRB(e.bounds.left * pixels, e.bounds.top * pixels,
+                e.bounds.right * pixels, e.bounds.bottom * pixels)
+          ),
+    ],
+    sounds: [for (var f in sounds.values) f.href],
   );
-  return StageResult(stage, [...sheets.files, ...clips]);
+  return StageResult(stage, [...sheets.files, ...clips, ...sounds.values]);
 }
 
 /// _BackdropVideo marks where the background video goes in the stack.
@@ -524,9 +595,16 @@ class _LayerMaker {
   /// clips are the videos made, for the book to carry.
   final List<EpubFile> clips = [];
 
+  /// sounds are the reactions' sound files in the book, by asset.
+  final Map<String, String> sounds;
+
   _LayerMaker(this.e, this.page, this.frames, this.pixels, this.images,
       this.sheets, this.start, this.region, this.pageBox,
-      {this.films, this.media, this.below = const [], required this.index});
+      {this.films,
+      this.media,
+      this.below = const [],
+      required this.index,
+      this.sounds = const {}});
 
   int get rate => page.frameRate <= 0 ? 1 : page.frameRate;
 
@@ -608,7 +686,59 @@ class _LayerMaker {
           ),
       ],
       switched: await _legend(),
+      reactions: _reactions(),
     );
+  }
+
+  /// _reactions are [e]'s clips that start on a click or after another
+  /// clip, each sampled a frame at a time as the canvas plays it -- from
+  /// where the element stands, the clip alone -- with the sound linked with
+  /// it in its row.
+  List<EpubReaction> _reactions() {
+    var out = <EpubReaction>[];
+    var m = e.base.motion;
+    for (var c in _reactionClips(e)) {
+      var n = math.max(1, (c.span * rate).round());
+      // The element with this clip alone on its timeline, from frame 0, on
+      // the page -- so a Go to finds what it goes to.
+      var alone = e.withBase(
+          motion: m.copyWith(placed: [
+        ClipPlacement(id: "rx-${c.id}", clip: c.id, layer: c.layer, start: 0),
+      ]));
+      var on = page.withElement(alone);
+      var css = [
+        for (var f = 0; f <= n; f++)
+          if (poseWithMotion(alone, f, on) case var k)
+            {
+              "transform": "translate(${_n(k.dx * pixels, 2)}px,"
+                  "${_n(k.dy * pixels, 2)}px) rotate(${_n(k.rotate, 3)}deg) "
+                  "scale(${_n(k.scale, 4)})",
+              "opacity": _n(k.opacity.clamp(0.0, 1.0).toDouble(), 3),
+            },
+      ];
+      var row = m.slots.indexOf(c.id);
+      var own = e is VideoElement && (e as VideoElement).clip.channel.isEmpty
+          ? e.id
+          : "snd-${e.id}";
+      var linked =
+          row >= 0 && m.isLinked(row) ? page.session.at(own, row) : null;
+      var file = linked?.sound == null ? null : sounds[linked!.sound!.assetId];
+      for (var t in c.triggers) {
+        var on = switch (t.kind) {
+          ClipTriggerKind.clicked when t.target.isNotEmpty =>
+            "click:${t.target}",
+          ClipTriggerKind.clipEnds => "end:${t.target}",
+          _ => null,
+        };
+        if (on == null) continue;
+        out.add(EpubReaction(c.id, on, n, _compact(css),
+            sound: file,
+            volume: linked == null
+                ? 1
+                : math.pow(10, linked.gain / 20).clamp(0.0, 1.0).toDouble()));
+      }
+    }
+    return out;
   }
 
   /// _legend is the chart with each set of its key's series switched, by
@@ -1577,3 +1707,77 @@ bool isTimedMedia(CanvasElement e) => switch (e) {
       VideoElement v => v.clip.timed && !v.clip.isEmpty,
       _ => false,
     };
+
+/// _reactionClips are [e]'s clips a book can play on something happening on
+/// the page: started by a click on a named element, or by another clip
+/// ending. Not sounds, which go with them.
+List<MotionClip> _reactionClips(CanvasElement e) => [
+      for (var c in e.base.motion.clips)
+        if (!c.isSound &&
+            c.triggers.any((t) =>
+                (t.kind == ClipTriggerKind.clicked && t.target.isNotEmpty) ||
+                t.kind == ClipTriggerKind.clipEnds))
+          c,
+    ];
+
+/// _reactionSounds are the sounds linked with [elements]' reactions, a file
+/// each for the book by asset: an MP3 or AAC as it is -- core EPUB 3 audio
+/// -- anything else made AAC by ffmpeg, or left out without it.
+Future<Map<String, EpubFile>> _reactionSounds(
+    CanvasDocument page, List<CanvasElement> elements) async {
+  var ids = <String>{};
+  for (var e in elements) {
+    var m = e.base.motion;
+    for (var c in _reactionClips(e)) {
+      var row = m.slots.indexOf(c.id);
+      if (row < 0 || !m.isLinked(row)) continue;
+      var own =
+          e is VideoElement && e.clip.channel.isEmpty ? e.id : "snd-${e.id}";
+      if (page.session.at(own, row)?.sound case var s?) ids.add(s.assetId);
+    }
+  }
+  var out = <String, EpubFile>{};
+  String? ffmpeg;
+  for (var id in ids) {
+    var file = await CanvasMedia.existingPath(MediaKind.audio, id);
+    if (file == null) continue;
+    var ext = path.extension(file).toLowerCase();
+    var name = "media/rx-${_safe(path.basenameWithoutExtension(file))}";
+    if (ext == ".mp3") {
+      out[id] =
+          EpubFile("$name.mp3", await File(file).readAsBytes(), "audio/mpeg");
+      continue;
+    }
+    if (ext == ".m4a" || ext == ".aac") {
+      out[id] =
+          EpubFile("$name.m4a", await File(file).readAsBytes(), "audio/mp4");
+      continue;
+    }
+    ffmpeg ??= await ffmpegPath();
+    if (ffmpeg == null) continue;
+    var tmp = await Directory.systemTemp.createTemp("epub-sound");
+    try {
+      var to = path.join(tmp.path, "sound.m4a");
+      var run = await Process.run(ffmpeg, [
+        "-y",
+        "-v",
+        "error",
+        "-i",
+        file,
+        "-vn",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "160k",
+        to
+      ]);
+      if (run.exitCode == 0) {
+        out[id] =
+            EpubFile("$name.m4a", await File(to).readAsBytes(), "audio/mp4");
+      }
+    } finally {
+      await tmp.delete(recursive: true);
+    }
+  }
+  return out;
+}
