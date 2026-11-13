@@ -163,6 +163,8 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart'
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show
         cameraFraming,
+        cameraHalfExtents,
+        cameraLookAt,
         LiveMotion,
         MotionPreview,
         PointerLive,
@@ -2382,7 +2384,8 @@ class CanvasController extends ChangeNotifier {
   CanvasElement cameraShifted(CameraElement start, Offset by) {
     var page = _document.size.rect;
     var (zoom, _) = cameraFraming(start, _frame, _document);
-    var hx = page.width / 2 / zoom, hy = page.height / 2 / zoom;
+    var roll = cameraLookAt(start, _frame, _document).roll;
+    var (hx, hy) = cameraHalfExtents(zoom, roll, page.size);
     var posed = posesRatherThanMoves(start);
     var track = (start.track ?? ElementTrack.empty).seededFor(_frame);
     var pose = posed ? track.at(_frame) : Keyframe.rest;

@@ -236,21 +236,63 @@ void paintCanvasDocument(
 }) {
   var rect = doc.size.rect;
   var time = frame / (doc.frameRate <= 0 ? 1 : doc.frameRate);
-  void framed(void Function() paint) {
+  // The Camera's lens, where it is looked through: its roll, depth of
+  // field, parallax, vignette and motion blur (Ken, 2026-11-14). A slow
+  // move (SceneCamera) has none.
+  var cam = camera == null || isStageScene(doc) ? null : cameraOf(doc);
+  var look =
+      cam == null ? null : cameraLookAt(cam, frame, doc, live: liveMotion);
+  void through(ui.Canvas cv, double zoom, Offset focus, double roll) {
+    cv.translate(rect.center.dx, rect.center.dy);
+    if (roll != 0) cv.rotate(-roll * math.pi / 180);
+    cv.scale(zoom);
+    cv.translate(-focus.dx, -focus.dy);
+  }
+
+  void framed(void Function(ui.Canvas cv) paint) {
     if (camera == null) {
-      paint();
+      paint(canvas);
       return;
     }
     var (zoom, focus) = camera;
+    var roll = look?.roll ?? 0;
     canvas.save();
     canvas.clipRect(rect);
-    canvas.translate(rect.center.dx, rect.center.dy);
-    canvas.scale(zoom);
-    canvas.translate(-focus.dx, -focus.dy);
     // A tile map's far layers lag the camera by how far it has moved.
     tileCameraShift = focus - rect.center;
     try {
-      paint();
+      // Motion blur: the picture laid down along the camera's move since
+      // the frame before, for the share of it the shutter is open, and
+      // averaged.
+      var smear =
+          look != null && look.motionBlur > 0 && frame > 0 && cam != null
+              ? _cameraMove(cam, frame, doc, liveMotion, zoom, focus, roll)
+              : null;
+      if (smear == null) {
+        through(canvas, zoom, focus, roll);
+        paint(canvas);
+      } else {
+        var recorder = ui.PictureRecorder();
+        paint(ui.Canvas(recorder));
+        var picture = recorder.endRecording();
+        const samples = 6;
+        var (z0, f0, r0) = smear;
+        canvas.saveLayer(rect, Paint());
+        for (var i = 0; i < samples; i++) {
+          var t = 1 - look!.motionBlur * i / (samples - 1);
+          canvas.saveLayer(
+              rect,
+              Paint()
+                ..blendMode = BlendMode.plus
+                ..color = Color.fromRGBO(255, 255, 255, 1 / samples));
+          through(canvas, z0 + (zoom - z0) * t, Offset.lerp(f0, focus, t)!,
+              r0 + (roll - r0) * t);
+          canvas.drawPicture(picture);
+          canvas.restore();
+        }
+        canvas.restore();
+        picture.dispose();
+      }
     } finally {
       tileCameraShift = null;
     }
@@ -258,7 +300,7 @@ void paintCanvasDocument(
   }
 
   if (part != CanvasPaintPart.contents) {
-    framed(() => _paintDocumentBackground(canvas, rect, doc, time, images,
+    framed((cv) => _paintDocumentBackground(cv, rect, doc, time, images,
         backgrounds, doc.frameRate.toDouble(), backdrop, videoShow));
   }
   if (part == CanvasPaintPart.backdrop) return;
@@ -277,8 +319,9 @@ void paintCanvasDocument(
   var runFrame = doc.hasScenes && !doc.isPages && onMaster.isNotEmpty
       ? doc.startOfScene(doc.at) + frame
       : frame;
-  void scene(List<CanvasElement> elements) =>
-      _paintScene(canvas, doc, elements, frame,
+  void scene(List<CanvasElement> elements, {ui.Canvas? on, _Lens? lens}) =>
+      _paintScene(on ?? canvas, doc, elements, frame,
+          lens: lens,
           onMaster: onMaster,
           runFrame: runFrame,
           images: images,
@@ -299,7 +342,13 @@ void paintCanvasDocument(
   if (camera != null) {
     var shared = master != null && !doc.editingMaster;
     if (shared && !doc.masterOver) scene(master.elements);
-    framed(() => scene(doc.elements));
+    var (zoom, focus) = camera;
+    framed((cv) => scene(doc.elements,
+        on: cv, lens: look == null ? null : _Lens(look, zoom, focus, rect)));
+    // The lens's darkened corners, over what it shows.
+    if (look != null && look.vignette > 0) {
+      _paintVignette(canvas, rect, look.vignette, look.vignetteSoft);
+    }
     // Over, a HUD: still while the camera moves the level under it.
     if (shared && doc.masterOver) scene(master.elements);
     return;
@@ -355,6 +404,10 @@ void _paintScene(
   VideoShow Function(VideoElement)? videoShow,
   ({String id, int frame})? previewing,
   ProceduralCache? backgrounds,
+
+  /// lens is the Camera's, where it is looked through: each element blurred
+  /// by how far it is from the focus, and moved by its depth. See _Lens.
+  _Lens? lens,
 }) {
   // Lines that only carry a text and are set to stay out of the picture.
   // Collected first because the text that hides a line may be drawn after it.
@@ -378,6 +431,12 @@ void _paintScene(
         onMaps.contains(element.id)) {
       continue;
     }
+    var drawnAt = element.id == previewing?.id
+        ? previewing!.frame
+        : onMaster.contains(element.id)
+            ? runFrame ?? frame
+            : frame;
+    var lensed = lens?.on(canvas, element, drawnAt, doc, liveMotion) ?? 0;
     paintElement(
         canvas,
         element,
@@ -399,7 +458,90 @@ void _paintScene(
         videoShow: videoShow,
         backgrounds: backgrounds,
         hovered: element.id == hoveredButton);
+    for (var i = 0; i < lensed; i++) {
+      canvas.restore();
+    }
   }
+}
+
+/// _Lens is a Camera's lens as the scene is drawn through it: its look on
+/// this frame, and its framing.
+class _Lens {
+  final CameraLook look;
+  final double zoom;
+  final Offset focus;
+  final Rect page;
+  const _Lens(this.look, this.zoom, this.focus, this.page);
+
+  /// on sets [canvas] up for [e]: moved by its depth (parallax), and
+  /// softened by how far it is from the focus. Returns how many saves to
+  /// restore after it is drawn.
+  int on(ui.Canvas canvas, CanvasElement e, int frame, CanvasDocument doc,
+      LiveMotion? live) {
+    var depth = e.base.depth;
+    var saves = 0;
+    if (look.sways(depth)) {
+      // Framed as the camera frames the page, through its own depth: the
+      // camera's framing undone, its own put on (see parallaxed).
+      var (z, c) = parallaxed(zoom, focus, page, depth, look.parallax);
+      var by = z / zoom;
+      canvas.save();
+      saves++;
+      canvas.translate(focus.dx - by * c.dx, focus.dy - by * c.dy);
+      canvas.scale(by);
+    }
+    var sigma = look.blurAt(depth);
+    if (sigma > 0.25) {
+      var bounds = e.movedBoundsAt(frame, doc, live: live).inflate(sigma * 3);
+      canvas.saveLayer(
+          bounds,
+          Paint()
+            ..imageFilter = ui.ImageFilter.blur(
+                sigmaX: sigma, sigmaY: sigma, tileMode: TileMode.decal));
+      saves++;
+    }
+    return saves;
+  }
+}
+
+/// _cameraMove is where [cam] looked on the frame before [frame], as a
+/// zoom, a focus and a roll, where that differs from now; null where it
+/// has not moved -- nothing to smear.
+(double, Offset, double)? _cameraMove(
+    CameraElement cam,
+    int frame,
+    CanvasDocument doc,
+    LiveMotion? live,
+    double zoom,
+    Offset focus,
+    double roll) {
+  var (z0, f0) = cameraFraming(cam, frame - 1, doc, live: live);
+  var r0 = cameraLookAt(cam, frame - 1, doc, live: live).roll;
+  if ((z0 - zoom).abs() < 1e-4 &&
+      (f0 - focus).distance < 0.05 &&
+      (r0 - roll).abs() < 0.01) {
+    return null;
+  }
+  return (z0, f0, r0);
+}
+
+/// _paintVignette darkens [rect]'s corners by [amount], reaching in by
+/// [soft]: a lens's fall-off.
+void _paintVignette(ui.Canvas canvas, Rect rect, double amount, double soft) {
+  var r = rect.longestSide * 0.75;
+  var inner = (1 - soft.clamp(0.0, 1.0)) * 0.7;
+  canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = ui.Gradient.radial(rect.center, r, [
+          const Color(0x00000000),
+          const Color(0x00000000),
+          Color.fromRGBO(0, 0, 0, amount.clamp(0.0, 1.0)),
+        ], [
+          0,
+          inner,
+          1
+        ]));
 }
 
 void _paintDocumentBackground(

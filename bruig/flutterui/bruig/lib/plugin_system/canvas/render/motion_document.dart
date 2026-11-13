@@ -1118,7 +1118,8 @@ CameraElement? cameraOf(CanvasDocument doc) =>
 /// less than one, so the page is always filled -- and the point it is
 /// centred on, held in far enough that the picture stays on the page. Its
 /// box's width is how much it shows; its clips move where it looks and how
-/// close: see CameraElement.
+/// close: see CameraElement. Rolled, it comes in close enough that the
+/// turned frame's corners stay on the page too.
 (double, Offset) cameraFraming(CameraElement cam, int frame, CanvasDocument doc,
     {LiveMotion? live}) {
   var page = doc.size.rect;
@@ -1126,13 +1127,93 @@ CameraElement? cameraOf(CanvasDocument doc) =>
   var box = cam.bounds;
   var zoom = math.max(
       1.0, page.width / math.max(1.0, box.width) * math.max(0.01, pose.scale));
+  var roll = cam.rotation + pose.rotate;
+  zoom = math.max(zoom, cameraRollCover(roll, page.size));
   var c = box.center + Offset(pose.dx, pose.dy);
-  var hx = page.width / 2 / zoom, hy = page.height / 2 / zoom;
+  var (hx, hy) = cameraHalfExtents(zoom, roll, page.size);
   return (
     zoom,
     Offset(c.dx.clamp(page.left + hx, page.right - hx),
         c.dy.clamp(page.top + hy, page.bottom - hy)),
   );
+}
+
+/// cameraRollCover is how close a camera rolled [degrees] has to be for its
+/// turned frame to fit inside a [page]-shaped page: one, unrolled.
+double cameraRollCover(double degrees, Size page) {
+  if (degrees % 360 == 0) return 1;
+  var a = degrees * math.pi / 180;
+  var c = math.cos(a).abs(), s = math.sin(a).abs();
+  return math.max(
+      1.0,
+      math.max((page.width * c + page.height * s) / page.width,
+          (page.width * s + page.height * c) / page.height));
+}
+
+/// cameraHalfExtents are half the width and height, on the page, of what a
+/// camera [zoom] times close and rolled [degrees] takes in: its frame's
+/// turned box.
+(double, double) cameraHalfExtents(double zoom, double degrees, Size page) {
+  var w = page.width / zoom, h = page.height / zoom;
+  if (degrees % 360 == 0) return (w / 2, h / 2);
+  var a = degrees * math.pi / 180;
+  var c = math.cos(a).abs(), s = math.sin(a).abs();
+  return ((w * c + h * s) / 2, (w * s + h * c) / 2);
+}
+
+/// CameraLook is a camera's lens on one frame: its settings, with what its
+/// keyframes pin of them by name ("focus", "blur", "vignette"), and its
+/// roll. See CameraElement.
+class CameraLook {
+  final double roll;
+  final double focus;
+  final double blur;
+  final double parallax;
+  final double vignette;
+  final double vignetteSoft;
+  final double motionBlur;
+  const CameraLook(
+      {this.roll = 0,
+      this.focus = 0,
+      this.blur = 0,
+      this.parallax = 0,
+      this.vignette = 0,
+      this.vignetteSoft = 0.5,
+      this.motionBlur = 0});
+
+  /// blurAt is how soft something at [depth] is, in the page's units.
+  double blurAt(double depth) => blur * (depth - focus).abs();
+
+  /// sways is whether something at [depth] moves other than the page does.
+  bool sways(double depth) => parallax > 0 && depth != 0;
+}
+
+/// cameraLookAt is [cam]'s lens on [frame]. See CameraLook.
+CameraLook cameraLookAt(CameraElement cam, int frame, CanvasDocument doc,
+    {LiveMotion? live}) {
+  var pose = poseWithMotion(cam, frame, doc, live: live);
+  double v(String k, double rest) => pose.values[k] ?? rest;
+  var on = cam.focusOn.isEmpty ? null : doc.elementById(cam.focusOn);
+  return CameraLook(
+    roll: cam.rotation + pose.rotate,
+    focus: on?.base.depth ?? v("focus", cam.focus),
+    blur: math.max(0.0, v("blur", cam.blur)),
+    parallax: cam.parallax,
+    vignette: v("vignette", cam.vignette).clamp(0.0, 1.0).toDouble(),
+    vignetteSoft: cam.vignetteSoft,
+    motionBlur: cam.motionBlur,
+  );
+}
+
+/// parallaxed is how something at [depth] is framed through a camera [zoom]
+/// times close, centred on [focus], on a [page] with [strength] of
+/// parallax: the far closer to still -- less zoom, nearer the page's own
+/// middle -- the near more. The camera's own framing where flat.
+(double, Offset) parallaxed(
+    double zoom, Offset focus, Rect page, double depth, double strength) {
+  var k = (1 - strength * depth).clamp(0.05, 3.0);
+  var mid = page.center;
+  return (math.max(0.05, 1 + (zoom - 1) * k), mid + (focus - mid) * k);
 }
 
 /// cameraFrame is the part of the page [cam] shows on [frame], page-shaped.

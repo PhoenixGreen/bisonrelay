@@ -882,6 +882,14 @@ class StagePainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.5
         ..color = const Color(0xE6F2A33D);
+      // Turned as it is rolled (see CameraLook.roll): what it takes in.
+      var roll = cameraLookAt(cam, frame, document, live: liveMotion).roll;
+      canvas.save();
+      if (roll != 0) {
+        canvas.translate(box.center.dx, box.center.dy);
+        canvas.rotate(roll * math.pi / 180);
+        canvas.translate(-box.center.dx, -box.center.dy);
+      }
       // Dashed round, and solid at its corners, as a viewfinder.
       const dash = 8.0, gap = 6.0;
       for (var (a, b) in [
@@ -913,6 +921,7 @@ class StagePainter extends CustomPainter {
         canvas.drawLine(c, c + Offset(corner * dx, 0), solid);
         canvas.drawLine(c, c + Offset(0, corner * dy), solid);
       }
+      canvas.restore();
       // Its name on a tab inside its corner: something to take hold of
       // where its edge is on the page's (see cameraTab).
       var tab = cameraTab(cam, r, scale);

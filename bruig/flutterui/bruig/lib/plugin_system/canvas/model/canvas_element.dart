@@ -187,6 +187,11 @@ class ElementBase {
   /// were scaled by. See ElementLayout.typeScale.
   final double typeScale;
 
+  /// depth is how far from the camera the element is, for a Camera's depth
+  /// of field and parallax: nought on the page, up to one far behind it,
+  /// down to minus one near (Ken, 2026-11-14). Nothing else reads it.
+  final double depth;
+
   /// ownText is whether the shape being looked at has words of its own --
   /// see ElementLayout.ownText.
   final bool ownText;
@@ -256,6 +261,7 @@ class ElementBase {
     this.track,
     this.layouts = const {},
     this.typeScale = 1,
+    this.depth = 0,
     this.ownText = false,
     this.ownDesign = false,
     this.shared,
@@ -290,6 +296,7 @@ class ElementBase {
     bool clearTrack = false,
     Map<String, ElementLayout>? layouts,
     double? typeScale,
+    double? depth,
     bool? ownText,
     bool? ownDesign,
     Map<String, dynamic>? shared,
@@ -326,6 +333,7 @@ class ElementBase {
         track: clearTrack ? null : (track ?? this.track),
         layouts: layouts ?? this.layouts,
         typeScale: typeScale ?? this.typeScale,
+        depth: depth ?? this.depth,
         ownText: ownText ?? this.ownText,
         ownDesign: ownDesign ?? this.ownDesign,
         shared: clearShared ? null : (shared ?? this.shared),
@@ -359,6 +367,7 @@ class ElementBase {
           ? ElementTrack.fromJson(trackJson)
           : null,
       typeScale: _d(json["typeScale"], 1),
+      depth: _d(json["depth"], 0).clamp(-1.0, 1.0).toDouble(),
       ownText: _b(json["ownText"], false),
       ownDesign: _b(json["ownDesign"], false),
       shared: json["shared"] is Map<String, dynamic>
@@ -400,6 +409,7 @@ class ElementBase {
         if (anchorLocked) "anchorLocked": true,
         if (track != null && !track!.isEmpty) "track": track!.toJson(),
         if (typeScale != 1) "typeScale": typeScale,
+        if (depth != 0) "depth": depth,
         if (ownText) "ownText": true,
         if (ownDesign) "ownDesign": true,
         if (shared != null) "shared": shared,
@@ -771,6 +781,7 @@ abstract class CanvasElement {
     bool clearTrack = false,
     Map<String, ElementLayout>? layouts,
     double? typeScale,
+    double? depth,
     bool? ownText,
     bool? ownDesign,
     Map<String, dynamic>? shared,
@@ -804,6 +815,7 @@ abstract class CanvasElement {
         clearTrack: clearTrack,
         layouts: layouts,
         typeScale: typeScale,
+        depth: depth,
         ownText: ownText,
         ownDesign: ownDesign,
         shared: shared,

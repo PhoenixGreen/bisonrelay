@@ -57,6 +57,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/shape_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/table_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/camera_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/team_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/text_settings.dart';
 
@@ -319,7 +320,11 @@ List<Widget> elementSettings(
                     // On a 3D stage it stands in the scene: where, and its
                     // lens. Its clips move it from here.
                     if (isStageScene(controller.document))
-                      _camera3dGroup(controller, e, write, begin, commit),
+                      _camera3dGroup(controller, e, write, begin, commit)
+                    else
+                      // On the page: how close and turned, and its lens.
+                      ...cameraLensGroups(
+                          controller, e, write, begin, commit),
                   ]),
               // A move put on the timeline at the playhead, opened to be
               // shaped: the quickest way to a push in.

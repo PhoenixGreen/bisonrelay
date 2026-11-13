@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show cameraOf;
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
@@ -294,6 +297,31 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
         const CanvasHint("Skew X leans the sides, Skew Y the top and bottom. "
             "On the canvas, hold Command and drag a side handle -- or switch "
             "Skew on and drag one without a key."),
+        // How far from the scene's Camera it is, for its depth of field and
+        // parallax (Ken, 2026-11-14): only where there is a camera to see.
+        if (e is! CameraElement && cameraOf(controller.document) != null) ...[
+          const CanvasLineBreak(gap: 8),
+          CanvasStepper(
+            key: const ValueKey("elementDepth"),
+            label: "Depth",
+            value: e.base.depth * 100,
+            min: -100,
+            max: 100,
+            width: 104,
+            step: 10,
+            dragStep: 1,
+            defaultValue: 0,
+            onChanged: (v) {
+              begin();
+              write(e.withBase(depth: v / 100));
+            },
+            onCommit: commit,
+          ),
+          const CanvasHint("Depth is how far behind the page it is, to 100, or "
+              "in front of it, to -100, as the Camera sees it: its depth of "
+              "field blurs what is away from its focus, and its parallax moves "
+              "the far less and the near more."),
+        ],
         // A counter on a document of pages can be the page number, said here
         // beside "Own on A4": both are what the element does on its leaf.
         if (e is CounterElement && controller.document.isPages) ...[
