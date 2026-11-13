@@ -357,23 +357,38 @@ void _sankey(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         Paint()..color = slice.tint(colour.withValues(alpha: colour.a * 0.55)));
   }
   for (var (i, n) in names.indexed) {
-    var r = box[n]!;
     var colour = i == 0 ? e.axisColor : itemColour(e, i - 1);
-    canvas.drawRect(r, Paint()..color = colour);
-    if (!e.showXLabels) continue;
-    var last = column[n] == columns - 1;
-    var words = e.showValues ? "$n  ${_value(e, size[n]!)}" : n;
-    _text(
-        canvas,
-        words,
-        _label(e, align: last ? TextAlignSpec.left : TextAlignSpec.left),
-        // Kept inside the chart: a small node at an edge had its name cut.
-        Rect.fromLTWH(
-            r.right + 6,
-            (r.center.dy - e.labelSpec.fontSize * 1.2).clamp(area.top,
-                math.max(area.top, area.bottom - e.labelSpec.fontSize * 2.4)),
-            labelW - 8,
-            e.labelSpec.fontSize * 2.4));
+    canvas.drawRect(box[n]!, Paint()..color = colour);
+  }
+  if (!e.showXLabels) return;
+  // Each node's name beside it, a column's names spaced apart: two small
+  // nodes close together had theirs on top of one another (Ken's
+  // infographic: "Miners 1" over "Treasury 10"). Kept inside the chart.
+  var lineH = e.labelSpec.fontSize * 2.4;
+  for (var col = 0; col < columns; col++) {
+    var inCol = names.where((n) => column[n] == col).toList()
+      ..sort((a, b) => box[a]!.center.dy.compareTo(box[b]!.center.dy));
+    var tops = [for (var n in inCol) box[n]!.center.dy - lineH / 2];
+    for (var k = 1; k < tops.length; k++) {
+      tops[k] = math.max(tops[k], tops[k - 1] + lineH * 0.8);
+    }
+    // Pushed past the bottom: back up, each above the next.
+    var overflow = tops.isEmpty ? 0.0 : tops.last + lineH - area.bottom;
+    if (overflow > 0) {
+      for (var k = 0; k < tops.length; k++) {
+        tops[k] -= overflow;
+      }
+    }
+    for (var (k, n) in inCol.indexed) {
+      var r = box[n]!;
+      var words = e.showValues ? "$n  ${_value(e, size[n]!)}" : n;
+      _text(
+          canvas,
+          words,
+          _label(e, align: TextAlignSpec.left),
+          Rect.fromLTWH(
+              r.right + 6, math.max(area.top, tops[k]), labelW - 8, lineH));
+    }
   }
 }
 
@@ -476,8 +491,21 @@ void _timeline(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
   canvas.drawLine(Offset(area.left, y), Offset(area.right, y), axis);
   var order = [for (var i = 0; i < values.length; i++) i]
     ..sort((a, b) => values[a].compareTo(values[b]));
-  var stem = area.height * 0.22;
   var dot = math.max(5.0, area.height * 0.035);
+  // Its words kept inside its box: in a short one they went past its edges
+  // and were cut (Ken's infographic, "Decred 2.0" half gone). The stem
+  // shortens first, then the words shrink to the half they have.
+  var labelH = e.labelSpec.fontSize * 2.4;
+  var figureH = e.valueSpec.fontSize * 1.4;
+  var words = (e.showXLabels ? labelH : 0) + (e.showValues ? figureH : 0);
+  var half = area.height / 2 - dot;
+  var fit = words <= 0 ? 1.0 : ((half - 4) / words).clamp(0.3, 1.0);
+  labelH *= fit;
+  figureH *= fit;
+  var stem = (half - words * fit).clamp(4.0, area.height * 0.22);
+  if (words * fit + stem > half) stem = math.max(0.0, half - words * fit);
+  var labelSpec = _label(e, size: e.labelSpec.fontSize * fit);
+  var figureSpec = _figure(e, size: e.valueSpec.fontSize * fit);
   var room = (area.width - pad * 2) / math.max(1, values.length - 1) * 1.8;
   for (var (k, i) in order.indexed) {
     var slice = sliceProgress(e, reveal, k, order.length);
@@ -494,16 +522,14 @@ void _timeline(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
           ..strokeWidth = math.max(1.5, dot * 0.35));
     canvas.drawCircle(Offset(x, y), dot, Paint()..color = colour);
     if (slice.size < 1) continue;
-    var labelH = e.labelSpec.fontSize * 2.4;
-    var figureH = e.valueSpec.fontSize * 1.4;
     var top = up ? end - labelH - (e.showValues ? figureH : 0) : end;
     if (e.showValues) {
-      _text(canvas, _value(e, values[i]), _figure(e),
+      _text(canvas, _value(e, values[i]), figureSpec,
           Rect.fromLTWH(x - room / 2, up ? top : end, room, figureH));
       top = up ? top + figureH : end + figureH;
     }
     if (e.showXLabels) {
-      _text(canvas, e.data.categories[i], _label(e),
+      _text(canvas, e.data.categories[i], labelSpec,
           Rect.fromLTWH(x - room / 2, top, room, labelH));
     }
   }

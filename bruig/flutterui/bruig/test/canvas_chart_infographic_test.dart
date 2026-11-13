@@ -80,6 +80,30 @@ void main() {
     }
   });
 
+  // Ken's infographic: a timeline in a short box had its words past the
+  // box's edges, cut -- "Decred 2.0" half gone.
+  test("a short timeline keeps its words inside its box", () async {
+    var e = ChartElement(const ElementBase(id: "t", width: 400, height: 90),
+        type: ChartType.timeline,
+        data: ChartData.parse(samples[ChartType.timeline]!),
+        title: "",
+        showValues: true);
+    var rec = ui.PictureRecorder();
+    var canvas = ui.Canvas(rec);
+    // Not clipped to its box, so what goes past it shows.
+    paintInfographic(canvas, const ui.Rect.fromLTWH(0, 100, 400, 90), e, 1);
+    var image = await rec.endRecording().toImage(400, 300);
+    var b = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+    var outside = 0;
+    for (var y = 0; y < 300; y++) {
+      if (y >= 100 && y < 190) continue;
+      for (var x = 0; x < 400; x++) {
+        if (b.getUint8((y * 400 + x) * 4 + 3) > 0) outside++;
+      }
+    }
+    expect(outside, 0);
+  });
+
   test("a treemap's tiles fill its box without overlapping", () {
     var values = <double>[420, 160, 110, 60, 40];
     var area = const ui.Rect.fromLTWH(0, 0, 400, 260);
