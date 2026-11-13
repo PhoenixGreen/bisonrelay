@@ -157,10 +157,12 @@ import 'package:bruig/plugin_system/canvas/model/instances.dart'
     show CopyValue, ElementInstance, InstanceSet, deviceOwnKey;
 import 'package:bruig/plugin_system/canvas/model/motion_devices.dart'
     show MotionPhase;
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
     show ClipTriggerKind, ElementMotion, MotionKind;
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show
+        cameraFraming,
         LiveMotion,
         MotionPreview,
         PointerLive,
@@ -2369,6 +2371,70 @@ class CanvasController extends ChangeNotifier {
         dy: topLeft.dy - element.y,
       )),
     );
+  }
+
+  /// cameraShifted is [start] -- a camera as a drag began -- looking [by]
+  /// further across and down: a keyframe on this frame where it is
+  /// animated, else its box moved. Kept to what the framing allows (the
+  /// picture stays on the page), so a drag past the edge does not leave a
+  /// pose the frame cannot follow (Ken, 2026-11-14: the camera was hard to
+  /// move; a keyed one jumped, moved by the frame's corner, not its box's).
+  CanvasElement cameraShifted(CameraElement start, Offset by) {
+    var page = _document.size.rect;
+    var (zoom, _) = cameraFraming(start, _frame, _document);
+    var hx = page.width / 2 / zoom, hy = page.height / 2 / zoom;
+    var posed = posesRatherThanMoves(start);
+    var track = (start.track ?? ElementTrack.empty).seededFor(_frame);
+    var pose = posed ? track.at(_frame) : Keyframe.rest;
+    var centre = start.bounds.center + Offset(pose.dx, pose.dy) + by;
+    var kept = Offset(centre.dx.clamp(page.left + hx, page.right - hx),
+        centre.dy.clamp(page.top + hy, page.bottom - hy));
+    var moved = kept - (start.bounds.center + Offset(pose.dx, pose.dy));
+    if (!posed) {
+      return start.withBase(x: start.x + moved.dx, y: start.y + moved.dy);
+    }
+    return start.withBase(
+        track: track.withKey(pose.copyWith(
+            frame: _frame, dx: pose.dx + moved.dx, dy: pose.dy + moved.dy)));
+  }
+
+  /// cameraZoomed is [start] -- a camera as a drag began -- [factor] times
+  /// closer (below one, further), about the middle of what it shows: a
+  /// keyframe's size where it is animated, else its box. Never further out
+  /// than the whole page, nor closer than eight times.
+  CanvasElement cameraZoomed(CameraElement start, double factor) {
+    if (!factor.isFinite || factor <= 0) return start;
+    var (zoom, at) = cameraFraming(start, _frame, _document);
+    var next = (zoom * factor).clamp(1.0, 8.0);
+    var by = next / zoom;
+    CanvasElement out;
+    if (posesRatherThanMoves(start)) {
+      var track = (start.track ?? ElementTrack.empty).seededFor(_frame);
+      var pose = track.at(_frame);
+      // Where it looks stays put: the pose's shift is from its box's middle.
+      out = start.withBase(
+          track: track.withKey(pose.copyWith(
+              frame: _frame,
+              scale: pose.scale * by,
+              dx: at.dx - start.bounds.center.dx,
+              dy: at.dy - start.bounds.center.dy)));
+    } else {
+      var w = start.width / by, h = start.height / by;
+      out = start.withBase(
+          x: at.dx - w / 2, y: at.dy - h / 2, width: w, height: h);
+    }
+    // Further out near an edge, the framing moves it back onto the page.
+    var cam = out as CameraElement;
+    var (_, now) = cameraFraming(cam, _frame, _document.withElement(cam));
+    var raw = cam.bounds.center +
+        (posesRatherThanMoves(cam)
+            ? Offset((cam.track ?? ElementTrack.empty).at(_frame).dx,
+                (cam.track ?? ElementTrack.empty).at(_frame).dy)
+            : Offset.zero);
+    if ((now - raw).distance > 1e-6) {
+      return cameraShifted(cam, now - raw);
+    }
+    return cam;
   }
 
   /// pathDriving is the path that owns [elementId]'s keyframes, if one does.

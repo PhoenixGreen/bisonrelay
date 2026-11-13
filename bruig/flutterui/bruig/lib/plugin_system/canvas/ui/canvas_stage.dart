@@ -1166,8 +1166,28 @@ class CanvasStageState extends State<CanvasStage>
       var frame = e.movedBoundsAt(controller.frame, controller.document,
           live: controller.liveMotion);
       var reach = _strokeReach(2) + 4 / _scale;
-      return frame.inflate(reach).contains(point) &&
-          !frame.deflate(reach).contains(point);
+      if (frame.inflate(reach).contains(point) &&
+          !frame.deflate(reach).contains(point)) {
+        return true;
+      }
+      // Its name tab, and its corners' brackets, to take hold of where its
+      // edge is on the page's (Ken, 2026-11-14: hard to pick).
+      if (cameraTab(e, frame, _scale).contains(point)) return true;
+      var corner = math.min(22 / _scale, frame.shortestSide / 4);
+      for (var c in [
+        frame.topLeft,
+        frame.topRight,
+        frame.bottomLeft,
+        frame.bottomRight,
+      ]) {
+        var inside = Rect.fromCenter(
+            center: Offset(c.dx + (c.dx == frame.left ? 1 : -1) * corner / 2,
+                c.dy + (c.dy == frame.top ? 1 : -1) * corner / 2),
+            width: corner,
+            height: corner);
+        if (inside.contains(point)) return true;
+      }
+      return false;
     }
     // A team on a pitch is wherever the pitch puts its players, not in its
     // own box.
@@ -5487,6 +5507,12 @@ class CanvasStageState extends State<CanvasStage>
     for (var entry in _startPosed.entries) {
       var element = next.elementById(entry.key);
       if (element == null || element.locked) continue;
+      // A camera is moved by where it looks, from where it looked when the
+      // drag began: its frame is not its box (see cameraFraming).
+      if (_startElements[entry.key] case CameraElement start) {
+        next = next.withElement(controller.cameraShifted(start, delta));
+        continue;
+      }
       // Through the controller rather than straight onto the base: an element
       // being animated is posed rather than moved. See
       // CanvasController.posesRatherThanMoves.
@@ -5533,6 +5559,40 @@ class CanvasStageState extends State<CanvasStage>
         ? line.withEnds(moving, fixed)
         : line.withEnds(fixed, moving);
     controller.apply(document.withElement(next), transient: true);
+    return true;
+  }
+
+  /// _applyCameraZoom zooms the one selected camera by a handle dragged
+  /// [delta], and says whether it did: pulled out, it shows more; in,
+  /// less -- about the middle of its frame, which keeps the page's shape.
+  bool _applyCameraZoom(StageHandle handle, Offset delta) {
+    if (_startElements.length != 1) return false;
+    var start = _startElements.values.first;
+    if (start is! CameraElement || start.locked) return false;
+    var frame = _startPosed[start.id];
+    if (frame == null) return false;
+    var mid = frame.center;
+    double? ratio(double edge, double centre, double by) {
+      var was = edge - centre;
+      if (was.abs() < 1e-6) return null;
+      return (was + by) / was;
+    }
+
+    var rx = handle.movesLeft
+        ? ratio(frame.left, mid.dx, delta.dx)
+        : handle.movesRight
+            ? ratio(frame.right, mid.dx, delta.dx)
+            : null;
+    var ry = handle.movesTop
+        ? ratio(frame.top, mid.dy, delta.dy)
+        : handle.movesBottom
+            ? ratio(frame.bottom, mid.dy, delta.dy)
+            : null;
+    var grow = math.max(rx ?? 0, ry ?? 0);
+    if (grow <= 0) grow = 0.05;
+    controller.apply(
+        document.withElement(controller.cameraZoomed(start, 1 / grow)),
+        transient: true);
     return true;
   }
 
@@ -5587,6 +5647,7 @@ class CanvasStageState extends State<CanvasStage>
     var handle = _handle;
     if (handle == null) return;
     if (_applyLineEnd(handle, delta)) return;
+    if (_applyCameraZoom(handle, delta)) return;
 
     // The edge being dragged lands on the lines a move lands on: only for an
     // upright box, and Alt turns it off, as for a move.

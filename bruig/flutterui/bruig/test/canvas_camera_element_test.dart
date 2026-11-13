@@ -15,6 +15,9 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/motion_editing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -133,5 +136,153 @@ void main() {
     await tester.tapAt(stage.toStagePoint(const Offset(640, 1)));
     await tester.pumpAndSettle();
     expect(c.selection, {"c"}, reason: "on its edge");
+  });
+
+  // Ken, 2026-11-14: the camera was hard to select, move and zoom.
+  group("taken hold of", () {
+    CanvasDocument wide(CameraElement cam) =>
+        CanvasDocument(frames: 96, frameRate: 24, elements: [cam]);
+
+    test("moved: where it looks, by the drag, kept on the page", () {
+      var c = CanvasController(wide(const CameraElement(
+          ElementBase(id: "c", x: 320, y: 180, width: 640, height: 360))));
+      addTearDown(c.dispose);
+      var cam = c.document.elementById("c") as CameraElement;
+      var moved = c.cameraShifted(cam, const Offset(100, 50)) as CameraElement;
+      expect(cameraFrame(moved, 0, c.document.withElement(moved)).center,
+          const Offset(740, 410));
+      // Far past the edge, it stops where the picture meets the page's.
+      var far = c.cameraShifted(cam, const Offset(5000, 0)) as CameraElement;
+      expect(cameraFrame(far, 0, c.document.withElement(far)).right, 1280);
+      expect(far.bounds.right, 1280, reason: "no pose the frame cannot follow");
+    });
+
+    test("moved where it is keyed: a key on this frame, without a jump", () {
+      var c = CanvasController(wide(CameraElement(ElementBase(
+          id: "c",
+          width: 1280,
+          height: 720,
+          track: ElementTrack(const [
+            Keyframe(frame: 0, scale: 2, dx: -100),
+            Keyframe(frame: 48, scale: 2, dx: 100),
+          ])))));
+      addTearDown(c.dispose);
+      c.frame = 0;
+      var cam = c.document.elementById("c") as CameraElement;
+      var before = cameraFrame(cam, 0, c.document).center;
+      var moved = c.cameraShifted(cam, const Offset(30, 20)) as CameraElement;
+      expect(cameraFrame(moved, 0, c.document.withElement(moved)).center,
+          before + const Offset(30, 20));
+      expect(moved.track!.keyAt(0)!.dx, -70);
+      expect(moved.x, 0, reason: "its box stays where it was");
+    });
+
+    test("zoomed: about the middle of what it shows", () {
+      var c = CanvasController(wide(const CameraElement(
+          ElementBase(id: "c", x: 320, y: 180, width: 640, height: 360))));
+      addTearDown(c.dispose);
+      var cam = c.document.elementById("c") as CameraElement;
+      var closer = c.cameraZoomed(cam, 2) as CameraElement;
+      var (zoom, at) = cameraFraming(closer, 0, c.document.withElement(closer));
+      expect(zoom, closeTo(4, 1e-9));
+      expect(at, const Offset(640, 360));
+      // Never further out than the whole page.
+      var out = c.cameraZoomed(cam, 0.1) as CameraElement;
+      expect(cameraFraming(out, 0, c.document.withElement(out)).$1, 1);
+    });
+  });
+
+  group("on the canvas", () {
+    Future<(CanvasController, CanvasStageState)> stageWith(
+        WidgetTester tester, CameraElement cam) async {
+      var key = GlobalKey<CanvasStageState>();
+      var c =
+          CanvasController(CanvasDocument(frames: 96, frameRate: 24, elements: [
+        red("s", const Rect.fromLTWH(500, 300, 200, 200)),
+        cam,
+      ]));
+      addTearDown(c.dispose);
+      tester.view.physicalSize = const Size(900, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SizedBox(
+                    width: 900,
+                    height: 700,
+                    child: CanvasStage(key: key, controller: c)))),
+      ));
+      await tester.pumpAndSettle();
+      return (c, key.currentState!);
+    }
+
+    double scaleOf(CanvasStageState stage) =>
+        (stage.toStagePoint(const Offset(100, 0)) -
+                stage.toStagePoint(Offset.zero))
+            .dx /
+        100;
+
+    testWidgets("caught by its name tab", (tester) async {
+      var (c, stage) = await stageWith(
+          tester,
+          const CameraElement(
+              ElementBase(id: "c", name: "Camera", width: 1280, height: 720)));
+      var cam = c.document.elementById("c") as CameraElement;
+      var tab = cameraTab(cam, cameraFrame(cam, 0, c.document), scaleOf(stage));
+      await tester.tapAt(stage.toStagePoint(tab.center));
+      await tester.pumpAndSettle();
+      expect(c.selection, {"c"});
+    });
+
+    testWidgets("a keyed camera dragged by its tab moves without a jump",
+        (tester) async {
+      var (c, stage) = await stageWith(
+          tester,
+          CameraElement(ElementBase(
+              id: "c",
+              name: "Camera",
+              width: 1280,
+              height: 720,
+              track: ElementTrack(const [
+                Keyframe(frame: 0, scale: 2),
+                Keyframe(frame: 48, scale: 2, dx: 100),
+              ]))));
+      var cam = c.document.elementById("c") as CameraElement;
+      var frame = cameraFrame(cam, 0, c.document);
+      var tab = cameraTab(cam, frame, scaleOf(stage));
+      var from = stage.toStagePoint(tab.center);
+      await tester.dragFrom(from, Offset(60 * scaleOf(stage), 0),
+          kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      var now = c.document.elementById("c") as CameraElement;
+      expect(cameraFrame(now, 0, c.document).center.dx,
+          closeTo(frame.center.dx + 60, 2));
+    });
+
+    testWidgets("its corner handle zooms it about its middle", (tester) async {
+      var (c, stage) = await stageWith(
+          tester,
+          const CameraElement(
+              ElementBase(id: "c", name: "Camera", width: 1280, height: 720)));
+      c.selectOnly("c");
+      await tester.pumpAndSettle();
+      // The bottom-right corner, pulled half way to the middle.
+      await tester.dragFrom(
+          stage.toStagePoint(const Offset(1280, 720)),
+          stage.toStagePoint(const Offset(960, 540)) -
+              stage.toStagePoint(const Offset(1280, 720)),
+          kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      var now = c.document.elementById("c") as CameraElement;
+      var (zoom, at) = cameraFraming(now, 0, c.document);
+      expect(zoom, closeTo(2, 0.05));
+      expect(at.dx, closeTo(640, 1));
+    });
   });
 }

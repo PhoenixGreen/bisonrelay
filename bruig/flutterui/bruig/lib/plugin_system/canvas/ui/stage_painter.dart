@@ -913,17 +913,43 @@ class StagePainter extends CustomPainter {
         canvas.drawLine(c, c + Offset(corner * dx, 0), solid);
         canvas.drawLine(c, c + Offset(0, corner * dy), solid);
       }
+      // Its name on a tab inside its corner: something to take hold of
+      // where its edge is on the page's (see cameraTab).
+      var tab = cameraTab(cam, r, scale);
+      var at = Rect.fromPoints(
+          tab.topLeft * scale + origin, tab.bottomRight * scale + origin);
+      canvas.drawRRect(RRect.fromRectAndRadius(at, const Radius.circular(3)),
+          Paint()..color = const Color(0xFFF2A33D));
       var label = TextPainter(
         text: TextSpan(
             text: cam.name,
             style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFFF2A33D))),
+                color: Color(0xFF1B1408))),
         textDirection: TextDirection.ltr,
-      )..layout();
-      label.paint(canvas, box.topLeft + const Offset(6, 5));
+      )..layout(maxWidth: math.max(0, at.width - 20));
+      label.paint(
+          canvas, at.topLeft + Offset(18, (at.height - label.height) / 2));
+      _paintCameraIcon(canvas, at.topLeft + Offset(4, at.height / 2));
     }
+  }
+
+  /// _paintCameraIcon draws a small film camera, [left] its left middle.
+  void _paintCameraIcon(Canvas canvas, Offset left) {
+    var ink = Paint()..color = const Color(0xFF1B1408);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(left.dx, left.dy - 4, 8, 8),
+            const Radius.circular(1.5)),
+        ink);
+    canvas.drawPath(
+        Path()
+          ..moveTo(left.dx + 8, left.dy - 1)
+          ..lineTo(left.dx + 12, left.dy - 3.5)
+          ..lineTo(left.dx + 12, left.dy + 3.5)
+          ..lineTo(left.dx + 8, left.dy + 1)
+          ..close(),
+        ink);
   }
 
   /// _throughCamera paints [marks] -- drawn in the stage's own space, from
@@ -2137,3 +2163,21 @@ void paintStageRulers(Canvas canvas, Size size, CanvasGuides guides, Size sheet,
       canvas.restore();
     }
   }
+
+/// cameraTab is where [cam]'s name tab is on the page, given the [frame] it
+/// shows and the stage's [scale]: in its top-left corner, a fixed size on
+/// screen whatever the zoom. Drawn by the stage painter and taken hold of
+/// by the stage, so the two agree.
+Rect cameraTab(CameraElement cam, Rect frame, double scale) {
+  var label = TextPainter(
+    text: TextSpan(
+        text: cam.name,
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  var w = math.min(label.width + 26, 220.0) / scale;
+  var h = 20 / scale;
+  var inset = 4 / scale;
+  return Rect.fromLTWH(frame.left + inset, frame.top + inset,
+      math.min(w, frame.width - inset * 2), math.min(h, frame.height / 3));
+}
