@@ -38,6 +38,7 @@ import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart'
     show ClipPlacement, ClipTriggerKind, ElementMotion, MotionClip;
@@ -233,6 +234,11 @@ class EpubStage {
   /// sounds are the reactions' sound files, each once.
   final List<String> sounds;
 
+  /// camera is how the page's Camera frames it, frame by frame where it
+  /// moves: a transform on everything on the stage. Empty for none. See
+  /// cameraKeys.
+  final List<EpubKey> camera;
+
   const EpubStage({
     required this.items,
     required this.frames,
@@ -243,13 +249,15 @@ class EpubStage {
     this.backdropVideo,
     this.clickable = const [],
     this.sounds = const [],
+    this.camera = const [],
   });
 
   Iterable<EpubLayer> get layers => items.whereType<EpubLayer>();
 
   /// animates is whether anything on it changes with the playhead, rather
   /// than being laid out only to be shown, hidden and pointed at.
-  bool get animates => timeline || layers.any((l) => l.moves);
+  bool get animates =>
+      timeline || camera.length > 1 || layers.any((l) => l.moves);
 }
 
 /// StageResult is a page laid out, and the files it needs.
@@ -371,9 +379,13 @@ Future<StageResult?> buildEpubStage(
       if (e is TextElement && e.curve?.hideHost == true) e.curve!.elementId,
   };
 
+  // A camera frames the page (see cameraKeys) and is never in it.
   var drawn = [
     for (var e in elements)
-      if ((e.visible || toggled.contains(e.id)) && !hidden.contains(e.id)) e,
+      if ((e.visible || toggled.contains(e.id)) &&
+          !hidden.contains(e.id) &&
+          e is! CameraElement)
+        e,
   ];
 
   // What plays a clip on a click, or after another clip: a layer each, and
@@ -572,8 +584,41 @@ Future<StageResult?> buildEpubStage(
           ),
     ],
     sounds: [for (var f in sounds.values) f.href],
+    camera: cameraKeys(page, frames, pixels, width, height),
   );
   return StageResult(stage, [...sheets.files, ...clips, ...sounds.values]);
+}
+
+/// cameraKeys is how [page]'s Camera frames it on each of its [frames], as
+/// a transform on the whole stage, [width] by [height] pixels at [pixels]
+/// a design unit: the frame it shows scaled up to fill the page. A key on
+/// each frame it moves on and at each end of each hold, played straight
+/// between them, so its easing is the canvas's. Empty where it has none,
+/// or one on a 3D stage, which frames the stage rather than the page.
+List<EpubKey> cameraKeys(
+    CanvasDocument page, int frames, double pixels, int width, int height) {
+  var cam = cameraOf(page);
+  if (cam == null || isStageScene(page)) return const [];
+  String at(int f) {
+    var (zoom, c) = cameraFraming(cam, f, page);
+    var tx = width / 2 - c.dx * pixels * zoom;
+    var ty = height / 2 - c.dy * pixels * zoom;
+    return "translate(${tx.toStringAsFixed(2)}px,${ty.toStringAsFixed(2)}px) "
+        "scale(${zoom.toStringAsFixed(5)})";
+  }
+
+  var all = [for (var f = 0; f < frames; f++) at(f)];
+  var keys = <EpubKey>[];
+  for (var f = 0; f < frames; f++) {
+    var changes = f == 0 ||
+        f == frames - 1 ||
+        all[f] != all[f - 1] ||
+        all[f] != all[f + 1];
+    if (changes) keys.add(EpubKey(f, {"transform": all[f]}));
+  }
+  // Never moving: a still framing is one key.
+  if (all.toSet().length == 1) return [keys.first];
+  return keys;
 }
 
 /// _BackdropVideo marks where the background video goes in the stack.

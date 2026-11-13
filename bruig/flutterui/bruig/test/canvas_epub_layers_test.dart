@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -1110,6 +1111,98 @@ void main() {
       }
     });
   }
+
+  // A book exported at full size had its rain as a 2480 by 3508 video,
+  // too big to play smoothly: the reader scales it to the page anyway.
+  testWidgets("a baked background is written no wider than washWidth",
+      (tester) async {
+    var ffmpeg = await tester.runAsync(ffmpegPath);
+    if (ffmpeg == null) return markTestSkipped("ffmpeg is not installed");
+    String? size;
+    await tester.runAsync(() async {
+      var white = path.join(root.path, "wide.mp4");
+      await Process.run(ffmpeg, [
+        "-hide_banner", "-loglevel", "error", "-y", //
+        "-f", "lavfi", "-i", "color=c=white:size=320x180:rate=12",
+        "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", white,
+      ]);
+      var id = (await CanvasMedia.saveFile(MediaKind.video, white))!;
+      var doc = CanvasDocument(
+        size: const CanvasSize(
+            ratio: CanvasRatio.wide, width: 320, exportWidth: 2560),
+        frameRate: 12,
+        scenes: [
+          CanvasScene(id: "one", frames: 12, elements: [
+            VideoElement(
+                const ElementBase(
+                    id: "w",
+                    width: 320,
+                    height: 180,
+                    opacity: 0.2,
+                    blend: LayerBlend.screen),
+                clip: MediaClip(playlist: [
+                  MediaSource(assetId: id, length: 1, width: 320, height: 180),
+                ], timed: true, muted: true, loop: MediaLoop.one)),
+            sliding(),
+          ]),
+        ],
+      );
+      var bytes =
+          (await renderDocument(doc, as: DocumentAs.interactiveEpub))!.data;
+      var wash = files(bytes)["OEBPS/media/page0-wash.mp4"];
+      if (wash == null) return;
+      var file = File(path.join(root.path, "wide-wash.mp4"));
+      await file.writeAsBytes(wash);
+      var probe = await Process.run(ffmpeg, ["-hide_banner", "-i", file.path]);
+      size = RegExp(r"Video: .*?, (\d+x\d+)")
+          .firstMatch(probe.stderr.toString())
+          ?.group(1);
+    });
+    expect(size, "${washWidth}x720");
+  });
+
+  // Ken, 2026-11-14: the Decred infographic's camera zooms in on each panel
+  // as it builds -- the book showed the whole page throughout.
+  testWidgets("the camera frames the book's page as it frames the canvas",
+      (tester) async {
+    var doc = book([
+      CameraElement(ElementBase(
+          id: "cam",
+          width: 320,
+          height: 180,
+          track: ElementTrack(const [
+            Keyframe(frame: 0),
+            Keyframe(frame: 4),
+            Keyframe(frame: 8, scale: 2, dx: -60, dy: -30),
+            Keyframe(frame: 11, scale: 2, dx: -60, dy: -30),
+          ]))),
+      sliding(),
+    ]);
+    var bytes = await publish(tester, doc);
+    var page = pageOf(bytes, 0);
+    var cam = page.findAllElements("div").firstWhere(
+        (d) => d.getAttribute("class") == "cam",
+        orElse: () => throw "no camera");
+    var keys = (jsonDecode(cam.getAttribute("data-kf")!) as List)
+        .cast<Map<String, dynamic>>();
+    var pixels = imageWidth(files(bytes)["OEBPS/page0.png"]!) / 320;
+    expect(keys.first["transform"], "translate(0.00px,0.00px) scale(1.00000)");
+    // Twice as close, looking at (100, 60): that point in the middle.
+    var tx = (160 * pixels - 100 * pixels * 2).toStringAsFixed(2);
+    var ty = (90 * pixels - 60 * pixels * 2).toStringAsFixed(2);
+    expect(keys.last["transform"], "translate(${tx}px,${ty}px) scale(2.00000)");
+    expect(keys.last["offset"], 1);
+    // A key for each frame it moves on, and none in its holds.
+    expect(keys.map((k) => k["offset"]).length, lessThan(12));
+    expect(byId(page, "l-cam"), isNull, reason: "the camera is not drawn");
+    // Inside it, what moves; outside it, the start screen.
+    expect(
+        cam.findAllElements("div").any((d) => d.getAttribute("id") == "l-dot"),
+        isTrue);
+    expect(
+        cam.findAllElements("div").any((d) => d.getAttribute("id") == "intro"),
+        isFalse);
+  });
 
   // Ken, 2026-11-13: the Rain, screened at a tenth on the canvas, played
   // full and black over the book's page.

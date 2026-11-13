@@ -505,6 +505,11 @@ class EpubMediaBuilder {
       var bw = even(b.width * pixels), bh = even(b.height * pixels);
       var ox = (-b.left * pixels).round(), oy = (-b.top * pixels).round();
       var w = even(width.toDouble()), h = even(height.toDouble());
+      // Written no wider than washWidth: a page of rain at full size is a
+      // video too big to play smoothly, and the reader scales it to the
+      // page. Drawn at the page's size, then made smaller.
+      var shrink = math.min(1.0, washWidth / w);
+      var ow = even(w * shrink), oh = even(h * shrink);
       // ffmpeg's normal weighs its first input -- the page -- by the
       // opacity; its other modes mix from the page to the blend by it.
       var o = wash.opacity.clamp(0.0, 1.0).toDouble();
@@ -521,7 +526,7 @@ class EpubMediaBuilder {
             // The page first: ffmpeg mixes by the opacity from its first
             // input to the blend, as the canvas mixes from what is under.
             "[bottom][top]blend=all_mode=$mode:all_opacity=$opacity:"
-            "shortest=1,format=yuv420p[v]",
+            "shortest=1,scale=$ow:$oh,format=yuv420p[v]",
         "-map", "[v]", "-t", seconds.toStringAsFixed(3), "-an",
         "-c:v", "libx264", "-preset", "medium", "-crf", "24",
         "-pix_fmt", "yuv420p", "-movflags", "+faststart", out,
@@ -628,6 +633,10 @@ String? cssBlend(LayerBlend b) => switch (b) {
 /// plainVideo is whether a reader's own `<video>` can show [e] as the canvas
 /// does: nothing keyed, cut, cropped, filtered, tinted or outlined -- only
 /// fitted to its box, which CSS can do.
+/// washWidth is the widest a page's baked background video is written:
+/// see EpubMediaBuilder._washed.
+const int washWidth = 1280;
+
 /// washOf is the video washed over the whole of page [index] and blended
 /// into it, that a book draws into the page's background (see
 /// EpubMediaBuilder._washed): the lowest thing on the page, covering it,

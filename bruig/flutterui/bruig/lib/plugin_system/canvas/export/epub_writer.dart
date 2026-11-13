@@ -415,6 +415,8 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
             if (!inLayer(a.element)) actionTag(a),
         ].join("\n    ")
       : "";
+  // Under a camera, the presses go where it moves what they press.
+  var framed = stage != null && stage.camera.isNotEmpty;
   var face = stage != null
       ? _stageTag(
           stage,
@@ -422,6 +424,7 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
           box,
           poster: "page$index.png",
           start: page.start == null ? null : "start$index",
+          inside: framed ? hotspots : "",
           [
               for (var m in page.media)
                 if (inLayer(m.element)) (m.element!, _mediaTag(m, box)),
@@ -531,7 +534,7 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
   <body>
     <span id="play"></span>
     $face
-    $hotspots$script
+    ${framed ? "" : hotspots}$script
   </body>
 </html>
 ''';
@@ -548,7 +551,8 @@ String _stageTag(
     String Function(double, double, double, double, [double]) box,
     List<(String, String)> presses,
     {String? poster,
-    String? start}) {
+    String? start,
+    String inside = ""}) {
   var marks = [
     for (var m in stage.marks)
       "${m.frame}:${m.kind.name}:${m.target}:${m.repeats}:${m.holdFrames}",
@@ -584,6 +588,14 @@ String _stageTag(
         },
     ];
     return '$attrs data-kf="${_attr(jsonEncode(frames))}"';
+  }
+
+  // The Camera: everything on the stage but its start screen, framed as the
+  // camera frames the canvas -- moved and scaled as one.
+  if (stage.camera.isNotEmpty) {
+    out.add('<div class="cam" ${animated(stage.camera, "position:absolute;"
+        "left:0;top:0;width:${page.width}px;height:${page.height}px;"
+        "transform-origin:0 0;-webkit-transform-origin:0 0")}>');
   }
 
   for (var item in stage.items) {
@@ -708,6 +720,11 @@ String _stageTag(
   }
   for (var sound in stage.sounds) {
     out.add('<audio class="rxs" src="${_attr(sound)}" preload="auto"></audio>');
+  }
+  if (stage.camera.isNotEmpty) {
+    // The presses outside the layers, framed with the rest.
+    if (inside.isNotEmpty) out.add(inside);
+    out.add('</div>');
   }
   // The start (Ken, 2026-11-13: the book opened blank, its Play not yet
   // arrived, and slowly): the page as it ends up -- all a reader that runs
