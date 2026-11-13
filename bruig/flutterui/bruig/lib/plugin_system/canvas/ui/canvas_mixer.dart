@@ -870,7 +870,8 @@ class _CanvasMixerState extends State<CanvasMixer>
         // Each element's own sound's place among the lanes, -1 for none.
         var ownLane = {
           for (var e in rows)
-            e.id: lanes.indexWhere((l) => l.key == elementSoundKey(e.id))
+            e.id: lanes.indexWhere(
+                (l) => l.key == ownChannelOf(controller.document, e.id))
         };
         // What was chosen, stepped down a band at a time while it does not
         // fit (the approved design): the devices to a line, the sends

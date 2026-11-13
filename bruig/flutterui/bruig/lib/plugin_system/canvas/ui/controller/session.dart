@@ -85,7 +85,7 @@ extension CanvasSession on CanvasController {
     }
     pressMotionClip(element, clip.id);
     // Linked: its own sound in the same row with it (Ken, 2026-11-10).
-    var own = elementSoundKey(element);
+    var own = ownChannelOf(_document, element);
     if (motion!.isLinked(slot) && session.at(own, slot) != null) {
       launchClip(own, slot);
     }

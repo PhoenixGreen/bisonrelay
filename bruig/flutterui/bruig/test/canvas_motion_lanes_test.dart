@@ -317,6 +317,19 @@ void main() {
         find.byKey(const ValueKey("motionGrip-a")), const Offset(0, 40));
     await tester.pumpAndSettle();
     expect(row(), closeTo(was + 40, 1));
+    // A trackpad's two-finger scroll over the edge scrolls; it does not
+    // resize (Ken, 2026-11-13).
+    was = row();
+    var grip = tester.getCenter(find.byKey(const ValueKey("motionGrip-a")));
+    var pan = await tester.createGesture(kind: PointerDeviceKind.trackpad);
+    await pan.panZoomStart(grip);
+    for (var i = 1; i <= 6; i++) {
+      await pan.panZoomUpdate(grip, pan: Offset(0, -10.0 * i));
+      await tester.pump();
+    }
+    await pan.panZoomEnd();
+    await tester.pumpAndSettle();
+    expect(row(), was, reason: "scrolled past, not resized");
     expect(tester.takeException(), isNull);
   });
 }

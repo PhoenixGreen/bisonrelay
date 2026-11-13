@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
@@ -45,6 +46,36 @@ void main() {
     expect(rows.last.hasMotion, isFalse);
     expect(rows.last.hasSound, isTrue);
     expect(rows.map((r) => r.group).toSet(), {RowGroup.scene});
+  });
+
+  // Ken, 2026-11-13: the Rain video had two rows, Motion and Video, the
+  // motion one showing only while it was picked.
+  test("a video on the timeline is one row, its motion and its own sound", () {
+    var c = CanvasController(
+        CanvasDocument(frames: 240, elements: [
+          VideoElement(const ElementBase(id: "rain", name: "Rain"),
+              clip: const MediaClip(
+                  timed: true,
+                  playlist: [MediaSource(assetId: "r", length: 6)])),
+        ]),
+        audioEngine: FakeEngine({}));
+    addTearDown(c.dispose);
+    for (var picked in [false, true]) {
+      picked ? c.selectOnly("rain") : c.clearSelection();
+      var rows = canvasRowsOf(c);
+      expect(rows.length, 1, reason: "picked: $picked");
+      expect(rows.single.key, "rain");
+      expect(rows.single.hasMotion, isTrue);
+      expect(rows.single.channel?.key, "rain",
+          reason: "its own channel, on its row");
+    }
+    // On a channel shared with other sounds, the channel is its own row.
+    c.replaceElement(VideoElement(const ElementBase(id: "rain", name: "Rain"),
+        clip: const MediaClip(
+            timed: true,
+            channel: "bed",
+            playlist: [MediaSource(assetId: "r", length: 6)])));
+    expect(soundOwnerOf(c.document, "bed"), isNull);
   });
 
   test("an element with no sound is a row of motion alone", () {

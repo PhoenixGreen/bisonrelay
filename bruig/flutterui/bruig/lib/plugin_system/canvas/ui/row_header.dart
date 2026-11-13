@@ -314,18 +314,24 @@ class RowHeader extends StatelessWidget {
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
                       width < 44 ? 1 : 2, oneLine ? 1 : 3, 6, oneLine ? 1 : 3),
-                  child: Column(
-                      mainAxisAlignment: oneLine
-                          ? MainAxisAlignment.center
-                          : MainAxisAlignment.start,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        line1,
-                        if (line2 != null) ...[
-                          const SizedBox(height: 2),
-                          SizedBox(height: 18, child: line2),
-                        ],
-                      ]),
+                  // A row shorter than its line -- dragged down to a lane's
+                  // height, or folded -- has the line clipped, centred, not
+                  // overflowing (Ken's log, 2026-11-13: a 19.5 px header).
+                  child: oneLine
+                      ? OverflowBox(
+                          alignment: Alignment.center,
+                          minHeight: 20,
+                          maxHeight: 20,
+                          child: line1)
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                              line1,
+                              if (line2 != null) ...[
+                                const SizedBox(height: 2),
+                                SizedBox(height: 18, child: line2),
+                              ],
+                            ]),
                 ),
               ),
             ),

@@ -976,9 +976,21 @@ class _CanvasChannelsState extends State<CanvasChannels> {
               soloed: controller.solo.contains(channel.key),
               theme: theme,
               // Shift picks it as well as the others, or leaves it.
-              onSelect: () => HardwareKeyboard.instance.isShiftPressed
-                  ? controller.toggleChannel(channel.key)
-                  : controller.selectedChannel = channel.key,
+              onSelect: () {
+                if (HardwareKeyboard.instance.isShiftPressed) {
+                  controller.toggleChannel(channel.key);
+                  return;
+                }
+                controller.selectedChannel = channel.key;
+                // And what it is the sound of -- its element, or the one
+                // sound on it -- so the settings, the mixer and the Chain
+                // show it (Ken, 2026-11-13: clicking a header updated none
+                // of them).
+                var owner = soundOwnerOf(controller.document, channel.key);
+                var on = {for (var l in channel.lanes) l.element.id};
+                var id = owner?.id ?? (on.length == 1 ? on.single : null);
+                if (id != null) controller.pickClip(id);
+              },
               onRename: (name) => controller.renameChannel(channel, name),
               // As the mixer's fader: a level typed over a lane is
               // held by hand -- see changeChannelMix.

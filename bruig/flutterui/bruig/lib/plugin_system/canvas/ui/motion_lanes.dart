@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/camera_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart';
@@ -67,7 +68,10 @@ List<CanvasElement> motionRowsOf(CanvasController c) {
   var owners = {
     for (var e in c.document.elements)
       if (e is AudioElement && e.clip.channel.startsWith("snd-"))
-        e.clip.channel.substring(4),
+        e.clip.channel.substring(4)
+      // A video on its own channel: the channel and its motion one row.
+      else if (e is VideoElement && ownsChannel(e))
+        e.id,
   };
   return [
     for (var e in c.document.elements)
@@ -641,7 +645,17 @@ class _MotionLanesState extends State<MotionLanes> {
                   Positioned.fill(
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: () => controller.selectOnly(e.id),
+                      // The element, and its own channel with it, so the
+                      // mixer shows its strip (Ken, 2026-11-13).
+                      onTap: () {
+                        controller.selectOnly(e.id);
+                        var own = e is VideoElement && ownsChannel(e) ||
+                                hasOwnSound(controller.document, e.id)
+                            ? ownChannelOf(controller.document, e.id)
+                            : null;
+                        controller
+                            .selectChannels(own == null ? const {} : {own});
+                      },
                       // Right-clicked: its row's colour (Ken, 2026-11-10).
                       onSecondaryTapUp: (d) =>
                           _colourMenu(context, e.id, d.globalPosition),
@@ -659,6 +673,11 @@ class _MotionLanesState extends State<MotionLanes> {
                       cursor: SystemMouseCursors.resizeUpDown,
                       child: GestureDetector(
                         key: ValueKey("motionGrip-${e.id}"),
+                        // Not the trackpad: its two-finger scroll was taken
+                        // as a drag, and a row scrolled past was resized
+                        // (Ken, 2026-11-13). Pressed and dragged, as a
+                        // sound's edge is.
+                        supportedDevices: timelinePointers,
                         behavior: HitTestBehavior.opaque,
                         dragStartBehavior: DragStartBehavior.down,
                         onVerticalDragStart: (d) {
@@ -851,7 +870,7 @@ class _MotionLanesState extends State<MotionLanes> {
     var p = hit?.placement;
     if (hit == null || p == null) return;
     var e = hit.element;
-    var own = elementSoundKey(e.id);
+    var own = ownChannelOf(controller.document, e.id);
     var picked = controller.timedLanes
         .where((l) =>
             l.channelKey == own &&

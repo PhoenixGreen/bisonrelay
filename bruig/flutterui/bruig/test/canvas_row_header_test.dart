@@ -12,7 +12,7 @@ import 'package:provider/provider.dart';
 // "Strings" cut to "Stri..." with room to spare beside it.
 
 Future<void> header(WidgetTester tester, double width,
-    {double scale = 1}) async {
+    {double scale = 1, double height = 40}) async {
   await tester.pumpWidget(ChangeNotifierProvider<ThemeNotifier>(
     create: (_) => ThemeNotifier(doLoad: false),
     child: MaterialApp(
@@ -23,11 +23,11 @@ Future<void> header(WidgetTester tester, double width,
             alignment: Alignment.topLeft,
             child: SizedBox(
               width: width,
-              height: 40,
+              height: height,
               child: RowHeader(
                 colour: Colors.blue,
                 width: width,
-                height: 40,
+                height: height,
                 name: const Text("Strings",
                     key: ValueKey("name"),
                     maxLines: 1,
@@ -56,6 +56,16 @@ void main() {
     expect(name.didExceedMaxLines, isFalse, reason: "Strings, whole");
     expect(find.byKey(const ValueKey("chip")), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  // Ken's log, 2026-11-13: a row dragged down to a lane, or folded, had a
+  // header 19.5 px inside -- under its 20 px line -- and overflowed.
+  testWidgets("a row shorter than its line clips it, not overflowing",
+      (tester) async {
+    for (var height in [12.0, 18.0, 20.5, 21.5, 26.0]) {
+      await header(tester, 240, height: height);
+      expect(tester.takeException(), isNull, reason: "$height tall");
+    }
   });
 
   testWidgets("narrow or at any text size, nothing overflows", (tester) async {

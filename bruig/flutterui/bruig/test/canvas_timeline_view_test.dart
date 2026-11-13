@@ -260,6 +260,23 @@ void main() {
       expect(c.effectsOf, "b");
     });
 
+    // Ken, 2026-11-13: clicking a header updated neither the settings, the
+    // mixer nor the Chain -- the channel was picked, not its sound.
+    testWidgets("a channel's header clicked picks its sound too",
+        (tester) async {
+      var c = await show(tester,
+          elements: [channel("a", "Music"), channel("b", "Voice")]);
+      var strip = tester.getRect(find.byKey(const ValueKey("channelStrip-b")));
+      await tester.tapAt(strip.centerLeft + const Offset(4, 0));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(c.selectedChannel, "b");
+      expect(c.clipSelection, {"b"}, reason: "its sound, for its settings");
+      strip = tester.getRect(find.byKey(const ValueKey("channelStrip-a")));
+      await tester.tapAt(strip.centerLeft + const Offset(4, 0));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(c.clipSelection, {"a"});
+    });
+
     testWidgets("the cues can be hidden from the ruler", (tester) async {
       var c = await show(tester);
       c.addCue(name: "line", frame: 20);

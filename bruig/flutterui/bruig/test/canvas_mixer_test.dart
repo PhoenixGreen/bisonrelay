@@ -637,8 +637,11 @@ void main() {
 
     setUp(() => engine = FakeEngine({song: 10}));
 
-    VideoElement timed(String id, String name) =>
-        VideoElement(ElementBase(id: id, name: name),
+    // Sounds on the timeline, each a channel of its own. (Timed videos
+    // once stood in for them; a video is now one row with its motion, its
+    // strip a motion half over its sound -- see canvas_rows_test.)
+    AudioElement timed(String id, String name) =>
+        AudioElement(ElementBase(id: id, name: name, visible: false),
             clip: const MediaClip(
                 playlist: [MediaSource(assetId: "x", length: 4)], timed: true));
 
@@ -710,10 +713,10 @@ void main() {
           matching: find.byKey(const ValueKey("fader")));
       await tester.drag(fader, const Offset(0, 60));
       await tester.pump();
-      var db = (c.document.elements.first as VideoElement).clip.mix.gainDb;
+      var db = (c.document.elements.first as AudioElement).clip.mix.gainDb;
       expect(db, lessThan(0), reason: "dragged down, turned down");
       c.undo();
-      expect((c.document.elements.first as VideoElement).clip.mix.gainDb, 0);
+      expect((c.document.elements.first as AudioElement).clip.mix.gainDb, 0);
       await done(tester, c);
     });
 
@@ -725,7 +728,7 @@ void main() {
           of: find.byKey(const ValueKey("strip-v")),
           matching: find.byKey(const ValueKey("fader")));
       double db() =>
-          (c.document.elements.first as VideoElement).clip.mix.gainDb;
+          (c.document.elements.first as AudioElement).clip.mix.gainDb;
       var swipe = await tester.createGesture(kind: PointerDeviceKind.trackpad);
       await swipe.panZoomStart(tester.getCenter(fader));
       for (var i = 1; i <= 8; i++) {
@@ -758,9 +761,9 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey("dbEntry")), "−6.5 dB");
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump();
-      expect((c.document.elements.first as VideoElement).clip.mix.gainDb, -6.5);
+      expect((c.document.elements.first as AudioElement).clip.mix.gainDb, -6.5);
       c.undo();
-      expect((c.document.elements.first as VideoElement).clip.mix.gainDb, 0,
+      expect((c.document.elements.first as AudioElement).clip.mix.gainDb, 0,
           reason: "one undo step");
 
       await tester.tap(find.byKey(const ValueKey("masterReading")));
@@ -788,7 +791,7 @@ void main() {
           find.descendant(of: strip, matching: find.text("C")), findsOneWidget);
       await tester.drag(knob, const Offset(60, 0));
       await tester.pump();
-      var b = (c.document.elements.first as VideoElement).clip.mix.balance;
+      var b = (c.document.elements.first as AudioElement).clip.mix.balance;
       expect(b, greaterThan(0.1), reason: "dragged right, turned right");
       expect(
           find.descendant(
@@ -803,7 +806,7 @@ void main() {
       await tester.tap(find.descendant(
           of: strip, matching: find.byKey(const ValueKey("mute"))));
       await tester.pump();
-      expect((c.document.elements.first as VideoElement).clip.mix.mute, isTrue);
+      expect((c.document.elements.first as AudioElement).clip.mix.mute, isTrue);
 
       await tester.tap(find.descendant(
           of: find.byKey(const ValueKey("strip-w")),
@@ -1035,7 +1038,7 @@ void main() {
       await tester.tap(find.descendant(
           of: meter, matching: find.byKey(const ValueKey("meterMute"))));
       await tester.pump();
-      expect((c.document.elements.first as VideoElement).clip.mix.mute, isTrue);
+      expect((c.document.elements.first as AudioElement).clip.mix.mute, isTrue);
       await tester.tap(find.descendant(
           of: meter, matching: find.byKey(const ValueKey("meterSolo"))));
       await tester.pump();
@@ -1064,7 +1067,7 @@ void main() {
               of: meter, matching: find.byKey(const ValueKey("fader"))),
           const Offset(0, 60));
       await tester.pump();
-      expect((c.document.elements.first as VideoElement).clip.mix.gainDb,
+      expect((c.document.elements.first as AudioElement).clip.mix.gainDb,
           lessThan(0));
       await done(tester, c);
     });
@@ -1089,7 +1092,7 @@ void main() {
       await revealInMenu(tester, "deviceMoveRight-eq");
       await tapOn(tester, find.byKey(const ValueKey("deviceMoveRight-eq")));
       expect(leftOf(tester, "comp"), lessThan(leftOf(tester, "eq")));
-      var mix = (c.document.elements.first as VideoElement).clip.mix;
+      var mix = (c.document.elements.first as AudioElement).clip.mix;
       expect(mix.compFirst, isTrue);
       expect(c.canUndo, isTrue);
 
@@ -1149,7 +1152,7 @@ void main() {
       var x = box.left + math.log(1000 / 20) / math.log(1000) * box.width;
       await tester.dragFrom(Offset(x, box.center.dy), const Offset(0, -60));
       await tester.pump();
-      var eq = (c.document.elements.first as VideoElement).clip.mix.eq;
+      var eq = (c.document.elements.first as AudioElement).clip.mix.eq;
       expect(eq.on, isTrue, reason: "moving a point switches it on");
       expect(eq.mid.gainDb, greaterThan(2));
       expect(c.canUndo, isTrue);
@@ -1157,7 +1160,7 @@ void main() {
       // A cut is switched on from its button, and its slope stepped.
       await tapOn(tester, find.byKey(const ValueKey("eqBand-lowCut")));
       await tapOn(tester, find.byKey(const ValueKey("eqSlope-lowCut")));
-      eq = (c.document.elements.first as VideoElement).clip.mix.eq;
+      eq = (c.document.elements.first as AudioElement).clip.mix.eq;
       expect(eq.lowCut.on, isTrue);
       expect(eq.lowCut.slope, 24);
       expect(eq.responseDb(20), lessThan(-12));
@@ -1168,7 +1171,7 @@ void main() {
       await tester.drag(
           find.byKey(const ValueKey("eqOutput")), const Offset(0, -40));
       await tester.pump();
-      eq = (c.document.elements.first as VideoElement).clip.mix.eq;
+      eq = (c.document.elements.first as AudioElement).clip.mix.eq;
       expect(eq.gainDb, greaterThan(0));
       expect(tester.takeException(), isNull);
       await done(tester, c);
@@ -1199,7 +1202,7 @@ void main() {
         (tester) async {
       var c = await show(tester);
       await openOn(tester, "strip-v", "eqSlot");
-      ChannelMix mix() => (c.document.elements.first as VideoElement).clip.mix;
+      ChannelMix mix() => (c.document.elements.first as AudioElement).clip.mix;
       await tapOn(tester, find.byKey(const ValueKey("deviceAB-eq")));
       expect(c.showingBOf("v|eq"), isTrue, reason: "B, a copy of A");
       expect(mix().eq.on, isFalse);
@@ -1336,7 +1339,7 @@ void main() {
       await openOn(tester, "strip-v", "duckSlot");
       await tapOn(tester, find.byKey(const ValueKey("duckOn")));
       await tapOn(tester, find.byKey(const ValueKey("duckExcept-w")));
-      var duck = (c.document.elements.first as VideoElement).clip.mix.duck;
+      var duck = (c.document.elements.first as AudioElement).clip.mix.duck;
       expect(duck.on, isTrue);
       expect(duck.except, ["w"]);
       await done(tester, c);
@@ -1371,7 +1374,7 @@ void main() {
           find.byKey(const ValueKey("compRatio")), const Offset(0, -60));
       await tester.pump();
       await tapOn(tester, find.byKey(const ValueKey("autoGain-zero")));
-      var comp = (c.document.elements.first as VideoElement).clip.mix.comp;
+      var comp = (c.document.elements.first as AudioElement).clip.mix.comp;
       expect(comp.on, isTrue);
       expect(comp.ratio, greaterThan(3));
       expect(comp.autoGain, AutoGain.zero);
@@ -1386,8 +1389,11 @@ void main() {
   // folded, short and tall, with the effects open and shut.
   testWidgets("the desk fits at every text size and height", (tester) async {
     var failures = <String>[];
-    VideoElement timed(String id, String name) =>
-        VideoElement(ElementBase(id: id, name: name),
+    // Sounds on the timeline, each a channel of its own. (Timed videos
+    // once stood in for them; a video is now one row with its motion, its
+    // strip a motion half over its sound -- see canvas_rows_test.)
+    AudioElement timed(String id, String name) =>
+        AudioElement(ElementBase(id: id, name: name, visible: false),
             clip: const MediaClip(
                 playlist: [MediaSource(assetId: "x", length: 4)], timed: true));
     // The desk is laid out at the ordinary text size and zoomed as a whole
@@ -1555,8 +1561,11 @@ void main() {
   }
 
   group("the three bands", () {
-    VideoElement timed(String id, String name) =>
-        VideoElement(ElementBase(id: id, name: name),
+    // Sounds on the timeline, each a channel of its own. (Timed videos
+    // once stood in for them; a video is now one row with its motion, its
+    // strip a motion half over its sound -- see canvas_rows_test.)
+    AudioElement timed(String id, String name) =>
+        AudioElement(ElementBase(id: id, name: name, visible: false),
             clip: const MediaClip(
                 playlist: [MediaSource(assetId: "x", length: 4)], timed: true));
 
@@ -1677,7 +1686,9 @@ void main() {
         (tester) async {
       var c = CanvasController(
           CanvasDocument(frames: 100, elements: [
-            VideoElement(const ElementBase(id: "v", name: "Speaker"),
+            // A sound alone: a video's strip has a motion half too.
+            AudioElement(
+                const ElementBase(id: "v", name: "Speaker", visible: false),
                 clip: MediaClip(
                     playlist: const [MediaSource(assetId: "x", length: 4)],
                     timed: true,
