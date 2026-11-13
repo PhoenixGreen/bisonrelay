@@ -726,7 +726,7 @@ List<PanelBit> chartBits(
           // A pie's slices are one series' values, so their colours are the
           // categories', a button each in the order the slices are drawn. And a
           // donut's hole: how big, and what is written in it.
-          if (e.type == ChartType.donut)
+          if (e.type == ChartType.donut || e.type == ChartType.gauge)
             CanvasControlGroup(
                 key: const ValueKey("chartDonutHole"),
                 label: "Middle",
@@ -759,6 +759,53 @@ List<PanelBit> chartBits(
                   const CanvasHint("Words in the middle of the ring. {total} "
                       "is the slices added up, and counts up as they arrive."),
                 ]),
+          // A pictogram's icons: what they are, and how many share the whole.
+          if (e.type == ChartType.pictogram)
+            CanvasControlGroup(
+                key: const ValueKey("chartPictogram"),
+                label: "Icons",
+                rule: false,
+                children: [
+                  CanvasDropdown<PictoShape>(
+                    key: const ValueKey("chartPictoShape"),
+                    label: "Shape",
+                    value: e.pictoShape,
+                    options: [for (var p in PictoShape.values) (p, p.label)],
+                    onChanged: (v) => now(e.copyWith(pictoShape: v)),
+                  ),
+                  CanvasNumberField(
+                    key: const ValueKey("chartPictoCount"),
+                    label: "How many",
+                    value: e.pictoCount.toDouble(),
+                    min: 1,
+                    max: 200,
+                    decimals: 0,
+                    width: 52,
+                    onChanged: (v) {
+                      begin();
+                      write(e.copyWith(pictoCount: v.round()));
+                    },
+                    onCommit: commit,
+                  ),
+                  const CanvasHint("Each icon is an equal share of the whole: "
+                      "ten, a tenth each."),
+                ]),
+          // How the data is read, where it is read differently.
+          if (switch (e.type) {
+            ChartType.sankey => "Write a flow as \"From > To\" with its "
+                "amount; a category on its own flows from the series' name.",
+            ChartType.timeline => "Each event is placed along the line by its "
+                "value: a year, or any number.",
+            ChartType.gauge => "Several values: the first as a share of them "
+                "all. One: out of the axis top, or of a hundred.",
+            ChartType.bullet => "The first series is the bar, the second its "
+                "target.",
+            ChartType.slope => "The first series is the left end, the second "
+                "the right.",
+            _ => null,
+          }
+              case var how?)
+            CanvasHint(how, key: const ValueKey("chartReadsAs")),
           CanvasControlGroup(
               label: "Numbers",
               hideCaption: true,
@@ -770,6 +817,15 @@ List<PanelBit> chartBits(
                     label: "Values",
                     value: e.showValues,
                     onChanged: (v) => now(e.copyWith(showValues: v)),
+                  ),
+                // The infographic types name their items with the x-axis
+                // labels' switch, and have no axis settings to reach it by.
+                if (e.type.isInfographic)
+                  CanvasToggle(
+                    key: const ValueKey("chartNames"),
+                    label: "Names",
+                    value: e.showXLabels,
+                    onChanged: (v) => now(e.copyWith(showXLabels: v)),
                   ),
                 // Rings a few pixels thick have nowhere to write a number and no axis,
                 // so theirs go in the key, which is no use with the key off.

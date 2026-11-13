@@ -306,6 +306,11 @@ class ChartElement extends CanvasElement {
   /// "{total}" in them is the slices added up, counting up as they arrive.
   final String centreLabel;
 
+  /// pictoShape is what a pictogram's icons are, and pictoCount how many
+  /// there are -- each a share of the whole (ten: a tenth each).
+  final PictoShape pictoShape;
+  final int pictoCount;
+
   /// showPoints marks each reading on a line or an area. A scatter, and a
   /// chart writing its values, has dots whatever this says.
   final bool showPoints;
@@ -378,6 +383,8 @@ class ChartElement extends CanvasElement {
     this.barFloor = 0,
     this.innerRadius = 0.55,
     this.centreLabel = "",
+    this.pictoShape = PictoShape.person,
+    this.pictoCount = 10,
     this.showPoints = false,
     this.pointSize = 0,
     this.pointColor = const Color(0x00000000),
@@ -512,6 +519,8 @@ class ChartElement extends CanvasElement {
     double? barFloor,
     double? innerRadius,
     String? centreLabel,
+    PictoShape? pictoShape,
+    int? pictoCount,
     bool? showPoints,
     double? pointSize,
     Color? pointColor,
@@ -571,6 +580,8 @@ class ChartElement extends CanvasElement {
           barFloor: barFloor,
           innerRadius: innerRadius,
           centreLabel: centreLabel,
+          pictoShape: pictoShape,
+          pictoCount: pictoCount,
           showPoints: showPoints,
           pointSize: pointSize,
           pointColor: pointColor,
@@ -633,6 +644,8 @@ class ChartElement extends CanvasElement {
     double? barFloor,
     double? innerRadius,
     String? centreLabel,
+    PictoShape? pictoShape,
+    int? pictoCount,
     bool? showPoints,
     double? pointSize,
     Color? pointColor,
@@ -693,6 +706,8 @@ class ChartElement extends CanvasElement {
           barFloor: barFloor ?? this.barFloor,
           innerRadius: innerRadius ?? this.innerRadius,
           centreLabel: centreLabel ?? this.centreLabel,
+          pictoShape: pictoShape ?? this.pictoShape,
+          pictoCount: (pictoCount ?? this.pictoCount).clamp(1, 200),
           showPoints: showPoints ?? this.showPoints,
           pointSize: pointSize ?? this.pointSize,
           pointColor: pointColor ?? this.pointColor,
@@ -758,6 +773,8 @@ class ChartElement extends CanvasElement {
         if (barFloor > 0) "barFloor": barFloor,
         "inner": innerRadius,
         if (centreLabel.isNotEmpty) "centre": centreLabel,
+        if (pictoShape != PictoShape.person) "picto": pictoShape.name,
+        if (pictoCount != 10) "pictoN": pictoCount,
         "sw": strokeWidth,
         if (showPoints) "points": true,
         if (pointSize > 0) "pointSize": pointSize,
@@ -852,6 +869,10 @@ class ChartElement extends CanvasElement {
       barFloor: jsonDouble(json["barFloor"], 0),
       innerRadius: jsonDouble(json["inner"], 0.55),
       centreLabel: json["centre"] is String ? json["centre"] as String : "",
+      pictoShape: PictoShape.fromName(json["picto"]),
+      pictoCount: json["pictoN"] is num
+          ? (json["pictoN"] as num).toInt().clamp(1, 200)
+          : 10,
       strokeWidth: jsonDouble(json["sw"], 3),
       showPoints: jsonBool(json["points"], false),
       pointSize: jsonDouble(json["pointSize"], 0).clamp(0, 200),

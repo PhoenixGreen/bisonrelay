@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_cartesian.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_circular.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_infographic.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/foundation.dart';
@@ -94,7 +95,9 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
     }
   }
 
-  if (e.type.isCircular) {
+  if (e.type.isInfographic) {
+    paintInfographic(canvas, area, e, showing);
+  } else if (e.type.isCircular) {
     paintCircular(canvas, area, e, showing);
   } else {
     paintCartesian(canvas, area, e, showing, seriesReveal);

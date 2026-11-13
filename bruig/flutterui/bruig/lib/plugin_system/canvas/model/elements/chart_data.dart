@@ -152,6 +152,25 @@ const double missingValue = double.nan;
 /// a guard against a typo, not a scale.
 const double maxSeriesDelay = 30;
 
+/// PictoShape is the icon a pictogram repeats: drawn, not a picture, so it
+/// takes the shares' colours and needs nothing from the library.
+enum PictoShape {
+  person("Person"),
+  coin("Coin"),
+  dot("Dot"),
+  square("Square"),
+  star("Star"),
+  heart("Heart"),
+  ticket("Ticket"),
+  house("House");
+
+  final String label;
+  const PictoShape(this.label);
+
+  static PictoShape fromName(Object? name) =>
+      values.firstWhere((p) => p.name == name, orElse: () => person);
+}
+
 /// ChartType is which drawing the numbers get.
 enum ChartType {
   bar("Bars", "One bar per category"),
@@ -168,7 +187,22 @@ enum ChartType {
   // a hundred (Ken's privacy video: "no dot or waffle chart").
   waffle("Waffle", "A hundred squares, shared out by the values"),
   radialBar("Radial bars", "Bars bent around a circle"),
-  radar("Radar", "One axis per category, radiating from the centre");
+  radar("Radar", "One axis per category, radiating from the centre"),
+
+  // The infographic types (Ken, 2026-11-13: "I'd like all 6 suggestions
+  // and any other infographic elements ... useful for building future
+  // infographics"). Drawn in chart_infographic.dart; none has axes.
+  gauge("Gauge", "The first value as a share of the whole, on a dial"),
+  pictogram("Pictogram", "A row of icons, coloured by the shares"),
+  sankey("Sankey", "Amounts flowing from one thing into others"),
+  treemap("Treemap", "Rectangles sized by the values"),
+  timeline("Timeline", "Events placed along a line by their value"),
+  funnel("Funnel", "Stages narrowing by their values"),
+  bubbles("Bubbles", "Circles sized by the values, packed together"),
+  bullet("Bullet", "A bar against its target, over bands"),
+  slope("Slope", "Each category from one value to the next"),
+  shareBar("Share bar", "One bar split into the shares"),
+  lollipop("Lollipop", "A dot on a stick for each value");
 
   final String label;
   final String description;
@@ -184,7 +218,12 @@ enum ChartType {
       this == donut ||
       this == waffle ||
       this == radialBar ||
-      this == radar;
+      this == radar ||
+      isInfographic;
+
+  /// isInfographic is the types drawn in chart_infographic.dart: none has
+  /// axes, and most take their colours from the values.
+  bool get isInfographic => index >= gauge.index;
 
   /// isCandles is the one type that reads four series as a single mark.
   bool get isCandles => this == candlestick;
@@ -606,8 +645,26 @@ class ChartData {
           ? v.round().toString()
           : v.toString();
 
+  /// _yearsHeader is whether [row] names its series by year -- "2020" and
+  /// "2026", a slope's two ends -- rather than being the first row of
+  /// numbers: an empty corner, or a word over two or more different whole
+  /// years going up (Ken's infographic, 2026-11-13: a slope's "2020, 2026"
+  /// was read as a row of data, its categories one short).
+  static bool _yearsHeader(List<String> row) {
+    var rest = [for (var c in row.skip(1)) cellNumber(c)];
+    if (rest.any((v) => v == null)) return false;
+    if (row.first.trim().isEmpty) return true;
+    if (cellNumber(row.first) != null || rest.length < 2) return false;
+    for (var (i, v) in rest.indexed) {
+      if (v! != v.roundToDouble() || v < 1000 || v > 2999) return false;
+      if (i > 0 && v <= rest[i - 1]!) return false;
+    }
+    return true;
+  }
+
   /// parse reads a pasted table, split by [splitTable]. The first row is
   /// series names if none of its cells after the first is a number.
+  /// Or, see _yearsHeader, if it names them by year.
   ///
   /// [keep] is the series this is replacing, if any: their settings are
   /// carried across by position, so retyping the numbers keeps how each
@@ -619,8 +676,9 @@ class ChartData {
 
     var header = rows.first;
     // cellNumber, not tryParse, so "1,000" counts as a number.
-    var hasHeader =
-        header.length > 1 && header.skip(1).every((c) => cellNumber(c) == null);
+    var hasHeader = header.length > 1 &&
+        (header.skip(1).every((c) => cellNumber(c) == null) ||
+            _yearsHeader(header));
     var names = hasHeader
         ? header.skip(1).toList()
         : [for (var i = 1; i < header.length; i++) "Series $i"];

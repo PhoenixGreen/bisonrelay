@@ -85,7 +85,8 @@ bool colouredByValue(ChartType type) =>
     type == ChartType.pie ||
     type == ChartType.donut ||
     type == ChartType.waffle ||
-    type == ChartType.radialBar;
+    type == ChartType.radialBar ||
+    type.isInfographic;
 
 /// formatTick prints a value in the chart's number style (ChartNumbers).
 String formatTick(ChartElement e, double v) => e.numbers.format(v);

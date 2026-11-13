@@ -16,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -54,6 +55,13 @@ void main() {
         const AudioElement(ElementBase(id: "inst", width: 240, height: 80),
             instrument: InstrumentPart())
       ),
+      // Each infographic chart, whose settings have controls of their own
+      // (Ken, 2026-11-13): a pictogram's icons, a gauge's middle, a hint.
+      for (var t in ChartType.values.where((t) => t.isInfographic))
+        (
+          "Chart: ${t.label}",
+          (newElement(ElementKind.chart, doc) as ChartElement).copyWith(type: t)
+        ),
     ];
   }
 
