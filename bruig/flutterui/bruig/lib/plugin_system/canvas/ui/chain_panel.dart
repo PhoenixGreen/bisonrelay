@@ -315,6 +315,27 @@ extension on _ChainPanelState {
             if (s.isNotEmpty) s,
           for (var p in m?.placed ?? const <ClipPlacement>[]) p.clip,
         ].firstOrNull;
+    // Its own keyframes, which have Curves of their own (Ken, 2026-11-14:
+    // a camera's keyframes had no Curves to open).
+    var target = e == null ? null : c.keyframeTarget;
+    var keyed = target != null &&
+        !target.points &&
+        target.player == null &&
+        target.track.keys.length >= 2;
+    var curvesOn = c.motionCurvesShown || c.trackCurvesShown;
+    // A clip's Curves where a clip is picked, or where there are no
+    // keyframes of its own to show instead.
+    void curves() {
+      if (e == null) return;
+      if (clip != null && (c.pickedMotion != null || !keyed)) {
+        c.closeTrackCurves();
+        c.showMotionCurves(e.id, clip);
+      } else if (keyed) {
+        c.closeMotionCurves();
+        c.showTrackCurves(frame: c.frame);
+      }
+    }
+
     return [
       const SizedBox(width: 6),
       Container(width: 1, height: 22, color: look.studio.edge),
@@ -323,26 +344,41 @@ extension on _ChainPanelState {
           id: "chainTabMotionChain",
           label: "Chain",
           icon: Icons.call_split,
-          on: !c.motionCurvesShown,
+          on: !curvesOn,
           look: look,
-          onTap: c.closeMotionCurves),
-      if (e != null && clip != null)
+          onTap: () {
+            c.closeMotionCurves();
+            c.closeTrackCurves();
+          }),
+      if (e != null && (clip != null || keyed))
         _ChainTab(
             id: "chainTabCurves",
             label: "Curves",
             icon: Icons.show_chart,
-            on: c.motionCurvesShown,
+            on: curvesOn,
             look: look,
-            onTap: () => c.showMotionCurves(e.id, clip)),
+            onTap: curves),
       // The Keys strip, opened over the cards and shut again (Ken,
-      // 2026-11-12), and what of the chain is shown: all of it, or what
-      // plays in one phase.
-      if (e != null && !c.motionCurvesShown) ...[
+      // 2026-11-12). Always there, beside Curves (Ken, 2026-11-14): from the
+      // Curves it goes back to the chain with the keys showing; on the
+      // chain it shows and hides them.
+      if (e != null) ...[
         const SizedBox(width: 6),
         _KeysToggle(
             look: look,
-            on: c.keysShown,
-            onTap: () => c.keysShown = !c.keysShown),
+            on: c.keysShown && !curvesOn,
+            onTap: () {
+              if (curvesOn) {
+                c.closeMotionCurves();
+                c.closeTrackCurves();
+                c.keysShown = true;
+              } else {
+                c.keysShown = !c.keysShown;
+              }
+            }),
+      ],
+      // What of the chain is shown: all of it, or what plays in one phase.
+      if (e != null && !curvesOn) ...[
         const SizedBox(width: 8),
         _Segments(look: look, items: [
           (

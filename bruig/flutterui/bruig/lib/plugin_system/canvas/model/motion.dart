@@ -157,23 +157,43 @@ class MotionPlace extends MotionValue {
 class MotionKey {
   final double t;
   final MotionValue value;
+
+  /// ease is how the value comes *into* this key from the one before.
   final KeyframeEasing ease;
 
-  const MotionKey(this.t, this.value, {this.ease = KeyframeEasing.linear});
+  /// curve is the shape of that, where [ease] is custom: see EaseCurve.
+  final EaseCurve? curve;
 
-  MotionKey copyWith({double? t, MotionValue? value, KeyframeEasing? ease}) =>
-      MotionKey(t ?? this.t, value ?? this.value, ease: ease ?? this.ease);
+  const MotionKey(this.t, this.value,
+      {this.ease = KeyframeEasing.linear, this.curve});
+
+  /// eased is how far into this key from the one before [p] of the way
+  /// between them is.
+  double eased(double p) => ease == KeyframeEasing.custom && curve != null
+      ? curve!.apply(p)
+      : ease.apply(p);
+
+  MotionKey copyWith(
+          {double? t,
+          MotionValue? value,
+          KeyframeEasing? ease,
+          EaseCurve? curve}) =>
+      MotionKey(t ?? this.t, value ?? this.value,
+          ease: ease ?? this.ease, curve: curve ?? this.curve);
 
   Map<String, dynamic> toJson() => {
         "t": t,
         "v": value.toJson(),
         if (ease != KeyframeEasing.linear) "ease": ease.name,
+        if (ease == KeyframeEasing.custom && curve != null)
+          "curve": curve!.toJson(),
       };
 
   static MotionKey fromJson(Map json, double rest) => MotionKey(
         jsonDouble(json["t"], 0).clamp(0.0, 3600.0),
         MotionValue.fromJson(json["v"], rest),
         ease: KeyframeEasing.fromName(jsonStr(json["ease"])),
+        curve: EaseCurve.fromJson(json["curve"]),
       );
 
   @override
@@ -181,10 +201,11 @@ class MotionKey {
       other is MotionKey &&
       other.t == t &&
       other.value == value &&
-      other.ease == ease;
+      other.ease == ease &&
+      other.curve == curve;
 
   @override
-  int get hashCode => Object.hash(t, value, ease);
+  int get hashCode => Object.hash(t, value, ease, curve);
 }
 
 /// MotionKind is what a clip is for. It sets the clip's colour, the presets

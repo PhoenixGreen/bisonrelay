@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart'
-    show KeyframeEasing;
+    show EaseCurve, KeyframeEasing;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
 import 'package:bruig/plugin_system/canvas/render/motion_pose.dart'
     show sampleProp;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/curve_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -41,6 +42,11 @@ class MotionCurves extends StatefulWidget {
 
   /// playhead is where in the clip it is playing now, or null.
   final double? playhead;
+
+  /// onScrub puts the playhead where the clip is [t] seconds in, where it
+  /// is placed on the timeline; null where it is not (a slot's), and the
+  /// ruler moves a cursor of the editor's own.
+  final void Function(double t)? onScrub;
   final void Function(MotionClip Function(MotionClip) change, {bool live})
       onEdit;
   final VoidCallback onCommit;
@@ -51,6 +57,7 @@ class MotionCurves extends StatefulWidget {
       required this.playhead,
       required this.onEdit,
       required this.onCommit,
+      this.onScrub,
       super.key});
 
   @override
@@ -60,7 +67,8 @@ class MotionCurves extends StatefulWidget {
 /// _Pick is a key: its value and its place among that value's keys.
 typedef _Pick = (MotionProp, int);
 
-class _MotionCurvesState extends State<MotionCurves> {
+class _MotionCurvesState extends State<MotionCurves>
+    with CurveViewing<MotionCurves> {
   bool _speed = false;
   bool _snap = true;
   bool _others = true;
@@ -76,6 +84,66 @@ class _MotionCurvesState extends State<MotionCurves> {
   Map<MotionProp, (double, double)>? _dragRange;
   Offset _dragStart = Offset.zero;
   bool _alt = false;
+
+  /// _handle is a handle being dragged: the key whose ease it is (an ease
+  /// is how a key is reached), which of its two, and where the key before
+  /// and the key were when it was taken.
+  (_Pick, int, Offset, Offset)? _handle;
+
+  /// _scrub is whether a drag is moving the playhead; _pan the view.
+  bool _scrub = false, _pan = false;
+
+  /// _cursor is the ruler's own place, in the clip's seconds, for a clip
+  /// with no place on the timeline to move the playhead along.
+  double? _cursor;
+  final FocusNode _focus = FocusNode(debugLabel: "motionCurves");
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  /// _curveOf is how [k] is reached, as handles.
+  static EaseCurve _curveOf(MotionKey k) =>
+      k.ease == KeyframeEasing.custom && k.curve != null
+          ? k.curve!
+          : k.ease.asCurve;
+
+  /// _scrubTo puts the playhead, or the cursor, [t] seconds into the clip.
+  void _scrubTo(double t) {
+    t = t.clamp(0.0, math.max(0.05, c.length));
+    if (widget.onScrub case var go?) {
+      go(t);
+    } else {
+      setState(() => _cursor = t);
+    }
+  }
+
+  /// _key takes the picked keys away on Delete or Backspace.
+  KeyEventResult _key(KeyEvent ev) {
+    if (ev is! KeyDownEvent) return KeyEventResult.ignored;
+    var k = ev.logicalKey;
+    if (k != LogicalKeyboardKey.delete && k != LogicalKeyboardKey.backspace) {
+      return KeyEventResult.ignored;
+    }
+    if (_picked.isEmpty) return KeyEventResult.ignored;
+    var keys = {
+      for (var e in c.keys.entries) e.key: [...e.value]
+    };
+    // From the last, so the places of the rest stay put.
+    var gone = _picked.toList()..sort((a, b) => b.$2.compareTo(a.$2));
+    for (var (p, i) in gone) {
+      var list = keys[p];
+      if (list == null || i >= list.length) continue;
+      list.removeAt(i);
+      if (list.isEmpty) keys.remove(p);
+    }
+    _picked.clear();
+    _write(keys);
+    widget.onCommit();
+    return KeyEventResult.handled;
+  }
 
   MotionClip get c => widget.clip;
 
@@ -242,6 +310,17 @@ class _MotionCurvesState extends State<MotionCurves> {
               tb("curvesSnap", "Snap 1/4", _snap,
                   () => setState(() => _snap = !_snap),
                   tip: "Keys move by a quarter of a beat. Alt drags freely."),
+              Container(
+                  width: 1,
+                  height: 18,
+                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                  color: s.edge),
+              tb("curvesHandles", "Handles", curvesShowHandles,
+                  () => setState(() => curvesShowHandles = !curvesShowHandles),
+                  tip: "Each ease's handles, to shape it by hand"),
+              if (!view.fitted)
+                tb("curvesFit", "Fit", false, () => setState(view.fit),
+                    tip: "See all of it again"),
             ]),
           ),
         ),
@@ -298,17 +377,43 @@ class _MotionCurvesState extends State<MotionCurves> {
       var size = Size(box.maxWidth, box.maxHeight);
       const top = 24.0, pad = 12.0;
       var len = math.max(0.05, c.length);
-      double xOf(double t) => pad + t / len * (size.width - pad * 2);
-      double tOf(double x) => ((x - pad) / (size.width - pad * 2) * len);
+      var area =
+          Rect.fromLTRB(pad, top + 10, size.width - pad, size.height - 20);
+      graphArea = area;
+      double xOf(double t) => view.x(t / len, area);
+      double tOf(double x) => view.u(x, area) * len;
       double yOf(MotionProp p, double v) {
         var (lo, hi) = ranges[p] ?? (0.0, 1.0);
-        return top + 10 + (1 - (v - lo) / (hi - lo)) * (size.height - top - 30);
+        return view.y((v - lo) / (hi - lo), area);
       }
 
       double vOf(MotionProp p, double y) {
         var (lo, hi) = ranges[p] ?? (0.0, 1.0);
-        return lo + (1 - (y - top - 10) / (size.height - top - 30)) * (hi - lo);
+        return lo + view.n(y, area) * (hi - lo);
       }
+
+      // Each ease's handles, where shown: how each key is reached from the
+      // one before, on each line it moves.
+      var handles = <CurveHandles>[];
+      if (curvesShowHandles && !_speed) {
+        for (var p in _shown) {
+          var list = c.keys[p]!;
+          for (var i = 1; i < list.length; i++) {
+            var a = list[i - 1], b = list[i];
+            if (b.t <= a.t) continue;
+            var va = _sample(p, a.t), vb = _sample(p, b.t);
+            if ((vb - va).abs() < 1e-9) continue;
+            var p0 = Offset(xOf(a.t), yOf(p, va));
+            var p1 = Offset(xOf(b.t), yOf(p, vb));
+            var (h1, h2) = handlesOf(_curveOf(b), p0, p1);
+            handles.add(
+                CurveHandles(p0, h1, h2, p1, curveColour(p), (p, i), p.name));
+          }
+        }
+      }
+      var playheadX = widget.playhead == null && _cursor == null
+          ? null
+          : xOf(widget.playhead ?? _cursor!);
 
       _Pick? keyAt(Offset at) {
         _Pick? best;
@@ -328,150 +433,225 @@ class _MotionCurvesState extends State<MotionCurves> {
         return best;
       }
 
-      return Listener(
-        onPointerDown: (e) {
-          _alt = HardwareKeyboard.instance.isAltPressed;
-          // Right-click: the key there taken away.
-          if (e.buttons == kSecondaryMouseButton) {
-            var k = keyAt(e.localPosition);
-            if (k != null) _remove(k);
-          }
-        },
-        child: GestureDetector(
-          key: const ValueKey("curvesGraph"),
-          behavior: HitTestBehavior.opaque,
-          // From where it was pressed, not where the drag was noticed: a
-          // key is small.
-          dragStartBehavior: DragStartBehavior.down,
-          onTapUp: (d) {
-            var k = keyAt(d.localPosition);
-            setState(() {
-              if (!HardwareKeyboard.instance.isShiftPressed) _picked.clear();
-              if (k != null) _picked.add(k);
-            });
-          },
-          // Double-clicked on a line: a key there, on that value.
-          onDoubleTapDown: (d) {
-            if (_speed) return;
-            var at = d.localPosition;
-            var t = tOf(at.dx).clamp(0.0, len);
-            if (_snap) t = (t / _grid).round() * _grid;
-            MotionProp? near;
-            var bestD = 12.0;
-            for (var p in _shown) {
-              var dd = (yOf(p, _sample(p, tOf(at.dx))) - at.dy).abs();
-              if (dd < bestD) {
-                bestD = dd;
-                near = p;
+      return Focus(
+          focusNode: _focus,
+          onKeyEvent: (_, ev) => _key(ev),
+          child: curveGestures(Listener(
+            onPointerDown: (e) {
+              _focus.requestFocus();
+              _alt = HardwareKeyboard.instance.isAltPressed;
+              // Right-click: the key there taken away.
+              if (e.buttons == kSecondaryMouseButton) {
+                var k = keyAt(e.localPosition);
+                if (k != null) _remove(k);
               }
-            }
-            if (near == null) return;
-            var v = _sample(near, t);
-            var keys = [
-              ...c.keys[near]!,
-              MotionKey(t, MotionNumber(double.parse(v.toStringAsFixed(3))),
-                  ease: KeyframeEasing.easeInOut)
-            ]..sort((a, b) => a.t.compareTo(b.t));
-            _write({...c.keys, near: keys});
-            setState(() {
-              _picked
-                ..clear()
-                ..add((near!, keys.indexWhere((k) => k.t == t)));
-            });
-          },
-          onPanStart: (d) {
-            var k = keyAt(d.localPosition);
-            if (k == null) return;
-            if (!_picked.contains(k)) {
-              _picked
-                ..clear()
-                ..add(k);
-            }
-            _dragFrom = {
-              for (var e in c.keys.entries) e.key: [...e.value]
-            };
-            _dragRange = _ranges();
-            _dragStart = d.localPosition;
-            widget.controller.beginInteraction();
-          },
-          onPanUpdate: (d) {
-            var from = _dragFrom;
-            if (from == null) return;
-            var dt = (d.localPosition.dx - _dragStart.dx) /
-                (size.width - pad * 2) *
-                len;
-            var keys = {
-              for (var e in from.entries) e.key: [...e.value]
-            };
-            for (var (p, i) in _picked) {
-              var was = from[p]![i];
-              var t = (was.t + dt).clamp(0.0, len);
-              if (_snap && !_alt) t = (t / _grid).round() * _grid;
-              var value = was.value;
-              // A number moves up and down too; a place keeps where it is.
-              if (!_speed && value is MotionNumber) {
-                var y =
-                    yOf(p, value.value) + (d.localPosition.dy - _dragStart.dy);
-                value =
-                    MotionNumber(double.parse(vOf(p, y).toStringAsFixed(3)));
-              }
-              keys[p]![i] = was.copyWith(t: t, value: value);
-            }
-            _write(keys, live: true);
-          },
-          onPanEnd: (_) {
-            if (_dragFrom == null) return;
-            // Kept in order, and the ones moved still picked.
-            var moved = {
-              for (var (p, i) in _picked) (p, c.keys[p]![i]),
-            };
-            var keys = {
-              for (var e in c.keys.entries)
-                e.key: [...e.value]..sort((a, b) => a.t.compareTo(b.t)),
-            };
-            _write(keys, live: true);
-            widget.onCommit();
-            setState(() {
-              _picked
-                ..clear()
-                ..addAll([
-                  for (var (p, k) in moved) (p, keys[p]!.indexOf(k)),
-                ]);
-              _dragFrom = null;
-              _dragRange = null;
-            });
-          },
-          child: CustomPaint(
-            painter: _CurvesPainter(
-              clip: c,
-              shown: _shown,
-              speed: _speed,
-              picked: _picked,
-              sample: _sample,
-              rate: _rate,
-              xOf: xOf,
-              yOf: yOf,
-              len: len,
-              grid: _grid,
-              playhead: widget.playhead,
-              others: _others
-                  ? [
-                      for (var i = 1;
-                          i <
-                              math.min(
-                                  8,
-                                  widget.element.base.motion.instances?.count ??
-                                      0);
-                          i++)
-                        widget.element.base.motion.instances!.startOf(i),
-                    ]
-                  : const [],
-              studio: s,
+            },
+            child: GestureDetector(
+              key: const ValueKey("curvesGraph"),
+              behavior: HitTestBehavior.opaque,
+              // From where it was pressed, not where the drag was noticed: a
+              // key is small.
+              dragStartBehavior: DragStartBehavior.down,
+              onTapUp: (d) {
+                if (d.localPosition.dy < top) {
+                  _scrubTo(tOf(d.localPosition.dx));
+                  return;
+                }
+                var k = keyAt(d.localPosition);
+                setState(() {
+                  if (!HardwareKeyboard.instance.isShiftPressed) {
+                    _picked.clear();
+                  }
+                  if (k != null) _picked.add(k);
+                });
+              },
+              // Double-clicked on a line: a key there, on that value.
+              onDoubleTapDown: (d) {
+                // On the ruler: the whole of it again.
+                if (d.localPosition.dy < top) {
+                  setState(view.fit);
+                  return;
+                }
+                if (_speed) return;
+                var at = d.localPosition;
+                var t = tOf(at.dx).clamp(0.0, len);
+                if (_snap) t = (t / _grid).round() * _grid;
+                MotionProp? near;
+                var bestD = 12.0;
+                for (var p in _shown) {
+                  var dd = (yOf(p, _sample(p, tOf(at.dx))) - at.dy).abs();
+                  if (dd < bestD) {
+                    bestD = dd;
+                    near = p;
+                  }
+                }
+                if (near == null) return;
+                var v = _sample(near, t);
+                var keys = [
+                  ...c.keys[near]!,
+                  MotionKey(t, MotionNumber(double.parse(v.toStringAsFixed(3))),
+                      ease: KeyframeEasing.easeInOut)
+                ]..sort((a, b) => a.t.compareTo(b.t));
+                _write({...c.keys, near: keys});
+                setState(() {
+                  _picked
+                    ..clear()
+                    ..add((near!, keys.indexWhere((k) => k.t == t)));
+                });
+              },
+              onPanStart: (d) {
+                var at = d.localPosition;
+                for (var h in handles) {
+                  if (h.at(at) case var which?) {
+                    setState(() {
+                      _handle = (h.key as _Pick, which, h.p0, h.p1);
+                      _dragRange = _ranges();
+                    });
+                    widget.controller.beginInteraction();
+                    return;
+                  }
+                }
+                var k = keyAt(at);
+                if (k == null) {
+                  if (at.dy < top || nearPlayhead(at, playheadX, top)) {
+                    _scrub = true;
+                    _scrubTo(tOf(at.dx));
+                  } else {
+                    _pan = true;
+                  }
+                  return;
+                }
+                if (!_picked.contains(k)) {
+                  _picked
+                    ..clear()
+                    ..add(k);
+                }
+                _dragFrom = {
+                  for (var e in c.keys.entries) e.key: [...e.value]
+                };
+                _dragRange = _ranges();
+                _dragStart = d.localPosition;
+                widget.controller.beginInteraction();
+              },
+              onPanUpdate: (d) {
+                if (_scrub) {
+                  _scrubTo(tOf(d.localPosition.dx));
+                  return;
+                }
+                if (_pan) {
+                  setState(() {
+                    view.panTime(d.delta.dx, area);
+                    view.panValues(d.delta.dy, area);
+                  });
+                  return;
+                }
+                if (_handle case ((var p, var i), var which, var p0, var p1)) {
+                  var list = c.keys[p];
+                  if (list == null || i >= list.length) return;
+                  var keys = {
+                    for (var e in c.keys.entries) e.key: [...e.value]
+                  };
+                  keys[p]![i] = list[i].copyWith(
+                      ease: KeyframeEasing.custom,
+                      curve: curveDragged(
+                          _curveOf(list[i]), which, d.localPosition, p0, p1));
+                  _write(keys, live: true);
+                  return;
+                }
+                var from = _dragFrom;
+                if (from == null) return;
+                var dt = (d.localPosition.dx - _dragStart.dx) /
+                    (size.width - pad * 2) *
+                    len;
+                var keys = {
+                  for (var e in from.entries) e.key: [...e.value]
+                };
+                for (var (p, i) in _picked) {
+                  var was = from[p]![i];
+                  var t = (was.t + dt).clamp(0.0, len);
+                  if (_snap && !_alt) t = (t / _grid).round() * _grid;
+                  var value = was.value;
+                  // A number moves up and down too; a place keeps where it is.
+                  if (!_speed && value is MotionNumber) {
+                    var y = yOf(p, value.value) +
+                        (d.localPosition.dy - _dragStart.dy);
+                    value = MotionNumber(
+                        double.parse(vOf(p, y).toStringAsFixed(3)));
+                  }
+                  keys[p]![i] = was.copyWith(t: t, value: value);
+                }
+                _write(keys, live: true);
+              },
+              onPanEnd: (_) {
+                if (_scrub || _pan) {
+                  setState(() => _scrub = _pan = false);
+                  return;
+                }
+                if (_handle != null) {
+                  widget.onCommit();
+                  setState(() {
+                    _handle = null;
+                    _dragRange = null;
+                  });
+                  return;
+                }
+                if (_dragFrom == null) return;
+                // Kept in order, and the ones moved still picked.
+                var moved = {
+                  for (var (p, i) in _picked) (p, c.keys[p]![i]),
+                };
+                var keys = {
+                  for (var e in c.keys.entries)
+                    e.key: [...e.value]..sort((a, b) => a.t.compareTo(b.t)),
+                };
+                _write(keys, live: true);
+                widget.onCommit();
+                setState(() {
+                  _picked
+                    ..clear()
+                    ..addAll([
+                      for (var (p, k) in moved) (p, keys[p]!.indexOf(k)),
+                    ]);
+                  _dragFrom = null;
+                  _dragRange = null;
+                });
+              },
+              child: CustomPaint(
+                painter: _CurvesPainter(
+                  clip: c,
+                  shown: _shown,
+                  speed: _speed,
+                  picked: _picked,
+                  sample: _sample,
+                  rate: _rate,
+                  xOf: xOf,
+                  tOf: tOf,
+                  yOf: yOf,
+                  len: len,
+                  grid: _grid,
+                  playhead: widget.playhead ?? _cursor,
+                  ownCursor: widget.playhead == null,
+                  handles: handles,
+                  view: view,
+                  others: _others
+                      ? [
+                          for (var i = 1;
+                              i <
+                                  math.min(
+                                      8,
+                                      widget.element.base.motion.instances
+                                              ?.count ??
+                                          0);
+                              i++)
+                            widget.element.base.motion.instances!.startOf(i),
+                        ]
+                      : const [],
+                  studio: s,
+                ),
+                child: const SizedBox.expand(),
+              ),
             ),
-            child: const SizedBox.expand(),
-          ),
-        ),
-      );
+          )));
     });
 
     var inspector = Container(
@@ -507,7 +687,11 @@ class _MotionCurvesState extends State<MotionCurves> {
         ] else
           Text(
               "Drag a key to move it. Double-click a line to add a key, and "
-              "right-click a key to remove it.\n\nEach value is scaled to "
+              "right-click a key, or Delete, to remove it.\n\nPinch or "
+              "⌘-scroll to zoom in on time, with ⌥ on the values; swipe or "
+              "drag the background to move; double-click the ruler to see "
+              "it all. Drag the playhead by its cap. Handles shapes how a "
+              "key is reached.\n\nEach value is scaled to "
               "fit, so you can see them all at once. Speed shows how fast "
               "each one changes, the way an animator reads motion.",
               style: TextStyle(fontSize: 11, height: 1.45, color: s.muted)),
@@ -618,10 +802,16 @@ class _CurvesPainter extends CustomPainter {
   final bool speed;
   final Set<_Pick> picked;
   final double Function(MotionProp, double) sample, rate;
-  final double Function(double) xOf;
+  final double Function(double) xOf, tOf;
   final double Function(MotionProp, double) yOf;
   final double len, grid;
   final double? playhead;
+
+  /// ownCursor is whether [playhead] is the editor's own cursor rather
+  /// than the timeline's: drawn fainter.
+  final bool ownCursor;
+  final List<CurveHandles> handles;
+  final CurveView view;
   final List<double> others;
   final StudioColors studio;
   _CurvesPainter(
@@ -636,8 +826,12 @@ class _CurvesPainter extends CustomPainter {
       required this.len,
       required this.grid,
       required this.playhead,
+      required this.ownCursor,
+      required this.handles,
+      required this.view,
       required this.others,
-      required this.studio});
+      required this.studio,
+      required this.tOf});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -648,19 +842,18 @@ class _CurvesPainter extends CustomPainter {
     var beat = Paint()..color = Colors.white.withValues(alpha: 0.08);
     var n = 0;
     for (var t = 0.0; t <= len + 1e-9; t += grid, n++) {
-      canvas.drawRect(Rect.fromLTWH(xOf(t).roundToDouble(), 0, 1, size.height),
+      var x = xOf(t);
+      if (x < -1 || x > size.width + 1) continue;
+      canvas.drawRect(Rect.fromLTWH(x.roundToDouble(), 0, 1, size.height),
           n % 4 == 0 ? beat : fine);
     }
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, 22),
         Paint()..color = Colors.black.withValues(alpha: 0.2));
-    var step = len <= 2
-        ? 0.25
-        : len <= 6
-            ? 0.5
-            : len <= 20
-                ? 1.0
-                : 5.0;
-    for (var t = 0.0; t <= len + 1e-9; t += step) {
+    // A label each tidy step the zoom leaves room for.
+    var step = view.step(len, size.width);
+    for (var t = (math.max(0.0, tOf(0)) / step).floor() * step;
+        t <= math.min(len, tOf(size.width)) + 1e-9;
+        t += step) {
       var tp = TextPainter(
           text: TextSpan(
               text: t == t.roundToDouble()
@@ -672,13 +865,18 @@ class _CurvesPainter extends CustomPainter {
       tp.paint(canvas, Offset(xOf(t) + 3, 5));
     }
     double value(MotionProp p, double t) => speed ? rate(p, t) : sample(p, t);
+    // Read along what is shown, two pixels at a time, so a close look
+    // stays smooth.
     Path line(MotionProp p, double shift) {
       var path = Path();
-      for (var i = 0; i <= 200; i++) {
-        var t = len * i / 200;
+      var started = false;
+      for (var x = 0.0; x <= size.width; x += 2) {
+        var t = tOf(x);
+        if (t < 0 || t > len) continue;
         var at = (t - shift).clamp(0.0, len);
-        var pt = Offset(xOf(t), yOf(p, value(p, at)));
-        i == 0 ? path.moveTo(pt.dx, pt.dy) : path.lineTo(pt.dx, pt.dy);
+        var pt = Offset(x, yOf(p, value(p, at)));
+        started ? path.lineTo(pt.dx, pt.dy) : path.moveTo(pt.dx, pt.dy);
+        started = true;
       }
       return path;
     }
@@ -729,9 +927,16 @@ class _CurvesPainter extends CustomPainter {
         }
       }
     }
+    paintHandles(canvas, handles);
     if (playhead case var t?) {
-      canvas.drawRect(Rect.fromLTWH(xOf(t), 0, 1.5, size.height),
-          Paint()..color = const Color(0xFFE2B04A));
+      paintPlayhead(
+          canvas,
+          xOf(t),
+          22,
+          size.height,
+          ownCursor
+              ? const Color(0xFFE2B04A).withValues(alpha: 0.55)
+              : const Color(0xFFE2B04A));
     }
     if (shown.isEmpty) {
       var tp = TextPainter(

@@ -20,6 +20,9 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:bruig/plugin_system/canvas/model/play.dart';
+import 'package:bruig/plugin_system/canvas/ui/curve_view.dart';
+import 'package:flutter/services.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -430,6 +433,56 @@ void main() {
     c.undo();
     expect(c.motionOf("a").clip(clip)!.keys[MotionProp.x]!.map((m) => m.t),
         before.keys[MotionProp.x]!.map((m) => m.t));
+  });
+
+  // Ken, 2026-11-14: Delete for a key, and handles to shape an ease.
+  group("in Curves, across from nought to a hundred", () {
+    Future<(CanvasController, String, Rect)> across(WidgetTester tester) async {
+      var (c, clip) = await pump(tester);
+      var was = c.motionOf("a").clip(clip)!;
+      c.setMotion(
+          "a",
+          c.motionOf("a").withClip(was.copyWith(keys: {
+                MotionProp.x: [
+                  MotionKey(0, MotionNumber(0)),
+                  MotionKey(was.length, MotionNumber(100)),
+                ],
+              })));
+      c.showMotionCurves("a", clip);
+      await tester.pumpAndSettle();
+      return (
+        c,
+        clip,
+        tester.getRect(find.byKey(const ValueKey("curvesGraph")))
+      );
+    }
+
+    testWidgets("Delete takes the picked key away", (tester) async {
+      var (c, clip, g) = await across(tester);
+      await tester.tapAt(Offset(g.left + 12, g.top + 34 + (g.height - 54)));
+      // Past the wait for a second tap, so it counts as one.
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey("curvesKeyName")), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+      await tester.pumpAndSettle();
+      expect(c.motionOf("a").clip(clip)!.keys[MotionProp.x], hasLength(1));
+    });
+
+    testWidgets("a handle shapes how the key is reached", (tester) async {
+      curvesShowHandles = true;
+      addTearDown(() => curvesShowHandles = false);
+      var (c, clip, g) = await across(tester);
+      var p0 = Offset(g.left + 12, g.top + 34 + (g.height - 54));
+      var p1 = Offset(g.right - 12, g.top + 34);
+      var h2 = p0 + (p1 - p0) * (2 / 3);
+      await tester.timedDragFrom(h2, Offset(0, (p1.dy - p0.dy) * 0.3),
+          const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+      var k = c.motionOf("a").clip(clip)!.keys[MotionProp.x]![1];
+      expect(k.ease, KeyframeEasing.custom);
+      expect(k.curve!.x2, closeTo(2 / 3, 0.03));
+      expect(k.curve!.y2, closeTo(2 / 3 + 0.3, 0.04));
+    });
   });
 
   testWidgets("Curves fills the panel; Chain brings the cards back",

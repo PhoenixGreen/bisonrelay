@@ -233,7 +233,7 @@ double? sampleProp(
     if (t < a.t || t > b.t) continue;
     var span = b.t - a.t;
     var p = span <= 1e-9 ? 1.0 : (t - a.t) / span;
-    var e = b.ease.apply(p);
+    var e = b.eased(p);
     var va = at(a), vb = at(b);
     return va + (vb - va) * e;
   }

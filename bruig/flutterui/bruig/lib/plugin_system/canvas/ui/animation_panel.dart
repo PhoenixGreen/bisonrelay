@@ -418,6 +418,7 @@ class _AnimationPanelState extends State<AnimationPanel> {
           element: e,
           clip: c,
           playhead: _playhead(e, c),
+          onScrub: _scrubber(c),
           onEdit: (change, {bool live = false}) => _edit(e, change, live: live),
           onCommit: controller.endInteraction,
         ),
@@ -866,6 +867,21 @@ class _AnimationPanelState extends State<AnimationPanel> {
 
   /// _playhead is where in [c] it is playing: from its slot, or the
   /// playhead on the stretch of the timeline picked.
+  /// _scrubber puts the playhead [t] seconds into [c] where it is placed
+  /// on the timeline -- its first time round, for a loop -- or is null for
+  /// a clip that is only in a slot.
+  void Function(double)? _scrubber(MotionClip c) {
+    var place = controller.pickedPlacement;
+    var span = place == null ? null : controller.spanOf(place);
+    if (span == null || span.speed <= 0) return null;
+    return (t) {
+      var into = t - span.from;
+      if (c.loop && into < 0) into += math.max(0.05, c.length);
+      var at = (span.start + into / span.speed).clamp(span.start, span.end);
+      controller.frame = controller.frameAt(at);
+    };
+  }
+
   double? _playhead(CanvasElement e, MotionClip c) {
     if (controller.liveMotion case var live?) {
       for (var p in live.of(e.id)?.plays ?? const <LivePlay?>[]) {

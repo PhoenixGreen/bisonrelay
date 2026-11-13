@@ -28,7 +28,11 @@ enum KeyframeEasing {
   spring("Spring"),
 
   /// hold does not interpolate at all: the pose snaps at the next keyframe.
-  hold("Hold");
+  hold("Hold"),
+
+  /// custom is the shape the Curves' handles drew: an [EaseCurve] kept with
+  /// the key. Asked of the easing alone it is an ease-in-out.
+  custom("Custom");
 
   final String label;
   const KeyframeEasing(this.label);
@@ -67,8 +71,100 @@ enum KeyframeEasing {
         return 1 - decay * math.cos(t * math.pi * 6);
       case KeyframeEasing.hold:
         return 0;
+      case KeyframeEasing.custom:
+        return EaseCurve.inOut.apply(t);
     }
   }
+
+  /// asCurve is this easing as handles, for the Curves to start from: the
+  /// curve it is, or near it; one that is not a curve (bounce, spring,
+  /// hold), an ease-in-out.
+  EaseCurve get asCurve => switch (this) {
+        KeyframeEasing.linear => EaseCurve.linear,
+        // t² and its mirror are exactly these cubics.
+        KeyframeEasing.easeIn => const EaseCurve(1 / 3, 0, 2 / 3, 1 / 3),
+        KeyframeEasing.easeOut => const EaseCurve(1 / 3, 2 / 3, 2 / 3, 1),
+        KeyframeEasing.overshoot => const EaseCurve(0.175, 0.885, 0.32, 1.275),
+        _ => EaseCurve.inOut,
+      };
+}
+
+/// EaseCurve is an ease drawn with two handles, as CSS's cubic-bezier: the
+/// curve from (0, 0) to (1, 1) through handles (x1, y1) and (x2, y2), time
+/// across and progress up. The xs stay within 0..1, so time only goes
+/// forward; the ys may leave it, to overshoot (Ken, 2026-11-14: one ease per
+/// keyframe, shaped by its handles in the Curves).
+class EaseCurve {
+  final double x1, y1, x2, y2;
+  const EaseCurve(this.x1, this.y1, this.x2, this.y2);
+
+  static const linear = EaseCurve(1 / 3, 1 / 3, 2 / 3, 2 / 3);
+  static const inOut = EaseCurve(0.42, 0, 0.58, 1);
+
+  EaseCurve copyWith({double? x1, double? y1, double? x2, double? y2}) =>
+      EaseCurve((x1 ?? this.x1).clamp(0.0, 1.0).toDouble(), y1 ?? this.y1,
+          (x2 ?? this.x2).clamp(0.0, 1.0).toDouble(), y2 ?? this.y2);
+
+  static double _b(double a, double b, double t) {
+    var u = 1 - t;
+    return 3 * u * u * t * a + 3 * u * t * t * b + t * t * t;
+  }
+
+  static double _db(double a, double b, double t) {
+    var u = 1 - t;
+    return 3 * u * u * a + 6 * u * t * (b - a) + 3 * t * t * (1 - b);
+  }
+
+  /// apply is how far along [t] of the way in time is: the curve's height
+  /// where it is [t] across. Pinned at the ends, so a key is reached.
+  double apply(double t) {
+    if (t <= 0) return 0;
+    if (t >= 1) return 1;
+    // The curve's own parameter where it is t across: Newton's method,
+    // then halving where that wanders.
+    var s = t;
+    for (var i = 0; i < 8; i++) {
+      var x = _b(x1, x2, s) - t;
+      if (x.abs() < 1e-7) return _b(y1, y2, s);
+      var d = _db(x1, x2, s);
+      if (d.abs() < 1e-6) break;
+      s -= x / d;
+    }
+    var lo = 0.0, hi = 1.0;
+    s = t;
+    for (var i = 0; i < 40; i++) {
+      var x = _b(x1, x2, s);
+      if ((x - t).abs() < 1e-7) break;
+      if (x < t) {
+        lo = s;
+      } else {
+        hi = s;
+      }
+      s = (lo + hi) / 2;
+    }
+    return _b(y1, y2, s);
+  }
+
+  List<double> toJson() => [x1, y1, x2, y2];
+
+  static EaseCurve? fromJson(Object? json) {
+    if (json case [num a, num b, num c, num d]) {
+      return EaseCurve(a.toDouble().clamp(0.0, 1.0).toDouble(), b.toDouble(),
+          c.toDouble().clamp(0.0, 1.0).toDouble(), d.toDouble());
+    }
+    return null;
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is EaseCurve &&
+      other.x1 == x1 &&
+      other.y1 == y1 &&
+      other.x2 == x2 &&
+      other.y2 == y2;
+
+  @override
+  int get hashCode => Object.hash(x1, y1, x2, y2);
 }
 
 /// Keyframe is one pose: where an element is at one frame.
@@ -94,6 +190,9 @@ class Keyframe {
   /// easing is how to get *from* this keyframe to the next one.
   final KeyframeEasing easing;
 
+  /// curve is the shape of that, where [easing] is custom: see EaseCurve.
+  final EaseCurve? curve;
+
   /// values are the extra properties this keyframe pins, by name: the ones
   /// only some elements have (how far a caption has slid, how far a line is
   /// bowed). Absolute values, not offsets, as they have no resting state.
@@ -108,8 +207,15 @@ class Keyframe {
     this.rotate = 0,
     this.opacity = 1,
     this.easing = KeyframeEasing.linear,
+    this.curve,
     this.values = const {},
   });
+
+  /// ease is how far from this keyframe to the next [t] of the way between
+  /// them is: by its curve where it has one, else its easing.
+  double ease(double t) => easing == KeyframeEasing.custom && curve != null
+      ? curve!.apply(t)
+      : easing.apply(t);
 
   /// posesElement is whether this keyframe moves, resizes, turns or fades
   /// the element. One that carries only [values] (how much of a chart is
@@ -134,6 +240,7 @@ class Keyframe {
     double? rotate,
     double? opacity,
     KeyframeEasing? easing,
+    EaseCurve? curve,
     Map<String, double>? values,
   }) =>
       Keyframe(
@@ -144,6 +251,7 @@ class Keyframe {
         rotate: rotate ?? this.rotate,
         opacity: opacity ?? this.opacity,
         easing: easing ?? this.easing,
+        curve: curve ?? this.curve,
         values: values ?? this.values,
       );
 
@@ -183,6 +291,7 @@ class Keyframe {
         rotate: rotate + (other.rotate - rotate) * t,
         opacity: opacity + (other.opacity - opacity) * t,
         easing: easing,
+        curve: curve,
         // A property only one end pins is held, not interpolated towards a
         // guessed value.
         values: {
@@ -209,6 +318,8 @@ class Keyframe {
         if (rotate != 0) "r": rotate,
         if (opacity != 1) "o": opacity,
         if (easing != KeyframeEasing.linear) "e": easing.name,
+        if (easing == KeyframeEasing.custom && curve != null)
+          "c": curve!.toJson(),
         if (values.isNotEmpty) "v": values,
       };
 
@@ -220,6 +331,7 @@ class Keyframe {
         rotate: (jsonNum(json["r"]))?.toDouble() ?? 0,
         opacity: (jsonNum(json["o"]))?.toDouble() ?? 1,
         easing: KeyframeEasing.fromName(jsonStr(json["e"])),
+        curve: EaseCurve.fromJson(json["c"]),
         values: {
           if (json["v"] case Map<String, dynamic> raw)
             for (var entry in raw.entries)
@@ -291,7 +403,7 @@ class ElementTrack {
       if (frame < a.frame || frame > b.frame) continue;
       var span = b.frame - a.frame;
       if (span <= 0) return b;
-      return a.lerp(b, a.easing.apply((frame - a.frame) / span));
+      return a.lerp(b, a.ease((frame - a.frame) / span));
     }
     return keys.last;
   }
@@ -320,9 +432,11 @@ class ElementTrack {
   Keyframe restingAt(int frame) {
     var pose = _poseAt(frame);
     var easing = KeyframeEasing.linear;
+    EaseCurve? curve;
     for (var k in keys) {
       if (k.frame > frame) break;
       easing = k.easing;
+      curve = k.curve;
     }
     return Keyframe(
         frame: frame,
@@ -331,7 +445,8 @@ class ElementTrack {
         scale: pose.scale,
         rotate: pose.rotate,
         opacity: pose.opacity,
-        easing: easing);
+        easing: easing,
+        curve: curve);
   }
 
   /// withKey adds or replaces the keyframe at its own frame.

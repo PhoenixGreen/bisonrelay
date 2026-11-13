@@ -2,9 +2,11 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/curve_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 // track_curves.dart is the Curves of an element's own keyframes (Ken,
 // 2026-11-09: the approved keyframes prototype, v2): the same design as a
@@ -58,7 +60,8 @@ class TrackCurves extends StatefulWidget {
   State<TrackCurves> createState() => _TrackCurvesState();
 }
 
-class _TrackCurvesState extends State<TrackCurves> {
+class _TrackCurvesState extends State<TrackCurves>
+    with CurveViewing<TrackCurves> {
   CanvasController get c => widget.controller;
   bool _speed = false;
   final Set<String> _hidden = {};
@@ -71,6 +74,20 @@ class _TrackCurvesState extends State<TrackCurves> {
   int? _dragFrame;
   double _dragX = 0;
   Map<String, (double, double)>? _dragRange;
+
+  /// _handle is a handle being dragged: the keyframe whose ease it is, which
+  /// of its two, and where the two keys were on the line it was taken on.
+  (int, int, Offset, Offset)? _handle;
+
+  /// _scrub is whether a drag is moving the playhead; _pan the view.
+  bool _scrub = false, _pan = false;
+  final FocusNode _focus = FocusNode(debugLabel: "trackCurves");
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
 
   int get _last => math.max(1, c.document.frames - 1);
 
@@ -148,6 +165,17 @@ class _TrackCurvesState extends State<TrackCurves> {
               for (var e in KeyframeEasing.values)
                 tb("trackCurvesEase-${e.name}", e.label, picked?.easing == e,
                     () => _ease(e)),
+              Container(
+                  width: 1,
+                  height: 18,
+                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                  color: s.edge),
+              // Each ease's handles on its lines, to shape it by hand (Ken,
+              // 2026-11-14), and the whole of it again after zooming.
+              tb("trackCurvesHandles", "Handles", curvesShowHandles,
+                  () => setState(() => curvesShowHandles = !curvesShowHandles)),
+              if (!view.fitted)
+                tb("trackCurvesFit", "Fit", false, () => setState(view.fit)),
             ]),
           ),
         ),
@@ -213,20 +241,38 @@ class _TrackCurvesState extends State<TrackCurves> {
     var graph = LayoutBuilder(builder: (context, box) {
       var size = Size(box.maxWidth, box.maxHeight);
       const top = 24.0, pad = 12.0;
-      double xOf(num f) => pad + f / _last * (size.width - pad * 2);
-      int fOf(double x) => ((x - pad) / (size.width - pad * 2) * _last)
-          .round()
-          .clamp(0, _last)
-          .toInt();
+      var area =
+          Rect.fromLTRB(pad, top + 10, size.width - pad, size.height - 20);
+      graphArea = area;
+      double fAt(double x) => view.u(x, area) * _last;
+      double xOf(num f) => view.x(f / _last, area);
+      int fOf(double x) => fAt(x).round().clamp(0, _last).toInt();
       double yOf(String id, double v) {
         var (lo, hi) = ranges[id] ?? (0.0, 1.0);
-        return top + 10 + (1 - (v - lo) / (hi - lo)) * (size.height - top - 30);
+        return view.y((v - lo) / (hi - lo), area);
       }
 
       double vOf(String id, double y) {
         var (lo, hi) = ranges[id] ?? (0.0, 1.0);
-        return lo + (1 - (y - top - 10) / (size.height - top - 30)) * (hi - lo);
+        return lo + view.n(y, area) * (hi - lo);
       }
+
+      // Each ease's handles, on each line it moves, where shown.
+      var handles = <CurveHandles>[
+        if (curvesShowHandles && !_speed)
+          for (var (id, _, read) in shown)
+            for (var i = 0; i < t.track.keys.length - 1; i++)
+              if (_handlesOn(t.track.keys[i], t.track.keys[i + 1], read)
+                  case (var va, var vb))
+                () {
+                  var a = t.track.keys[i], b = t.track.keys[i + 1];
+                  var p0 = Offset(xOf(a.frame), yOf(id, va));
+                  var p1 = Offset(xOf(b.frame), yOf(id, vb));
+                  var (h1, h2) = handlesOf(_curveOf(a), p0, p1);
+                  return CurveHandles(
+                      p0, h1, h2, p1, _colourOf(id), a.frame, id);
+                }(),
+      ];
 
       (String, int)? keyAt(Offset at) {
         (String, int)? best;
@@ -245,83 +291,139 @@ class _TrackCurvesState extends State<TrackCurves> {
         return best;
       }
 
-      return Listener(
-        onPointerDown: (e) {
-          // Right-click: that value back to rest.
-          if (e.buttons == kSecondaryMouseButton) {
-            if (keyAt(e.localPosition) case (var id, var f)) _rest(t, id, f);
-          }
-        },
-        child: GestureDetector(
-          key: const ValueKey("trackCurvesGraph"),
-          behavior: HitTestBehavior.opaque,
-          dragStartBehavior: DragStartBehavior.down,
-          onTapDown: (d) {
-            if (d.localPosition.dy < top) {
-              c.frame = fOf(d.localPosition.dx);
-              return;
+      var playheadX = xOf(c.frame.clamp(0, _last));
+      return Focus(
+        focusNode: _focus,
+        onKeyEvent: (_, ev) => _key(t, ev),
+        child: curveGestures(Listener(
+          onPointerDown: (e) {
+            _focus.requestFocus();
+            // Right-click: that value back to rest.
+            if (e.buttons == kSecondaryMouseButton) {
+              if (keyAt(e.localPosition) case (var id, var f)) _rest(t, id, f);
             }
-            setState(() => _pick = keyAt(d.localPosition));
           },
-          onDoubleTapDown: (d) => _add(t, fOf(d.localPosition.dx)),
-          onDoubleTap: () {},
-          onPanStart: (d) {
-            var k = keyAt(d.localPosition);
-            if (k == null) {
-              if (d.localPosition.dy < top) c.frame = fOf(d.localPosition.dx);
-              return;
-            }
-            setState(() {
-              _pick = k;
-              _dragFrame = k.$2;
-              _dragX = d.localPosition.dx - xOf(k.$2);
-              _dragRange = ranges;
-            });
-            c.beginInteraction();
-          },
-          onPanUpdate: (d) {
-            var p = _pick, at = _dragFrame;
-            if (p == null || at == null) {
-              if (d.localPosition.dy < top) c.frame = fOf(d.localPosition.dx);
-              return;
-            }
-            var now = c.keyframeTarget?.track;
-            var k = now?.keyAt(at);
-            if (now == null || k == null) return;
-            // Up or down: that one value.
-            var next =
-                now.withKey(_withValue(k, p.$1, vOf(p.$1, d.localPosition.dy)));
-            c.writeTargetTrack(next);
-            // Sideways: the whole keyframe, where nothing else is.
-            var to = fOf(d.localPosition.dx - _dragX);
-            if (to != at && c.moveTargetKeyframes([at], to - at)) {
-              _dragFrame = to;
-              _pick = (p.$1, to);
-            }
-            setState(() {});
-          },
-          onPanEnd: (_) {
-            if (_dragFrame != null) c.endInteraction();
-            setState(() {
-              _dragFrame = null;
-              _dragRange = null;
-            });
-          },
-          child: CustomPaint(
-            size: Size.infinite,
-            painter: _CurvesPainter(
-              track: t.track,
-              shown: shown,
-              ranges: ranges,
-              speed: _speed,
-              last: _last,
-              rate: math.max(1, c.document.frameRate),
-              playhead: c.frame,
-              pick: _pick,
-              studio: s,
+          child: GestureDetector(
+            key: const ValueKey("trackCurvesGraph"),
+            behavior: HitTestBehavior.opaque,
+            dragStartBehavior: DragStartBehavior.down,
+            onTapDown: (d) {
+              if (d.localPosition.dy < top) {
+                c.frame = fOf(d.localPosition.dx);
+                return;
+              }
+              setState(() => _pick = keyAt(d.localPosition));
+            },
+            // On the ruler, the whole of it again; on the lines, a keyframe.
+            onDoubleTapDown: (d) => d.localPosition.dy < top
+                ? setState(view.fit)
+                : _add(t, fOf(d.localPosition.dx)),
+            onDoubleTap: () {},
+            onPanStart: (d) {
+              var at = d.localPosition;
+              // A handle first: it sits over the lines and the keys.
+              for (var h in handles) {
+                if (h.at(at) case var which?) {
+                  setState(() {
+                    _handle = (h.key as int, which, h.p0, h.p1);
+                    _dragRange = ranges;
+                  });
+                  c.beginInteraction();
+                  return;
+                }
+              }
+              var k = keyAt(at);
+              if (k == null) {
+                // The playhead, by its cap or its line, or the ruler; else
+                // the view itself.
+                if (at.dy < top || nearPlayhead(at, playheadX, top)) {
+                  _scrub = true;
+                  c.frame = fOf(at.dx);
+                } else {
+                  _pan = true;
+                }
+                return;
+              }
+              setState(() {
+                _pick = k;
+                _dragFrame = k.$2;
+                _dragX = at.dx - xOf(k.$2);
+                _dragRange = ranges;
+              });
+              c.beginInteraction();
+            },
+            onPanUpdate: (d) {
+              if (_scrub) {
+                c.frame = fOf(d.localPosition.dx);
+                return;
+              }
+              if (_pan) {
+                setState(() {
+                  view.panTime(d.delta.dx, area);
+                  view.panValues(d.delta.dy, area);
+                });
+                return;
+              }
+              if (_handle case (var f, var which, var p0, var p1)) {
+                var now = c.keyframeTarget?.track;
+                var k = now?.keyAt(f);
+                if (now == null || k == null) return;
+                var curve =
+                    curveDragged(_curveOf(k), which, d.localPosition, p0, p1);
+                c.writeTargetTrack(now.withKey(
+                    k.copyWith(easing: KeyframeEasing.custom, curve: curve)));
+                setState(() {});
+                return;
+              }
+              var p = _pick, at = _dragFrame;
+              if (p == null || at == null) return;
+              var now = c.keyframeTarget?.track;
+              var k = now?.keyAt(at);
+              if (now == null || k == null) return;
+              // Up or down: that one value.
+              var next = now
+                  .withKey(_withValue(k, p.$1, vOf(p.$1, d.localPosition.dy)));
+              c.writeTargetTrack(next);
+              // Sideways: the whole keyframe, where nothing else is.
+              var to = fOf(d.localPosition.dx - _dragX);
+              if (to != at && c.moveTargetKeyframes([at], to - at)) {
+                _dragFrame = to;
+                _pick = (p.$1, to);
+              }
+              setState(() {});
+            },
+            onPanEnd: (_) {
+              if (_dragFrame != null || _handle != null) c.endInteraction();
+              setState(() {
+                _dragFrame = null;
+                _dragRange = null;
+                _handle = null;
+                _scrub = false;
+                _pan = false;
+              });
+            },
+            child: ClipRect(
+              child: CustomPaint(
+                size: Size.infinite,
+                painter: _CurvesPainter(
+                  track: t.track,
+                  shown: shown,
+                  speed: _speed,
+                  last: _last,
+                  rate: math.max(1, c.document.frameRate),
+                  playhead: c.frame,
+                  pick: _pick,
+                  studio: s,
+                  area: area,
+                  view: view,
+                  xOf: xOf,
+                  yOf: yOf,
+                  handles: handles,
+                ),
+              ),
             ),
           ),
-        ),
+        )),
       );
     });
 
@@ -336,7 +438,11 @@ class _TrackCurvesState extends State<TrackCurves> {
               "much, and how it eases to the next. Drag a key sideways to "
               "move its keyframe, up or down to change that value. "
               "Double-click a line for a keyframe there; right-click a key "
-              "to put that value back to rest.",
+              "to put that value back to rest, or Delete to take its "
+              "keyframe away.\n\nPinch or ⌘-scroll to zoom in on time, "
+              "with ⌥ on the values; swipe or drag the background to move; "
+              "double-click the ruler to see it all. Drag the playhead by "
+              "its cap. Handles shapes an ease by hand.",
               key: const ValueKey("trackCurvesHint"),
               style: TextStyle(fontSize: 11.5, height: 1.45, color: s.muted))
           : _inspector(t, pick, picked, lanes, s),
@@ -400,6 +506,38 @@ class _TrackCurvesState extends State<TrackCurves> {
             style: const TextStyle(fontSize: 11)),
       ),
     ]);
+  }
+
+  /// _curveOf is [k]'s ease as handles: its own, or its easing's nearest.
+  static EaseCurve _curveOf(Keyframe k) =>
+      k.easing == KeyframeEasing.custom && k.curve != null
+          ? k.curve!
+          : k.easing.asCurve;
+
+  /// _handlesOn is the two values a line has at [a] and [b], where it
+  /// changes between them and so has an ease to shape.
+  static (double, double)? _handlesOn(
+      Keyframe a, Keyframe b, double? Function(Keyframe) read) {
+    var va = read(a), vb = read(b);
+    if (va == null || vb == null || (vb - va).abs() < 1e-9) return null;
+    if (b.frame <= a.frame) return null;
+    return (va, vb);
+  }
+
+  /// _key takes the picked keyframe away on Delete or Backspace.
+  KeyEventResult _key(KeyframeTarget t, KeyEvent ev) {
+    if (ev is! KeyDownEvent) return KeyEventResult.ignored;
+    var k = ev.logicalKey;
+    if (k != LogicalKeyboardKey.delete && k != LogicalKeyboardKey.backspace) {
+      return KeyEventResult.ignored;
+    }
+    var p = _pick;
+    if (p == null) return KeyEventResult.ignored;
+    c.beginInteraction();
+    c.removeTargetKeyframes([p.$2]);
+    c.endInteraction();
+    setState(() => _pick = null);
+    return KeyEventResult.handled;
   }
 
   Map<String, (double, double)> _ranges(ElementTrack track,
@@ -466,41 +604,48 @@ class _TrackCurvesState extends State<TrackCurves> {
 }
 
 /// _CurvesPainter draws each shown value over the scene, scaled to fit,
-/// with a key wherever a keyframe holds it.
+/// with a key wherever a keyframe holds it, through the graph's [view].
 class _CurvesPainter extends CustomPainter {
   final ElementTrack track;
   final List<(String, String, double? Function(Keyframe))> shown;
-  final Map<String, (double, double)> ranges;
   final bool speed;
   final int last;
   final int rate;
   final int playhead;
   final (String, int)? pick;
   final StudioColors studio;
+  final Rect area;
+  final CurveView view;
+  final double Function(num) xOf;
+  final double Function(String, double) yOf;
+  final List<CurveHandles> handles;
   _CurvesPainter(
       {required this.track,
       required this.shown,
-      required this.ranges,
       required this.speed,
       required this.last,
       required this.rate,
       required this.playhead,
       required this.pick,
-      required this.studio});
+      required this.studio,
+      required this.area,
+      required this.view,
+      required this.xOf,
+      required this.yOf,
+      required this.handles});
 
   @override
   void paint(Canvas canvas, Size size) {
-    const top = 24.0, pad = 12.0;
-    double xOf(num f) => pad + f / last * (size.width - pad * 2);
-    double yOf(String id, double v) {
-      var (lo, hi) = ranges[id] ?? (0.0, 1.0);
-      return top + 10 + (1 - (v - lo) / (hi - lo)) * (size.height - top - 30);
-    }
-
+    const top = 24.0;
+    double fAt(double x) => view.u(x, area) * last;
     canvas.drawRect(Offset.zero & size, Paint()..color = studio.inset);
+    // A mark each tidy step of seconds the zoom leaves room for.
+    var step = view.step(last / rate, area.width);
+    var first = (fAt(0) / rate / step).floor();
+    var lastMark = (fAt(size.width) / rate / step).ceil();
     var grid = Paint()..color = studio.edge.withValues(alpha: 0.5);
-    for (var s = 0; s * rate <= last; s++) {
-      var x = xOf(s * rate);
+    for (var i = math.max(0, first); i <= lastMark; i++) {
+      var x = xOf(i * step * rate);
       canvas.drawLine(Offset(x, top), Offset(x, size.height), grid);
     }
     for (var i = 1; i < 4; i++) {
@@ -513,8 +658,9 @@ class _CurvesPainter extends CustomPainter {
       var path = Path();
       var started = false;
       // Read between frames, so a curve is drawn smooth, not in steps.
-      for (var x = pad; x <= size.width - pad; x += 2) {
-        var f = (x - pad) / (size.width - pad * 2) * last;
+      for (var x = 0.0; x <= size.width; x += 2) {
+        var f = fAt(x);
+        if (f < 0 || f > last) continue;
         double? v;
         if (speed) {
           var a = read(track.between(math.max(0, f - 0.5)));
@@ -556,28 +702,27 @@ class _CurvesPainter extends CustomPainter {
               ..color = studio.inset);
       }
     }
+    paintHandles(canvas, handles);
     // The ruler, and the playhead over everything.
     canvas.drawRect(
         Rect.fromLTWH(0, 0, size.width, top), Paint()..color = studio.strip);
-    for (var s = 0; s * rate <= last; s++) {
-      var x = xOf(s * rate);
+    for (var i = math.max(0, first); i <= lastMark; i++) {
+      var secs = i * step;
+      var x = xOf(secs * rate);
       canvas.drawLine(
           Offset(x, top - 8), Offset(x, top), Paint()..color = studio.edge);
       var tp = TextPainter(
           text: TextSpan(
-              text: "${s}s",
+              text: secs == secs.roundToDouble()
+                  ? "${secs.round()}s"
+                  : "${secs.toStringAsFixed(secs * 10 == (secs * 10).roundToDouble() ? 1 : 2)}s",
               style: TextStyle(fontSize: 9, color: studio.muted)),
           textDirection: TextDirection.ltr)
         ..layout();
       tp.paint(canvas, Offset(x + 3, 4));
     }
-    var px = xOf(playhead.clamp(0, last));
-    canvas.drawLine(
-        Offset(px, 0),
-        Offset(px, size.height),
-        Paint()
-          ..color = studio.on
-          ..strokeWidth = 2);
+    paintPlayhead(
+        canvas, xOf(playhead.clamp(0, last)), top, size.height, studio.on);
   }
 
   @override
