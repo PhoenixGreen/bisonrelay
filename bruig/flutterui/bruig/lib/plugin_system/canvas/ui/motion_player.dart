@@ -206,6 +206,19 @@ class MotionPlayer implements LiveMotion {
     var l = p.layers[c.layer.clamp(0, motionLayers - 1)];
     l.next = clip;
     l.nextAt = at;
+    _launched.add((element, clip));
+  }
+
+  final List<(String, String)> _launched = [];
+
+  /// takeLaunched is every (element, clip) launched since it was last
+  /// asked -- pressed, triggered, or following another -- and forgets them:
+  /// for the sounds linked with them in their rows (see
+  /// CanvasController._soundsWithTheirMotion).
+  List<(String, String)> takeLaunched() {
+    var out = [..._launched];
+    _launched.clear();
+    return out;
   }
 
   /// press is a slot pressed: what it does is the clip's launch mode --

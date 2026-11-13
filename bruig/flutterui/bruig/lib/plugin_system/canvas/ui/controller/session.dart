@@ -83,11 +83,42 @@ extension CanvasSession on CanvasController {
       stopMotion(element);
       return;
     }
-    pressMotionClip(element, clip.id);
+    // Its sound launched here, as the press says -- a toggle stops it too
+    // -- not again as the clip it launches starts (_soundsWithTheirMotion).
+    _slotPressed = (element, clip.id);
+    try {
+      pressMotionClip(element, clip.id);
+    } finally {
+      _slotPressed = null;
+    }
     // Linked: its own sound in the same row with it (Ken, 2026-11-10).
     var own = ownChannelOf(_document, element);
     if (motion!.isLinked(slot) && session.at(own, slot) != null) {
       launchClip(own, slot);
+    }
+  }
+
+  /// _soundsWithTheirMotion launches the sound linked with each clip the
+  /// motion player has started since it was last asked: the link holds
+  /// however the clip started -- clicked, after another clip, at a marker
+  /// -- not only when its slot was pressed. Only a stopped sound: one
+  /// already going or waiting is left be (Ken's infographic, 2026-11-13: a
+  /// ticket clicked voted silently).
+  void _soundsWithTheirMotion() {
+    for (var (element, clip) in motionPlayer.takeLaunched()) {
+      if ((element, clip) == _slotPressed) continue;
+      var id = element.split("#").first;
+      var m = (_document.elementById(id) ?? _masterHeardElement(id))
+          ?.base
+          .motion;
+      if (m == null) continue;
+      var row = m.slots.indexOf(clip);
+      if (row < 0 || !m.isLinked(row)) continue;
+      var own = ownChannelOf(_document, id);
+      if (session.at(own, row) == null) continue;
+      var state = clipState(own, row);
+      if (state == ClipState.playing || state == ClipState.queued) continue;
+      launchClip(own, row);
     }
   }
 
@@ -197,12 +228,15 @@ extension CanvasSession on CanvasController {
   }
 
   void _motionStep() {
+    _soundsWithTheirMotion();
     if (!motionPlayer.offTimeline) return;
     var events = motionPlayer.step(_document, _frame, _sessionNow,
         recording: _recording && !_sessionOnly);
     for (var e in events) {
       if (e is MotionBack) motionPlayer.leave(e.element);
     }
+    // Those the step started -- after another clip, on its Then.
+    _soundsWithTheirMotion();
   }
 
   /// session is the clip slots and the scenes -- see session.dart.

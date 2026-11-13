@@ -496,6 +496,37 @@ void main() {
       c.pause();
     });
 
+    // Ken's infographic, 2026-11-13: a clip started by a click -- or after
+    // another clip -- played without the sound linked with it in its row:
+    // only a slot pressed launched the two together.
+    test("however the clip starts, its linked sound starts with it", () {
+      var c = linked();
+      addTearDown(c.dispose);
+      var own = elementSoundKey("a");
+      var clip = c.motionOf("a").slot(0)!.id;
+      c.editMotionClip(
+          "a",
+          clip,
+          (m) => m.copyWith(triggers: const [
+                ClipTrigger(ClipTriggerKind.clicked, target: "a")
+              ]));
+      c.fireMotionTrigger(ClipTriggerKind.clicked, "a");
+      expect(c.clipState(own, 0), ClipState.stopped,
+          reason: "not linked: the motion alone");
+      c.stopAllClips();
+      c.linkMotionSlot("a", 0, true);
+      c.fireMotionTrigger(ClipTriggerKind.clicked, "a");
+      expect(c.clipState(own, 0), isNot(ClipState.stopped),
+          reason: "clicked, its sound with it");
+      c.stopAllClips();
+      // A press still launches it once: a toggle pressed is not stopped by
+      // its own clip starting.
+      c.pressMotionSlot("a", 0);
+      expect(c.clipState(own, 0), isNot(ClipState.stopped));
+      c.stopAllClips();
+      c.pause();
+    });
+
     testWidgets("linked from a slot's menu, and drawn so", (tester) async {
       var c = linked();
       addTearDown(c.dispose);

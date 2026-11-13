@@ -27,7 +27,7 @@ import 'package:bruig/plugin_system/canvas/media/mix/decode.dart'
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart'
     show StripProcessor, mixRate;
 import 'package:bruig/plugin_system/canvas/ui/element_sound.dart'
-    show elementSoundKey, ownChannelOf, soundOwnerOf;
+    show ownChannelOf, soundOwnerOf;
 import 'package:bruig/plugin_system/canvas/ui/row_header.dart'
     show givenRowColour;
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
@@ -3297,6 +3297,10 @@ class CanvasController extends ChangeNotifier {
   /// puts them back, so the next Play starts as the canvas does; what was
   /// launched from a slot stays off until Back, as it always has.
   final Set<String> _triggeredOff = {};
+
+  /// _slotPressed is the slot being pressed, whose sound the press sees to
+  /// (see _soundsWithTheirMotion).
+  (String, String)? _slotPressed;
 
   // ------------------------------------------------------------------------
   // The session view: clips launched live
