@@ -112,8 +112,8 @@ class EpubClip {
 }
 
 /// EpubReaction is a clip an element plays when something happens on the
-/// page -- [on] is "click:<element>" for a click on that element, or
-/// "end:<clip>" for another clip ending -- as keyframes over its own
+/// page -- [on] is `click:<element>` for a click on that element, or
+/// `end:<clip>` for another clip ending -- as keyframes over its own
 /// [frames], and the sound linked with it in its row. The page's script plays
 /// it over the element's place on the timeline and lets it go at its end:
 /// the canvas's clips started by a click or by another clip, kept in a book
@@ -455,17 +455,27 @@ Future<StageResult?> buildEpubStage(
     var withBackdrop = base && backdropVideo == null;
     var facing = base && document.facingAt(index) != null;
     if (still.isEmpty && !withBackdrop && !facing) return;
+    void paintStill(ui.Canvas canvas) {
+      if (withBackdrop) {
+        paintCanvasDocument(canvas, page,
+            part: CanvasPaintPart.backdrop, images: images);
+      }
+      if (facing) _paintFacing(canvas, document, index, images);
+      for (var e in still) {
+        paintElement(canvas, e, 0,
+            frameRate: page.frameRate, images: images, document: page);
+      }
+    }
+
+    // Its pictures read, not their placeholders: a vector not yet loaded
+    // was drawn as its dashed box (Ken, 2026-11-13: about 13 missing,
+    // the Decred logo among them).
+    await drawWhenLoaded(images, (c) {
+      c.scale(pixels);
+      paintStill(c);
+    });
     var recorder = ui.PictureRecorder();
-    var canvas = start(recorder);
-    if (withBackdrop) {
-      paintCanvasDocument(canvas, page,
-          part: CanvasPaintPart.backdrop, images: images);
-    }
-    if (facing) _paintFacing(canvas, document, index, images);
-    for (var e in still) {
-      paintElement(canvas, e, 0,
-          frameRate: page.frameRate, images: images, document: page);
-    }
+    paintStill(start(recorder));
     still.clear();
     var picture = recorder.endRecording();
     try {
@@ -497,7 +507,8 @@ Future<StageResult?> buildEpubStage(
         index: index,
         sounds: {
           for (var MapEntry(:key, :value) in sounds.entries) key: value.href
-        });
+        },
+        player: e is VideoElement && layered.contains(e.id) && !keyedVideo(e));
     items.add(await maker.make(hovers: hovering.contains(e.id)));
     clips.addAll(maker.clips);
     below.add(e);
@@ -598,13 +609,17 @@ class _LayerMaker {
   /// sounds are the reactions' sound files in the book, by asset.
   final Map<String, String> sounds;
 
+  /// player is whether the reader plays it, as a video of its own.
+  final bool player;
+
   _LayerMaker(this.e, this.page, this.frames, this.pixels, this.images,
       this.sheets, this.start, this.region, this.pageBox,
       {this.films,
       this.media,
       this.below = const [],
       required this.index,
-      this.sounds = const {}});
+      this.sounds = const {},
+      this.player = false});
 
   int get rate => page.frameRate <= 0 ? 1 : page.frameRate;
 
@@ -627,6 +642,9 @@ class _LayerMaker {
 
   Future<EpubSprite?> picture(int f,
       {bool hovered = false, CanvasElement? element, Rect? crop}) async {
+    // Its pictures read first, not their placeholders (see flatten).
+    await drawWhenLoaded(
+        images, (_) => record(f, hovered: hovered, element: element).dispose());
     var p = record(f, hovered: hovered, element: element);
     try {
       return await sheets.add(p, crop ?? region);
@@ -636,6 +654,18 @@ class _LayerMaker {
   }
 
   Future<EpubLayer> make({required bool hovers}) async {
+    // A video the reader plays is its own <video> in this layer, poster and
+    // all: a picture of it under that played over a frozen copy of itself.
+    if (player) {
+      var box = e.bounds;
+      return EpubLayer(
+        id: e.id,
+        visible: e.visible,
+        originX: e.turnedAboutCentre(e.anchorIn(box), box.center).dx * pixels,
+        originY: e.turnedAboutCentre(e.anchorIn(box), box.center).dy * pixels,
+        pose: _poseKeys(),
+      );
+    }
     var names = [
       for (var f = 0; f < frames; f++)
         _lookAt(e, f, poseAt(f), frames, page.frameRate, poseAt: poseAt),
@@ -889,7 +919,39 @@ class _LayerMaker {
     var parts = <EpubPart>[];
     if (await picture(0, element: bare) case var s?) parts.add(EpubPart(s));
 
-    var whole = record(0, element: settled);
+    // Text in a box, its words arriving one by one: the words are cut from
+    // it drawn without its box, and the box is a picture of its own, there
+    // from when the arrival starts. Cut with the words, the box went in
+    // slices with them -- a chip's outline in pieces (Ken, 2026-11-13: the
+    // mixer's "2.00 DCR" chips).
+    var words = settled;
+    if (byPiece && settled is TextElement) {
+      var t = settled;
+      var b = t.box;
+      if (b.fill.a > 0 || (b.borderWidth > 0 && b.borderColor.a > 0)) {
+        const none = ui.Color(0x00000000);
+        words = t.copyWith(
+            box: b.copyWith(
+                fill: none,
+                borderColor: none,
+                flatFill: true,
+                flatBorder: true));
+        var boxOnly = t.copyWith(textSpec: t.textSpec.copyWith(color: none));
+        if (await picture(0, element: boxOnly) case var s?) {
+          var from = math.max(0, span.$1);
+          parts.add(EpubPart(s, keys: [
+            const EpubKey(0, {"opacity": "0"}),
+            if (from > 1) EpubKey(from - 1, const {"opacity": "0"}),
+            EpubKey(from, const {"opacity": "1"}),
+            // Held to the last frame: a last key short of it is run on to
+            // the style written inline -- the first key's, hidden.
+            if (frames - 1 > from) EpubKey(frames - 1, const {"opacity": "1"}),
+          ]));
+        }
+      }
+    }
+
+    var whole = record(0, element: words);
     try {
       for (var entry in pieces.entries) {
         var c = entry.value;

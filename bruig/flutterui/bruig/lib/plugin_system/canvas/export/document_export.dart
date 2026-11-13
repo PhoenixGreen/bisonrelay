@@ -10,6 +10,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
+    show settledFrameOf;
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/foundation.dart';
 
@@ -54,6 +56,7 @@ Future<ui.Image> renderDocumentPage(
   double scale = 1,
   CanvasImageSource? images,
 }) async {
+  await loadExportShaders();
   var asked = scale.clamp(0.05, maxExportScale);
   var s = asked * document.size.exportScale;
   var width = math.max(1, (document.size.exportSize.width * asked).round());
@@ -67,11 +70,17 @@ Future<ui.Image> renderDocumentPage(
         background: document.backgroundOf(index),
       );
 
+  // As it settles, everything arrived: the page as it is read -- printed,
+  // shown by a reader that runs no script, and behind an interactive book's
+  // start (Ken, 2026-11-13: the book opened on a blank page, its frame 0,
+  // before anything had arrived).
+  var settled = settledFrameOf(page);
+
   void draw(ui.Canvas canvas) {
     canvas.scale(s);
 
     paintCanvasDocument(canvas, page,
-        part: CanvasPaintPart.backdrop, images: images);
+        frame: settled, part: CanvasPaintPart.backdrop, images: images);
 
     // The facing leaf's overhang, between the paper and this page's own
     // contents: the editor's order.
@@ -88,7 +97,7 @@ Future<ui.Image> renderDocumentPage(
     }
 
     paintCanvasDocument(canvas, page,
-        part: CanvasPaintPart.contents, images: images);
+        frame: settled, part: CanvasPaintPart.contents, images: images);
   }
 
   // Pictures on both leaves, read rather than their placeholders.
@@ -118,6 +127,8 @@ Future<CanvasExport?> renderDocument(
   /// soundKbps is the bitrate an interactive book's sound is written at.
   int soundKbps = 160,
 }) async {
+  // The looks' shaders, for the pages and an interactive book's layers.
+  await loadExportShaders();
   try {
     var scenes = document.allScenes;
     var covers = document.pageCovers;
@@ -232,7 +243,14 @@ List<EpubLink> _linksOn(
     switch (action.kind) {
       case ButtonActionKind.goToScene:
         var to = document.sceneIndexNamed(action.elementId);
-        if (to >= 0 && to != index) href = "page$to.xhtml";
+        // To a page that moves: #play, which plays it from the top as soon
+        // as it has loaded, without its start screen -- the press that went
+        // there was the press to play (Ken's infographic: Play on a title
+        // page, then the page that builds).
+        if (to >= 0 && to != index) {
+          var moves = document.allScenes[to].frames > 1;
+          href = "page$to.xhtml${moves ? "#play" : ""}";
+        }
       case ButtonActionKind.openLink:
         href = webLink(action.url)?.toString();
       default:

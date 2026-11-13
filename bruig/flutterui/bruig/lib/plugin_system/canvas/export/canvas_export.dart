@@ -138,6 +138,18 @@ class ExportBackdrop {
   void dispose() => image.dispose();
 }
 
+/// loadExportShaders loads the shaders the looks are drawn with, before
+/// anything is: drawn without them, adjustment layers come out unadjusted
+/// and Wear, Texture, Sharpen and Heal are left off -- the Decred
+/// infographic's book lost its worn print, which its video kept, because
+/// only the video loaded them.
+Future<void> loadExportShaders() async {
+  await AdjustShader.load();
+  await TextureShader.load();
+  await SharpenShader.load();
+  await HealShader.load();
+}
+
 /// renderFrame draws one frame into a ui.Image at [scale] times the size the
 /// canvas is published at (the design scaled by CanvasSize.exportScale, so a
 /// bigger export width is the same picture with more pixels).
@@ -157,12 +169,7 @@ Future<ui.Image> renderFrame(
   /// -- see ExportMedia. Null shows every video as its poster.
   VideoShow Function(VideoElement)? videoShow,
 }) async {
-  // Adjustment layers need their shader before anything is drawn: drawn
-  // without it, they would come out of an export unadjusted.
-  await AdjustShader.load();
-  await TextureShader.load();
-  await SharpenShader.load();
-  await HealShader.load();
+  await loadExportShaders();
   // Only the caller's multiplier is clamped: exportScale is what makes the
   // file its declared size, and clamping it would draw a small scene into a
   // large image.

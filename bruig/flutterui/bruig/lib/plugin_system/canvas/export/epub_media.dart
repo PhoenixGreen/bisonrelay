@@ -278,6 +278,8 @@ class EpubMediaBuilder {
         at: timed ? clip.at : null,
         spans: timed ? [for (var s in clip.playlist) s.span] : const [],
         element: e.id,
+        opacity: e.opacity.clamp(0.0, 1.0).toDouble(),
+        blend: cssBlend(e.blend),
       );
     }
 
@@ -493,6 +495,18 @@ String? _playheadAct(ButtonActionKind kind) => switch (kind) {
       ButtonActionKind.playFrom => "playfrom",
       ButtonActionKind.playToFrame => "playto",
       _ => null,
+    };
+
+/// cssBlend is [b] as CSS's mix-blend-mode, or null for normal.
+String? cssBlend(LayerBlend b) => switch (b) {
+      LayerBlend.normal => null,
+      LayerBlend.add => "plus-lighter",
+      LayerBlend.colorBurn => "color-burn",
+      LayerBlend.colorDodge => "color-dodge",
+      LayerBlend.softLight => "soft-light",
+      LayerBlend.hardLight => "hard-light",
+      LayerBlend.colour => "color",
+      _ => b.name,
     };
 
 /// plainVideo is whether a reader's own `<video>` can show [e] as the canvas

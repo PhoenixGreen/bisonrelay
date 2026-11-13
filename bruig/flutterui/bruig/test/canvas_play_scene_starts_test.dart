@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
@@ -145,5 +146,27 @@ void main() {
     c.gaming = true;
     addTearDown(() => c.gaming = false);
     expect(c.motionPlayer.isOff("a"), isTrue);
+  });
+
+  // Ken, 2026-11-13: the Decred infographic's Play moved to a title scene,
+  // so the book has it and the video does not. Pressed, it went to the page
+  // and left it standing, unbuilt.
+  test("a button to a scene that moves plays it from its start", () {
+    var c = editor(CanvasDocument(scenes: [
+      const CanvasScene(id: "title"),
+      CanvasScene(id: "page", frames: 48, elements: [box("a", spin())]),
+      const CanvasScene(id: "end"),
+    ]));
+    c.runButtonAction(const ButtonAction(
+        kind: ButtonActionKind.goToScene, elementId: "page"));
+    expect(c.document.at, 1);
+    expect(c.frame, 0);
+    expect(c.playing, isTrue);
+    c.pause();
+    // A still page is only turned to.
+    c.runButtonAction(
+        const ButtonAction(kind: ButtonActionKind.goToScene, elementId: "end"));
+    expect(c.document.at, 2);
+    expect(c.playing, isFalse);
   });
 }

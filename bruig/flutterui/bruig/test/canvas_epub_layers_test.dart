@@ -35,6 +35,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/model/motion.dart';
 import 'package:bruig/plugin_system/canvas/model/motion_presets.dart';
+import 'package:bruig/plugin_system/canvas/export/epub_media.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'canvas_arrival_fixture.dart';
@@ -210,8 +211,12 @@ void main() {
           reason: "a reader opens nothing its manifest does not list");
     }
 
-    // The play button is aimed at the page's playhead.
-    var play = page.findAllElements("button").single;
+    // The play button is aimed at the page's playhead. (The start's own
+    // Play, over the page until it is pressed, is the page's, not its.)
+    var play = page
+        .findAllElements("button")
+        .where((b) => b.getAttribute("id") != "start")
+        .single;
     expect(play.getAttribute("data-target"), filmTarget);
     expect(play.getAttribute("data-act"), "play");
 
@@ -327,6 +332,44 @@ void main() {
     var starts = pieces.map(firstSeen).toList();
     expect(starts.toSet(), hasLength(3), reason: "staggered, as on the canvas");
     expect(starts, orderedEquals([...starts]..sort()));
+  });
+
+  // Ken, 2026-11-13: the mixer's "2.00 DCR" chips, arriving word by word,
+  // had their outline cut up with the words -- slices of it, popping in.
+  testWidgets("a box behind words arriving one by one is a picture of its own",
+      (tester) async {
+    var chip = TextElement(
+      ElementBase(
+          id: "t",
+          x: 10,
+          y: 10,
+          width: 200,
+          height: 40,
+          track: arriving(2, 10)),
+      text: "two words",
+      textSpec: const TextSpec(fontSize: 14),
+      box: const BoxSpec(
+          fill: Color(0xFF101418),
+          borderWidth: 2,
+          borderColor: Color(0xFFFFFFFF),
+          borderRadius: 20,
+          padding: 6),
+      animation: const TextAnimation(preset: TextAnimationPreset.pop),
+    );
+    var bytes = await publish(tester, book([chip]));
+    var pieces = parts(byId(pageOf(bytes, 0), "l-t")!);
+    expect(pieces, hasLength(3), reason: "its box, and a picture a word");
+    // The box: hidden until its arrival starts, then there whole.
+    var box = pieces.first;
+    var keys = keyframes(box.childElements.single);
+    expect(keys.first["opacity"], "0");
+    var shown = keys.firstWhere((k) => k["opacity"] == "1");
+    expect(((shown["offset"] as num) * 11).round(), 2,
+        reason: "from when it starts to arrive");
+    // And still there at the end: a last key short of it ran back to the
+    // hidden style written inline.
+    expect(keys.last["offset"], 1);
+    expect(keys.last["opacity"], "1");
   });
 
   testWidgets("a hidden element a button shows is a layer, hidden",
@@ -842,6 +885,84 @@ void main() {
         utf8.decode(files(bytes)["OEBPS/media.js"]!), contains("media.react"));
   });
 
+  // Ken, 2026-11-13: the book opened on a blank page -- frame 0, nothing
+  // arrived, its Play not there yet -- and slowly.
+  testWidgets(
+      "a page that plays starts behind its start: the page, a Play, a bar",
+      (tester) async {
+    var bytes = await publish(tester, book([sliding()]));
+    var page = pageOf(bytes, 0);
+    var stage = byId(page, "stage")!;
+    expect(stage.getAttribute("data-intro"), "true");
+    var intro = byId(page, "intro")!;
+    // A reader that runs no script shows the page as it ends up, and only
+    // that: the Play and the bar are the script's to show.
+    expect(intro.findElements("img").single.getAttribute("src"), "page0.png");
+    expect(
+        byId(page, "start")!.getAttribute("style"), startsWith("display:none"));
+    expect(
+        byId(page, "bar")!.getAttribute("style"), startsWith("display:none"));
+    var css = utf8.decode(files(bytes)["OEBPS/page0.xhtml"]!);
+    expect(css, contains("width: 0;"), reason: "a layer as big as it paints");
+  });
+
+  // Ken, 2026-11-13: "Move the play button to the first scene" -- a title
+  // page whose Play goes to the page that builds, so the book has its Play
+  // and the video does not. The press that went there was the press to play.
+  testWidgets("a Play on a title page plays the page it goes to",
+      (tester) async {
+    var doc = CanvasDocument(
+      size: const CanvasSize(ratio: CanvasRatio.wide, width: 320),
+      frameRate: 12,
+      scenes: [
+        CanvasScene(id: "title", elements: [
+          button(
+              "go",
+              10,
+              const ButtonAction(
+                  kind: ButtonActionKind.goToScene, elementId: "page")),
+          button(
+              "still",
+              100,
+              const ButtonAction(
+                  kind: ButtonActionKind.goToScene, elementId: "end")),
+        ]),
+        CanvasScene(id: "page", frames: 12, elements: [sliding()]),
+        const CanvasScene(id: "end"),
+      ],
+    );
+    var bytes = await publish(tester, doc);
+    var hrefs = {
+      for (var a in pageOf(bytes, 0).findAllElements("a"))
+        a.getAttribute("href"): a.getAttribute("data-go"),
+    };
+    expect(hrefs, {"page1.xhtml#play": "page", "page2.xhtml": "page"},
+        reason: "#play only to a page that moves; both followed on a touch");
+    for (var i = 0; i < 3; i++) {
+      expect(byId(pageOf(bytes, i), "play"), isNotNull,
+          reason: "page $i: the fragment names something there");
+    }
+    var js = utf8.decode(files(bytes)["OEBPS/media.js"]!);
+    expect(js, contains('window.location.hash === "#play"'));
+  });
+
+  // Ken, 2026-11-13: the Rain, screened at a tenth on the canvas, played
+  // full and black over the book's page.
+  test("a video's opacity and blend go with it into the book", () {
+    var m = EpubMedia(
+        id: "v",
+        video: true,
+        width: 10,
+        height: 10,
+        sources: const ["a.mp4"],
+        ranges: const [(0, 0)],
+        opacity: 0.1,
+        blend: cssBlend(LayerBlend.screen));
+    expect(m.blend, "screen");
+    expect(cssBlend(LayerBlend.normal), isNull);
+    expect(cssBlend(LayerBlend.colorDodge), "color-dodge");
+  });
+
   group("the script", () {
     late String node;
     setUp(() {
@@ -884,7 +1005,10 @@ void main() {
             },
       ];
       var buttons = [
-        for (var (i, b) in page.findAllElements("button").indexed)
+        for (var (i, b) in page
+            .findAllElements("button")
+            .where((b) => b.getAttribute("id") != "start")
+            .indexed)
           {
             "id": "b$i",
             "act": b.getAttribute("data-act"),
@@ -1029,7 +1153,10 @@ ${steps.map((s) {
                     kind: ButtonActionKind.playToFrame, frame: 9)),
           ]));
       var ids = {
-        for (var (i, b) in pageOf(bytes, 0).findAllElements("button").indexed)
+        for (var (i, b) in pageOf(bytes, 0)
+            .findAllElements("button")
+            .where((b) => b.getAttribute("id") != "start")
+            .indexed)
           b.getAttribute("data-act"): "b$i",
       };
       var seen = await tester.runAsync(() => drive(bytes, [

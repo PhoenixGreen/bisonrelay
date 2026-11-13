@@ -108,6 +108,13 @@ class EpubMedia {
   /// layers it sits and moves in the element's layer.
   final String? element;
 
+  /// opacity and blend are the element's: how much of it shows, and the CSS
+  /// mix-blend-mode it is laid on the page with (null for normal). A rain
+  /// video screened at a tenth played full and black over the page (Ken,
+  /// 2026-11-13).
+  final double opacity;
+  final String? blend;
+
   const EpubMedia({
     required this.id,
     required this.video,
@@ -132,6 +139,8 @@ class EpubMedia {
     this.at,
     this.spans = const [],
     this.element,
+    this.opacity = 1,
+    this.blend,
   });
 }
 
@@ -358,7 +367,7 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
         ].join("\n    ")
       : "";
   var face = stage != null
-      ? _stageTag(stage, page, box, [
+      ? _stageTag(stage, page, box, poster: "page$index.png", [
           for (var m in page.media)
             if (inLayer(m.element)) (m.element!, _mediaTag(m, box)),
           for (var m in page.media)
@@ -418,12 +427,35 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
       .stage .pic, .stage .slab { overflow: hidden; }
       .stage .pt { position: absolute; left: 0; top: 0; width: 100%;
         height: 100%; overflow: hidden; }
-      .layer { position: absolute; left: 0; top: 0; width: 100%;
-        height: 100%; pointer-events: none; }
+      /* No size of its own: what is in it is placed from the page's corner
+         and shows past it, so a layer is drawn as big as what it paints, not
+         a page each -- a hundred page-sized layers that move stuttered
+         (Ken, 2026-11-13). */
+      .layer { position: absolute; left: 0; top: 0; width: 0;
+        height: 0; overflow: visible; pointer-events: none; }
       .layer.moves, .layer.moves .pt { will-change: transform, opacity; }
       .layer .hit { pointer-events: auto; }
-      .rx { position: absolute; left: 0; top: 0; width: 100%;
-        height: 100%; pointer-events: none; }
+      .rx { position: absolute; left: 0; top: 0; width: 0;
+        height: 0; overflow: visible; pointer-events: none; }
+      /* The start: the page as it ends up, a Play and how much has loaded. */
+      .intro { position: absolute; left: 0; top: 0; width: 100%;
+        height: 100%; z-index: 5; }
+      .stage .intro img { width: 100%; height: 100%; left: 0; top: 0; }
+      .intro .veil { position: absolute; left: 0; top: 0; width: 100%;
+        height: 100%; background: rgba(0, 0, 0, 0.55); }
+      button.start { position: absolute; margin: 0; padding: 0;
+        border-style: solid; border-color: #ffffff; border-radius: 50%;
+        background: rgba(0, 0, 0, 0.6); cursor: pointer; opacity: 0.4;
+        -webkit-appearance: none; appearance: none;
+        -webkit-tap-highlight-color: transparent; }
+      button.start.ready { opacity: 1; }
+      button.start span { position: absolute; width: 0; height: 0;
+        border-style: solid; border-color: transparent transparent
+        transparent #ffffff; }
+      .intro .bar { position: absolute; overflow: hidden;
+        background: rgba(255, 255, 255, 0.2); }
+      .intro .bar span { display: block; height: 100%; width: 0;
+        background: #2ed6a1; }
       .hit.idle { cursor: default; }
       .layer.hovers:hover > .cw, .layer.hovering > .cw,
       .layer.hovers:hover > .clip, .layer.hovering > .clip,
@@ -438,6 +470,7 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
     </style>
   </head>
   <body>
+    <span id="play"></span>
     $face
     $hotspots$script
   </body>
@@ -454,7 +487,8 @@ String _stageTag(
     EpubStage stage,
     EpubPage page,
     String Function(double, double, double, double, [double]) box,
-    List<(String, String)> presses) {
+    List<(String, String)> presses,
+    {String? poster}) {
   var marks = [
     for (var m in stage.marks)
       "${m.frame}:${m.kind.name}:${m.target}:${m.repeats}:${m.holdFrames}",
@@ -462,7 +496,8 @@ String _stageTag(
   var out = <String>[
     '<div class="stage" id="stage" data-frames="${stage.frames}" '
         'data-rate="${stage.rate}" data-marks="${_attr(marks)}" '
-        'data-autoplay="${stage.autoplay && stage.animates}">',
+        'data-autoplay="${stage.autoplay && stage.animates}" '
+        'data-intro="${stage.animates}">',
     if (page.soundtrack case var sound?)
       '<audio id="soundtrack" src="${_attr(sound)}" preload="auto"></audio>',
   ];
@@ -506,10 +541,16 @@ String _stageTag(
       case EpubSlab slab:
         out.add(_spriteTag(slab.sprite, "slab", true, box));
       case EpubLayer layer:
+        // A video laid on as light or shade: blended as its layer, with the
+        // page under it -- inside the layer it would blend with nothing.
+        var blend = page.media
+            .where((m) => m.element == layer.id && m.blend != null)
+            .map((m) => m.blend)
+            .firstOrNull;
         out.add('<div class="layer${layer.moves ? " moves" : ""}'
             '${layer.hover == null ? "" : " hovers"}" '
             'id="l-${_attr(layer.id)}" '
-            '${animated(layer.pose, "transform-origin:${_px(layer.originX)} ${_px(layer.originY)}${layer.visible ? "" : ";display:none"}")}>');
+            '${animated(layer.pose, "transform-origin:${_px(layer.originX)} ${_px(layer.originY)}${layer.visible ? "" : ";display:none"}${blend == null ? "" : ";mix-blend-mode:$blend"}")}>');
         // Its reactions -- clips it plays on a click or after another clip
         // -- on a wrapper round it, so they go over its place on the
         // timeline rather than instead of it. Not on a layer that changes
@@ -608,6 +649,30 @@ String _stageTag(
   for (var sound in stage.sounds) {
     out.add('<audio class="rxs" src="${_attr(sound)}" preload="auto"></audio>');
   }
+  // The start (Ken, 2026-11-13: the book opened blank, its Play not yet
+  // arrived, and slowly): the page as it ends up -- all a reader that runs
+  // no script shows -- and, for one that does, a Play over it and a bar of
+  // how much has loaded. Pressed, it plays from the top with its sound,
+  // which a reader lets start only on a press.
+  if (stage.animates && poster != null) {
+    var w = page.width.toDouble(), h = page.height.toDouble();
+    var d = math.min(w, h) * 0.2;
+    var tall = d * 0.42, wide = tall * 0.87;
+    var barW = w * 0.4, barH = math.max(6.0, h * 0.006);
+    out.add('<div class="intro" id="intro">'
+        '<img src="${_attr(poster)}" alt="${_text(page.title)}"/>'
+        '<div class="veil" style="display:none"></div>'
+        '<button type="button" class="start" id="start" aria-label="Play" '
+        'style="display:none;left:${_px((w - d) / 2)};top:${_px((h - d) / 2)};'
+        'width:${_px(d)};height:${_px(d)};border-width:${_px(d * 0.035)}">'
+        '<span style="left:${_px(d / 2 - wide / 3)};top:${_px(d / 2 - tall / 2)};'
+        'border-width:${_px(tall / 2)} 0 ${_px(tall / 2)} ${_px(wide)}"></span>'
+        '</button>'
+        '<div class="bar" id="bar" style="display:none;left:${_px((w - barW) / 2)};'
+        'top:${_px((h + d) / 2 + d * 0.25)};width:${_px(barW)};height:${_px(barH)};'
+        'border-radius:${_px(barH / 2)}"><span id="barFill"></span></div>'
+        '</div>');
+  }
   out.add('</div>');
   return out.join("\n    ");
 }
@@ -628,8 +693,7 @@ String _spriteTag(EpubSprite s, String kind, bool shown,
 
 /// _inBook is whether [href] is another page of this book rather than a web
 /// address.
-bool _inBook(String href) =>
-    href.startsWith("page") && href.endsWith(".xhtml") && !href.contains(":");
+bool _inBook(String href) => RegExp(r"^page\d+\.xhtml(#play)?$").hasMatch(href);
 
 /// _playButton is the canvas's big play button, drawn in HTML: a dark disc a
 /// quarter of the picture's shorter side across, and a white triangle in it.
@@ -659,7 +723,9 @@ String _mediaTag(EpubMedia m,
   return '<video class="media" $data playsinline="playsinline" '
       'preload="metadata"${m.controls ? ' controls="controls"' : ''}'
       '${m.poster == null ? '' : ' poster="${_attr(m.poster!)}"'} '
-      'style="${box(m.x, m.y, m.width, m.height, m.rotation)}"></video>';
+      'style="${box(m.x, m.y, m.width, m.height, m.rotation)}'
+      '${m.opacity < 1 ? ";opacity:${m.opacity.toStringAsFixed(3)}" : ""}'
+      '${m.blend != null && m.element == null ? ";mix-blend-mode:${m.blend}" : ""}"></video>';
 }
 
 /// _mediaScript plays a page's sounds and videos: a playlist in order, each
@@ -1018,7 +1084,81 @@ const String _mediaScript = r"""(function () {
     var backdrop = document.getElementById("backdrop");
     if (backdrop) go(backdrop);
     place(0);
-    if (stage.getAttribute("data-autoplay") === "true") play();
+    var intro = document.getElementById("intro");
+    if (intro && stage.getAttribute("data-intro") === "true") {
+      // The start: everything fetched before the first press, the bar
+      // filling as it comes; the press plays from the top.
+      var start = document.getElementById("start");
+      var bar = document.getElementById("bar");
+      var fill = document.getElementById("barFill");
+      intro.getElementsByClassName("veil")[0].style.display = "";
+      start.style.display = "";
+      bar.style.display = "";
+      var total = 0, loaded = 0, ready = false;
+      var progress = function () {
+        fill.style.width = (total ? Math.round(loaded / total * 100) : 100) + "%";
+        if (!ready && loaded >= total) {
+          ready = true;
+          start.className += " ready";
+          bar.style.visibility = "hidden";
+        }
+      };
+      var waitFor = function (el, events) {
+        var once = false;
+        var done = function () { if (once) return; once = true; loaded++; progress(); };
+        total++;
+        events.forEach(function (ev) { el.addEventListener(ev, done); });
+        // Never held up for ever by one that does not come.
+        setTimeout(done, 20000);
+        return done;
+      };
+      all(".stage img").forEach(function (img) {
+        if (img.complete) return;
+        waitFor(img, ["load", "error"]);
+      });
+      all(".stage video, .stage audio").forEach(function (m) {
+        if (m.readyState >= 3) return;
+        waitFor(m, ["canplaythrough", "error"]);
+        try { m.preload = "auto"; m.load(); } catch (e) {}
+      });
+      // Come to by a Play on another page (a link to #play): no second
+      // press -- it plays as soon as it has loaded. A reader that holds the
+      // sound back until a press on this page leaves the Play to press.
+      var asked = window.location.hash === "#play";
+      var begin = function () {
+        intro.style.display = "none";
+        place(0);
+        play();
+        var sound = document.getElementById("soundtrack");
+        if (asked && sound) {
+          setTimeout(function () {
+            if (playing && sound.paused && t < (sound.duration || 1e9)) {
+              pause();
+              place(0);
+              asked = false;
+              intro.style.display = "";
+            }
+          }, 700);
+        }
+      };
+      if (asked) start.style.visibility = "hidden";
+      progress = (function (shown) {
+        return function () {
+          shown();
+          if (ready && asked === true) {
+            asked = "started";
+            start.style.visibility = "";
+            begin();
+          }
+        };
+      })(progress);
+      progress();
+      start.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        asked = false;
+        begin();
+      });
+    } else if (stage.getAttribute("data-autoplay") === "true") play();
   }
 
   all("[data-act]").forEach(function (b) {

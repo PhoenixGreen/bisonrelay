@@ -1081,6 +1081,10 @@ extension CanvasPlayback on CanvasController {
           pause();
           goToScene(to);
           frame = 0;
+          // A scene that moves plays from its start, as a page turned to in
+          // the book does: the Decred infographic's title card Play went
+          // to the page and left it standing, unbuilt.
+          if (_document.frames > 1) play();
         }
       case ButtonActionKind.openLink:
         return action.url;
