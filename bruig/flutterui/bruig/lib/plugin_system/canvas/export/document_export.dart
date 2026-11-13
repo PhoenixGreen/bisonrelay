@@ -4,12 +4,15 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/export/epub_media.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
+import 'package:bruig/plugin_system/canvas/export/opaque_png.dart';
 import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
 import 'package:bruig/plugin_system/canvas/model/web_link.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/render/motion_document.dart'
     show settledFrameOf;
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -130,6 +133,24 @@ Future<CanvasExport?> renderDocument(
   // The looks' shaders, for the pages and an interactive book's layers.
   await loadExportShaders();
   try {
+    // The book's cover picture: the cover page, opaque and no bigger than a
+    // reader takes (Ken, 2026-11-13: Apple Books showed no cover at first).
+    Uint8List? cover;
+    if (as != DocumentAs.pdf) {
+      var front = document.pageCovers.indexOf(PageCover.front);
+      cover = await _coverPicture(
+          document, document.isPages && front >= 0 ? front : 0, images);
+    }
+    // A title page folded into the page it plays: see EpubStart.
+    EpubStart? start;
+    if (as == DocumentAs.interactiveEpub) {
+      if (_titleOf(document) case var play?) {
+        start = await _startOf(document, play, scale, images);
+        if (start != null) {
+          document = document.scenesFrom(1, document.allScenes.length - 1);
+        }
+      }
+    }
     var scenes = document.allScenes;
     var covers = document.pageCovers;
     var pages = <EpubPage>[];
@@ -185,6 +206,7 @@ Future<CanvasExport?> renderDocument(
           files: extra.files,
           stage: extra.stage,
           soundtrack: extra.soundtrack,
+          start: i == 0 ? start : null,
         ));
       } finally {
         image?.dispose();
@@ -208,12 +230,98 @@ Future<CanvasExport?> renderDocument(
       title: document.title,
       interactive: as == DocumentAs.interactiveEpub,
       facing: document.isPages && document.pages.facing,
+      cover: cover,
     );
     return CanvasExport(bytes, as.mime,
         width: pages.first.width, height: pages.first.height);
   } catch (exception) {
     debugPrint("Unable to write the canvas as a document: $exception");
     return null;
+  }
+}
+
+/// _titleOf is a title page to fold into the page after it (see EpubStart):
+/// a first scene that stands still, whose one button goes to the second,
+/// which moves -- with nothing else on it to press or hear.
+ButtonElement? _titleOf(CanvasDocument document) {
+  if (document.isPages) return null;
+  var scenes = document.allScenes;
+  if (scenes.length < 2) return null;
+  var first = scenes[0];
+  if (first.frames > 1 || scenes[1].frames <= 1) return null;
+  if (first.elements.any((e) => e is AudioElement || e is VideoElement)) {
+    return null;
+  }
+  var buttons = [
+    for (var e in first.elements)
+      if (e is ButtonElement && e.visible) e,
+  ];
+  if (buttons.length != 1) return null;
+  var play = buttons.single;
+  if (play.action.kind != ButtonActionKind.goToScene ||
+      document.sceneIndexNamed(play.action.elementId) != 1) {
+    return null;
+  }
+  return play;
+}
+
+/// _startOf draws the title page twice -- without its Play, and the Play
+/// cut from it -- for the page after it to start behind.
+Future<EpubStart?> _startOf(CanvasDocument document, ButtonElement play,
+    double scale, CanvasImageSource? images) async {
+  var scene = document.allScenes[0];
+  var bare = document.withScene(
+      0,
+      scene.copyWith(elements: [
+        for (var e in scene.elements)
+          if (e.id != play.id) e,
+      ]));
+  var whole =
+      await renderDocumentPage(document, 0, scale: scale, images: images);
+  ui.Image? without, cut;
+  try {
+    without = await renderDocumentPage(bare, 0, scale: scale, images: images);
+    var pixels = whole.width / document.size.size.width;
+    var b = play.bounds;
+    var at = ui.Rect.fromLTRB(
+      (b.left * pixels).floorToDouble().clamp(0, whole.width - 1),
+      (b.top * pixels).floorToDouble().clamp(0, whole.height - 1),
+      (b.right * pixels).ceilToDouble().clamp(1, whole.width.toDouble()),
+      (b.bottom * pixels).ceilToDouble().clamp(1, whole.height.toDouble()),
+    );
+    var recorder = ui.PictureRecorder();
+    ui.Canvas(recorder)
+        .drawImageRect(whole, at, ui.Offset.zero & at.size, ui.Paint());
+    var picture = recorder.endRecording();
+    cut = await picture.toImage(at.width.round(), at.height.round());
+    picture.dispose();
+    var a = await without.toByteData(format: ui.ImageByteFormat.png);
+    var p = await cut.toByteData(format: ui.ImageByteFormat.png);
+    if (a == null || p == null) return null;
+    return EpubStart(
+        picture: a.buffer.asUint8List(), play: p.buffer.asUint8List(), at: at);
+  } finally {
+    whole.dispose();
+    without?.dispose();
+    cut?.dispose();
+  }
+}
+
+/// _coverPicture is page [index] as a book's cover: opaque, and at most
+/// about 4 million pixels, the most Apple Books takes in a picture.
+Future<Uint8List?> _coverPicture(
+    CanvasDocument document, int index, CanvasImageSource? images) async {
+  var size = document.size.exportSize;
+  var most = math.sqrt(3.9e6 / math.max(1.0, size.width * size.height));
+  var image = await renderDocumentPage(document, index,
+      scale: math.min(1.0, most), images: images);
+  try {
+    var raw =
+        await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+    if (raw == null) return null;
+    return opaquePng(raw.buffer.asUint8List(), image.width, image.height);
+  } finally {
+    image.dispose();
   }
 }
 

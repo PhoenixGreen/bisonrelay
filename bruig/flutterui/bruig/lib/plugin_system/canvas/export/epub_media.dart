@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
+import 'dart:ui' show Offset;
 
 import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
@@ -7,6 +9,8 @@ import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/model/web_link.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -137,6 +141,31 @@ class EpubMediaBuilder {
       }
     }
 
+    // A video washed over the whole page and blended into it -- the Decred
+    // infographic's Rain, screened at a tenth -- is drawn into the page's
+    // background as one plain video (Ken, 2026-11-13: the book's rain and
+    // sound stuttered, the reader blending a page of video every frame).
+    var laid = document;
+    if (backdropVideo == null && ffmpeg != null) {
+      if (washOf(document, index) case var wash?) {
+        var w = width ?? (document.size.size.width * pixels).round();
+        var h = height ?? (document.size.size.height * pixels).round();
+        var f = await _washed(document, index, wash, pixels, w, h);
+        if (f != null) {
+          carry(f);
+          backdropVideo = f.href;
+          laid = document.withScene(
+              index,
+              scene.copyWith(elements: [
+                for (var e in scene.elements)
+                  if (e.id != wash.id) e,
+              ]));
+          elements = [...?master?.elements, ...laid.allScenes[index].elements];
+          players.remove(wash.id);
+        }
+      }
+    }
+
     // The page as its elements, where anything on it moves.
     EpubStage? stage;
     String? soundtrack;
@@ -145,11 +174,11 @@ class EpubMediaBuilder {
     var keyed = elements.any((e) =>
         e is VideoElement && isTimedMedia(e) && !e.isLink && !plainVideo(e));
     var timeline = keyed && ffmpeg != null
-        ? ExportMedia.of(_pageAlone(document, index))
+        ? ExportMedia.of(_pageAlone(laid, index))
         : null;
     try {
       var size = document.size.size;
-      var built = await buildEpubStage(document, index,
+      var built = await buildEpubStage(laid, index,
           pixels: pixels,
           width: width ?? (size.width * pixels).round(),
           height: height ?? (size.height * pixels).round(),
@@ -279,7 +308,8 @@ class EpubMediaBuilder {
         spans: timed ? [for (var s in clip.playlist) s.span] : const [],
         element: e.id,
         opacity: e.opacity.clamp(0.0, 1.0).toDouble(),
-        blend: cssBlend(e.blend),
+        blend: cssBlend(videoBlend(e) ?? LayerBlend.normal),
+        speed: timed ? clip.speed.clamp(0.01, 100.0).toDouble() : 1,
       );
     }
 
@@ -426,6 +456,92 @@ class EpubMediaBuilder {
   }
 
   /// _convert makes a stored file into one a reader plays, once per book.
+  /// _washed is the page's background with [wash] blended over it as its
+  /// canvas blends it, as one video once round its loop: see washOf.
+  Future<EpubFile?> _washed(CanvasDocument document, int index,
+      VideoElement wash, double pixels, int width, int height) async {
+    var ffmpeg = this.ffmpeg;
+    var blend = videoBlend(wash);
+    var mode = blend == null ? null : ffmpegBlend(blend);
+    if (ffmpeg == null || mode == null) return null;
+    var clip = wash.clip;
+    var s = clip.playlist.single;
+    var source = await CanvasMedia.existingPath(MediaKind.video, s.assetId);
+    var seconds = clip.runLength;
+    if (source == null || !(seconds > 0) || !(s.span > 0)) return null;
+    var speed = clip.speed > 0.01 ? clip.speed : 1.0;
+    var rate = math.max(1, document.frameRate);
+
+    // The background alone, as the page's picture draws it.
+    var page = document.goToScene(index).copyWith(
+          onMaster: false,
+          background: document.backgroundOf(index),
+        );
+    void draw(ui.Canvas canvas) {
+      canvas.scale(pixels);
+      paintCanvasDocument(canvas, page,
+          part: CanvasPaintPart.backdrop, images: images);
+    }
+
+    await drawWhenLoaded(images, draw);
+    var recorder = ui.PictureRecorder();
+    draw(ui.Canvas(recorder));
+    var picture = recorder.endRecording();
+    var ground = await picture.toImage(width, height);
+    picture.dispose();
+    var png = await ground.toByteData(format: ui.ImageByteFormat.png);
+    ground.dispose();
+    if (png == null) return null;
+
+    Directory? work;
+    try {
+      work = await Directory.systemTemp.createTemp("canvas-epub-wash");
+      var under = path.join(work.path, "ground.png");
+      await File(under).writeAsBytes(png.buffer.asUint8List());
+      var out = path.join(work.path, "wash.mp4");
+      // The video as its box shows it (cover), then the page's part of it.
+      var b = wash.bounds;
+      int even(double v) => math.max(2, (v / 2).round() * 2);
+      var bw = even(b.width * pixels), bh = even(b.height * pixels);
+      var ox = (-b.left * pixels).round(), oy = (-b.top * pixels).round();
+      var w = even(width.toDouble()), h = even(height.toDouble());
+      // ffmpeg's normal weighs its first input -- the page -- by the
+      // opacity; its other modes mix from the page to the blend by it.
+      var o = wash.opacity.clamp(0.0, 1.0).toDouble();
+      var opacity = (mode == "normal" ? 1 - o : o).toStringAsFixed(4);
+      var run = await Process.run(ffmpeg, [
+        "-hide_banner", "-loglevel", "error", "-y", //
+        "-loop", "1", "-framerate", "$rate", "-i", under,
+        "-ss", "${s.start}", "-t", "${s.span}", ...ffmpegInput(source),
+        "-filter_complex",
+        "[1:v]setpts=(PTS-STARTPTS)/$speed,fps=$rate,"
+            "scale=$bw:$bh:force_original_aspect_ratio=increase,"
+            "crop=$bw:$bh,crop=$w:$h:$ox:$oy,format=gbrp[top];"
+            "[0:v]scale=$w:$h,format=gbrp[bottom];"
+            // The page first: ffmpeg mixes by the opacity from its first
+            // input to the blend, as the canvas mixes from what is under.
+            "[bottom][top]blend=all_mode=$mode:all_opacity=$opacity:"
+            "shortest=1,format=yuv420p[v]",
+        "-map", "[v]", "-t", seconds.toStringAsFixed(3), "-an",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "24",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart", out,
+      ]);
+      if (run.exitCode != 0 || !await File(out).exists()) {
+        debugPrint("Unable to draw ${wash.id} into the page: ${run.stderr}");
+        return null;
+      }
+      return EpubFile("media/page$index-wash.mp4",
+          await File(out).readAsBytes(), "video/mp4");
+    } catch (exception) {
+      debugPrint("Unable to draw ${wash.id} into the page: $exception");
+      return null;
+    } finally {
+      try {
+        await work?.delete(recursive: true);
+      } catch (_) {}
+    }
+  }
+
   Future<EpubFile?> _convert(String assetId, {required bool video}) async {
     var stem = path.basenameWithoutExtension(assetId);
     var href = video ? "media/$stem.mp4" : "media/$stem.m4a";
@@ -512,6 +628,66 @@ String? cssBlend(LayerBlend b) => switch (b) {
 /// plainVideo is whether a reader's own `<video>` can show [e] as the canvas
 /// does: nothing keyed, cut, cropped, filtered, tinted or outlined -- only
 /// fitted to its box, which CSS can do.
+/// washOf is the video washed over the whole of page [index] and blended
+/// into it, that a book draws into the page's background (see
+/// EpubMediaBuilder._washed): the lowest thing on the page, covering it,
+/// still, going round from the page's start, blended in a way ffmpeg can --
+/// or null.
+VideoElement? washOf(CanvasDocument document, int index) {
+  var master = document.masterScene?.elements ?? const <CanvasElement>[];
+  var elements = document.allScenes[index].elements;
+  if (master.isNotEmpty || elements.isEmpty) return null;
+  if (elements.first case VideoElement e
+      when e.visible &&
+          !e.isLink &&
+          plainVideo(e) &&
+          e.clip.playlist.length == 1 &&
+          e.clip.loop != MediaLoop.none &&
+          (e.clip.timed ? e.clip.at <= 0 : e.clip.autoplay) &&
+          videoBlend(e) != null &&
+          (videoBlend(e) != LayerBlend.normal || e.opacity < 1) &&
+          ffmpegBlend(videoBlend(e)!) != null &&
+          e.rotation == 0 &&
+          e.base.skewX == 0 &&
+          e.base.skewY == 0 &&
+          (e.base.track?.isEmpty ?? true) &&
+          !e.base.motion.moves &&
+          e.base.motion.looks.isEmpty &&
+          e.bounds.inflate(0.5).contains(Offset.zero) &&
+          e.bounds
+              .inflate(0.5)
+              .contains(document.size.size.bottomRight(Offset.zero))) {
+    return e;
+  }
+  return null;
+}
+
+/// videoBlend is how a video is laid on the page: its Output's blend, else
+/// its own -- the canvas lays on both, one inside the other -- or null where
+/// they differ, which a single blend cannot say.
+LayerBlend? videoBlend(VideoElement e) {
+  var outer = e.base.blend, own = e.blend;
+  if (outer == LayerBlend.normal) return own;
+  if (own == LayerBlend.normal || own == outer) return outer;
+  return null;
+}
+
+/// ffmpegBlend is [b] as ffmpeg's blend filter calls it, or null for one
+/// it cannot do as the canvas does: only those the same whichever is on
+/// top, since ffmpeg's and the canvas's ideas of top and bottom differ for
+/// the others (dodge, burn, overlay, soft and hard light).
+String? ffmpegBlend(LayerBlend b) => switch (b) {
+      LayerBlend.normal => "normal",
+      LayerBlend.darken => "darken",
+      LayerBlend.multiply => "multiply",
+      LayerBlend.lighten => "lighten",
+      LayerBlend.screen => "screen",
+      LayerBlend.add => "addition",
+      LayerBlend.difference => "difference",
+      LayerBlend.exclusion => "exclusion",
+      _ => null,
+    };
+
 bool plainVideo(VideoElement e) {
   var l = e.look;
   return !e.key.on &&

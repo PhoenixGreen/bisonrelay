@@ -946,6 +946,171 @@ void main() {
     expect(js, contains('window.location.hash === "#play"'));
   });
 
+  // Ken, 2026-11-13: in Apple Books the title's Play went to the page, which
+  // asked for a Play again -- a press on one page cannot start the next
+  // one's sound -- and was pressed before that page had loaded.
+  testWidgets("a title page is folded into the page it plays", (tester) async {
+    var doc = CanvasDocument(
+      size: const CanvasSize(ratio: CanvasRatio.wide, width: 320),
+      frameRate: 12,
+      scenes: [
+        CanvasScene(id: "title", elements: [
+          ShapeElement(
+              const ElementBase(
+                  id: "logo", x: 20, y: 20, width: 80, height: 40),
+              fill: const Color(0xFF00FF00)),
+          button(
+              "go",
+              120,
+              const ButtonAction(
+                  kind: ButtonActionKind.goToScene, elementId: "page")),
+        ]),
+        CanvasScene(id: "page", frames: 12, elements: [sliding()]),
+      ],
+    );
+    var bytes = await publish(tester, doc);
+    var all = files(bytes);
+    expect(all.containsKey("OEBPS/page1.xhtml"), isFalse,
+        reason: "one page: the title is its start");
+    var page = pageOf(bytes, 0);
+    var intro = byId(page, "intro")!;
+    expect(intro.findElements("img").first.getAttribute("src"), "start0.png");
+    var start = byId(page, "start")!;
+    expect(start.getAttribute("class"), "start title");
+    expect(start.findElements("img").single.getAttribute("src"),
+        "start0-play.png");
+    // The bar where the Play is: the button at x 120, y 150, 50 by 20.
+    double px(String style, String key) =>
+        double.parse(RegExp("$key:([0-9.]+)px").firstMatch(style)!.group(1)!);
+    var pixels = imageWidth(all["OEBPS/page0.png"]!) / 320;
+    var bar = byId(page, "bar")!.getAttribute("style")!;
+    var middle = px(bar, "left") + px(bar, "width") / 2;
+    expect(middle, closeTo((120 + 25) * pixels, 2));
+    var opf = utf8.decode(all["OEBPS/content.opf"]!);
+    expect(opf, contains('href="start0.png"'));
+    expect(opf, contains('href="start0-play.png"'));
+    expect(all["OEBPS/start0.png"], isNotNull);
+    expect(all["OEBPS/start0-play.png"], isNotNull);
+  });
+
+  // Ken, 2026-11-13: Apple Books showed no cover at first.
+  testWidgets("the cover is a picture of its own, and a landmark",
+      (tester) async {
+    var bytes = await publish(tester, book([sliding()]));
+    var all = files(bytes);
+    var cover = all["OEBPS/cover.png"]!;
+    expect(cover[25], 2, reason: "a PNG of red, green and blue: no alpha");
+    var opf = utf8.decode(all["OEBPS/content.opf"]!);
+    expect(
+        opf,
+        contains('<item id="cover" href="cover.png" '
+            'media-type="image/png" properties="cover-image"/>'));
+    expect(opf, contains('<meta name="cover" content="cover"/>'));
+    expect('properties="cover-image"'.allMatches(opf), hasLength(1));
+    expect(
+        opf,
+        contains('<reference type="cover" title="Cover" '
+            'href="page0.xhtml"/>'));
+    var nav = utf8.decode(all["OEBPS/nav.xhtml"]!);
+    expect(nav, contains('<a epub:type="cover" href="page0.xhtml">'));
+    expect(imageWidth(cover), greaterThan(100));
+  });
+
+  // Ken, 2026-11-13: "the rain video and background audio is still very
+  // glitchy" -- a page of video blended over the page, every frame.
+  // Each blend at an opacity where getting ffmpeg's inputs the wrong way
+  // round shows: the background (0.125, 0.25, 0.375) and white --
+  // screened at half, about (143, 160, 175); laid on at a quarter, about
+  // (88, 112, 136).
+  for (var (blend, opacity, want) in [
+    (LayerBlend.screen, 0.5, [143, 160, 175]),
+    (LayerBlend.normal, 0.25, [88, 112, 136]),
+  ]) {
+    testWidgets(
+        "a video washed over the page is drawn into its background: "
+        "${blend.name}", (tester) async {
+      var ffmpeg = await tester.runAsync(ffmpegPath);
+      if (ffmpeg == null) return markTestSkipped("ffmpeg is not installed");
+      Uint8List? bytes;
+      List<int>? rgb;
+      String? duration;
+      await tester.runAsync(() async {
+        var white = path.join(root.path, "white.mp4");
+        await Process.run(ffmpeg, [
+          "-hide_banner", "-loglevel", "error", "-y", //
+          "-f", "lavfi", "-i", "color=c=white:size=320x180:rate=12",
+          "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", white,
+        ]);
+        var id = (await CanvasMedia.saveFile(MediaKind.video, white))!;
+        var doc = CanvasDocument(
+          size: const CanvasSize(ratio: CanvasRatio.wide, width: 320),
+          frameRate: 12,
+          scenes: [
+            CanvasScene(
+                id: "one",
+                frames: 24,
+                background: const CanvasBackground(
+                    spec: ProceduralSpec(background: Color(0xFF204060))),
+                elements: [
+                  VideoElement(
+                      ElementBase(
+                          id: "w",
+                          width: 320,
+                          height: 180,
+                          opacity: opacity,
+                          blend: blend),
+                      clip: MediaClip(
+                          playlist: [
+                            MediaSource(
+                                assetId: id,
+                                length: 2,
+                                width: 320,
+                                height: 180,
+                                fps: 12),
+                          ],
+                          timed: true,
+                          muted: true,
+                          loop: MediaLoop.one,
+                          speed: 0.5)),
+                  sliding(),
+                ]),
+          ],
+        );
+        bytes =
+            (await renderDocument(doc, as: DocumentAs.interactiveEpub))!.data;
+        var wash = files(bytes!)["OEBPS/media/page0-wash.mp4"];
+        if (wash == null) return;
+        var file = File(path.join(root.path, "wash.mp4"));
+        await file.writeAsBytes(wash);
+        var probe =
+            await Process.run(ffmpeg, ["-hide_banner", "-i", file.path]);
+        duration = RegExp(r"Duration: (\S+),")
+            .firstMatch(probe.stderr.toString())
+            ?.group(1);
+        var frame = await Process.run(
+            ffmpeg,
+            [
+              "-hide_banner", "-loglevel", "error", "-i", file.path, //
+              "-frames:v", "1", "-vf", "crop=2:2:100:60", "-f", "rawvideo",
+              "-pix_fmt", "rgb24", "-",
+            ],
+            stdoutEncoding: null);
+        rgb = frame.stdout as List<int>;
+      });
+      expect(rgb, isNotNull, reason: "the wash is in the book");
+      var page = pageOf(bytes!, 0);
+      expect(
+          byId(page, "backdrop")!.getAttribute("src"), "media/page0-wash.mp4");
+      expect(byId(page, "l-w"), isNull, reason: "not a layer of its own too");
+      expect(byId(page, "m-w"), isNull);
+      expect(duration, startsWith("00:00:04.0"),
+          reason: "once round, at half speed");
+      for (var i = 0; i < 3; i++) {
+        expect(rgb![i], closeTo(want[i], 6), reason: "channel $i");
+      }
+    });
+  }
+
   // Ken, 2026-11-13: the Rain, screened at a tenth on the canvas, played
   // full and black over the book's page.
   test("a video's opacity and blend go with it into the book", () {
@@ -1017,6 +1182,8 @@ void main() {
             "bit": b.getAttribute("data-bit"),
           },
       ];
+      var hasBackdrop = byId(page, "backdrop") != null;
+      var hasIntro = byId(page, "intro") != null;
       var dir = await Directory.systemTemp.createTemp("epub_clock");
       addTearDown(() => dir.delete(recursive: true));
       var harness = File(path.join(dir.path, "run.js"));
@@ -1050,7 +1217,29 @@ var stage = new El("div", ${jsonEncode({
             "data-rate": stage.getAttribute("data-rate"),
             "data-marks": stage.getAttribute("data-marks"),
             "data-autoplay": stage.getAttribute("data-autoplay"),
+            "data-intro": stage.getAttribute("data-intro"),
           })});
+// The page's background video, where it has one: load() stops it, as a
+// reader's does, and it is ready as soon as it has loaded.
+var backdrop = null;
+if ($hasBackdrop) {
+  backdrop = new El("video", { id: "backdrop" });
+  backdrop.paused = true; backdrop.readyState = 0;
+  backdrop.play = function () { backdrop.paused = false; };
+  backdrop.pause = function () { backdrop.paused = true; };
+  backdrop.load = function () {
+    backdrop.paused = true; backdrop.readyState = 4;
+    (backdrop.on.canplaythrough || []).slice().forEach(function (f) { f(); });
+  };
+}
+// The start screen, where it has one.
+var intro = null, start = null, bar = null, fill = null;
+if ($hasIntro) {
+  intro = new El("div", { id: "intro" });
+  start = new El("button", { id: "start" });
+  bar = new El("div", { id: "bar" });
+  fill = new El("span", { id: "barFill" });
+}
 var animated = ${jsonEncode(animated)}.map(function (kf) { return new El("div", { "data-kf": kf }); });
 var layers = ${jsonEncode(layers)}.map(function (d) {
   var l = new El("div", { id: d.id });
@@ -1064,8 +1253,10 @@ var layers = ${jsonEncode(layers)}.map(function (d) {
 });
 var players = ${jsonEncode(players)}.map(function (d) {
   var m = new El(d.id === "soundtrack" ? "audio" : "video", d);
-  m.paused = true; m.currentTime = 0; m.duration = 3; m.src = "";
-  m.play = function () { m.paused = false; };
+  m.paused = true; m.currentTime = 0; m.duration = 3; m.src = ""; m.readyState = 4;
+  m.playbackRate = 1;
+  // As a reader's does: "playing" once it has started.
+  m.play = function () { m.paused = false; (m.on.playing || []).slice().forEach(function (f) { f(); }); };
   m.pause = function () { m.paused = true; };
   m.load = function () {};
   return m;
@@ -1079,6 +1270,11 @@ global.setTimeout = function (f, ms) { var at = now + ms; queue.push(function wa
 global.document = {
   getElementById: function (id) {
     if (id === "stage") return stage;
+    if (id === "backdrop") return backdrop;
+    if (id === "intro") return intro;
+    if (id === "start") return start;
+    if (id === "bar") return bar;
+    if (id === "barFill") return fill;
     return players.filter(function (m) { return m.id === id; })[0] || null;
   },
   querySelectorAll: function (s) {
@@ -1086,6 +1282,7 @@ global.document = {
     if (s === "[data-kf]") return animated;
     if (s === "[data-list]") return players.filter(function (m) { return m.id !== "soundtrack"; });
     if (s === "[data-act]") return buttons;
+    if (s === ".stage video, .stage audio") return players.concat(backdrop ? [backdrop] : []);
     return [];
   }
 };
@@ -1100,17 +1297,29 @@ function report() {
         showing: l.kids.filter(function (k) { return k.style.visibility === "visible"; })
           .map(function (k) { return k.attrs["data-mask"]; }) };
     }),
-    media: players.map(function (m) { return { id: m.id, src: m.src, t: m.currentTime, paused: m.paused }; })
+    media: players.map(function (m) { return { id: m.id, src: m.src, t: m.currentTime, paused: m.paused, rate: m.playbackRate }; }),
+    backdrop: backdrop ? (backdrop.paused ? "paused" : "playing") : null,
+    intro: intro ? (intro.style.display || "shown") : null,
+    start: start ? (start.style.visibility || "shown") : null
   }));
 }
 function wait(ms) {
   for (var s = 0; s < ms; s += 16) {
     now += 16;
     anims.forEach(function (a) { if (a.playing) a.currentTime += 16; });
-    players.forEach(function (m) { if (!m.paused) m.currentTime += 0.016; });
+    players.forEach(function (m) { if (!m.paused) m.currentTime += 0.016 * (m.playbackRate || 1); });
     var q = queue; queue = [];
     q.forEach(function (f) { f(now); });
   }
+}
+// The sound held back, as a reader's may be, by [ms].
+function lag(ms) {
+  players.forEach(function (m) { if (m.id === "soundtrack") m.currentTime -= ms / 1000; });
+}
+// The start screen's Play, pressed.
+function begin() {
+  var e = { preventDefault: function () {}, stopPropagation: function () {} };
+  start.on.click.forEach(function (f) { f(e); });
 }
 function press(id) {
   var b = buttons.filter(function (b) { return b.id === id; })[0];
@@ -1120,9 +1329,12 @@ function press(id) {
 report();
 ${steps.map((s) {
         var p = s.split(" ");
-        return p[0] == "wait"
-            ? "wait(${p[1]}); report();"
-            : "press('${p[1]}'); report();";
+        return switch (p[0]) {
+          "wait" => "wait(${p[1]}); report();",
+          "lag" => "lag(${p[1]}); report();",
+          "begin" => "begin(); report();",
+          _ => "press('${p[1]}'); report();",
+        };
       }).join("\n")}
 ''');
       var run = await Process.run(node, [harness.path]);
@@ -1181,7 +1393,9 @@ ${steps.map((s) {
           reason: "every animation on the page keeps the same time");
     });
 
-    testWidgets("with nothing to press, it starts by itself and obeys a stop",
+    // With nothing of its own to press, it waits on its start screen's Play
+    // (a reader lets sound start only on a press), then plays to the stop.
+    testWidgets("with nothing to press, its start plays it and it obeys a stop",
         (tester) async {
       if (node.isEmpty) return markTestSkipped("node is not installed");
       var bytes = await publish(
@@ -1191,10 +1405,13 @@ ${steps.map((s) {
           ], marks: const [
             TimelineAction(frame: 5, kind: TimelineActionKind.stop),
           ]));
-      var seen = await tester.runAsync(() => drive(bytes, ["wait 2000"]));
-      expect(seen![0]["playing"], isTrue);
-      expect(t(seen[1]), closeTo(5 / 12, 0.001));
-      expect(seen[1]["playing"], isFalse);
+      var seen = await tester
+          .runAsync(() => drive(bytes, ["wait 100", "begin", "wait 2000"]));
+      expect(seen![1]["playing"], isFalse, reason: "waiting on its Play");
+      expect(seen[1]["start"], "shown");
+      expect(seen[2]["playing"], isTrue);
+      expect(t(seen[3]), closeTo(5 / 12, 0.001));
+      expect(seen[3]["playing"], isFalse);
     });
 
     // A tone on the timeline and a video on it: the tone is mixed into the
@@ -1301,6 +1518,163 @@ ${steps.map((s) {
       expect(player(paused, "soundtrack")["paused"], isTrue);
     });
 
+    // Ken, 2026-11-13: the book's music stuttered -- the script moved the
+    // sound to its own clock whenever they drifted, each move a gap.
+    testWidgets("the sound is the clock: held back, the page waits for it",
+        (tester) async {
+      if (node.isEmpty) return markTestSkipped("node is not installed");
+      var ffmpeg = await tester.runAsync(ffmpegPath);
+      if (ffmpeg == null) return markTestSkipped("ffmpeg is not installed");
+      Uint8List? bytes;
+      await tester.runAsync(() async {
+        var tone = path.join(root.path, "tone.flac");
+        await Process.run(ffmpeg, [
+          "-hide_banner", "-loglevel", "error", "-y", //
+          "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+          "-t", "3", tone,
+        ]);
+        var toneId = (await CanvasMedia.saveFile(MediaKind.audio, tone))!;
+        var doc = CanvasDocument(
+          size: const CanvasSize(ratio: CanvasRatio.wide, width: 320),
+          frameRate: 12,
+          scenes: [
+            CanvasScene(id: "one", frames: 36, elements: [
+              sliding(),
+              AudioElement(
+                  const ElementBase(
+                      id: "s", width: 40, height: 40, visible: false),
+                  clip: MediaClip(
+                      playlist: [MediaSource(assetId: toneId, length: 3)],
+                      timed: true)),
+              button("t", 10,
+                  const ButtonAction(kind: ButtonActionKind.togglePlay)),
+            ]),
+          ],
+        );
+        bytes =
+            (await renderDocument(doc, as: DocumentAs.interactiveEpub))!.data;
+      });
+      var seen = await tester.runAsync(() => drive(bytes!, [
+            "press b0",
+            "wait 500",
+            "lag 300",
+            "wait 100",
+          ]));
+      var sound = (seen![4]["media"] as List)
+          .cast<Map<String, dynamic>>()
+          .firstWhere((m) => m["id"] == "soundtrack");
+      expect((sound["t"] as num).toDouble(), closeTo(0.3, 0.05),
+          reason: "left where it was, not put back to the page's time");
+      expect(t(seen[4]), closeTo((sound["t"] as num).toDouble(), 0.05),
+          reason: "the page gone back to the sound");
+    });
+
+    // The Rain, at half speed on the canvas, went round twice as fast in
+    // the book.
+    testWidgets("a video at half speed plays at half speed", (tester) async {
+      if (node.isEmpty) return markTestSkipped("node is not installed");
+      var ffmpeg = await tester.runAsync(ffmpegPath);
+      if (ffmpeg == null) return markTestSkipped("ffmpeg is not installed");
+      Uint8List? bytes;
+      await tester.runAsync(() async {
+        var talk = path.join(root.path, "slow.mp4");
+        await Process.run(ffmpeg, [
+          "-hide_banner", "-loglevel", "error", "-y", //
+          "-f", "lavfi", "-i", "testsrc=size=160x120:rate=25",
+          "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", talk,
+        ]);
+        var talkId = (await CanvasMedia.saveFile(MediaKind.video, talk))!;
+        var doc = CanvasDocument(
+          size: const CanvasSize(ratio: CanvasRatio.wide, width: 320),
+          frameRate: 12,
+          scenes: [
+            CanvasScene(id: "one", frames: 36, elements: [
+              VideoElement(
+                  const ElementBase(
+                      id: "v", x: 100, y: 20, width: 160, height: 90),
+                  clip: MediaClip(playlist: [
+                    MediaSource(
+                        assetId: talkId,
+                        length: 2,
+                        width: 160,
+                        height: 120,
+                        fps: 25),
+                  ], timed: true, speed: 0.5)),
+              button("t", 10,
+                  const ButtonAction(kind: ButtonActionKind.togglePlay)),
+            ]),
+          ],
+        );
+        bytes =
+            (await renderDocument(doc, as: DocumentAs.interactiveEpub))!.data;
+      });
+      var video = byId(pageOf(bytes!, 0), "l-v")!.findElements("video").single;
+      expect(video.getAttribute("data-speed"), "0.5");
+      var seen = await tester.runAsync(() => drive(bytes!, [
+            "press b0",
+            "wait 1000",
+          ]));
+      var v = (seen![2]["media"] as List)
+          .cast<Map<String, dynamic>>()
+          .firstWhere((m) => m["id"] == "m-v");
+      expect(v["rate"], 0.5);
+      expect((v["t"] as num).toDouble(), closeTo(0.5, 0.06),
+          reason: "half a second into its file a second in");
+    });
+
+    // The book's baked rain stood still: its start screen loaded it again
+    // after it had been started, which stops a video.
+    testWidgets("behind a start screen, the background goes round on Play",
+        (tester) async {
+      if (node.isEmpty) return markTestSkipped("node is not installed");
+      var ffmpeg = await tester.runAsync(ffmpegPath);
+      if (ffmpeg == null) return markTestSkipped("ffmpeg is not installed");
+      Uint8List? bytes;
+      await tester.runAsync(() async {
+        var white = path.join(root.path, "white.mp4");
+        await Process.run(ffmpeg, [
+          "-hide_banner", "-loglevel", "error", "-y", //
+          "-f", "lavfi", "-i", "color=c=white:size=320x180:rate=12",
+          "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", white,
+        ]);
+        var id = (await CanvasMedia.saveFile(MediaKind.video, white))!;
+        var doc = CanvasDocument(
+          size: const CanvasSize(ratio: CanvasRatio.wide, width: 320),
+          frameRate: 12,
+          scenes: [
+            CanvasScene(id: "one", frames: 24, elements: [
+              VideoElement(
+                  const ElementBase(
+                      id: "w",
+                      width: 320,
+                      height: 180,
+                      opacity: 0.2,
+                      blend: LayerBlend.screen),
+                  clip: MediaClip(playlist: [
+                    MediaSource(
+                        assetId: id, length: 1, width: 320, height: 180),
+                  ], timed: true, muted: true, loop: MediaLoop.one)),
+              sliding(),
+            ]),
+          ],
+        );
+        bytes =
+            (await renderDocument(doc, as: DocumentAs.interactiveEpub))!.data;
+      });
+      expect(byId(pageOf(bytes!, 0), "backdrop"), isNotNull);
+      var seen = await tester.runAsync(() => drive(bytes!, [
+            "wait 100",
+            "begin",
+            "wait 500",
+          ]));
+      expect(seen![1]["start"], "shown", reason: "loaded: its Play shows");
+      expect(seen[1]["backdrop"], "paused", reason: "not before the Play");
+      expect(seen[2]["intro"], "none");
+      expect(seen[2]["backdrop"], "playing");
+      expect(seen[3]["backdrop"], "playing");
+      expect(t(seen[3]), closeTo(0.5, 0.05));
+    });
+
     testWidgets("pressing the key shows the chart with that series off",
         (tester) async {
       if (node.isEmpty) return markTestSkipped("node is not installed");
@@ -1359,3 +1733,7 @@ ${steps.map((s) {
     });
   });
 }
+
+/// imageWidth is how wide a PNG is, from its header.
+int imageWidth(List<int> b) =>
+    (b[16] << 24) | (b[17] << 16) | (b[18] << 8) | b[19];

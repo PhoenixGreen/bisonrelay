@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' show Rect;
 
 import 'package:archive/archive.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
@@ -115,6 +116,11 @@ class EpubMedia {
   final double opacity;
   final String? blend;
 
+  /// speed is how fast a video on the playhead plays: 0.5 at half speed, as
+  /// MediaClip.speed. The book's Rain went round twice as fast as the
+  /// canvas's, and jumped back each time.
+  final double speed;
+
   const EpubMedia({
     required this.id,
     required this.video,
@@ -141,6 +147,7 @@ class EpubMedia {
     this.element,
     this.opacity = 1,
     this.blend,
+    this.speed = 1,
   });
 }
 
@@ -172,6 +179,22 @@ class EpubAction {
     this.frame = 0,
     this.element,
   });
+}
+
+/// EpubStart is a title page folded into the page it starts: shown over it
+/// until a press plays it. A press on one page cannot let the next play its
+/// sound, nor can one page load the next's, in Apple Books -- the Decred
+/// infographic's title Play went to a page that asked for a Play again --
+/// so the title is the start screen of the page it plays.
+class EpubStart {
+  /// picture is the title page without its Play, and play the Play alone,
+  /// both PNGs; at is where the Play goes, in the page's pixels.
+  final Uint8List picture;
+  final Uint8List play;
+  final Rect at;
+
+  const EpubStart(
+      {required this.picture, required this.play, required this.at});
 }
 
 /// EpubPage is one leaf: a picture, its size, and anything on it that can be
@@ -206,6 +229,10 @@ class EpubPage {
   /// layers: played in step with its playhead. See renderSoundtrack.
   final String? soundtrack;
 
+  /// start is the title page shown over this one until it is played, in
+  /// place of the page itself under a Play. See EpubStart.
+  final EpubStart? start;
+
   /// plays is whether the page has sound or video for media.js to run, and
   /// scripted whether it needs media.js at all.
   bool get plays => media.isNotEmpty;
@@ -225,6 +252,7 @@ class EpubPage {
     this.files = const [],
     this.stage,
     this.soundtrack,
+    this.start,
   });
 }
 
@@ -246,6 +274,10 @@ Uint8List writeEpub({
   String? identifier,
   bool interactive = false,
   bool facing = false,
+
+  /// cover is the book's cover picture, an opaque PNG of its own, where
+  /// there is one: else the cover page's picture stands in.
+  Uint8List? cover,
 }) {
   if (pages.isEmpty) {
     throw ArgumentError("an EPUB needs at least one page");
@@ -288,10 +320,27 @@ Uint8List writeEpub({
       // Already deflated inside the PNG.
       ..compression = CompressionType.none);
   }
+  // The start screens' pictures: see EpubStart.
+  var starts = <EpubFile>[
+    for (var (i, page) in pages.indexed)
+      if (interactive && page.start != null && page.stage != null) ...[
+        EpubFile("start$i.png", page.start!.picture, "image/png"),
+        EpubFile("start$i-play.png", page.start!.play, "image/png"),
+      ],
+    if (cover != null) EpubFile("cover.png", cover, "image/png"),
+  ];
+  for (var f in starts) {
+    archive.addFile(ArchiveFile("OEBPS/${f.href}", f.bytes.length, f.bytes)
+      ..compression = CompressionType.none);
+  }
 
   _add(archive, "OEBPS/nav.xhtml", _nav(pages));
-  _add(archive, "OEBPS/content.opf",
-      _opf(pages, title, author, id, interactive, facing, carried.values));
+  _add(
+      archive,
+      "OEBPS/content.opf",
+      _opf(pages, title, author, id, interactive, facing,
+          [...carried.values, ...starts.where((f) => f.href != "cover.png")],
+          cover: cover != null));
 
   var zip = ZipEncoder().encode(archive);
   return Uint8List.fromList(zip);
@@ -367,17 +416,23 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
         ].join("\n    ")
       : "";
   var face = stage != null
-      ? _stageTag(stage, page, box, poster: "page$index.png", [
-          for (var m in page.media)
-            if (inLayer(m.element)) (m.element!, _mediaTag(m, box)),
-          for (var m in page.media)
-            if (m.pressable && m.width > 0 && inLayer(m.element))
-              (m.element!, pressTag(m)),
-          for (var link in page.links)
-            if (inLayer(link.element)) (link.element!, linkTag(link)),
-          for (var a in page.actions)
-            if (inLayer(a.element)) (a.element!, actionTag(a)),
-        ])
+      ? _stageTag(
+          stage,
+          page,
+          box,
+          poster: "page$index.png",
+          start: page.start == null ? null : "start$index",
+          [
+              for (var m in page.media)
+                if (inLayer(m.element)) (m.element!, _mediaTag(m, box)),
+              for (var m in page.media)
+                if (m.pressable && m.width > 0 && inLayer(m.element))
+                  (m.element!, pressTag(m)),
+              for (var link in page.links)
+                if (inLayer(link.element)) (link.element!, linkTag(link)),
+              for (var a in page.actions)
+                if (inLayer(a.element)) (a.element!, actionTag(a)),
+            ])
       : '<img class="page" src="page$index.png" alt="${_text(page.title)}"/>';
   var script = interactive && page.scripted
       ? '\n    <script src="media.js"></script>'
@@ -449,6 +504,10 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
         -webkit-appearance: none; appearance: none;
         -webkit-tap-highlight-color: transparent; }
       button.start.ready { opacity: 1; }
+      button.start.title { border: none; border-radius: 0; background: none;
+        opacity: 1; }
+      .stage .intro button.start.title img { position: absolute; left: 0;
+        top: 0; width: 100%; height: 100%; }
       button.start span { position: absolute; width: 0; height: 0;
         border-style: solid; border-color: transparent transparent
         transparent #ffffff; }
@@ -488,7 +547,8 @@ String _stageTag(
     EpubPage page,
     String Function(double, double, double, double, [double]) box,
     List<(String, String)> presses,
-    {String? poster}) {
+    {String? poster,
+    String? start}) {
   var marks = [
     for (var m in stage.marks)
       "${m.frame}:${m.kind.name}:${m.target}:${m.repeats}:${m.holdFrames}",
@@ -656,22 +716,42 @@ String _stageTag(
   // which a reader lets start only on a press.
   if (stage.animates && poster != null) {
     var w = page.width.toDouble(), h = page.height.toDouble();
-    var d = math.min(w, h) * 0.2;
-    var tall = d * 0.42, wide = tall * 0.87;
-    var barW = w * 0.4, barH = math.max(6.0, h * 0.006);
-    out.add('<div class="intro" id="intro">'
-        '<img src="${_attr(poster)}" alt="${_text(page.title)}"/>'
-        '<div class="veil" style="display:none"></div>'
-        '<button type="button" class="start" id="start" aria-label="Play" '
-        'style="display:none;left:${_px((w - d) / 2)};top:${_px((h - d) / 2)};'
-        'width:${_px(d)};height:${_px(d)};border-width:${_px(d * 0.035)}">'
-        '<span style="left:${_px(d / 2 - wide / 3)};top:${_px(d / 2 - tall / 2)};'
-        'border-width:${_px(tall / 2)} 0 ${_px(tall / 2)} ${_px(wide)}"></span>'
-        '</button>'
-        '<div class="bar" id="bar" style="display:none;left:${_px((w - barW) / 2)};'
-        'top:${_px((h + d) / 2 + d * 0.25)};width:${_px(barW)};height:${_px(barH)};'
-        'border-radius:${_px(barH / 2)}"><span id="barFill"></span></div>'
-        '</div>');
+    var barH = math.max(6.0, h * 0.006);
+    // The bar where the Play will be, and the Play in its place once all
+    // has loaded (Ken, 2026-11-13: a Play pressed before the page was ready
+    // did nothing the first time, and nothing said why).
+    String bar(double cx, double cy, double barW) =>
+        '<div class="bar" id="bar" style="display:none;'
+        'left:${_px(cx - barW / 2)};top:${_px(cy - barH / 2)};'
+        'width:${_px(barW)};height:${_px(barH)};'
+        'border-radius:${_px(barH / 2)}"><span id="barFill"></span></div>';
+    if (page.start case var title? when start != null) {
+      // A title page folded in (see EpubStart): its picture, and its own
+      // Play where it was drawn.
+      var at = title.at;
+      out.add('<div class="intro" id="intro">'
+          '<img src="${_attr(start)}.png" alt="${_text(page.title)}"/>'
+          '<button type="button" class="start title" id="start" '
+          'aria-label="Play" style="display:none;'
+          '${box(at.left, at.top, at.width, at.height)}">'
+          '<img src="${_attr(start)}-play.png" alt="Play"/></button>'
+          '${bar(at.center.dx, at.center.dy, at.width * 0.9)}'
+          '</div>');
+    } else {
+      var d = math.min(w, h) * 0.2;
+      var tall = d * 0.42, wide = tall * 0.87;
+      out.add('<div class="intro" id="intro">'
+          '<img src="${_attr(poster)}" alt="${_text(page.title)}"/>'
+          '<div class="veil" style="display:none"></div>'
+          '<button type="button" class="start" id="start" aria-label="Play" '
+          'style="display:none;left:${_px((w - d) / 2)};top:${_px((h - d) / 2)};'
+          'width:${_px(d)};height:${_px(d)};border-width:${_px(d * 0.035)}">'
+          '<span style="left:${_px(d / 2 - wide / 3)};top:${_px(d / 2 - tall / 2)};'
+          'border-width:${_px(tall / 2)} 0 ${_px(tall / 2)} ${_px(wide)}"></span>'
+          '</button>'
+          '${bar(w / 2, h / 2, w * 0.4)}'
+          '</div>');
+    }
   }
   out.add('</div>');
   return out.join("\n    ");
@@ -718,7 +798,8 @@ String _mediaTag(EpubMedia m,
       'data-loop="${m.loop}" data-volume="${m.volume}" '
       'data-fadein="${m.fadeIn}" data-fadeout="${m.fadeOut}" '
       'data-autoplay="${m.autoplay}"${m.muted ? ' muted="muted"' : ''}'
-      '${m.at == null ? '' : ' data-at="${m.at}" data-spans="${m.spans.join("|")}"'}';
+      '${m.at == null ? '' : ' data-at="${m.at}" data-spans="${m.spans.join("|")}"'}'
+      '${m.at == null || m.speed == 1 ? '' : ' data-speed="${m.speed}"'}';
   if (!m.video) return '<audio $data preload="auto"></audio>';
   return '<video class="media" $data playsinline="playsinline" '
       'preload="metadata"${m.controls ? ' controls="controls"' : ''}'
@@ -911,18 +992,27 @@ const String _mediaScript = r"""(function () {
       var spans = (m.getAttribute("data-spans") || "").split("|").map(parseFloat);
       var at = parseInt(m.getAttribute("data-at") || "0", 10);
       var loop = m.getAttribute("data-loop") || "none";
+      var speed = parseFloat(m.getAttribute("data-speed") || "1") || 1;
       var file = -1, wanted = 0;
       m.muted = true;
+      var paced = function () {
+        try { m.defaultPlaybackRate = speed; m.playbackRate = speed; } catch (e) {}
+      };
+      paced();
       m.addEventListener("loadedmetadata", function () {
         try { m.currentTime = wanted; } catch (e) {}
+        paced();
       });
       // Which file, and where in it, t seconds after it starts: the same
       // answer as MediaClip.momentAt.
       var moment = function (t) {
         var total = 0;
         spans.forEach(function (s) { if (s > 0) total += s; });
+        total /= speed;
         if (t < 0 || total <= 0) return null;
         if (t >= total) { if (loop === "none") return null; t = t % total; }
+        // Into the files at their speed: the spans are their own seconds.
+        t *= speed;
         var from = 0;
         for (var i = 0; i < spans.length; i++) {
           if (!(spans[i] > 0)) continue;
@@ -969,18 +1059,31 @@ const String _mediaScript = r"""(function () {
         else if (!(on && inside) && !v.paused) v.pause();
       });
     });
+    // The soundtrack, playing, is the clock (see tick): it is moved only
+    // when the playhead is put somewhere, never to catch the clock up --
+    // each such move a gap in the sound (Ken, 2026-11-13: the book's music
+    // stuttered).
     var soundtrack = document.getElementById("soundtrack");
+    var placed = true;
     if (soundtrack) {
       followers.push(function (seconds, on) {
         var a = soundtrack;
         if (isFinite(a.duration) && seconds >= a.duration) { if (!a.paused) a.pause(); return; }
-        if (Math.abs(a.currentTime - seconds) > (on ? 0.25 : 0.05)) {
+        if ((placed || a.paused) && Math.abs(a.currentTime - seconds) > 0.05) {
           try { a.currentTime = seconds; } catch (e) {}
         }
         if (on && a.paused) go(a);
         else if (!on && !a.paused) a.pause();
       });
     }
+    // Where the sound has got to, when it is the clock: playing, and not
+    // past its end.
+    var heard = function () {
+      var a = soundtrack;
+      if (!a || a.paused || a.seeking || a.readyState < 3) return -1;
+      if (isFinite(a.duration) && a.currentTime >= a.duration - 0.05) return -1;
+      return a.currentTime;
+    };
 
     var now = function () { return window.performance && performance.now ? performance.now() : Date.now(); };
     var later = window.requestAnimationFrame ? function (f) { window.requestAnimationFrame(f); }
@@ -989,9 +1092,11 @@ const String _mediaScript = r"""(function () {
     var follow = function () {
       var on = playing && !holding();
       followers.forEach(function (f) { f(t, on); });
+      placed = false;
     };
     // Everything to [seconds], and playing on from there if the clock is.
     var place = function (seconds) {
+      placed = true;
       t = Math.max(0, Math.min(length, seconds));
       anims.forEach(function (a) { try { a.currentTime = t * 1000; } catch (e) {} });
       since = now() - t * 1000;
@@ -1007,10 +1112,25 @@ const String _mediaScript = r"""(function () {
       if (playing || frames <= 1) return;
       if (t >= length) { counts = {}; place(0); }
       playing = true;
-      since = now() - t * 1000;
-      anims.forEach(function (a) { try { a.currentTime = t * 1000; a.play(); } catch (e) {} });
-      follow();
-      later(tick);
+      // With a soundtrack, everything starts when its sound does: a sound
+      // takes a moment to start, and the page would be ahead of it.
+      var started = false;
+      var run = function () {
+        if (started || !playing) return;
+        started = true;
+        since = now() - t * 1000;
+        anims.forEach(function (a) { try { a.currentTime = t * 1000; a.play(); } catch (e) {} });
+        follow();
+        later(tick);
+      };
+      var a = soundtrack;
+      if (a && a.paused && !(isFinite(a.duration) && t >= a.duration)) {
+        try { a.currentTime = t; } catch (e) {}
+        // run is once only: a later "playing" finds it started.
+        a.addEventListener("playing", run);
+        go(a);
+        setTimeout(run, 700);
+      } else run();
     };
     // The clock: where the animations have got to, and the markers on the
     // frames they have passed since last time.
@@ -1022,6 +1142,14 @@ const String _mediaScript = r"""(function () {
         return;
       }
       var seconds = (now() - since) / 1000;
+      // Kept to the sound: where it has drifted from the page's clock, the
+      // clock and the animations go to it.
+      var sound = heard();
+      if (sound >= 0 && Math.abs(sound - seconds) > 0.1) {
+        seconds = sound;
+        since = now() - seconds * 1000;
+        anims.forEach(function (x) { try { x.currentTime = seconds * 1000; } catch (e) {} });
+      }
       var frame = Math.floor(seconds * rate + 1e-6);
       for (var f = done + 1; f <= frame && playing; f++) {
         done = f;
@@ -1080,9 +1208,11 @@ const String _mediaScript = r"""(function () {
     all(".layer").forEach(function (l) {
       media[l.id.substring(2)] = { layer: l };
     });
-    // A background video goes round by itself under the page.
+    // A background video goes round by itself under the page: from the
+    // start, or with the Play behind a start screen -- whose loading loads
+    // it again, which would stop it.
     var backdrop = document.getElementById("backdrop");
-    if (backdrop) go(backdrop);
+    var round = function () { if (backdrop && backdrop.paused) go(backdrop); };
     place(0);
     var intro = document.getElementById("intro");
     if (intro && stage.getAttribute("data-intro") === "true") {
@@ -1091,8 +1221,11 @@ const String _mediaScript = r"""(function () {
       var start = document.getElementById("start");
       var bar = document.getElementById("bar");
       var fill = document.getElementById("barFill");
-      intro.getElementsByClassName("veil")[0].style.display = "";
+      var veil = intro.getElementsByClassName("veil")[0];
+      if (veil) veil.style.display = "";
+      // The bar first, where the Play will be; the Play once all is in.
       start.style.display = "";
+      start.style.visibility = "hidden";
       bar.style.display = "";
       var total = 0, loaded = 0, ready = false;
       var progress = function () {
@@ -1101,6 +1234,7 @@ const String _mediaScript = r"""(function () {
           ready = true;
           start.className += " ready";
           bar.style.visibility = "hidden";
+          start.style.visibility = "";
         }
       };
       var waitFor = function (el, events) {
@@ -1127,6 +1261,7 @@ const String _mediaScript = r"""(function () {
       var asked = window.location.hash === "#play";
       var begin = function () {
         intro.style.display = "none";
+        round();
         place(0);
         play();
         var sound = document.getElementById("soundtrack");
@@ -1141,13 +1276,11 @@ const String _mediaScript = r"""(function () {
           }, 700);
         }
       };
-      if (asked) start.style.visibility = "hidden";
       progress = (function (shown) {
         return function () {
           shown();
           if (ready && asked === true) {
             asked = "started";
-            start.style.visibility = "";
             begin();
           }
         };
@@ -1158,7 +1291,10 @@ const String _mediaScript = r"""(function () {
         asked = false;
         begin();
       });
-    } else if (stage.getAttribute("data-autoplay") === "true") play();
+    } else {
+      round();
+      if (stage.getAttribute("data-autoplay") === "true") play();
+    }
   }
 
   all("[data-act]").forEach(function (b) {
@@ -1222,6 +1358,10 @@ String _nav(List<EpubPage> pages) {
     for (var (i, page) in pages.indexed)
       '<li><a href="page$i.xhtml">${_text(page.title)}</a></li>',
   ].join("\n        ");
+  // Where the cover is and where the book begins, which a reader asks
+  // before it has opened a page.
+  var coverAt = math.max(0, pages.indexWhere((p) => p.cover));
+  var bodyAt = pages.length > 1 && coverAt == 0 ? 1 : 0;
   return '''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml"
@@ -1234,6 +1374,13 @@ String _nav(List<EpubPage> pages) {
         $items
       </ol>
     </nav>
+    <nav epub:type="landmarks" id="landmarks" hidden="hidden">
+      <h1>Landmarks</h1>
+      <ol>
+        <li><a epub:type="cover" href="page$coverAt.xhtml">Cover</a></li>
+        <li><a epub:type="bodymatter" href="page$bodyAt.xhtml">Start</a></li>
+      </ol>
+    </nav>
   </body>
 </html>
 ''';
@@ -1241,9 +1388,13 @@ String _nav(List<EpubPage> pages) {
 
 /// _opf is the package: what is in the book, and in what order.
 String _opf(List<EpubPage> pages, String title, String author, String id,
-    bool interactive, bool facing, Iterable<EpubFile> files) {
+    bool interactive, bool facing, Iterable<EpubFile> files,
+    {bool cover = false}) {
   var coverAt = pages.indexWhere((p) => p.cover);
   var manifest = <String>[
+    if (cover)
+      '<item id="cover" href="cover.png" media-type="image/png" '
+          'properties="cover-image"/>',
     '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" '
         'properties="nav"/>',
     for (var (i, page) in pages.indexed) ...[
@@ -1251,7 +1402,7 @@ String _opf(List<EpubPage> pages, String title, String author, String id,
           'media-type="application/xhtml+xml"'
           '${interactive && page.scripted ? ' properties="scripted"' : ''}/>',
       '<item id="img$i" href="page$i.png" media-type="image/png"'
-          '${i == coverAt ? ' properties="cover-image"' : ''}/>',
+          '${i == coverAt && !cover ? ' properties="cover-image"' : ''}/>',
     ],
     // A reader will not open a file the manifest does not list.
     for (var (i, f) in files.indexed)
@@ -1285,13 +1436,16 @@ String _opf(List<EpubPage> pages, String title, String author, String id,
 ${author.isEmpty ? "" : "    <dc:creator>${_text(author)}</dc:creator>\n"}    <meta property="dcterms:modified">${when}Z</meta>
     <meta property="rendition:layout">pre-paginated</meta>
     <meta property="rendition:spread">${facing ? "landscape" : "none"}</meta>
-${coverAt < 0 ? "" : '    <meta name="cover" content="img$coverAt"/>\n'}  </metadata>
+${cover ? '    <meta name="cover" content="cover"/>\n' : coverAt < 0 ? "" : '    <meta name="cover" content="img$coverAt"/>\n'}  </metadata>
   <manifest>
     $manifest
   </manifest>
   <spine>
     $spine
   </spine>
+  <guide>
+    <reference type="cover" title="Cover" href="page${math.max(0, coverAt)}.xhtml"/>
+  </guide>
 </package>
 ''';
 }
