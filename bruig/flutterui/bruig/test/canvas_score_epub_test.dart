@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:bruig/plugin_system/canvas/export/document_export.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
+import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -94,6 +95,67 @@ void main() {
         'case "seek"',
         'classList.add("playing")',
         'classList.remove("playing")',
+      ]) {
+        expect(script, contains(bit), reason: bit);
+      }
+      c.dispose();
+    });
+  });
+
+  // Ken, 2026-11-14: "would it be possible to click a note on the
+  // instrument and have it play both as a mouse/keyboard input and a midi
+  // instrument input?"
+  testWidgets("its instrument is one the reader plays", (tester) async {
+    var ffmpeg = await tester.runAsync(ffmpegPath);
+    await tester.runAsync(() async {
+      var c = sheet.lesson();
+      c.showSheetKeyboard(sheet.sheetOf(c), true);
+      var keys = c.sheetKeyboard(sheet.sheetOf(c))!;
+      var built = (await buildEpubStage(c.document, 0,
+          pixels: 1, width: 1280, height: 720))!;
+      var layer = built.stage.layers.firstWhere((l) => l.id == keys.id);
+      var kb = layer.keyboard!;
+      var range = keys.instrument!.highKey - keys.instrument!.lowKey + 1;
+      expect(kb.keys, hasLength(range), reason: "every key, lit");
+      expect(kb.low, keys.instrument!.lowKey);
+      expect(kb.keys.where((k) => k.black), hasLength(15));
+      // Its sound: each key a slice of one file, the instrument's own.
+      var file = built.files.firstWhere((f) => f.href == kb.sound);
+      expect(file.mime, ffmpeg == null ? "audio/wav" : "audio/mp4");
+      expect(file.bytes.length, greaterThan(20000));
+      c.dispose();
+    });
+  });
+
+  testWidgets("written into the book: a surface to play, every key lit",
+      (tester) async {
+    await tester.runAsync(() async {
+      var c = sheet.lesson();
+      c.showSheetKeyboard(sheet.sheetOf(c), true);
+      var export =
+          (await renderDocument(c.document, as: DocumentAs.interactiveEpub))!;
+      var zip = ZipDecoder().decodeBytes(export.data);
+      String text(String name) =>
+          utf8.decode(zip.files.firstWhere((f) => f.name == name).content);
+      var page = XmlDocument.parse(text("OEBPS/page0.xhtml"));
+      var board = page.descendantElements
+          .firstWhere((e) => (e.getAttribute("class") ?? "") == "hit keys");
+      // A button: a div there left the keyboard under it undrawn.
+      expect(board.name.local, "button");
+      var keys = jsonDecode(board.getAttribute("data-keys")!) as List;
+      expect(keys, hasLength(37));
+      expect(zip.files.map((f) => f.name),
+          contains("OEBPS/${board.getAttribute("data-sound")}"),
+          reason: "its sound is in the book");
+      expect(
+          page.descendantElements
+              .where((e) => (e.getAttribute("class") ?? "") == "pic kp"),
+          hasLength(37));
+      var script = text("OEBPS/media.js");
+      for (var bit in [
+        "awsedftgyhujk",
+        "requestMIDIAccess",
+        "decodeAudioData"
       ]) {
         expect(script, contains(bit), reason: bit);
       }

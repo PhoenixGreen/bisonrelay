@@ -50,6 +50,9 @@ import 'package:bruig/plugin_system/canvas/model/motion.dart'
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart'
     show ffmpegPath;
+import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart'
+    show partWav, soundBankPath;
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 
 // epub_layers.dart is a page of an interactive EPUB as the things on it, each
 // animated by the reader the way it is animated on the canvas.
@@ -157,6 +160,21 @@ class EpubControl {
       {this.data = const {}, this.inner = "", this.label = ""});
 }
 
+/// EpubKeyboard is an instrument a reader plays (Ken, 2026-11-14: "click a
+/// note on the instrument and have it play both as a mouse/keyboard input
+/// and a midi instrument input"): where it is in page pixels, its keys
+/// (each key's number, its box within, whether it is black, and a picture
+/// of it lit), and its sound -- every key from [low], [step] seconds apart,
+/// in one file.
+class EpubKeyboard {
+  final Rect box;
+  final List<({int key, Rect rect, bool black, EpubSprite lit})> keys;
+  final String sound;
+  final int low;
+  final double step;
+  const EpubKeyboard(this.box, this.keys, this.sound, this.low, this.step);
+}
+
 class EpubLayer {
   /// id is the element's, which a Show-or-hide button names.
   final String id;
@@ -197,6 +215,9 @@ class EpubLayer {
   /// controls are the buttons on it that the page's clock answers.
   final List<EpubControl> controls;
 
+  /// keyboard is it as an instrument the reader plays, where it is one.
+  final EpubKeyboard? keyboard;
+
   const EpubLayer({
     required this.id,
     this.visible = true,
@@ -211,6 +232,7 @@ class EpubLayer {
     this.switched = const {},
     this.reactions = const [],
     this.controls = const [],
+    this.keyboard,
   });
 
   /// moves is whether anything on it changes with the playhead.
@@ -613,6 +635,22 @@ Future<StageResult?> buildEpubStage(
             },
             reactions: l.reactions,
             controls: l.controls,
+            keyboard: l.keyboard == null
+                ? null
+                : EpubKeyboard(
+                    l.keyboard!.box,
+                    [
+                      for (var k in l.keyboard!.keys)
+                        (
+                          key: k.key,
+                          rect: k.rect,
+                          black: k.black,
+                          lit: sheets.placed(k.lit)
+                        ),
+                    ],
+                    l.keyboard!.sound,
+                    l.keyboard!.low,
+                    l.keyboard!.step),
           ),
         _ => item,
       },
@@ -948,7 +986,7 @@ class _LayerMaker {
       ]);
 
   EpubLayer _layerOf(List<EpubPart> parts,
-      {List<EpubControl> controls = const []}) {
+      {List<EpubControl> controls = const [], EpubKeyboard? keyboard}) {
     var box = e.bounds;
     return EpubLayer(
       id: e.id,
@@ -958,6 +996,7 @@ class _LayerMaker {
       pose: _poseKeys(),
       parts: parts,
       controls: controls,
+      keyboard: keyboard,
     );
   }
 
@@ -1156,21 +1195,98 @@ class _LayerMaker {
       }
     }
     var layout = keyboardLayout(part, bounds);
-    // White keys first, the black ones over them.
+    // Each key lit: shown while the page plays it, and while the reader
+    // presses it. White keys first, the black ones over them.
+    var lit = <({int key, Rect rect, bool black, EpubSprite lit})>[];
     for (var black in [false, true]) {
       for (var key in layout.keys) {
         if (key.black != black) continue;
-        var frames0 = on[key.key];
-        if (frames0 == null) continue;
         var pic = await drawn(
             (c) => paintAudio(
                 c, bounds, a, AudioState(muted: a.clip.muted, keys: {key.key})),
             key.rect);
         if (pic == null) continue;
-        parts.add(EpubPart(pic, keys: _onOff(frames0.contains)));
+        lit.add((
+          key: key.key,
+          rect: Rect.fromLTRB(
+              (key.rect.left - bounds.left) * pixels,
+              (key.rect.top - bounds.top) * pixels,
+              (key.rect.right - bounds.left) * pixels,
+              (key.rect.bottom - bounds.top) * pixels),
+          black: key.black,
+          lit: pic
+        ));
+        if (on[key.key] case var frames0?) {
+          parts.add(EpubPart(pic, keys: _onOff(frames0.contains)));
+        }
       }
     }
-    return _layerOf(parts);
+    // Its sound, for the reader to play it.
+    EpubKeyboard? keyboard;
+    if (await _keySounds(a, [for (var k in lit) k.key])
+        case (var file, var low)?) {
+      clips.add(file);
+      keyboard = EpubKeyboard(
+          Rect.fromLTRB(bounds.left * pixels, bounds.top * pixels,
+              bounds.right * pixels, bounds.bottom * pixels),
+          lit,
+          file.href,
+          low,
+          keyStep);
+    }
+    return _layerOf(parts, keyboard: keyboard);
+  }
+
+  /// keyStep is how far apart each key's sound is in an instrument's file:
+  /// a note held a second, and its ring.
+  static const keyStep = 1.6;
+
+  /// _keySounds is every key of [a] from the lowest of [keys] to the
+  /// highest, each played as [a] plays it, [keyStep] seconds apart in one
+  /// file -- AAC where there is ffmpeg, a small WAV where not -- and the
+  /// lowest key's number. Null where it cannot be played.
+  Future<(EpubFile, int)?> _keySounds(AudioElement a, List<int> keys) async {
+    if (keys.isEmpty) return null;
+    var part = a.instrument!;
+    var low = keys.reduce(math.min), high = keys.reduce(math.max);
+    var notes = [
+      for (var k = low; k <= high; k++)
+        MidiNote(k, (k - low) * keyStep, 1.0, 100),
+    ];
+    try {
+      var bank = await soundBankPath();
+      var wav = await partWav(
+          part.copyWith(notes: notes, effects: const [], controls: const {}),
+          bankPath:
+              part.sound == InstrumentSound.bank && await File(bank).exists()
+                  ? bank
+                  : null);
+      var ffmpeg = films?.ffmpeg ?? await ffmpegPath();
+      var stem = "media/keys-${a.id}";
+      if (ffmpeg == null) return (EpubFile("$stem.wav", wav, "audio/wav"), low);
+      var work = await Directory.systemTemp.createTemp("canvas-keys");
+      try {
+        var input = path.join(work.path, "keys.wav");
+        var output = path.join(work.path, "keys.m4a");
+        await File(input).writeAsBytes(wav);
+        var run = await Process.run(ffmpeg, [
+          "-hide_banner", "-loglevel", "error", "-y", //
+          "-i", input, "-ac", "1", "-c:a", "aac", "-b:a", "96k", output,
+        ]);
+        if (run.exitCode != 0) {
+          return (EpubFile("$stem.wav", wav, "audio/wav"), low);
+        }
+        return (
+          EpubFile("$stem.m4a", await File(output).readAsBytes(), "audio/mp4"),
+          low
+        );
+      } finally {
+        await work.delete(recursive: true);
+      }
+    } catch (exception) {
+      debugPrint("Unable to sound the keys: $exception");
+      return null;
+    }
   }
 
   /// _reactions are [e]'s clips that start on a click or after another
@@ -2062,11 +2178,8 @@ bool _changes(CanvasElement e, int frames, CanvasDocument page) {
   if (e is SheetElement && sheetViewOf(e, e.bounds, page, 0) != null) {
     return true;
   }
-  if (e is AudioElement &&
-      (e.instrument?.notes.isNotEmpty ?? false) &&
-      e.visible) {
-    return true;
-  }
+  // An instrument on the page is played by the reader, its keys lit.
+  if (e is AudioElement && e.instrument != null && e.visible) return true;
   var rate = page.frameRate;
   Keyframe poseAt(int f) => poseWithMotion(e, f, page);
   var first = poseAt(0);

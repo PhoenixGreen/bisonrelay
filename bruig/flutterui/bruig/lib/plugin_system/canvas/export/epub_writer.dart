@@ -480,6 +480,11 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
         width: 100%; height: 100%; }
       .hit.bar .pp span { position: absolute; display: block; }
       .playing .hit.bar .pp { display: block; }
+      /* An instrument the reader plays: a finger on it plays, it never
+         scrolls the page. */
+      .hit.keys { position: absolute; display: block; cursor: pointer;
+        touch-action: none; -webkit-tap-highlight-color: transparent;
+        -webkit-user-select: none; user-select: none; }
       .stage { position: absolute; left: 0; top: 0; overflow: hidden;
         width: ${page.width}px; height: ${page.height}px; }
       .stage .page { position: absolute; left: 0; top: 0; }
@@ -700,6 +705,38 @@ String _stageTag(
         // switched off, and an entry to press for each series.
         for (var MapEntry(key: mask, value: s) in layer.switched.entries) {
           out.add("  ${_spriteTag(s, "sw", false, box, mask: mask)}");
+        }
+        // An instrument the reader plays: each key lit, hidden until it is
+        // pressed, and a surface over it that the script takes presses on.
+        if (layer.keyboard case var kb?) {
+          for (var k in kb.keys) {
+            out.add('  <span class="pic kp" data-board="${_attr(layer.id)}" '
+                'data-k="${k.key}" '
+                'style="${box(k.lit.x, k.lit.y, k.lit.width, k.lit.height)};'
+                'visibility:hidden">'
+                '<img src="${_attr(k.lit.href)}" alt="" '
+                'style="left:${_px(-k.lit.sx)};top:${_px(-k.lit.sy)}"/></span>');
+          }
+          var keys = jsonEncode([
+            for (var k in kb.keys)
+              [
+                k.key,
+                double.parse(k.rect.left.toStringAsFixed(1)),
+                double.parse(k.rect.top.toStringAsFixed(1)),
+                double.parse(k.rect.width.toStringAsFixed(1)),
+                double.parse(k.rect.height.toStringAsFixed(1)),
+                k.black ? 1 : 0,
+              ],
+          ]);
+          // A button, not a div: a div here left the keyboard under it
+          // undrawn in Chrome.
+          out.add(
+              '  <button type="button" class="hit keys" data-board="${_attr(layer.id)}" '
+              'data-sound="${_attr(kb.sound)}" data-low="${kb.low}" '
+              'data-step="${kb.step}" data-w="${kb.box.width}" '
+              'data-h="${kb.box.height}" data-keys="${_attr(keys)}" '
+              'role="application" aria-label="Keyboard" '
+              'style="${box(kb.box.left, kb.box.top, kb.box.width, kb.box.height)}"></button>');
         }
         // A score sheet's playbar: buttons the page's clock answers.
         for (var c in layer.controls) {
@@ -1394,6 +1431,183 @@ const String _mediaScript = r"""(function () {
       if (stage.getAttribute("data-autoplay") === "true") play();
     }
   }
+
+  // An instrument the reader plays (Ken, 2026-11-14): pressed, with a
+  // finger or the pointer, by the computer's keys, or from a MIDI keyboard
+  // where the reader lets a page have one. Each key's sound is a slice of
+  // one file, played by Web Audio (or, without it, an <audio>); its key is
+  // lit while it sounds.
+  (function () {
+    var boards = all(".hit.keys");
+    if (!boards.length) return;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    var ctx = null, buffers = {};
+    var load = function (src) {
+      if (src in buffers) return;
+      buffers[src] = null;
+      if (!AC) return;
+      try {
+        ctx = ctx || new AC();
+        var x = new XMLHttpRequest();
+        x.open("GET", src, true);
+        x.responseType = "arraybuffer";
+        x.onload = function () {
+          try {
+            ctx.decodeAudioData(x.response, function (b) { buffers[src] = b; },
+              function () {});
+          } catch (e) {}
+        };
+        x.send();
+      } catch (e) {}
+    };
+    var sound = function (board, key, velocity) {
+      var src = board.getAttribute("data-sound");
+      var step = parseFloat(board.getAttribute("data-step"));
+      var at = (key - parseInt(board.getAttribute("data-low"), 10)) * step;
+      var level = Math.max(0.05, Math.min(1, velocity / 100));
+      var b = buffers[src];
+      if (ctx && b) {
+        if (ctx.state === "suspended" && ctx.resume) ctx.resume();
+        var s = ctx.createBufferSource();
+        s.buffer = b;
+        var g = ctx.createGain();
+        g.gain.value = level;
+        s.connect(g);
+        g.connect(ctx.destination);
+        s.start(0, at, step - 0.05);
+        return function () {
+          try {
+            var n = ctx.currentTime;
+            g.gain.setValueAtTime(g.gain.value, n);
+            g.gain.linearRampToValueAtTime(0, n + 0.12);
+            s.stop(n + 0.15);
+          } catch (e) {}
+        };
+      }
+      // Without Web Audio (or before the file is in): the file itself, from
+      // the key's place.
+      var a = document.createElement("audio");
+      a.src = src;
+      a.volume = level;
+      var go = function () { try { a.currentTime = at; } catch (e) {} a.play(); };
+      if (a.readyState >= 1) go(); else a.addEventListener("loadedmetadata", go);
+      var stop = setTimeout(function () { a.pause(); }, (step - 0.05) * 1000);
+      return function () { clearTimeout(stop); a.pause(); };
+    };
+    var light = function (board, key, on) {
+      all('.pic.kp[data-board="' + board.getAttribute("data-board") +
+          '"][data-k="' + key + '"]').forEach(function (p) {
+        p.style.visibility = on ? "visible" : "hidden";
+      });
+    };
+    var held = {};
+    var down = function (board, key, velocity) {
+      var id = board.getAttribute("data-board") + ":" + key;
+      if (held[id]) held[id]();
+      held[id] = sound(board, key, velocity);
+      light(board, key, true);
+    };
+    var up = function (board, key) {
+      var id = board.getAttribute("data-board") + ":" + key;
+      if (held[id]) { held[id](); delete held[id]; }
+      light(board, key, false);
+    };
+    var keyAt = function (board, x, y) {
+      var r = board.getBoundingClientRect();
+      if (!r.width || !r.height) return null;
+      var px = (x - r.left) / r.width * parseFloat(board.getAttribute("data-w"));
+      var py = (y - r.top) / r.height * parseFloat(board.getAttribute("data-h"));
+      var keys = board.keys || (board.keys = JSON.parse(board.getAttribute("data-keys")));
+      for (var pass = 0; pass < 2; pass++) {
+        for (var i = 0; i < keys.length; i++) {
+          var k = keys[i];
+          // The black keys first: they sit over the white.
+          if ((pass === 0) !== (k[5] === 1)) continue;
+          if (px >= k[1] && px < k[1] + k[3] && py >= k[2] && py < k[2] + k[4]) return k[0];
+        }
+      }
+      return null;
+    };
+    var inRange = function (board, key) {
+      var keys = board.keys || (board.keys = JSON.parse(board.getAttribute("data-keys")));
+      return keys.some(function (k) { return k[0] === key; });
+    };
+    boards.forEach(function (board) {
+      load(board.getAttribute("data-sound"));
+      // Each finger (or the pointer) and the key it is on: a slide plays
+      // each key it comes to.
+      var on = {};
+      var press = function (id, x, y) {
+        var k = keyAt(board, x, y);
+        if (k === on[id]) return;
+        if (on[id] !== undefined && on[id] !== null) up(board, on[id]);
+        on[id] = k;
+        if (k !== null) down(board, k, 90);
+      };
+      var lift = function (id) {
+        if (on[id] !== undefined && on[id] !== null) up(board, on[id]);
+        delete on[id];
+      };
+      board.addEventListener("touchstart", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        Array.prototype.forEach.call(e.changedTouches, function (t) { press("t" + t.identifier, t.clientX, t.clientY); });
+      }, false);
+      board.addEventListener("touchmove", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        Array.prototype.forEach.call(e.changedTouches, function (t) { press("t" + t.identifier, t.clientX, t.clientY); });
+      }, false);
+      var ended = function (e) {
+        e.preventDefault(); e.stopPropagation();
+        Array.prototype.forEach.call(e.changedTouches, function (t) { lift("t" + t.identifier); });
+      };
+      board.addEventListener("touchend", ended, false);
+      board.addEventListener("touchcancel", ended, false);
+      var mouse = false;
+      board.addEventListener("mousedown", function (e) { e.preventDefault(); mouse = true; press("m", e.clientX, e.clientY); }, false);
+      board.addEventListener("mousemove", function (e) { if (mouse) press("m", e.clientX, e.clientY); }, false);
+      board.addEventListener("mouseup", function () { mouse = false; lift("m"); }, false);
+      board.addEventListener("mouseleave", function () { mouse = false; lift("m"); }, false);
+    });
+    // The computer's keys, as on the canvas: A W S E D F T G Y H U J K
+    // from middle C, on the page's first instrument.
+    var letters = "awsedftgyhujk";
+    var typed = {};
+    document.addEventListener("keydown", function (e) {
+      if (e.metaKey || e.ctrlKey || e.altKey || !e.key) return;
+      var i = letters.indexOf(e.key.toLowerCase());
+      if (i < 0 || typed[i]) return;
+      typed[i] = true;
+      if (inRange(boards[0], 60 + i)) down(boards[0], 60 + i, 90);
+    }, false);
+    document.addEventListener("keyup", function (e) {
+      if (!e.key) return;
+      var i = letters.indexOf(e.key.toLowerCase());
+      if (i < 0) return;
+      delete typed[i];
+      up(boards[0], 60 + i);
+    }, false);
+    // A MIDI keyboard, where the reader lets a page have one (Apple Books
+    // does not): its notes on the page's first instrument, as hard as
+    // they are played.
+    if (navigator.requestMIDIAccess) {
+      try {
+        navigator.requestMIDIAccess().then(function (access) {
+          var listen = function (input) {
+            input.onmidimessage = function (m) {
+              var d = m.data, kind = d[0] & 0xF0;
+              if (!inRange(boards[0], d[1])) return;
+              if (kind === 0x90 && d[2] > 0) down(boards[0], d[1], d[2] / 127 * 100);
+              else if (kind === 0x80 || kind === 0x90) up(boards[0], d[1]);
+            };
+          };
+          access.inputs.forEach(listen);
+          access.onstatechange = function (e) {
+            if (e.port && e.port.type === "input" && e.port.state === "connected") listen(e.port);
+          };
+        }, function () {});
+      } catch (e) {}
+    }
+  })();
 
   all("[data-act]").forEach(function (b) {
     var touched = 0;
