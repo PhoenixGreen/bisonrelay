@@ -1186,7 +1186,11 @@ void paintElement(
             e.animation,
             pose,
             () => paintAudio(
-                canvas, bounds, e, audioState?.call(e) ?? AudioState.idle(e),
+                canvas,
+                bounds,
+                e,
+                audioState?.call(e) ??
+                    AudioState.atFrame(e, frame, document?.frameRate ?? 24),
                 images: images));
       case VideoElement e:
         arriving(

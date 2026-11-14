@@ -40,6 +40,20 @@ class AudioState {
 
   factory AudioState.idle(AudioElement e) =>
       AudioState(muted: e.clip.muted, volume: e.clip.volume);
+
+  /// atFrame is [e] as it is at [frame] of a page at [frameRate] where
+  /// nothing is live -- a video being made, a page drawn: an instrument's
+  /// keys lit with the notes under the playhead, as the editor lights them
+  /// while it plays (Ken, 2026-11-14: in a video, the keys stayed dark).
+  factory AudioState.atFrame(AudioElement e, int frame, int frameRate) {
+    var part = e.instrument;
+    if (part == null) return AudioState.idle(e);
+    var seconds = (frame - e.clip.at) / (frameRate < 1 ? 1 : frameRate);
+    return AudioState(
+        muted: e.clip.muted,
+        volume: e.clip.volume,
+        keys: part.sounding(seconds));
+  }
 }
 
 /// AudioParts is where each piece of the element is, in document units.
